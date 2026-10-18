@@ -28,3 +28,11 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 3. Añadir pruebas de navegación, búsqueda, accesibilidad, reducción de movimiento y estados vacíos.
 4. Conectar a contratos reales del backend sin simular confirmaciones de pedidos ni validaciones QR.
 5. Capturar screenshots reproducibles desde la aplicación ejecutada, asociados a commit y entorno de pruebas.
+
+## Aprobación visual y contrato de anuncios (18-10-2026)
+
+**Pantalla principal aprobada por el usuario** con logotipo Sabora V3, selector de idioma, búsqueda bajo demanda, cesta, campana de notificaciones, carrusel de anuncios sobre «Nuestra carta», categorías y barra inferior con QR central. Preservar la composición aprobada en futuras iteraciones: añadir funciones sin rediseñar la pantalla.
+
+**Requisito obligatorio:** la fotografía de un anuncio es **opcional**. Modelo de presentación: `image: string | null` (o equivalente en contrato final). Con imagen válida: mostrarla junto al título y texto; sin imagen o con `null`: presentar una tarjeta tipográfica de calidad en paleta corporativa, sin hueco reservado, imagen ficticia ni recurso roto. Si no existen anuncios publicados y vigentes, ocultar por completo el carrusel y recuperar el espacio. El detalle debe funcionar en ambas variantes. Rotación automática cíclica, con controles manuales y pausa al abrir detalles; respetar preferencias de movimiento reducido.
+
+**Alcance de aprobación:** diseño visual y comportamiento esperado, **no** certificación de despliegue, conexión con backend ni pruebas automatizadas. El HTML de referencia implementa anuncios de demostración sin imagen; queda pendiente cubrir mediante pruebas las variantes con imagen, sin imagen, sin anuncios y fallos de carga.
