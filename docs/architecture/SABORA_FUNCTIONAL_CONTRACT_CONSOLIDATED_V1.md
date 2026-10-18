@@ -42,6 +42,14 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 
 Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la política vigente se aplica a nuevos pedidos. Registrar versión de política por pedido, impedir contradicciones entre dispositivos y presentar por separado saldos pendientes y pagados. Esta regla recoge la decisión ya tratada, sin reabrirla.
 
+## Seguridad y conciliación: invariantes de diseño
+- La identidad de la mesa no acredita identidad del comensal ni propiedad de cuenta. Cada acción de pedido, pago, ajuste, cancelación y suscripción a eventos exige autorización de servidor con alcance explícito de restaurante, mesa, visita y cuenta. El QR por sí solo no concede acceso a datos financieros de otros comensales.
+- Un pago de tercero requiere intención explícita del pagador, selección de deudas concretas y asignación persistente de importes a cada cuenta; la notificación al beneficiario no constituye autorización ni puede transferir titularidad de pago.
+- La misma deuda no puede liquidarse dos veces: bloqueo o reserva transaccional, una tentativa activa y claves idempotentes para cada operación. Dispositivos concurrentes reciben resultado de la operación existente, no crean un segundo cargo.
+- Modelar estados durables y separados para pedido lógico, revisión, comanda, autorización, captura, entrega confirmada, cancelación, reembolso y liquidación en caja. Las transiciones entre Stripe y cocina no son atómicas: registrar intención antes de efectos externos, reconciliar respuesta/evento y compensar fallos sin recaptura ni doble despacho.
+- Webhooks Stripe verificados criptográficamente y deduplicados por identificador de evento; nunca usar una notificación cliente como prueba de pago. Una captura incierta mantiene bloqueada la deuda también frente a caja hasta confirmación.
+- Las incidencias y los eventos de mesa deben filtrarse por destinatario autorizado; notificar a afectados sin revelar pedidos o cuentas ajenas. Auditoría append-only de actor, motivo, objeto, importe y correlación.
+
 ## Eventos y resiliencia
 - Sin polling periódico de API ni DB. Eventos después de commit, outbox duradero, SSE/WebSocket y recuperación puntual por cursor al reconectar; deduplicación de eventos y webhooks.
 - Si restaurante pierde Internet, bloquear nuevos pedidos hasta restauración, preservar comandas aceptadas y no inventar estados de pago.
@@ -64,5 +72,7 @@ Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la
 8. Última unidad disponible y dos pedidos concurrentes: solo uno confirmado y cobrable.
 9. Cesta offline, precio cambiado, reintento con clave idempotente: consentimiento explícito y sin duplicación.
 10. Eventos duplicados o desconexión: recuperación puntual, sin polling y sin filtrar datos entre cuentas.
+11. Usuario con QR de mesa pero sin permiso de cuenta intenta consultar o pagar saldo ajeno: acceso denegado, salvo pago voluntario de tercero mediante flujo explícito.
+12. Dos dispositivos, webhook Stripe duplicado y reintento de cocina: una sola captura, un solo despacho y auditoría correlacionada.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
