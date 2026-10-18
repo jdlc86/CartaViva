@@ -15,6 +15,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Carta, cesta y comandas
 - **Decisión aprobada — guardar y publicar por separado:** guardar un plato nuevo o sus cambios conserva un borrador no visible al cliente; publicar es una acción explícita posterior. Los cambios guardados de un plato ya publicado no sustituyen su versión pública hasta nueva publicación. La publicación valida precio, opciones/extras, alérgenos y reglas de visibilidad; retirada y agotado siguen siendo estados distintos.
 - Publicación y disponibilidad son distintas. Categoría publicada aparece si tiene al menos un plato publicado/no retirado, aunque todos estén agotados. Agotados visibles pero no seleccionables; retirados ocultos. «Todos» es filtro virtual.
+- **Decisión aprobada — descuentos de plato:** desde la aplicación de administración, al crear o editar un plato, el restaurante puede configurar un descuento porcentual o una cantidad fija en euros. El descuento se aplica automáticamente en el cálculo del pedido y aparece desglosado antes de confirmar y en el comprobante. Validar el descuento y su vigencia en servidor, calcular en céntimos, no permitir totales negativos y conservar snapshot de precio base, tipo, valor y descuento aplicado por línea. Guardar un cambio de descuento no altera la versión pública hasta publicación explícita.
 - Opciones y extras configurados por restaurante; validar en servidor pertenencia al plato, límites, tenant, disponibilidad y precio, con snapshot de importes y alérgenos.
 - Cesta offline es local; reconectar obliga a validar precios, opciones y disponibilidad, y a pedir confirmación expresa antes de enviar. En resultado de envío incierto, consultar por clave idempotente; nunca autoenviar ni duplicar.
 - Comanda aceptada tiene identidad única; reintentos y transportes deduplicados. Revisiones anteriores al despacho preservan pedido lógico y revisiones inmutables; solo la revisión vigente se despacha. Tras recepción verificable en cocina, cliente no edita la comanda: gestiones operativas por camarero, con auditoría.
@@ -99,13 +100,13 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Riesgos aceptados y asuntos aún técnicos
 - QR fijo fotografiable: no garantiza presencia.
 - Duración concreta de autorización por QR, retención de cursores, política de autorización Stripe y tiempos de recuperación requieren diseño técnico.
-- Política de publicación resuelta: guardar borrador y publicar explícitamente, sin publicación automática. Efectos de descuentos/cupones sobre coste cero y alcance exacto de pausa global siguen abiertos si no hay aprobación explícita en otras fuentes. El total final exigible cero no debe generar cargo Stripe; cómo se aplican cupones, descuentos, extras, impuestos y propinas sigue necesitando definición específica. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
+- Política de publicación resuelta: guardar borrador y publicar explícitamente, sin publicación automática. Descuentos por plato aprobados en porcentaje o importe fijo, configurados por el restaurante y aplicados automáticamente. El total final exigible cero no genera cargo Stripe. Los cupones independientes, reglas de combinación con extras, impuestos y propinas y alcance exacto de pausa global no quedan aprobados por esta decisión. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
 - Deben diseñarse identidades y permisos de comensal, camarero, cocina y gestor; estados durables de pedido/revisión/comanda/captura/devolución; exclusión concurrente, pruebas de doble pago y duplicación de despacho.
 
 ## Cierre de revisión cruzada (18 de octubre de 2026)
 - Contrastado este contrato con `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md` en `main`. Recuperada la ventana de agrupación de **cinco minutos** que estaba omitida en el consolidado.
 - Corregida una simplificación potencialmente contradictoria: el cambio de política de mesa no convierte silenciosamente sesiones «Pagar al terminar» en pago inmediato. Se bloquean pedidos nuevos incompatibles hasta conciliación explícita.
-- Permanecen abiertas sin atribuir aprobación: tratamiento detallado de cupones/descuentos/extras y alcance de pausa global. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
+- Permanecen abiertas sin atribuir aprobación: cupones independientes, combinación de descuentos con extras/impuestos/propinas y alcance de pausa global. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
 - Esta revisión es documental y **no** equivale a revisión de código, ejecución de pruebas, aprobación de PR ni despliegue.
 
 ## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
@@ -119,7 +120,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 | P1-05 Validación de opciones | Contrato explícito de tenant, plato, grupo, límites, precios | Corregir kernel y probar servidor |
 | P1-06 Identidad de revisión | Pedido lógico estable y revisión inmutable | Alinear kernel, persistencia y despacho |
 | P1-07 Autorización y privacidad | Invariantes explícitos por cuenta/visita/actor | Diseño de credenciales, permisos y pruebas |
-| P2-08 Precio cero y descuentos | Gratuito no genera Stripe; alcance de cupones/extras no presumido | Confirmar casos no aprobados |
+| P2-08 Precio cero y descuentos | Resuelto: descuento de plato porcentual o fijo, automático y desglosado; total exigible cero sin Stripe | Precisar cupones independientes y combinación con extras/impuestos/propinas |
 | P2-09 Modalidad en rondas | Resuelto: «Pagar ahora» y «Pagar al terminar» persisten por cuenta/visita tras primera elección positiva | Implementar elección atómica y regresiones multidispositivo |
 | P2-10 Cancelación parcial en caja | Ajuste automático, devolución presencial registrada si ya cobrada | Diseño de interfaz y auditoría |
 | P2-11 Borrador y publicación | Resuelto: guardar borrador no publica; publicar es explícito y valida contenido | Implementar versionado y pruebas de publicación |
@@ -168,3 +169,7 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 34. Visita con rondas gratuitas iniciales: modalidad se decide únicamente al primer pedido positivo; no se permite cambio unilateral posterior.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
+
+35. Plato con descuento porcentual publicado: mostrar precio original, descuento y total recalculado por servidor, con snapshot por línea.
+36. Plato con descuento fijo en euros: importe aplicado no excede base elegible, nunca total negativo y total final cero no abre Stripe.
+37. Cambio de descuento guardado como borrador: pedido previo mantiene snapshot y cliente ve el nuevo descuento solo tras publicación y revalidación explícita.
