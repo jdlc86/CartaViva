@@ -12,12 +12,12 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 
 ## Mesas y QR
 - Alta y edición de mesas: número único por restaurante, capacidad, descripción breve de ubicación y estado operativo configurable desde su ficha: EN_PREPARACION, LISTA o BLOQUEADA.
-- Toda mesa nueva se crea obligatoriamente en estado EN_PREPARACION, sin opción de iniciar directamente como LISTA o BLOQUEADA durante el alta. Un administrador autorizado puede cambiar el estado después de crearla. No utilizar un booleano activo/inactivo paralelo como sustituto de estos estados.
+- Toda mesa nueva se crea obligatoriamente en estado EN_PREPARACION, sin opción de iniciar directamente como LISTA o BLOQUEADA durante el alta. El estado se cambia después desde la PWA de gestión (no desde la PWA del cliente), sin requerir privilegios administrativos especiales; basta el acceso ordinario a la gestión de mesas. No utilizar un booleano activo/inactivo paralelo como sustituto de estos estados.
 - EN_PREPARACION: mesa todavía no habilitada para pedir; al escanear el QR mostrar «Estamos preparando esta mesa para atenderte. Por favor, espera unos momentos».
 - LISTA: permite abrir la carta y realizar nuevos pedidos.
 - BLOQUEADA: no admite nuevos pedidos; al escanear mostrar «Esta mesa no está disponible en este momento. Por favor, consulta con nuestro personal».
 - Validar el estado de la mesa en backend tanto al resolver el QR como al confirmar cualquier pedido; no confiar en el estado cacheado por la PWA. Una transición fuera de LISTA debe impedir nuevos pedidos incluso si el cliente ya tenía abierta la carta.
-- Los cambios de estado requieren permiso administrativo y auditoría; no eliminan ni cancelan comandas previamente aceptadas. La reactivación no regenera ni revoca el QR por sí sola.
+- Los cambios de estado se realizan desde la PWA de gestión sin permiso administrativo especial, y quedan auditados; no eliminan ni cancelan comandas previamente aceptadas. La reactivación no regenera ni revoca el QR por sí sola.
 - QR como propiedad de mesa: generar, consultar, imprimir, revocar y regenerar. No caduca automáticamente; token aleatorio no predecible, sin información personal, validado en servidor.
 - QR revocado deja de admitir nuevas acciones; no elimina pedidos históricos. El QR identifica mesa, **no prueba presencia física**; controles antiabuso pendientes.
 
