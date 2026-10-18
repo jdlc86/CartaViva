@@ -50,3 +50,11 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 - Al cambiar el catálogo, la vista se actualiza mediante el mecanismo de invalidación/refresco que establezca el contrato de aplicación, sin inventar categorías.
 
 **Limitación del prototipo HTML actual:** utiliza fixtures con categorías estáticas para ilustrar el diseño. **No cumple todavía este contrato de datos dinámicos**; la implementación React/API debe sustituir esas constantes por la respuesta real del servidor y probar categorías inexistentes, desactivadas, vacías y orden personalizado. No declarar ese requisito implementado hasta disponer de pruebas.
+
+## Disponibilidad temporal de platos y publicación de categorías (18-10-2026)
+
+**Criterio funcional recomendado, pendiente de ratificación final si se desea:** separar la publicación del plato de su disponibilidad temporal. Un plato publicado que se queda sin existencias durante el servicio permanece visible con distintivo «Agotado», fotografía/precio y botón de añadir deshabilitado; el servidor debe impedir su incorporación/confirmación en pedidos incluso con clientes desactualizados. Cuando cocina repone existencias, vuelve a disponible. Un plato retirado/despublicado deja de aparecer en el cliente.
+
+**Regla confirmada por el usuario:** una categoría creada en gestión sin platos publicados no se publica en la carta del cliente. Una categoría con platos publicados, aunque todos estén temporalmente agotados, puede seguir visible durante el servicio. «Todos» respeta la misma visibilidad y muestra el estado agotado. La categoría no debe aparecer solo por existir en base de datos.
+
+**Estados a modelar y probar:** plato publicado disponible, publicado agotado, retirado/no publicado; categoría sin platos publicados, con platos publicados disponibles, con todos los platos publicados agotados. Evitar deducir «retirado» de stock cero; son operaciones distintas. Los fixtures del HTML aún no implementan este contrato de estados.
