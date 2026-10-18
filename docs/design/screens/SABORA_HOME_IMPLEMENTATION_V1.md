@@ -36,3 +36,17 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 **Requisito obligatorio:** la fotografía de un anuncio es **opcional**. Modelo de presentación: `image: string | null` (o equivalente en contrato final). Con imagen válida: mostrarla junto al título y texto; sin imagen o con `null`: presentar una tarjeta tipográfica de calidad en paleta corporativa, sin hueco reservado, imagen ficticia ni recurso roto. Si no existen anuncios publicados y vigentes, ocultar por completo el carrusel y recuperar el espacio. El detalle debe funcionar en ambas variantes. Rotación automática cíclica, con controles manuales y pausa al abrir detalles; respetar preferencias de movimiento reducido.
 
 **Alcance de aprobación:** diseño visual y comportamiento esperado, **no** certificación de despliegue, conexión con backend ni pruebas automatizadas. El HTML de referencia implementa anuncios de demostración sin imagen; queda pendiente cubrir mediante pruebas las variantes con imagen, sin imagen, sin anuncios y fallos de carga.
+
+## Contrato obligatorio de categorías dinámicas (18-10-2026)
+
+**Decisión aprobada por el usuario:** la pantalla cliente no puede mostrar una categoría que no haya sido creada en la aplicación de gestión/cocina. Las categorías no se definen como lista fija en el frontend; proceden del catálogo autorizado del restaurante a través de la API.
+
+- Categoría inexistente: nunca se entrega ni se representa en cliente.
+- Categoría existente pero oculta/desactivada: no se publica.
+- Categoría publicada sin platos disponibles para cliente: no se representa como sección vacía.
+- Orden de las categorías: el configurado en gestión, no un orden hardcoded en el cliente.
+- «Todos» es un filtro virtual, no una categoría persistida; agrega los platos visibles agrupados por sus categorías visibles.
+- Las condiciones de publicación y pertenencia de platos se verifican en servidor; el cliente solo consume la proyección autorizada.
+- Al cambiar el catálogo, la vista se actualiza mediante el mecanismo de invalidación/refresco que establezca el contrato de aplicación, sin inventar categorías.
+
+**Limitación del prototipo HTML actual:** utiliza fixtures con categorías estáticas para ilustrar el diseño. **No cumple todavía este contrato de datos dinámicos**; la implementación React/API debe sustituir esas constantes por la respuesta real del servidor y probar categorías inexistentes, desactivadas, vacías y orden personalizado. No declarar ese requisito implementado hasta disponer de pruebas.
