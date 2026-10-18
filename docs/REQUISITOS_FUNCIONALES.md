@@ -42,8 +42,10 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Sin QR de mesa válido en la sesión: acción RESERVAR habilitada y acción PEDIR no disponible para confirmación. Al tocar PEDIR, mostrar el mensaje «Escanea el QR de tu mesa para realizar el pedido» y ofrecer el acceso al escáner; evitar un control totalmente inerte que impida explicar el motivo.
 - Tras escanear un QR válido de una mesa en estado LISTA, conservar la selección actual, habilitar PEDIR y deshabilitar RESERVAR para esa sesión contextualizada en mesa. Aplicar la validación de QR y estado de mesa en servidor al confirmar, no solo en interfaz.
 - Confirmar una reserva genera una solicitud de reserva separada de los pedidos y comandas presenciales. Cocina recibe las solicitudes de reserva claramente diferenciadas y puede ACEPTAR o RECHAZAR; el rechazo exige un motivo obligatorio, comunicado al trabajador. La aceptación también se comunica al trabajador.
-- Una reserva aceptada no equivale por sí misma a pedido servido ni consumo empresarial; no introducirla automáticamente en el agrupamiento de comandas de cinco minutos.
-- Quedan por concretar: fecha/hora de recogida o consumo de la reserva, antelación máxima, vencimiento, límites de cantidades, qué ocurre si el cliente llega y escanea un QR con una reserva ya aceptada y si existe conversión explícita de reserva a pedido. Evitar duplicidades y cobros/consumos indebidos.
+- La reserva, incluso aceptada por cocina, es exclusivamente una previsión de demanda para organizar el trabajo. No es un pedido, no genera comanda, no inicia la ventana de agrupación de cinco minutos, no acredita entrega y no contabiliza consumo empresarial.
+- Para realizar el pedido real, el trabajador debe llegar al restaurante, escanear el QR válido de su mesa en estado LISTA y pulsar PEDIR. Solo esa confirmación entra en el flujo ordinario de pedidos y agrupación por mesa. Nunca convertir ni enviar automáticamente una reserva a cocina como comanda.
+- La selección de platos puede conservarse al pasar de reserva a contexto de mesa, pero el pedido exige confirmación explícita y nueva validación de disponibilidad; evitar duplicar reservas, pedidos y consumos.
+- Quedan por concretar: fecha/hora prevista de la reserva, antelación máxima, vencimiento, límites de cantidades, y tratamiento de reservas aceptadas que no llegan a convertirse en pedidos.
 
 ## Cocina
 - Cuadrícula de tarjetas por mesa; número, comandas pendientes, cantidad y antigüedad. Varias comandas pueden pertenecer a la misma mesa.
