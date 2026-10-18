@@ -66,3 +66,10 @@ Se adopta el modelo funcional de Fleetia como referencia a adaptar y verificar e
 - Suspensión revoca acceso empresarial aunque la sesión Auth siga válida.
 - Titularidad transferida invalida inmediatamente escrituras del titular anterior.
 - Historial de pedidos permanece íntegro tras baja de camarero o retirada de plato.
+
+## Decisión expresa: ROOT puede forzar titularidad (18-10-2026)
+- ROOT activo y autorizado puede **asumir para sí** o **reasignar a un ADMIN activo** la titularidad de escritura administrativa sin consentimiento del titular anterior.
+- ROOT que asume titularidad actúa como **único titular** (ROOT es un principal elegible, además de ADMIN); no existe bypass de escritura ordinaria paralelo.
+- La operación es atómica y serializada; revoca inmediatamente la facultad de escritura del titular anterior, incluso con sesiones preexistentes. No se admiten dos titulares simultáneos.
+- Requiere motivo registrado y auditoría append-only (actor ROOT, titular anterior y nuevo, instante, resultado y correlation ID). No elimina datos del negocio.
+- Esta decisión concreta y prevalece sobre la redacción anterior que reservaba la titularidad únicamente a ADMIN; el resto de requisitos de seguridad permanecen vigentes.
