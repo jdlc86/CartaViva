@@ -17,6 +17,10 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Opciones y extras configurados por restaurante; validar en servidor pertenencia al plato, límites, tenant, disponibilidad y precio, con snapshot de importes y alérgenos.
 - Cesta offline es local; reconectar obliga a validar precios, opciones y disponibilidad, y a pedir confirmación expresa antes de enviar. En resultado de envío incierto, consultar por clave idempotente; nunca autoenviar ni duplicar.
 - Comanda aceptada tiene identidad única; reintentos y transportes deduplicados. Revisiones anteriores al despacho preservan pedido lógico y revisiones inmutables; solo la revisión vigente se despacha. Tras recepción verificable en cocina, cliente no edita la comanda: gestiones operativas por camarero, con auditoría.
+- **Identidades separadas:** pedido lógico con ID estable, revisión numerada e inmutable, y comanda/despacho con ID propio. Una corrección anterior a cocina genera revisión nueva del mismo pedido; nunca un segundo pedido cobrable por accidente. Un reenvío repetido no crea otra comanda ni otra autorización.
+- **Disponibilidad cambia antes del despacho:** conservar snapshot original, invalidar exclusivamente la revisión afectada y bloquear su despacho. El cliente ve la incidencia y corrige explícitamente, sin sustitución silenciosa. Mostrar diferencia de precio y obtener consentimiento cuando proceda; ajustar autorización previa sin denominar reembolso a la liberación de fondos no capturados. La revisión corregida se envía inmediatamente, sin abrir otra ventana de agrupación.
+- **Carrera con ventana de agrupación:** vencimiento programado, invalidación de catálogo y confirmación deben competir mediante transacción/versión de estado. Solo una revisión vigente puede adquirir el derecho a despacho. El instante «recibida por cocina» exige acuse verificable; emitir un evento no equivale a recepción.
+- **Comanda ya recibida:** no permitir al cliente corregir ni cancelar directamente. Las incidencias se tramitan por personal, con distinción entre cancelación solicitada por cliente, por camarero a causa del restaurante y por cocina, y con ajuste económico independiente.
 - No exigir números de asiento: identificar comensal, comanda, mesa y personalizaciones. Sabora no gestiona inventario general, pero la disponibilidad limitada debe resolverse de forma atómica al confirmar pedidos concurrentes.
 - Quejas de servicio se resuelven mediante «Llamar al camarero», sin formularios de reclamación al cliente.
 
@@ -98,5 +102,8 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 10. Eventos duplicados o desconexión: recuperación puntual, sin polling y sin filtrar datos entre cuentas.
 11. Usuario con QR de mesa pero sin permiso de cuenta intenta consultar o pagar saldo ajeno: acceso denegado, salvo pago voluntario de tercero mediante flujo explícito.
 12. Dos dispositivos, webhook Stripe duplicado y reintento de cocina: una sola captura, un solo despacho y auditoría correlacionada.
+13. Plato agotado durante agrupación y vencimiento simultáneo: revisión inválida nunca llega a cocina; corrección del mismo pedido y despacho inmediato único.
+14. Precio cambiado antes del despacho: consentimiento expreso, autorización ajustada o reemplazada según Stripe y cero reembolso ficticio de importes no capturados.
+15. Comanda ya acusada por cocina y cliente intenta editar desde PWA: denegación, conservación de histórico y derivación a camarero.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
