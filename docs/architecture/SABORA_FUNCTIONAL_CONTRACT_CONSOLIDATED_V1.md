@@ -7,7 +7,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 
 ## Mesa, QR, visita y cuentas
 - QR fijo identifica mesa, no presencia física. Fotografía y renovación remota mientras la mesa esté abierta son riesgos aceptados. Revocar QR invalida permisos de pedido asociados al código anterior, no pedidos, cuentas ni pagos.
-- Camarero abre, cierra y pausa mesa. Pausa temporal: permite carta, cuenta, pagos y llamar al camarero; bloquea añadir a cesta y enviar pedidos. Reanudación automática al vencimiento si no se cerró o amplió pausa; revalidar disponibilidad. Cierre bloquea nuevas autorizaciones/pedidos, no pagos ni deuda anterior.
+- Camarero abre, cierra y pausa mesa. Pausa temporal: permite carta, consulta de cuenta y estado, pagos de deudas existentes y llamar al camarero; bloquea añadir a cesta, enviar pedidos y cambios de modalidad de pago. Al reanudar, el estado se sincroniza mediante eventos sin sondeo ni refresco manual; tras reconexión se revalida el estado autorizado. Reanudación automática al vencimiento si no se cerró o amplió pausa; revalidar disponibilidad. Cierre bloquea nuevas autorizaciones/pedidos, no pagos ni deuda anterior.
 - Cada comensal tiene cuenta individual; el grupo es agregación, y el personal puede corregir asociación sin reescribir historia financiera. Reapertura de mesa no crea automáticamente un grupo nuevo.
 - Autorización de pedido comienza en primer escaneo, caduca tras duración configurable aún no fijada, sin reiniciarse por pedidos. Reescaneo del QR vigente renueva permiso y conserva cuenta/visita válida. No vincular visita anterior con ocupación posterior. Expiración no bloquea consultar/pagar cuenta ni llamar camarero.
 - Pagar no cierra permiso ni cuenta: pedidos posteriores generan nuevas comandas y deuda adicional en la misma cuenta. Liquidaciones anteriores son inmutables.
@@ -101,13 +101,13 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Riesgos aceptados y asuntos aún técnicos
 - QR fijo fotografiable: no garantiza presencia.
 - Duración concreta de autorización por QR, retención de cursores, política de autorización Stripe y tiempos de recuperación requieren diseño técnico.
-- Política de publicación resuelta: guardar borrador y publicar explícitamente, sin publicación automática. Descuentos por plato aprobados en porcentaje o importe fijo, configurados por el restaurante y aplicados automáticamente. El total final exigible cero no genera cargo Stripe. Los cupones independientes, reglas de combinación con extras, impuestos y propinas y alcance exacto de pausa global no quedan aprobados por esta decisión. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
+- Política de publicación resuelta: guardar borrador y publicar explícitamente, sin publicación automática. Descuentos por plato aprobados en porcentaje o importe fijo, configurados por el restaurante y aplicados automáticamente. El total final exigible cero no genera cargo Stripe. Los cupones independientes, reglas de combinación con extras, impuestos y propinas no quedan aprobados por esta decisión. La pausa de mesa se precisa por decisión posterior: bloquea pedidos y cambios de modalidad, no consulta de cuenta ni liquidación de deuda. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
 - Deben diseñarse identidades y permisos de comensal, camarero, cocina y gestor; estados durables de pedido/revisión/comanda/captura/devolución; exclusión concurrente, pruebas de doble pago y duplicación de despacho.
 
 ## Cierre de revisión cruzada (18 de octubre de 2026)
 - Contrastado este contrato con `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md` en `main`. Recuperada la ventana de agrupación de **cinco minutos** que estaba omitida en el consolidado.
 - Corregida una simplificación potencialmente contradictoria: el cambio de política de mesa no convierte silenciosamente sesiones «Pagar al terminar» en pago inmediato. Se bloquean pedidos nuevos incompatibles hasta conciliación explícita.
-- Permanecen abiertas sin atribuir aprobación: cupones independientes, combinación de descuentos con extras/impuestos/propinas y alcance de pausa global. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
+- Permanecen abiertas sin atribuir aprobación: cupones independientes y combinación de descuentos con extras/impuestos/propinas. La pausa de mesa impide nuevos pedidos y cambios de modalidad de pago, pero permite consultar cuenta/estado y liquidar deudas existentes. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
 - Esta revisión es documental y **no** equivale a revisión de código, ejecución de pruebas, aprobación de PR ni despliegue.
 
 ## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
@@ -176,3 +176,6 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 37. Cambio de descuento guardado como borrador: pedido previo mantiene snapshot y cliente ve el nuevo descuento solo tras publicación y revalidación explícita.
 38. Precio o descuento publicado cambia con producto en cesta sin confirmar: servidor muestra importe anterior, nuevo y diferencia, bloquea confirmación hasta consentimiento explícito.
 39. Pedido confirmado antes de publicar un nuevo descuento: conservar snapshot económico y no aplicar retroactivamente la nueva tarifa.
+
+40. Mesa pausada: bloquear nuevos pedidos y cambios de modalidad, permitir consultar cuenta/estado y liquidar deuda existente.
+41. Reanudación tras pausa: evento sin polling ni refresco manual; reconexión recupera estado vigente sin reabrir una mesa cerrada o con QR revocado.
