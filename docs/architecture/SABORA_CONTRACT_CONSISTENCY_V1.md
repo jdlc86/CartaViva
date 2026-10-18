@@ -160,3 +160,12 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 **Contrato de recuperación:** en estado conectado, cambios mediante SSE/WebSocket y eventos tras commit. Al perder conexión, el cliente puede **reintentar establecer el canal de eventos** con espera progresiva (backoff exponencial, jitter y límite de frecuencia), pero sin consultas periódicas a tablas, pedidos ni endpoints de estado. Al restablecer el canal, se recuperan eventos desde el último cursor confirmado y se realiza **una única verificación puntual** de versiones/estado de pedidos y cesta afectados. Después se vuelve al flujo exclusivamente por eventos.
 
 **Invariantes:** el servidor bloquea revisiones invalidadas aunque el cliente esté desconectado; no se confirman, cancelan ni reenvían pedidos offline; ninguna reconexión reenvía pedidos automáticamente; notificación in-app de incidencias recuperadas aun sin suscripción push; operaciones y eventos idempotentes. Los reintentos de conexión no deben confundirse con polling de negocio.
+
+## Cierre de hallazgos 5 y 6 (18-10-2026)
+
+**Aprobado por el usuario:** se cierran ambos hallazgos documentales.
+
+- **Hallazgo 5 (prototipo frente a documentación):** el HTML de referencia es una maqueta visual, no una implementación de producción ni fuente de datos. Los estados aprobados son: disponible visible y pedible; agotado visible pero no pedible; retirado oculto. La PWA real debe obtener estos estados del servidor y respetar la pantalla de inicio ya aprobada, sin rediseñarla.
+- **Hallazgo 6 (identidad visual):** la única identidad vigente para nuevas pantallas es el logotipo V3, archivo `docs/design/brand/sabora-logo-outline-v3.svg`, con olla de contorno verde, tapa flotante, tipografía serif, acento dorado y firma discreta «by Allaiso». Las variantes previas se conservan solo como histórico y no deben usarse como referencia de implementación.
+
+Este cierre es contractual/documental; no equivale a certificar una PWA productiva ni un backend desplegado.
