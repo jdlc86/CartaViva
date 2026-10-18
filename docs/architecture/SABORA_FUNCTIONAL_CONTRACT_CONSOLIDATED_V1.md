@@ -67,6 +67,16 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Webhooks Stripe verificados criptográficamente y deduplicados por identificador de evento; nunca usar una notificación cliente como prueba de pago. Una captura incierta mantiene bloqueada la deuda también frente a caja hasta confirmación.
 - Las incidencias y los eventos de mesa deben filtrarse por destinatario autorizado; notificar a afectados sin revelar pedidos o cuentas ajenas. Auditoría append-only de actor, motivo, objeto, importe y correlación.
 
+## Sesiones QR, autorización y aislamiento de cuentas (contrato documental)
+- **QR ≠ identidad:** el QR fijo identifica restaurante y mesa, pero no demuestra presencia ni acredita acceso a una cuenta existente. El servidor debe resolver QR vigente, estado de mesa, visita activa y permiso de pedido antes de aceptar una operación; nunca confiar en IDs enviados por el cliente sin verificar relaciones y permisos.
+- **Visita y ocupación:** cada ocupación activa tiene identidad de visita distinta. Al cerrar y volver a abrir la mesa, los permisos de pedido de la visita anterior no habilitan pedidos en la nueva. El reescaneo del QR vigente puede renovar autorización dentro de la misma visita válida, pero no heredar cuentas ni saldos de ocupaciones anteriores.
+- **Permiso temporal de pedido:** nace en primer escaneo válido y vence en un plazo configurable pendiente de fijar. No se amplía al añadir productos, confirmar pedidos ni pagar; solo se renueva mediante reescaneo válido. Revocar/rotar QR impide nuevas autorizaciones con el código antiguo. Vencimiento, pausa o cierre bloquean cesta/envío según contrato, sin ocultar la cuenta propia, impedir su pago o bloquear «Llamar al camarero».
+- **Titularidad de cuenta:** crear credencial de sesión no adivinable vinculada en servidor a restaurante, mesa, visita y cuenta individual; validar alcance en cada consulta, mutación y suscripción a eventos. Conocer el número de mesa, ID de cuenta o QR no autoriza leer el saldo ni los pedidos de otros comensales. Un dispositivo adicional solo se vincula a la misma cuenta mediante flujo de vinculación autorizado, no por enumeración de identificadores.
+- **Pago de tercero:** permitir seleccionar expresamente deudas ajenas mediante un flujo limitado de pago, sin conceder acceso general al historial, datos privados o facultades de modificar la cuenta beneficiaria. Registrar pagador, deuda concreta, asignación y reembolso al método original. No confundir permiso para pagar con titularidad o permiso para cancelar.
+- **Personal:** camarero, cocina y gestor requieren credenciales y autorización por rol y restaurante; cocina solo accede a datos necesarios para preparar comandas. Las correcciones, cancelaciones y cobros en caja deben auditar actor, motivo, visita, cuenta y correlación.
+- **Carreras y eventos:** revalidar permisos dentro de la misma operación transaccional que crea el pedido; no basta una comprobación anterior en el navegador. Filtrar eventos SSE/WebSocket por destinatario autorizado y revalidar permisos en reconexión/cambio de visita. No filtrar información de otras cuentas en payloads, errores, contadores ni cursores.
+- **Riesgo aceptado:** el QR fotografiado puede usarse remotamente mientras esté vigente; esta política no promete geolocalización ni presencia física. El aislamiento de cuentas y la imposibilidad de usar visitas caducadas siguen siendo requisitos de seguridad, no riesgos aceptados.
+
 ## Eventos y resiliencia
 - Sin polling periódico de API ni DB. Eventos después de commit, outbox duradero, SSE/WebSocket y recuperación puntual por cursor al reconectar; deduplicación de eventos y webhooks.
 - Si restaurante pierde Internet, bloquear nuevos pedidos hasta restauración, preservar comandas aceptadas y no inventar estados de pago.
@@ -121,5 +131,11 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 17. Captura confirmada con caída de cocina y reintento duplicado: no recapturar, una sola comanda tras acuse.
 18. Webhooks duplicados o fuera de orden: sin duplicar pagos, asignaciones ni devoluciones.
 19. Revisión que incrementa o reduce importe autorizado antes de captura: consentimiento cuando corresponda, operación idempotente y sin reembolso ficticio.
+20. QR fotografiado de mesa abierta: pedido permitido solo dentro de permiso y visita vigentes, sin acceso a cuentas ajenas.
+21. Cierre y reapertura de mesa con QR anterior: credencial de visita antigua nunca autoriza pedido ni lectura de nueva ocupación.
+22. Segundo dispositivo intenta unirse a cuenta ajena con solo ID o número de mesa: acceso denegado sin vinculación autorizada.
+23. Pago voluntario de deuda ajena: operación permitida solo para deuda seleccionada, sin acceso general a historial o cancelaciones.
+24. Pausa, revocación de QR y envío concurrente: transacción rechaza el pedido si el permiso dejó de ser válido.
+25. Reconexión de SSE/WebSocket tras cambio de visita: no se entregan eventos de cuentas o visitas ajenas.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
