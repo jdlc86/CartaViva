@@ -122,3 +122,12 @@
 - Se mantiene la intensidad de movimiento EQUILIBRADA aprobada en el apartado 11.
 - **Queda prohibido introducir controles de simulación sin QR/con QR en la aplicación final**. Las previsualizaciones y sus fotografías de ejemplo no son activos productivos autorizados.
 - Próxima evidencia obligatoria: generar implementación de referencia reproducible y capturas maestras de esta apariencia en los viewports definidos; obtener aprobación explícita de los baselines exactos antes de declararlos congelados.
+
+## 13. Tapiz gastronómico translúcido — requisito de diseño condicional (18-10-2026)
+- A petición del usuario, incorporar **cuando sea apropiado** un tapiz decorativo de fotografías de distintos platos, con tratamiento translúcido y coherente con la estética premium de CartaViva.
+- Lugares candidatos: cabecera editorial de la carta, bienvenida, estados vacíos y comunicaciones. No aplicar por defecto detrás de precios, controles de pedido, formularios, información de alérgenos, comandas de cocina ni alertas operativas.
+- El tapiz es **decoración**, no información del catálogo ni evidencia de platos disponibles. Usar fotografías propias o autorizadas y versiones optimizadas; no deducir ingredientes o alérgenos de las imágenes.
+- Aplicar superposición marfil clara y limitar contraste visual del fondo; garantizar WCAG AA del contenido frontal. Mantener jerarquía visual y permitir una variante sin tapiz para pantallas densas.
+- Preferir tapiz estático. No añadir parallax, movimiento automático ni vídeo de fondo; cualquier transición respetará la intensidad EQUILIBRADA y prefers-reduced-motion.
+- Adaptar recorte, densidad y resolución a móvil y escritorio; evitar cargas múltiples innecesarias y desplazamiento horizontal.
+- **Estado:** se aprueba el concepto de uso contextual; composición exacta, fotografías, opacidad y capturas finales quedan pendientes de aprobación visual.
