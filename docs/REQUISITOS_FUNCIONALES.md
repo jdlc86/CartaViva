@@ -122,3 +122,10 @@ Descomponer en historias de usuario verificables, definir contratos y modelo de 
 - El cliente dispondrá de controles de filtro comprensibles, compatibles con búsqueda y categoría. No se presentarán afirmaciones dietéticas basadas en fotografías, nombre del plato o ausencia de alérgenos.
 - Las etiquetas vegetarianas y veganas son independientes de la declaración de los 14 alérgenos; el etiquetado dietético **no equivale a ausencia de alérgenos ni garantiza ausencia de contaminación cruzada**.
 - Los cambios de ingredientes o receta invalidarán la verificación dietética hasta nueva revisión; registrar actor, fecha y auditoría.
+
+## Aclaración vinculante: anuncios dinámicos sin interacción (18-10-2026)
+- El usuario **no ha aprobado el diseño visual del banner** mostrado en previsualizaciones. No considerarlo baseline ni componente visual cerrado.
+- Los anuncios son un canal informativo **dinámico y automático**, sin necesidad de interacción del cliente para avanzar o rotar: no mostrar flechas de navegación, controles anterior/siguiente ni exigir clics para visualizar la secuencia.
+- Su selección y rotación dependen de la programación, vigencia, horarios y prioridades administrativas. Si no hay anuncios activos, ocultar el contenedor sin dejar espacio vacío.
+- Esta aclaración prevalece sobre cualquier prototipo interactivo anterior. El requisito anterior que sugería pulsar para abrir detalles queda **pendiente de revisión** y no autoriza introducir interacción en la versión aprobada del canal.
+- La apariencia exacta, ubicación, tiempos de rotación, accesibilidad del contenido cambiante y ponderación ALTA/BAJA **siguen pendientes de definición y aprobación**. Respetar prefers-reduced-motion sin bloquear el acceso a la información.
