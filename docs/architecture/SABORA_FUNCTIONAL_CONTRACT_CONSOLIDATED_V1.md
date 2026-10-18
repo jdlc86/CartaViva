@@ -169,13 +169,12 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 33. Primera ronda positiva elige «Pagar al terminar»: rondas siguientes acumulan deuda de caja sin nueva pregunta; dos dispositivos simultáneos no pueden imponer modalidades distintas.
 34. Visita con rondas gratuitas iniciales: modalidad se decide únicamente al primer pedido positivo; no se permite cambio unilateral posterior.
 
-**Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
-
 35. Plato con descuento porcentual publicado: mostrar precio original, descuento y total recalculado por servidor, con snapshot por línea.
 36. Plato con descuento fijo en euros: importe aplicado no excede base elegible, nunca total negativo y total final cero no abre Stripe.
 37. Cambio de descuento guardado como borrador: pedido previo mantiene snapshot y cliente ve el nuevo descuento solo tras publicación y revalidación explícita.
 38. Precio o descuento publicado cambia con producto en cesta sin confirmar: servidor muestra importe anterior, nuevo y diferencia, bloquea confirmación hasta consentimiento explícito.
 39. Pedido confirmado antes de publicar un nuevo descuento: conservar snapshot económico y no aplicar retroactivamente la nueva tarifa.
-
 40. Mesa pausada: bloquear nuevos pedidos y cambios de modalidad, permitir consultar cuenta/estado y liquidar deuda existente.
 41. Reanudación tras pausa: evento sin polling ni refresco manual; reconexión recupera estado vigente sin reabrir una mesa cerrada o con QR revocado.
+
+**Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
