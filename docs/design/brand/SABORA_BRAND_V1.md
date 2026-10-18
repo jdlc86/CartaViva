@@ -42,3 +42,9 @@ Validación visual del logo principal y del monograma; después crear masters de
 ## Ajuste de proporciones del marco (18-10-2026)
 
 Se reduce la altura del fondo verde del logotipo principal de 600×300 a **600×225** unidades SVG, conservando el ancho, y se redistribuyen el lettering, el trazo inferior y la firma «by Allaiso» dentro de un marco más compacto. El icono de PWA mantiene su formato cuadrado independiente.
+
+## Dirección seleccionada: olla de contorno abierto (V3)
+
+El usuario prefiere expresamente la tercera exploración visual frente a las propuestas de olla con fondo verde sólido. La [propuesta V3 en SVG](sabora-logo-outline-v3.svg) se adopta como **dirección visual principal para continuar refinando**: olla de contorno verde, tapa flotante, asas discretas, fondo transparente, lettering «sabora» verde, subrayado cálido y firma «by Allaiso».
+
+Los anteriores SVG se conservan como antecedentes; no son la dirección vigente. Pendiente de validar el ajuste óptico, contraste, variantes reducidas y contornos tipográficos antes de declararlo arte final de producción.
