@@ -40,6 +40,18 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - «Pagar en caja» es intención reversible hasta registro de cobro efectivo. Tras liquidación en efectivo no se admite cobro digital de esa deuda. Alternativa efectivo ante fallo confirmado de Stripe solo si restaurante la habilita.
 - Pagos, reembolsos, ajustes y sus causas son auditables, sin reescribir operaciones históricas. Cuentas de coste cero se cierran automáticamente cuando todas sus partidas quedan resueltas.
 
+## Stripe: autorización, captura, fallos y recuperación (contrato documental)
+- **Intento único por deuda y revisión:** antes de invocar Stripe, registrar en almacenamiento duradero el intento, su clave idempotente estable, cuenta, importe en céntimos, pedido/revisión y estado. Repetir una petición con resultado incierto reutiliza la misma identidad, nunca crea un nuevo cargo.
+- **Autorización previa:** al confirmar una ronda de pago inmediato se solicita autorización; durante la ventana de agrupación no se captura. Si cambia el precio antes del despacho, requerir consentimiento cuando aumente y actualizar/sustituir autorización conforme a las capacidades reales de Stripe. La liberación de una autorización no es reembolso.
+- **Captura y cocina:** solo la revisión vigente autorizada puede entrar en la transición de captura al despacho. Registrar intención de captura antes de llamar a Stripe. Confirmada la captura, emitir entrega idempotente a cocina y esperar acuse; no considerar «recibida» la comanda por haber emitido el evento. Cocina no prepara antes de confirmación de pago.
+- **Fallo confirmado de captura:** no despachar; informar de incidencia y permitir alternativa de caja únicamente si política y restaurante la admiten, mediante transición explícita que impida un cargo tardío del mismo importe.
+- **Resultado desconocido (timeout, pérdida de red, webhook retrasado):** conservar el intento pendiente y **reservar/bloquear la misma deuda contra todo método, incluido efectivo**, hasta éxito o fallo confirmado por evidencia del proveedor. Un timeout no es un fallo confirmado ni autoriza crear otra tentativa. Reconciliación puntual tras incidente o evento, nunca polling periódico.
+- **Captura confirmada, despacho fallido:** conservar captura, no cobrar otra vez; reintentar entrega a cocina con identidad estable y acuse deduplicado. Si la entrega no puede completarse, abrir incidencia y tramitar compensación/reembolso según causa y estado, sin afirmar que la comanda fue recibida.
+- **Webhook:** verificar firma y pertenencia de la operación al restaurante/entorno, deduplicar por ID de evento, tolerar entrega repetida o fuera de orden y comprobar transiciones de estado. El navegador no certifica un cobro. Aplicar asignaciones a cuentas una sola vez.
+- **Reembolsos:** crear operación separada e idempotente vinculada al cargo original y a la asignación por cuenta; reembolsar al pagador original, nunca al comensal beneficiario por defecto. Diferenciar solicitado, confirmado y fallido; no declarar devolución bancaria por el simple registro de la solicitud.
+- **Caja:** «Pagar en caja» es intención; solo el registro autorizado del efectivo cobrado liquida deuda. Ante cargo Stripe incierto, bloquear caja para esa deuda. Una devolución de efectivo ya cobrado es presencial y queda registrada en Sabora, sin invocar Stripe.
+- **Límites de afirmación:** este documento no prueba compatibilidad de Stripe manual capture, vigencia de autorizaciones, importes capturables ni métodos de pago concretos. Verificar con Stripe antes de programar y probar estados de compensación.
+
 ## Política de pago de mesa
 - En una sesión que eligió «Pagar al terminar», mantener esa modalidad para rondas posteriores mientras la política de mesa no cambie; no volver a pedir elección en cada ronda. En la primera ronda con importe positivo de una sesión iniciada solo con pedidos gratuitos, ofrecer modalidades permitidas entonces.
 - Si la mesa tiene «Exigir pago conforme se pide», no ofrecer cuenta abierta en nuevos pedidos positivos. La condición no se activa automáticamente por ser terraza; requiere configuración explícita por mesa.
@@ -105,5 +117,9 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 13. Plato agotado durante agrupación y vencimiento simultáneo: revisión inválida nunca llega a cocina; corrección del mismo pedido y despacho inmediato único.
 14. Precio cambiado antes del despacho: consentimiento expreso, autorización ajustada o reemplazada según Stripe y cero reembolso ficticio de importes no capturados.
 15. Comanda ya acusada por cocina y cliente intenta editar desde PWA: denegación, conservación de histórico y derivación a camarero.
+16. Timeout tras solicitud de captura y webhook tardío: deuda bloqueada para caja y tarjeta; un único cargo tras reconciliación.
+17. Captura confirmada con caída de cocina y reintento duplicado: no recapturar, una sola comanda tras acuse.
+18. Webhooks duplicados o fuera de orden: sin duplicar pagos, asignaciones ni devoluciones.
+19. Revisión que incrementa o reduce importe autorizado antes de captura: consentimiento cuando corresponda, operación idempotente y sin reembolso ficticio.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
