@@ -1,5 +1,5 @@
 # CartaViva — Especificación funcional inicial
-Versión: 0.1 · 17-10-2026 · Estado: borrador para revisión, no implementación aprobada.
+Versión: 0.2 · 18-10-2026 · Estado: borrador para revisión, no implementación aprobada.
 
 ## Propósito
 Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend compartido: cliente y gestión. La PWA de gestión ofrece administración, sala y cocina con permisos separados. Los datos de consumo sirven para exportación empresarial; CartaViva no calcula nóminas.
@@ -11,7 +11,12 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Aplicar autorización en servidor; nunca confiar en el rol o identidad suministrados por la interfaz.
 
 ## Mesas y QR
-- Alta y edición de mesas: número único por restaurante, capacidad, descripción breve de ubicación, estado activo/inactivo.
+- Alta y edición de mesas: número único por restaurante, capacidad, descripción breve de ubicación y estado operativo configurable desde su ficha: EN_PREPARACION, LISTA o BLOQUEADA. No utilizar un booleano activo/inactivo paralelo como sustituto de estos estados.
+- EN_PREPARACION: mesa todavía no habilitada para pedir; al escanear el QR mostrar «Estamos preparando esta mesa para atenderte. Por favor, espera unos momentos».
+- LISTA: permite abrir la carta y realizar nuevos pedidos.
+- BLOQUEADA: no admite nuevos pedidos; al escanear mostrar «Esta mesa no está disponible en este momento. Por favor, consulta con nuestro personal».
+- Validar el estado de la mesa en backend tanto al resolver el QR como al confirmar cualquier pedido; no confiar en el estado cacheado por la PWA. Una transición fuera de LISTA debe impedir nuevos pedidos incluso si el cliente ya tenía abierta la carta.
+- Los cambios de estado requieren permiso administrativo y auditoría; no eliminan ni cancelan comandas previamente aceptadas. La reactivación no regenera ni revoca el QR por sí sola.
 - QR como propiedad de mesa: generar, consultar, imprimir, revocar y regenerar. No caduca automáticamente; token aleatorio no predecible, sin información personal, validado en servidor.
 - QR revocado deja de admitir nuevas acciones; no elimina pedidos históricos. El QR identifica mesa, **no prueba presencia física**; controles antiabuso pendientes.
 
