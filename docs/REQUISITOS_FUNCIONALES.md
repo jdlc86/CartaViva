@@ -37,6 +37,14 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Si cocina cancela una línea: avisar al trabajador afectado y a sala, conservar traza y excluir esa cantidad del consumo; el sustituto se confirma y envía inmediatamente como comanda nueva vinculada al motivo, sin esperar la ventana.
 - Distinguir pedido, comanda agrupada y líneas; diseñar concurrencia, idempotencia y eventos de estado para evitar duplicados.
 
+## Reserva anticipada de platos
+- La PWA cliente instalada permite abrir la carta y seleccionar platos y cantidades antes de llegar al restaurante, sin escanear un QR. La cesta y experiencia de selección son las mismas que para un pedido presencial.
+- Sin QR de mesa válido en la sesión: acción RESERVAR habilitada y acción PEDIR no disponible para confirmación. Al tocar PEDIR, mostrar el mensaje «Escanea el QR de tu mesa para realizar el pedido» y ofrecer el acceso al escáner; evitar un control totalmente inerte que impida explicar el motivo.
+- Tras escanear un QR válido de una mesa en estado LISTA, conservar la selección actual, habilitar PEDIR y deshabilitar RESERVAR para esa sesión contextualizada en mesa. Aplicar la validación de QR y estado de mesa en servidor al confirmar, no solo en interfaz.
+- Confirmar una reserva genera una solicitud de reserva separada de los pedidos y comandas presenciales. Cocina recibe las solicitudes de reserva claramente diferenciadas y puede ACEPTAR o RECHAZAR; el rechazo exige un motivo obligatorio, comunicado al trabajador. La aceptación también se comunica al trabajador.
+- Una reserva aceptada no equivale por sí misma a pedido servido ni consumo empresarial; no introducirla automáticamente en el agrupamiento de comandas de cinco minutos.
+- Quedan por concretar: fecha/hora de recogida o consumo de la reserva, antelación máxima, vencimiento, límites de cantidades, qué ocurre si el cliente llega y escanea un QR con una reserva ya aceptada y si existe conversión explícita de reserva a pedido. Evitar duplicidades y cobros/consumos indebidos.
+
 ## Cocina
 - Cuadrícula de tarjetas por mesa; número, comandas pendientes, cantidad y antigüedad. Varias comandas pueden pertenecer a la misma mesa.
 - En escritorio, detalle en panel lateral; en móvil, vista completa.
