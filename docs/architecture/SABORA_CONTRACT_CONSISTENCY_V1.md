@@ -60,3 +60,7 @@ Estos invariantes son requisitos de ingeniería derivados de las decisiones apro
 ## 6. Puertas de calidad
 
 Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agotados, retirada, ingrediente agotado, versiones caducadas, dos actualizaciones simultáneas, confirmación contra agotado, vencimiento simultáneo, reenvío repetido, clientes desconectados, destinatarios de eventos, idempotencia y cero polling de red/DB. Registrar ejecución y resultado; un test escrito no equivale a un test ejecutado.
+
+## Aclaración explícita ratificada: categorías vacías (18-10-2026)
+
+**Regla definitiva ratificada por el usuario:** crear una categoría en cocina sin crear platos NO la hace visible al cliente. Tampoco aparece si todos sus platos están sin publicar o retirados. En cambio, una categoría publicada con al menos un plato publicado aunque TODOS estén agotados SÍ aparece y muestra esos platos como «Agotado». Una categoría desactivada nunca aparece. Predicado: `category.published === true && exists(dish.categoryId === category.id && dish.published === true && dish.availability !== 'retired')`. No usar `availability === 'available'` para determinar la visibilidad de la categoría. «Todos» utiliza exactamente el mismo predicado. Este criterio prevalece ante cualquier redacción previa que confunda «disponible» con «publicado».
