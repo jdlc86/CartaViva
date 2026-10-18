@@ -22,6 +22,8 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 
 ## Cancelación y ajuste económico
 - Cancelación solicitada por cliente sigue arbitraje configurado; una comanda recibida en cocina no puede modificarse unilateralmente desde PWA.
+- **Origen cocina:** toda incidencia/cancelación iniciada por cocinero requiere expediente y arbitraje administrativo, incluso por falta de existencias. El arbitraje verifica hechos, unidades y cálculo; no autoriza negar el reintegro debido por servicio no prestado. Bloquear inmediatamente preparación imposible y avisar al cliente; solo unidades afectadas.
+- **Origen camarero:** distinguir «Solicitado por el cliente» (arbitraje según configuración) de «Motivo del restaurante» (sin arbitraje; reintegro del importe afectado). Ambas rutas requieren permisos, motivo y auditoría.
 - Cancelación iniciada por restaurante por causa propia: sin arbitraje de autorización; solo ítems afectados; ajustar cuenta automáticamente y comunicarlo al cliente. Si aún no se pagó en caja, reducir saldo exigible; si ya se pagó en efectivo, devolución presencial registrada y auditada, sin Stripe. Si se pagó digitalmente, reembolso al método y pagador originales, o liberación/reducción de autorización si no hubo captura.
 - Cuando un tercero paga varias cuentas, guardar asignación por cuenta. Notificar al beneficiario tras éxito sin pedir aceptación. Una devolución posterior retorna al pagador original, ajustando la cuenta del beneficiario; idempotencia obligatoria.
 - Disputa interpersonal sobre reparto no se arbitra en la app.
@@ -34,6 +36,10 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Pagos, reembolsos, ajustes y sus causas son auditables, sin reescribir operaciones históricas. Cuentas de coste cero se cierran automáticamente cuando todas sus partidas quedan resueltas.
 
 ## Política de pago de mesa
+- En una sesión que eligió «Pagar al terminar», mantener esa modalidad para rondas posteriores mientras la política de mesa no cambie; no volver a pedir elección en cada ronda. En la primera ronda con importe positivo de una sesión iniciada solo con pedidos gratuitos, ofrecer modalidades permitidas entonces.
+- Si la mesa tiene «Exigir pago conforme se pide», no ofrecer cuenta abierta en nuevos pedidos positivos. La condición no se activa automáticamente por ser terraza; requiere configuración explícita por mesa.
+- Para «Pagar ahora», no dar por aprobada una persistencia idéntica de modalidad en rondas posteriores; conservar como detalle funcional pendiente.
+
 Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la política vigente se aplica a nuevos pedidos. Registrar versión de política por pedido, impedir contradicciones entre dispositivos y presentar por separado saldos pendientes y pagados. Esta regla recoge la decisión ya tratada, sin reabrirla.
 
 ## Eventos y resiliencia
@@ -44,7 +50,7 @@ Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la
 ## Riesgos aceptados y asuntos aún técnicos
 - QR fijo fotografiable: no garantiza presencia.
 - Duración concreta de autorización por QR, retención de cursores, política de autorización Stripe y tiempos de recuperación requieren diseño técnico.
-- Política de borradores/publicación automática, efectos de descuentos/cupones sobre coste cero, alcance exacto de pausa global y algunas modalidades de arbitraje operativo siguen abiertos si no hay aprobación explícita en otras fuentes.
+- Política de borradores/publicación automática, efectos de descuentos/cupones sobre coste cero y alcance exacto de pausa global siguen abiertos si no hay aprobación explícita en otras fuentes. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
 - Deben diseñarse identidades y permisos de comensal, camarero, cocina y gestor; estados durables de pedido/revisión/comanda/captura/devolución; exclusión concurrente, pruebas de doble pago y duplicación de despacho.
 
 ## Matriz de pruebas obligatoria antes de declarar implementado
