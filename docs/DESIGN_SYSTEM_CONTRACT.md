@@ -102,3 +102,13 @@
 - La transición de reserva a pedido conserva la selección; nunca depende de un interruptor de simulación. Los estados de mesa EN_PREPARACION/BLOQUEADA impiden nuevos pedidos y muestran el mensaje apropiado.
 - Las simulaciones se confinan a fixtures, Storybook, pruebas y referencias explícitamente etiquetadas como DEMO; no se incluyen en rutas ni bundles de producción. Ningún control de prueba podrá cambiar el contexto de seguridad real.
 - Toda ficha de pantalla debe separar: (a) interfaz visible en producción, (b) mecanismos internos de prueba, (c) contenido ficticio; en la revisión de PR se comprobará la ausencia de los elementos (b) y (c) en el producto final.
+
+## 11. Intensidad visual equilibrada — APROBADA (18-10-2026)
+- **Decisión explícitamente aprobada por el usuario:** intensidad visual **EQUILIBRADA** para CartaViva. Es una regla obligatoria del diseño, no una sugerencia ni un ajuste de demostración.
+- La experiencia debe sentirse fluida, contemporánea y elegante, con microinteracciones útiles, sin movimientos ornamentales excesivos. En gestión, cocina y sala se priorizan velocidad, legibilidad y estabilidad visual.
+- Patrones permitidos: revelar y ocultar el buscador; transición entre tarjeta y ficha; feedback al añadir o quitar unidades; actualización perceptible de cesta; cambios de categoría; diálogos, avisos y estados operativos.
+- Duraciones iniciales objetivo: búsqueda 120–180 ms; tarjeta/ficha 180–240 ms; cesta y cantidad 120–200 ms; avisos 150–220 ms. Son **rangos técnicos orientativos**, no una aprobación de cada curva, transición o implementación concreta; se verificarán con prototipos.
+- Usar preferentemente `transform` y `opacity`; evitar animaciones que bloqueen interacciones, causen saltos de contenido, dificulten la lectura o degraden el rendimiento. No usar parallax pesado ni autoplay decorativo como comportamiento por defecto.
+- Respetar `prefers-reduced-motion`: reducir o eliminar animaciones no esenciales sin perder señales de estado ni accesibilidad.
+- La interfaz nunca presentará una reserva, pedido o cambio de mesa como confirmado antes de recibir validación del servidor. Las animaciones no alteran permisos ni lógica de negocio.
+- **Estado de aprobación:** se aprueba la intensidad **equilibrada**; permanecen pendientes de aprobación la paleta final, fotografías maestras, tipografía definitiva y capturas exactas de pantallas.
