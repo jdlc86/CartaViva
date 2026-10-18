@@ -31,7 +31,8 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Pagos
 - Stripe es la pasarela digital elegida funcionalmente; capacidades concretas pendientes de validación técnica. Importes calculados en servidor en céntimos, nunca desde el cliente.
 - En pago inmediato: autorización al confirmar y captura coordinada con registro durable y despacho a cocina. No preparar hasta confirmación de pago; si falla captura no despachar. Captura exitosa con despacho fallido exige reintento idempotente o compensación, nunca segunda captura. Acuse de cocina verificable.
-- Estado de pago desconocido: bloquear liquidación de esa misma deuda por cualquier método, incluido efectivo, hasta éxito o fallo confirmados; reconciliar por eventos y consultas puntuales, no por suposición de timeout.
+- Estado de pago desconocido: bloquear liquidación de esa misma deuda por cualquier método, incluido efectivo, hasta éxito o fallo confirmados; reconciliar por eventos y consultas puntuales, no por suposición de timeout. Una solicitud de «Pagar en caja» no acredita liquidación ni permite sortear este bloqueo.
+- La cuenta individual conserva saldo e historial propios aunque el grupo muestre un agregado. Pagar deuda ajena no traslada la deuda ni modifica quién realizó el pedido: se registra una asignación de pago a la cuenta beneficiaria y un pagador original para cualquier devolución posterior.
 - «Pagar en caja» es intención reversible hasta registro de cobro efectivo. Tras liquidación en efectivo no se admite cobro digital de esa deuda. Alternativa efectivo ante fallo confirmado de Stripe solo si restaurante la habilita.
 - Pagos, reembolsos, ajustes y sus causas son auditables, sin reescribir operaciones históricas. Cuentas de coste cero se cierran automáticamente cuando todas sus partidas quedan resueltas.
 
@@ -40,7 +41,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Si la mesa tiene «Exigir pago conforme se pide», no ofrecer cuenta abierta en nuevos pedidos positivos. La condición no se activa automáticamente por ser terraza; requiere configuración explícita por mesa.
 - Para «Pagar ahora», no dar por aprobada una persistencia idéntica de modalidad en rondas posteriores; conservar como detalle funcional pendiente.
 
-Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la política vigente se aplica a nuevos pedidos. Registrar versión de política por pedido, impedir contradicciones entre dispositivos y presentar por separado saldos pendientes y pagados. Esta regla recoge la decisión ya tratada, sin reabrirla.
+**Cambio de política durante una visita:** no altera retroactivamente pedidos confirmados, autorizaciones, pagos ni deuda pendiente. La política vigente se aplica a nuevos pedidos; una sesión previamente marcada «Pagar al terminar» conserva el tratamiento de sus pedidos anteriores, mientras que una mesa que pasa a exigir pago inmediato no admite nuevas comandas positivas a cuenta abierta. Registrar versión de política por pedido y mostrar separadamente saldo anterior y operaciones nuevas. Arbitrar cambios concurrentes en servidor, sin que dos dispositivos puedan imponer modalidades contradictorias. Esta regla recoge la decisión ya tratada, sin reabrirla.
 
 ## Seguridad y conciliación: invariantes de diseño
 - La identidad de la mesa no acredita identidad del comensal ni propiedad de cuenta. Cada acción de pedido, pago, ajuste, cancelación y suscripción a eventos exige autorización de servidor con alcance explícito de restaurante, mesa, visita y cuenta. El QR por sí solo no concede acceso a datos financieros de otros comensales.
