@@ -11,8 +11,8 @@ Estado: **prototipo de identidad para revisión**, no logotipo final ni marca re
 
 ## Archivos de referencia
 
-- [Composición principal SVG](sabora-logo-primary.svg): fondo verde, serif, ornamentos cálidos, firma Allaiso.
-- [Monograma SVG](sabora-mark.svg): concepto de icono; no usar todavía como favicon o icono PWA de producción.
+- [Composición principal SVG](sabora-logo-primary.svg): fondo verde, serif, trazo dorado inferior sin adorno superior, firma Allaiso.
+- [Monograma SVG](sabora-mark.svg): concepto de icono sin símbolo superior; no usar todavía como favicon o icono PWA de producción.
 
 ## Paleta
 
@@ -21,6 +21,10 @@ Estado: **prototipo de identidad para revisión**, no logotipo final ni marca re
 - Dorado ornamental: `#E6B879`.
 - Crema de interfaz: `#F8F7F4`.
 - Texto secundario sobre verde: `#D6E8DF`.
+
+## Ajuste visual aprobado
+
+Se elimina el adorno superior que recordaba a la virgulilla de la letra ñ, tanto en el logotipo principal como en el monograma. Se conserva únicamente el trazo dorado inferior como gesto ornamental.
 
 ## Normas preliminares
 
