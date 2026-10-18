@@ -13,6 +13,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Pagar no cierra permiso ni cuenta: pedidos posteriores generan nuevas comandas y deuda adicional en la misma cuenta. Liquidaciones anteriores son inmutables.
 
 ## Carta, cesta y comandas
+- **Decisión aprobada — guardar y publicar por separado:** guardar un plato nuevo o sus cambios conserva un borrador no visible al cliente; publicar es una acción explícita posterior. Los cambios guardados de un plato ya publicado no sustituyen su versión pública hasta nueva publicación. La publicación valida precio, opciones/extras, alérgenos y reglas de visibilidad; retirada y agotado siguen siendo estados distintos.
 - Publicación y disponibilidad son distintas. Categoría publicada aparece si tiene al menos un plato publicado/no retirado, aunque todos estén agotados. Agotados visibles pero no seleccionables; retirados ocultos. «Todos» es filtro virtual.
 - Opciones y extras configurados por restaurante; validar en servidor pertenencia al plato, límites, tenant, disponibilidad y precio, con snapshot de importes y alérgenos.
 - Cesta offline es local; reconectar obliga a validar precios, opciones y disponibilidad, y a pedir confirmación expresa antes de enviar. En resultado de envío incierto, consultar por clave idempotente; nunca autoenviar ni duplicar.
@@ -98,13 +99,13 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Riesgos aceptados y asuntos aún técnicos
 - QR fijo fotografiable: no garantiza presencia.
 - Duración concreta de autorización por QR, retención de cursores, política de autorización Stripe y tiempos de recuperación requieren diseño técnico.
-- Política de borradores/publicación automática, efectos de descuentos/cupones sobre coste cero y alcance exacto de pausa global siguen abiertos si no hay aprobación explícita en otras fuentes. El total final exigible cero no debe generar cargo Stripe; cómo se aplican cupones, descuentos, extras, impuestos y propinas sigue necesitando definición específica. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
+- Política de publicación resuelta: guardar borrador y publicar explícitamente, sin publicación automática. Efectos de descuentos/cupones sobre coste cero y alcance exacto de pausa global siguen abiertos si no hay aprobación explícita en otras fuentes. El total final exigible cero no debe generar cargo Stripe; cómo se aplican cupones, descuentos, extras, impuestos y propinas sigue necesitando definición específica. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
 - Deben diseñarse identidades y permisos de comensal, camarero, cocina y gestor; estados durables de pedido/revisión/comanda/captura/devolución; exclusión concurrente, pruebas de doble pago y duplicación de despacho.
 
 ## Cierre de revisión cruzada (18 de octubre de 2026)
 - Contrastado este contrato con `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md` en `main`. Recuperada la ventana de agrupación de **cinco minutos** que estaba omitida en el consolidado.
 - Corregida una simplificación potencialmente contradictoria: el cambio de política de mesa no convierte silenciosamente sesiones «Pagar al terminar» en pago inmediato. Se bloquean pedidos nuevos incompatibles hasta conciliación explícita.
-- Permanecen abiertas sin atribuir aprobación: edición/publicación de borradores, persistencia de «Pagar ahora» en rondas posteriores, tratamiento detallado de cupones/descuentos/extras, alcance de pausa global. Los parámetros de infraestructura y Stripe se validan en ingeniería.
+- Permanecen abiertas sin atribuir aprobación: persistencia de «Pagar ahora» en rondas posteriores, tratamiento detallado de cupones/descuentos/extras, alcance de pausa global. Los parámetros de infraestructura y Stripe se validan en ingeniería.
 - Esta revisión es documental y **no** equivale a revisión de código, ejecución de pruebas, aprobación de PR ni despliegue.
 
 ## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
@@ -121,7 +122,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 | P2-08 Precio cero y descuentos | Gratuito no genera Stripe; alcance de cupones/extras no presumido | Confirmar casos no aprobados |
 | P2-09 Modalidad en rondas | Caja persiste; pago inmediato por mesa; no inferir persistencia de «Pagar ahora» | Concretar solo modalidad no decidida |
 | P2-10 Cancelación parcial en caja | Ajuste automático, devolución presencial registrada si ya cobrada | Diseño de interfaz y auditoría |
-| P2-11 Borrador y publicación | Visibilidad de publicados fijada | Política de guardado/publicación pendiente |
+| P2-11 Borrador y publicación | Resuelto: guardar borrador no publica; publicar es explícito y valida contenido | Implementar versionado y pruebas de publicación |
 | P2-12 Autorización y agrupación | Captura al despacho, revisión inmediata y carreras prohibidas | Vigencia Stripe, reloj y concurrencia |
 | P2-13 Eventos y reconexión | Sin polling, SSE/WebSocket, cursor, dedup y reconciliación puntual | Retención y recuperación de cursor |
 | P2-14 Documentos históricos | Contrato consolidado separado de antecedentes | Revisión final de referencias y jerarquía |
@@ -161,5 +162,6 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 28. Reconexión tras cierre, pausa o rotación QR: el cliente no recupera permisos antiguos ni recibe datos de otra visita.
 29. Pérdida de red al confirmar pedido: consultar resultado por clave idempotente y no reenviar ni cobrar automáticamente.
 30. Desconexión de restaurante y cesta local: bloquear nuevos pedidos, revalidar al volver y solicitar consentimiento por cambios.
+31. Edición de plato publicado guardada como borrador: clientes siguen viendo versión publicada anterior hasta publicación explícita; validar precio, extras y alérgenos al publicar.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
