@@ -25,7 +25,7 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Catálogo permanente de productos reutilizables.
 - Categorías iniciales: bebida, primero, segundo, postre; categorías adicionales configurables.
 - Programación semanal o por fechas y publicación diaria automática sin confirmación humana; administración puede corregir excepciones.
-- Cocina solo puede marcar agotado y cancelar líneas de pedido; no crea productos.
+- Cocina no crea productos del catálogo. Puede marcar platos como agotados/disponibles y configurar en tiempo real, mediante un control independiente por plato, si ADMITEN_RESERVA anticipada; estos cambios no modifican el catálogo permanente.
 - Agotar un producto impide nuevos pedidos, sin cancelar automáticamente los ya confirmados.
 
 ## Pedidos y comandas
@@ -38,6 +38,10 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Distinguir pedido, comanda agrupada y líneas; diseñar concurrencia, idempotencia y eventos de estado para evitar duplicados.
 
 ## Reserva anticipada de platos
+- La PWA cliente detecta el modo sin mesa porque la sesión se ha abierto sin escanear un QR válido. En ese modo muestra la carta completa y la disponibilidad actualizada en tiempo real, pero solo permite añadir a la selección de reserva los platos disponibles y marcados ADMITEN_RESERVA por cocina. Los no reservables siguen visibles, con explicación clara y acción de añadir inhabilitada.
+- Con QR de mesa válido en estado LISTA, el cliente puede añadir cualquier plato disponible para pedido presencial, aunque no admita reserva anticipada. La condición ADMITEN_RESERVA es independiente del estado agotado/disponible y se valida en servidor al confirmar una reserva.
+- Al escanear el QR después de reservar, conservar íntegramente la selección previa y permitir añadir otros platos disponibles antes de pulsar PEDIR; no exigir volver a introducir los platos reservados.
+
 - La PWA cliente instalada permite abrir la carta y seleccionar platos y cantidades antes de llegar al restaurante, sin escanear un QR. La cesta y experiencia de selección son las mismas que para un pedido presencial.
 - Sin QR de mesa válido en la sesión: acción RESERVAR habilitada y acción PEDIR no disponible para confirmación. Al tocar PEDIR, mostrar el mensaje «Escanea el QR de tu mesa para realizar el pedido» y ofrecer el acceso al escáner; evitar un control totalmente inerte que impida explicar el motivo.
 - Tras escanear un QR válido de una mesa en estado LISTA, conservar la selección actual, habilitar PEDIR y deshabilitar RESERVAR para esa sesión contextualizada en mesa. Aplicar la validación de QR y estado de mesa en servidor al confirmar, no solo en interfaz.
