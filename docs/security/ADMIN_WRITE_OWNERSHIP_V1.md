@@ -38,3 +38,31 @@ Estado: decisión funcional del usuario; implementación pendiente. Inspiración
 - Solicitud de ADMIN B dirigida automáticamente al titular vigente.
 - ROOT reasigna con auditoría; sesiones antiguas del titular anterior pierden escritura inmediatamente.
 - Operaciones legítimas de cocina/camarero continúan sin titularidad administrativa.
+
+## Responsabilidades ADMIN confirmadas (18-10-2026)
+Las siguientes mutaciones administrativas requieren titularidad vigente y autorización del servidor:
+- Cambiar precios de platos cuando proceda, con auditoría del precio anterior y nuevo.
+- Crear platos desde cero en el catálogo y editar sus fichas; retirar/eliminar platos según política de integridad referencial e historial de pedidos.
+- Incorporar camareros por invitación; bloquear, suspender y dar de baja su acceso. La baja no puede borrar trazabilidad de pedidos.
+- Planificar, activar, desactivar y retirar anuncios, respetando fechas y reglas de publicación.
+- ADMIN sin titularidad conserva solo consulta autorizada y operaciones de solicitud/recepción de titularidad.
+- ROOT recupera o reasigna titularidad excepcionalmente. La posibilidad de escritura administrativa ordinaria de ROOT queda **pendiente de decisión expresa**; no conceder bypass implícito.
+
+## Acceso por invitación y reenvío — patrón Fleetia F1
+Se adopta el modelo funcional de Fleetia como referencia a adaptar y verificar en CartaViva, no se presume que su código ya esté integrado:
+1. Un ADMIN titular o ROOT autorizado emite invitación a un empleado con rol explícito, identidad de destino y estado **invited**.
+2. El destinatario confirma su identidad mediante el proveedor de autenticación; **la sesión Auth no implica acceso empresarial**.
+3. Registra una credencial Passkey vinculada al origen/RP ID propios de CartaViva.
+4. Un actor autorizado realiza **activación explícita** y pasa a estado **active**; sin activación no accede a módulos de negocio.
+5. Estados de referencia: **invited, active, suspended, revoked**. Definir aparte archivo/baja lógica y reglas de reincorporación.
+6. Reenvío de invitación: acción autorizada, idempotente o protegida contra duplicados, con límites de frecuencia y tratamiento seguro de tokens expirados o revocados.
+7. El backend verifica rol, estado y titularidad actual en cada operación sensible; registrar invitación, reenvío, activación, bloqueo y baja en auditoría append-only.
+8. Proteger la permanencia de al menos un ROOT activo y evitar escalada de roles o reactivaciones mediante enlaces antiguos.
+
+### Pruebas mínimas adicionales
+- ADMIN no titular intenta cambiar precio, crear/eliminar plato, suspender camarero o publicar anuncio: denegado.
+- Invitado con Auth y Passkey pero sin activación: denegado.
+- Reenvío repetido no crea dos empleados ni reactiva revocados.
+- Suspensión revoca acceso empresarial aunque la sesión Auth siga válida.
+- Titularidad transferida invalida inmediatamente escrituras del titular anterior.
+- Historial de pedidos permanece íntegro tras baja de camarero o retirada de plato.
