@@ -92,3 +92,11 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 **Sin polling:** las transiciones se disparan por acciones, vencimientos programados y eventos/webhooks del proveedor; se prohíbe consultar periódicamente el estado del pago o de la comanda. La conciliación puntual ante reconexión/fallo es admisible. El modo de restaurante sin pago digital conserva su flujo de despacho sin autorización/captura.
 
 **Pendiente de selección técnica:** pasarela que soporte autorización/captura separadas, vigencia y límites de autorización, modificaciones de importe, webhook y reversión; el proveedor no está decidido y no debe asumirse compatibilidad.
+
+## Cancelación después de envío a cocina — decisión funcional (18-10-2026)
+
+**Aprobado por el usuario:** cuando una comanda ya llegó a cocina, el cliente NO puede cancelar unilateralmente desde la PWA; debe llamar/notificar al camarero, que gestiona la solicitud. La interfaz cliente puede ofrecer una acción de solicitar asistencia, nunca cancelación directa.
+
+**Flujo de diseño:** el camarero, con autorización adecuada, consulta estado de cocina y decide si procede cancelar; usa una acción explícita «Cancelar pedido» con confirmación y motivo. La cancelación y su impacto económico deben registrarse y auditarse. Se propone que, si el camarero aprueba cancelación con devolución íntegra o parcial, el sistema tramite automáticamente el reembolso correspondiente mediante la pasarela (sin operación manual en portal de pagos). Si solo hay autorización, liberar/anular en lugar de reembolsar. Nunca asumir reembolso instantáneo ni doble devolución.
+
+**Límite por precisar antes de implementar:** política del restaurante para cancelaciones cuando cocina ya inició o terminó preparación; facultades del camarero para autorizar devolución total/parcial/ninguna y posible aprobación de supervisor. No interpretar el botón de cancelar como derecho automático a reembolso completo. Estados de cancelación, reembolso pendiente/completado/fallido y eventos de cocina/pasarela separados, con idempotencia y sin polling.
