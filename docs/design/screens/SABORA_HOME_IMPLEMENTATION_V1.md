@@ -43,7 +43,7 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 
 - Categoría inexistente: nunca se entrega ni se representa en cliente.
 - Categoría existente pero oculta/desactivada: no se publica.
-- Categoría publicada sin platos disponibles para cliente: no se representa como sección vacía.
+- Categoría publicada sin ningún plato PUBLICADO y no retirado: no se representa. Una categoría con platos publicados pero todos AGOTADOS sí permanece visible.
 - Orden de las categorías: el configurado en gestión, no un orden hardcoded en el cliente.
 - «Todos» es un filtro virtual, no una categoría persistida; agrega los platos visibles agrupados por sus categorías visibles.
 - Las condiciones de publicación y pertenencia de platos se verifican en servidor; el cliente solo consume la proyección autorizada.
@@ -53,13 +53,13 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 
 ## Disponibilidad temporal de platos y publicación de categorías (18-10-2026)
 
-**Criterio funcional recomendado, pendiente de ratificación final si se desea:** separar la publicación del plato de su disponibilidad temporal. Un plato publicado que se queda sin existencias durante el servicio permanece visible con distintivo «Agotado», fotografía/precio y botón de añadir deshabilitado; el servidor debe impedir su incorporación/confirmación en pedidos incluso con clientes desactualizados. Cuando cocina repone existencias, vuelve a disponible. Un plato retirado/despublicado deja de aparecer en el cliente.
+**Decisión funcional APROBADA por el usuario:** separar la publicación del plato de su disponibilidad temporal. Un plato publicado que se queda sin existencias durante el servicio permanece visible con distintivo «Agotado», fotografía/precio y botón de añadir deshabilitado; el servidor debe impedir su incorporación/confirmación en pedidos incluso con clientes desactualizados. Cuando cocina repone existencias, vuelve a disponible. Un plato retirado/despublicado deja de aparecer en el cliente.
 
 **Regla confirmada por el usuario:** una categoría creada en gestión sin platos publicados no se publica en la carta del cliente. Una categoría con platos publicados, aunque todos estén temporalmente agotados, puede seguir visible durante el servicio. «Todos» respeta la misma visibilidad y muestra el estado agotado. La categoría no debe aparecer solo por existir en base de datos.
 
-**Estados a modelar y probar:** plato publicado disponible, publicado agotado, retirado/no publicado; categoría sin platos publicados, con platos publicados disponibles, con todos los platos publicados agotados. Evitar deducir «retirado» de stock cero; son operaciones distintas. Los fixtures del HTML aún no implementan este contrato de estados.
+**Estados a modelar y probar:** plato publicado disponible, publicado agotado, retirado/no publicado; categoría sin platos publicados, con platos publicados disponibles, con todos los platos publicados agotados. Evitar deducir «retirado» de stock cero; son operaciones distintas. El HTML incorpora una demostración local de agotado/retirado y visibilidad derivada de fixtures; NO implementa catálogo dinámico remoto, gestión real de cocina ni bloqueo en API.
 
-## Contrato propuesto: incidencias de disponibilidad que afectan a selecciones y pedidos (18-10-2026)
+## Contrato aprobado: incidencias de disponibilidad que afectan a selecciones y pedidos (18-10-2026)
 
 **Regla:** cocina puede cambiar disponibilidad de platos, ingredientes y opciones, pero nunca se elimina o sustituye silenciosamente una selección de cliente. El backend identifica los afectados mediante referencias a productos/opciones, versiones y estados del pedido; notificaciones push solo si existe suscripción/consentimiento, pero advertencia in-app y bloqueo de confirmación son obligatorios para cualquier afectado.
 
@@ -88,3 +88,7 @@ Diseñar estados y transiciones explícitos, auditoría append-only, versionado 
 **Permitido:** carga inicial, acciones explícitas, recuperación puntual por evento/reconexión, reintentos limitados con backoff y temporizadores puramente visuales sin tráfico de red (por ejemplo, rotación local del carrusel). La prohibición no elimina validaciones transaccionales indispensables.
 
 **Criterios de revisión:** detectar y rechazar polling periódico de red o base de datos en frontend, API y workers; probar eventos dirigidos, reconexión, duplicados y vencimientos programados. Restricción documentada, todavía pendiente de implementación y verificación técnica.
+
+## Interpretación normativa y precedencia (auditoría 18-10-2026)
+
+Si hay contradicción entre apartados, prevalecen las decisiones expresamente aprobadas más recientes y el [contrato de coherencia](../../architecture/SABORA_CONTRACT_CONSISTENCY_V1.md). Los textos históricos de exploración no autorizan cambiar decisiones aprobadas. 'Implementado en HTML' no significa integrado en backend, verificado ni desplegado. No implementar decisiones abiertas como si fueran cerradas.
