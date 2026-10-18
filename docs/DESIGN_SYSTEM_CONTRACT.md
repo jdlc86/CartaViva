@@ -139,3 +139,11 @@
 - El tapiz ocupa solo el espacio libre detrás de la tarjeta de autenticación, sin modificar tarjeta, controles, colores, tipografía, accesibilidad ni comportamiento de Passkey.
 - El resto de vistas de la aplicación de cocina y todas las vistas de la aplicación cliente y de gestión conservan sus fondos aprobados sin tapiz.
 - No extender el patrón a nuevas pantallas sin aprobación expresa. Composición final y densidad pendientes de revisión visual.
+
+## 15. Identidad comercial Sabora — dirección «Firma gastronómica» seleccionada (18-10-2026)
+- El usuario selecciona **Sabora** como marca visible de la aplicación y la dirección tipográfica **Firma gastronómica** frente a las alternativas «Moderno» y «Editorial».
+- Identidad de referencia: logotipo tipográfico «sabora» en minúsculas con serif elegante y carácter gastronómico; trazo curvo cálido inferior y pequeño gesto gráfico superior, sobre verde profundo #146B57, blanco #FFFFFF y dorado cálido de referencia #E6B879.
+- Firma secundaria discreta **by Allaiso**; el protagonismo corresponde a Sabora. Versión completa para presentación/acceso y versión compacta para cabecera de carta.
+- «Sabor que inspira» se ha mostrado como texto ilustrativo, **no como eslogan aprobado**.
+- La composición vectorial mostrada en conversación es un **boceto conceptual**, no archivo SVG maestro ni logo final aprobado. Ajustes de tipografía, proporciones, símbolo, espaciado, accesibilidad, variantes monocromas y favicon pendientes de refinamiento y aprobación.
+- Mantener el repositorio y nombre técnico CartaViva hasta que se acuerde una migración explícita. No afirmar disponibilidad registral ni de dominio de Sabora; requiere comprobación jurídica independiente.
