@@ -82,6 +82,18 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - Si restaurante pierde Internet, bloquear nuevos pedidos hasta restauración, preservar comandas aceptadas y no inventar estados de pago.
 - Pausas y cierre de mesa prevalecen sobre notificaciones de reanudación: no anunciar permiso de pedido si ya no existe.
 
+## Sincronización en tiempo real y recuperación tras desconexiones
+- **Fuente de verdad:** cada transición de mesa, visita, cuenta, pedido, comanda, cobro o incidencia se confirma en la base de datos antes de publicarse. Un evento recibido en la PWA es una notificación de estado confirmado, no autorización para saltarse validaciones de servidor.
+- **Outbox transaccional:** registrar evento e identidad única en la misma transacción que modifica el estado; un proceso posterior entrega por SSE/WebSocket con semántica de al menos una vez. Consumidores y clientes deduplican por ID y versión; no prometer entrega exactamente una vez.
+- **Orden y cursores:** asignar secuencia monotónica dentro del alcance autorizado, guardar cursor por suscripción y permitir recuperación puntual desde el último cursor válido. Si el cursor ya no existe o hubo un hueco, devolver señal explícita de resincronización y obtener una instantánea autorizada, sin bucle de consultas.
+- **Conexión y reconexión:** reintentar el canal de eventos con backoff exponencial y dispersión; tras reconectar, validar identidad, visita, cuenta y permisos de mesa antes de entregar backlog. Una desconexión no concede permisos nuevos ni reactiva una mesa cerrada.
+- **Privacidad:** el servidor filtra cada evento y recuperación por restaurante, rol, visita y cuenta; no incluir datos de otros comensales en el evento de grupo, el cursor, los errores o el historial recuperado. La invalidación de una credencial corta el acceso a eventos futuros.
+- **Sin polling:** prohibidas consultas periódicas de API o base de datos para refrescar estados. Se admiten consultas puntuales provocadas por reconexión, acción del usuario, detección de hueco o reconciliación de un pago incierto. La infraestructura puede usar latidos del transporte sin convertirlos en consultas periódicas de negocio.
+- **Offline:** la PWA puede conservar cesta local, pero no acepta pedidos ni simula confirmación de pago sin conectividad al servidor. Al volver la conexión, revalidar mesa, visita, precios y disponibilidad; si algo cambió, solicitar confirmación expresa. No reenviar automáticamente pedidos con resultado incierto: consultar su clave idempotente.
+- **Incidencias y destinatarios:** avisar únicamente a comensales o personal afectados por cambio de pedido, falta de disponibilidad, pago o cancelación; deduplicar alertas de la misma transición. No confundir aviso de «enviado a cocina» con acuse de recepción.
+- **Parada y pausa:** eventos de reanudación retrasados nunca prevalecen sobre versión más reciente de pausa, cierre o revocación QR. La PWA debe reflejar el estado confirmado más reciente y el servidor rechazar toda acción que ya no sea válida.
+- **Parámetros pendientes de ingeniería:** ventana de retención de cursores, tamaño de backlog, política de instantáneas, reintentos máximos y observabilidad; deben decidirse y probarse antes de producción, sin atribuir cifras no aprobadas al usuario.
+
 ## Riesgos aceptados y asuntos aún técnicos
 - QR fijo fotografiable: no garantiza presencia.
 - Duración concreta de autorización por QR, retención de cursores, política de autorización Stripe y tiempos de recuperación requieren diseño técnico.
@@ -137,5 +149,10 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 23. Pago voluntario de deuda ajena: operación permitida solo para deuda seleccionada, sin acceso general a historial o cancelaciones.
 24. Pausa, revocación de QR y envío concurrente: transacción rechaza el pedido si el permiso dejó de ser válido.
 25. Reconexión de SSE/WebSocket tras cambio de visita: no se entregan eventos de cuentas o visitas ajenas.
+26. Evento outbox entregado dos veces y fuera de orden: estado final único, sin alertas duplicadas ni retroceso visual.
+27. Cursor caducado o hueco en secuencia: resincronización puntual autorizada, sin polling.
+28. Reconexión tras cierre, pausa o rotación QR: el cliente no recupera permisos antiguos ni recibe datos de otra visita.
+29. Pérdida de red al confirmar pedido: consultar resultado por clave idempotente y no reenviar ni cobrar automáticamente.
+30. Desconexión de restaurante y cesta local: bloquear nuevos pedidos, revalidar al volver y solicitar consentimiento por cambios.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
