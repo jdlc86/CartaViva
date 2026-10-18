@@ -112,3 +112,13 @@
 - Respetar `prefers-reduced-motion`: reducir o eliminar animaciones no esenciales sin perder señales de estado ni accesibilidad.
 - La interfaz nunca presentará una reserva, pedido o cambio de mesa como confirmado antes de recibir validación del servidor. Las animaciones no alteran permisos ni lógica de negocio.
 - **Estado de aprobación:** se aprueba la intensidad **equilibrada**; permanecen pendientes de aprobación la paleta final, fotografías maestras, tipografía definitiva y capturas exactas de pantallas.
+
+## 12. Aprobación de apariencia visual de la carta — APROBADA (18-10-2026)
+- **El usuario aprueba expresamente la apariencia visual mostrada en la previsualización anterior de CartaViva**: estética gastronómica premium, contemporánea, cálida y limpia; fondo marfil claro, tarjetas blancas con esquinas redondeadas, verde profundo en acciones, texto oscuro, fotografía gastronómica protagonista, jerarquía tipográfica y distribución de la carta.
+- Se aprueba como **dirección visual y estilo de composición**, no como captura píxel a píxel ni como aprobación de fotografías, datos ficticios, tamaños definitivos o fuentes licenciadas.
+- Paleta de referencia aprobada para la apariencia mostrada: canvas #F8F7F4, superficie #FFFFFF, texto #202622, verde de marca #146B57 y acento #D98B45. Los tokens secundarios del apartado 2 siguen sujetos a comprobación de contraste y ajustes documentados.
+- Navegación de categorías: Todos, Entrantes, Primeros, Segundos, Postres y Bebidas. Los filtros Vegetariano y Vegano son transversales, no categorías que dupliquen productos.
+- Tarjetas fotográficas en dos columnas cuando el ancho móvil lo permita, con nombre, alérgenos, precio y acción de añadir; cabecera con marca, lupa desplegable y acceso a cesta; barra/resumen de cesta accesible.
+- Se mantiene la intensidad de movimiento EQUILIBRADA aprobada en el apartado 11.
+- **Queda prohibido introducir controles de simulación sin QR/con QR en la aplicación final**. Las previsualizaciones y sus fotografías de ejemplo no son activos productivos autorizados.
+- Próxima evidencia obligatoria: generar implementación de referencia reproducible y capturas maestras de esta apariencia en los viewports definidos; obtener aprobación explícita de los baselines exactos antes de declararlos congelados.
