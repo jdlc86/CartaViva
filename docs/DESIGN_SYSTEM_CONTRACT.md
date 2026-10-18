@@ -85,3 +85,12 @@
 - Crear diseños propios de referencia para: carta sin QR, carta con QR, cesta, reserva, cocina, sala, gestión de mesas y editor de comunicaciones.
 - Para cada pantalla registrar: versión, tamaño de viewport, estado de datos, criterios de aceptación y captura aprobada.
 - Pendiente: aprobación de paleta, tipografía y diseños de referencia. No tratar los valores candidatos como decisión definitiva hasta dicha aprobación.
+
+## 9. Registro de aprobaciones y referencias visuales (obligatorio)
+- Estado a 18-10-2026: el usuario ha aprobado la **dirección compositiva de la carta** (fotografía protagonista, tarjetas, categorías, lupa desplegable, precios, alérgenos, cesta accesible). La ficha detallada de plato se ha mostrado como propuesta y requiere aprobación explícita de sus detalles. **No existen aún capturas maestras versionadas en este repositorio** y no se debe afirmar que ya están archivadas.
+- Los ejemplos interactivos mostrados en conversación no equivalen a archivos fuente, capturas persistidas ni pruebas visuales en CI. Las fotografías de demostración tampoco son activos de producto aprobados ni pueden reutilizarse sin verificar derechos de uso.
+- Antes de implementar pantallas definitivas: producir artefactos originales reproducibles (capturas PNG/WebP, diseño fuente editable o implementación de referencia), registrarlos en `docs/design/references/` y asociarlos a fichas `docs/design/screens/`.
+- Cada ficha de pantalla incluirá: identificador y versión; responsable y fecha de aprobación; captura para móvil 390 px y escritorio/tableta cuando aplique; dimensiones, jerarquía y disposición; tokens exactos; tipografía; imágenes y proporciones; estados (normal, vacío, carga, error, sin QR, con QR, agotado, reserva); interacciones; accesibilidad; criterios verificables de aceptación.
+- Separar **aprobado**, **propuesto** y **pendiente** en un índice `docs/design/APPROVAL_REGISTER.md`. Una aprobación conversacional de la composición no se interpretará como aprobación de colores, fotografías específicas o píxeles exactos.
+- Revisión de PR visual: adjuntar capturas de implementación a los mismos viewports y estados que las referencias, informe de diferencias y justificación de cambios; rechazar alteraciones de estructura, densidad, tipografía, espaciado o estilo fotográfico no aprobadas. Los baselines de regresión visual solo se actualizan mediante aprobación explícita.
+- Mantener coherencia entre contrato de diseño, referencias y código: un cambio visual intencional exige actualizar los tres, no solo modificar CSS.
