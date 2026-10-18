@@ -123,9 +123,9 @@ Descomponer en historias de usuario verificables, definir contratos y modelo de 
 - Las etiquetas vegetarianas y veganas son independientes de la declaración de los 14 alérgenos; el etiquetado dietético **no equivale a ausencia de alérgenos ni garantiza ausencia de contaminación cruzada**.
 - Los cambios de ingredientes o receta invalidarán la verificación dietética hasta nueva revisión; registrar actor, fecha y auditoría.
 
-## Aclaración vinculante: anuncios dinámicos sin interacción (18-10-2026)
-- El usuario **no ha aprobado el diseño visual del banner** mostrado en previsualizaciones. No considerarlo baseline ni componente visual cerrado.
-- Los anuncios son un canal informativo **dinámico y automático**, sin necesidad de interacción del cliente para avanzar o rotar: no mostrar flechas de navegación, controles anterior/siguiente ni exigir clics para visualizar la secuencia.
-- Su selección y rotación dependen de la programación, vigencia, horarios y prioridades administrativas. Si no hay anuncios activos, ocultar el contenedor sin dejar espacio vacío.
-- Esta aclaración prevalece sobre cualquier prototipo interactivo anterior. El requisito anterior que sugería pulsar para abrir detalles queda **pendiente de revisión** y no autoriza introducir interacción en la versión aprobada del canal.
-- La apariencia exacta, ubicación, tiempos de rotación, accesibilidad del contenido cambiante y ponderación ALTA/BAJA **siguen pendientes de definición y aprobación**. Respetar prefers-reduced-motion sin bloquear el acceso a la información.
+## Aclaración vinculante: anuncios con avance automático (18-10-2026)
+- **«Sin interacción» significa que el usuario no necesita intervenir para que los anuncios avancen**. La rotación es automática, continua y cíclica entre anuncios vigentes, según programación y prioridades.
+- **Se conserva la interacción opcional** prevista originalmente: tocar un anuncio permite abrir su contenido completo, incluida la imagen si existe. Cerrar el detalle devuelve al carrusel automático. No exigir clics para avanzar ni incorporar flechas anterior/siguiente como mecanismo necesario.
+- Si no hay anuncios activos, ocultar el contenedor sin dejar hueco. Los fallos del canal no deben bloquear carta ni pedidos.
+- **La propuesta visual de banner mostrada en la conversación no está aprobada**; apariencia y ubicación definitivas, duración de cada anuncio, tratamiento accesible de rotación y pesos ALTA/BAJA siguen pendientes.
+- Esta aclaración sustituye la interpretación previa que dejaba en suspenso la apertura opcional del detalle.
