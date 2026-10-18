@@ -64,3 +64,19 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 ## Aclaración explícita ratificada: categorías vacías (18-10-2026)
 
 **Regla definitiva ratificada por el usuario:** crear una categoría en cocina sin crear platos NO la hace visible al cliente. Tampoco aparece si todos sus platos están sin publicar o retirados. En cambio, una categoría publicada con al menos un plato publicado aunque TODOS estén agotados SÍ aparece y muestra esos platos como «Agotado». Una categoría desactivada nunca aparece. Predicado: `category.published === true && exists(dish.categoryId === category.id && dish.published === true && dish.availability !== 'retired')`. No usar `availability === 'available'` para determinar la visibilidad de la categoría. «Todos» utiliza exactamente el mismo predicado. Este criterio prevalece ante cualquier redacción previa que confunda «disponible» con «publicado».
+
+## Hallazgo 3 — identidad de pedido y conciliación económica (18-10-2026)
+
+**Decisión explícita aprobada:** un pedido mantiene el mismo identificador lógico al corregirse; se crea una revisión nueva e inmutable. La revisión anterior permanece en el historial y nunca debe despacharse si fue invalidada antes de cocina. El despacho inmediato se vincula únicamente a la revisión vigente, con idempotencia y arbitraje transaccional contra el vencimiento de agrupación.
+
+**Necesidad expresada por el usuario:** cuando el restaurante configura pagos y la revisión afecta al precio de un pedido ya pagado, gestionar reembolso de la diferencia o cobro adicional, sin duplicar el cobro total. Se propone el siguiente contrato económico sujeto a validación de integración con proveedor de pagos:
+
+- Comparar importes finales de revisión anterior y revisión propuesta en unidades monetarias menores (céntimos), con desglose de impuestos y suplementos; nunca usar coma flotante para dinero.
+- Si el pago ya está capturado y la revisión cuesta más: obtener consentimiento y cobrar exclusivamente la diferencia. Si cuesta menos: crear reembolso parcial al medio original, sujeto a capacidades del proveedor. Si cuesta lo mismo: no crear operación económica.
+- Si solo existe autorización sin captura: ajustar, cancelar y reautorizar o realizar autorización complementaria conforme a capacidades reales del proveedor; no denominar reembolso a la liberación de una autorización.
+- Si el restaurante no habilitó pago digital, actualizar importe pendiente sin operaciones contra pasarela.
+- Mantener un registro de operaciones de pago por pedido/revisión con idempotencia, estado (pendiente, autorizado, capturado, reembolso solicitado, reembolsado, fallido), identificadores del proveedor, correlación y auditoría. Los webhooks se autentican y procesan de manera idempotente, por eventos y SIN polling.
+- La revisión no se despacha hasta tener una condición económica suficiente conforme al modo de pago (p. ej., cargo adicional autorizado/capturado según política). Un reembolso parcial ya solicitado no necesita esperar su liquidación bancaria para despachar, siempre que esté aceptado y registrado duraderamente.
+- Si falla o se rechaza el cobro adicional, conservar revisión anterior bloqueada y nueva revisión pendiente de resolución; no enviar a cocina ninguna versión obsoleta ni cobrar dos veces.
+
+**Pendiente de cerrar antes de integrar pagos:** proveedor/pasarela, modelo de captura (inmediata o diferida), política de envío ante reembolso solicitado pero fallido, tratamiento de propinas, cupones, impuestos, comisiones y múltiples pagadores. Estos detalles no se pueden inferir de una pantalla de ejemplo.
