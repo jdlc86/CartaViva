@@ -23,6 +23,11 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 
 ## Carta y catálogo
 - Catálogo permanente de productos reutilizables.
+- Cada producto tiene precio unitario configurable en EUR, incluido 0,00 €, desde la PWA de gestión/configuración. No asumir que todos los productos son gratuitos ni exigir importe mínimo positivo.
+- La carta y la zona de selección muestran precios; la cesta calcula automáticamente subtotal por línea (precio unitario × cantidad) y total, tanto en modo reserva como en modo pedido presencial. Si todos los precios son cero, el total mostrado es 0,00 €.
+- Los cálculos definitivos se realizan y validan en backend usando importes decimales exactos o unidades monetarias enteras (céntimos), nunca aritmética flotante como fuente de verdad. Definir y mostrar tratamiento fiscal conforme al régimen aplicable antes de producción.
+- Al confirmar un pedido presencial, persistir precio unitario aplicado y total como instantánea inmutable de la transacción; modificaciones posteriores del catálogo no alteran pedidos históricos. Una reserva anticipada es una previsión, no una venta ni consumo: su importe mostrado es informativo y se recalcula con los precios vigentes al confirmar el pedido real, informando de cambios antes de aceptar.
+- No inferir ni activar cobro electrónico por mostrar importes: la integración de pagos, si procede, requiere decisión funcional independiente.
 - Categorías iniciales: bebida, primero, segundo, postre; categorías adicionales configurables.
 - Programación semanal o por fechas y publicación diaria automática sin confirmación humana; administración puede corregir excepciones.
 - Cocina no crea productos del catálogo. Puede marcar platos como agotados/disponibles y configurar en tiempo real, mediante un control independiente por plato, si ADMITEN_RESERVA anticipada; estos cambios no modifican el catálogo permanente.
