@@ -55,9 +55,9 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - **Límites de afirmación:** este documento no prueba compatibilidad de Stripe manual capture, vigencia de autorizaciones, importes capturables ni métodos de pago concretos. Verificar con Stripe antes de programar y probar estados de compensación.
 
 ## Política de pago de mesa
-- En una sesión que eligió «Pagar al terminar», mantener esa modalidad para rondas posteriores mientras la política de mesa no cambie; no volver a pedir elección en cada ronda. En la primera ronda con importe positivo de una sesión iniciada solo con pedidos gratuitos, ofrecer modalidades permitidas entonces.
+- **Decisión aprobada — modalidad fija por visita/cuenta:** en la primera ronda con importe positivo, ofrecer las modalidades permitidas por la política vigente; una vez elegida «Pagar ahora» o «Pagar al terminar», conservarla para las rondas posteriores de esa cuenta durante toda la visita, sin volver a preguntar. Las rondas gratuitas previas no fijan modalidad. «Pagar ahora» exige su propia autorización/captura por cada nueva ronda positiva; «Pagar al terminar» acumula deuda de caja. El cliente no cambia unilateralmente la modalidad durante la visita; excepciones operativas requieren intervención del personal, conciliación y trazabilidad, sin alterar cobros ya confirmados.
 - Si la mesa tiene «Exigir pago conforme se pide», no ofrecer cuenta abierta en nuevos pedidos positivos. La condición no se activa automáticamente por ser terraza; requiere configuración explícita por mesa.
-- Para «Pagar ahora», no dar por aprobada una persistencia idéntica de modalidad en rondas posteriores; conservar como detalle funcional pendiente.
+- **Concurrencia:** la primera elección se fija atómicamente por cuenta/visita; dos dispositivos vinculados no pueden registrar modalidades contradictorias. La política obligatoria de pago inmediato por mesa prevalece al admitir nuevos pedidos, sin conversión retroactiva ni cambio silencioso de cuentas ya abiertas.
 
 **Cambio de política durante una visita:** no altera retroactivamente pedidos confirmados, autorizaciones, pagos ni deuda pendiente. La política vigente rige la admisión de pedidos nuevos, **pero no convierte automáticamente una sesión existente «Pagar al terminar» en «Pagar ahora»**. Si la mesa pasa a exigir pago inmediato, bloquear nuevas comandas positivas a cuenta abierta hasta resolver explícitamente el conflicto de modalidad con el personal y conciliar el saldo anterior; no forzar un cambio silencioso ni permitir eludir la política. Registrar versión de política por pedido y mostrar por separado deuda anterior y operaciones nuevas. Arbitrar cambios concurrentes en servidor, sin que dos dispositivos impongan modalidades contradictorias. El procedimiento detallado de transición es ingeniería pendiente, no una decisión para reabrir la no retroactividad.
 
@@ -105,7 +105,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Cierre de revisión cruzada (18 de octubre de 2026)
 - Contrastado este contrato con `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md` en `main`. Recuperada la ventana de agrupación de **cinco minutos** que estaba omitida en el consolidado.
 - Corregida una simplificación potencialmente contradictoria: el cambio de política de mesa no convierte silenciosamente sesiones «Pagar al terminar» en pago inmediato. Se bloquean pedidos nuevos incompatibles hasta conciliación explícita.
-- Permanecen abiertas sin atribuir aprobación: persistencia de «Pagar ahora» en rondas posteriores, tratamiento detallado de cupones/descuentos/extras, alcance de pausa global. Los parámetros de infraestructura y Stripe se validan en ingeniería.
+- Permanecen abiertas sin atribuir aprobación: tratamiento detallado de cupones/descuentos/extras y alcance de pausa global. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
 - Esta revisión es documental y **no** equivale a revisión de código, ejecución de pruebas, aprobación de PR ni despliegue.
 
 ## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
@@ -120,7 +120,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 | P1-06 Identidad de revisión | Pedido lógico estable y revisión inmutable | Alinear kernel, persistencia y despacho |
 | P1-07 Autorización y privacidad | Invariantes explícitos por cuenta/visita/actor | Diseño de credenciales, permisos y pruebas |
 | P2-08 Precio cero y descuentos | Gratuito no genera Stripe; alcance de cupones/extras no presumido | Confirmar casos no aprobados |
-| P2-09 Modalidad en rondas | Caja persiste; pago inmediato por mesa; no inferir persistencia de «Pagar ahora» | Concretar solo modalidad no decidida |
+| P2-09 Modalidad en rondas | Resuelto: «Pagar ahora» y «Pagar al terminar» persisten por cuenta/visita tras primera elección positiva | Implementar elección atómica y regresiones multidispositivo |
 | P2-10 Cancelación parcial en caja | Ajuste automático, devolución presencial registrada si ya cobrada | Diseño de interfaz y auditoría |
 | P2-11 Borrador y publicación | Resuelto: guardar borrador no publica; publicar es explícito y valida contenido | Implementar versionado y pruebas de publicación |
 | P2-12 Autorización y agrupación | Captura al despacho, revisión inmediata y carreras prohibidas | Vigencia Stripe, reloj y concurrencia |
@@ -163,5 +163,8 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 29. Pérdida de red al confirmar pedido: consultar resultado por clave idempotente y no reenviar ni cobrar automáticamente.
 30. Desconexión de restaurante y cesta local: bloquear nuevos pedidos, revalidar al volver y solicitar consentimiento por cambios.
 31. Edición de plato publicado guardada como borrador: clientes siguen viendo versión publicada anterior hasta publicación explícita; validar precio, extras y alérgenos al publicar.
+32. Primera ronda positiva elige «Pagar ahora»: siguiente ronda positiva conserva modalidad y crea autorización/captura propia sin nueva pregunta.
+33. Primera ronda positiva elige «Pagar al terminar»: rondas siguientes acumulan deuda de caja sin nueva pregunta; dos dispositivos simultáneos no pueden imponer modalidades distintas.
+34. Visita con rondas gratuitas iniciales: modalidad se decide únicamente al primer pedido positivo; no se permite cambio unilateral posterior.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
