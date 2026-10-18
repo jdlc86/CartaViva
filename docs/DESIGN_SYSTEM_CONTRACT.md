@@ -131,3 +131,11 @@
 - Preferir tapiz estático. No añadir parallax, movimiento automático ni vídeo de fondo; cualquier transición respetará la intensidad EQUILIBRADA y prefers-reduced-motion.
 - Adaptar recorte, densidad y resolución a móvil y escritorio; evitar cargas múltiples innecesarias y desplazamiento horizontal.
 - **Estado:** se aprueba el concepto de uso contextual; composición exacta, fotografías, opacidad y capturas finales quedan pendientes de aprobación visual.
+
+## 14. Alcance restringido del tapiz gastronómico (decisión posterior, 18-10-2026)
+- **La única pantalla autorizada para utilizar el tapiz decorativo de siluetas de platos es la pantalla de acceso con Passkey de la aplicación de cocina.**
+- Esta decisión **restringe y prevalece sobre** los lugares candidatos de la sección 13 (cabecera de carta, bienvenida, estados vacíos, comunicaciones). Ninguno de ellos está autorizado por ahora.
+- El fondo utiliza siluetas gastronómicas vectoriales o trazos tenues, monocromáticos y estáticos, similares conceptualmente a un patrón discreto de mensajería; **no fotografías, mosaicos fotográficos ni ilustraciones protagonistas**.
+- El tapiz ocupa solo el espacio libre detrás de la tarjeta de autenticación, sin modificar tarjeta, controles, colores, tipografía, accesibilidad ni comportamiento de Passkey.
+- El resto de vistas de la aplicación de cocina y todas las vistas de la aplicación cliente y de gestión conservan sus fondos aprobados sin tapiz.
+- No extender el patrón a nuevas pantallas sin aprobación expresa. Composición final y densidad pendientes de revisión visual.
