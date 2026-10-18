@@ -78,3 +78,13 @@ No aplicar el flujo B a comandas ya despachadas: se requiere incidencia operativ
 ### Seguridad y pruebas pendientes
 
 Diseñar estados y transiciones explícitos, auditoría append-only, versionado de catálogo/opciones y transacciones resistentes a carreras entre actualización de cocina, confirmación de cliente y worker de agrupación. Probar: notificaciones suscritas/no suscritas; cliente offline; opción agotada en cesta; pedido en ventana; despacho concurrente; reenvío duplicado; variación de precio; opciones sustitutas agotadas; múltiples clientes de mesa. **Este documento define comportamiento esperado; no implica que la API ni el worker estén implementados.**
+
+## Restricción arquitectónica obligatoria: prohibido el polling (18-10-2026)
+
+**Decisión expresa del usuario:** terminantemente prohibido realizar consultas periódicas innecesarias a base de datos o API para detectar cambios. Prohibidos temporizadores recurrentes de peticiones, bucles de refresco, polling de pedidos, catálogo, anuncios y notificaciones, así como workers que escaneen cíclicamente la base de datos para detectar vencimientos.
+
+**Arquitectura exigida:** las mutaciones de cocina/gestión producen eventos tras commit; entregar los eventos a los clientes afectados mediante SSE o WebSocket y push solo con suscripción. Al recibir un evento, el cliente invalida y recupera exclusivamente los datos afectados, o aplica una proyección segura. Confirmación y reenvío siempre revalidados transaccionalmente. Para la ventana de agrupación de cinco minutos, usar tareas diferidas en cola/planificador, no sondeos periódicos de base de datos. Prever entrega fiable, idempotencia y recuperación puntual por cursor o versión al reconectar, sin polling recurrente.
+
+**Permitido:** carga inicial, acciones explícitas, recuperación puntual por evento/reconexión, reintentos limitados con backoff y temporizadores puramente visuales sin tráfico de red (por ejemplo, rotación local del carrusel). La prohibición no elimina validaciones transaccionales indispensables.
+
+**Criterios de revisión:** detectar y rechazar polling periódico de red o base de datos en frontend, API y workers; probar eventos dirigidos, reconexión, duplicados y vencimientos programados. Restricción documentada, todavía pendiente de implementación y verificación técnica.
