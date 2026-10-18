@@ -80,3 +80,15 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 - Si falla o se rechaza el cobro adicional, conservar revisión anterior bloqueada y nueva revisión pendiente de resolución; no enviar a cocina ninguna versión obsoleta ni cobrar dos veces.
 
 **Pendiente de cerrar antes de integrar pagos:** proveedor/pasarela, modelo de captura (inmediata o diferida), política de envío ante reembolso solicitado pero fallido, tratamiento de propinas, cupones, impuestos, comisiones y múltiples pagadores. Estos detalles no se pueden inferir de una pantalla de ejemplo.
+
+## Decisión aprobada — autorización previa y captura al despacho (18-10-2026)
+
+**Decisión expresa del usuario:** en restaurantes con pago digital habilitado, al confirmar el pedido se AUTORIZA el importe, pero NO se captura. La captura se inicia al enviar la revisión vigente de la comanda a cocina. Durante la ventana de agrupación de mesa no hay cobro capturado.
+
+**Revisión antes de despacho:** si cambia el importe, actualizar la autorización, o anular/liberar y obtener una nueva, según capacidades verificadas de la pasarela. Si el importe aumenta, solicitar consentimiento y autorización de la diferencia o del nuevo total según el proveedor. Si disminuye, reducir o sustituir la autorización; no llamarlo reembolso. Solo se requiere reembolso cuando ya hubo captura. La revisión corregida conserva el mismo ID lógico del pedido, nuevo número de revisión, y se despacha inmediatamente tras conseguir autorización suficiente, sin esperar una nueva ventana.
+
+**Condición crítica de implementación:** captura y despacho a cocina cruzan sistemas diferentes; NO son una única transacción ACID. Diseñar máquina de estados durable y orquestación idempotente para evitar doble captura y doble comanda. No declarar el pedido enviado si falla el despacho; no reintentar cobros sin clave idempotente y reconciliación por webhook/evento. Ante captura exitosa y fallo de despacho, conservar incidencia operativa y reintentar entrega de forma segura, sin volver a capturar. Ante captura fallida, bloquear despacho y comunicarlo. Definir el instante operativo de 'enviado a cocina' y la política de reversión si el envío falla después de capturar antes de codificar el flujo.
+
+**Sin polling:** las transiciones se disparan por acciones, vencimientos programados y eventos/webhooks del proveedor; se prohíbe consultar periódicamente el estado del pago o de la comanda. La conciliación puntual ante reconexión/fallo es admisible. El modo de restaurante sin pago digital conserva su flujo de despacho sin autorización/captura.
+
+**Pendiente de selección técnica:** pasarela que soporte autorización/captura separadas, vigencia y límites de autorización, modificaciones de importe, webhook y reversión; el proveedor no está decidido y no debe asumirse compatibilidad.
