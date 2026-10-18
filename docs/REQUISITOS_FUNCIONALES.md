@@ -59,11 +59,11 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 ## Comunicaciones y noticias
 - En PWA cliente: franja estrecha de titulares, texto de derecha a izquierda, sin imágenes, sin interferir con la carta ni pedidos. Accesibilidad: respetar reducción de movimiento, pausa/interacción y lectura legible.
 - Gestión en PWA administrativa: Configuración → Comunicaciones; crear anuncios internos, programar vigencia, prioridades, retirar y auditar.
-- Fuentes externas autorizadas, publicación automática sin aprobación individual y posibilidad de retirada administrativa.
+- RTVE se selecciona como fuente externa principal prevista. Publicación automática de titulares originales únicamente tras verificar las condiciones de reutilización aplicables a CartaViva; sin aprobación individual, con posibilidad de retirada administrativa.
 - Temas prioritarios nacionales: fútbol, tecnología, ferrocarriles, hipotecas/vivienda; incluir noticias generales relevantes de España. Activar/desactivar temas y ajustar prioridad.
-- Servicio aislado de pedidos: ingesta por RSS/API autorizada, deduplicación, validación de fecha, enlace y atribución; IA redacta titulares breves basados estrictamente en fuente y nunca inventa hechos. Guardar original, versión generada, fuente, hora y decisiones de publicación.
-- Comprobar condiciones de reutilización de cada fuente antes de activarla. Si proveedor/IA falla, no bloquear operaciones y conservar avisos internos.
-- No garantizar veracidad solo por usar IA: implementar validaciones, filtros, caducidad y posibilidad de suspensión del canal.
+- Servicio aislado de pedidos: ingesta mediante canales RSS/API oficiales de RTVE cuya reutilización esté permitida, deduplicación, selección por tema, validación de fecha, enlace y atribución. Mostrar titulares originales sin generación ni reescritura por IA. Guardar titular original, fuente, hora y decisiones de publicación.
+- Verificar las condiciones de uso, atribución y eventual licencia de RTVE antes de activar el canal público; disponer de suspensión del canal si no se autoriza la reutilización. Si la fuente falla, no bloquear operaciones y conservar avisos internos.
+- No presentar titulares como verificados por CartaViva: mostrar atribución y enlace al original, aplicar filtros de vigencia y permitir suspensión del canal.
 
 ## Requisitos transversales
 - Backend autoritativo, permisos mínimos, registro de auditoría, eventos idempotentes, protección frente a reintentos y carreras.
@@ -77,7 +77,7 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 2. Criterio contable de consumo y correcciones posteriores.
 3. Protección frente a QR compartidos o escaneados fuera del local.
 4. Duración de estados/historial, horarios y zona horaria del restaurante.
-5. Política de licencias y fuentes concretas de noticias; presupuestos y límites de IA.
+5. Confirmar las condiciones de reutilización de titulares y canales RSS/API de RTVE para uso comercial; valorar fuentes alternativas solo si fuera necesario.
 6. Política de datos personales, conservación y exportaciones.
 7. Criterios de aceptación detallados, modelo de dominio y arquitectura técnica.
 
