@@ -56,28 +56,29 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Resumen por trabajador y cantidades por categoría, incluidas categorías futuras.
 - No contar cancelados. **Pendiente definir** si «lista» equivale a consumo facturable, y cómo rectificar una comanda lista pero no servida. No afirmar que deslizar equivale a entrega.
 
-## Comunicaciones y noticias
-- En PWA cliente: franja estrecha de titulares, texto de derecha a izquierda, sin imágenes, sin interferir con la carta ni pedidos. Accesibilidad: respetar reducción de movimiento, pausa/interacción y lectura legible.
-- Gestión en PWA administrativa: Configuración → Comunicaciones; crear anuncios internos, programar vigencia, prioridades, retirar y auditar.
-- RTVE se selecciona como fuente externa principal prevista. Publicación automática de titulares originales únicamente tras verificar las condiciones de reutilización aplicables a CartaViva; sin aprobación individual, con posibilidad de retirada administrativa.
-- Temas prioritarios nacionales: fútbol, tecnología, ferrocarriles, hipotecas/vivienda; incluir noticias generales relevantes de España. Activar/desactivar temas y ajustar prioridad.
-- Servicio aislado de pedidos: ingesta mediante canales RSS/API oficiales de RTVE cuya reutilización esté permitida, deduplicación, selección por tema, validación de fecha, enlace y atribución. Mostrar titulares originales sin generación ni reescritura por IA. Guardar titular original, fuente, hora y decisiones de publicación.
-- Verificar las condiciones de uso, atribución y eventual licencia de RTVE antes de activar el canal público; disponer de suspensión del canal si no se autoriza la reutilización. Si la fuente falla, no bloquear operaciones y conservar avisos internos.
-- No presentar titulares como verificados por CartaViva: mostrar atribución y enlace al original, aplicar filtros de vigencia y permitir suspensión del canal.
+## Comunicaciones del restaurante
+- Canal exclusivamente interno: solo anuncios creados por el restaurante. No integrar noticias externas, RSS, RTVE ni redacción automática mediante IA.
+- En la PWA de gestión, Configuración → Comunicaciones: editor visual sencillo, atractivo y rápido, con título, texto enriquecido básico, accesos rápidos a emojis, imagen opcional y vista previa del resultado en móvil. Evitar herramientas de maquetación complejas.
+- Cada anuncio puede guardarse como borrador, publicarse, pausarse, editarse o retirarse. Registrar cambios relevantes y autor.
+- Programación individual: fecha y hora de inicio y fin, zona horaria del restaurante y periodicidad configurable (por ejemplo, diaria o determinados días de la semana). Respetar horarios y no mostrar anuncios fuera de su vigencia.
+- Prioridad seleccionable por anuncio: BAJA o ALTA. Los anuncios de prioridad ALTA tienen mayor presencia en la rotación, pero no deben impedir que se muestren los de prioridad BAJA que estén vigentes. Definir pesos concretos en el diseño técnico.
+- Si hay varios anuncios vigentes, se reproducen de forma cíclica y continua; al terminar la secuencia vuelven a aparecer. Evitar repeticiones consecutivas innecesarias y actualizar la selección al publicar, pausar o vencer anuncios.
+- En la PWA del cliente: banda de anuncios compacta, legible y no intrusiva, con emoji y texto breve; pulsar abre el detalle visual del anuncio, incluida la imagen cuando exista. La imagen no ocupa la banda estrecha. Respetar accesibilidad y preferencias de movimiento reducido.
+- El servicio de comunicaciones no debe bloquear la consulta de la carta ni la confirmación de pedidos; ante fallo, ocultar temporalmente la banda sin afectar la operativa.
 
 ## Requisitos transversales
 - Backend autoritativo, permisos mínimos, registro de auditoría, eventos idempotentes, protección frente a reintentos y carreras.
 - Actualización en tiempo real con reconexión y recuperación de estado. Push/vibración son best-effort y no sustituyen la bandeja persistente.
 - Seguridad y privacidad: minimizar datos personales, separación entre empresas, retención definida, RGPD y control de acceso a informes.
-- Pruebas de flujos críticos: ventana de cinco minutos, simultaneidad, cancelación y sustitución inmediata, QR revocado, retirada global y recuperación, notificaciones duplicadas, exportación, caída de noticias.
-- No se fija todavía stack, base de datos, hosting, proveedor IA ni costes: decisión técnica posterior.
+- Pruebas de flujos críticos: ventana de cinco minutos, simultaneidad, cancelación y sustitución inmediata, QR revocado, retirada global y recuperación, notificaciones duplicadas, exportación, caída del módulo de comunicaciones.
+- No se fija todavía stack, base de datos, hosting, proveedor de comunicaciones ni costes: decisión técnica posterior.
 
 ## Decisiones pendientes antes de construir
 1. Autenticación del trabajador, passkeys y matriz completa de permisos.
 2. Criterio contable de consumo y correcciones posteriores.
 3. Protección frente a QR compartidos o escaneados fuera del local.
 4. Duración de estados/historial, horarios y zona horaria del restaurante.
-5. Confirmar las condiciones de reutilización de titulares y canales RSS/API de RTVE para uso comercial; valorar fuentes alternativas solo si fuera necesario.
+5. Definir los pesos de rotación de prioridades ALTA/BAJA y los límites de periodicidad y vigencia de anuncios.
 6. Política de datos personales, conservación y exportaciones.
 7. Criterios de aceptación detallados, modelo de dominio y arquitectura técnica.
 
