@@ -130,3 +130,15 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 | Cocinero — incidencia de cocina | Siempre | Revisión administrativa obligatoria; reintegro debido del importe no servido |
 
 **Pendiente técnico:** definición precisa de autoridad/limites y mecanismos antifraude del camarero para la ruta sin arbitraje, alcance de cancelación parcial y recuperación de fallos de pasarela. No afirmar que estas pantallas o APIs ya estén implementadas.
+
+## Política de pago de sesión y cuenta en caja (18-10-2026)
+
+**Decisión funcional aprobada por el usuario:** con Stripe habilitado, si todos los platos del pedido tienen precio cero, no se muestra pasarela ni elección de pago. Cuando existe un importe positivo, ofrecer **«Pagar ahora»** o **«Pagar al terminar (pasar por caja)»**. Si el cliente elige pagar al terminar, esa modalidad queda fijada para la sesión de consumo y los siguientes pedidos no vuelven a mostrar opciones de pago: se acumulan en la cuenta pendiente de caja. El cliente paga presencialmente al finalizar.
+
+**Pago ahora:** para importe positivo, autorización Stripe al confirmar la revisión vigente y captura al enviar la comanda a cocina, conforme a decisión anterior. No asumir que Stripe está disponible en todos los restaurantes; cuando no está configurado, no ofrecer pago digital.
+
+**Pago al terminar:** no crear autorizaciones, capturas ni reembolsos Stripe para esa sesión. Si surge cancelación o incidencia, la resolución económica se gestiona **fuera de la app** por el personal/caja; Sabora debe mantener el historial de incidencias y ajustar el saldo pendiente para no cobrar consumos anulados. No mostrar al cliente controles de reembolso digital para esta modalidad. Mantener controles de permisos y auditoría de los ajustes de cuenta.
+
+**Matiz de importe cero:** no cobrar ni abrir operación Stripe cuando el importe a pagar sea exactamente cero; distinguir importe final calculado de precio individual de platos, descuentos y extras. Una sesión de cuenta en caja ya elegida mantiene esa modalidad aunque se añadan pedidos gratuitos.
+
+**Pendiente de concretar:** alcance de bloqueo de modalidad para «Pagar ahora» en pedidos posteriores (el usuario solo ha exigido expresamente persistencia para «Pagar al terminar»); qué hacer si una sesión inicialmente gratuita añade después un pedido de pago; tratamiento de mesas con varios clientes/pagadores y política de caja. No inferir cambios de modalidad sin consentimiento.
