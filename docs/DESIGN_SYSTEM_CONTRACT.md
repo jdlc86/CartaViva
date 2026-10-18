@@ -94,3 +94,11 @@
 - Separar **aprobado**, **propuesto** y **pendiente** en un índice `docs/design/APPROVAL_REGISTER.md`. Una aprobación conversacional de la composición no se interpretará como aprobación de colores, fotografías específicas o píxeles exactos.
 - Revisión de PR visual: adjuntar capturas de implementación a los mismos viewports y estados que las referencias, informe de diferencias y justificación de cambios; rechazar alteraciones de estructura, densidad, tipografía, espaciado o estilo fotográfico no aprobadas. Los baselines de regresión visual solo se actualizan mediante aprobación explícita.
 - Mantener coherencia entre contrato de diseño, referencias y código: un cambio visual intencional exige actualizar los tres, no solo modificar CSS.
+
+## 10. Separación estricta entre simulación y producto
+- Las previsualizaciones de ChatGPT y las referencias ejecutables pueden contener controles de demostración, datos ficticios, precios ilustrativos, placeholders, alertas de prototipo y selectores de estado. **No son requisitos de interfaz de producción**.
+- PROHIBIDO trasladar a la PWA final selectores manuales «Sin QR / Con QR», «Modo demo», simuladores de mesa, botones de forzar estados o mensajes de prototipo. El cliente no selecciona su contexto operativo.
+- El modo sin mesa se deriva de la ausencia de un contexto de mesa validado por el backend. El modo de pedido presencial solo se activa tras resolver un QR auténtico, vigente y de una mesa en estado LISTA; el servidor revalida al confirmar.
+- La transición de reserva a pedido conserva la selección; nunca depende de un interruptor de simulación. Los estados de mesa EN_PREPARACION/BLOQUEADA impiden nuevos pedidos y muestran el mensaje apropiado.
+- Las simulaciones se confinan a fixtures, Storybook, pruebas y referencias explícitamente etiquetadas como DEMO; no se incluyen en rutas ni bundles de producción. Ningún control de prueba podrá cambiar el contexto de seguridad real.
+- Toda ficha de pantalla debe separar: (a) interfaz visible en producción, (b) mecanismos internos de prueba, (c) contenido ficticio; en la revisión de PR se comprobará la ausencia de los elementos (b) y (c) en el producto final.
