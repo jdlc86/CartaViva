@@ -58,3 +58,23 @@ Estado: **prototipo funcional de interfaz, sin backend**. No confundir con una p
 **Regla confirmada por el usuario:** una categoría creada en gestión sin platos publicados no se publica en la carta del cliente. Una categoría con platos publicados, aunque todos estén temporalmente agotados, puede seguir visible durante el servicio. «Todos» respeta la misma visibilidad y muestra el estado agotado. La categoría no debe aparecer solo por existir en base de datos.
 
 **Estados a modelar y probar:** plato publicado disponible, publicado agotado, retirado/no publicado; categoría sin platos publicados, con platos publicados disponibles, con todos los platos publicados agotados. Evitar deducir «retirado» de stock cero; son operaciones distintas. Los fixtures del HTML aún no implementan este contrato de estados.
+
+## Contrato propuesto: incidencias de disponibilidad que afectan a selecciones y pedidos (18-10-2026)
+
+**Regla:** cocina puede cambiar disponibilidad de platos, ingredientes y opciones, pero nunca se elimina o sustituye silenciosamente una selección de cliente. El backend identifica los afectados mediante referencias a productos/opciones, versiones y estados del pedido; notificaciones push solo si existe suscripción/consentimiento, pero advertencia in-app y bloqueo de confirmación son obligatorios para cualquier afectado.
+
+### A. Selección todavía en cesta
+
+Al agotarse una opción (p. ej. kétchup) la cesta conserva la selección original y se marca inválida con motivo concreto. Cliente debe retirar o sustituir explícitamente esa opción por una disponible. La API vuelve a validar todas las líneas y opciones de la cesta transaccionalmente en el momento de confirmar, incluso si no se recibió notificación. No se permite cursar un pedido con líneas inválidas.
+
+### B. Pedido confirmado, todavía en ventana de agrupación de mesa
+
+Cuando se agota un componente, se marca incidencia en el pedido afectado **antes de su envío a cocina**; se congela/retira el pedido original de la cola de agrupación, sin borrarlo ni alterar su snapshot. Cliente recupera la versión original de la base de datos, ve exactamente qué cambió, corrige y acepta posibles diferencias de precio. La acción visible es **«Reenviar pedido»**. El reenvío crea una nueva revisión/comanda operativa enlazada con la anterior, con despacho inmediato **sin otra espera de agrupación**. Evitar duplicidad de cobro, pedido y comanda mediante idempotencia, control de concurrencia y cancelación atómica de la versión pendiente. No dar por finalizado el pedido original sin registrar el resultado.
+
+### C. Comanda ya enviada a cocina
+
+No aplicar el flujo B a comandas ya despachadas: se requiere incidencia operativa y coordinación con cocina, con reglas de aceptación/reembolso si corresponde.
+
+### Seguridad y pruebas pendientes
+
+Diseñar estados y transiciones explícitos, auditoría append-only, versionado de catálogo/opciones y transacciones resistentes a carreras entre actualización de cocina, confirmación de cliente y worker de agrupación. Probar: notificaciones suscritas/no suscritas; cliente offline; opción agotada en cesta; pedido en ventana; despacho concurrente; reenvío duplicado; variación de precio; opciones sustitutas agotadas; múltiples clientes de mesa. **Este documento define comportamiento esperado; no implica que la API ni el worker estén implementados.**
