@@ -129,3 +129,13 @@ Descomponer en historias de usuario verificables, definir contratos y modelo de 
 - Si no hay anuncios activos, ocultar el contenedor sin dejar hueco. Los fallos del canal no deben bloquear carta ni pedidos.
 - **La propuesta visual de banner mostrada en la conversación no está aprobada**; apariencia y ubicación definitivas, duración de cada anuncio, tratamiento accesible de rotación y pesos ALTA/BAJA siguen pendientes.
 - Esta aclaración sustituye la interpretación previa que dejaba en suspenso la apertura opcional del detalle.
+
+## Contrato funcional: configuración única del plato y edición desde el carrito (18-10-2026)
+- Administración define la ficha maestra del plato: fotografías, descripción, ingredientes y alérgenos verificados, precio base, grupos de opciones y sus reglas (p. ej. salsa, guarnición, extras), variantes, suplementos, obligatoriedad, límites de selección y disponibilidad. Las opciones se configuran por plato; no se inventan opciones universales en la interfaz.
+- **Una única fuente de verdad y un mismo esquema/componente de personalización** alimentan tanto la ficha del plato al pulsar «Añadir» en la carta como «Editar detalles» de cada línea del carrito. Ambos contextos muestran las mismas opciones vigentes y validaciones; la edición precarga la selección realizada anteriormente.
+- El cliente puede abrir los detalles desde el carrito, modificar opciones y cantidades, consultar imágenes, ingredientes, alérgenos y suplementos, y guardar cambios. El total se recalcula con precisión monetaria; ninguna modificación del carrito implica enviar un pedido confirmado.
+- Cada línea del carrito conserva su configuración propia: dos unidades del mismo producto con personalizaciones distintas no se fusionan. La agrupación de líneas solo es posible cuando coinciden todas las opciones relevantes.
+- Si cambia la disponibilidad o configuración del catálogo antes de confirmar, el backend revalida las elecciones y comunica los cambios al usuario; nunca sustituye silenciosamente una opción ni acepta una configuración inválida.
+- El servidor es autoritativo sobre opciones, precios, restricciones y disponibilidad. En pedidos confirmados se conserva una instantánea inmutable de la configuración elegida y del precio aplicado, además de la información alimentaria mostrada.
+- Las notas libres a cocina, si se habilitan, no sustituyen opciones estructuradas ni permiten eludir límites o validaciones; su alcance y restricciones se definirán antes de producción.
+- Este contrato es funcional; su implementación y diseño visual final aún están pendientes.
