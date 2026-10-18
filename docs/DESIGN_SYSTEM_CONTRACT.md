@@ -51,6 +51,7 @@
 ## 5. Contratos de pantalla
 ### PWA cliente
 - Barra superior compacta con identidad/contexto; navegación inferior estable y accesible; cesta/resumen persistente al seleccionar platos.
+- Búsqueda contextual desplegable: mostrar solo icono de lupa en la cabecera por defecto; al activarlo, revelar campo de búsqueda de platos con transición discreta, foco en el campo, botón claro para cerrar y retorno a cabecera compacta. Filtrar por nombre y, cuando existan datos, descripción/ingredientes; mostrar resultados y estado sin coincidencias sin alterar la cesta. No dejar un campo de búsqueda permanentemente visible ni abrir un modal invasivo para una búsqueda sencilla. Respetar accesibilidad, teclado y movimiento reducido.
 - Carta: categorías claras, fichas de platos con foto, nombre, disponibilidad, cantidad y CTA; mostrar productos no reservables sin permitir añadirlos cuando no existe QR.
 - Sin QR: reservar habilitado para platos reservables; pedir requiere QR y al tocarlo explica por qué. Con QR válido: pedir habilitado, reservar no disponible, conservar la selección.
 - El paso reserva -> QR -> pedido no obliga a seleccionar otra vez. Verificación final de disponibilidad sin borrar el resto de la cesta.
