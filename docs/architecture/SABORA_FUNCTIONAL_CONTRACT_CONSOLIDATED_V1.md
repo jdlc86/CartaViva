@@ -5,6 +5,13 @@ Fecha: 2026-10-18. Fase: **documentación y revisión de requisitos**. Sin imple
 ## Jerarquía y trazabilidad
 Las decisiones explícitas más recientes prevalecen sobre formulaciones anteriores del mismo asunto. Se preservan como antecedentes `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md`; no deben interpretarse sus preguntas antiguas como decisiones todavía abiertas si este contrato las resuelve. No inferir implementación del contenido documental.
 
+## Dashboard informativo del restaurante (decisión aprobada)
+- Incorporar en la vista de gestión/configuración del restaurante una pantalla de dashboard exclusivamente informativa, de diseño visual moderno, responsive y legible en móvil. No introduce acciones de modificación de pedidos, cobros, catálogo ni datos contables.
+- Mostrar al menos ventas diarias, ventas del mes, recaudación efectivamente cobrada, número de pedidos, ticket medio, platos más pedidos y evolución temporal con gráficos. Permitir seleccionar periodos y comparar con el periodo anterior cuando existan datos suficientes.
+- Obtener indicadores desde datos persistidos y autorizados del restaurante, calculados en servidor y filtrados por tenant; nunca usar cifras de demostración como reales. Presentar estados de carga, vacío, error y última actualización. Respetar el contrato de sincronización sin polling periódico.
+- Diferenciar ventas netas de descuentos y devoluciones, importes cobrados, saldos pendientes y propinas; las propinas no son ventas del restaurante. Evitar doble contabilización de rondas, reintentos, revisiones de comandas y pagos de terceros. Mostrar la definición y el periodo de cada métrica, usando la zona horaria configurada del restaurante para cortes diarios y mensuales.
+- Acceso limitado a perfiles de gestión autorizados; no exponer información personal de comensales ni detalles financieros ajenos al restaurante. La pantalla no sustituye informes fiscales ni contabilidad.
+
 ## Mesa, QR, visita y cuentas
 - QR fijo identifica mesa, no presencia física. Fotografía y renovación remota mientras la mesa esté abierta son riesgos aceptados. Revocar QR invalida permisos de pedido asociados al código anterior, no pedidos, cuentas ni pagos.
 - Camarero abre, cierra y pausa mesa. Pausa temporal: permite carta, consulta de cuenta y estado, pagos de deudas existentes y llamar al camarero; bloquea añadir a cesta, enviar pedidos y cambios de modalidad de pago. Al reanudar, el estado se sincroniza mediante eventos sin sondeo ni refresco manual; tras reconexión se revalida el estado autorizado. Reanudación automática al vencimiento si no se cerró o amplió pausa; revalidar disponibilidad. Cierre bloquea nuevas autorizaciones/pedidos, no pagos ni deuda anterior.
@@ -188,5 +195,8 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 49. Reparto de propinas: Sabora no ofrece registro de asignaciones, liquidaciones ni importes entregados por trabajador; el restaurante gestiona el reparto fuera de la aplicación.
 50. Devolución parcial o total del consumo: no recalcular ni devolver automáticamente propinas ya abonadas; mantener el desglose histórico.
 51. Solicitud expresa de devolución de propina: tramitar devolución autorizada al pagador original, idempotente y auditada, registrando el reembolso de la propina sin gestionar el reparto a trabajadores.
+52. Dashboard de restaurante: ventas diarias y mensuales, recaudación, pedidos, ticket medio y platos más pedidos reflejan datos reales del tenant, con estados vacío y error.
+53. Dashboard: distinguir consumo vendido, cobros efectivos, deuda pendiente y propinas; reintentos y pagos de terceros no duplican métricas.
+54. Dashboard: cortes por zona horaria del restaurante y filtros de periodo; perfiles sin autorización no pueden acceder a métricas financieras.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
