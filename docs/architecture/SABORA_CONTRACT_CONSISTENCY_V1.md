@@ -112,3 +112,21 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 **Salvaguardas técnicas:** roles y permisos de cocina/camarero/admin; confirmación de decisiones; cálculos monetarios en céntimos y tope igual al saldo efectivamente capturado y no reembolsado; idempotencia de solicitudes y reembolsos; webhooks verificados; auditoría inmutable; eventos tras commit, notificaciones en app y push opcional; sin polling. Evitar carreras entre envío, preparación, cancelación y captura.
 
 **Pendiente de concretar:** matriz exacta de permisos y límites de devoluciones cuando la aprobación está desactivada; posibilidad de rechazo de cancelación voluntaria una vez iniciada preparación; tratamiento de devoluciones parciales por plato, impuestos, descuentos y propinas; política de escalado y resolución de errores de pasarela. La pantalla descrita es contrato funcional, no implementación existente.
+
+## Regla definitiva de origen de cancelación y arbitraje (18-10-2026)
+
+**Decisión explícita del usuario, prevalece sobre propuestas anteriores:** el camarero dispone de dos motivos claramente separados al cancelar: **«Solicitado por el cliente»** y **«Motivo del restaurante»**. Para una cancelación atribuible al restaurante iniciada por camarero, corresponde **reintegro del importe afectado sin arbitraje**. Para cancelación solicitada por el cliente, se aplica la configuración de aprobación/arbitraje del restaurante. **El botón de cancelación del cocinero SIEMPRE requiere arbitraje administrativo**, incluso si el motivo es falta de existencias. Esta regla sustituye cualquier sugerencia previa de que cocina pudiera evitar el arbitraje mediante configuración.
+
+**Importante:** arbitraje de cocina es revisión obligatoria del expediente, no permiso discrecional para negar una devolución que legal o contractualmente corresponda. La incidencia de cocina debe registrarse y bloquear el servicio imposible inmediatamente; la revisión administrativa no debe ocultar el incidente ni impedir avisar al cliente. El importe a reintegrar se calcula por líneas/unidades realmente afectadas y su prorrateo de impuestos/descuentos; no se presume cancelación de todo el pedido.
+
+**Flujo económico:** si hay captura, reembolso idempotente al método original; si solo hay autorización, anulación o ajuste de autorización, sin falso reembolso. Los motivos del restaurante por camarero se ejecutan sin cola de aprobación pero con control de permisos, confirmación, límites de importe aplicables y auditoría para detectar abusos. En cocina se crea expediente obligatorio de arbitraje y solicitud de devolución vinculada a la incidencia; el administrador resuelve con trazabilidad y no puede duplicar reembolsos.
+
+**Matriz normativa:**
+
+| Actor y motivo | Arbitraje | Regla económica |
+| --- | --- | --- |
+| Camarero — solicitado por cliente | Según configuración | Decisión de devolución según política y obligaciones aplicables |
+| Camarero — motivo del restaurante | No | Reintegro del importe afectado |
+| Cocinero — incidencia de cocina | Siempre | Revisión administrativa obligatoria; reintegro debido del importe no servido |
+
+**Pendiente técnico:** definición precisa de autoridad/limites y mecanismos antifraude del camarero para la ruta sin arbitraje, alcance de cancelación parcial y recuperación de fallos de pasarela. No afirmar que estas pantallas o APIs ya estén implementadas.
