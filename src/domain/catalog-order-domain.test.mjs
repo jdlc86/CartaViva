@@ -1,0 +1,14 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {Availability,visibleCatalog,detectIncidents,confirmBasket,prepareImmediateResubmission,incidentDelivery} from "./catalog-order-domain.mjs";
+const categories=[{id:"a",published:true,position:1},{id:"b",published:true,position:2},{id:"c",published:false,position:3}];
+const dishes=[{id:"d1",categoryId:"a",published:true,availability:Availability.SOLD_OUT},{id:"d2",categoryId:"b",published:true,availability:Availability.RETIRED},{id:"d3",categoryId:"c",published:true,availability:Availability.AVAILABLE}];
+test("published category with sold-out dishes stays; empty/hidden categories vanish",()=>assert.deepEqual(visibleCatalog(categories,dishes).map(x=>x.id),["a"]));
+const catalog={version:7,dishes:new Map([["burger",{published:true,availability:Availability.AVAILABLE}]]),options:new Map([["ketchup",{published:true,availability:Availability.SOLD_OUT}],["mayo",{published:true,availability:Availability.AVAILABLE}]])};
+const original=[{id:"line1",dishId:"burger",optionIds:["ketchup"]}];
+const corrected=[{id:"line1",dishId:"burger",optionIds:["mayo"]}];
+test("unavailable option blocks confirmation",()=>{assert.equal(detectIncidents(original,catalog)[0].itemId,"ketchup");assert.throws(()=>confirmBasket({lines:original,catalog,acceptedCatalogVersion:7}),{code:"unavailable_selection"})});
+test("stale catalog version blocks even valid selection",()=>assert.throws(()=>confirmBasket({lines:corrected,catalog,acceptedCatalogVersion:6}),{code:"catalog_changed"}));
+test("waiting order may be resubmitted immediately with original snapshot",()=>{const r=prepareImmediateResubmission({original:{id:"o1",version:2,status:"awaiting_group_dispatch",lines:original},correctedLines:corrected,catalog,acceptedCatalogVersion:7,idempotencyKey:"k1"});assert.equal(r.bypassTableGrouping,true);assert.deepEqual(r.originalSnapshot,original);assert.deepEqual(r.lines,corrected)});
+test("dispatched order cannot be resubmitted using waiting flow",()=>assert.throws(()=>prepareImmediateResubmission({original:{id:"o1",version:2,status:"dispatched",lines:original},correctedLines:corrected,catalog,acceptedCatalogVersion:7,idempotencyKey:"k1"}),{code:"already_dispatched"}));
+test("push is optional but in-app event is universal",()=>{const r=incidentDelivery({affectedCustomerIds:["a","b"],subscribedCustomerIds:["a"],event:{type:"availability_changed"}});assert.equal(r[0].push.type,"availability_changed");assert.equal(r[1].push,null);assert.ok(r[1].inApp)});
