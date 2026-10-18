@@ -38,3 +38,7 @@ Se elimina el adorno superior que recordaba a la virgulilla de la letra ñ, tant
 ## Próxima puerta de aprobación
 
 Validación visual del logo principal y del monograma; después crear masters definitivos y exportaciones reproducibles.
+
+## Ajuste de proporciones del marco (18-10-2026)
+
+Se reduce la altura del fondo verde del logotipo principal de 600×300 a **600×225** unidades SVG, conservando el ancho, y se redistribuyen el lettering, el trazo inferior y la firma «by Allaiso» dentro de un marco más compacto. El icono de PWA mantiene su formato cuadrado independiente.
