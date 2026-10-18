@@ -73,3 +73,18 @@ Se adopta el modelo funcional de Fleetia como referencia a adaptar y verificar e
 - La operación es atómica y serializada; revoca inmediatamente la facultad de escritura del titular anterior, incluso con sesiones preexistentes. No se admiten dos titulares simultáneos.
 - Requiere motivo registrado y auditoría append-only (actor ROOT, titular anterior y nuevo, instante, resultado y correlation ID). No elimina datos del negocio.
 - Esta decisión concreta y prevalece sobre la redacción anterior que reservaba la titularidad únicamente a ADMIN; el resto de requisitos de seguridad permanecen vigentes.
+
+## Decisión arquitectónica: Fleetia como base de referencia para acceso y permisos (18-10-2026)
+
+**Repositorio fuente:** `jdlc86/GestionIntegral_Rutaa` (Fleetia). **Repositorio destino:** `jdlc86/CartaViva`.
+
+- Para implementar en CartaViva los mecanismos de **invitación, reenvío, confirmación de identidad, registro Passkey, activación explícita, suspensión/revocación, autorización, titularidad única y auditoría**, se estudiará primero la implementación real de Fleetia.
+- **Reutilización selectiva, no copia ciega**: identificar invariantes de seguridad, límites transaccionales, contratos HTTP/DB, pruebas, fallos conocidos y dependencias antes de trasladar código. Adaptar nombres, roles, recursos, modelo de datos, dominio de autenticación y flujos de negocio de CartaViva.
+- Se permite y se espera un **refactor parcial** de módulos reutilizables cuando mejore separación de responsabilidades, legibilidad, testabilidad o ajuste al proyecto; no se exige replicar la arquitectura de Fleetia ni introducir acoplamiento en tiempo de ejecución entre ambos productos.
+- Priorizar preservar las garantías comprobadas: Auth válido ≠ acceso empresarial; invitado → confirmación → Passkey → activación explícita; único titular de escritura; ROOT puede forzar toma o reasignación; control de concurrencia en PostgreSQL; privilegios mínimos y auditoría append-only.
+- No importar secretos, claves, usuarios, datos de producción, URLs de origen/RP ID ni configuración específica de Fleetia. Cada producto tendrá credenciales y entorno propios.
+- Antes de implementar, inventariar archivos, migraciones, endpoints y pruebas pertinentes de Fleetia, con referencia a commit/SHA. Contrastar contra los requisitos de CartaViva y documentar diferencias deliberadas.
+- Exigir pruebas de regresión, concurrencia y autorización en entorno aislado de CartaViva. La existencia de pruebas satisfactorias en Fleetia **no sustituye** la verificación en CartaViva.
+- Mantener trazabilidad entre requisito, mecanismo de referencia, decisión de adaptación, implementación y pruebas. Revisar cambios de seguridad antes de desplegar.
+
+**Estado:** decisión de metodología aprobada; no implica que los módulos estén ya implementados en CartaViva.
