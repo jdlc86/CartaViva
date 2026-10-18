@@ -114,3 +114,11 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 
 ## Próxima fase
 Descomponer en historias de usuario verificables, definir contratos y modelo de datos, resolver decisiones abiertas, crear pruebas de aceptación y plan incremental de desarrollo. Este documento registra acuerdos de producto, no sustituye validación técnica ni legal.
+
+## Clasificación alimentaria y filtros (aprobado 18-10-2026)
+- Incorporar dos filtros alimentarios independientes de la categoría gastronómica: **Vegetariano** y **Vegano**. Se aplican sobre Entrante, Primero, Segundo, Postre y Bebida, sin duplicar fichas.
+- La clasificación de cada producto será declarada y verificada desde gestión, con estado explícito **PENDIENTE_VERIFICACION**, **VERIFICADO** o **NO_APLICA** por atributo. Un producto sin verificación no se mostrará como vegetariano ni vegano.
+- Un producto verificado como vegano también satisface el filtro vegetariano; la relación inversa no se cumple. Se mantendrá consistencia en edición, importación y API.
+- El cliente dispondrá de controles de filtro comprensibles, compatibles con búsqueda y categoría. No se presentarán afirmaciones dietéticas basadas en fotografías, nombre del plato o ausencia de alérgenos.
+- Las etiquetas vegetarianas y veganas son independientes de la declaración de los 14 alérgenos; el etiquetado dietético **no equivale a ausencia de alérgenos ni garantiza ausencia de contaminación cruzada**.
+- Los cambios de ingredientes o receta invalidarán la verificación dietética hasta nueva revisión; registrar actor, fecha y auditoría.
