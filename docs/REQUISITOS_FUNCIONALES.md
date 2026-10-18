@@ -11,7 +11,8 @@ Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend comparti
 - Aplicar autorización en servidor; nunca confiar en el rol o identidad suministrados por la interfaz.
 
 ## Mesas y QR
-- Alta y edición de mesas: número único por restaurante, capacidad, descripción breve de ubicación y estado operativo configurable desde su ficha: EN_PREPARACION, LISTA o BLOQUEADA. No utilizar un booleano activo/inactivo paralelo como sustituto de estos estados.
+- Alta y edición de mesas: número único por restaurante, capacidad, descripción breve de ubicación y estado operativo configurable desde su ficha: EN_PREPARACION, LISTA o BLOQUEADA.
+- Toda mesa nueva se crea obligatoriamente en estado EN_PREPARACION, sin opción de iniciar directamente como LISTA o BLOQUEADA durante el alta. Un administrador autorizado puede cambiar el estado después de crearla. No utilizar un booleano activo/inactivo paralelo como sustituto de estos estados.
 - EN_PREPARACION: mesa todavía no habilitada para pedir; al escanear el QR mostrar «Estamos preparando esta mesa para atenderte. Por favor, espera unos momentos».
 - LISTA: permite abrir la carta y realizar nuevos pedidos.
 - BLOQUEADA: no admite nuevos pedidos; al escanear mostrar «Esta mesa no está disponible en este momento. Por favor, consulta con nuestro personal».
