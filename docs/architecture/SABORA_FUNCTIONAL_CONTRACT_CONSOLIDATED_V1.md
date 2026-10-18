@@ -44,6 +44,8 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 - «Pagar en caja» es intención reversible hasta registro de cobro efectivo. Tras liquidación en efectivo no se admite cobro digital de esa deuda. Alternativa efectivo ante fallo confirmado de Stripe solo si restaurante la habilita.
 - Pagos, reembolsos, ajustes y sus causas son auditables, sin reescribir operaciones históricas. Cuentas de coste cero se cierran automáticamente cuando todas sus partidas quedan resueltas.
 
+- **Propinas voluntarias en la aplicación (decisión aprobada):** al pagar, el cliente puede seleccionar exclusivamente una de estas opciones predefinidas: 5 %, 10 %, 1 €, 2 €, 5 € o «Sin propina». No existe entrada manual de importes. Los porcentajes se calculan sobre el consumo después de descuentos, excluyendo propinas; junto a cada porcentaje se muestra su equivalente en euros. La selección no es obligatoria ni puede preseleccionar una propina positiva. Mostrar consumo, descuentos, propina separada y total antes de confirmar; validar el importe en servidor. Registrar la propina por separado, sin modificar el precio de los platos. Tratamiento fiscal, distribución y devoluciones requieren validación antes de pagos reales.
+
 ## Stripe: autorización, captura, fallos y recuperación (contrato documental)
 - **Intento único por deuda y revisión:** antes de invocar Stripe, registrar en almacenamiento duradero el intento, su clave idempotente estable, cuenta, importe en céntimos, pedido/revisión y estado. Repetir una petición con resultado incierto reutiliza la misma identidad, nunca crea un nuevo cargo.
 - **Autorización previa:** al confirmar una ronda de pago inmediato se solicita autorización; durante la ventana de agrupación no se captura. Si cambia el precio antes del despacho, requerir consentimiento cuando aumente y actualizar/sustituir autorización conforme a las capacidades reales de Stripe. La liberación de una autorización no es reembolso.
@@ -107,7 +109,7 @@ Las decisiones explícitas más recientes prevalecen sobre formulaciones anterio
 ## Cierre de revisión cruzada (18 de octubre de 2026)
 - Contrastado este contrato con `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md` en `main`. Recuperada la ventana de agrupación de **cinco minutos** que estaba omitida en el consolidado.
 - Corregida una simplificación potencialmente contradictoria: el cambio de política de mesa no convierte silenciosamente sesiones «Pagar al terminar» en pago inmediato. Se bloquean pedidos nuevos incompatibles hasta conciliación explícita.
-- Resuelto: no existen cupones independientes y el descuento se calcula sobre plato más extras. Queda pendiente concretar el tratamiento fiscal y de propinas conforme a normativa y modelo de cobro. La pausa de mesa impide nuevos pedidos y cambios de modalidad de pago, pero permite consultar cuenta/estado y liquidar deudas existentes. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
+- Resuelto: no existen cupones independientes y el descuento se calcula sobre plato más extras. Propinas aprobadas en la aplicación: 5 %, 10 %, 1 €, 2 €, 5 € o sin propina, sin importe manual. Queda pendiente validar su tratamiento fiscal, distribución y devoluciones. La pausa de mesa impide nuevos pedidos y cambios de modalidad de pago, pero permite consultar cuenta/estado y liquidar deudas existentes. La persistencia de ambas modalidades de pago por visita queda aprobada el 18 de octubre de 2026. Los parámetros de infraestructura y Stripe se validan en ingeniería.
 - Esta revisión es documental y **no** equivale a revisión de código, ejecución de pruebas, aprobación de PR ni despliegue.
 
 ## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
@@ -179,5 +181,8 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 42. Plato de 10 € más extras de 2 € y descuento del 20 %: descuento de 2,40 € sobre subtotal conjunto de 12 €; subtotal descontado de 9,60 €, antes del tratamiento fiscal aplicable.
 43. Descuento fijo mayor que el subtotal de plato más extras: limitar a subtotal elegible, resultado no negativo y sin Stripe si deuda final es cero.
 44. Cliente intenta introducir un cupón independiente: no existe flujo ni campo de cupones; solo se aplica el descuento publicado del plato.
+45. Cuenta descontada de 20 €: propina del 5 % = 1 € y del 10 % = 2 €, con equivalencia visible; opciones fijas 1 €, 2 € y 5 € calculan total correcto.
+46. Sin propina: no se añade importe; ninguna propina positiva viene preseleccionada y no existe campo de entrada manual.
+47. Validación de propina: el servidor rechaza importes o porcentajes ajenos a las opciones predefinidas y conserva desglose separado.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
