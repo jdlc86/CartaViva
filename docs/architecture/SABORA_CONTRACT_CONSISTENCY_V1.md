@@ -142,3 +142,13 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 **Matiz de importe cero:** no cobrar ni abrir operación Stripe cuando el importe a pagar sea exactamente cero; distinguir importe final calculado de precio individual de platos, descuentos y extras. Una sesión de cuenta en caja ya elegida mantiene esa modalidad aunque se añadan pedidos gratuitos.
 
 **Pendiente de concretar:** alcance de bloqueo de modalidad para «Pagar ahora» en pedidos posteriores (el usuario solo ha exigido expresamente persistencia para «Pagar al terminar»); qué hacer si una sesión inicialmente gratuita añade después un pedido de pago; tratamiento de mesas con varios clientes/pagadores y política de caja. No inferir cambios de modalidad sin consentimiento.
+
+## Pago obligatorio por mesa (18-10-2026)
+
+**Decisión aprobada:** el configurador de mesas debe permitir activar **«Exigir pago conforme se pide»** por mesa (p. ej. terraza). La política de la mesa prevalece sobre la opción general «Pagar al terminar» para los pedidos nuevos con importe positivo. Cuando está activa, el cliente no puede seleccionar cuenta abierta/caja: debe pagar cada pedido conforme lo realiza. Si Stripe está habilitado, se autoriza al confirmar y se captura al despachar a cocina; cada ronda de importe positivo requiere su propia operación de autorización/captura. Si el pedido tiene importe final cero, no se exige operación de pago.
+
+**Política no implícita por zona:** pertenecer a terraza no activa automáticamente el requisito; el restaurante lo configura en cada mesa, con posibilidad futura de edición masiva por zona. Guardar versión y momento de aplicación de la política para evitar cambios retroactivos en pedidos confirmados.
+
+**Salvaguardas:** si una mesa exige pago inmediato y Stripe no está operativo, no aceptar silenciosamente pedidos de importe positivo sin garantía de pago; mostrar bloqueo y canal de cobro presencial gestionado por personal, sujeto a diseño. No convertir automáticamente una sesión ya abierta «Pagar al terminar» a «Pagar ahora» por un cambio de mesa o configuración: requiere procedimiento explícito y conciliación de cuenta. La regla de cero euros se aplica al importe final con extras y descuentos, no solo al precio base de los platos.
+
+**Aclaración adicional aprobada:** si una sesión comenzó con pedidos gratuitos y posteriormente aparece el primer pedido con importe positivo, mostrar las opciones de pago en ese momento, respetando la política obligatoria de la mesa.
