@@ -48,3 +48,9 @@ Se reduce la altura del fondo verde del logotipo principal de 600×300 a **600×
 El usuario prefiere expresamente la tercera exploración visual frente a las propuestas de olla con fondo verde sólido. La [propuesta V3 en SVG](sabora-logo-outline-v3.svg) se adopta como **dirección visual principal para continuar refinando**: olla de contorno verde, tapa flotante, asas discretas, fondo transparente, lettering «sabora» verde, subrayado cálido y firma «by Allaiso».
 
 Los anteriores SVG se conservan como antecedentes; no son la dirección vigente. Pendiente de validar el ajuste óptico, contraste, variantes reducidas y contornos tipográficos antes de declararlo arte final de producción.
+
+## Aprobación de la opción visual (18-10-2026)
+
+**Aprobada por el usuario como opción elegida:** [Sabora V3 — olla de contorno abierto, lienzo ajustado](sabora-logo-outline-v3.svg), commit de ajuste `046711dad5f7d9f98c75f32b9f2d6d72d14d9256`.
+
+Esta versión reemplaza las alternativas previas como referencia visual oficial. Mantener fondo SVG transparente, silueta verde, tapa flotante, letras verdes, trazo inferior cálido y firma «by Allaiso». No recuperar adornos superiores semejantes a la virgulilla de «ñ», fondos verdes rectangulares ni marcos sobredimensionados. La aprobación de la composición no equivale a verificación de registro de marca, licencia tipográfica ni generación de iconos de producción.
