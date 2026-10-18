@@ -61,6 +61,29 @@ Cambios de política no alteran retroactivamente pedidos ni pagos existentes; la
 - Política de borradores/publicación automática, efectos de descuentos/cupones sobre coste cero y alcance exacto de pausa global siguen abiertos si no hay aprobación explícita en otras fuentes. El arbitraje por origen cocina/camarero sí está decidido; quedan por diseñar permisos, límites antifraude y resolución de casos concretos.
 - Deben diseñarse identidades y permisos de comensal, camarero, cocina y gestor; estados durables de pedido/revisión/comanda/captura/devolución; exclusión concurrente, pruebas de doble pago y duplicación de despacho.
 
+## Seguimiento de hallazgos de auditoría V2 (reconciliación documental)
+
+| Hallazgo | Situación documental tras consolidación | Puerta restante |
+| --- | --- | --- |
+| P1-01 Caja y cancelación | Resuelto: saldo pendiente ajustado; efectivo ya cobrado se devuelve presencialmente y registra | Diseño y pruebas de ajuste/devolución |
+| P1-02 Política de mesa durante visita | Regla normativa de no retroactividad y nueva política para pedidos nuevos | Prueba de sesiones y dispositivos concurrentes |
+| P1-03 Captura y cocina | Invariantes y estados durables exigidos | Implementación, acuse y pruebas de fallo |
+| P1-04 Arbitraje de cocina | Resuelto: cocina siempre revisión; camarero motivo restaurante sin arbitraje | Permisos y pruebas de expediente |
+| P1-05 Validación de opciones | Contrato explícito de tenant, plato, grupo, límites, precios | Corregir kernel y probar servidor |
+| P1-06 Identidad de revisión | Pedido lógico estable y revisión inmutable | Alinear kernel, persistencia y despacho |
+| P1-07 Autorización y privacidad | Invariantes explícitos por cuenta/visita/actor | Diseño de credenciales, permisos y pruebas |
+| P2-08 Precio cero y descuentos | Gratuito no genera Stripe; alcance de cupones/extras no presumido | Confirmar casos no aprobados |
+| P2-09 Modalidad en rondas | Caja persiste; pago inmediato por mesa; no inferir persistencia de «Pagar ahora» | Concretar solo modalidad no decidida |
+| P2-10 Cancelación parcial en caja | Ajuste automático, devolución presencial registrada si ya cobrada | Diseño de interfaz y auditoría |
+| P2-11 Borrador y publicación | Visibilidad de publicados fijada | Política de guardado/publicación pendiente |
+| P2-12 Autorización y agrupación | Captura al despacho, revisión inmediata y carreras prohibidas | Vigencia Stripe, reloj y concurrencia |
+| P2-13 Eventos y reconexión | Sin polling, SSE/WebSocket, cursor, dedup y reconciliación puntual | Retención y recuperación de cursor |
+| P2-14 Documentos históricos | Contrato consolidado separado de antecedentes | Revisión final de referencias y jerarquía |
+| P2-15 Identidad visual | Sabora V3 vigente; assets anteriores históricos | Validación de recursos finales de producción |
+| P2-16 Pruebas | Matriz de pruebas documentada | Ejecución real y CI aún no acreditados |
+
+Esta matriz registra **resolución documental**, no certifica código, tests ni integración. No reabrir P1-01, P1-02, P1-04 o P2-10 por formulaciones obsoletas en la auditoría.
+
 ## Matriz de pruebas obligatoria antes de declarar implementado
 1. Dos comensales y dos dispositivos intentando liquidar la misma deuda: una sola liquidación.
 2. Stripe con resultado desconocido, intento simultáneo de cobro en efectivo: efectivo bloqueado hasta resolución.
