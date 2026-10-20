@@ -198,3 +198,10 @@
 - `scripts/ci/postgres-migration-smoke.sh` crea **solo dentro del contenedor desechable sin red** el rol `sabora_staff_reader_login LOGIN INHERIT NOBYPASSRLS` y le concede únicamente `sabora_staff_reader`. Verifica ausencia de BYPASSRLS/membresías inesperadas, SELECT de membresía permitido y SELECT de pedidos/UPDATE de personal denegados bajo `SET ROLE sabora_staff_reader_login`.
 - La propuesta SQL en `docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql` sigue siendo **borrador no incluido en migraciones**. El login del CI no tiene contraseña ni conexión externa. Pendiente resultado CI del nuevo HEAD y evaluación del modelo real de roles de Supabase.
 - Sin merge, despliegue, creación de usuarios en Supabase ni intervención en VPS/Fleetia.
+
+## Hito de bloque largo — composición offline del runtime de autorización
+- CI #213 (`39488630655`) SUCCESS para prueba PostgreSQL 17 aislada del LOGIN heredado.
+- Añadido `apps/api/src/staff-authorization-runtime.mjs`: compone lifecycle del pool, observador de eventos acotados y hooks Fastify JWT+RLS; no abre conexiones al importar ni registra rutas públicas. El caller inyecta driver, credenciales, verificador y JWKS. `open()` asíncrono reutiliza hooks solo mientras el pool sigue abierto; `close()` es terminal. Ante fallo de composición, espera el cierre del pool antes de propagar error.
+- `tests/staff-authorization-runtime.test.mjs`: pruebas Fastify offline con pool simulado para autorización/revocación en peticiones sucesivas, consulta SQL fijada, TLS estricto, cierre único concurrente, error de configuración con limpieza y 503 sin secretos ante caída DB.
+- `apps/api/package.json` incluye chequeo sintáctico del nuevo módulo. **CI de este HEAD pendiente**; no confundir pruebas publicadas con ejecución certificada.
+- Queda pendiente: evaluar provisión de identidad en Supabase, driver real, políticas de log, carrera revocación/operación, rutas de negocio y aprobación de despliegue. No hay conexión operativa, merge, ni despliegue; Fleetia intocable.
