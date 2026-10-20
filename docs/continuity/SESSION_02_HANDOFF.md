@@ -272,3 +272,24 @@
 - Detectada incompatibilidad SQL real: el workflow emitía `accepted_transfer` en auditoría pero la restricción SQL solo permite `accept`; corregido en `5480b0a`.
 - Migración `20261020230000_sabora_ownership_idempotency.sql` añade `request_payload jsonb` a auditoría. El workflow guarda operación, actor, propuesta, destino y motivo normalizados, y solo admite replay cuando coincide el payload íntegro; las filas antiguas con payload NULL no son reproducibles. Añadida prueba de rechazo al cambiar el motivo y migración incluida en smoke PostgreSQL 17.
 - **Pendiente:** CI de este bloque, test transaccional de concurrencia e integración de privilegios/rutas. No ejecutar en Supabase operativo sin autorización.
+
+
+## Handoff a Codex Desktop — primera interacción y bloque autónomo (2026-10-20)
+
+### Entrada obligatoria y límites
+- Codex Desktop puede iniciar sin clon local ni contexto. Antes de editar, localizar o clonar **solo** `jdlc86/CartaViva`, comprobar `git remote -v`, `git status`, rama y HEAD; trabajar sobre `feat/sabora-pnpm-bootstrap` y PR #2 sin pisar cambios ajenos. Si no hay acceso al repositorio, detenerse y solicitar acceso, sin crear un repositorio alternativo.
+- Leer **este documento completo**, `docs/architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md`, `docs/architecture/SABORA_ROOT_OWNERSHIP_TRANSACTION_DESIGN.md`, contratos de seguridad, migraciones y scripts CI relevantes. La documentación GitHub prevalece sobre cualquier resumen o prompt; registrar contradicciones, no inventar contratos.
+- Una instalación Sabora = un restaurante; PWA cliente y gestión independientes. Un ROOT protegido, múltiples ADMIN pero como máximo un titular de escritura. Autoridad desde identidad verificada y membresía durable; nunca del cliente.
+- **Prohibido modificar Fleetia** (repositorio, contenedores, bases de datos, redes, volúmenes, puertos). VPS compartido: ningún despliegue, reinicio, parada, limpieza o intervención operativa sin autorización expresa y aislamiento completo. No aplicar migraciones al Supabase operativo. No merge ni revisión Codex externa de pago sin aprobación.
+
+### Encargo sugerido: puerta transaccional de titularidad, pruebas y seguridad
+1. Verificar HEAD y estado real de CI; último éxito conocido al redactar: workflow #281 en commit `9af02f6389ffc94c183ab988e2066efe330b075d`. Puede haber nuevos commits.
+2. Auditar `apps/api/src/ownership-workflow.mjs`, `ownership-transition-policy.mjs`, `postgres-transaction.mjs`, `transactional-admin-write.mjs` y migraciones `20261020210000`–`20261020230000`. Corregir fallos de lógica y de esquema **con pruebas que reproduzcan cada fallo**.
+3. Construir pruebas integradas en PostgreSQL 17 **desechable y aislado** para solicitudes, ofertas, aceptación, rechazo, cancelación, reasignación ROOT, auditoría append-only, idempotencia exacta, concurrencia (dos conexiones) y fallos con rollback. Reutilizar `scripts/ci/postgres-migration-smoke.sh` y mecanismos CI existentes; no tocar entornos operativos.
+4. Verificar invariantes de bloqueo, estado activo, propietario único, ROOT único, carreras y lock ordering. No confiar solo en tests con consultas simuladas. Examinar particularmente el replay por correlationId, cambios concurrentes de propuesta, integridad de audit y permisos SQL mínimos.
+5. Integrar un adaptador/runtime o rutas **solo si** el contrato de identidad verificada, permisos y despliegue ya documentado permite hacerlo de manera segura; de lo contrario dejar la integración pendiente y documentar la razón. No improvisar JWT, credenciales, privilegios ni nuevas reglas de negocio.
+6. Ejecutar tests, lint/build y CI del repositorio; resolver fallos. Commits pequeños y coherentes sobre la rama autorizada; no fusionar PR #2. Actualizar documentación de arquitectura/seguridad al cambiar contratos.
+
+### Entrega de vuelta a ChatGPT
+- Añadir al final de **este mismo archivo** una sección titulada `## Retorno Codex Desktop — AAAA-MM-DD` con: rama y SHA final, commits, archivos modificados, decisiones técnicas y justificación, pruebas ejecutadas (comandos y resultados), enlaces/IDs de GitHub Actions, vulnerabilidades o bloqueos pendientes, operaciones explícitamente no realizadas y siguiente bloque recomendado.
+- Dejar el árbol limpio o explicar exactamente los cambios sin commit. Entregar al usuario un resumen conciso con SHA y estado de CI. Nunca escribir «CI verde» sin haber consultado la ejecución real.
