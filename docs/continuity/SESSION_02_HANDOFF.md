@@ -420,3 +420,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #325 y bootstrap #309 del HEAD previo SUCCESS.
 - Nuevo `docs/security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md` basado en workflow y política existentes: actores por acción, destinatarios, escrituras y lecturas SQL, locks, replay de correlación, auditoría y prerrequisitos para identidad SQL mínima.
 - Especificación documental, no implica grants, rutas HTTP ni aplicación de migraciones en Supabase operativo. Continúan pendientes los gates de concurrencia y RLS bajo identidad no propietaria.
+
+## Matriz de denegaciones de titularidad (2026-10-21)
+- Al consultar, CI #328 y bootstrap #311 de `2fec895` estaban en progreso (sin conclusión).
+- Nuevo `tests/ownership-denial-matrix.test.mjs` cubre aceptación/rechazo por actor equivocado, miembros inactivos o con rol incorrecto, propuestas resueltas o con propietario obsoleto, y separación de ROOT frente a operaciones ordinarias.
+- Son pruebas unitarias de política; la concurrencia real PostgreSQL 17 y RLS bajo identidad mínima siguen pendientes. No se ha modificado producción, VPS ni Fleetia.
