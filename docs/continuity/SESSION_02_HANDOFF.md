@@ -158,3 +158,9 @@
 - Añadido `apps/api/src/staff-pool-config.mjs`: valida host, puerto, nombre de DB, usuario técnico `sabora_staff_reader_login`, contraseña y CA PEM explícita; fuerza `ssl.rejectUnauthorized=true`, limita pool a 3 conexiones y timeouts. Tests negativos para CA ausente, puerto inválido, usuario privilegiado y host en formato URL.
 - **Solo validación de configuración**: no se instala driver `pg`, no se abre conexión, no se crean roles LOGIN, no se accede a secretos operativos. El rol NOLOGIN de la migración no es aún una identidad conectable. El futuro login deberá provisionarse con permisos mínimos, sin BYPASSRLS, y heredar exclusivamente permisos del rol lector; verificar TLS/CA reales antes de habilitarlo.
 - CI del nuevo HEAD pendiente. No hay merge, despliegue ni acceso a Supabase operativo.
+
+## Sesión 02 — ciclo de vida del pool técnico
+- CI #188 (`39475174235`) SUCCESS para validación TLS estricta.
+- Añadido `apps/api/src/staff-pool-lifecycle.mjs`: recibe constructor `Pool` inyectado, valida configuración TLS antes de abrir, abre una sola vez y cierra de forma idempotente, con cierre concurrente compartido. Tras cerrar, el objeto no permite reabrir. Tests con driver simulado en `tests/staff-pool-lifecycle.test.mjs`; build valida sintaxis.
+- **No se ha instalado ni conectado un driver real** y no se integra el pool en `server.mjs`. Falta revisar la interacción con errores de constructor/fin de conexión, verificar CA real, credenciales de LOGIN y controles de autorización transaccional. CI del HEAD pendiente.
+- Sin merge, despliegue ni acceso a Supabase operativo/Fleetia.
