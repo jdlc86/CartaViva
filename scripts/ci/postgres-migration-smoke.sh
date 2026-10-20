@@ -80,6 +80,11 @@ values ('00000000-0000-0000-0000-000000000001',1,4,decode(repeat('ab',32),'hex')
 -- Table numbers are unique per restaurant, not globally.
 insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
 values ('00000000-0000-0000-0000-000000000002',1,2,decode(repeat('cd',32),'hex'));
+-- Both inclusive grouping-window boundaries must remain valid.
+insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash,grouping_window_seconds)
+values
+('00000000-0000-0000-0000-000000000001',12,4,decode(repeat('ab',32),'hex'),60),
+('00000000-0000-0000-0000-000000000001',13,4,decode(repeat('ab',32),'hex'),3600);
 -- Invalid table configuration is rejected at the database boundary.
 do $$
 begin
