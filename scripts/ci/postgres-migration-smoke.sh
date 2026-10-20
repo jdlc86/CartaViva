@@ -90,6 +90,13 @@ do $$
 begin
   begin
     insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+    values ('00000000-0000-0000-0000-000000000001',14,4,decode('ab','hex'));
+    raise exception 'invalid QR hash length accepted';
+  exception when check_violation then
+    raise notice 'invalid QR hash length rejected';
+  end;
+  begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
     values ('00000000-0000-0000-0000-000000000001',0,4,decode(repeat('ab',32),'hex'));
     raise exception 'zero table number accepted';
   exception when check_violation then
