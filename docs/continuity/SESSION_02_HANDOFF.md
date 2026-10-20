@@ -93,3 +93,9 @@
 - Añadido `tests/auth-hook.test.mjs` para cabeceras inválidas, suplantación, identidad verificada y fallos de claves/firma. Incluido chequeo sintáctico en build.
 - **Aún no está registrado en `server.mjs` ni habilita rutas operativas.** Antes de conectarlo: definir estado y rol de empleados con base de datos durable, estrategia de sesión/revocación y pruebas HTTP Fastify. Mantener `/health` y `/ready` públicos; todo negocio cerrado.
 - No hay despliegue ni modificación de recursos operativos. CI del nuevo HEAD pendiente.
+
+## Sesión 02 — autorización de empleados por estado vigente
+- Añadido `apps/api/src/staff-authorization.mjs` con autorización desacoplada: exige identidad previamente verificada, consulta `lookupStaff(userId)` en cada solicitud, exige `state='active'` y rol permitido, rechaza identidad ausente/roles ajenos con 403 y errores del almacén con 503 (sin abrir permisos).
+- Añadido `tests/staff-authorization.test.mjs`: suplantación de actor/rol en body, revocación entre peticiones, ausencia de identidad, roles inválidos y caída del almacén. Build valida sintaxis.
+- **Brecha explícita:** `sabora.staff_members` en la migración PoC actual solo contiene `user_id` y `role`, sin columna `state`. Este módulo NO está conectado al servidor ni a PostgreSQL. Antes de usarlo hay que aprobar e implementar migración versionada de estado de membresía, lookup durable con privilegios mínimos, revocación de sesiones y auditoría; no inferir `active` de una fila existente.
+- Bootstrap CI #148 (`39471596977`) estaba en ejecución al verificar; consultar su conclusión y el nuevo HEAD. No merge, despliegue ni cambios a Supabase operativo.
