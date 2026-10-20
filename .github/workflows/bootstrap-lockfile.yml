@@ -1,0 +1,39 @@
+name: Bootstrap Sabora lockfile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Sabora
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack and pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.17.1 --activate
+          pnpm --version
+      - name: Generate lockfile from package manifests
+        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Verify lockfile is usable
+        run: |
+          test -s pnpm-lock.yaml
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm test
+          pnpm build
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-pnpm-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 7
