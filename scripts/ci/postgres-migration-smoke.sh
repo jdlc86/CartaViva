@@ -171,6 +171,35 @@ begin
 end;
 $function_acl$;
 
+-- Enumerate all private tables and sequences, including objects introduced by
+-- future migrations. Browser roles and dormant writer must have no access.
+do $private_object_acl$
+declare obj record; principal text; privilege text;
+begin
+ for obj in
+  select c.oid, c.relname, c.relkind
+  from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='sabora' and c.relkind in ('r','p','v','m','f','S')
+ loop
+  foreach principal in array array['PUBLIC','anon','authenticated','sabora_admin_writer'] loop
+   if obj.relkind='S' then
+    foreach privilege in array array['USAGE','SELECT','UPDATE'] loop
+     if has_sequence_privilege(principal,obj.oid,privilege) then
+      raise exception 'private sequence % grants % to %',obj.relname,privilege,principal;
+     end if;
+    end loop;
+   else
+    foreach privilege in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+     if has_table_privilege(principal,obj.oid,privilege) then
+      raise exception 'private relation % grants % to %',obj.relname,privilege,principal;
+     end if;
+    end loop;
+   end if;
+  end loop;
+ end loop;
+end;
+$private_object_acl$;
+
 -- Reader must be strictly read-only and subject to RLS.
 do $reader$
 begin
