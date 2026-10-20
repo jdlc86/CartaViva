@@ -243,3 +243,6 @@
 - Workflow #254 (commit `7a60957c`) SUCCESS: migraciones, smoke PostgreSQL 17, Compose e imagen API validados en entorno aislado.
 - Añadido `apps/api/src/postgres-owner-lookup.mjs` con lectura SQL fija del singleton, rechazo de ausencia/duplicidad/UUID inválido y retorno `null` solo para bootstrap sin titular; pruebas en `tests/postgres-owner-lookup.test.mjs`.
 - **No conectar como autorización definitiva de escritura**: el gate de consulta sufre TOCTOU si la mutación no revalida actor y titular bajo el mismo bloqueo/transacción. Sin conexión de runtime ni grants operativos.
+
+## CI #257/#258 — fallo de validación UUID
+- Los tests del nuevo adaptador `postgres-owner-lookup.mjs` revelaron que su regex omitía un grupo de cuatro caracteres del UUID. Cambiar el fixture no resolvía el defecto; se corrigió la regex en commit `8d72ba5d`. No confundir el fallo del adaptador con un fallo de migración PostgreSQL: los pasos de base de datos fueron omitidos por el test unitario fallido. Nueva validación CI pendiente.
