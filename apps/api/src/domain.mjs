@@ -8,6 +8,8 @@ export function createRestaurantStore({ clock = () => Date.now(), groupingWindow
   const tables = new Map();
   const orders = new Map();
   const idempotency = new Map();
+  const memberships = new Map();
+  const orderEvents = [];
   const now = () => clock();
   const hash = (value) => createHash('sha256').update(value).digest('hex');
   const safeEqual = (a, b) => {
@@ -64,10 +66,36 @@ export function createRestaurantStore({ clock = () => Date.now(), groupingWindow
     idempotency.set(key, { payload, result: structuredClone(result) });
     return { ...structuredClone(result), repeated: false };
   }
+  // Internal proof-of-concept only. Membership assignment must never be exposed
+  // to a client; production authorization will bind identity to verified Auth.
+  function assignMember({ userId, role }) {
+    if (typeof userId !== 'string' || !userId.trim() || !['admin', 'waiter', 'kitchen'].includes(role)) throw new Error('invalid_member');
+    memberships.set(userId, role);
+  }
+  function transitionOrder({ orderId, actorUserId, nextStatus, reason = null }) {
+    const order = orders.get(orderId);
+    if (!order) throw new Error('order_not_found');
+    const role = memberships.get(actorUserId);
+    if (!role) throw new Error('actor_not_authorized');
+    if (typeof reason !== 'string' && reason !== null) throw new Error('invalid_reason');
+    if (reason !== null && (!reason.trim() || reason.trim().length > 500)) throw new Error('invalid_reason');
+    const transitions = { confirmed: ['preparing', 'cancelled'], preparing: ['ready', 'cancelled'], ready: ['delivered', 'cancelled'], delivered: [], cancelled: [] };
+    if (!transitions[order.status].includes(nextStatus)) throw new Error('invalid_order_transition');
+    if (!(role === 'admin' || (role === 'kitchen' && ['preparing', 'ready', 'cancelled'].includes(nextStatus)) || (role === 'waiter' && ['delivered', 'cancelled'].includes(nextStatus)))) throw new Error('role_not_allowed_for_transition');
+    if (nextStatus === 'cancelled' && !reason?.trim()) throw new Error('cancellation_reason_required');
+    const previousStatus = order.status;
+    order.status = nextStatus;
+    const event = { id: randomUUID(), orderId, sessionId: order.sessionId, tableId: order.tableId, actorUserId, previousStatus, currentStatus: nextStatus, reason: reason?.trim() || null, occurredAt: now() };
+    orderEvents.push(event);
+    return { order: structuredClone(order), event: structuredClone(event) };
+  }
+  function listOrderEvents(orderId) {
+    return structuredClone(orderEvents.filter(event => event.orderId === orderId));
+  }
   function getTable(tableId) {
     const table = tables.get(tableId);
     if (!table) throw new Error('table_not_found');
     return { id: table.id, number: table.number, capacity: table.capacity, description: table.description, qrVersion: table.qrVersion, participantCount: table.participants.size, groupingDeadline: table.firstConfirmedAt === null ? null : table.firstConfirmedAt + groupingWindowMs };
   }
-  return { createTable, rotateQr, confirmOrder, getTable, listOrders: () => [...orders.values()].map(o => structuredClone(o)) };
+  return { createTable, rotateQr, confirmOrder, assignMember, transitionOrder, listOrderEvents, getTable, listOrders: () => [...orders.values()].map(o => structuredClone(o)) };
 }
