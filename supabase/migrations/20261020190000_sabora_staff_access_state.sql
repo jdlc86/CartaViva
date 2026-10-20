@@ -28,8 +28,24 @@ $$;
 revoke all on function sabora.require_active_staff_role(uuid)
  from public,anon,authenticated;
 
--- Replace the two internal functions' role lookup using a versioned migration.
--- Their existing locking, status transitions, and audit semantics stay unchanged.
--- A source-level replacement is applied in the prior migration definitions,
--- with this migration providing the active-state column and function.
+-- Enforce current active membership at the audit-event write boundary.
+-- Both existing transition RPCs insert an event within the same transaction;
+-- an exception rolls back the preceding order/line and notification changes.
+create or replace function sabora.enforce_active_transition_actor()
+returns trigger language plpgsql security invoker
+set search_path = pg_catalog, sabora
+as $
+begin
+ perform sabora.require_active_staff_role(new.actor_user_id);
+ return new;
+end;
+$;
+create trigger sabora_order_status_active_actor
+ before insert on sabora.order_status_events
+ for each row execute function sabora.enforce_active_transition_actor();
+create trigger sabora_order_line_active_actor
+ before insert on sabora.order_line_events
+ for each row execute function sabora.enforce_active_transition_actor();
+revoke all on function sabora.enforce_active_transition_actor()
+ from public,anon,authenticated;
 commit;
