@@ -211,3 +211,8 @@
 - Contrato en `docs/architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md`; se revisaron en solo lectura documentos y migración de Fleetia (commit 7c7f3b5). La trasposición no es literal: ROOT Sabora controla reasignación forzosa.
 - Primer gate offline `apps/api/src/admin-write-gate.mjs` con tests `tests/admin-write-gate.test.mjs`; el gate no está conectado a rutas/DB y no sustituye autorización transaccional anti-TOCTOU.
 - Próximo bloque: esquema y pruebas desechables de ROOT singleton, owner singleton, transferencias concurrentes, revocación, auditoría; integrar autorización ROOT en lector y hooks solo cuando el contrato de persistencia esté probado. Verificar CI del HEAD antes de continuar.
+
+## Prototipo PostgreSQL ROOT / titularidad (2026-10-20)
+- Nueva migración **no aplicada** `supabase/migrations/20261020210000_sabora_root_admin_owner.sql`: rol ROOT, índice único parcial ROOT, tabla singleton de titularidad ADMIN, triggers para impedir degradación/suspensión/baja de ROOT y titular sin transferencia, comprobación de titular ADMIN activo.
+- Smoke PostgreSQL 17 desechable ampliado para probar segundo ROOT, revocación/borrado ROOT, suspensión de titular, titular ROOT prohibido y cambio entre ADMIN. **CI de este HEAD aún pendiente**.
+- LIMITACIONES: aún falta mecanismo transaccional de solicitudes/ofertas/aceptaciones/auditoría; no hay ROOT inicial real ni API conectada. El índice garantiza **como máximo uno**, no existencia automática de ROOT. Falta prueba de carreras bajo conexiones simultáneas y endurecer operaciones directas contra el singleton antes de considerar producción. No se ejecutaron migraciones operativas ni se tocó Fleetia.
