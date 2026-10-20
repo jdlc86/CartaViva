@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql supabase/migrations/20261020220000_sabora_ownership_proposals_audit.sql; do
+for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql supabase/migrations/20261020220000_sabora_ownership_proposals_audit.sql supabase/migrations/20261020230000_sabora_ownership_idempotency.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
