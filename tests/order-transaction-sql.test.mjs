@@ -26,3 +26,11 @@ test('RPC remains private until backend authorization is implemented', () => {
  assert.match(sql, /revoke all on function sabora\.confirm_order[\s\S]*from public, anon, authenticated/i);
  assert.doesNotMatch(sql, /security definer|grant execute|fleetia|docker/i);
 });
+
+test('quantity parsing and customer identity are safe against malformed JSON and delimiter collisions', () => {
+ assert.match(sql, /coalesce\(item->>'quantity', ''\) ~ '\^\[0-9\]\{1,2\}\$'/);
+ assert.match(sql, /then \(item->>'quantity'\)::integer not between 1 and 20/);
+ assert.match(sql, /else true end/);
+ assert.match(sql, /length\(btrim\(p_company\)\)::text/);
+ assert.match(sql, /length\(btrim\(p_employee_number\)\)::text/);
+});
