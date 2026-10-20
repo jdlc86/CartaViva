@@ -122,6 +122,15 @@ begin
   exception when check_violation then
     raise notice 'invalid idempotency key rejected by constraint';
   end;
+  -- Reject control characters in keys even when a privileged writer bypasses RPC.
+  begin
+    update sabora.order_idempotency
+       set request_key = 'invalid' || chr(10) || 'key'
+     where order_id = v_first.order_id;
+    raise exception 'control character in idempotency key accepted';
+  exception when check_violation then
+    raise notice 'control character rejected by key constraint';
+  end;
   -- The idempotency record cannot point to a different table session.
   begin
     update sabora.order_idempotency
