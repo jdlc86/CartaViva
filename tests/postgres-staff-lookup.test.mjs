@@ -29,3 +29,8 @@ test('database errors propagate for upstream 503 fail-closed response', async ()
   const lookup = createPostgresStaffLookup({ query: async () => { throw new Error('db-down'); } });
   await assert.rejects(lookup(uid), /db-down/);
 });
+
+test('accepts active ROOT from the durable staff table', async () => {
+  const lookup = createPostgresStaffLookup({ query: async () => ({ rows: [{ role: 'root', state: 'active' }] }) });
+  assert.deepEqual(await lookup(uid), { role: 'root', state: 'active' });
+});
