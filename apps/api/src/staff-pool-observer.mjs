@@ -5,7 +5,8 @@ const EVENTS = new Set([
   'staff_pool_open_failed',
   'staff_pool_invalid',
   'staff_pool_closed',
-  'staff_pool_close_failed'
+  'staff_pool_close_failed',
+  'staff_reader_query_failed'
 ]);
 
 export function createStaffPoolObserver({ emit } = {}) {
