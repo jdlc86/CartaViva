@@ -34,6 +34,21 @@ begin
     raise exception 'invalid_order_input' using errcode = '22023';
   end if;
 
+  -- Match the in-memory domain contract before any table lock or write.
+  -- Reject malformed items rather than storing untrusted arbitrary JSON.
+  if exists (
+    select 1 from jsonb_array_elements(p_items) as entry(item)
+    where jsonb_typeof(item) <> 'object'
+      or item->>'category' not in ('drink', 'starter', 'main', 'dessert')
+      or coalesce(length(btrim(item->>'name')), 0) = 0
+      or jsonb_typeof(item->'quantity') is distinct from 'number'
+      or (item->>'quantity') !~ '^[0-9]+$'
+      or length(item->>'quantity') > 2
+      or (item->>'quantity')::integer not between 1 and 20
+  ) then
+    raise exception 'invalid_order_items' using errcode = '22023';
+  end if;
+
   -- Serialize every confirmation for this table. No external table can enter
   -- this transaction because of the tenant-scoped predicate.
   select * into v_table
