@@ -405,12 +405,10 @@ begin
   select new_qr_version, new_session_id into v_version, v_new_session
     from sabora.rotate_table_qr(
       '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64));
-  if v_version <> 2 or v_new_session = v_old_session then
-    raise exception 'QR rotation did not increment version or reset session';
+  if v_version <> 2 or v_new_session is distinct from v_old_session then
+    raise exception 'QR rotation changed the active visit or failed to increment version';
   end if;
-  if (select first_confirmed_at is not null from sabora.dining_tables where id=v_table) then
-    raise exception 'QR rotation failed to reset grouping';
-  end if;
+  -- Rotating the credential must not reset the active visit or grouping.
   -- A malformed item must not create an order, even with a valid QR.
   begin
     perform * from sabora.confirm_order(
@@ -536,8 +534,8 @@ begin
   end;
   if (select order_grouping from sabora.confirm_order(
       '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
-      'Acme','101','after_rotate_new','[{"category":"main","name":"Rice","quantity":1}]'::jsonb)) <> 'first' then
-    raise exception 'new QR did not start a fresh grouping window';
+      'Acme','101','after_rotate_new','[{"category":"main","name":"Rice","quantity":1}]'::jsonb)) = 'first' then
+    raise exception 'QR rotation incorrectly restarted grouping';
   end if;
 end $$;
 SQL
@@ -581,24 +579,23 @@ begin
     '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','preparing');
   perform * from sabora.transition_order_status(
     '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','ready');
+  -- Neither kitchen, waiter nor admin can bypass per-item incident arbitration.
   begin
     perform * from sabora.transition_order_status(
-      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','delivered');
-    raise exception 'kitchen delivered order';
-  exception when insufficient_privilege then null;
-  end;
-  perform * from sabora.transition_order_status(
-    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000102','delivered');
-  begin
-    perform * from sabora.transition_order_status(
-      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled','late');
-    raise exception 'terminal order cancelled';
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','cancelled','No stock');
+    raise exception 'kitchen cancelled entire order';
   exception when invalid_parameter_value then null;
   end;
-  if (select status from sabora.orders where id=o) <> 'delivered' then
-    raise exception 'order final status wrong';
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000102','delivered');
+    raise exception 'waiter falsely delivered entire order';
+  exception when invalid_parameter_value then null;
+  end;
+  if (select status from sabora.orders where id=o) <> 'ready' then
+    raise exception 'order readiness changed unexpectedly';
   end if;
-  if (select count(*) from sabora.order_status_events where order_id=o) <> 3 then
+  if (select count(*) from sabora.order_status_events where order_id=o) <> 2 then
     raise exception 'audit event count wrong';
   end if;
   select id into strict o from sabora.orders
@@ -606,14 +603,12 @@ begin
       and status='confirmed' order by confirmed_at,id limit 1;
   begin
     perform * from sabora.transition_order_status(
-      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled');
-    raise exception 'missing cancellation reason accepted';
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled','Out of stock');
+    raise exception 'admin cancelled entire order';
   exception when invalid_parameter_value then null;
   end;
-  perform * from sabora.transition_order_status(
-    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled','Out of stock');
-  if (select reason from sabora.order_status_events where order_id=o) <> 'Out of stock' then
-    raise exception 'cancellation audit reason missing';
+  if (select count(*) from sabora.order_status_events where order_id=o) <> 0 then
+    raise exception 'rejected transition wrote audit history';
   end if;
 end $$;
 SQL
