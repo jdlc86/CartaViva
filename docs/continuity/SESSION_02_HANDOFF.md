@@ -377,3 +377,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Migración `20261020250000_sabora_dormant_admin_writer.sql`: crea rol técnico NOLOGIN, NOINHERIT, NOBYPASSRLS y sin grants de datos. No habilita escrituras administrativas ni acceso a schema privado.
 - Smoke PostgreSQL 17 extendido para comprobar atributos del rol y denegación efectiva bajo SET ROLE de lectura staff, mutación singleton e inserción auditoría. Documento de seguridad actualizado.
 - Puerta pendiente: comprobar CI de este HEAD, revisar matriz de recursos y diseñar permisos por procedimiento sin bypass. No ejecutar SQL en Supabase operativo ni desplegar; Fleetia intacto.
+
+## Continuación: ACL de objetos futuros (2026-10-20)
+- CI #308 y bootstrap #292 del commit `6ac98df` SUCCESS.
+- Migración `20261020260000_sabora_writer_future_acl.sql` y smoke negativo para objetos nuevos: rol writer dormido no debe obtener SELECT/INSERT en tabla nueva ni EXECUTE de función nueva; tampoco EXECUTE por PUBLIC.
+- Las default privileges son específicas del rol creador; no impiden grants explícitos ni cubren otros owners. Documentado en `docs/security/SABORA_SQL_WRITER_BOUNDARY_DESIGN.md`.
+- Validación del CI de este HEAD pendiente; sin despliegues ni recursos operativos afectados.
