@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8}0000_sabora_*.sql; do
+for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
@@ -55,6 +55,11 @@ insert into sabora.staff_members(user_id,role) values
  ('00000000-0000-0000-0000-000000000101','kitchen'),
  ('00000000-0000-0000-0000-000000000102','waiter'),
  ('00000000-0000-0000-0000-000000000103','admin');
+-- Test identities must be explicitly activated; migration defaults deny access.
+update sabora.staff_members set state='active' where user_id in (
+ '00000000-0000-0000-0000-000000000101',
+ '00000000-0000-0000-0000-000000000102',
+ '00000000-0000-0000-0000-000000000103');
 insert into sabora.dining_tables(number,capacity,qr_token_hash)
 values (1,4,sha256(convert_to(repeat('a',64),'UTF8')));
 do $$
@@ -100,6 +105,16 @@ begin
  perform * from sabora.transition_order_line(v_line,'00000000-0000-0000-0000-000000000102','picked_up');
  if (select count(*) from sabora.order_line_events where order_line_id=v_line)<>3 then
   raise exception 'pickup audit missing';
+ end if;
+ -- Revocation must abort transitions and their audit writes atomically.
+ update sabora.staff_members set state='revoked' where user_id='00000000-0000-0000-0000-000000000103';
+ begin
+  perform * from sabora.transition_order_status(v_order,'00000000-0000-0000-0000-000000000103','preparing',null);
+  raise exception 'revoked actor accepted';
+ exception when insufficient_privilege then null;
+ end;
+ if (select status from sabora.orders where id=v_order)<>'confirmed' then
+  raise exception 'revoked actor changed order status';
  end if;
  begin
   perform * from sabora.transition_order_status(v_order,'00000000-0000-0000-0000-000000000103','cancelled','bad');
