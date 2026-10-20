@@ -1,7 +1,6 @@
 -- Sabora-only draft migration. Not applied to any database.
 begin;
 
-create extension if not exists pgcrypto;
 create schema if not exists sabora;
 
 create table sabora.restaurants (
