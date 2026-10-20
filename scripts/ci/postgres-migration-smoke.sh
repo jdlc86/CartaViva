@@ -77,6 +77,25 @@ insert into sabora.restaurants(id,name) values
 ('00000000-0000-0000-0000-000000000002','B');
 insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
 values ('00000000-0000-0000-0000-000000000001',1,4,decode(repeat('ab',32),'hex'));
+-- Invalid table configuration is rejected at the database boundary.
+do $$
+begin
+  begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+    values ('00000000-0000-0000-0000-000000000001',0,4,decode(repeat('ab',32),'hex'));
+    raise exception 'zero table number accepted';
+  exception when check_violation then
+    raise notice 'zero table number rejected';
+  end;
+  begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+    values ('00000000-0000-0000-0000-000000000001',9,0,decode(repeat('ab',32),'hex'));
+    raise exception 'zero capacity accepted';
+  exception when check_violation then
+    raise notice 'zero capacity rejected';
+  end;
+end $$;
+
 do $$
 declare t uuid;
 begin
