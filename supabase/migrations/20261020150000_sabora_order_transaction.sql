@@ -42,7 +42,7 @@ begin
       or coalesce(item->>'category', '') not in ('drink', 'starter', 'main', 'dessert')
       or coalesce(length(btrim(item->>'name')), 0) = 0
       or jsonb_typeof(item->'quantity') is distinct from 'number'
-      or coalesce(item->>'quantity', '') !~ '^[0-9]+
+      or coalesce(item->>'quantity', '') !~ '^[0-9]+$'
       or length(item->>'quantity') > 2
       or (item->>'quantity')::integer not between 1 and 20
   ) then
