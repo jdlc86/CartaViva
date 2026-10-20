@@ -99,3 +99,9 @@
 - Añadido `tests/staff-authorization.test.mjs`: suplantación de actor/rol en body, revocación entre peticiones, ausencia de identidad, roles inválidos y caída del almacén. Build valida sintaxis.
 - **Brecha explícita:** `sabora.staff_members` en la migración PoC actual solo contiene `user_id` y `role`, sin columna `state`. Este módulo NO está conectado al servidor ni a PostgreSQL. Antes de usarlo hay que aprobar e implementar migración versionada de estado de membresía, lookup durable con privilegios mínimos, revocación de sesiones y auditoría; no inferir `active` de una fila existente.
 - Bootstrap CI #148 (`39471596977`) estaba en ejecución al verificar; consultar su conclusión y el nuevo HEAD. No merge, despliegue ni cambios a Supabase operativo.
+
+## Sesión 02 — estado persistente de acceso (prototipo PostgreSQL)
+- CI #152 (`39471749415`) SUCCESS sobre el hito anterior de autorización en memoria.
+- Migración nueva `20261020190000_sabora_staff_access_state.sql`: `staff_members.state` no nulo con `invited` por defecto y estados `active`, `suspended`, `revoked`; **ninguna fila existente se activa automáticamente**. Añade guardia `require_active_staff_role` y triggers en eventos de estado de pedido y línea; si actor está inactivo se aborta toda la transacción, incluido cambio previo de estado. Mantiene RLS FORCE y RPC privadas.
+- Smoke PostgreSQL 17 desechable incluye nueva migración, activación explícita de fixtures y regresiones de estado por defecto y actor revocado en transición válida. No es un flujo completo de activación/revocación administrativa, ni reemplaza autorización de identidad en API: las RPC todavía reciben `actor_user_id` suministrado por quien llama y siguen sin permisos de ejecución públicos.
+- No se ha aplicado a Supabase operativo. Verificar CI del último commit antes de afirmar éxito.
