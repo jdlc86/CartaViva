@@ -140,3 +140,9 @@
 - Nuevo `apps/api/src/postgres-protected-route-hooks.mjs` une el adaptador de consulta SQL parametrizada con los hooks Fastify de JWT y rol vigente. El ejecutor SQL sigue inyectado; **no se crea pool, credenciales ni conexión operativa**.
 - `tests/postgres-protected-route-hooks.test.mjs` registra una ruta solo en Fastify de pruebas; comprueba identidad verificada, parámetro SQL, revocación y suspensión entre peticiones, cambio de rol y 503 por fallo DB. Se añadió chequeo de sintaxis al build.
 - Pendiente: CI del nuevo HEAD, diseño/provisión auditada de conexión técnica mínima, control de origen de identidad para RPC y cierre de sesiones. `server.mjs` sigue exponiendo solo health/ready. Sin merge/despliegue/Supabase operativo.
+
+## Sesión 02 — límite de consulta técnica a PostgreSQL
+- CI #176 (`39473811061`) SUCCESS para composición HTTP con adaptador PostgreSQL.
+- Nuevo `apps/api/src/staff-reader-query.mjs`: exige un pool inyectado y limita las consultas a la sentencia parametrizada exacta de `role,state` por `user_id`. Rechaza SQL diferente o parámetros de longitud incorrecta antes de tocar el pool. Pruebas en `tests/staff-reader-query.test.mjs`; build incluye chequeo sintáctico.
+- **No hay conexión real ni credenciales**, no se añade dependencia de driver ni se conecta al servidor HTTP. Falta provisionar de forma aislada el rol LOGIN de mínimos privilegios, TLS/verificación, secretos y cierre del pool, y validar la consulta real bajo RLS. El límite de consultas de JS complementa, no sustituye, los permisos de PostgreSQL.
+- CI del HEAD nuevo pendiente. Sin merge, despliegue ni modificaciones en Supabase operativo/Fleetia.
