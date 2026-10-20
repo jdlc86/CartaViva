@@ -66,6 +66,24 @@ begin
  end if;
 end;
 $reader$;
+-- Execute actual statements as the non-bypass RLS reader, not merely ACL metadata.
+set role sabora_staff_reader;
+select count(*) from sabora.staff_members;
+do $reader_denials$
+begin
+ begin
+  perform count(*) from sabora.orders;
+  raise exception 'reader accessed orders';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  update sabora.staff_members set state='active';
+  raise exception 'reader updated staff';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$reader_denials$;
+reset role;
 insert into sabora.restaurant_settings(name) values ('Sabora');
 insert into sabora.staff_members(user_id,role) values
  ('00000000-0000-0000-0000-000000000101','kitchen'),
