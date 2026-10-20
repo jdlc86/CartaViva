@@ -169,3 +169,9 @@
 - CI #192 (`39475689350`) SUCCESS para ciclo de vida inicial.
 - `staff-pool-lifecycle.mjs` endurecido: constructor fallido deja ciclo terminal, instancia inválida intenta cierre asíncrono si es posible, error en `end()` no permite reapertura ni segundo cierre físico. Nuevas regresiones de estos tres casos.
 - Pendiente CI del HEAD. No se abre conexión real, ni se usan secretos, ni se despliega. **Limitación pendiente:** la limpieza de una instancia inválida se realiza de mejor esfuerzo; el controlador definitivo debe cumplir el contrato del pool y registrarse observabilidad de errores de cierre antes de producción.
+
+## Sesión 02 — observabilidad de pool sin secretos
+- Run #195 (`39487875919`): job principal `generate-lockfile` SUCCESS, con migraciones PostgreSQL 17, Compose y smoke de imagen correctos; comprobar conclusión del run antes de afirmarla.
+- `apps/api/src/staff-pool-observer.mjs`: solo emite `{component,event}` con eventos permitidos y cardinalidad acotada. `staff-pool-lifecycle.mjs` emite apertura, fallo de apertura, pool inválido, cierre y fallo de cierre; errores del observador nunca afectan la limpieza.
+- Pruebas `tests/staff-pool-observer.test.mjs` verifican ausencia de secretos en los eventos y continuidad si el observador falla. Las excepciones originales del driver se propagan al llamador; **no deben volcarse directamente a logs públicos**. Pendiente revisar política de logs de la API y CI nuevo.
+- No driver real, no conexiones a Supabase, no despliegue ni merge.
