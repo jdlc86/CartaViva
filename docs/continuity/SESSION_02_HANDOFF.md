@@ -230,3 +230,8 @@
 ## Dominio de cesiones de titularidad (2026-10-20)
 - Añadido `apps/api/src/ownership-transition-policy.mjs`: función pura para solicitud, oferta, aceptación, rechazo, cancelación y reasignación forzosa exclusiva de ROOT; comprueba actor activo, propietario vigente, propuesta pendiente y destinatario ADMIN activo. Tests en `tests/ownership-transition-policy.test.mjs`.
 - **NO es una operación segura de escritura por sí sola:** debe llamarse bajo una transacción PostgreSQL con bloqueo del singleton, lectura fresca de membresías y propuesta, auditoría append-only, idempotencia y ACL mínimos. No hay rutas HTTP ni persistencia de propuestas aún. CI pendiente.
+
+## Persistencia inicial de cesiones (2026-10-20)
+- Migración aislada `20261020220000_sabora_ownership_proposals_audit.sql`: tabla privada de propuestas request/offer con estado y correlation_id único, y auditoría de titularidad con append-only trigger, RLS FORCE y sin grants de navegador.
+- Smoke PostgreSQL 17 incluye nueva migración, 12 tablas RLS, propuesta válida, rechazo de auto-transferencia y rechazo de UPDATE/DELETE de auditoría.
+- Aún **NO** existen procedimientos SQL transaccionales de decisión, actor seguro, ni rutas HTTP; el esquema por sí solo no autoriza operaciones. CI de estos cambios pendiente; no aplicar a Supabase operativo.
