@@ -8,6 +8,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Require genuine pnpm lockfile
@@ -27,3 +28,7 @@ jobs:
         run: docker compose -f deploy/compose.sabora.yml config --quiet
       - name: Build isolated Sabora API image
         run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
+      - name: Smoke-test API container without host port or shared network
+        run: |
+          docker run --rm --network none --entrypoint node sabora-api:ci --check src/server.mjs
+          docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
