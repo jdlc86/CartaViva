@@ -108,7 +108,7 @@ begin
   if (select count(*) from sabora.orders where table_id=v_table) <> 2 then
     raise exception 'unexpected order count after replay';
   end if;
-end $;
+end $$;
 SQL
 
 echo 'Sabora isolated PostgreSQL 17 migration, tenant FK and transactional order checks passed.'
