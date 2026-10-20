@@ -18,7 +18,7 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
    const existing = await query('select action,actor_user_id,proposal_id,previous_owner_id,next_owner_id from sabora.admin_ownership_audit where correlation_id=$1',[correlationId]);
    if (existing.rows?.length) {
     const row=existing.rows[0];
-    return row.actor_user_id === actorUserId && row.action === (action==='force'?'force_transfer':action==='accept'?'accepted_transfer':action)
+    return row.actor_user_id === actorUserId && row.action === (action==='force'?'force_transfer':action==='accept'?'accept':action)
      ? {replayed:true,proposalId:row.proposal_id,nextOwnerId:row.next_owner_id}
      : {error:'correlation_conflict'};
    }
@@ -61,7 +61,7 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
    if (decision.nextStatus) {
     await query('update sabora.admin_ownership_proposals set status=$1,resolved_at=now() where id=$2',[decision.nextStatus,proposalId]);
    }
-   const auditAction=decision.auditAction??action;
+   const auditAction=action==='force'?'force_transfer':action;
    await query(
     'insert into sabora.admin_ownership_audit(correlation_id,actor_user_id,action,proposal_id,previous_owner_id,next_owner_id,reason) values ($1,$2,$3,$4,$5,$6,$7)',
     [correlationId,actorUserId,auditAction,newProposalId,ownerId,decision.nextOwnerId??ownerId,reason?.trim()||null]);
