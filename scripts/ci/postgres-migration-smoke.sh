@@ -77,6 +77,9 @@ insert into sabora.restaurants(id,name) values
 ('00000000-0000-0000-0000-000000000002','B');
 insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
 values ('00000000-0000-0000-0000-000000000001',1,4,decode(repeat('ab',32),'hex'));
+-- Table numbers are unique per restaurant, not globally.
+insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+values ('00000000-0000-0000-0000-000000000002',1,2,decode(repeat('cd',32),'hex'));
 -- Invalid table configuration is rejected at the database boundary.
 do $$
 begin
