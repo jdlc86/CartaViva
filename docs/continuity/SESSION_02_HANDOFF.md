@@ -383,3 +383,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Migración `20261020260000_sabora_writer_future_acl.sql` y smoke negativo para objetos nuevos: rol writer dormido no debe obtener SELECT/INSERT en tabla nueva ni EXECUTE de función nueva; tampoco EXECUTE por PUBLIC.
 - Las default privileges son específicas del rol creador; no impiden grants explícitos ni cubren otros owners. Documentado en `docs/security/SABORA_SQL_WRITER_BOUNDARY_DESIGN.md`.
 - Validación del CI de este HEAD pendiente; sin despliegues ni recursos operativos afectados.
+
+## Diagnóstico CI #312 / bootstrap #296 — permisos futuros de funciones
+- Ambos workflows FAILED en el smoke PostgreSQL 17 al crear función de prueba: `future object ACL exposed to dormant writer or PUBLIC`.
+- Causa: PostgreSQL concede EXECUTE a PUBLIC por defecto global; revocarlo solo IN SCHEMA no elimina ese default global.
+- Migración correctiva `20261020270000_sabora_default_function_execute.sql` revoca EXECUTE global de funciones futuras para el rol creador de migraciones. La prueba negativa se conserva. Riesgo documentado: afecta a futuras funciones del mismo creador fuera de `sabora`; no aplicar operativamente sin revisión.
+- CI de corrección pendiente. Sin Supabase operativo, VPS ni Fleetia.
