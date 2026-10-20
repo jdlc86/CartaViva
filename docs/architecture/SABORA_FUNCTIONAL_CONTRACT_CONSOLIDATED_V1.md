@@ -2,10 +2,13 @@
 
 Fecha: 2026-10-18. Fase: **documentación y revisión de requisitos**. Sin implementación ni certificación de pruebas. Rama documental; sujeto a revisión antes de integrar en main.
 
-## Alcance obligatorio: un solo restaurante
-- CartaViva / Sabora gestiona **un único restaurante**. No se contempla administración de varios establecimientos, sucursales, franquicias, cambio de restaurante, ni aislamiento entre tenants.
-- Los permisos se aplican a las personas, roles, visitas y cuentas del restaurante único; no se requiere un identificador de restaurante en cada entidad operativa.
-- Esta decisión posterior elimina del alcance las propuestas multirrestaurante previas, sin debilitar autenticación, privacidad, auditoría ni aislamiento frente a Fleetia y otros proyectos.
+## Alcance obligatorio: un restaurante por instalación
+- **Sabora gestiona un único restaurante por instalación**. No contempla varios establecimientos en una misma base de datos ni autorización multitenant dentro de su dominio operativo.
+- **CartaViva es el directorio central independiente** que identifica instalaciones por código alfanumérico y permite localizar el origen HTTPS de la PWA del restaurante. Puede registrar instalaciones de otros restaurantes, cada una con sus propios recursos y base de datos.
+- Los permisos operativos se aplican a las personas, roles, visitas y cuentas de la instalación; no se requiere `restaurant_id` en cada entidad operativa de Sabora. El identificador alfanumérico **sí** pertenece al registro central y a la identificación del restaurante en el QR.
+- El QR identifica restaurante y mesa, pero el backend propio de Sabora valida la credencial revocable y la visita. CartaViva no autoriza pedidos.
+- **Dos PWA independientes por instalación:** `apps/client` para comensales y `apps/management` para camareros, cocina y administración, con permisos de servidor por rol. Son aplicaciones instalables distintas, no una PWA universal que cambia entre restaurantes.
+- Se excluye la multitenencia dentro de Sabora, no la posibilidad de desplegar múltiples restaurantes independientes. Ninguna instalación puede interferir con Fleetia ni con otros proyectos.
 
 ## Jerarquía y trazabilidad
 Las decisiones explícitas más recientes prevalecen sobre formulaciones anteriores del mismo asunto. Se preservan como antecedentes `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md`; no deben interpretarse sus preguntas antiguas como decisiones todavía abiertas si este contrato las resuelve. No inferir implementación del contenido documental.
