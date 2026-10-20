@@ -133,6 +133,24 @@ end;
 $writer_denials$;
 reset role;
 
+-- A newly created test table/function must not become visible to the dormant
+-- writer through inherited or default privileges.
+create table sabora.writer_future_acl_probe(id bigint primary key);
+create function sabora.writer_future_acl_probe_fn()
+ returns integer language sql as $probe$select 1$probe$;
+do $future_acl$
+begin
+ if has_table_privilege('sabora_admin_writer','sabora.writer_future_acl_probe','SELECT')
+    or has_table_privilege('sabora_admin_writer','sabora.writer_future_acl_probe','INSERT')
+    or has_function_privilege('sabora_admin_writer','sabora.writer_future_acl_probe_fn()','EXECUTE')
+    or has_function_privilege('public','sabora.writer_future_acl_probe_fn()','EXECUTE') then
+  raise exception 'future object ACL exposed to dormant writer or PUBLIC';
+ end if;
+end;
+$future_acl$;
+drop function sabora.writer_future_acl_probe_fn();
+drop table sabora.writer_future_acl_probe;
+
 -- Reader must be strictly read-only and subject to RLS.
 do $reader$
 begin
