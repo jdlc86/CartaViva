@@ -47,3 +47,40 @@ test('table configuration and input validation', () => {
  assert.throws(() => store.createTable({ number: 5, capacity: 3 }), /duplicate/);
  assert.throws(() => store.confirmOrder({ tableId: table.id, qrToken: table.qrToken, company: 'A', employeeNumber: '1', idempotencyKey: 'request_0008', items: [{ category: 'other', name: 'X', quantity: 1 }] }), /invalid_items/);
 });
+
+test('customer identity encoding avoids delimiter collisions and idempotency cross-talk', () => {
+ const store = createRestaurantStore();
+ const table = store.createTable({ number: 10, capacity: 8 });
+ const base = { tableId: table.id, qrToken: table.qrToken, idempotencyKey: 'same_request_123', items: [{ category: 'main', name: 'Rice', quantity: 1 }] };
+ const a = store.confirmOrder({ ...base, company: 'A:B', employeeNumber: 'C' });
+ const b = store.confirmOrder({ ...base, company: 'A', employeeNumber: 'B:C' });
+ assert.notEqual(a.order.id, b.order.id);
+ assert.equal(store.getTable(table.id).participantCount, 2);
+});
+
+test('idempotency replay is insulated from caller mutation', () => {
+ const store = createRestaurantStore();
+ const table = store.createTable({ number: 11, capacity: 2 });
+ const input = { tableId: table.id, qrToken: table.qrToken, company: 'Acme', employeeNumber: '7', idempotencyKey: 'mutation_123', items: [{ category: 'drink', name: 'Water', quantity: 1 }] };
+ const first = store.confirmOrder(input);
+ first.order.items[0].name = 'Tampered';
+ first.order.status = 'cancelled';
+ const replay = store.confirmOrder(input);
+ assert.equal(replay.repeated, true);
+ assert.equal(replay.order.items[0].name, 'Water');
+ assert.equal(replay.order.status, 'confirmed');
+ assert.equal(store.listOrders()[0].items[0].name, 'Water');
+});
+
+test('reject malformed order items and oversized customer fields without writing orders', () => {
+ const store = createRestaurantStore();
+ const table = store.createTable({ number: 12, capacity: 2 });
+ const base = { tableId: table.id, qrToken: table.qrToken, company: 'Acme', employeeNumber: '7', idempotencyKey: 'validate_123', items: [{ category: 'drink', name: 'Water', quantity: 1 }] };
+ for (const items of [[null], [42], [true], [{ category: 'drink', name: 'x'.repeat(161), quantity: 1 }], [{ category: 'drink', name: 'Water', quantity: 1.5 }], [{ category: 'drink', name: 'Water', quantity: 21 }]]) {
+  assert.throws(() => store.confirmOrder({ ...base, items }), /invalid_items/);
+ }
+ assert.throws(() => store.confirmOrder({ ...base, company: 'A'.repeat(161) }), /invalid_customer/);
+ assert.throws(() => store.confirmOrder({ ...base, employeeNumber: '1'.repeat(81) }), /invalid_customer/);
+ assert.throws(() => store.createTable({ number: 13, capacity: 2, description: null }), /invalid_description/);
+ assert.equal(store.listOrders().length, 0);
+});
