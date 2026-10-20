@@ -21,7 +21,9 @@ test('accepts a correctly signed Supabase access token and returns only verified
 });
 test('rejects tampering, unknown signing keys and forbidden algorithms', () => {
   const good = token();
-  assert.throws(() => verify(good.slice(0, -1) + (good.at(-1) === 'A' ? 'B' : 'A')), /invalid_token/);
+  const [header, payload, signature] = good.split('.');
+  const tampered = header + '.' + encode({ ...claims, role: 'anon' }) + '.' + signature;
+  assert.throws(() => verify(tampered), /invalid_token/);
   assert.throws(() => verify(good, { keys: [{ ...key, kid: 'other' }] }), /invalid_token/);
   assert.throws(() => verify(token(claims, { alg: 'none', typ: 'JWT', kid: 'test-key' })), /invalid_token/);
   assert.throws(() => verify(token(claims, { alg: 'HS256', typ: 'JWT', kid: 'test-key' })), /invalid_token/);
