@@ -261,3 +261,8 @@
 - CI #267: pasos de Node, PostgreSQL 17, Compose, build y smoke API SUCCESS.
 - Nuevo `apps/api/src/ownership-workflow.mjs`: recibe identidad ya verificada, correlation UUID y operación; bajo `withTransaction` bloquea singleton, revalida membresías, consulta propuesta, ejecuta política de dominio, modifica titular/propuesta y añade auditoría. Reintento de correlación existente evita duplicar escrituras; test en `tests/ownership-workflow.test.mjs`.
 - **Puertas pendientes antes de uso real:** pruebas PostgreSQL 17 de concurrencia de operaciones de cesión y idempotencia, comprobación de parámetros del replay (no solo actor/acción), privilegios mínimos del runtime y auditoría de transacciones que se revierten; rutas y notificaciones aún no integradas. No conectar a producción.
+
+## Diagnóstico CI #272 y corrección de aceptación
+- CI #272 FAILED: `accepted request updates owner, proposal and audit` recibió `{error:'invalid_transition'}`.
+- Causa comprobada: `ownership-workflow.mjs` entregaba a `decideOwnershipTransition` la fila SQL del destinatario con `user_id` en lugar de `userId`. Adaptación explícita corregida en `58bc106`; prueba adicional de reasignación ROOT en `044127c`.
+- Verificar nuevo CI antes de considerar superada esta puerta. Pendiente revisión de idempotencia estricta y pruebas PostgreSQL 17 reales para las cesiones.
