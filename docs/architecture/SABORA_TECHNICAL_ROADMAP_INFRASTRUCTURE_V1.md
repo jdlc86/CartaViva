@@ -2,6 +2,10 @@
 
 Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica implementación ni contratación.
 
+## Alcance corregido (2026-10-20)
+- Sabora es una aplicación para **un único restaurante**. Quedan fuera de alcance las entidades `restaurants` como colección de establecimientos, el campo `restaurant_id` en cada recurso, los selectores de establecimientos y cualquier autorización multitenant.
+- Se mantiene la independencia de infraestructura de Sabora respecto de Fleetia y de otros proyectos del VPS. El aislamiento entre proyectos no es arquitectura multirrestaurante.
+
 ## Decisiones confirmadas por el propietario
 - Sabora utilizará **un proyecto Supabase propio**, separado del proyecto de Fleetia, para PostgreSQL, autenticación y almacenamiento. No compartir bases de datos, usuarios, claves ni políticas entre productos.
 - Se **propone reutilizar el VPS ya contratado para Fleetia** como alojamiento de aplicaciones, API y servicios auxiliares de Sabora, **condicionado a verificar previamente su capacidad y aislamiento**. No se autoriza intervenir en los contenedores o despliegues de Fleetia.
@@ -19,7 +23,7 @@ Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica
 - GitHub Actions para CI y despliegue por commit, con entornos separados. Tecnologías concretas, versiones y proveedores de ejecución quedan sujetos a prueba técnica.
 
 ## Secuencia de entrega y puertas
-**Fase 0 — Fundamentos:** inventario del repositorio y contratos vigentes; estructura del monorepo; decisiones de aislamiento multi-restaurante, modelo transaccional, límites de autorización, estrategia de pruebas y amenazas. Salida: arquitectura y ADRs revisados.
+**Fase 0 — Fundamentos:** inventario del repositorio y contratos vigentes; estructura del monorepo; decisiones de modelo transaccional, límites de autorización, estrategia de pruebas y amenazas. Salida: arquitectura y ADRs revisados.
 
 **Fase 1 — Plataforma y seguridad:** proyecto Supabase de Sabora, migraciones versionadas, API mínima, identidad/Passkeys, invitación→activación explícita, roles ROOT/ADMIN/operativos, titularidad única de escritura, auditoría append-only, CI y entorno aislado. Salida: pruebas de permisos, concurrencia, recuperación y migraciones.
 
