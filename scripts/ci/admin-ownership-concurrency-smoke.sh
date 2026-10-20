@@ -58,13 +58,13 @@ set local lock_timeout='8s';
 update sabora.admin_write_ownership
  set owner_user_id='00000000-0000-0000-0000-000000000203'
  where singleton and owner_user_id='00000000-0000-0000-0000-000000000202';
-do $
+do $race$
 begin
  if (select owner_user_id from sabora.admin_write_ownership where singleton)
  <> '00000000-0000-0000-0000-000000000203'::uuid then
   raise exception 'first contender did not transfer ownership';
  end if;
-end $;
+end $race$;
 select pg_sleep(2);
 commit;
 SQL
@@ -73,7 +73,7 @@ sleep 0.3
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' &
 begin;
 set local lock_timeout='8s';
-do $
+do $race$
 declare updated_count integer;
 begin
  update sabora.admin_write_ownership
@@ -83,20 +83,20 @@ begin
  if updated_count <> 0 then
   raise exception 'stale contender unexpectedly changed ownership';
  end if;
-end $;
+end $race$;
 commit;
 SQL
 second=$!
 wait "$first"
 wait "$second"
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $
+do $race$
 begin
  if (select owner_user_id from sabora.admin_write_ownership where singleton)
  <> '00000000-0000-0000-0000-000000000203'::uuid then
   raise exception 'concurrent transfer ended with unexpected owner';
  end if;
-end $;
+end $race$;
 SQL
 echo 'Two-session stale-owner compare-and-swap rejection passed.'
 
