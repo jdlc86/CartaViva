@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql; do
+for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
@@ -50,6 +50,22 @@ begin
   end if;
  end loop;
 end $$;
+-- Reader must be strictly read-only and subject to RLS.
+do $reader$
+begin
+ if not has_schema_privilege('sabora_staff_reader','sabora','USAGE') then
+  raise exception 'staff reader missing schema usage';
+ end if;
+ if not has_column_privilege('sabora_staff_reader','sabora.staff_members','state','SELECT') then
+  raise exception 'staff reader missing membership state access';
+ end if;
+ if has_table_privilege('sabora_staff_reader','sabora.staff_members','INSERT')
+    or has_table_privilege('sabora_staff_reader','sabora.staff_members','UPDATE')
+    or has_table_privilege('sabora_staff_reader','sabora.staff_members','DELETE') then
+  raise exception 'staff reader gained write access';
+ end if;
+end;
+$reader$;
 insert into sabora.restaurant_settings(name) values ('Sabora');
 insert into sabora.staff_members(user_id,role) values
  ('00000000-0000-0000-0000-000000000101','kitchen'),
