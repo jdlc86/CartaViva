@@ -44,7 +44,9 @@ begin
       or jsonb_typeof(item->'quantity') is distinct from 'number'
       or coalesce(item->>'quantity', '') !~ '^[0-9]+$'
       or length(item->>'quantity') > 2
-      or case when coalesce(item->>'quantity', '') ~ '^[0-9]{1,2}
+      or case when coalesce(item->>'quantity', '') ~ '^[0-9]{1,2}$'
+           then (item->>'quantity')::integer not between 1 and 20
+           else true end
   ) then
     raise exception 'invalid_order_items' using errcode = '22023';
   end if;
