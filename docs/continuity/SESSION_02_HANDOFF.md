@@ -251,3 +251,8 @@
 - Workflow #260: pasos completos SUCCESS (Node tests, PostgreSQL 17 aislado, Docker Compose, build y smoke API).
 - Nuevo `apps/api/src/transactional-admin-write.mjs`: callback `withTransaction` de conexión única, `SELECT ... FOR UPDATE` del singleton, relectura de rol/estado de miembro desde DB bajo bloqueo y ejecución de mutación dentro de la misma transacción. ROOT activo conserva autoridad separada; ADMIN no titular no escribe. Pruebas en `tests/transactional-admin-write.test.mjs`.
 - **Integración pendiente:** proporcionar adaptador real que garantice BEGIN/COMMIT/ROLLBACK en la misma conexión, aislar privilegios SQL del runtime, y conectar rutas administrativas. El módulo no constituye por sí solo un procedimiento de transferencia ni elimina todas las carreras con operaciones no coordinadas. CI nuevo pendiente; sin despliegue.
+
+## Adaptador PostgreSQL transaccional (2026-10-20)
+- CI #263 falló en test unitario del gate transaccional por segunda regex UUID incompleta (mismo patrón de error que lector de titular); corregido en `a588432`.
+- Añadido `apps/api/src/postgres-transaction.mjs` con `pool.connect()`, BEGIN/COMMIT/ROLLBACK en una sola conexión y release; pruebas en `tests/postgres-transaction.test.mjs` para éxito, fallo durante trabajo y fallo al iniciar.
+- Integración de runtime, permisos de DB, transferencias auditadas, idempotencia y pruebas de concurrencia aún pendientes. No se ha ejecutado SQL operativo ni desplegado.
