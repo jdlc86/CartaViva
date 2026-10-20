@@ -13,7 +13,7 @@ export function createStaffAuthorizationRuntime({
   let hooks = null;
 
   return Object.freeze({
-    open() {
+    async open() {
       if (hooks) return hooks;
       const pool = lifecycle.open();
       try {
@@ -21,8 +21,8 @@ export function createStaffAuthorizationRuntime({
           pool, issuer, getTrustedKeys, verify, observe
         });
       } catch (error) {
-        // Never leak an opened pool if auth hook composition is invalid.
-        // The caller must await close() after a failed open().
+        // Always terminate the pool when composition cannot finish.
+        try { await lifecycle.close(); } catch { /* preserve original error */ }
         throw error;
       }
       return hooks;
