@@ -371,3 +371,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Endurecido `apps/api/src/postgres-transaction.mjs`: cuando falla BEGIN o ROLLBACK se descarta la conexión del pool, evitando reutilizar sesiones de estado incierto. Pruebas nuevas para BEGIN/COMMIT/ROLLBACK fallidos.
 - Añadido `docs/security/SABORA_SQL_WRITER_BOUNDARY_DESIGN.md`: requisitos previos a rol writer, grants/RLS y rutas. **No se creó writer SQL ni se abrió acceso operativo**.
 - Próxima puerta: validar CI del HEAD y diseñar/practicar roles técnicos de mínimos privilegios en PostgreSQL 17 desechable; después acordar matriz de recursos administrativos y bootstrap ROOT. Sin despliegue, sin Supabase operativo, sin Fleetia.
+
+## Continuación: rol SQL writer dormido (2026-10-20)
+- CI #304 y bootstrap #288 del commit `b01f410` confirmados SUCCESS.
+- Migración `20261020250000_sabora_dormant_admin_writer.sql`: crea rol técnico NOLOGIN, NOINHERIT, NOBYPASSRLS y sin grants de datos. No habilita escrituras administrativas ni acceso a schema privado.
+- Smoke PostgreSQL 17 extendido para comprobar atributos del rol y denegación efectiva bajo SET ROLE de lectura staff, mutación singleton e inserción auditoría. Documento de seguridad actualizado.
+- Puerta pendiente: comprobar CI de este HEAD, revisar matriz de recursos y diseñar permisos por procedimiento sin bypass. No ejecutar SQL en Supabase operativo ni desplegar; Fleetia intacto.
