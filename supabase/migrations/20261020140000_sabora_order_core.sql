@@ -42,7 +42,8 @@ create table sabora.orders (
   grouping text not null check (grouping in ('first', 'grouped', 'late')),
   status text not null default 'confirmed' check (status in ('confirmed', 'preparing', 'ready', 'cancelled', 'delivered')),
   items jsonb not null check (jsonb_typeof(items) = 'array' and jsonb_array_length(items) between 1 and 50),
-  foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id)
+  foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
+  unique (restaurant_id, table_id, session_id, id)
 );
 
 create table sabora.order_idempotency (
@@ -52,9 +53,11 @@ create table sabora.order_idempotency (
   customer_identity_hash bytea not null check (octet_length(customer_identity_hash) = 32),
   request_key text not null check (length(request_key) between 8 and 128),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
-  order_id uuid not null unique references sabora.orders(id),
+  order_id uuid not null unique,
   primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
-  foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id)
+  foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
+  foreign key (restaurant_id, table_id, session_id, order_id)
+    references sabora.orders(restaurant_id, table_id, session_id, id)
 );
 
 create index orders_by_table_time on sabora.orders(restaurant_id, table_id, confirmed_at desc);
