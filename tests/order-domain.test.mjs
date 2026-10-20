@@ -29,15 +29,17 @@ test('idempotency prevents duplicate orders and conflicting retries', () => {
  assert.throws(() => store.confirmOrder({ ...input, items: [{ category: 'drink', name: 'Tea', quantity: 1 }] }), /idempotency_conflict/);
 });
 
-test('QR rotation invalidates old token and resets grouping', () => {
+test('QR rotation invalidates old token but preserves visit and grouping', () => {
  const store = createRestaurantStore();
  const table = store.createTable({ number: 2, capacity: 4 });
  const input = { tableId: table.id, qrToken: table.qrToken, company: 'Acme', employeeNumber: '123', idempotencyKey: 'request_0005', items: [{ category: 'starter', name: 'Soup', quantity: 1 }] };
- store.confirmOrder(input);
+ const initial = store.confirmOrder(input);
  const rotated = store.rotateQr(table.id);
  assert.throws(() => store.confirmOrder({ ...input, idempotencyKey: 'request_0006' }), /invalid_qr/);
- assert.equal(store.getTable(table.id).participantCount, 0);
- assert.equal(store.confirmOrder({ ...input, qrToken: rotated.qrToken, idempotencyKey: 'request_0007' }).order.grouping, 'first');
+ assert.equal(store.getTable(table.id).participantCount, 1);
+ const next = store.confirmOrder({ ...input, qrToken: rotated.qrToken, idempotencyKey: 'request_0007' });
+ assert.equal(next.order.grouping, 'grouped');
+ assert.equal(next.order.sessionId, initial.order.sessionId);
 });
 
 test('table configuration and input validation', () => {
