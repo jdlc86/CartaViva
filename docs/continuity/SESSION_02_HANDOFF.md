@@ -192,3 +192,9 @@
 - Borrador de revisión **no ejecutable automáticamente** en `docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql`: rol LOGIN `sabora_staff_reader_login` con `NOBYPASSRLS` e `INHERIT`, miembro únicamente del rol NOLOGIN `sabora_staff_reader`. No contiene contraseñas ni se incluye en glob de migraciones.
 - Antes de cualquier aplicación: revisión independiente de privilegios del proveedor, autenticación/TLS, memberships existentes, default privileges, grants efectivos, restricciones de red y permisos de crear roles. La propuesta NO constituye autorización para provisionar Supabase.
 - Sin despliegue, merge ni cambios operativos.
+
+## Sesión 02 — prueba real del LOGIN técnico en PostgreSQL 17 aislado
+- CI #211 (`39488524799`) en ejecución al iniciar el cambio, con migraciones y Compose ya correctos. Comprobar conclusión final.
+- `scripts/ci/postgres-migration-smoke.sh` crea **solo dentro del contenedor desechable sin red** el rol `sabora_staff_reader_login LOGIN INHERIT NOBYPASSRLS` y le concede únicamente `sabora_staff_reader`. Verifica ausencia de BYPASSRLS/membresías inesperadas, SELECT de membresía permitido y SELECT de pedidos/UPDATE de personal denegados bajo `SET ROLE sabora_staff_reader_login`.
+- La propuesta SQL en `docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql` sigue siendo **borrador no incluido en migraciones**. El login del CI no tiene contraseña ni conexión externa. Pendiente resultado CI del nuevo HEAD y evaluación del modelo real de roles de Supabase.
+- Sin merge, despliegue, creación de usuarios en Supabase ni intervención en VPS/Fleetia.
