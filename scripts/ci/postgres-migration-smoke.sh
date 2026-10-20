@@ -63,7 +63,7 @@ SQL
 # Exercise the real transactional function as a controlled CI-only database owner.
 # The function is intentionally not exposed to anon/authenticated in Supabase.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $
+do $$
 declare
   v_table uuid;
   v_token text := repeat('x', 64);
