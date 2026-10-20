@@ -84,6 +84,43 @@ begin
 end;
 $reader_denials$;
 reset role;
+-- Exercise the future backend LOGIN in disposable PostgreSQL only.
+-- This role has no password and no network access in CI.
+create role sabora_staff_reader_login login inherit nobypassrls;
+grant sabora_staff_reader to sabora_staff_reader_login;
+do $login_acl$
+begin
+ if (select rolbypassrls from pg_roles where rolname='sabora_staff_reader_login') then
+  raise exception 'reader login bypasses RLS';
+ end if;
+ if exists (
+  select 1 from pg_auth_members m
+  join pg_roles member on member.oid=m.member
+  join pg_roles granted on granted.oid=m.roleid
+  where member.rolname='sabora_staff_reader_login'
+   and granted.rolname<>'sabora_staff_reader'
+ ) then
+  raise exception 'reader login has unexpected role membership';
+ end if;
+end;
+$login_acl$;
+set role sabora_staff_reader_login;
+select count(*) from sabora.staff_members;
+do $login_denials$
+begin
+ begin
+  perform count(*) from sabora.orders;
+  raise exception 'reader login accessed orders';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  update sabora.staff_members set state='active';
+  raise exception 'reader login updated staff';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$login_denials$;
+reset role;
 insert into sabora.restaurant_settings(name) values ('Sabora');
 insert into sabora.staff_members(user_id,role) values
  ('00000000-0000-0000-0000-000000000101','kitchen'),
