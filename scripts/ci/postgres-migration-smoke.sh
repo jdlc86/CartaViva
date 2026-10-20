@@ -44,6 +44,22 @@ begin
   if actual <> 5 then raise exception 'RLS missing: %', actual; end if;
 end $$;
 
+-- Assert clients cannot access Sabora tables or execute draft functions.
+do $$
+declare v_role text;
+begin
+  foreach v_role in array array['anon','authenticated'] loop
+    if has_schema_privilege(v_role, 'sabora', 'USAGE')
+       or has_table_privilege(v_role, 'sabora.orders', 'SELECT')
+       or has_table_privilege(v_role, 'sabora.dining_tables', 'INSERT')
+       or has_function_privilege(v_role, 'sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb)', 'EXECUTE')
+       or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE')
+    then
+      raise exception 'client role % has unauthorized Sabora privileges', v_role;
+    end if;
+  end loop;
+end $$;
+
 -- Confirm composite FK refuses an order that references a table in another restaurant.
 insert into sabora.restaurants(id,name) values
 ('00000000-0000-0000-0000-000000000001','A'),
