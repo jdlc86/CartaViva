@@ -181,7 +181,8 @@ begin
   from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relkind in ('r','p','v','m','f','S')
  loop
-  foreach principal in array array['PUBLIC','anon','authenticated','sabora_admin_writer'] loop
+  -- Effective privileges for these roles include any grants to PUBLIC.
+  foreach principal in array array['anon','authenticated','sabora_admin_writer'] loop
    if obj.relkind='S' then
     foreach privilege in array array['USAGE','SELECT','UPDATE'] loop
      if has_sequence_privilege(principal,obj.oid,privilege) then
