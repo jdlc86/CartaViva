@@ -125,6 +125,17 @@ begin
     raise notice 'conflicting idempotency key rejected';
   end;
 
+  -- The table's five-minute grouping window is half-open: exactly at
+  -- the deadline a new confirmation is late, not grouped.
+  update sabora.dining_tables
+     set first_confirmed_at = clock_timestamp() - interval '6 minutes'
+   where id = v_table;
+  if (select order_grouping from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','103',
+      'request_late_01','[{"category":"dessert","name":"Cake","quantity":1}]'::jsonb)) <> 'late' then
+    raise exception 'expired grouping window accepted a grouped order';
+  end if;
+
   -- A valid table and QR from restaurant A must not work under restaurant B.
   begin
     perform * from sabora.confirm_order(
@@ -144,7 +155,7 @@ begin
     raise notice 'cross-tenant QR rotation rejected';
   end;
 
-  if (select count(*) from sabora.orders where table_id=v_table) <> 2 then
+  if (select count(*) from sabora.orders where table_id=v_table) <> 3 then
     raise exception 'unexpected order count after replay';
   end if;
 end $$;
