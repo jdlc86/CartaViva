@@ -134,3 +134,9 @@
 - Ampliado `scripts/ci/postgres-migration-smoke.sh` con `SET ROLE sabora_staff_reader`: ejecuta SELECT real sobre membresía bajo RLS y comprueba que lectura de pedidos y UPDATE de empleados produzcan `insufficient_privilege`. `RESET ROLE` restaura la identidad del smoke.
 - La política `USING (true)` se limita al rol técnico dedicado y al SELECT de tres columnas de `staff_members`; **no representa aislamiento por usuario**. Su uso operativo requerirá credenciales backend aisladas, no reutilizadas ni concedidas a roles de navegador, y consultas parametrizadas exclusivamente con identidad JWT verificada. Ninguna conexión runtime está configurada.
 - CI del HEAD reforzado pendiente. Sin cambios de producción.
+
+## Sesión 02 — composición PostgreSQL y autorización HTTP aislada
+- CI #172 (`39473465747`) SUCCESS: smoke de `SET ROLE sabora_staff_reader` validado en PostgreSQL 17 desechable.
+- Nuevo `apps/api/src/postgres-protected-route-hooks.mjs` une el adaptador de consulta SQL parametrizada con los hooks Fastify de JWT y rol vigente. El ejecutor SQL sigue inyectado; **no se crea pool, credenciales ni conexión operativa**.
+- `tests/postgres-protected-route-hooks.test.mjs` registra una ruta solo en Fastify de pruebas; comprueba identidad verificada, parámetro SQL, revocación y suspensión entre peticiones, cambio de rol y 503 por fallo DB. Se añadió chequeo de sintaxis al build.
+- Pendiente: CI del nuevo HEAD, diseño/provisión auditada de conexión técnica mínima, control de origen de identidad para RPC y cierre de sesiones. `server.mjs` sigue exponiendo solo health/ready. Sin merge/despliegue/Supabase operativo.
