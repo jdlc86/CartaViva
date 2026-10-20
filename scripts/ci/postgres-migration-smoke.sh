@@ -76,7 +76,7 @@ do $$
 declare
   t record;
 begin
-  select id,session_id into t from sabora.dining_tables
+  select id,session_id into strict t from sabora.dining_tables
   where restaurant_id = '00000000-0000-0000-0000-000000000001' and number = 1;
   begin
     insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,status,items)
