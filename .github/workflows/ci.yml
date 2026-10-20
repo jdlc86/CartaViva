@@ -22,6 +22,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test
         run: pnpm test
+      - name: Test Sabora migrations in disposable PostgreSQL 17
+        run: bash scripts/ci/postgres-migration-smoke.sh
       - name: Build
         run: pnpm build
       - name: Validate Docker Compose
