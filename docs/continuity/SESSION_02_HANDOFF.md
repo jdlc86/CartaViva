@@ -266,3 +266,9 @@
 - CI #272 FAILED: `accepted request updates owner, proposal and audit` recibió `{error:'invalid_transition'}`.
 - Causa comprobada: `ownership-workflow.mjs` entregaba a `decideOwnershipTransition` la fila SQL del destinatario con `user_id` en lugar de `userId`. Adaptación explícita corregida en `58bc106`; prueba adicional de reasignación ROOT en `044127c`.
 - Verificar nuevo CI antes de considerar superada esta puerta. Pendiente revisión de idempotencia estricta y pruebas PostgreSQL 17 reales para las cesiones.
+
+## Hito: correlación estricta de titularidad (2026-10-20)
+- Workflow #275 SUCCESS en commit `bf08148`.
+- Detectada incompatibilidad SQL real: el workflow emitía `accepted_transfer` en auditoría pero la restricción SQL solo permite `accept`; corregido en `5480b0a`.
+- Migración `20261020230000_sabora_ownership_idempotency.sql` añade `request_payload jsonb` a auditoría. El workflow guarda operación, actor, propuesta, destino y motivo normalizados, y solo admite replay cuando coincide el payload íntegro; las filas antiguas con payload NULL no son reproducibles. Añadida prueba de rechazo al cambiar el motivo y migración incluida en smoke PostgreSQL 17.
+- **Pendiente:** CI de este bloque, test transaccional de concurrencia e integración de privilegios/rutas. No ejecutar en Supabase operativo sin autorización.
