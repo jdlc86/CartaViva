@@ -34,12 +34,12 @@ revoke all on function sabora.require_active_staff_role(uuid)
 create or replace function sabora.enforce_active_transition_actor()
 returns trigger language plpgsql security invoker
 set search_path = pg_catalog, sabora
-as $
+as $guard$
 begin
  perform sabora.require_active_staff_role(new.actor_user_id);
  return new;
 end;
-$;
+$guard$;
 create trigger sabora_order_status_active_actor
  before insert on sabora.order_status_events
  for each row execute function sabora.enforce_active_transition_actor();
