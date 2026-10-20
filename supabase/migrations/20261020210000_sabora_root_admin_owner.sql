@@ -47,12 +47,12 @@ $$;
 -- A row-level lock here would invert the order against owner updates.
 create function sabora.lock_governance_before_staff_statement()
 returns trigger language plpgsql security invoker
-set search_path=pg_catalog,sabora as $
+set search_path=pg_catalog,sabora as $governance_lock$
 begin
  perform 1 from sabora.admin_write_ownership where singleton for update;
  return null;
 end;
-$;
+$governance_lock$;
 create trigger sabora_staff_governance_statement
  before update or delete on sabora.staff_members
  for each statement execute function sabora.lock_governance_before_staff_statement();
