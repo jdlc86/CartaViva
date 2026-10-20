@@ -47,3 +47,21 @@ test('rejects unverified identifiers before transaction',async()=>{
  assert.equal((await workflow({actorUserId:'not-a-uuid',action:'force',correlationId:corr})).error,'invalid_request');
  assert.equal(calls.length,0);
 });
+
+test('active ROOT can force transfer with a reason and writes audit',async()=>{
+ const {calls,workflow}=setup();
+ // Override staff lookup in this isolated test by using an explicit wrapper.
+ const root='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+ const query=async(sql,args)=>{
+  calls.push({sql,args});
+  if(sql.includes('from sabora.admin_write_ownership'))return {rows:[{owner_user_id:owner}]};
+  if(sql.includes('from sabora.admin_ownership_audit'))return {rows:[]};
+  if(sql.includes('from sabora.staff_members'))return {rows:[{user_id:root,role:'root',state:'active'},{user_id:requester,role:'admin',state:'active'}]};
+  return {rows:[]};
+ };
+ const force=createOwnershipWorkflow({withTransaction:async work=>work(query)});
+ const result=await force({actorUserId:root,action:'force',correlationId:corr,targetUserId:requester,reason:'Recovery'});
+ assert.equal(result.nextOwnerId,requester);
+ assert.ok(calls.some(x=>x.sql.startsWith('update sabora.admin_write_ownership')));
+ assert.ok(calls.some(x=>x.sql.startsWith('insert into sabora.admin_ownership_audit')));
+});
