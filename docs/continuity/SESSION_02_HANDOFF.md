@@ -238,3 +238,8 @@
 
 ## CI #252 — incidencia y corrección
 - El smoke falló por insertar un segundo ROOT en la sección nueva de auditoría después de haber sembrado el ROOT singleton. La unicidad `sabora_one_root` actuó correctamente. Corregido el fixture para reutilizar el ROOT anterior, sin debilitar la restricción. La validación del commit correctivo está pendiente.
+
+## Gate CI y adaptador de titularidad (2026-10-20)
+- Workflow #254 (commit `7a60957c`) SUCCESS: migraciones, smoke PostgreSQL 17, Compose e imagen API validados en entorno aislado.
+- Añadido `apps/api/src/postgres-owner-lookup.mjs` con lectura SQL fija del singleton, rechazo de ausencia/duplicidad/UUID inválido y retorno `null` solo para bootstrap sin titular; pruebas en `tests/postgres-owner-lookup.test.mjs`.
+- **No conectar como autorización definitiva de escritura**: el gate de consulta sufre TOCTOU si la mutación no revalida actor y titular bajo el mismo bloqueo/transacción. Sin conexión de runtime ni grants operativos.
