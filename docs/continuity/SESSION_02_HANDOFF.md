@@ -67,3 +67,9 @@
 - Se añade el smoke PostgreSQL 17 también a `.github/workflows/ci.yml` para que cambios en migraciones no dependan únicamente del workflow bootstrap condicionado por rutas.
 - Validar el nuevo commit mediante GitHub Actions; no afirmar éxito hasta obtener conclusión. No se ejecutan migraciones sobre Supabase operativo, merge ni despliegue VPS.
 - Prioridades siguientes: autenticación backend verificada y modelo transaccional de visita/cuenta/pedido/revisión/despacho; mantener RPC privadas.
+
+## Sesión 02 — puerta de exposición de API
+- Bootstrap CI run #133 (`39466502715`) SUCCESS sobre `700eca76d5d06270a05ea90bffb17973858865b1`; incluye smoke PostgreSQL 17 desechable.
+- Se añade `tests/api-exposure-guard.test.mjs`: bloquea la aparición accidental de rutas operativas sin autenticación; por ahora únicamente `/health` y `/ready`. Es una protección estática transitoria, **no sustituye** autenticación real ni pruebas HTTP de autorización.
+- La autoridad de identidad debe proceder de token Supabase Auth verificado criptográficamente y de membresía/estado vigentes consultados por el backend. No aceptar `actorUserId`, rol ni restaurante desde el cuerpo de la petición como fuente de autorización. Las mutaciones SQL seguirán privadas hasta implementar y probar el límite.
+- Pendiente validar GitHub Actions del nuevo commit; sin merge, despliegue ni migraciones operativas.
