@@ -10,32 +10,37 @@ function setup() {
  store.assignMember({ userId: 'cook', role: 'kitchen' });
  store.assignMember({ userId: 'server', role: 'waiter' });
  store.assignMember({ userId: 'boss', role: 'admin' });
- return { store, order, table, input };
+ return { store, order, table };
 }
-test('kitchen and waiter advance an order and record a durable sequence of events', () => {
+test('kitchen advances preparation and readiness without claiming delivery', () => {
  const { store, order } = setup();
  assert.equal(store.transitionOrder({ orderId: order.id, actorUserId: 'cook', nextStatus: 'preparing' }).order.status, 'preparing');
  assert.equal(store.transitionOrder({ orderId: order.id, actorUserId: 'cook', nextStatus: 'ready' }).order.status, 'ready');
- assert.equal(store.transitionOrder({ orderId: order.id, actorUserId: 'server', nextStatus: 'delivered' }).order.status, 'delivered');
- assert.deepEqual(store.listOrderEvents(order.id).map(e => [e.previousStatus, e.currentStatus]), [['confirmed', 'preparing'], ['preparing', 'ready'], ['ready', 'delivered']]);
- assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'boss', nextStatus: 'cancelled', reason: 'Too late' }), /invalid_order_transition/);
+ assert.deepEqual(store.listOrderEvents(order.id).map(e => [e.previousStatus, e.currentStatus]), [['confirmed', 'preparing'], ['preparing', 'ready']]);
+ assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'server', nextStatus: 'delivered' }), /invalid_order_transition/);
 });
-test('unauthorized or out-of-order transitions do not write audit history', () => {
+test('no role may cancel an entire order without incident arbitration', () => {
  const { store, order } = setup();
- for (const [actorUserId,nextStatus,error] of [['stranger','preparing',/actor_not_authorized/],['server','preparing',/role_not_allowed/],['cook','delivered',/invalid_order_transition/]]) {
-  assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId, nextStatus }), error);
+ for (const actorUserId of ['cook', 'server', 'boss']) {
+  assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId, nextStatus: 'cancelled', reason: 'Out of stock' }), /invalid_order_transition/);
  }
  assert.equal(store.listOrderEvents(order.id).length, 0);
  assert.equal(store.listOrders()[0].status, 'confirmed');
 });
-test('cancellation requires reason and keeps historical order immutable across QR rotation', () => {
+test('unauthorized or out-of-order transitions cannot create audit events', () => {
+ const { store, order } = setup();
+ assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'stranger', nextStatus: 'preparing' }), /actor_not_authorized/);
+ assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'server', nextStatus: 'preparing' }), /role_not_allowed/);
+ assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'cook', nextStatus: 'ready' }), /invalid_order_transition/);
+ assert.equal(store.listOrderEvents(order.id).length, 0);
+});
+test('QR rotation retains existing audit and visit', () => {
  const { store, order, table } = setup();
- assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'boss', nextStatus: 'cancelled' }), /cancellation_reason_required/);
- const result = store.transitionOrder({ orderId: order.id, actorUserId: 'boss', nextStatus: 'cancelled', reason: '  Sold out  ' });
- assert.equal(result.event.reason, 'Sold out');
- result.event.reason = 'Tampered';
+ const before = store.listOrders()[0].sessionId;
+ const result = store.transitionOrder({ orderId: order.id, actorUserId: 'cook', nextStatus: 'preparing' });
+ result.event.currentStatus = 'tampered';
  store.rotateQr(table.id);
- assert.equal(store.listOrderEvents(order.id)[0].reason, 'Sold out');
- assert.equal(store.listOrders()[0].status, 'cancelled');
- assert.throws(() => store.transitionOrder({ orderId: order.id, actorUserId: 'cook', nextStatus: 'preparing' }), /invalid_order_transition/);
+ assert.equal(store.listOrderEvents(order.id)[0].currentStatus, 'preparing');
+ assert.equal(store.listOrders()[0].sessionId, before);
+ assert.equal(store.getTable(table.id).participantCount, 1);
 });
