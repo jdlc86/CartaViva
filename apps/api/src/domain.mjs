@@ -32,9 +32,7 @@ export function createRestaurantStore({ clock = () => Date.now(), groupingWindow
     const token = randomUUID() + randomUUID();
     table.qrHash = hash(token);
     table.qrVersion += 1;
-    table.sessionId = randomUUID();
-    table.firstConfirmedAt = null;
-    table.participants.clear();
+    // Rotating a QR revokes the credential, not the active visit or accounts.
     return { tableId, qrToken: token, qrVersion: table.qrVersion };
   }
   function confirmOrder({ tableId, qrToken, company, employeeNumber, items, idempotencyKey }) {
@@ -79,10 +77,11 @@ export function createRestaurantStore({ clock = () => Date.now(), groupingWindow
     if (!role) throw new Error('actor_not_authorized');
     if (typeof reason !== 'string' && reason !== null) throw new Error('invalid_reason');
     if (reason !== null && (!reason.trim() || reason.trim().length > 500)) throw new Error('invalid_reason');
-    const transitions = { confirmed: ['preparing', 'cancelled'], preparing: ['ready', 'cancelled'], ready: ['delivered', 'cancelled'], delivered: [], cancelled: [] };
+    const transitions = { confirmed: ['preparing'], preparing: ['ready'], ready: [], delivered: [], cancelled: [] };
     if (!transitions[order.status].includes(nextStatus)) throw new Error('invalid_order_transition');
-    if (!(role === 'admin' || (role === 'kitchen' && ['preparing', 'ready', 'cancelled'].includes(nextStatus)) || (role === 'waiter' && ['delivered', 'cancelled'].includes(nextStatus)))) throw new Error('role_not_allowed_for_transition');
-    if (nextStatus === 'cancelled' && !reason?.trim()) throw new Error('cancellation_reason_required');
+    if (!(role === 'admin' || (role === 'kitchen' && ['preparing', 'ready'].includes(nextStatus)))) throw new Error('role_not_allowed_for_transition');
+    // Cancellation requires an incident/arbitration and per-item financial adjustment.
+    // Whole-order delivered/collected status is not a valid substitute for per-item pickup.
     const previousStatus = order.status;
     order.status = nextStatus;
     const event = { id: randomUUID(), orderId, sessionId: order.sessionId, tableId: order.tableId, actorUserId, previousStatus, currentStatus: nextStatus, reason: reason?.trim() || null, occurredAt: now() };
