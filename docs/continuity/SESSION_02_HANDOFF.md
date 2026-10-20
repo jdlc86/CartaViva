@@ -216,3 +216,8 @@
 - Nueva migración **no aplicada** `supabase/migrations/20261020210000_sabora_root_admin_owner.sql`: rol ROOT, índice único parcial ROOT, tabla singleton de titularidad ADMIN, triggers para impedir degradación/suspensión/baja de ROOT y titular sin transferencia, comprobación de titular ADMIN activo.
 - Smoke PostgreSQL 17 desechable ampliado para probar segundo ROOT, revocación/borrado ROOT, suspensión de titular, titular ROOT prohibido y cambio entre ADMIN. **CI de este HEAD aún pendiente**.
 - LIMITACIONES: aún falta mecanismo transaccional de solicitudes/ofertas/aceptaciones/auditoría; no hay ROOT inicial real ni API conectada. El índice garantiza **como máximo uno**, no existencia automática de ROOT. Falta prueba de carreras bajo conexiones simultáneas y endurecer operaciones directas contra el singleton antes de considerar producción. No se ejecutaron migraciones operativas ni se tocó Fleetia.
+
+## Ensayo real de dos sesiones (2026-10-20)
+- `scripts/ci/admin-ownership-concurrency-smoke.sh` ejecuta dos procesos `psql` contra el mismo PostgreSQL 17 desechable: transferencia de propietario con bloqueo retenido y suspensión posterior del antiguo titular. Se integra al final de `scripts/ci/postgres-migration-smoke.sh`.
+- El ensayo verifica orden de bloqueos y resultado final, **no** cubre todavía transferencias concurrentes con solicitudes/aceptaciones (no implementadas), ni los aislamientos REPEATABLE READ.
+- Estado: commit publicado, ejecución CI del nuevo HEAD pendiente. No usar esta prueba como certificación completa de concurrencia o como autorización de despliegue.
