@@ -37,7 +37,7 @@ test('accepted request updates owner, proposal and audit in one transaction',asy
  assert.ok(calls.some(x=>x.sql.startsWith('insert into sabora.admin_ownership_audit')));
 });
 test('idempotent replay never mutates, conflicting correlation fails closed',async()=>{
- const {calls,workflow}=setup({audit:[{action:'request',actor_user_id:requester,proposal_id:proposal,next_owner_id:owner}]});
+ const {calls,workflow}=setup({audit:[{action:'request',actor_user_id:requester,proposal_id:proposal,next_owner_id:owner,request_payload:{action:'request',actorUserId:requester,proposalId:null,targetUserId:null,reason:null}}]});
  assert.equal((await workflow({actorUserId:requester,action:'request',correlationId:corr})).replayed,true);
  assert.equal((await workflow({actorUserId:owner,action:'request',correlationId:corr})).error,'correlation_conflict');
  assert.ok(!calls.some(x=>x.sql.startsWith('insert ')||x.sql.startsWith('update ')));
@@ -64,4 +64,10 @@ test('active ROOT can force transfer with a reason and writes audit',async()=>{
  assert.equal(result.nextOwnerId,requester);
  assert.ok(calls.some(x=>x.sql.startsWith('update sabora.admin_write_ownership')));
  assert.ok(calls.some(x=>x.sql.startsWith('insert into sabora.admin_ownership_audit')));
+});
+
+test('same correlation with altered target or reason is rejected',async()=>{
+ const {workflow}=setup({audit:[{action:'force_transfer',actor_user_id:owner,proposal_id:null,next_owner_id:requester,request_payload:{action:'force',actorUserId:owner,proposalId:null,targetUserId:requester,reason:'original'}}]});
+ const result=await workflow({actorUserId:owner,action:'force',correlationId:corr,targetUserId:requester,reason:'changed'});
+ assert.equal(result.error,'correlation_conflict');
 });
