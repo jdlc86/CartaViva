@@ -60,3 +60,10 @@
 
 ## Mensaje corto para abrir sesión 02
 «Continúa CartaViva/Sabora desde el repositorio `jdlc86/CartaViva`. Lee primero `docs/continuity/SESSION_02_HANDOFF.md` en la rama `feat/sabora-pnpm-bootstrap`, y todos los contratos que allí se indican. Verifica HEAD, PR #2, GitHub Actions, migraciones y pruebas antes de modificar nada. La documentación GitHub es la fuente de verdad. Respeta las dos PWA independientes por restaurante, el directorio CartaViva separado y el aislamiento absoluto de Fleetia. No despliegues ni hagas merge sin mi autorización. Continúa las tareas pendientes, valida y actualiza el documento de continuidad.»
+
+## Sesión 02 — verificación y refuerzo CI (2026-10-20)
+- HEAD verificado antes de este cambio: `9b0cf74c77f1f5191e2af034f605ca029177bac4`.
+- GitHub Actions `Bootstrap Sabora lockfile` run `39465140625`, número 132: SUCCESS. Job `generate-lockfile`: paso PostgreSQL 17 desechable, tests, build, Compose e imagen API: SUCCESS. Esto acredita el smoke del prototipo, no conformidad funcional ni seguridad de producción.
+- Se añade el smoke PostgreSQL 17 también a `.github/workflows/ci.yml` para que cambios en migraciones no dependan únicamente del workflow bootstrap condicionado por rutas.
+- Validar el nuevo commit mediante GitHub Actions; no afirmar éxito hasta obtener conclusión. No se ejecutan migraciones sobre Supabase operativo, merge ni despliegue VPS.
+- Prioridades siguientes: autenticación backend verificada y modelo transaccional de visita/cuenta/pedido/revisión/despacho; mantener RPC privadas.
