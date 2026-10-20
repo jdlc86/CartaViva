@@ -40,7 +40,7 @@ begin
     select 1 from jsonb_array_elements(p_items) as entry(item)
     where jsonb_typeof(item) <> 'object'
       or coalesce(item->>'category', '') not in ('drink', 'starter', 'main', 'dessert')
-      or coalesce(length(btrim(item->>'name')), 0) = 0
+      or coalesce(length(btrim(item->>'name')), 0) not between 1 and 160
       or jsonb_typeof(item->'quantity') is distinct from 'number'
       or coalesce(item->>'quantity', '') !~ '^[0-9]+$'
       or length(item->>'quantity') > 2
