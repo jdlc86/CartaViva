@@ -11,10 +11,10 @@ docker run -d --name "$container" --network none \
   postgres:17-alpine >/dev/null
 
 for attempt in $(seq 1 40); do
-  if docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+  if docker exec "$container" psql -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then break; fi
   sleep 1
 done
-docker exec "$container" pg_isready -U postgres || { docker logs "$container"; exit 1; }
+docker exec "$container" psql -U postgres -d postgres -Atqc "select 1" || { docker logs "$container"; exit 1; }
 
 # Supabase API roles exist in production, but not in vanilla PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
