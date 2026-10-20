@@ -113,6 +113,15 @@ begin
     raise exception 'first confirmation did not start grouping window';
   end if;
 
+  -- The key format is enforced by PostgreSQL, even for privileged writes.
+  begin
+    update sabora.order_idempotency
+       set request_key = 'invalid key with spaces'
+     where order_id = v_first.order_id;
+    raise exception 'invalid idempotency key accepted';
+  exception when check_violation then
+    raise notice 'invalid idempotency key rejected by constraint';
+  end;
   -- The idempotency record cannot point to a different table session.
   begin
     update sabora.order_idempotency
