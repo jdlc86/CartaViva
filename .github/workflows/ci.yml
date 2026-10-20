@@ -1,0 +1,29 @@
+name: Sabora CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require genuine pnpm lockfile
+        run: test -s pnpm-lock.yaml || { echo 'ERROR: generate pnpm-lock.yaml using pnpm install before CI'; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Validate Docker Compose
+        run: docker compose -f deploy/compose.sabora.yml config --quiet
+      - name: Build isolated Sabora API image
+        run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
