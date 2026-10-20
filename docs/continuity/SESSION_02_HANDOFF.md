@@ -115,3 +115,9 @@
 - CI #161 (`39472525829`) superó el paso PostgreSQL 17 y Docker Compose aislado tras corregir la sintaxis de la migración. Consultar conclusión global antes de certificar el run.
 - Se añade al smoke SQL un intento de transición válida por un empleado `invited`, que debe fallar con `42501` incluso cuando su rol nominal sea `kitchen`. Se mantiene el test de revocación y el de no activación por defecto.
 - CI del commit de refuerzo pendiente. Sin endpoints operativos, merge, despliegue ni migración de Supabase.
+
+## Sesión 02 — prueba HTTP aislada de composición de autorización
+- CI #163 (`39472656059`) estaba en curso al comenzar el hito; consultar resultado definitivo.
+- `apps/api/src/protected-route-hooks.mjs` compone autenticación Bearer/JWKS y consulta de membresía vigente en `preHandler` por ruta, exige lista de roles explícita y no registra rutas de negocio.
+- `tests/protected-route-hooks.test.mjs` usa `Fastify.inject` sobre ruta **solo de prueba**, verifica 401 sin token o token inválido, 403 ante revocación o rol incorrecto, 503 ante fallo de almacén y éxito únicamente con identidad verificada y estado activo. Se resuelve Fastify desde dependencias del workspace API.
+- **No integrado en `apps/api/src/server.mjs`**. `lookupStaff` todavía es un contrato inyectable, no una conexión PostgreSQL. Falta definir credenciales técnicas mínimas, resolver estado en DB y evitar actor arbitrario en RPC. CI del HEAD nuevo pendiente.
