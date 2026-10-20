@@ -45,6 +45,18 @@ jobs:
         run: |
           docker run --rm --network none --entrypoint node sabora-api:ci --check src/server.mjs
           docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
+      - name: Exercise live API health inside isolated container
+        run: |
+          id=$(docker run -d --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges sabora-api:ci)
+          trap 'docker rm -f "$id" >/dev/null 2>&1 || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec "$id" node -e "fetch('http://127.0.0.1:4100/health').then(async r => { const body=await r.json(); process.exit(r.ok && body.service==='sabora-api' ? 0 : 1) }).catch(()=>process.exit(1))"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$id"
+          exit 1
       - name: Commit verified lockfile to same-repository branch
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
