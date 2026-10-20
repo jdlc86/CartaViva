@@ -146,3 +146,9 @@
 - Nuevo `apps/api/src/staff-reader-query.mjs`: exige un pool inyectado y limita las consultas a la sentencia parametrizada exacta de `role,state` por `user_id`. Rechaza SQL diferente o parámetros de longitud incorrecta antes de tocar el pool. Pruebas en `tests/staff-reader-query.test.mjs`; build incluye chequeo sintáctico.
 - **No hay conexión real ni credenciales**, no se añade dependencia de driver ni se conecta al servidor HTTP. Falta provisionar de forma aislada el rol LOGIN de mínimos privilegios, TLS/verificación, secretos y cierre del pool, y validar la consulta real bajo RLS. El límite de consultas de JS complementa, no sustituye, los permisos de PostgreSQL.
 - CI del HEAD nuevo pendiente. Sin merge, despliegue ni modificaciones en Supabase operativo/Fleetia.
+
+## Sesión 02 — fábrica de autorización con pool inyectado
+- Run #180 (`39474035030`) se encontraba en curso durante esta iteración; comprobar resultado antes de certificarlo.
+- Añadida `apps/api/src/staff-protected-hooks-from-pool.mjs`: compone pool inyectado -> SQL de membresía estrictamente permitido -> lookup de estado actual -> JWT/roles de Fastify. **No crea ni abre conexiones, no maneja secretos y no registra rutas públicas.**
+- `tests/staff-protected-hooks-from-pool.test.mjs` valida HTTP 200 activo, HTTP 403 tras revocación, consulta SQL parametrizada exacta y HTTP 503 ante indisponibilidad del pool. Build verifica sintaxis.
+- Pendiente CI del HEAD; sigue pendiente driver/pool técnico real, SSL verificable, credenciales independientes y autorización transaccional de RPC. No aplicar a Supabase operativo ni desplegar sin permiso expreso.
