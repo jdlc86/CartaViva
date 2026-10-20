@@ -109,7 +109,7 @@ end $$;
 do $$
 declare t uuid;
 begin
- select id into t from sabora.dining_tables limit 1;
+ select id into t from sabora.dining_tables where restaurant_id = '00000000-0000-0000-0000-000000000001' limit 1;
  begin
    insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,items)
    values ('00000000-0000-0000-0000-000000000002',t,gen_random_uuid(),'Acme','42',now(),'first','[{"category":"main","name":"Rice","quantity":1}]');
