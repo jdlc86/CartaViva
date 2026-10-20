@@ -261,6 +261,23 @@ begin
   exception when invalid_parameter_value then
     raise notice 'invalid quantity rejected';
   end;
+  -- JSON null and fractional quantities are invalid and must not write orders.
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_04','[{"category":"main","name":"Rice","quantity":null}]'::jsonb);
+    raise exception 'null quantity accepted';
+  exception when invalid_parameter_value then
+    raise notice 'null quantity rejected';
+  end;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_05','[{"category":"main","name":"Rice","quantity":1.5}]'::jsonb);
+    raise exception 'fractional quantity accepted';
+  exception when invalid_parameter_value then
+    raise notice 'fractional quantity rejected';
+  end;
   if (select count(*) from sabora.orders where table_id=v_table) <> v_order_count then
     raise exception 'QR rotation erased order history';
   end if;
