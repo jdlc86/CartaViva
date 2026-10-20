@@ -79,3 +79,10 @@
 - `tests/auth-verifier.test.mjs`: pruebas con RSA efímero para token válido, manipulación, firma/algoritmo, claims y configuración inválidos. `apps/api/package.json` incluye `node --check src/auth.mjs`.
 - **No se ha conectado todavía a Fastify**: faltan obtención/rotación de JWKS del emisor de confianza, caché acotada, rechazo de sesión revocada según contrato, comprobación de estado/membresía vigentes en base de datos, tests HTTP y auditoría. No exponer endpoints de negocio hasta completar esos controles.
 - Validar CI del HEAD actualizado. Ninguna migración a Supabase operativo ni despliegue VPS.
+
+## Sesión 02 — JWKS de confianza (en rama, pendiente de gate final)
+- CI #140 (`39471073517`) SUCCESS para `d9e43b639f484cca02fa8d874c129e87a8536086`.
+- `apps/api/src/jwks.mjs` implementa proveedor JWKS RSA RS256 con endpoint fijo derivado del emisor configurado, sin redirects, timeout, límite de respuesta 64 KiB, máximo 20 claves, TTL acotado, coalescencia de peticiones y cierre ante fallo de actualización (sin servir claves caducadas de caché).
+- `tests/jwks-provider.test.mjs` comprueba origen fijo, caché/expiración, concurrencia y fallos; compilación incluye comprobación sintáctica del módulo.
+- Aún no existe integración de JWT/JWKS en Fastify, resolución de membresía activa ni protección transaccional. El código solo admite RS256; confirmar en Supabase Auth que las claves de firma de esta instalación utilizan ese algoritmo antes de integración. Si usa ES256, implementar y probar algoritmo explícitamente, nunca relajar la verificación.
+- El nuevo commit requiere CI verde. Sin merge, migraciones a Supabase ni despliegue VPS.
