@@ -389,3 +389,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Causa: PostgreSQL concede EXECUTE a PUBLIC por defecto global; revocarlo solo IN SCHEMA no elimina ese default global.
 - Migración correctiva `20261020270000_sabora_default_function_execute.sql` revoca EXECUTE global de funciones futuras para el rol creador de migraciones. La prueba negativa se conserva. Riesgo documentado: afecta a futuras funciones del mismo creador fuera de `sabora`; no aplicar operativamente sin revisión.
 - CI de corrección pendiente. Sin Supabase operativo, VPS ni Fleetia.
+
+## Continuación: auditoría integral de permisos EXECUTE (2026-10-20)
+- CI #315 SUCCESS sobre corrección de permisos por defecto; bootstrap #299 estaba en progreso al consultar.
+- Smoke PostgreSQL 17 ampliado: inspecciona todas las funciones de esquema `sabora` y rechaza permisos EXECUTE para PUBLIC, anon, authenticated y writer dormido. El control anterior solo comprobaba una lista de RPC conocidas y una función nueva de prueba.
+- Si falla, identificar la función y corregir ACL explícita en migración posterior sin conceder bypass. Ninguna migración aplicada en Supabase operativo ni despliegue.
