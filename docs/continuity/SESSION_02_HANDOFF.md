@@ -226,3 +226,7 @@
 - `apps/api/src/staff-authorization.mjs` y `postgres-staff-lookup.mjs` ahora admiten rol `root` persistido; no se aceptan roles arbitrarios ni claims del cliente. Se agregaron regresiones para ROOT activo, revocado y separación respecto a ADMIN.
 - El reconocimiento del rol no crea rutas ROOT ni concede titularidad automáticamente; la integración de mutaciones transaccionales sigue pendiente.
 - CI #238 confirmó éxito del paso de migraciones PostgreSQL 17 y de Compose aislado; ejecución completa y HEAD posterior aún requieren comprobación.
+
+## Dominio de cesiones de titularidad (2026-10-20)
+- Añadido `apps/api/src/ownership-transition-policy.mjs`: función pura para solicitud, oferta, aceptación, rechazo, cancelación y reasignación forzosa exclusiva de ROOT; comprueba actor activo, propietario vigente, propuesta pendiente y destinatario ADMIN activo. Tests en `tests/ownership-transition-policy.test.mjs`.
+- **NO es una operación segura de escritura por sí sola:** debe llamarse bajo una transacción PostgreSQL con bloqueo del singleton, lectura fresca de membresías y propuesta, auditoría append-only, idempotencia y ACL mínimos. No hay rutas HTTP ni persistencia de propuestas aún. CI pendiente.
