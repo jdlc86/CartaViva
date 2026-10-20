@@ -32,6 +32,9 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
   < supabase/migrations/20261020160000_sabora_qr_rotation.sql
 
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < supabase/migrations/20261020170000_sabora_order_lifecycle.sql
+
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 do $$
 declare actual int;
@@ -39,9 +42,9 @@ begin
   select count(*) into actual
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname='sabora' and c.relname in
-  ('restaurants','restaurant_members','dining_tables','orders','order_idempotency')
+  ('restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events')
   and c.relrowsecurity and c.relforcerowsecurity;
-  if actual <> 5 then raise exception 'RLS missing: %', actual; end if;
+  if actual <> 6 then raise exception 'RLS missing: %', actual; end if;
 end $$;
 
 -- Assert every Sabora table and RPC remains inaccessible to client roles.
@@ -55,7 +58,7 @@ begin
       raise exception 'client role % has unauthorized schema usage', v_role;
     end if;
     foreach v_table in array array[
-      'restaurants','restaurant_members','dining_tables','orders','order_idempotency'
+      'restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events'
     ] loop
       if has_table_privilege(v_role, format('sabora.%I',v_table), 'SELECT')
          or has_table_privilege(v_role, format('sabora.%I',v_table), 'INSERT')
@@ -65,7 +68,8 @@ begin
       end if;
     end loop;
     if has_function_privilege(v_role, 'sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb)', 'EXECUTE')
-       or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE') then
+       or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE')
+       or has_function_privilege(v_role, 'sabora.transition_order_status(uuid,uuid,uuid,text,text)', 'EXECUTE') then
       raise exception 'client role % has unauthorized RPC execution', v_role;
     end if;
   end loop;
@@ -534,6 +538,82 @@ begin
       '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
       'Acme','101','after_rotate_new','[{"category":"main","name":"Rice","quantity":1}]'::jsonb)) <> 'first' then
     raise exception 'new QR did not start a fresh grouping window';
+  end if;
+end $$;
+SQL
+
+
+# Order lifecycle: valid role transitions, tenant isolation, audit and terminal states.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+insert into sabora.restaurant_members(restaurant_id,user_id,role) values
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000101','kitchen'),
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000102','waiter'),
+('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000103','admin'),
+('00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000104','admin');
+do $$
+declare
+  o uuid;
+  v text;
+  n int;
+begin
+  select id into strict o from sabora.orders
+    where restaurant_id='00000000-0000-0000-0000-000000000001'
+    order by confirmed_at,id limit 1;
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000002',o,'00000000-0000-0000-0000-000000000104','preparing');
+    raise exception 'cross tenant transition succeeded';
+  exception when no_data_found then null;
+  end;
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000102','preparing');
+    raise exception 'waiter prepared order';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000104','preparing');
+    raise exception 'nonmember prepared order';
+  exception when insufficient_privilege then null;
+  end;
+  perform * from sabora.transition_order_status(
+    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','preparing');
+  perform * from sabora.transition_order_status(
+    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','ready');
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000101','delivered');
+    raise exception 'kitchen delivered order';
+  exception when insufficient_privilege then null;
+  end;
+  perform * from sabora.transition_order_status(
+    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000102','delivered');
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled','late');
+    raise exception 'terminal order cancelled';
+  exception when invalid_parameter_value then null;
+  end;
+  if (select status from sabora.orders where id=o) <> 'delivered' then
+    raise exception 'order final status wrong';
+  end if;
+  if (select count(*) from sabora.order_status_events where order_id=o) <> 3 then
+    raise exception 'audit event count wrong';
+  end if;
+  select id into strict o from sabora.orders
+    where restaurant_id='00000000-0000-0000-0000-000000000001'
+      and status='confirmed' order by confirmed_at,id limit 1;
+  begin
+    perform * from sabora.transition_order_status(
+      '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled');
+    raise exception 'missing cancellation reason accepted';
+  exception when invalid_parameter_value then null;
+  end;
+  perform * from sabora.transition_order_status(
+    '00000000-0000-0000-0000-000000000001',o,'00000000-0000-0000-0000-000000000103','cancelled','Out of stock');
+  if (select reason from sabora.order_status_events where order_id=o) <> 'Out of stock' then
+    raise exception 'cancellation audit reason missing';
   end if;
 end $$;
 SQL
