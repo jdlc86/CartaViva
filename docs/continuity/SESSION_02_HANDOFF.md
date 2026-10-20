@@ -410,3 +410,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #321 y bootstrap #305 sobre `0232e43` SUCCESS.
 - Añadido `docs/security/SABORA_SQL_ADMIN_IDENTITY_CONTRACT.md`: separación entre identidad autenticada del usuario, identidad técnica del backend y titularidad durable ADMIN; ROOT exclusivamente en gobierno.
 - Orden transaccional y puertas de RLS, matriz de recursos, pruebas negativas, bootstrap ROOT, concurrencia y auditoría definidos como prerrequisitos. El writer permanece dormido sin LOGIN ni permisos. No se habilitaron rutas HTTP ni se aplicó SQL a Supabase operativo.
+
+## Matriz de permisos administrativos (2026-10-21)
+- CI #323 y bootstrap #307 sobre `328766a` SUCCESS.
+- Añadido `docs/security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md` a partir del esquema y contratos existentes: personal, singleton de titularidad, propuestas, auditoría, ajustes, mesas, pedidos y cocina. Se separan explícitamente gobierno ROOT, administración ordinaria y flujos de camarero/cocina.
+- Todos los grants administrativos permanecen bloqueados hasta ficha por operación con columnas, RLS, actor, auditoría y pruebas de identidad no privilegiada. Ningún LOGIN, ruta HTTP, migración operativa o despliegue habilitado.
