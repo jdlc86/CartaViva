@@ -67,7 +67,9 @@ begin
     return;
   end if;
 
-  -- Read the clock after acquiring the table lock and handling replay.\n  v_now := clock_timestamp();\n  if v_table.first_confirmed_at is null then
+  -- Read the clock after acquiring the table lock and handling replay.
+  v_now := clock_timestamp();
+  if v_table.first_confirmed_at is null then
     v_grouping := 'first';
     update sabora.dining_tables t set first_confirmed_at = v_now where t.id = v_table.id;
   elsif v_now < v_table.first_confirmed_at + make_interval(secs => v_table.grouping_window_seconds) then
