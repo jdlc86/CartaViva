@@ -415,3 +415,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #323 y bootstrap #307 sobre `328766a` SUCCESS.
 - Añadido `docs/security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md` a partir del esquema y contratos existentes: personal, singleton de titularidad, propuestas, auditoría, ajustes, mesas, pedidos y cocina. Se separan explícitamente gobierno ROOT, administración ordinaria y flujos de camarero/cocina.
 - Todos los grants administrativos permanecen bloqueados hasta ficha por operación con columnas, RLS, actor, auditoría y pruebas de identidad no privilegiada. Ningún LOGIN, ruta HTTP, migración operativa o despliegue habilitado.
+
+## Contrato de operaciones de titularidad (2026-10-21)
+- CI #325 y bootstrap #309 del HEAD previo SUCCESS.
+- Nuevo `docs/security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md` basado en workflow y política existentes: actores por acción, destinatarios, escrituras y lecturas SQL, locks, replay de correlación, auditoría y prerrequisitos para identidad SQL mínima.
+- Especificación documental, no implica grants, rutas HTTP ni aplicación de migraciones en Supabase operativo. Continúan pendientes los gates de concurrencia y RLS bajo identidad no propietaria.
