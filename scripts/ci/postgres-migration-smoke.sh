@@ -24,7 +24,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>9 then raise exception 'Expected nine RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>10 then raise exception 'Expected ten RLS protected single-restaurant tables, got %',v_count; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
  end if;
