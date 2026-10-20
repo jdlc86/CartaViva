@@ -1,7 +1,7 @@
 // A verified JWT identifies a user, but never grants operational permissions.
 // The resolver MUST read current durable membership on every authorization;
 // it must not trust request bodies, JWT role claims or stale cached memberships.
-const ALLOWED_ROLES = new Set(['admin', 'waiter', 'kitchen']);
+const ALLOWED_ROLES = new Set(['root', 'admin', 'waiter', 'kitchen']);
 
 export function createStaffAuthorization({ lookupStaff } = {}) {
   if (typeof lookupStaff !== 'function') throw new Error('invalid_staff_authorization_config');
