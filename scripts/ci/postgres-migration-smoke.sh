@@ -44,18 +44,29 @@ begin
   if actual <> 5 then raise exception 'RLS missing: %', actual; end if;
 end $$;
 
--- Assert clients cannot access Sabora tables or execute draft functions.
+-- Assert every Sabora table and RPC remains inaccessible to client roles.
 do $$
-declare v_role text;
+declare
+  v_role text;
+  v_table text;
 begin
   foreach v_role in array array['anon','authenticated'] loop
-    if has_schema_privilege(v_role, 'sabora', 'USAGE')
-       or has_table_privilege(v_role, 'sabora.orders', 'SELECT')
-       or has_table_privilege(v_role, 'sabora.dining_tables', 'INSERT')
-       or has_function_privilege(v_role, 'sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb)', 'EXECUTE')
-       or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE')
-    then
-      raise exception 'client role % has unauthorized Sabora privileges', v_role;
+    if has_schema_privilege(v_role, 'sabora', 'USAGE') then
+      raise exception 'client role % has unauthorized schema usage', v_role;
+    end if;
+    foreach v_table in array array[
+      'restaurants','restaurant_members','dining_tables','orders','order_idempotency'
+    ] loop
+      if has_table_privilege(v_role, format('sabora.%I',v_table), 'SELECT')
+         or has_table_privilege(v_role, format('sabora.%I',v_table), 'INSERT')
+         or has_table_privilege(v_role, format('sabora.%I',v_table), 'UPDATE')
+         or has_table_privilege(v_role, format('sabora.%I',v_table), 'DELETE') then
+        raise exception 'client role % has unauthorized table privilege on %', v_role, v_table;
+      end if;
+    end loop;
+    if has_function_privilege(v_role, 'sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb)', 'EXECUTE')
+       or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE') then
+      raise exception 'client role % has unauthorized RPC execution', v_role;
     end if;
   end loop;
 end $$;
