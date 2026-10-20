@@ -365,3 +365,9 @@
 
 ### 10. Siguiente bloque recomendado
 Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOGIN provisionado fuera de migraciones, RLS/grants exactos, binding de `request.verifiedIdentity.userId` y matriz de recursos administrativos. Después integrar una sola ruta de mutación de bajo riesgo mediante `createPostgresTransaction` + `createTransactionalAdminWrite`, y una ruta de gobierno mediante `createOwnershipWorkflow`; probar ambas end-to-end con driver real en PostgreSQL 17 desechable antes de ampliar superficie o desplegar.
+
+## Continuación posterior a Codex — 2026-10-20
+- Verificados los dos workflows SUCCESS del commit `5ca3373`: CI 39500612967 y bootstrap 39500613084. El informe de retorno de Codex ya está publicado en este documento.
+- Endurecido `apps/api/src/postgres-transaction.mjs`: cuando falla BEGIN o ROLLBACK se descarta la conexión del pool, evitando reutilizar sesiones de estado incierto. Pruebas nuevas para BEGIN/COMMIT/ROLLBACK fallidos.
+- Añadido `docs/security/SABORA_SQL_WRITER_BOUNDARY_DESIGN.md`: requisitos previos a rol writer, grants/RLS y rutas. **No se creó writer SQL ni se abrió acceso operativo**.
+- Próxima puerta: validar CI del HEAD y diseñar/practicar roles técnicos de mínimos privilegios en PostgreSQL 17 desechable; después acordar matriz de recursos administrativos y bootstrap ROOT. Sin despliegue, sin Supabase operativo, sin Fleetia.
