@@ -5,12 +5,13 @@ begin;
 do $login$
 begin
  if not exists (select 1 from pg_roles where rolname = 'sabora_staff_reader_login') then
-  create role sabora_staff_reader_login login nobypassrls noinherit;
+  create role sabora_staff_reader_login login nobypassrls inherit;
  end if;
 end;
 $login$;
--- NOINHERIT prevents ambient access; the application would have to SET ROLE,
--- which the current query-only adapter does not do. Therefore the runtime
--- connection design must be reconciled before any real provision.
+-- Inheritance permits the pinned read-only lookup without SET ROLE.
+-- This login must not receive other role memberships or privileges.
+-- Password, TLS, network restrictions and role creation must be provisioned
+-- out of band, never by application migrations.
 grant sabora_staff_reader to sabora_staff_reader_login;
 commit;
