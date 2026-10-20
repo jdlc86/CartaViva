@@ -136,6 +136,16 @@ begin
     raise exception 'expired grouping window accepted a grouped order';
   end if;
 
+  -- Reject oversized QR input before hashing or attempting any write.
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('x',513),
+      'Acme','101','oversized_qr_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+    raise exception 'oversized QR unexpectedly accepted';
+  exception when invalid_parameter_value then
+    raise notice 'oversized QR rejected';
+  end;
+
   -- A valid table and QR from restaurant A must not work under restaurant B.
   begin
     perform * from sabora.confirm_order(
