@@ -186,3 +186,9 @@
 - CI #206 (`39488277336`) estaba en curso al inicio; verificar conclusión final.
 - Añadida regresión en `tests/staff-protected-hooks-from-pool.test.mjs`: un error simulado del driver que contiene una URL con contraseña debe traducirse en HTTP 503 `authorization_unavailable`, sin exponer el secreto ni en respuesta ni en el evento acotado del observador.
 - No se añade driver real ni se abren rutas operativas. CI del nuevo HEAD pendiente. No hay merge, despliegue o cambios en Supabase/Fleetia.
+
+## Sesión 02 — propuesta de provisión del LOGIN técnico (sin ejecución)
+- CI #208 (`39488409123`) en curso al inicio; verificar conclusión final.
+- Borrador de revisión **no ejecutable automáticamente** en `docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql`: rol LOGIN `sabora_staff_reader_login` con `NOBYPASSRLS` e `INHERIT`, miembro únicamente del rol NOLOGIN `sabora_staff_reader`. No contiene contraseñas ni se incluye en glob de migraciones.
+- Antes de cualquier aplicación: revisión independiente de privilegios del proveedor, autenticación/TLS, memberships existentes, default privileges, grants efectivos, restricciones de red y permisos de crear roles. La propuesta NO constituye autorización para provisionar Supabase.
+- Sin despliegue, merge ni cambios operativos.
