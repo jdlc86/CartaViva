@@ -405,3 +405,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #319 y bootstrap #303 FAILED: el nuevo smoke pasaba el pseudo-rol `PUBLIC` a `has_table_privilege`/`has_sequence_privilege`, causando `role "PUBLIC" does not exist`.
 - Corregido: comprobar privilegios efectivos de `anon`, `authenticated` y `sabora_admin_writer`; estos incluyen grants concedidos a PUBLIC. Se mantienen todas las categorías de privilegio y la enumeración completa de relaciones/secuencias.
 - CI del commit correctivo pendiente. No se han modificado recursos operativos.
+
+## Identidad SQL administrativa: contrato cerrado (2026-10-21)
+- CI #321 y bootstrap #305 sobre `0232e43` SUCCESS.
+- Añadido `docs/security/SABORA_SQL_ADMIN_IDENTITY_CONTRACT.md`: separación entre identidad autenticada del usuario, identidad técnica del backend y titularidad durable ADMIN; ROOT exclusivamente en gobierno.
+- Orden transaccional y puertas de RLS, matriz de recursos, pruebas negativas, bootstrap ROOT, concurrencia y auditoría definidos como prerrequisitos. El writer permanece dormido sin LOGIN ni permisos. No se habilitaron rutas HTTP ni se aplicó SQL a Supabase operativo.
