@@ -1,6 +1,6 @@
 // Read-only owner adapter. Its query identity must have separately provisioned
 // least-privileged SELECT access; no browser, anon or authenticated credentials.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function createPostgresOwnerLookup({ query } = {}) {
   if (typeof query !== 'function') throw new Error('invalid_owner_lookup_config');
   return async function lookupOwner() {
