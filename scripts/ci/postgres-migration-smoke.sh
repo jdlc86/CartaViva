@@ -87,6 +87,52 @@ begin
  end;
 end;
 $ownership_schema$;
+-- The dormant writer must have no data access, even when exercised as a role.
+do $writer_acl$
+declare v_role record; v_table text;
+begin
+ select rolcanlogin,rolbypassrls,rolinherit,rolcreatedb,rolcreaterole,rolreplication
+ into v_role from pg_roles where rolname='sabora_admin_writer';
+ if not found or v_role.rolcanlogin or v_role.rolbypassrls or v_role.rolinherit
+    or v_role.rolcreatedb or v_role.rolcreaterole or v_role.rolreplication then
+  raise exception 'admin writer has unsafe role attributes';
+ end if;
+ if has_schema_privilege('sabora_admin_writer','sabora','USAGE') then
+  raise exception 'dormant writer has schema usage';
+ end if;
+ for v_table in select tablename from pg_tables where schemaname='sabora' loop
+  if has_table_privilege('sabora_admin_writer',format('sabora.%I',v_table),'SELECT')
+     or has_table_privilege('sabora_admin_writer',format('sabora.%I',v_table),'INSERT')
+     or has_table_privilege('sabora_admin_writer',format('sabora.%I',v_table),'UPDATE')
+     or has_table_privilege('sabora_admin_writer',format('sabora.%I',v_table),'DELETE') then
+   raise exception 'dormant writer can access table %',v_table;
+  end if;
+ end loop;
+end;
+$writer_acl$;
+set role sabora_admin_writer;
+do $writer_denials$
+begin
+ begin
+  perform count(*) from sabora.staff_members;
+  raise exception 'dormant writer read staff';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  update sabora.admin_write_ownership set owner_user_id=null;
+  raise exception 'dormant writer modified ownership';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  insert into sabora.admin_ownership_audit(correlation_id,actor_user_id,action)
+   values ('00000000-0000-0000-0000-000000000999','00000000-0000-0000-0000-000000000902','request');
+  raise exception 'dormant writer inserted audit';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$writer_denials$;
+reset role;
+
 -- Reader must be strictly read-only and subject to RLS.
 do $reader$
 begin
