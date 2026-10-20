@@ -2,7 +2,6 @@
 begin;
 
 create or replace function sabora.confirm_order(
-  p_restaurant_id uuid,
   p_table_id uuid,
   p_qr_token text,
   p_company text,
@@ -24,7 +23,7 @@ declare
   v_order_id uuid;
   v_grouping text;
 begin
-  if p_restaurant_id is null or p_table_id is null or p_qr_token is null
+  if p_table_id is null or p_qr_token is null
     or length(p_qr_token) not between 32 and 512 or p_company is null or length(btrim(p_company)) not between 1 and 160
     or p_employee_number is null or length(btrim(p_employee_number)) not between 1 and 80
     or p_request_key is null or p_request_key !~ '^[a-zA-Z0-9_-]{8,128}$'
@@ -52,10 +51,10 @@ begin
   end if;
 
   -- Serialize every confirmation for this table. No external table can enter
-  -- this transaction because of the tenant-scoped predicate.
+  -- this transaction because it locks the single restaurant's table row.
   select * into v_table
     from sabora.dining_tables t
-    where t.id = p_table_id and t.restaurant_id = p_restaurant_id
+    where t.id = p_table_id
     for update;
   if not found then
     raise exception 'table_not_found' using errcode = 'P0002';
@@ -71,7 +70,7 @@ begin
   ));
   select i.payload_hash, i.order_id into v_previous
     from sabora.order_idempotency i
-    where i.restaurant_id = p_restaurant_id and i.table_id = p_table_id
+    where i.table_id = p_table_id
       and i.session_id = v_table.session_id
       and i.customer_identity_hash = v_identity_hash and i.request_key = p_request_key;
   if found then
@@ -95,13 +94,13 @@ begin
     v_grouping := 'late';
   end if;
 
-  insert into sabora.orders (restaurant_id, table_id, session_id, company, employee_number, confirmed_at, grouping, items)
-    values (p_restaurant_id, p_table_id, v_table.session_id, btrim(p_company), btrim(p_employee_number), v_now, v_grouping, p_items)
+  insert into sabora.orders (table_id, session_id, company, employee_number, confirmed_at, grouping, items)
+    values (p_table_id, v_table.session_id, btrim(p_company), btrim(p_employee_number), v_now, v_grouping, p_items)
     returning id into v_order_id;
 
   insert into sabora.order_idempotency
-    (restaurant_id, table_id, session_id, customer_identity_hash, request_key, payload_hash, order_id)
-    values (p_restaurant_id, p_table_id, v_table.session_id, v_identity_hash, p_request_key, v_payload_hash, v_order_id);
+    (table_id, session_id, customer_identity_hash, request_key, payload_hash, order_id)
+    values (p_table_id, v_table.session_id, v_identity_hash, p_request_key, v_payload_hash, v_order_id);
 
   return query select v_order_id, v_grouping,
     coalesce(v_table.first_confirmed_at, v_now) + make_interval(secs => v_table.grouping_window_seconds), false;
@@ -109,6 +108,6 @@ end;
 $$;
 
 -- Intentionally NO EXECUTE grants to anon, authenticated or public.
-revoke all on function sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb) from public, anon, authenticated;
+revoke all on function sabora.confirm_order(uuid,text,text,text,text,jsonb) from public, anon, authenticated;
 
 commit;
