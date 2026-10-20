@@ -226,6 +226,15 @@ begin
   begin
     perform * from sabora.confirm_order(
       '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_03',
+      jsonb_build_array(jsonb_build_object('category','main','name',repeat('X',161),'quantity',1)));
+    raise exception 'oversized item name accepted';
+  exception when invalid_parameter_value then
+    raise notice 'oversized item name rejected';
+  end;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
       'Acme','101','bad_items_02','[{"category":"main","name":"Rice","quantity":0}]'::jsonb);
     raise exception 'invalid quantity accepted';
   exception when invalid_parameter_value then
