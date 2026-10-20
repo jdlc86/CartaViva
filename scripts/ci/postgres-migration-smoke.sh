@@ -278,6 +278,31 @@ begin
   exception when invalid_parameter_value then
     raise notice 'fractional quantity rejected';
   end;
+  -- Reject missing quantity, unknown category and blank item names.
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_06','[{"category":"main","name":"Rice"}]'::jsonb);
+    raise exception 'missing quantity accepted';
+  exception when invalid_parameter_value then
+    raise notice 'missing quantity rejected';
+  end;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_07','[{"category":"side","name":"Rice","quantity":1}]'::jsonb);
+    raise exception 'unknown category accepted';
+  exception when invalid_parameter_value then
+    raise notice 'unknown category rejected';
+  end;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_08','[{"category":"main","name":"  ","quantity":1}]'::jsonb);
+    raise exception 'blank item name accepted';
+  exception when invalid_parameter_value then
+    raise notice 'blank item name rejected';
+  end;
   if (select count(*) from sabora.orders where table_id=v_table) <> v_order_count then
     raise exception 'QR rotation erased order history';
   end if;
