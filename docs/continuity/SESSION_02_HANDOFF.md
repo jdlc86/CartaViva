@@ -121,3 +121,10 @@
 - `apps/api/src/protected-route-hooks.mjs` compone autenticación Bearer/JWKS y consulta de membresía vigente en `preHandler` por ruta, exige lista de roles explícita y no registra rutas de negocio.
 - `tests/protected-route-hooks.test.mjs` usa `Fastify.inject` sobre ruta **solo de prueba**, verifica 401 sin token o token inválido, 403 ante revocación o rol incorrecto, 503 ante fallo de almacén y éxito únicamente con identidad verificada y estado activo. Se resuelve Fastify desde dependencias del workspace API.
 - **No integrado en `apps/api/src/server.mjs`**. `lookupStaff` todavía es un contrato inyectable, no una conexión PostgreSQL. Falta definir credenciales técnicas mínimas, resolver estado en DB y evitar actor arbitrario en RPC. CI del HEAD nuevo pendiente.
+
+## Sesión 02 — adaptador de lectura PostgreSQL de empleados
+- CI #167 (`39472814552`) SUCCESS sobre composición Fastify aislada.
+- Añadido `apps/api/src/postgres-staff-lookup.mjs`: consulta SQL parametrizada de `role,state` por UUID verificado; rechaza resultados anómalos y propaga errores de DB para que la autorización responda 503. No usa datos de identidad del body.
+- Añadido `tests/postgres-staff-lookup.test.mjs` y chequeo sintáctico de build.
+- Migración prototipo `20261020200000_sabora_staff_reader.sql` crea rol técnico `NOLOGIN NOBYPASSRLS`, concede solo `USAGE` del esquema y SELECT limitado a columnas de membresía con política RLS explícita. Smoke PostgreSQL 17 prueba ausencia de escrituras. **Este rol aún no tiene credencial LOGIN ni conexión runtime; ninguna migración se ha aplicado a Supabase.** Revisar política y provisionamiento de rol con infraestructura antes de habilitar acceso real.
+- CI del nuevo HEAD pendiente; `server.mjs` permanece solo health/ready.
