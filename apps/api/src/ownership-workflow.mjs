@@ -45,7 +45,7 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
      (action==='accept'?proposal?.toOwnerId:targetUserId);
    const decision=decideOwnershipTransition({
     action,actor:{userId:actorUserId,role:actor.role,state:actor.state},
-    currentOwnerId:ownerId,target:byId.get(targetId),proposal,reason
+    currentOwnerId:ownerId,target:byId.has(targetId) ? {userId:byId.get(targetId).user_id,role:byId.get(targetId).role,state:byId.get(targetId).state} : undefined,proposal,reason
    });
    if (decision.error) return decision;
    let newProposalId=proposalId??null;
