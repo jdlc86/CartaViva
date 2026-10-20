@@ -8,10 +8,10 @@ trap cleanup EXIT
 
 docker run -d --name "$container" --network none \
   -e POSTGRES_PASSWORD=ci_only_not_a_secret \
-  postgres:17-alpine >/dev/null
+  if docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' >/dev/null 2>&1; then break; fi
 
 for attempt in $(seq 1 40); do
-  if docker exec "$container" psql -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then break; fi
+docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' || { docker logs "$container"; exit 1; }
   sleep 1
 done
 docker exec "$container" psql -U postgres -d postgres -Atqc "select 1" || { docker logs "$container"; exit 1; }
