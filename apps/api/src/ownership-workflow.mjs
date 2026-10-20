@@ -18,7 +18,7 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
    const existing = await query('select action,actor_user_id,proposal_id,previous_owner_id,next_owner_id from sabora.admin_ownership_audit where correlation_id=$1',[correlationId]);
    if (existing.rows?.length) {
     const row=existing.rows[0];
-    return row.actor_user_id === actorUserId && row.action === (action==='force'?'force_transfer':action)
+    return row.actor_user_id === actorUserId && row.action === (action==='force'?'force_transfer':action==='accept'?'accepted_transfer':action)
      ? {replayed:true,proposalId:row.proposal_id,nextOwnerId:row.next_owner_id}
      : {error:'correlation_conflict'};
    }
