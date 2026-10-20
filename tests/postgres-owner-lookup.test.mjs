@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPostgresOwnerLookup } from '../apps/api/src/postgres-owner-lookup.mjs';
-const id='00000000-0000-0000-0000-000000000202';
+const id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 test('reads singleton owner with fixed SQL and no caller-controlled parameters',async()=>{
  const calls=[];
  const lookup=createPostgresOwnerLookup({query:async(sql,values)=>{
