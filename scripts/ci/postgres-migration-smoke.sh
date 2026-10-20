@@ -3,19 +3,18 @@ set -euo pipefail
 
 # Disposable PostgreSQL 17 only. Never connect to external DB hosts.
 container="sabora-pg-migration-ci-${GITHUB_RUN_ID:-local}-$$"
-cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 docker run -d --name "$container" --network none \
   -e POSTGRES_PASSWORD=ci_only_not_a_secret \
-  --tmpfs /var/lib/postgresql/data:rw,size=256m \
   postgres:17-alpine >/dev/null
 
 for attempt in $(seq 1 40); do
   if docker exec "$container" pg_isready -U postgres >/dev/null 2>&1; then break; fi
   sleep 1
 done
-docker exec "$container" pg_isready -U postgres
+docker exec "$container" pg_isready -U postgres || { docker logs "$container"; exit 1; }
 
 # Supabase API roles exist in production, but not in vanilla PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
