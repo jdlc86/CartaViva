@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql; do
+for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
@@ -131,6 +131,53 @@ update sabora.staff_members set state='active' where user_id in (
  '00000000-0000-0000-0000-000000000101',
  '00000000-0000-0000-0000-000000000102',
  '00000000-0000-0000-0000-000000000103');
+-- ROOT and ownership integrity tests, disposable database only.
+insert into sabora.staff_members(user_id,role,state) values
+ ('00000000-0000-0000-0000-000000000201','root','active'),
+ ('00000000-0000-0000-0000-000000000202','admin','active'),
+ ('00000000-0000-0000-0000-000000000203','admin','active');
+do $governance$
+begin
+ begin
+  insert into sabora.staff_members(user_id,role,state)
+   values ('00000000-0000-0000-0000-000000000204','root','active');
+  raise exception 'second ROOT accepted';
+ exception when unique_violation then null;
+ end;
+ begin
+  update sabora.staff_members set state='revoked'
+   where user_id='00000000-0000-0000-0000-000000000201';
+  raise exception 'ROOT revocation accepted';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  delete from sabora.staff_members
+   where user_id='00000000-0000-0000-0000-000000000201';
+  raise exception 'ROOT deletion accepted';
+ exception when insufficient_privilege then null;
+ end;
+ update sabora.admin_write_ownership
+  set owner_user_id='00000000-0000-0000-0000-000000000202' where singleton;
+ begin
+  update sabora.staff_members set state='suspended'
+   where user_id='00000000-0000-0000-0000-000000000202';
+  raise exception 'owner suspension accepted';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  update sabora.admin_write_ownership
+   set owner_user_id='00000000-0000-0000-0000-000000000201' where singleton;
+  raise exception 'ROOT assigned as ADMIN owner';
+ exception when insufficient_privilege then null;
+ end;
+ update sabora.admin_write_ownership
+  set owner_user_id='00000000-0000-0000-0000-000000000203' where singleton;
+ if (select owner_user_id from sabora.admin_write_ownership where singleton)
+  <>'00000000-0000-0000-0000-000000000203'::uuid then
+  raise exception 'ownership transfer failed';
+ end if;
+end;
+$governance$;
 insert into sabora.dining_tables(number,capacity,qr_token_hash)
 values (1,4,sha256(convert_to(repeat('a',64),'UTF8')));
 do $$
