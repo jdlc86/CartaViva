@@ -25,7 +25,7 @@ declare
   v_grouping text;
 begin
   if p_restaurant_id is null or p_table_id is null or p_qr_token is null
-    or length(p_qr_token) < 32 or p_company is null or length(btrim(p_company)) not between 1 and 160
+    or length(p_qr_token) not between 32 and 512 or p_company is null or length(btrim(p_company)) not between 1 and 160
     or p_employee_number is null or length(btrim(p_employee_number)) not between 1 and 80
     or p_request_key is null or p_request_key !~ '^[a-zA-Z0-9_-]{8,128}$'
     or p_items is null or jsonb_typeof(p_items) is distinct from 'array'
