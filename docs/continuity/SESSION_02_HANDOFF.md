@@ -425,3 +425,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Al consultar, CI #328 y bootstrap #311 de `2fec895` estaban en progreso (sin conclusión).
 - Nuevo `tests/ownership-denial-matrix.test.mjs` cubre aceptación/rechazo por actor equivocado, miembros inactivos o con rol incorrecto, propuestas resueltas o con propietario obsoleto, y separación de ROOT frente a operaciones ordinarias.
 - Son pruebas unitarias de política; la concurrencia real PostgreSQL 17 y RLS bajo identidad mínima siguen pendientes. No se ha modificado producción, VPS ni Fleetia.
+
+## Carrera SQL de transferencias con propietario obsoleto (2026-10-21)
+- CI #330 y bootstrap #313 del HEAD anterior SUCCESS.
+- Ampliado `scripts/ci/admin-ownership-concurrency-smoke.sh` con dos sesiones PostgreSQL 17 sobre contenedor desechable: la primera transfiere bajo lock; la segunda espera y debe observar cero filas al intentar la transferencia condicional basada en propietario antiguo. Se verifica el propietario final.
+- Este gate prueba la semántica SQL compare-and-swap y la serialización, **no** sustituye una prueba integrada del workflow JS con la identidad SQL mínima todavía inactiva. CI del nuevo HEAD pendiente. Sin despliegue ni cambios operativos.
