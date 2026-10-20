@@ -13,3 +13,7 @@ No se aplican cambios a entornos operativos ni se autorizan despliegues con este
 ## Primer paso implementado: rol dormido
 
 La migración `20261020250000_sabora_dormant_admin_writer.sql` crea `sabora_admin_writer` como NOLOGIN, NOINHERIT y NOBYPASSRLS, sin grants de datos ni USAGE del esquema. **No es todavía un rol operativo de escritura.** El smoke PostgreSQL 17 ejecuta denegaciones de lectura de personal, actualización de titularidad e inserción de auditoría bajo `SET ROLE sabora_admin_writer`. Solo una futura migración revisada y con contrato de recursos podrá habilitar privilegios mínimos. No se han provisionado LOGIN ni secretos.
+
+## Objetos futuros y ACL por defecto
+
+La migración `20261020260000_sabora_writer_future_acl.sql` establece revocaciones de privilegios por defecto para objetos futuros creados por **el rol que ejecuta la migración**, y refuerza la revocación de EXECUTE público sobre nuevas funciones del esquema. El smoke crea una tabla y una función temporales de prueba para verificar denegaciones y las elimina. Limitación explícita: las ACL por defecto son por rol creador y no bloquean grants explícitos posteriores ni objetos creados por otros owners; deberán auditarse en cualquier integración de nuevos roles.
