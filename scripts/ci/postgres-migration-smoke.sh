@@ -89,6 +89,13 @@ begin
   end;
   begin
     insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+    values ('00000000-0000-0000-0000-000000000001',1,6,decode(repeat('ab',32),'hex'));
+    raise exception 'duplicate table number accepted';
+  exception when unique_violation then
+    raise notice 'duplicate table number rejected';
+  end;
+  begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
     values ('00000000-0000-0000-0000-000000000001',9,0,decode(repeat('ab',32),'hex'));
     raise exception 'zero capacity accepted';
   exception when check_violation then
