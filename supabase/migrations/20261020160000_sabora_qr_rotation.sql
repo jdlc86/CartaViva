@@ -22,12 +22,11 @@ begin
   end if;
 
   -- Row-level update serializes against confirm_order's FOR UPDATE lock.
-  -- Previous tokens become invalid immediately on commit; prior orders remain.
+  -- Previous tokens become invalid immediately on commit; the active visit,
+  -- grouping deadline, accounts and historical orders remain unchanged.
   update sabora.dining_tables t
     set qr_token_hash = sha256(convert_to(p_new_token, 'UTF8')),
-        qr_version = t.qr_version + 1,
-        session_id = gen_random_uuid(),
-        first_confirmed_at = null
+        qr_version = t.qr_version + 1
     where t.restaurant_id = p_restaurant_id and t.id = p_table_id
     returning t.qr_version, t.session_id into v_version, v_session;
 
