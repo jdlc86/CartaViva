@@ -49,3 +49,26 @@ test('pool is mandatory and unavailable database fails closed', async t => {
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.json(), { error: 'authorization_unavailable' });
 });
+
+test('HTTP response and bounded observer never expose driver secrets', async t => {
+  const app = Fastify({ logger: false });
+  t.after(() => app.close());
+  const events = [];
+  const hooks = createStaffProtectedHooksFromPool({
+    issuer: 'https://example.supabase.co/auth/v1',
+    getTrustedKeys: async () => [],
+    verify: () => ({ userId }),
+    observe: event => events.push(event),
+    pool: { query: async () => { throw new Error('postgres://reader:TOP_SECRET@private-db'); } }
+  });
+  app.get('/test-only', { preHandler: hooks(['admin']) }, async () => ({ ok: true }));
+  const response = await app.inject({
+    method: 'GET', url: '/test-only',
+    headers: { authorization: 'Bearer abc.def.ghi' }
+  });
+  assert.equal(response.statusCode, 503);
+  assert.deepEqual(response.json(), { error: 'authorization_unavailable' });
+  assert.deepEqual(events, ['staff_reader_query_failed']);
+  assert.equal(response.body.includes('TOP_SECRET'), false);
+  assert.equal(JSON.stringify(events).includes('TOP_SECRET'), false);
+});
