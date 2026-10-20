@@ -400,3 +400,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Smoke PostgreSQL 17 ampliado con enumeración de todas las tablas, vistas, vistas materializadas, tablas externas, tablas particionadas y secuencias del esquema privado `sabora`.
 - Denegaciones de SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER y USAGE/SELECT/UPDATE de secuencias para PUBLIC, anon, authenticated y writer dormido. El reader técnico mantiene exclusivamente los permisos mínimos ya acreditados.
 - CI del HEAD nuevo pendiente. Sin aplicar migraciones a Supabase operativo, sin despliegue ni intervención en Fleetia.
+
+## Corrección del gate ACL de relaciones (2026-10-20)
+- CI #319 y bootstrap #303 FAILED: el nuevo smoke pasaba el pseudo-rol `PUBLIC` a `has_table_privilege`/`has_sequence_privilege`, causando `role "PUBLIC" does not exist`.
+- Corregido: comprobar privilegios efectivos de `anon`, `authenticated` y `sabora_admin_writer`; estos incluyen grants concedidos a PUBLIC. Se mantienen todas las categorías de privilegio y la enumeración completa de relaciones/secuencias.
+- CI del commit correctivo pendiente. No se han modificado recursos operativos.
