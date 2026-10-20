@@ -14,7 +14,10 @@ export function createStaffAuthorizationRuntime({
 
   return Object.freeze({
     async open() {
-      if (hooks) return hooks;
+      if (hooks) {
+        if (!lifecycle.isOpen) throw new Error('staff_pool_closing');
+        return hooks;
+      }
       const pool = lifecycle.open();
       try {
         hooks = createStaffProtectedHooksFromPool({
