@@ -10,7 +10,7 @@ create or replace function sabora.confirm_order(
   p_request_key text,
   p_items jsonb
 )
-returns table (order_id uuid, grouping text, grouping_deadline timestamptz, repeated boolean)
+returns table (order_id uuid, order_grouping text, grouping_deadline timestamptz, repeated boolean)
 language plpgsql
 security invoker
 set search_path = pg_catalog, sabora
