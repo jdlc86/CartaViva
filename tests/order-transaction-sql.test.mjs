@@ -34,3 +34,10 @@ test('quantity parsing and customer identity are safe against malformed JSON and
  assert.match(sql, /length\(btrim\(p_company\)\)::text/);
  assert.match(sql, /length\(btrim\(p_employee_number\)\)::text/);
 });
+
+test('migration is a single complete transaction without duplicated trailing SQL', () => {
+ const statements = sql.match(/^commit;$/gm) ?? [];
+ assert.equal(statements.length, 1);
+ assert.equal(sql.trimEnd().slice(-7), 'commit;');
+ assert.equal((sql.match(/create or replace function sabora\.confirm_order/g) ?? []).length, 1);
+});
