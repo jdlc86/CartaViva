@@ -205,3 +205,9 @@
 - `tests/staff-authorization-runtime.test.mjs`: pruebas Fastify offline con pool simulado para autorización/revocación en peticiones sucesivas, consulta SQL fijada, TLS estricto, cierre único concurrente, error de configuración con limpieza y 503 sin secretos ante caída DB.
 - `apps/api/package.json` incluye chequeo sintáctico del nuevo módulo. **CI de este HEAD pendiente**; no confundir pruebas publicadas con ejecución certificada.
 - Queda pendiente: evaluar provisión de identidad en Supabase, driver real, políticas de log, carrera revocación/operación, rutas de negocio y aprobación de despliegue. No hay conexión operativa, merge, ni despliegue; Fleetia intocable.
+
+## Hito — ROOT único y titularidad ADMIN de escritura (2026-10-20)
+- Decisión de usuario: exactamente un ROOT por instalación; varios ADMIN, máximo uno con escritura administrativa.
+- Contrato en `docs/architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md`; se revisaron en solo lectura documentos y migración de Fleetia (commit 7c7f3b5). La trasposición no es literal: ROOT Sabora controla reasignación forzosa.
+- Primer gate offline `apps/api/src/admin-write-gate.mjs` con tests `tests/admin-write-gate.test.mjs`; el gate no está conectado a rutas/DB y no sustituye autorización transaccional anti-TOCTOU.
+- Próximo bloque: esquema y pruebas desechables de ROOT singleton, owner singleton, transferencias concurrentes, revocación, auditoría; integrar autorización ROOT en lector y hooks solo cuando el contrato de persistencia esté probado. Verificar CI del HEAD antes de continuar.
