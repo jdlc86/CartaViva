@@ -112,4 +112,34 @@ begin
 end $$;
 SQL
 
-echo 'Sabora isolated PostgreSQL 17 migration, tenant FK and transactional order checks passed.'
+# Deterministic two-session lock regression: the second order must wait for the
+# first transaction to commit and then join its newly opened grouping window.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+values ('00000000-0000-0000-0000-000000000001',3,4,sha256(convert_to(repeat('z',64),'UTF8')));
+SQL
+table_id="$(docker exec "$container" psql -U postgres -d postgres -Atqc "select id from sabora.dining_tables where number=3 and restaurant_id='00000000-0000-0000-0000-000000000001'")"
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres > /tmp/sabora-first-$.log 2>&1 <<SQL &
+begin;
+select order_grouping from sabora.confirm_order(
+ '00000000-0000-0000-0000-000000000001','$table_id',repeat('z',64),
+ 'Acme','201','concurrent_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+select pg_sleep(3);
+commit;
+SQL
+first_pid=$!
+sleep 1
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres > /tmp/sabora-second-$.log 2>&1 <<SQL &
+select order_grouping from sabora.confirm_order(
+ '00000000-0000-0000-0000-000000000001','$table_id',repeat('z',64),
+ 'Acme','202','concurrent_02','[{"category":"drink","name":"Water","quantity":1}]'::jsonb);
+SQL
+second_pid=$!
+wait "$first_pid" || { cat /tmp/sabora-first-$.log; exit 1; }
+wait "$second_pid" || { cat /tmp/sabora-second-$.log; exit 1; }
+grep -q 'first' /tmp/sabora-first-$.log || { cat /tmp/sabora-first-$.log; exit 1; }
+grep -q 'grouped' /tmp/sabora-second-$.log || { cat /tmp/sabora-second-$.log; exit 1; }
+docker exec "$container" psql -U postgres -d postgres -Atqc "select count(*) from sabora.orders where table_id='$table_id'" | grep -qx 2
+rm -f /tmp/sabora-first-$.log /tmp/sabora-second-$.log
+
+echo 'Sabora isolated PostgreSQL 17 migration, tenant FK, idempotency and concurrent order checks passed.'
