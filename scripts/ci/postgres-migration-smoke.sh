@@ -60,4 +60,55 @@ begin
 end $$;
 SQL
 
-echo 'Sabora isolated PostgreSQL 17 migration and tenant FK validation passed.'
+# Exercise the real transactional function as a controlled CI-only database owner.
+# The function is intentionally not exposed to anon/authenticated in Supabase.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+do $
+declare
+  v_table uuid;
+  v_token text := repeat('x', 64);
+  v_first record;
+  v_repeat record;
+  v_second record;
+begin
+  insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+  values ('00000000-0000-0000-0000-000000000001',2,4,sha256(convert_to(v_token,'UTF8')))
+  returning id into v_table;
+
+  select * into v_first from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','101',
+    'request_0001','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+  if v_first.order_grouping <> 'first' or v_first.repeated then
+    raise exception 'first confirmation did not start grouping window';
+  end if;
+
+  select * into v_repeat from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','101',
+    'request_0001','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+  if not v_repeat.repeated or v_repeat.order_id <> v_first.order_id then
+    raise exception 'idempotent replay created a new order';
+  end if;
+
+  select * into v_second from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','102',
+    'request_0002','[{"category":"drink","name":"Water","quantity":1}]'::jsonb);
+  if v_second.order_grouping <> 'grouped' then
+    raise exception 'second confirmation did not join active window';
+  end if;
+
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','101',
+      'request_0001','[{"category":"main","name":"Soup","quantity":1}]'::jsonb);
+    raise exception 'conflicting replay was accepted';
+  exception when unique_violation then
+    raise notice 'conflicting idempotency key rejected';
+  end;
+
+  if (select count(*) from sabora.orders where table_id=v_table) <> 2 then
+    raise exception 'unexpected order count after replay';
+  end if;
+end $;
+SQL
+
+echo 'Sabora isolated PostgreSQL 17 migration, tenant FK and transactional order checks passed.'
