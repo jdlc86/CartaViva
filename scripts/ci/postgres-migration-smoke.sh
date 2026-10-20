@@ -305,6 +305,55 @@ begin
 end $$;
 SQL
 
+# Multi-case transaction regression: distinct delimiter-bearing identities, safe
+# rejection of malformed JSON quantities, and idempotency replay isolation.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
+values ('00000000-0000-0000-0000-000000000001',25,4,sha256(convert_to(repeat('q',64),'UTF8')));
+do $$
+declare
+  t uuid;
+  a uuid;
+  b uuid;
+  replay uuid;
+  bad jsonb;
+  k integer := 0;
+begin
+  select id into strict t from sabora.dining_tables
+    where restaurant_id='00000000-0000-0000-0000-000000000001' and number=25;
+  select order_id into a from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',t,repeat('q',64),
+    'A:B','C','collision_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+  select order_id into b from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',t,repeat('q',64),
+    'A','B:C','collision_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+  if a = b then raise exception 'distinct customer identities collided'; end if;
+  select order_id into replay from sabora.confirm_order(
+    '00000000-0000-0000-0000-000000000001',t,repeat('q',64),
+    'A:B','C','collision_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+  if replay <> a then raise exception 'idempotent replay returned wrong order'; end if;
+  for bad in select value from jsonb_array_elements(
+    '[[{"category":"main","name":"Rice","quantity":"abc"}],
+       [{"category":"main","name":"Rice","quantity":999999999999999999999}],
+       [{"category":"main","name":"Rice","quantity":true}],
+       [null],[42]]'::jsonb
+  ) loop
+    begin
+      perform * from sabora.confirm_order(
+        '00000000-0000-0000-0000-000000000001',t,repeat('q',64),
+        'A:B','C','bad_json_01',bad);
+      raise exception 'malformed JSON items accepted';
+    exception when invalid_parameter_value then
+      k := k + 1;
+    end;
+  end loop;
+  if k <> 5 then raise exception 'malformed item rejection count %',k; end if;
+  if (select count(*) from sabora.orders where table_id=t) <> 2 then
+    raise exception 'malformed items created orders';
+  end if;
+end $$;
+SQL
+
 # Deterministic two-session lock regression: the second order must wait for the
 # first transaction to commit and then join its newly opened grouping window.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
