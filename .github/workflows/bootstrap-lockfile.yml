@@ -8,6 +8,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'apps/**/package.json'
       - '.github/workflows/bootstrap-lockfile.yml'
+      - 'tests/bootstrap-lockfile.test.mjs'
 
 permissions:
   contents: read
@@ -37,6 +38,7 @@ jobs:
           pnpm test
           pnpm build
       - name: Upload generated lockfile
+        if: ${{ always() && hashFiles('pnpm-lock.yaml') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: sabora-pnpm-lockfile
