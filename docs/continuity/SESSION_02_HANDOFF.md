@@ -235,3 +235,6 @@
 - Migración aislada `20261020220000_sabora_ownership_proposals_audit.sql`: tabla privada de propuestas request/offer con estado y correlation_id único, y auditoría de titularidad con append-only trigger, RLS FORCE y sin grants de navegador.
 - Smoke PostgreSQL 17 incluye nueva migración, 12 tablas RLS, propuesta válida, rechazo de auto-transferencia y rechazo de UPDATE/DELETE de auditoría.
 - Aún **NO** existen procedimientos SQL transaccionales de decisión, actor seguro, ni rutas HTTP; el esquema por sí solo no autoriza operaciones. CI de estos cambios pendiente; no aplicar a Supabase operativo.
+
+## CI #252 — incidencia y corrección
+- El smoke falló por insertar un segundo ROOT en la sección nueva de auditoría después de haber sembrado el ROOT singleton. La unicidad `sabora_one_root` actuó correctamente. Corregido el fixture para reutilizar el ROOT anterior, sin debilitar la restricción. La validación del commit correctivo está pendiente.
