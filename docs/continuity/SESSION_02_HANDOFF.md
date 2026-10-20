@@ -246,3 +246,8 @@
 
 ## CI #257/#258 — fallo de validación UUID
 - Los tests del nuevo adaptador `postgres-owner-lookup.mjs` revelaron que su regex omitía un grupo de cuatro caracteres del UUID. Cambiar el fixture no resolvía el defecto; se corrigió la regex en commit `8d72ba5d`. No confundir el fallo del adaptador con un fallo de migración PostgreSQL: los pasos de base de datos fueron omitidos por el test unitario fallido. Nueva validación CI pendiente.
+
+## Límite transaccional de escritura administrativa (2026-10-20)
+- Workflow #260: pasos completos SUCCESS (Node tests, PostgreSQL 17 aislado, Docker Compose, build y smoke API).
+- Nuevo `apps/api/src/transactional-admin-write.mjs`: callback `withTransaction` de conexión única, `SELECT ... FOR UPDATE` del singleton, relectura de rol/estado de miembro desde DB bajo bloqueo y ejecución de mutación dentro de la misma transacción. ROOT activo conserva autoridad separada; ADMIN no titular no escribe. Pruebas en `tests/transactional-admin-write.test.mjs`.
+- **Integración pendiente:** proporcionar adaptador real que garantice BEGIN/COMMIT/ROLLBACK en la misma conexión, aislar privilegios SQL del runtime, y conectar rutas administrativas. El módulo no constituye por sí solo un procedimiento de transferencia ni elimina todas las carreras con operaciones no coordinadas. CI nuevo pendiente; sin despliegue.
