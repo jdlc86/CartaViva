@@ -430,3 +430,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #330 y bootstrap #313 del HEAD anterior SUCCESS.
 - Ampliado `scripts/ci/admin-ownership-concurrency-smoke.sh` con dos sesiones PostgreSQL 17 sobre contenedor desechable: la primera transfiere bajo lock; la segunda espera y debe observar cero filas al intentar la transferencia condicional basada en propietario antiguo. Se verifica el propietario final.
 - Este gate prueba la semántica SQL compare-and-swap y la serialización, **no** sustituye una prueba integrada del workflow JS con la identidad SQL mínima todavía inactiva. CI del nuevo HEAD pendiente. Sin despliegue ni cambios operativos.
+
+## Corrección del gate de carrera SQL (2026-10-21)
+- CI #332 y bootstrap #315 de `f2e1653` FAILED en la prueba nueva: `syntax error at or near "$"` debido a delimitadores PL/pgSQL `do $ ... end $` inválidos. Las pruebas anteriores pasaron.
+- Commit `56adb13`: sustituidos por bloques `do $race$ ... end $race$` dentro de heredocs Bash con comillas simples. Se espera revalidación de PostgreSQL 17 en Actions; no declarar gate verde sin resultados terminales.
+- Sin cambios en Supabase operativo, VPS ni Fleetia.
