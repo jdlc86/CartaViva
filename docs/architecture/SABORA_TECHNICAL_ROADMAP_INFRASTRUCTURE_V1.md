@@ -2,9 +2,12 @@
 
 Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica implementación ni contratación.
 
-## Alcance corregido (2026-10-20)
-- Sabora es una aplicación para **un único restaurante**. Quedan fuera de alcance las entidades `restaurants` como colección de establecimientos, el campo `restaurant_id` en cada recurso, los selectores de establecimientos y cualquier autorización multitenant.
-- Se mantiene la independencia de infraestructura de Sabora respecto de Fleetia y de otros proyectos del VPS. El aislamiento entre proyectos no es arquitectura multirrestaurante.
+## Alcance aprobado (2026-10-20): un restaurante por instalación
+- Sabora opera **un restaurante por instalación**. No incorpora tablas `restaurants` multitenant, `restaurant_id` por recurso, selector de restaurantes ni autorización cruzada entre instalaciones.
+- CartaViva mantiene **un directorio central separado** de instalaciones, con código alfanumérico y origen HTTPS de cada PWA; el QR incluye identidad de restaurante y mesa y una credencial revocable que valida la instalación de destino.
+- Cada restaurante dispone de **dos PWA independientes**: `apps/client` para comensales y `apps/management` para camareros, cocina y administración. Cada restaurante tiene además backend, proyecto/base de datos y despliegue propios; pueden alojarse en VPS diferentes o en contenedores aislados.
+- El proyecto Supabase de Sabora es `byhvmumqivmunkmomhup`. El proyecto separado de directorio CartaViva es `indoaqfmsfmueuqoilwv`, ambos en la organización RESTAURANTE. El directorio no almacena datos operativos de los restaurantes.
+- Se mantiene aislamiento estricto frente a Fleetia y demás proyectos del VPS. No hay autorización para despliegue.
 
 ## Decisiones confirmadas por el propietario
 - Sabora utilizará **un proyecto Supabase propio**, separado del proyecto de Fleetia, para PostgreSQL, autenticación y almacenamiento. No compartir bases de datos, usuarios, claves ni políticas entre productos.
@@ -27,7 +30,7 @@ Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica
 
 **Fase 1 — Plataforma y seguridad:** proyecto Supabase de Sabora, migraciones versionadas, API mínima, identidad/Passkeys, invitación→activación explícita, roles ROOT/ADMIN/operativos, titularidad única de escritura, auditoría append-only, CI y entorno aislado. Salida: pruebas de permisos, concurrencia, recuperación y migraciones.
 
-**Fase 2 — Gestión y catálogo:** restaurantes, empleados, catálogo, opciones/extras, alérgenos, disponibilidad, precios e impuestos, descuentos sobre plato más extras, publicaciones y trazabilidad de cambios. Salida: pruebas de autorización y cálculo monetario en céntimos/decimal exacto.
+**Fase 2 — Gestión y catálogo:** configuración del restaurante único, empleados, catálogo, opciones/extras, alérgenos, disponibilidad, precios e impuestos, descuentos sobre plato más extras, publicaciones y trazabilidad de cambios. Salida: pruebas de autorización y cálculo monetario en céntimos/decimal exacto.
 
 **Fase 3 — Operación sin cobros reales:** mesas, QR, visitas, cuentas, cesta, comandas, cocina, sala, pausa/reanudación, notificaciones y recuperación de desconexiones. Salida: flujos completos e idempotentes; pruebas de eventos obsoletos y concurrencia.
 
