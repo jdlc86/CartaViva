@@ -1,6 +1,5 @@
-// The caller supplies a dedicated PostgreSQL pool (not a browser credential).
-// Never issue BEGIN and subsequent queries through pool.query: a single checked
-// out connection is required for row locks and rollback to be meaningful.
+// All statements and row locks execute on one checked-out PostgreSQL client.
+// The pool must be a dedicated backend identity, never browser/anon credentials.
 export function createPostgresTransaction({ pool } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_transaction_pool');
   return async function withTransaction(work) {
@@ -10,20 +9,29 @@ export function createPostgresTransaction({ pool } = {}) {
       throw Error('invalid_transaction_client');
     }
     let began = false;
+    let committed = false;
+    let discardClient = null;
     try {
       await client.query('BEGIN');
       began = true;
-      const result = await work((sql, parameters=[]) => client.query(sql, parameters));
+      const result = await work((sql, parameters = []) => client.query(sql, parameters));
       await client.query('COMMIT');
+      committed = true;
       return result;
     } catch (error) {
-      if (began) {
+      // A failed BEGIN or COMMIT may leave the connection state uncertain.
+      // Never return an uncertain connection to the pool.
+      if (!began) discardClient = error;
+      if (began && !committed) {
         try { await client.query('ROLLBACK'); }
-        catch (rollbackError) { error.rollbackError = rollbackError; }
+        catch (rollbackError) {
+          discardClient = rollbackError;
+          if (error && typeof error === 'object') error.rollbackError = rollbackError;
+        }
       }
       throw error;
     } finally {
-      client.release();
+      client.release(discardClient || undefined);
     }
   };
 }
