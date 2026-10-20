@@ -1,7 +1,7 @@
 // Read-only adapter. The supplied query must run with a separately provisioned,
 // least-privileged backend identity; never use an anon/authenticated browser client.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ROLES = new Set(['admin', 'waiter', 'kitchen']);
+const ROLES = new Set(['root', 'admin', 'waiter', 'kitchen']);
 const STATES = new Set(['invited', 'active', 'suspended', 'revoked']);
 
 export function createPostgresStaffLookup({ query } = {}) {
