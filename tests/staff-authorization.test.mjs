@@ -29,7 +29,7 @@ test('revoked or missing memberships are rejected on every request', async () =>
 });
 test('missing verified identity and invalid role policy fail closed', async () => {
   const authorize = createStaffAuthorization({ lookupStaff: async () => ({ role: 'admin', state: 'active' }) });
-  for (const [req, roles] of [[{}, ['admin']], [request(), []], [request(), ['root']]]) {
+  for (const [req, roles] of [[{}, ['admin']], [request(), []], [request(), ['superuser']]]) {
     const res = reply();
     await authorize(req, res, roles);
     assert.equal(res.status, 403);
