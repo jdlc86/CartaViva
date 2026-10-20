@@ -113,6 +113,25 @@ begin
     raise exception 'first confirmation did not start grouping window';
   end if;
 
+  -- The idempotency record cannot point to a different table session.
+  begin
+    update sabora.order_idempotency
+       set session_id = gen_random_uuid()
+     where order_id = v_first.order_id;
+    raise exception 'cross-session idempotency link accepted';
+  exception when foreign_key_violation then
+    raise notice 'cross-session idempotency link rejected';
+  end;
+  -- Nor can the same idempotency record be assigned to another tenant.
+  begin
+    update sabora.order_idempotency
+       set restaurant_id = '00000000-0000-0000-0000-000000000002'
+     where order_id = v_first.order_id;
+    raise exception 'cross-tenant idempotency link accepted';
+  exception when foreign_key_violation then
+    raise notice 'cross-tenant idempotency link rejected';
+  end;
+
   select * into v_repeat from sabora.confirm_order(
     '00000000-0000-0000-0000-000000000001',v_table,v_token,'Acme','101',
     'request_0001','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
