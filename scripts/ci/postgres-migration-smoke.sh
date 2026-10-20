@@ -98,6 +98,20 @@ begin
     raise notice 'duplicate table number rejected';
   end;
   begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash,grouping_window_seconds)
+    values ('00000000-0000-0000-0000-000000000001',10,4,decode(repeat('ab',32),'hex'),59);
+    raise exception 'grouping window below minimum accepted';
+  exception when check_violation then
+    raise notice 'grouping window below minimum rejected';
+  end;
+  begin
+    insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash,grouping_window_seconds)
+    values ('00000000-0000-0000-0000-000000000001',11,4,decode(repeat('ab',32),'hex'),3601);
+    raise exception 'grouping window above maximum accepted';
+  exception when check_violation then
+    raise notice 'grouping window above maximum rejected';
+  end;
+  begin
     insert into sabora.dining_tables(restaurant_id,number,capacity,qr_token_hash)
     values ('00000000-0000-0000-0000-000000000001',9,0,decode(repeat('ab',32),'hex'));
     raise exception 'zero capacity accepted';
