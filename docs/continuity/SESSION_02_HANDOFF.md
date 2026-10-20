@@ -394,3 +394,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #315 SUCCESS sobre corrección de permisos por defecto; bootstrap #299 estaba en progreso al consultar.
 - Smoke PostgreSQL 17 ampliado: inspecciona todas las funciones de esquema `sabora` y rechaza permisos EXECUTE para PUBLIC, anon, authenticated y writer dormido. El control anterior solo comprobaba una lista de RPC conocidas y una función nueva de prueba.
 - Si falla, identificar la función y corregir ACL explícita en migración posterior sin conceder bypass. Ninguna migración aplicada en Supabase operativo ni despliegue.
+
+## Continuación: auditoría de permisos de relaciones y secuencias (2026-10-20)
+- CI #317 y bootstrap #301 del commit `b2d67d2` SUCCESS.
+- Smoke PostgreSQL 17 ampliado con enumeración de todas las tablas, vistas, vistas materializadas, tablas externas, tablas particionadas y secuencias del esquema privado `sabora`.
+- Denegaciones de SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER y USAGE/SELECT/UPDATE de secuencias para PUBLIC, anon, authenticated y writer dormido. El reader técnico mantiene exclusivamente los permisos mínimos ya acreditados.
+- CI del HEAD nuevo pendiente. Sin aplicar migraciones a Supabase operativo, sin despliegue ni intervención en Fleetia.
