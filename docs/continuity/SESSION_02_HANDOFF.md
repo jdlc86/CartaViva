@@ -110,3 +110,8 @@
 - Bootstrap CI #158 (`39472194984`) FAILURE, localizado en el paso de PostgreSQL 17 desechable. Tests Node y build pasaron; PostgreSQL informó `syntax error at or near "$"` en la segunda función de `20261020190000_sabora_staff_access_state.sql`.
 - Corregido el delimitador del cuerpo PL/pgSQL de `enforce_active_transition_actor` a `$guard$` en ambos extremos. La migración original sigue siendo prototipo no aplicado a Supabase operativo.
 - Verificar ejecución CI sobre el commit de corrección y revisar posibles fallos posteriores de los smoke tests; **no afirmar verde hasta resultado**.
+
+## Sesión 02 — refuerzo de regresión de empleado invitado
+- CI #161 (`39472525829`) superó el paso PostgreSQL 17 y Docker Compose aislado tras corregir la sintaxis de la migración. Consultar conclusión global antes de certificar el run.
+- Se añade al smoke SQL un intento de transición válida por un empleado `invited`, que debe fallar con `42501` incluso cuando su rol nominal sea `kitchen`. Se mantiene el test de revocación y el de no activación por defecto.
+- CI del commit de refuerzo pendiente. Sin endpoints operativos, merge, despliegue ni migración de Supabase.
