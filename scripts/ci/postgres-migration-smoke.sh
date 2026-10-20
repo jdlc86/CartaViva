@@ -8,13 +8,14 @@ trap cleanup EXIT
 
 docker run -d --name "$container" --network none \
   -e POSTGRES_PASSWORD=ci_only_not_a_secret \
-  if docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' >/dev/null 2>&1; then break; fi
+  postgres:17-alpine >/dev/null
 
+# The image starts a temporary server during initdb. Wait for the final PID 1.
 for attempt in $(seq 1 40); do
-docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' || { docker logs "$container"; exit 1; }
+  if docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' >/dev/null 2>&1; then break; fi
   sleep 1
 done
-docker exec "$container" psql -U postgres -d postgres -Atqc "select 1" || { docker logs "$container"; exit 1; }
+docker exec "$container" sh -c 'test "$(cat /proc/1/comm)" = postgres && psql -U postgres -d postgres -Atqc "select 1"' || { docker logs "$container"; exit 1; }
 
 # Supabase API roles exist in production, but not in vanilla PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
