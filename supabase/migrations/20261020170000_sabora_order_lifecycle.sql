@@ -43,7 +43,7 @@ declare
 begin
   if p_restaurant_id is null or p_order_id is null or p_actor_user_id is null
     or p_next_status is null
-    or p_next_status not in ('preparing','ready','cancelled','delivered')
+    or p_next_status not in ('preparing','ready')
     or (p_reason is not null and length(btrim(p_reason)) not between 1 and 500)
   then
     raise exception 'invalid_transition_input' using errcode = '22023';
@@ -63,22 +63,20 @@ begin
   end if;
 
   if not (
-    (v_order.status='confirmed' and p_next_status in ('preparing','cancelled'))
-    or (v_order.status='preparing' and p_next_status in ('ready','cancelled'))
-    or (v_order.status='ready' and p_next_status in ('delivered','cancelled'))
+    (v_order.status='confirmed' and p_next_status='preparing')
+    or (v_order.status='preparing' and p_next_status='ready')
   ) then
     raise exception 'invalid_order_transition' using errcode = '22023';
   end if;
   if not (
     v_role='admin'
-    or (v_role='kitchen' and p_next_status in ('preparing','ready','cancelled'))
-    or (v_role='waiter' and p_next_status in ('delivered','cancelled'))
+    or (v_role='kitchen' and p_next_status in ('preparing','ready'))
   ) then
     raise exception 'role_not_allowed_for_transition' using errcode = '42501';
   end if;
-  if p_next_status='cancelled' and v_reason is null then
-    raise exception 'cancellation_reason_required' using errcode = '22023';
-  end if;
+  -- Whole-order cancellation and delivery are deliberately unavailable.
+  -- Kitchen incidents require administrative arbitration and per-item adjustment;
+  -- waiter pickup requires per-item acknowledgement, not order-level delivery.
 
   update sabora.orders set status=p_next_status where id=v_order.id;
   insert into sabora.order_status_events
