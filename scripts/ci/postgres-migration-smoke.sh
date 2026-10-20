@@ -147,7 +147,7 @@ rm -f /tmp/sabora-first-$.log /tmp/sabora-second-$.log
 
 # QR rotation must invalidate the old token, reset the window and preserve history.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $
+do $$
 declare
   v_table uuid;
   v_old_session uuid;
