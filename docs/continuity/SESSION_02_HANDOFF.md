@@ -86,3 +86,10 @@
 - `tests/jwks-provider.test.mjs` comprueba origen fijo, caché/expiración, concurrencia y fallos; compilación incluye comprobación sintáctica del módulo.
 - Aún no existe integración de JWT/JWKS en Fastify, resolución de membresía activa ni protección transaccional. El código solo admite RS256; confirmar en Supabase Auth que las claves de firma de esta instalación utilizan ese algoritmo antes de integración. Si usa ES256, implementar y probar algoritmo explícitamente, nunca relajar la verificación.
 - El nuevo commit requiere CI verde. Sin merge, migraciones a Supabase ni despliegue VPS.
+
+## Sesión 02 — hook de autenticación para futuras rutas
+- CI de JWKS #144 (`39471470440`) estaba en ejecución al comprobarlo; consultar conclusión antes de certificar.
+- Añadido `apps/api/src/auth-hook.mjs`: hook Fastify de bearer token que obtiene JWKS del proveedor inyectado, verifica firma y claims y establece `request.verifiedIdentity` exclusivamente a partir del verificador. Respuesta uniforme 401 ante credenciales ausentes, incorrectas o proveedor no disponible. Sin dependencia de `actorUserId` del cliente.
+- Añadido `tests/auth-hook.test.mjs` para cabeceras inválidas, suplantación, identidad verificada y fallos de claves/firma. Incluido chequeo sintáctico en build.
+- **Aún no está registrado en `server.mjs` ni habilita rutas operativas.** Antes de conectarlo: definir estado y rol de empleados con base de datos durable, estrategia de sesión/revocación y pruebas HTTP Fastify. Mantener `/health` y `/ready` públicos; todo negocio cerrado.
+- No hay despliegue ni modificación de recursos operativos. CI del nuevo HEAD pendiente.
