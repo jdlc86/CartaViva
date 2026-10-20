@@ -25,7 +25,6 @@ returns trigger language plpgsql security invoker
 set search_path=pg_catalog,sabora as $$
 declare v_owner uuid;
 begin
- perform 1 from sabora.admin_write_ownership where singleton for update;
  if tg_op='DELETE' then
   if old.role='root' then raise exception 'root_removal_forbidden' using errcode='42501'; end if;
   select owner_user_id into v_owner from sabora.admin_write_ownership where singleton;
@@ -44,6 +43,19 @@ begin
  return new;
 end;
 $$;
+-- Acquire the singleton before PostgreSQL locks individual staff rows.
+-- A row-level lock here would invert the order against owner updates.
+create function sabora.lock_governance_before_staff_statement()
+returns trigger language plpgsql security invoker
+set search_path=pg_catalog,sabora as $
+begin
+ perform 1 from sabora.admin_write_ownership where singleton for update;
+ return null;
+end;
+$;
+create trigger sabora_staff_governance_statement
+ before update or delete on sabora.staff_members
+ for each statement execute function sabora.lock_governance_before_staff_statement();
 create trigger sabora_staff_governance before update or delete on sabora.staff_members
  for each row execute function sabora.guard_staff_governance();
 
@@ -61,6 +73,7 @@ $$;
 create trigger sabora_admin_owner_eligibility before insert or update on sabora.admin_write_ownership
  for each row execute function sabora.guard_admin_owner();
 
+revoke all on function sabora.lock_governance_before_staff_statement() from public,anon,authenticated;
 revoke all on function sabora.guard_staff_governance() from public,anon,authenticated;
 revoke all on function sabora.guard_admin_owner() from public,anon,authenticated;
 commit;
