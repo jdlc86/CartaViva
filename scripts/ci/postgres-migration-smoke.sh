@@ -71,30 +71,6 @@ begin
   end loop;
 end $$;
 
--- Invalid order states must be rejected even for privileged database writers.
-do $$
-declare
-  t record;
-begin
-  select id,session_id into strict t from sabora.dining_tables
-  where restaurant_id = '00000000-0000-0000-0000-000000000001' and number = 1;
-  begin
-    insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,status,items)
-    values ('00000000-0000-0000-0000-000000000001',t.id,t.session_id,'Acme','42',now(),'first','unknown',
-      '[{"category":"main","name":"Rice","quantity":1}]');
-    raise exception 'invalid order status accepted';
-  exception when check_violation then
-    raise notice 'invalid order status rejected';
-  end;
-  begin
-    insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,status,items)
-    values ('00000000-0000-0000-0000-000000000001',t.id,t.session_id,'Acme','42',now(),'unknown','confirmed',
-      '[{"category":"main","name":"Rice","quantity":1}]');
-    raise exception 'invalid order grouping accepted';
-  exception when check_violation then
-    raise notice 'invalid order grouping rejected';
-  end;
-end $$;
 -- Confirm composite FK refuses an order that references a table in another restaurant.
 insert into sabora.restaurants(id,name) values
 ('00000000-0000-0000-0000-000000000001','A'),
@@ -163,6 +139,30 @@ begin
   end;
 end $$;
 
+-- Invalid order states must be rejected even for privileged database writers.
+do $$
+declare
+  t record;
+begin
+  select id,session_id into strict t from sabora.dining_tables
+  where restaurant_id = '00000000-0000-0000-0000-000000000001' and number = 1;
+  begin
+    insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,status,items)
+    values ('00000000-0000-0000-0000-000000000001',t.id,t.session_id,'Acme','42',now(),'first','unknown',
+      '[{"category":"main","name":"Rice","quantity":1}]');
+    raise exception 'invalid order status accepted';
+  exception when check_violation then
+    raise notice 'invalid order status rejected';
+  end;
+  begin
+    insert into sabora.orders(restaurant_id,table_id,session_id,company,employee_number,confirmed_at,grouping,status,items)
+    values ('00000000-0000-0000-0000-000000000001',t.id,t.session_id,'Acme','42',now(),'unknown','confirmed',
+      '[{"category":"main","name":"Rice","quantity":1}]');
+    raise exception 'invalid order grouping accepted';
+  exception when check_violation then
+    raise notice 'invalid order grouping rejected';
+  end;
+end $$;
 do $$
 declare t uuid;
 begin
