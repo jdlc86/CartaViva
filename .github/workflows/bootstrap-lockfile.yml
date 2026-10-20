@@ -37,6 +37,14 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm test
           pnpm build
+      - name: Validate isolated Docker Compose
+        run: docker compose -f deploy/compose.sabora.yml config --quiet
+      - name: Build isolated Sabora API image
+        run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
+      - name: Smoke-test built image offline
+        run: |
+          docker run --rm --network none --entrypoint node sabora-api:ci --check src/server.mjs
+          docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
       - name: Commit verified lockfile to same-repository branch
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         env:
