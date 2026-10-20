@@ -368,6 +368,15 @@ begin
     exception when no_data_found then
       raise notice 'cross-tenant QR rotation rejected';
     end;
+    -- A nonexistent table must not mutate any existing table session.
+    begin
+      perform * from sabora.rotate_table_qr(
+        '00000000-0000-0000-0000-000000000001',
+        '00000000-0000-0000-0000-00000000ffff',repeat('z',64));
+      raise exception 'nonexistent table QR rotation accepted';
+    exception when no_data_found then
+      raise notice 'nonexistent table QR rotation rejected';
+    end;
     if exists (select 1 from sabora.dining_tables
                where id = v_table
                  and (session_id is distinct from v_before_session
