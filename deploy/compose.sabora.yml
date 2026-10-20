@@ -1,0 +1,37 @@
+# Isolated Sabora stack; no externally exposed ports and no shared Docker networks.
+name: sabora
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4100
+      NODE_ENV: production
+    ports:
+      - '127.0.0.1:4100:4100'
+    networks: [sabora_private]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    cap_drop: [ALL]
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+networks:
+  sabora_private:
+    driver: bridge
