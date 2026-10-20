@@ -265,4 +265,5 @@ begin
  end;
 end $$;
 SQL
-echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency and pickup smoke passed.'
+bash scripts/ci/admin-ownership-concurrency-smoke.sh "$container"
+echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and ownership concurrency smoke passed.'
