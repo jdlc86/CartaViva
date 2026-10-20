@@ -293,3 +293,75 @@
 ### Entrega de vuelta a ChatGPT
 - Añadir al final de **este mismo archivo** una sección titulada `## Retorno Codex Desktop — AAAA-MM-DD` con: rama y SHA final, commits, archivos modificados, decisiones técnicas y justificación, pruebas ejecutadas (comandos y resultados), enlaces/IDs de GitHub Actions, vulnerabilidades o bloqueos pendientes, operaciones explícitamente no realizadas y siguiente bloque recomendado.
 - Dejar el árbol limpio o explicar exactamente los cambios sin commit. Entregar al usuario un resumen conciso con SHA y estado de CI. Nunca escribir «CI verde» sin haber consultado la ejecución real.
+
+## Retorno Codex Desktop — 2026-10-20
+
+### 1. Rama y SHA del bloque
+- Rama autorizada: `feat/sabora-pnpm-bootstrap`, PR #2 abierto sin fusionar.
+- SHA final de implementación validada: `5ca337362ee37094f85bdcaf2b6c076325496224`.
+- Esta sección se publica en un commit documental posterior. El SHA final de la rama se informa en la respuesta de retorno porque un commit no puede contener su propio SHA sin cambiarlo.
+
+### 2. Commits realizados
+- `5ca3373 fix(sabora): harden ownership transactions`: autorización, workflow, migración, concurrencia, CI, pruebas y contratos.
+- Commit documental de este retorno: SHA informado externamente tras publicarlo y validar su HEAD.
+
+### 3. Archivos y funcionalidades
+- `apps/api/src/ownership-workflow.mjs`: UUID canónicos, shape y límite de motivo, revalidación durable antes de replay, igualdad semántica JSONB en PostgreSQL, resultado persistido/reproducible, orden singleton → staff ordenado → propuesta, resultado/auditoría atómicos.
+- `apps/api/src/transactional-admin-write.mjs`: únicamente el ADMIN activo que coincide con el titular bloqueado puede ejecutar la mutación; ROOT queda fuera del plano ordinario.
+- Eliminados `apps/api/src/admin-write-gate.mjs` y su test: su autorización separada de la mutación permitía TOCTOU y no tenía consumidores reales.
+- `supabase/migrations/20261020240000_sabora_ownership_hardening.sql`: `result`/`result_payload`, constraints JSONB/motivo, ROOT siempre activo, promoción ROOT ordinaria prohibida, trigger append-only para TRUNCATE y default EXECUTE revocado a PUBLIC. Migración versionada, no aplicada a Supabase operativo.
+- `scripts/ci/admin-ownership-lifecycle-smoke.sh` y `postgres-migration-smoke.sh`: lifecycle request/offer/accept/reject/cancel/force, replay exacto/conflictivo, rollback intermedio, audit UPDATE/DELETE/TRUNCATE, ROOT y dos carreras de conexiones.
+- `.github/workflows/ci.yml`: corregido scalar YAML inválido que hacía fallar el workflow sin jobs; checkout sin credenciales persistidas.
+- `.github/workflows/bootstrap-lockfile.yml`: PR read-only, checkout sin credenciales y retirada de write-back con código no revisado.
+- Tests de workflow, writer, bootstrap y deployment actualizados; el test de `.dockerignore` acepta CRLF de Windows.
+- Contratos de arquitectura y seguridad actualizados para fijar ROOT como gobierno/recovery y no como escritor administrativo ordinario.
+
+### 4. Problemas detectados y soluciones
+- ROOT era un segundo escritor efectivo: eliminado el bypass y conservada solo la reasignación forzosa a ADMIN activo.
+- Gate no transaccional susceptible a cambio de titular/revocación entre check y uso: módulo retirado; único límite permitido `transactional-admin-write`.
+- Replay `jsonb` dependía del orden de claves, no devolvía el resultado exacto y omitía revalidar al actor: comparación `jsonb` en SQL, `result_payload` y revalidación bajo bloqueo.
+- UUID en mayúsculas y nombres JS/SQL podían producir denegaciones incorrectas: normalización en todas las fronteras y adaptación explícita.
+- Orden de locks de aceptación no coincidía con el contrato: descubrimiento no bloqueante de destinatario, staff ordenado y relectura de propuesta `FOR UPDATE` bajo singleton.
+- Auditoría no impedía TRUNCATE y no almacenaba resultado: trigger de statement y columnas de resultado.
+- La primera fila ROOT podía quedar `invited`: constraint validado y trigger para estado activo; la existencia exactamente-una sigue siendo responsabilidad del bootstrap/recovery pendiente.
+- Workflow de bootstrap ejecutaba PR con `contents: write`; convertido a validación read-only.
+- CI principal era YAML inválido por `ERROR:` en un scalar inline; convertido a bloque multilínea y confirmado por GitHub.
+
+### 5. Decisiones técnicas
+- Titular durable exclusivamente `admin` activo; ROOT solo controla el workflow de reasignación con motivo y auditoría. Resuelve la contradicción documental conforme al contrato más reciente, al esquema y a la instrucción de esta sesión.
+- No se creó rol/login writer, función `SECURITY DEFINER`, política RLS de escritura ni ruta HTTP: falta un contrato operativo de identidad SQL, credenciales, recursos protegidos y actor verificado. Abrirlos ahora crearía un bypass, no una integración segura.
+- Se mantiene una fila singleton como primer lock global; staff se bloquea por UUID y la propuesta después. Los cambios de staff adquieren previamente el mismo singleton mediante trigger statement-level.
+- La limitación histórica de `reason` se añadió `NOT VALID` para no reescribir auditoría previa append-only; sí se valida inmediatamente el constraint ROOT activo porque una fila previa inválida debe bloquear el upgrade y exigir recuperación explícita.
+
+### 6. Pruebas ejecutadas
+- Baseline `pnpm test`: 105/106; único fallo reproducible por CRLF en el test `.dockerignore`, corregido.
+- Final `pnpm test`: 104/104 PASS (se retiraron cinco tests del gate inseguro y se añadieron regresiones del workflow).
+- `pnpm build`: PASS para API, PWA cliente y PWA gestión. En sandbox Windows falló inicialmente por acceso de `esbuild` a un ancestro; repetido fuera del sandbox autorizado, PASS.
+- `C:\Program Files\Git\bin\bash.exe scripts/ci/postgres-migration-smoke.sh`: PASS sobre `postgres:17-alpine`, `--network none`, contenedor y volumen eliminados. Incluye todas las migraciones, lifecycle completo, rollback y dos carreras concurrentes.
+- `docker compose -f deploy/compose.sabora.yml config --quiet`: PASS.
+- Build/smoke local de `deploy/Dockerfile.api`, `node --check` y `/health` dentro de contenedor `--network none`: PASS; contenedor e imagen temporal eliminados.
+- `git diff --check`: PASS; solo avisos informativos de conversión LF/CRLF de Git en Windows.
+- Revisión independiente de bypass/regresión: ningún bypass o regresión concreta superviviente en el diff final.
+
+### 7. GitHub Actions verificadas
+- [Sabora CI — run 39500612967](https://github.com/jdlc86/CartaViva/actions/runs/39500612967), job `118896847542`: SUCCESS en 38 s para SHA `5ca337362ee37094f85bdcaf2b6c076325496224`.
+- [Bootstrap Sabora lockfile — run 39500613084](https://github.com/jdlc86/CartaViva/actions/runs/39500613084), job `118896847836`: SUCCESS en 44 s para el mismo SHA.
+- El fallo previo sin jobs [run 39495223250](https://github.com/jdlc86/CartaViva/actions/runs/39495223250) quedó explicado y corregido por el scalar YAML inválido.
+- Avisos no bloqueantes de GitHub: Actions v4 ejecutadas forzosamente sobre Node 24 por deprecación de Node 20 y futura migración de `ubuntu-latest` a Ubuntu 26.
+
+### 8. Riesgos y tareas pendientes
+- Falta identidad SQL writer `NOLOGIN/NOBYPASSRLS`, políticas/grants exactos y provisioning de su LOGIN; no usar owner, superuser ni BYPASSRLS.
+- Falta bootstrap/recovery auditado que garantice existencia de exactamente un ROOT activo. El esquema actual garantiza como máximo uno y que cualquier ROOT existente sea activo.
+- Falta matriz exacta de recursos administrativos, notificaciones y composición HTTP con identidad verificada; las rutas permanecen cerradas.
+- El lifecycle PostgreSQL prueba las transacciones/constraints con `psql` como owner del entorno desechable; no existe todavía driver/runtime JS-to-PostgreSQL del writer que pueda probarse end-to-end.
+- Escaneo Codex Security `ac6dfe0f-b279-4e30-bad6-056f3f4c4f5d` sobre el SHA inicial: seis hallazgos (cinco medium, uno low) trazados y remediados por este bloque salvo los dos contratos pendientes anteriores. Cobertura focalizada/parcial del repositorio completo.
+
+### 9. Operaciones no realizadas
+- No se desplegó Sabora ni se accedió/modificó el VPS.
+- No se aplicó ninguna migración a Supabase operativo ni se limpiaron datos.
+- No se creó ROOT real, writer operativo, credencial, secreto o configuración de producción.
+- No se inspeccionó ni modificó Fleetia, sus contenedores, redes, volúmenes, puertos, servicios o datos.
+- No se modificaron otros repositorios, no se fusionó PR #2 y no se solicitó revisión externa de pago.
+
+### 10. Siguiente bloque recomendado
+Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOGIN provisionado fuera de migraciones, RLS/grants exactos, binding de `request.verifiedIdentity.userId` y matriz de recursos administrativos. Después integrar una sola ruta de mutación de bajo riesgo mediante `createPostgresTransaction` + `createTransactionalAdminWrite`, y una ruta de gobierno mediante `createOwnershipWorkflow`; probar ambas end-to-end con driver real en PostgreSQL 17 desechable antes de ampliar superficie o desplegar.
