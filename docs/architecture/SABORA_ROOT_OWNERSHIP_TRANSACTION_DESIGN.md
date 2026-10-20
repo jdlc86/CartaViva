@@ -25,3 +25,6 @@ Estado: diseño de implementación, no esquema aplicado. Fuente: contrato `SABOR
 
 ## Puertas
 La base actual solo conoce roles `admin`, `waiter`, `kitchen`. Antes de escribir una migración real hay que verificar el DDL original de `staff_members`, funciones, auditoría y el orden de migraciones para evitar romper el smoke existente. No introducir migración de forma especulativa ni ejecutar contra Supabase operativo. Una vez validado el esquema, implementar SQL y añadir pruebas de concurrencia a CI.
+
+## Hallazgo de implementación — orden de bloqueos
+La primera migración introduce un trigger de cambios de staff que adquiere el singleton y otro trigger de titularidad que consulta staff. El orden de bloqueo puede invertirse entre UPDATE de staff y UPDATE del titular, generando deadlocks. **No se considera superada la puerta de concurrencia**. Antes de incorporar rutas o transiciones, se debe fijar un orden de locks único y probar dos conexiones simultáneas con transacciones REPEATABLE READ/READ COMMITTED; los deadlocks no deben confundirse con una garantía de serialización. Además, la unicidad parcial ROOT solo asegura como máximo uno, y la existencia inicial debe provisionarse con procedimiento separado.
