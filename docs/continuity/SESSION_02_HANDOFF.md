@@ -73,3 +73,9 @@
 - Se añade `tests/api-exposure-guard.test.mjs`: bloquea la aparición accidental de rutas operativas sin autenticación; por ahora únicamente `/health` y `/ready`. Es una protección estática transitoria, **no sustituye** autenticación real ni pruebas HTTP de autorización.
 - La autoridad de identidad debe proceder de token Supabase Auth verificado criptográficamente y de membresía/estado vigentes consultados por el backend. No aceptar `actorUserId`, rol ni restaurante desde el cuerpo de la petición como fuente de autorización. Las mutaciones SQL seguirán privadas hasta implementar y probar el límite.
 - Pendiente validar GitHub Actions del nuevo commit; sin merge, despliegue ni migraciones operativas.
+
+## Sesión 02 — verificador criptográfico offline (trabajo en curso)
+- `apps/api/src/auth.mjs`: primitiva aislada para verificar firma RS256 de JWT Supabase Auth con JWKS de confianza inyectado; comprueba `kid`, `alg`, `iss`, `aud`, `sub`, `role`, `iat`, `nbf`, `exp` y devuelve únicamente `userId` verificado. Rechaza algoritmos simétricos/`none` y claves no coincidentes.
+- `tests/auth-verifier.test.mjs`: pruebas con RSA efímero para token válido, manipulación, firma/algoritmo, claims y configuración inválidos. `apps/api/package.json` incluye `node --check src/auth.mjs`.
+- **No se ha conectado todavía a Fastify**: faltan obtención/rotación de JWKS del emisor de confianza, caché acotada, rechazo de sesión revocada según contrato, comprobación de estado/membresía vigentes en base de datos, tests HTTP y auditoría. No exponer endpoints de negocio hasta completar esos controles.
+- Validar CI del HEAD actualizado. Ninguna migración a Supabase operativo ni despliegue VPS.
