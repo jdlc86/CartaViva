@@ -30,7 +30,7 @@ test('request writes proposal and append-only audit under ownership lock',async(
 test('accepted request updates owner, proposal and audit in one transaction',async()=>{
  const {calls,workflow}=setup();
  const result=await workflow({actorUserId:owner,action:'accept',correlationId:corr,proposalId:proposal});
- assert.equal(result.nextOwnerId,requester);
+ assert.equal(result.nextOwnerId,requester,JSON.stringify(result));
  assert.equal(result.status,'accepted');
  assert.ok(calls.some(x=>x.sql.startsWith('update sabora.admin_write_ownership')));
  assert.ok(calls.some(x=>x.sql.startsWith('update sabora.admin_ownership_proposals')));
