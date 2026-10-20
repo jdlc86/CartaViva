@@ -115,7 +115,8 @@ begin
  update sabora.staff_members set state='revoked' where user_id='00000000-0000-0000-0000-000000000101';
  begin
   perform * from sabora.transition_order_line(
-   (select id from sabora.order_lines where order_id=v_order and line_number=1),
+   (select l.id from sabora.order_lines l join sabora.orders o on o.id=l.order_id
+    where o.employee_number='101' and l.status='confirmed' limit 1),
    '00000000-0000-0000-0000-000000000101','preparing');
   raise exception 'revoked kitchen actor accepted';
  exception when invalid_parameter_value then null;
