@@ -354,6 +354,13 @@ begin
     exception when invalid_parameter_value then
       raise notice 'short QR rotation rejected';
     end;
+    begin
+      perform * from sabora.rotate_table_qr(
+        '00000000-0000-0000-0000-000000000001',v_table,repeat('x',513));
+      raise exception 'oversized QR rotation accepted';
+    exception when invalid_parameter_value then
+      raise notice 'oversized QR rotation rejected';
+    end;
     if exists (select 1 from sabora.dining_tables
                where id = v_table
                  and (session_id is distinct from v_before_session
