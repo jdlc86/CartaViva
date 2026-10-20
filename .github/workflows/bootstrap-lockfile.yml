@@ -2,6 +2,12 @@ name: Bootstrap Sabora lockfile
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'apps/**/package.json'
+      - '.github/workflows/bootstrap-lockfile.yml'
 
 permissions:
   contents: read
@@ -27,7 +33,7 @@ jobs:
       - name: Verify lockfile is usable
         run: |
           test -s pnpm-lock.yaml
-          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm install --frozen-lockfile
           pnpm test
           pnpm build
       - name: Upload generated lockfile
