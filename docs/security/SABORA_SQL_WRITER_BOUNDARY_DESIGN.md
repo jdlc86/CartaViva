@@ -17,3 +17,7 @@ La migración `20261020250000_sabora_dormant_admin_writer.sql` crea `sabora_admi
 ## Objetos futuros y ACL por defecto
 
 La migración `20261020260000_sabora_writer_future_acl.sql` establece revocaciones de privilegios por defecto para objetos futuros creados por **el rol que ejecuta la migración**, y refuerza la revocación de EXECUTE público sobre nuevas funciones del esquema. El smoke crea una tabla y una función temporales de prueba para verificar denegaciones y las elimina. Limitación explícita: las ACL por defecto son por rol creador y no bloquean grants explícitos posteriores ni objetos creados por otros owners; deberán auditarse en cualquier integración de nuevos roles.
+
+## Corrección de default EXECUTE de PostgreSQL
+
+CI #312 y bootstrap #296 detectaron que `ALTER DEFAULT PRIVILEGES IN SCHEMA ... REVOKE EXECUTE ... FROM PUBLIC` **no revoca el permiso EXECUTE global predeterminado** de PostgreSQL. Se añadió la migración `20261020270000_sabora_default_function_execute.sql` con revocación global para futuras funciones creadas por el rol ejecutor. Esto también afecta a futuras funciones que ese rol cree en otros esquemas: requiere revisar ownership/rol migrador antes de aplicar a un entorno operativo. La prueba que creó una función nueva se mantiene para evitar regresiones.
