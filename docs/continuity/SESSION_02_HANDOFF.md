@@ -181,3 +181,8 @@
 - Añadido `apps/api/src/safe-staff-reader-query.mjs` y conectado a `staff-protected-hooks-from-pool.mjs`: captura errores del driver sin propagar mensajes, `cause` ni cadenas de conexión al límite de autorización; devuelve código estable `staff_reader_unavailable`, que el guard HTTP transforma en 503.
 - El observador permite evento acotado `staff_reader_query_failed`, sin texto de excepción. Nuevas pruebas `tests/safe-staff-reader-query.test.mjs` verifican ausencia de secretos y fallos no fatales del observador. CI del HEAD pendiente.
 - No driver real ni conexión operativa, no merge ni despliegue.
+
+## Sesión 02 — regresión HTTP extremo a extremo de errores secretos
+- CI #206 (`39488277336`) estaba en curso al inicio; verificar conclusión final.
+- Añadida regresión en `tests/staff-protected-hooks-from-pool.test.mjs`: un error simulado del driver que contiene una URL con contraseña debe traducirse en HTTP 503 `authorization_unavailable`, sin exponer el secreto ni en respuesta ni en el evento acotado del observador.
+- No se añade driver real ni se abren rutas operativas. CI del nuevo HEAD pendiente. No hay merge, despliegue o cambios en Supabase/Fleetia.
