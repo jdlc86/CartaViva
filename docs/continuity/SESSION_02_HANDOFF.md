@@ -152,3 +152,9 @@
 - Añadida `apps/api/src/staff-protected-hooks-from-pool.mjs`: compone pool inyectado -> SQL de membresía estrictamente permitido -> lookup de estado actual -> JWT/roles de Fastify. **No crea ni abre conexiones, no maneja secretos y no registra rutas públicas.**
 - `tests/staff-protected-hooks-from-pool.test.mjs` valida HTTP 200 activo, HTTP 403 tras revocación, consulta SQL parametrizada exacta y HTTP 503 ante indisponibilidad del pool. Build verifica sintaxis.
 - Pendiente CI del HEAD; sigue pendiente driver/pool técnico real, SSL verificable, credenciales independientes y autorización transaccional de RPC. No aplicar a Supabase operativo ni desplegar sin permiso expreso.
+
+## Sesión 02 — configuración TLS estricta del pool de lectura
+- CI #184 (`39474165005`) SUCCESS sobre fábrica de autorización con pool inyectado.
+- Añadido `apps/api/src/staff-pool-config.mjs`: valida host, puerto, nombre de DB, usuario técnico `sabora_staff_reader_login`, contraseña y CA PEM explícita; fuerza `ssl.rejectUnauthorized=true`, limita pool a 3 conexiones y timeouts. Tests negativos para CA ausente, puerto inválido, usuario privilegiado y host en formato URL.
+- **Solo validación de configuración**: no se instala driver `pg`, no se abre conexión, no se crean roles LOGIN, no se accede a secretos operativos. El rol NOLOGIN de la migración no es aún una identidad conectable. El futuro login deberá provisionarse con permisos mínimos, sin BYPASSRLS, y heredar exclusivamente permisos del rol lector; verificar TLS/CA reales antes de habilitarlo.
+- CI del nuevo HEAD pendiente. No hay merge, despliegue ni acceso a Supabase operativo.
