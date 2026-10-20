@@ -51,7 +51,38 @@ create table sabora.order_idempotency (
   table_id uuid not null,
   session_id uuid not null,
   customer_identity_hash bytea not null check (octet_length(customer_identity_hash) = 32),
-  request_key text not null check (length(request_key) between 8 and 128),
+  request_key text not null check (request_key ~ '^[a-zA-Z0-9_-]{8,128}
+  payload_hash bytea not null check (octet_length(payload_hash) = 32),
+  order_id uuid not null unique,
+  primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
+  foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
+  foreign key (restaurant_id, table_id, session_id, order_id)
+    references sabora.orders(restaurant_id, table_id, session_id, id)
+);
+
+create index orders_by_table_time on sabora.orders(restaurant_id, table_id, confirmed_at desc);
+
+-- No client table privileges. Runtime access will be via narrowly scoped
+-- SECURITY DEFINER RPCs after authorization and transaction review.
+revoke all on schema sabora from public;
+revoke all on all tables in schema sabora from public, anon, authenticated;
+alter default privileges in schema sabora revoke all on tables from public, anon, authenticated;
+
+alter table sabora.restaurants enable row level security;
+alter table sabora.restaurant_members enable row level security;
+alter table sabora.dining_tables enable row level security;
+alter table sabora.orders enable row level security;
+alter table sabora.order_idempotency enable row level security;
+
+-- FORCE RLS for owners too; no policies means default-deny until reviewed.
+alter table sabora.restaurants force row level security;
+alter table sabora.restaurant_members force row level security;
+alter table sabora.dining_tables force row level security;
+alter table sabora.orders force row level security;
+alter table sabora.order_idempotency force row level security;
+
+commit;
+),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
   order_id uuid not null unique,
   primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
