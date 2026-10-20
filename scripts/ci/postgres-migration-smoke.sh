@@ -35,6 +35,9 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
   < supabase/migrations/20261020170000_sabora_order_lifecycle.sql
 
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < supabase/migrations/20261020180000_sabora_order_lines_pickup.sql
+
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 do $$
 declare actual int;
@@ -42,9 +45,9 @@ begin
   select count(*) into actual
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname='sabora' and c.relname in
-  ('restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events')
+  ('restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events','order_lines','pickup_notifications','order_line_events')
   and c.relrowsecurity and c.relforcerowsecurity;
-  if actual <> 6 then raise exception 'RLS missing: %', actual; end if;
+  if actual <> 9 then raise exception 'RLS missing: %', actual; end if;
 end $$;
 
 -- Assert every Sabora table and RPC remains inaccessible to client roles.
@@ -58,7 +61,7 @@ begin
       raise exception 'client role % has unauthorized schema usage', v_role;
     end if;
     foreach v_table in array array[
-      'restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events'
+      'restaurants','restaurant_members','dining_tables','orders','order_idempotency','order_status_events','order_lines','pickup_notifications','order_line_events'
     ] loop
       if has_table_privilege(v_role, format('sabora.%I',v_table), 'SELECT')
          or has_table_privilege(v_role, format('sabora.%I',v_table), 'INSERT')
@@ -69,7 +72,8 @@ begin
     end loop;
     if has_function_privilege(v_role, 'sabora.confirm_order(uuid,uuid,text,text,text,text,jsonb)', 'EXECUTE')
        or has_function_privilege(v_role, 'sabora.rotate_table_qr(uuid,uuid,text)', 'EXECUTE')
-       or has_function_privilege(v_role, 'sabora.transition_order_status(uuid,uuid,uuid,text,text)', 'EXECUTE') then
+       or has_function_privilege(v_role, 'sabora.transition_order_status(uuid,uuid,uuid,text,text)', 'EXECUTE')
+       or has_function_privilege(v_role, 'sabora.transition_order_line(uuid,uuid,uuid,text)', 'EXECUTE') then
       raise exception 'client role % has unauthorized RPC execution', v_role;
     end if;
   end loop;
@@ -610,6 +614,95 @@ begin
   if (select count(*) from sabora.order_status_events where order_id=o) <> 0 then
     raise exception 'rejected transition wrote audit history';
   end if;
+end $$;
+SQL
+
+
+# Per-line lifecycle and pickup: distinct items, tenant isolation, roles, notification history.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+do $$
+declare
+ v_line uuid;
+ v_other uuid;
+ v_order uuid;
+ v_total int;
+begin
+ select id,order_id into strict v_line,v_order from sabora.order_lines
+  where restaurant_id='00000000-0000-0000-0000-000000000001'
+  order by order_id,line_number limit 1;
+ if (select count(*) from sabora.order_lines where order_id=v_order)
+    <> (select jsonb_array_length(items) from sabora.orders where id=v_order) then
+   raise exception 'order lines not materialized';
+ end if;
+ begin
+  perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000002',v_line,
+    '00000000-0000-0000-0000-000000000104','preparing');
+  raise exception 'cross-tenant line transition accepted';
+ exception when no_data_found then null;
+ end;
+ begin
+  perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000102','preparing');
+  raise exception 'waiter prepared a line';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000101','picked_up');
+  raise exception 'unready line picked up';
+ exception when invalid_parameter_value then null;
+ end;
+ perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000101','preparing');
+ perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000101','ready');
+ if (select count(*) from sabora.pickup_notifications
+      where order_line_id=v_line and acknowledged_at is null) <> 1 then
+   raise exception 'ready line did not generate pending pickup notification';
+ end if;
+ begin
+  perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000101','picked_up');
+  raise exception 'kitchen picked up a line';
+ exception when insufficient_privilege then null;
+ end;
+ perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000102','picked_up');
+ if (select count(*) from sabora.pickup_notifications
+      where order_line_id=v_line and acknowledged_by='00000000-0000-0000-0000-000000000102'
+        and acknowledged_at is not null) <> 1 then
+   raise exception 'pickup was not acknowledged durably';
+ end if;
+ if (select count(*) from sabora.order_line_events where order_line_id=v_line) <> 3 then
+   raise exception 'pickup history missing';
+ end if;
+ begin
+  perform * from sabora.transition_order_line(
+    '00000000-0000-0000-0000-000000000001',v_line,
+    '00000000-0000-0000-0000-000000000102','picked_up');
+  raise exception 'duplicate pickup accepted';
+ exception when invalid_parameter_value then null;
+ end;
+ if (select status from sabora.orders where id=v_order) = 'delivered' then
+   raise exception 'line pickup incorrectly delivered the whole order';
+ end if;
+ -- Verify that a new order created after migration receives stable lines.
+ select id into v_other from sabora.dining_tables
+  where restaurant_id='00000000-0000-0000-0000-000000000001' and number=2;
+ select order_id into v_order from sabora.confirm_order(
+  '00000000-0000-0000-0000-000000000001',v_other,repeat('n',64),
+  'Acme','999','line_insert_0001',
+  '[{"category":"drink","name":"Water","quantity":1},{"category":"main","name":"Rice","quantity":2}]'::jsonb);
+ if (select count(*) from sabora.order_lines where order_id=v_order) <> 2 then
+   raise exception 'new order did not create two stable lines';
+ end if;
 end $$;
 SQL
 
