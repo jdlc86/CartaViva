@@ -51,3 +51,43 @@ test('invalid config or driver fails before opening', () => {
   assert.throws(() => createStaffPoolLifecycle({ env }), /invalid_staff_pool_driver/);
   assert.throws(() => createStaffPoolLifecycle({ Pool: class {}, env: {} }), /invalid_staff_pool_config/);
 });
+
+test('constructor failure makes lifecycle terminal', async () => {
+  let attempts = 0;
+  class BrokenPool {
+    constructor() { attempts++; throw new Error('driver-failed'); }
+  }
+  const lifecycle = createStaffPoolLifecycle({ Pool: BrokenPool, env });
+  assert.throws(() => lifecycle.open(), /driver-failed/);
+  assert.equal(lifecycle.isOpen, false);
+  assert.throws(() => lifecycle.open(), /staff_pool_closing/);
+  await lifecycle.close();
+  assert.equal(attempts, 1);
+});
+
+test('invalid pool instance is rejected and cleaned up', async () => {
+  let ended = 0;
+  class BrokenPool {
+    async end() { ended++; }
+  }
+  const lifecycle = createStaffPoolLifecycle({ Pool: BrokenPool, env });
+  assert.throws(() => lifecycle.open(), /invalid_staff_pool_instance/);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ended, 1);
+  assert.throws(() => lifecycle.open(), /staff_pool_closing/);
+});
+
+test('failed close remains terminal and does not call end again', async () => {
+  let ended = 0;
+  class Pool {
+    async query() {}
+    async end() { ended++; throw new Error('shutdown-failed'); }
+  }
+  const lifecycle = createStaffPoolLifecycle({ Pool, env });
+  lifecycle.open();
+  await assert.rejects(lifecycle.close(), /shutdown-failed/);
+  await assert.rejects(lifecycle.close(), /shutdown-failed/);
+  assert.equal(ended, 1);
+  assert.equal(lifecycle.isOpen, false);
+  assert.throws(() => lifecycle.open(), /staff_pool_closing/);
+});
