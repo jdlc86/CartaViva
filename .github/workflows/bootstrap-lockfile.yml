@@ -8,7 +8,10 @@ on:
       - 'pnpm-workspace.yaml'
       - 'apps/**/package.json'
       - '.github/workflows/bootstrap-lockfile.yml'
-      - 'tests/bootstrap-lockfile.test.mjs'
+      - 'tests/**'
+      - 'supabase/migrations/**'
+      - 'scripts/ci/**'
+      - 'apps/api/src/**'
 
 permissions:
   contents: write
