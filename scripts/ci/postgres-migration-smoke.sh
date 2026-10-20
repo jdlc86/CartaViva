@@ -184,6 +184,23 @@ begin
   if (select first_confirmed_at is not null from sabora.dining_tables where id=v_table) then
     raise exception 'QR rotation failed to reset grouping';
   end if;
+  -- A malformed item must not create an order, even with a valid QR.
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_01','[{"name":"Rice","quantity":1}]'::jsonb);
+    raise exception 'missing category accepted';
+  exception when invalid_parameter_value then
+    raise notice 'missing category rejected';
+  end;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','bad_items_02','[{"category":"main","name":"Rice","quantity":0}]'::jsonb);
+    raise exception 'invalid quantity accepted';
+  exception when invalid_parameter_value then
+    raise notice 'invalid quantity rejected';
+  end;
   if (select count(*) from sabora.orders where table_id=v_table) <> v_order_count then
     raise exception 'QR rotation erased order history';
   end if;
