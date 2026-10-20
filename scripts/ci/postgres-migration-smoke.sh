@@ -26,8 +26,11 @@ SQL
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
   < supabase/migrations/20261020140000_sabora_order_core.sql
 
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < supabase/migrations/20261020150000_sabora_order_transaction.sql
+
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $$
+do $
 declare actual int;
 begin
   select count(*) into actual
