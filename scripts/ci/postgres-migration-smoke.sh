@@ -340,6 +340,27 @@ begin
   exception when invalid_parameter_value then
     raise notice 'blank item name rejected';
   end;
+  -- Invalid QR rotations must not change the session or token.
+  declare
+    v_before_session uuid;
+    v_before_version integer;
+  begin
+    select session_id, qr_version into v_before_session, v_before_version
+      from sabora.dining_tables where id = v_table;
+    begin
+      perform * from sabora.rotate_table_qr(
+        '00000000-0000-0000-0000-000000000001',v_table,'short');
+      raise exception 'short QR rotation accepted';
+    exception when invalid_parameter_value then
+      raise notice 'short QR rotation rejected';
+    end;
+    if exists (select 1 from sabora.dining_tables
+               where id = v_table
+                 and (session_id is distinct from v_before_session
+                      or qr_version is distinct from v_before_version)) then
+      raise exception 'invalid QR rotation modified session';
+    end if;
+  end;
   if (select count(*) from sabora.orders where table_id=v_table) <> v_order_count then
     raise exception 'QR rotation erased order history';
   end if;
