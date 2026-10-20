@@ -43,3 +43,20 @@ test('database failure returns 503 without granting access', async () => {
   assert.deepEqual(res.body, { error: 'authorization_unavailable' });
   assert.equal(req.verifiedStaff, undefined);
 });
+
+test('ROOT requires current active durable membership and cannot be spoofed', async () => {
+  let state = 'active';
+  const authorize = createStaffAuthorization({ lookupStaff: async () => ({ role: 'root', state }) });
+  const req = request(), res = reply();
+  await authorize(req, res, ['root']);
+  assert.equal(res.status, null);
+  assert.deepEqual(req.verifiedStaff, { userId: 'verified-user', role: 'root' });
+  state = 'revoked';
+  const blocked = reply();
+  await authorize(request(), blocked, ['root']);
+  assert.equal(blocked.status, 403);
+  const adminOnly = reply();
+  state = 'active';
+  await authorize(request(), adminOnly, ['admin']);
+  assert.equal(adminOnly.status, 403);
+});
