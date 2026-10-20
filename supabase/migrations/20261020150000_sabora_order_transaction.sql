@@ -43,15 +43,15 @@ begin
   if not found then
     raise exception 'table_not_found' using errcode = 'P0002';
   end if;
-  if v_table.qr_token_hash <> digest(p_qr_token, 'sha256') then
+  if v_table.qr_token_hash <> sha256(convert_to(p_qr_token, 'UTF8')) then
     raise exception 'invalid_qr' using errcode = '28000';
   end if;
 
-  v_identity_hash := digest(btrim(p_company) || chr(0) || btrim(p_employee_number), 'sha256');
-  v_payload_hash := digest(
+  v_identity_hash := sha256(convert_to(btrim(p_company) || chr(0) || btrim(p_employee_number), 'UTF8'));
+  v_payload_hash := sha256(convert_to(
     jsonb_build_object('company', btrim(p_company), 'employee', btrim(p_employee_number), 'items', p_items)::text,
-    'sha256'
-  );
+    'UTF8'
+  ));
   select i.payload_hash, i.order_id into v_previous
     from sabora.order_idempotency i
     where i.restaurant_id = p_restaurant_id and i.table_id = p_table_id
