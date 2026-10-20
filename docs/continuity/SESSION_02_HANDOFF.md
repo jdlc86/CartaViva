@@ -221,3 +221,8 @@
 - `scripts/ci/admin-ownership-concurrency-smoke.sh` ejecuta dos procesos `psql` contra el mismo PostgreSQL 17 desechable: transferencia de propietario con bloqueo retenido y suspensión posterior del antiguo titular. Se integra al final de `scripts/ci/postgres-migration-smoke.sh`.
 - El ensayo verifica orden de bloqueos y resultado final, **no** cubre todavía transferencias concurrentes con solicitudes/aceptaciones (no implementadas), ni los aislamientos REPEATABLE READ.
 - Estado: commit publicado, ejecución CI del nuevo HEAD pendiente. No usar esta prueba como certificación completa de concurrencia o como autorización de despliegue.
+
+## ROOT en lectura de membresía (2026-10-20)
+- `apps/api/src/staff-authorization.mjs` y `postgres-staff-lookup.mjs` ahora admiten rol `root` persistido; no se aceptan roles arbitrarios ni claims del cliente. Se agregaron regresiones para ROOT activo, revocado y separación respecto a ADMIN.
+- El reconocimiento del rol no crea rutas ROOT ni concede titularidad automáticamente; la integración de mutaciones transaccionales sigue pendiente.
+- CI #238 confirmó éxito del paso de migraciones PostgreSQL 17 y de Compose aislado; ejecución completa y HEAD posterior aún requieren comprobación.
