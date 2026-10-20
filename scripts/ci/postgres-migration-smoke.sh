@@ -33,7 +33,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
   < supabase/migrations/20261020160000_sabora_qr_rotation.sql
 
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $
+do $$
 declare actual int;
 begin
   select count(*) into actual
@@ -184,7 +184,7 @@ begin
       'Acme','101','after_rotate_new','[{"category":"main","name":"Rice","quantity":1}]'::jsonb)) <> 'first' then
     raise exception 'new QR did not start a fresh grouping window';
   end if;
-end $;
+end $$;
 SQL
 
 echo 'Sabora PostgreSQL migration, tenant isolation, concurrent orders, idempotency and QR rotation passed.'
