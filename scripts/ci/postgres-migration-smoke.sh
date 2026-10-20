@@ -29,8 +29,11 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
   < supabase/migrations/20261020150000_sabora_order_transaction.sql
 
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < supabase/migrations/20261020160000_sabora_qr_rotation.sql
+
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $$
+do $
 declare actual int;
 begin
   select count(*) into actual
@@ -142,4 +145,46 @@ grep -q 'grouped' /tmp/sabora-second-$.log || { cat /tmp/sabora-second-$.log; ex
 docker exec "$container" psql -U postgres -d postgres -Atqc "select count(*) from sabora.orders where table_id='$table_id'" | grep -qx 2
 rm -f /tmp/sabora-first-$.log /tmp/sabora-second-$.log
 
-echo 'Sabora isolated PostgreSQL 17 migration, tenant FK, idempotency and concurrent order checks passed.'
+# QR rotation must invalidate the old token, reset the window and preserve history.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+do $
+declare
+  v_table uuid;
+  v_old_session uuid;
+  v_new_session uuid;
+  v_version integer;
+  v_order_count integer;
+begin
+  select id, session_id into v_table, v_old_session
+    from sabora.dining_tables
+    where restaurant_id='00000000-0000-0000-0000-000000000001' and number=2;
+  select count(*) into v_order_count from sabora.orders where table_id=v_table;
+  select new_qr_version, new_session_id into v_version, v_new_session
+    from sabora.rotate_table_qr(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64));
+  if v_version <> 2 or v_new_session = v_old_session then
+    raise exception 'QR rotation did not increment version or reset session';
+  end if;
+  if (select first_confirmed_at is not null from sabora.dining_tables where id=v_table) then
+    raise exception 'QR rotation failed to reset grouping';
+  end if;
+  if (select count(*) from sabora.orders where table_id=v_table) <> v_order_count then
+    raise exception 'QR rotation erased order history';
+  end if;
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('x',64),
+      'Acme','101','after_rotate_old','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+    raise exception 'old QR remained valid';
+  exception when invalid_authorization_specification then
+    raise notice 'old QR rejected';
+  end;
+  if (select order_grouping from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000001',v_table,repeat('n',64),
+      'Acme','101','after_rotate_new','[{"category":"main","name":"Rice","quantity":1}]'::jsonb)) <> 'first' then
+    raise exception 'new QR did not start a fresh grouping window';
+  end if;
+end $;
+SQL
+
+echo 'Sabora PostgreSQL migration, tenant isolation, concurrent orders, idempotency and QR rotation passed.'
