@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
-    "build": "node --check src/server.mjs && node --check src/domain.mjs && node --check src/auth.mjs && node --check src/jwks.mjs && node --check src/auth-hook.mjs && node --check src/staff-authorization.mjs && node --check src/protected-route-hooks.mjs && node --check src/postgres-staff-lookup.mjs && node --check src/postgres-protected-route-hooks.mjs && node --check src/staff-reader-query.mjs"
+    "build": "node --check src/server.mjs && node --check src/domain.mjs && node --check src/auth.mjs && node --check src/jwks.mjs && node --check src/auth-hook.mjs && node --check src/staff-authorization.mjs && node --check src/protected-route-hooks.mjs && node --check src/postgres-staff-lookup.mjs && node --check src/postgres-protected-route-hooks.mjs && node --check src/staff-reader-query.mjs && node --check src/staff-protected-hooks-from-pool.mjs"
   },
   "dependencies": {
     "fastify": "^5.0.0"
