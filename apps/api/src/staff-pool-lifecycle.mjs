@@ -1,25 +1,35 @@
 import { readStaffPoolConfig } from './staff-pool-config.mjs';
 
-// Inject the driver constructor so unit tests never need network access.
-// Opening is explicit; no pool is created during module import.
+// Dependency-injected driver; importing this module never opens a connection.
 export function createStaffPoolLifecycle({ Pool, env } = {}) {
   if (typeof Pool !== 'function') throw new Error('invalid_staff_pool_driver');
   const config = readStaffPoolConfig(env);
   let pool = null;
   let closing = null;
+  let terminal = false;
 
   return Object.freeze({
     open() {
-      if (closing) throw new Error('staff_pool_closing');
+      if (terminal || closing) throw new Error('staff_pool_closing');
       if (pool) return pool;
-      pool = new Pool(config);
-      if (!pool || typeof pool.query !== 'function' || typeof pool.end !== 'function') {
-        pool = null;
+      // A failed constructor must never be retried on the same lifecycle.
+      terminal = true;
+      const candidate = new Pool(config);
+      if (!candidate || typeof candidate.query !== 'function' ||
+          typeof candidate.end !== 'function') {
+        // An invalid driver cannot be safely used. If it has an end method,
+        // schedule cleanup without leaking a rejected promise.
+        if (candidate && typeof candidate.end === 'function') {
+          Promise.resolve().then(() => candidate.end()).catch(() => {});
+        }
         throw new Error('invalid_staff_pool_instance');
       }
+      pool = candidate;
+      terminal = false;
       return pool;
     },
     async close() {
+      terminal = true;
       if (closing) return closing;
       if (!pool) return;
       const current = pool;
@@ -28,9 +38,8 @@ export function createStaffPoolLifecycle({ Pool, env } = {}) {
         await closing;
       } finally {
         pool = null;
-        // A closed lifecycle is terminal; never reopen a pool after shutdown.
       }
     },
-    get isOpen() { return pool !== null && closing === null; }
+    get isOpen() { return pool !== null && !terminal && closing === null; }
   });
 }
