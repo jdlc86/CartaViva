@@ -164,3 +164,8 @@
 - Añadido `apps/api/src/staff-pool-lifecycle.mjs`: recibe constructor `Pool` inyectado, valida configuración TLS antes de abrir, abre una sola vez y cierra de forma idempotente, con cierre concurrente compartido. Tras cerrar, el objeto no permite reabrir. Tests con driver simulado en `tests/staff-pool-lifecycle.test.mjs`; build valida sintaxis.
 - **No se ha instalado ni conectado un driver real** y no se integra el pool en `server.mjs`. Falta revisar la interacción con errores de constructor/fin de conexión, verificar CA real, credenciales de LOGIN y controles de autorización transaccional. CI del HEAD pendiente.
 - Sin merge, despliegue ni acceso a Supabase operativo/Fleetia.
+
+## Sesión 02 — robustez de fallos del pool
+- CI #192 (`39475689350`) SUCCESS para ciclo de vida inicial.
+- `staff-pool-lifecycle.mjs` endurecido: constructor fallido deja ciclo terminal, instancia inválida intenta cierre asíncrono si es posible, error en `end()` no permite reapertura ni segundo cierre físico. Nuevas regresiones de estos tres casos.
+- Pendiente CI del HEAD. No se abre conexión real, ni se usan secretos, ni se despliega. **Limitación pendiente:** la limpieza de una instancia inválida se realiza de mejor esfuerzo; el controlador definitivo debe cumplir el contrato del pool y registrarse observabilidad de errores de cierre antes de producción.
