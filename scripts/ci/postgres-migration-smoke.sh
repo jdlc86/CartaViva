@@ -52,13 +52,12 @@ begin
 end $$;
 -- Ownership persistence and audit are private, append-only and reject invalid rows.
 do $ownership_schema$
-declare v_root uuid := '00000000-0000-0000-0000-000000000901';
 declare v_admin uuid := '00000000-0000-0000-0000-000000000902';
 declare v_other uuid := '00000000-0000-0000-0000-000000000903';
 declare v_proposal uuid;
 begin
  insert into sabora.staff_members(user_id,role,state) values
-  (v_root,'root','active'),(v_admin,'admin','active'),(v_other,'admin','active');
+  (v_admin,'admin','active'),(v_other,'admin','active');
  update sabora.admin_write_ownership set owner_user_id=v_admin where singleton;
  insert into sabora.admin_ownership_proposals(kind,from_owner_id,to_owner_id,created_by,correlation_id)
  values ('request',v_admin,v_other,v_other,'00000000-0000-0000-0000-000000000904')
