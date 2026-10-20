@@ -1,7 +1,7 @@
 // Transaction-scoped administrative write boundary. The transaction adapter MUST
 // provide a single PostgreSQL connection and commit/rollback the whole callback.
 // This is not an HTTP endpoint or a grant of SQL privileges.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function createTransactionalAdminWrite({ withTransaction } = {}) {
   if (typeof withTransaction !== 'function') throw Error('invalid_transaction_config');
   return async function performAdminWrite({ verifiedIdentity, mutate } = {}) {
