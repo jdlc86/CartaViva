@@ -17,7 +17,7 @@ set search_path = pg_catalog, sabora
 as $$
 declare
   v_table sabora.dining_tables%rowtype;
-  v_now timestamptz := clock_timestamp();
+  v_now timestamptz;
   v_identity_hash bytea;
   v_payload_hash bytea;
   v_previous record;
@@ -47,7 +47,7 @@ begin
     raise exception 'invalid_qr' using errcode = '28000';
   end if;
 
-  v_identity_hash := sha256(convert_to(btrim(p_company) || chr(0) || btrim(p_employee_number), 'UTF8'));
+  v_identity_hash := sha256(convert_to(btrim(p_company) || ':' || length(btrim(p_employee_number))::text || ':' || btrim(p_employee_number), 'UTF8'));
   v_payload_hash := sha256(convert_to(
     jsonb_build_object('company', btrim(p_company), 'employee', btrim(p_employee_number), 'items', p_items)::text,
     'UTF8'
@@ -67,7 +67,7 @@ begin
     return;
   end if;
 
-  if v_table.first_confirmed_at is null then
+  -- Read the clock after acquiring the table lock and handling replay.\n  v_now := clock_timestamp();\n  if v_table.first_confirmed_at is null then
     v_grouping := 'first';
     update sabora.dining_tables t set first_confirmed_at = v_now where t.id = v_table.id;
   elsif v_now < v_table.first_confirmed_at + make_interval(secs => v_table.grouping_window_seconds) then
