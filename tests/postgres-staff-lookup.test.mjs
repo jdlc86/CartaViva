@@ -19,7 +19,7 @@ test('returns null for absent staff and preserves nonactive state', async () => 
   assert.deepEqual(await revoked(uid), { role: 'admin', state: 'revoked' });
 });
 test('rejects invalid identities, malformed results and unexpected roles', async () => {
-  const lookup = createPostgresStaffLookup({ query: async () => ({ rows: [{ role: 'root', state: 'active' }] }) });
+  const lookup = createPostgresStaffLookup({ query: async () => ({ rows: [{ role: 'superuser', state: 'active' }] }) });
   await assert.rejects(lookup(uid), /invalid_staff_membership/);
   await assert.rejects(lookup("x' OR true --"), /invalid_verified_user_id/);
   const malformed = createPostgresStaffLookup({ query: async () => ({ rows: [{ role: 'admin', state: 'active' }, { role: 'admin', state: 'active' }] }) });
