@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql; do
+for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql supabase/migrations/20261020220000_sabora_ownership_proposals_audit.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
@@ -24,7 +24,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>10 then raise exception 'Expected ten RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>12 then raise exception 'Expected twelve RLS protected single-restaurant tables, got %',v_count; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
  end if;
@@ -50,6 +50,39 @@ begin
   end if;
  end loop;
 end $$;
+-- Ownership persistence and audit are private, append-only and reject invalid rows.
+do $ownership_schema$
+declare v_root uuid := '00000000-0000-0000-0000-000000000901';
+declare v_admin uuid := '00000000-0000-0000-0000-000000000902';
+declare v_other uuid := '00000000-0000-0000-0000-000000000903';
+declare v_proposal uuid;
+begin
+ insert into sabora.staff_members(user_id,role,state) values
+  (v_root,'root','active'),(v_admin,'admin','active'),(v_other,'admin','active');
+ update sabora.admin_write_ownership set owner_user_id=v_admin where singleton;
+ insert into sabora.admin_ownership_proposals(kind,from_owner_id,to_owner_id,created_by,correlation_id)
+ values ('request',v_admin,v_other,v_other,'00000000-0000-0000-0000-000000000904')
+ returning id into v_proposal;
+ insert into sabora.admin_ownership_audit(correlation_id,actor_user_id,action,proposal_id,previous_owner_id,next_owner_id)
+ values ('00000000-0000-0000-0000-000000000905',v_other,'request',v_proposal,v_admin,v_admin);
+ begin
+  update sabora.admin_ownership_audit set action='offer' where proposal_id=v_proposal;
+  raise exception 'audit update unexpectedly allowed';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  delete from sabora.admin_ownership_audit where proposal_id=v_proposal;
+  raise exception 'audit delete unexpectedly allowed';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  insert into sabora.admin_ownership_proposals(kind,from_owner_id,to_owner_id,created_by,correlation_id)
+  values ('offer',v_admin,v_admin,v_admin,'00000000-0000-0000-0000-000000000906');
+  raise exception 'self-transfer unexpectedly allowed';
+ exception when check_violation then null;
+ end;
+end;
+$ownership_schema$;
 -- Reader must be strictly read-only and subject to RLS.
 do $reader$
 begin
