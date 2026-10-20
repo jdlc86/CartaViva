@@ -31,9 +31,9 @@ test('non-owner, revoked, missing, and operational staff cannot mutate',async()=
   assert.equal((await run(actor(owner))).updated,undefined);
  }
 });
-test('active ROOT can mutate without becoming admin owner',async()=>{
+test('active ROOT cannot use the ordinary admin mutation boundary',async()=>{
  const {run}=harness({ownerId:other,role:'root'});
- assert.deepEqual(await run(actor(owner)),{updated:true});
+ assert.deepEqual(await run(actor(owner)),{error:'forbidden'});
 });
 test('transaction query errors propagate and mutation does not execute',async()=>{
  const run=createTransactionalAdminWrite({withTransaction:async callback=>callback(async()=>{throw Error('db down')})});

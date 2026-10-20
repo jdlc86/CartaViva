@@ -20,7 +20,7 @@ test('API image uses pnpm with a committed lockfile and excludes sensitive build
   assert.match(dockerfile, /RUN pnpm install --frozen-lockfile/);
   assert.doesNotMatch(dockerfile, /RUN npm install|COPY \. \.|COPY \/opt\/fleetia/);
   for (const pattern of ['.git', 'node_modules', '.env', '*.pem', '*.key']) {
-    assert.ok(ignore.split('\n').includes(pattern), `missing ignore: ${pattern}`);
+    assert.ok(ignore.split(/\r?\n/).includes(pattern), `missing ignore: ${pattern}`);
   }
 });
 test('Sabora runtime has process limits, reduced privileges, bounded logs and healthcheck', () => {

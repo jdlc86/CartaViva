@@ -11,8 +11,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Require genuine pnpm lockfile
-        run: test -s pnpm-lock.yaml || { echo 'ERROR: generate pnpm-lock.yaml using pnpm install before CI'; exit 1; }
+        run: |
+          test -s pnpm-lock.yaml || {
+            echo 'ERROR: generate pnpm-lock.yaml using pnpm install before CI'
+            exit 1
+          }
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

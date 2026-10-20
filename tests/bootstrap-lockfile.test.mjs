@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 const workflow=readFileSync(new URL('../.github/workflows/bootstrap-lockfile.yml',import.meta.url),'utf8');
-test('bootstrap is manual, PR-triggered and scoped to same-repo lockfile commits',()=>{
+test('bootstrap is manual, PR-triggered and read-only',()=>{
  assert.match(workflow,/workflow_dispatch:/);
  assert.match(workflow,/pull_request:/);
- assert.match(workflow,/contents:\s*write/);
- assert.match(workflow,/github.event.pull_request.head.repo.full_name == github.repository/);
+ assert.match(workflow,/contents:\s*read/);
+ assert.match(workflow,/persist-credentials:\s*false/);
+ assert.doesNotMatch(workflow,/contents:\s*write|git\s+push|github.event.pull_request.head.repo.full_name/);
  assert.doesNotMatch(workflow,/\b(?:ssh|scp|docker compose up|docker system prune|secrets\.)\b/i);
 });
 test('bootstrap generates, verifies and exports a genuine pnpm lockfile',()=>{

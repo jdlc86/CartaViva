@@ -14,7 +14,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-for migration in supabase/migrations/202610201{4,5,6,7,8,9}0000_sabora_*.sql  supabase/migrations/20261020200000_sabora_staff_reader.sql supabase/migrations/20261020210000_sabora_root_admin_owner.sql supabase/migrations/20261020220000_sabora_ownership_proposals_audit.sql supabase/migrations/20261020230000_sabora_ownership_idempotency.sql; do
+for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
@@ -72,6 +72,11 @@ begin
  begin
   delete from sabora.admin_ownership_audit where proposal_id=v_proposal;
   raise exception 'audit delete unexpectedly allowed';
+ exception when insufficient_privilege then null;
+ end;
+ begin
+  truncate sabora.admin_ownership_audit;
+  raise exception 'audit truncate unexpectedly allowed';
  exception when insufficient_privilege then null;
  end;
  begin
@@ -170,6 +175,12 @@ insert into sabora.staff_members(user_id,role,state) values
  ('00000000-0000-0000-0000-000000000203','admin','active');
 do $governance$
 begin
+ begin
+  insert into sabora.staff_members(user_id,role,state)
+   values ('00000000-0000-0000-0000-000000000205','root','invited');
+  raise exception 'inactive ROOT accepted';
+ exception when insufficient_privilege then null;
+ end;
  begin
   insert into sabora.staff_members(user_id,role,state)
    values ('00000000-0000-0000-0000-000000000204','root','active');
@@ -297,5 +308,6 @@ begin
  end;
 end $$;
 SQL
+bash scripts/ci/admin-ownership-lifecycle-smoke.sh "$container"
 bash scripts/ci/admin-ownership-concurrency-smoke.sh "$container"
 echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and ownership concurrency smoke passed.'

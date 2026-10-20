@@ -22,10 +22,10 @@ export function createTransactionalAdminWrite({ withTransaction } = {}) {
       );
       if (!staff || staff.rows?.length !== 1) return { error: 'forbidden' };
       const { role, state } = staff.rows[0];
-      if (state !== 'active' || !['root', 'admin'].includes(role)) return { error: 'forbidden' };
+      if (state !== 'active' || role !== 'admin') return { error: 'forbidden' };
       const owner = ownership.rows[0].owner_user_id;
-      if (role === 'admin' && (typeof owner !== 'string' ||
-          owner.toLowerCase() !== verifiedIdentity.userId.toLowerCase())) {
+      if (typeof owner !== 'string' ||
+          owner.toLowerCase() !== verifiedIdentity.userId.toLowerCase()) {
         return { error: 'write_ownership_required' };
       }
       return mutate(query, Object.freeze({ userId: verifiedIdentity.userId, role }));
