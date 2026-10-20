@@ -8,7 +8,9 @@ test('lifecycle is tenant-scoped, row-serialized and role-checked', () => {
  assert.match(sql, /o\.restaurant_id=p_restaurant_id and o\.id=p_order_id for update/);
  assert.match(sql, /m\.restaurant_id=p_restaurant_id and m\.user_id=p_actor_user_id/);
  assert.match(sql, /role_not_allowed_for_transition/);
- assert.match(sql, /cancellation_reason_required/);
+ assert.match(sql, /Whole-order cancellation and delivery are deliberately unavailable/);
+ assert.match(sql, /p_next_status not in \('preparing','ready'\)/);
+ assert.doesNotMatch(sql, /p_next_status in \('preparing','ready','cancelled'\)/);
  assert.match(sql, /invalid_order_transition/);
 });
 test('audit is tenant-scoped, private and durable', () => {
