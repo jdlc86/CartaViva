@@ -107,6 +107,20 @@ begin
   raise exception 'pickup audit missing';
  end if;
  -- Revocation must abort transitions and their audit writes atomically.
+ insert into sabora.staff_members(user_id,role) values
+  ('00000000-0000-0000-0000-000000000104','kitchen');
+ if (select state from sabora.staff_members where user_id='00000000-0000-0000-0000-000000000104')<>'invited' then
+  raise exception 'new staff auto-activated';
+ end if;
+ update sabora.staff_members set state='revoked' where user_id='00000000-0000-0000-0000-000000000101';
+ begin
+  perform * from sabora.transition_order_line(
+   (select id from sabora.order_lines where order_id=v_order and line_number=1),
+   '00000000-0000-0000-0000-000000000101','preparing');
+  raise exception 'revoked kitchen actor accepted';
+ exception when invalid_parameter_value then null;
+          when insufficient_privilege then null;
+ end;
  update sabora.staff_members set state='revoked' where user_id='00000000-0000-0000-0000-000000000103';
  begin
   perform * from sabora.transition_order_status(v_order,'00000000-0000-0000-0000-000000000103','preparing',null);
