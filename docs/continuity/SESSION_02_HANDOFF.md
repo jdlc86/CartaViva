@@ -105,3 +105,8 @@
 - Migración nueva `20261020190000_sabora_staff_access_state.sql`: `staff_members.state` no nulo con `invited` por defecto y estados `active`, `suspended`, `revoked`; **ninguna fila existente se activa automáticamente**. Añade guardia `require_active_staff_role` y triggers en eventos de estado de pedido y línea; si actor está inactivo se aborta toda la transacción, incluido cambio previo de estado. Mantiene RLS FORCE y RPC privadas.
 - Smoke PostgreSQL 17 desechable incluye nueva migración, activación explícita de fixtures y regresiones de estado por defecto y actor revocado en transición válida. No es un flujo completo de activación/revocación administrativa, ni reemplaza autorización de identidad en API: las RPC todavía reciben `actor_user_id` suministrado por quien llama y siguen sin permisos de ejecución públicos.
 - No se ha aplicado a Supabase operativo. Verificar CI del último commit antes de afirmar éxito.
+
+## Sesión 02 — corrección de gate PostgreSQL
+- Bootstrap CI #158 (`39472194984`) FAILURE, localizado en el paso de PostgreSQL 17 desechable. Tests Node y build pasaron; PostgreSQL informó `syntax error at or near "$"` en la segunda función de `20261020190000_sabora_staff_access_state.sql`.
+- Corregido el delimitador del cuerpo PL/pgSQL de `enforce_active_transition_actor` a `$guard$` en ambos extremos. La migración original sigue siendo prototipo no aplicado a Supabase operativo.
+- Verificar ejecución CI sobre el commit de corrección y revisar posibles fallos posteriores de los smoke tests; **no afirmar verde hasta resultado**.
