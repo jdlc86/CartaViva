@@ -10,15 +10,16 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
   if (!valid(actorUserId) || !valid(correlationId) || !ACTIONS.has(action) ||
       (proposalId != null && !valid(proposalId)) ||
       (targetUserId != null && !valid(targetUserId))) return {error:'invalid_request'};
+  const requestPayload={action,actorUserId:actorUserId.toLowerCase(),proposalId:proposalId?.toLowerCase()??null,targetUserId:targetUserId?.toLowerCase()??null,reason:reason?.trim()??null};
   return withTransaction(async query => {
    // Lock order: ownership singleton, then staff rows, then proposal.
    const singleton = await query('select owner_user_id from sabora.admin_write_ownership where singleton=true for update',[]);
    if (singleton.rows?.length !== 1) throw Error('ownership_unavailable');
    const ownerId = singleton.rows[0].owner_user_id;
-   const existing = await query('select action,actor_user_id,proposal_id,previous_owner_id,next_owner_id from sabora.admin_ownership_audit where correlation_id=$1',[correlationId]);
+   const existing = await query('select action,actor_user_id,proposal_id,previous_owner_id,next_owner_id,request_payload from sabora.admin_ownership_audit where correlation_id=$1',[correlationId]);
    if (existing.rows?.length) {
     const row=existing.rows[0];
-    return row.actor_user_id === actorUserId && row.action === (action==='force'?'force_transfer':action==='accept'?'accept':action)
+    return row.request_payload != null && JSON.stringify(row.request_payload) === JSON.stringify(requestPayload)
      ? {replayed:true,proposalId:row.proposal_id,nextOwnerId:row.next_owner_id}
      : {error:'correlation_conflict'};
    }
@@ -63,8 +64,8 @@ export function createOwnershipWorkflow({ withTransaction } = {}) {
    }
    const auditAction=action==='force'?'force_transfer':action;
    await query(
-    'insert into sabora.admin_ownership_audit(correlation_id,actor_user_id,action,proposal_id,previous_owner_id,next_owner_id,reason) values ($1,$2,$3,$4,$5,$6,$7)',
-    [correlationId,actorUserId,auditAction,newProposalId,ownerId,decision.nextOwnerId??ownerId,reason?.trim()||null]);
+    'insert into sabora.admin_ownership_audit(correlation_id,actor_user_id,action,proposal_id,previous_owner_id,next_owner_id,reason,request_payload) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',
+    [correlationId,actorUserId,auditAction,newProposalId,ownerId,decision.nextOwnerId??ownerId,reason?.trim()||null,JSON.stringify(requestPayload)]);
    return {proposalId:newProposalId,nextOwnerId:decision.nextOwnerId??ownerId,status:decision.nextStatus??'pending'};
   });
  };
