@@ -256,3 +256,8 @@
 - CI #263 falló en test unitario del gate transaccional por segunda regex UUID incompleta (mismo patrón de error que lector de titular); corregido en `a588432`.
 - Añadido `apps/api/src/postgres-transaction.mjs` con `pool.connect()`, BEGIN/COMMIT/ROLLBACK en una sola conexión y release; pruebas en `tests/postgres-transaction.test.mjs` para éxito, fallo durante trabajo y fallo al iniciar.
 - Integración de runtime, permisos de DB, transferencias auditadas, idempotencia y pruebas de concurrencia aún pendientes. No se ha ejecutado SQL operativo ni desplegado.
+
+## Workflow de cesión transaccional (2026-10-20)
+- CI #267: pasos de Node, PostgreSQL 17, Compose, build y smoke API SUCCESS.
+- Nuevo `apps/api/src/ownership-workflow.mjs`: recibe identidad ya verificada, correlation UUID y operación; bajo `withTransaction` bloquea singleton, revalida membresías, consulta propuesta, ejecuta política de dominio, modifica titular/propuesta y añade auditoría. Reintento de correlación existente evita duplicar escrituras; test en `tests/ownership-workflow.test.mjs`.
+- **Puertas pendientes antes de uso real:** pruebas PostgreSQL 17 de concurrencia de operaciones de cesión y idempotencia, comprobación de parámetros del replay (no solo actor/acción), privilegios mínimos del runtime y auditoría de transacciones que se revierten; rutas y notificaciones aún no integradas. No conectar a producción.
