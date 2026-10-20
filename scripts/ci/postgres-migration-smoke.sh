@@ -125,6 +125,25 @@ begin
     raise notice 'conflicting idempotency key rejected';
   end;
 
+  -- A valid table and QR from restaurant A must not work under restaurant B.
+  begin
+    perform * from sabora.confirm_order(
+      '00000000-0000-0000-0000-000000000002',v_table,v_token,'Acme','101',
+      'cross_tenant_01','[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
+    raise exception 'cross-tenant confirmation unexpectedly succeeded';
+  exception when no_data_found then
+    raise notice 'cross-tenant confirmation rejected';
+  end;
+
+  -- QR management must also require the matching restaurant ID.
+  begin
+    perform * from sabora.rotate_table_qr(
+      '00000000-0000-0000-0000-000000000002',v_table,repeat('z',64));
+    raise exception 'cross-tenant QR rotation unexpectedly succeeded';
+  exception when no_data_found then
+    raise notice 'cross-tenant QR rotation rejected';
+  end;
+
   if (select count(*) from sabora.orders where table_id=v_table) <> 2 then
     raise exception 'unexpected order count after replay';
   end if;
