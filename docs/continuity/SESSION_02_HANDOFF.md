@@ -175,3 +175,9 @@
 - `apps/api/src/staff-pool-observer.mjs`: solo emite `{component,event}` con eventos permitidos y cardinalidad acotada. `staff-pool-lifecycle.mjs` emite apertura, fallo de apertura, pool inválido, cierre y fallo de cierre; errores del observador nunca afectan la limpieza.
 - Pruebas `tests/staff-pool-observer.test.mjs` verifican ausencia de secretos en los eventos y continuidad si el observador falla. Las excepciones originales del driver se propagan al llamador; **no deben volcarse directamente a logs públicos**. Pendiente revisar política de logs de la API y CI nuevo.
 - No driver real, no conexiones a Supabase, no despliegue ni merge.
+
+## Sesión 02 — sanitización de errores de consulta
+- Run #200 (`39488090001`) estaba en curso al inicio, con PostgreSQL 17 y Compose correctos; comprobar conclusión final.
+- Añadido `apps/api/src/safe-staff-reader-query.mjs` y conectado a `staff-protected-hooks-from-pool.mjs`: captura errores del driver sin propagar mensajes, `cause` ni cadenas de conexión al límite de autorización; devuelve código estable `staff_reader_unavailable`, que el guard HTTP transforma en 503.
+- El observador permite evento acotado `staff_reader_query_failed`, sin texto de excepción. Nuevas pruebas `tests/safe-staff-reader-query.test.mjs` verifican ausencia de secretos y fallos no fatales del observador. CI del HEAD pendiente.
+- No driver real ni conexión operativa, no merge ni despliegue.
