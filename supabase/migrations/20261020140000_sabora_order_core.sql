@@ -51,7 +51,7 @@ create table sabora.order_idempotency (
   table_id uuid not null,
   session_id uuid not null,
   customer_identity_hash bytea not null check (octet_length(customer_identity_hash) = 32),
-  request_key text not null check (request_key ~ '^[a-zA-Z0-9_-]{8,128}
+  request_key text not null check (length(request_key) between 8 and 128 and translate(request_key, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-', '') = ''),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
   order_id uuid not null unique,
   primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
@@ -85,7 +85,6 @@ commit;
 ),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
   order_id uuid not null unique,
-  primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
   foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
   foreign key (restaurant_id, table_id, session_id, order_id)
     references sabora.orders(restaurant_id, table_id, session_id, id)
@@ -116,7 +115,6 @@ commit;
 ),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
   order_id uuid not null unique,
-  primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
   foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
   foreign key (restaurant_id, table_id, session_id, order_id)
     references sabora.orders(restaurant_id, table_id, session_id, id)
@@ -147,7 +145,6 @@ commit;
 ),
   payload_hash bytea not null check (octet_length(payload_hash) = 32),
   order_id uuid not null unique,
-  primary key (restaurant_id, table_id, session_id, customer_identity_hash, request_key),
   foreign key (restaurant_id, table_id) references sabora.dining_tables(restaurant_id, id),
   foreign key (restaurant_id, table_id, session_id, order_id)
     references sabora.orders(restaurant_id, table_id, session_id, id)
