@@ -11,7 +11,7 @@ on:
       - 'tests/bootstrap-lockfile.test.mjs'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate-lockfile:
@@ -37,6 +37,21 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm test
           pnpm build
+      - name: Commit verified lockfile to same-repository branch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin "$HEAD_REF"
+          git checkout -B "$HEAD_REF" "origin/$HEAD_REF"
+          pnpm install --lockfile-only --ignore-scripts --frozen-lockfile
+          git add pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore(sabora): commit verified pnpm lockfile'
+            git push origin "HEAD:$HEAD_REF"
+          fi
       - name: Upload generated lockfile
         if: ${{ always() && hashFiles('pnpm-lock.yaml') != '' }}
         uses: actions/upload-artifact@v4
