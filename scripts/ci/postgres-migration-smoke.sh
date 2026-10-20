@@ -151,6 +151,26 @@ $future_acl$;
 drop function sabora.writer_future_acl_probe_fn();
 drop table sabora.writer_future_acl_probe;
 
+-- Enumerate every function in the private schema. PUBLIC and browser roles
+-- must not inherit EXECUTE on any existing routine, not just known RPC names.
+do $function_acl$
+declare fn record;
+begin
+ for fn in
+  select p.oid, p.oid::regprocedure as signature
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='sabora'
+ loop
+  if has_function_privilege('public',fn.oid,'EXECUTE')
+     or has_function_privilege('anon',fn.oid,'EXECUTE')
+     or has_function_privilege('authenticated',fn.oid,'EXECUTE')
+     or has_function_privilege('sabora_admin_writer',fn.oid,'EXECUTE') then
+   raise exception 'private function unexpectedly executable: %',fn.signature;
+  end if;
+ end loop;
+end;
+$function_acl$;
+
 -- Reader must be strictly read-only and subject to RLS.
 do $reader$
 begin
