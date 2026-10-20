@@ -10,7 +10,7 @@ test('order confirmation serializes table changes before reading idempotency', (
  const insert = sql.indexOf('insert into sabora.orders');
  assert.ok(lock > 0 && prior > lock && insert > prior);
  assert.match(sql, /t\.id = p_table_id and t\.restaurant_id = p_restaurant_id/);
- assert.match(sql, /v_table\.qr_token_hash <> digest\(p_qr_token, 'sha256'\)/);
+ assert.match(sql, /v_table\.qr_token_hash <> sha256\(convert_to\(p_qr_token, 'UTF8'\)\)/);
 });
 
 test('idempotency is durable, session-scoped, and rejects mismatched retries', () => {
