@@ -28,3 +28,42 @@ test('BEGIN failure never issues rollback and still releases',async()=>{
  assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN']);
  assert.equal(fixture.releases(),1);
 });
+
+test('rollback failure discards connection and preserves original error',async()=>{
+ const releases=[];
+ const client={
+  query:async sql=>{
+   if(sql==='UPDATE x')throw Error('original mutation failure');
+   if(sql==='ROLLBACK')throw Error('rollback failure');
+   return {rows:[]};
+  },
+  release:error=>releases.push(error)
+ };
+ const transaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ await assert.rejects(transaction(query=>query('UPDATE x')),error=>{
+  assert.match(error.message,/original mutation failure/);
+  assert.match(error.rollbackError?.message??'',/rollback failure/);
+  return true;
+ });
+ assert.equal(releases.length,1);
+ assert.match(releases[0]?.message??'',/rollback failure/);
+});
+test('failed BEGIN discards connection instead of returning uncertain session to pool',async()=>{
+ const releases=[];
+ const transaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async()=>{throw Error('begin failure')},
+  release:error=>releases.push(error)
+ })}});
+ await assert.rejects(transaction(async()=>{}),/begin failure/);
+ assert.equal(releases.length,1);
+ assert.match(releases[0]?.message??'',/begin failure/);
+});
+test('failed COMMIT attempts rollback and propagates commit failure',async()=>{
+ const statements=[];
+ const transaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{statements.push(sql);if(sql==='COMMIT')throw Error('commit failure');return {rows:[]}},
+  release:()=>{}
+ })}});
+ await assert.rejects(transaction(async()=>17),/commit failure/);
+ assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
+});
