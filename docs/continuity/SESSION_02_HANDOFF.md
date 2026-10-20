@@ -128,3 +128,9 @@
 - Añadido `tests/postgres-staff-lookup.test.mjs` y chequeo sintáctico de build.
 - Migración prototipo `20261020200000_sabora_staff_reader.sql` crea rol técnico `NOLOGIN NOBYPASSRLS`, concede solo `USAGE` del esquema y SELECT limitado a columnas de membresía con política RLS explícita. Smoke PostgreSQL 17 prueba ausencia de escrituras. **Este rol aún no tiene credencial LOGIN ni conexión runtime; ninguna migración se ha aplicado a Supabase.** Revisar política y provisionamiento de rol con infraestructura antes de habilitar acceso real.
 - CI del nuevo HEAD pendiente; `server.mjs` permanece solo health/ready.
+
+## Sesión 02 — ejecución real de permisos del rol técnico
+- En el run #169 (`39473284933`) pasaron los pasos PostgreSQL 17 y Compose; consultar conclusión completa.
+- Ampliado `scripts/ci/postgres-migration-smoke.sh` con `SET ROLE sabora_staff_reader`: ejecuta SELECT real sobre membresía bajo RLS y comprueba que lectura de pedidos y UPDATE de empleados produzcan `insufficient_privilege`. `RESET ROLE` restaura la identidad del smoke.
+- La política `USING (true)` se limita al rol técnico dedicado y al SELECT de tres columnas de `staff_members`; **no representa aislamiento por usuario**. Su uso operativo requerirá credenciales backend aisladas, no reutilizadas ni concedidas a roles de navegador, y consultas parametrizadas exclusivamente con identidad JWT verificada. Ninguna conexión runtime está configurada.
+- CI del HEAD reforzado pendiente. Sin cambios de producción.
