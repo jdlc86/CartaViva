@@ -112,6 +112,15 @@ begin
  if (select state from sabora.staff_members where user_id='00000000-0000-0000-0000-000000000104')<>'invited' then
   raise exception 'new staff auto-activated';
  end if;
+ -- An invited employee must not transition a valid order line.
+ begin
+  perform * from sabora.transition_order_line(
+   (select l.id from sabora.order_lines l join sabora.orders o on o.id=l.order_id
+    where o.employee_number='101' and l.status='confirmed' limit 1),
+   '00000000-0000-0000-0000-000000000104','preparing');
+  raise exception 'invited kitchen actor accepted';
+ exception when insufficient_privilege then null;
+ end;
  update sabora.staff_members set state='revoked' where user_id='00000000-0000-0000-0000-000000000101';
  begin
   perform * from sabora.transition_order_line(
