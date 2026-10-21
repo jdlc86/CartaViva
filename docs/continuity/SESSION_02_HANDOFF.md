@@ -485,3 +485,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Fuente normativa nueva: `docs/architecture/SABORA_CUSTOMER_IDENTITY_CONTRACT.md` (commit `be4948e`). Requisitos enlazados en `docs/REQUISITOS_FUNCIONALES.md` (commit `548b1aa`).
 - No hay implementación de autenticación de cliente todavía. Bloqueo existente: `sabora.confirm_order` y `sabora.orders` siguen exigiendo empresa y número de empleado. Resolver mediante migraciones, rutas, RLS y pruebas antes de habilitar cliente. No confundir QR con identidad, ni número ID con secreto de recuperación.
 - Sin cambios operativos, despliegue, merge ni Fleetia.
+
+## Inicio implementación perfil cliente (2026-10-21)
+- `apps/api/src/customer-profile.mjs`: límite puro de normalización alias y empresa opcional; rechaza ID, rol, número de empleado o secretos suministrados en alta. No genera ni autentica identidades.
+- `tests/customer-profile.test.mjs`: alta mínima, campos prohibidos, longitud, controles y Unicode. Build API incorpora comprobación sintáctica.
+- Commits `41fe41b`, `7913bc0`, `7432fc7`. Verificar CI del HEAD. Sin rutas públicas, tablas, credenciales, grants, cambios operativos ni despliegues. Próxima fase: generación de IDs solo en servidor y persistencia segura con pruebas PostgreSQL 17 aisladas.
