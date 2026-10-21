@@ -1,6 +1,9 @@
 // Pure integer-cent pricing for the server. Not mounted as an order endpoint.
 // Discount applies to base plus selected extras, per approved functional contract.
-export function priceCatalogLine({basePriceCents,extras=[],quantity=1,discount=null}){
+export function priceCatalogLine(input){
+ if(!input||typeof input!=='object'||Array.isArray(input))
+  throw Error('invalid_catalog_price');
+ const {basePriceCents,extras=[],quantity=1,discount=null}=input;
  if(!Number.isSafeInteger(basePriceCents)||basePriceCents<0||
     !Number.isSafeInteger(quantity)||quantity<1||quantity>20||
     !Array.isArray(extras)||extras.length>50||
