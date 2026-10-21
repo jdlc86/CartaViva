@@ -70,3 +70,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Verificado SUCCESS en Sabora CI y Bootstrap para `6a0baad`, `cbe6df0` y `cf8f94d`. En ese momento el commit documental `dd41bc7` seguía ejecutándose.
 - Commit `bbd06482e48e4fc4b59e6a579c9a26e8cab0f65d`: pruebas de señal AbortController, JSON malformado, límite de 500 elementos y catálogo vacío en el loader de la PWA Cliente. No se alteran las llamadas operativas ni se monta el endpoint.
 - Pendiente verificar workflows sobre último HEAD. Las pruebas usan fetch simulado, no PostgreSQL real.
+
+## Sesión 3 — endurecimiento del smoke de login PostgreSQL
+- Commit `d7f4950045554e6b0df1dc72713cd3e299ac2209`: `scripts/ci/catalog-reader-login-smoke.sh` comprueba que el login técnico es NOINHERIT y NOBYPASSRLS y que ni el login ni el rol activado pueden leer o modificar directamente `sabora.catalog_items` (SELECT/INSERT/UPDATE/DELETE). Conserva comprobación de RPC restringida y restauración de rol al terminar la transacción.
+- El script está limitado al contenedor PostgreSQL 17 desechable utilizado por CI; no aprovisiona credenciales en Supabase operativo.
+- CI sobre este commit y el último HEAD pendiente de comprobación.
