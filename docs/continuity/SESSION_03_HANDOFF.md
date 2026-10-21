@@ -60,3 +60,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `6a0baadb9c84a915f3f38b991173e32fa2868d02`: regresiones para IDs duplicados, más de 500 filas, disponibilidad mal tipada y no exposición de campos draft desde el adaptador SQL. No hay cambios en contratos ni rutas operativas.
 - Al inicio de este bloque los workflows `e950925` y `8262a05` seguían en ejecución; comprobar su conclusión y la del nuevo HEAD antes de afirmar éxito.
 - El endpoint sigue sin montarse en `server.mjs`. No se han utilizado recursos operativos.
+
+## Sesión 3 — integración HTTP y lector transaccional
+- Commit `cf8f94d4eae50d784cf642eb67e67984cedda6bf`: pruebas de integración en memoria entre `registerCatalogHttpRoute` y `createCatalogScopedQuery`, verificando BEGIN, SET LOCAL ROLE, RPC permitida, COMMIT, liberación limpia, ausencia de campos draft y, ante fallo, 503 genérico, ROLLBACK y descarte de conexión.
+- No es una prueba PostgreSQL real ni un despliegue; el endpoint sigue sin registrarse en el servidor operativo.
+- Verificar CI del último HEAD antes de declarar el hito validado.
