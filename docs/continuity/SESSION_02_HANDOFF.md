@@ -785,3 +785,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `d22b1dd`: el validador rechaza publicación de `options`, `extras` o `discount` no vacíos mientras no exista su validación económica/funcional completa; listas vacías y descuento JSON null no introducen reglas económicas. Esta es una restricción **provisional**, no la funcionalidad final aprobada.
 - `0cee4a9`: smoke de rechazo explícito para opciones, extras y descuentos no vacíos; evita publicar silenciosamente precios no validados.
 - CI de `f161354` estaba en progreso al comprobar (Sabora 39639581880, Bootstrap 39639582290). CI del nuevo HEAD pendiente. Sin despliegue ni cambios a Supabase operativo/Fleetia.
+
+## Rechazo de campos económicos no reconocidos (2026-10-21)
+- `42c7ee0`: validador SQL de snapshot rechaza claves JSON no reconocidas; evita publicar silenciosamente impuestos u otras reglas económicas sin cálculo y revisión de contrato.
+- `2f6f074`: regresión SQL para campo desconocido `taxRate`.
+- CI anterior de `7910f91` estaba en progreso (Sabora 39639894668, Bootstrap 39639894672) al consultar. Nuevas pruebas pendientes. Sigue sin haber API pública, rol escritor autorizado, despliegue ni cambios en Supabase operativo o Fleetia.
