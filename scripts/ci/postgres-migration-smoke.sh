@@ -29,7 +29,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>15 then raise exception 'Expected fifteen RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>17 then raise exception 'Expected seventeen RLS protected single-restaurant tables, got %',v_count; end if;
  if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' and c.relname='catalog_items' and c.relrowsecurity and c.relforcerowsecurity) then raise exception 'catalog RLS protection missing'; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
@@ -56,6 +56,29 @@ begin
   end if;
  end loop;
 end $$;
+-- Candidate ledgers are private and require a future restricted writer.
+do $quote_ledger$
+declare v_role text; v_table text;
+begin
+ foreach v_table in array array['catalog_displayed_quotes','catalog_confirmation_attempts'] loop
+  if not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+   where n.nspname='sabora' and c.relname=v_table and c.relrowsecurity and c.relforcerowsecurity)
+   then raise exception 'quote ledger RLS missing for %',v_table; end if;
+  foreach v_role in array array['anon','authenticated','sabora_admin_writer','sabora_catalog_reader'] loop
+   if has_table_privilege(v_role,format('sabora.%I',v_table),'SELECT')
+    or has_table_privilege(v_role,format('sabora.%I',v_table),'INSERT')
+    or has_table_privilege(v_role,format('sabora.%I',v_table),'UPDATE')
+    or has_table_privilege(v_role,format('sabora.%I',v_table),'DELETE')
+    then raise exception 'unexpected quote ledger grant % to %',v_table,v_role; end if;
+  end loop;
+ end loop;
+ if not exists(select 1 from pg_constraint
+  where conname='catalog_confirmation_idempotency' and contype='u')
+  then raise exception 'missing confirmation idempotency unique constraint'; end if;
+ if not exists(select 1 from pg_constraint
+  where conname='catalog_confirmation_quote_scope' and contype='f')
+  then raise exception 'missing confirmation quote ownership foreign key'; end if;
+end $quote_ledger$;
 -- Candidate validator is tested independently: it must not enable publication.
 do $economic_candidate$
 declare
