@@ -576,3 +576,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `scripts/ci/customer-session-privileges-positive.sql` define **solo en transacción descartable de CI** roles separados de ejecución y de propiedad de funciones, ambos NOBYPASSRLS. Funciones SQL SECURITY DEFINER de lectura y revocación por hash con `search_path` fijo, EXECUTE únicamente para rol de ejecución, políticas RLS exclusivas del propietario de funciones, sin SELECT/UPDATE directos para runtime.
 - Smoke comprueba sesión válida, token desconocido, revocación idempotente, sesión revocada y denegación de lectura directa. Se ejecuta después de la prueba negativa en `scripts/ci/postgres-migration-smoke.sh` sobre PostgreSQL 17 desechable.
 - **Experimento, no migración**: antes de trasladar a esquema real hay que acreditar CI, auditar privilegios indirectos y concurrencia, aislar propietario/roles y evitar grants de PUBLIC. Commits `8f1bdde`, `2a4d2cc`. No tocar Supabase operativo.
+
+## Endurecimiento de permisos RPC en CI (2026-10-21)
+- Experimento positivo anterior `83c2497`: CI y Bootstrap SUCCESS (runs 39589733861 y 39589734083).
+- Nuevo `scripts/ci/customer-session-privileges-hardening.sql` comprueba que `anon`, `authenticated` y `sabora_admin_writer` no adquieren EXECUTE sobre RPCs de sesión; rol de ejecución no recibe SELECT/UPDATE directos ni BYPASSRLS y se deniegan DELETE, UPDATE y SELECT sobre tablas. Añadido a `scripts/ci/postgres-migration-smoke.sh`.
+- Este SQL recrea roles y funciones exclusivamente dentro de transacción rollback en PostgreSQL 17 aislado; no crea migración operativa. Verificar CI del HEAD antes de considerarlo acreditado.
