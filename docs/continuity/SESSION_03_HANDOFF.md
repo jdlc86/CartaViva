@@ -227,3 +227,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - c9b8862d: pruebas con adaptador simulado de secuencia, rollback, replay, cambios de revisión, consentimiento y entradas prohibidas.
 - 072b2d84: documentación de los límites. No hay adaptador PostgreSQL real, consumo durable de aceptación ni ruta HTTP. No activar pedidos.
 - Pendiente: SQL de idempotencia, bloqueo real, autorización QR/visita y pruebas concurrentes en PostgreSQL 17 aislado.
+
+## Sesión 3 — cierre de falsificación de cotización previa
+- `83f63a3d`: eliminado `previous` del payload cliente de `catalog-confirmation-coordinator`. El nuevo método obligatorio `loadPreviousQuote` debe leer cotización anterior confiable dentro de la transacción. Sin registro previo, fallo cerrado.
+- `9414db30`: tests de `previous` falsificado, registro anterior inexistente y cambio de revisión almacenada. El CI intermedio de `83f63a3d` falló porque los tests antiguos aún esperaban el contrato anterior; verificar CI del HEAD actualizado.
+- `0492272a`: documentación de arquitectura y advertencia explícita: sin repositorio PostgreSQL real que guarde y bloquee cotizaciones mostradas no se puede activar pedidos.
+- Prohibido desplegar, mezclar o tocar Supabase/Fleetia/VPS sin autorización.
