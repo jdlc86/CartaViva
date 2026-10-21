@@ -653,3 +653,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se extiende `customer-session-login-smoke.sh` con un perfil/sesión efímeros (`e7`), ejecución autenticada como `sabora_customer_session_login` y `SET ROLE sabora_customer_session_runtime`, verificación válida, revocación idempotente y segunda conexión que observa la revocación persistida.
 - SQL en `scripts/ci/customer-session-login-rpc-smoke.sql`; usa `SET ROLE` sin BEGIN/ROLLBACK para asegurar commit de revocación entre conexiones. Commits `43fcb05`, `83f0be2`, `d727d63`.
 - CI del hito anterior `f67017c` estaba en progreso al comenzar; CI del HEAD pendiente. No se han creado credenciales operativas ni se ha montado HTTP.
+
+## Bloque de endurecimiento RPC y LOGIN real (2026-10-21)
+- CI `9b41567` FAILED: Sabora 39595943777, Bootstrap 39595943712, debido a colisión `customer_profiles_public_id_key` en el nuevo fixture del login real. Se separó su ID de prueba de `SB-WWWWWWWWWWWW` a `SB-PPPPPPPPPPPP` (`a58eba6`).
+- Nuevo `scripts/ci/customer-session-rpc-edge-smoke.sql` prueba, bajo `SET LOCAL ROLE sabora_customer_session_runtime`, hash desconocido, expirado, longitud inválida y NULL, tanto en verificación como revocación, dentro de transacción con ROLLBACK (`cad892d`). Integrado en gate PG17 desechable (`f87f225`).
+- El acceso del backend continúa sin montarse; la identidad de LOGIN y los datos de prueba solo existen en contenedores CI con red `none`. Sin credenciales operativas, despliegues ni cambios a Fleetia. CI del HEAD pendiente.
