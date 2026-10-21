@@ -1,6 +1,6 @@
 # Sabora — puerta de implementación del catálogo publicado
 
-Estado: **pendiente de esquema y migración versionada**. Este documento no declara que exista un catálogo operativo.
+Estado: **esquema de catálogo y función privada de publicación versionados, aún sin conexión operativa**. Este documento no declara que exista un catálogo operativo.
 
 ## Contrato funcional vigente
 Fuente de verdad: `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`.
@@ -19,4 +19,4 @@ Fuente de verdad: `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.
 6. Solo después montar endpoint de lectura y conectar `apps/client/src/catalog.ts`; no habilitar cesta/pedidos hasta validar autorizaciones de mesa, precios e idempotencia.
 
 ## Estado actual
-La PWA Cliente incluye únicamente modelo de presentación, filtrado y estados vacíos; no consulta HTTP. `tests/client-catalog.test.mjs` contiene pruebas del contrato de presentación. La API Fastify no publica rutas de catálogo.
+Las migraciones candidatas `20261021180000_sabora_catalog_publication_foundation.sql` y `20261021190000_sabora_catalog_publication_guard.sql` incluyen borradores, snapshots y publicación privada con validación provisional; no se han aplicado al Supabase operativo. `apps/api/src/catalog-publication.mjs` implementa una proyección pura desde filas de publicación hacia el contrato público, sin consultar la base de datos ni publicar HTTP. Las pruebas de proyección comprueban exclusión de borradores/retirados y agotados visibles. Sigue pendiente el rol mínimo de lectura, validación económica completa, la consulta SQL y la integración. La PWA Cliente incluye únicamente modelo de presentación, filtrado y estados vacíos; no consulta HTTP. `tests/client-catalog.test.mjs` contiene pruebas del contrato de presentación. La API Fastify no publica rutas de catálogo.
