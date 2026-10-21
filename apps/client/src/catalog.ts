@@ -18,15 +18,15 @@ export function parsePublishedCatalog(payload:unknown):readonly MenuItem[]{
  return payload.map((value:unknown)=>{
   if(!value || typeof value!=='object' || Array.isArray(value))throw Error('invalid_catalog');
   const item=value as Record<string,unknown>;
-  if(typeof item.id!=='string' || !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(item.id) || ids.has(item.id) ||
-     typeof item.name!=='string' || !item.name.trim() || item.name.length>160 ||
+  if(typeof item.id!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id) || ids.has(item.id.toLowerCase()) ||
+     typeof item.name!=='string' || !item.name.trim() || [...item.name].length>160 || /[\\u0000-\\u001f\\u007f]/u.test(item.name) ||
      !validCategories.has(String(item.category)) ||
      !Number.isSafeInteger(item.priceCents) || (item.priceCents as number)<0 ||
      typeof item.available!=='boolean' || !Array.isArray(item.allergens) ||
-     item.allergens.length>32 || !item.allergens.every((a:unknown)=>typeof a==='string' && a.length<=100)){
+     item.allergens.length>32 || !item.allergens.every((a:unknown)=>typeof a==='string' && !!a.trim() && [...a].length<=100 && !/[\\u0000-\\u001f\\u007f]/u.test(a))){
    throw Error('invalid_catalog');
   }
-  ids.add(item.id);
+  ids.add(item.id.toLowerCase());
   return {id:item.id,name:item.name.trim(),category:item.category as Category,
    priceCents:item.priceCents as number,available:item.available,
    allergens:[...item.allergens] as string[]};
