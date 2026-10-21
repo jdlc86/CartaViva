@@ -590,3 +590,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Endurecimiento del harness concurrente (2026-10-21)
 - Revisión preventiva de `customer-session-concurrency-smoke.sh`: el `wait` sin PID explícito no garantizaba propagar el estado fallido de cada subproceso. Commit `0a3a4d6` almacena ambos PID, exige `wait` exitoso para cada uno, valida un resultado 0/1 por conexión y exige exactamente un ganador. La comprobación final de fila revocada se mantiene.
 - CI del commit anterior `cdfc867` aún en curso al revisar; nuevo HEAD pendiente de acreditación. Sin conexión operativa.
+
+## Corrección CI concurrente (2026-10-21)
+- HEAD `3163577` falló en Sabora CI 39590983677 y Bootstrap 39590983674 por error sintáctico del shell `customer-session-concurrency-smoke.sh` línea 41 (`unexpected token ||`). La sustitución de texto anterior había corrompido el contenido de expresiones grep.
+- Commit `5bbdcdd` reescribe el script completo con shell válido, PID individuales, verificación de salida por trabajador y ganador único. No asumir validación hasta nueva CI verde. Sin despliegue.
