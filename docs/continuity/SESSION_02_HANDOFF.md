@@ -697,3 +697,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `customer-http-hooks.mjs` ahora exige que el `customerId` devuelto por verificación tenga formato UUID antes de adjuntarlo a la petición y rechaza orígenes de configuración con ruta, query o fragmento (`42eea8f`).
 - `tests/customer-http-hooks.test.mjs` ajusta fixture UUID y cubre respuestas de identidad malformadas y orígenes inválidos (`fe32862`). No se registra el hook en `server.mjs`; CI de este HEAD pendiente.
 - Ningún despliegue ni cambios en Supabase/VPS/Fleetia.
+
+## Validación de resultados RPC de sesión (2026-10-21)
+- CI `2ae7ce3` SUCCESS: Sabora 39614631102; Bootstrap 39614630919.
+- `customer-session-verifier.mjs` valida forma UUID, alfabeto/longitud del ID visible SB-, alias y empresa devueltos por la RPC restringida; ante resultado anómalo falla cerrado (`d21740c`).
+- `tests/customer-session-verifier.test.mjs` añade regresiones para ID inválido, alias vacío/largo/control, empresa de tipo/longitud incorrectos y duplicación de filas (`8068f75`).
+- CI de este HEAD pendiente; HTTP clientes sin registrar, sin despliegue ni cambios operativos.
