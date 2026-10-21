@@ -14,6 +14,11 @@ export function projectPublishedCatalog(rows){
      typeof snapshot.name!=='string'||!snapshot.name.trim()||[...snapshot.name].length>160||/[\u0000-\u001f\u007f]/u.test(snapshot.name)||
      !categories.has(snapshot.category)||
      !Number.isSafeInteger(snapshot.priceCents)||snapshot.priceCents<0||
+     // The current public DTO has no modifiers or discount breakdown.
+     // Never silently drop nonempty economic rules from a published snapshot.
+     (snapshot.options!==undefined&&(!Array.isArray(snapshot.options)||snapshot.options.length!==0))||
+     (snapshot.extras!==undefined&&(!Array.isArray(snapshot.extras)||snapshot.extras.length!==0))||
+     (snapshot.discount!==undefined&&snapshot.discount!==null)||
      !Array.isArray(snapshot.allergens)||snapshot.allergens.length>32||
      !snapshot.allergens.every(a=>typeof a==='string'&&!!a.trim()&&[...a].length<=100&&!/[\u0000-\u001f\u007f]/u.test(a))||
      typeof row.sold_out!=='boolean')throw Error('invalid_catalog_row');
