@@ -9,9 +9,10 @@ export function createCustomerSessionRevoker({ query } = {}) {
     const tokenHash = hashCustomerSessionToken(token);
     if (!tokenHash) return false;
     const result = await query(SESSION_REVOKE_SQL, [tokenHash]);
-    if (!result || !Number.isSafeInteger(result.rowCount) || result.rowCount < 0 || result.rowCount > 1) {
+    if (!result || !Array.isArray(result.rows) || result.rows.length !== 1 ||
+        typeof result.rows[0]?.revoked !== 'boolean') {
       throw Error('invalid_customer_revocation_result');
     }
-    return result.rowCount === 1;
+    return result.rows[0].revoked;
   };
 }
