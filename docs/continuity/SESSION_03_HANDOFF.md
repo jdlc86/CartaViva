@@ -55,3 +55,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Confirmados SUCCESS ambos workflows sobre `c5aba8d` (Sabora CI `39645806343`, Bootstrap `39645806387`) y sobre `69ba120f` (Sabora CI `39645855080`, Bootstrap `39645855055`).
 - Commit `e95092523564c5faefea6d01642975cc3bac1362`: nuevas pruebas de rechazo de parámetros arbitrarios antes de checkout, fallo al activar rol, fallo de COMMIT y error de conexión al pool. El código de ejecución permanece sin modificación; todas son pruebas de regresión de cierre seguro.
 - Pendiente verificar conclusión de CI sobre el commit nuevo y el de esta documentación. No se habilita ruta, credenciales ni producción.
+
+## Sesión 3 — frontera del adaptador SQL del catálogo
+- Commit `6a0baadb9c84a915f3f38b991173e32fa2868d02`: regresiones para IDs duplicados, más de 500 filas, disponibilidad mal tipada y no exposición de campos draft desde el adaptador SQL. No hay cambios en contratos ni rutas operativas.
+- Al inicio de este bloque los workflows `e950925` y `8262a05` seguían en ejecución; comprobar su conclusión y la del nuevo HEAD antes de afirmar éxito.
+- El endpoint sigue sin montarse en `server.mjs`. No se han utilizado recursos operativos.
