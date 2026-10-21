@@ -44,3 +44,8 @@ Una instalación Sabora corresponde a un único restaurante. La PWA de cliente d
 - La salida es un **candidato** de identidad, no un registro persistido ni una sesión autenticada. El código visible no es secreto ni credencial.
 - Antes de habilitar altas, exigir una restricción SQL `UNIQUE` para el código visible, reintentos acotados ante colisión en la misma transacción y pruebas concurrentes en PostgreSQL 17 desechable. No se ha creado ninguna tabla ni ruta HTTP.
 - El ejemplo `SB-004827` anterior era solo ilustrativo; el formato efectivo propuesto es alfanumérico aleatorio de 12 caracteres para reducir colisiones y dificultar enumeración, sin tratarlo como protección de acceso.
+
+## Persistencia privada inicial (2026-10-21)
+- Migración versionada `20261021010000_sabora_customer_profiles.sql`: UUID PK, `public_id` UNIQUE y validado, alias obligatorio y empresa opcional, RLS habilitada y forzada; ningún grant/policy de cliente. No habilita alta pública ni sesiones.
+- Smoke PostgreSQL 17 desechable comprueba duplicados, formato, alias vacío, denegación de lectura anónima y recuento de 13 tablas RLS. La migración **no se ha aplicado** a Supabase operativo.
+- Persisten tareas críticas: alta transaccional con reintentos por colisión, autenticación/sesiones, revocación, vinculación de pedidos y migración del contrato legado `company`/`employee_number`.
