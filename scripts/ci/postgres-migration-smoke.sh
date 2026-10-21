@@ -133,6 +133,63 @@ end;
 $catalog_anon_denial$;
 reset role;
 
+-- The dedicated catalog reader sees only published, non-withdrawn snapshots.
+do $catalog_reader_acl$
+begin
+ if has_table_privilege('sabora_catalog_reader','sabora.catalog_items','SELECT') then
+  raise exception 'catalog reader gained direct table access';
+ end if;
+ if has_function_privilege('anon','sabora.read_published_catalog()','EXECUTE')
+    or has_function_privilege('authenticated','sabora.read_published_catalog()','EXECUTE')
+    or has_function_privilege('sabora_admin_writer','sabora.read_published_catalog()','EXECUTE') then
+  raise exception 'published catalog RPC exposed to browser/admin role';
+ end if;
+end;
+$catalog_reader_acl$;
+set role sabora_catalog_reader;
+do $catalog_reader_empty$
+declare v_count integer;
+begin
+ select count(*) into v_count from sabora.read_published_catalog();
+ if v_count<>0 then raise exception 'unexpected published rows'; end if;
+ begin
+  perform count(*) from sabora.catalog_items;
+  raise exception 'catalog reader accessed drafts directly';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$catalog_reader_empty$;
+reset role;
+-- Test published, withdrawn and sold-out behavior using existing test rows.
+do $catalog_reader_seed$
+declare v_published uuid;v_withdrawn uuid;
+begin
+ insert into sabora.catalog_items(draft,draft_revision,published_snapshot,published_revision,published_at,sold_out)
+ values ('{"name":"Agotado","category":"Bebidas","priceCents":200,"allergens":[]}'::jsonb,1,
+ '{"name":"Agotado","category":"Bebidas","priceCents":200,"allergens":[]}'::jsonb,1,now(),true)
+ returning id into v_published;
+ insert into sabora.catalog_items(draft,draft_revision,published_snapshot,published_revision,published_at,withdrawn_at)
+ values ('{"name":"Retirado","category":"Bebidas","priceCents":200,"allergens":[]}'::jsonb,1,
+ '{"name":"Retirado","category":"Bebidas","priceCents":200,"allergens":[]}'::jsonb,1,now(),now())
+ returning id into v_withdrawn;
+end;
+$catalog_reader_seed$;
+set role sabora_catalog_reader;
+do $catalog_reader_visibility$
+declare v_count integer;
+begin
+ select count(*) into v_count from sabora.read_published_catalog();
+ if v_count<>2 then raise exception 'published catalog visibility mismatch: %',v_count; end if;
+ if not exists(select 1 from sabora.read_published_catalog() where sold_out=true) then
+  raise exception 'sold-out item missing';
+ end if;
+ if exists(select 1 from sabora.read_published_catalog() where published_snapshot->>'name'='Retirado') then
+  raise exception 'withdrawn item leaked';
+ end if;
+end;
+$catalog_reader_visibility$;
+reset role;
+
 -- Customer IDs are unique and profiles remain private even if the public label is known.
 do $customer_profiles$
 declare v_customer uuid;
