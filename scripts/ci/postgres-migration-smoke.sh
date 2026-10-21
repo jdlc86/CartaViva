@@ -81,8 +81,9 @@ begin
   join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname in
    ('catalog_displayed_quotes','catalog_confirmation_attempts')
-   and t.tgname in ('catalog_displayed_quotes_append_only','catalog_confirmation_attempts_append_only')
-   and not t.tgisinternal and t.tgenabled='O')<>2
+   and t.tgname in ('catalog_displayed_quotes_append_only','catalog_confirmation_attempts_append_only',
+    'catalog_displayed_quotes_no_truncate','catalog_confirmation_attempts_no_truncate')
+   and not t.tgisinternal and t.tgenabled='O')<>4
   then raise exception 'candidate ledger append-only triggers missing'; end if;
  if not exists(select 1 from pg_constraint
   where conname='catalog_confirmation_idempotency' and contype='u')
