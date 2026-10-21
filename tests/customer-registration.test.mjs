@@ -79,3 +79,15 @@ test('registration rejects malformed or reversed session timestamps',async()=>{
   assert.equal(db.calls.at(-1),'ROLLBACK');
  }
 });
+
+test('registration enforces session lifetime policy even for injected issuer',async()=>{
+ const tooShort=new Date('2026-10-21T00:00:30Z');
+ const tooLong=new Date('2027-02-01T00:00:00Z');
+ for(const expiresAt of [tooShort,tooLong]){
+  const db=fakeDb((sql,params)=>sql.startsWith('INSERT INTO sabora.customer_profiles')?{rowCount:1,rows:[{id:params[0]}]}:{});
+  const issue=()=>({...session(),expiresAt});
+  await assert.rejects(createCustomerRegistrationWithSession({withTransaction:db.withTransaction,prepare:()=>profile(1),issue})({alias:'Ana'}),/invalid_issued_customer_session/);
+  assert.equal(db.calls.at(-1),'ROLLBACK');
+  assert.equal(db.calls.filter(x=>x.startsWith('INSERT INTO sabora.customer_sessions')).length,0);
+ }
+});
