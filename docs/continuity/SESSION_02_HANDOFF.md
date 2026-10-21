@@ -557,3 +557,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se amplió la política privada de mutaciones para denegar `Sec-Fetch-Site` diferente de `same-origin` cuando esté presente, incluso si el `Origin` coincide; `Origin` HTTPS exacto continúa obligatorio para mutaciones. Se evita que una petición cross-site falsificada pase por alto el filtro de origen. Se rechazan orígenes de configuración con ruta/query/fragmento.
 - Integrado en `guardMutation` y `logout`; pruebas de `cross-site`, `same-site`, `none`, `same-origin` y logout sin revocación si origen de Fetch Metadata es ajeno. Commits `cb1612b`, `6656569`, `fc36f09`, `135ec68`.
 - La identidad SQL backend de mínimo privilegio **sigue pendiente**; no crear roles con BYPASSRLS ni abrir tablas al navegador. No se registraron endpoints. CI del HEAD pendiente.
+
+## Corrección de regresión Fetch Metadata (2026-10-21)
+- CI `f20de9d` falló en ambos workflows (39588524419, 39588524507): prueba `logout rejects cross-site Fetch Metadata even with forged matching Origin`, HTTP 204 en vez de 403. La causa fue que `guardMutation` comprobaba Fetch Metadata pero el handler `logout` no lo comprobaba internamente.
+- Commit `d969e94`: añade `fetchSite` a la comprobación de origen dentro de `logout`; conserva defensa en profundidad aunque se omita hook externo. Esperar CI de nuevo HEAD; no desplegar.
