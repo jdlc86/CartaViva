@@ -95,3 +95,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `db7c717ade139d154f8506e7314c1e72f80052a0`: tests in-memory que conectan el pool simulado con SET LOCAL ROLE, el handler HTTP y el loader TypeScript de la PWA. Comprueban agotado visible/no disponible, ausencia de datos de borrador, liberación limpia tras COMMIT y fallo cerrado de la PWA ante error interno de API.
 - No hay conexión a PostgreSQL real en este test de integración, ni montaje de ruta en `server.mjs`. Las pruebas PostgreSQL 17 desechable siguen separadas en CI.
 - El commit `eb55ef2` ya tenía ambos workflows SUCCESS. Verificar CI del nuevo HEAD antes de declarar validado este hito.
+
+## Sesión 3 — configuración del pool lector
+- Commit `dcffc1d09aecd396d248afdff4c822954e4e19de`: amplía tests de `catalog-pool-config.mjs` para asegurar objeto y SSL inmutables, timeouts y límite de pool esperados, rechazo de puertos no válidos y mensajes de error que no exponen la contraseña.
+- No se crean conexiones ni credenciales; `server.mjs` sigue sin montar el endpoint. No hay despliegue.
+- Los workflows del hito SQL–HTTP–PWA (`db7c717`, `a4234f2`) estaban en ejecución al comenzar. Verificar CI del último HEAD.
