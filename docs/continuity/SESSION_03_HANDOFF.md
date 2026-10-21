@@ -192,3 +192,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commits `2b6e15c6` y `dc9d3a72`: casos negativos equivalentes en PostgreSQL y JS para campos ausentes/nulos, IDs incorrectos y valores duplicados.
 - Commits `42183805` y `9608bcdd`: `scripts/ci/catalog-economic-parity.mjs` genera expectativas desde `validateEconomicModifiers` para 29 casos y las ejecuta contra la función candidata SQL en PostgreSQL 17 desechable desde el smoke. Es una puerta de **equivalencia diferencial**, no activación de publicación.
 - Verificar CI del HEAD tras incorporar la prueba diferencial. La función de publicación operativa sigue sin aceptar opciones/extras/descuentos y sin grants de escritura.
+
+## Sesión 3 — extensión determinista de la puerta diferencial
+- `06b23aae`: `scripts/ci/catalog-economic-parity.mjs` añade 300 mutaciones deterministas (semilla fija) a los 29 casos explícitos; compara automáticamente 329 entradas entre `validateEconomicModifiers` JS y la función candidata SQL en PostgreSQL 17 desechable. Mutaciones de estructuras, nombres, IDs, tipos, importes, disponibilidad, límites y descuentos.
+- La generación usa PRNG local determinista, sin red ni datos operativos. Esta cobertura no demuestra equivalencia formal; **no** modifica la publicación, DTO público, pedidos, roles ni despliegue.
+- Revisar GitHub Actions del commit final antes de declarar verde; ante divergencia, corregir la semántica y conservar el caso como regresión.
