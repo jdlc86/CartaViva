@@ -628,3 +628,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - El verificador Node llama `sabora.verify_customer_session_hash($1::bytea)` y el revocador llama `sabora.revoke_customer_session_hash($1::bytea)`; ya no construyen SELECT/UPDATE directos a tablas. El boundary permite exclusivamente ambas consultas exactas y un parámetro bytea de 32 bytes.
 - Revocación consume una fila con boolean `revoked`, rechaza resultados ambiguos; `apps/api/src/customer-session-rpc-integration.test.mjs` prueba contrato positivo y fail-closed. `package.json` ejecuta el nuevo test. Commits `e13fc92`, `5627020`, `321d600`, `09ceca3`, `6e59f51`.
 - **CI nuevo pendiente**. No hay rol LOGIN/membresía, conexión runtime habilitada ni rutas HTTP montadas. Ningún cambio en Supabase operativo ni VPS.
+
+## Ajuste de pruebas Node al contrato RPC (2026-10-21)
+- CI `4bc1a9d` FAILED: Sabora run 39593517592, Bootstrap run 39593517609. El log Sabora identifica cuatro fallos de tests heredados: `customer-session-query-boundary`, dos de `customer-session-revoker` y `customer-session-verifier`, que aún esperaban UPDATE/SELECT directos y `rowCount` en lugar del RPC booleano.
+- Se actualizaron los tests heredados para validar llamadas a `sabora.verify_customer_session_hash($1::bytea)` y `sabora.revoke_customer_session_hash($1::bytea)` y filas booleanas. Commits `01de385`, `652f73d`, `aecdc19`, `7f95399`. **CI nuevo pendiente**; no se ha preparado ni habilitado credencial de conexión.
