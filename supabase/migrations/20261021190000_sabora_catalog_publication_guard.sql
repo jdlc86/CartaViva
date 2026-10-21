@@ -32,7 +32,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'catalog_item_not_found'; END IF;
  IF p_expected_revision IS DISTINCT FROM v_item.draft_revision OR p_expected_revision<=0 THEN
   RAISE EXCEPTION 'catalog_revision_conflict'; END IF;
- IF NOT sabora.validate_catalog_snapshot(v_item.draft) THEN
+ IF sabora.validate_catalog_snapshot(v_item.draft) IS DISTINCT FROM TRUE THEN
   RAISE EXCEPTION 'invalid_catalog_snapshot'; END IF;
  UPDATE sabora.catalog_items
  SET published_snapshot=v_item.draft,
