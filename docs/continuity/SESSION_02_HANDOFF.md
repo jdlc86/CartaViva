@@ -817,3 +817,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `b6e720e`: prueba el consumidor TS real mediante transpile TypeScript: GET mismo origen, sin credenciales, no-store, redirect:error, validación y errores controlados.
 - `e014592`: alinea la proyección API con la validación del cliente para nombres/alérgenos (longitud Unicode y rechazo de caracteres de control).
 - La PWA carga catálogo al entrar en menú, pero la ruta HTTP permanece opt-in sin registro en servidor; no se han provisionado credenciales ni ejecutado migraciones en Supabase operativo. CI nuevo pendiente.
+
+## Gate de identidad de catálogo (2026-10-21)
+- `74cd20a` añade smoke de login NOINHERIT real exclusivamente dentro de PostgreSQL Docker desechable, sin credenciales operativas. Verifica ausencia de SELECT directo y de EXECUTE heredado; `SET LOCAL ROLE` permite RPC solo en transacción y se revierte tras COMMIT.
+- `ee47af6` incorpora smoke al pipeline PostgreSQL de CI.
+- No habilitar endpoint ni provisionar login en Supabase operativo sin validación completa del gate y autorización específica. CI del nuevo HEAD pendiente.
