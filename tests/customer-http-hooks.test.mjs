@@ -46,3 +46,11 @@ test('logout revokes session and clears cookie only after successful database op
  const get=reply();await hooks.logout(request('GET','https://sabora.example'),get);
  assert.equal(get.status,403);
 });
+
+test('logout rejects cross-site Fetch Metadata even with forged matching Origin',async()=>{
+ let revoked=false;
+ const hooks=createCustomerHttpHooks({verifySession:async()=>null,revokeSession:async()=>{revoked=true;},expectedOrigin:'https://sabora.example'});
+ const req=request('POST','https://sabora.example');req.headers['sec-fetch-site']='cross-site';
+ const res=reply();await hooks.logout(req,res);
+ assert.equal(res.status,403);assert.equal(revoked,false);
+});
