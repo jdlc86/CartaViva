@@ -14,8 +14,15 @@ docker exec -e PGPASSWORD=ci-only-catalog-password -i "$container" \
 DO $verify$
 BEGIN
  IF current_user <> 'sabora_catalog_login' THEN RAISE EXCEPTION 'wrong login'; END IF;
- IF has_table_privilege(current_user,'sabora.catalog_items','SELECT') THEN
+ IF has_table_privilege(current_user,'sabora.catalog_items','SELECT')
+    OR has_table_privilege(current_user,'sabora.catalog_items','INSERT')
+    OR has_table_privilege(current_user,'sabora.catalog_items','UPDATE')
+    OR has_table_privilege(current_user,'sabora.catalog_items','DELETE') THEN
   RAISE EXCEPTION 'catalog login has direct table access';
+ END IF;
+ IF (SELECT rolinherit FROM pg_roles WHERE rolname=current_user)
+    OR (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) THEN
+  RAISE EXCEPTION 'catalog login has unsafe role attributes';
  END IF;
  IF has_function_privilege(current_user,'sabora.read_published_catalog()','EXECUTE') THEN
   RAISE EXCEPTION 'catalog login inherited RPC execution';
@@ -24,6 +31,15 @@ END $verify$;
 BEGIN;
 SET LOCAL ROLE sabora_catalog_reader;
 SELECT count(*) FROM sabora.read_published_catalog();
+DO $deny$
+BEGIN
+ IF has_table_privilege(current_user,'sabora.catalog_items','SELECT')
+    OR has_table_privilege(current_user,'sabora.catalog_items','INSERT')
+    OR has_table_privilege(current_user,'sabora.catalog_items','UPDATE')
+    OR has_table_privilege(current_user,'sabora.catalog_items','DELETE') THEN
+  RAISE EXCEPTION 'catalog reader gained direct table privileges';
+ END IF;
+END $deny$;
 COMMIT;
 DO $verify_reset$
 BEGIN
