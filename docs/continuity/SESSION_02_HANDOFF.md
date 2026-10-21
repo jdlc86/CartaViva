@@ -616,3 +616,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Gate estático para SQL de sesiones (2026-10-21)
 - `scripts/ci/customer-session-sql-lint.sh` rechaza delimitadores PL/pgSQL malformados `DO $`, comprueba apertura/cierre de `$fixture$` y exige `SECURITY DEFINER SET search_path` más revocación de EXECUTE a PUBLIC en fixtures RPC. Integrado antes de ejecutar pruebas de privilegios en `postgres-migration-smoke.sh`.
 - Commits `28dcd05`, `89cb5a9`. No reemplaza la ejecución PostgreSQL real. CI del HEAD pendiente; el CI del hito previo `1d5c51f` estaba en curso durante esta edición.
+
+## Migración versionada candidata de RPC de sesión (2026-10-21)
+- CI `3dba3dc` acreditado: Sabora 39592578344 y Bootstrap 39592578384 SUCCESS.
+- `supabase/migrations/20261021030000_sabora_customer_session_restricted_rpcs.sql` crea dos roles NOLOGIN/NOBYPASSRLS separados (runtime y propietario de funciones), políticas RLS exclusivas para propietario, dos RPC SECURITY DEFINER con search_path fijo, REVOKE PUBLIC/browser/admin y EXECUTE solo para runtime. **No concede LOGIN ni membresía a identidad de conexión**.
+- `scripts/ci/customer-session-versioned-rpc-smoke.sql` verifica RLS/FORCE RLS, ausencia de permisos directos, EXECUTE limitado, verificación y revocación de sesión con SET ROLE runtime, y fallo de lectura directa. Integrado al PostgreSQL 17 desechable en `postgres-migration-smoke.sh`. Commits `a122fbb`, `40c7de3`, `df85b34`.
+- La migración es **candidata no autorizada para producción**: requiere CI verde, revisión independiente, plan de rol de conexión mínimo y adaptación de consultas Node al RPC antes de aplicarse a Supabase operativo. Prohibidos merge y despliegue sin autorización.
