@@ -70,3 +70,41 @@ test('failed COMMIT attempts rollback, discards uncertain client and propagates 
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/commit failure/);
 });
+
+test('ordinary work failure with successful rollback returns clean client to pool',async()=>{
+ const releases=[];
+ const statements=[];
+ const transaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='UPDATE x')throw Error('work failure');
+   return {rows:[]};
+  },
+  release:error=>releases.push(error)
+ })}});
+ await assert.rejects(transaction(query=>query('UPDATE x')),/work failure/);
+ assert.deepEqual(statements,['BEGIN','UPDATE x','ROLLBACK']);
+ assert.deepEqual(releases,[undefined]);
+});
+
+test('failed COMMIT and failed rollback preserve original error and discard client',async()=>{
+ const releases=[];
+ const statements=[];
+ const transaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='COMMIT')throw Error('commit uncertain');
+   if(sql==='ROLLBACK')throw Error('rollback unavailable');
+   return {rows:[]};
+  },
+  release:error=>releases.push(error)
+ })}});
+ await assert.rejects(transaction(async()=>42),error=>{
+  assert.equal(error.message,'commit uncertain');
+  assert.equal(error.rollbackError?.message,'rollback unavailable');
+  return true;
+ });
+ assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
+ assert.equal(releases.length,1);
+ assert.equal(releases[0]?.message,'rollback unavailable');
+});
