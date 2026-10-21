@@ -1,10 +1,9 @@
 import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+import {categories,filterCatalog,formatPrice,type CatalogState,type CategoryFilter} from './catalog';
 
 type Screen = 'welcome' | 'identity' | 'menu';
-type Category = 'Todos' | 'Bebidas' | 'Primeros' | 'Segundos' | 'Postres';
-const categories:Category[]=['Todos','Bebidas','Primeros','Segundos','Postres'];
 type Customer = {alias:string; company:string};
 const storageKey='sabora.customer.display-preferences.v1';
 // This is a local-only UI prototype. No customer credentials, IDs or
@@ -26,7 +25,8 @@ function App(){
   }catch{return {alias:'',company:''};}
  });
  const [message,setMessage]=useState('');
- const [category,setCategory]=useState<Category>('Todos');
+ const [category,setCategory]=useState<CategoryFilter>('Todos');
+ const [catalog]=useState<CatalogState>({status:'ready',items:[]}); // No backend connection yet.
  function savePreferences(event:React.FormEvent){
   event.preventDefault();
   const alias=customer.alias.trim();
@@ -71,7 +71,9 @@ function App(){
     <h1>Hola, {customer.alias}.</h1>
     <p>Tu alias está listo en este dispositivo. Aún no has creado una cuenta ni iniciado sesión.</p>
     <nav className="category-nav" aria-label="Categorías de la carta">{categories.map(item=><button key={item} type="button" aria-pressed={category===item} className={category===item?'category-chip active':'category-chip'} onClick={()=>setCategory(item)}>{item}</button>)}</nav>
-    <div className="placeholder-card" role="status"><span className="placeholder-icon" aria-hidden="true">◈</span><h2>Sin productos disponibles</h2><p>{category==='Todos'?'La carta todavía no está conectada al catálogo publicado del restaurante.':`Todavía no hay productos publicados para la categoría ${category.toLowerCase()}.`}</p><span className="status-tag">Sin catálogo conectado · no se pueden realizar pedidos</span></div>
+    {catalog.status==='loading'?<p role="status">Cargando carta…</p>:catalog.status==='error'?<p role="alert">No se ha podido cargar la carta. {catalog.message}</p>:filterCatalog(catalog.items,category).length===0?
+    <div className="placeholder-card" role="status"><span className="placeholder-icon" aria-hidden="true">◈</span><h2>Sin productos disponibles</h2><p>{category==='Todos'?'La carta todavía no está conectada al catálogo publicado del restaurante.':`Todavía no hay productos publicados para la categoría ${category.toLowerCase()}.`}</p><span className="status-tag">Sin catálogo conectado · no se pueden realizar pedidos</span></div>:
+    <div className="catalog-grid">{filterCatalog(catalog.items,category).map(item=><article key={item.id} className="catalog-item"><span className="eyebrow">{item.category}</span><h2>{item.name}</h2><strong>{formatPrice(item.priceCents)}</strong><p>{item.allergens.length?'Alérgenos: '+item.allergens.join(', '):'Consulta al personal si tienes alergias.'}</p><span className="status-tag">{item.available?'Disponible':'Agotado'}</span></article>)}</div>}
     <button className="text-button" onClick={()=>{setMessage('');setScreen('identity');}}>Editar mis preferencias</button>
    </section>}
   </main>
