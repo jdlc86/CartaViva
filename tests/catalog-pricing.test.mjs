@@ -39,7 +39,6 @@ test('discount applies per unit before quantity, with deterministic rounding',()
 test('overflow and invalid extras are rejected even with a full discount',()=>{
  for(const args of [
   {basePriceCents:Number.MAX_SAFE_INTEGER,quantity:2,discount:{type:'percent',basisPoints:10000}},
-  {basePriceCents:Number.MAX_SAFE_INTEGER,discount:{type:'percent',basisPoints:10000}},
   {basePriceCents:1,extras:[Number.MAX_SAFE_INTEGER],discount:{type:'fixed',amountCents:2}},
   {basePriceCents:1,extras:[NaN]},
   {basePriceCents:1,extras:[Infinity]},
@@ -68,4 +67,16 @@ test('malformed price line inputs fail with stable validation error',()=>{
  for(const input of [null,undefined,0,false,'100',[],[100]]){
   assert.throws(()=>priceCatalogLine(input),/^Error: invalid_catalog_price$/);
  }
+});
+
+test('percentage arithmetic uses exact bigint intermediates beyond safe multiplication',()=>{
+ const max=Number.MAX_SAFE_INTEGER;
+ const full=priceCatalogLine({basePriceCents:max,discount:{type:'percent',basisPoints:10000}});
+ assert.equal(full.unitDiscountCents,max);
+ assert.equal(full.totalCents,0);
+ const half=priceCatalogLine({basePriceCents:max,discount:{type:'percent',basisPoints:5000}});
+ assert.equal(half.unitDiscountCents,Math.ceil(max/2));
+ assert.equal(half.totalCents,Math.floor(max/2));
+ const tiny=priceCatalogLine({basePriceCents:max,discount:{type:'percent',basisPoints:1}});
+ assert.equal(tiny.unitDiscountCents,Number((BigInt(max)+5000n)/10000n));
 });
