@@ -28,3 +28,13 @@ test('unsafe requests require exact HTTPS origin, safe methods do not',()=>{
  assert.equal(isAllowedCustomerRequestOrigin({method:'GET',expectedOrigin}),true);
  assert.throws(()=>isAllowedCustomerRequestOrigin({method:'POST',origin:expectedOrigin,expectedOrigin:'http://localhost'}),/invalid_customer_origin_configuration/);
 });
+
+test('Fetch Metadata cross-site requests cannot mutate customer state',()=>{
+ const expectedOrigin='https://sabora.example';
+ for(const fetchSite of ['cross-site','same-site','none']){
+  assert.equal(isAllowedCustomerRequestOrigin({method:'POST',origin:expectedOrigin,expectedOrigin,fetchSite}),false);
+ }
+ assert.equal(isAllowedCustomerRequestOrigin({method:'POST',origin:expectedOrigin,expectedOrigin,fetchSite:'same-origin'}),true);
+ assert.equal(isAllowedCustomerRequestOrigin({method:'POST',origin:expectedOrigin,expectedOrigin}),true);
+ assert.throws(()=>isAllowedCustomerRequestOrigin({method:'POST',origin:expectedOrigin,expectedOrigin:'https://sabora.example?query=1'}),/invalid_customer_origin_configuration/);
+});
