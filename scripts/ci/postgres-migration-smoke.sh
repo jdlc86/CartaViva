@@ -172,6 +172,30 @@ $future_acl$;
 drop function sabora.writer_future_acl_probe_fn();
 drop table sabora.writer_future_acl_probe;
 
+-- Negative mutation probe: a deliberately unsafe future GRANT must be detected
+-- by the same effective-privilege checks used above. All changes are rolled
+-- back within this disposable PostgreSQL session.
+begin;
+grant usage on schema sabora to sabora_admin_writer;
+grant select on sabora.staff_members to sabora_admin_writer;
+do $negative_grant$
+begin
+ if not has_schema_privilege('sabora_admin_writer','sabora','USAGE')
+    or not has_table_privilege('sabora_admin_writer','sabora.staff_members','SELECT') then
+  raise exception 'negative grant probe failed to expose unsafe access';
+ end if;
+end;
+$negative_grant$;
+rollback;
+do $negative_grant_cleanup$
+begin
+ if has_schema_privilege('sabora_admin_writer','sabora','USAGE')
+    or has_table_privilege('sabora_admin_writer','sabora.staff_members','SELECT') then
+  raise exception 'negative grant probe leaked after rollback';
+ end if;
+end;
+$negative_grant_cleanup$;
+
 -- Enumerate every function in the private schema. PUBLIC and browser roles
 -- must not inherit EXECUTE on any existing routine, not just known RPC names.
 do $function_acl$
