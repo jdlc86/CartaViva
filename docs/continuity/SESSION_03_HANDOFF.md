@@ -332,3 +332,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `e2c2ab67`: smoke de dos conexiones PostgreSQL independientes para carrera cierre vs bloqueo de mesa abierta.
 - `33859866`: smoke incorporado a CI desechable PostgreSQL 17; `d71a9da9`: arquitectura documentada.
 - Garantía probada: cierre espera el bloqueo `FOR SHARE` de autorización de pedido y futuras autorizaciones no ven mesa abierta. **No equivale a confirmación real de pedido**; escritor, consentimiento, auditoría y privilegios siguen pendientes. No conectar HTTP ni producción.
+
+## Sesión 3 — concurrencia cierre de mesa versus cliente
+- `1165ae9e`: prueba de dos conexiones PostgreSQL 17 para verificar que `FOR SHARE` de cliente bloquea `FOR UPDATE` de cierre por personal hasta COMMIT.
+- `1b181ca7`: smoke integrado en el CI aislado; `126a2c07`: arquitectura y alcance documentados.
+- Esto no equivale a confirmar una orden completa. Pendiente: persistencia de comanda, consentimiento durable, identidad staff confiable y auditoría. No merge ni despliegue.
