@@ -455,3 +455,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #341 y bootstrap #324 de `02673ec` SUCCESS.
 - Commit `859a886`: el smoke PostgreSQL 17 desechable ahora inspecciona `pg_auth_members` y falla si `sabora_admin_writer` es miembro de cualquier otro rol o si algún rol es miembro del writer; evita puentes de privilegios antes de habilitar permisos operativos.
 - Sigue sin existir un LOGIN operativo de escritura ni grants a `sabora_admin_writer`. Esta comprobación complementa ACL/RLS y no acredita aún una identidad SQL mínima habilitada. Sin Supabase/VPS/Fleetia.
+
+## Prueba negativa de GRANT SQL (2026-10-21)
+- CI #343 y bootstrap #326 de `f13c2a4` SUCCESS. CI #344 y bootstrap #327 de `19b40d8` aún en progreso al consultar.
+- Commit `9f96146`: prueba SQL en PostgreSQL 17 desechable concede temporalmente USAGE del esquema y SELECT de staff_members a `sabora_admin_writer`, confirma que los chequeos de privilegios efectivos detectan el acceso inseguro y revierte ambos GRANT dentro de una transacción. Confirma ausencia de fuga tras ROLLBACK.
+- La prueba no habilita permisos operativos; no es aún una prueba de identidad técnica SQL autorizada ni de RLS funcional de writer. No se toca Supabase operativo, VPS o Fleetia. CI del HEAD nuevo pendiente.
