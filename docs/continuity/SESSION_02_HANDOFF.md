@@ -598,3 +598,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Lint preventivo del smoke de concurrencia (2026-10-21)
 - `scripts/ci/customer-session-concurrency-lint.sh` ejecuta `bash -n` y exige los controles estructurales de dos PID, `wait` individual, un resultado por conexión, un único ganador y estado final revocado. Se integra antes de invocar el smoke concurrente en `postgres-migration-smoke.sh`. Commits `a81a873`, `c641162`.
 - Motivo: evitar que una edición accidental del script vuelva a romper el gate PostgreSQL por sintaxis Bash. CI del HEAD pendiente; no confundir con acreditación de RPC concurrente.
+
+## Concurrencia a través de RPC restringido (2026-10-21)
+- `scripts/ci/customer-session-rpc-concurrency-fixture.sql` prepara roles NOLOGIN/NOBYPASSRLS, políticas RLS de propietario de función y función `SECURITY DEFINER` con EXECUTE solo para runtime, en PostgreSQL 17 desechable. Este fixture crea roles/función transitorios en el contenedor CI; no es una migración.
+- `scripts/ci/customer-session-rpc-concurrency-smoke.sh` abre dos conexiones independientes como rol runtime, llama simultáneamente a `sabora.ci_revoke_customer_session` y exige exactamente un true, un false y una única sesión revocada. Integrado al smoke CI con `bash -n` previo. Commits `787ec26`, `7e34274`, `a19ee37`.
+- CI de este HEAD pendiente. Ninguna función ni rol aplicado a Supabase operativo. Revisar aislamiento, comportamiento y eliminación del contenedor antes de adoptar diseño.
