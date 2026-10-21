@@ -648,3 +648,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Incidencia CI: rol LOGIN sin USAGE en schema (2026-10-21)
 - CI `9eb57e5` FAILED en Sabora run 39595379623 y Bootstrap run 39595379646. Log final: `ERROR: permission denied for schema sabora` durante prueba de LOGIN real. El test pretendía llamar `has_function_privilege` con nombre cualificado desde un LOGIN que deliberadamente no dispone de USAGE; la resolución de nombre falla antes de evaluar el permiso.
 - El gate sin `SET ROLE` ahora comprueba únicamente `has_schema_privilege` (USAGE/CREATE ambos falsos), sin resolver funciones/tablas en schema inaccesible. Tras `SET ROLE`, comprueba RPC EXECUTE y ausencia de privilegios directos. Commits `9ac8d68`, `91d6427`. CI de esta corrección pendiente.
+
+## Gate LOGIN real con verificación y revocación RPC (2026-10-21)
+- Se extiende `customer-session-login-smoke.sh` con un perfil/sesión efímeros (`e7`), ejecución autenticada como `sabora_customer_session_login` y `SET ROLE sabora_customer_session_runtime`, verificación válida, revocación idempotente y segunda conexión que observa la revocación persistida.
+- SQL en `scripts/ci/customer-session-login-rpc-smoke.sql`; usa `SET ROLE` sin BEGIN/ROLLBACK para asegurar commit de revocación entre conexiones. Commits `43fcb05`, `83f0be2`, `d727d63`.
+- CI del hito anterior `f67017c` estaba en progreso al comenzar; CI del HEAD pendiente. No se han creado credenciales operativas ni se ha montado HTTP.
