@@ -3,7 +3,7 @@ BEGIN;
 DO $ledger$
 DECLARE
  t1 uuid; t2 uuid; s1 uuid; s2 uuid;
- item1 uuid; item2 uuid; q1 uuid; o1 uuid; o2 uuid;
+ item1 uuid; item2 uuid; q1 uuid; o1 uuid; o2 uuid; o3 uuid;
  v_constraint text;
 BEGIN
  INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash)
@@ -20,6 +20,9 @@ BEGIN
  INSERT INTO sabora.orders(table_id,session_id,company,employee_number,confirmed_at,grouping,items)
  VALUES(t2,s2,'CI','test',now(),'first','[{"category":"main","name":"CI","quantity":1}]'::jsonb)
  RETURNING id INTO o2;
+ INSERT INTO sabora.orders(table_id,session_id,company,employee_number,confirmed_at,grouping,items)
+ VALUES(t1,s1,'CI','test',now(),'grouped','[{"category":"main","name":"CI","quantity":1}]'::jsonb)
+ RETURNING id INTO o3;
  INSERT INTO sabora.catalog_displayed_quotes(
   table_id,session_id,visit_id,basket_id,actor_id,item_id,
   published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
@@ -53,7 +56,7 @@ BEGIN
    table_id,session_id,visit_id,basket_id,actor_id,item_id,
    request_key,request_fingerprint,quote_id,economic_evidence,order_id)
   VALUES(t1,s1,'visit-1','basket-1','actor-1',item2,
-   'request-002','hash-2',q1,'{}'::jsonb,o2);
+   'request-002','hash-2',q1,'{}'::jsonb,o3);
   RAISE EXCEPTION 'cross-item quote accepted';
  EXCEPTION WHEN foreign_key_violation THEN
   GET STACKED DIAGNOSTICS v_constraint=CONSTRAINT_NAME;
@@ -68,7 +71,7 @@ BEGIN
    table_id,session_id,visit_id,basket_id,actor_id,item_id,
    request_key,request_fingerprint,quote_id,economic_evidence,order_id)
   VALUES(t1,s1,'visit-2','basket-1','actor-1',item1,
-   'request-003','hash-3',q1,'{}'::jsonb,o2);
+   'request-003','hash-3',q1,'{}'::jsonb,o3);
   RAISE EXCEPTION 'cross-visit quote accepted';
  EXCEPTION WHEN foreign_key_violation THEN
   GET STACKED DIAGNOSTICS v_constraint=CONSTRAINT_NAME;
