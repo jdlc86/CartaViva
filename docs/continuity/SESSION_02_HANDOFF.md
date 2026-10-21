@@ -807,3 +807,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `84b9d86`: `apps/api/src/catalog-scoped-query.mjs` usa un pool inyectado, lista blanca SQL y transacción con `SET LOCAL ROLE sabora_catalog_reader`; descarta conexiones tras error.
 - `2101ff2`: comparte el SQL constante con el adaptador de lectura; `940bfdc` prueba orden de transacción, rechazo SQL arbitrario y descarte de conexión fallida.
 - No hay LOGIN ni membresía provisionados, no hay credenciales ni HTTP, no se usa Supabase operativo. Debe revisarse la identidad de conexión NOINHERIT y la seguridad de role switching antes de montar la ruta. CI del nuevo HEAD pendiente.
+
+## Configuración de conexión catálogo (2026-10-21)
+- `be536e2` añade validador puro de variables `SABORA_CATALOG_DB_*` para identidad dedicada exacta `sabora_catalog_login`, TLS con CA, puerto válido y pool pequeño; no abre conexiones ni provisiona secretos.
+- `256bb4e` añade pruebas de configuración positiva y rechazos de identidades/puertos/TLS inválidos.
+- El login NOINHERIT y su membresía SET ROLE aún no se han provisionado; la migración SQL no crea login. Sin endpoint HTTP, conexión activa ni despliegue. CI nuevo pendiente; CI de `5c11d22` estaba en progreso al consultar (Sabora 39642945408, Bootstrap 39642945533).
