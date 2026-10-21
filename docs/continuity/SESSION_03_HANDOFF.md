@@ -301,3 +301,11 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `5b407b1d`: tests de token rotado, sesión errónea, entradas inválidas y resultados contradictorios.
 - `40bcd2fd`: contrato de arquitectura actualizado. No interpretar la posesión del QR como autorización de identidad, visita o cesta. Siguiente paso: modelo durable de visita + identidad y escritor mínimo con integración PostgreSQL 17.
 - Sin conexión operativa, merge ni despliegue.
+
+## Sesión 3 — grants de visita y verificación de sesión de cliente
+- `77d85f43`: tabla candidata `customer_table_visits`, privada, con mesa/sesión/cliente/actor/visita, versión QR, caducidad y revocación. Ningún permiso operativo concedido.
+- `f29c1fd0`, `7a41afbe`: smoke de PostgreSQL 17 para scope/unicidad/expiración y conteo de 18 tablas RLS.
+- `f85ce172`: `catalog-visit-context-repository.mjs` comprueba hash QR y hash de sesión cliente contra visita vigente con `FOR SHARE`.
+- `3ed231f3`, `4f256c8d`: emisor de cotizaciones exige QR y token de cliente; tests adaptados tras primer fallo de fixtures.
+- `82f0402a`: tests de scope y expiración/revocación de la consulta; `72152e7a`: arquitectura.
+- **No conectar todavía**: falta estado de mesa abierta/pausada/cerrada, autorización efectiva de visita en la API, escritor restringido, registro seguro de consentimiento y despliegue autorizado. Revisar CI del HEAD. Sin cambios operativos.
