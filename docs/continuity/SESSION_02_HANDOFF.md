@@ -658,3 +658,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI `9b41567` FAILED: Sabora 39595943777, Bootstrap 39595943712, debido a colisión `customer_profiles_public_id_key` en el nuevo fixture del login real. Se separó su ID de prueba de `SB-WWWWWWWWWWWW` a `SB-PPPPPPPPPPPP` (`a58eba6`).
 - Nuevo `scripts/ci/customer-session-rpc-edge-smoke.sql` prueba, bajo `SET LOCAL ROLE sabora_customer_session_runtime`, hash desconocido, expirado, longitud inválida y NULL, tanto en verificación como revocación, dentro de transacción con ROLLBACK (`cad892d`). Integrado en gate PG17 desechable (`f87f225`).
 - El acceso del backend continúa sin montarse; la identidad de LOGIN y los datos de prueba solo existen en contenedores CI con red `none`. Sin credenciales operativas, despliegues ni cambios a Fleetia. CI del HEAD pendiente.
+
+## Corrección de fixture expirado y robustez de lifecycle (2026-10-21)
+- CI `cbb9392` FAILED (Sabora 39596279287, Bootstrap 39596279240): fixture de token caducado intentaba insertar `expires_at < created_at`, vulnerando correctamente `customer_session_expiry_check`. Se inserta primero sesión válida y se retrotraen ambos timestamps conservando `expires_at > created_at` (`e1c7b16`).
+- `customer-session-runtime.mjs` endurecido: constructor fallido terminal, cierre single-flight, sin reapertura, limpieza de instancia inválida (`3d82303`). Regresiones en `tests/customer-session-runtime.test.mjs` (`2010a90`).
+- CI de este HEAD pendiente. Sin despliegue, sin credenciales operativas y sin activación de rutas HTTP.
