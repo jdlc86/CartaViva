@@ -151,3 +151,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commits `f7a1b97260e671ef54911c599cd88b029d224dc3` y `4171968c6a2fd721fca0058e20d71d6757873fcb`: `priceCatalogLine` rechaza de manera uniforme entradas null, undefined, primitivas y arrays con `invalid_catalog_price`, en vez de dejar escapar errores de destructuración. Test de regresión.
 - El validador SQL de publicación `20261021190000_sabora_catalog_publication_guard.sql` **todavía rechaza options/extras no vacíos y descuentos distintos de null**. No afirmar que la validación económica de publicación esté terminada; debe diseñarse y probarse transaccionalmente antes de habilitar Gestión.
 - Sin cambios operativos; verificar los dos workflows del último HEAD.
+
+## Sesión 3 — casos negativos de publicación económica PostgreSQL
+- Commit `e278c1cb923f43b16a2bd0625040df5a5b3b79fc`: smoke de PostgreSQL 17 desechable amplía pruebas negativas de `validate_catalog_snapshot`: céntimos fraccionarios, negativos, importes fuera de límite, extras no validados, descuento fijo no validado y alérgeno nulo. Mantiene la prohibición de publicar reglas económicas aún no implementadas.
+- No altera migraciones ni producción. Verificar CI; el soporte positivo de extras/opciones/descuentos sigue pendiente de diseño, validación y pruebas transaccionales.
