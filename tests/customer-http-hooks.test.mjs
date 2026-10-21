@@ -41,4 +41,8 @@ test('logout revokes session and clears cookie only after successful database op
  const failed=createCustomerHttpHooks({verifySession:async()=>null,revokeSession:async()=>{throw Error('db down');},expectedOrigin:'https://sabora.example'});
  const bad=reply();await failed.logout(request('POST','https://sabora.example'),bad);
  assert.equal(bad.status,503);assert.equal(bad.headers['Set-Cookie'],undefined);
+ const cross=reply();await hooks.logout(request('POST','https://evil.example'),cross);
+ assert.equal(cross.status,403);assert.equal(cross.headers['Set-Cookie'],undefined);
+ const get=reply();await hooks.logout(request('GET','https://sabora.example'),get);
+ assert.equal(get.status,403);
 });
