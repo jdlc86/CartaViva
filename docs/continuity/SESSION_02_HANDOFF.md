@@ -725,3 +725,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/client/src/main.tsx` incorpora filtros de categoría virtual «Todos» y Bebidas/Primeros/Segundos/Postres con `aria-pressed`, y estados vacíos explícitos, sin inventar platos ni habilitar pedidos (`bffcf76`). `style.css` incorpora diseño responsive de los filtros (`c0c6796`).
 - Se corrige la expresión de validación de caracteres de control de las preferencias locales. El catálogo publicado sigue sin conexión al backend; no hay datos de ejemplo presentados como reales.
 - CI de este HEAD pendiente; sin despliegue ni cambios en Supabase operativo/VPS/Fleetia.
+
+## Modelo de presentación del catálogo Cliente (2026-10-21)
+- CI `7c80a11` SUCCESS: Sabora 39623154392; Bootstrap 39623154398.
+- `apps/client/src/catalog.ts` introduce modelo de catálogo publicado con validación de identidad, categorías, céntimos, disponibilidad y alérgenos, filtro por categoría y formateo EUR (`a15e281`).
+- `apps/client/src/main.tsx` dispone de estados loading/error/empty/ready y tarjetas para datos publicados; `style.css` responsive (`4f7837f`, `8d914b0`). **Actualmente se inicializa un catálogo vacío**; no existe consulta HTTP ni se muestran platos inventados. No hay carrito ni envío de pedidos. El servidor sigue siendo autoridad de publicación, precio, descuentos y stock.
+- CI de este HEAD pendiente; sin despliegue, sin Supabase operativo y sin acceso al VPS/Fleetia.
