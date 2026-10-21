@@ -479,3 +479,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se actualiza `docs/REQUISITOS_FUNCIONALES.md`: campos visibles alias/nick, número ID y empresa opcional; no solicitar por defecto identificadores ni credenciales corporativas, DNI o correo empresarial. El número ID se plantea como identificador de Sabora, no número de empleado laboral. El perfil debe persistir entre visitas sin volver a introducir los datos.
 - Pendiente definir unicidad, emisión/recuperación del ID, autenticación verificable y protección contra suplantación; la persistencia local no equivale a autenticación. El QR continúa identificando la mesa, no a la persona.
 - La implementación SQL actual de `confirm_order` sigue exigiendo `company` y `employee_number`; existe una **brecha contractual** que deberá resolverse mediante migración/versionado y pruebas antes de habilitar pedidos. No se cambió SQL operativo ni se desplegó.
+
+## Hito: contrato aprobado de identidad de cliente (2026-10-21)
+- Aprobación expresa del usuario: alias/nick elegido, número ID visible generado por Sabora, UUID interno único, empresa opcional, sin solicitar datos corporativos. Perfil persistente entre visitas, PWA instalada o navegador, passkey opcional para proteger y recuperar perfil; la sincronización de passkeys no está garantizada.
+- Fuente normativa nueva: `docs/architecture/SABORA_CUSTOMER_IDENTITY_CONTRACT.md` (commit `be4948e`). Requisitos enlazados en `docs/REQUISITOS_FUNCIONALES.md` (commit `548b1aa`).
+- No hay implementación de autenticación de cliente todavía. Bloqueo existente: `sabora.confirm_order` y `sabora.orders` siguen exigiendo empresa y número de empleado. Resolver mediante migraciones, rutas, RLS y pruebas antes de habilitar cliente. No confundir QR con identidad, ni número ID con secreto de recuperación.
+- Sin cambios operativos, despliegue, merge ni Fleetia.
