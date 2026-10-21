@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCustomerRegistrationWithSession } from '../apps/api/src/customer-registration.mjs';
+import { issueCustomerSession } from '../apps/api/src/customer-session.mjs';
 
 const profile = n => ({internalId:'00000000-0000-4000-8000-00000000000'+n,publicId:'SB-22222222222'+n,alias:'Ana',company:null});
-const session = () => ({token:'opaque-token',tokenHash:Buffer.alloc(32,7),createdAt:new Date('2026-10-21T00:00:00Z'),expiresAt:new Date('2026-11-20T00:00:00Z')});
+const session = () => issueCustomerSession({random:()=>Buffer.alloc(32,7),now:()=>new Date('2026-10-21T00:00:00Z')});
 function fakeDb(handler) {
  const calls=[];
  const withTransaction=async fn=>{
@@ -24,7 +25,7 @@ test('profile and session are inserted before a single commit',async()=>{
  });
  const result=await createCustomerRegistrationWithSession({withTransaction:db.withTransaction,prepare:()=>profile(1),issue:session,sessionId:()=>profile(2).internalId})({alias:'Ana'});
  assert.equal(result.profile.public_id,profile(1).publicId);
- assert.equal(result.token,'opaque-token');
+ assert.equal(result.token,session().token);
  assert.equal(db.calls.at(-1),'COMMIT');
  assert.equal(db.calls.filter(x=>x.startsWith('INSERT')).length,2);
  assert.ok(db.calls.indexOf('INSERT INTO sabora.customer_sessions(id,customer_id,token_hash,created_at,expires_at) VALUES ($1,$2,$3,$4,$5) RETURNING id') < db.calls.indexOf('COMMIT'));
@@ -58,4 +59,23 @@ test('invalid profile never creates a session',async()=>{
  const result=await createCustomerRegistrationWithSession({withTransaction:db.withTransaction,prepare:()=>({error:'invalid_profile'}),issue:()=>{throw Error('unexpected issue');}})({});
  assert.deepEqual(result,{error:'invalid_profile'});
  assert.deepEqual(db.calls,['BEGIN','COMMIT']);
+});
+
+test('registration rejects inconsistent bearer hash without storing session',async()=>{
+ const db=fakeDb((sql,params)=>{
+  if(sql.startsWith('INSERT INTO sabora.customer_profiles'))return {rowCount:1,rows:[{id:params[0],public_id:params[1]}]};
+  if(sql.startsWith('INSERT INTO sabora.customer_sessions'))throw Error('session_insert_must_not_happen');
+  return {};
+ });
+ const issue=()=>({...session(),tokenHash:Buffer.alloc(32,0)});
+ await assert.rejects(createCustomerRegistrationWithSession({withTransaction:db.withTransaction,prepare:()=>profile(1),issue})({alias:'Ana'}),/invalid_issued_customer_session/);
+ assert.equal(db.calls.at(-1),'ROLLBACK');
+ assert.equal(db.calls.filter(x=>x.startsWith('INSERT INTO sabora.customer_sessions')).length,0);
+});
+test('registration rejects malformed or reversed session timestamps',async()=>{
+ for(const change of [{expiresAt:new Date('2026-10-20T00:00:00Z')},{createdAt:new Date(NaN)},{token:'invalid'}]){
+  const db=fakeDb((sql,params)=>sql.startsWith('INSERT INTO sabora.customer_profiles')?{rowCount:1,rows:[{id:params[0]}]}:{});
+  await assert.rejects(createCustomerRegistrationWithSession({withTransaction:db.withTransaction,prepare:()=>profile(1),issue:()=>({...session(),...change})})({alias:'Ana'}),/invalid_issued_customer_session/);
+  assert.equal(db.calls.at(-1),'ROLLBACK');
+ }
 });
