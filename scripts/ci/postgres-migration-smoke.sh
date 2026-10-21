@@ -84,6 +84,16 @@ begin
  exception when raise_exception then
   if SQLERRM <> 'invalid_catalog_snapshot' then raise; end if;
  end;
+ -- Unsupported nonempty economic rules must never silently publish.
+ if sabora.validate_catalog_snapshot('{"name":"Extra","category":"Bebidas","priceCents":1200,"allergens":[],"extras":[{"name":"Extra","priceCents":100}]}'::jsonb) IS TRUE then
+  raise exception 'unvalidated extras accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Oferta","category":"Bebidas","priceCents":1200,"allergens":[],"discount":{"type":"percent","value":20}}'::jsonb) IS TRUE then
+  raise exception 'unvalidated discount accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Opciones","category":"Bebidas","priceCents":1200,"allergens":[],"options":[{"name":"Tamaño"}]}'::jsonb) IS TRUE then
+  raise exception 'unvalidated options accepted';
+ end if;
  update sabora.catalog_items set draft='{"name":"Borrador","category":"Bebidas","priceCents":1200,"allergens":[]}'::jsonb where id=v_item;
  if sabora.publish_catalog_item(v_item,1)<>1 then raise exception 'publish revision mismatch'; end if;
  begin
