@@ -34,3 +34,9 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 - Cobertura actual: estructuras vacías y completas, descuentos fijo/porcentual, precio cero y límite superior, nombres/IDs ausentes, `null`, extras duplicados, valores de opción duplicados, límites de selección, claves desconocidas y alérgenos inválidos.
 - `fbe6dc2b`: Sabora CI y Bootstrap SUCCESS después de corregir la inserción del delimitador `DO $$` en el script de pruebas. El validador SQL trata respuestas `NULL` de funciones auxiliares como rechazo explícito.
 - **Alcance limitado:** es equivalencia de los casos incluidos, no demostración de equivalencia universal. Faltan fuzzing, revisión independiente, versionado del JSON público, pruebas de publicación con modificadores, contratos de aceptación transaccional y permisos de escritor. Las rutas operativas continúan inactivas.
+
+## Cobertura ampliada y corrección de validación (sesión 3)
+- `scripts/ci/catalog-economic-parity.mjs`: 29 fixtures explícitos + 300 mutaciones reproducibles de una semilla fija, comparadas con la función candidata SQL en PostgreSQL 17 desechable. Las mutaciones ejercitan `options`, `extras`, `discount`, campos internos, tipos, importes, límites y estructuras inválidas.
+- La ampliación detectó un error de robustez: `uniqueIds` en JS podía intentar leer `.id` de una entrada nula antes de rechazarla. `9cc705a8` protege los elementos y evita excepciones inesperadas; Sabora CI y Bootstrap SUCCESS en ese commit.
+- Se añadieron pruebas unitarias para colecciones con entradas `null` (`fb3e7efa`). Mantener esta regresión cuando se integre la publicación versionada.
+- Las 329 pruebas diferenciales no habilitan permisos, rutas, escritura ni publicación económica. Requieren validación de seguridad independiente antes de cualquier activación.
