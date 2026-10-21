@@ -9,7 +9,6 @@ const snapshot={name:'Plato',category:'Segundos',priceCents:1000,allergens:[],
 const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
  selection:{extras:[]},quantity:1,
- previous:{publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000},
  requestKey:'request-001',acceptanceToken:null};
 const make=(overrides={})=>{
  const calls=[];
@@ -17,6 +16,7 @@ const make=(overrides={})=>{
   lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true};},
   lookupIdempotency:async()=>{calls.push('replay');return null;},
   lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
+  loadPreviousQuote:async()=>{calls.push('previous');return {publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
   persist:async(_query,args)=>{calls.push('persist');return {orderId:'order-1',evidence:args.evidence};},
   ...overrides
  };
@@ -31,7 +31,7 @@ test('authorizes and locks before replay/catalog; persists immutable evidence on
  const result=await confirm(input);
  assert.equal(result.status,'confirmed');
  assert.equal(result.result.evidence.totalCents,1000);
- assert.deepEqual(calls,['BEGIN','context','replay','catalog','persist','COMMIT']);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','COMMIT']);
 });
 test('idempotent replay bypasses catalog and never writes again',async()=>{
  let savedFingerprint;
@@ -61,7 +61,7 @@ test('changed revision requires explicit acceptance; no persistence before conse
  const result=await confirm(input);
  assert.equal(result.status,'acceptance_required');
  assert.equal(result.decision.requiresAcceptance,true);
- assert.deepEqual(calls,['BEGIN','context','replay','catalog','COMMIT']);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','COMMIT']);
 });
 test('signed acceptance for current revision permits persistence',async()=>{
  const token=issueCatalogRepriceAcceptance({
@@ -85,11 +85,34 @@ test('unavailable catalog aborts and no persistence occurs',async()=>{
 test('repository write failure rolls back and does not return confirmation',async()=>{
  const {confirm,calls}=make({persist:async()=>{calls.push('persist');throw Error('db_failed');}});
  await assert.rejects(confirm(input),/db_failed/);
- assert.deepEqual(calls,['BEGIN','context','replay','catalog','persist','ROLLBACK']);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','ROLLBACK']);
 });
 test('rejects client-supplied prices and unexpected fields before transaction',async()=>{
  const {confirm,calls}=make();
  await assert.rejects(confirm({...input,totalCents:1}),/invalid_confirmation_input/);
  await assert.rejects(confirm({...input,requestKey:'short'}),/invalid_confirmation_input/);
  assert.deepEqual(calls,[]);
+});
+
+test('browser cannot forge the previous quote to bypass reprice acceptance',async()=>{
+ const {confirm,calls}=make();
+ await assert.rejects(confirm({...input,previous:{
+  publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000
+ }}),/invalid_confirmation_input/);
+ assert.deepEqual(calls,[]);
+});
+test('missing or malformed trusted previous quote aborts before persistence',async()=>{
+ const {confirm,calls}=make({loadPreviousQuote:async()=>null});
+ await assert.rejects(confirm(input),/order_previous_quote_unavailable/);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','ROLLBACK']);
+});
+test('a trusted previous revision mismatch requires consent despite client silence',async()=>{
+ const {confirm,calls}=make({
+  loadPreviousQuote:async()=>{calls.push('previous');return {
+   publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
+  };}
+ });
+ const result=await confirm(input);
+ assert.equal(result.status,'acceptance_required');
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','COMMIT']);
 });
