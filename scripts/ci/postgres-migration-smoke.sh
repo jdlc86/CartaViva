@@ -21,6 +21,8 @@ done
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
+# Exercise two competing DB sessions and assert only the first request survives.
+bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
 # against the freshly migrated, network-isolated PostgreSQL instance.
 node scripts/ci/catalog-economic-parity.mjs |
