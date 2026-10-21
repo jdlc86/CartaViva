@@ -63,3 +63,9 @@ test('quantity multiplication accepts exact safe-integer boundary and rejects ne
  assert.throws(()=>priceCatalogLine({basePriceCents:safe+1,quantity:3}),/invalid_catalog_price/);
  assert.throws(()=>priceCatalogLine({basePriceCents:safe+1,quantity:3,discount:{type:'fixed',amountCents:safe+1}}),/invalid_catalog_price/);
 });
+
+test('malformed price line inputs fail with stable validation error',()=>{
+ for(const input of [null,undefined,0,false,'100',[],[100]]){
+  assert.throws(()=>priceCatalogLine(input),/^Error: invalid_catalog_price$/);
+ }
+});
