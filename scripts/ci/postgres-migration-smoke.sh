@@ -51,6 +51,53 @@ begin
   end if;
  end loop;
 end $$;
+-- Catalog draft is not exposed as a published version without an explicit publisher.
+do $catalog_foundation$
+declare v_item uuid;
+begin
+ insert into sabora.catalog_items(draft,draft_revision)
+ values ('{"name":"Borrador","priceCents":1200}'::jsonb,1) returning id into v_item;
+ if (select published_snapshot from sabora.catalog_items where id=v_item) is not null then
+  raise exception 'draft unexpectedly published';
+ end if;
+ begin
+  update sabora.catalog_items
+  set published_revision=2,published_snapshot='{}'::jsonb,published_at=now()
+  where id=v_item;
+  raise exception 'future revision accepted';
+ exception when check_violation then null;
+ end;
+ update sabora.catalog_items
+ set published_revision=1,published_snapshot=draft,published_at=now()
+ where id=v_item;
+ update sabora.catalog_items
+ set draft='{"name":"Edición no publicada","priceCents":1500}'::jsonb,draft_revision=2
+ where id=v_item;
+ if (select published_snapshot->>'name' from sabora.catalog_items where id=v_item)<>'Borrador' then
+  raise exception 'draft edit changed published snapshot';
+ end if;
+ update sabora.catalog_items set sold_out=true where id=v_item;
+ if not (select sold_out from sabora.catalog_items where id=v_item) then
+  raise exception 'sold-out state lost';
+ end if;
+ update sabora.catalog_items set withdrawn_at=now() where id=v_item;
+ if (select withdrawn_at from sabora.catalog_items where id=v_item) is null then
+  raise exception 'withdrawal not persisted';
+ end if;
+end;
+$catalog_foundation$;
+set role anon;
+do $catalog_anon_denial$
+begin
+ begin
+  perform count(*) from sabora.catalog_items;
+  raise exception 'anon read catalog drafts';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$catalog_anon_denial$;
+reset role;
+
 -- Customer IDs are unique and profiles remain private even if the public label is known.
 do $customer_profiles$
 declare v_customer uuid;
