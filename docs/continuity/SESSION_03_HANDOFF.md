@@ -168,3 +168,10 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commits `747d6839d08ad8158d6c442a0edb743607f211fa` y `93bb7373f62ffee00bb71f817e2f0bab57626799`: `apps/api/src/catalog-economic-modifiers.mjs` y pruebas puras. Contrato **candidato** explícito para opciones con valores, extras, disponibilidad, alérgenos y descuentos fijos/porcentuales. Rechaza duplicados, importes inválidos, límites excesivos y claves inesperadas.
 - **No conectado** a `publish_catalog_item`, proyección pública, endpoints ni pedidos. El SQL vigente continúa rechazando extras/opciones no vacíos y descuentos no nulos. Antes de integrar, revisar compatibilidad del contrato candidato con el funcional, establecer IDs persistentes, versión JSON y validación PostgreSQL equivalente.
 - Codex se reserva para auditoría posterior. Verificar CI de HEAD.
+
+## Sesión 3 — bloque amplio: cotización segura y recálculo candidato
+- Commits `dbcbb938`, `85d5afab`: nueva `quoteCatalogSelection` y pruebas. Cotización pura desde snapshot confiable, comprobando pertenencia, IDs, disponibilidad, selección obligatoria, máximos, duplicados, desglose de extras/opciones y alérgenos.
+- Commits `e3dc365f`, `16f46d0b`: `compareCatalogQuote` y pruebas. Recalcula y exige aceptación explícita si cambia la revisión publicada, subtotal, descuento o total, **incluidas las bajadas de precio**. No confirma pedidos.
+- Commits `a523be1e`, `15278726`: refuerzo de acceso a grupos con `Object.hasOwn` y límite agregado de 50 modificadores, con regresiones.
+- `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md` actualizado en `b22aa436`.
+- Todas las funciones siguen **aisladas**: sin API, sin DB operativa, sin publicación ni pedidos habilitados. Verificar Sabora CI/Bootstrap para cada HEAD. Siguiente puerta: definir versión de JSON y migración PostgreSQL equivalente con pruebas en DB desechable antes de integración.
