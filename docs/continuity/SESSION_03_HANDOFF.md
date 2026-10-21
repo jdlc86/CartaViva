@@ -90,3 +90,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Al inicio de este bloque, los dos workflows de GitHub Actions estaban SUCCESS para `99b9db9`, `48429e7`, `c438483` y `eb55ef2`.
 - Commit `38a55737ad30f76b5c33dac673030039b376d644`: pruebas del adaptador SQL para fallo de BEGIN sin ROLLBACK improcedente, fallo de ROLLBACK sin ocultar error original, y descarte de cliente incompleto del pool. No cambia el contrato operativo ni activa ruta HTTP.
 - Verificar CI del nuevo commit y último HEAD; PostgreSQL operativo y VPS siguen fuera del alcance.
+
+## Sesión 3 — integración SQL → HTTP → PWA Cliente
+- Commit `db7c717ade139d154f8506e7314c1e72f80052a0`: tests in-memory que conectan el pool simulado con SET LOCAL ROLE, el handler HTTP y el loader TypeScript de la PWA. Comprueban agotado visible/no disponible, ausencia de datos de borrador, liberación limpia tras COMMIT y fallo cerrado de la PWA ante error interno de API.
+- No hay conexión a PostgreSQL real en este test de integración, ni montaje de ruta en `server.mjs`. Las pruebas PostgreSQL 17 desechable siguen separadas en CI.
+- El commit `eb55ef2` ya tenía ambos workflows SUCCESS. Verificar CI del nuevo HEAD antes de declarar validado este hito.
