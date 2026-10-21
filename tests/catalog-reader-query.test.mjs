@@ -28,3 +28,19 @@ test('SQL adapter refuses malformed rows without exposing private draft',async()
  const items=await readPublishedCatalog(async()=>({rows:[{id,published_snapshot:{name:'Agua',category:'Bebidas',priceCents:100,allergens:[]},sold_out:false,draft:{secret:'private'}}]}));
  assert.equal(JSON.stringify(items).includes('private'),false);
 });
+
+test('SQL adapter accepts an empty published catalog',async()=>{
+ const items=await readPublishedCatalog(async()=>({rows:[]}));
+ assert.deepEqual(items,[]);
+});
+test('SQL adapter rejects non-row primitives and invalid published snapshots',async()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ for(const rows of [
+  [null],
+  [42],
+  [{id,published_snapshot:null,sold_out:false}],
+  [{id,published_snapshot:{name:'Agua',category:'Bebidas',priceCents:100,allergens:[]},sold_out:'false'}]
+ ]){
+  await assert.rejects(readPublishedCatalog(async()=>({rows})),/invalid_catalog_row/);
+ }
+});
