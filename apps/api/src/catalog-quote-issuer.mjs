@@ -16,15 +16,19 @@ export function createCatalogQuoteIssuer({withTransaction,repository,clock,ttlSe
   throw Error('invalid_catalog_quote_issuer');
  return async function issue(input){
   if(!plain(input)||Object.keys(input).some(k=>!
-    ['tableId','visitId','basketId','actorId','itemId','selection','quantity'].includes(k))||
+    ['tableId','visitId','basketId','actorId','itemId','selection','quantity','qrToken','customerSessionToken'].includes(k))||
     !id(input.tableId)||!id(input.visitId)||!id(input.basketId)||
     !id(input.actorId)||!uuid(input.itemId)||!plain(input.selection)||
+    typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
+    typeof input.customerSessionToken!=='string'||
+    input.customerSessionToken.length<32||input.customerSessionToken.length>512||
     !Number.isSafeInteger(input.quantity)||input.quantity<1||input.quantity>20)
    throw Error('invalid_catalog_quote_input');
   return withTransaction(async query=>{
    const context=await repository.lockContext(query,{
     tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,
-    basketId:input.basketId
+    basketId:input.basketId,qrToken:input.qrToken,
+    customerSessionToken:input.customerSessionToken
    });
    if(!plain(context)||context.authorized!==true||context.canOrder!==true||
       !uuid(context.tableId)||!uuid(context.sessionId)||
