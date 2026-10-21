@@ -109,3 +109,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — rechazo de catálogo HTTP incoherente
 - Commit `82832222a9615508ae96b36dcafc39ae93639217`: pruebas de la ruta HTTP ante IDs duplicados de publicación y `sold_out` no booleano; debe fallar cerrado con 503, sin devolver catálogo parcial. No se cambia código de producción ni se habilita el endpoint.
 - Los workflows para `ff3d292` y `157c183` estaban todavía ejecutándose al iniciar este bloque. Comprobar CI de este hito.
+
+## Sesión 3 — filas anómalas de RPC del catálogo
+- Commit `6fe384a76d22c52efc81cc4e8f42ec6486ba22c9`: tests de `readPublishedCatalog` para menú publicado vacío y filas no válidas (null, número, snapshot ausente y disponibilidad no booleana). No se activa endpoint ni se modifica producción.
+- Al iniciar, `ff3d292` tenía Sabora CI y Bootstrap SUCCESS; `157c183` tenía Sabora CI SUCCESS. Verificar los workflows del nuevo HEAD.
