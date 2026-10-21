@@ -36,14 +36,14 @@ REVOKE ALL ON FUNCTION sabora.ci_revoke_customer_session(bytea) FROM PUBLIC;
 GRANT USAGE ON SCHEMA sabora TO sabora_customer_session_ci;
 GRANT EXECUTE ON FUNCTION sabora.ci_verify_customer_session(bytea) TO sabora_customer_session_ci;
 GRANT EXECUTE ON FUNCTION sabora.ci_revoke_customer_session(bytea) TO sabora_customer_session_ci;
-DO $
+DO $fixture$
 DECLARE v_id uuid; v_hash bytea:=decode(repeat('bd',32),'hex');
 BEGIN
  INSERT INTO sabora.customer_profiles(public_id,alias) VALUES('SB-YYYYYYYYYYYY','CI Session')
  RETURNING id INTO v_id;
  INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
  VALUES(v_id,v_hash,now()+interval '1 day');
-END $$;
+END $fixture$;
 SET LOCAL ROLE sabora_customer_session_ci;
 DO $$
 DECLARE v_hash bytea:=decode(repeat('bd',32),'hex'); v_count int;
