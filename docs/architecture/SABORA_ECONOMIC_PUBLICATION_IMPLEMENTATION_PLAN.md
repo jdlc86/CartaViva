@@ -22,3 +22,9 @@ Estado: **diseño no operativo**. Fuente normativa: `docs/architecture/SABORA_FU
 `20261021190000_sabora_catalog_publication_guard.sql` **rechaza** opciones y extras no vacíos y descuentos no nulos. `projectPublishedCatalog` aplica la misma política de fallo cerrado para evitar omisiones económicas en la respuesta pública. No flexibilizar estas dos barreras antes de completar el contrato de extremo a extremo.
 
 No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones escritoras, no montar el endpoint ni desplegar sin autorización expresa.
+
+## Implementación aislada de cotización (sin activación)
+- `apps/api/src/catalog-selection-quote.mjs`: cotiza una selección contra un snapshot de catálogo **que debe proceder de persistencia autorizada**. Valida IDs, pertenencia al grupo/plato, máximos, selección obligatoria, disponibilidad, duplicados y precios de extras/opciones; ignora importes suministrados por el cliente (los rechaza como campos inesperados). Retiene desglose, alérgenos y descuento. No representa aún un contrato HTTP.
+- `apps/api/src/catalog-reprice-gate.mjs`: compara cotización anterior con revisión y precios publicados actuales. Señala `requiresAcceptance` ante cambios de revisión o importes, incluidos descuentos y reducciones de precio. No autoriza ni confirma un pedido; no hay aceptación persistida, bloqueo transaccional ni idempotencia todavía.
+- Pruebas unitarias: `tests/catalog-selection-quote.test.mjs` y `tests/catalog-reprice-gate.test.mjs`. Deben superar CI antes de integración.
+- Pendiente: equivalencia SQL del esquema, congelación de snapshots versionados, permisos y transacciones, confirmación de aceptación explícita, serialización de importes y revisión de seguridad independiente. **No conectar** estas funciones al catálogo público ni a pedidos hasta completar esas puertas.
