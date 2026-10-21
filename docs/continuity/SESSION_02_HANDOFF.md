@@ -669,3 +669,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se identificó incompatibilidad funcional: el pool dedicado conecta como LOGIN NOINHERIT, por lo que `pool.query` directo no obtiene permisos RPC. Nuevo `customer-session-scoped-query.mjs`: `pool.connect` → BEGIN → SET LOCAL ROLE sabora_customer_session_runtime → RPC fijada → COMMIT → release. En error: ROLLBACK y `release(true)` (descarta conexión incierta). No eleva el LOGIN de forma permanente ni habilita consultas libres.
 - `customer-session-runtime.mjs` usa exclusivamente el adapter scoped; `tests/customer-session-scoped-query.test.mjs` verifica denegación SQL arbitrario, parámetros, rollback y cierre. `tests/customer-session-runtime.test.mjs` exige secuencia transaccional. Commits `62e710d`, `90a43b9`, `6f74a9c`, `673dd1a`, `58d0437`.
 - CI del nuevo HEAD pendiente. Sin activar rutas HTTP, ni credenciales operativas, ni tocar Supabase/VPS/Fleetia.
+
+## Fallos de transacción y aislamiento del pool de sesiones (2026-10-21)
+- CI anterior `f77c154` SUCCESS: Sabora 39598338887, Bootstrap 39598338920.
+- `tests/customer-session-scoped-query-failures.test.mjs`: inyección de fallos en BEGIN, SET LOCAL ROLE, RPC, COMMIT, ROLLBACK y connect; comprueba descarte de cliente incierto y ausencia de reutilización accidental de privilegios entre dos llamadas. Commits `2974d68`, `10f8b21`.
+- `customer-session-scoped-query.mjs` evita que un fallo de `release` sustituya el error de la operación y tolera liberación fallida de instancia inválida (`8680874`). Pendiente CI HEAD. Sin cambios operativos ni HTTP montado.
