@@ -203,3 +203,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `fb3e7efa`: pruebas unitarias explícitas de entradas `null` en extras y valores de opción.
 - `3edc1337`: documentación de la cobertura y alcance. Comprobar ambos workflows del último HEAD antes de cerrar el bloque.
 - Sin merge, sin activación de pedidos, sin cambios en Supabase operativo ni VPS.
+
+## Sesión 3 — evidencia económica v1 y cálculo porcentual exacto
+- `13bf7fad`, `02d0f53f`: `apps/api/src/catalog-line-evidence.mjs`, constructor puro `buildCatalogLineEvidence` que fija `schemaVersion:1`, ID de artículo, revisión publicada, selección, importes, alérgenos y descuento en un objeto profundamente congelado. Se eliminó deliberadamente un validador de evidencia independiente que no podía demostrar procedencia de DB.
+- `2cb36795`: pruebas de evidencia congelada, independencia ante mutaciones posteriores, revisión/identificadores y entradas malformadas.
+- `7c8cae23`, `10322d77`: cálculo porcentual exacto con `BigInt` para evitar desbordamiento de producto intermedio; pruebas de límites de enteros seguros. La primera ejecución CI de `7c8cae23` falló por una aserción previa que esperaba rechazo de un caso ahora válido; se actualizó en `10322d77`. Verificar CI final.
+- `455557ff`: contrato de arquitectura actualizado. Nada conectado a confirmación de pedidos, DB operativa, publicación SQL, HTTP ni PWA. Próxima puerta: transacción real que bloquee revisión, resuelva pertenencia y persista evidencia atómica con idempotencia y aceptación explícita.
