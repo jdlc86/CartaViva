@@ -22,7 +22,7 @@ done
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
 # Validate candidate durable visit grants in disposable PostgreSQL.
-docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-visit-ledger-smoke.sql
 # Verify closed-by-default table state and timed pause constraints.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
