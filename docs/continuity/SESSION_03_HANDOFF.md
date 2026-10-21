@@ -263,3 +263,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `33189760`: prueba SQL de UPDATE y DELETE sobre ambas tablas, con error esperado `catalog_ledger_append_only`.
 - `89bfe91a`: CI comprueba que ambos triggers estén habilitados en PostgreSQL 17 desechable.
 - `f28f2cff`: arquitectura y límites documentados. Pendiente imprescindible: escritor restringido, autorización de visita/mesa, consentimiento explícito y pruebas transaccionales de extremo a extremo. No hay activación de pedidos, merge, despliegue ni cambios operativos.
+
+## Sesión 3 — cierre TRUNCATE del ledger económico
+- `383edc47`: dos triggers BEFORE TRUNCATE para cotizaciones y confirmaciones; los triggers UPDATE/DELETE previos no interceptaban TRUNCATE.
+- `49b2accb`: pruebas SQL negativas TRUNCATE en ambas tablas.
+- `a750e339`: gate CI comprueba cuatro triggers habilitados.
+- `6948b2a7`: documentación de arquitectura. Verificar workflows de HEAD. Sin escritor, sin HTTP, sin Supabase operativo, sin despliegue ni merge.
