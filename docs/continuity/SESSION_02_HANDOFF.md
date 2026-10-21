@@ -612,3 +612,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - El CI del commit `e817c9d` terminó FAILURE en ambos workflows; la supuesta corrección `DO $$` no persistió correctamente en el contenido recuperado de GitHub (seguía `DO $`).
 - Commit `97a7690` sustituye el bloque afectado por delimitador nombrado `DO $fixture$ ... END $fixture$;`, comprobado mediante nueva lectura de GitHub. La verificación del CI del HEAD sigue pendiente; no afirmar que el RPC concurrente esté validado.
 - Sin cambios operativos ni despliegues.
+
+## Gate estático para SQL de sesiones (2026-10-21)
+- `scripts/ci/customer-session-sql-lint.sh` rechaza delimitadores PL/pgSQL malformados `DO $`, comprueba apertura/cierre de `$fixture$` y exige `SECURITY DEFINER SET search_path` más revocación de EXECUTE a PUBLIC en fixtures RPC. Integrado antes de ejecutar pruebas de privilegios en `postgres-migration-smoke.sh`.
+- Commits `28dcd05`, `89cb5a9`. No reemplaza la ejecución PostgreSQL real. CI del HEAD pendiente; el CI del hito previo `1d5c51f` estaba en curso durante esta edición.
