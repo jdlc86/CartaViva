@@ -9,7 +9,7 @@ import { issueCustomerSession } from '../apps/api/src/customer-session.mjs';
 const issued=issueCustomerSession({random:()=>Buffer.alloc(32,9)});
 test('only pinned lookup and revoke SQL reach injected pool',async()=>{
  const seen=[];
- const query=createCustomerSessionQueryBoundary({pool:{query:async(sql,params)=>{seen.push({sql,params});return sql===SESSION_REVOKE_SQL?{rowCount:1}:{rows:[]};}}});
+ const query=createCustomerSessionQueryBoundary({pool:{query:async(sql,params)=>{seen.push({sql,params});return sql===SESSION_REVOKE_SQL?{rows:[{revoked:true}]}:{rows:[]};}}});
  assert.equal(await createCustomerSessionVerifier({query})(issued.token),null);
  assert.equal(await createCustomerSessionRevoker({query})(issued.token),true);
  assert.deepEqual(seen.map(x=>x.sql),[SESSION_LOOKUP_SQL,SESSION_REVOKE_SQL]);
