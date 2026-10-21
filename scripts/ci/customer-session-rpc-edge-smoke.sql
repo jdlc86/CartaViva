@@ -3,8 +3,11 @@ BEGIN;
 INSERT INTO sabora.customer_profiles(public_id,alias)
 VALUES ('SB-QQQQQQQQQQQQ','RPC edge cases');
 INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
-SELECT id,decode(repeat('a1',32),'hex'),now()-interval '1 second'
+SELECT id,decode(repeat('a1',32),'hex'),now()+interval '1 day'
 FROM sabora.customer_profiles WHERE public_id='SB-QQQQQQQQQQQQ';
+-- Keep expires_at > created_at invariant while simulating a genuinely expired session.
+UPDATE sabora.customer_sessions SET created_at=now()-interval '2 days', expires_at=now()-interval '1 day'
+WHERE token_hash=decode(repeat('a1',32),'hex');
 SET LOCAL ROLE sabora_customer_session_runtime;
 DO $checks$
 DECLARE
