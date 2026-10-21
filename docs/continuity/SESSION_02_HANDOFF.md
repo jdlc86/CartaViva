@@ -581,3 +581,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Experimento positivo anterior `83c2497`: CI y Bootstrap SUCCESS (runs 39589733861 y 39589734083).
 - Nuevo `scripts/ci/customer-session-privileges-hardening.sql` comprueba que `anon`, `authenticated` y `sabora_admin_writer` no adquieren EXECUTE sobre RPCs de sesión; rol de ejecución no recibe SELECT/UPDATE directos ni BYPASSRLS y se deniegan DELETE, UPDATE y SELECT sobre tablas. Añadido a `scripts/ci/postgres-migration-smoke.sh`.
 - Este SQL recrea roles y funciones exclusivamente dentro de transacción rollback en PostgreSQL 17 aislado; no crea migración operativa. Verificar CI del HEAD antes de considerarlo acreditado.
+
+## Concurrencia de revocación de sesiones (2026-10-21)
+- Gate anterior `b1254f1` acreditado con Sabora CI 39590213263 SUCCESS y Bootstrap 39590213292 SUCCESS.
+- Nuevos `scripts/ci/customer-session-concurrency-fixture.sql` y `scripts/ci/customer-session-concurrency-smoke.sh` ejercitan dos conexiones PostgreSQL independientes sobre el mismo hash. Exigen exactamente una revocación exitosa y una fila revocada. Integrado en el smoke de migraciones sobre PostgreSQL 17 aislado (`--network none`). Commits `4f5bf76`, `17db52e`, `7293a25`.
+- **Pendiente CI del HEAD**; no asumir prueba acreditada hasta SUCCESS. Este gate prueba UPDATE SQL, todavía no los RPC de sesión en concurrencia. No se ha aplicado nada en Supabase operativo ni VPS.
