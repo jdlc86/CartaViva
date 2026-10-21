@@ -30,6 +30,11 @@ export function priceCatalogLine({basePriceCents,extras=[],quantity=1,discount=n
    unitDiscount=Math.floor((product+5000)/10000);
   }else throw Error('invalid_catalog_discount');
  }
+ // Check products before multiplying; even a fully discounted line must
+ // have representable gross and discount amounts in integer cents.
+ if(unitSubtotal>Math.floor(Number.MAX_SAFE_INTEGER/quantity)||
+    unitDiscount>Math.floor(Number.MAX_SAFE_INTEGER/quantity))
+  throw Error('invalid_catalog_price');
  const totalCents=(unitSubtotal-unitDiscount)*quantity;
  const subtotalCents=unitSubtotal*quantity;
  const discountCents=unitDiscount*quantity;
