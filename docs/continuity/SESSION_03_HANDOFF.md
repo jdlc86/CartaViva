@@ -327,3 +327,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `8c06e504`: función SQL privada de transición de mesa, bloqueo de membresía activa y mesa, permiso `waiter/admin/root`, denegación de cocina e invitados, validación de pausas y de cambios de estado.
 - `8ecd7899`: smoke PostgreSQL 17 de autorización, estados, rotación al cerrar y denegación EXECUTE para roles runtime. `dc072dd8`: integración CI.
 - `39b41382`: arquitectura actualizada. La función **no** autentica al actor por sí sola: falta conexión a sesión de personal verificada, ACL de mínimo privilegio, auditoría y pruebas de carrera cierre/confirmación. No activar HTTP, no desplegar, no aplicar a Supabase operativo. Revisar CI del HEAD.
+
+## Sesión 3 — concurrencia cierre/autorización de pedido
+- `e2c2ab67`: smoke de dos conexiones PostgreSQL independientes para carrera cierre vs bloqueo de mesa abierta.
+- `33859866`: smoke incorporado a CI desechable PostgreSQL 17; `d71a9da9`: arquitectura documentada.
+- Garantía probada: cierre espera el bloqueo `FOR SHARE` de autorización de pedido y futuras autorizaciones no ven mesa abierta. **No equivale a confirmación real de pedido**; escritor, consentimiento, auditoría y privilegios siguen pendientes. No conectar HTTP ni producción.
