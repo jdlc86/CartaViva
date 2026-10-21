@@ -33,6 +33,8 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Verify staff lifecycle role gates without runtime grants.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-staff-transition-smoke.sql
+# Verify staff close waits for a customer transaction's table lock.
+bash scripts/ci/catalog-table-close-concurrency-smoke.sh "$container"
 # Exercise two competing DB sessions and assert only the first request survives.
 bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
 # Assert table close serializes with in-flight order authorization.
