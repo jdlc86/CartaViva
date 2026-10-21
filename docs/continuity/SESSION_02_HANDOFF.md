@@ -440,3 +440,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #334 y bootstrap #317 del HEAD `b46edcc` SUCCESS: gate de carrera SQL de dos sesiones confirmado en PostgreSQL 17 desechable.
 - `apps/api/src/postgres-transaction.mjs`: si COMMIT falla, el cliente se descarta siempre del pool, incluso cuando ROLLBACK posterior responde sin error; la respuesta de COMMIT puede haber dejado resultado/estado incierto.
 - `tests/postgres-transaction.test.mjs`: regresión que verifica liberación con error para descartar conexión ante fallo COMMIT. No cambia permisos, rutas HTTP ni conexión operativa. CI del HEAD nuevo pendiente.
+
+## Regresión de errores dobles COMMIT/ROLLBACK (2026-10-21)
+- Al comprobar `86c17fe`, bootstrap #320 seguía en progreso y CI #337 en cola; no se declaró verde.
+- Commit `cbc9d50`: dos pruebas de `postgres-transaction`: (a) fallo de trabajo con rollback exitoso devuelve cliente limpio al pool; (b) COMMIT y ROLLBACK fallidos preservan error COMMIT y descartan cliente por error de rollback.
+- Sin cambios operativos, sin credenciales SQL ni grants; CI del nuevo HEAD pendiente.
