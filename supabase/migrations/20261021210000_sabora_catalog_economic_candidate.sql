@@ -59,7 +59,7 @@ BEGIN
   IF EXISTS(SELECT 1 FROM jsonb_object_keys(v_group) AS k(key)
            WHERE k.key NOT IN ('id','name','required','maxSelections','values')) THEN RETURN false; END IF;
   IF jsonb_typeof(v_group->'id') IS DISTINCT FROM 'string' OR
-    (v_group->>'id') IS NULL OR (v_group->>'id') !~ '^[A-Za-z0-9_-]{1,64}
+     (v_group->>'id') !~ '^[A-Za-z0-9_-]{1,64}$' OR
      (v_group->>'id')=ANY(v_group_ids) THEN RETURN false; END IF;
   v_group_ids:=array_append(v_group_ids,v_group->>'id');
   IF jsonb_typeof(v_group->'name') IS DISTINCT FROM 'string' OR
