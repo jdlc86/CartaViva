@@ -703,3 +703,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `customer-session-verifier.mjs` valida forma UUID, alfabeto/longitud del ID visible SB-, alias y empresa devueltos por la RPC restringida; ante resultado anómalo falla cerrado (`d21740c`).
 - `tests/customer-session-verifier.test.mjs` añade regresiones para ID inválido, alias vacío/largo/control, empresa de tipo/longitud incorrectos y duplicación de filas (`8068f75`).
 - CI de este HEAD pendiente; HTTP clientes sin registrar, sin despliegue ni cambios operativos.
+
+## Primera experiencia visual PWA Cliente (2026-10-21)
+- `apps/client/src/main.tsx` sustituye el placeholder por tres pantallas responsive: bienvenida, preferencias de alias/empresa opcional y estado de carta futura. Navegación local y validación de campos (`e2a6c59`).
+- `apps/client/src/style.css` añade diseño móvil/escritorio, contraste, focus visible y soporte reduced motion (`ae05b79`).
+- **Alcance deliberadamente limitado:** solo preferencias de presentación en localStorage; no se guardan credenciales, UUID, tokens ni se simula registro autenticado. La interfaz avisa explícitamente que no hay cuenta, sesión, carta ni pedidos reales. Persistencia de identidad auténtica y passkeys requieren API y cookies HttpOnly pendientes.
+- CI del HEAD pendiente; no rutas HTTP públicas, despliegue, migración operativa ni intervención en Fleetia/VPS.
