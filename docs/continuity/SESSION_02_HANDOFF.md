@@ -644,3 +644,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `scripts/ci/customer-session-login-fixture.sql` crea exclusivamente en el contenedor aislado un LOGIN `NOINHERIT`/`NOBYPASSRLS` y lo vincula al rol de runtime mediante GRANT. Contraseña fija de prueba descartada con el contenedor, nunca operativa.
 - `scripts/ci/customer-session-login-smoke.sh` autentica de verdad por TCP loopback **dentro del contenedor**, comprueba que sin SET ROLE no hereda RPC, con SET ROLE obtiene solo EXECUTE, y no puede leer tablas ni asumir el propietario SECURITY DEFINER. Integrado en `postgres-migration-smoke.sh` con lint Bash previo.
 - Commits `68751b3`, `947a437`, `dfd0f04`. **CI de este HEAD pendiente**. Este diseño no crea identidad real en Supabase, no conecta el servidor HTTP y no autoriza despliegue.
+
+## Incidencia CI: rol LOGIN sin USAGE en schema (2026-10-21)
+- CI `9eb57e5` FAILED en Sabora run 39595379623 y Bootstrap run 39595379646. Log final: `ERROR: permission denied for schema sabora` durante prueba de LOGIN real. El test pretendía llamar `has_function_privilege` con nombre cualificado desde un LOGIN que deliberadamente no dispone de USAGE; la resolución de nombre falla antes de evaluar el permiso.
+- El gate sin `SET ROLE` ahora comprueba únicamente `has_schema_privilege` (USAGE/CREATE ambos falsos), sin resolver funciones/tablas en schema inaccesible. Tras `SET ROLE`, comprueba RPC EXECUTE y ausencia de privilegios directos. Commits `9ac8d68`, `91d6427`. CI de esta corrección pendiente.
