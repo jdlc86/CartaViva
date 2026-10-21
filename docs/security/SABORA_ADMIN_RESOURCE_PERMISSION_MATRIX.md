@@ -25,3 +25,23 @@ Estado: **inventario para revisión; ningún GRANT autorizado**. Derivada de mig
 ## Puerta para pasar de matriz a implementación
 
 Aprobar por operación una ficha verificable con actor permitido, tablas y columnas, función o consulta, locks, RLS, grants, auditoría, respuesta idempotente y pruebas de denegación. Solo entonces implementar roles técnicos y rutas HTTP. No aplicar migraciones operativas ni desplegar por esta matriz.
+
+## Ficha de preautorización: ajustes generales (solo diseño)
+
+La primera operación candidata a un futuro contrato de permisos mínimos es **modificar el nombre del restaurante** en `sabora.restaurant_settings`. Esta ficha **no habilita** esa operación y no constituye autorización para crear un endpoint ni conceder privilegios.
+
+| Elemento | Límite propuesto para revisión |
+| --- | --- |
+| Identidad de usuario | Sesión autenticada y validada por backend; prohibido confiar en `actorUserId` enviado por cliente |
+| Autoridad | `staff_members.role = 'admin'`, `state = 'active'` y `admin_write_ownership.owner_user_id` coincidente, comprobados en transacción |
+| Orden de bloqueo | Primero singleton de ownership con `FOR UPDATE`; después fila durable de actor con `FOR UPDATE` |
+| Objeto y columnas | `restaurant_settings`: lectura mínima de clave del singleton y `name`; actualización exclusiva de `name` |
+| Identidad SQL | Futuro principal técnico sin BYPASSRLS ni propiedad de tablas; `sabora_admin_writer` permanece dormido |
+| RLS | Requiere una política concreta que restrinja la fila y la operación; **no basta** el GRANT SQL |
+| Auditoría | Especificar antes de implementar evento, actor verificado, correlación, antes/después y persistencia atómica |
+| Reintentos | Definir correlación, idempotencia y comportamiento ante COMMIT incierto antes de exposición HTTP |
+| Pruebas positivas | ADMIN titular activo modifica solo `name`; transacción y auditoría atómicas bajo rol no propietario |
+| Pruebas negativas | ROOT, ADMIN no titular, ADMIN suspendido, identidades de cocina/camarero y cliente; SQL directo fuera de operación; columnas distintas a `name` |
+| Puerta pendiente | Diseño aprobado de RLS, auditoría, contrato HTTP, conexión SQL y bootstrap/recuperación de ROOT |
+
+El uso de `restaurant_settings` como primera candidata no implica que la tabla ya tenga una clave singleton apropiada, política RLS específica o columnas de auditoría; esos elementos deben comprobarse contra el esquema y migraciones antes de cualquier implementación.
