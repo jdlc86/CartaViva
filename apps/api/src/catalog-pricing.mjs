@@ -28,9 +28,11 @@ export function priceCatalogLine(input){
    // Integer basis points: 10000 = 100%, rounding half up to the nearest cent.
    if(!Number.isSafeInteger(discount.basisPoints)||discount.basisPoints<0||discount.basisPoints>10000)
     throw Error('invalid_catalog_discount');
-   const product=unitSubtotal*discount.basisPoints;
-   if(!Number.isSafeInteger(product))throw Error('invalid_catalog_price');
-   unitDiscount=Math.floor((product+5000)/10000);
+   // Exact intermediate arithmetic: multiplying safe cents by basis points
+   // can exceed Number.MAX_SAFE_INTEGER even when the rounded result is safe.
+   const rounded=(BigInt(unitSubtotal)*BigInt(discount.basisPoints)+5000n)/10000n;
+   if(rounded>BigInt(Number.MAX_SAFE_INTEGER))throw Error('invalid_catalog_price');
+   unitDiscount=Number(rounded);
   }else throw Error('invalid_catalog_discount');
  }
  // Check products before multiplying; even a fully discounted line must
