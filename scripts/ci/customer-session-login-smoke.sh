@@ -44,10 +44,10 @@ fi
 # Seed fixture through PostgreSQL admin in disposable container only.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 INSERT INTO sabora.customer_profiles(public_id,alias)
-VALUES ('SB-WWWWWWWWWWWW','Login RPC CI');
+VALUES ('SB-PPPPPPPPPPPP','Login RPC CI');
 INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
 SELECT id,decode(repeat('e7',32),'hex'),now()+interval '1 day'
-FROM sabora.customer_profiles WHERE public_id='SB-WWWWWWWWWWWW';
+FROM sabora.customer_profiles WHERE public_id='SB-PPPPPPPPPPPP';
 SQL
 # Execute actual verify + revoke through authenticated LOGIN with scoped SET ROLE.
 run_login < scripts/ci/customer-session-login-rpc-smoke.sql
