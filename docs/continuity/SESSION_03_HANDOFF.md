@@ -245,3 +245,5 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `247d10e4`, `2aecb98c`: script SQL de pruebas negativas en PostgreSQL 17 aislado; valida duplicado idempotente, cruce de artículo, visita, mesa y totales erróneos. Se ejecuta en transacción con `ROLLBACK`.
 - `0898056a`: reparación de línea SQL truncada durante edición de la migración. Los CI intermedios fallaron; verificar workflows del HEAD final.
 - `d95cbbc5`: contrato de arquitectura actualizado. **No** hay escritor real ni despliegue.
+
+- Corrección posterior `b07298e6`: reparado completamente el CHECK SQL de `request_key` (edición por índices, sin sustitución con `$` interpretado por JavaScript). Los runs intermedios fallaron al parsear la migración; verificar los workflows del HEAD tras esta corrección.
