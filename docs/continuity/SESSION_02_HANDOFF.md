@@ -521,3 +521,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI anterior de `9fb563c`: Sabora CI 39584644082 SUCCESS; bootstrap 39584644023 SUCCESS.
 - Migración `20261021020000_sabora_customer_sessions.sql` (commit `4317605`): tabla privada de sesiones con hash UNIQUE, FK cliente, vencimiento/revocación, FORCE RLS, sin grants. `apps/api/src/customer-session.mjs` (commit `d6aed94`) emite secretos aleatorios y hashes SHA-256; tests `9bd256b`, smoke PostgreSQL `b898744`, build `2c4530f`.
 - Aún faltan verificación/revocación en consultas SQL, alta perfil+sesión atómica, cookies seguras, passkey, API y autorización del historial. No se aplica a Supabase operativo ni VPS. Verificar CI del HEAD.
+
+## Alta atómica perfil + sesión (2026-10-21)
+- `apps/api/src/customer-registration.mjs`: adaptador interno de alta que inserta perfil y sesión con hash dentro de una sola transacción. Token opaco solo se retorna después de COMMIT; si falla inserción de sesión, la transacción revierte perfil. Colisiones `customer_profiles_public_id_key` se reintentan con SAVEPOINT acotado.
+- `tests/customer-registration.test.mjs`: inserción doble antes de commit, rollback de sesión fallida, colisión recuperable y perfil inválido. Build incluye comprobación sintáctica. Commits `f08daca`, `a3c2fd3`, `d057e4d`.
+- **No hay rutas públicas ni cookies aún**. Antes de activación: pruebas PostgreSQL reales del flujo atómico, validación de sesión vigente/revocada, políticas de cookies y CSRF, permisos de backend limitados. Verificar CI HEAD.
