@@ -275,3 +275,11 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `22f19003`: pruebas de aislamiento de contexto, bloqueos, revisión, expiración y fallo cerrado ante datos inconsistentes.
 - `b84cb50f`, `5abb09f0`: el coordinador exige `quoteId` confiable y lo entrega al escritor; tests de rechazo si falta.
 - `4b22e1fb`: documentación de arquitectura. PENDIENTE: verificar correspondencia entre selección/cantidad mostradas y confirmadas, autorización real QR/visita, escritor transaccional restringido, aceptación explícita durable y pruebas de integración. No conectar rutas HTTP.
+
+## Sesión 3 — selección/cantidad de cotización vinculada
+- `9d00493a`: `catalog-displayed-quote-binding.mjs` compara evidencia confiable con importes/revisión almacenados, artículo, cantidad y conjunto de modificadores seleccionados.
+- `f0d00ab0`: lectura SQL incluye la evidencia del ledger.
+- `e39ebca0`: coordinador aplica el guard antes de devolver aceptación o persistir.
+- `fde6169a`, `0b191233`, `a3f57cf7`: tests de cantidad cambiada, evidencia corrupta, extras intercambiados y revisión legítima.
+- `c277ca34`: arquitectura actualizada. CI de los primeros commits falló durante actualización de fixtures; verificar resultado del HEAD.
+- Pendiente: emisión autenticada de cotizaciones, autorización QR/visita, escritor de mínimos privilegios y persistencia atómica. Sin activación de HTTP ni producción.
