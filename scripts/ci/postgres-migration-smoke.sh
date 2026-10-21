@@ -196,6 +196,20 @@ begin
 end;
 $negative_grant_cleanup$;
 
+-- The rollback must restore denial for the effective SQL principal too,
+-- not merely remove the ACL bits reported by catalog helpers.
+set role sabora_admin_writer;
+do $negative_grant_role_denial$
+begin
+ begin
+  perform count(*) from sabora.staff_members;
+  raise exception 'rolled-back grant still permits staff read';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$negative_grant_role_denial$;
+reset role;
+
 -- Enumerate every function in the private schema. PUBLIC and browser roles
 -- must not inherit EXECUTE on any existing routine, not just known RPC names.
 do $function_acl$
