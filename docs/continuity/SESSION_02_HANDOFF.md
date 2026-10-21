@@ -435,3 +435,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #332 y bootstrap #315 de `f2e1653` FAILED en la prueba nueva: `syntax error at or near "$"` debido a delimitadores PL/pgSQL `do $ ... end $` inválidos. Las pruebas anteriores pasaron.
 - Commit `56adb13`: sustituidos por bloques `do $race$ ... end $race$` dentro de heredocs Bash con comillas simples. Se espera revalidación de PostgreSQL 17 en Actions; no declarar gate verde sin resultados terminales.
 - Sin cambios en Supabase operativo, VPS ni Fleetia.
+
+## Aislamiento de cliente PostgreSQL ante COMMIT incierto (2026-10-21)
+- CI #334 y bootstrap #317 del HEAD `b46edcc` SUCCESS: gate de carrera SQL de dos sesiones confirmado en PostgreSQL 17 desechable.
+- `apps/api/src/postgres-transaction.mjs`: si COMMIT falla, el cliente se descarta siempre del pool, incluso cuando ROLLBACK posterior responde sin error; la respuesta de COMMIT puede haber dejado resultado/estado incierto.
+- `tests/postgres-transaction.test.mjs`: regresión que verifica liberación con error para descartar conexión ante fallo COMMIT. No cambia permisos, rutas HTTP ni conexión operativa. CI del HEAD nuevo pendiente.
