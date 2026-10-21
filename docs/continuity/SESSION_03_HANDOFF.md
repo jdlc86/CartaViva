@@ -105,3 +105,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `ff3d2929dfd94e183ac7d0bb67c38f0f51829353`: el login técnico autenticado por TCP activa `SET LOCAL ROLE sabora_catalog_reader` y ejecuta SELECT y UPDATE reales contra `sabora.catalog_items`. Ambos deben recibir `insufficient_privilege`; complementa la verificación ACL y las denegaciones de datos personales.
 - Previamente ambos workflows SUCCESS para `dcffc1d`; Bootstrap SUCCESS para `f8ce465`, Sabora CI todavía en curso.
 - No se han aplicado migraciones ni abierto conexiones a Supabase operativo; CI usa PostgreSQL 17 desechable. Verificar nuevos runs.
+
+## Sesión 3 — rechazo de catálogo HTTP incoherente
+- Commit `82832222a9615508ae96b36dcafc39ae93639217`: pruebas de la ruta HTTP ante IDs duplicados de publicación y `sold_out` no booleano; debe fallar cerrado con 503, sin devolver catálogo parcial. No se cambia código de producción ni se habilita el endpoint.
+- Los workflows para `ff3d292` y `157c183` estaban todavía ejecutándose al iniciar este bloque. Comprobar CI de este hito.
