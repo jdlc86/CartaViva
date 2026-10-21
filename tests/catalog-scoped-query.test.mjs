@@ -55,3 +55,34 @@ test('pool checkout failure propagates without executing SQL',async()=>{
  const query=createCatalogScopedQuery({pool:{connect:async()=>{throw Error('pool_unavailable');}}});
  await assert.rejects(query(createCatalogReaderSql(),[]),/pool_unavailable/);
 });
+
+test('BEGIN failure discards client without attempting a rollback',async()=>{
+ const events=[];
+ const query=createCatalogScopedQuery({pool:{connect:async()=>({
+  query:async sql=>{events.push(sql);if(sql==='BEGIN')throw Error('begin_failed');},
+  release:discard=>events.push(['release',discard])
+ })}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/begin_failed/);
+ assert.deepEqual(events,['BEGIN',['release',true]]);
+});
+test('rollback failure never replaces the original database error',async()=>{
+ const events=[];
+ const query=createCatalogScopedQuery({pool:{connect:async()=>({
+  query:async sql=>{
+   events.push(sql);
+   if(sql===createCatalogReaderSql())throw Error('original_query_failure');
+   if(sql==='ROLLBACK')throw Error('rollback_failure');
+   return {rows:[]};
+  },
+  release:discard=>events.push(['release',discard])
+ })}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/original_query_failure/);
+ assert.deepEqual(events.at(-1),['release',true]);
+ assert.ok(events.includes('ROLLBACK'));
+});
+test('invalid pooled client is discarded without executing SQL',async()=>{
+ const releases=[];
+ const query=createCatalogScopedQuery({pool:{connect:async()=>({release:discard=>releases.push(discard)})}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/invalid_catalog_client/);
+ assert.deepEqual(releases,[true]);
+});
