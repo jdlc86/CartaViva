@@ -322,3 +322,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `3e030ab3`: smoke SQL de pausa, cierre, revocación y reapertura sin reutilizar permisos antiguos; `a3e28ba8` lo incorpora al CI PostgreSQL 17 aislado.
 - `fb835b5f`: corrección de continuación shell en el smoke de visitas; `3aa67301`: contrato de arquitectura.
 - **Pendiente:** autorización staff real para transiciones, rol SQL mínimo, validación de concurrencia entre cierre y pedido, estado/visita de pago histórico y rutas HTTP. No desplegar, no merge, no modificar Supabase operativo ni Fleetia.
+
+## Sesión 3 — transición de mesa bajo rol de personal (candidata)
+- `8c06e504`: función SQL privada de transición de mesa, bloqueo de membresía activa y mesa, permiso `waiter/admin/root`, denegación de cocina e invitados, validación de pausas y de cambios de estado.
+- `8ecd7899`: smoke PostgreSQL 17 de autorización, estados, rotación al cerrar y denegación EXECUTE para roles runtime. `dc072dd8`: integración CI.
+- `39b41382`: arquitectura actualizada. La función **no** autentica al actor por sí sola: falta conexión a sesión de personal verificada, ACL de mínimo privilegio, auditoría y pruebas de carrera cierre/confirmación. No activar HTTP, no desplegar, no aplicar a Supabase operativo. Revisar CI del HEAD.
