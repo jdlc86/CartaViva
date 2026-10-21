@@ -495,3 +495,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-id.mjs`: generador de UUID interno y código público alfanumérico aleatorio de 12 caracteres con rechazo de bytes; alta normalizada sin IDs de entrada. `tests/customer-id.test.mjs` cubre formato, entradas indebidas y fuentes aleatorias defectuosas. Build verifica sintaxis.
 - Commits `4ea507b`, `399f922`, `df910a0`, `d74cab7`. **Aún no se emiten IDs persistentes**: falta tabla con UNIQUE, reintentos por colisión, sesión y RLS; no hay rutas ni grants. Verificar CI del HEAD.
 - Sin Supabase operativo, VPS, despliegue, merge ni Fleetia.
+
+## Corrección CI generador cliente (2026-10-21)
+- Bootstrap run 39527119830 FAILED: 123/125 tests OK, dos pruebas de rechazo aleatorio fallaron. Se constató que el alfabeto original tenía 32 símbolos, por lo que `LIMIT=256` y ningún byte se rechazaba; los tests suponían rechazo de 255. Corrección: alfabeto de 31 símbolos (excluye Z), límite 248, y pruebas alineadas con bytes 255 descartados. Commits `e6f1b5d`, `6238c76`; `1c4a35b` fue intento intermedio reemplazado. Verificar CI/Bootstrap del HEAD; no declarar verde anticipadamente.
+- Sin aplicación de migraciones ni cambios en Fleetia o VPS.
