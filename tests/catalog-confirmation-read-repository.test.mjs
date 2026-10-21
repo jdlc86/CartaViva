@@ -43,9 +43,9 @@ test('trusted previous quote is scoped, unexpired, locked and checked',async()=>
   assert.match(sql,/FOR SHARE/);
   assert.deepEqual(args,[tableId,sessionId,'visit-1','basket-1','actor-1',itemId]);
   return {rows:[{id:quoteId,published_revision:'3',subtotal_cents:'1200',
-   discount_cents:'200',total_cents:'1000'}]};
+   discount_cents:'200',total_cents:'1000',evidence:{schemaVersion:1}}]};
  },{context,itemId});
- assert.deepEqual(quote,{quoteId,publishedRevision:3,subtotalCents:1200,
+ assert.deepEqual(quote,{quoteId,evidence:{schemaVersion:1},publishedRevision:3,subtotalCents:1200,
   discountCents:200,totalCents:1000});
 });
 test('no quote and malformed economic record fail closed',async()=>{
