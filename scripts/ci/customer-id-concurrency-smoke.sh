@@ -28,7 +28,7 @@ begin
    values ('00000000-0000-4000-8000-000000000102','SB-444444444444','Second');
   raise exception 'concurrent duplicate public ID unexpectedly accepted';
  exception when unique_violation then
-  if constraint_name is not null then null; end if;
+  null;
  end;
 end $customer_collision$;
 rollback to savepoint customer_id_candidate;
