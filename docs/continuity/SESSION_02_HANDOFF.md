@@ -622,3 +622,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `supabase/migrations/20261021030000_sabora_customer_session_restricted_rpcs.sql` crea dos roles NOLOGIN/NOBYPASSRLS separados (runtime y propietario de funciones), políticas RLS exclusivas para propietario, dos RPC SECURITY DEFINER con search_path fijo, REVOKE PUBLIC/browser/admin y EXECUTE solo para runtime. **No concede LOGIN ni membresía a identidad de conexión**.
 - `scripts/ci/customer-session-versioned-rpc-smoke.sql` verifica RLS/FORCE RLS, ausencia de permisos directos, EXECUTE limitado, verificación y revocación de sesión con SET ROLE runtime, y fallo de lectura directa. Integrado al PostgreSQL 17 desechable en `postgres-migration-smoke.sh`. Commits `a122fbb`, `40c7de3`, `df85b34`.
 - La migración es **candidata no autorizada para producción**: requiere CI verde, revisión independiente, plan de rol de conexión mínimo y adaptación de consultas Node al RPC antes de aplicarse a Supabase operativo. Prohibidos merge y despliegue sin autorización.
+
+## Backend: contrato RPC mínimo (2026-10-21)
+- CI anterior `9bbfe08` SUCCESS: Sabora 39592953282, Bootstrap 39592953290.
+- El verificador Node llama `sabora.verify_customer_session_hash($1::bytea)` y el revocador llama `sabora.revoke_customer_session_hash($1::bytea)`; ya no construyen SELECT/UPDATE directos a tablas. El boundary permite exclusivamente ambas consultas exactas y un parámetro bytea de 32 bytes.
+- Revocación consume una fila con boolean `revoked`, rechaza resultados ambiguos; `apps/api/src/customer-session-rpc-integration.test.mjs` prueba contrato positivo y fail-closed. `package.json` ejecuta el nuevo test. Commits `e13fc92`, `5627020`, `321d600`, `09ceca3`, `6e59f51`.
+- **CI nuevo pendiente**. No hay rol LOGIN/membresía, conexión runtime habilitada ni rutas HTTP montadas. Ningún cambio en Supabase operativo ni VPS.
