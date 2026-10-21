@@ -289,3 +289,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `01ba4ed0`: pruebas de orden de operaciones, precio confiable, contexto ajeno/revocado, agotados, rollback y rechazo de inyección de importes.
 - `d26c96fc`: arquitectura documenta límites y pendiente de implementación.
 - No se ha creado escritor SQL ni permisos, no se ha activado API/HTTP ni se ha tocado Supabase operativo. Siguiente prioridad: `lockContext` real de QR/visita, inserción de cotización con mínimos privilegios y test integrado PostgreSQL 17. Revisar CI del último HEAD.
+
+## Sesión 3 — adaptador INSERT parametrizado de cotizaciones
+- `53b3114c`: `catalog-quote-insert-repository.mjs` parametriza inserción de evidencia en ledger de cotizaciones; valida contexto, importes y caducidad; no abre conexiones ni otorga privilegios.
+- `d4a1d3f4`: pruebas de parámetros SQL, validación previa y respuesta de DB.
+- `b9a9b657`: documentación de arquitectura y límites de confianza.
+- **Pendiente crítico:** `lockContext` realmente autorizado por QR/visita/actor, escritor de mínimos privilegios, integración SQL real y aceptación transaccional. No conectar HTTP ni aplicar a Supabase operativo. Verificar workflows del HEAD.
