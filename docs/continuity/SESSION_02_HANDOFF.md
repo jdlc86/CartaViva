@@ -679,3 +679,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI `f77c154` SUCCESS: Sabora 39598338887, Bootstrap 39598338920.
 - `tests/customer-session-scoped-query-failures.test.mjs` cubre fallos inyectados en BEGIN, SET LOCAL ROLE, RPC, COMMIT, ROLLBACK, pool.connect y cliente inválido; verifica descarte de conexiones y ausencia de filtración del rol transaccional entre dos operaciones. Corrección de assertions escalares `db9f813`.
 - Ninguna ruta HTTP de cliente está montada. No se modifica base operativa ni VPS. CI del HEAD pendiente.
+
+## Validación criptográfica de alta atómica (2026-10-21)
+- Gate previo `521945c` SUCCESS: Sabora CI 39599421294; Bootstrap 39599421428.
+- `customer-registration.mjs` comprueba antes de insertar sesión que el token opaco es canónico y su SHA-256 coincide con `tokenHash`, que las fechas son válidas y `expiresAt > createdAt`. Esto evita guardar una sesión inusable o desacoplada de su secreto aunque falle el emisor interno (`56a6bca`).
+- `tests/customer-registration.test.mjs` usa token determinista de 32 bytes emitido por `issueCustomerSession` y prueba hash incorrecto, token malformado y fechas inválidas; exige rollback atómico y ninguna inserción de sesión (`64feb81`).
+- CI de este HEAD pendiente. No rutas HTTP habilitadas, no despliegue ni alteración de Supabase/VPS/Fleetia.
