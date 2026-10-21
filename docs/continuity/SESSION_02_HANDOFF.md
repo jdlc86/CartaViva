@@ -691,3 +691,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Además del hash SHA-256 y fechas válidas, `customer-registration.mjs` rechaza duración inferior a 60 segundos o superior a 90 días, incluso con un emisor inyectado (`3ef4d63`).
 - `tests/customer-registration.test.mjs` verifica reversión y ausencia de inserción de sesión en ambos extremos (`4962bcf`).
 - CI del HEAD pendiente; no se habilitaron endpoints ni se tocó entorno operativo.
+
+## Endurecimiento de hooks HTTP de cliente (2026-10-21)
+- Gate previo `caf36bf` SUCCESS: Sabora 39613978277 y Bootstrap 39613978219.
+- `customer-http-hooks.mjs` ahora exige que el `customerId` devuelto por verificación tenga formato UUID antes de adjuntarlo a la petición y rechaza orígenes de configuración con ruta, query o fragmento (`42eea8f`).
+- `tests/customer-http-hooks.test.mjs` ajusta fixture UUID y cubre respuestas de identidad malformadas y orígenes inválidos (`fe32862`). No se registra el hook en `server.mjs`; CI de este HEAD pendiente.
+- Ningún despliegue ni cambios en Supabase/VPS/Fleetia.
