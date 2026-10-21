@@ -132,3 +132,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — reconciliación documental de la puerta de catálogo
 - Commit `e8e9ee3c22901fd5fff200052a09baf136a0c638`: actualización aditiva de `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md` para distinguir el «Estado actual» histórico de los componentes y pruebas realmente versionados. Mantiene explícitos los bloqueos de despliegue, conexión y publicación.
 - No se modificó el runtime ni Supabase. Verificar los runs CI de la rama.
+
+## Sesión 3 — pruebas adicionales de precios
+- Commit `8eb0b563005b96f15ed3edd31b4da8b8d049af86`: casos de gratuidad, descuento porcentual completo, redondeo por unidad antes de multiplicar, overflow de importes y entradas inválidas en `tests/catalog-pricing.test.mjs`. `priceCatalogLine` continúa siendo cálculo puro sin endpoint de pedido.
+- `23578d8` y `a07e392`: Sabora CI y Bootstrap SUCCESS. Verificar los nuevos workflows de pruebas económicas.
