@@ -499,3 +499,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Corrección CI generador cliente (2026-10-21)
 - Bootstrap run 39527119830 FAILED: 123/125 tests OK, dos pruebas de rechazo aleatorio fallaron. Se constató que el alfabeto original tenía 32 símbolos, por lo que `LIMIT=256` y ningún byte se rechazaba; los tests suponían rechazo de 255. Corrección: alfabeto de 31 símbolos (excluye Z), límite 248, y pruebas alineadas con bytes 255 descartados. Commits `e6f1b5d`, `6238c76`; `1c4a35b` fue intento intermedio reemplazado. Verificar CI/Bootstrap del HEAD; no declarar verde anticipadamente.
 - Sin aplicación de migraciones ni cambios en Fleetia o VPS.
+
+## Persistencia inicial de perfil (2026-10-21)
+- CI anterior de `3d8dd21` validado: Sabora CI 39527250859 SUCCESS; bootstrap 39527250768 SUCCESS.
+- Migración privada `supabase/migrations/20261021010000_sabora_customer_profiles.sql` (commit `5fd3029`), smoke PostgreSQL 17 (commit `1ff5dbc`) y test de contrato SQL (commit `03985d5`). UUID PK, public_id UNIQUE, alias y empresa opcional, FORCE RLS y cero permisos de cliente. El smoke ahora espera 13 tablas privadas RLS.
+- **No** hay rutas de alta, sesiones, grants, despliegue ni aplicación a Supabase operativo. Comprobar CI del HEAD antes de dar por validado este hito.
