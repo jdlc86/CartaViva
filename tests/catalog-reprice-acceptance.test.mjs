@@ -40,7 +40,7 @@ test('rejects selected modifiers, token manipulation and cross-selection replay'
  const {token}=issue();
  assert.equal(verify(token,{selection:{options:{size:['large']},extras:[]}}),false);
  assert.equal(verify(token,{selection:{options:{size:['large']},extras:['missing']}}),false);
- assert.equal(verify(token.replace(/.$/,'0')),false);
+ assert.equal(verify(token.slice(0,-1)+(token.endsWith('0')?'1':'0')),false);
  assert.equal(verify('garbage'),false);
  assert.equal(verify(null),false);
  assert.equal(verify(token,{nowMs:base.nowMs-601000}),false);
