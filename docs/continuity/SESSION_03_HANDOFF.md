@@ -247,3 +247,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `d95cbbc5`: contrato de arquitectura actualizado. **No** hay escritor real ni despliegue.
 
 - Corrección posterior `b07298e6`: reparado completamente el CHECK SQL de `request_key` (edición por índices, sin sustitución con `$` interpretado por JavaScript). Los runs intermedios fallaron al parsear la migración; verificar los workflows del HEAD tras esta corrección.
+
+- Corrección `de0e12fb`: se detectaron **varios bloques SQL duplicados después del primer COMMIT** en la migración candidata, originados por sustituciones de cadenas con el metacarácter `$`. Se eliminó toda la cola duplicada y se verificó que quedara un único COMMIT y ambas FK compuestas.
+- Corrección `2e34182f`: la prueba negativa de artículo/visita usaba un pedido de otra mesa y disparaba antes la FK de pedido. Se añadió un segundo pedido de la mesa correcta para aislar el rechazo exacto de la FK de cotización. CI pendiente de confirmar.
+- Regla de edición: al modificar SQL por GitHub usar cortes por índices o `replace(...,()=>replacement)`, verificar longitud, número de COMMIT y ausencia de colas duplicadas antes de commit.
