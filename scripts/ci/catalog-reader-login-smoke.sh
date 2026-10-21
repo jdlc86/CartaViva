@@ -49,6 +49,20 @@ BEGIN
   RAISE EXCEPTION 'catalog reader gained direct table privileges';
  END IF;
 END $deny$;
+-- Verify SQL privilege denial by actually issuing table queries, not just ACL metadata.
+DO $catalog_table_denials$
+BEGIN
+ BEGIN
+  PERFORM count(*) FROM sabora.catalog_items;
+  RAISE EXCEPTION 'catalog reader selected catalog table directly';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ BEGIN
+  UPDATE sabora.catalog_items SET sold_out=true WHERE false;
+  RAISE EXCEPTION 'catalog reader updated catalog table directly';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+END $catalog_table_denials$;
 -- Confirm the activated reader role cannot reach private customer or staff tables.
 DO $private_denials$
 BEGIN
