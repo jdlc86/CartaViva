@@ -5,7 +5,14 @@ export function priceCatalogLine({basePriceCents,extras=[],quantity=1,discount=n
     !Number.isSafeInteger(quantity)||quantity<1||quantity>20||
     !Array.isArray(extras)||extras.length>50||
     extras.some(v=>!Number.isSafeInteger(v)||v<0))throw Error('invalid_catalog_price');
- const extrasCents=extras.reduce((sum,v)=>sum+v,0);
+ // Reject overflow during accumulation rather than relying on the final sum.
+ // This keeps every intermediate monetary amount inside safe integer cents.
+ let extrasCents=0;
+ for(const extra of extras){
+  if(extra>Number.MAX_SAFE_INTEGER-extrasCents)throw Error('invalid_catalog_price');
+  extrasCents+=extra;
+ }
+ if(basePriceCents>Number.MAX_SAFE_INTEGER-extrasCents)throw Error('invalid_catalog_price');
  const unitSubtotal=basePriceCents+extrasCents;
  if(!Number.isSafeInteger(unitSubtotal))throw Error('invalid_catalog_price');
  let unitDiscount=0;
