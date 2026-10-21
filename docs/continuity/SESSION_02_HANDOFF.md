@@ -719,3 +719,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se restaura alias/empresa desde preferencias locales tras validación de JSON, tipos, longitudes y caracteres de control; botón «Continuar como …». No supone autenticación ni recuperación passkey.
 - Corrección del patrón de caracteres de control en `7ba52bd`. Se detectó trabajo concurrente en la rama y se preservaron los cambios actuales mediante lectura de SHA.
 - CI pendiente; sin rutas públicas ni cambios operativos.
+
+## Navegación de categorías en PWA Cliente (2026-10-21)
+- CI de `cd457cd` SUCCESS: Sabora 39617042610; Bootstrap 39617042646.
+- `apps/client/src/main.tsx` incorpora filtros de categoría virtual «Todos» y Bebidas/Primeros/Segundos/Postres con `aria-pressed`, y estados vacíos explícitos, sin inventar platos ni habilitar pedidos (`bffcf76`). `style.css` incorpora diseño responsive de los filtros (`c0c6796`).
+- Se corrige la expresión de validación de caracteres de control de las preferencias locales. El catálogo publicado sigue sin conexión al backend; no hay datos de ejemplo presentados como reales.
+- CI de este HEAD pendiente; sin despliegue ni cambios en Supabase operativo/VPS/Fleetia.
