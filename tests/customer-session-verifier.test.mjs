@@ -14,9 +14,7 @@ test('session verification uses parameterized hash and enforces validity in SQL'
  }});
  assert.deepEqual(await verify(token),{customerId:customer.customer_id,publicId:customer.public_id,alias:'Ana',company:null});
  assert.equal(seen.sql,SESSION_LOOKUP_SQL);
- assert.match(seen.sql,/s\.revoked_at IS NULL/);
- assert.match(seen.sql,/s\.expires_at > now\(\)/);
- assert.match(seen.sql,/s\.token_hash = \$1/);
+ assert.match(seen.sql,/sabora\.verify_customer_session_hash\(\$1::bytea\)/);
  assert.equal(seen.params.length,1);
  assert.equal(seen.params[0].length,32);
  assert.notEqual(seen.params[0].toString('utf8'),token);
