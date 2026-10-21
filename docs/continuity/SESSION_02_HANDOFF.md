@@ -474,3 +474,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI y bootstrap del commit `806d6c6` SUCCESS; CI y bootstrap de `f09367d` aún en progreso al consultar.
 - Commit `629e94d`: matriz administrativa cotejada con `20261020140000_sabora_order_core.sql`. Se confirma singleton booleano PK con CHECK true, `name` NOT NULL y CHECK 1..160 caracteres tras btrim, `created_at`, RLS ENABLE+FORCE. El singleton puede no existir; no se presume política RLS permisiva ni auditoría lista.
 - Sin grants, LOGIN, rutas, despliegue ni aplicación de migraciones en entornos operativos. Próxima fase: pruebas de invariantes de singleton y denegación por rol restringido en PostgreSQL 17 desechable.
+
+## Identidad del cliente: decisión de producto (2026-10-21)
+- Se actualiza `docs/REQUISITOS_FUNCIONALES.md`: campos visibles alias/nick, número ID y empresa opcional; no solicitar por defecto identificadores ni credenciales corporativas, DNI o correo empresarial. El número ID se plantea como identificador de Sabora, no número de empleado laboral. El perfil debe persistir entre visitas sin volver a introducir los datos.
+- Pendiente definir unicidad, emisión/recuperación del ID, autenticación verificable y protección contra suplantación; la persistencia local no equivale a autenticación. El QR continúa identificando la mesa, no a la persona.
+- La implementación SQL actual de `confirm_order` sigue exigiendo `company` y `employee_number`; existe una **brecha contractual** que deberá resolverse mediante migración/versionado y pruebas antes de habilitar pedidos. No se cambió SQL operativo ni se desplegó.
