@@ -35,6 +35,8 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-staff-transition-smoke.sql
 # Exercise two competing DB sessions and assert only the first request survives.
 bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
+# Assert table close serializes with in-flight order authorization.
+bash scripts/ci/catalog-table-close-order-lock-smoke.sh "$container"
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
 # against the freshly migrated, network-isolated PostgreSQL instance.
 node scripts/ci/catalog-economic-parity.mjs |
