@@ -19,7 +19,7 @@ function App(){
    if(typeof candidate.alias!=='string' || typeof candidate.company!=='string')return {alias:'',company:''};
    const alias=candidate.alias.trim(),company=candidate.company.trim();
    if(!alias || [...alias].length>80 || [...company].length>160 ||
-      /[\\u0000-\\u001f\\u007f]/u.test(alias+company))return {alias:'',company:''};
+      /[\u005cu0000-\u005cu001f\u005cu007f]/u.test(alias+company))return {alias:'',company:''};
    return {alias,company};
   }catch{return {alias:'',company:''};}
  });
@@ -28,7 +28,7 @@ function App(){
   event.preventDefault();
   const alias=customer.alias.trim();
   const company=customer.company.trim();
-  if(!alias || [...alias].length>80 || [...company].length>160 || /[\\u0000-\\u001f\\u007f]/u.test(alias+company)){
+  if(!alias || [...alias].length>80 || [...company].length>160 || /[\u005cu0000-\u005cu001f\u005cu007f]/u.test(alias+company)){
    setMessage('Introduce un alias válido de hasta 80 caracteres.');
    return;
   }
