@@ -812,3 +812,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `be536e2` añade validador puro de variables `SABORA_CATALOG_DB_*` para identidad dedicada exacta `sabora_catalog_login`, TLS con CA, puerto válido y pool pequeño; no abre conexiones ni provisiona secretos.
 - `256bb4e` añade pruebas de configuración positiva y rechazos de identidades/puertos/TLS inválidos.
 - El login NOINHERIT y su membresía SET ROLE aún no se han provisionado; la migración SQL no crea login. Sin endpoint HTTP, conexión activa ni despliegue. CI nuevo pendiente; CI de `5c11d22` estaba en progreso al consultar (Sabora 39642945408, Bootstrap 39642945533).
+
+## Catálogo cliente: pruebas de consumo y validación cruzada (2026-10-21)
+- `b6e720e`: prueba el consumidor TS real mediante transpile TypeScript: GET mismo origen, sin credenciales, no-store, redirect:error, validación y errores controlados.
+- `e014592`: alinea la proyección API con la validación del cliente para nombres/alérgenos (longitud Unicode y rechazo de caracteres de control).
+- La PWA carga catálogo al entrar en menú, pero la ruta HTTP permanece opt-in sin registro en servidor; no se han provisionado credenciales ni ejecutado migraciones en Supabase operativo. CI nuevo pendiente.
