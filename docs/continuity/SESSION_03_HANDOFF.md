@@ -233,3 +233,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `9414db30`: tests de `previous` falsificado, registro anterior inexistente y cambio de revisión almacenada. El CI intermedio de `83f63a3d` falló porque los tests antiguos aún esperaban el contrato anterior; verificar CI del HEAD actualizado.
 - `0492272a`: documentación de arquitectura y advertencia explícita: sin repositorio PostgreSQL real que guarde y bloquee cotizaciones mostradas no se puede activar pedidos.
 - Prohibido desplegar, mezclar o tocar Supabase/Fleetia/VPS sin autorización.
+
+## Sesión 3 — almacenamiento económico candidato en PostgreSQL
+- `0848651e`, `f5c161c6`: migración privada `20261021220000_sabora_catalog_quote_ledger_candidate.sql`, con cotizaciones mostradas y confirmaciones idempotentes, FK compuesta por visita/cesta/actor, checks económicos y RLS forzado.
+- `8bc47f4a`: CI PostgreSQL 17 desechable valida 17 tablas RLS, unicidad, FK y ausencia de grants en roles de runtime. Verificar resultado final.
+- `fc9f34de`: contrato de arquitectura. No hay escritor, rutas, permisos ni integración con el coordinador. Sin despliegue ni cambios a Supabase operativo o VPS.
