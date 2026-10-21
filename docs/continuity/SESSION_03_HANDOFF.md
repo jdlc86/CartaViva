@@ -163,3 +163,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — contrato de implementación económica
 - Commit `4ef5371cddbfe6016787786eeb03c4a5b647570d`: nuevo `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md`. Define puertas de implementación para DTO versionado, validación de extras/opciones/descuentos, publicación con revisión esperada, selección cotizada en servidor, recálculo y aceptación explícita, snapshots inmutables y pruebas aisladas. Es diseño no operativo derivado del contrato funcional, no funcionalidad implementada.
 - No relajar la validación SQL ni la proyección pública hasta que se implemente y pruebe el contrato completo.
+
+## Sesión 3 — validador candidato de modificadores económicos
+- Commits `747d6839d08ad8158d6c442a0edb743607f211fa` y `93bb7373f62ffee00bb71f817e2f0bab57626799`: `apps/api/src/catalog-economic-modifiers.mjs` y pruebas puras. Contrato **candidato** explícito para opciones con valores, extras, disponibilidad, alérgenos y descuentos fijos/porcentuales. Rechaza duplicados, importes inválidos, límites excesivos y claves inesperadas.
+- **No conectado** a `publish_catalog_item`, proyección pública, endpoints ni pedidos. El SQL vigente continúa rechazando extras/opciones no vacíos y descuentos no nulos. Antes de integrar, revisar compatibilidad del contrato candidato con el funcional, establecer IDs persistentes, versión JSON y validación PostgreSQL equivalente.
+- Codex se reserva para auditoría posterior. Verificar CI de HEAD.
