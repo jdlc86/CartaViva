@@ -3,6 +3,8 @@ import {createRoot} from 'react-dom/client';
 import './style.css';
 
 type Screen = 'welcome' | 'identity' | 'menu';
+type Category = 'Todos' | 'Bebidas' | 'Primeros' | 'Segundos' | 'Postres';
+const categories:Category[]=['Todos','Bebidas','Primeros','Segundos','Postres'];
 type Customer = {alias:string; company:string};
 const storageKey='sabora.customer.display-preferences.v1';
 // This is a local-only UI prototype. No customer credentials, IDs or
@@ -19,16 +21,17 @@ function App(){
    if(typeof candidate.alias!=='string' || typeof candidate.company!=='string')return {alias:'',company:''};
    const alias=candidate.alias.trim(),company=candidate.company.trim();
    if(!alias || [...alias].length>80 || [...company].length>160 ||
-      /[\u005cu0000-\u005cu001f\u005cu007f]/u.test(alias+company))return {alias:'',company:''};
+      /[\x00-\x1f\x7f]/u.test(alias+company))return {alias:'',company:''};
    return {alias,company};
   }catch{return {alias:'',company:''};}
  });
  const [message,setMessage]=useState('');
+ const [category,setCategory]=useState<Category>('Todos');
  function savePreferences(event:React.FormEvent){
   event.preventDefault();
   const alias=customer.alias.trim();
   const company=customer.company.trim();
-  if(!alias || [...alias].length>80 || [...company].length>160 || /[\u005cu0000-\u005cu001f\u005cu007f]/u.test(alias+company)){
+  if(!alias || [...alias].length>80 || [...company].length>160 || /[\x00-\x1f\x7f]/u.test(alias+company)){
    setMessage('Introduce un alias válido de hasta 80 caracteres.');
    return;
   }
@@ -67,7 +70,8 @@ function App(){
     <span className="eyebrow">EXPERIENCIA SABORA</span>
     <h1>Hola, {customer.alias}.</h1>
     <p>Tu alias está listo en este dispositivo. Aún no has creado una cuenta ni iniciado sesión.</p>
-    <div className="placeholder-card"><span className="placeholder-icon" aria-hidden="true">◈</span><h2>La carta estará disponible pronto</h2><p>Estamos preparando el catálogo, el acceso mediante QR y los pedidos por mesa.</p><span className="status-tag">Vista de preparación · sin pedidos reales</span></div>
+    <nav className="category-nav" aria-label="Categorías de la carta">{categories.map(item=><button key={item} type="button" aria-pressed={category===item} className={category===item?'category-chip active':'category-chip'} onClick={()=>setCategory(item)}>{item}</button>)}</nav>
+    <div className="placeholder-card" role="status"><span className="placeholder-icon" aria-hidden="true">◈</span><h2>Sin productos disponibles</h2><p>{category==='Todos'?'La carta todavía no está conectada al catálogo publicado del restaurante.':`Todavía no hay productos publicados para la categoría ${category.toLowerCase()}.`}</p><span className="status-tag">Sin catálogo conectado · no se pueden realizar pedidos</span></div>
     <button className="text-button" onClick={()=>{setMessage('');setScreen('identity');}}>Editar mis preferencias</button>
    </section>}
   </main>
