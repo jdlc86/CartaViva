@@ -25,3 +25,8 @@ Las migraciones candidatas `20261021180000_sabora_catalog_publication_foundation
 - Migración `20261021200000_sabora_catalog_reader.sql`: rol técnico NOLOGIN `sabora_catalog_reader`, propietario mínimo `sabora_catalog_fn_owner`, política RLS de filas publicadas no retiradas y RPC `read_published_catalog()` con límite 500. El lector no recibe SELECT directo sobre borradores.
 - La función solo devuelve `id`, `published_snapshot` y `sold_out`; no expone `draft`, datos personales ni columnas administrativas. `anon`, `authenticated` y `sabora_admin_writer` carecen de EXECUTE.
 - Smoke PostgreSQL desechable amplía comprobaciones de permisos, agotados visibles y retirados invisibles. **CI pendiente**, sin conexión API ni credenciales de ejecución ni aplicación a Supabase operativo.
+
+## Ruta HTTP opt-in, sin montaje operativo
+- `apps/api/src/catalog-http-route.mjs` registra `GET /api/v1/catalog` **solo cuando se invoca explícitamente** `registerCatalogHttpRoute(app,{query})`; `server.mjs` no la importa ni registra. Requiere consulta inyectada desde el pool mínimo.
+- Respuesta: array de elementos públicos; cabeceras `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`; fallos de DB devuelven `503 catalog_unavailable` sin detalles internos. Pruebas aisladas en `tests/catalog-http-route.test.mjs`.
+- Pendiente: aprovisionar login y membresía NOINHERIT auditados, probar permisos efectivos del login, instalar dependencia DB según arquitectura aprobada, integrar el servidor y PWA Cliente, confirmar CI y seguridad antes de cualquier despliegue.
