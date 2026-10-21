@@ -295,3 +295,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `d4a1d3f4`: pruebas de parámetros SQL, validación previa y respuesta de DB.
 - `b9a9b657`: documentación de arquitectura y límites de confianza.
 - **Pendiente crítico:** `lockContext` realmente autorizado por QR/visita/actor, escritor de mínimos privilegios, integración SQL real y aceptación transaccional. No conectar HTTP ni aplicar a Supabase operativo. Verificar workflows del HEAD.
+
+## Sesión 3 — verificación candidata QR/mesa/sesión
+- `e0ed12ad`: `catalog-table-qr-verifier.mjs` usa SQL parametrizado y bloqueo `FOR SHARE` para comparar hash SHA-256 del QR con mesa/sesión. No es un `lockContext` de visita.
+- `5b407b1d`: tests de token rotado, sesión errónea, entradas inválidas y resultados contradictorios.
+- `40bcd2fd`: contrato de arquitectura actualizado. No interpretar la posesión del QR como autorización de identidad, visita o cesta. Siguiente paso: modelo durable de visita + identidad y escritor mínimo con integración PostgreSQL 17.
+- Sin conexión operativa, merge ni despliegue.
