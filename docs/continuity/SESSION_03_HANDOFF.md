@@ -269,3 +269,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `49b2accb`: pruebas SQL negativas TRUNCATE en ambas tablas.
 - `a750e339`: gate CI comprueba cuatro triggers habilitados.
 - `6948b2a7`: documentación de arquitectura. Verificar workflows de HEAD. Sin escritor, sin HTTP, sin Supabase operativo, sin despliegue ni merge.
+
+## Sesión 3 — adaptador SQL de lectura y vinculación de cotización
+- `0a2f762c`: adaptador `catalog-confirmation-read-repository.mjs` con lecturas parametrizadas y bloqueadas de replay, catálogo y cotización no caducada; no abre conexiones ni instala permisos.
+- `22f19003`: pruebas de aislamiento de contexto, bloqueos, revisión, expiración y fallo cerrado ante datos inconsistentes.
+- `b84cb50f`, `5abb09f0`: el coordinador exige `quoteId` confiable y lo entrega al escritor; tests de rechazo si falta.
+- `4b22e1fb`: documentación de arquitectura. PENDIENTE: verificar correspondencia entre selección/cantidad mostradas y confirmadas, autorización real QR/visita, escritor transaccional restringido, aceptación explícita durable y pruebas de integración. No conectar rutas HTTP.
