@@ -59,6 +59,9 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     context,itemId:input.itemId,basketId:input.basketId,actorId:input.actorId
    });
    if(!plain(previous))throw Error('order_previous_quote_unavailable');
+   // A durable writer must bind its confirmation to the exact locked quote.
+   if(typeof previous.quoteId!=='string'||!previous.quoteId)
+    throw Error('order_previous_quote_unavailable');
    const nowMs=clock();
    if(!Number.isSafeInteger(nowMs)||nowMs<0)throw Error('invalid_confirmation_clock');
    const decision=decideCatalogLineConfirmation({
@@ -72,7 +75,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     return Object.freeze({status:'acceptance_required',decision});
    }
    const result=await repository.persist(query,{
-    context,requestKey,requestFingerprint,evidence:decision.evidence,
+    context,requestKey,requestFingerprint,quoteId:previous.quoteId,
+    evidence:decision.evidence,
     acceptanceVerified:decision.acceptanceVerified,
     requiresAcceptance:decision.requiresAcceptance
    });
