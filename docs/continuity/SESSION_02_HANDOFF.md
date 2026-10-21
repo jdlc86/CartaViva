@@ -709,3 +709,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/client/src/style.css` añade diseño móvil/escritorio, contraste, focus visible y soporte reduced motion (`ae05b79`).
 - **Alcance deliberadamente limitado:** solo preferencias de presentación en localStorage; no se guardan credenciales, UUID, tokens ni se simula registro autenticado. La interfaz avisa explícitamente que no hay cuenta, sesión, carta ni pedidos reales. Persistencia de identidad auténtica y passkeys requieren API y cookies HttpOnly pendientes.
 - CI del HEAD pendiente; no rutas HTTP públicas, despliegue, migración operativa ni intervención en Fleetia/VPS.
+
+## Retorno a PWA Cliente sin repetir alias (2026-10-21)
+- `apps/client/src/main.tsx` restaura las preferencias locales de alias y empresa al reabrir la PWA; valida tamaño, tipos, longitud y caracteres de control antes de usarlas. Si hay alias válido, la bienvenida ofrece continuar con él, sin solicitar de nuevo los datos (`0e8d676`).
+- Esta persistencia es **solo de presentación**, no sesión autenticada ni recuperación entre dispositivos. No almacenar tokens o credenciales en localStorage. La persistencia segura se resolverá mediante cookie HttpOnly y passkey cuando exista backend conectado.
+- CI del HEAD pendiente; ninguna ruta de cliente habilitada ni despliegue realizado.
