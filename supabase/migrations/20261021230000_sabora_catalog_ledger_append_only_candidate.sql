@@ -19,4 +19,11 @@ CREATE TRIGGER catalog_displayed_quotes_append_only
 CREATE TRIGGER catalog_confirmation_attempts_append_only
  BEFORE UPDATE OR DELETE ON sabora.catalog_confirmation_attempts
  FOR EACH ROW EXECUTE FUNCTION sabora.reject_catalog_ledger_mutation();
+-- TRUNCATE does not fire row-level DELETE triggers. Protect this path too.
+CREATE TRIGGER catalog_displayed_quotes_no_truncate
+ BEFORE TRUNCATE ON sabora.catalog_displayed_quotes
+ FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_catalog_ledger_mutation();
+CREATE TRIGGER catalog_confirmation_attempts_no_truncate
+ BEFORE TRUNCATE ON sabora.catalog_confirmation_attempts
+ FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_catalog_ledger_mutation();
 COMMIT;
