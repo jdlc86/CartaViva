@@ -24,7 +24,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>12 then raise exception 'Expected twelve RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>13 then raise exception 'Expected thirteen RLS protected single-restaurant tables, got %',v_count; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
  end if;
@@ -50,6 +50,45 @@ begin
   end if;
  end loop;
 end $$;
+-- Customer IDs are unique and profiles remain private even if the public label is known.
+do $customer_profiles$
+declare v_customer uuid;
+begin
+ insert into sabora.customer_profiles(public_id,alias,company)
+ values ('SB-222222222222','Ana',null) returning id into v_customer;
+ if v_customer is null then raise exception 'customer UUID missing'; end if;
+ begin
+  insert into sabora.customer_profiles(public_id,alias)
+  values ('SB-222222222222','Otra');
+  raise exception 'duplicate customer public ID accepted';
+ exception when unique_violation then null;
+ end;
+ begin
+  insert into sabora.customer_profiles(public_id,alias)
+  values ('SB-INVALID','Otra');
+  raise exception 'malformed public ID accepted';
+ exception when check_violation then null;
+ end;
+ begin
+  insert into sabora.customer_profiles(public_id,alias)
+  values ('SB-333333333333','   ');
+  raise exception 'blank alias accepted';
+ exception when check_violation then null;
+ end;
+end;
+$customer_profiles$;
+set role anon;
+do $customer_anon_denial$
+begin
+ begin
+  perform count(*) from sabora.customer_profiles;
+  raise exception 'anon read customer profiles';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$customer_anon_denial$;
+reset role;
+
 -- Ownership persistence and audit are private, append-only and reject invalid rows.
 do $ownership_schema$
 declare v_admin uuid := '00000000-0000-0000-0000-000000000902';
