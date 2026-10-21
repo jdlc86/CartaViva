@@ -516,3 +516,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `scripts/ci/customer-id-concurrency-smoke.sh` ejecuta dos sesiones psql independientes en el contenedor PostgreSQL 17 desechable. La primera retiene el ID visible durante 2 s; la segunda intenta duplicarlo, debe recibir unique_violation, recuperarse y registrar otro ID. Verificación final: dos perfiles y un solo registro con el primer ID.
 - El smoke se invoca desde `scripts/ci/postgres-migration-smoke.sh`. Commits `ab8cdc5`, `b8c1395`, `e681133`. Comprobar Actions del HEAD; no se ha ejecutado contra Supabase operativo.
 - Aún no hay autenticación de clientes, sesiones, rutas públicas ni despliegues; Fleetia aislado.
+
+## Fundamento de sesiones persistentes (2026-10-21)
+- CI anterior de `9fb563c`: Sabora CI 39584644082 SUCCESS; bootstrap 39584644023 SUCCESS.
+- Migración `20261021020000_sabora_customer_sessions.sql` (commit `4317605`): tabla privada de sesiones con hash UNIQUE, FK cliente, vencimiento/revocación, FORCE RLS, sin grants. `apps/api/src/customer-session.mjs` (commit `d6aed94`) emite secretos aleatorios y hashes SHA-256; tests `9bd256b`, smoke PostgreSQL `b898744`, build `2c4530f`.
+- Aún faltan verificación/revocación en consultas SQL, alta perfil+sesión atómica, cookies seguras, passkey, API y autorización del historial. No se aplica a Supabase operativo ni VPS. Verificar CI del HEAD.
