@@ -802,3 +802,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `40f24f4` añade adaptador puro `apps/api/src/catalog-reader-query.mjs` que consulta exclusivamente `sabora.read_published_catalog()` mediante función de consulta inyectada y proyecta campos seguros. No se monta en Fastify ni se crea conexión con privilegios amplios.
 - `f27c3c2` añade pruebas de SQL constante, proyección y fallo cerrado ante cliente/resultado ausente o fallo de DB.
 - CI del nuevo HEAD pendiente. Sin Supabase operativo, VPS, Fleetia ni merge.
+
+## Catalog scoped SQL runtime candidate (2026-10-21)
+- `84b9d86`: `apps/api/src/catalog-scoped-query.mjs` usa un pool inyectado, lista blanca SQL y transacción con `SET LOCAL ROLE sabora_catalog_reader`; descarta conexiones tras error.
+- `2101ff2`: comparte el SQL constante con el adaptador de lectura; `940bfdc` prueba orden de transacción, rechazo SQL arbitrario y descarte de conexión fallida.
+- No hay LOGIN ni membresía provisionados, no hay credenciales ni HTTP, no se usa Supabase operativo. Debe revisarse la identidad de conexión NOINHERIT y la seguridad de role switching antes de montar la ruta. CI del nuevo HEAD pendiente.
