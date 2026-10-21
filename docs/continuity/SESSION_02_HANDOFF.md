@@ -790,3 +790,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `42c7ee0`: validador SQL de snapshot rechaza claves JSON no reconocidas; evita publicar silenciosamente impuestos u otras reglas económicas sin cálculo y revisión de contrato.
 - `2f6f074`: regresión SQL para campo desconocido `taxRate`.
 - CI anterior de `7910f91` estaba en progreso (Sabora 39639894668, Bootstrap 39639894672) al consultar. Nuevas pruebas pendientes. Sigue sin haber API pública, rol escritor autorizado, despliegue ni cambios en Supabase operativo o Fleetia.
+
+## Motor puro de precios (2026-10-21)
+- `7090912`: `apps/api/src/catalog-pricing.mjs` calcula importes en céntimos enteros; descuento porcentual en puntos básicos (10000 = 100 %) o fijo, aplicado a plato más extras, sin totales negativos, con cantidad y redondeo explícito.
+- `cc965d9`: `tests/catalog-pricing.test.mjs` comprueba descuento sobre extras, límite a cero, redondeo e invalidaciones. Se ejecuta mediante el glob existente `tests/*.test.mjs`.
+- **No está integrado** con publicación SQL, cesta, impuestos ni pagos; no se autoriza publicar descuentos hasta validar contrato JSON, pertenencia y límites de extras, impuestos y permisos. CI del nuevo HEAD pendiente. CI de `edfcc13` en progreso al revisar (Sabora 39640291137, Bootstrap 39640291129).
+- Sin despliegue ni modificaciones a Supabase operativo o Fleetia.
