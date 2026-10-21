@@ -822,3 +822,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `74cd20a` añade smoke de login NOINHERIT real exclusivamente dentro de PostgreSQL Docker desechable, sin credenciales operativas. Verifica ausencia de SELECT directo y de EXECUTE heredado; `SET LOCAL ROLE` permite RPC solo en transacción y se revierte tras COMMIT.
 - `ee47af6` incorpora smoke al pipeline PostgreSQL de CI.
 - No habilitar endpoint ni provisionar login en Supabase operativo sin validación completa del gate y autorización específica. CI del nuevo HEAD pendiente.
+
+## Corrección smoke catálogo (2026-10-21)
+- Runs 39644807586 y 39644807603 FAILED en `catalog-reader-login-smoke.sh`: comprobación de `has_table_privilege` falló con `permission denied for schema sabora` antes de evaluar los permisos. Los errores anteriores `admin_ownership_audit_action_check` y `stale_owner` aparecen en pruebas negativas deliberadas; el fallo terminal fue de esquema.
+- `7dd8c0f`: solo en el PostgreSQL desechable se concede `USAGE ON SCHEMA sabora` al login de prueba para resolver los nombres; **no** SELECT directo ni EXECUTE del RPC. Se mantiene NOINHERIT y SET LOCAL ROLE. CI nuevo pendiente.
