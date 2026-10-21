@@ -2,13 +2,7 @@ import { hashCustomerSessionToken } from './customer-session.mjs';
 
 // Backend-only verification. Caller must provide a restricted backend query
 // capability; no browser role can query sabora.customer_sessions.
-const SESSION_LOOKUP_SQL = `SELECT s.customer_id, p.public_id, p.alias, p.company
-FROM sabora.customer_sessions AS s
-JOIN sabora.customer_profiles AS p ON p.id = s.customer_id
-WHERE s.token_hash = $1
-  AND s.revoked_at IS NULL
-  AND s.expires_at > now()
-LIMIT 1`;
+const SESSION_LOOKUP_SQL = `SELECT customer_id, public_id, alias, company FROM sabora.verify_customer_session_hash($1::bytea)`;
 
 export function createCustomerSessionVerifier({ query } = {}) {
   if (typeof query !== 'function') throw Error('invalid_customer_session_query');
