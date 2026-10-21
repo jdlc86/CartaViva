@@ -5,6 +5,8 @@ container="${1:?PostgreSQL container required}"
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 CREATE ROLE sabora_catalog_login LOGIN NOINHERIT NOBYPASSRLS PASSWORD 'ci-only-catalog-password';
 GRANT sabora_catalog_reader TO sabora_catalog_login;
+-- Schema name resolution only; NO table SELECT or function EXECUTE is granted.
+GRANT USAGE ON SCHEMA sabora TO sabora_catalog_login;
 SQL
 # Verify the login has no direct access before SET LOCAL ROLE.
 docker exec -e PGPASSWORD=ci-only-catalog-password -i "$container" \
