@@ -2,12 +2,7 @@ import { SESSION_LOOKUP_SQL } from './customer-session-verifier.mjs';
 
 // This is a query-level boundary, NOT a substitute for a least-privilege
 // PostgreSQL role. Its pool must never be reachable from the browser.
-export const SESSION_REVOKE_SQL = `UPDATE sabora.customer_sessions
-       SET revoked_at = now()
-       WHERE token_hash = $1
-         AND revoked_at IS NULL
-         AND expires_at > now()
-       RETURNING id`;
+export const SESSION_REVOKE_SQL = `SELECT sabora.revoke_customer_session_hash($1::bytea) AS revoked`;
 
 export function createCustomerSessionQueryBoundary({ pool } = {}) {
   if (!pool || typeof pool.query !== 'function') throw Error('invalid_customer_session_pool');
