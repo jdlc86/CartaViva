@@ -123,3 +123,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `7034dc4`: Sabora CI y Bootstrap SUCCESS, validando corrección del adaptador RPC; `95c8ad5`: Bootstrap SUCCESS y Sabora CI pendiente al comenzar.
 - Commits `10ba9106bad1cb52317062e60e95cf6932892741` y `c2b2b5ceba9346c47b243c3166be6d7d02de780c`: PWA Gestión con navegación accesible y responsive entre Resumen, Carta, Mesas/QR, Comandas y Equipo. Muestra requisitos de activación por área, no datos ficticios ni acciones de escritura.
 - **No es un panel administrativo funcional**: no existe login ni llamadas a API en esta interfaz; acceso y operaciones permanecen expresamente inhabilitados. Revisar CI/build de Gestión tras el cambio.
+
+## Sesión 3 — gate de interfaz Gestión no operativa
+- Commit `23578d8ed808169ee3a3011550fa5ff34d371aae`: `tests/management-scaffold.test.mjs` valida cinco áreas, aviso explícito de no operatividad, accesibilidad de navegación y ausencia de llamadas HTTP, WebSocket, almacenamiento de sesión y formularios de escritura en la maqueta.
+- Sabora CI SUCCESS en `10ba910` y `c2b2b5c`; Bootstrap SUCCESS en `10ba910`. Bootstrap de `c2b2b5c` seguía en curso al iniciar.
+- Esta regresión es una barrera estática de alcance limitado, no reemplaza pruebas de autorización del backend. Comprobar CI de HEAD antes de avanzar.
