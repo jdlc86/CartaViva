@@ -685,3 +685,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `customer-registration.mjs` comprueba antes de insertar sesión que el token opaco es canónico y su SHA-256 coincide con `tokenHash`, que las fechas son válidas y `expiresAt > createdAt`. Esto evita guardar una sesión inusable o desacoplada de su secreto aunque falle el emisor interno (`56a6bca`).
 - `tests/customer-registration.test.mjs` usa token determinista de 32 bytes emitido por `issueCustomerSession` y prueba hash incorrecto, token malformado y fechas inválidas; exige rollback atómico y ninguna inserción de sesión (`64feb81`).
 - CI de este HEAD pendiente. No rutas HTTP habilitadas, no despliegue ni alteración de Supabase/VPS/Fleetia.
+
+## Límite de duración de sesión en persistencia (2026-10-21)
+- CI `9f2448b` SUCCESS: Sabora 39610990050 y Bootstrap 39610989900.
+- Además del hash SHA-256 y fechas válidas, `customer-registration.mjs` rechaza duración inferior a 60 segundos o superior a 90 días, incluso con un emisor inyectado (`3ef4d63`).
+- `tests/customer-registration.test.mjs` verifica reversión y ausencia de inserción de sesión en ambos extremos (`4962bcf`).
+- CI del HEAD pendiente; no se habilitaron endpoints ni se tocó entorno operativo.
