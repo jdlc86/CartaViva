@@ -148,5 +148,24 @@ BEGIN
    RAISE EXCEPTION 'unexpected confirmation delete error %',v_constraint;
   END IF;
  END;
+ -- TRUNCATE is a distinct SQL command and does not fire DELETE triggers.
+ BEGIN
+  TRUNCATE sabora.catalog_displayed_quotes CASCADE;
+  RAISE EXCEPTION 'displayed quote truncate accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected quote truncate error %',v_constraint;
+  END IF;
+ END;
+ BEGIN
+  TRUNCATE sabora.catalog_confirmation_attempts;
+  RAISE EXCEPTION 'confirmation truncate accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected confirmation truncate error %',v_constraint;
+  END IF;
+ END;
 END $ledger$;
 ROLLBACK;
