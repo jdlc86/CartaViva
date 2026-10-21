@@ -60,3 +60,46 @@ test('catalog loader accepts an empty published menu',async()=>{
  const state=await loadPublishedCatalog(async()=>({ok:true,json:async()=>[]}));
  assert.deepEqual(state,{status:'ready',items:[]});
 });
+
+test('client consumes API HTTP response and rejects private database fields',async()=>{
+ const {registerCatalogHttpRoute}=await import('../apps/api/src/catalog-http-route.mjs');
+ const {createCatalogScopedQuery}=await import('../apps/api/src/catalog-scoped-query.mjs');
+ const {createCatalogReaderSql}=await import('../apps/api/src/catalog-reader-query.mjs');
+ const events=[];
+ let handler;
+ const app={get:(path,fn)=>{assert.equal(path,'/api/v1/catalog');handler=fn;}};
+ const pool={connect:async()=>({
+  query:async sql=>{
+   events.push(sql);
+   if(sql===createCatalogReaderSql())return {rows:[{
+    id:valid.id,published_snapshot:{name:'Agua',category:'Bebidas',priceCents:150,allergens:[]},
+    sold_out:true,draft:{privateNote:'hidden-secret'}
+   }]};
+   return {rows:[]};
+  },
+  release:discard=>events.push(discard?'discard':'release')
+ })};
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool})});
+ const state=await loadPublishedCatalog(async(url,options)=>{
+  assert.equal(url,'/api/v1/catalog');
+  assert.equal(options.credentials,'omit');
+  const reply={header:()=>reply,code:status=>{reply.status=status;return reply;},
+   send:body=>({ok:reply.status===200,json:async()=>body})};
+  return handler({},reply);
+ });
+ assert.deepEqual(state,{status:'ready',items:[{...valid,available:false}]});
+ assert.equal(JSON.stringify(state).includes('hidden-secret'),false);
+ assert.deepEqual(events,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',createCatalogReaderSql(),'COMMIT','release']);
+});
+test('client fails closed when API returns a database error',async()=>{
+ const {registerCatalogHttpRoute}=await import('../apps/api/src/catalog-http-route.mjs');
+ let handler;
+ registerCatalogHttpRoute({get:(_path,fn)=>{handler=fn;}},{query:async()=>{throw Error('private_database_secret');}});
+ const state=await loadPublishedCatalog(async()=>{
+  const reply={header:()=>reply,code:status=>{reply.status=status;return reply;},
+   send:body=>({ok:reply.status===200,json:async()=>body})};
+  return handler({},reply);
+ });
+ assert.deepEqual(state,{status:'error',message:'Inténtalo de nuevo más tarde.'});
+ assert.equal(JSON.stringify(state).includes('private_database_secret'),false);
+});
