@@ -146,3 +146,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `2c1091a` y `944939c`: Sabora CI y Bootstrap SUCCESS; `b6039ae`: Sabora CI SUCCESS.
 - Commits `3d48da6bb969d2ebfb369cd51417867c44b8f740` y `95f88875d25a152d35b825ca430452afb0d0ce8f`: el cálculo puro valida que subtotal bruto y descuento unitario multiplicados por cantidad permanezcan en el rango seguro, incluso con descuento del 100 %. Pruebas del límite exacto y del primer céntimo fuera del rango.
 - Verificar CI; no se habilitaron pedidos, pagos, administración ni migraciones operativas.
+
+## Sesión 3 — entrada de cálculo de precios
+- Commits `f7a1b97260e671ef54911c599cd88b029d224dc3` y `4171968c6a2fd721fca0058e20d71d6757873fcb`: `priceCatalogLine` rechaza de manera uniforme entradas null, undefined, primitivas y arrays con `invalid_catalog_price`, en vez de dejar escapar errores de destructuración. Test de regresión.
+- El validador SQL de publicación `20261021190000_sabora_catalog_publication_guard.sql` **todavía rechaza options/extras no vacíos y descuentos distintos de null**. No afirmar que la validación económica de publicación esté terminada; debe diseñarse y probarse transaccionalmente antes de habilitar Gestión.
+- Sin cambios operativos; verificar los dos workflows del último HEAD.
