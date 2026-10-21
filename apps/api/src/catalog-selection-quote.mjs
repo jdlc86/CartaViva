@@ -29,7 +29,7 @@ export function quoteCatalogSelection({snapshot,selection,quantity=1}={}){
   id:item.id,name:item.name,priceCents:item.priceCents,allergens:Object.freeze([...item.allergens])
  }));
  for(const group of groups){
-  const selected=options[group.id]??[];
+  const selected=Object.hasOwn(options,group.id)?options[group.id]:[];
   if(selected.length>group.maxSelections||(group.required&&selected.length===0))
    throw Error('invalid_catalog_selection');
   const available=new Map(group.values.map(value=>[value.id,value]));
@@ -45,6 +45,7 @@ export function quoteCatalogSelection({snapshot,selection,quantity=1}={}){
   if(!extra||!extra.available)throw Error('invalid_catalog_selection');
   add(extra);
  }
+ if(chosen.length>50)throw Error('invalid_catalog_selection');
  const price=priceCatalogLine({
   basePriceCents:snapshot.priceCents,extras:chosen.map(item=>item.priceCents),
   discount:snapshot.discount??null,quantity
