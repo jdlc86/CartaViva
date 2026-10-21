@@ -464,3 +464,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Denegación efectiva tras rollback de GRANT (2026-10-21)
 - Commit `9948a5e`: complementa la prueba negativa de GRANT con `SET ROLE sabora_admin_writer` después de ROLLBACK y una lectura real de `sabora.staff_members` que debe fallar por `insufficient_privilege`. El test comprueba tanto metadatos ACL como la denegación SQL efectiva.
 - CI #346 y bootstrap #329 del HEAD documental anterior estaban en progreso al consultar. CI del nuevo HEAD sin resultado aún. Sin acceso operativo a Supabase ni VPS; sin cambios a Fleetia.
+
+## Primera ficha de permisos mínimos ADMIN (2026-10-21)
+- CI #346 y bootstrap #329 de `d93d864` SUCCESS. CI del commit `806d6c6` seguía en progreso al consultar.
+- Commit `862725a`: añade a `docs/security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md` ficha **solo de diseño** para una futura edición de `restaurant_settings.name`: identidad verificada, orden de bloqueos, mínimo alcance SQL, auditoría, idempotencia, RLS y pruebas positivas/negativas. Se advierte que la estructura exacta del singleton requiere validación previa.
+- No hay nuevos grants, LOGIN, rutas HTTP, despliegue ni aplicación operativa de migraciones. Próximo paso: cotejar la ficha con migraciones y validar el CI del HEAD.
