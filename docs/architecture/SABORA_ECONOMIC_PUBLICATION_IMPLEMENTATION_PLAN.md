@@ -148,3 +148,7 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 ## Carrera de cierre frente a autorización de pedido (PostgreSQL 17)
 - `scripts/ci/catalog-table-close-order-lock-smoke.sh` ejecuta dos sesiones PostgreSQL independientes en contenedor desechable: la primera mantiene `FOR SHARE` sobre una mesa abierta durante una transacción; la segunda intenta cerrarla mediante la función candidata de personal y debe esperar el bloqueo. Una autorización posterior al cierre no encuentra mesa abierta.
 - Este test demuestra **orden de bloqueos de fila**, no una confirmación completa de pedido: aún falta conectar el escritor de pedidos a `lockContext` y demostrar una inserción de pedido bajo la misma transacción, consentimiento e idempotencia.
+
+## Carrera entre autorización de mesa y cierre por personal
+- `scripts/ci/catalog-table-close-concurrency-smoke.sh` ejecuta dos conexiones PostgreSQL 17 independientes: una transacción de cliente retiene `FOR SHARE` sobre mesa abierta y otra intenta `transition_table_ordering_candidate(...,'closed')`. La prueba exige observar a la segunda esperando un bloqueo, confirmar el cierre tras liberar la primera y verificar que la mesa ya no está abierta.
+- El gate corre en el contenedor Docker `--network none` del CI; no utiliza Supabase operativo. Este ensayo demuestra serialización del bloqueo de mesa, **no** la persistencia completa de una comanda ni el consentimiento de repricing. El futuro escritor debe conservar el bloqueo hasta confirmar de forma atómica la orden.
