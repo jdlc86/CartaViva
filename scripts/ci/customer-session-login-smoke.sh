@@ -40,3 +40,20 @@ then
  echo 'ERROR: session login assumed function owner' >&2
  exit 1
 fi
+
+# Seed fixture through PostgreSQL admin in disposable container only.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+INSERT INTO sabora.customer_profiles(public_id,alias)
+VALUES ('SB-WWWWWWWWWWWW','Login RPC CI');
+INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+SELECT id,decode(repeat('e7',32),'hex'),now()+interval '1 day'
+FROM sabora.customer_profiles WHERE public_id='SB-WWWWWWWWWWWW';
+SQL
+# Execute actual verify + revoke through authenticated LOGIN with scoped SET ROLE.
+run_login < scripts/ci/customer-session-login-rpc-smoke.sql
+# The token was revoked; another invocation cannot re-authenticate it.
+run_login <<'SQL' | grep -qx '0|f'
+SET ROLE sabora_customer_session_runtime;
+SELECT (SELECT count(*) FROM sabora.verify_customer_session_hash(decode(repeat('e7',32),'hex'))),
+sabora.revoke_customer_session_hash(decode(repeat('e7',32),'hex'));
+SQL
