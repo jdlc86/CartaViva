@@ -504,3 +504,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI anterior de `3d8dd21` validado: Sabora CI 39527250859 SUCCESS; bootstrap 39527250768 SUCCESS.
 - Migración privada `supabase/migrations/20261021010000_sabora_customer_profiles.sql` (commit `5fd3029`), smoke PostgreSQL 17 (commit `1ff5dbc`) y test de contrato SQL (commit `03985d5`). UUID PK, public_id UNIQUE, alias y empresa opcional, FORCE RLS y cero permisos de cliente. El smoke ahora espera 13 tablas privadas RLS.
 - **No** hay rutas de alta, sesiones, grants, despliegue ni aplicación a Supabase operativo. Comprobar CI del HEAD antes de dar por validado este hito.
+
+## Alta transaccional de cliente — adaptador interno (2026-10-21)
+- CI de `0dde36f`: Sabora CI run 39527468264 SUCCESS, bootstrap run 39527468523 SUCCESS.
+- `apps/api/src/customer-profile-writer.mjs`: adaptador interno que recibe transacción ya configurada, genera candidato de ID solo en servidor, inserta perfil mediante parámetros y maneja colisión `23505` exclusivamente de `customer_profiles_public_id_key` con SAVEPOINT/ROLLBACK TO/RELEASE; máximo 5 intentos por defecto, máximo configurable 20. No reintenta otros fallos SQL.
+- `tests/customer-profile-writer.test.mjs`: pruebas de inserción, colisión recuperable, agotamiento, error de clave primaria y perfil inválido. Build comprueba sintaxis. Commits `356e2c1`, `ec88fb4`, `02f574f`.
+- Falta prueba SQL real de dos sesiones concurrentes, sesiones autenticadas, HTTP y permisos SQL mínimos. **No conectar este adaptador a rutas públicas ni habilitar SQL grants hasta cerrar esas puertas**. Sin Supabase operativo, VPS ni Fleetia. Verificar CI del HEAD.
