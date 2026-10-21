@@ -16,6 +16,10 @@ RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $va
   AND (NOT p_snapshot ? 'extras' OR p_snapshot->'extras'='[]'::jsonb)
   AND (NOT p_snapshot ? 'discount' OR p_snapshot->'discount'='null'::jsonb)
  )
+ AND NOT EXISTS (
+  SELECT 1 FROM jsonb_object_keys(p_snapshot) AS field(key)
+  WHERE field.key NOT IN ('name','category','priceCents','allergens','options','extras','discount')
+ )
  AND jsonb_typeof(p_snapshot->'allergens')='array'
  AND jsonb_array_length(p_snapshot->'allergens')<=32
  AND NOT EXISTS (
