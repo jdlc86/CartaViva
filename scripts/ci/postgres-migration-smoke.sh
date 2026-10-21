@@ -84,6 +84,9 @@ begin
  exception when raise_exception then
   if SQLERRM <> 'invalid_catalog_snapshot' then raise; end if;
  end;
+ if sabora.validate_catalog_snapshot('{"name":"Incompleto","category":"Bebidas","priceCents":1200,"allergens":[],"taxRate":20}'::jsonb) IS TRUE then
+  raise exception 'unknown economic field accepted';
+ end if;
  -- Unsupported nonempty economic rules must never silently publish.
  if sabora.validate_catalog_snapshot('{"name":"Extra","category":"Bebidas","priceCents":1200,"allergens":[],"extras":[{"name":"Extra","priceCents":100}]}'::jsonb) IS TRUE then
   raise exception 'unvalidated extras accepted';
