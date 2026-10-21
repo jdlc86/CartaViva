@@ -283,3 +283,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `fde6169a`, `0b191233`, `a3f57cf7`: tests de cantidad cambiada, evidencia corrupta, extras intercambiados y revisión legítima.
 - `c277ca34`: arquitectura actualizada. CI de los primeros commits falló durante actualización de fixtures; verificar resultado del HEAD.
 - Pendiente: emisión autenticada de cotizaciones, autorización QR/visita, escritor de mínimos privilegios y persistencia atómica. Sin activación de HTTP ni producción.
+
+## Sesión 3 — emisión transaccional candidata de cotizaciones
+- `43e96e2a`: `catalog-quote-issuer.mjs`, coordinador aislado: autorizar/bloquear contexto, bloquear publicación, cotizar desde snapshot confiable, insertar evidencia y devolver cotización con TTL.
+- `01ba4ed0`: pruebas de orden de operaciones, precio confiable, contexto ajeno/revocado, agotados, rollback y rechazo de inyección de importes.
+- `d26c96fc`: arquitectura documenta límites y pendiente de implementación.
+- No se ha creado escritor SQL ni permisos, no se ha activado API/HTTP ni se ha tocado Supabase operativo. Siguiente prioridad: `lockContext` real de QR/visita, inserción de cotización con mínimos privilegios y test integrado PostgreSQL 17. Revisar CI del último HEAD.
