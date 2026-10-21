@@ -757,3 +757,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Nuevo `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md` (`c3cc576`): exige inventario de migraciones, versiones públicas vs borradores, retirada/agotado, roles RLS mínimos, contrato JSON y pruebas PostgreSQL desechable antes de exponer rutas HTTP.
 - CI del commit `ab28f72` estaba en progreso al consultar: Sabora 39633726645, Bootstrap 39633726567. No se atribuye éxito sin comprobar.
 - Ningún endpoint nuevo, ninguna modificación a Supabase operativo ni VPS/Fleetia.
+
+## Fundamento SQL del catálogo (2026-10-21)
+- Migración `20261021180000_sabora_catalog_publication_foundation.sql` (`b1612f6`) crea una estructura inicial de borrador JSON y snapshot público separado, con revisión, retirada y agotado. `ENABLE/FORCE RLS` y sin políticas ni grants públicos; **nadie puede publicar ni leer desde una ruta HTTP todavía**.
+- La migración es solo propuesta versionada, **no aplicada al Supabase operativo**. Pendiente: smoke en PostgreSQL 17 desechable, revisión de compatibilidad con migraciones previas, diseño de función transaccional de publicación, validación de precio/extras/descuentos/alérgenos y rol de lectura mínimo.
+- CI del commit `89daf7f` SUCCESS: Sabora 39634070574 y Bootstrap 39634070624. No desplegar ni tocar VPS/Fleetia.
