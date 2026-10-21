@@ -796,3 +796,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `cc965d9`: `tests/catalog-pricing.test.mjs` comprueba descuento sobre extras, límite a cero, redondeo e invalidaciones. Se ejecuta mediante el glob existente `tests/*.test.mjs`.
 - **No está integrado** con publicación SQL, cesta, impuestos ni pagos; no se autoriza publicar descuentos hasta validar contrato JSON, pertenencia y límites de extras, impuestos y permisos. CI del nuevo HEAD pendiente. CI de `edfcc13` en progreso al revisar (Sabora 39640291137, Bootstrap 39640291129).
 - Sin despliegue ni modificaciones a Supabase operativo o Fleetia.
+
+## Lector catálogo: CI y adaptador aislado (2026-10-21)
+- Runs Sabora 39641842016 y Bootstrap 39641842065 FAILED por error de aserción: el smoke esperaba dos filas, aunque una estaba retirada y la función SQL correctamente devolvía una. `e7a36a0` corrige expectativa a una fila visible.
+- `40f24f4` añade adaptador puro `apps/api/src/catalog-reader-query.mjs` que consulta exclusivamente `sabora.read_published_catalog()` mediante función de consulta inyectada y proyecta campos seguros. No se monta en Fastify ni se crea conexión con privilegios amplios.
+- `f27c3c2` añade pruebas de SQL constante, proyección y fallo cerrado ante cliente/resultado ausente o fallo de DB.
+- CI del nuevo HEAD pendiente. Sin Supabase operativo, VPS, Fleetia ni merge.
