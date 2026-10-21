@@ -9,10 +9,13 @@ export function createCustomerSessionRuntime({ Pool, env } = {}) {
   const config = readCustomerSessionPoolConfig(env);
   let pool = null;
   let closed = false;
+  let closing = null;
   return Object.freeze({
     open() {
-      if (closed) throw Error('customer_session_runtime_closed');
+      if (closed || closing) throw Error('customer_session_runtime_closed');
       if (pool) return pool;
+      // Never retry a failed constructor on this lifecycle.
+      closed = true;
       const candidate = new Pool(config);
       if (!candidate || typeof candidate.query !== 'function' || typeof candidate.end !== 'function') {
         closed = true;
@@ -22,6 +25,7 @@ export function createCustomerSessionRuntime({ Pool, env } = {}) {
         throw Error('invalid_customer_session_pool');
       }
       pool = candidate;
+      closed = false;
       return pool;
     },
     createOperations() {
@@ -34,9 +38,12 @@ export function createCustomerSessionRuntime({ Pool, env } = {}) {
     },
     async close() {
       closed = true;
+      if (closing) return closing;
       const activePool = pool;
       pool = null;
-      if (activePool) await activePool.end();
+      if (!activePool) return;
+      closing = Promise.resolve().then(() => activePool.end());
+      return closing;
     }
   });
 }
