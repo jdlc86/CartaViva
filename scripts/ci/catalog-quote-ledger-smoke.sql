@@ -109,5 +109,44 @@ BEGIN
    RAISE EXCEPTION 'unexpected quote check %',v_constraint;
   END IF;
  END;
+ -- A privileged disposable test connection cannot mutate persisted evidence
+ -- through ordinary UPDATE or DELETE; both ledgers are append-only.
+ BEGIN
+  UPDATE sabora.catalog_displayed_quotes SET total_cents=899 WHERE id=q1;
+  RAISE EXCEPTION 'displayed quote update accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected quote update error %',v_constraint;
+  END IF;
+ END;
+ BEGIN
+  DELETE FROM sabora.catalog_displayed_quotes WHERE id=q1;
+  RAISE EXCEPTION 'displayed quote delete accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected quote delete error %',v_constraint;
+  END IF;
+ END;
+ BEGIN
+  UPDATE sabora.catalog_confirmation_attempts SET request_fingerprint='altered'
+   WHERE order_id=o1;
+  RAISE EXCEPTION 'confirmation update accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected confirmation update error %',v_constraint;
+  END IF;
+ END;
+ BEGIN
+  DELETE FROM sabora.catalog_confirmation_attempts WHERE order_id=o1;
+  RAISE EXCEPTION 'confirmation delete accepted';
+ EXCEPTION WHEN check_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=MESSAGE_TEXT;
+  IF v_constraint<>'catalog_ledger_append_only' THEN
+   RAISE EXCEPTION 'unexpected confirmation delete error %',v_constraint;
+  END IF;
+ END;
 END $ledger$;
 ROLLBACK;
