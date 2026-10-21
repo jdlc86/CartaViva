@@ -51,6 +51,44 @@ begin
   end if;
  end loop;
 end $$;
+-- Candidate validator is tested independently: it must not enable publication.
+do $economic_candidate$
+declare
+ v_extra jsonb:='{"id":"cheese","name":"Queso","priceCents":150,"available":true,"allergens":["Leche"]}'::jsonb;
+ v_option jsonb:='{"id":"size","name":"Tamaño","required":true,"maxSelections":1,"values":[{"id":"large","name":"Grande","priceCents":200,"available":true,"allergens":[]}]}'::jsonb;
+ v_snapshot jsonb;
+begin
+ v_snapshot:=jsonb_build_object('name','Pizza','category','Segundos','priceCents',1000,
+  'allergens','["Gluten"]'::jsonb,'extras',jsonb_build_array(v_extra),
+  'options',jsonb_build_array(v_option),'discount','{"type":"percent","basisPoints":1000}'::jsonb);
+ if sabora.validate_catalog_economic_modifiers(v_snapshot) IS DISTINCT FROM true then
+  raise exception 'valid candidate economic modifiers rejected';
+ end if;
+ if sabora.validate_catalog_snapshot(v_snapshot) IS TRUE then
+  raise exception 'candidate unexpectedly bypassed active publication guard';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||'{"discount":{"type":"percent","basisPoints":10001}}'::jsonb) IS TRUE then
+  raise exception 'out-of-range discount accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('extras',jsonb_build_array(v_extra,v_extra))) IS TRUE then
+  raise exception 'duplicate extras accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('extras',jsonb_build_array(v_extra||'{"priceCents":-1}'::jsonb))) IS TRUE then
+  raise exception 'negative extra price accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('options',jsonb_build_array(v_option||'{"maxSelections":2}'::jsonb))) IS TRUE then
+  raise exception 'invalid option selection limit accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers('{"extras":null}'::jsonb) IS TRUE then
+  raise exception 'null extras accepted';
+ end if;
+ if has_function_privilege('anon','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE')
+  or has_function_privilege('authenticated','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE')
+  or has_function_privilege('sabora_catalog_reader','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE') then
+  raise exception 'candidate validator exposed to application roles';
+ end if;
+end;
+$economic_candidate$;
 -- Catalog draft is not exposed as a published version without an explicit publisher.
 do $catalog_foundation$
 declare v_item uuid;
