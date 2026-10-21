@@ -215,3 +215,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `2ad2d1a3`, `d28a65b8`: pruebas de firma, manipulación, caducidad, subida/bajada de precio, cambio de descuento, disponibilidad, identidad y revisión; caso de manipulación hecho determinista.
 - `3e513aff`: arquitectura aclara que **token firmado no equivale a consentimiento humano ni a idempotencia**. Falta registro transaccional de aceptación y validación de permisos/visita/mesa en DB. No montar rutas ni usar en producción.
 - Revisar CI del HEAD tras documentación. Sin merge, sin despliegue, sin escritura en Supabase operativo ni recursos del VPS.
+
+## Sesión 3: puerta de confirmación económica aislada
+- fe4c6a5d: decisión previa a confirmar según revisión, precio y aceptación firmada.
+- bfbb0027: pruebas de subida, bajada, revisión, descuento, identidad, caducidad y datos alterados.
+- 75d9d27a: documentación de arquitectura. Pendiente: autorización de visita, bloqueo transaccional, idempotencia, consentimiento duradero y persistencia atómica.
+- Sin conexión HTTP ni operaciones en entornos productivos.
