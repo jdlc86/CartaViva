@@ -768,3 +768,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `bfa7563`: se actualizó conteo a 15 y se añadió aserción explícita de FORCE RLS para `catalog_items`.
 - `bd8f46b`: smoke en PostgreSQL desechable verifica borrador inicialmente invisible, revisión futura rechazada, edición sin republicación conserva snapshot, agotado, retirada y denegación de lectura a `anon`.
 - CI del nuevo HEAD pendiente; las pruebas no acreditan todavía una función de publicación autorizada ni un endpoint de lectura. Ninguna operación sobre Supabase operativo/VPS/Fleetia.
+
+## Publicación explícita de catálogo (2026-10-21)
+- CI de `5f8e38c` SUCCESS: Sabora 39636504338 y Bootstrap 39636504367.
+- Migración candidata `20261021190000_sabora_catalog_publication_guard.sql` (`a0ec437`) añade validador privado de snapshot (nombre, categoría, precio entero no negativo, alérgenos) y función `SECURITY INVOKER` con bloqueo de fila y revisión esperada para publicar el borrador como snapshot. No hay permisos EXECUTE para roles de aplicación ni endpoints.
+- Smoke PostgreSQL desechable ampliado (`63cf641`) para rechazo de borrador inválido, publicación explícita y conflicto de revisión. CI del nuevo HEAD pendiente. Falta validar opciones/extras, descuentos y privilegios de escritor antes de conectar gestión o clientes.
+- Sin aplicar migraciones a Supabase operativo, sin VPS, sin Fleetia y sin merge.
