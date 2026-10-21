@@ -25,10 +25,10 @@ test('runtime opens lazily, uses only RPCs, and closes its own pool',async()=>{
  const seen=[];
  class Pool {
   constructor(config){created++;assert.equal(config.user,env.SABORA_CUSTOMER_SESSION_DB_USER);}
-  async query(sql,params) {
-   seen.push({sql,params});
-   return sql.includes('verify_customer_session_hash') ? {rows:[]} : {rows:[{revoked:false}]};
-  }
+  async connect() { return {
+   query:async(sql,params)=>{seen.push({sql,params});return sql.includes('verify_customer_session_hash') ? {rows:[]} : {rows:[{revoked:false}]};},
+   release(){}
+  };}
   async end(){ended++;}
  }
  const runtime=createCustomerSessionRuntime({Pool,env});
@@ -38,8 +38,9 @@ test('runtime opens lazily, uses only RPCs, and closes its own pool',async()=>{
  const token=issueCustomerSession().token;
  assert.equal(await operations.verify(token),null);
  assert.equal(await operations.revoke(token),false);
- assert.equal(seen.length,2);
- assert.ok(seen.every(x=>x.sql.includes('session_hash')&&x.params[0].length===32));
+ assert.equal(seen.length,8);
+ assert.deepEqual(seen.map(x=>x.sql.includes('session_hash')?'RPC':x.sql),['BEGIN','SET LOCAL ROLE sabora_customer_session_runtime','RPC','COMMIT','BEGIN','SET LOCAL ROLE sabora_customer_session_runtime','RPC','COMMIT']);
+ assert.ok(seen.filter(x=>x.sql.includes('session_hash')).every(x=>x.params[0].length===32));
  await runtime.close();
  assert.equal(ended,1);
  assert.throws(()=>runtime.open(),/runtime_closed/);
@@ -48,7 +49,7 @@ test('runtime opens lazily, uses only RPCs, and closes its own pool',async()=>{
 test('runtime close is single-flight and permanently terminal',async()=>{
  let resolveEnd,ends=0;
  class Pool {
-  query(){return {rows:[]};}
+  async connect(){return {query:async()=>({rows:[]}),release(){}};}
   end(){ends++;return new Promise(resolve=>{resolveEnd=resolve;});}
  }
  const runtime=createCustomerSessionRuntime({Pool,env});
