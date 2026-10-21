@@ -3,6 +3,7 @@
 // Every method must execute through ONE transaction with row locks, and
 // persist() must atomically consume acceptance and insert immutable evidence.
 import {decideCatalogLineConfirmation} from './catalog-confirmation-decision.mjs';
+import {assertDisplayedQuoteMatchesConfirmation} from './catalog-displayed-quote-binding.mjs';
 
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -70,6 +71,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     selection:input.selection,quantity:input.quantity,
     acceptanceToken,basketId:input.basketId,actorId:input.actorId,secretKey,nowMs
    });
+   // Consent to a repricing cannot silently authorize a different basket.
+   assertDisplayedQuoteMatchesConfirmation({previous,currentEvidence:decision.evidence});
    if(decision.status==='acceptance_required'){
     // Read-only outcome: transaction commits without persisting an order.
     return Object.freeze({status:'acceptance_required',decision});
