@@ -97,6 +97,25 @@ begin
  if sabora.validate_catalog_snapshot('{"name":"Opciones","category":"Bebidas","priceCents":1200,"allergens":[],"options":[{"name":"Tamaño"}]}'::jsonb) IS TRUE then
   raise exception 'unvalidated options accepted';
  end if;
+ -- Economic publication must reject malformed amounts and unsupported modifiers.
+ if sabora.validate_catalog_snapshot('{"name":"Precio decimal","category":"Bebidas","priceCents":12.5,"allergens":[]}'::jsonb) IS TRUE then
+  raise exception 'fractional cents accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Precio negativo","category":"Bebidas","priceCents":-1,"allergens":[]}'::jsonb) IS TRUE then
+  raise exception 'negative cents accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Precio enorme","category":"Bebidas","priceCents":9999999999999999,"allergens":[]}'::jsonb) IS TRUE then
+  raise exception 'oversized cents accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Extra vacío","category":"Bebidas","priceCents":1200,"allergens":[],"extras":[{}]}'::jsonb) IS TRUE then
+  raise exception 'unvalidated extra object accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Descuento fijo","category":"Bebidas","priceCents":1200,"allergens":[],"discount":{"type":"fixed","amountCents":100}}'::jsonb) IS TRUE then
+  raise exception 'unvalidated fixed discount accepted';
+ end if;
+ if sabora.validate_catalog_snapshot('{"name":"Alérgeno inválido","category":"Bebidas","priceCents":1200,"allergens":[null]}'::jsonb) IS TRUE then
+  raise exception 'invalid allergen accepted';
+ end if;
  update sabora.catalog_items set draft='{"name":"Borrador","category":"Bebidas","priceCents":1200,"allergens":[]}'::jsonb where id=v_item;
  if sabora.publish_catalog_item(v_item,1)<>1 then raise exception 'publish revision mismatch'; end if;
  begin
