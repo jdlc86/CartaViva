@@ -490,3 +490,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-profile.mjs`: límite puro de normalización alias y empresa opcional; rechaza ID, rol, número de empleado o secretos suministrados en alta. No genera ni autentica identidades.
 - `tests/customer-profile.test.mjs`: alta mínima, campos prohibidos, longitud, controles y Unicode. Build API incorpora comprobación sintáctica.
 - Commits `41fe41b`, `7913bc0`, `7432fc7`. Verificar CI del HEAD. Sin rutas públicas, tablas, credenciales, grants, cambios operativos ni despliegues. Próxima fase: generación de IDs solo en servidor y persistencia segura con pruebas PostgreSQL 17 aisladas.
+
+## Generación de identificadores de cliente (2026-10-21)
+- `apps/api/src/customer-id.mjs`: generador de UUID interno y código público alfanumérico aleatorio de 12 caracteres con rechazo de bytes; alta normalizada sin IDs de entrada. `tests/customer-id.test.mjs` cubre formato, entradas indebidas y fuentes aleatorias defectuosas. Build verifica sintaxis.
+- Commits `4ea507b`, `399f922`, `df910a0`, `d74cab7`. **Aún no se emiten IDs persistentes**: falta tabla con UNIQUE, reintentos por colisión, sesión y RLS; no hay rutas ni grants. Verificar CI del HEAD.
+- Sin Supabase operativo, VPS, despliegue, merge ni Fleetia.
