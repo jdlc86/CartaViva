@@ -24,7 +24,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>13 then raise exception 'Expected thirteen RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>14 then raise exception 'Expected fourteen RLS protected single-restaurant tables, got %',v_count; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
  end if;
@@ -87,6 +87,45 @@ begin
  end;
 end;
 $customer_anon_denial$;
+reset role;
+
+-- Sessions never persist plaintext bearer tokens and cannot outlive revocation.
+do $customer_sessions$
+declare v_customer uuid; v_session uuid;
+begin
+ select id into v_customer from sabora.customer_profiles limit 1;
+ insert into sabora.customer_sessions(customer_id,token_hash,expires_at)
+ values (v_customer,decode(repeat('ab',32),'hex'),now()+interval '1 day')
+ returning id into v_session;
+ if v_session is null then raise exception 'customer session missing'; end if;
+ begin
+  insert into sabora.customer_sessions(customer_id,token_hash,expires_at)
+  values (v_customer,decode(repeat('ab',32),'hex'),now()+interval '1 day');
+  raise exception 'duplicate session token hash accepted';
+ exception when unique_violation then null;
+ end;
+ begin
+  insert into sabora.customer_sessions(customer_id,token_hash,expires_at)
+  values (v_customer,decode(repeat('cd',32),'hex'),now()-interval '1 day');
+  raise exception 'expired-at-creation session accepted';
+ exception when check_violation then null;
+ end;
+ update sabora.customer_sessions set revoked_at=now() where id=v_session;
+ if (select revoked_at from sabora.customer_sessions where id=v_session) is null then
+  raise exception 'session revocation not persisted';
+ end if;
+end;
+$customer_sessions$;
+set role authenticated;
+do $customer_session_denial$
+begin
+ begin
+  perform count(*) from sabora.customer_sessions;
+  raise exception 'authenticated browser read sessions';
+ exception when insufficient_privilege then null;
+ end;
+end;
+$customer_session_denial$;
 reset role;
 
 -- Ownership persistence and audit are private, append-only and reject invalid rows.
