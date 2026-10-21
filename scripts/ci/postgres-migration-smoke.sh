@@ -30,6 +30,9 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Verify atomic occupancy boundary and revocation on close.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-occupancy-boundary-smoke.sql
+# Verify staff lifecycle role gates without runtime grants.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-table-staff-transition-smoke.sql
 # Exercise two competing DB sessions and assert only the first request survives.
 bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
