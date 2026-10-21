@@ -197,3 +197,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `06b23aae`: `scripts/ci/catalog-economic-parity.mjs` añade 300 mutaciones deterministas (semilla fija) a los 29 casos explícitos; compara automáticamente 329 entradas entre `validateEconomicModifiers` JS y la función candidata SQL en PostgreSQL 17 desechable. Mutaciones de estructuras, nombres, IDs, tipos, importes, disponibilidad, límites y descuentos.
 - La generación usa PRNG local determinista, sin red ni datos operativos. Esta cobertura no demuestra equivalencia formal; **no** modifica la publicación, DTO público, pedidos, roles ni despliegue.
 - Revisar GitHub Actions del commit final antes de declarar verde; ante divergencia, corregir la semántica y conservar el caso como regresión.
+
+## Sesión 3 — incidencia descubierta por fuzz determinista
+- La puerta de 329 casos encontró un fallo en `uniqueIds` de `apps/api/src/catalog-economic-modifiers.mjs`: acceso a `.id` sobre `null` en colecciones antes del rechazo. Se corrigió en `9cc705a8`, con CI y Bootstrap SUCCESS.
+- `fb3e7efa`: pruebas unitarias explícitas de entradas `null` en extras y valores de opción.
+- `3edc1337`: documentación de la cobertura y alcance. Comprobar ambos workflows del último HEAD antes de cerrar el bloque.
+- Sin merge, sin activación de pedidos, sin cambios en Supabase operativo ni VPS.
