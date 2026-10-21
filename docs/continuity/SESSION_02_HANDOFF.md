@@ -607,3 +607,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Incidencia CI RPC concurrencia (2026-10-21)
 - Commit `a75e002` falló en Sabora CI 39591725259 y Bootstrap 39591725305. Causa confirmada en logs: `scripts/ci/customer-session-privileges-positive.sql` tenía `DO $` en lugar de `DO $$` tras una edición accidental del fixture, provocando error de sintaxis antes de llegar al nuevo test concurrente.
 - Commit `e8f93c8` restablece el delimitador PL/pgSQL correcto. **CI pendiente**; no se puede afirmar aún que el nuevo gate RPC concurrente haya pasado.
+
+## Delimitador SQL persistente: corrección verificable (2026-10-21)
+- El CI del commit `e817c9d` terminó FAILURE en ambos workflows; la supuesta corrección `DO $$` no persistió correctamente en el contenido recuperado de GitHub (seguía `DO $`).
+- Commit `97a7690` sustituye el bloque afectado por delimitador nombrado `DO $fixture$ ... END $fixture$;`, comprobado mediante nueva lectura de GitHub. La verificación del CI del HEAD sigue pendiente; no afirmar que el RPC concurrente esté validado.
+- Sin cambios operativos ni despliegues.
