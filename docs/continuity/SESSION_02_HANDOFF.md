@@ -736,3 +736,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI `29b62a5` SUCCESS: Sabora 39631683391; Bootstrap 39631683280.
 - `apps/client/src/catalog.ts` exige UUID de forma estricta, unicidad insensible a mayúsculas/minúsculas y rechaza nombres/alérgenos vacíos o con caracteres de control; longitudes por caracteres Unicode (`590d50f`, `4f112cd`).
 - Todavía no hay conexión HTTP al catálogo publicado ni datos operativos en la PWA. CI del HEAD pendiente. No se ha desplegado ni modificado Supabase/Fleetia/VPS.
+
+## Pruebas automatizadas del modelo de catálogo (2026-10-21)
+- CI `97f4b78`: Sabora SUCCESS (39632543977), Bootstrap en progreso al comprobarlo (39632544251).
+- Nuevo `tests/client-catalog.test.mjs` ejecutado por el script raíz `node --test tests/*.test.mjs`, con TypeScript del workspace cliente. Verifica parseo válido, categorías, formato EUR, colecciones inválidas, duplicados UUID insensibles a mayúsculas, campos inválidos e inmutabilidad de entrada (`c89d936`, `5c902c5`).
+- CI del HEAD pendiente. No se ha conectado API ni habilitado pedidos; sin despliegue ni cambios operativos.
