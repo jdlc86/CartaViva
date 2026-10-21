@@ -24,6 +24,9 @@ docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Validate candidate durable visit grants in disposable PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\
  < scripts/ci/catalog-visit-ledger-smoke.sql
+# Verify closed-by-default table state and timed pause constraints.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-table-ordering-lifecycle-smoke.sql
 # Exercise two competing DB sessions and assert only the first request survives.
 bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
