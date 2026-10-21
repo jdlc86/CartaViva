@@ -526,3 +526,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-registration.mjs`: adaptador interno de alta que inserta perfil y sesión con hash dentro de una sola transacción. Token opaco solo se retorna después de COMMIT; si falla inserción de sesión, la transacción revierte perfil. Colisiones `customer_profiles_public_id_key` se reintentan con SAVEPOINT acotado.
 - `tests/customer-registration.test.mjs`: inserción doble antes de commit, rollback de sesión fallida, colisión recuperable y perfil inválido. Build incluye comprobación sintáctica. Commits `f08daca`, `a3c2fd3`, `d057e4d`.
 - **No hay rutas públicas ni cookies aún**. Antes de activación: pruebas PostgreSQL reales del flujo atómico, validación de sesión vigente/revocada, políticas de cookies y CSRF, permisos de backend limitados. Verificar CI HEAD.
+
+## Verificación privada de sesiones (2026-10-21)
+- `df56885`: Sabora CI 39585719840 SUCCESS; bootstrap 39585719809 SUCCESS.
+- `apps/api/src/customer-session-verifier.mjs`: consulta parametrizada por hash SHA-256 del token, filtra `revoked_at IS NULL` y `expires_at > now()`, devuelve identidad interna si válida y `null` si no existe. No consulta por alias/ID público ni expone endpoint.
+- Tests `tests/customer-session-verifier.test.mjs` (hash, SQL, token inválido, error de DB y resultado corrupto); `scripts/ci/customer-session-verification.sql` ejecuta contra PostgreSQL 17 desechable los estados vigente/revocado/caducado/inexistente. Integrado en `postgres-migration-smoke.sh` y build. Commits `1cc03e1`, `5380772`, `8f0bbfb`, `0c43fb6`, `e554006`.
+- Faltan permisos backend mínimos, integración HTTP, cookies HttpOnly, CSRF, rotación, revocación de sesión por cliente y pruebas E2E. No desplegar ni aplicar migraciones operativas. Verificar CI HEAD.
