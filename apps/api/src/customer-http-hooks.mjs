@@ -21,7 +21,7 @@ export function createCustomerHttpHooks({ verifySession, revokeSession, expected
   }
   function guardMutation(request, reply) {
     if (!isAllowedCustomerRequestOrigin({
-      method:request.method, origin:request.headers?.origin, expectedOrigin
+      method:request.method, origin:request.headers?.origin, fetchSite:request.headers?.['sec-fetch-site'], expectedOrigin
     })) return reply.code(403).send({error:'forbidden_origin'});
   }
   async function logout(request, reply) {
