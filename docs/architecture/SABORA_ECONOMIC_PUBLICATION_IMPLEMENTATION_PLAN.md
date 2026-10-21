@@ -40,3 +40,9 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 - La ampliación detectó un error de robustez: `uniqueIds` en JS podía intentar leer `.id` de una entrada nula antes de rechazarla. `9cc705a8` protege los elementos y evita excepciones inesperadas; Sabora CI y Bootstrap SUCCESS en ese commit.
 - Se añadieron pruebas unitarias para colecciones con entradas `null` (`fb3e7efa`). Mantener esta regresión cuando se integre la publicación versionada.
 - Las 329 pruebas diferenciales no habilitan permisos, rutas, escritura ni publicación económica. Requieren validación de seguridad independiente antes de cualquier activación.
+
+## Evidencia económica de línea, contrato candidato v1 (sin escritura)
+- `apps/api/src/catalog-line-evidence.mjs` implementa `buildCatalogLineEvidence`, que toma `itemId`, `publishedRevision`, snapshot publicado **confiable**, selección y cantidad. Produce un objeto profundamente congelado con `schemaVersion: 1`, nombre/categoría, selecciones con sus precios y alérgenos, descuento, desglose unitario y total. No contiene credenciales ni datos de cliente.
+- Es un **constructor de evidencia**, no una verificación de integridad ni prueba criptográfica. No aceptar este objeto desde la PWA como fuente de verdad. El futuro escritor debe obtener snapshot y revisión de DB, bloquear la fila, cotizar y persistir evidencia en la **misma transacción**, con idempotencia y aceptación de recálculo cuando corresponda.
+- `priceCatalogLine` usa aritmética `BigInt` para el producto intermedio de descuento porcentual y redondeo half-up exacto, conservando las salidas en céntimos enteros seguros. Se añadieron pruebas de límite `Number.MAX_SAFE_INTEGER`.
+- No hay nuevas rutas HTTP, concesiones de permisos, cambios de publicación, despliegues ni escrituras a Supabase operativo.
