@@ -35,3 +35,24 @@ test('database failure propagates and malformed results fail closed',async()=>{
  await assert.rejects(malformed(token),/invalid_customer_session_result/);
  assert.throws(()=>createCustomerSessionVerifier({}),/invalid_customer_session_query/);
 });
+
+test('session verifier rejects malformed profile payload from restricted RPC',async()=>{
+ const invalid=[
+  {customer_id:'not-uuid'},
+  {public_id:'SB-OOOOOOOOOOOO'},
+  {public_id:'SB-222'},
+  {alias:'  '},
+  {alias:'A'.repeat(81)},
+  {company:42},
+  {company:'B'.repeat(161)},
+  {alias:'Ana\nB'}
+ ];
+ for(const mutation of invalid){
+  const verify=createCustomerSessionVerifier({query:async()=>({rows:[{...customer,...mutation}]})});
+  await assert.rejects(verify(token),/invalid_customer_session_result/);
+ }
+});
+test('session verifier rejects duplicate RPC rows',async()=>{
+ const verify=createCustomerSessionVerifier({query:async()=>({rows:[customer,customer]})});
+ await assert.rejects(verify(token),/invalid_customer_session_result/);
+});
