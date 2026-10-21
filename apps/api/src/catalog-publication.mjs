@@ -11,11 +11,11 @@ export function projectPublishedCatalog(rows){
   if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||
      typeof row.id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.id)||
      seen.has(row.id.toLowerCase())||
-     typeof snapshot.name!=='string'||!snapshot.name.trim()||snapshot.name.length>160||
+     typeof snapshot.name!=='string'||!snapshot.name.trim()||[...snapshot.name].length>160||/[\u0000-\u001f\u007f]/u.test(snapshot.name)||
      !categories.has(snapshot.category)||
      !Number.isSafeInteger(snapshot.priceCents)||snapshot.priceCents<0||
      !Array.isArray(snapshot.allergens)||snapshot.allergens.length>32||
-     !snapshot.allergens.every(a=>typeof a==='string'&&!!a.trim()&&a.length<=100)||
+     !snapshot.allergens.every(a=>typeof a==='string'&&!!a.trim()&&[...a].length<=100&&!/[\u0000-\u001f\u007f]/u.test(a))||
      typeof row.sold_out!=='boolean')throw Error('invalid_catalog_row');
   seen.add(row.id.toLowerCase());
   return [{id:row.id,name:snapshot.name.trim(),category:snapshot.category,
