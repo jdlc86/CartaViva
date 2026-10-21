@@ -567,3 +567,6 @@ echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and
 
 # Verify a new nonprivileged customer session role starts with zero table access.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-negative.sql
+
+# Exercise narrowly scoped SECURITY DEFINER RPCs and forced-RLS in disposable CI.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-positive.sql
