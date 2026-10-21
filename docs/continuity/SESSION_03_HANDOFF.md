@@ -309,3 +309,10 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `3ed231f3`, `4f256c8d`: emisor de cotizaciones exige QR y token de cliente; tests adaptados tras primer fallo de fixtures.
 - `82f0402a`: tests de scope y expiración/revocación de la consulta; `72152e7a`: arquitectura.
 - **No conectar todavía**: falta estado de mesa abierta/pausada/cerrada, autorización efectiva de visita en la API, escritor restringido, registro seguro de consentimiento y despliegue autorizado. Revisar CI del HEAD. Sin cambios operativos.
+
+## Sesión 3 — estado operativo de mesa y bloqueo de pedidos
+- `5e1320d2`: migración candidata de estado de mesa `closed` por defecto, `open`, `paused` y `pause_until`.
+- `888a5b0e`: `lockContext` exige mesa abierta o pausa temporal vencida además de QR/visita/sesión.
+- `530abfa1`: pruebas unitarias de predicados SQL de estado.
+- `a56f3585`, `673a6b0a`: smoke PostgreSQL 17 de estados y restricciones incorporado a CI.
+- `c8e97c4b`: arquitectura documentada. Pendiente: transiciones de personal con autorización, pruebas SQL integradas del predicado y concurrencia, escritor mínimo, consentimiento durable. Sin activación, merge ni despliegue.
