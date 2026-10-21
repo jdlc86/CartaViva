@@ -731,3 +731,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/client/src/catalog.ts` introduce modelo de catálogo publicado con validación de identidad, categorías, céntimos, disponibilidad y alérgenos, filtro por categoría y formateo EUR (`a15e281`).
 - `apps/client/src/main.tsx` dispone de estados loading/error/empty/ready y tarjetas para datos publicados; `style.css` responsive (`4f7837f`, `8d914b0`). **Actualmente se inicializa un catálogo vacío**; no existe consulta HTTP ni se muestran platos inventados. No hay carrito ni envío de pedidos. El servidor sigue siendo autoridad de publicación, precio, descuentos y stock.
 - CI de este HEAD pendiente; sin despliegue, sin Supabase operativo y sin acceso al VPS/Fleetia.
+
+## Refuerzo de validación del catálogo Cliente (2026-10-21)
+- CI `29b62a5` SUCCESS: Sabora 39631683391; Bootstrap 39631683280.
+- `apps/client/src/catalog.ts` exige UUID de forma estricta, unicidad insensible a mayúsculas/minúsculas y rechaza nombres/alérgenos vacíos o con caracteres de control; longitudes por caracteres Unicode (`590d50f`, `4f112cd`).
+- Todavía no hay conexión HTTP al catálogo publicado ni datos operativos en la PWA. CI del HEAD pendiente. No se ha desplegado ni modificado Supabase/Fleetia/VPS.
