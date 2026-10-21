@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import ts from 'typescript';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const ts=require('../apps/client/node_modules/typescript');
 
 // Run the real TypeScript presentation boundary without adding a test runner.
 const source=readFileSync(new URL('../apps/client/src/catalog.ts',import.meta.url),'utf8');
