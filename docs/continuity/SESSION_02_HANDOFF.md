@@ -774,3 +774,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Migración candidata `20261021190000_sabora_catalog_publication_guard.sql` (`a0ec437`) añade validador privado de snapshot (nombre, categoría, precio entero no negativo, alérgenos) y función `SECURITY INVOKER` con bloqueo de fila y revisión esperada para publicar el borrador como snapshot. No hay permisos EXECUTE para roles de aplicación ni endpoints.
 - Smoke PostgreSQL desechable ampliado (`63cf641`) para rechazo de borrador inválido, publicación explícita y conflicto de revisión. CI del nuevo HEAD pendiente. Falta validar opciones/extras, descuentos y privilegios de escritor antes de conectar gestión o clientes.
 - Sin aplicar migraciones a Supabase operativo, sin VPS, sin Fleetia y sin merge.
+
+## Regresión SQL NULL en publicación (2026-10-21)
+- CI `39637994156` y Bootstrap `39637994210` FAILED: smoke detectó que `publish_catalog_item` aceptaba un borrador incompleto porque `validate_catalog_snapshot` devolvía SQL NULL y `IF NOT NULL` no entra en la rama de rechazo.
+- `401ef64`: publicación exige `validate_catalog_snapshot(...) IS TRUE` mediante `IS DISTINCT FROM TRUE`; NULL/FALSE fallan cerrados.
+- `e45411e`: regresión con campo `allergens` ausente, verificando que ni validador ni publicador lo aceptan.
+- CI nuevo pendiente de confirmación. Ninguna migración aplicada a Supabase operativo ni despliegue.
