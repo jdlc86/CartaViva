@@ -128,3 +128,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `23578d8ed808169ee3a3011550fa5ff34d371aae`: `tests/management-scaffold.test.mjs` valida cinco áreas, aviso explícito de no operatividad, accesibilidad de navegación y ausencia de llamadas HTTP, WebSocket, almacenamiento de sesión y formularios de escritura en la maqueta.
 - Sabora CI SUCCESS en `10ba910` y `c2b2b5c`; Bootstrap SUCCESS en `10ba910`. Bootstrap de `c2b2b5c` seguía en curso al iniciar.
 - Esta regresión es una barrera estática de alcance limitado, no reemplaza pruebas de autorización del backend. Comprobar CI de HEAD antes de avanzar.
+
+## Sesión 3 — reconciliación documental de la puerta de catálogo
+- Commit `e8e9ee3c22901fd5fff200052a09baf136a0c638`: actualización aditiva de `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md` para distinguir el «Estado actual» histórico de los componentes y pruebas realmente versionados. Mantiene explícitos los bloqueos de despliegue, conexión y publicación.
+- No se modificó el runtime ni Supabase. Verificar los runs CI de la rama.
