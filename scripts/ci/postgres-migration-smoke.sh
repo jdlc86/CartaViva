@@ -578,3 +578,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < sc
 bash scripts/ci/customer-session-concurrency-lint.sh
 # Verify concurrent revocations have one winner and leave one revoked row.
 bash scripts/ci/customer-session-concurrency-smoke.sh "$container"
+
+# Verify concurrent revocation via restricted SECURITY DEFINER RPC, not table UPDATE.
+bash -n scripts/ci/customer-session-rpc-concurrency-smoke.sh
+bash scripts/ci/customer-session-rpc-concurrency-smoke.sh "$container"
