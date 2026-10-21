@@ -18,8 +18,13 @@ for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
+# Differential SQL/JavaScript candidate validation: execute the same fixtures
+# against the freshly migrated, network-isolated PostgreSQL instance.
+node scripts/ci/catalog-economic-parity.mjs |
+ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
-do $$
+do $
 declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
