@@ -11,6 +11,11 @@ RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $va
  AND jsonb_typeof(p_snapshot->'priceCents')='number'
  AND (p_snapshot->>'priceCents') ~ '^(0|[1-9][0-9]*)$'
  AND length(p_snapshot->>'priceCents')<=15
+ AND (
+  (NOT p_snapshot ? 'options' OR p_snapshot->'options'='[]'::jsonb)
+  AND (NOT p_snapshot ? 'extras' OR p_snapshot->'extras'='[]'::jsonb)
+  AND (NOT p_snapshot ? 'discount' OR p_snapshot->'discount'='null'::jsonb)
+ )
  AND jsonb_typeof(p_snapshot->'allergens')='array'
  AND jsonb_array_length(p_snapshot->'allergens')<=32
  AND NOT EXISTS (
