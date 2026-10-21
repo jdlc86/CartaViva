@@ -53,3 +53,13 @@ test('intermediate extras accumulation fails closed at safe integer boundary',()
  assert.throws(()=>priceCatalogLine({basePriceCents:1,extras:[Number.MAX_SAFE_INTEGER]}),/invalid_catalog_price/);
  assert.equal(priceCatalogLine({basePriceCents:0,extras:[Number.MAX_SAFE_INTEGER],discount:{type:'fixed',amountCents:Number.MAX_SAFE_INTEGER}}).totalCents,0);
 });
+
+test('quantity multiplication accepts exact safe-integer boundary and rejects next cent',()=>{
+ const max=Number.MAX_SAFE_INTEGER;
+ const safe=Math.floor(max/3);
+ const result=priceCatalogLine({basePriceCents:safe,quantity:3});
+ assert.equal(result.subtotalCents,safe*3);
+ assert.equal(result.totalCents,safe*3);
+ assert.throws(()=>priceCatalogLine({basePriceCents:safe+1,quantity:3}),/invalid_catalog_price/);
+ assert.throws(()=>priceCatalogLine({basePriceCents:safe+1,quantity:3,discount:{type:'fixed',amountCents:safe+1}}),/invalid_catalog_price/);
+});
