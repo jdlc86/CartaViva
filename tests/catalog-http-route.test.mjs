@@ -96,3 +96,25 @@ test('HTTP boundary discards scoped connection after reader failure',async()=>{
  assert.equal(JSON.stringify(response).includes('sensitive database failure'),false);
  assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',createCatalogReaderSql(),'ROLLBACK','release-discard']);
 });
+
+test('HTTP catalog rejects duplicated published IDs atomically',async()=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const row={id,published_snapshot:{name:'Agua',category:'Bebidas',priceCents:100,allergens:[]},sold_out:false};
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:async()=>({rows:[row,{...row}]})});
+ const response=await app.invoke();
+ assert.equal(response.status,503);
+ assert.deepEqual(response.body,{error:'catalog_unavailable'});
+ assert.equal(response.headers['Cache-Control'],'no-store');
+});
+test('HTTP catalog rejects a published row with invalid sold-out flag',async()=>{
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:async()=>({rows:[{
+  id:'11111111-1111-4111-8111-111111111111',
+  published_snapshot:{name:'Agua',category:'Bebidas',priceCents:100,allergens:[]},
+  sold_out:'false'
+ }]})});
+ const response=await app.invoke();
+ assert.equal(response.status,503);
+ assert.deepEqual(response.body,{error:'catalog_unavailable'});
+});
