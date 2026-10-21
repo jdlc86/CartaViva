@@ -7,10 +7,12 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < sc
 run_login() {
  docker exec -i -e PGPASSWORD=ci_disposable_only "$container" psql -X -v ON_ERROR_STOP=1 -U sabora_customer_session_login -h 127.0.0.1 -d postgres -Atq "$@"
 }
-# Default login must not have direct RPC EXECUTE nor table privileges.
+# Default login must not have schema USAGE/CREATE or direct table privileges.
+# has_function_privilege() on schema-qualified names itself requires USAGE
+# and would abort before returning false; check schema first.
 run_login <<'SQL' | grep -qx 'f|f|f'
-SELECT has_function_privilege(current_user,'sabora.verify_customer_session_hash(bytea)','EXECUTE'),
-has_function_privilege(current_user,'sabora.revoke_customer_session_hash(bytea)','EXECUTE'),
+SELECT has_schema_privilege(current_user,'sabora','USAGE'),
+has_schema_privilege(current_user,'sabora','CREATE'),
 has_table_privilege(current_user,'sabora.customer_sessions','SELECT');
 SQL
 # Explicit SET ROLE grants only scoped RPCs, never direct SELECT/UPDATE.
