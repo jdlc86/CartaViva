@@ -37,3 +37,26 @@ test('catalog loader returns controlled errors for HTTP, malformed data and netw
   assert.equal(JSON.stringify(state).includes('internal details'),false);
  }
 });
+
+test('catalog loader propagates cancellation signal without credentials',async()=>{
+ const controller=new AbortController();
+ const result=await loadPublishedCatalog(async(_url,options)=>{
+  assert.equal(options.signal,controller.signal);
+  assert.equal(options.credentials,'omit');
+  controller.abort();
+  throw Error('AbortError');
+ },controller.signal);
+ assert.equal(result.status,'error');
+ assert.equal(JSON.stringify(result).includes('AbortError'),false);
+});
+test('catalog loader handles invalid JSON and oversized catalog without exposing payload',async()=>{
+ for(const payload of [Array(501).fill(valid),{secret:'internal-data'}]){
+  const state=await loadPublishedCatalog(async()=>({ok:true,json:async()=>payload}));
+  assert.deepEqual(state,{status:'error',message:'Inténtalo de nuevo más tarde.'});
+  assert.equal(JSON.stringify(state).includes('internal-data'),false);
+ }
+});
+test('catalog loader accepts an empty published menu',async()=>{
+ const state=await loadPublishedCatalog(async()=>({ok:true,json:async()=>[]}));
+ assert.deepEqual(state,{status:'ready',items:[]});
+});
