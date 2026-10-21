@@ -522,4 +522,5 @@ end $$;
 SQL
 bash scripts/ci/admin-ownership-lifecycle-smoke.sh "$container"
 bash scripts/ci/admin-ownership-concurrency-smoke.sh "$container"
+bash scripts/ci/customer-id-concurrency-smoke.sh "$container"
 echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and ownership concurrency smoke passed.'
