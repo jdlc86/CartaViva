@@ -49,6 +49,25 @@ BEGIN
   RAISE EXCEPTION 'catalog reader gained direct table privileges';
  END IF;
 END $deny$;
+-- Confirm the activated reader role cannot reach private customer or staff tables.
+DO $private_denials$
+BEGIN
+ BEGIN
+  PERFORM count(*) FROM sabora.customer_profiles;
+  RAISE EXCEPTION 'catalog reader accessed customer profiles';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ BEGIN
+  PERFORM count(*) FROM sabora.customer_sessions;
+  RAISE EXCEPTION 'catalog reader accessed customer sessions';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ BEGIN
+  PERFORM count(*) FROM sabora.staff_members;
+  RAISE EXCEPTION 'catalog reader accessed staff';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+END $private_denials$;
 COMMIT;
 DO $verify_reset$
 BEGIN
