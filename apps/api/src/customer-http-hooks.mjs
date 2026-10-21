@@ -4,7 +4,7 @@ import { readCustomerSessionCookie, isAllowedCustomerRequestOrigin, clearCustome
 // Keep customer cookie authentication entirely separate from staff JWTs.
 export function createCustomerHttpHooks({ verifySession, revokeSession, expectedOrigin } = {}) {
   if (typeof verifySession !== 'function' || typeof revokeSession !== 'function' ||
-      typeof expectedOrigin !== 'string' || !/^https:\/\/[^/]+$/.test(expectedOrigin)) {
+      typeof expectedOrigin !== 'string' || !/^https:\/\/[^/?#]+$/.test(expectedOrigin)) {
     throw Error('invalid_customer_http_hooks_configuration');
   }
   async function authenticate(request, reply) {
@@ -13,7 +13,8 @@ export function createCustomerHttpHooks({ verifySession, revokeSession, expected
     let identity;
     try { identity = await verifySession(token); }
     catch { return reply.code(503).send({error:'session_verification_unavailable'}); }
-    if (!identity || typeof identity.customerId !== 'string') {
+    if (!identity || typeof identity.customerId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.customerId)) {
       return reply.code(401).send({error:'unauthorized'});
     }
     request.verifiedCustomer = identity;
