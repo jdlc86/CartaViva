@@ -100,3 +100,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `dcffc1d09aecd396d248afdff4c822954e4e19de`: amplía tests de `catalog-pool-config.mjs` para asegurar objeto y SSL inmutables, timeouts y límite de pool esperados, rechazo de puertos no válidos y mensajes de error que no exponen la contraseña.
 - No se crean conexiones ni credenciales; `server.mjs` sigue sin montar el endpoint. No hay despliegue.
 - Los workflows del hito SQL–HTTP–PWA (`db7c717`, `a4234f2`) estaban en ejecución al comenzar. Verificar CI del último HEAD.
+
+## Sesión 3 — denegaciones SQL reales sobre tabla de catálogo
+- Commit `ff3d2929dfd94e183ac7d0bb67c38f0f51829353`: el login técnico autenticado por TCP activa `SET LOCAL ROLE sabora_catalog_reader` y ejecuta SELECT y UPDATE reales contra `sabora.catalog_items`. Ambos deben recibir `insufficient_privilege`; complementa la verificación ACL y las denegaciones de datos personales.
+- Previamente ambos workflows SUCCESS para `dcffc1d`; Bootstrap SUCCESS para `f8ce465`, Sabora CI todavía en curso.
+- No se han aplicado migraciones ni abierto conexiones a Supabase operativo; CI usa PostgreSQL 17 desechable. Verificar nuevos runs.
