@@ -27,7 +27,7 @@ export function createCustomerHttpHooks({ verifySession, revokeSession, expected
   async function logout(request, reply) {
     // Defense in depth: enforce the mutation-origin gate even if route wiring omits it.
     if (request.method !== 'POST' || !isAllowedCustomerRequestOrigin({
-      method:request.method, origin:request.headers?.origin, expectedOrigin
+      method:request.method, origin:request.headers?.origin, fetchSite:request.headers?.['sec-fetch-site'], expectedOrigin
     })) return reply.code(403).send({error:'forbidden_origin'});
     const token = readCustomerSessionCookie(request.headers?.cookie);
     if (!token) return reply.code(401).send({error:'unauthorized'});
