@@ -638,3 +638,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-session-runtime.mjs`: Pool inyectado, apertura diferida, operaciones de verificación/revocación únicamente mediante boundary RPC y cierre de pool propio. No se importa ni registra en `server.mjs`.
 - `tests/customer-session-runtime.test.mjs` cubre usuario dedicado, TLS, fail-closed, ausencia de conexiones en construcción, RPC y cierre. Build API comprueba sintaxis. Commits `2dbdef6`, `ad1343b`, `4d7da51`, `9505282`.
 - **Advertencia**: la migración de roles NOLOGIN aún no provisiona `sabora_customer_session_login` ni su membresía. Este paso requiere revisión independiente de permisos y autorización explícita para el entorno operativo. CI del HEAD pendiente.
+
+## Autenticación real de LOGIN restringido en PG17 desechable (2026-10-21)
+- CI anterior `330b804` SUCCESS: Sabora 39595015592, Bootstrap 39595015485.
+- `scripts/ci/customer-session-login-fixture.sql` crea exclusivamente en el contenedor aislado un LOGIN `NOINHERIT`/`NOBYPASSRLS` y lo vincula al rol de runtime mediante GRANT. Contraseña fija de prueba descartada con el contenedor, nunca operativa.
+- `scripts/ci/customer-session-login-smoke.sh` autentica de verdad por TCP loopback **dentro del contenedor**, comprueba que sin SET ROLE no hereda RPC, con SET ROLE obtiene solo EXECUTE, y no puede leer tablas ni asumir el propietario SECURITY DEFINER. Integrado en `postgres-migration-smoke.sh` con lint Bash previo.
+- Commits `68751b3`, `947a437`, `dfd0f04`. **CI de este HEAD pendiente**. Este diseño no crea identidad real en Supabase, no conecta el servidor HTTP y no autoriza despliegue.
