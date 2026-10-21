@@ -39,6 +39,12 @@ export function createCustomerRegistrationWithSession({
               !hashCustomerSessionToken(session.token)?.equals(session.tokenHash)) {
             throw Error('invalid_issued_customer_session');
           }
+          // The database constraint enforces expiry > creation; bound the
+          // issued lifetime too, so an injected issuer cannot bypass policy.
+          const lifetimeMs = session.expiresAt.getTime() - session.createdAt.getTime();
+          if (lifetimeMs < 60_000 || lifetimeMs > 90 * 24 * 60 * 60 * 1000) {
+            throw Error('invalid_issued_customer_session');
+          }
           const sessionRecord = await query(
             'INSERT INTO sabora.customer_sessions(id,customer_id,token_hash,created_at,expires_at) VALUES ($1,$2,$3,$4,$5) RETURNING id',
             [sessionId(),candidate.internalId,session.tokenHash,session.createdAt,session.expiresAt]
