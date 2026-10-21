@@ -180,3 +180,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commits `506622dcc3fe4570575cfecb0bb68e66bf6bb86e` y `79c9360d1bc447c50f41f68f1e18dd83e7dec675`: migración aditiva `20261021210000_sabora_catalog_economic_candidate_validation.sql` con funciones aisladas para validar opciones, valores, extras, disponibilidad, alérgenos y descuentos, más smoke PostgreSQL 17 desechable.
 - Los roles de aplicación no reciben EXECUTE; `publish_catalog_item` y `validate_catalog_snapshot` permanecen intactos y siguen bloqueando extras/opciones/descuentos no neutros. El smoke comprueba expresamente que el candidato **no** desbloquea la publicación.
 - Pendiente comprobar CI y comparar semántica del validador SQL con JavaScript; sin despliegue ni migración operativa.
+
+## Corrección de concurrencia de cambios en la rama
+- Al implementar el candidato SQL se detectó una migración canónica ya incorporada en otro commit de la misma rama: `supabase/migrations/20261021210000_sabora_catalog_economic_candidate.sql` (CI y Bootstrap del commit `2fc8051d`: SUCCESS).
+- La migración adicional `20261021210000_sabora_catalog_economic_candidate_validation.sql` duplicaba la firma `sabora.validate_catalog_economic_modifiers(jsonb)`, causando fallos de migración CI. Se **eliminó** la migración duplicada en `30ff5e0fc09ca9895362d01d07f0c67dff1c49ae`. Conservar exclusivamente la canónica; no reintroducir duplicados.
+- El smoke de casos positivos/negativos y comprobación de permisos añadido en `79c9360d` permanece en `scripts/ci/postgres-migration-smoke.sh`. Volver a verificar CI de HEAD tras la eliminación.
+- Los fallos de CI anteriores a esta corrección son reales y no deben declararse verdes retrospectivamente.
