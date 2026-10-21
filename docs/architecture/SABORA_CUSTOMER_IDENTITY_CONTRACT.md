@@ -38,3 +38,9 @@ Una instalación Sabora corresponde a un único restaurante. La PWA de cliente d
 - Diseñar tablas y RLS de perfiles, credenciales, sesiones y asociaciones de pedidos; rutas de alta, autenticación, recuperación, edición y cierre de sesión; migración de historial si procede.
 - Pruebas obligatorias: concurrencia de IDs, identidad entre visitas, sesión caducada/revocada, dispositivo perdido, passkey inexistente, suplantación por ID/alias, aislamiento entre clientes, QR revocado, mesa bloqueada y doble confirmación.
 - Hasta completar esos controles, **no** habilitar acceso HTTP a datos de clientes ni abrir permisos SQL. No desplegar ni aplicar migraciones operativas sin autorización expresa.
+
+## Generador interno inicial (2026-10-21)
+- `apps/api/src/customer-id.mjs` emite UUID interno mediante `crypto.randomUUID()` y código visible `SB-` seguido de 12 caracteres aleatorios de alfabeto sin caracteres ambiguos. Se utiliza rechazo de bytes para evitar sesgo de módulo.
+- La salida es un **candidato** de identidad, no un registro persistido ni una sesión autenticada. El código visible no es secreto ni credencial.
+- Antes de habilitar altas, exigir una restricción SQL `UNIQUE` para el código visible, reintentos acotados ante colisión en la misma transacción y pruebas concurrentes en PostgreSQL 17 desechable. No se ha creado ninguna tabla ni ruta HTTP.
+- El ejemplo `SB-004827` anterior era solo ilustrativo; el formato efectivo propuesto es alfanumérico aleatorio de 12 caracteres para reducir colisiones y dificultar enumeración, sin tratarlo como protección de acceso.
