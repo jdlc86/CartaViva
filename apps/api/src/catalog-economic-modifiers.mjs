@@ -7,7 +7,8 @@ const keys=(value,allowed)=>Object.keys(value).every(key=>allowed.includes(key))
 const label=value=>typeof value==='string'&&value.trim().length>0&&
  [...value].length<=100&&!/[\u0000-\u001f\u007f]/u.test(value);
 const cents=value=>Number.isSafeInteger(value)&&value>=0&&value<=999999999999999;
-const uniqueIds=items=>new Set(items.map(item=>item.id)).size===items.length;
+const uniqueIds=items=>items.every(item=>plain(item)&&identifier(item.id))&&
+ new Set(items.map(item=>item.id)).size===items.length;
 const identifier=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(value);
 
 export function validateEconomicModifiers(snapshot){
