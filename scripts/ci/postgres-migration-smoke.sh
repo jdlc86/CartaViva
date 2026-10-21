@@ -74,6 +74,16 @@ begin
   -- The publisher must reject the incomplete draft.
   if SQLERRM <> 'invalid_catalog_snapshot' then raise; end if;
  end;
+ update sabora.catalog_items set draft='{"name":"Sin alérgenos","category":"Bebidas","priceCents":1200}'::jsonb where id=v_item;
+ if sabora.validate_catalog_snapshot((select draft from sabora.catalog_items where id=v_item)) IS TRUE then
+  raise exception 'missing allergens validated';
+ end if;
+ begin
+  perform sabora.publish_catalog_item(v_item,1);
+  raise exception 'missing allergens published';
+ exception when raise_exception then
+  if SQLERRM <> 'invalid_catalog_snapshot' then raise; end if;
+ end;
  update sabora.catalog_items set draft='{"name":"Borrador","category":"Bebidas","priceCents":1200,"allergens":[]}'::jsonb where id=v_item;
  if sabora.publish_catalog_item(v_item,1)<>1 then raise exception 'publish revision mismatch'; end if;
  begin
