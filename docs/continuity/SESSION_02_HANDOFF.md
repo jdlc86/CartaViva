@@ -663,3 +663,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI `cbb9392` FAILED (Sabora 39596279287, Bootstrap 39596279240): fixture de token caducado intentaba insertar `expires_at < created_at`, vulnerando correctamente `customer_session_expiry_check`. Se inserta primero sesión válida y se retrotraen ambos timestamps conservando `expires_at > created_at` (`e1c7b16`).
 - `customer-session-runtime.mjs` endurecido: constructor fallido terminal, cierre single-flight, sin reapertura, limpieza de instancia inválida (`3d82303`). Regresiones en `tests/customer-session-runtime.test.mjs` (`2010a90`).
 - CI de este HEAD pendiente. Sin despliegue, sin credenciales operativas y sin activación de rutas HTTP.
+
+## Conexión de LOGIN NOINHERIT con SET LOCAL ROLE (2026-10-21)
+- CI previo `b45a764` SUCCESS: Sabora 39597458050 y Bootstrap 39597458029.
+- Se identificó incompatibilidad funcional: el pool dedicado conecta como LOGIN NOINHERIT, por lo que `pool.query` directo no obtiene permisos RPC. Nuevo `customer-session-scoped-query.mjs`: `pool.connect` → BEGIN → SET LOCAL ROLE sabora_customer_session_runtime → RPC fijada → COMMIT → release. En error: ROLLBACK y `release(true)` (descarta conexión incierta). No eleva el LOGIN de forma permanente ni habilita consultas libres.
+- `customer-session-runtime.mjs` usa exclusivamente el adapter scoped; `tests/customer-session-scoped-query.test.mjs` verifica denegación SQL arbitrario, parámetros, rollback y cierre. `tests/customer-session-runtime.test.mjs` exige secuencia transaccional. Commits `62e710d`, `90a43b9`, `6f74a9c`, `673dd1a`, `58d0437`.
+- CI del nuevo HEAD pendiente. Sin activar rutas HTTP, ni credenciales operativas, ni tocar Supabase/VPS/Fleetia.
