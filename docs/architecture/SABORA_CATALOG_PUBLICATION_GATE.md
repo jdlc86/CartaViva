@@ -20,3 +20,8 @@ Fuente de verdad: `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.
 
 ## Estado actual
 Las migraciones candidatas `20261021180000_sabora_catalog_publication_foundation.sql` y `20261021190000_sabora_catalog_publication_guard.sql` incluyen borradores, snapshots y publicación privada con validación provisional; no se han aplicado al Supabase operativo. `apps/api/src/catalog-publication.mjs` implementa una proyección pura desde filas de publicación hacia el contrato público, sin consultar la base de datos ni publicar HTTP. Las pruebas de proyección comprueban exclusión de borradores/retirados y agotados visibles. Sigue pendiente el rol mínimo de lectura, validación económica completa, la consulta SQL y la integración. La PWA Cliente incluye únicamente modelo de presentación, filtrado y estados vacíos; no consulta HTTP. `tests/client-catalog.test.mjs` contiene pruebas del contrato de presentación. La API Fastify no publica rutas de catálogo.
+
+## Lector SQL restringido (candidato, 2026-10-21)
+- Migración `20261021200000_sabora_catalog_reader.sql`: rol técnico NOLOGIN `sabora_catalog_reader`, propietario mínimo `sabora_catalog_fn_owner`, política RLS de filas publicadas no retiradas y RPC `read_published_catalog()` con límite 500. El lector no recibe SELECT directo sobre borradores.
+- La función solo devuelve `id`, `published_snapshot` y `sold_out`; no expone `draft`, datos personales ni columnas administrativas. `anon`, `authenticated` y `sabora_admin_writer` carecen de EXECUTE.
+- Smoke PostgreSQL desechable amplía comprobaciones de permisos, agotados visibles y retirados invisibles. **CI pendiente**, sin conexión API ni credenciales de ejecución ni aplicación a Supabase operativo.
