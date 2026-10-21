@@ -30,3 +30,8 @@ Las migraciones candidatas `20261021180000_sabora_catalog_publication_foundation
 - `apps/api/src/catalog-http-route.mjs` registra `GET /api/v1/catalog` **solo cuando se invoca explícitamente** `registerCatalogHttpRoute(app,{query})`; `server.mjs` no la importa ni registra. Requiere consulta inyectada desde el pool mínimo.
 - Respuesta: array de elementos públicos; cabeceras `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`; fallos de DB devuelven `503 catalog_unavailable` sin detalles internos. Pruebas aisladas en `tests/catalog-http-route.test.mjs`.
 - Pendiente: aprovisionar login y membresía NOINHERIT auditados, probar permisos efectivos del login, instalar dependencia DB según arquitectura aprobada, integrar el servidor y PWA Cliente, confirmar CI y seguridad antes de cualquier despliegue.
+
+## PWA Cliente: consumidor preparado
+- `apps/client/src/catalog-loader.ts` solicita únicamente `GET /api/v1/catalog` en mismo origen, sin credenciales, sin caché y sin seguir redirecciones; valida estrictamente el JSON con `parsePublishedCatalog`. Errores HTTP, red o contrato pasan a estado de error sin revelar detalles.
+- `apps/client/src/main.tsx` carga al entrar en la carta, cancela solicitudes al salir y ofrece reintento. Los pedidos siguen desactivados.
+- **No es funcional en producción**: la ruta todavía no se registra en `server.mjs` y no hay login ni pool operativo. CI del nuevo commit pendiente.
