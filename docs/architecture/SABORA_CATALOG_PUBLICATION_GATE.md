@@ -35,3 +35,13 @@ Las migraciones candidatas `20261021180000_sabora_catalog_publication_foundation
 - `apps/client/src/catalog-loader.ts` solicita únicamente `GET /api/v1/catalog` en mismo origen, sin credenciales, sin caché y sin seguir redirecciones; valida estrictamente el JSON con `parsePublishedCatalog`. Errores HTTP, red o contrato pasan a estado de error sin revelar detalles.
 - `apps/client/src/main.tsx` carga al entrar en la carta, cancela solicitudes al salir y ofrece reintento. Los pedidos siguen desactivados.
 - **No es funcional en producción**: la ruta todavía no se registra en `server.mjs` y no hay login ni pool operativo. CI del nuevo commit pendiente.
+
+## Actualización de evidencias — 2026-10-21
+La sección «Estado actual» anterior refleja un punto histórico y **no debe interpretarse como estado vigente**. Se han versionado también `20261021200000_sabora_catalog_reader.sql`, `catalog-reader-query.mjs`, `catalog-scoped-query.mjs`, `catalog-pool-config.mjs`, `catalog-http-route.mjs` y el consumidor `catalog-loader.ts`. La ruta sigue **sin registrarse en `server.mjs`** y el pool/login de producción no está aprovisionado. No hay conexión operativa.
+
+- Pruebas de login PostgreSQL 17 desechable: NOINHERIT/NOBYPASSRLS, SQL real de denegación de tablas, activación transaccional del rol lector y revocación efectiva al COMMIT. CI SUCCESS en `ff3d292` y `157c183`.
+- Proyección y HTTP: validaciones de filas, duplicados y fallos cerrados. CI SUCCESS en `8283222` y `e5251e1`.
+- `readPublishedCatalog` rechaza ahora filas primitivas, nulas y snapshots ausentes devueltos por la RPC. Corrección `7034dc4` y documentación `95c8ad5`: Sabora CI y Bootstrap SUCCESS.
+- La PWA Gestión dispone de una maqueta de navegación para Resumen, Carta, Mesas/QR, Comandas y Equipo; **no ofrece login, publicación ni escrituras**. Las pruebas de guardia de esa maqueta están pendientes de confirmación CI.
+
+**Puertas aún abiertas:** completar semántica económica de opciones, extras y descuentos; autorización administrativa efectiva; integración de pool dedicado; pruebas de integración real con PostgreSQL y endpoint; aplicación de migraciones solo con autorización expresa. No activar pedidos ni publicación.
