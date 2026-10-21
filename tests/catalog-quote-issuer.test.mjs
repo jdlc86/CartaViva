@@ -6,7 +6,7 @@ const sessionId='00000000-0000-4000-8000-000000000002';
 const itemId='00000000-0000-4000-8000-000000000003';
 const quoteId='00000000-0000-4000-8000-000000000004';
 const input={tableId,visitId:'visit-1',basketId:'basket-1',actorId:'actor-1',
- itemId,selection:{options:[],extras:[]},quantity:1};
+ itemId,selection:{options:{},extras:[]},quantity:1};
 const snapshot={name:'Plato CI',category:'Primeros',allergens:[],priceCents:1000,
  options:[],extras:[],discount:null};
 function fixture(overrides={}){
@@ -58,7 +58,7 @@ test('invalid selections and untrusted client prices never persist',async()=>{
  const {issue,calls}=fixture();
  await assert.rejects(issue({...input,priceCents:1}),/invalid_catalog_quote_input/);
  assert.deepEqual(calls,[]);
- await assert.rejects(issue({...input,selection:{options:[],extras:['fake']}}));
+ await assert.rejects(issue({...input,selection:{options:{},extras:['fake']}}));
  assert.deepEqual(calls,['BEGIN','context','catalog','ROLLBACK']);
 });
 test('insert errors and malformed quote identifiers roll back',async()=>{
