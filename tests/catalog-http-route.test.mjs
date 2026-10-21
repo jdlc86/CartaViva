@@ -53,3 +53,46 @@ test('untrusted published snapshot fails closed without leaking private fields',
  assert.equal(response.status,503);
  assert.equal(JSON.stringify(response).includes('private-data'),false);
 });
+
+test('HTTP boundary uses restricted scoped SQL and never returns draft data',async()=>{
+ const {createCatalogScopedQuery}=await import('../apps/api/src/catalog-scoped-query.mjs');
+ const {createCatalogReaderSql}=await import('../apps/api/src/catalog-reader-query.mjs');
+ const statements=[];
+ const pool={connect:async()=>({
+  query:async(sql,params)=>{
+   statements.push(sql);
+   if(sql===createCatalogReaderSql()){
+    assert.deepEqual(params,[]);
+    return {rows:[{id:'11111111-1111-4111-8111-111111111111',
+     published_snapshot:{name:'Agua',category:'Bebidas',priceCents:150,allergens:[]},
+     draft:{secret:'never-public'},sold_out:false}]};
+   }
+   return {rows:[]};
+  },
+  release:discard=>statements.push(discard?'release-discard':'release-clean')
+ })};
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool})});
+ const response=await app.invoke();
+ assert.equal(response.status,200);
+ assert.deepEqual(response.body,[{id:'11111111-1111-4111-8111-111111111111',
+  name:'Agua',category:'Bebidas',priceCents:150,available:true,allergens:[]}]);
+ assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',createCatalogReaderSql(),'COMMIT','release-clean']);
+ assert.equal(JSON.stringify(response).includes('never-public'),false);
+});
+test('HTTP boundary discards scoped connection after reader failure',async()=>{
+ const {createCatalogScopedQuery}=await import('../apps/api/src/catalog-scoped-query.mjs');
+ const {createCatalogReaderSql}=await import('../apps/api/src/catalog-reader-query.mjs');
+ const statements=[];
+ const pool={connect:async()=>({
+  query:async sql=>{statements.push(sql);if(sql===createCatalogReaderSql())throw Error('sensitive database failure');return {rows:[]};},
+  release:discard=>statements.push(discard?'release-discard':'release-clean')
+ })};
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool})});
+ const response=await app.invoke();
+ assert.equal(response.status,503);
+ assert.deepEqual(response.body,{error:'catalog_unavailable'});
+ assert.equal(JSON.stringify(response).includes('sensitive database failure'),false);
+ assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',createCatalogReaderSql(),'ROLLBACK','release-discard']);
+});
