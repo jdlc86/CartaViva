@@ -16,7 +16,12 @@ export function createCustomerSessionVerifier({ query } = {}) {
     const customer = result.rows[0];
     if (!customer) return null;
     if (typeof customer.customer_id !== 'string' ||
-        typeof customer.public_id !== 'string' || typeof customer.alias !== 'string') {
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(customer.customer_id) ||
+        typeof customer.public_id !== 'string' || !/^SB-[23456789ABCDEFGHJKLMNPQRSTUVWXY]{12}$/.test(customer.public_id) ||
+        typeof customer.alias !== 'string' || !customer.alias.trim() ||
+        [...customer.alias].length > 80 || /[\u0000-\u001f\u007f]/u.test(customer.alias) ||
+        (customer.company != null && (typeof customer.company !== 'string' ||
+         [...customer.company].length > 160 || /[\u0000-\u001f\u007f]/u.test(customer.company)))) {
       throw Error('invalid_customer_session_result');
     }
     return {
