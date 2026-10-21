@@ -77,6 +77,13 @@ begin
     then raise exception 'unexpected quote ledger grant % to %',v_table,v_role; end if;
   end loop;
  end loop;
+ if (select count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid
+  join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='sabora' and c.relname in
+   ('catalog_displayed_quotes','catalog_confirmation_attempts')
+   and t.tgname in ('catalog_displayed_quotes_append_only','catalog_confirmation_attempts_append_only')
+   and not t.tgisinternal and t.tgenabled='O')<>2
+  then raise exception 'candidate ledger append-only triggers missing'; end if;
  if not exists(select 1 from pg_constraint
   where conname='catalog_confirmation_idempotency' and contype='u')
   then raise exception 'missing confirmation idempotency unique constraint'; end if;
