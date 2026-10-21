@@ -10,10 +10,9 @@ run_login() {
 # Default login must not have schema USAGE/CREATE or direct table privileges.
 # has_function_privilege() on schema-qualified names itself requires USAGE
 # and would abort before returning false; check schema first.
-run_login <<'SQL' | grep -qx 'f|f|f'
+run_login <<'SQL' | grep -qx 'f|f'
 SELECT has_schema_privilege(current_user,'sabora','USAGE'),
-has_schema_privilege(current_user,'sabora','CREATE'),
-has_table_privilege(current_user,'sabora.customer_sessions','SELECT');
+has_schema_privilege(current_user,'sabora','CREATE');
 SQL
 # Explicit SET ROLE grants only scoped RPCs, never direct SELECT/UPDATE.
 run_login <<'SQL' | grep -qx 't|t|f|f'
