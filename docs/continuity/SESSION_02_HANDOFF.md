@@ -469,3 +469,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #346 y bootstrap #329 de `d93d864` SUCCESS. CI del commit `806d6c6` seguía en progreso al consultar.
 - Commit `862725a`: añade a `docs/security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md` ficha **solo de diseño** para una futura edición de `restaurant_settings.name`: identidad verificada, orden de bloqueos, mínimo alcance SQL, auditoría, idempotencia, RLS y pruebas positivas/negativas. Se advierte que la estructura exacta del singleton requiere validación previa.
 - No hay nuevos grants, LOGIN, rutas HTTP, despliegue ni aplicación operativa de migraciones. Próximo paso: cotejar la ficha con migraciones y validar el CI del HEAD.
+
+## Cotejo real de `restaurant_settings` (2026-10-21)
+- CI y bootstrap del commit `806d6c6` SUCCESS; CI y bootstrap de `f09367d` aún en progreso al consultar.
+- Commit `629e94d`: matriz administrativa cotejada con `20261020140000_sabora_order_core.sql`. Se confirma singleton booleano PK con CHECK true, `name` NOT NULL y CHECK 1..160 caracteres tras btrim, `created_at`, RLS ENABLE+FORCE. El singleton puede no existir; no se presume política RLS permisiva ni auditoría lista.
+- Sin grants, LOGIN, rutas, despliegue ni aplicación de migraciones en entornos operativos. Próxima fase: pruebas de invariantes de singleton y denegación por rol restringido en PostgreSQL 17 desechable.
