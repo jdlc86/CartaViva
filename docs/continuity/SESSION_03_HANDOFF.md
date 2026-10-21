@@ -42,3 +42,11 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Trabajar solo en `jdlc86/CartaViva`, con commits pequeños pero coherentes, tests relevantes y documentación actualizada. No afirmar que algo está funcionando en producción cuando solo es código candidato.
 - Verificar GitHub Actions mediante runs y logs, no inferir éxito de un commit. No solicitar Codex por falta de créditos.
 - Ningún merge, despliegue, reinicio de contenedores, operación sobre Fleetia, cambio operativo de Supabase o intervención en el VPS sin autorización expresa.
+
+## Sesión 3 — primer hito de continuidad (2026-10-21)
+- HEAD inicial verificado: `dc6bc3fe4f4e6d0454cd3cf6860401f6d9ec3e26`; PR #2 sigue Draft.
+- GitHub Actions del HEAD inicial: Sabora CI `39645612485` SUCCESS y Bootstrap `39645612528` SUCCESS. La incidencia de permisos del lector en CI de sesión 2 quedó corregida en la rama. No confundir este éxito con preparación para producción.
+- Revisados `catalog-http-route.mjs`, `catalog-reader-query.mjs`, `catalog-scoped-query.mjs` y `server.mjs`: endpoint público aún opt-in, sin registro operativo ni pool.
+- Commit `c5aba8d1896051c02967db4cc065fc314e256676`: añade regresiones negativas al test HTTP del catálogo para configuración ausente, filas SQL inválidas y snapshot con precio negativo. **Validación CI del commit pendiente**; si falla, investigar logs y corregir antes de avanzar.
+- Sin cambios en Supabase, VPS, Fleetia, despliegues o merge; sin revisión Codex.
+- Próxima prioridad: verificar CI del nuevo HEAD, confirmar que el snapshot inválido efectivamente produce 503 y, si no, endurecer la proyección y su prueba. Luego comprobar privilegios del lector y composición SQL → HTTP → cliente en entorno aislado.
