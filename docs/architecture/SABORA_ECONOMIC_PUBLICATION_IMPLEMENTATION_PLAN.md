@@ -89,3 +89,8 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 - `20261021230000_sabora_catalog_ledger_append_only_candidate.sql` incorpora una función trigger `SECURITY INVOKER` sin EXECUTE público y dos triggers `BEFORE UPDATE OR DELETE`, uno por cada ledger privado. Toda mutación ordinaria posterior a la inserción se rechaza con `catalog_ledger_append_only`.
 - El smoke PostgreSQL 17 intenta modificar y borrar tanto cotizaciones mostradas como confirmaciones y exige el rechazo exacto; además verifica que ambos triggers estén habilitados. El script concurrente sigue probando la unicidad idempotente con dos sesiones.
 - **Límite:** un propietario/superusuario podría deshabilitar triggers o alterar DDL. Esto no sustituye mínimos privilegios, ni acredita autenticación, consentimiento expreso, publicación económica o escritor de pedidos. La migración continúa siendo candidata no aplicada a Supabase operativo.
+
+## Cierre del bypass TRUNCATE en ledgers económicos candidatos
+- Los triggers por fila `BEFORE UPDATE OR DELETE` no interceptan `TRUNCATE`. Se añadieron dos triggers `BEFORE TRUNCATE FOR EACH STATEMENT` a `20261021230000_sabora_catalog_ledger_append_only_candidate.sql`, usando la misma función que rechaza mutaciones.
+- `scripts/ci/catalog-quote-ledger-smoke.sql` intenta ambos `TRUNCATE` y exige `catalog_ledger_append_only`; `postgres-migration-smoke.sh` verifica los **cuatro triggers habilitados**.
+- Esta barrera impide las tres formas ordinarias de borrar/modificar registros (UPDATE, DELETE, TRUNCATE), pero no protege contra DDL de un propietario/superusuario. No concede privilegios ni habilita pedidos o escrituras operativas.
