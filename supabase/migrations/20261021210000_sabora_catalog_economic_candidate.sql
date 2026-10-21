@@ -9,7 +9,8 @@ CREATE FUNCTION sabora.validate_catalog_modifier_value(v jsonb)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $body$
  SELECT jsonb_typeof(v)='object'
  AND jsonb_typeof(v->'id')='string'
- AND (v->>'id') ~ '^[A-Za-z0-9_-]{1,64}
+ AND (v->>'id') ~ '^[A-Za-z0-9_-]{1,64}$'
+ AND jsonb_typeof(v->'name')='string'
  AND length(btrim(v->>'name')) BETWEEN 1 AND 100
  AND (v->>'name') !~ '[[:cntrl:]]'
  AND sabora.valid_catalog_cents(v->'priceCents')
