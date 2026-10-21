@@ -58,12 +58,15 @@ test('failed BEGIN discards connection instead of returning uncertain session to
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/begin failure/);
 });
-test('failed COMMIT attempts rollback and propagates commit failure',async()=>{
+test('failed COMMIT attempts rollback, discards uncertain client and propagates failure',async()=>{
  const statements=[];
+ const releases=[];
  const transaction=createPostgresTransaction({pool:{connect:async()=>({
   query:async sql=>{statements.push(sql);if(sql==='COMMIT')throw Error('commit failure');return {rows:[]}},
-  release:()=>{}
+  release:error=>releases.push(error)
  })}});
  await assert.rejects(transaction(async()=>17),/commit failure/);
  assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
+ assert.equal(releases.length,1);
+ assert.match(releases[0]?.message??'',/commit failure/);
 });
