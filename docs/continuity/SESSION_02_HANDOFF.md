@@ -561,3 +561,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Corrección de regresión Fetch Metadata (2026-10-21)
 - CI `f20de9d` falló en ambos workflows (39588524419, 39588524507): prueba `logout rejects cross-site Fetch Metadata even with forged matching Origin`, HTTP 204 en vez de 403. La causa fue que `guardMutation` comprobaba Fetch Metadata pero el handler `logout` no lo comprobaba internamente.
 - Commit `d969e94`: añade `fetchSite` a la comprobación de origen dentro de `logout`; conserva defensa en profundidad aunque se omita hook externo. Esperar CI de nuevo HEAD; no desplegar.
+
+## Frontera SQL acotada para sesiones (2026-10-21)
+- `apps/api/src/customer-session-query-boundary.mjs` permite únicamente las consultas SQL literales de verificación y revocación por hash (32 bytes), parametrizadas; rechaza cualquier otra sentencia, argumentos extra o secretos en texto. El revocador reutiliza el SQL fijado. Tests en `tests/customer-session-query-boundary.test.mjs`; syntax check de build. Commits `c70b7ca`, `480477d`, `57cc908`, `ac4c000`.
+- **No confundir con privilegios PostgreSQL**: todavía falta un rol SQL mínimo, revisión de RLS/FORCE RLS, grants y pruebas de denegación. La frontera en Node es defensa adicional, no control suficiente. Ningún endpoint registrado.
+- La corrección CSRF `f84a8e7` seguía con CI en progreso al iniciar este hito; verificar los workflows del nuevo HEAD.
