@@ -1,5 +1,5 @@
 import { readCustomerSessionPoolConfig } from './customer-session-pool-config.mjs';
-import { createCustomerSessionQueryBoundary } from './customer-session-query-boundary.mjs';
+import { createCustomerSessionScopedQuery } from './customer-session-scoped-query.mjs';
 import { createCustomerSessionVerifier } from './customer-session-verifier.mjs';
 import { createCustomerSessionRevoker } from './customer-session-revoker.mjs';
 
@@ -17,7 +17,7 @@ export function createCustomerSessionRuntime({ Pool, env } = {}) {
       // Never retry a failed constructor on this lifecycle.
       closed = true;
       const candidate = new Pool(config);
-      if (!candidate || typeof candidate.query !== 'function' || typeof candidate.end !== 'function') {
+      if (!candidate || typeof candidate.connect !== 'function' || typeof candidate.end !== 'function') {
         closed = true;
         if (candidate && typeof candidate.end === 'function') {
           Promise.resolve().then(() => candidate.end()).catch(() => {});
@@ -30,7 +30,7 @@ export function createCustomerSessionRuntime({ Pool, env } = {}) {
     },
     createOperations() {
       const activePool = this.open();
-      const query = createCustomerSessionQueryBoundary({pool:activePool});
+      const query = createCustomerSessionScopedQuery({pool:activePool});
       return Object.freeze({
         verify: createCustomerSessionVerifier({query}),
         revoke: createCustomerSessionRevoker({query})
