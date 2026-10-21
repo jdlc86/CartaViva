@@ -585,3 +585,6 @@ bash scripts/ci/customer-session-concurrency-smoke.sh "$container"
 # Verify concurrent revocation via restricted SECURITY DEFINER RPC, not table UPDATE.
 bash -n scripts/ci/customer-session-rpc-concurrency-smoke.sh
 bash scripts/ci/customer-session-rpc-concurrency-smoke.sh "$container"
+
+# Validate versioned restricted RPC migration without granting a login identity.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-versioned-rpc-smoke.sql
