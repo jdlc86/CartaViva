@@ -741,3 +741,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI `97f4b78`: Sabora SUCCESS (39632543977), Bootstrap en progreso al comprobarlo (39632544251).
 - Nuevo `tests/client-catalog.test.mjs` ejecutado por el script raíz `node --test tests/*.test.mjs`, con TypeScript del workspace cliente. Verifica parseo válido, categorías, formato EUR, colecciones inválidas, duplicados UUID insensibles a mayúsculas, campos inválidos e inmutabilidad de entrada (`c89d936`, `5c902c5`).
 - CI del HEAD pendiente. No se ha conectado API ni habilitado pedidos; sin despliegue ni cambios operativos.
+
+## Pruebas automatizadas del catálogo cliente (2026-10-21)
+- `tests/client-catalog.test.mjs` comprueba el módulo real `apps/client/src/catalog.ts` con `node:test`: filtrado, moneda EUR, categorías, rechazos de entrada inválida, duplicados de UUID y ausencia de mutación de datos.
+- Se integra por el glob `tests/*.test.mjs` del script `pnpm test` raíz. El test transpila TypeScript mediante la dependencia ya existente de `apps/client`, sin añadir un ejecutor externo.
+- Los workflows del commit anterior `97f4b78` finalizaron SUCCESS: Sabora CI 39632543977 y Bootstrap 39632544251.
+- No hay API de catálogo pública conectada, ni carrito operativo, ni despliegue. No modificar recursos del VPS/Fleetia ni Supabase operativo sin autorización.
