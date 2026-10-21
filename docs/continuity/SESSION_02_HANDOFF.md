@@ -632,3 +632,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Ajuste de pruebas Node al contrato RPC (2026-10-21)
 - CI `4bc1a9d` FAILED: Sabora run 39593517592, Bootstrap run 39593517609. El log Sabora identifica cuatro fallos de tests heredados: `customer-session-query-boundary`, dos de `customer-session-revoker` y `customer-session-verifier`, que aún esperaban UPDATE/SELECT directos y `rowCount` en lugar del RPC booleano.
 - Se actualizaron los tests heredados para validar llamadas a `sabora.verify_customer_session_hash($1::bytea)` y `sabora.revoke_customer_session_hash($1::bytea)` y filas booleanas. Commits `01de385`, `652f73d`, `aecdc19`, `7f95399`. **CI nuevo pendiente**; no se ha preparado ni habilitado credencial de conexión.
+
+## Preparación de pool de sesiones dedicado (2026-10-21)
+- `apps/api/src/customer-session-pool-config.mjs`: configuración aislada SABORA_CUSTOMER_SESSION_DB_*, usuario fijo `sabora_customer_session_login`, CA obligatoria y TLS con rejectUnauthorized=true; no crea credenciales.
+- `apps/api/src/customer-session-runtime.mjs`: Pool inyectado, apertura diferida, operaciones de verificación/revocación únicamente mediante boundary RPC y cierre de pool propio. No se importa ni registra en `server.mjs`.
+- `tests/customer-session-runtime.test.mjs` cubre usuario dedicado, TLS, fail-closed, ausencia de conexiones en construcción, RPC y cierre. Build API comprueba sintaxis. Commits `2dbdef6`, `ad1343b`, `4d7da51`, `9505282`.
+- **Advertencia**: la migración de roles NOLOGIN aún no provisiona `sabora_customer_session_login` ni su membresía. Este paso requiere revisión independiente de permisos y autorización explícita para el entorno operativo. CI del HEAD pendiente.
