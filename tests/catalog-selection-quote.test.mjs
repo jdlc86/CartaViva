@@ -51,3 +51,24 @@ test('discount is computed from selected extras and options, not client amounts'
  assert.equal(result.unitDiscountCents,1200);
  assert.equal(result.totalCents,0);
 });
+
+test('option group IDs cannot resolve inherited Object prototype properties',()=>{
+ const withSpecialGroup={...snapshot,options:[{...snapshot.options[0],id:'toString'}]};
+ assert.throws(()=>quoteCatalogSelection({
+  snapshot:withSpecialGroup,selection:{options:{},extras:[]}
+ }),/invalid_catalog_selection/);
+ const valid=quoteCatalogSelection({
+  snapshot:withSpecialGroup,selection:{options:{toString:['normal']},extras:[]}
+ });
+ assert.equal(valid.totalCents,900);
+});
+test('combined selected modifiers are bounded even when each group is valid',()=>{
+ const values=Array.from({length:20},(_,i)=>({
+  id:'v'+i,name:'Valor '+i,priceCents:1,available:true,allergens:[]
+ }));
+ const many={...snapshot,options:Array.from({length:3},(_,i)=>({
+  id:'group'+i,name:'Grupo '+i,required:true,maxSelections:20,values
+ }))};
+ const options=Object.fromEntries(many.options.map(group=>[group.id,values.map(v=>v.id)]));
+ assert.throws(()=>quoteCatalogSelection({snapshot:many,selection:{options,extras:[]}}),/invalid_catalog_selection/);
+});
