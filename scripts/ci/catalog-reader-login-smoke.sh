@@ -28,6 +28,15 @@ BEGIN
   RAISE EXCEPTION 'catalog login inherited RPC execution';
  END IF;
 END $verify$;
+-- Exercise denial as the real login, not only privilege metadata.
+DO $deny_direct_rpc$
+BEGIN
+ BEGIN
+  PERFORM count(*) FROM sabora.read_published_catalog();
+  RAISE EXCEPTION 'catalog login executed restricted RPC without role switch';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+END $deny_direct_rpc$;
 BEGIN;
 SET LOCAL ROLE sabora_catalog_reader;
 SELECT count(*) FROM sabora.read_published_catalog();
@@ -44,5 +53,13 @@ COMMIT;
 DO $verify_reset$
 BEGIN
  IF current_user <> 'sabora_catalog_login' THEN RAISE EXCEPTION 'role leaked'; END IF;
+ IF has_function_privilege(current_user,'sabora.read_published_catalog()','EXECUTE') THEN
+  RAISE EXCEPTION 'restricted RPC remained executable after COMMIT';
+ END IF;
+ BEGIN
+  PERFORM count(*) FROM sabora.read_published_catalog();
+  RAISE EXCEPTION 'catalog login executed restricted RPC after COMMIT';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
 END $verify_reset$;
 SQL
