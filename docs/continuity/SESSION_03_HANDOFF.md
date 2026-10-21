@@ -155,3 +155,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — casos negativos de publicación económica PostgreSQL
 - Commit `e278c1cb923f43b16a2bd0625040df5a5b3b79fc`: smoke de PostgreSQL 17 desechable amplía pruebas negativas de `validate_catalog_snapshot`: céntimos fraccionarios, negativos, importes fuera de límite, extras no validados, descuento fijo no validado y alérgeno nulo. Mantiene la prohibición de publicar reglas económicas aún no implementadas.
 - No altera migraciones ni producción. Verificar CI; el soporte positivo de extras/opciones/descuentos sigue pendiente de diseño, validación y pruebas transaccionales.
+
+## Sesión 3 — proyección pública sin pérdida silenciosa de reglas económicas
+- Commits `c047821bebbe51e63263fb0d1649b9e62b925911` y `0860df271b9e47a6822b9fe87d619dc7f1cb6b23`: `projectPublishedCatalog` rechaza snapshots publicados con `options`/`extras` no vacíos o `discount` no nulo porque el DTO público actual no puede representarlos. Las variantes vacías/neutras siguen permitidas. Pruebas de regresión.
+- Esto **no implementa** extras/opciones/descuentos; impide presentar un precio incompleto si llegaran a publicarse por una vía futura. La publicación SQL sigue bloqueando reglas no implementadas. Verificar CI.
