@@ -251,3 +251,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Corrección `de0e12fb`: se detectaron **varios bloques SQL duplicados después del primer COMMIT** en la migración candidata, originados por sustituciones de cadenas con el metacarácter `$`. Se eliminó toda la cola duplicada y se verificó que quedara un único COMMIT y ambas FK compuestas.
 - Corrección `2e34182f`: la prueba negativa de artículo/visita usaba un pedido de otra mesa y disparaba antes la FK de pedido. Se añadió un segundo pedido de la mesa correcta para aislar el rechazo exacto de la FK de cotización. CI pendiente de confirmar.
 - Regla de edición: al modificar SQL por GitHub usar cortes por índices o `replace(...,()=>replacement)`, verificar longitud, número de COMMIT y ausencia de colas duplicadas antes de commit.
+
+## Sesión 3 — dos conexiones concurrentes en PostgreSQL 17 aislado
+- `72efdbed`: script `scripts/ci/catalog-quote-concurrency-smoke.sh` prueba dos transacciones independientes con igual clave idempotente y pedidos/huellas diferentes, sincronizadas mientras la primera inserción no está confirmada; comprueba que solo persiste el primer intento.
+- `d4424f61`: integración del script en el smoke de migraciones del PostgreSQL 17 sin red.
+- `19cab3a7`: arquitectura documenta alcance y límites: **no** hay todavía escritor restringido, autorización QR ni aceptación durable; la concurrencia del índice no equivale a seguridad extremo a extremo.
+- Verificar workflows del HEAD. No aplicar a Supabase operativo ni desplegar.
