@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCatalogConfirmationCoordinator} from '../apps/api/src/catalog-confirmation-coordinator.mjs';
 import {issueCatalogRepriceAcceptance} from '../apps/api/src/catalog-reprice-acceptance.mjs';
+import {buildCatalogLineEvidence} from '../apps/api/src/catalog-line-evidence.mjs';
 
 const secretKey='only-for-isolated-unit-tests-a-long-server-key';
 const snapshot={name:'Plato',category:'Segundos',priceCents:1000,allergens:[],
@@ -10,13 +11,15 @@ const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
  selection:{extras:[]},quantity:1,
  requestKey:'request-001',acceptanceToken:null};
+const displayed=buildCatalogLineEvidence({itemId:input.itemId,publishedRevision:1,
+ snapshot,selection:input.selection,quantity:1});
 const make=(overrides={})=>{
  const calls=[];
  const db={
   lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true};},
   lookupIdempotency:async()=>{calls.push('replay');return null;},
   lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
-  loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'quote-1',publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
+  loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'quote-1',evidence:displayed,publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
   persist:async(_query,args)=>{calls.push('persist');assert.equal(args.quoteId,'quote-1');return {orderId:'order-1',evidence:args.evidence};},
   ...overrides
  };
@@ -109,7 +112,7 @@ test('missing or malformed trusted previous quote aborts before persistence',asy
 test('a trusted previous revision mismatch requires consent despite client silence',async()=>{
  const {confirm,calls}=make({
   loadPreviousQuote:async()=>{calls.push('previous');return {
-   quoteId:'quote-1',publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
+   quoteId:'quote-1',evidence:{...displayed,publishedRevision:2},publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
   };}
  });
  const result=await confirm(input);
@@ -123,4 +126,17 @@ test('previous quote without trusted identifier cannot be persisted',async()=>{
  };}});
  await assert.rejects(confirm(input),/order_previous_quote_unavailable/);
  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
+});
+
+test('changed quantity cannot silently reuse a displayed quote',async()=>{
+ const {confirm,calls}=make();
+ await assert.rejects(confirm({...input,quantity:2}),/order_displayed_quote_invalid/);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
+});
+test('corrupt stored evidence is rejected even if amounts look correct',async()=>{
+ const {confirm}=make({loadPreviousQuote:async()=>({
+  quoteId:'quote-1',publishedRevision:1,subtotalCents:1000,
+  discountCents:0,totalCents:1000,evidence:{...displayed,totalCents:999}
+ })});
+ await assert.rejects(confirm(input),/order_displayed_quote_invalid/);
 });
