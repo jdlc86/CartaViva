@@ -714,3 +714,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/client/src/main.tsx` restaura las preferencias locales de alias y empresa al reabrir la PWA; valida tamaño, tipos, longitud y caracteres de control antes de usarlas. Si hay alias válido, la bienvenida ofrece continuar con él, sin solicitar de nuevo los datos (`0e8d676`).
 - Esta persistencia es **solo de presentación**, no sesión autenticada ni recuperación entre dispositivos. No almacenar tokens o credenciales en localStorage. La persistencia segura se resolverá mediante cookie HttpOnly y passkey cuando exista backend conectado.
 - CI del HEAD pendiente; ninguna ruta de cliente habilitada ni despliegue realizado.
+
+## Retorno de cliente en prototipo PWA (2026-10-21)
+- Se restaura alias/empresa desde preferencias locales tras validación de JSON, tipos, longitudes y caracteres de control; botón «Continuar como …». No supone autenticación ni recuperación passkey.
+- Corrección del patrón de caracteres de control en `7ba52bd`. Se detectó trabajo concurrente en la rama y se preservaron los cambios actuales mediante lectura de SHA.
+- CI pendiente; sin rutas públicas ni cambios operativos.
