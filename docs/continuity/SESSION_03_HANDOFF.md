@@ -209,3 +209,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `2cb36795`: pruebas de evidencia congelada, independencia ante mutaciones posteriores, revisión/identificadores y entradas malformadas.
 - `7c8cae23`, `10322d77`: cálculo porcentual exacto con `BigInt` para evitar desbordamiento de producto intermedio; pruebas de límites de enteros seguros. La primera ejecución CI de `7c8cae23` falló por una aserción previa que esperaba rechazo de un caso ahora válido; se actualizó en `10322d77`. Verificar CI final.
 - `455557ff`: contrato de arquitectura actualizado. Nada conectado a confirmación de pedidos, DB operativa, publicación SQL, HTTP ni PWA. Próxima puerta: transacción real que bloquee revisión, resuelva pertenencia y persista evidencia atómica con idempotencia y aceptación explícita.
+
+## Sesión 3 — candidato de aceptación firmada de recotización
+- `821a0b61`: módulo puro `apps/api/src/catalog-reprice-acceptance.mjs` con token HMAC-SHA256 firmado por servidor, ligado a cesta, identidad, revisión publicada, selección, cantidad, evidencia económica y caducidad máxima de diez minutos.
+- `2ad2d1a3`, `d28a65b8`: pruebas de firma, manipulación, caducidad, subida/bajada de precio, cambio de descuento, disponibilidad, identidad y revisión; caso de manipulación hecho determinista.
+- `3e513aff`: arquitectura aclara que **token firmado no equivale a consentimiento humano ni a idempotencia**. Falta registro transaccional de aceptación y validación de permisos/visita/mesa en DB. No montar rutas ni usar en producción.
+- Revisar CI del HEAD tras documentación. Sin merge, sin despliegue, sin escritura en Supabase operativo ni recursos del VPS.
