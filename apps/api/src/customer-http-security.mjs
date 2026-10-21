@@ -23,14 +23,15 @@ export function readCustomerSessionCookie(cookieHeader) {
   return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
 }
 
-export function isAllowedCustomerRequestOrigin({ method, origin, expectedOrigin } = {}) {
-  if (typeof expectedOrigin !== 'string' || !/^https:\/\/[^/]+$/.test(expectedOrigin)) {
+export function isAllowedCustomerRequestOrigin({ method, origin, expectedOrigin, fetchSite } = {}) {
+  if (typeof expectedOrigin !== 'string' || !/^https:\/\/[^/?#]+$/.test(expectedOrigin)) {
     throw Error('invalid_customer_origin_configuration');
   }
   if (typeof method !== 'string') return false;
   if (SAFE_METHODS.has(method.toUpperCase())) return true;
   // Unsafe requests are denied unless Origin matches the exact configured
   // HTTPS PWA origin. No Referer fallback or wildcard matching.
+  if (fetchSite !== undefined && fetchSite !== 'same-origin') return false;
   return typeof origin === 'string' && origin === expectedOrigin;
 }
 
