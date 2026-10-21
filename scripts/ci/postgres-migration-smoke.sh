@@ -588,3 +588,7 @@ bash scripts/ci/customer-session-rpc-concurrency-smoke.sh "$container"
 
 # Validate versioned restricted RPC migration without granting a login identity.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-versioned-rpc-smoke.sql
+
+# Authenticate a genuine NOINHERIT login over container-local TCP.
+bash -n scripts/ci/customer-session-login-smoke.sh
+bash scripts/ci/customer-session-login-smoke.sh "$container"
