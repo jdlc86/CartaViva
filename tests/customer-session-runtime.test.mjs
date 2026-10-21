@@ -44,3 +44,38 @@ test('runtime opens lazily, uses only RPCs, and closes its own pool',async()=>{
  assert.equal(ended,1);
  assert.throws(()=>runtime.open(),/runtime_closed/);
 });
+
+test('runtime close is single-flight and permanently terminal',async()=>{
+ let resolveEnd,ends=0;
+ class Pool {
+  query(){return {rows:[]};}
+  end(){ends++;return new Promise(resolve=>{resolveEnd=resolve;});}
+ }
+ const runtime=createCustomerSessionRuntime({Pool,env});
+ runtime.open();
+ const first=runtime.close();
+ const second=runtime.close();
+ assert.throws(()=>runtime.open(),/runtime_closed/);
+ await Promise.resolve();
+ assert.equal(ends,1);
+ resolveEnd();
+ await Promise.all([first,second]);
+ assert.equal(ends,1);
+});
+test('failed pool construction cannot be retried',()=>{
+ let attempts=0;
+ class Pool {constructor(){attempts++;throw Error('driver_down');}}
+ const runtime=createCustomerSessionRuntime({Pool,env});
+ assert.throws(()=>runtime.open(),/driver_down/);
+ assert.throws(()=>runtime.open(),/runtime_closed/);
+ assert.equal(attempts,1);
+});
+test('invalid driver instance fails closed and is cleaned up',async()=>{
+ let ended=0;
+ class Pool {end(){ended++;}}
+ const runtime=createCustomerSessionRuntime({Pool,env});
+ assert.throws(()=>runtime.open(),/invalid_customer_session_pool/);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(ended,1);
+ assert.throws(()=>runtime.open(),/runtime_closed/);
+});
