@@ -45,3 +45,17 @@ La primera operación candidata a un futuro contrato de permisos mínimos es **m
 | Puerta pendiente | Diseño aprobado de RLS, auditoría, contrato HTTP, conexión SQL y bootstrap/recuperación de ROOT |
 
 El uso de `restaurant_settings` como primera candidata no implica que la tabla ya tenga una clave singleton apropiada, política RLS específica o columnas de auditoría; esos elementos deben comprobarse contra el esquema y migraciones antes de cualquier implementación.
+
+## Cotejo de esquema: `restaurant_settings` (2026-10-21)
+
+La migración `20261020140000_sabora_order_core.sql` confirma que el recurso **sí** tiene un singleton booleano `singleton` como clave primaria, con `DEFAULT true` y `CHECK(singleton)`. Las columnas actuales son `singleton`, `name` y `created_at`; el nombre exige texto no nulo con longitud `btrim(name)` entre 1 y 160 caracteres. La tabla tiene RLS habilitada y `FORCE ROW LEVEL SECURITY`, pero esa configuración **no equivale** a una política que permita actualizarla al writer.
+
+Consecuencias para la futura operación:
+
+- El predicado SQL debe identificar explícitamente `WHERE singleton = true`; la única columna mutable prevista es `name`, sin modificar `singleton` ni `created_at`.
+- Validar y normalizar el nombre antes de iniciar la transacción; el `CHECK` de base de datos sigue siendo la defensa final.
+- Antes de cualquier concesión, crear y probar una política RLS restringida y una estrategia de auditoría atómica; actualmente no existe autorización para abrir el acceso.
+- Comprobar por separado que el singleton exista: una clave primaria booleana restringida a `true` garantiza **como máximo una fila**, pero no garantiza **que exista** una fila.
+- Evitar otorgar permisos de tabla completos: cualquier futura concesión debe justificarse por columna y operación, y verificarse con una identidad SQL no propietaria en PostgreSQL desechable.
+
+Esta verificación documental no introduce una migración ni modifica el esquema operativo.
