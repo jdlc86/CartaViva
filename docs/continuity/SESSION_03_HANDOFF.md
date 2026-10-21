@@ -221,3 +221,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - bfbb0027: pruebas de subida, bajada, revisión, descuento, identidad, caducidad y datos alterados.
 - 75d9d27a: documentación de arquitectura. Pendiente: autorización de visita, bloqueo transaccional, idempotencia, consentimiento duradero y persistencia atómica.
 - Sin conexión HTTP ni operaciones en entornos productivos.
+
+## Sesión 3 — coordinador transaccional candidato
+- 94c40bd7: coordinador aislado con transacción, bloqueo de contexto, replay idempotente, bloqueo de catálogo, decisión de aceptación y persistencia delegada.
+- c9b8862d: pruebas con adaptador simulado de secuencia, rollback, replay, cambios de revisión, consentimiento y entradas prohibidas.
+- 072b2d84: documentación de los límites. No hay adaptador PostgreSQL real, consumo durable de aceptación ni ruta HTTP. No activar pedidos.
+- Pendiente: SQL de idempotencia, bloqueo real, autorización QR/visita y pruebas concurrentes en PostgreSQL 17 aislado.
