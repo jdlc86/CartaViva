@@ -136,3 +136,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — pruebas adicionales de precios
 - Commit `8eb0b563005b96f15ed3edd31b4da8b8d049af86`: casos de gratuidad, descuento porcentual completo, redondeo por unidad antes de multiplicar, overflow de importes y entradas inválidas en `tests/catalog-pricing.test.mjs`. `priceCatalogLine` continúa siendo cálculo puro sin endpoint de pedido.
 - `23578d8` y `a07e392`: Sabora CI y Bootstrap SUCCESS. Verificar los nuevos workflows de pruebas económicas.
+
+## Sesión 3 — endurecimiento del acumulador de extras
+- `8eb0b56`: Sabora CI y Bootstrap SUCCESS, incluyendo pruebas de descuento completo, redondeo y overflow.
+- Commits `2c1091a40a981215d39587081d588dc10308807f` y `944939c663dcccbd773eab08906252d1d65344aa`: el cálculo puro de precios comprueba overflow en cada acumulación de extras y al sumar el precio base, antes de cualquier descuento. Regresiones para el límite `Number.MAX_SAFE_INTEGER`.
+- Sin activación de API, publicación administrativa, pedidos, migraciones operativas ni despliegue. Comprobar CI de este cambio.
