@@ -445,3 +445,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Al comprobar `86c17fe`, bootstrap #320 seguía en progreso y CI #337 en cola; no se declaró verde.
 - Commit `cbc9d50`: dos pruebas de `postgres-transaction`: (a) fallo de trabajo con rollback exitoso devuelve cliente limpio al pool; (b) COMMIT y ROLLBACK fallidos preservan error COMMIT y descartan cliente por error de rollback.
 - Sin cambios operativos, sin credenciales SQL ni grants; CI del nuevo HEAD pendiente.
+
+## Integración de adaptadores ADMIN/transacción (2026-10-21)
+- CI #338 y bootstrap #321 del commit `cbc9d50` SUCCESS.
+- Nuevo `tests/admin-write-transaction-integration.test.mjs` enlaza los adaptadores reales `createPostgresTransaction` y `createTransactionalAdminWrite` con cliente PostgreSQL simulado determinista: comprueba orden BEGIN/bloqueos/mutación/COMMIT, denegación sin mutación para ADMIN no titular, revocado y ROOT, y ROLLBACK ante fallo de mutación.
+- Límite explícito: integración JS con cliente simulado, **no** validación de ACL/RLS bajo identidad SQL mínima real. No se han concedido grants ni creado LOGIN operativo. Próximo gate: pruebas SQL de mínimos privilegios en PostgreSQL 17 desechable y verificación CI del HEAD.
