@@ -9,13 +9,26 @@ const storageKey='sabora.customer.display-preferences.v1';
 // authentication state are stored in browser storage.
 function App(){
  const [screen,setScreen]=useState<Screen>('welcome');
- const [customer,setCustomer]=useState<Customer>({alias:'',company:''});
+ const [customer,setCustomer]=useState<Customer>(()=>{
+  try {
+   const raw=localStorage.getItem(storageKey);
+   if(!raw || raw.length>1024)return {alias:'',company:''};
+   const value:unknown=JSON.parse(raw);
+   if(!value || typeof value!=='object')return {alias:'',company:''};
+   const candidate=value as Record<string,unknown>;
+   if(typeof candidate.alias!=='string' || typeof candidate.company!=='string')return {alias:'',company:''};
+   const alias=candidate.alias.trim(),company=candidate.company.trim();
+   if(!alias || [...alias].length>80 || [...company].length>160 ||
+      /[\\u0000-\\u001f\\u007f]/u.test(alias+company))return {alias:'',company:''};
+   return {alias,company};
+  }catch{return {alias:'',company:''};}
+ });
  const [message,setMessage]=useState('');
  function savePreferences(event:React.FormEvent){
   event.preventDefault();
   const alias=customer.alias.trim();
   const company=customer.company.trim();
-  if(!alias || [...alias].length>80 || [...company].length>160){
+  if(!alias || [...alias].length>80 || [...company].length>160 || /[\\u0000-\\u001f\\u007f]/u.test(alias+company)){
    setMessage('Introduce un alias válido de hasta 80 caracteres.');
    return;
   }
@@ -32,7 +45,7 @@ function App(){
     <span className="eyebrow">BIENVENIDO A SABORA</span>
     <h1>Una buena comida empieza aquí.</h1>
     <p>Descubre la experiencia de tu restaurante desde el móvil.</p>
-    <div className="welcome-actions"><button className="primary-button" onClick={()=>{setMessage('');setScreen('identity');}}>Empezar <span aria-hidden="true">→</span></button></div>
+    <div className="welcome-actions"><button className="primary-button" onClick={()=>{setMessage('');setScreen(customer.alias?'menu':'identity');}}>{customer.alias?'Continuar como '+customer.alias:'Empezar'} <span aria-hidden="true">→</span></button></div>
     <div className="feature-note"><span aria-hidden="true">✦</span><div><strong>Tu mesa, tu experiencia</strong><p>Próximamente podrás consultar los platos y seguir tu pedido sin esperas.</p></div></div>
    </section>}
    {screen==='identity'&&<section className="identity-panel">
