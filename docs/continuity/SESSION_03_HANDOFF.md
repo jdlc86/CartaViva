@@ -159,3 +159,7 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — proyección pública sin pérdida silenciosa de reglas económicas
 - Commits `c047821bebbe51e63263fb0d1649b9e62b925911` y `0860df271b9e47a6822b9fe87d619dc7f1cb6b23`: `projectPublishedCatalog` rechaza snapshots publicados con `options`/`extras` no vacíos o `discount` no nulo porque el DTO público actual no puede representarlos. Las variantes vacías/neutras siguen permitidas. Pruebas de regresión.
 - Esto **no implementa** extras/opciones/descuentos; impide presentar un precio incompleto si llegaran a publicarse por una vía futura. La publicación SQL sigue bloqueando reglas no implementadas. Verificar CI.
+
+## Sesión 3 — contrato de implementación económica
+- Commit `4ef5371cddbfe6016787786eeb03c4a5b647570d`: nuevo `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md`. Define puertas de implementación para DTO versionado, validación de extras/opciones/descuentos, publicación con revisión esperada, selección cotizada en servidor, recálculo y aceptación explícita, snapshots inmutables y pruebas aisladas. Es diseño no operativo derivado del contrato funcional, no funcionalidad implementada.
+- No relajar la validación SQL ni la proyección pública hasta que se implemente y pruebe el contrato completo.
