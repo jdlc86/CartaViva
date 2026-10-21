@@ -532,3 +532,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-session-verifier.mjs`: consulta parametrizada por hash SHA-256 del token, filtra `revoked_at IS NULL` y `expires_at > now()`, devuelve identidad interna si válida y `null` si no existe. No consulta por alias/ID público ni expone endpoint.
 - Tests `tests/customer-session-verifier.test.mjs` (hash, SQL, token inválido, error de DB y resultado corrupto); `scripts/ci/customer-session-verification.sql` ejecuta contra PostgreSQL 17 desechable los estados vigente/revocado/caducado/inexistente. Integrado en `postgres-migration-smoke.sh` y build. Commits `1cc03e1`, `5380772`, `8f0bbfb`, `0c43fb6`, `e554006`.
 - Faltan permisos backend mínimos, integración HTTP, cookies HttpOnly, CSRF, rotación, revocación de sesión por cliente y pruebas E2E. No desplegar ni aplicar migraciones operativas. Verificar CI HEAD.
+
+## Corrección smoke de caducidad (2026-10-21)
+- CI del commit `149f084` FAILED: Sabora CI 39586864461 y bootstrap 39586864736. Causa localizada en `scripts/ci/customer-session-verification.sql`: la simulación de expiración asignaba `expires_at` anterior a `created_at`, violando correctamente `customer_session_expiry_check`.
+- Commit `2a15b90`: prueba corregida desplazando también `created_at` al pasado; se preserva el CHECK de integridad, no se debilita la migración. Verificar CI del nuevo HEAD antes de declarar verde.
