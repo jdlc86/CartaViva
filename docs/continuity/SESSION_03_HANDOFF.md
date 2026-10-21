@@ -257,3 +257,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `d4424f61`: integración del script en el smoke de migraciones del PostgreSQL 17 sin red.
 - `19cab3a7`: arquitectura documenta alcance y límites: **no** hay todavía escritor restringido, autorización QR ni aceptación durable; la concurrencia del índice no equivale a seguridad extremo a extremo.
 - Verificar workflows del HEAD. No aplicar a Supabase operativo ni desplegar.
+
+## Sesión 3 — inmutabilidad del ledger económico
+- `22c9b837`: migración candidata `20261021230000_sabora_catalog_ledger_append_only_candidate.sql`, triggers `BEFORE UPDATE OR DELETE` que rechazan mutaciones ordinarias en cotizaciones y confirmaciones.
+- `33189760`: prueba SQL de UPDATE y DELETE sobre ambas tablas, con error esperado `catalog_ledger_append_only`.
+- `89bfe91a`: CI comprueba que ambos triggers estén habilitados en PostgreSQL 17 desechable.
+- `f28f2cff`: arquitectura y límites documentados. Pendiente imprescindible: escritor restringido, autorización de visita/mesa, consentimiento explícito y pruebas transaccionales de extremo a extremo. No hay activación de pedidos, merge, despliegue ni cambios operativos.
