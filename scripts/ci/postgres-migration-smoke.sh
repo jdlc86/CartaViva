@@ -19,7 +19,7 @@ for migration in supabase/migrations/*.sql; do
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
-docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
 # against the freshly migrated, network-isolated PostgreSQL instance.
