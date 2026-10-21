@@ -562,4 +562,5 @@ SQL
 bash scripts/ci/admin-ownership-lifecycle-smoke.sh "$container"
 bash scripts/ci/admin-ownership-concurrency-smoke.sh "$container"
 bash scripts/ci/customer-id-concurrency-smoke.sh "$container"
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-verification.sql
 echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and ownership concurrency smoke passed.'
