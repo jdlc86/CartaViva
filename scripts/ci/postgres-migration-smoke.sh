@@ -78,6 +78,13 @@ begin
  if not exists(select 1 from pg_constraint
   where conname='catalog_confirmation_quote_scope' and contype='f')
   then raise exception 'missing confirmation quote ownership foreign key'; end if;
+ if not exists(select 1 from pg_constraint
+  where conname='catalog_confirmation_order_scope' and contype='f')
+  then raise exception 'missing confirmation table-session order foreign key'; end if;
+ if not exists(select 1 from information_schema.columns
+  where table_schema='sabora' and table_name='catalog_confirmation_attempts'
+  and column_name='item_id' and data_type='uuid')
+  then raise exception 'confirmation must bind item_id'; end if;
 end $quote_ledger$;
 -- Candidate validator is tested independently: it must not enable publication.
 do $economic_candidate$
