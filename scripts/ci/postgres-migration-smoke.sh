@@ -128,6 +128,9 @@ begin
  end loop;
 end;
 $writer_memberships$;
+-- Exercise the dormant role as the active SQL principal, not just ACL metadata.
+-- SQL privileges must be denied even if future migrations accidentally expose
+-- an object to PUBLIC or add a direct grant.
 set role sabora_admin_writer;
 do $writer_denials$
 begin
