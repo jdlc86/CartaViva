@@ -9,9 +9,9 @@ const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
-const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','persist'];
+const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
- 'previous','requestKey','acceptanceToken'];
+ 'requestKey','acceptanceToken'];
 const stable=v=>{
  if(Array.isArray(v))return '['+v.map(stable).join(',')+']';
  if(plain(v))return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}';
@@ -31,8 +31,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
      !validId(input.actorId)||!validId(input.basketId))
    throw Error('invalid_confirmation_input');
   const {requestKey,acceptanceToken=null,...request}=input;
-  // No prices or economic evidence from browser are accepted. Previous is
-  // display-only comparison data, not an authority for persistence.
+  // No previous quote, price, revision or economic evidence is accepted from
+  // the browser. The prior displayed quote must come from trusted storage.
   const requestFingerprint=stable(request);
   return withTransaction(async query=>{
    // Locks the visit/table and checks authorization BEFORE looking up a replay.
@@ -55,10 +55,14 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
       published.publishedRevision<1||!plain(published.snapshot)||
       published.available!==true)
     throw Error('order_catalog_unavailable');
+   const previous=await repository.loadPreviousQuote(query,{
+    context,itemId:input.itemId,basketId:input.basketId,actorId:input.actorId
+   });
+   if(!plain(previous))throw Error('order_previous_quote_unavailable');
    const nowMs=clock();
    if(!Number.isSafeInteger(nowMs)||nowMs<0)throw Error('invalid_confirmation_clock');
    const decision=decideCatalogLineConfirmation({
-    previous:input.previous,itemId:input.itemId,
+    previous,itemId:input.itemId,
     publishedRevision:published.publishedRevision,snapshot:published.snapshot,
     selection:input.selection,quantity:input.quantity,
     acceptanceToken,basketId:input.basketId,actorId:input.actorId,secretKey,nowMs
