@@ -76,7 +76,7 @@ BEGIN
  EXCEPTION WHEN insufficient_privilege THEN NULL;
  END;
  BEGIN
-  SELECT count(*) INTO STRICT _missing FROM sabora.customer_profiles;
+  PERFORM count(*) FROM sabora.customer_profiles;
   RAISE EXCEPTION 'runtime read profiles';
  EXCEPTION WHEN insufficient_privilege THEN NULL;
  END;
