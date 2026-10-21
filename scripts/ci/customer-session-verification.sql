@@ -18,7 +18,7 @@ begin
  from sabora.customer_sessions s join sabora.customer_profiles p on p.id=s.customer_id
  where s.token_hash=v_hash and s.revoked_at is null and s.expires_at>now() limit 1;
  if v_found is not null then raise exception 'revoked session accepted'; end if;
- update sabora.customer_sessions set revoked_at=null,expires_at=now()-interval '1 second' where id=v_session;
+ update sabora.customer_sessions set revoked_at=null,created_at=now()-interval '2 days',expires_at=now()-interval '1 day' where id=v_session;
  select s.customer_id into v_found
  from sabora.customer_sessions s join sabora.customer_profiles p on p.id=s.customer_id
  where s.token_hash=v_hash and s.revoked_at is null and s.expires_at>now() limit 1;
