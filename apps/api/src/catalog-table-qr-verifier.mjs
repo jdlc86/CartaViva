@@ -1,7 +1,7 @@
 // Candidate table/QR verification only. It does NOT authorize a customer
 // visit, actor, basket or order. The future lockContext must also verify a
 // customer session and durable visit membership before returning canOrder.
-const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function createCatalogTableQrVerifier(){
  return Object.freeze({
   async verifyTableQr(query,{tableId,qrToken,expectedSessionId}={}){
