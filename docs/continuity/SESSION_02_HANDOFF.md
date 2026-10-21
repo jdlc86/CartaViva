@@ -747,3 +747,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Se integra por el glob `tests/*.test.mjs` del script `pnpm test` raíz. El test transpila TypeScript mediante la dependencia ya existente de `apps/client`, sin añadir un ejecutor externo.
 - Los workflows del commit anterior `97f4b78` finalizaron SUCCESS: Sabora CI 39632543977 y Bootstrap 39632544251.
 - No hay API de catálogo pública conectada, ni carrito operativo, ni despliegue. No modificar recursos del VPS/Fleetia ni Supabase operativo sin autorización.
+
+## Gate previo a API pública del catálogo (2026-10-21)
+- Las pruebas de cliente `tests/client-catalog.test.mjs` ya están incorporadas; Sabora CI del commit `1970a97` estaba en progreso al revisarlo (run 39633360581), Bootstrap en progreso (39633360616).
+- Se descartó inmediatamente un intento de introducir una consulta sobre una tabla no acreditada en la documentación/migraciones (`1f517e7` revertido mediante `cbe22fb`). **No existe servicio HTTP de catálogo habilitado.** Antes de escribir SQL real se debe identificar y verificar el esquema efectivo, estados de publicación, RLS y permisos de lectura. Prohibido asumir nombres de tablas o exponer borradores.
+- No hubo despliegue ni intervención en Supabase operativo, VPS o Fleetia.
