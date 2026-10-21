@@ -510,3 +510,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-profile-writer.mjs`: adaptador interno que recibe transacción ya configurada, genera candidato de ID solo en servidor, inserta perfil mediante parámetros y maneja colisión `23505` exclusivamente de `customer_profiles_public_id_key` con SAVEPOINT/ROLLBACK TO/RELEASE; máximo 5 intentos por defecto, máximo configurable 20. No reintenta otros fallos SQL.
 - `tests/customer-profile-writer.test.mjs`: pruebas de inserción, colisión recuperable, agotamiento, error de clave primaria y perfil inválido. Build comprueba sintaxis. Commits `356e2c1`, `ec88fb4`, `02f574f`.
 - Falta prueba SQL real de dos sesiones concurrentes, sesiones autenticadas, HTTP y permisos SQL mínimos. **No conectar este adaptador a rutas públicas ni habilitar SQL grants hasta cerrar esas puertas**. Sin Supabase operativo, VPS ni Fleetia. Verificar CI del HEAD.
+
+## Concurrencia real de IDs de cliente (2026-10-21)
+- HEAD previo `dc7997d`: CI run 39565531126 SUCCESS y bootstrap 39565531132 SUCCESS.
+- `scripts/ci/customer-id-concurrency-smoke.sh` ejecuta dos sesiones psql independientes en el contenedor PostgreSQL 17 desechable. La primera retiene el ID visible durante 2 s; la segunda intenta duplicarlo, debe recibir unique_violation, recuperarse y registrar otro ID. Verificación final: dos perfiles y un solo registro con el primer ID.
+- El smoke se invoca desde `scripts/ci/postgres-migration-smoke.sh`. Commits `ab8cdc5`, `b8c1395`, `e681133`. Comprobar Actions del HEAD; no se ha ejecutado contra Supabase operativo.
+- Aún no hay autenticación de clientes, sesiones, rutas públicas ni despliegues; Fleetia aislado.
