@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { prepareCustomerRegistration } from './customer-id.mjs';
-import { issueCustomerSession } from './customer-session.mjs';
+import { issueCustomerSession, hashCustomerSessionToken } from './customer-session.mjs';
 
 // Internal-only transactional registration. Never expose the bearer token in logs
 // or persist it alongside the profile. The caller must set an HttpOnly cookie
@@ -33,7 +33,10 @@ export function createCustomerRegistrationWithSession({
           const session = issue();
           if (!session || typeof session.token !== 'string' ||
               !Buffer.isBuffer(session.tokenHash) || session.tokenHash.length !== 32 ||
-              !(session.createdAt instanceof Date) || !(session.expiresAt instanceof Date)) {
+              !(session.createdAt instanceof Date) || !(session.expiresAt instanceof Date) ||
+              !Number.isFinite(session.createdAt.getTime()) || !Number.isFinite(session.expiresAt.getTime()) ||
+              session.expiresAt.getTime() <= session.createdAt.getTime() ||
+              !hashCustomerSessionToken(session.token)?.equals(session.tokenHash)) {
             throw Error('invalid_issued_customer_session');
           }
           const sessionRecord = await query(
