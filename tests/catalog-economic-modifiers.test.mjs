@@ -24,6 +24,12 @@ test('candidate validator fails closed on malformed, duplicate or unbounded modi
   {discount:{type:'fixed',amountCents:-1}},
   {discount:{type:'coupon',amountCents:100}},
   {discount:{type:'percent',basisPoints:1000,code:'X'}},
-  {extras:[{...extra,allergens:[null]}]}
+  {extras:[{...extra,allergens:[null]}]},
+  {extras:[{...extra,name:null}]},
+  {extras:[{...extra,id:123}]},
+  {extras:[{id:extra.id,priceCents:extra.priceCents,available:true,allergens:[]}]},
+  {options:[{...option,name:null}]},
+  {options:[{...option,required:null}]},
+  {options:[{...option,values:[option.values[0],option.values[0]]}]}
  ])assert.equal(validateEconomicModifiers(input),false,JSON.stringify(input));
 });
