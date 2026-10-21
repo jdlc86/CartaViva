@@ -23,3 +23,35 @@ test('failed query rolls back and discards client',async()=>{
  assert.deepEqual(events.map(x=>Array.isArray(x)?x[0]:x),['BEGIN','SET LOCAL ROLE sabora_catalog_reader',createCatalogReaderSql(),'ROLLBACK','release']);
  assert.deepEqual(events.at(-1),['release',true]);
 });
+
+test('rejects unexpected parameters without opening connection',async()=>{
+ let checkouts=0;
+ const query=createCatalogScopedQuery({pool:{connect:async()=>{checkouts++;throw Error('unexpected');}}});
+ await assert.rejects(query(createCatalogReaderSql(),['injected']),/catalog_sql_not_allowed/);
+ await assert.rejects(query(createCatalogReaderSql(),null),/catalog_sql_not_allowed/);
+ assert.equal(checkouts,0);
+});
+test('role activation failure rolls back and discards client',async()=>{
+ const events=[];
+ const query=createCatalogScopedQuery({pool:{connect:async()=>({
+  query:async sql=>{events.push(sql);if(sql==='SET LOCAL ROLE sabora_catalog_reader')throw Error('role_denied');return {rows:[]};},
+  release:discard=>events.push(['release',discard])
+ })}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/role_denied/);
+ assert.deepEqual(events.map(x=>Array.isArray(x)?x[0]:x),['BEGIN','SET LOCAL ROLE sabora_catalog_reader','ROLLBACK','release']);
+ assert.deepEqual(events.at(-1),['release',true]);
+});
+test('commit failure discards client rather than returning rows',async()=>{
+ const events=[];
+ const query=createCatalogScopedQuery({pool:{connect:async()=>({
+  query:async sql=>{events.push(sql);if(sql==='COMMIT')throw Error('commit_failed');return {rows:[]};},
+  release:discard=>events.push(['release',discard])
+ })}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/commit_failed/);
+ assert.deepEqual(events.at(-1),['release',true]);
+ assert.ok(events.includes('ROLLBACK'));
+});
+test('pool checkout failure propagates without executing SQL',async()=>{
+ const query=createCatalogScopedQuery({pool:{connect:async()=>{throw Error('pool_unavailable');}}});
+ await assert.rejects(query(createCatalogReaderSql(),[]),/pool_unavailable/);
+});
