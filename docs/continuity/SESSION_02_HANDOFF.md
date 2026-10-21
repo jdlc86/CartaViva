@@ -541,3 +541,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Bootstrap de `9cf9ab2` SUCCESS run 39587114644; Sabora CI 39587114719 seguía IN_PROGRESS en la comprobación.
 - `apps/api/src/customer-session-revoker.mjs` añade revocación interna idempotente por hash de token, solo si sesión vigente y no revocada; no permite revocación por alias/ID visible. Pruebas de revocación, repetición, token inválido y fallo DB en `tests/customer-session-revoker.test.mjs`; build syntax check. Commits `2046207`, `3b910c5`, `95e5be8`.
 - Falta ruta de logout protegida, cookie HttpOnly, CSRF, auditoría y permisos SQL mínimos. No hay despliegue, migración operativa ni cambios Fleetia. Comprobar CI HEAD.
+
+## Contrato de seguridad HTTP de clientes (2026-10-21)
+- Commits previos `9cf9ab2` y `35b8101`: ambos workflows CI y bootstrap SUCCESS (runs 39587114719, 39587114644, 39587349609, 39587349625).
+- `apps/api/src/customer-http-security.mjs` prepara cookie host-only `__Host-sabora_customer` con Path=/, Secure, HttpOnly, SameSite=Strict y caducidad limitada, lectura de cookie sin ambigüedad y eliminación. Política para métodos de mutación: `Origin` debe coincidir exactamente con el origen HTTPS configurado; sin comodines ni fallback Referer.
+- `tests/customer-http-security.test.mjs` comprueba banderas, cookies duplicadas, origen ajeno y configuración insegura. Build syntax check. Commits `9649e2b`, `c60e8dd`, `22226b1`.
+- Esta política es **un módulo aislado, todavía no registrado en Fastify**. Faltan cabeceras de defensa en profundidad, validación Fetch Metadata, integración de cookie/verificador/revocador, HTTPS de proxy de confianza, controles de rate limit y pruebas E2E. No habilitar registro ni rutas públicas hasta completar gate.
