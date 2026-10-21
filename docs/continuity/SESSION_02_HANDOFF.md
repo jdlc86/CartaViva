@@ -780,3 +780,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `401ef64`: publicación exige `validate_catalog_snapshot(...) IS TRUE` mediante `IS DISTINCT FROM TRUE`; NULL/FALSE fallan cerrados.
 - `e45411e`: regresión con campo `allergens` ausente, verificando que ni validador ni publicador lo aceptan.
 - CI nuevo pendiente de confirmación. Ninguna migración aplicada a Supabase operativo ni despliegue.
+
+## Gate económico provisional (2026-10-21)
+- `d22b1dd`: el validador rechaza publicación de `options`, `extras` o `discount` no vacíos mientras no exista su validación económica/funcional completa; listas vacías y descuento JSON null no introducen reglas económicas. Esta es una restricción **provisional**, no la funcionalidad final aprobada.
+- `0cee4a9`: smoke de rechazo explícito para opciones, extras y descuentos no vacíos; evita publicar silenciosamente precios no validados.
+- CI de `f161354` estaba en progreso al comprobar (Sabora 39639581880, Bootstrap 39639582290). CI del nuevo HEAD pendiente. Sin despliegue ni cambios a Supabase operativo/Fleetia.
