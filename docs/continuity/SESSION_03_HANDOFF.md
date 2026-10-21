@@ -186,3 +186,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - La migración adicional `20261021210000_sabora_catalog_economic_candidate_validation.sql` duplicaba la firma `sabora.validate_catalog_economic_modifiers(jsonb)`, causando fallos de migración CI. Se **eliminó** la migración duplicada en `30ff5e0fc09ca9895362d01d07f0c67dff1c49ae`. Conservar exclusivamente la canónica; no reintroducir duplicados.
 - El smoke de casos positivos/negativos y comprobación de permisos añadido en `79c9360d` permanece en `scripts/ci/postgres-migration-smoke.sh`. Volver a verificar CI de HEAD tras la eliminación.
 - Los fallos de CI anteriores a esta corrección son reales y no deben declararse verdes retrospectivamente.
+
+## Sesión 3 — endurecimiento SQL y pruebas diferenciales económicas
+- Commits `e08c9133`, `cfaf23c6`: se restauró la migración canónica desde un commit conocido para eliminar una corrupción accidental de edición; se añadió comprobación explícita de tipos `id`/`name` y se cambió el consumo de la función SQL auxiliar a `IS DISTINCT FROM TRUE`, de forma que `NULL` nunca valide modificadores. `cfaf23c6`: Sabora CI y Bootstrap SUCCESS.
+- Commits `2b6e15c6` y `dc9d3a72`: casos negativos equivalentes en PostgreSQL y JS para campos ausentes/nulos, IDs incorrectos y valores duplicados.
+- Commits `42183805` y `9608bcdd`: `scripts/ci/catalog-economic-parity.mjs` genera expectativas desde `validateEconomicModifiers` para 29 casos y las ejecuta contra la función candidata SQL en PostgreSQL 17 desechable desde el smoke. Es una puerta de **equivalencia diferencial**, no activación de publicación.
+- Verificar CI del HEAD tras incorporar la prueba diferencial. La función de publicación operativa sigue sin aceptar opciones/extras/descuentos y sin grants de escritura.
