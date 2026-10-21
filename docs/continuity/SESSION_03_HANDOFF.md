@@ -50,3 +50,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `c5aba8d1896051c02967db4cc065fc314e256676`: añade regresiones negativas al test HTTP del catálogo para configuración ausente, filas SQL inválidas y snapshot con precio negativo. **Validación CI del commit pendiente**; si falla, investigar logs y corregir antes de avanzar.
 - Sin cambios en Supabase, VPS, Fleetia, despliegues o merge; sin revisión Codex.
 - Próxima prioridad: verificar CI del nuevo HEAD, confirmar que el snapshot inválido efectivamente produce 503 y, si no, endurecer la proyección y su prueba. Luego comprobar privilegios del lector y composición SQL → HTTP → cliente en entorno aislado.
+
+## Sesión 3 — regresiones de transacción del lector (2026-10-21)
+- Confirmados SUCCESS ambos workflows sobre `c5aba8d` (Sabora CI `39645806343`, Bootstrap `39645806387`) y sobre `69ba120f` (Sabora CI `39645855080`, Bootstrap `39645855055`).
+- Commit `e95092523564c5faefea6d01642975cc3bac1362`: nuevas pruebas de rechazo de parámetros arbitrarios antes de checkout, fallo al activar rol, fallo de COMMIT y error de conexión al pool. El código de ejecución permanece sin modificación; todas son pruebas de regresión de cierre seguro.
+- Pendiente verificar conclusión de CI sobre el commit nuevo y el de esta documentación. No se habilita ruta, credenciales ni producción.
