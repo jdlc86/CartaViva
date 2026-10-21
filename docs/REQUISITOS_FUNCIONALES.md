@@ -5,7 +5,7 @@ Versión: 0.2 · 18-10-2026 · Estado: borrador para revisión, no implementaci�
 Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend compartido: cliente y gestión. La PWA de gestión ofrece administración, sala y cocina con permisos separados. Los datos de consumo sirven para exportación empresarial; CartaViva no calcula nóminas.
 
 ## Identidad y acceso
-- Empleado identificado por empresa y número de empleado, asociado a identidad persistente en dispositivo; diseño de autenticación y prevención de suplantación **pendiente**.
+- Cliente identificado en la interfaz mediante **alias/nick** y **número ID**; **empresa opcional**. Evitar exigir datos corporativos (número de empleado real, correo corporativo, credenciales laborales o DNI). El número ID debe definirse como identificador propio de Sabora y no presumirse equivalente a un identificador laboral. Perfil persistente en el dispositivo para evitar reintroducir datos en cada visita; autenticación, recuperación, unicidad y prevención de suplantación **pendientes de diseño**. El QR identifica mesa, no autentica al cliente.
 - Administración: empresas, empleados, invitaciones, roles y passkeys. Definir quién puede invitar, activar, revocar y recuperar acceso.
 - Un cliente solo consulta sus propios pedidos. Sala consulta pedidos por mesa y por trabajador. Cocina ve lo necesario para preparar; administración gestiona configuración e informes.
 - Aplicar autorización en servidor; nunca confiar en el rol o identidad suministrados por la interfaz.
