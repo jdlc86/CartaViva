@@ -460,3 +460,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #343 y bootstrap #326 de `f13c2a4` SUCCESS. CI #344 y bootstrap #327 de `19b40d8` aún en progreso al consultar.
 - Commit `9f96146`: prueba SQL en PostgreSQL 17 desechable concede temporalmente USAGE del esquema y SELECT de staff_members a `sabora_admin_writer`, confirma que los chequeos de privilegios efectivos detectan el acceso inseguro y revierte ambos GRANT dentro de una transacción. Confirma ausencia de fuga tras ROLLBACK.
 - La prueba no habilita permisos operativos; no es aún una prueba de identidad técnica SQL autorizada ni de RLS funcional de writer. No se toca Supabase operativo, VPS o Fleetia. CI del HEAD nuevo pendiente.
+
+## Denegación efectiva tras rollback de GRANT (2026-10-21)
+- Commit `9948a5e`: complementa la prueba negativa de GRANT con `SET ROLE sabora_admin_writer` después de ROLLBACK y una lectura real de `sabora.staff_members` que debe fallar por `insufficient_privilege`. El test comprueba tanto metadatos ACL como la denegación SQL efectiva.
+- CI #346 y bootstrap #329 del HEAD documental anterior estaban en progreso al consultar. CI del nuevo HEAD sin resultado aún. Sin acceso operativo a Supabase ni VPS; sin cambios a Fleetia.
