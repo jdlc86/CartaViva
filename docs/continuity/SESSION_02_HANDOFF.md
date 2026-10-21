@@ -566,3 +566,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - `apps/api/src/customer-session-query-boundary.mjs` permite únicamente las consultas SQL literales de verificación y revocación por hash (32 bytes), parametrizadas; rechaza cualquier otra sentencia, argumentos extra o secretos en texto. El revocador reutiliza el SQL fijado. Tests en `tests/customer-session-query-boundary.test.mjs`; syntax check de build. Commits `c70b7ca`, `480477d`, `57cc908`, `ac4c000`.
 - **No confundir con privilegios PostgreSQL**: todavía falta un rol SQL mínimo, revisión de RLS/FORCE RLS, grants y pruebas de denegación. La frontera en Node es defensa adicional, no control suficiente. Ningún endpoint registrado.
 - La corrección CSRF `f84a8e7` seguía con CI en progreso al iniciar este hito; verificar los workflows del nuevo HEAD.
+
+## Puerta de privilegios PostgreSQL: línea base negativa (2026-10-21)
+- Se formalizó el contrato de mínimo privilegio en `docs/architecture/SABORA_CUSTOMER_SESSION_SQL_PRIVILEGES.md`. No autoriza grants ni funciones privilegiadas sin pruebas positivas y negativas con rol de conexión real.
+- `scripts/ci/customer-session-privileges-negative.sql` crea rol técnico transitorio sin BYPASSRLS en una transacción de CI y verifica ausencia de USAGE y SELECT/UPDATE, FORCE RLS y denegación de SELECT/UPDATE directos. Integrado en `scripts/ci/postgres-migration-smoke.sh` (PostgreSQL 17 desechable, red none); rollback elimina rol. Commits `ebdcb15`, `4231e4e`, `ea8fd46`.
+- El CI previo `f80b1c1` estaba en progreso cuando se consultó. No se aplicó ningún cambio a Supabase operativo, VPS o Fleetia. Pendiente rol funcional de mínimo privilegio, grants acotados y pruebas positivas.
