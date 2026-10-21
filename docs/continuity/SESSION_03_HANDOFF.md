@@ -113,3 +113,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 ## Sesión 3 — filas anómalas de RPC del catálogo
 - Commit `6fe384a76d22c52efc81cc4e8f42ec6486ba22c9`: tests de `readPublishedCatalog` para menú publicado vacío y filas no válidas (null, número, snapshot ausente y disponibilidad no booleana). No se activa endpoint ni se modifica producción.
 - Al iniciar, `ff3d292` tenía Sabora CI y Bootstrap SUCCESS; `157c183` tenía Sabora CI SUCCESS. Verificar los workflows del nuevo HEAD.
+
+## Sesión 3 — corrección de CI del contrato RPC
+- `6fe384a` y `dceb5fb`: Sabora CI y Bootstrap FAILED; job de Test mostró 228/229 tests PASS, falló `SQL adapter rejects non-row primitives and invalid published snapshots` con `Missing expected rejection`. No era fallo de PostgreSQL.
+- Commit `7034dc472c98fe21567e1a4a34db3da923207077`: el adaptador `readPublishedCatalog` rechaza filas RPC primitivas, null o sin `published_snapshot` antes de proyectarlas. A diferencia del proyector genérico que puede omitir borradores, la RPC restringida promete únicamente filas publicadas y debe fallar cerrado.
+- `8283222` y `e5251e1` tenían ambos workflows SUCCESS. Verificar CI del nuevo commit correctivo antes de considerarlo resuelto.
