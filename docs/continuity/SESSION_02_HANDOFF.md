@@ -674,3 +674,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI anterior `f77c154` SUCCESS: Sabora 39598338887, Bootstrap 39598338920.
 - `tests/customer-session-scoped-query-failures.test.mjs`: inyección de fallos en BEGIN, SET LOCAL ROLE, RPC, COMMIT, ROLLBACK y connect; comprueba descarte de cliente incierto y ausencia de reutilización accidental de privilegios entre dos llamadas. Commits `2974d68`, `10f8b21`.
 - `customer-session-scoped-query.mjs` evita que un fallo de `release` sustituya el error de la operación y tolera liberación fallida de instancia inválida (`8680874`). Pendiente CI HEAD. Sin cambios operativos ni HTTP montado.
+
+## Gate de fallos por fase en sesión PostgreSQL (2026-10-21)
+- CI `f77c154` SUCCESS: Sabora 39598338887, Bootstrap 39598338920.
+- `tests/customer-session-scoped-query-failures.test.mjs` cubre fallos inyectados en BEGIN, SET LOCAL ROLE, RPC, COMMIT, ROLLBACK, pool.connect y cliente inválido; verifica descarte de conexiones y ausencia de filtración del rol transaccional entre dos operaciones. Corrección de assertions escalares `db9f813`.
+- Ninguna ruta HTTP de cliente está montada. No se modifica base operativa ni VPS. CI del HEAD pendiente.
