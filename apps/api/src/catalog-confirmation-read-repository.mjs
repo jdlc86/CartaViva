@@ -52,7 +52,7 @@ export function createCatalogConfirmationReadRepository(){
    if(typeof query!=='function'||!scope(context)||!validItem(itemId))
     throw Error('invalid_catalog_repository_scope');
    const record=row(await query(
-    `SELECT id,published_revision,subtotal_cents,discount_cents,total_cents
+    `SELECT id,published_revision,subtotal_cents,discount_cents,total_cents,evidence
        FROM sabora.catalog_displayed_quotes
       WHERE table_id=$1 AND session_id=$2 AND visit_id=$3
         AND basket_id=$4 AND actor_id=$5 AND item_id=$6
@@ -67,7 +67,9 @@ export function createCatalogConfirmationReadRepository(){
       amounts.some(x=>!Number.isSafeInteger(x)||x<0)||
       amounts[1]>amounts[0]||amounts[0]-amounts[1]!==amounts[2])
     throw Error('invalid_catalog_repository_response');
-   return {quoteId:record.id,publishedRevision:revision,
+   if(!record.evidence||typeof record.evidence!=='object'||Array.isArray(record.evidence))
+    throw Error('invalid_catalog_repository_response');
+   return {quoteId:record.id,evidence:record.evidence,publishedRevision:revision,
     subtotalCents:amounts[0],discountCents:amounts[1],totalCents:amounts[2]};
   }
  });
