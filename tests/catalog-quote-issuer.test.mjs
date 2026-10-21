@@ -6,13 +6,17 @@ const sessionId='00000000-0000-4000-8000-000000000002';
 const itemId='00000000-0000-4000-8000-000000000003';
 const quoteId='00000000-0000-4000-8000-000000000004';
 const input={tableId,visitId:'visit-1',basketId:'basket-1',actorId:'actor-1',
- itemId,selection:{options:{},extras:[]},quantity:1};
+ itemId,selection:{options:{},extras:[]},quantity:1,
+ qrToken:'q'.repeat(64),customerSessionToken:'s'.repeat(64)};
 const snapshot={name:'Plato CI',category:'Primeros',allergens:[],priceCents:1000,
  options:[],extras:[],discount:null};
 function fixture(overrides={}){
  const calls=[];
  const repository={
-  async lockContext(_q,scope){calls.push('context');return {authorized:true,canOrder:true,
+  async lockContext(_q,scope){calls.push('context');
+   assert.equal(scope.qrToken,input.qrToken);
+   assert.equal(scope.customerSessionToken,input.customerSessionToken);
+   return {authorized:true,canOrder:true,
    tableId,sessionId,visitId:scope.visitId,basketId:scope.basketId,actorId:scope.actorId};},
   async lockCatalog(){calls.push('catalog');return {available:true,publishedRevision:1,snapshot};},
   async insertDisplayedQuote(_q,record){calls.push('insert');return {quoteId};},
