@@ -5,8 +5,8 @@ CREATE FUNCTION sabora.validate_catalog_economic_modifier_entry(p_entry jsonb)
 RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $entry$
  SELECT jsonb_typeof(p_entry)='object'
  AND (SELECT count(*)=5 FROM jsonb_object_keys(p_entry))
- AND NOT EXISTS (SELECT 1 FROM jsonb_object_keys(p_entry) k
-  WHERE k NOT IN ('id','name','priceCents','available','allergens'))
+ AND NOT EXISTS (SELECT 1 FROM jsonb_object_keys(p_entry) AS field(key)
+  WHERE field.key NOT IN ('id','name','priceCents','available','allergens'))
  AND (p_entry->>'id') ~ '^[a-zA-Z0-9_-]{1,64}$'
  AND length(btrim(p_entry->>'name')) BETWEEN 1 AND 100
  AND (p_entry->>'name') !~ '[[:cntrl:]]'
@@ -43,8 +43,8 @@ BEGIN
  v_ids:=ARRAY[]::text[];
  FOR v_group IN SELECT value FROM jsonb_array_elements(v_options) LOOP
   IF jsonb_typeof(v_group) IS DISTINCT FROM 'object' OR
-     (SELECT count(*) FROM jsonb_object_keys(v_group) k
-       WHERE k NOT IN ('id','name','required','maxSelections','values'))>0 OR
+     (SELECT count(*) FROM jsonb_object_keys(v_group) AS field(key)
+       WHERE field.key NOT IN ('id','name','required','maxSelections','values'))>0 OR
      (v_group->>'id') !~ '^[a-zA-Z0-9_-]{1,64}$' OR
      length(btrim(v_group->>'name')) NOT BETWEEN 1 AND 100 OR
      (v_group->>'name') ~ '[[:cntrl:]]' OR
@@ -77,13 +77,13 @@ BEGIN
  IF jsonb_typeof(v_discount) IS DISTINCT FROM 'object' THEN RETURN false; END IF;
  IF v_discount->>'type'='fixed' THEN
   RETURN (SELECT count(*)=2 FROM jsonb_object_keys(v_discount)) AND
-   (SELECT bool_and(k IN ('type','amountCents')) FROM jsonb_object_keys(v_discount) k) AND
+   (SELECT bool_and(field.key IN ('type','amountCents')) FROM jsonb_object_keys(v_discount) AS field(key)) AND
    jsonb_typeof(v_discount->'amountCents')='number' AND
    (v_discount->>'amountCents') ~ '^(0|[1-9][0-9]*)$' AND
    length(v_discount->>'amountCents')<=15;
  ELSIF v_discount->>'type'='percent' THEN
   RETURN (SELECT count(*)=2 FROM jsonb_object_keys(v_discount)) AND
-   (SELECT bool_and(k IN ('type','basisPoints')) FROM jsonb_object_keys(v_discount) k) AND
+   (SELECT bool_and(field.key IN ('type','basisPoints')) FROM jsonb_object_keys(v_discount) AS field(key)) AND
    jsonb_typeof(v_discount->'basisPoints')='number' AND
    (v_discount->>'basisPoints') ~ '^(0|[1-9][0-9]*)$' AND
    length(v_discount->>'basisPoints')<=5 AND
