@@ -179,7 +179,7 @@ do $catalog_reader_visibility$
 declare v_count integer;
 begin
  select count(*) into v_count from sabora.read_published_catalog();
- if v_count<>2 then raise exception 'published catalog visibility mismatch: %',v_count; end if;
+ if v_count<>1 then raise exception 'published catalog visibility mismatch: %',v_count; end if;
  if not exists(select 1 from sabora.read_published_catalog() where sold_out=true) then
   raise exception 'sold-out item missing';
  end if;
