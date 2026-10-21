@@ -8,10 +8,10 @@ test('server generates separate internal and visible IDs without company', () =>
  assert.deepEqual(result,{internalId:UUID,publicId:'SB-222222222222',alias:'Ana',company:null});
 });
 test('visible ID excludes confusing characters and uses a fixed format', () => {
- for(let i=0;i<20;i++) assert.match(generateCustomerPublicId(),/^SB-[2-9A-HJ-NP-Z]{12}$/);
+ for(let i=0;i<20;i++) assert.match(generateCustomerPublicId(),/^SB-[2-9A-HJ-NP-Y]{12}$/);
 });
 test('rejection sampling skips biased bytes', () => {
- const result=generateCustomerPublicId(()=>Buffer.from(Array(12).fill(254).concat(Array(12).fill(0))));
+ const result=generateCustomerPublicId(()=>Buffer.from(Array(12).fill(255).concat(Array(12).fill(0))));
  assert.equal(result,'SB-222222222222');
 });
 test('invalid inputs cannot issue an ID', () => {
@@ -20,6 +20,6 @@ test('invalid inputs cannot issue an ID', () => {
 });
 test('broken cryptographic source fails closed', () => {
  assert.throws(()=>generateCustomerPublicId(()=>Buffer.alloc(1)),/invalid_random_bytes/);
- assert.throws(()=>generateCustomerPublicId(()=>Buffer.alloc(24,254)),/customer_id_random_source_failed/);
+ assert.throws(()=>generateCustomerPublicId(()=>Buffer.alloc(24,255)),/customer_id_random_source_failed/);
  assert.throws(()=>prepareCustomerRegistration({alias:'Ana'},{uuid:()=> 'not-uuid'}),/invalid_generated_uuid/);
 });
