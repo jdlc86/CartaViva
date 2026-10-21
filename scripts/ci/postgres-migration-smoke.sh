@@ -21,6 +21,9 @@ done
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
+# Validate candidate durable visit grants in disposable PostgreSQL.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+ < scripts/ci/catalog-visit-ledger-smoke.sql
 # Exercise two competing DB sessions and assert only the first request survives.
 bash scripts/ci/catalog-quote-concurrency-smoke.sh "$container"
 # Differential SQL/JavaScript candidate validation: execute the same fixtures
@@ -34,7 +37,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>17 then raise exception 'Expected seventeen RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>18 then raise exception 'Expected eighteen RLS protected single-restaurant tables, got %',v_count; end if;
  if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' and c.relname='catalog_items' and c.relrowsecurity and c.relforcerowsecurity) then raise exception 'catalog RLS protection missing'; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
