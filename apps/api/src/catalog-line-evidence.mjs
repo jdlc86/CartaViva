@@ -5,7 +5,6 @@ import {quoteCatalogSelection} from './catalog-selection-quote.mjs';
 
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
-const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const revision=value=>Number.isSafeInteger(value)&&value>0;
 const cents=value=>Number.isSafeInteger(value)&&value>=0;
@@ -54,34 +53,3 @@ export function buildCatalogLineEvidence({itemId,publishedRevision,snapshot,sele
  return freezeDeep(evidence);
 }
 
-export function validateCatalogLineEvidence(value){
- if(!plain(value))return false;
- const allowed=['schemaVersion','itemId','publishedRevision','itemName','category','quantity',
-  'basePriceCents','selected','allergens','discount','unitSubtotalCents','unitDiscountCents',
-  'subtotalCents','discountCents','totalCents'];
- if(Object.keys(value).length!==allowed.length||allowed.some(key=>!own(value,key)))return false;
- try{
-  if(value.schemaVersion!==1||!uuid(value.itemId)||!revision(value.publishedRevision)||
-     !Number.isSafeInteger(value.quantity)||value.quantity<1||value.quantity>20||
-     !Array.isArray(value.selected)||value.selected.length>50||
-     !Array.isArray(value.allergens)||value.allergens.length>32||
-     !value.allergens.every(a=>typeof a==='string'&&a.trim().length>0&&[...a].length<=100)||
-     !allowed.slice(9).filter(key=>key.endsWith('Cents')).every(key=>cents(value[key])))
-   return false;
-  // Rebuild and compare every economic field; no acceptance of caller-provided totals.
-  const snapshot={
-   name:value.itemName,category:value.category,priceCents:value.basePriceCents,
-   allergens:value.allergens,extras:value.selected.map(entry=>({...entry,available:true})),
-   options:[],discount:value.discount
-  };
-  const selection={extras:value.selected.map(entry=>entry.id)};
-  const rebuilt=buildCatalogLineEvidence({
-   itemId:value.itemId,publishedRevision:value.publishedRevision,
-   snapshot,selection,quantity:value.quantity
-  });
-  return rebuilt.unitSubtotalCents===value.unitSubtotalCents&&
-   rebuilt.unitDiscountCents===value.unitDiscountCents&&
-   rebuilt.subtotalCents===value.subtotalCents&&
-   rebuilt.discountCents===value.discountCents&&rebuilt.totalCents===value.totalCents;
- }catch{return false;}
-}
