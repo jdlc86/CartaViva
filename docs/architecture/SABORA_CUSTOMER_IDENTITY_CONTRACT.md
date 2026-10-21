@@ -49,3 +49,8 @@ Una instalación Sabora corresponde a un único restaurante. La PWA de cliente d
 - Migración versionada `20261021010000_sabora_customer_profiles.sql`: UUID PK, `public_id` UNIQUE y validado, alias obligatorio y empresa opcional, RLS habilitada y forzada; ningún grant/policy de cliente. No habilita alta pública ni sesiones.
 - Smoke PostgreSQL 17 desechable comprueba duplicados, formato, alias vacío, denegación de lectura anónima y recuento de 13 tablas RLS. La migración **no se ha aplicado** a Supabase operativo.
 - Persisten tareas críticas: alta transaccional con reintentos por colisión, autenticación/sesiones, revocación, vinculación de pedidos y migración del contrato legado `company`/`employee_number`.
+
+## Sesiones persistentes: base privada (2026-10-21)
+- Migración `20261021020000_sabora_customer_sessions.sql`: tabla privada con FK al UUID de cliente, `token_hash` SHA-256 de 32 bytes UNIQUE, caducidad, revocación y FORCE RLS, sin políticas ni grants de navegador.
+- `apps/api/src/customer-session.mjs` genera token opaco de 32 bytes criptográficos (base64url), conserva únicamente hash SHA-256 para persistencia y calcula caducidad por defecto de 30 días (máximo 90). No derivar el token del ID público.
+- Este hito **no autentica peticiones**: falta verificación del token contra DB, control de `expires_at`/`revoked_at`, emisión transaccional junto con perfil, rotación, cierre de sesión, protección CSRF/XSS y pruebas reales. No almacenar token en localStorage por defecto sin decisión arquitectónica explícita.
