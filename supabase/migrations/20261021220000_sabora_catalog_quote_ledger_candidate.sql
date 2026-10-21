@@ -23,7 +23,7 @@ CREATE TABLE sabora.catalog_displayed_quotes (
  CONSTRAINT catalog_displayed_quote_lifetime CHECK (
   expires_at > created_at AND expires_at <= created_at + interval '30 minutes'
  ),
- UNIQUE (table_id,session_id,visit_id,basket_id,actor_id,item_id,id)
+ UNIQUE (table_id,session_id,visit_id,basket_id,actor_id,id)
 );
 CREATE INDEX catalog_displayed_quote_lookup ON sabora.catalog_displayed_quotes
  (table_id,session_id,visit_id,basket_id,actor_id,item_id,created_at DESC);
