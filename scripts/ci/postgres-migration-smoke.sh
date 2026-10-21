@@ -67,9 +67,21 @@ begin
   raise exception 'future revision accepted';
  exception when check_violation then null;
  end;
- update sabora.catalog_items
- set published_revision=1,published_snapshot=draft,published_at=now()
- where id=v_item;
+ begin
+  perform sabora.publish_catalog_item(v_item,1);
+  raise exception 'invalid snapshot published';
+ exception when raise_exception then
+  -- The publisher must reject the incomplete draft.
+  if SQLERRM <> 'invalid_catalog_snapshot' then raise; end if;
+ end;
+ update sabora.catalog_items set draft='{"name":"Borrador","category":"Bebidas","priceCents":1200,"allergens":[]}'::jsonb where id=v_item;
+ if sabora.publish_catalog_item(v_item,1)<>1 then raise exception 'publish revision mismatch'; end if;
+ begin
+  perform sabora.publish_catalog_item(v_item,2);
+  raise exception 'stale revision accepted';
+ exception when raise_exception then
+  if SQLERRM <> 'catalog_revision_conflict' then raise; end if;
+ end;
  update sabora.catalog_items
  set draft='{"name":"Edición no publicada","priceCents":1500}'::jsonb,draft_revision=2
  where id=v_item;
