@@ -238,3 +238,10 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `0848651e`, `f5c161c6`: migración privada `20261021220000_sabora_catalog_quote_ledger_candidate.sql`, con cotizaciones mostradas y confirmaciones idempotentes, FK compuesta por visita/cesta/actor, checks económicos y RLS forzado.
 - `8bc47f4a`: CI PostgreSQL 17 desechable valida 17 tablas RLS, unicidad, FK y ausencia de grants en roles de runtime. Verificar resultado final.
 - `fc9f34de`: contrato de arquitectura. No hay escritor, rutas, permisos ni integración con el coordinador. Sin despliegue ni cambios a Supabase operativo o VPS.
+
+## Sesión 3 — pruebas negativas reales del ledger
+- `ead0f933`: se exige mismo artículo en cotización y confirmación, y mismo par mesa/sesión en confirmación y pedido mediante FK compuestas.
+- `b358ba1e`: CI comprueba presencia de las restricciones y de `item_id`.
+- `247d10e4`, `2aecb98c`: script SQL de pruebas negativas en PostgreSQL 17 aislado; valida duplicado idempotente, cruce de artículo, visita, mesa y totales erróneos. Se ejecuta en transacción con `ROLLBACK`.
+- `0898056a`: reparación de línea SQL truncada durante edición de la migración. Los CI intermedios fallaron; verificar workflows del HEAD final.
+- `d95cbbc5`: contrato de arquitectura actualizado. **No** hay escritor real ni despliegue.
