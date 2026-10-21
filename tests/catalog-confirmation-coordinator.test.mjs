@@ -16,8 +16,8 @@ const make=(overrides={})=>{
   lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true};},
   lookupIdempotency:async()=>{calls.push('replay');return null;},
   lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
-  loadPreviousQuote:async()=>{calls.push('previous');return {publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
-  persist:async(_query,args)=>{calls.push('persist');return {orderId:'order-1',evidence:args.evidence};},
+  loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'quote-1',publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
+  persist:async(_query,args)=>{calls.push('persist');assert.equal(args.quoteId,'quote-1');return {orderId:'order-1',evidence:args.evidence};},
   ...overrides
  };
  const confirm=createCatalogConfirmationCoordinator({
@@ -109,10 +109,18 @@ test('missing or malformed trusted previous quote aborts before persistence',asy
 test('a trusted previous revision mismatch requires consent despite client silence',async()=>{
  const {confirm,calls}=make({
   loadPreviousQuote:async()=>{calls.push('previous');return {
-   publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
+   quoteId:'quote-1',publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
   };}
  });
  const result=await confirm(input);
  assert.equal(result.status,'acceptance_required');
  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','COMMIT']);
+});
+
+test('previous quote without trusted identifier cannot be persisted',async()=>{
+ const {confirm,calls}=make({loadPreviousQuote:async()=>{calls.push('previous');return {
+  publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000
+ };}});
+ await assert.rejects(confirm(input),/order_previous_quote_unavailable/);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
 });
