@@ -316,3 +316,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `530abfa1`: pruebas unitarias de predicados SQL de estado.
 - `a56f3585`, `673a6b0a`: smoke PostgreSQL 17 de estados y restricciones incorporado a CI.
 - `c8e97c4b`: arquitectura documentada. Pendiente: transiciones de personal con autorización, pruebas SQL integradas del predicado y concurrencia, escritor mínimo, consentimiento durable. Sin activación, merge ni despliegue.
+
+## Sesión 3 — cierre y separación entre ocupaciones
+- `34118b63`: disparadores SQL candidatos que, al cerrar una mesa abierta/pausada, rotan la sesión de ocupación, reinician la agrupación y revocan grants de visita previos en la misma transacción.
+- `3e030ab3`: smoke SQL de pausa, cierre, revocación y reapertura sin reutilizar permisos antiguos; `a3e28ba8` lo incorpora al CI PostgreSQL 17 aislado.
+- `fb835b5f`: corrección de continuación shell en el smoke de visitas; `3aa67301`: contrato de arquitectura.
+- **Pendiente:** autorización staff real para transiciones, rol SQL mínimo, validación de concurrencia entre cierre y pedido, estado/visita de pago histórico y rutas HTTP. No desplegar, no merge, no modificar Supabase operativo ni Fleetia.
