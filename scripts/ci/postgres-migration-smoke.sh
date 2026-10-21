@@ -565,6 +565,9 @@ bash scripts/ci/customer-id-concurrency-smoke.sh "$container"
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-verification.sql
 echo 'Sabora single-restaurant schema, private RPCs, QR, idempotency, pickup and ownership concurrency smoke passed.'
 
+# Fail fast on SQL fixture delimiter and RPC privilege regression.
+bash scripts/ci/customer-session-sql-lint.sh
+
 # Verify a new nonprivileged customer session role starts with zero table access.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-negative.sql
 
