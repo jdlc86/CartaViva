@@ -450,3 +450,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - CI #338 y bootstrap #321 del commit `cbc9d50` SUCCESS.
 - Nuevo `tests/admin-write-transaction-integration.test.mjs` enlaza los adaptadores reales `createPostgresTransaction` y `createTransactionalAdminWrite` con cliente PostgreSQL simulado determinista: comprueba orden BEGIN/bloqueos/mutación/COMMIT, denegación sin mutación para ADMIN no titular, revocado y ROOT, y ROLLBACK ante fallo de mutación.
 - Límite explícito: integración JS con cliente simulado, **no** validación de ACL/RLS bajo identidad SQL mínima real. No se han concedido grants ni creado LOGIN operativo. Próximo gate: pruebas SQL de mínimos privilegios en PostgreSQL 17 desechable y verificación CI del HEAD.
+
+## Puerta SQL de membresía del writer dormido (2026-10-21)
+- CI #341 y bootstrap #324 de `02673ec` SUCCESS.
+- Commit `859a886`: el smoke PostgreSQL 17 desechable ahora inspecciona `pg_auth_members` y falla si `sabora_admin_writer` es miembro de cualquier otro rol o si algún rol es miembro del writer; evita puentes de privilegios antes de habilitar permisos operativos.
+- Sigue sin existir un LOGIN operativo de escritura ni grants a `sabora_admin_writer`. Esta comprobación complementa ACL/RLS y no acredita aún una identidad SQL mínima habilitada. Sin Supabase/VPS/Fleetia.
