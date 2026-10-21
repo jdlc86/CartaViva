@@ -75,3 +75,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `d7f4950045554e6b0df1dc72713cd3e299ac2209`: `scripts/ci/catalog-reader-login-smoke.sh` comprueba que el login técnico es NOINHERIT y NOBYPASSRLS y que ni el login ni el rol activado pueden leer o modificar directamente `sabora.catalog_items` (SELECT/INSERT/UPDATE/DELETE). Conserva comprobación de RPC restringida y restauración de rol al terminar la transacción.
 - El script está limitado al contenedor PostgreSQL 17 desechable utilizado por CI; no aprovisiona credenciales en Supabase operativo.
 - CI sobre este commit y el último HEAD pendiente de comprobación.
+
+## Sesión 3 — comprobación efectiva de denegación RPC
+- Commit `99b9db99c5ddb263f430835675871f42e9fa41ac`: smoke SQL del login lector intenta ejecutar directamente `sabora.read_published_catalog()` antes de SET LOCAL ROLE y después de COMMIT; ambos intentos deben fallar con `insufficient_privilege`. Complementa los metadatos ACL con ejecución negativa real.
+- Antes de este commit, CI y Bootstrap SUCCESS para `bbd0648` y `67b9cd4`; los runs de `d7f4950` y `09d59f0` aún estaban en curso al consultar.
+- Solo contenedor PostgreSQL desechable en GitHub Actions; no se han tocado Supabase operativo, VPS ni Fleetia. Verificar CI del último HEAD.
