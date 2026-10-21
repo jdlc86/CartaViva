@@ -38,6 +38,37 @@ const cases=[
  ['over max cents',{...valid,extras:[{...extra,priceCents:1000000000000000}]}],
  ['invalid root',[]]
 ];
+// Deterministic mutation corpus (fixed seed, no time or external randomness).
+// Every generated case is evaluated by the JS oracle and the SQL candidate.
+let state=0x5ab0a123;
+const next=()=>{state^=state<<13;state^=state>>>17;state^=state<<5;return state>>>0;};
+const choices=[null,false,true,0,1,-1,1.5,20,10000,10001,999999999999999,1000000000000000,
+ '', 'x', '   ', 'bad\\nlabel', [], {}, ['Leche'], ['Leche',null]];
+const clone=value=>JSON.parse(JSON.stringify(value));
+const mutate=(root,path,value)=>{
+ let target=root;
+ for(const key of path.slice(0,-1))target=target[key];
+ target[path.at(-1)]=value;
+};
+const paths=[
+ ['options'],['extras'],['discount'],['options',0,'id'],['options',0,'name'],
+ ['options',0,'required'],['options',0,'maxSelections'],['options',0,'values'],
+ ['options',0,'values',0,'id'],['options',0,'values',0,'name'],
+ ['options',0,'values',0,'priceCents'],['options',0,'values',0,'available'],
+ ['options',0,'values',0,'allergens'],['extras',0,'id'],['extras',0,'name'],
+ ['extras',0,'priceCents'],['extras',0,'available'],['extras',0,'allergens'],
+ ['discount','type'],['discount','basisPoints']
+];
+for(let i=0;i<300;i++){
+ const input=clone(valid);
+ const path=paths[next()%paths.length];
+ const value=choices[next()%choices.length];
+ mutate(input,path,value);
+ cases.push([`mutant-${i}-${path.join('.')}`,input]);
+}
+// Limit accidental drift in fixture generation; fail before producing SQL.
+if(cases.length!==329)throw Error('invalid_parity_corpus');
+
 let sql='-- JS-derived expected values checked against PostgreSQL candidate validation.\n';
 for(const [name,input] of cases){
  const expected=validateEconomicModifiers(input);
