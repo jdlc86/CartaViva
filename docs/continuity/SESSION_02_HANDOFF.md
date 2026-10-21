@@ -762,3 +762,9 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Migración `20261021180000_sabora_catalog_publication_foundation.sql` (`b1612f6`) crea una estructura inicial de borrador JSON y snapshot público separado, con revisión, retirada y agotado. `ENABLE/FORCE RLS` y sin políticas ni grants públicos; **nadie puede publicar ni leer desde una ruta HTTP todavía**.
 - La migración es solo propuesta versionada, **no aplicada al Supabase operativo**. Pendiente: smoke en PostgreSQL 17 desechable, revisión de compatibilidad con migraciones previas, diseño de función transaccional de publicación, validación de precio/extras/descuentos/alérgenos y rol de lectura mínimo.
 - CI del commit `89daf7f` SUCCESS: Sabora 39634070574 y Bootstrap 39634070624. No desplegar ni tocar VPS/Fleetia.
+
+## Reparación CI y smoke del catálogo (2026-10-21)
+- Runs `39636080510` y `39636080507` FAILED porque el smoke PostgreSQL exigía exactamente 14 tablas FORCE RLS; nueva `catalog_items` elevó a 15. No fue fallo de sintaxis de migración: esta se ejecutó correctamente.
+- `bfa7563`: se actualizó conteo a 15 y se añadió aserción explícita de FORCE RLS para `catalog_items`.
+- `bd8f46b`: smoke en PostgreSQL desechable verifica borrador inicialmente invisible, revisión futura rechazada, edición sin republicación conserva snapshot, agotado, retirada y denegación de lectura a `anon`.
+- CI del nuevo HEAD pendiente; las pruebas no acreditan todavía una función de publicación autorizada ni un endpoint de lectura. Ninguna operación sobre Supabase operativo/VPS/Fleetia.
