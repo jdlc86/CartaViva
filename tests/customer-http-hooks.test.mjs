@@ -9,10 +9,10 @@ function reply(){
  return {status:200,headers:{},body:undefined,code(n){this.status=n;return this;},header(k,v){this.headers[k]=v;return this;},send(b){this.body=b;return this;}};
 }
 test('authenticated customer identity is attached without bearer secret',async()=>{
- const hooks=createCustomerHttpHooks({verifySession:async()=>({customerId:'customer-uuid'}),revokeSession:async()=>true,expectedOrigin:'https://sabora.example'});
+ const hooks=createCustomerHttpHooks({verifySession:async()=>({customerId:'00000000-0000-4000-8000-000000000001'}),revokeSession:async()=>true,expectedOrigin:'https://sabora.example'});
  const req=request();const res=reply();
  await hooks.authenticate(req,res);
- assert.deepEqual(req.verifiedCustomer,{customerId:'customer-uuid'});
+ assert.deepEqual(req.verifiedCustomer,{customerId:'00000000-0000-4000-8000-000000000001'});
  assert.equal(req.customerToken,undefined);
  assert.equal(res.status,200);
 });
@@ -53,4 +53,19 @@ test('logout rejects cross-site Fetch Metadata even with forged matching Origin'
  const req=request('POST','https://sabora.example');req.headers['sec-fetch-site']='cross-site';
  const res=reply();await hooks.logout(req,res);
  assert.equal(res.status,403);assert.equal(revoked,false);
+});
+
+test('customer hook rejects malformed identity returned by backend',async()=>{
+ for(const customerId of ['not-a-uuid','',null]){
+  const hooks=createCustomerHttpHooks({verifySession:async()=>({customerId}),revokeSession:async()=>true,expectedOrigin:'https://sabora.example'});
+  const req=request(),res=reply();
+  await hooks.authenticate(req,res);
+  assert.equal(res.status,401);
+  assert.equal(req.verifiedCustomer,undefined);
+ }
+});
+test('customer hooks reject invalid configured origin',()=>{
+ for(const expectedOrigin of ['https://sabora.example?x=1','https://sabora.example/path','https://sabora.example#fragment']){
+  assert.throws(()=>createCustomerHttpHooks({verifySession:async()=>null,revokeSession:async()=>false,expectedOrigin}),/invalid_customer_http_hooks_configuration/);
+ }
 });
