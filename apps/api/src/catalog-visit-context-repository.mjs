@@ -22,6 +22,9 @@ export function createCatalogVisitContextRepository(){
       WHERE t.id=$1 AND v.visit_key=$2 AND v.actor_id=$3
         AND t.qr_token_hash=sha256(convert_to($4,'UTF8'))
         AND s.token_hash=sha256(convert_to($5,'UTF8'))
+        AND (t.ordering_state='open' OR
+             (t.ordering_state='paused' AND t.pause_until IS NOT NULL
+              AND t.pause_until<=clock_timestamp()))
         AND v.authorized_qr_version=t.qr_version
         AND v.revoked_at IS NULL AND v.expires_at>clock_timestamp()
         AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
