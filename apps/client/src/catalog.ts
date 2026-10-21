@@ -19,11 +19,11 @@ export function parsePublishedCatalog(payload:unknown):readonly MenuItem[]{
   if(!value || typeof value!=='object' || Array.isArray(value))throw Error('invalid_catalog');
   const item=value as Record<string,unknown>;
   if(typeof item.id!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.id) || ids.has(item.id.toLowerCase()) ||
-     typeof item.name!=='string' || !item.name.trim() || [...item.name].length>160 || /[\\u0000-\\u001f\\u007f]/u.test(item.name) ||
+     typeof item.name!=='string' || !item.name.trim() || [...item.name].length>160 || /[\u0000-\u001f\u007f]/u.test(item.name) ||
      !validCategories.has(String(item.category)) ||
      !Number.isSafeInteger(item.priceCents) || (item.priceCents as number)<0 ||
      typeof item.available!=='boolean' || !Array.isArray(item.allergens) ||
-     item.allergens.length>32 || !item.allergens.every((a:unknown)=>typeof a==='string' && !!a.trim() && [...a].length<=100 && !/[\\u0000-\\u001f\\u007f]/u.test(a))){
+     item.allergens.length>32 || !item.allergens.every((a:unknown)=>typeof a==='string' && !!a.trim() && [...a].length<=100 && !/[\u0000-\u001f\u007f]/u.test(a))){
    throw Error('invalid_catalog');
   }
   ids.add(item.id.toLowerCase());
