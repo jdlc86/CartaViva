@@ -3,7 +3,7 @@ import { normalizeCustomerRegistration } from './customer-profile.mjs';
 
 // Cryptographically random public identifier. Uniqueness must ALSO be enforced by a DB UNIQUE constraint.
 // Public IDs are labels, never login secrets or authorization credentials.
-const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXY';
 const RADIX = ALPHABET.length;
 const LIMIT = Math.floor(256 / RADIX) * RADIX;
 
