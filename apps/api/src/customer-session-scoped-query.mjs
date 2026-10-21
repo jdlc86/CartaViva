@@ -12,7 +12,9 @@ export function createCustomerSessionScopedQuery({ pool } = {}) {
         !Buffer.isBuffer(parameters[0]) || parameters[0].length !== 32) throw Error('invalid_customer_session_parameters');
     const client = await pool.connect();
     if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
-      if (client && typeof client.release === 'function') client.release(true);
+      if (client && typeof client.release === 'function') {
+        try { client.release(true); } catch { /* invalid connection is unusable */ }
+      }
       throw Error('invalid_customer_session_client');
     }
     let began = false;
@@ -32,7 +34,8 @@ export function createCustomerSessionScopedQuery({ pool } = {}) {
       throw error;
     } finally {
       // Discard uncertain connections rather than returning elevated or aborted state.
-      client.release(!committed);
+      try { client.release(!committed); }
+      catch { /* do not replace the transaction error with cleanup failure */ }
     }
   };
 }
