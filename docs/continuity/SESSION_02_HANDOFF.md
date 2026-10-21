@@ -586,3 +586,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 - Gate anterior `b1254f1` acreditado con Sabora CI 39590213263 SUCCESS y Bootstrap 39590213292 SUCCESS.
 - Nuevos `scripts/ci/customer-session-concurrency-fixture.sql` y `scripts/ci/customer-session-concurrency-smoke.sh` ejercitan dos conexiones PostgreSQL independientes sobre el mismo hash. Exigen exactamente una revocación exitosa y una fila revocada. Integrado en el smoke de migraciones sobre PostgreSQL 17 aislado (`--network none`). Commits `4f5bf76`, `17db52e`, `7293a25`.
 - **Pendiente CI del HEAD**; no asumir prueba acreditada hasta SUCCESS. Este gate prueba UPDATE SQL, todavía no los RPC de sesión en concurrencia. No se ha aplicado nada en Supabase operativo ni VPS.
+
+## Endurecimiento del harness concurrente (2026-10-21)
+- Revisión preventiva de `customer-session-concurrency-smoke.sh`: el `wait` sin PID explícito no garantizaba propagar el estado fallido de cada subproceso. Commit `0a3a4d6` almacena ambos PID, exige `wait` exitoso para cada uno, valida un resultado 0/1 por conexión y exige exactamente un ganador. La comprobación final de fila revocada se mantiene.
+- CI del commit anterior `cdfc867` aún en curso al revisar; nuevo HEAD pendiente de acreditación. Sin conexión operativa.
