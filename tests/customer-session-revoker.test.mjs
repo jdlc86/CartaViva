@@ -11,10 +11,7 @@ test('revocation matches only live, unrevoked session by hash',async()=>{
   return {rows:[{revoked:true}]};
  }});
  assert.equal(await revoke(token),true);
- assert.match(called.sql,/UPDATE sabora\.customer_sessions/);
- assert.match(called.sql,/token_hash = \$1/);
- assert.match(called.sql,/revoked_at IS NULL/);
- assert.match(called.sql,/expires_at > now\(\)/);
+ assert.match(called.sql,/sabora\.revoke_customer_session_hash\(\$1::bytea\)/);
  assert.equal(called.params[0].length,32);
 });
 test('repeated revocation and invalid token fail closed',async()=>{
