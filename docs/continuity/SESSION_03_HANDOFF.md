@@ -85,3 +85,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `c438483a31a37dfec542f92b1b1ba9ca03bb816f`: smoke SQL bajo SET LOCAL ROLE `sabora_catalog_reader` intenta SELECT real de `sabora.customer_profiles`, `sabora.customer_sessions` y `sabora.staff_members`. Deben fallar por privilegios insuficientes. No se modifica SQL de producción ni se conceden privilegios.
 - CI y Bootstrap SUCCESS sobre `d7f4950` y `09d59f0`; los runs de `99b9db9` y `48429e7` todavía estaban ejecutándose al iniciar este hito.
 - Validar último HEAD mediante Actions; prohibido utilizar Supabase operativo y VPS compartido para estas pruebas.
+
+## Sesión 3 — robustez transaccional del lector
+- Al inicio de este bloque, los dos workflows de GitHub Actions estaban SUCCESS para `99b9db9`, `48429e7`, `c438483` y `eb55ef2`.
+- Commit `38a55737ad30f76b5c33dac673030039b376d644`: pruebas del adaptador SQL para fallo de BEGIN sin ROLLBACK improcedente, fallo de ROLLBACK sin ocultar error original, y descarte de cliente incompleto del pool. No cambia el contrato operativo ni activa ruta HTTP.
+- Verificar CI del nuevo commit y último HEAD; PostgreSQL operativo y VPS siguen fuera del alcance.
