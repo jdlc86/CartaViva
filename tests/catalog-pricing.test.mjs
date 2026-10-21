@@ -47,3 +47,9 @@ test('overflow and invalid extras are rejected even with a full discount',()=>{
   {basePriceCents:1,discount:{type:'fixed',amountCents:1.5}}
  ])assert.throws(()=>priceCatalogLine(args),/invalid_catalog_/);
 });
+
+test('intermediate extras accumulation fails closed at safe integer boundary',()=>{
+ assert.throws(()=>priceCatalogLine({basePriceCents:0,extras:[Number.MAX_SAFE_INTEGER,1]}),/invalid_catalog_price/);
+ assert.throws(()=>priceCatalogLine({basePriceCents:1,extras:[Number.MAX_SAFE_INTEGER]}),/invalid_catalog_price/);
+ assert.equal(priceCatalogLine({basePriceCents:0,extras:[Number.MAX_SAFE_INTEGER],discount:{type:'fixed',amountCents:Number.MAX_SAFE_INTEGER}}).totalCents,0);
+});
