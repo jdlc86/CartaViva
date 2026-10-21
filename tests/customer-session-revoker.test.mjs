@@ -8,7 +8,7 @@ test('revocation matches only live, unrevoked session by hash',async()=>{
  let called;
  const revoke=createCustomerSessionRevoker({query:async(sql,params)=>{
   called={sql,params};
-  return {rowCount:1,rows:[{id:'some-session'}]};
+  return {rows:[{revoked:true}]};
  }});
  assert.equal(await revoke(token),true);
  assert.match(called.sql,/UPDATE sabora\.customer_sessions/);
@@ -18,7 +18,7 @@ test('revocation matches only live, unrevoked session by hash',async()=>{
  assert.equal(called.params[0].length,32);
 });
 test('repeated revocation and invalid token fail closed',async()=>{
- const revoke=createCustomerSessionRevoker({query:async()=>({rowCount:0,rows:[]})});
+ const revoke=createCustomerSessionRevoker({query:async()=>({rows:[{revoked:false}]})});
  assert.equal(await revoke(token),false);
  const never=createCustomerSessionRevoker({query:()=>{throw Error('unexpected query');}});
  assert.equal(await never('SB-222222222222'),false);
