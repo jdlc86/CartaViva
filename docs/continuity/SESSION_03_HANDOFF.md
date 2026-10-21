@@ -175,3 +175,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commits `a523be1e`, `15278726`: refuerzo de acceso a grupos con `Object.hasOwn` y límite agregado de 50 modificadores, con regresiones.
 - `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md` actualizado en `b22aa436`.
 - Todas las funciones siguen **aisladas**: sin API, sin DB operativa, sin publicación ni pedidos habilitados. Verificar Sabora CI/Bootstrap para cada HEAD. Siguiente puerta: definir versión de JSON y migración PostgreSQL equivalente con pruebas en DB desechable antes de integración.
+
+## Sesión 3 — candidato PostgreSQL de modificadores económicos
+- Commits `506622dcc3fe4570575cfecb0bb68e66bf6bb86e` y `79c9360d1bc447c50f41f68f1e18dd83e7dec675`: migración aditiva `20261021210000_sabora_catalog_economic_candidate_validation.sql` con funciones aisladas para validar opciones, valores, extras, disponibilidad, alérgenos y descuentos, más smoke PostgreSQL 17 desechable.
+- Los roles de aplicación no reciben EXECUTE; `publish_catalog_item` y `validate_catalog_snapshot` permanecen intactos y siguen bloqueando extras/opciones/descuentos no neutros. El smoke comprueba expresamente que el candidato **no** desbloquea la publicación.
+- Pendiente comprobar CI y comparar semántica del validador SQL con JavaScript; sin despliegue ni migración operativa.
