@@ -25,3 +25,25 @@ test('invalid prices and economic rules fail closed',()=>{
   {basePriceCents:Number.MAX_SAFE_INTEGER,extras:[1]}
  ])assert.throws(()=>priceCatalogLine(args),/invalid_catalog_/);
 });
+
+test('zero-price items and full percentage discounts never produce negative cents',()=>{
+ assert.deepEqual(priceCatalogLine({basePriceCents:0,quantity:3,discount:{type:'percent',basisPoints:10000}}),{
+  unitSubtotalCents:0,unitDiscountCents:0,subtotalCents:0,discountCents:0,totalCents:0,quantity:3
+ });
+ assert.equal(priceCatalogLine({basePriceCents:1,extras:[2],quantity:20,discount:{type:'percent',basisPoints:10000}}).totalCents,0);
+});
+test('discount applies per unit before quantity, with deterministic rounding',()=>{
+ const result=priceCatalogLine({basePriceCents:5,quantity:3,discount:{type:'percent',basisPoints:1000}});
+ assert.deepEqual(result,{unitSubtotalCents:5,unitDiscountCents:1,subtotalCents:15,discountCents:3,totalCents:12,quantity:3});
+});
+test('overflow and invalid extras are rejected even with a full discount',()=>{
+ for(const args of [
+  {basePriceCents:Number.MAX_SAFE_INTEGER,quantity:2,discount:{type:'percent',basisPoints:10000}},
+  {basePriceCents:Number.MAX_SAFE_INTEGER,discount:{type:'percent',basisPoints:10000}},
+  {basePriceCents:1,extras:[Number.MAX_SAFE_INTEGER],discount:{type:'fixed',amountCents:2}},
+  {basePriceCents:1,extras:[NaN]},
+  {basePriceCents:1,extras:[Infinity]},
+  {basePriceCents:1,discount:{type:'percent',basisPoints:0.5}},
+  {basePriceCents:1,discount:{type:'fixed',amountCents:1.5}}
+ ])assert.throws(()=>priceCatalogLine(args),/invalid_catalog_/);
+});
