@@ -570,3 +570,6 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < sc
 
 # Exercise narrowly scoped SECURITY DEFINER RPCs and forced-RLS in disposable CI.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-positive.sql
+
+# Verify no browser/staff role inherited customer session RPCs or direct write rights.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-hardening.sql
