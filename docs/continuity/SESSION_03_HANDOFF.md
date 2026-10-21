@@ -141,3 +141,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `8eb0b56`: Sabora CI y Bootstrap SUCCESS, incluyendo pruebas de descuento completo, redondeo y overflow.
 - Commits `2c1091a40a981215d39587081d588dc10308807f` y `944939c663dcccbd773eab08906252d1d65344aa`: el cálculo puro de precios comprueba overflow en cada acumulación de extras y al sumar el precio base, antes de cualquier descuento. Regresiones para el límite `Number.MAX_SAFE_INTEGER`.
 - Sin activación de API, publicación administrativa, pedidos, migraciones operativas ni despliegue. Comprobar CI de este cambio.
+
+## Sesión 3 — límites de multiplicación por cantidad
+- `2c1091a` y `944939c`: Sabora CI y Bootstrap SUCCESS; `b6039ae`: Sabora CI SUCCESS.
+- Commits `3d48da6bb969d2ebfb369cd51417867c44b8f740` y `95f88875d25a152d35b825ca430452afb0d0ce8f`: el cálculo puro valida que subtotal bruto y descuento unitario multiplicados por cantidad permanezcan en el rango seguro, incluso con descuento del 100 %. Pruebas del límite exacto y del primer céntimo fuera del rango.
+- Verificar CI; no se habilitaron pedidos, pagos, administración ni migraciones operativas.
