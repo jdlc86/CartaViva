@@ -573,3 +573,6 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < sc
 
 # Verify no browser/staff role inherited customer session RPCs or direct write rights.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-privileges-hardening.sql
+
+# Verify concurrent revocations have one winner and leave one revoked row.
+bash scripts/ci/customer-session-concurrency-smoke.sh "$container"
