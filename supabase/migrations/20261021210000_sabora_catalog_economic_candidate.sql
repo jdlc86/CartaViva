@@ -76,13 +76,13 @@ BEGIN
      (v_group->>'maxSelections')::integer>jsonb_array_length(v_group->'values') THEN RETURN false; END IF;
   v_value_ids:=ARRAY[]::text[];
   FOR v_value IN SELECT value FROM jsonb_array_elements(v_group->'values') LOOP
-   IF NOT sabora.validate_catalog_modifier_value(v_value) THEN RETURN false; END IF;
+   IF sabora.validate_catalog_modifier_value(v_value) IS DISTINCT FROM TRUE THEN RETURN false; END IF;
    IF (v_value->>'id')=ANY(v_value_ids) THEN RETURN false; END IF;
    v_value_ids:=array_append(v_value_ids,v_value->>'id');
   END LOOP;
  END LOOP;
  FOR v_item IN SELECT value FROM jsonb_array_elements(v_extras) LOOP
-  IF NOT sabora.validate_catalog_modifier_value(v_item) THEN RETURN false; END IF;
+  IF sabora.validate_catalog_modifier_value(v_item) IS DISTINCT FROM TRUE THEN RETURN false; END IF;
   IF (v_item->>'id')=ANY(v_extra_ids) THEN RETURN false; END IF;
   v_extra_ids:=array_append(v_extra_ids,v_item->>'id');
  END LOOP;
