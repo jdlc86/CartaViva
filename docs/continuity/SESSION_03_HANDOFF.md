@@ -80,3 +80,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - Commit `99b9db99c5ddb263f430835675871f42e9fa41ac`: smoke SQL del login lector intenta ejecutar directamente `sabora.read_published_catalog()` antes de SET LOCAL ROLE y después de COMMIT; ambos intentos deben fallar con `insufficient_privilege`. Complementa los metadatos ACL con ejecución negativa real.
 - Antes de este commit, CI y Bootstrap SUCCESS para `bbd0648` y `67b9cd4`; los runs de `d7f4950` y `09d59f0` aún estaban en curso al consultar.
 - Solo contenedor PostgreSQL desechable en GitHub Actions; no se han tocado Supabase operativo, VPS ni Fleetia. Verificar CI del último HEAD.
+
+## Sesión 3 — aislamiento del lector frente a identidad y personal
+- Commit `c438483a31a37dfec542f92b1b1ba9ca03bb816f`: smoke SQL bajo SET LOCAL ROLE `sabora_catalog_reader` intenta SELECT real de `sabora.customer_profiles`, `sabora.customer_sessions` y `sabora.staff_members`. Deben fallar por privilegios insuficientes. No se modifica SQL de producción ni se conceden privilegios.
+- CI y Bootstrap SUCCESS sobre `d7f4950` y `09d59f0`; los runs de `99b9db9` y `48429e7` todavía estaban ejecutándose al iniciar este hito.
+- Validar último HEAD mediante Actions; prohibido utilizar Supabase operativo y VPS compartido para estas pruebas.
