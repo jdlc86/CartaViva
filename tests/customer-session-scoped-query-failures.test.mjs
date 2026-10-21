@@ -50,6 +50,6 @@ test('same pooled connection cannot retain SET LOCAL role across successful call
  await query(SESSION_REVOKE_SQL,[hash]);
  assert.deepEqual(releases,[false,false]);
  assert.deepEqual(commands.filter(x=>x==='BEGIN'),['BEGIN','BEGIN']);
- assert.deepEqual(commands.filter(x=>x==='SET LOCAL ROLE sabora_customer_session_runtime').length,2);
- assert.deepEqual(commands.filter(x=>x==='COMMIT').length,2);
+ assert.equal(commands.filter(x=>x==='SET LOCAL ROLE sabora_customer_session_runtime').length,2);
+ assert.equal(commands.filter(x=>x==='COMMIT').length,2);
 });
