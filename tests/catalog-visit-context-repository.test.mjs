@@ -10,6 +10,9 @@ test('locked authorization binds QR, bearer session and durable visit',async()=>
  const result=await lock(async(sql,args)=>{
   assert.match(sql,/FOR SHARE OF t,v,s/);
   assert.match(sql,/v\.authorized_qr_version=t\.qr_version/);
+  assert.match(sql,/t\.ordering_state='open'/);
+  assert.match(sql,/t\.ordering_state='paused'/);
+  assert.match(sql,/t\.pause_until<=clock_timestamp\(\)/);
   assert.match(sql,/v\.expires_at>clock_timestamp\(\)/);
   assert.match(sql,/s\.expires_at>clock_timestamp\(\)/);
   assert.match(sql,/v\.revoked_at IS NULL/);
@@ -38,4 +41,14 @@ test('malformed tokens and contradictory identities fail closed',async()=>{
  }]}),input),/invalid_catalog_visit_response/);
  await assert.rejects(lock(async()=>({rows:[{},{}]}),input),
   /invalid_catalog_visit_response/);
+});
+
+test('closed or currently paused table is forbidden (no matching SQL row)',async()=>{
+ for(const state of ['closed','paused']){
+  const result=await lock(async sql=>{
+   assert.match(sql,/t\.ordering_state='open'/);
+   return {rows:[]};
+  },input);
+  assert.deepEqual(result,{authorized:false,canOrder:false},state);
+ }
 });
