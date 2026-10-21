@@ -110,6 +110,24 @@ begin
  end loop;
 end;
 $writer_acl$;
+-- A dormant SQL writer must not be able to inherit permissions from other
+-- roles, nor be usable as a membership bridge to an elevated SQL principal.
+do $writer_memberships$
+declare membership record;
+begin
+ for membership in
+  select granted.rolname as granted_role, member.rolname as member_role
+  from pg_auth_members m
+  join pg_roles granted on granted.oid=m.roleid
+  join pg_roles member on member.oid=m.member
+  where member.rolname='sabora_admin_writer'
+     or granted.rolname='sabora_admin_writer'
+ loop
+  raise exception 'dormant writer unexpectedly participates in role membership: % -> %',
+   membership.member_role,membership.granted_role;
+ end loop;
+end;
+$writer_memberships$;
 set role sabora_admin_writer;
 do $writer_denials$
 begin
