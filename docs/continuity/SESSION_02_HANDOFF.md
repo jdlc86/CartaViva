@@ -536,3 +536,8 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Corrección smoke de caducidad (2026-10-21)
 - CI del commit `149f084` FAILED: Sabora CI 39586864461 y bootstrap 39586864736. Causa localizada en `scripts/ci/customer-session-verification.sql`: la simulación de expiración asignaba `expires_at` anterior a `created_at`, violando correctamente `customer_session_expiry_check`.
 - Commit `2a15b90`: prueba corregida desplazando también `created_at` al pasado; se preserva el CHECK de integridad, no se debilita la migración. Verificar CI del nuevo HEAD antes de declarar verde.
+
+## Revocación de sesiones cliente (2026-10-21)
+- Bootstrap de `9cf9ab2` SUCCESS run 39587114644; Sabora CI 39587114719 seguía IN_PROGRESS en la comprobación.
+- `apps/api/src/customer-session-revoker.mjs` añade revocación interna idempotente por hash de token, solo si sesión vigente y no revocada; no permite revocación por alias/ID visible. Pruebas de revocación, repetición, token inválido y fallo DB en `tests/customer-session-revoker.test.mjs`; build syntax check. Commits `2046207`, `3b910c5`, `95e5be8`.
+- Falta ruta de logout protegida, cookie HttpOnly, CSRF, auditoría y permisos SQL mínimos. No hay despliegue, migración operativa ni cambios Fleetia. Comprobar CI HEAD.
