@@ -118,3 +118,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `6fe384a` y `dceb5fb`: Sabora CI y Bootstrap FAILED; job de Test mostró 228/229 tests PASS, falló `SQL adapter rejects non-row primitives and invalid published snapshots` con `Missing expected rejection`. No era fallo de PostgreSQL.
 - Commit `7034dc472c98fe21567e1a4a34db3da923207077`: el adaptador `readPublishedCatalog` rechaza filas RPC primitivas, null o sin `published_snapshot` antes de proyectarlas. A diferencia del proyector genérico que puede omitir borradores, la RPC restringida promete únicamente filas publicadas y debe fallar cerrado.
 - `8283222` y `e5251e1` tenían ambos workflows SUCCESS. Verificar CI del nuevo commit correctivo antes de considerarlo resuelto.
+
+## Sesión 3 — PWA Gestión: estructura de navegación no operativa
+- `7034dc4`: Sabora CI y Bootstrap SUCCESS, validando corrección del adaptador RPC; `95c8ad5`: Bootstrap SUCCESS y Sabora CI pendiente al comenzar.
+- Commits `10ba9106bad1cb52317062e60e95cf6932892741` y `c2b2b5ceba9346c47b243c3166be6d7d02de780c`: PWA Gestión con navegación accesible y responsive entre Resumen, Carta, Mesas/QR, Comandas y Equipo. Muestra requisitos de activación por área, no datos ficticios ni acciones de escritura.
+- **No es un panel administrativo funcional**: no existe login ni llamadas a API en esta interfaz; acceso y operaciones permanecen expresamente inhabilitados. Revisar CI/build de Gestión tras el cambio.
