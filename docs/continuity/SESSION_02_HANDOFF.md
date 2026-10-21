@@ -594,3 +594,7 @@ Definir y revisar primero el contrato de runtime: rol grupal writer mínimo, LOG
 ## Corrección CI concurrente (2026-10-21)
 - HEAD `3163577` falló en Sabora CI 39590983677 y Bootstrap 39590983674 por error sintáctico del shell `customer-session-concurrency-smoke.sh` línea 41 (`unexpected token ||`). La sustitución de texto anterior había corrompido el contenido de expresiones grep.
 - Commit `5bbdcdd` reescribe el script completo con shell válido, PID individuales, verificación de salida por trabajador y ganador único. No asumir validación hasta nueva CI verde. Sin despliegue.
+
+## Lint preventivo del smoke de concurrencia (2026-10-21)
+- `scripts/ci/customer-session-concurrency-lint.sh` ejecuta `bash -n` y exige los controles estructurales de dos PID, `wait` individual, un resultado por conexión, un único ganador y estado final revocado. Se integra antes de invocar el smoke concurrente en `postgres-migration-smoke.sh`. Commits `a81a873`, `c641162`.
+- Motivo: evitar que una edición accidental del script vuelva a romper el gate PostgreSQL por sintaxis Bash. CI del HEAD pendiente; no confundir con acreditación de RPC concurrente.
