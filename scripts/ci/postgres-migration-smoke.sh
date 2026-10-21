@@ -82,6 +82,24 @@ begin
  if sabora.validate_catalog_economic_modifiers('{"extras":null}'::jsonb) IS TRUE then
   raise exception 'null extras accepted';
  end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('extras',jsonb_build_array(v_extra-'name'))) IS TRUE then
+  raise exception 'missing extra name accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('extras',jsonb_build_array(v_extra||'{"name":null}'::jsonb))) IS TRUE then
+  raise exception 'null extra name accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('extras',jsonb_build_array(v_extra||'{"id":123}'::jsonb))) IS TRUE then
+  raise exception 'non-string extra id accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('options',jsonb_build_array(v_option-'name'))) IS TRUE then
+  raise exception 'missing option name accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('options',jsonb_build_array(v_option||'{"required":null}'::jsonb))) IS TRUE then
+  raise exception 'null required flag accepted';
+ end if;
+ if sabora.validate_catalog_economic_modifiers(v_snapshot||jsonb_build_object('options',jsonb_build_array(v_option||'{"values":[{"id":"large","name":"Grande","priceCents":200,"available":true,"allergens":[]},{"id":"large","name":"Duplicado","priceCents":100,"available":true,"allergens":[]}]}'::jsonb))) IS TRUE then
+  raise exception 'duplicate option value accepted';
+ end if;
  if has_function_privilege('anon','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE')
   or has_function_privilege('authenticated','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE')
   or has_function_privilege('sabora_catalog_reader','sabora.validate_catalog_economic_modifiers(jsonb)','EXECUTE') then
