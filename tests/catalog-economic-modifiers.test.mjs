@@ -15,7 +15,8 @@ test('candidate validator accepts explicit well-formed options extras and discou
 test('candidate validator fails closed on malformed, duplicate or unbounded modifiers',()=>{
  for(const input of [
   null,[],{options:null},{extras:[{...extra,priceCents:1.2}]},
-  {extras:[extra,extra]},{options:[option,option]},
+  {extras:[extra,extra]},{extras:[null]},{options:[option,option]},
+  {options:[{...option,values:[null]}]},
   {options:[{...option,values:[option.values[0],option.values[0]]}]},
   {options:[{...option,maxSelections:3}]},
   {extras:[{...extra,available:'yes'}]},
