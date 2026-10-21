@@ -28,3 +28,28 @@ test('database errors return 503 without leaking details',async()=>{
  assert.equal(response.status,503);
  assert.equal(JSON.stringify(response).includes('private db details'),false);
 });
+
+test('route refuses missing query configuration and does not register',()=>{
+ let registered=false;
+ const app={get:()=>{registered=true;}};
+ assert.throws(()=>registerCatalogHttpRoute(app),/invalid_catalog_route_configuration/);
+ assert.equal(registered,false);
+});
+test('invalid database response fails closed with 503',async()=>{
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:async()=>({rows:null})});
+ const response=await app.invoke();
+ assert.equal(response.status,503);
+ assert.deepEqual(response.body,{error:'catalog_unavailable'});
+});
+test('untrusted published snapshot fails closed without leaking private fields',async()=>{
+ const app=fakeApp();
+ registerCatalogHttpRoute(app,{query:async()=>({rows:[{
+  id:'11111111-1111-4111-8111-111111111111',
+  published_snapshot:{name:'Invalid',category:'Bebidas',priceCents:-100,allergens:[]},
+  secret:'private-data',sold_out:false
+ }]})});
+ const response=await app.invoke();
+ assert.equal(response.status,503);
+ assert.equal(JSON.stringify(response).includes('private-data'),false);
+});
