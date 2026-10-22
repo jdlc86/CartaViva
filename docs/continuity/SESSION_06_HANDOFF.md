@@ -209,3 +209,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `c057b35`: las tres operaciones de lectura (`lookupIdempotency`, `lockCatalog`, `loadPreviousQuote`) verifican el registro de argumentos **antes de desestructurarlo**. El resultado de `pg_advisory_xact_lock` también exige fila simple con descriptores de datos.
 - `3649906`: pruebas negativas de argumentos con getter, herencia y clave peligrosa (sin SQL) y de respuestas hostiles del bloqueo asesor (sin consultar ledger).
 - El alcance continúa siendo candidato transaccional desconectado; no se crean pools, roles, grants ni rutas. Integración Node–PG17 y permisos mínimos pendientes.
+
+## Integridad de timestamps de ocupación del escritor
+
+- `e2f234f`: se sustituye la lectura directa de fechas de PostgreSQL por `validTimestamp`, que admite `null` o un `Date` genuino de prototipo esperado, comprueba el tiempo con el método intrínseco y rechaza falsificaciones sin propagar excepciones ajenas al dominio.
+- `b264b4b`: regresiones con `Date.prototype` falsificado, subclases, fechas inválidas y método `getTime` sobrescrito. La lectura malformada no debe llegar al INSERT; el método sobrescrito no debe invocarse.
+- El gate de activación sigue cerrado: integración real Node–PostgreSQL 17, auditoría de actor y privilegios SQL mínimos pendientes; ningún cambio operativo.
