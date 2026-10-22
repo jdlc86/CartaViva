@@ -534,3 +534,20 @@ test('SQL boundary enforces bounded UTF-8 strings and safe integer parameters',a
  });
  assert.deepEqual(calls,['BEGIN','SELECT $1, $2, $3','COMMIT']);
 });
+
+test('transaction SQL text has a bounded UTF-8 size and no embedded NUL',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{calls.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{
+  for(const sql of ['SELECT '+String.fromCharCode(0)+'1',
+   'SELECT '+('ñ'.repeat(32766))]){
+   await assert.rejects(query(sql),/invalid_transaction_query/);
+  }
+  assert.deepEqual(calls,['BEGIN']);
+  await query('SELECT 1');
+ });
+ assert.deepEqual(calls,['BEGIN','SELECT 1','COMMIT']);
+});
