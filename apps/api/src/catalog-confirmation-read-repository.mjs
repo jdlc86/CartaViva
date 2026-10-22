@@ -3,6 +3,7 @@
 // checked-out transaction client; the future writer must provide authorization.
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const scope=v=>v&&typeof v==='object'&&!Array.isArray(v)&&
+ v.authorized===true&&v.canOrder===true&&
  uuid.test(v.tableId)&&uuid.test(v.sessionId)&&
  ['visitId','basketId','actorId'].every(k=>typeof v[k]==='string'&&
  /^[A-Za-z0-9_-]{1,128}$/.test(v[k]));
