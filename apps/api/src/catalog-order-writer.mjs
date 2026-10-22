@@ -55,6 +55,16 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
       FOR UPDATE`,[context.tableId,context.sessionId]);
    if(!table||!Array.isArray(table.rows)||table.rows.length!==1)
     throw Error('catalog_order_context_changed');
+   const occupancy=table.rows[0];
+   // Reject malformed driver rows before the INSERT. The table lock must
+   // describe a valid grouping window and a trustworthy first-confirmation
+   // timestamp; coercion of null/strings is not a safe fallback.
+   if(!occupancy||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
+      occupancy.grouping_window_seconds<=0||
+      !(occupancy.first_confirmed_at===null||
+        (occupancy.first_confirmed_at instanceof Date&&
+         Number.isFinite(occupancy.first_confirmed_at.getTime()))))
+    throw Error('invalid_catalog_order_table_state');
    const result=await query(
     `WITH instant AS (SELECT clock_timestamp() AS at),
        created AS (
