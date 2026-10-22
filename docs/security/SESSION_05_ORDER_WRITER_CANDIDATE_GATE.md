@@ -279,3 +279,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El escritor candidato comprueba que `grouping_window_seconds` leído bajo `FOR UPDATE` está dentro del rango positivo `int4` de PostgreSQL (máximo 2.147.483.647), antes de enviar el valor al parámetro `$10::integer` de `make_interval`.
 - Pruebas negativas incluyen `2147483648` y `Number.MAX_SAFE_INTEGER`; ninguna debe llegar a insertar pedidos ni ledger.
 - La validación es defensiva ante respuestas de adaptador malformadas; no modifica la ventana de negocio configurada ni sus restricciones SQL.
+
+## Presupuesto global de entrada previo a transacción
+
+- `snapshotInput` del coordinador limita ahora el recorrido completo de una confirmación a **4096 nodos** y **65536 bytes UTF-8** acumulados de claves y valores de texto, además de los límites ya existentes de profundidad, cardinalidad por objeto y huella canónica de 16384 bytes.
+- El presupuesto global impide que una estructura ramificada de muchos arrays u objetos pequeños eluda los límites por nivel y consuma memoria/CPU antes de abrir una transacción. La contabilidad UTF-8 evita confundir caracteres con bytes.
+- Pruebas negativas con más de 4096 nodos y texto multibyte sobredimensionado comprueban rechazo `invalid_confirmation_input` sin `BEGIN` ni consultas. Se conserva una prueba positiva de confirmación ordinaria.
+- No se conecta el candidato a HTTP ni se modifica el rol de escritura.
