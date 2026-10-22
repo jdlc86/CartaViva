@@ -106,3 +106,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - La puerta `catalog-confirmation-activation-gate.sql` comprueba ahora también `sabora.orders` frente a los roles `anon`, `authenticated`, `sabora_admin_writer`, `sabora_catalog_reader` y `sabora_staff_reader`. Rechaza cualquier permiso de tabla de lectura/escritura, truncado, referencias o triggers, además de los ledgers económicos.
 - Esto evita que el puente de identidad del pedido se vuelva escribible por un rol existente de forma accidental. Es un gate **negativo**: no crea el futuro rol del backend ni concede acceso.
 - El flujo Node completo sobre PG17 y el modelo de auditoría del actor permanecen pendientes. CI del nuevo HEAD debe comprobarse antes de considerar acreditado el cambio.
+
+## Robustez del checkout del pool transaccional (22-10-2026)
+
+- Se detectó una vía de fuga de cliente en `createPostgresTransaction`: si `pool.connect()` devolvía un objeto con `release` pero sin `query`, el adaptador lanzaba `invalid_transaction_client` sin liberar el checkout. Ahora intenta `release(Error('invalid_transaction_client'))` antes de rechazarlo, descartando la sesión defectuosa. Si el propio `release` falla, se conserva el error de validación; no se ha emitido SQL.
+- Nuevas regresiones en `tests/postgres-transaction.test.mjs`: cliente malformado liberable, `release` que falla y resultado nulo. Esta mejora solo prueba el límite del pool inyectado; no supone conexión real a PG17.
+- Siguen pendientes driver PostgreSQL de Node en entorno aislado, autenticación y permisos mínimos verificables, auditoría individual, endpoints y autorización de activación. No hay cambios en Supabase operativo ni despliegues.
