@@ -18,7 +18,8 @@ function fixture({authorized=true,soldOut=false,insertFails=false}={}){
  const query=async(sql,args)=>{
   statements.push({sql,args});
   if(sql.includes('FROM sabora.dining_tables'))return {rows:authorized?[{
-   table_id:tableId,session_id:sessionId,visit_id:'visit-1',actor_id:'actor-1'
+   table_id:tableId,session_id:sessionId,visit_id:'visit-1',actor_id:'actor-1',
+   customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'
   }]:[]};
   if(sql.includes('FROM sabora.catalog_items'))return {rows:[{
    published_revision:'1',published_snapshot:snapshot,withdrawn_at:null,sold_out:soldOut
@@ -49,7 +50,7 @@ test('composed quote repository verifies visit, locks published price and insert
  assert.equal(result.evidence.totalCents,1000);
  assert.deepEqual(events,['BEGIN','COMMIT']);
  assert.equal(statements.length,3);
- assert.match(statements[0].sql,/FOR SHARE OF t,v,s/);
+ assert.match(statements[0].sql,/FOR UPDATE OF t FOR SHARE OF v,s/);
  assert.match(statements[1].sql,/FOR SHARE/);
  assert.match(statements[2].sql,/INSERT INTO sabora.catalog_displayed_quotes/);
  assert.equal(statements[2].args[0],tableId);
