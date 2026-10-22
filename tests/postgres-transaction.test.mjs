@@ -240,3 +240,63 @@ test('null checked-out client is rejected without attempting a transaction',asyn
  const transaction=createPostgresTransaction({pool:{connect:async()=>null}});
  await assert.rejects(transaction(async()=>{}),/invalid_transaction_client/);
 });
+
+test('release failure cannot mask original SQL failure after successful rollback',async()=>{
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='UPDATE x')throw Error('original_sql_failure');
+   return {rows:[]};
+  },
+  release:()=>{throw Error('release_failed');}
+ })}});
+ await assert.rejects(withTransaction(query=>query('UPDATE x')),error=>{
+  assert.equal(error.message,'original_sql_failure');
+  assert.equal(error.releaseError?.message,'release_failed');
+  return true;
+ });
+ assert.deepEqual(statements,['BEGIN','UPDATE x','ROLLBACK']);
+});
+
+test('release failure after successful COMMIT is reported, never a false success',async()=>{
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{statements.push(sql);return {rows:[]};},
+  release:()=>{throw Error('release_failed');}
+ })}});
+ await assert.rejects(withTransaction(async()=>42),/release_failed/);
+ assert.deepEqual(statements,['BEGIN','COMMIT']);
+});
+
+test('failed COMMIT and throwing release preserve uncertain commit error',async()=>{
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='COMMIT')throw Error('commit_uncertain');
+   return {rows:[]};
+  },
+  release:()=>{throw Error('release_failed');}
+ })}});
+ await assert.rejects(withTransaction(async()=>42),error=>{
+  assert.equal(error.message,'commit_uncertain');
+  assert.equal(error.releaseError?.message,'release_failed');
+  return true;
+ });
+ assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
+});
+
+test('throwing release does not mask failed BEGIN',async()=>{
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{statements.push(sql);throw Error('begin_failed');},
+  release:()=>{throw Error('release_failed');}
+ })}});
+ await assert.rejects(withTransaction(async()=>42),error=>{
+  assert.equal(error.message,'begin_failed');
+  assert.equal(error.releaseError?.message,'release_failed');
+  return true;
+ });
+ assert.deepEqual(statements,['BEGIN']);
+});
