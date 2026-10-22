@@ -363,3 +363,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `efd30ff6`: verificador JWT RS256 con clave pública RSA fijada por backend y comprobación estricta de issuer, audiencia, firma, sujeto, iat, exp y vida máxima.
 - `dda2d21c`: tests de firmas RSA reales, clave incorrecta, claims inválidos y algoritmo no permitido; `8a219a18`: arquitectura y límites de integración.
 - **Pendiente:** comprobar algoritmo real de firma Supabase Auth, fijar claves de forma segura con rotación, integrar con resolver staff y conexión SQL restringida, atribuir actor en auditoría. Sin ruta HTTP, sin despliegue, sin cambios a Supabase operativo.
+
+## Sesión 3 — composición de JWT verificado y transiciones de mesa
+- `dac449b3`: composición backend de firma RS256 verificada, identidad staff activa y transición SQL en una transacción; sin HTTP ni grants.
+- `6d45b32a`: pruebas con firmas RSA reales de camino completo, actor suplantado, emisor incorrecto y cocina.
+- `45028f8e`: arquitectura y bloqueos de activación actualizados. Pendiente resolver clave/rotación Auth real, mínimos privilegios SQL, actor de auditoría y ruta de gestión. No merge ni despliegue.
