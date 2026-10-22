@@ -172,3 +172,7 @@ Se añadieron dos casos negativos SQL a `catalog-confirmation-atomicity-smoke.sq
 `scripts/ci/catalog-quote-concurrency-smoke.sh` incorpora una segunda carrera de dos conexiones: la primera inserta una confirmación no confirmada y mantiene abierta su transacción; la segunda intenta la misma clave y debe quedar esperando en un bloqueo PostgreSQL. La primera hace `ROLLBACK`, la segunda continúa y confirma su propio intento. La comprobación final exige una única fila con la huella `recovered`, nunca la huella `rolled-back`. Commit `bdb8d807`.
 
 Esto complementa el caso previo en que gana la primera transacción con `COMMIT`. Ambas pruebas ejercitan restricciones de unicidad e integridad con SQL real y conexión de propietario del contenedor aislado. No acreditan todavía la implementación del escritor con identidad de runtime, consentimiento explícito ni permisos mínimos; no activar HTTP.
+
+### Corrección del fixture de recuperación concurrente
+
+La primera ejecución detectó que el fixture intentaba reutilizar un `order_id` ya vinculado a otra confirmación y falló correctamente por `catalog_confirmation_order_once`, antes de llegar a la carrera prevista. Se corrigió creando dos pedidos nuevos exclusivos para las transacciones de rollback y recuperación (`eb205761`). Este error era de datos de prueba, no evidencia de fallo del bloqueo. La acreditación requiere CI verde del nuevo HEAD.
