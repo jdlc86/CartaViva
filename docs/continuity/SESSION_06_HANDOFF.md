@@ -110,3 +110,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `1470127`: el adaptador de transacciones candidato acepta únicamente texto SQL no vacío y un array de parámetros; rechaza objetos de configuración del driver y contenedores de parámetros no válidos antes de acceder al cliente. Mantiene el cierre de ámbito y la semántica existente de rollback.
 - `f6e8f79`: regresiones Node para llamadas inválidas, consulta parametrizada válida, ausencia de SQL enviado al driver y rollback en error. No se habilitan rutas, roles, grants ni conexiones operativas.
 - Revalidar ambos workflows sobre el último HEAD.
+
+## Snapshot de parámetros SQL en el límite de transacción
+
+- `b513092`: el adaptador transaccional copia el array de parámetros antes de diferir la llamada al cliente PostgreSQL. Impide que una mutación posterior del array por el llamador altere los parámetros posicionales efectivamente enviados al driver.
+- `eb896e2`: test que muta el array inmediatamente tras solicitar la consulta y comprueba que el driver recibe la copia original; añade regresión de revocación de consulta retenida tras COMMIT.
+- El candidato continúa desconectado de HTTP y de cualquier pool operativo; no cambia los permisos ni los contratos de migración. Validación de CI pendiente sobre el último HEAD.
