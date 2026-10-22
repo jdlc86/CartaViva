@@ -135,3 +135,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `7c08f69`: antes de copiar los parámetros, el adaptador valida array denso, prototipo estándar, propiedades propias exclusivamente indexadas y descriptores de datos; limita a 256 bindings. No ejecuta getters de elementos ni acepta propiedades adicionales.
 - `786b264`: tests con array accessor-backed, sparse, propiedades inesperadas, prototipo cambiado y tamaño excesivo. Verifican cero getters ejecutados y cero consultas del driver para inputs rechazados.
 - Candidato desconectado de HTTP y roles operativos. Revalidar workflows sobre el nuevo HEAD.
+
+## Límite de texto y precisión en parámetros SQL
+
+- `10d7d9c`: el adaptador candidato rechaza parámetros string superiores a 65536 bytes UTF-8 o con byte nulo, y valores numéricos no enteros seguros. Las cantidades monetarias y contadores del candidato se representan como enteros seguros o cadenas decimales controladas; no se admiten conversiones numéricas ambiguas.
+- `e36c779`: pruebas de UTF-8 multibyte, NUL, enteros fuera de rango, fracciones y aceptación de los límites válidos.
+- El HEAD previo `3a10e7f` tenía ambos workflows verdes; el gate del HEAD posterior debe verificarse de nuevo. No se habilitan rutas, roles ni conexiones operativas.
