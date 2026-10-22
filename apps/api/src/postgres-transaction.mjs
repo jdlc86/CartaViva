@@ -6,6 +6,12 @@ export function createPostgresTransaction({ pool } = {}) {
     if (typeof work !== 'function') throw Error('invalid_transaction_callback');
     const client = await pool.connect();
     if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
+      // A pool may return a malformed client. If it has a release method,
+      // discard it before rejecting: otherwise a checked-out connection leaks.
+      if (client && typeof client.release === 'function') {
+        try { client.release(Error('invalid_transaction_client')); }
+        catch { /* Preserve the invalid-client error; no SQL has run. */ }
+      }
       throw Error('invalid_transaction_client');
     }
     const inFlight = new Set();
