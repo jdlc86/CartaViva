@@ -83,3 +83,26 @@ test('candidate writer rejects malformed economic scope and unverified reprice w
  }
  assert.equal(called,0);
 });
+
+test('composed writer refuses accessor-backed arguments and context before persistence',async()=>{
+ let getterCalls=0,persistCalls=0;
+ const repository=createCatalogConfirmationRepository({persist:async()=>{
+  persistCalls++;throw Error('unexpected_persist');
+ }});
+ const baseline={context:scope,itemId,requestKey:'request-001',
+  requestFingerprint:'fingerprint',quoteId:orderId,
+  evidence:{totalCents:1000},acceptanceVerified:false,requiresAcceptance:false};
+ const unsafeArgs={...baseline};
+ Object.defineProperty(unsafeArgs,'requestKey',{enumerable:true,
+  get(){getterCalls++;throw Error('untrusted_getter');}});
+ const unsafeContext={...scope};
+ Object.defineProperty(unsafeContext,'authorized',{enumerable:true,
+  get(){getterCalls++;throw Error('untrusted_getter');}});
+ const inherited=Object.assign(Object.create({trusted:false}),baseline);
+ for(const args of [unsafeArgs,{...baseline,context:unsafeContext},inherited]){
+  await assert.rejects(repository.persist(async()=>{throw Error('unexpected_SQL');},args),
+   /invalid_catalog_confirmation_writer_scope/);
+ }
+ assert.equal(getterCalls,0);
+ assert.equal(persistCalls,0);
+});
