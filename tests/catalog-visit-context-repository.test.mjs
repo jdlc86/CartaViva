@@ -70,3 +70,19 @@ test('profile identity is rejected if alias or public identifier is malformed',a
   }]}),input),/invalid_catalog_visit_response/);
  }
 });
+
+test('visit authorization refuses accessor-backed credentials before getter execution or SQL',async()=>{
+ let getters=0,sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const accessor={...input};
+ Object.defineProperty(accessor,'qrToken',{enumerable:true,
+  get(){getters++;throw Error('credential_getter');}});
+ const inherited=Object.assign(Object.create({inherited:true}),input);
+ const dangerous={...input};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:'injected'});
+ for(const args of [accessor,inherited,dangerous]){
+  await assert.rejects(lock(query,args),/invalid_catalog_visit_context/);
+ }
+ assert.equal(getters,0);
+ assert.equal(sqlCalls,0);
+});
