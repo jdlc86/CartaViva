@@ -14,9 +14,11 @@ const row=(response)=>{
 };
 export function createCatalogConfirmationReadRepository(){
  return Object.freeze({
-  async lookupIdempotency(query,{context,requestKey}={}){
+  async lookupIdempotency(query,{context,requestKey,requestFingerprint}={}){
    if(typeof query!=='function'||!scope(context)||
-      typeof requestKey!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(requestKey))
+      typeof requestKey!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(requestKey)||
+      typeof requestFingerprint!=='string'||!requestFingerprint||
+      Buffer.byteLength(requestFingerprint,'utf8')>16384)
     throw Error('invalid_catalog_repository_scope');
    const record=row(await query(
     `SELECT request_fingerprint,order_id
