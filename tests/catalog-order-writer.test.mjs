@@ -184,3 +184,42 @@ test('invalid economic evidence and consent never reach table lock or order INSE
   assert.equal(queries,0,'invalid ledger evidence must fail before SQL');
  }
 });
+
+test('writer rejects accessor-backed scope without invoking getter or querying SQL',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ let getterCalls=0;
+ let sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const accessorContext={...context};
+ Object.defineProperty(accessorContext,'customerAlias',{
+  enumerable:true,get(){getterCalls++;throw Error('unsafe_getter');}
+ });
+ const accessorArgs={...args};
+ Object.defineProperty(accessorArgs,'requestKey',{
+  enumerable:true,get(){getterCalls++;throw Error('unsafe_getter');}
+ });
+ for(const candidate of [
+  {...args,context:accessorContext},
+  accessorArgs,
+  {...args,context:{...context,__proto__:null}},
+ ]){
+  if(candidate.context===context&&candidate===args)continue;
+  await assert.rejects(writer.persist(query,candidate),/invalid_catalog_order_writer_scope/);
+ }
+ assert.equal(getterCalls,0);
+ assert.equal(sqlCalls,0);
+});
+
+test('writer rejects inherited and dangerous own keys before SQL',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ let sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const inherited=Object.create({authorized:true});
+ Object.assign(inherited,context);
+ const dangerous={...context};
+ Object.defineProperty(dangerous,'__proto__',{value:'untrusted',enumerable:true});
+ for(const candidate of [{...args,context:inherited},{...args,context:dangerous}]){
+  await assert.rejects(writer.persist(query,candidate),/invalid_catalog_order_writer_scope/);
+ }
+ assert.equal(sqlCalls,0);
+});
