@@ -261,3 +261,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - El lector candidato rechaza respuestas de `pg_advisory_xact_lock` con más de una fila antes de consultar el ledger; se añadió prueba negativa.
 - La interfaz de consultas inyectadas continúa aceptando `rows: []` en los dobles de prueba que no materializan la fila void. Esta validación no equivale a certificar el driver PostgreSQL real.
+
+## Conservación de fallos arbitrarios del callback transaccional
+
+- `apps/api/src/postgres-transaction.mjs` registra separadamente la presencia de un fallo del callback, incluso cuando el valor lanzado es `null`, `undefined`, `false`, `0` o una cadena vacía.
+- Un fallo posterior de `client.release()` no debe reemplazar ese valor original. La regresión cubre los cinco casos, con `ROLLBACK` y sin `COMMIT`.
+- Esta defensa no sustituye la prueba pendiente con un driver PostgreSQL real ni activa el candidato.
