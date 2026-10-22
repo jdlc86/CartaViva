@@ -110,7 +110,6 @@ test('durable writer failure propagates and aborts transaction',async()=>{
 test('same scoped replay is returned before catalog and writer',async()=>{
  const first=fixture();
  await first.confirm(input);
- const replayFingerprint=first.statements[1].args && null;
  // Capture the canonical request identity through a scoped repository spy,
  // not from client-supplied monetary data.
  let fingerprint;
