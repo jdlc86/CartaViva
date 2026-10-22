@@ -37,3 +37,17 @@ test('rejects invalid verifier configuration',()=>{
   publicKey:'invalid',issuer
  }),/invalid_staff_jwt_configuration/);
 });
+
+test('rejects noncanonical base64url signature encodings',async()=>{
+ const parts=token().split('.');
+ // The last base64url character of a 256-byte RSA signature has unused
+ // trailing bits; altering only those bits must not produce another token.
+ const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+ const original=parts[2].at(-1);
+ const index=alphabet.indexOf(original);
+ assert.equal(parts[2].length%4,2);
+ const alternative=alphabet[(index&48)|((index+1)&15)];
+ assert.notEqual(alternative,original);
+ parts[2]=parts[2].slice(0,-1)+alternative;
+ assert.deepEqual(await verify(parts.join('.')),{verified:false});
+});
