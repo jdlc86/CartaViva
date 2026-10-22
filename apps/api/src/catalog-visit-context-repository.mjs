@@ -30,7 +30,7 @@ export function createCatalogVisitContextRepository(){
         AND v.authorized_qr_version=t.qr_version
         AND v.revoked_at IS NULL AND v.expires_at>clock_timestamp()
         AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
-      FOR UPDATE OF t FOR SHARE OF v,s`,
+      FOR UPDATE OF t FOR SHARE OF v,s,p`,
     [tableId,visitId,actorId,qrToken,customerSessionToken]);
    if(!response||!Array.isArray(response.rows)||response.rows.length>1)
     throw Error('invalid_catalog_visit_response');
@@ -40,6 +40,8 @@ export function createCatalogVisitContextRepository(){
       record.table_id.toLowerCase()!==tableId.toLowerCase()||
       record.visit_id!==visitId||record.actor_id!==actorId||
       typeof record.customer_alias!=='string'||!record.customer_alias.trim()||
+      [...record.customer_alias].length>80||
+      /[\u0000-\u001f\u007f]/u.test(record.customer_alias)||
       typeof record.customer_identifier!=='string'||
       !/^SB-[2-9A-HJ-NP-Y]{12}$/.test(record.customer_identifier))
     throw Error('invalid_catalog_visit_response');
