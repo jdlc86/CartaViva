@@ -18,7 +18,7 @@ const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,sel
 
 function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false}={}){
  const statements=[],events=[];
- let releases=0,connects=0,storedAttempt=null;
+ let releases=0,connects=0,storedAttempt=null,visitClosed=closed;
  const client={
   async query(sql,args=[]){
    statements.push({sql,args});
@@ -29,7 +29,7 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
     return {rows:[]};
    }
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('customer_table_visits'))
-    return {rows:closed?[]:[{table_id:tableId,session_id:sessionId,
+    return {rows:visitClosed?[]:[{table_id:tableId,session_id:sessionId,
      visit_id:input.visitId,actor_id:input.actorId,
      customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'}]};
    if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
@@ -57,7 +57,7 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
   clock:()=>1792600000000
  });
  return {confirm,events,statements,get releases(){return releases;},
-  get connects(){return connects;}};
+  get connects(){return connects;},revokeVisit(){visitClosed=true;}};
 }
 
 test('injected pool candidate commits once and releases the checked-out client',async()=>{
@@ -114,6 +114,16 @@ test('pool candidate rejects a conflicting idempotency key without writing again
  const h=harness();
  await h.confirm(input);
  await assert.rejects(h.confirm({...input,quantity:2}),/order_idempotency_conflict/);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
+ assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE','BEGIN','ROLLBACK','RELEASE']);
+});
+
+test('revoking the visit prevents replay of an already confirmed idempotency key',async()=>{
+ const h=harness();
+ assert.equal((await h.confirm(input)).status,'confirmed');
+ h.revokeVisit();
+ await assert.rejects(h.confirm(input),/order_context_forbidden/);
  assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
  assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
  assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE','BEGIN','ROLLBACK','RELEASE']);
