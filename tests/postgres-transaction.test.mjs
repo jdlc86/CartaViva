@@ -352,7 +352,7 @@ test('a detached query cannot enqueue another SQL statement after callback abort
     firstStarted();
     await firstGate;
     // A late continuation must not schedule SQL after the scope closes.
-    spawned=queryCapability('SELECT second');
+    spawned=queryCapability('SELECT second').then(()=>null,error=>error);
    }
    return {rows:[]};
   },
@@ -370,7 +370,7 @@ test('a detached query cannot enqueue another SQL statement after callback abort
  await Promise.resolve();
  finishFirst();
  await assert.rejects(pending,/abort_with_detached_query/);
- await assert.rejects(spawned,/transaction_scope_closed/);
+ assert.match((await spawned)?.message??'',/transaction_scope_closed/);
  assert.deepEqual(statements,['BEGIN','SELECT first','ROLLBACK']);
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/abort_with_detached_query/);
