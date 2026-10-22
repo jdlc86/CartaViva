@@ -16,7 +16,7 @@ const displayed=buildCatalogLineEvidence({itemId:input.itemId,publishedRevision:
 const make=(overrides={})=>{
  const calls=[];
  const db={
-  lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true};},
+  lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true,tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId,sessionId:'session-1'};},
   lookupIdempotency:async()=>{calls.push('replay');return null;},
   lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
   loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'quote-1',evidence:displayed,publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
@@ -139,4 +139,18 @@ test('corrupt stored evidence is rejected even if amounts look correct',async()=
   discountCents:0,totalCents:1000,evidence:{...displayed,totalCents:999}
  })});
  await assert.rejects(confirm(input),/order_displayed_quote_invalid/);
+});
+
+test('a replay is forbidden when locked visit scope is inconsistent',async()=>{
+ for(const field of ['tableId','visitId','actorId','basketId','sessionId']){
+  const {confirm,calls}=make({lockContext:async()=>{
+   calls.push('context');
+   const context={authorized:true,canOrder:true,tableId:input.tableId,visitId:input.visitId,
+    actorId:input.actorId,basketId:input.basketId,sessionId:'session-1'};
+   context[field]=field==='sessionId'?'':'other-scope';
+   return context;
+  }});
+  await assert.rejects(confirm(input),/order_context_forbidden/);
+  assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+ }
 });
