@@ -156,3 +156,9 @@ Cobertura: pruebas de orden de consultas, aislamiento de claves y contextos y co
 Se añadió `scripts/ci/catalog-confirmation-atomicity-smoke.sql` al pipeline `scripts/ci/postgres-migration-smoke.sh`. Crea mesa, artículo y cotización en una transacción de pruebas; en un savepoint inserta un pedido y su intento económico, revierte el savepoint y comprueba que **ninguno** subsiste. A continuación inserta otro pedido y su confirmación con la misma clave y comprueba que el par existe exactamente una vez, antes de hacer `ROLLBACK` del fixture completo. Commits `eb7d08fa`, `e0a9e8e4`, `a8fddf43`.
 
 Se trata de una comprobación SQL de atomicidad de los ledgers candidatos bajo el propietario del contenedor desechable, **no** del escritor de aplicación autenticado ni de carreras de inserción con dos clientes. No autoriza grants, rutas HTTP, despliegue ni cambios en el Supabase operativo.
+
+## Rollback automático ante fallo de integridad referencial (22-10-2026)
+
+La prueba de atomicidad de PostgreSQL 17 incorpora un escenario de fallo posterior al `INSERT` del pedido: intenta vincular una confirmación a una cotización de **otro artículo** y exige que PostgreSQL devuelva precisamente `catalog_confirmation_quote_scope`. Un subbloque de excepción comprueba que la inserción anterior del pedido también se revierte y que no queda un intento de confirmación huérfano. Commits `f71b8fdb`, `59fe360c`.
+
+Este ensayo acredita el comportamiento transaccional de la base de datos en un caso de fallo real, pero no sustituye el escritor autenticado y los tests completos de concurrencia/consentimiento. Ningún permiso ni endpoint nuevo se activa.
