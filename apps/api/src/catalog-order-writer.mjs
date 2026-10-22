@@ -22,6 +22,13 @@ const safeRecord=v=>{
  });
 };
 const ledger=createCatalogConfirmationAttemptWriter();
+const validTimestamp=value=>{
+ if(value===null)return true;
+ if(!value||typeof value!=='object'||Object.getPrototypeOf(value)!==Date.prototype)
+  return false;
+ try{return Number.isFinite(Date.prototype.getTime.call(value));}
+ catch{return false;}
+};
 
 export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
  if(typeof newOrderId!=='function')throw Error('invalid_catalog_order_writer');
@@ -76,9 +83,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    if(!safeRecord(occupancy)||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
       occupancy.grouping_window_seconds<=0||
       occupancy.grouping_window_seconds>2147483647||
-      !(occupancy.first_confirmed_at===null||
-        (occupancy.first_confirmed_at instanceof Date&&
-         Number.isFinite(Date.prototype.getTime.call(occupancy.first_confirmed_at)))))
+      !validTimestamp(occupancy.first_confirmed_at)
     throw Error('invalid_catalog_order_table_state');
    const result=await query(
     `WITH instant AS (SELECT clock_timestamp() AS at),
