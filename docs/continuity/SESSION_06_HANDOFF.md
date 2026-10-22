@@ -50,3 +50,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `257d702`: prueba de regresión donde una consulta desprendida inicia otra al completarse. Debe prohibirse ROLLBACK y release hasta que la segunda haya finalizado. El error original se propaga y el cliente se descarta.
 - Esta corrección protege el límite de transacción; no representa validación real de PostgreSQL. El repositorio sigue sin integración Node/driver `pg` acreditada. La ejecución local no es posible en el shell actual: GitHub DNS no disponible y Docker ausente. La prueba debe acreditarse por GitHub Actions.
 - No modificar VPS compartido, Fleetia ni Supabase operativo. PR #2 Draft; sin merge ni despliegue.
+
+## Carrera de dos primeros pedidos (PostgreSQL 17 desechable)
+
+- `ce7a975`: nuevo `scripts/ci/catalog-order-writer-double-first-concurrency-smoke.sh`. Crea una mesa de prueba, mantiene el bloqueo de la primera confirmación y lanza una segunda transacción independiente. Exige espera observable por bloqueo; al concluir comprueba exactamente un pedido `first`, uno `grouped`, el instante inicial idéntico al del primer pedido y dos líneas de cocina generadas por trigger.
+- `d63d74d`: incorpora el test al `postgres-migration-smoke.sh`, que crea y destruye PostgreSQL 17 sin red mediante Docker en CI.
+- La prueba reproduce la sentencia SQL del escritor, **no** ejecuta el módulo Node ni sustituye el gate de integración con driver PostgreSQL. Mantener cerrados los grants y las rutas HTTP hasta acreditar la integración completa.
+- Los workflows para `d63d74d` estaban en cola al redactar este hito; no asumir éxito antes de comprobarlos.
