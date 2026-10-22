@@ -11,13 +11,23 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const categories=Object.freeze({Bebidas:'drink',Primeros:'starter',
  Segundos:'main',Postres:'dessert'});
+const safeRecord=v=>{
+ if(!plain(v))return false;
+ const keys=Reflect.ownKeys(v);
+ if(keys.length>64)return false;
+ return keys.every(k=>{
+  if(typeof k!=='string'||['__proto__','constructor','prototype'].includes(k))return false;
+  const descriptor=Object.getOwnPropertyDescriptor(v,k);
+  return !!descriptor&&descriptor.enumerable&&Object.hasOwn(descriptor,'value');
+ });
+};
 const ledger=createCatalogConfirmationAttemptWriter();
 
 export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
  if(typeof newOrderId!=='function')throw Error('invalid_catalog_order_writer');
  return Object.freeze({
   async persist(query,args){
-   if(typeof query!=='function'||!plain(args)||!plain(args.context)||
+   if(typeof query!=='function'||!safeRecord(args)||!safeRecord(args.context)||
       args.context.authorized!==true||args.context.canOrder!==true||
       !uuid.test(args.context.tableId)||!uuid.test(args.context.sessionId)||
       !opaque(args.context.visitId)||!opaque(args.context.basketId)||
