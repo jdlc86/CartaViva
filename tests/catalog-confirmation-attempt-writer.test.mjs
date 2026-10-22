@@ -165,3 +165,31 @@ test('ledger global byte budget counts cumulative short strings, not only one ov
  }),/invalid_catalog_confirmation_attempt/);
  assert.equal(sqlCalls,0);
 });
+
+test('economic ledger schema is closed to extra fields at every nested level',async()=>{
+ const attempts=[
+  {...evidence,clientPriceCents:1},
+  {...evidence,serverTrusted:true},
+  {...evidence,discount:{type:'fixed',amountCents:100,approvedBy:'browser'}},
+  {...evidence,discount:{type:'fixed',amountCents:100,basisPoints:0}},
+  {...evidence,selected:[{id:'extra',name:'Extra',priceCents:0,allergens:[],clientPrice:999}]},
+  {...evidence,selected:[{id:'extra',name:'Extra',priceCents:0,allergens:[],available:true}]}
+ ];
+ let sqlCalls=0;
+ for(const modified of attempts){
+  await assert.rejects(writer.insertConfirmation(async()=>{
+   sqlCalls++;throw Error('unexpected_SQL');
+  },{...args,evidence:modified}),/invalid_catalog_confirmation_attempt/);
+ }
+ assert.equal(sqlCalls,0);
+});
+
+test('closed ledger schema still accepts generated percentage discount evidence',async()=>{
+ const percentage={...evidence,discount:{type:'percent',basisPoints:1000}};
+ let sqlCalls=0;
+ const result=await writer.insertConfirmation(async()=>{
+  sqlCalls++;return {rows:[{order_id:orderId}]};
+ },{...args,evidence:percentage});
+ assert.deepEqual(result,{orderId});
+ assert.equal(sqlCalls,1);
+});
