@@ -12,7 +12,7 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
- 'requestKey','acceptanceToken'];
+ 'requestKey','acceptanceToken','qrToken','customerSessionToken'];
 // Snapshot untrusted JSON data once, without invoking getters or accepting
 // prototypes, symbols, cycles, sparse arrays or dangerous property names.
 const snapshotInput=(value,seen=new Set(),depth=0)=>{
@@ -57,9 +57,12 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
   if(!plain(input)||Object.keys(input).some(k=>!payloadKeys.includes(k))||
      payloadKeys.slice(0,-1).some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
-     !validId(input.actorId)||!validId(input.basketId))
+     !validId(input.actorId)||!validId(input.basketId)||
+     typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
+     typeof input.customerSessionToken!=='string'||
+     input.customerSessionToken.length<32||input.customerSessionToken.length>512)
    throw Error('invalid_confirmation_input');
-  const {requestKey,acceptanceToken=null,...request}=input;
+  const {requestKey,acceptanceToken=null,qrToken,customerSessionToken,...request}=input;
   // A bounded canonical fingerprint prevents oversized client payloads from
   // consuming unbounded CPU/memory before the transaction is opened.
   // No previous quote, price, revision or economic evidence is accepted from
@@ -72,7 +75,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
   return withTransaction(async query=>{
    // Locks the visit/table and checks authorization BEFORE looking up a replay.
    const context=await repository.lockContext(query,{
-    tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId
+    tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId,
+    qrToken,customerSessionToken
    });
    if(!plain(context)||context.authorized!==true||context.canOrder!==true||
       context.tableId!==input.tableId||context.visitId!==input.visitId||
