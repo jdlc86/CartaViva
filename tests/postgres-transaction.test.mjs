@@ -158,7 +158,7 @@ test('detached query cannot cross COMMIT; rollback waits for it and discards con
   await queryStarted;
   return 'must-not-commit';
  });
- await Promise.resolve();
+ await queryStarted;
  assert.equal(statements.includes('COMMIT'),false);
  resolveQuery();
  await assert.rejects(pending,/transaction_queries_not_awaited/);
