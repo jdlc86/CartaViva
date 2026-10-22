@@ -144,3 +144,36 @@ test('catalog revision refuses coercible but noncanonical database values',async
   assert.equal(result.available,false);
  }
 });
+
+test('malformed advisory lock responses abort before any ledger lookup',async()=>{
+ for(const response of [null,undefined,{}, {rows:null},{rows:'bad'}]){
+  const statements=[];
+  await assert.rejects(repo.lookupIdempotency(async sql=>{
+   statements.push(sql);
+   return response;
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+  assert.equal(statements.length,1);
+  assert.match(statements[0],/pg_advisory_xact_lock/);
+ }
+});
+
+test('advisory lock SQL errors propagate without attempting idempotency read',async()=>{
+ const statements=[];
+ await assert.rejects(repo.lookupIdempotency(async sql=>{
+  statements.push(sql);
+  throw Error('advisory_lock_unavailable');
+ },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+ /advisory_lock_unavailable/);
+ assert.equal(statements.length,1);
+});
+
+test('valid void-style advisory lock response proceeds to scoped ledger lookup',async()=>{
+ const statements=[];
+ const result=await repo.lookupIdempotency(async sql=>{
+  statements.push(sql);
+  return sql.includes('pg_advisory_xact_lock')?{rows:[{pg_advisory_xact_lock:null}]}:{rows:[]};
+ },{context,requestKey:'request-001',requestFingerprint:'fingerprint'});
+ assert.equal(result,null);
+ assert.equal(statements.length,2);
+});
