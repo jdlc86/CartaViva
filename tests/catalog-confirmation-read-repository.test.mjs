@@ -177,3 +177,13 @@ test('valid void-style advisory lock response proceeds to scoped ledger lookup',
  assert.equal(result,null);
  assert.equal(statements.length,2);
 });
+
+test('advisory lock response cannot contain multiple rows',async()=>{
+ let calls=0;
+ await assert.rejects(repo.lookupIdempotency(async()=>{
+  calls++;
+  return {rows:[{},{}]};
+ },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+ /invalid_catalog_repository_response/);
+ assert.equal(calls,1);
+});
