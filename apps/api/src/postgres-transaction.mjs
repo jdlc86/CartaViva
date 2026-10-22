@@ -34,7 +34,16 @@ export function createPostgresTransaction({ pool } = {}) {
             !Array.isArray(parameters)) throw Error('invalid_transaction_query');
         // Snapshot parameter bindings before the deferred driver invocation;
         // a caller must not be able to swap values after handing off SQL.
-        const boundParameters = parameters.slice();
+        const boundParameters = parameters.map(value => {
+          // The order writer passes a PostgreSQL timestamp as a Date. Copy it
+          // too: cloning only the outer array would leave mutable timestamps.
+          if (value instanceof Date) {
+            const milliseconds = Date.prototype.getTime.call(value);
+            if (!Number.isFinite(milliseconds)) throw Error('invalid_transaction_query');
+            return new Date(milliseconds);
+          }
+          return value;
+        });
         const operation = Promise.resolve().then(() => client.query(sql, boundParameters));
         inFlight.add(operation);
         try { return await operation; }
