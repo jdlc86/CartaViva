@@ -41,6 +41,8 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-occupancy-boundary-smoke.sql
 # Prove candidate order writer's table FOR UPDATE serializes with staff close.
 bash scripts/ci/catalog-order-writer-close-concurrency-smoke.sh "$container"
+# Prove locked customer identity serializes with a concurrent profile edit.
+bash scripts/ci/catalog-profile-confirmation-concurrency-smoke.sh "$container"
 # Verify staff lifecycle role gates without runtime grants.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-staff-transition-smoke.sql
