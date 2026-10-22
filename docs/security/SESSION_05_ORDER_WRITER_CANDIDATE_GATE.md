@@ -172,3 +172,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - La consulta `pg_advisory_xact_lock` debe completar sin error y devolver un objeto de respuesta con `rows` array; si el adaptador devuelve `null` o una respuesta malformada se aborta la transacción antes de leer el ledger.
 - No se infiere la posesión del bloqueo de una cantidad fija de filas: PostgreSQL expone un resultado de función `void`, y el contrato de prueba puede usar arrays vacíos. La serialización efectiva sigue acreditada por la carrera de sesiones PostgreSQL 17.
+
+## Regresión explícita del bloqueo advisory
+
+- `tests/catalog-confirmation-read-repository.test.mjs` cubre respuestas `null`, `undefined`, sin `rows`, `rows:null` y `rows` no array. Ninguna debe alcanzar el `SELECT` de confirmaciones.
+- Un error SQL del bloqueo se propaga sin ejecutar el lector del ledger. Una respuesta PostgreSQL válida con fila de función `void` permite continuar.
+- Las pruebas son unitarias con consulta inyectada; la prueba separada de dos sesiones PG17 acredita la espera real. Ninguna activa permisos ni endpoints.
