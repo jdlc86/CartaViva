@@ -18,3 +18,11 @@ Fecha: 22-10-2026. Solo rama `feat/sabora-pnpm-bootstrap`, PR #2 Draft.
 6. El resultado de GitHub Actions debe comprobarse en el SHA final; no asumir CI verde.
 
 No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o despliegue.
+
+## Bloque posterior: atribución de identidad y serialización
+
+- El lector de visitas obtiene ahora `customer_profiles.alias` y `customer_profiles.public_id` mediante JOIN por `customer_id`, manteniendo bloqueos de mesa/visita/sesión. No toma estos campos del navegador.
+- El escritor separa la consulta `SELECT ... FOR UPDATE` de la inserción del pedido; actualiza `first_confirmed_at` dentro de un CTE explícitamente referenciado. La agrupación y el ledger usan la misma transacción del llamador.
+- Se actualizaron fixtures de tests para el orden real de consultas y rechazo de errores de ledger.
+- **Validación pendiente:** no se pudo clonar el repositorio en el shell local (resolución DNS de GitHub no disponible); no atribuir ejecución de tests locales. GitHub Actions del SHA final todavía no confirmado.
+- **Bloqueador adicional:** el coordinador sigue exigiendo integración del writer con repositorio y autorización del runtime. Ningún endpoint o grant se ha habilitado. La compatibilidad de `public_id` con la identidad visible debe acreditarse con pruebas de contrato y PG17.
