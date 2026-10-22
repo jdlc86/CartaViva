@@ -18,6 +18,9 @@ for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
+# Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+ < scripts/ci/catalog-order-identity-compatibility-smoke.sql
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
