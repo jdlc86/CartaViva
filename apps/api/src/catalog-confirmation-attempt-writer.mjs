@@ -77,11 +77,14 @@ const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
  typeof a.requiresAcceptance==='boolean'&&typeof a.acceptanceVerified==='boolean'&&
  (!a.requiresAcceptance||a.acceptanceVerified)&&
  (!a.acceptanceVerified||a.requiresAcceptance);
+export function assertCatalogConfirmationAttempt(args){
+ if(!valid(args))throw Error('invalid_catalog_confirmation_attempt');
+}
 export function createCatalogConfirmationAttemptWriter(){
  return Object.freeze({
   async insertConfirmation(query,args){
-   if(typeof query!=='function'||!valid(args))
-    throw Error('invalid_catalog_confirmation_attempt');
+   if(typeof query!=='function')throw Error('invalid_catalog_confirmation_attempt');
+   assertCatalogConfirmationAttempt(args);
    const {context,evidence}=args;
    const result=await query(
     `INSERT INTO sabora.catalog_confirmation_attempts
