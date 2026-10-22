@@ -28,3 +28,9 @@ Se endureció `apps/api/src/staff-table-transition-coordinator.mjs` para rechaza
 Commits de implementación: `48a0709d73790481126b75994c50ae589cf683f0` y `3e7e862d056666d757a28de8a547b06453d50eaf`.
 
 **Alcance limitado:** el cambio es protección del límite de entrada JavaScript; no demuestra protección frente a suplantación si se otorgaran permisos SQL directos. No se ha implementado aún el rol escritor operativo, la atribución SQL individual, ni el flujo transaccional completo de pedido. Comprobar CI del HEAD exacto antes de considerar validado el cambio.
+
+## Gate automatizado de no activación (22-10-2026)
+
+Nuevo `scripts/ci/staff-transition-activation-gate.sql` conectado a `scripts/ci/postgres-migration-smoke.sh`. Comprueba privilegios efectivos y ACL de PUBLIC para la función de transición y el ledger de auditoría; exige SECURITY INVOKER, RLS forzado y disparadores activos de captura, UPDATE/DELETE y TRUNCATE. Se ejecuta tras migraciones sobre PostgreSQL 17 aislado, sin tocar Supabase real.
+
+Este gate **protege la situación actual cerrada**; no implementa el escritor operativo ni sustituye los futuros ensayos de identidad y concurrencia. Commits de desarrollo: `ae7e7b97`, `e9da5700`, `796cc7b7`, `400eab29`. Confirmar Sabora CI y Bootstrap del HEAD exacto antes de marcarlo como validado.
