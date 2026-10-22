@@ -353,3 +353,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `9cf62f6b`: pruebas de firma/issuer/audience/expiry delegados, sesión ausente y contradicciones DB.
 - `f6933490`, `8eb9f9eb`: coordinador deniega cocina; fixtures de rol y test de denegación.
 - `8bdb795c`: arquitectura. **No hay todavía implementación criptográfica concreta** ni concesión de roles DB, endpoint HTTP o auditoría atribuida. No desplegar ni activar.
+
+## Sesión 3 — resolución candidata de sesión staff
+- `3b2f3c46`: resolver de credencial externa verificada, lookup de membresía activa con `FOR SHARE`; `3939a5f6`: tests de token no verificado, sesión inactiva y resultados contradictorios.
+- `82c444a6`: gate de rol `waiter/admin/root` en coordinador; `e9bea45b`: prueba de rechazo de cocina; `e8bffb5d`: arquitectura.
+- **No existe implementación de verificación real del token, conexión SQL runtime, ni atribución auditable del actor**. Mantener función y HTTP sin activar; no tocar Supabase operativo, Fleetia ni VPS.
