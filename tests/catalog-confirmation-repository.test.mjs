@@ -32,11 +32,12 @@ test('candidate composition locks visit before scoped replay and never exposes s
  });
  assert.equal(replay,null);
  assert.match(statements[0].sql,/FOR SHARE OF t,v,s/);
- assert.match(statements[1].sql,/FOR UPDATE/);
+ assert.match(statements[1].sql,/pg_advisory_xact_lock/);
+ assert.match(statements[2].sql,/FOR UPDATE/);
  assert.equal(statements[0].parameters[3],contextArgs.qrToken);
  assert.equal(statements[0].parameters[4],contextArgs.customerSessionToken);
- assert.equal(JSON.stringify(statements[1]).includes(contextArgs.qrToken),false);
- assert.equal(JSON.stringify(statements[1]).includes(contextArgs.customerSessionToken),false);
+ assert.equal(JSON.stringify(statements.slice(1)).includes(contextArgs.qrToken),false);
+ assert.equal(JSON.stringify(statements.slice(1)).includes(contextArgs.customerSessionToken),false);
 });
 test('candidate writer rejects unauthorized scope before invoking persistence',async()=>{
  let called=0;
