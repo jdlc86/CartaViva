@@ -106,3 +106,25 @@ test('price algorithm recalculates valid extras and percentage discount',async()
   /invalid_catalog_confirmation_attempt/);
  assert.equal(count,1);
 });
+
+test('ledger rejects sparse evidence arrays accessors cycles and hidden properties before SQL',async()=>{
+ let calls=0;
+ const query=async()=>{calls++;return {rows:[{order_id:orderId}]};};
+ const sparse=new Array(1);
+ const cyclic={};cyclic.self=cyclic;
+ const accessor={...evidence};
+ Object.defineProperty(accessor,'extraField',{enumerable:true,get(){throw Error('getter_called');}});
+ const hidden={...evidence};
+ Object.defineProperty(hidden,'hidden',{value:'not_serialized',enumerable:false});
+ const symbol={...evidence,[Symbol('hidden')]:'not_serialized'};
+ for(const bad of [
+  {...evidence,allergens:sparse},
+  {...evidence,selected:sparse},
+  {...evidence,extraField:cyclic},
+  accessor,hidden,symbol
+ ]){
+  await assert.rejects(writer.insertConfirmation(query,{...args,evidence:bad}),
+   /invalid_catalog_confirmation_attempt/);
+ }
+ assert.equal(calls,0);
+});
