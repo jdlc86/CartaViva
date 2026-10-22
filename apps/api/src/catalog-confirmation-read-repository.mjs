@@ -8,6 +8,11 @@ const scope=v=>v&&typeof v==='object'&&!Array.isArray(v)&&
  ['visitId','basketId','actorId'].every(k=>typeof v[k]==='string'&&
  /^[A-Za-z0-9_-]{1,128}$/.test(v[k]));
 const validItem=v=>typeof v==='string'&&uuid.test(v);
+// PostgreSQL numeric fields arrive as decimal strings or safe JS integers.
+// Number(null), Number('') and exponent notation must never become trusted money.
+const safeDbInteger=v=>(typeof v==='number'&&Number.isSafeInteger(v))||
+ (typeof v==='string'&&/^(0|[1-9][0-9]*)$/.test(v)&&
+  Number.isSafeInteger(Number(v)));
 const row=(response)=>{
  if(!response||!Array.isArray(response.rows)||response.rows.length>1)
   throw Error('invalid_catalog_repository_response');
@@ -52,7 +57,7 @@ export function createCatalogConfirmationReadRepository(){
        FROM sabora.catalog_items WHERE id=$1 FOR SHARE`,[itemId]));
    if(!record)return null;
    const revision=Number(record.published_revision);
-   if(!Number.isSafeInteger(revision)||revision<1||
+   if(!safeDbInteger(record.published_revision)||revision<1||
       !record.published_snapshot||typeof record.published_snapshot!=='object'||
       Array.isArray(record.published_snapshot))
     return {available:false,publishedRevision:0,snapshot:null};
@@ -72,9 +77,11 @@ export function createCatalogConfirmationReadRepository(){
     [context.tableId,context.sessionId,context.visitId,
      context.basketId,context.actorId,itemId]));
    if(!record)return null;
-   const amounts=['subtotal_cents','discount_cents','total_cents'].map(k=>Number(record[k]));
+   const amountFields=['subtotal_cents','discount_cents','total_cents'];
+   const amounts=amountFields.map(k=>Number(record[k]));
    const revision=Number(record.published_revision);
-   if(!validItem(record.id)||!Number.isSafeInteger(revision)||revision<1||
+   if(!validItem(record.id)||!safeDbInteger(record.published_revision)||revision<1||
+      amountFields.some(k=>!safeDbInteger(record[k]))||
       amounts.some(x=>!Number.isSafeInteger(x)||x<0)||
       amounts[1]>amounts[0]||amounts[0]-amounts[1]!==amounts[2])
     throw Error('invalid_catalog_repository_response');
