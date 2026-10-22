@@ -551,3 +551,30 @@ test('transaction SQL text has a bounded UTF-8 size and no embedded NUL',async()
  });
  assert.deepEqual(calls,['BEGIN','SELECT 1','COMMIT']);
 });
+
+test('transaction rejects forged, subclassed and invalid Date parameters without sending SQL',async()=>{
+ const fake=Object.create(Date.prototype);
+ const subclass=new (class CustomDate extends Date {})(0);
+ const invalid=new Date(NaN);
+ const fixture=fakePool();
+ const transaction=createPostgresTransaction({pool:fixture.pool});
+ for(const date of [fake,subclass,invalid]){
+  await assert.rejects(transaction(query=>query('SELECT $1',[date])),
+   /invalid_transaction_query/);
+ }
+ assert.deepEqual(fixture.calls.map(([sql])=>sql),
+  ['BEGIN','ROLLBACK','BEGIN','ROLLBACK','BEGIN','ROLLBACK']);
+ assert.equal(fixture.releases(),3);
+});
+
+test('transaction snapshots Date without invoking overridden getTime',async()=>{
+ const fixture=fakePool();
+ const date=new Date('2026-10-22T12:00:00.000Z');
+ date.getTime=()=>{throw Error('unexpected_overridden_getTime');};
+ const transaction=createPostgresTransaction({pool:fixture.pool});
+ await transaction(query=>query('SELECT $1',[date]));
+ const parameter=fixture.calls[1][1][0];
+ assert.equal(parameter.toISOString(),'2026-10-22T12:00:00.000Z');
+ assert.notEqual(parameter,date);
+ assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN','SELECT $1','COMMIT']);
+});
