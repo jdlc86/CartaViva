@@ -71,6 +71,18 @@ run_rejection "candidate writer can login" \
 run_rejection "candidate writer bypasses RLS" \
  'ALTER ROLE sabora_admin_writer BYPASSRLS;' \
  'candidate writer has unsafe role attributes'
+run_rejection "candidate writer becomes superuser" \
+ 'ALTER ROLE sabora_admin_writer SUPERUSER;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer can create roles" \
+ 'ALTER ROLE sabora_admin_writer CREATEROLE;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer can create databases" \
+ 'ALTER ROLE sabora_admin_writer CREATEDB;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer gets replication" \
+ 'ALTER ROLE sabora_admin_writer REPLICATION;' \
+ 'candidate writer has unsafe role attributes'
 run_rejection "candidate writer becomes member of reader" \
  'GRANT sabora_staff_reader TO sabora_admin_writer;' \
  'candidate writer participates in role membership'
