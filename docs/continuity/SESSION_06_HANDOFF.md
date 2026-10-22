@@ -160,3 +160,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `fa96ad6`: la capa de composición `catalog-confirmation-repository.mjs` verifica que tanto los argumentos de persistencia como su contexto autorizado sean registros simples con propiedades de datos propias, sin getters, símbolos ni prototipos heredados. Esta validación sucede antes de invocar el escritor.
 - `749d0e3`: regresión que introduce getters hostiles en `requestKey` y `context.authorized`, más un objeto con prototipo heredado; exige cero ejecuciones de getters y cero invocaciones de persistencia.
 - El candidato permanece desconectado de HTTP, roles de runtime y Supabase operativo. Verificar CI sobre el nuevo HEAD antes de acreditar este bloque.
+
+## Evidencia económica en la composición
+
+- `80ba803`: la capa de composición verifica que el objeto de evidencia económica sea un registro simple sin accessors, propiedades heredadas ni claves de prototipo peligrosas, antes de entregar el control al escritor económico que efectúa las comprobaciones de contenido y aritmética.
+- `3ae7902`: pruebas negativas de getters, herencia y clave `__proto__` en la evidencia, sin invocar el adaptador de persistencia.
+- La validación del contenedor no sustituye el recálculo económico ni la comprobación de origen del catálogo publicado. No se habilita HTTP, grants ni conexión a Supabase operativo.
