@@ -473,3 +473,21 @@ test('invalid Date binding aborts before driver query and rolls back',async()=>{
   /invalid_transaction_query/);
  assert.deepEqual(calls,['BEGIN','ROLLBACK']);
 });
+
+test('query boundary rejects mutable and nonserializable SQL bindings before driver dispatch',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{calls.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{
+  for(const value of [{unsafe:true},[],Buffer.from('unsafe'),new Map(),Symbol('x'),
+   1n,()=>42,Infinity,-Infinity,NaN,new Date(NaN)]){
+   await assert.rejects(query('SELECT $1',[value]),/invalid_transaction_query/);
+  }
+  assert.deepEqual(calls,['BEGIN']);
+  await query('SELECT $1, $2, $3, $4, $5',
+   ['safe',123,true,null,undefined]);
+ });
+ assert.deepEqual(calls,['BEGIN','SELECT $1, $2, $3, $4, $5','COMMIT']);
+});
