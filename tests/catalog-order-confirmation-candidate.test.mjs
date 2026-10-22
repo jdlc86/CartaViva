@@ -124,3 +124,28 @@ test('coordinator rejects malformed occupancy and order INSERT results before le
   assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false);
  }
 });
+
+test('deeply branched input cannot exhaust CPU or memory before transaction',async()=>{
+ const f=fixture();
+ const manyNodes=Array.from({length:16},()=>Array.from({length:300},()=>null));
+ await assert.rejects(f.confirm({...input,selection:{options:{},extras:manyNodes}}),
+  /invalid_confirmation_input/);
+ assert.deepEqual(f.events,[]);
+ assert.deepEqual(f.statements,[]);
+});
+
+test('large UTF-8 strings are rejected before any transaction or SQL',async()=>{
+ const f=fixture();
+ const oversized='ñ'.repeat(33000);
+ await assert.rejects(f.confirm({...input,selection:{options:{},extras:[oversized]}}),
+  /invalid_confirmation_input/);
+ assert.deepEqual(f.events,[]);
+ assert.deepEqual(f.statements,[]);
+});
+
+test('bounded input permits a normal confirmation unchanged',async()=>{
+ const f=fixture();
+ const response=await f.confirm({...input,selection:{options:{},extras:[]}});
+ assert.equal(response.status,'confirmed');
+ assert.deepEqual(f.events,['BEGIN','COMMIT']);
+});
