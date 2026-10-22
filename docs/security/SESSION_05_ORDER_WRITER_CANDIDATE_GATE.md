@@ -229,3 +229,5 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `apps/api/src/postgres-transaction.mjs` conserva la excepción SQL original si también falla `client.release()` al salir del bloque transaccional; el fallo de liberación queda adjunto como `releaseError` cuando el error original permite propiedades.
 - Si el `COMMIT` se completó pero falla `release()`, el adaptador devuelve un error, nunca un éxito silencioso. El llamador no debe reintentar a ciegas una confirmación cuyo estado de commit es incierto; debe utilizar idempotencia.
 - Cuatro pruebas nuevas cubren fallos simultáneos de consulta/liberación, `BEGIN`/liberación, `COMMIT`/liberación y liberación posterior a `COMMIT` exitoso. No se crea pool ni se habilita el escritor.
+
+- Regresión adicional: errores originales `Error` congelados se conservan aunque fallen tanto `ROLLBACK` como `release()`. No se intenta sobrescribir propiedades no escribibles. El cliente se descarta con la causa del fallo de reversión.
