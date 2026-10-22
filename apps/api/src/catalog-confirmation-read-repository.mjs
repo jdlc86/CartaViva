@@ -35,7 +35,12 @@ export function createCatalogConfirmationReadRepository(){
    ]);
    // Query errors are propagated. Drivers may return a void-valued row;
    // a valid response must still contain an array of result rows.
-   if(!lockResponse||!Array.isArray(lockResponse.rows))
+   if(!lockResponse||!Array.isArray(lockResponse.rows)||
+      lockResponse.rows.length!==1||
+      !lockResponse.rows[0]||typeof lockResponse.rows[0]!=='object'||
+      Array.isArray(lockResponse.rows[0])||
+      !Object.prototype.hasOwnProperty.call(lockResponse.rows[0],'pg_advisory_xact_lock')||
+      lockResponse.rows[0].pg_advisory_xact_lock!==null)
     throw Error('invalid_catalog_repository_response');
    const record=row(await query(
     `SELECT request_fingerprint,order_id
