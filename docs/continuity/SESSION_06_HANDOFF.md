@@ -86,3 +86,8 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 
 - `9ae627e` y `96700c7`: el test anterior esperaba que una consulta tardía lanzara una segunda sentencia tras el cierre del callback, aunque `createPostgresTransaction` debe prohibirlo. La espera por esa segunda sentencia podía quedar sin resolver. El test ahora comprueba expresamente `transaction_scope_closed`, ausencia de `SELECT second`, `ROLLBACK` y descarte del cliente, y consume la promesa rechazada sin rechazo no gestionado.
 - La protección de producción del adaptador no cambia. Verificar CI del último SHA antes de declarar este test acreditado.
+
+## Idempotencia entre cestas del mismo cliente
+
+- `14061da` amplía la prueba SQL transaccional: el mismo actor, mesa, sesión y visita utiliza `request-atomic` en dos cestas diferentes. Deben persistir ledger, cotización y pedido independientes, y conservar su línea de cocina. La prueba comprueba además el caso anterior de actor diferente: tres entradas con la misma clave, tres órdenes distintas, sin mezclar alcances.
+- Se ejecuta únicamente en PostgreSQL 17 desechable y revierte toda la fixture; no altera permisos ni rutas. Comprobar CI del commit documental antes de cerrar el hito.
