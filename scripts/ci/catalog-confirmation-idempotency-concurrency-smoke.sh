@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# PostgreSQL 17 disposable CI container only. Independent sessions must
+# serialize the exact advisory lock used by the confirmation read adapter.
+container="${1:?isolated PostgreSQL container required}"
+scope='["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000002","visit-ci","basket-ci","actor-ci","request-001"]'
+key_sql="hashtextextended('$scope',0)"
+# The first transaction holds its advisory lock while simulating an insert.
+first_sql=$(cat <<SQL
+BEGIN;
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_sleep(4);
+COMMIT;
+SQL
+)
+second_sql=$(cat <<SQL
+BEGIN;
+SET LOCAL lock_timeout='10s';
+SELECT pg_advisory_xact_lock($key_sql);
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$first_sql" &
+first_pid=$!
+ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$first_pid" 2>/dev/null; then break; fi
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(4)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$ready" != 1 ]]; then
+ wait "$first_pid" || true
+ echo 'First confirmation did not acquire advisory transaction lock' >&2
+ exit 1
+fi
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$second_sql" &
+second_pid=$!
+blocked=0
+for attempt in $(seq 1 60); do
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then blocked=1; break; fi
+ sleep 0.05
+done
+wait "$first_pid"
+wait "$second_pid"
+if [[ "$blocked" != 1 ]]; then
+ echo 'Second confirmation did not wait for scoped advisory transaction lock' >&2
+ exit 1
+fi
+# Transaction locks are released after commit and do not persist as session locks.
+docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+ "SELECT pg_try_advisory_xact_lock($key_sql)" | grep -qx t
+echo 'PASS: concurrent confirmation requests serialize on scoped advisory lock'
