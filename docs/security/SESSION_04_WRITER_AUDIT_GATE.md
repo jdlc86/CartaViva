@@ -102,3 +102,9 @@ No hay cambios en permisos ni en la base operativa. La persistencia económica d
 El emisor candidato `catalog-quote-issuer.mjs` copia de forma independiente el payload antes de cualquier `await` o transacción. Rechaza getters/setters, propiedades ocultas o simbólicas, prototipos ajenos, referencias circulares, arreglos dispersos, nombres de propiedades peligrosos y profundidad excesiva. También limita la representación JSON a 16 KiB antes de SQL. Pruebas de entradas maliciosas y ausencia de consultas en `tests/catalog-quote-issuer.test.mjs` (commits `87d7e2f1`, `411b4996`, `ad08f788`, `a2fcba84`).
 
 La copia defensiva no autentica la visita ni autoriza importes; la evidencia económica sigue derivándose del snapshot publicado bajo bloqueo. La ruta de cotización continúa inactiva en producción.
+
+## Composición de cotización y prueba de integración candidata (22-10-2026)
+
+`apps/api/src/catalog-quote-repository.mjs` compone la lectura autorizada de visita, el bloqueo de publicación y la inserción de cotización mostrada. Todos los métodos reciben la misma capacidad `query` de la transacción del llamador; el módulo no crea conexiones ni roles. `tests/catalog-quote-repository.test.mjs` prueba el flujo completo del emisor con SQL simulado, los parámetros de evidencia, la exclusión de credenciales en escrituras y rollback cuando la visita está revocada, el plato agotado o la inserción falla (commits `76c1b8bc`, `5afba6cc`).
+
+**Alcance:** integración de adaptadores con SQL simulado; no equivale a prueba PostgreSQL 17 de cotización contra RLS, ni concede permisos de escritura, ni activa endpoints. La confirmación duradera de pedidos y aceptación económica siguen pendientes.
