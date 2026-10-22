@@ -42,6 +42,15 @@ export function createPostgresTransaction({ pool } = {}) {
             if (!Number.isFinite(milliseconds)) throw Error('invalid_transaction_query');
             return new Date(milliseconds);
           }
+          // The current candidate SQL binds primitives and Date only. Reject
+          // arbitrary objects (including buffers, arrays and driver hooks)
+          // rather than passing mutable user-owned references to pg.
+          if (value !== null && typeof value === 'object')
+            throw Error('invalid_transaction_query');
+          if (typeof value === 'function' || typeof value === 'symbol' ||
+              typeof value === 'bigint' ||
+              (typeof value === 'number' && !Number.isFinite(value)))
+            throw Error('invalid_transaction_query');
           return value;
         });
         const operation = Promise.resolve().then(() => client.query(sql, boundParameters));
