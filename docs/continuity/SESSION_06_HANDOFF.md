@@ -191,3 +191,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `428d1d3`: el coordinador comprueba descriptores de los resultados de los adaptadores antes de consultar sus campos: visita autorizada, replay, catálogo, cotización y resultado de persistencia. También exige registros simples para `published.snapshot` y `previous.evidence`.
 - `71b6132`: regresión que introduce un getter hostil en cada una de cinco etapas y exige `ROLLBACK` y error de dominio correspondiente sin ejecutar el getter.
 - No cambia el contrato de activación: candidato offline sin ruta HTTP, permisos de runtime, merge o despliegue. Validar el nuevo HEAD con GitHub Actions.
+
+## Respuestas SQL del escritor de pedidos
+
+- `519a3ae`: el escritor candidato valida los descriptores de la fila bloqueada de mesa y de la fila devuelta por `INSERT ... RETURNING` antes de leer sus campos; rechaza getters y herencia no prevista. Para la fecha de primer pedido invoca `Date.prototype.getTime.call`, evitando métodos sobrescritos en el objeto recibido.
+- `8239ee9`: regresiones negativas de ambas respuestas que exigen no ejecutar getters ni llegar al ledger en estados inválidos.
+- Mantener la confirmación desconectada de HTTP y de grants operativos. Falta integración Node–PG17 y prueba de rol dedicado antes de activar.
