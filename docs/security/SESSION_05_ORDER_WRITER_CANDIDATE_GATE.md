@@ -196,3 +196,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El escritor exige que el resultado del `INSERT ... RETURNING` contenga `grouping` en `first/grouped/late`. Si la mesa bloqueada no tenía `first_confirmed_at`, solo acepta `first`; si ya tenía fecha, rechaza `first`.
 - El rechazo ocurre antes de insertar la confirmación económica; el gestor de transacciones del candidato revierte el pedido si la respuesta SQL es incoherente. Pruebas con adaptador inyectado cubren agrupaciones desconocidas y combinaciones imposibles.
 - No se interpreta esta validación como acreditación de permisos SQL runtime ni de integración real Node–PostgreSQL.
+
+## Puerta de atributos y pertenencia del escritor SQL dormido
+
+- `scripts/ci/catalog-confirmation-activation-gate.sql` verifica explícitamente que `sabora_admin_writer` continúe sin `LOGIN`, `INHERIT`, `BYPASSRLS`, `SUPERUSER`, `CREATEROLE`, `CREATEDB` ni `REPLICATION`. No admite membresías SQL entrantes ni salientes.
+- `scripts/ci/catalog-confirmation-activation-gate-mutations.sh` añade cinco mutaciones de prueba aisladas: activar `INHERIT`, `LOGIN`, `BYPASSRLS` o establecer membresía en cualquiera de las dos direcciones con el lector. Cada mutación debe provocar rechazo de la puerta y revertirse al cerrar la conexión de CI.
+- Es una barrera preventiva adicional, no una concesión de privilegios ni autorización de despliegue.
