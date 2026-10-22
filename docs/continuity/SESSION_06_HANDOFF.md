@@ -203,3 +203,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `a8d2afa`: el escritor candidato de intentos de confirmación valida la fila de `INSERT ... RETURNING order_id` como registro simple antes de leer el identificador, evitando getters y claves de prototipo peligrosas.
 - `1b8f0ec`: pruebas negativas de getter, herencia y clave peligrosa. Un resultado inválido aborta la transacción del llamador, que debe revertir también el pedido.
 - La integración Node–PostgreSQL 17 y los permisos mínimos del escritor continúan pendientes. Sin rutas HTTP, grants operativos, merge ni despliegue.
+
+## Lecturas del catálogo: entrada de argumentos y respuesta del bloqueo asesor
+
+- `c057b35`: las tres operaciones de lectura (`lookupIdempotency`, `lockCatalog`, `loadPreviousQuote`) verifican el registro de argumentos **antes de desestructurarlo**. El resultado de `pg_advisory_xact_lock` también exige fila simple con descriptores de datos.
+- `3649906`: pruebas negativas de argumentos con getter, herencia y clave peligrosa (sin SQL) y de respuestas hostiles del bloqueo asesor (sin consultar ledger).
+- El alcance continúa siendo candidato transaccional desconectado; no se crean pools, roles, grants ni rutas. Integración Node–PG17 y permisos mínimos pendientes.
