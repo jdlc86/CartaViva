@@ -166,6 +166,48 @@ BEGIN
      WHERE table_id=v_table AND request_key='request-atomic')<>v_existing_order
  THEN RAISE EXCEPTION 'duplicate attempt leaked an order, kitchen line or ledger mutation'; END IF;
 END $duplicate_confirmation$;
+-- Identical request keys from distinct authorized actors or baskets must not
+-- collide: the uniqueness boundary is the full six-column scope.
+DO $scope_isolation$
+DECLARE
+ v_table uuid;
+ v_session uuid;
+ v_item uuid;
+ v_quote uuid;
+ v_order uuid;
+ v_other_quote uuid;
+ v_other_order uuid;
+BEGIN
+ SELECT id,session_id INTO STRICT v_table,v_session
+ FROM sabora.dining_tables WHERE number=930101;
+ SELECT item_id,id INTO STRICT v_item,v_quote
+ FROM sabora.catalog_displayed_quotes
+ WHERE table_id=v_table AND visit_id='visit-atomic';
+ INSERT INTO sabora.catalog_displayed_quotes(
+  table_id,session_id,visit_id,basket_id,actor_id,item_id,
+  published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
+ VALUES(v_table,v_session,'visit-atomic','basket-atomic','actor-other',v_item,
+  1,1000,0,1000,'{"schemaVersion":1,"totalCents":1000}'::jsonb,
+  now()+interval '5 minutes')
+ RETURNING id INTO v_other_quote;
+ INSERT INTO sabora.orders(
+  table_id,session_id,company,employee_number,confirmed_at,grouping,items)
+ VALUES(v_table,v_session,'CI','scope-isolation',now(),'grouped',
+  '[{"category":"main","name":"CI","quantity":1}]'::jsonb)
+ RETURNING id INTO v_other_order;
+ INSERT INTO sabora.catalog_confirmation_attempts(
+  table_id,session_id,visit_id,basket_id,actor_id,item_id,
+  request_key,request_fingerprint,quote_id,economic_evidence,order_id)
+ VALUES(v_table,v_session,'visit-atomic','basket-atomic','actor-other',
+  v_item,'request-atomic','fingerprint-other',v_other_quote,
+  '{"schemaVersion":1,"totalCents":1000}'::jsonb,v_other_order);
+ IF (SELECT count(*) FROM sabora.catalog_confirmation_attempts
+     WHERE table_id=v_table AND request_key='request-atomic')<>2
+ OR (SELECT count(DISTINCT order_id) FROM sabora.catalog_confirmation_attempts
+     WHERE table_id=v_table AND request_key='request-atomic')<>2
+ OR (SELECT count(*) FROM sabora.order_lines WHERE order_id=v_other_order)<>1
+ THEN RAISE EXCEPTION 'distinct actor scopes collided or lost kitchen projection'; END IF;
+END $scope_isolation$;
 -- Neither a fabricated acceptance timestamp nor a missing acceptance timestamp
 -- may be stored as evidence of a repricing decision.
 DO $acceptance_integrity$
