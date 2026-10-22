@@ -14,7 +14,7 @@ function fixture(overrides={}){
   }catch(e){calls.push('ROLLBACK');throw e;}},
   resolveStaffSession:async(_q,{credential:c})=>{
    calls.push('session');assert.equal(c,credential);
-   return {authenticated:true,active:true,actorId};
+   return {authenticated:true,active:true,actorId,role:'waiter'};
   },
   transition:async(_q,args)=>{calls.push('transition');
    assert.equal(args.actorId,actorId);
@@ -37,7 +37,7 @@ test('caller cannot supply actor or role and skip session check',async()=>{
 });
 test('revoked staff session cannot reach transition',async()=>{
  const {coordinator,calls}=fixture({resolveStaffSession:async()=>({
-  authenticated:true,active:false,actorId
+  authenticated:true,active:false,actorId,role:'waiter'
  })});
  await assert.rejects(coordinator({credential,tableId,target:'closed'}),/staff_session_forbidden/);
  assert.deepEqual(calls,['BEGIN','ROLLBACK']);
@@ -59,4 +59,13 @@ test('SQL adapter binds authenticated actor and table as parameters',async()=>{
   return {rows:[{table_id:tableId,ordering_state:'paused',session_id:sessionId}]};
  },{actorId,tableId,target:'paused',pauseUntil:'2026-10-22T20:00:00.000Z'});
  assert.deepEqual(result,{tableId,orderingState:'paused',sessionId});
+});
+
+test('kitchen staff cannot perform table lifecycle changes',async()=>{
+ const {coordinator,calls}=fixture({resolveStaffSession:async()=>({
+  authenticated:true,active:true,actorId,role:'kitchen'
+ })});
+ await assert.rejects(coordinator({credential,tableId,target:'open'}),
+  /staff_session_forbidden/);
+ assert.deepEqual(calls,['BEGIN','ROLLBACK']);
 });
