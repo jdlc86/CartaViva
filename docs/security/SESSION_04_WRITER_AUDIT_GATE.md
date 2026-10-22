@@ -114,3 +114,9 @@ La copia defensiva no autentica la visita ni autoriza importes; la evidencia eco
 `tests/catalog-confirmation-composed-flow.test.mjs` integra el coordinador con las lecturas reales del repositorio candidato y un escritor **inyectado de prueba**: valida orden de bloqueos, exclusión de credenciales en lecturas posteriores, replay, visita revocada, plato agotado, cambio de revisión que requiere aceptación y rollback ante fallo del escritor. El ensayo usa respuestas SQL simuladas; no prueba durabilidad ni permisos PostgreSQL. Commit `83c529d9`.
 
 Además, el coordinador enumera expresamente campos obligatorios y trata `acceptanceToken` como opcional para precios sin cambios, manteniendo `customerSessionToken` obligatorio (`65ce596a`, `b2c925ee`). No activa rutas, permisos ni escritura operativa.
+
+## Puerta SQL de activación económica negativa (22-10-2026)
+
+`scripts/ci/catalog-confirmation-activation-gate.sql` verifica en PostgreSQL 17 desechable que `anon`, `authenticated`, `sabora_admin_writer`, `sabora_catalog_reader` y `sabora_staff_reader` no tienen permisos directos sobre los dos ledgers económicos ni pueden ejecutar `sabora.confirm_order` (función histórica que no cumple el contrato económico nuevo). Exige FORCE RLS sin políticas y las restricciones SQL de idempotencia y pertenencia de cotización. Se integra en `scripts/ci/postgres-migration-smoke.sh` después de aplicar las migraciones en el contenedor sin red. Commits `f5f2cfb3`, `a255d412`.
+
+**Es un control de no activación, no un escritor operativo.** El propietario de la base de pruebas puede seguir ejecutando funciones históricas en sus fixtures; ninguna concesión a roles de runtime ni migración de producción queda autorizada por esta prueba.
