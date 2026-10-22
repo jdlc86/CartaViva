@@ -44,6 +44,8 @@ export function createCatalogQuoteIssuer({withTransaction,repository,clock,ttlSe
   throw Error('invalid_catalog_quote_issuer');
  return async function issue(rawInput){
   const input=snapshotInput(rawInput);
+  if(Buffer.byteLength(JSON.stringify(input),'utf8')>16384)
+   throw Error('invalid_catalog_quote_input');
   if(!plain(input)||Object.keys(input).some(k=>!
     ['tableId','visitId','basketId','actorId','itemId','selection','quantity','qrToken','customerSessionToken'].includes(k))||
     !id(input.tableId)||!id(input.visitId)||!id(input.basketId)||
