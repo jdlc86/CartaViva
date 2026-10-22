@@ -375,3 +375,43 @@ test('a detached query cannot enqueue another SQL statement after callback abort
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/abort_with_detached_query/);
 });
+
+test('transaction rejects query-config objects and invalid parameter containers before driver access',async()=>{
+ const statements=[];
+ const releases=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async(sql,args)=>{statements.push([sql,args]);return {rows:[]};},
+  release:reason=>releases.push(reason)
+ })}});
+ await withTransaction(async query=>{
+  for(const [sql,params] of [
+   [{text:'SELECT 1'},[]],
+   [null,[]],
+   ['',[]],
+   ['   ',[]],
+   ['SELECT $1',{value:1}],
+   ['SELECT $1',null],
+   ['SELECT $1','one']
+  ]){
+   await assert.rejects(query(sql,params),/invalid_transaction_query/);
+  }
+  assert.deepEqual(statements.map(([sql])=>sql),['BEGIN']);
+  const result=await query('SELECT $1',[1]);
+  assert.deepEqual(result,{rows:[]});
+ });
+ assert.deepEqual(statements.map(([sql])=>sql),['BEGIN','SELECT $1','COMMIT']);
+ assert.deepEqual(statements[1][1],[1]);
+ assert.deepEqual(releases,[undefined]);
+});
+
+test('invalid query shape does not mask callback error or leave transaction open',async()=>{
+ const statements=[],releases=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{statements.push(sql);return {rows:[]};},
+  release:reason=>releases.push(reason)
+ })}});
+ await assert.rejects(withTransaction(query=>query({text:'DELETE FROM sabora.orders'})),
+  /invalid_transaction_query/);
+ assert.deepEqual(statements,['BEGIN','ROLLBACK']);
+ assert.deepEqual(releases,[undefined]);
+});
