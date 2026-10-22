@@ -218,3 +218,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El SQL candidato devuelve `first_timestamp_written` desde el CTE `updated`, además de `id` y `grouping`. Para el primer pedido debe ser `true`; para `grouped` o `late` debe ser `false`.
 - Se aborta antes del ledger si el `INSERT` de primer pedido no actualizó realmente `dining_tables.first_confirmed_at`, o si se notifica una actualización contradictoria para un pedido posterior. La transacción externa debe revertir también el pedido ante el rechazo.
 - Se actualizaron el harness de confirmación completo y las pruebas unitarias de escritor. Esta prueba de adaptador no sustituye la acreditación real Node–PostgreSQL 17.
+
+## Comprobación real PostgreSQL 17 del indicador de primera confirmación
+
+- `scripts/ci/catalog-order-writer-sql-smoke.sql` ahora devuelve el mismo indicador `(updated.id IS NOT NULL)` que el escritor Node y comprueba en PostgreSQL 17 aislado: `first=true`, `grouped=false` y `late=false`.
+- La prueba conserva la verificación de proyección de cocina, agrupación y reversión transaccional. No habilita acceso al escritor candidato ni cambia el esquema operativo.
