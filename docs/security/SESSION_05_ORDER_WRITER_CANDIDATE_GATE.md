@@ -88,3 +88,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se añadieron los módulos del flujo candidato al `build` de `@sabora/api` mediante `node --check`. Se conservan tests de confirmación, rechazo de visita y fallo de ledger con pool simulado.
 - No se introdujo dependencia `pg`, credenciales, pool operativo, ruta HTTP ni grants. El smoke de PostgreSQL 17 valida SQL y carreras de bloqueo por separado; la ejecución de todo el coordinador Node contra la instancia real sigue siendo una puerta pendiente.
 - Los workflows de GitHub del HEAD deben verificarse tras este cambio. La activación continúa prohibida.
+
+## Paridad de restricciones de identidad en PostgreSQL (22-10-2026)
+
+- La migración candidata `20261022130000_sabora_order_identity_contract_alignment_candidate.sql` endurece los `CHECK` de `sabora.orders` para reflejar el perfil autenticado: alias no vacío de hasta 80 caracteres, sin controles, e identificador público `SB-[2-9A-HJ-NP-Y]{12}`. Las filas legacy conservan los campos nulos y no se reescriben.
+- `catalog-order-identity-compatibility-smoke.sql` comprueba rechazos de alias de 81 caracteres, blancos y salto de línea, así como identificadores inválidos. Continúa verificando compatibilidad legacy, trigger de cocina y FORCE RLS.
+- Es una migración **candidata en GitHub**; no se ha aplicado a Supabase operativo. Se requiere CI verde, revisión de compatibilidad y autorización explícita antes de cualquier migración de producción.
