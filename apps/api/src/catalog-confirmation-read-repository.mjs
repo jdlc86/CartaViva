@@ -29,13 +29,14 @@ export function createCatalogConfirmationReadRepository(){
    // Serialize concurrent attempts with the same authorized scope and key
    // before reading the ledger. A unique constraint remains the final guard.
    // Hash collisions only add contention, never merge distinct scopes.
-   const lock=row(await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[
+   const lockResponse=await query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[
     JSON.stringify([context.tableId,context.sessionId,context.visitId,
      context.basketId,context.actorId,requestKey])
-   ]));
-   // PostgreSQL returns one row for the lock function; fail closed on a
-   // malformed adapter response rather than proceeding without evidence.
-   if(!lock)throw Error('invalid_catalog_repository_response');
+   ]);
+   // Query errors are propagated. Drivers may return a void-valued row;
+   // a valid response must still contain an array of result rows.
+   if(!lockResponse||!Array.isArray(lockResponse.rows))
+    throw Error('invalid_catalog_repository_response');
    const record=row(await query(
     `SELECT request_fingerprint,order_id
        FROM sabora.catalog_confirmation_attempts
