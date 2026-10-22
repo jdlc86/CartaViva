@@ -31,6 +31,52 @@ SELECT 1 / CASE WHEN
  AND NOT EXISTS (SELECT 1 FROM sabora.catalog_confirmation_attempts
   WHERE table_id=:'table_id' AND request_key='request-atomic')
  THEN 1 ELSE 0 END AS rollback_atomicity_verified;
+-- Simulate a writer that inserted the order, then failed to persist the
+-- confirmation because the quote belongs to a different item. PostgreSQL's
+-- PL/pgSQL exception subtransaction must undo the earlier order INSERT.
+DO $failed_writer$
+DECLARE
+ v_table uuid;
+ v_session uuid;
+ v_item uuid;
+ v_quote uuid;
+ v_order uuid;
+ v_rejected boolean:=false;
+BEGIN
+ SELECT id,session_id INTO STRICT v_table,v_session
+ FROM sabora.dining_tables WHERE number=930101;
+ SELECT item_id, id INTO STRICT v_item,v_quote
+ FROM sabora.catalog_displayed_quotes
+ WHERE table_id=v_table AND visit_id='visit-atomic';
+ BEGIN
+  INSERT INTO sabora.orders(
+   table_id,session_id,company,employee_number,confirmed_at,grouping,items)
+  VALUES(v_table,v_session,'CI','failed-writer',now(),'first',
+   '[{"category":"main","name":"CI","quantity":1}]'::jsonb)
+  RETURNING id INTO v_order;
+  INSERT INTO sabora.catalog_confirmation_attempts(
+   table_id,session_id,visit_id,basket_id,actor_id,item_id,
+   request_key,request_fingerprint,quote_id,economic_evidence,order_id)
+  VALUES(v_table,v_session,'visit-atomic','basket-atomic','actor-atomic',
+   '00000000-0000-4000-8000-000000009999'::uuid,
+   'request-failed','fingerprint-failed',v_quote,
+   '{"schemaVersion":1}'::jsonb,v_order);
+  RAISE EXCEPTION 'invalid confirmation unexpectedly accepted';
+ EXCEPTION WHEN foreign_key_violation THEN
+  v_rejected:=true;
+ END;
+ IF NOT v_rejected THEN
+  RAISE EXCEPTION 'expected quote scope rejection not observed';
+ END IF;
+ IF EXISTS(SELECT 1 FROM sabora.orders
+  WHERE table_id=v_table AND employee_number='failed-writer') THEN
+  RAISE EXCEPTION 'orphaned order survived confirmation FK failure';
+ END IF;
+ IF EXISTS(SELECT 1 FROM sabora.catalog_confirmation_attempts
+  WHERE table_id=v_table AND request_key='request-failed') THEN
+  RAISE EXCEPTION 'failed confirmation survived FK failure';
+ END IF;
+END $failed_writer$;
 -- After rollback the same idempotency key can be committed with a new order.
 INSERT INTO sabora.orders(
  table_id,session_id,company,employee_number,confirmed_at,grouping,items)
