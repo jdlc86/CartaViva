@@ -27,3 +27,13 @@ Los workflows del SHA previo `febb6dae3e3b5ab33fd62036767f77704f4736c4` finaliza
 - `d2e9e077`: la fábrica valida primero la dependencia transaccional y reutiliza el adaptador construido, sin crear conexiones.
 - `b7230c0e`: nuevas regresiones para generador de IDs inválido y fallo de BEGIN con descarte del cliente.
 - Los tests nuevos no sustituyen el gate pendiente de driver `pg` real con PostgreSQL 17 desechable. No se han otorgado permisos ni activado endpoints.
+
+## Consolidación del candidato existente (continuación)
+
+Al revisar el árbol completo se confirmó que `apps/api/src/catalog-order-confirmation-candidate.mjs` ya ofrecía la fábrica canónica `createCatalogOrderConfirmationPoolCandidate`. La fábrica añadida al comienzo de sesión 6 duplicaba esta responsabilidad. Se eliminó el duplicado y se migraron sus pruebas al módulo canónico, evitando dos puntos de integración divergentes.
+
+- `de0cd6f6`: corrige el uso de valores predeterminados del reloj y del generador de UUID en la fábrica canónica; antes, `newOrderId: undefined` se pasaba explícitamente a `createCatalogOrderWriter`, anulando el valor predeterminado y rechazando la construcción.
+- `aafc05a7`: las pruebas de fallo cerrado, rollback y descarte de conexión ahora ejercitan la fábrica canónica.
+- `ce974e7a`: se elimina `catalog-confirmation-candidate-runtime.mjs` por redundante.
+
+El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQL grants, ni publica rutas. Comprobar CI del SHA final antes de afirmar éxito.
