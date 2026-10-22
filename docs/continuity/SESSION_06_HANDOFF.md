@@ -197,3 +197,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `519a3ae`: el escritor candidato valida los descriptores de la fila bloqueada de mesa y de la fila devuelta por `INSERT ... RETURNING` antes de leer sus campos; rechaza getters y herencia no prevista. Para la fecha de primer pedido invoca `Date.prototype.getTime.call`, evitando métodos sobrescritos en el objeto recibido.
 - `8239ee9`: regresiones negativas de ambas respuestas que exigen no ejecutar getters ni llegar al ledger en estados inválidos.
 - Mantener la confirmación desconectada de HTTP y de grants operativos. Falta integración Node–PG17 y prueba de rol dedicado antes de activar.
+
+## Frontera de respuesta del ledger económico
+
+- `a8d2afa`: el escritor candidato de intentos de confirmación valida la fila de `INSERT ... RETURNING order_id` como registro simple antes de leer el identificador, evitando getters y claves de prototipo peligrosas.
+- `1b8f0ec`: pruebas negativas de getter, herencia y clave peligrosa. Un resultado inválido aborta la transacción del llamador, que debe revertir también el pedido.
+- La integración Node–PostgreSQL 17 y los permisos mínimos del escritor continúan pendientes. Sin rutas HTTP, grants operativos, merge ni despliegue.
