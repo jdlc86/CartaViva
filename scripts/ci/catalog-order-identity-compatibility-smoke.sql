@@ -42,7 +42,7 @@ BEGIN
  END;
  -- Candidate identity must obey the same alias and public-ID limits as profiles.
  FOREACH bad_alias IN ARRAY ARRAY[
-  repeat('A',81),'   ',E'bad\\ncontrol'
+  repeat('A',81),'   ',E'bad\ncontrol'
  ] LOOP
   BEGIN
    INSERT INTO sabora.orders
