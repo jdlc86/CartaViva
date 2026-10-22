@@ -194,3 +194,9 @@ No es una comprobación criptográfica de la evidencia ni sustituye el cálculo 
 El adaptador candidato de confirmación verifica con `BigInt` que `subtotalCents = unitSubtotalCents × quantity`, `discountCents = unitDiscountCents × quantity` y `totalCents = (unitSubtotalCents − unitDiscountCents) × quantity`, además de la identidad `totalCents = subtotalCents − discountCents`. Rechaza cantidades fuera de 1–50, categorías no admitidas, selecciones con importes negativos y alérgenos malformados. Los tests cubren cantidades múltiples válidas y manipulaciones de totales. Commits `ea4a6520`, `f43e04fd`.
 
 Este guard solo comprueba consistencia del objeto entregado **por el servidor**; no demuestra pertenencia de extras ni integridad respecto al catálogo publicado bloqueado. Mantener inactivos el writer de pedidos, grants y rutas HTTP.
+
+## Recálculo de evidencia con el motor económico del servidor (22-10-2026)
+
+El adaptador `catalog-confirmation-attempt-writer.mjs` invoca `priceCatalogLine` antes del `INSERT` y compara sus cinco resultados (subtotal unitario, descuento unitario, subtotal de línea, descuento de línea y total de línea) con los importes de la evidencia. Rechaza modificaciones del precio base, importes de extras o condiciones del descuento aunque los totales manipulados sean internamente coherentes. Se mantienen los límites del motor: cantidad 1–20, hasta 50 selecciones. Pruebas cubren descuento fijo, porcentual y extra válido. Commits `d157c24e` y `a4a319db`.
+
+La pertenencia de extras, la disponibilidad y la revisión del catálogo siguen verificándose en la lectura bloqueada anterior; el adaptador no puede reconstruir esa relación solo con la evidencia. No se ha activado ninguna ruta ni concedido permisos.
