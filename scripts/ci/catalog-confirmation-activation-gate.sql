@@ -7,7 +7,6 @@ DECLARE
   role_name text;
   table_name text;
   trigger_name text;
-  expected_trigger_count integer;
 BEGIN
   FOREACH role_name IN ARRAY ARRAY[
    'anon','authenticated','sabora_admin_writer',
@@ -56,7 +55,7 @@ BEGIN
        AND ((
         trigger_name=table_name||'_append_only'
         AND (tr.tgtype & 1)=1 AND (tr.tgtype & 2)=2
-        AND (tr.tgtype & 4)=4 AND (tr.tgtype & 8)=8
+        AND (tr.tgtype & 16)=16 AND (tr.tgtype & 8)=8
        ) OR (
         trigger_name=table_name||'_no_truncate'
         AND (tr.tgtype & 1)=0 AND (tr.tgtype & 2)=2
@@ -81,8 +80,14 @@ BEGIN
   ) THEN
    RAISE EXCEPTION 'economic ledger mutation guard must be security invoker';
   END IF;
-  IF has_function_privilege('public',
-      'sabora.reject_catalog_ledger_mutation()','EXECUTE') THEN
+  IF EXISTS (
+   SELECT 1 FROM pg_proc p
+   JOIN pg_namespace n ON n.oid=p.pronamespace
+   CROSS JOIN LATERAL aclexplode(
+    COALESCE(p.proacl,acldefault('f',p.proowner))) acl
+   WHERE n.nspname='sabora' AND p.proname='reject_catalog_ledger_mutation'
+     AND acl.grantee=0 AND acl.privilege_type='EXECUTE'
+  ) THEN
    RAISE EXCEPTION 'economic ledger mutation guard exposed to PUBLIC';
   END IF;
 
