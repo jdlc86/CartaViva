@@ -32,7 +32,10 @@ export function createPostgresTransaction({ pool } = {}) {
         // pg query-config objects or mutable/non-array parameter containers.
         if (typeof sql !== 'string' || sql.trim().length === 0 ||
             !Array.isArray(parameters)) throw Error('invalid_transaction_query');
-        const operation = Promise.resolve().then(() => client.query(sql, parameters));
+        // Snapshot parameter bindings before the deferred driver invocation;
+        // a caller must not be able to swap values after handing off SQL.
+        const boundParameters = parameters.slice();
+        const operation = Promise.resolve().then(() => client.query(sql, boundParameters));
         inFlight.add(operation);
         try { return await operation; }
         finally { inFlight.delete(operation); }
