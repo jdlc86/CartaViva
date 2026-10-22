@@ -325,3 +325,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El descuento admite únicamente `null`, `{type:'fixed',amountCents}` o `{type:'percent',basisPoints}`. Cualquier atributo adicional, incluso si no altera la aritmética, provoca `invalid_catalog_confirmation_attempt` antes de SQL.
 - Regresiones negativas cubren metadatos de precio o confianza introducidos por cliente, campos ocultos de extras y descuentos con propiedades mezcladas. La regresión positiva comprueba un descuento porcentual válido.
 - Esto complementa el presupuesto de recursos, el recálculo de precios y los bloqueos transaccionales; **no demuestra por sí solo** que la selección provenga del catálogo publicado. El candidato sigue sin grants, HTTP, pool operativo ni despliegue.
+
+## Protección de fronteras de argumentos confiables (22-10-2026)
+
+- El escritor de pedidos y el escritor económico independiente validan **antes de leer propiedades** que los objetos de argumentos y contexto son registros simples, sin propiedades accessor, símbolos, claves especiales de prototipo ni un número excesivo de propiedades. Esta puerta complementa el validador JSON de evidencia y evita invocar getters maliciosos en `context`, `requestKey` o `requestFingerprint`.
+- Se añadieron regresiones negativas que cuentan invocaciones a getters y consultas SQL: ambas deben permanecer en **cero** ante los contextos y argumentos malformados. Se comprueban también prototipos heredados y claves propias peligrosas.
+- Se conserva la compatibilidad con registros de prototipo nulo, si sus propiedades son datos enumerables válidos. No se atribuye a esta validación la defensa contra proxies JavaScript arbitrarios: el coordinador sigue siendo la frontera primaria para datos de cliente y el candidato continúa desconectado.
+- La integración del coordinador Node con un driver PostgreSQL real, la acreditación de rol mínimo y RLS, y la activación HTTP continúan pendientes. No se ha autorizado merge ni despliegue.
