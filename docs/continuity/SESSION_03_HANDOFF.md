@@ -342,3 +342,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `96c77c55`: tabla y triggers append-only de auditoría de estados de mesa; registra estado, pausa y sesión de ocupación anterior/nueva, sin EXECUTE/ACL de runtime.
 - `7ab9ac03`: smoke de auditoría, inmutabilidad y ACL; `081b406b`: integración CI y conteo 19 tablas RLS.
 - `03047526`: arquitectura y limitación explícita: identidad de actor todavía NULL por ausencia de sesión staff acreditada. No es auditoría de usuario final; no activar operaciones hasta resolver procedencia del actor y grants restringidos.
+
+## Sesión 3 — límite de identidad de personal
+- `6c393ebc`: coordinador transaccional de transiciones de mesa con `resolveStaffSession` e invocación SQL parametrizada.
+- `5d3ccae6`: pruebas de credencial, rol activo, transición y rollback; `ff1796d9`: rechazo estricto de campos adicionales/actor suplantado.
+- `46a1e0d2`: arquitectura actualizada. **Pendiente** implementar resolución real de sesión staff, grants mínimos y auditoría de actor sin confiar en valores del cliente. Ninguna ruta montada, ningún despliegue.
