@@ -7,6 +7,7 @@ DECLARE
   role_name text;
   table_name text;
   trigger_name text;
+  constraint_name text;
 BEGIN
   FOREACH role_name IN ARRAY ARRAY[
    'anon','authenticated','sabora_admin_writer',
@@ -26,6 +27,28 @@ BEGIN
    IF has_function_privilege(role_name,
       'sabora.confirm_order(uuid,text,text,text,text,jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'legacy confirm_order callable by runtime: %',role_name;
+   END IF;
+  END LOOP;
+
+  -- The candidate identity bridge must remain protected by FORCE RLS and
+  -- schema-level checks even if a future refactor alters the writer.
+  IF NOT EXISTS (
+   SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='sabora' AND c.relname='orders'
+     AND c.relrowsecurity AND c.relforcerowsecurity
+  ) THEN RAISE EXCEPTION 'candidate orders lost FORCE RLS'; END IF;
+  FOREACH constraint_name IN ARRAY ARRAY[
+   'sabora_order_identity_mode','sabora_order_customer_alias_valid',
+   'sabora_order_customer_identifier_valid',
+   'sabora_order_customer_visit_key_valid',
+   'sabora_order_economic_snapshot_valid'
+  ] LOOP
+   IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con JOIN pg_class c ON c.oid=con.conrelid
+    JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='sabora' AND c.relname='orders'
+      AND con.conname=constraint_name AND con.contype='c' AND con.convalidated
+   ) THEN RAISE EXCEPTION 'missing validated candidate order constraint: %',constraint_name;
    END IF;
   END LOOP;
 
