@@ -149,3 +149,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se endureció `catalog-confirmation-read-repository.mjs` para aceptar revisiones e importes de PostgreSQL solo como enteros seguros de JavaScript o cadenas decimales canónicas no negativas. Se rechazan `null`, vacío, blancos, exponentes, signo explícito, ceros iniciales, fracciones y enteros fuera del rango seguro.
 - Motivo: `Number(null)`, `Number('')` y `Number('  ')` producen cero y podrían convertir un dato corrupto en una evidencia económica aparentemente válida.
 - Se añadieron regresiones de cada campo de cotización y de la revisión del catálogo. El lector falla cerrado sin conceder permisos nuevos ni activar rutas.
+
+## Integridad estructural del ledger económico (22-10-2026)
+
+- El validador `safeJson` del adaptador de confirmación rechaza ahora arrays dispersos, getters, propiedades ocultas/no enumerables, símbolos, ciclos y claves peligrosas, antes de `JSON.stringify` y de cualquier sentencia SQL.
+- Se evita que `Array.prototype.every` omita huecos o que la serialización invoque getters y transforme silenciosamente la evidencia comprobada.
+- Pruebas negativas exigen cero escrituras SQL en estos escenarios. Esta defensa del adaptador no sustituye el origen confiable del catálogo, la autenticación ni la futura integración Node–PG17.
