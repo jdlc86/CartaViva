@@ -155,3 +155,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El validador `safeJson` del adaptador de confirmación rechaza ahora arrays dispersos, getters, propiedades ocultas/no enumerables, símbolos, ciclos y claves peligrosas, antes de `JSON.stringify` y de cualquier sentencia SQL.
 - Se evita que `Array.prototype.every` omita huecos o que la serialización invoque getters y transforme silenciosamente la evidencia comprobada.
 - Pruebas negativas exigen cero escrituras SQL en estos escenarios. Esta defensa del adaptador no sustituye el origen confiable del catálogo, la autenticación ni la futura integración Node–PG17.
+
+## Carrera inversa de cierre de mesa en PostgreSQL 17 aislado
+
+- Se añadió `catalog-order-writer-close-first-concurrency-smoke.sh` y se conectó al smoke de migraciones. En dos sesiones SQL reales, el camarero cierra primero la mesa y mantiene el bloqueo; la consulta candidata `FOR UPDATE` debe esperar y, tras el commit del cierre, devolver **cero mesas abiertas**.
+- Complementa la prueba previa de la carrera inversa (pedido obtiene el bloqueo antes que el cierre). La ejecución está confinada al contenedor PostgreSQL 17 desechable con `--network none`; no se concede permiso runtime ni se activa el escritor.
+- El gate Node–PostgreSQL real, rol de escritura mínimo y auditoría independiente siguen pendientes.
