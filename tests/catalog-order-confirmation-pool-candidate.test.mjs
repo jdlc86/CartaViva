@@ -16,7 +16,7 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
-function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false}={}){
+function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false,\n soldOut=false,quoteExpired=false,rotatedQr=false}={}){
  const statements=[],events=[];
  let releases=0,connects=0,storedAttempt=null,visitClosed=closed;
  const client={
@@ -29,14 +29,14 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
     return {rows:[]};
    }
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('customer_table_visits'))
-    return {rows:visitClosed?[]:[{table_id:tableId,session_id:sessionId,
+    return {rows:(visitClosed||rotatedQr)?[]:[{table_id:tableId,session_id:sessionId,
      visit_id:input.visitId,actor_id:input.actorId,
      customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'}]};
    if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
    if(sql.includes('FROM sabora.catalog_confirmation_attempts'))return {rows:storedAttempt?[storedAttempt]:[]};
    if(sql.includes('FROM sabora.catalog_items'))return {rows:[{
-    published_revision:'1',published_snapshot:snapshot,withdrawn_at:null,sold_out:false}]};
-   if(sql.includes('FROM sabora.catalog_displayed_quotes'))return {rows:[{
+    published_revision:'1',published_snapshot:snapshot,withdrawn_at:null,sold_out:soldOut}]};
+   if(sql.includes('FROM sabora.catalog_displayed_quotes'))return {rows:quoteExpired?[]:[{
     id:quoteId,published_revision:'1',subtotal_cents:'1000',
     discount_cents:'0',total_cents:'1000',evidence}]};
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))
@@ -127,4 +127,22 @@ test('revoking the visit prevents replay of an already confirmed idempotency key
  assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
  assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
  assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE','BEGIN','ROLLBACK','RELEASE']);
+});
+
+test('rotated QR rejects confirmation before idempotency lookup or any write',async()=>{
+ const h=harness({rotatedQr:true});
+ await assert.rejects(h.confirm(input),/order_context_forbidden/);
+ assert.equal(h.statements.some(s=>s.sql.includes('FROM sabora.catalog_confirmation_attempts')),false);
+ assert.equal(h.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),false);
+ assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
+});
+
+test('expired quote and sold-out catalog fail closed without order or ledger writes',async()=>{
+ for(const config of [{quoteExpired:true},{soldOut:true}]){
+  const h=harness(config);
+  await assert.rejects(h.confirm(input),/order_previous_quote_unavailable|order_catalog_unavailable/);
+  assert.equal(h.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),false);
+  assert.equal(h.statements.some(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false);
+  assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
+ }
 });
