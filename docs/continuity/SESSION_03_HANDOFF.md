@@ -358,3 +358,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `3b2f3c46`: resolver de credencial externa verificada, lookup de membresía activa con `FOR SHARE`; `3939a5f6`: tests de token no verificado, sesión inactiva y resultados contradictorios.
 - `82c444a6`: gate de rol `waiter/admin/root` en coordinador; `e9bea45b`: prueba de rechazo de cocina; `e8bffb5d`: arquitectura.
 - **No existe implementación de verificación real del token, conexión SQL runtime, ni atribución auditable del actor**. Mantener función y HTTP sin activar; no tocar Supabase operativo, Fleetia ni VPS.
+
+## Sesión 3 — verificador criptográfico RS256 de personal
+- `efd30ff6`: verificador JWT RS256 con clave pública RSA fijada por backend y comprobación estricta de issuer, audiencia, firma, sujeto, iat, exp y vida máxima.
+- `dda2d21c`: tests de firmas RSA reales, clave incorrecta, claims inválidos y algoritmo no permitido; `8a219a18`: arquitectura y límites de integración.
+- **Pendiente:** comprobar algoritmo real de firma Supabase Auth, fijar claves de forma segura con rotación, integrar con resolver staff y conexión SQL restringida, atribuir actor en auditoría. Sin ruta HTTP, sin despliegue, sin cambios a Supabase operativo.
