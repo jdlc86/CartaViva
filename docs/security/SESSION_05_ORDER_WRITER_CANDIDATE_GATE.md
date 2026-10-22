@@ -161,3 +161,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se añadió `catalog-order-writer-close-first-concurrency-smoke.sh` y se conectó al smoke de migraciones. En dos sesiones SQL reales, el camarero cierra primero la mesa y mantiene el bloqueo; la consulta candidata `FOR UPDATE` debe esperar y, tras el commit del cierre, devolver **cero mesas abiertas**.
 - Complementa la prueba previa de la carrera inversa (pedido obtiene el bloqueo antes que el cierre). La ejecución está confinada al contenedor PostgreSQL 17 desechable con `--network none`; no se concede permiso runtime ni se activa el escritor.
 - El gate Node–PostgreSQL real, rol de escritura mínimo y auditoría independiente siguen pendientes.
+
+## Tercera carrera real: cierre revocado por ROLLBACK
+
+- La suite de PostgreSQL 17 desechable incluye `catalog-order-writer-close-rollback-concurrency-smoke.sh`. Dos sesiones independientes: el camarero obtiene el bloqueo al cerrar, la confirmación candidata espera, y la transacción del camarero ejecuta `ROLLBACK`. La confirmación debe recuperar el bloqueo y observar la mesa **abierta**, sin conservar un cierre abortado.
+- Complementa las dos carreras de `COMMIT` ya probadas: pedido primero/cierre después y cierre primero/pedido después. Todas usan fixtures de mesa y personal separados, sin conexiones a Supabase ni VPS.
+- Sigue sin acreditarse el coordinador Node completo contra PostgreSQL con rol mínimo; el PR permanece Draft y no se habilitan rutas de escritura.
