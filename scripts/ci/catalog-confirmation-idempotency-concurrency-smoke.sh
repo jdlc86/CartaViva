@@ -54,3 +54,54 @@ fi
 docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
  "SELECT pg_try_advisory_xact_lock($key_sql)" | grep -qx t
 echo 'PASS: concurrent confirmation requests serialize on scoped advisory lock'
+
+# Reverse outcome: an aborted first confirmation must release the same
+# transaction-scoped lock so a waiting retry can proceed without stale claims.
+rollback_first_sql=$(cat <<SQL
+BEGIN;
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_sleep(4);
+ROLLBACK;
+SQL
+)
+retry_after_rollback_sql=$(cat <<SQL
+BEGIN;
+SET LOCAL lock_timeout='10s';
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_try_advisory_xact_lock($key_sql);
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$rollback_first_sql" &
+rollback_pid=$!
+rollback_ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$rollback_pid" 2>/dev/null; then break; fi
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(4)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then rollback_ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$rollback_ready" != 1 ]]; then
+ wait "$rollback_pid" || true
+ echo 'Aborted confirmation did not acquire advisory transaction lock' >&2
+ exit 1
+fi
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$retry_after_rollback_sql" &
+retry_pid=$!
+retry_blocked=0
+for attempt in $(seq 1 60); do
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%pg_advisory_xact_lock%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then retry_blocked=1; break; fi
+ sleep 0.05
+done
+wait "$rollback_pid"
+wait "$retry_pid"
+if [[ "$retry_blocked" != 1 ]]; then
+ echo 'Retry did not wait for aborted confirmation transaction lock' >&2
+ exit 1
+fi
+docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+ "SELECT pg_try_advisory_xact_lock($key_sql)" | grep -qx t
+echo 'PASS: aborted confirmation releases advisory lock for waiting retry'
