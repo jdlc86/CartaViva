@@ -221,3 +221,34 @@ test('writer rejects inherited and dangerous own keys before SQL',async()=>{
  }
  assert.equal(sqlCalls,0);
 });
+
+test('writer rejects hostile locked-table and INSERT response rows without executing getters',async()=>{
+ let getterCalls=0;
+ const locked={first_confirmed_at:null,grouping_window_seconds:300};
+ const created={id:ids.orderId,grouping:'first',first_timestamp_written:true};
+ const hostile=(base,field)=>{
+  const result={...base};
+  Object.defineProperty(result,field,{enumerable:true,get(){
+   getterCalls++;throw Error('hostile_sql_row_getter');
+  }});
+  return result;
+ };
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ for(const invalid of [hostile(locked,'grouping_window_seconds'),
+  Object.assign(Object.create({unexpected:true}),locked)]){
+  let calls=0;
+  await assert.rejects(writer.persist(async()=>{
+   calls++;return {rows:[invalid]};
+  },args),/invalid_catalog_order_table_state/);
+  assert.equal(calls,1);
+ }
+ for(const invalid of [hostile(created,'grouping'),
+  Object.assign(Object.create({unexpected:true}),created)]){
+  let calls=0;
+  await assert.rejects(writer.persist(async()=>{
+   calls++;return {rows:[calls===1?locked:invalid]};
+  },args),/catalog_order_context_changed/);
+  assert.equal(calls,2);
+ }
+ assert.equal(getterCalls,0);
+});
