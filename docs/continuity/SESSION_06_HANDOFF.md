@@ -141,3 +141,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `10d7d9c`: el adaptador candidato rechaza parámetros string superiores a 65536 bytes UTF-8 o con byte nulo, y valores numéricos no enteros seguros. Las cantidades monetarias y contadores del candidato se representan como enteros seguros o cadenas decimales controladas; no se admiten conversiones numéricas ambiguas.
 - `e36c779`: pruebas de UTF-8 multibyte, NUL, enteros fuera de rango, fracciones y aceptación de los límites válidos.
 - El HEAD previo `3a10e7f` tenía ambos workflows verdes; el gate del HEAD posterior debe verificarse de nuevo. No se habilitan rutas, roles ni conexiones operativas.
+
+## Límite del texto SQL del adaptador candidato
+
+- `a28135b`: el texto de cada sentencia SQL queda limitado a 65536 bytes UTF-8 y no admite NUL; rechaza antes del driver tanto SQL vacío como texto malformado o sobredimensionado. El control es adicional a la validación de parámetros.
+- `82d4fbe`: regresión de SQL con NUL, texto multibyte por encima del presupuesto y consulta válida.
+- Sigue pendiente la integración real Node–PostgreSQL 17, autorización del rol runtime mínimo y los contratos HTTP. Ninguna de estas defensas de transporte autoriza conectar el candidato a producción.
