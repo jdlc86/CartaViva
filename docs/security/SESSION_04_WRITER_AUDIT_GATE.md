@@ -46,3 +46,9 @@ Se incorpora `tests/staff-transition-transaction-boundary.test.mjs` con un harne
 El coordinador candidato `apps/api/src/catalog-confirmation-coordinator.mjs` comprueba ahora que el contexto autorizado bloqueado devuelto por el repositorio coincide exactamente con `tableId`, `visitId`, `actorId` y `basketId` de la solicitud, y exige un `sessionId` no vacío. El rechazo se produce **antes** de buscar replays idempotentes. Pruebas negativas en `tests/catalog-confirmation-coordinator.test.mjs`.
 
 Commits: `91b927144c369b0fef3a920580051f40807fea0e` y `0e512fa69d8a9cad0c78b4950f2fc92899cbec44`. Es un endurecimiento del coordinador candidato: todavía falta conectar credenciales de cliente verificadas, escritor SQL mínimo, persistencia transaccional completa y auditoría atribuida. No autoriza activación de rutas.
+
+## Canonización de entrada para confirmación candidata (22-10-2026)
+
+El coordinador `catalog-confirmation-coordinator.mjs` ahora construye una copia de los datos no confiables antes de consultar repositorios o calcular huellas de idempotencia. La copia rechaza getters/setters, símbolos, propiedades no enumerables, prototipos exóticos, ciclos, arreglos dispersos, nombres peligrosos y profundidad excesiva. Pruebas negativas añadidas a `tests/catalog-confirmation-coordinator.test.mjs`.
+
+Commits `d6edbb925890644768e43a2341f5f915ea73866f` y `1603d8c7cb366d45dc131c27c9b1e6e044c974c0`. Este control es solo defensa en profundidad del candidato y no demuestra por sí mismo una transacción SQL completa, ni autoriza rutas HTTP o permisos productivos.
