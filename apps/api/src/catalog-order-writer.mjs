@@ -94,7 +94,9 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
      table.rows[0].first_confirmed_at,table.rows[0].grouping_window_seconds]
    );
    if(!result||!Array.isArray(result.rows)||result.rows.length!==1||
-      result.rows[0]?.id!==orderId)
+      result.rows[0]?.id!==orderId||
+      !['first','grouped','late'].includes(result.rows[0]?.grouping)||
+      (occupancy.first_confirmed_at===null)!==(result.rows[0]?.grouping==='first'))
     throw Error('catalog_order_context_changed');
    // The coordinator's transaction must rollback the order if this fails.
    await ledger.insertConfirmation(query,{...args,orderId});
