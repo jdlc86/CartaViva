@@ -31,6 +31,7 @@ export function createPostgresTransaction({ pool } = {}) {
         // The candidate exposes only parameterized text statements, never
         // pg query-config objects or mutable/non-array parameter containers.
         if (typeof sql !== 'string' || sql.trim().length === 0 ||
+            sql.includes('\u0000') || Buffer.byteLength(sql, 'utf8') > 65536 ||
             !Array.isArray(parameters)) throw Error('invalid_transaction_query');
         // Snapshot parameter bindings before the deferred driver invocation;
         // a caller must not be able to swap values after handing off SQL.
