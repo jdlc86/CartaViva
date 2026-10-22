@@ -269,3 +269,27 @@ test('all catalog readers reject accessor-backed, inherited and dangerous scope 
  assert.equal(getters,0);
  assert.equal(sqlCalls,0);
 });
+
+test('catalog row decoding rejects accessor-backed and inherited SQL rows before field reads',async()=>{
+ let getterCalls=0;
+ const baseline={id:quoteId,published_revision:'3',subtotal_cents:'1000',
+  discount_cents:'0',total_cents:'1000',evidence:{schemaVersion:1},
+  published_snapshot:{priceCents:1000},withdrawn_at:null,sold_out:false,
+  request_fingerprint:'fingerprint',order_id:orderId};
+ const accessor={...baseline};
+ Object.defineProperty(accessor,'published_revision',{enumerable:true,
+  get(){getterCalls++;throw Error('malicious_row_getter');}});
+ const inherited=Object.assign(Object.create({inherited:true}),baseline);
+ for(const badRow of [accessor,inherited]){
+  const query=async sql=>sql.includes('pg_advisory_xact_lock')?
+   {rows:[]}:{rows:[badRow]};
+  await assert.rejects(repo.lookupIdempotency(query,{
+   context,requestKey:'request-001',requestFingerprint:'fingerprint'
+  }),/invalid_catalog_repository_response/);
+  await assert.rejects(repo.lockCatalog(query,{context,itemId}),
+   /invalid_catalog_repository_response/);
+  await assert.rejects(repo.loadPreviousQuote(query,{context,itemId}),
+   /invalid_catalog_repository_response/);
+ }
+ assert.equal(getterCalls,0);
+});
