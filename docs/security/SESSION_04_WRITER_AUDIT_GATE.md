@@ -138,3 +138,9 @@ Esta barrera no prueba que el contexto provenga de una transacción real: **no d
 La puerta SQL de activación `scripts/ci/catalog-confirmation-activation-gate.sql` comprueba también que **ambas** tablas económicas tengan activos los disparadores `BEFORE UPDATE OR DELETE` y `BEFORE TRUNCATE`, vinculados a `sabora.reject_catalog_ledger_mutation()`. La comprobación inspecciona los bits de evento de `pg_trigger`, exige `SECURITY INVOKER` y rechaza `EXECUTE` público sobre la función de rechazo. Este control complementa FORCE RLS y los permisos negativos ya verificados. Commits `07cafd2d` y `98bea456`.
 
 Se mantiene la limitación: la puerta comprueba el esquema y sus ACL en PostgreSQL 17 desechable; **no acredita todavía** escritor duradero, identidad SQL verificada ni una transacción real de pedido con consentimiento.
+
+## Serialización de idempotencia concurrente (22-10-2026)
+
+El lector de idempotencia `apps/api/src/catalog-confirmation-read-repository.mjs` adquiere ahora un bloqueo transaccional `pg_advisory_xact_lock(hashtextextended(...))` **antes** de consultar el intento previo. La clave deriva del alcance autorizado (mesa, sesión, visita, cesta, actor) y la clave de petición; no incluye QR ni bearer. Los reintentos concurrentes con la misma clave quedan serializados hasta commit/rollback y el segundo lector puede ver el intento persistido por el primero. La restricción SQL `catalog_confirmation_idempotency` sigue siendo la última defensa. Una colisión de hash solo serializa solicitudes independientes, no autoriza replays cruzados.
+
+Cobertura: pruebas de orden de consultas, aislamiento de claves y contextos y composición del coordinador (`1fc916ab`, `8f907d99`, `866e8a83`, `0db22a4f`, `501c5287`). **Pendiente:** ejecutar concurrencia real entre dos conexiones PostgreSQL 17, con el escritor duradero y las políticas/identidad SQL mínimas; el contrato sigue desconectado de HTTP y producción.
