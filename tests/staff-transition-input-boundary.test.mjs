@@ -36,3 +36,53 @@ for(const role of ['cook','customer',null]){
   assert.equal(mutations,0);
  });
 }
+
+test('staff transition rejects accessor properties without executing them',async()=>{
+ let accessed=false;
+ const input={credential:'x'.repeat(32),tableId,target:'open'};
+ Object.defineProperty(input,'actorId',{enumerable:true,get(){accessed=true;throw Error('getter_executed');}});
+ const run=createStaffTableTransitionCoordinator({
+  withTransaction:async()=>{throw Error('transaction_started');},
+  resolveStaffSession:async()=>{throw Error('resolver_started');},
+  transition:async()=>{throw Error('mutation_started');}
+ });
+ await assert.rejects(run(input),/invalid_staff_transition_request/);
+ assert.equal(accessed,false);
+});
+
+test('staff transition rejects inherited credentials and forged prototype',async()=>{
+ const input=Object.create({credential:'x'.repeat(32)});
+ Object.assign(input,{tableId,target:'open'});
+ const run=createStaffTableTransitionCoordinator({
+  withTransaction:async()=>{throw Error('transaction_started');},
+  resolveStaffSession:async()=>{throw Error('resolver_started');},
+  transition:async()=>{throw Error('mutation_started');}
+ });
+ await assert.rejects(run(input),/invalid_staff_transition_request/);
+});
+
+test('staff transition rejects symbol and non-enumerable payload fields',async()=>{
+ for(const extra of ['symbol','hidden']){
+  const input={credential:'x'.repeat(32),tableId,target:'open'};
+  if(extra==='symbol')input[Symbol('actorId')]=actorId;
+  else Object.defineProperty(input,'actorId',{value:actorId,enumerable:false});
+  const run=createStaffTableTransitionCoordinator({
+   withTransaction:async()=>{throw Error('transaction_started');},
+   resolveStaffSession:async()=>{throw Error('resolver_started');},
+   transition:async()=>{throw Error('mutation_started');}
+  });
+  await assert.rejects(run(input),/invalid_staff_transition_request/);
+ }
+});
+
+test('staff transition accepts null-prototype plain data and uses verified actor',async()=>{
+ const calls=[];
+ const input=Object.assign(Object.create(null),{credential:'x'.repeat(32),tableId,target:'open'});
+ const run=createStaffTableTransitionCoordinator({
+  withTransaction:async callback=>{calls.push('transaction');return callback(async()=>({rows:[]}));},
+  resolveStaffSession:async()=>{calls.push('verify');return {authenticated:true,active:true,actorId,role:'waiter'};},
+  transition:async(_query,scope)=>{calls.push('transition');assert.deepEqual(scope,{actorId,tableId,target:'open',pauseUntil:null});return {tableId,orderingState:'open',sessionId};}
+ });
+ assert.deepEqual(await run(input),{tableId,orderingState:'open',sessionId});
+ assert.deepEqual(calls,['transaction','verify','transition']);
+});
