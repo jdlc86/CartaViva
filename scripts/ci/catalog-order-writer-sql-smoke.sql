@@ -129,6 +129,14 @@ SELECT 1 / CASE WHEN :'late_grouping'='late'
       FROM sabora.dining_tables WHERE id=:'table_id')
  THEN 1 ELSE 0 END AS late_order_verified;
 
+-- Late confirmation must preserve the expired first timestamp, not restart grouping.
+SELECT 1 / CASE WHEN
+ (SELECT first_confirmed_at<clock_timestamp()-interval '9 minutes'
+  FROM sabora.dining_tables WHERE id=:'table_id')
+ AND (SELECT first_confirmed_at<>confirmed_at FROM sabora.dining_tables t
+  CROSS JOIN sabora.orders o WHERE t.id=:'table_id' AND o.id=:'late_order_id')
+ THEN 1 ELSE 0 END AS late_preserves_expired_timestamp;
+
 -- Ledger failure must roll back the newly created order and kitchen line.
 SAVEPOINT before_failed_confirmation;
 INSERT INTO sabora.orders
