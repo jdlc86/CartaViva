@@ -26,3 +26,11 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se actualizaron fixtures de tests para el orden real de consultas y rechazo de errores de ledger.
 - **Validación pendiente:** no se pudo clonar el repositorio en el shell local (resolución DNS de GitHub no disponible); no atribuir ejecución de tests locales. GitHub Actions del SHA final todavía no confirmado.
 - **Bloqueador adicional:** el coordinador sigue exigiendo integración del writer con repositorio y autorización del runtime. Ningún endpoint o grant se ha habilitado. La compatibilidad de `public_id` con la identidad visible debe acreditarse con pruebas de contrato y PG17.
+
+## Correcciones posteriores (22-10-2026)
+
+- Se repararon secuencias de escape literales en `catalog-visit-context-repository.mjs` que impedían interpretar JavaScript. No atribuir éxito de pruebas previo a esta reparación.
+- El lector de visita bloqueada proyecta `customer_profiles.alias` y `public_id` vinculados por la sesión de cliente. El test unitario exige ahora esa procedencia y el identificador `SB-[2-9A-HJ-NP-Y]{12}`.
+- El escritor candidato rechaza identificadores no canónicos y caracteres de control en alias. Se actualizaron las pruebas correspondientes.
+- El shell local no resuelve `github.com`; la ejecución local de tests del repositorio no está acreditada. Las consultas de workflow del último SHA no devolvieron runs; **CI pendiente**, no verde.
+- El escritor continúa **sin conexión al coordinador operativo**, sin grants ni HTTP. Sigue pendiente smoke real PostgreSQL 17 para el SQL del escritor, agrupación y rollback.
