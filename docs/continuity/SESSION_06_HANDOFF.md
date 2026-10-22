@@ -81,3 +81,8 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `0fc80b0` falló en ambos workflows de PostgreSQL 17: al introducir una segunda cotización para el mismo `table_id` y `visit_id`, cuatro consultas anteriores `SELECT ... INTO STRICT` del smoke dejaron de ser únicas. Error reproducido en logs de Sabora CI `39812400070`: `query returned more than one row`.
 - `091e9c4` añade `actor_id='actor-atomic'` a las cuatro consultas de fixture existentes. El aislamiento entre actores se mantiene; el test ahora especifica el ámbito completo en vez de depender de que exista una única cotización en la mesa.
 - Revalidar ambos workflows antes de dar el hito por cerrado.
+
+## Corrección del test de consulta desprendida
+
+- `9ae627e` y `96700c7`: el test anterior esperaba que una consulta tardía lanzara una segunda sentencia tras el cierre del callback, aunque `createPostgresTransaction` debe prohibirlo. La espera por esa segunda sentencia podía quedar sin resolver. El test ahora comprueba expresamente `transaction_scope_closed`, ausencia de `SELECT second`, `ROLLBACK` y descarte del cliente, y consume la promesa rechazada sin rechazo no gestionado.
+- La protección de producción del adaptador no cambia. Verificar CI del último SHA antes de declarar este test acreditado.
