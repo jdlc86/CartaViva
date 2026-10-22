@@ -11,6 +11,19 @@ const validUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
+// Trusted adapters still cross a module boundary: reject accessor-backed
+// records before reading their fields or passing them to the writer.
+const dataRecord=v=>{
+ if(!plain(v))return false;
+ const keys=Reflect.ownKeys(v);
+ if(keys.length>64)return false;
+ return keys.every(key=>{
+  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+   return false;
+  const descriptor=Object.getOwnPropertyDescriptor(v,key);
+  return !!descriptor&&descriptor.enumerable&&own(descriptor,'value');
+ });
+};
 const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
  'requestKey','acceptanceToken','qrToken','customerSessionToken'];
@@ -87,7 +100,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId,
     qrToken,customerSessionToken
    });
-   if(!plain(context)||context.authorized!==true||context.canOrder!==true||
+   if(!dataRecord(context)||context.authorized!==true||context.canOrder!==true||
       context.tableId!==input.tableId||context.visitId!==input.visitId||
       context.actorId!==input.actorId||context.basketId!==input.basketId||
       typeof context.sessionId!=='string'||!context.sessionId)
@@ -96,21 +109,21 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     context,requestKey,requestFingerprint
    });
    if(replay!==null){
-    if(!plain(replay)||replay.requestFingerprint!==requestFingerprint||
-       !plain(replay.result)||!validUuid(replay.result.orderId))
+    if(!dataRecord(replay)||replay.requestFingerprint!==requestFingerprint||
+       !dataRecord(replay.result)||!validUuid(replay.result.orderId))
       throw Error('order_idempotency_conflict');
     return Object.freeze({status:'replayed',result:replay.result});
    }
    // Catalog lock and availability must remain held through persist/commit.
    const published=await repository.lockCatalog(query,{context,itemId:input.itemId});
-   if(!plain(published)||!Number.isSafeInteger(published.publishedRevision)||
-      published.publishedRevision<1||!plain(published.snapshot)||
+   if(!dataRecord(published)||!Number.isSafeInteger(published.publishedRevision)||
+      published.publishedRevision<1||!dataRecord(published.snapshot)||
       published.available!==true)
     throw Error('order_catalog_unavailable');
    const previous=await repository.loadPreviousQuote(query,{
     context,itemId:input.itemId,basketId:input.basketId,actorId:input.actorId
    });
-   if(!plain(previous))throw Error('order_previous_quote_unavailable');
+   if(!dataRecord(previous)||!dataRecord(previous.evidence))throw Error('order_previous_quote_unavailable');
    // A durable writer must bind its confirmation to the exact locked quote.
    if(!validUuid(previous.quoteId))
     throw Error('order_previous_quote_unavailable');
@@ -134,7 +147,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     acceptanceVerified:decision.acceptanceVerified,
     requiresAcceptance:decision.requiresAcceptance
    });
-   if(!plain(result)||!validUuid(result.orderId))
+   if(!dataRecord(result)||!validUuid(result.orderId))
     throw Error('invalid_order_persistence_result');
    return Object.freeze({status:'confirmed',result});
   });
