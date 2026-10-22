@@ -11,7 +11,7 @@ const context={tableId,sessionId,visitId:'visit-1',basketId:'basket-1',actorId:'
  authorized:true,canOrder:true};
 const evidence={schemaVersion:1,itemId,publishedRevision:1,itemName:'Plato CI',
  category:'Primeros',quantity:1,basePriceCents:1000,selected:[],allergens:[],
- discount:null,unitSubtotalCents:1000,unitDiscountCents:100,
+ discount:{type:'fixed',amountCents:100},unitSubtotalCents:1000,unitDiscountCents:100,
  subtotalCents:1000,discountCents:100,totalCents:900};
 const args={context,evidence,quoteId,orderId,requestKey:'request-001',
  requestFingerprint:'fingerprint',requiresAcceptance:false,acceptanceVerified:false};
@@ -52,6 +52,9 @@ test('invalid or spoofed persistence inputs never issue SQL',async()=>{
   {evidence:{...evidence,publishedRevision:0}},
   {evidence:{...evidence,schemaVersion:2}},
   {evidence:{...evidence,quantity:0}},
+  {evidence:{...evidence,discount:null}},
+  {evidence:{...evidence,basePriceCents:900}},
+  {evidence:{...evidence,selected:[{id:'x',name:'Extra',priceCents:100,allergens:[]}]}},
   {evidence:{...evidence,quantity:2}},
   {evidence:{...evidence,unitSubtotalCents:999}},
   {evidence:{...evidence,unitDiscountCents:99}},
@@ -87,4 +90,19 @@ test('quantity-scaled evidence is checked exactly with integer arithmetic',async
  await assert.rejects(writer.insertConfirmation(async()=>{throw Error('sql_called');},
   {...args,evidence:{...quantityTwo,totalCents:1799}}),
  /invalid_catalog_confirmation_attempt/);
+});
+
+test('price algorithm recalculates valid extras and percentage discount',async()=>{
+ const evidenceWithExtra={...evidence,basePriceCents:900,
+  selected:[{id:'extra',name:'Extra',priceCents:100,allergens:[]}],
+  discount:{type:'percent',basisPoints:1000},
+  unitSubtotalCents:1000,unitDiscountCents:100};
+ let count=0;
+ await writer.insertConfirmation(async()=>{count++;return {rows:[{order_id:orderId}]};},
+  {...args,evidence:evidenceWithExtra});
+ assert.equal(count,1);
+ await assert.rejects(writer.insertConfirmation(async()=>{count++;},
+  {...args,evidence:{...evidenceWithExtra,discount:{type:'percent',basisPoints:900}}}),
+  /invalid_catalog_confirmation_attempt/);
+ assert.equal(count,1);
 });
