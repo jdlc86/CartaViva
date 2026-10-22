@@ -57,3 +57,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `d63d74d`: incorpora el test al `postgres-migration-smoke.sh`, que crea y destruye PostgreSQL 17 sin red mediante Docker en CI.
 - La prueba reproduce la sentencia SQL del escritor, **no** ejecuta el módulo Node ni sustituye el gate de integración con driver PostgreSQL. Mantener cerrados los grants y las rutas HTTP hasta acreditar la integración completa.
 - Los workflows para `d63d74d` estaban en cola al redactar este hito; no asumir éxito antes de comprobarlos.
+
+## Carrera de confirmación abortada frente a otra confirmación (22-10-2026)
+
+- El commit `169580b` obtuvo Sabora CI SUCCESS (`39809019473`) y Bootstrap SUCCESS (`39809019556`).
+- `20ddeab` amplía el smoke de PostgreSQL 17 con una segunda carrera: una transacción retiene `FOR UPDATE` y revierte, mientras otra espera para confirmar. La confirmación superviviente debe ser `first`, escribir `first_confirmed_at` y producir exactamente un pedido y una línea de cocina. Un intento abortado no puede consumir la ventana de agrupación.
+- La prueba se ejecuta en el mismo contenedor aislado y desechable del pipeline; no crea grants ni endpoints. **Pendiente:** comprobar el CI de este SHA y ejecutar el coordinador Node completo sobre PostgreSQL 17 con un driver real. No desplegar ni hacer merge.
