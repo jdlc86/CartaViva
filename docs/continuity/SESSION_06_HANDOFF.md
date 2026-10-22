@@ -75,3 +75,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `8d962f6` amplía `catalog-confirmation-atomicity-smoke.sql` con dos actores diferentes que usan el mismo `request_key` sobre la misma mesa, sesión, visita y cesta. Ambos deben conservar sus propias cotizaciones y órdenes, con líneas de cocina independientes. La prueba se ejecuta bajo transacción y finaliza en `ROLLBACK` en PostgreSQL 17 desechable.
 - La unicidad se comprueba por alcance completo, no por clave global; no deben fusionarse pedidos de actores distintos. No se modifican migraciones, permisos ni endpoints.
 - El último SHA de este bloque requiere comprobar CI; no afirmar que el coordinador Node esté integrado con un driver real.
+
+## Corrección de regresión CI: aislamiento entre actores
+
+- `0fc80b0` falló en ambos workflows de PostgreSQL 17: al introducir una segunda cotización para el mismo `table_id` y `visit_id`, cuatro consultas anteriores `SELECT ... INTO STRICT` del smoke dejaron de ser únicas. Error reproducido en logs de Sabora CI `39812400070`: `query returned more than one row`.
+- `091e9c4` añade `actor_id='actor-atomic'` a las cuatro consultas de fixture existentes. El aislamiento entre actores se mantiene; el test ahora especifica el ámbito completo en vez de depender de que exista una única cotización en la mesa.
+- Revalidar ambos workflows antes de dar el hito por cerrado.
