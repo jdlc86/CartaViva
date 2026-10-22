@@ -28,6 +28,10 @@ export function createPostgresTransaction({ pool } = {}) {
       active = true;
       const result = await work(async (sql, parameters = []) => {
         if (!active) throw Error('transaction_scope_closed');
+        // The candidate exposes only parameterized text statements, never
+        // pg query-config objects or mutable/non-array parameter containers.
+        if (typeof sql !== 'string' || sql.trim().length === 0 ||
+            !Array.isArray(parameters)) throw Error('invalid_transaction_query');
         const operation = Promise.resolve().then(() => client.query(sql, parameters));
         inFlight.add(operation);
         try { return await operation; }
