@@ -9,7 +9,8 @@ const itemId='00000000-0000-4000-8000-000000000004';
 const contextArgs={tableId,visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci',
  qrToken:'q'.repeat(64),customerSessionToken:'s'.repeat(64)};
 const scope={authorized:true,canOrder:true,tableId,sessionId,
- visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci'};
+ visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci',
+ customerAlias:'Cliente',customerIdentifier:'SB-23456789ABCD'};
 test('composition cannot be created without an explicit durable writer',()=>{
  assert.throws(()=>createCatalogConfirmationRepository(),/invalid_catalog_confirmation_writer/);
  assert.throws(()=>createCatalogConfirmationRepository({persist:null}),/invalid_catalog_confirmation_writer/);
@@ -21,7 +22,8 @@ test('candidate composition locks visit before scoped replay and never exposes s
   statements.push({sql,parameters});
   if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
   if(sql.includes('FROM sabora.dining_tables'))return {rows:[{
-   table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci'
+   table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci',
+   customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'
   }]};
   if(sql.includes('FROM sabora.catalog_confirmation_attempts'))return {rows:[]};
   throw Error('unexpected_sql');
@@ -32,7 +34,7 @@ test('candidate composition locks visit before scoped replay and never exposes s
   context,requestKey:'request-001',requestFingerprint:'fingerprint'
  });
  assert.equal(replay,null);
- assert.match(statements[0].sql,/FOR SHARE OF t,v,s/);
+ assert.match(statements[0].sql,/FOR UPDATE OF t FOR SHARE OF v,s/);
  assert.match(statements[1].sql,/pg_advisory_xact_lock/);
  assert.match(statements[2].sql,/FOR UPDATE/);
  assert.equal(statements[0].parameters[3],contextArgs.qrToken);
