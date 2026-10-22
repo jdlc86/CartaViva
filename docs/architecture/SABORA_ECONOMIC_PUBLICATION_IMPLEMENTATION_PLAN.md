@@ -156,3 +156,8 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 ## Auditoría candidata de transiciones de mesa
 - `20261021280000_sabora_table_ordering_audit_candidate.sql` registra cada cambio de estado o plazo de pausa mediante trigger PostgreSQL, incluyendo sesión anterior/nueva, momento y estados. Tabla con RLS/FORCE RLS, sin permisos runtime, y disparador que impide UPDATE/DELETE. `catalog-table-ordering-audit-smoke.sql` prueba tres transiciones, rotación de sesión, inmutabilidad y ACL en PostgreSQL 17 aislado.
 - **Actor todavía no acreditado:** `actor_user_id` queda NULL deliberadamente. No se acepta identidad de una variable SQL manipulable por cliente. Antes de activar operaciones de personal, conectar sesión de empleado verificada y un mecanismo de atribución durable y no falsificable, además de permisos mínimos y pruebas de carrera.
+
+## Candidato de coordinación de transiciones con identidad de personal
+- `staff-table-transition-coordinator.mjs` recibe credencial opaca, mesa, destino y pausa. Rechaza campos inesperados (incluido actor enviado por navegador) y deriva `actorId` exclusivamente de `resolveStaffSession` dentro de la misma transacción que llama a la función SQL candidata. El adaptador parametriza todos los argumentos.
+- Tests comprueban sesión activa, rechazo de identidad suplantada, validación de estados, rollback y argumentos SQL.
+- **No es autenticación real:** `resolveStaffSession` es todavía un puerto sin implementación de backend, y la función SQL `SECURITY INVOKER` sigue sin permisos de runtime. La auditoría SQL no puede atribuir actor hasta disponer de procedencia verificable y operación de escritura autorizada. No montar HTTP.
