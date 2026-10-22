@@ -339,27 +339,20 @@ test('falsy thrown callback values are preserved even if release fails',async()=
  }
 });
 
-test('rollback drains queries spawned by an already detached query before releasing client',async()=>{
+test('a detached query cannot enqueue another SQL statement after callback abort',async()=>{
  const statements=[],releases=[];
- let firstStarted,finishFirst,secondStarted,finishSecond;
+ let firstStarted,finishFirst;
  const firstEntered=new Promise(resolve=>{firstStarted=resolve;});
  const firstGate=new Promise(resolve=>{finishFirst=resolve;});
- const secondEntered=new Promise(resolve=>{secondStarted=resolve;});
- const secondGate=new Promise(resolve=>{finishSecond=resolve;});
- let queryCapability;
+ let queryCapability,spawned;
  const client={
   async query(sql){
    statements.push(sql);
    if(sql==='SELECT first'){
     firstStarted();
     await firstGate;
-    // Simulate a continuation of an already in-flight query scheduling
-    // another query before the transaction boundary is closed.
-    void queryCapability('SELECT second');
-   }
-   if(sql==='SELECT second'){
-    secondStarted();
-    await secondGate;
+    // A late continuation must not schedule SQL after the scope closes.
+    spawned=queryCapability('SELECT second');
    }
    return {rows:[]};
   },
@@ -373,13 +366,12 @@ test('rollback drains queries spawned by an already detached query before releas
   throw Error('abort_with_detached_query');
  });
  await firstEntered;
+ // Let the callback failure close the transaction scope before resuming SQL.
+ await Promise.resolve();
  finishFirst();
- await secondEntered;
- assert.equal(statements.includes('ROLLBACK'),false);
- assert.equal(releases.length,0);
- finishSecond();
  await assert.rejects(pending,/abort_with_detached_query/);
- assert.deepEqual(statements,['BEGIN','SELECT first','SELECT second','ROLLBACK']);
+ await assert.rejects(spawned,/transaction_scope_closed/);
+ assert.deepEqual(statements,['BEGIN','SELECT first','ROLLBACK']);
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/abort_with_detached_query/);
 });
