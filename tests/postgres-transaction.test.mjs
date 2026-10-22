@@ -515,3 +515,22 @@ test('SQL parameter arrays cannot invoke getters or contain sparse and custom pr
  });
  assert.deepEqual(calls,['BEGIN','SELECT $1','COMMIT']);
 });
+
+test('SQL boundary enforces bounded UTF-8 strings and safe integer parameters',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{calls.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{
+  for(const value of [
+   'ñ'.repeat(32769), 'unsafe'+String.fromCharCode(0)+'text',
+   Number.MAX_SAFE_INTEGER+1,Number.MIN_SAFE_INTEGER-1,1.5
+  ]){
+   await assert.rejects(query('SELECT $1',[value]),/invalid_transaction_query/);
+  }
+  assert.deepEqual(calls,['BEGIN']);
+  await query('SELECT $1, $2, $3',['ñ'.repeat(32768),Number.MAX_SAFE_INTEGER,0]);
+ });
+ assert.deepEqual(calls,['BEGIN','SELECT $1, $2, $3','COMMIT']);
+});
