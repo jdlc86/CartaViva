@@ -91,3 +91,8 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 
 - `14061da` amplía la prueba SQL transaccional: el mismo actor, mesa, sesión y visita utiliza `request-atomic` en dos cestas diferentes. Deben persistir ledger, cotización y pedido independientes, y conservar su línea de cocina. La prueba comprueba además el caso anterior de actor diferente: tres entradas con la misma clave, tres órdenes distintas, sin mezclar alcances.
 - Se ejecuta únicamente en PostgreSQL 17 desechable y revierte toda la fixture; no altera permisos ni rutas. Comprobar CI del commit documental antes de cerrar el hito.
+
+## Corrección CI para fixture de cesta adicional
+
+- Sabora CI `39827769584` falló en PostgreSQL 17: el bloque `basket_isolation` seleccionaba `item_id INTO STRICT` desde varias cotizaciones de un mismo actor y cesta (la prueba de idempotencia admite múltiples cotizaciones históricas). El fallo fue `query returned more than one row`.
+- `553226f` limita la selección del identificador del ítem a una fila de fixture, sin reducir las comprobaciones de independencia entre cestas. Revisar los workflows del nuevo SHA.
