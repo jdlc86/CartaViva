@@ -34,3 +34,9 @@ Commits de implementación: `48a0709d73790481126b75994c50ae589cf683f0` y `3e7e86
 Nuevo `scripts/ci/staff-transition-activation-gate.sql` conectado a `scripts/ci/postgres-migration-smoke.sh`. Comprueba privilegios efectivos y ACL de PUBLIC para la función de transición y el ledger de auditoría; exige SECURITY INVOKER, RLS forzado y disparadores activos de captura, UPDATE/DELETE y TRUNCATE. Se ejecuta tras migraciones sobre PostgreSQL 17 aislado, sin tocar Supabase real.
 
 Este gate **protege la situación actual cerrada**; no implementa el escritor operativo ni sustituye los futuros ensayos de identidad y concurrencia. Commits de desarrollo: `ae7e7b97`, `e9da5700`, `796cc7b7`, `400eab29`. Confirmar Sabora CI y Bootstrap del HEAD exacto antes de marcarlo como validado.
+
+## Pruebas de transacción del personal (22-10-2026)
+
+Se incorpora `tests/staff-transition-transaction-boundary.test.mjs` con un harness de transacción simulado que verifica: consulta de membresía activa bajo `FOR SHARE`, sujeto firmado utilizado en SQL parametrizado, rechazo de camarero suspendido y cocina, rechazo de registros de membresía contradictorios, no acceso a DB con bearer inválido, rollback ante error de escritura y rechazo de resultados SQL de cardinalidad incorrecta.
+
+**Importante:** el harness verifica composición y orden lógico de las llamadas JavaScript, **no** reproduce bloqueos ni commit/rollback de PostgreSQL. Las pruebas de carreras reales existentes se mantienen separadas; siguen sin cubrir el pedido completo. No se han concedido permisos nuevos ni activado HTTP. Commit de pruebas: `9dd45c9ba92ec8c6458fdaba0c44546bdff09fcf`.
