@@ -128,3 +128,28 @@ test('ledger rejects sparse evidence arrays accessors cycles and hidden properti
  }
  assert.equal(calls,0);
 });
+
+test('standalone ledger rejects oversized nested JSON and multibyte strings before SQL',async()=>{
+ let calls=0;
+ const query=async()=>{calls++;throw Error('unexpected_SQL');};
+ const manyNodes=Array.from({length:16},()=>Array.from({length:300},()=>null));
+ const largeUtf8='ñ'.repeat(33000);
+ for(const malicious of [
+  {...evidence,unexpected:manyNodes},
+  {...evidence,unexpected:largeUtf8},
+  {...evidence,unexpected:{one:largeUtf8,two:largeUtf8}}
+ ]){
+  await assert.rejects(writer.insertConfirmation(query,{...args,evidence:malicious}),
+   /invalid_catalog_confirmation_attempt/);
+ }
+ assert.equal(calls,0);
+});
+
+test('standalone ledger accepts valid small immutable evidence after budget checks',async()=>{
+ let calls=0;
+ const result=await writer.insertConfirmation(async()=>{
+  calls++;return {rows:[{order_id:orderId}]};
+ },args);
+ assert.equal(result.orderId,orderId);
+ assert.equal(calls,1);
+});
