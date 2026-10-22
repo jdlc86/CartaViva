@@ -10,7 +10,8 @@ const snapshot={name:'Plato',category:'Segundos',priceCents:1000,allergens:[],
 const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
  selection:{extras:[]},quantity:1,
- requestKey:'request-001',acceptanceToken:null};
+ requestKey:'request-001',acceptanceToken:null,
+ qrToken:'q'.repeat(48),customerSessionToken:'s'.repeat(48)};
 const displayed=buildCatalogLineEvidence({itemId:input.itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 const make=(overrides={})=>{
@@ -207,4 +208,34 @@ test('a normal bounded confirmation still reaches the same locked workflow',asyn
  const result=await confirm({...input});
  assert.equal(result.status,'confirmed');
  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','COMMIT']);
+});
+
+test('confirmation refuses missing or malformed live visit credentials before SQL',async()=>{
+ const {confirm,calls}=make();
+ for(const overrides of [
+  {qrToken:undefined},{qrToken:'short'},{customerSessionToken:undefined},
+  {customerSessionToken:'short'}
+ ]){
+  await assert.rejects(confirm({...input,...overrides}),/invalid_confirmation_input/);
+ }
+ assert.deepEqual(calls,[]);
+});
+
+test('confirmation forwards live credentials only to locked context and not replay fingerprint',async()=>{
+ const calls=[];
+ let captured;
+ const {confirm}=make({lockContext:async(_query,args)=>{
+  captured=args;calls.push('context');
+  return {authorized:true,canOrder:true,tableId:input.tableId,visitId:input.visitId,
+   actorId:input.actorId,basketId:input.basketId,sessionId:'session-1'};
+ },lookupIdempotency:async(_query,args)=>{
+  assert.equal(args.requestFingerprint.includes(input.qrToken),false);
+  assert.equal(args.requestFingerprint.includes(input.customerSessionToken),false);
+  assert.equal(JSON.stringify(args).includes(input.qrToken),false);
+  return null;
+ }});
+ const result=await confirm(input);
+ assert.equal(result.status,'confirmed');
+ assert.equal(captured.qrToken,input.qrToken);
+ assert.equal(captured.customerSessionToken,input.customerSessionToken);
 });
