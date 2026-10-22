@@ -29,7 +29,10 @@ WITH instant AS (SELECT clock_timestamp() AS at),
   SELECT gen_random_uuid(),:'table_id',:'session_id',NULL,NULL,
    'Cliente','SB-23456789ABCD','visit-writer',
    '{"schemaVersion":1,"totalCents":1000}'::jsonb,instant.at,
-   'first',
+   CASE WHEN (SELECT first_confirmed_at FROM sabora.dining_tables WHERE id=:'table_id') IS NULL THEN 'first'
+    WHEN instant.at<(SELECT first_confirmed_at FROM sabora.dining_tables WHERE id=:'table_id')+
+     make_interval(secs=>(SELECT grouping_window_seconds FROM sabora.dining_tables WHERE id=:'table_id'))
+    THEN 'grouped' ELSE 'late' END,
    '[{"category":"starter","name":"Plato","quantity":1}]'::jsonb
   FROM instant
   RETURNING id,grouping,confirmed_at
@@ -48,6 +51,12 @@ SELECT 1 / CASE WHEN :'first_grouping'='first'
       WHERE id=:'table_id')
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'first_order_id')=1
  THEN 1 ELSE 0 END AS first_order_verified;
+
+-- A first confirmation must store exactly the confirmed order timestamp.
+SELECT 1 / CASE WHEN
+ (SELECT first_confirmed_at=confirmed_at FROM sabora.dining_tables t
+  CROSS JOIN sabora.orders o WHERE t.id=:'table_id' AND o.id=:'first_order_id')
+ THEN 1 ELSE 0 END AS first_timestamp_matches_order;
 
 -- Subsequent orders within the five-minute window must group.
 WITH instant AS (SELECT clock_timestamp() AS at),
@@ -78,6 +87,12 @@ SELECT 1 / CASE WHEN :'grouped_grouping'='grouped'
  AND :'grouped_timestamp_written'='f'
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'grouped_order_id')=1
  THEN 1 ELSE 0 END AS grouped_order_verified;
+
+-- Grouped confirmation must leave the first-order timestamp unchanged.
+SELECT 1 / CASE WHEN
+ (SELECT first_confirmed_at=confirmed_at FROM sabora.dining_tables t
+  CROSS JOIN sabora.orders o WHERE t.id=:'table_id' AND o.id=:'first_order_id')
+ THEN 1 ELSE 0 END AS grouped_preserves_first_timestamp;
 
 -- Simulate expiry of the grouping window and verify the writer marks late.
 UPDATE sabora.dining_tables
