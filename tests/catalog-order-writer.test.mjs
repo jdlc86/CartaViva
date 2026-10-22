@@ -101,6 +101,8 @@ test('locked table state must be well-formed before an order or ledger INSERT',a
   {first_confirmed_at:null,grouping_window_seconds:0},
   {first_confirmed_at:null,grouping_window_seconds:-1},
   {first_confirmed_at:null,grouping_window_seconds:1.5},
+  {first_confirmed_at:null,grouping_window_seconds:2147483648},
+  {first_confirmed_at:null,grouping_window_seconds:Number.MAX_SAFE_INTEGER},
   {first_confirmed_at:'2026-10-22T12:00:00Z',grouping_window_seconds:300},
   {first_confirmed_at:new Date('invalid'),grouping_window_seconds:300}
  ];
