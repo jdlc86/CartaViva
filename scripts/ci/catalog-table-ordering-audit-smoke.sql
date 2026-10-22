@@ -27,6 +27,11 @@ BEGIN
   RAISE EXCEPTION 'audit delete succeeded';
  EXCEPTION WHEN insufficient_privilege THEN NULL;
  END;
+ BEGIN
+  EXECUTE 'TRUNCATE TABLE sabora.table_ordering_audit_candidate';
+  RAISE EXCEPTION 'audit truncate succeeded';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
 END $audit$;
 DO $acl$
 DECLARE r text;
