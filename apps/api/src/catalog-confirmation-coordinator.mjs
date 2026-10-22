@@ -13,6 +13,33 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
 const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
  'requestKey','acceptanceToken'];
+// Snapshot untrusted JSON data once, without invoking getters or accepting
+// prototypes, symbols, cycles, sparse arrays or dangerous property names.
+const snapshotInput=(value,seen=new Set(),depth=0)=>{
+ if(value===null||typeof value==='string'||typeof value==='boolean'||
+    (typeof value==='number'&&Number.isSafeInteger(value)))return value;
+ if(depth>16||typeof value!=='object'||seen.has(value)||
+    (!Array.isArray(value)&&!plain(value)))throw Error('invalid_confirmation_input');
+ seen.add(value);
+ const keys=Reflect.ownKeys(value);
+ if(keys.length>512)throw Error('invalid_confirmation_input');
+ const output=Array.isArray(value)?[]:Object.create(null);
+ if(Array.isArray(value)&&keys.filter(k=>k!=='length').length!==value.length)
+  throw Error('invalid_confirmation_input');
+ for(const key of keys){
+  if(key==='length'&&Array.isArray(value))continue;
+  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+   throw Error('invalid_confirmation_input');
+  const descriptor=Object.getOwnPropertyDescriptor(value,key);
+  if(!descriptor||!descriptor.enumerable||!own(descriptor,'value'))
+   throw Error('invalid_confirmation_input');
+  if(Array.isArray(value)&&(!/^(0|[1-9][0-9]*)$/.test(key)||
+     Number(key)>=value.length))throw Error('invalid_confirmation_input');
+  output[key]=snapshotInput(descriptor.value,seen,depth+1);
+ }
+ seen.delete(value);
+ return output;
+};
 const stable=v=>{
  if(Array.isArray(v))return '['+v.map(stable).join(',')+']';
  if(plain(v))return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}';
@@ -25,7 +52,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     requiredMethods.some(name=>typeof repository[name]!=='function')||
     typeof clock!=='function'||typeof secretKey!=='string'||Buffer.byteLength(secretKey)<32)
   throw Error('invalid_confirmation_coordinator');
- return async function confirm(input){
+ return async function confirm(rawInput){
+  const input=snapshotInput(rawInput);
   if(!plain(input)||Object.keys(input).some(k=>!payloadKeys.includes(k))||
      payloadKeys.slice(0,-1).some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
