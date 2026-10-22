@@ -19,12 +19,14 @@ const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
 function fixture({revoked=false,soldOut=false,storedFingerprint=null,
- persistedFails=false,revision=1}={}){
+ persistedFails=false,revision=1,activeQr=input.qrToken,
+ activeSessionToken=input.customerSessionToken}={}){
  const statements=[],events=[];
  let persisted=0;
  const query=async(sql,args)=>{
   statements.push({sql,args});
-  if(sql.includes('FROM sabora.dining_tables'))return {rows:revoked?[]:[{
+  if(sql.includes('FROM sabora.dining_tables'))return {rows:(revoked||
+   args[3]!==activeQr||args[4]!==activeSessionToken)?[]:[{
    table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId
   }]};
   if(sql.includes('FROM sabora.catalog_confirmation_attempts'))
@@ -131,4 +133,26 @@ test('same scoped replay is returned before catalog and writer',async()=>{
  const result=await confirm(input);
  assert.equal(result.status,'replayed');
  assert.equal(result.result.orderId,orderId);
+});
+
+test('rotated QR rejects replay and any economic read even with matching request key',async()=>{
+ const f=fixture({activeQr:'r'.repeat(64),storedFingerprint:'prior'});
+ await assert.rejects(f.confirm(input),/order_context_forbidden/);
+ assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+ assert.equal(f.statements.length,1);
+ assert.equal(f.persisted,0);
+});
+test('revoked customer bearer rejects replay before any catalog read',async()=>{
+ const f=fixture({activeSessionToken:'n'.repeat(64),storedFingerprint:'prior'});
+ await assert.rejects(f.confirm(input),/order_context_forbidden/);
+ assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+ assert.equal(f.statements.length,1);
+ assert.equal(f.persisted,0);
+});
+test('conflicting idempotency fingerprint aborts without consulting catalog or writer',async()=>{
+ const f=fixture({storedFingerprint:'different_request'});
+ await assert.rejects(f.confirm(input),/order_idempotency_conflict/);
+ assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+ assert.equal(f.statements.length,2);
+ assert.equal(f.persisted,0);
 });
