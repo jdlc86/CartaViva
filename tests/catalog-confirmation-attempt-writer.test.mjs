@@ -52,6 +52,12 @@ test('invalid or spoofed persistence inputs never issue SQL',async()=>{
   {evidence:{...evidence,publishedRevision:0}},
   {evidence:{...evidence,schemaVersion:2}},
   {evidence:{...evidence,quantity:0}},
+  {evidence:{...evidence,quantity:2}},
+  {evidence:{...evidence,unitSubtotalCents:999}},
+  {evidence:{...evidence,unitDiscountCents:99}},
+  {evidence:{...evidence,category:'invalid'}},
+  {evidence:{...evidence,selected:[{id:'x',name:'Extra',priceCents:-1,allergens:[]}]}},
+  {evidence:{...evidence,allergens:[null]}},
   {evidence:{...evidence,selected:[undefined]}},
   {evidence:{...evidence,discount:()=>42}},
   {requiresAcceptance:true},{acceptanceVerified:true},
@@ -67,4 +73,18 @@ test('mismatched or malformed returning order id fails closed',async()=>{
   await assert.rejects(writer.insertConfirmation(async()=>response,args),
    /invalid_catalog_confirmation_attempt_result/);
  }
+});
+
+test('quantity-scaled evidence is checked exactly with integer arithmetic',async()=>{
+ const calls=[];
+ const quantityTwo={...evidence,quantity:2,subtotalCents:2000,
+  discountCents:200,totalCents:1800};
+ await writer.insertConfirmation(async(sql,params)=>{
+  calls.push(params);return {rows:[{order_id:orderId}]};
+ },{...args,evidence:quantityTwo});
+ assert.equal(calls.length,1);
+ assert.equal(JSON.parse(calls[0][9]).totalCents,1800);
+ await assert.rejects(writer.insertConfirmation(async()=>{throw Error('sql_called');},
+  {...args,evidence:{...quantityTwo,totalCents:1799}}),
+ /invalid_catalog_confirmation_attempt/);
 });
