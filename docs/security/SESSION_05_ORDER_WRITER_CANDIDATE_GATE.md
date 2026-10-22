@@ -119,3 +119,5 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Cada mutación se introduce dentro de una transacción temporal; el gate debe **rechazarla por la causa esperada**. El cierre de la conexión revierte cualquier alteración. Al final se vuelve a ejecutar el gate limpio para demostrar que las mutaciones no persistieron.
 - Integrado en `postgres-migration-smoke.sh`. Este control prueba que la barrera negativa detecta regresiones; **no** autoriza el rol futuro, ni sustituye la integración real Node–PostgreSQL y la auditoría individual.
 - Comprobar GitHub Actions del último SHA antes de considerar validado este hito.
+
+- Cobertura adicional de mutación: concesión `EXECUTE` de la RPC legacy `confirm_order` al rol `authenticated` y creación de una política RLS permisiva de lectura en `catalog_displayed_quotes`. Ambas deben producir rechazo específico del gate. Total: siete mutaciones aisladas.
