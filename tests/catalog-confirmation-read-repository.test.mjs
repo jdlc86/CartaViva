@@ -14,9 +14,13 @@ test('scoped idempotency lookup binds all six fields and locks existing row',asy
   calls.push({sql,args});return {rows:[{request_fingerprint:'fingerprint',order_id:orderId}]};
  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'});
  assert.deepEqual(result,{requestFingerprint:'fingerprint',result:{orderId}});
- assert.deepEqual(calls[0].args,[tableId,sessionId,'visit-1','basket-1','actor-1','request-001']);
- assert.match(calls[0].sql,/FOR UPDATE/);
- assert.doesNotMatch(calls[0].sql,/request-001/);
+ assert.equal(calls.length,2);
+ assert.match(calls[0].sql,/pg_advisory_xact_lock/);
+ assert.deepEqual(JSON.parse(calls[0].args[0]),
+  [tableId,sessionId,'visit-1','basket-1','actor-1','request-001']);
+ assert.deepEqual(calls[1].args,[tableId,sessionId,'visit-1','basket-1','actor-1','request-001']);
+ assert.match(calls[1].sql,/FOR UPDATE/);
+ assert.doesNotMatch(calls[1].sql,/request-001/);
 });
 test('missing idempotency record is not a replay',async()=>{
  assert.equal(await repo.lookupIdempotency(async()=>({rows:[]}),
@@ -103,4 +107,19 @@ test('every SQL confirmation reader refuses unauthorized or paused visit scope b
    /invalid_catalog_repository_scope/);
  }
  assert.equal(calls,0);
+});
+
+test('scoped advisory lock separates request keys, sessions and actors',async()=>{
+ const locks=[];
+ for(const [ctx,key] of [
+  [context,'request-001'],[context,'request-002'],
+  [{...context,sessionId:'00000000-0000-4000-8000-000000000006'},'request-001'],
+  [{...context,actorId:'actor-2'},'request-001']
+ ]){
+  await repo.lookupIdempotency(async(sql,args)=>{
+   if(sql.includes('pg_advisory_xact_lock'))locks.push(args[0]);
+   return {rows:[]};
+  },{context:ctx,requestKey:key,requestFingerprint:'fingerprint'});
+ }
+ assert.equal(new Set(locks).size,4);
 });
