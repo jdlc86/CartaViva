@@ -74,3 +74,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Nuevo `scripts/ci/catalog-profile-confirmation-concurrency-smoke.sh` ejecutado desde `postgres-migration-smoke.sh` contra PostgreSQL 17 desechable y sin red. Una transacción bloquea `customer_profiles` con `FOR SHARE`; otra intenta editar `alias`. La prueba exige observar una espera de tipo `Lock`, después completar ambas transacciones y verificar que la edición termina.
 - Esto acredita el conflicto de bloqueos PostgreSQL utilizado por `catalog-visit-context-repository.mjs`, pero **no** ejecuta aún el SELECT completo del módulo Node ni su transacción real. Se mantiene la puerta de integración Node/PG17 y los grants de runtime cerrados.
 - No se toca Supabase operativo, ni VPS compartido, ni Fleetia. Requiere comprobar el estado final de CI del commit.
+
+## Candidato Node con adaptador transaccional (22-10-2026)
+
+- `createCatalogOrderConfirmationPoolCandidate` en `apps/api/src/catalog-order-confirmation-candidate.mjs` ensambla el flujo de confirmación con el adaptador ya existente `createPostgresTransaction({pool})`. Se inyecta el pool; **no se crea ni configura una conexión operativa**.
+- `tests/catalog-order-confirmation-pool-candidate.test.mjs` verifica el límite de cliente único con doble de pool: `BEGIN` y `COMMIT` para confirmación; `BEGIN` y `ROLLBACK` ante fallo de ledger o visita revocada; liberación de cliente; pedido y ledger en el mismo contexto.
+- El escritor valida ahora alias con el máximo de 80 caracteres Unicode del perfil, no 160. El quote del test se deriva del constructor económico canónico.
+- **Aún no acreditado:** ejecución real de código Node sobre PostgreSQL 17 (sin dependencia `pg` en el paquete API), permisos mínimos del rol dedicado, RLS, integración HTTP y pruebas de carreras del flujo completo. La activación continúa bloqueada.
