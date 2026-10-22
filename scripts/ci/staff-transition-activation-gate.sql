@@ -15,7 +15,10 @@ BEGIN
     SELECT 1 FROM pg_proc p
     WHERE p.oid=transition_proc AND p.prosecdef=false
   ) THEN RAISE EXCEPTION 'staff transition must remain SECURITY INVOKER'; END IF;
-  FOREACH r IN ARRAY ARRAY['PUBLIC','anon','authenticated','sabora_admin_writer','sabora_catalog_reader'] LOOP
+  IF EXISTS (SELECT 1 FROM pg_proc p, LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE p.oid=fn AND a.grantee=0 AND a.privilege_type='EXECUTE') THEN
+    RAISE EXCEPTION 'unsafe transition EXECUTE granted to PUBLIC';
+  END IF;
+  FOREACH r IN ARRAY ARRAY['anon','authenticated','sabora_admin_writer','sabora_catalog_reader'] LOOP
     IF has_function_privilege(r,fn,'EXECUTE') THEN
       RAISE EXCEPTION 'unsafe transition EXECUTE granted to %',r;
     END IF;
@@ -23,7 +26,10 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_class c WHERE c.oid=audit AND c.relrowsecurity AND c.relforcerowsecurity
   ) THEN RAISE EXCEPTION 'audit ledger must FORCE RLS'; END IF;
-  FOREACH r IN ARRAY ARRAY['PUBLIC','anon','authenticated','sabora_admin_writer','sabora_catalog_reader'] LOOP
+  IF EXISTS (SELECT 1 FROM pg_class c, LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a WHERE c.oid=audit AND a.grantee=0) THEN
+    RAISE EXCEPTION 'unsafe audit ledger grant to PUBLIC';
+  END IF;
+  FOREACH r IN ARRAY ARRAY['anon','authenticated','sabora_admin_writer','sabora_catalog_reader'] LOOP
     IF has_table_privilege(r,audit,'SELECT')
       OR has_table_privilege(r,audit,'INSERT')
       OR has_table_privilege(r,audit,'UPDATE')
