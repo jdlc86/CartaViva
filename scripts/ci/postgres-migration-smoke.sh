@@ -19,7 +19,7 @@ for migration in supabase/migrations/*.sql; do
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
-docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
 # Exercise the actual candidate order CTE, kitchen trigger and grouping.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
@@ -28,7 +28,7 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
 # Prove order and economic confirmation commit/rollback together in PG17.
-docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-confirmation-atomicity-smoke.sql
 # Validate candidate durable visit grants in disposable PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
