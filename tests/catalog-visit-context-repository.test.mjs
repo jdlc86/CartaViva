@@ -9,7 +9,7 @@ const lock=createCatalogVisitContextRepository().lockContext;
 const profile={customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'};
 test('locked authorization binds QR, bearer session and durable visit',async()=>{
  const result=await lock(async(sql,args)=>{
-  assert.match(sql,/FOR UPDATE OF t FOR SHARE OF v,s/);
+  assert.match(sql,/FOR UPDATE OF t FOR SHARE OF v,s,p/);
   assert.match(sql,/JOIN sabora.customer_profiles AS p ON p.id=v.customer_id/);
   assert.match(sql,/v\.authorized_qr_version=t\.qr_version/);
   assert.match(sql,/t\.ordering_state='open'/);
@@ -53,5 +53,20 @@ test('closed or currently paused table is forbidden (no matching SQL row)',async
    return {rows:[]};
   },input);
   assert.deepEqual(result,{authorized:false,canOrder:false},state);
+ }
+});
+
+test('profile identity is rejected if alias or public identifier is malformed',async()=>{
+ for(const profilePatch of [
+  {customer_alias:' '.repeat(3)},
+  {customer_alias:'A'.repeat(81)},
+  {customer_alias:'Control\\nline'},
+  {customer_identifier:'SB-INVALID'},
+  {customer_identifier:null}
+ ]){
+  await assert.rejects(lock(async()=>({rows:[{
+   table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci',
+   ...profile,...profilePatch
+  }]}),input),/invalid_catalog_visit_response/);
  }
 });
