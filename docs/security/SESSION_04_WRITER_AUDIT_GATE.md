@@ -166,3 +166,9 @@ Este ensayo acredita el comportamiento transaccional de la base de datos en un c
 ## Consistencia del registro de aceptación económica (22-10-2026)
 
 Se añadieron dos casos negativos SQL a `catalog-confirmation-atomicity-smoke.sql`: `accepted_reprice=true` sin `accepted_at`, y `accepted_reprice=false` con marca temporal. Ambos deben fallar con `catalog_confirmation_acceptance_consistency` (commit `d87c6c5a`). Esto protege la coherencia estructural del ledger, **no** demuestra que la persona haya aceptado un cambio de precio; la aceptación explícita verificable sigue siendo requisito previo para activar el escritor.
+
+## Carrera de rollback frente a clave idempotente en PostgreSQL 17 (22-10-2026)
+
+`scripts/ci/catalog-quote-concurrency-smoke.sh` incorpora una segunda carrera de dos conexiones: la primera inserta una confirmación no confirmada y mantiene abierta su transacción; la segunda intenta la misma clave y debe quedar esperando en un bloqueo PostgreSQL. La primera hace `ROLLBACK`, la segunda continúa y confirma su propio intento. La comprobación final exige una única fila con la huella `recovered`, nunca la huella `rolled-back`. Commit `bdb8d807`.
+
+Esto complementa el caso previo en que gana la primera transacción con `COMMIT`. Ambas pruebas ejercitan restricciones de unicidad e integridad con SQL real y conexión de propietario del contenedor aislado. No acreditan todavía la implementación del escritor con identidad de runtime, consentimiento explícito ni permisos mínimos; no activar HTTP.
