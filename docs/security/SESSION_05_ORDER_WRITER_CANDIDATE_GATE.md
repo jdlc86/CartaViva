@@ -143,3 +143,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Nuevas regresiones del candidato con pool inyectado comprueban que campos económicos o de identidad ajenos al contrato (`priceCents`, `economicEvidence`, `publishedRevision`, `customerAlias`, `customerIdentifier`, `company`, `sessionId`) se rechazan **antes de adquirir conexión**.
 - También se rechazan getters de entrada, estructuras cíclicas y tokens de aceptación de tipo o tamaño incorrectos sin iniciar transacción. Los tests exigen cero llamadas a `pool.connect()`.
 - La validación temprana limita la superficie de ataque y el uso de conexiones; no acredita aún autenticación de red, rol SQL mínimo ni integración Node–PostgreSQL real.
+
+## Lectura estricta de evidencia numérica persistida
+
+- Se endureció `catalog-confirmation-read-repository.mjs` para aceptar revisiones e importes de PostgreSQL solo como enteros seguros de JavaScript o cadenas decimales canónicas no negativas. Se rechazan `null`, vacío, blancos, exponentes, signo explícito, ceros iniciales, fracciones y enteros fuera del rango seguro.
+- Motivo: `Number(null)`, `Number('')` y `Number('  ')` producen cero y podrían convertir un dato corrupto en una evidencia económica aparentemente válida.
+- Se añadieron regresiones de cada campo de cotización y de la revisión del catálogo. El lector falla cerrado sin conceder permisos nuevos ni activar rutas.
