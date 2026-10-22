@@ -110,6 +110,62 @@ SELECT 1 / CASE WHEN
  AND EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'committed_order_id')
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'committed_order_id')=1
  THEN 1 ELSE 0 END AS committed_pair_verified;
+-- A retry with the same scope/key must fail atomically, not leave an
+-- extra order or kitchen line if the unique ledger constraint rejects it.
+DO $duplicate_confirmation$
+DECLARE
+ v_table uuid;
+ v_session uuid;
+ v_item uuid;
+ v_quote uuid;
+ v_existing_order uuid;
+ v_duplicate_order uuid;
+ v_constraint text;
+ v_rejected boolean:=false;
+ v_before_orders bigint;
+ v_before_lines bigint;
+BEGIN
+ SELECT id,session_id INTO STRICT v_table,v_session
+ FROM sabora.dining_tables WHERE number=930101;
+ SELECT item_id,id INTO STRICT v_item,v_quote
+ FROM sabora.catalog_displayed_quotes
+ WHERE table_id=v_table AND visit_id='visit-atomic';
+ SELECT order_id INTO STRICT v_existing_order
+ FROM sabora.catalog_confirmation_attempts
+ WHERE table_id=v_table AND request_key='request-atomic';
+ SELECT count(*) INTO v_before_orders FROM sabora.orders WHERE table_id=v_table;
+ SELECT count(*) INTO v_before_lines FROM sabora.order_lines l
+ JOIN sabora.orders o ON o.id=l.order_id WHERE o.table_id=v_table;
+ BEGIN
+  INSERT INTO sabora.orders(
+   table_id,session_id,company,employee_number,confirmed_at,grouping,items)
+  VALUES(v_table,v_session,'CI','duplicate-attempt',now(),'grouped',
+   '[{"category":"main","name":"CI","quantity":1}]'::jsonb)
+  RETURNING id INTO v_duplicate_order;
+  INSERT INTO sabora.catalog_confirmation_attempts(
+   table_id,session_id,visit_id,basket_id,actor_id,item_id,
+   request_key,request_fingerprint,quote_id,economic_evidence,order_id)
+  VALUES(v_table,v_session,'visit-atomic','basket-atomic','actor-atomic',
+   v_item,'request-atomic','fingerprint-atomic',v_quote,
+   '{"schemaVersion":1,"totalCents":1000}'::jsonb,v_duplicate_order);
+  RAISE EXCEPTION 'duplicate confirmation unexpectedly accepted';
+ EXCEPTION WHEN unique_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=CONSTRAINT_NAME;
+  IF v_constraint<>'catalog_confirmation_idempotency' THEN
+   RAISE EXCEPTION 'unexpected duplicate constraint: %',v_constraint;
+  END IF;
+  v_rejected:=true;
+ END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'duplicate key was not rejected'; END IF;
+ IF (SELECT count(*) FROM sabora.orders WHERE table_id=v_table)<>v_before_orders
+ OR (SELECT count(*) FROM sabora.order_lines l JOIN sabora.orders o
+     ON o.id=l.order_id WHERE o.table_id=v_table)<>v_before_lines
+ OR (SELECT count(*) FROM sabora.catalog_confirmation_attempts
+     WHERE table_id=v_table AND request_key='request-atomic')<>1
+ OR (SELECT order_id FROM sabora.catalog_confirmation_attempts
+     WHERE table_id=v_table AND request_key='request-atomic')<>v_existing_order
+ THEN RAISE EXCEPTION 'duplicate attempt leaked an order, kitchen line or ledger mutation'; END IF;
+END $duplicate_confirmation$;
 -- Neither a fabricated acceptance timestamp nor a missing acceptance timestamp
 -- may be stored as evidence of a repricing decision.
 DO $acceptance_integrity$
