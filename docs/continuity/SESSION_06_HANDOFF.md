@@ -147,3 +147,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `a28135b`: el texto de cada sentencia SQL queda limitado a 65536 bytes UTF-8 y no admite NUL; rechaza antes del driver tanto SQL vacío como texto malformado o sobredimensionado. El control es adicional a la validación de parámetros.
 - `82d4fbe`: regresión de SQL con NUL, texto multibyte por encima del presupuesto y consulta válida.
 - Sigue pendiente la integración real Node–PostgreSQL 17, autorización del rol runtime mínimo y los contratos HTTP. Ninguna de estas defensas de transporte autoriza conectar el candidato a producción.
+
+## Contexto de confianza en los lectores del catálogo
+
+- `b463100`: los tres lectores transaccionales del catálogo (idempotencia, publicación y cotización) verifican primero que el contexto autorizado sea un registro simple con propiedades de datos propias, sin getters, símbolos, herencia ni claves peligrosas. Evita ejecutar getters al consultar los campos de ámbito.
+- `be7bc39`: nueve rechazos negativos (tres contextos por tres lectores), exigiendo cero getters ejecutados y cero sentencias SQL.
+- Sin nuevas conexiones ni permisos. La procedencia de `authorized/canOrder` sigue siendo el bloqueo de visita del backend; no se admiten flags suministrados por el cliente.
