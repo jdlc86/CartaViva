@@ -43,3 +43,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `ed2e5c8` acreditado por Sabora CI `39806156979` y Bootstrap `39806157027`, ambos SUCCESS.
 - `b08280d` / `0d14117`: cobertura del rechazo de reloj no funcional sin checkout y de COMMIT fallido que descarta la conexión del pool incluso si el intento de ROLLBACK se completa.
 - Este bloque es exclusivamente regresión del adaptador y no debe confundirse con integración Node/PG17: sigue pendiente driver real y entorno aislado. Mantener el PR Draft, sin despliegue ni concesiones SQL.
+
+## Bloque de seguridad: consultas desprendidas encadenadas
+
+- `1c2f333`: el gestor de transacciones espera a que se vacíe por completo el conjunto de consultas desprendidas antes de emitir ROLLBACK y liberar la conexión. La espera previa capturaba una sola instantánea; una consulta pendiente podía iniciar otra consulta mientras se resolvía.
+- `257d702`: prueba de regresión donde una consulta desprendida inicia otra al completarse. Debe prohibirse ROLLBACK y release hasta que la segunda haya finalizado. El error original se propaga y el cliente se descarta.
+- Esta corrección protege el límite de transacción; no representa validación real de PostgreSQL. El repositorio sigue sin integración Node/driver `pg` acreditada. La ejecución local no es posible en el shell actual: GitHub DNS no disponible y Docker ausente. La prueba debe acreditarse por GitHub Actions.
+- No modificar VPS compartido, Fleetia ni Supabase operativo. PR #2 Draft; sin merge ni despliegue.
