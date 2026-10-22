@@ -30,7 +30,7 @@ const row=(response)=>{
   throw Error('invalid_catalog_repository_response');
  if(response.rows.length===0)return null;
  const record=response.rows[0];
- if(!record||typeof record!=='object'||Array.isArray(record))
+ if(!safeRecord(record))
   throw Error('invalid_catalog_repository_response');
  return record;
 };
