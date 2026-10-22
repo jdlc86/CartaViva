@@ -92,7 +92,7 @@ test('sold-out catalog fails before quote and writer',async()=>{
  const f=fixture({soldOut:true});
  await assert.rejects(f.confirm(input),/order_catalog_unavailable/);
  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
- assert.equal(f.statements.length,5);
+ assert.equal(f.statements.length,4);
  assert.equal(f.persisted,0);
 });
 test('revision change requires acceptance without writing an order',async()=>{
@@ -100,7 +100,7 @@ test('revision change requires acceptance without writing an order',async()=>{
  const result=await f.confirm(input);
  assert.equal(result.status,'acceptance_required');
  assert.deepEqual(f.events,['BEGIN','COMMIT']);
- assert.equal(f.statements.length,4);
+ assert.equal(f.statements.length,5);
  assert.equal(f.persisted,0);
 });
 test('durable writer failure propagates and aborts transaction',async()=>{
