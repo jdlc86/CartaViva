@@ -16,7 +16,7 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
-function fixture({revoked=false,failLedger=false,soldOut=false}={}){
+function fixture({revoked=false,failLedger=false,soldOut=false,ledgerResponse}={}){
  const statements=[],events=[];
  const query=async(sql,args)=>{
   statements.push({sql,args});
@@ -37,7 +37,7 @@ function fixture({revoked=false,failLedger=false,soldOut=false}={}){
   if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first',first_timestamp_written:true}]};
   if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')){
    if(failLedger)throw Error('ledger_failure');
-   return {rows:[{order_id:orderId}]};
+   return ledgerResponse===undefined?{rows:[{order_id:orderId}]}:ledgerResponse;
   }
   throw Error('unexpected_sql');
  };
@@ -84,4 +84,18 @@ test('candidate ledger failure aborts the enclosing transaction',async()=>{
  await assert.rejects(f.confirm(input),/ledger_failure/);
  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
  assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),true);
+});
+
+test('malformed ledger RETURNING rolls back both order and occupancy in coordinator transaction',async()=>{
+ for(const ledgerResponse of [
+  null,{}, {rows:[]},{rows:[{}]},{rows:[{order_id:quoteId}]},
+  {rows:[{order_id:orderId},{order_id:orderId}]}
+ ]){
+  const f=fixture({ledgerResponse});
+  await assert.rejects(f.confirm(input),/invalid_catalog_confirmation_attempt_result/);
+  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+  assert.equal(f.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
+  assert.equal(f.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
+  assert.equal(f.statements.some(s=>s.sql.includes('COMMIT')),false);
+ }
 });
