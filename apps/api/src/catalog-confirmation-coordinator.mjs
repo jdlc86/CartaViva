@@ -15,7 +15,12 @@ const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection'
  'requestKey','acceptanceToken','qrToken','customerSessionToken'];
 // Snapshot untrusted JSON data once, without invoking getters or accepting
 // prototypes, symbols, cycles, sparse arrays or dangerous property names.
-const snapshotInput=(value,seen=new Set(),depth=0)=>{
+const snapshotInput=(value,seen=new Set(),depth=0,budget={nodes:0,bytes:0})=>{
+ if(++budget.nodes>4096)throw Error('invalid_confirmation_input');
+ if(typeof value==='string'){
+  budget.bytes+=Buffer.byteLength(value,'utf8');
+  if(budget.bytes>65536)throw Error('invalid_confirmation_input');
+ }
  if(value===null||typeof value==='string'||typeof value==='boolean'||
     (typeof value==='number'&&Number.isSafeInteger(value)))return value;
  if(depth>16||typeof value!=='object'||seen.has(value)||
@@ -35,7 +40,9 @@ const snapshotInput=(value,seen=new Set(),depth=0)=>{
    throw Error('invalid_confirmation_input');
   if(Array.isArray(value)&&(!/^(0|[1-9][0-9]*)$/.test(key)||
      Number(key)>=value.length))throw Error('invalid_confirmation_input');
-  output[key]=snapshotInput(descriptor.value,seen,depth+1);
+  budget.bytes+=Buffer.byteLength(key,'utf8');
+  if(budget.bytes>65536)throw Error('invalid_confirmation_input');
+  output[key]=snapshotInput(descriptor.value,seen,depth+1,budget);
  }
  seen.delete(value);
  return output;
