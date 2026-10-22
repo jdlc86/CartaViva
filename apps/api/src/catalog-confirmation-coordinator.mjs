@@ -60,9 +60,15 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
      !validId(input.actorId)||!validId(input.basketId))
    throw Error('invalid_confirmation_input');
   const {requestKey,acceptanceToken=null,...request}=input;
+  // A bounded canonical fingerprint prevents oversized client payloads from
+  // consuming unbounded CPU/memory before the transaction is opened.
   // No previous quote, price, revision or economic evidence is accepted from
   // the browser. The prior displayed quote must come from trusted storage.
   const requestFingerprint=stable(request);
+  if(Buffer.byteLength(requestFingerprint,'utf8')>16384||
+     (acceptanceToken!==null&&(typeof acceptanceToken!=='string'||
+      acceptanceToken.length>4096)))
+   throw Error('invalid_confirmation_input');
   return withTransaction(async query=>{
    // Locks the visit/table and checks authorization BEFORE looking up a replay.
    const context=await repository.lockContext(query,{
