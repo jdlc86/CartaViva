@@ -61,6 +61,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    // timestamp; coercion of null/strings is not a safe fallback.
    if(!occupancy||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
       occupancy.grouping_window_seconds<=0||
+      occupancy.grouping_window_seconds>2147483647||
       !(occupancy.first_confirmed_at===null||
         (occupancy.first_confirmed_at instanceof Date&&
          Number.isFinite(occupancy.first_confirmed_at.getTime()))))
