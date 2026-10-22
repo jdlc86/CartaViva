@@ -69,3 +69,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `46be57a`: el lector de idempotencia rechaza respuestas SQL con una fila de bloqueo consultivo malformada, antes de leer el ledger. Conserva compatibilidad con el adaptador de respuesta vacía ya contemplado en las pruebas existentes; no cambia el alcance ni los permisos SQL.
 - `2dab04b`: regresiones para valores nulos, escalares y arrays en la respuesta del driver, exigiendo que nunca se consulte el ledger después de detectar una fila inválida.
 - Validar ambos workflows del último SHA. La composición Node+PostgreSQL 17 sigue pendiente de ejecución real; no confundir con los smoke SQL ya acreditados.
+
+## Aislamiento de claves idempotentes entre clientes
+
+- `8d962f6` amplía `catalog-confirmation-atomicity-smoke.sql` con dos actores diferentes que usan el mismo `request_key` sobre la misma mesa, sesión, visita y cesta. Ambos deben conservar sus propias cotizaciones y órdenes, con líneas de cocina independientes. La prueba se ejecuta bajo transacción y finaliza en `ROLLBACK` en PostgreSQL 17 desechable.
+- La unicidad se comprueba por alcance completo, no por clave global; no deben fusionarse pedidos de actores distintos. No se modifican migraciones, permisos ni endpoints.
+- El último SHA de este bloque requiere comprobar CI; no afirmar que el coordinador Node esté integrado con un driver real.
