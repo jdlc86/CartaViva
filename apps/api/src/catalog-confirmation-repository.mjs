@@ -25,8 +25,8 @@ const validPersistArgs=v=>safeRecord(v)&&
  scope(v.context)&&opaque(v.requestKey)&&v.requestKey.length>=8&&
  typeof v.requestFingerprint==='string'&&v.requestFingerprint.length>0&&
  Buffer.byteLength(v.requestFingerprint,'utf8')<=16384&&
- uuid.test(v.quoteId)&&v.evidence!==null&&typeof v.evidence==='object'&&
- !Array.isArray(v.evidence)&&typeof v.acceptanceVerified==='boolean'&&
+ uuid.test(v.quoteId)&&safeRecord(v.evidence)&&
+ typeof v.acceptanceVerified==='boolean'&&
  typeof v.requiresAcceptance==='boolean'&&
  (!v.requiresAcceptance||v.acceptanceVerified);
 export function createCatalogConfirmationRepository({persist}={}){
