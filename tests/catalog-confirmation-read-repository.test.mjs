@@ -12,7 +12,7 @@ test('scoped idempotency lookup binds all six fields and locks existing row',asy
  const calls=[];
  const result=await repo.lookupIdempotency(async(sql,args)=>{
   calls.push({sql,args});return {rows:[{request_fingerprint:'fingerprint',order_id:orderId}]};
- },{context,requestKey:'request-001'});
+ },{context,requestKey:'request-001',requestFingerprint:'fingerprint'});
  assert.deepEqual(result,{requestFingerprint:'fingerprint',result:{orderId}});
  assert.deepEqual(calls[0].args,[tableId,sessionId,'visit-1','basket-1','actor-1','request-001']);
  assert.match(calls[0].sql,/FOR UPDATE/);
@@ -67,4 +67,15 @@ test('invalid scopes and unexpected duplicate rows never pass',async()=>{
   /invalid_catalog_repository_scope/);
  await assert.rejects(repo.lockCatalog(async()=>({rows:[{},{}]}),{context,itemId}),
   /invalid_catalog_repository_response/);
+});
+
+test('idempotency lookup rejects absent and oversized request fingerprints before SQL',async()=>{
+ let calls=0;
+ const query=async()=>{calls++;return {rows:[]};};
+ for(const fingerprint of [undefined,'','x'.repeat(16385)]){
+  await assert.rejects(repo.lookupIdempotency(query,{
+   context,requestKey:'request-001',requestFingerprint:fingerprint
+  }),/invalid_catalog_repository_scope/);
+ }
+ assert.equal(calls,0);
 });
