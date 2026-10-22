@@ -318,3 +318,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El validador `safeJson` del escritor económico independiente incorpora un presupuesto global de **4096 nodos** y **65536 bytes UTF-8** sumando nombres de propiedades y valores de texto. Los límites anteriores por profundidad, cardinalidad, prototipos, ciclos, getters y arrays dispersos permanecen.
 - No se confía únicamente en el `snapshotInput` del coordinador: una invocación directa del adaptador de ledger con estructura ramificada o texto multibyte excesivo también falla antes de ejecutar SQL.
 - Se añadieron pruebas negativas de ramificación y textos grandes, más un caso positivo pequeño. El bloque continúa desconectado de HTTP y producción.
+
+## Esquema económico cerrado en la frontera de persistencia
+
+- El adaptador privado de confirmación exige ahora el conjunto **exacto** de quince propiedades de evidencia producidas por `buildCatalogLineEvidence`; cada extra seleccionado exige exactamente `id`, `name`, `priceCents` y `allergens`.
+- El descuento admite únicamente `null`, `{type:'fixed',amountCents}` o `{type:'percent',basisPoints}`. Cualquier atributo adicional, incluso si no altera la aritmética, provoca `invalid_catalog_confirmation_attempt` antes de SQL.
+- Regresiones negativas cubren metadatos de precio o confianza introducidos por cliente, campos ocultos de extras y descuentos con propiedades mezcladas. La regresión positiva comprueba un descuento porcentual válido.
+- Esto complementa el presupuesto de recursos, el recálculo de precios y los bloqueos transaccionales; **no demuestra por sí solo** que la selección provenga del catálogo publicado. El candidato sigue sin grants, HTTP, pool operativo ni despliegue.
