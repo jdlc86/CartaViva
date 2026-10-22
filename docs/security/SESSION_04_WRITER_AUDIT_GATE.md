@@ -90,3 +90,9 @@ Sigue siendo un candidato no operativo: la comprobación de credenciales depende
 `tests/catalog-confirmation-repository.test.mjs` cubre ausencia de escritor, secuencia de lecturas, SQL parametrizado, exclusión de credenciales en la consulta de replay y rechazo de contexto no autorizado. Commits `99f001ab`, `463a1ba1`.
 
 **No operativo:** el adaptador de persistencia, permisos SQL de mínimo privilegio, auditoría atribuida y prueba de confirmación completa contra PostgreSQL 17 siguen pendientes. No hay activación HTTP ni despliegue.
+
+## Defensa en profundidad: contexto autorizado en lecturas (22-10-2026)
+
+El lector `catalog-confirmation-read-repository.mjs` exige ahora `authorized === true` y `canOrder === true` en sus tres métodos de lectura, antes de consultar SQL. Se añaden regresiones para contextos revocados o no autorizados, sin consultas ejecutadas (`9d4f29ae`, `60fbb00a`). Es una barrera de adaptador, no una prueba criptográfica de identidad ni sustituto de RLS; la autorización real sigue dependiendo del bloqueo y verificación de la visita con credenciales actuales.
+
+No hay cambios en permisos ni en la base operativa. La persistencia económica de pedidos y su auditoría siguen pendientes.
