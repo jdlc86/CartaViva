@@ -20,3 +20,10 @@ Los workflows del SHA previo `febb6dae3e3b5ab33fd62036767f77704f4736c4` finaliza
 2. Ejercitar confirmación, replay, rollback y carreras contra el esquema migrado, verificando estado persistido de pedidos, líneas y ledger.
 3. Acreditar rol SQL mínimo y atribución auditada antes de HTTP.
 4. Mantener PR #2 Draft; no merge, despliegue, acceso a Fleetia ni modificaciones en Supabase operativo.
+
+## Continuación: verificación y endurecimiento de fábrica
+
+- El HEAD anterior `f45ca8a512b37cc0829dc93fece451b8472bdf3c` completó Sabora CI `39804165361` y Bootstrap `39804165415`, ambos SUCCESS.
+- `d2e9e077`: la fábrica valida primero la dependencia transaccional y reutiliza el adaptador construido, sin crear conexiones.
+- `b7230c0e`: nuevas regresiones para generador de IDs inválido y fallo de BEGIN con descarte del cliente.
+- Los tests nuevos no sustituyen el gate pendiente de driver `pg` real con PostgreSQL 17 desechable. No se han otorgado permisos ni activado endpoints.
