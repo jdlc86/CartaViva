@@ -226,7 +226,8 @@ BEGIN
  SELECT item_id INTO STRICT v_item
  FROM sabora.catalog_displayed_quotes
  WHERE table_id=v_table AND visit_id='visit-atomic'
-  AND basket_id='basket-atomic' AND actor_id='actor-atomic';
+  AND basket_id='basket-atomic' AND actor_id='actor-atomic'
+ LIMIT 1;
  INSERT INTO sabora.catalog_displayed_quotes(
   table_id,session_id,visit_id,basket_id,actor_id,item_id,
   published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
