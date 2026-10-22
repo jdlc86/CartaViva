@@ -1,6 +1,8 @@
 // Candidate private transaction-bound ledger writer. No HTTP, DB pool,
 // grants or operational order creation. The caller must supply a verified
 // orderId produced by a separate trusted writer in the SAME transaction.
+import {priceCatalogLine} from './catalog-pricing.mjs';
+
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const opaque=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
@@ -22,8 +24,8 @@ const validEvidence=e=>{
   !Number.isSafeInteger(e.publishedRevision)||e.publishedRevision<=0||
   typeof e.itemName!=='string'||!e.itemName.trim()||
   [...e.itemName].length>160||!['Bebidas','Primeros','Segundos','Postres'].includes(e.category)||
-  !Number.isSafeInteger(e.quantity)||e.quantity<1||e.quantity>50||
-  !Array.isArray(e.selected)||e.selected.length>128||
+  !Number.isSafeInteger(e.quantity)||e.quantity<1||e.quantity>20||
+  !Array.isArray(e.selected)||e.selected.length>50||
   !e.selected.every(s=>plain(s)&&typeof s.id==='string'&&s.id.length>0&&
    typeof s.name==='string'&&s.name.trim().length>0&&money(s.priceCents)&&
    Array.isArray(s.allergens)&&s.allergens.every(a=>typeof a==='string'))||
@@ -35,6 +37,17 @@ const validEvidence=e=>{
   e.unitDiscountCents>e.unitSubtotalCents||
   e.discountCents>e.subtotalCents||
   e.totalCents!==e.subtotalCents-e.discountCents)return false;
+ let calculated;
+ try{
+  calculated=priceCatalogLine({
+   basePriceCents:e.basePriceCents,
+   extras:e.selected.map(s=>s.priceCents),
+   discount:e.discount,
+   quantity:e.quantity
+  });
+ }catch{return false;}
+ if(['unitSubtotalCents','unitDiscountCents','subtotalCents',
+     'discountCents','totalCents'].some(k=>calculated[k]!==e[k]))return false;
  const unitTotal=e.unitSubtotalCents-e.unitDiscountCents;
  return BigInt(e.unitSubtotalCents)*BigInt(e.quantity)===BigInt(e.subtotalCents)&&
   BigInt(e.unitDiscountCents)*BigInt(e.quantity)===BigInt(e.discountCents)&&
