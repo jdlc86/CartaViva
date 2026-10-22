@@ -40,3 +40,9 @@ Este gate **protege la situación actual cerrada**; no implementa el escritor op
 Se incorpora `tests/staff-transition-transaction-boundary.test.mjs` con un harness de transacción simulado que verifica: consulta de membresía activa bajo `FOR SHARE`, sujeto firmado utilizado en SQL parametrizado, rechazo de camarero suspendido y cocina, rechazo de registros de membresía contradictorios, no acceso a DB con bearer inválido, rollback ante error de escritura y rechazo de resultados SQL de cardinalidad incorrecta.
 
 **Importante:** el harness verifica composición y orden lógico de las llamadas JavaScript, **no** reproduce bloqueos ni commit/rollback de PostgreSQL. Las pruebas de carreras reales existentes se mantienen separadas; siguen sin cubrir el pedido completo. No se han concedido permisos nuevos ni activado HTTP. Commit de pruebas: `9dd45c9ba92ec8c6458fdaba0c44546bdff09fcf`.
+
+## Aislamiento de contexto de confirmación (22-10-2026)
+
+El coordinador candidato `apps/api/src/catalog-confirmation-coordinator.mjs` comprueba ahora que el contexto autorizado bloqueado devuelto por el repositorio coincide exactamente con `tableId`, `visitId`, `actorId` y `basketId` de la solicitud, y exige un `sessionId` no vacío. El rechazo se produce **antes** de buscar replays idempotentes. Pruebas negativas en `tests/catalog-confirmation-coordinator.test.mjs`.
+
+Commits: `91b927144c369b0fef3a920580051f40807fea0e` y `0e512fa69d8a9cad0c78b4950f2fc92899cbec44`. Es un endurecimiento del coordinador candidato: todavía falta conectar credenciales de cliente verificadas, escritor SQL mínimo, persistencia transaccional completa y auditoría atribuida. No autoriza activación de rutas.
