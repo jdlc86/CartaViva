@@ -21,6 +21,9 @@ done
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
+# Prove order and economic confirmation commit/rollback together in PG17.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \\
+ < scripts/ci/catalog-confirmation-atomicity-smoke.sql
 # Validate candidate durable visit grants in disposable PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-visit-ledger-smoke.sql
