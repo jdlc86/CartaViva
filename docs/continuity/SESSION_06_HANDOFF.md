@@ -172,3 +172,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `bb2472c`: `catalog-visit-context-repository.mjs` valida los descriptores del registro de entrada antes de desestructurar QR, token de sesión cliente, mesa, visita y actor. Rechaza getters, símbolos, claves peligrosas, herencia y estructuras desmesuradas.
 - `00da618`: regresión negativa con getter hostil en QR, contexto heredado y clave de prototipo; exige cero lecturas del getter y cero consultas SQL.
 - El bloqueo de visita sigue comprobando las credenciales y la ocupación mediante SQL parametrizado, dentro de la transacción del coordinador candidato. No se habilita endpoint ni permiso operativo. Verificar CI del HEAD antes de acreditar.
+
+## Frontera de filas SQL recibidas por los lectores candidatos
+
+- `696d55e` y `0b97837`: el lector de visita verifica que la fila de identidad devuelta sea un registro de datos simple antes de acceder a mesa, sesión, alias o identificador público; regresiones con getter, herencia y clave peligrosa.
+- `e3927e5` y `9630370`: el lector de catálogo aplica la misma defensa a filas de idempotencia, publicación y cotización; pruebas negativas exigen rechazo sin ejecutar getters de respuesta.
+- Los controles complementan el bloqueo SQL de visita y la validación económica, pero no reemplazan la integración Node–PostgreSQL 17 ni la acreditación del rol de mínimos privilegios. No se habilitan HTTP, grants, merge o despliegue.
