@@ -162,3 +162,7 @@ Se trata de una comprobación SQL de atomicidad de los ledgers candidatos bajo e
 La prueba de atomicidad de PostgreSQL 17 incorpora un escenario de fallo posterior al `INSERT` del pedido: intenta vincular una confirmación a una cotización de **otro artículo** y exige que PostgreSQL devuelva precisamente `catalog_confirmation_quote_scope`. Un subbloque de excepción comprueba que la inserción anterior del pedido también se revierte y que no queda un intento de confirmación huérfano. Commits `f71b8fdb`, `59fe360c`.
 
 Este ensayo acredita el comportamiento transaccional de la base de datos en un caso de fallo real, pero no sustituye el escritor autenticado y los tests completos de concurrencia/consentimiento. Ningún permiso ni endpoint nuevo se activa.
+
+## Consistencia del registro de aceptación económica (22-10-2026)
+
+Se añadieron dos casos negativos SQL a `catalog-confirmation-atomicity-smoke.sql`: `accepted_reprice=true` sin `accepted_at`, y `accepted_reprice=false` con marca temporal. Ambos deben fallar con `catalog_confirmation_acceptance_consistency` (commit `d87c6c5a`). Esto protege la coherencia estructural del ledger, **no** demuestra que la persona haya aceptado un cambio de precio; la aceptación explícita verificable sigue siendo requisito previo para activar el escritor.
