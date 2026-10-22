@@ -223,3 +223,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - `scripts/ci/catalog-order-writer-sql-smoke.sql` ahora devuelve el mismo indicador `(updated.id IS NOT NULL)` que el escritor Node y comprueba en PostgreSQL 17 aislado: `first=true`, `grouped=false` y `late=false`.
 - La prueba conserva la verificación de proyección de cocina, agrupación y reversión transaccional. No habilita acceso al escritor candidato ni cambia el esquema operativo.
+
+## Endurecimiento del adaptador de transacciones PostgreSQL
+
+- `apps/api/src/postgres-transaction.mjs` conserva la excepción SQL original si también falla `client.release()` al salir del bloque transaccional; el fallo de liberación queda adjunto como `releaseError` cuando el error original permite propiedades.
+- Si el `COMMIT` se completó pero falla `release()`, el adaptador devuelve un error, nunca un éxito silencioso. El llamador no debe reintentar a ciegas una confirmación cuyo estado de commit es incierto; debe utilizar idempotencia.
+- Cuatro pruebas nuevas cubren fallos simultáneos de consulta/liberación, `BEGIN`/liberación, `COMMIT`/liberación y liberación posterior a `COMMIT` exitoso. No se crea pool ni se habilita el escritor.
