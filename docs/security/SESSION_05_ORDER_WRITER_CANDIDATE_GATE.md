@@ -202,3 +202,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `scripts/ci/catalog-confirmation-activation-gate.sql` verifica explícitamente que `sabora_admin_writer` continúe sin `LOGIN`, `INHERIT`, `BYPASSRLS`, `SUPERUSER`, `CREATEROLE`, `CREATEDB` ni `REPLICATION`. No admite membresías SQL entrantes ni salientes.
 - `scripts/ci/catalog-confirmation-activation-gate-mutations.sh` añade cinco mutaciones de prueba aisladas: activar `INHERIT`, `LOGIN`, `BYPASSRLS` o establecer membresía en cualquiera de las dos direcciones con el lector. Cada mutación debe provocar rechazo de la puerta y revertirse al cerrar la conexión de CI.
 - Es una barrera preventiva adicional, no una concesión de privilegios ni autorización de despliegue.
+
+## Ampliación de mutaciones de privilegios administrativos
+
+- Cuatro pruebas adicionales fuerzan temporalmente `SUPERUSER`, `CREATEROLE`, `CREATEDB` y `REPLICATION` sobre el escritor dormido; la puerta debe rechazar cada atributo. Total de mutaciones nuevas de atributos y membresías en este bloque: nueve.
+- Se usa exclusivamente el contenedor PostgreSQL 17 desechable de CI. Cada alteración se ejecuta en una transacción descartada tras el rechazo; se repite la puerta sobre el estado restaurado.
