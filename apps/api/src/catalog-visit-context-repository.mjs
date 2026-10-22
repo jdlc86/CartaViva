@@ -50,6 +50,7 @@ export function createCatalogVisitContextRepository(){
     throw Error('invalid_catalog_visit_response');
    const record=response.rows[0];
    if(!record)return Object.freeze({authorized:false,canOrder:false});
+   if(!safeRecord(record))throw Error('invalid_catalog_visit_response');
    if(!uuid.test(record.table_id)||!uuid.test(record.session_id)||
       record.table_id.toLowerCase()!==tableId.toLowerCase()||
       record.visit_id!==visitId||record.actor_id!==actorId||
