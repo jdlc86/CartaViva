@@ -252,3 +252,28 @@ test('writer rejects hostile locked-table and INSERT response rows without execu
  }
  assert.equal(getterCalls,0);
 });
+
+test('forged and invalid PostgreSQL timestamps fail with domain error before INSERT',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ const forged=Object.create(Date.prototype);
+ const subclass=new (class CustomDate extends Date {})(0);
+ const timestampWithOverriddenMethod=new Date(0);
+ timestampWithOverriddenMethod.getTime=()=>{throw Error('must_not_call_overridden_getTime');};
+ for(const timestamp of [forged,subclass,new Date(NaN),'2026-10-22T12:00:00Z']){
+  let queries=0;
+  await assert.rejects(writer.persist(async()=>{
+   queries++;return {rows:[{first_confirmed_at:timestamp,grouping_window_seconds:300}]};
+  },args),error=>{
+   assert.equal(error.message,'invalid_catalog_order_table_state');return true;
+  });
+  assert.equal(queries,1);
+ }
+ let queries=0;
+ await writer.persist(async()=>{
+  queries++;
+  if(queries===1)return {rows:[{first_confirmed_at:timestampWithOverriddenMethod,grouping_window_seconds:300}]};
+  if(queries===2)return {rows:[{id:ids.orderId,grouping:'grouped',first_timestamp_written:false}]};
+  return {rows:[{order_id:ids.orderId}]};
+ },args);
+ assert.equal(queries,3);
+});
