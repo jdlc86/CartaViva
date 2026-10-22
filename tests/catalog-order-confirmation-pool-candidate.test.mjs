@@ -18,7 +18,7 @@ const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,sel
 
 function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false}={}){
  const statements=[],events=[];
- let releases=0,connects=0;
+ let releases=0,connects=0,storedAttempt=null;
  const client={
   async query(sql,args=[]){
    statements.push({sql,args});
@@ -33,7 +33,7 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
      visit_id:input.visitId,actor_id:input.actorId,
      customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'}]};
    if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
-   if(sql.includes('FROM sabora.catalog_confirmation_attempts'))return {rows:[]};
+   if(sql.includes('FROM sabora.catalog_confirmation_attempts'))return {rows:storedAttempt?[storedAttempt]:[]};
    if(sql.includes('FROM sabora.catalog_items'))return {rows:[{
     published_revision:'1',published_snapshot:snapshot,withdrawn_at:null,sold_out:false}]};
    if(sql.includes('FROM sabora.catalog_displayed_quotes'))return {rows:[{
@@ -44,6 +44,7 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
    if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first'}]};
    if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')){
     if(failLedger)throw Error('ledger_failure');
+    storedAttempt={request_fingerprint:args[7],order_id:orderId};
     return {rows:[{order_id:orderId}]};
    }
    throw Error('unexpected_sql');
@@ -96,4 +97,24 @@ test('failed rollback discards the PostgreSQL client after ledger error',async()
   error.message==='ledger_failure'&&error.rollbackError?.message==='rollback_failed');
  assert.deepEqual(h.events,['BEGIN','ROLLBACK','DISCARD']);
  assert.equal(h.releases,1);
+});
+
+test('pool candidate replays the same confirmed request without duplicate order or ledger writes',async()=>{
+ const h=harness();
+ assert.equal((await h.confirm(input)).status,'confirmed');
+ assert.equal((await h.confirm(input)).status,'replayed');
+ assert.equal(h.connects,2);
+ assert.equal(h.releases,2);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
+ assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE','BEGIN','COMMIT','RELEASE']);
+});
+
+test('pool candidate rejects a conflicting idempotency key without writing again',async()=>{
+ const h=harness();
+ await h.confirm(input);
+ await assert.rejects(h.confirm({...input,quantity:2}),/order_idempotency_conflict/);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
+ assert.equal(h.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
+ assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE','BEGIN','ROLLBACK','RELEASE']);
 });
