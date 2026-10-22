@@ -314,3 +314,43 @@ test('nested publication and quote evidence reject accessor and inherited record
  }
  assert.equal(getters,0);
 });
+
+test('catalog reader argument records reject getters and inherited properties before SQL',async()=>{
+ let getters=0,sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const good={context,itemId,requestKey:'request-001',requestFingerprint:'fingerprint'};
+ const accessor={...good};
+ Object.defineProperty(accessor,'context',{enumerable:true,get(){
+  getters++;throw Error('argument_getter');
+ }});
+ const inherited=Object.assign(Object.create({unsafe:true}),good);
+ const dangerous={...good};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:1});
+ for(const args of [accessor,inherited,dangerous]){
+  await assert.rejects(repo.lookupIdempotency(query,args),/invalid_catalog_repository_scope/);
+  await assert.rejects(repo.lockCatalog(query,args),/invalid_catalog_repository_scope/);
+  await assert.rejects(repo.loadPreviousQuote(query,args),/invalid_catalog_repository_scope/);
+ }
+ assert.equal(getters,0);
+ assert.equal(sqlCalls,0);
+});
+
+test('advisory lock rejects accessor-backed and inherited response rows before ledger read',async()=>{
+ let getters=0;
+ const accessor={};
+ Object.defineProperty(accessor,'pg_advisory_xact_lock',{enumerable:true,get(){
+  getters++;throw Error('advisory_getter');
+ }});
+ const inherited=Object.assign(Object.create({unsafe:true}),{pg_advisory_xact_lock:null});
+ const dangerous={pg_advisory_xact_lock:null};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:1});
+ for(const row of [accessor,inherited,dangerous]){
+  let queries=0;
+  await assert.rejects(repo.lookupIdempotency(async()=>{
+   queries++;return {rows:[row]};
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+  assert.equal(queries,1);
+ }
+ assert.equal(getters,0);
+});
