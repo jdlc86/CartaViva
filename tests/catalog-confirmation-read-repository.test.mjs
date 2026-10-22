@@ -293,3 +293,24 @@ test('catalog row decoding rejects accessor-backed and inherited SQL rows before
  }
  assert.equal(getterCalls,0);
 });
+
+test('nested publication and quote evidence reject accessor and inherited records',async()=>{
+ let getters=0;
+ const accessor={priceCents:1000};
+ Object.defineProperty(accessor,'discount',{enumerable:true,
+  get(){getters++;throw Error('unexpected_nested_getter');}});
+ const inherited=Object.assign(Object.create({unexpected:true}),{priceCents:1000});
+ const dangerous={priceCents:1000};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:1});
+ for(const nested of [accessor,inherited,dangerous]){
+  const catalog=await repo.lockCatalog(async()=>({rows:[{
+   published_revision:'3',published_snapshot:nested,withdrawn_at:null,sold_out:false
+  }]}),{context,itemId});
+  assert.equal(catalog.available,false);
+  await assert.rejects(repo.loadPreviousQuote(async()=>({rows:[{
+   id:quoteId,published_revision:'3',subtotal_cents:'1000',
+   discount_cents:'0',total_cents:'1000',evidence:nested
+  }]}),{context,itemId}),/invalid_catalog_repository_response/);
+ }
+ assert.equal(getters,0);
+});
