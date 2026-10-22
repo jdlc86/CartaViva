@@ -60,12 +60,12 @@ export function createCatalogConfirmationReadRepository(){
     `SELECT published_revision,published_snapshot,withdrawn_at,sold_out
        FROM sabora.catalog_items WHERE id=$1 FOR SHARE`,[itemId]));
    if(!record)return null;
-   const revision=Number(record.published_revision);
-   if(!safeDbInteger(record.published_revision)||revision<1||
+   if(!safeDbInteger(record.published_revision)||
+      Number(record.published_revision)<1||
       !record.published_snapshot||typeof record.published_snapshot!=='object'||
       Array.isArray(record.published_snapshot))
     return {available:false,publishedRevision:0,snapshot:null};
-   return {publishedRevision:revision,snapshot:record.published_snapshot,
+   return {publishedRevision:Number(record.published_revision),snapshot:record.published_snapshot,
     available:record.withdrawn_at===null&&record.sold_out===false};
   },
   async loadPreviousQuote(query,{context,itemId}={}){
@@ -82,16 +82,18 @@ export function createCatalogConfirmationReadRepository(){
      context.basketId,context.actorId,itemId]));
    if(!record)return null;
    const amountFields=['subtotal_cents','discount_cents','total_cents'];
+   if(!validItem(record.id)||!safeDbInteger(record.published_revision)||
+      Number(record.published_revision)<1||
+      amountFields.some(k=>!safeDbInteger(record[k])))
+    throw Error('invalid_catalog_repository_response');
    const amounts=amountFields.map(k=>Number(record[k]));
-   const revision=Number(record.published_revision);
-   if(!validItem(record.id)||!safeDbInteger(record.published_revision)||revision<1||
-      amountFields.some(k=>!safeDbInteger(record[k]))||
-      amounts.some(x=>!Number.isSafeInteger(x)||x<0)||
-      amounts[1]>amounts[0]||amounts[0]-amounts[1]!==amounts[2])
+   if(amounts.some(x=>x<0)||amounts[1]>amounts[0]||
+      amounts[0]-amounts[1]!==amounts[2])
     throw Error('invalid_catalog_repository_response');
    if(!record.evidence||typeof record.evidence!=='object'||Array.isArray(record.evidence))
     throw Error('invalid_catalog_repository_response');
-   return {quoteId:record.id,evidence:record.evidence,publishedRevision:revision,
+   return {quoteId:record.id,evidence:record.evidence,
+    publishedRevision:Number(record.published_revision),
     subtotalCents:amounts[0],discountCents:amounts[1],totalCents:amounts[2]};
   }
  });
