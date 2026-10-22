@@ -83,7 +83,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    if(!safeRecord(occupancy)||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
       occupancy.grouping_window_seconds<=0||
       occupancy.grouping_window_seconds>2147483647||
-      !validTimestamp(occupancy.first_confirmed_at)
+      !validTimestamp(occupancy.first_confirmed_at))
     throw Error('invalid_catalog_order_table_state');
    const result=await query(
     `WITH instant AS (SELECT clock_timestamp() AS at),
