@@ -8,6 +8,7 @@ export function createPostgresTransaction({ pool } = {}) {
     if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
       throw Error('invalid_transaction_client');
     }
+    let active = false;
     let began = false;
     let committed = false;
     let commitAttempted = false;
@@ -15,12 +16,18 @@ export function createPostgresTransaction({ pool } = {}) {
     try {
       await client.query('BEGIN');
       began = true;
-      const result = await work((sql, parameters = []) => client.query(sql, parameters));
+      active = true;
+      const result = await work((sql, parameters = []) => {
+        if (!active) throw Error('transaction_scope_closed');
+        return client.query(sql, parameters);
+      });
+      active = false;
       commitAttempted = true;
       await client.query('COMMIT');
       committed = true;
       return result;
     } catch (error) {
+      active = false;
       // A failed BEGIN or COMMIT may leave the connection state uncertain.
       // Never return an uncertain connection to the pool.
       if (!began || commitAttempted) discardClient = error;
@@ -33,6 +40,7 @@ export function createPostgresTransaction({ pool } = {}) {
       }
       throw error;
     } finally {
+      active = false;
       client.release(discardClient || undefined);
     }
   };
