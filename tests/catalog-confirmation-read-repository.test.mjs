@@ -211,3 +211,27 @@ test('malicious numeric objects and symbols never invoke user-defined coercion',
  }
  assert.equal(coercions,0);
 });
+
+test('malformed non-object SQL rows are not interpreted as absent catalog or quote',async()=>{
+ for(const malformed of [null,undefined,false,0,'',[],['unexpected']]){
+  let calls=0;
+  const query=async()=>{calls++;return {rows:[malformed]};};
+  await assert.rejects(repo.lockCatalog(query,{context,itemId}),
+   /invalid_catalog_repository_response/);
+  await assert.rejects(repo.loadPreviousQuote(query,{context,itemId}),
+   /invalid_catalog_repository_response/);
+  assert.equal(calls,2);
+ }
+});
+
+test('malformed idempotency ledger row aborts rather than creating another order',async()=>{
+ for(const malformed of [null,false,0,'',[]]){
+  let calls=0;
+  await assert.rejects(repo.lookupIdempotency(async()=>{
+   calls++;
+   return calls===1?{rows:[]}:{rows:[malformed]};
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+   /invalid_catalog_repository_response/);
+  assert.equal(calls,2);
+ }
+});
