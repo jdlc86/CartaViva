@@ -300,3 +300,22 @@ test('throwing release does not mask failed BEGIN',async()=>{
  });
  assert.deepEqual(statements,['BEGIN']);
 });
+
+test('frozen original error survives failed ROLLBACK and failed release',async()=>{
+ const original=Object.freeze(new Error('immutable_original_failure'));
+ const releases=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{
+   if(sql==='ROLLBACK')throw Error('rollback_failed');
+   return {rows:[]};
+  },
+  release:reason=>{releases.push(reason);throw Error('release_failed');}
+ })}});
+ await assert.rejects(withTransaction(async()=>{throw original;}),error=>{
+  assert.equal(error,original);
+  assert.equal(error.message,'immutable_original_failure');
+  return true;
+ });
+ assert.equal(releases.length,1);
+ assert.equal(releases[0]?.message,'rollback_failed');
+});
