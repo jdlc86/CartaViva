@@ -62,6 +62,21 @@ run_rejection "quote ledger truncate trigger disabled" \
 run_rejection "confirmation ledger idempotency uniqueness removed" \
  'ALTER TABLE sabora.catalog_confirmation_attempts DROP CONSTRAINT catalog_confirmation_idempotency;' \
  'missing economic idempotency unique constraint'
+run_rejection "candidate writer inherits privileges" \
+ 'ALTER ROLE sabora_admin_writer INHERIT;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer can login" \
+ 'ALTER ROLE sabora_admin_writer LOGIN;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer bypasses RLS" \
+ 'ALTER ROLE sabora_admin_writer BYPASSRLS;' \
+ 'candidate writer has unsafe role attributes'
+run_rejection "candidate writer becomes member of reader" \
+ 'GRANT sabora_staff_reader TO sabora_admin_writer;' \
+ 'candidate writer participates in role membership'
+run_rejection "candidate writer granted to reader" \
+ 'GRANT sabora_admin_writer TO sabora_staff_reader;' \
+ 'candidate writer participates in role membership'
 # All mutations must have been rolled back by connection termination.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$gate" >/dev/null
 printf 'Negative activation gate mutation regressions passed\n'
