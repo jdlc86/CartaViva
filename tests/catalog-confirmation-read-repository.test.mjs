@@ -187,3 +187,27 @@ test('advisory lock response cannot contain multiple rows',async()=>{
  /invalid_catalog_repository_response/);
  assert.equal(calls,1);
 });
+
+test('malicious numeric objects and symbols never invoke user-defined coercion',async()=>{
+ let coercions=0;
+ const hostile={valueOf(){coercions++;throw Error('unsafe_numeric_coercion');},
+  toString(){coercions++;throw Error('unsafe_numeric_coercion');}};
+ const baseline={id:quoteId,published_revision:'3',subtotal_cents:'1000',
+  discount_cents:'0',total_cents:'1000',evidence:{schemaVersion:1}};
+ for(const value of [Symbol('db-number'),hostile,[],true]){
+  const catalog=await repo.lockCatalog(async()=>({rows:[{
+   published_revision:value,published_snapshot:{priceCents:1000},
+   withdrawn_at:null,sold_out:false
+  }]}),{context,itemId});
+  assert.equal(catalog.available,false);
+  for(const field of ['published_revision','subtotal_cents','discount_cents','total_cents']){
+   await assert.rejects(repo.loadPreviousQuote(async()=>({rows:[{
+    ...baseline,[field]:value
+   }]}),{context,itemId}),error=>{
+    assert.equal(error.message,'invalid_catalog_repository_response');
+    return true;
+   });
+  }
+ }
+ assert.equal(coercions,0);
+});
