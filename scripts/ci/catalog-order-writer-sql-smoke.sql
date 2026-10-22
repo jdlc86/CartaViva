@@ -15,7 +15,7 @@ VALUES (:'table_id',:'session_id','visit-writer','basket-writer','actor-writer',
  RETURNING id AS quote_id \gset
 
 -- Match the writer's SELECT ... FOR UPDATE and INSERT ... CTE.
-SELECT first_confirmed_at AS first_at,grouping_window_seconds AS window_seconds
+SELECT grouping_window_seconds AS window_seconds
  FROM sabora.dining_tables
  WHERE id=:'table_id' AND session_id=:'session_id'
  AND ordering_state='open'
@@ -29,8 +29,7 @@ WITH instant AS (SELECT clock_timestamp() AS at),
   SELECT gen_random_uuid(),:'table_id',:'session_id',NULL,NULL,
    'Cliente','SB-23456789ABCD','visit-writer',
    '{"schemaVersion":1,"totalCents":1000}'::jsonb,instant.at,
-   CASE WHEN :'first_at' = '' THEN 'first'
-    ELSE 'grouped' END,
+   'first',
    '[{"category":"starter","name":"Plato","quantity":1}]'::jsonb
   FROM instant
   RETURNING id,grouping,confirmed_at
