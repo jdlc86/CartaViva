@@ -286,3 +286,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El presupuesto global impide que una estructura ramificada de muchos arrays u objetos pequeños eluda los límites por nivel y consuma memoria/CPU antes de abrir una transacción. La contabilidad UTF-8 evita confundir caracteres con bytes.
 - Pruebas negativas con más de 4096 nodos y texto multibyte sobredimensionado comprueban rechazo `invalid_confirmation_input` sin `BEGIN` ni consultas. Se conserva una prueba positiva de confirmación ordinaria.
 - No se conecta el candidato a HTTP ni se modifica el rol de escritura.
+
+## Respuestas SQL malformadas: distinguir ausencia de corrupción
+
+- El lector transaccional solo interpreta `rows: []` como ausencia de catálogo, cotización o confirmación previa. Si el driver devuelve una fila presente pero `null`, `undefined`, primitiva o array, rechaza con `invalid_catalog_repository_response`.
+- El caso es especialmente relevante para la idempotencia: una fila malformada no debe confundirse con ausencia de confirmación previa y provocar un segundo intento de escritura.
+- Regresiones cubren los tres lectores y garantizan que el rechazo se produce antes de cualquier operación de persistencia. No se habilitan conexiones, permisos, endpoints ni despliegues.
