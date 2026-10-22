@@ -132,3 +132,9 @@ La batería de integración candidata de confirmación añade escenarios de QR r
 `apps/api/src/catalog-confirmation-repository.mjs` valida ahora el alcance completo de la visita autorizada (mesa y sesión UUID, identificadores opacos, `authorized` y `canOrder`), clave y huella acotadas, UUID de cotización, evidencia económica y booleanos de aceptación antes de delegar al escritor inyectado. Un cambio de precio (`requiresAcceptance=true`) con `acceptanceVerified=false` se rechaza sin llamar al escritor. `tests/catalog-confirmation-repository.test.mjs` incluye casos negativos y ausencia de llamadas a persistencia. Commits `c0e9f4c7`, `f44a015f`.
 
 Esta barrera no prueba que el contexto provenga de una transacción real: **no debe exponerse como API de escritura** ni interpretarse como sustituto del rol SQL de mínimo privilegio, auditoría vinculada a identidad y confirmación económica duradera. No hay grants ni despliegue.
+
+## Gate reforzado de inmutabilidad económica (22-10-2026)
+
+La puerta SQL de activación `scripts/ci/catalog-confirmation-activation-gate.sql` comprueba también que **ambas** tablas económicas tengan activos los disparadores `BEFORE UPDATE OR DELETE` y `BEFORE TRUNCATE`, vinculados a `sabora.reject_catalog_ledger_mutation()`. La comprobación inspecciona los bits de evento de `pg_trigger`, exige `SECURITY INVOKER` y rechaza `EXECUTE` público sobre la función de rechazo. Este control complementa FORCE RLS y los permisos negativos ya verificados. Commits `07cafd2d` y `98bea456`.
+
+Se mantiene la limitación: la puerta comprueba el esquema y sus ACL en PostgreSQL 17 desechable; **no acredita todavía** escritor duradero, identidad SQL verificada ni una transacción real de pedido con consentimiento.
