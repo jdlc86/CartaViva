@@ -153,3 +153,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `b463100`: los tres lectores transaccionales del catálogo (idempotencia, publicación y cotización) verifican primero que el contexto autorizado sea un registro simple con propiedades de datos propias, sin getters, símbolos, herencia ni claves peligrosas. Evita ejecutar getters al consultar los campos de ámbito.
 - `be7bc39`: nueve rechazos negativos (tres contextos por tres lectores), exigiendo cero getters ejecutados y cero sentencias SQL.
 - Sin nuevas conexiones ni permisos. La procedencia de `authorized/canOrder` sigue siendo el bloqueo de visita del backend; no se admiten flags suministrados por el cliente.
+
+## Protección de argumentos del escritor compuesto
+
+- El HEAD `438b867` pasó Sabora CI `39845740607` y Bootstrap `39845740605`, ambos SUCCESS.
+- `fa96ad6`: la capa de composición `catalog-confirmation-repository.mjs` verifica que tanto los argumentos de persistencia como su contexto autorizado sean registros simples con propiedades de datos propias, sin getters, símbolos ni prototipos heredados. Esta validación sucede antes de invocar el escritor.
+- `749d0e3`: regresión que introduce getters hostiles en `requestKey` y `context.authorized`, más un objeto con prototipo heredado; exige cero ejecuciones de getters y cero invocaciones de persistencia.
+- El candidato permanece desconectado de HTTP, roles de runtime y Supabase operativo. Verificar CI sobre el nuevo HEAD antes de acreditar este bloque.
