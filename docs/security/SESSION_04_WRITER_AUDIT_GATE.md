@@ -70,3 +70,9 @@ Commits: `405efae8`, `55eb23b9`, `7a061233`, `f4f3bcac`, `65fb3dca`. Esta protec
 La prueba de consultas desacopladas fue corregida para esperar explícitamente el inicio de la consulta antes de liberarla (`6193ddb6`), evitando depender de una única microtarea. Se añaden casos que rechazan una consulta retenida durante un COMMIT pendiente y que comprueban rollback tras error de consulta (`c5c3ceef`). Estos son tests de control de vida de la conexión, no pruebas de concurrencia de pedidos contra PostgreSQL real.
 
 La aceptación depende de que los workflows del HEAD definitivo terminen SUCCESS; no basta con ejecuciones verdes de commits anteriores.
+
+## Lectura de idempotencia candidata (22-10-2026)
+
+`catalog-confirmation-read-repository.mjs` exige ahora una huella canónica no vacía y acotada (16 KiB) para consultar la idempotencia, además de rechazar huellas almacenadas malformadas. Las consultas siguen parametrizadas y acotadas por mesa, sesión, visita, cesta, actor y clave de solicitud. Las regresiones están en `tests/catalog-confirmation-read-repository.test.mjs` (commits `be9f0c24`, `388f52f3`, `b341d835`, `712acac0`).
+
+No hay cambio de permisos, endpoint ni activación. La huella es una comparación de identidad de petición, no un mecanismo criptográfico de autorización.
