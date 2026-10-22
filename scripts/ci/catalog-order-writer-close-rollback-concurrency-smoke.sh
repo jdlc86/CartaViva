@@ -51,7 +51,7 @@ writer_pid=$!
 blocked=0
 for attempt in $(seq 1 80); do
  n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
- "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%writer accepted table after staff close%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%writer rejected open table after staff close rollback%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
  if [[ "$n" == 1 ]]; then blocked=1; break; fi
  sleep 0.05
 done
