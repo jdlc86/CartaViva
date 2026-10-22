@@ -47,6 +47,21 @@ run_rejection "legacy confirm_order EXECUTE grant" \
 run_rejection "ledger permissive RLS policy" \
  'CREATE POLICY candidate_bad_reader ON sabora.catalog_displayed_quotes FOR SELECT TO authenticated USING (true);' \
  'economic ledger unexpectedly has runtime policy'
+run_rejection "orders UPDATE grant to catalog reader" \
+ 'GRANT UPDATE ON sabora.orders TO sabora_catalog_reader;' \
+ 'candidate order/ledger privilege leaked'
+run_rejection "quote ledger DELETE grant" \
+ 'GRANT DELETE ON sabora.catalog_displayed_quotes TO authenticated;' \
+ 'candidate order/ledger privilege leaked'
+run_rejection "confirmation ledger FORCE RLS removed" \
+ 'ALTER TABLE sabora.catalog_confirmation_attempts NO FORCE ROW LEVEL SECURITY;' \
+ 'economic ledger RLS not forced'
+run_rejection "quote ledger truncate trigger disabled" \
+ 'ALTER TABLE sabora.catalog_displayed_quotes DISABLE TRIGGER catalog_displayed_quotes_no_truncate;' \
+ 'economic ledger mutation guard missing or disabled'
+run_rejection "confirmation ledger idempotency uniqueness removed" \
+ 'ALTER TABLE sabora.catalog_confirmation_attempts DROP CONSTRAINT catalog_confirmation_idempotency;' \
+ 'missing economic idempotency unique constraint'
 # All mutations must have been rolled back by connection termination.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$gate" >/dev/null
 printf 'Negative activation gate mutation regressions passed\n'
