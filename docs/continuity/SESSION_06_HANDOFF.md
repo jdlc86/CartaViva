@@ -103,3 +103,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `8eeb1de` fija explícitamente `basket_id='basket-atomic'` en las cuatro consultas originales que recuperan cotizaciones para los bloques de atomicidad, duplicados, aislamiento de actor y consistencia de aceptación.
 - `4b2e773` añade un test Node rápido que exige ese alcance en las cuatro fixtures, conserva las dos pruebas de aislamiento y verifica el `ROLLBACK` final. Evita depender exclusivamente del smoke PostgreSQL más costoso para detectar este error.
 - Revalidar Sabora CI y Bootstrap en el último HEAD antes de acreditar el hito. Sin despliegue, migración operativa ni cambios de permisos.
+
+## Gate verde y endurecimiento de consultas transaccionales
+
+- El HEAD `b7fea5d` superó Sabora CI `39839770353` y Bootstrap `39839770350`, ambos SUCCESS. La regresión de múltiples cotizaciones y cestas queda acreditada en CI.
+- `1470127`: el adaptador de transacciones candidato acepta únicamente texto SQL no vacío y un array de parámetros; rechaza objetos de configuración del driver y contenedores de parámetros no válidos antes de acceder al cliente. Mantiene el cierre de ámbito y la semántica existente de rollback.
+- `f6e8f79`: regresiones Node para llamadas inválidas, consulta parametrizada válida, ausencia de SQL enviado al driver y rollback en error. No se habilitan rutas, roles, grants ni conexiones operativas.
+- Revalidar ambos workflows sobre el último HEAD.
