@@ -34,7 +34,7 @@ function fixture({revoked=false,failLedger=false,soldOut=false}={}){
    discount_cents:'0',total_cents:'1000',evidence}]};
   if(sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))
    return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-  if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first'}]};
+  if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first',first_timestamp_written:true}]};
   if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')){
    if(failLedger)throw Error('ledger_failure');
    return {rows:[{order_id:orderId}]};
