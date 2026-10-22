@@ -60,7 +60,7 @@ test('profile identity is rejected if alias or public identifier is malformed',a
  for(const profilePatch of [
   {customer_alias:' '.repeat(3)},
   {customer_alias:'A'.repeat(81)},
-  {customer_alias:'Control\\nline'},
+  {customer_alias:'Control\nline'},
   {customer_identifier:'SB-INVALID'},
   {customer_identifier:null}
  ]){
