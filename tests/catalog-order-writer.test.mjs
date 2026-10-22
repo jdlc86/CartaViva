@@ -21,22 +21,23 @@ test('candidate writes legacy kitchen projection and economic ledger on one quer
  const calls=[];
  const query=async(sql,params)=>{
   calls.push({sql,params});
-  if(calls.length===1)return {rows:[{id:ids.orderId,grouping:'first'}]};
+  if(calls.length===1)return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
+  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'first'}]};
   return {rows:[{order_id:ids.orderId}]};
  };
  const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
  assert.deepEqual(await writer.persist(query,args),{orderId:ids.orderId});
- assert.equal(calls.length,2);
- assert.match(calls[0].sql,/INSERT INTO sabora.orders/);
+ assert.equal(calls.length,3);
+ assert.match(calls[0].sql,/FOR UPDATE/);\n assert.match(calls[1].sql,/INSERT INTO sabora.orders/);
  assert.match(calls[0].sql,/FOR UPDATE/);
- assert.match(calls[0].sql,/UPDATE sabora.dining_tables/);
- assert.deepEqual(JSON.parse(calls[0].params[7]),
+ assert.match(calls[1].sql,/UPDATE sabora.dining_tables/);
+ assert.deepEqual(JSON.parse(calls[1].params[7]),
   [{category:'starter',name:'Plato',quantity:2}]);
- assert.deepEqual(JSON.parse(calls[0].params[6]),evidence);
- assert.equal(calls[0].params[3],context.customerAlias);
- assert.equal(calls[0].params[4],context.customerIdentifier);
- assert.match(calls[1].sql,/INSERT INTO sabora.catalog_confirmation_attempts/);
- assert.equal(calls[1].params[10],ids.orderId);
+ assert.deepEqual(JSON.parse(calls[1].params[6]),evidence);
+ assert.equal(calls[1].params[3],context.customerAlias);
+ assert.equal(calls[1].params[4],context.customerIdentifier);
+ assert.match(calls[2].sql,/INSERT INTO sabora.catalog_confirmation_attempts/);
+ assert.equal(calls[2].params[10],ids.orderId);
 });
 
 test('candidate fails closed on lost table or invalid identity before ledger',async()=>{
@@ -68,5 +69,5 @@ test('ledger rejection propagates to caller transaction rather than reporting su
   if(calls===1)return {rows:[{id:ids.orderId,grouping:'first'}]};
   throw Error('ledger_rejected');
  },args),/ledger_rejected/);
- assert.equal(calls,2);
+ assert.equal(calls,3);
 });
