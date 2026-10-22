@@ -239,3 +239,18 @@ test('confirmation forwards live credentials only to locked context and not repl
  assert.equal(captured.qrToken,input.qrToken);
  assert.equal(captured.customerSessionToken,input.customerSessionToken);
 });
+
+test('acceptance token is optional for unchanged published prices',async()=>{
+ const {confirm,calls}=make();
+ const {acceptanceToken,...withoutAcceptance}=input;
+ const result=await confirm(withoutAcceptance);
+ assert.equal(result.status,'confirmed');
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','COMMIT']);
+});
+
+test('missing required session credential is rejected before transaction',async()=>{
+ const {confirm,calls}=make();
+ const {customerSessionToken,...withoutSession}=input;
+ await assert.rejects(confirm(withoutSession),/invalid_confirmation_input/);
+ assert.deepEqual(calls,[]);
+});
