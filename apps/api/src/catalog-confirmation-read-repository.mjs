@@ -30,7 +30,8 @@ export function createCatalogConfirmationReadRepository(){
      context.basketId,context.actorId,requestKey]
    ));
    if(!record)return null;
-   if(typeof record.request_fingerprint!=='string'||!validItem(record.order_id))
+   if(typeof record.request_fingerprint!=='string'||!record.request_fingerprint||
+      Buffer.byteLength(record.request_fingerprint,'utf8')>16384||!validItem(record.order_id))
     throw Error('invalid_catalog_repository_response');
    return {requestFingerprint:record.request_fingerprint,
     result:{orderId:record.order_id}};
