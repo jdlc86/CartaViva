@@ -55,7 +55,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
  return async function confirm(rawInput){
   const input=snapshotInput(rawInput);
   if(!plain(input)||Object.keys(input).some(k=>!payloadKeys.includes(k))||
-     payloadKeys.slice(0,-1).some(k=>!own(input,k))||
+     ['tableId','visitId','basketId','actorId','itemId','selection','quantity',
+      'requestKey','qrToken','customerSessionToken'].some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
      !validId(input.actorId)||!validId(input.basketId)||
      typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
