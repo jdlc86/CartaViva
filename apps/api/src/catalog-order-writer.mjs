@@ -23,9 +23,11 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
       !opaque(args.context.actorId)||
       typeof args.context.customerAlias!=='string'||
       !args.context.customerAlias.trim()||
+      /[\u0000-\u001f\u007f]/u.test(args.context.customerAlias)||
       [...args.context.customerAlias].length>160||
       typeof args.context.customerIdentifier!=='string'||
       !args.context.customerIdentifier.trim()||
+      !/^SB-[2-9A-HJ-NP-Y]{12}$/.test(args.context.customerIdentifier)||
       [...args.context.customerIdentifier].length>80||!plain(args.evidence)||
       !Object.hasOwn(categories,args.evidence.category)||
       typeof args.evidence.itemName!=='string'||
