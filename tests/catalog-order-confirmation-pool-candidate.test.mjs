@@ -147,3 +147,36 @@ test('expired quote and sold-out catalog fail closed without order or ledger wri
   assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
  }
 });
+
+test('untrusted economic and identity fields are rejected before checking out a pool client',async()=>{
+ for(const injection of [
+  {customerAlias:'Impostor'}, {customerIdentifier:'SB-23456789ABCD'},
+  {company:'Fabricated'}, {priceCents:1}, {economicEvidence:{totalCents:1}},
+  {publishedRevision:999}, {sessionId}
+ ]){
+  const h=harness();
+  await assert.rejects(h.confirm({...input,...injection}),/invalid_confirmation_input/);
+  assert.equal(h.connects,0);
+  assert.deepEqual(h.events,[]);
+ }
+});
+
+test('malicious accessor and cyclic selection fail before transaction checkout',async()=>{
+ const getterInput={...input};
+ Object.defineProperty(getterInput,'quantity',{enumerable:true,get(){throw Error('getter_executed');}});
+ const cycle={};cycle.loop=cycle;
+ for(const payload of [getterInput,{...input,selection:cycle}]){
+  const h=harness();
+  await assert.rejects(h.confirm(payload),/invalid_confirmation_input/);
+  assert.equal(h.connects,0);
+  assert.deepEqual(h.events,[]);
+ }
+});
+
+test('malformed acceptance token is rejected before acquiring the database connection',async()=>{
+ for(const acceptanceToken of [42,{},'x'.repeat(4097)]){
+  const h=harness();
+  await assert.rejects(h.confirm({...input,acceptanceToken}),/invalid_confirmation_input/);
+  assert.equal(h.connects,0);
+ }
+});
