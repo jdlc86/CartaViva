@@ -100,3 +100,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `catalog-confirmation-activation-gate.sql` exige ahora que `sabora.orders` mantenga `FORCE ROW LEVEL SECURITY` y que sigan presentes y validadas las cinco restricciones de identidad/visita/evidencia económica candidatas. Si una migración posterior las elimina o deja sin validar, el pipeline de PostgreSQL 17 debe fallar.
 - Pruebas del escritor amplían rechazo de alias con controles, longitud mayor de 80 o solo espacios; también verifican que se persiste el alias confiable normalizado y la proyección de cocina deriva exclusivamente de evidencia.
 - Este gate comprueba existencia y estado de las restricciones, no demuestra permisos operativos, seguridad de conexión Node/PG real ni validez de políticas RLS para un rol dedicado. Mantener activación bloqueada.
+
+## Extensión de denegación de grants sobre pedidos (22-10-2026)
+
+- La puerta `catalog-confirmation-activation-gate.sql` comprueba ahora también `sabora.orders` frente a los roles `anon`, `authenticated`, `sabora_admin_writer`, `sabora_catalog_reader` y `sabora_staff_reader`. Rechaza cualquier permiso de tabla de lectura/escritura, truncado, referencias o triggers, además de los ledgers económicos.
+- Esto evita que el puente de identidad del pedido se vuelva escribible por un rol existente de forma accidental. Es un gate **negativo**: no crea el futuro rol del backend ni concede acceso.
+- El flujo Node completo sobre PG17 y el modelo de auditoría del actor permanecen pendientes. CI del nuevo HEAD debe comprobarse antes de considerar acreditado el cambio.
