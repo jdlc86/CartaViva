@@ -190,3 +190,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El escritor candidato comprueba que la fila `dining_tables FOR UPDATE` incluya `grouping_window_seconds` como entero seguro estrictamente positivo y `first_confirmed_at` como `null` o fecha JavaScript válida devuelta por el driver PostgreSQL.
 - Se rechazan estados malformados antes de cualquier `INSERT` de pedido o ledger. Pruebas negativas incluyen ventana nula, texto, cero, negativa o fraccionaria y fecha textual o inválida. Prueba positiva confirma la propagación de la fecha PostgreSQL al cálculo de agrupación.
 - No se alteran contratos de duración de ventana ni se concede acceso runtime. La verificación es una defensa adicional sobre las restricciones SQL.
+
+## Consistencia del grupo devuelto por el INSERT
+
+- El escritor exige que el resultado del `INSERT ... RETURNING` contenga `grouping` en `first/grouped/late`. Si la mesa bloqueada no tenía `first_confirmed_at`, solo acepta `first`; si ya tenía fecha, rechaza `first`.
+- El rechazo ocurre antes de insertar la confirmación económica; el gestor de transacciones del candidato revierte el pedido si la respuesta SQL es incoherente. Pruebas con adaptador inyectado cubren agrupaciones desconocidas y combinaciones imposibles.
+- No se interpreta esta validación como acreditación de permisos SQL runtime ni de integración real Node–PostgreSQL.
