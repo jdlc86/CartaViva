@@ -8,6 +8,7 @@ export function createPostgresTransaction({ pool } = {}) {
     if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
       throw Error('invalid_transaction_client');
     }
+    let pendingQueries = 0;
     let active = false;
     let began = false;
     let committed = false;
@@ -17,11 +18,14 @@ export function createPostgresTransaction({ pool } = {}) {
       await client.query('BEGIN');
       began = true;
       active = true;
-      const result = await work((sql, parameters = []) => {
+      const result = await work(async (sql, parameters = []) => {
         if (!active) throw Error('transaction_scope_closed');
-        return client.query(sql, parameters);
+        pendingQueries++;
+        try { return await client.query(sql, parameters); }
+        finally { pendingQueries--; }
       });
       active = false;
+      if (pendingQueries !== 0) throw Error('transaction_queries_not_awaited');
       commitAttempted = true;
       await client.query('COMMIT');
       committed = true;
