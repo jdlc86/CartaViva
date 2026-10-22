@@ -40,7 +40,10 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    const context=await repository.lockContext(query,{
     tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId
    });
-   if(!plain(context)||context.authorized!==true||context.canOrder!==true)
+   if(!plain(context)||context.authorized!==true||context.canOrder!==true||
+      context.tableId!==input.tableId||context.visitId!==input.visitId||
+      context.actorId!==input.actorId||context.basketId!==input.basketId||
+      typeof context.sessionId!=='string'||!context.sessionId)
     throw Error('order_context_forbidden');
    const replay=await repository.lookupIdempotency(query,{
     context,requestKey,requestFingerprint
