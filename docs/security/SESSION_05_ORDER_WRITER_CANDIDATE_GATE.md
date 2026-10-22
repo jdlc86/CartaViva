@@ -62,3 +62,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Ampliado `catalog-order-writer-sql-smoke.sql` con pedido posterior al vencimiento de la ventana, que debe clasificarse como `late` sin modificar `first_confirmed_at`. Se conserva cobertura de `first`, `grouped`, trigger de cocina y rollback.
 - **Limitación:** la carrera de cierre ejercita el bloqueo SQL del escritor, pero todavía no ejecuta el módulo Node ni una confirmación real completa en la primera sesión. No confundir esta prueba con acreditación end-to-end.
 - Las pruebas no conceden permisos de runtime y no tocan Supabase ni VPS. El PR continúa Draft y requiere acreditación CI del HEAD de este hito.
+
+## Identidad estable bajo bloqueo (22-10-2026)
+
+- El lector de visita ahora bloquea también la fila de `customer_profiles` con `FOR SHARE OF v,s,p`, mientras conserva `FOR UPDATE OF t`. Así la identidad atribuida al pedido no puede modificarse concurrentemente mediante una actualización del perfil durante la transacción de confirmación.
+- Se valida que el alias autenticado tenga 1–80 caracteres Unicode, no sea vacío y no contenga caracteres de control; el identificador público debe respetar `SB-[2-9A-HJ-NP-Y]{12}`. Las pruebas unitarias incluyen rechazos explícitos.
+- El bloqueo de perfil presupone que el flujo de edición del perfil usa UPDATE normal sobre la misma fila. La prueba de concurrencia entre edición de perfil y pedido real sigue pendiente, así como un adaptador Node conectado a PG17; este hito **no** autoriza endpoints ni roles de escritura.
