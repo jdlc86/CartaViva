@@ -26,16 +26,11 @@ VALUES (:'table_id',:'session_id','visit-atomic','basket-atomic','actor-atomic',
  :'item_id','request-atomic','fingerprint-atomic',:'quote_id',
  '{"schemaVersion":1,"totalCents":1000}'::jsonb,:'rolled_order_id');
 ROLLBACK TO SAVEPOINT before_order;
-DO $verify_rollback$
-BEGIN
- IF EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'rolled_order_id') THEN
-  RAISE EXCEPTION 'rolled-back order survived';
- END IF;
- IF EXISTS (SELECT 1 FROM sabora.catalog_confirmation_attempts
-   WHERE table_id=:'table_id' AND request_key='request-atomic') THEN
-  RAISE EXCEPTION 'rolled-back economic confirmation survived';
- END IF;
-END $verify_rollback$;
+SELECT 1 / CASE WHEN
+ NOT EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'rolled_order_id')
+ AND NOT EXISTS (SELECT 1 FROM sabora.catalog_confirmation_attempts
+  WHERE table_id=:'table_id' AND request_key='request-atomic')
+ THEN 1 ELSE 0 END AS rollback_atomicity_verified;
 -- After rollback the same idempotency key can be committed with a new order.
 INSERT INTO sabora.orders(
  table_id,session_id,company,employee_number,confirmed_at,grouping,items)
@@ -48,16 +43,11 @@ INSERT INTO sabora.catalog_confirmation_attempts(
 VALUES (:'table_id',:'session_id','visit-atomic','basket-atomic','actor-atomic',
  :'item_id','request-atomic','fingerprint-atomic',:'quote_id',
  '{"schemaVersion":1,"totalCents":1000}'::jsonb,:'committed_order_id');
-DO $verify_commit$
-BEGIN
- IF (SELECT count(*) FROM sabora.catalog_confirmation_attempts
-   WHERE table_id=:'table_id' AND request_key='request-atomic'
-    AND order_id=:'committed_order_id')<>1 THEN
-  RAISE EXCEPTION 'order confirmation did not persist exactly once';
- END IF;
- IF NOT EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'committed_order_id') THEN
-  RAISE EXCEPTION 'confirmed order is absent';
- END IF;
-END $verify_commit$;
+SELECT 1 / CASE WHEN
+ (SELECT count(*) FROM sabora.catalog_confirmation_attempts
+  WHERE table_id=:'table_id' AND request_key='request-atomic'
+   AND order_id=:'committed_order_id')=1
+ AND EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'committed_order_id')
+ THEN 1 ELSE 0 END AS committed_pair_verified;
 -- Fixture never persists beyond this test.
 ROLLBACK;
