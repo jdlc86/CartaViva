@@ -9,8 +9,10 @@ const quoteId='00000000-0000-4000-8000-000000000004';
 const orderId='00000000-0000-4000-8000-000000000005';
 const context={tableId,sessionId,visitId:'visit-1',basketId:'basket-1',actorId:'actor-1',
  authorized:true,canOrder:true};
-const evidence={schemaVersion:1,itemId,publishedRevision:1,subtotalCents:1000,
- discountCents:100,totalCents:900};
+const evidence={schemaVersion:1,itemId,publishedRevision:1,itemName:'Plato CI',
+ category:'Primeros',quantity:1,basePriceCents:1000,selected:[],allergens:[],
+ discount:null,unitSubtotalCents:1000,unitDiscountCents:100,
+ subtotalCents:1000,discountCents:100,totalCents:900};
 const args={context,evidence,quoteId,orderId,requestKey:'request-001',
  requestFingerprint:'fingerprint',requiresAcceptance:false,acceptanceVerified:false};
 const writer=createCatalogConfirmationAttemptWriter();
@@ -48,6 +50,10 @@ test('invalid or spoofed persistence inputs never issue SQL',async()=>{
   {evidence:{...evidence,totalCents:901}},
   {evidence:{...evidence,discountCents:-1}},
   {evidence:{...evidence,publishedRevision:0}},
+  {evidence:{...evidence,schemaVersion:2}},
+  {evidence:{...evidence,quantity:0}},
+  {evidence:{...evidence,selected:[undefined]}},
+  {evidence:{...evidence,discount:()=>42}},
   {requiresAcceptance:true},{acceptanceVerified:true},
   {acceptanceVerified:'true'},{evidence:null}
  ]){
