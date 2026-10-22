@@ -95,6 +95,18 @@ SQL
 echo 'PASS: concurrent confirmation idempotency (two independent PostgreSQL sessions)'
 
 
+# Separate order IDs are required because each confirmation may consume an
+# order_id only once, even when the idempotency request key is different.
+psql_ci <<'SQL'
+INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,confirmed_at,grouping,items)
+VALUES
+ ('00000000-0000-4000-8000-000000009107','00000000-0000-4000-8000-000000009101',
+  '00000000-0000-4000-8000-000000009102','CI','rollback',now(),'first',
+  '[{"category":"main","name":"CI","quantity":1}]'),
+ ('00000000-0000-4000-8000-000000009108','00000000-0000-4000-8000-000000009101',
+  '00000000-0000-4000-8000-000000009102','CI','recovery',now(),'grouped',
+  '[{"category":"main","name":"CI","quantity":1}]');
+SQL
 # Recovery race: an uncommitted attempt that rolls back must not poison the
 # idempotency key. The waiting transaction must be able to insert and commit.
 rollback_sql=$(cat <<'SQL'
@@ -106,7 +118,7 @@ VALUES
 ('00000000-0000-4000-8000-000000009101','00000000-0000-4000-8000-000000009102',
  'visit-ci','basket-ci','actor-ci','00000000-0000-4000-8000-000000009103',
  'concurrent-rollback','rolled-back','00000000-0000-4000-8000-000000009106',
- '{}','00000000-0000-4000-8000-000000009104');
+ '{}','00000000-0000-4000-8000-000000009107');
 SELECT pg_sleep(4);
 ROLLBACK;
 SQL
@@ -121,7 +133,7 @@ VALUES
 ('00000000-0000-4000-8000-000000009101','00000000-0000-4000-8000-000000009102',
  'visit-ci','basket-ci','actor-ci','00000000-0000-4000-8000-000000009103',
  'concurrent-rollback','recovered','00000000-0000-4000-8000-000000009106',
- '{}','00000000-0000-4000-8000-000000009105')
+ '{}','00000000-0000-4000-8000-000000009108')
 ON CONFLICT ON CONSTRAINT catalog_confirmation_idempotency DO NOTHING;
 COMMIT;
 SQL
