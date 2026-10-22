@@ -215,3 +215,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `e2f234f`: se sustituye la lectura directa de fechas de PostgreSQL por `validTimestamp`, que admite `null` o un `Date` genuino de prototipo esperado, comprueba el tiempo con el método intrínseco y rechaza falsificaciones sin propagar excepciones ajenas al dominio.
 - `b264b4b`: regresiones con `Date.prototype` falsificado, subclases, fechas inválidas y método `getTime` sobrescrito. La lectura malformada no debe llegar al INSERT; el método sobrescrito no debe invocarse.
 - El gate de activación sigue cerrado: integración real Node–PostgreSQL 17, auditoría de actor y privilegios SQL mínimos pendientes; ningún cambio operativo.
+
+## Incidencia CI: sintaxis del guard de timestamp (22 oct 2026)
+
+- Los workflows `39856328018` (Sabora CI) y `39856328309` (Bootstrap) terminaron en fallo; el log de tests identifica `SyntaxError: Unexpected token 'throw'` en `apps/api/src/catalog-order-writer.mjs:87`, con cuatro suites afectadas por la importación del módulo.
+- `c075a59` restaura el paréntesis de cierre omitido en `!validTimestamp(occupancy.first_confirmed_at))`. No modifica el criterio de validación.
+- No considerar verde hasta comprobar GitHub Actions del nuevo HEAD. Mantener gate de activación cerrado.
