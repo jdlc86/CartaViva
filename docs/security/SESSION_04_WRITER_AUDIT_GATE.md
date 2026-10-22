@@ -120,3 +120,9 @@ Además, el coordinador enumera expresamente campos obligatorios y trata `accept
 `scripts/ci/catalog-confirmation-activation-gate.sql` verifica en PostgreSQL 17 desechable que `anon`, `authenticated`, `sabora_admin_writer`, `sabora_catalog_reader` y `sabora_staff_reader` no tienen permisos directos sobre los dos ledgers económicos ni pueden ejecutar `sabora.confirm_order` (función histórica que no cumple el contrato económico nuevo). Exige FORCE RLS sin políticas y las restricciones SQL de idempotencia y pertenencia de cotización. Se integra en `scripts/ci/postgres-migration-smoke.sh` después de aplicar las migraciones en el contenedor sin red. Commits `f5f2cfb3`, `a255d412`.
 
 **Es un control de no activación, no un escritor operativo.** El propietario de la base de pruebas puede seguir ejecutando funciones históricas en sus fixtures; ninguna concesión a roles de runtime ni migración de producción queda autorizada por esta prueba.
+
+## Revalidación de credenciales antes de replay (22-10-2026)
+
+La batería de integración candidata de confirmación añade escenarios de QR rotado, bearer de sesión de cliente reemplazado y clave idempotente reutilizada con huella diferente. Se exige que un QR o bearer inválido aborte **antes de consultar idempotencia**, catálogo o escritor, incluso cuando exista un intento previo. Un replay con huella incompatible también aborta antes de catálogo. Pruebas con SQL simulado: `tests/catalog-confirmation-composed-flow.test.mjs` (`65d98120`, limpieza `d73db10d`).
+
+**Alcance:** el mock comprueba la secuencia y las condiciones de rechazo, pero no sustituye pruebas de rotación/revocación concurrente en PostgreSQL 17 con una identidad autenticada y permisos mínimos. Ninguna ruta HTTP o grant se activa.
