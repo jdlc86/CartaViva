@@ -50,7 +50,11 @@ export function createPostgresTransaction({ pool } = {}) {
           // The order writer passes a PostgreSQL timestamp as a Date. Copy it
           // too: cloning only the outer array would leave mutable timestamps.
           if (value instanceof Date) {
-            const milliseconds = Date.prototype.getTime.call(value);
+            if (Object.getPrototypeOf(value) !== Date.prototype)
+              throw Error('invalid_transaction_query');
+            let milliseconds;
+            try { milliseconds = Date.prototype.getTime.call(value); }
+            catch { throw Error('invalid_transaction_query'); }
             if (!Number.isFinite(milliseconds)) throw Error('invalid_transaction_query');
             return new Date(milliseconds);
           }
