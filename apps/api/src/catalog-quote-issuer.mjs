@@ -8,13 +8,42 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const methods=['lockContext','lockCatalog','insertDisplayedQuote'];
+const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
+// Freeze a detached representation of untrusted request data before inspecting
+// fields or opening a database transaction. Accessors must never execute.
+const snapshotInput=(value,seen=new Set(),depth=0)=>{
+ if(value===null||typeof value==='string'||typeof value==='boolean'||
+    (typeof value==='number'&&Number.isSafeInteger(value)))return value;
+ if(depth>16||typeof value!=='object'||seen.has(value)||
+    (!Array.isArray(value)&&!plain(value)))throw Error('invalid_catalog_quote_input');
+ seen.add(value);
+ const keys=Reflect.ownKeys(value);
+ if(keys.length>512)throw Error('invalid_catalog_quote_input');
+ const output=Array.isArray(value)?[]:Object.create(null);
+ if(Array.isArray(value)&&keys.filter(k=>k!=='length').length!==value.length)
+  throw Error('invalid_catalog_quote_input');
+ for(const key of keys){
+  if(key==='length'&&Array.isArray(value))continue;
+  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+   throw Error('invalid_catalog_quote_input');
+  const descriptor=Object.getOwnPropertyDescriptor(value,key);
+  if(!descriptor||!descriptor.enumerable||!own(descriptor,'value'))
+   throw Error('invalid_catalog_quote_input');
+  if(Array.isArray(value)&&(!/^(0|[1-9][0-9]*)$/.test(key)||
+     Number(key)>=value.length))throw Error('invalid_catalog_quote_input');
+  output[key]=snapshotInput(descriptor.value,seen,depth+1);
+ }
+ seen.delete(value);
+ return output;
+};
 export function createCatalogQuoteIssuer({withTransaction,repository,clock,ttlSeconds=300}={}){
  if(typeof withTransaction!=='function'||!plain(repository)||
     methods.some(k=>typeof repository[k]!=='function')||
     typeof clock!=='function'||!Number.isSafeInteger(ttlSeconds)||
     ttlSeconds<1||ttlSeconds>1800)
   throw Error('invalid_catalog_quote_issuer');
- return async function issue(input){
+ return async function issue(rawInput){
+  const input=snapshotInput(rawInput);
   if(!plain(input)||Object.keys(input).some(k=>!
     ['tableId','visitId','basketId','actorId','itemId','selection','quantity','qrToken','customerSessionToken'].includes(k))||
     !id(input.tableId)||!id(input.visitId)||!id(input.basketId)||
