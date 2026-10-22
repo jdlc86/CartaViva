@@ -36,7 +36,9 @@ const row=(response)=>{
 };
 export function createCatalogConfirmationReadRepository(){
  return Object.freeze({
-  async lookupIdempotency(query,{context,requestKey,requestFingerprint}={}){
+  async lookupIdempotency(query,args={}){
+   if(!safeRecord(args))throw Error('invalid_catalog_repository_scope');
+   const {context,requestKey,requestFingerprint}=args;
    if(typeof query!=='function'||!scope(context)||
       typeof requestKey!=='string'||!/^[A-Za-z0-9_-]{8,128}$/.test(requestKey)||
       typeof requestFingerprint!=='string'||!requestFingerprint||
@@ -52,8 +54,7 @@ export function createCatalogConfirmationReadRepository(){
    // Query errors are propagated. Drivers may return a void-valued row;
    // a valid response must still contain an array of result rows.
    if(!lockResponse||!Array.isArray(lockResponse.rows)||lockResponse.rows.length>1||
-      (lockResponse.rows.length===1&&(!lockResponse.rows[0]||
-       typeof lockResponse.rows[0]!=='object'||Array.isArray(lockResponse.rows[0]))))
+      (lockResponse.rows.length===1&&!safeRecord(lockResponse.rows[0])))
     throw Error('invalid_catalog_repository_response');
    const record=row(await query(
     `SELECT request_fingerprint,order_id
@@ -71,7 +72,9 @@ export function createCatalogConfirmationReadRepository(){
    return {requestFingerprint:record.request_fingerprint,
     result:{orderId:record.order_id}};
   },
-  async lockCatalog(query,{context,itemId}={}){
+  async lockCatalog(query,args={}){
+   if(!safeRecord(args))throw Error('invalid_catalog_repository_scope');
+   const {context,itemId}=args;
    if(typeof query!=='function'||!scope(context)||!validItem(itemId))
     throw Error('invalid_catalog_repository_scope');
    const record=row(await query(
@@ -85,7 +88,9 @@ export function createCatalogConfirmationReadRepository(){
    return {publishedRevision:Number(record.published_revision),snapshot:record.published_snapshot,
     available:record.withdrawn_at===null&&record.sold_out===false};
   },
-  async loadPreviousQuote(query,{context,itemId}={}){
+  async loadPreviousQuote(query,args={}){
+   if(!safeRecord(args))throw Error('invalid_catalog_repository_scope');
+   const {context,itemId}=args;
    if(typeof query!=='function'||!scope(context)||!validItem(itemId))
     throw Error('invalid_catalog_repository_scope');
    const record=row(await query(
