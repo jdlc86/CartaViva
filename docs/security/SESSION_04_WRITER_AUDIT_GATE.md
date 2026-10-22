@@ -126,3 +126,9 @@ Además, el coordinador enumera expresamente campos obligatorios y trata `accept
 La batería de integración candidata de confirmación añade escenarios de QR rotado, bearer de sesión de cliente reemplazado y clave idempotente reutilizada con huella diferente. Se exige que un QR o bearer inválido aborte **antes de consultar idempotencia**, catálogo o escritor, incluso cuando exista un intento previo. Un replay con huella incompatible también aborta antes de catálogo. Pruebas con SQL simulado: `tests/catalog-confirmation-composed-flow.test.mjs` (`65d98120`, limpieza `d73db10d`).
 
 **Alcance:** el mock comprueba la secuencia y las condiciones de rechazo, pero no sustituye pruebas de rotación/revocación concurrente en PostgreSQL 17 con una identidad autenticada y permisos mínimos. Ninguna ruta HTTP o grant se activa.
+
+## Puerta de persistencia candidata y consentimiento (22-10-2026)
+
+`apps/api/src/catalog-confirmation-repository.mjs` valida ahora el alcance completo de la visita autorizada (mesa y sesión UUID, identificadores opacos, `authorized` y `canOrder`), clave y huella acotadas, UUID de cotización, evidencia económica y booleanos de aceptación antes de delegar al escritor inyectado. Un cambio de precio (`requiresAcceptance=true`) con `acceptanceVerified=false` se rechaza sin llamar al escritor. `tests/catalog-confirmation-repository.test.mjs` incluye casos negativos y ausencia de llamadas a persistencia. Commits `c0e9f4c7`, `f44a015f`.
+
+Esta barrera no prueba que el contexto provenga de una transacción real: **no debe exponerse como API de escritura** ni interpretarse como sustituto del rol SQL de mínimo privilegio, auditoría vinculada a identidad y confirmación económica duradera. No hay grants ni despliegue.
