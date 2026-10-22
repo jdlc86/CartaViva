@@ -227,3 +227,19 @@ test('standalone ledger rejects inherited scope and forbidden own keys',async()=
  }
  assert.equal(sqlCalls,0);
 });
+
+test('ledger RETURNING row rejects accessors and inherited identity without getter execution',async()=>{
+ let getterCalls=0;
+ const accessor={};
+ Object.defineProperty(accessor,'order_id',{enumerable:true,get(){
+  getterCalls++;throw Error('hostile_ledger_getter');
+ }});
+ const inherited=Object.assign(Object.create({unexpected:true}),{order_id:orderId});
+ const dangerous={order_id:orderId};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:'bad'});
+ for(const row of [accessor,inherited,dangerous]){
+  await assert.rejects(writer.insertConfirmation(async()=>({rows:[row]}),args),
+   /invalid_catalog_confirmation_attempt_result/);
+ }
+ assert.equal(getterCalls,0);
+});
