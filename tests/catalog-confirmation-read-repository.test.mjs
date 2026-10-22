@@ -6,7 +6,7 @@ const sessionId='00000000-0000-4000-8000-000000000002';
 const itemId='00000000-0000-4000-8000-000000000003';
 const quoteId='00000000-0000-4000-8000-000000000004';
 const orderId='00000000-0000-4000-8000-000000000005';
-const context={tableId,sessionId,visitId:'visit-1',basketId:'basket-1',actorId:'actor-1'};
+const context={authorized:true,canOrder:true,tableId,sessionId,visitId:'visit-1',basketId:'basket-1',actorId:'actor-1'};
 const repo=createCatalogConfirmationReadRepository();
 test('scoped idempotency lookup binds all six fields and locks existing row',async()=>{
  const calls=[];
@@ -87,4 +87,20 @@ test('corrupt persisted replay fingerprint is rejected',async()=>{
   }]}),{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
   /invalid_catalog_repository_response/);
  }
+});
+
+test('every SQL confirmation reader refuses unauthorized or paused visit scope before query',async()=>{
+ let calls=0;
+ const query=async()=>{calls++;return {rows:[]};};
+ for(const patch of [{authorized:false},{canOrder:false},{authorized:undefined}]){
+  const invalid={...context,...patch};
+  await assert.rejects(repo.lookupIdempotency(query,{
+   context:invalid,requestKey:'request-001',requestFingerprint:'fingerprint'
+  }),/invalid_catalog_repository_scope/);
+  await assert.rejects(repo.lockCatalog(query,{context:invalid,itemId}),
+   /invalid_catalog_repository_scope/);
+  await assert.rejects(repo.loadPreviousQuote(query,{context:invalid,itemId}),
+   /invalid_catalog_repository_scope/);
+ }
+ assert.equal(calls,0);
 });
