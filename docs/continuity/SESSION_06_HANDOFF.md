@@ -185,3 +185,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `8826946`: los lectores de catálogo publicado y cotización rechazan ahora estructuras económicas anidadas con getters, propiedades heredadas o claves peligrosas. Una publicación inválida se considera no disponible; una cotización persistida inválida aborta la operación.
 - `da5a0b3`: regresiones negativas para ambos lectores; ningún getter hostil debe ejecutarse.
 - Esta defensa es de **forma de objeto**. No sustituye la validación económica de contenido ni las pruebas de ejecución real Node–PostgreSQL 17. El candidato sigue sin permisos de runtime ni conexión HTTP.
+
+## Límite de confianza del coordinador de confirmación
+
+- `428d1d3`: el coordinador comprueba descriptores de los resultados de los adaptadores antes de consultar sus campos: visita autorizada, replay, catálogo, cotización y resultado de persistencia. También exige registros simples para `published.snapshot` y `previous.evidence`.
+- `71b6132`: regresión que introduce un getter hostil en cada una de cinco etapas y exige `ROLLBACK` y error de dominio correspondiente sin ejecutar el getter.
+- No cambia el contrato de activación: candidato offline sin ruta HTTP, permisos de runtime, merge o despliegue. Validar el nuevo HEAD con GitHub Actions.
