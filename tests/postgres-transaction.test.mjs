@@ -415,3 +415,32 @@ test('invalid query shape does not mask callback error or leave transaction open
  assert.deepEqual(statements,['BEGIN','ROLLBACK']);
  assert.deepEqual(releases,[undefined]);
 });
+
+test('query snapshots positional parameter array before deferred driver execution',async()=>{
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async(sql,args)=>{statements.push([sql,args]);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{
+  const params=['original',42];
+  const pending=query('SELECT $1, $2',params);
+  params[0]='modified';
+  params.push('injected');
+  await pending;
+ });
+ assert.deepEqual(statements.map(([sql])=>sql),['BEGIN','SELECT $1, $2','COMMIT']);
+ assert.deepEqual(statements[1][1],['original',42]);
+});
+
+test('transaction rejects a query after the work callback resolves',async()=>{
+ let retained;
+ const statements=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{statements.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{retained=query;});
+ await assert.rejects(retained('SELECT after commit'),/transaction_scope_closed/);
+ assert.deepEqual(statements,['BEGIN','COMMIT']);
+});
