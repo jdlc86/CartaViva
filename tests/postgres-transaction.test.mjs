@@ -491,3 +491,27 @@ test('query boundary rejects mutable and nonserializable SQL bindings before dri
  });
  assert.deepEqual(calls,['BEGIN','SELECT $1, $2, $3, $4, $5','COMMIT']);
 });
+
+test('SQL parameter arrays cannot invoke getters or contain sparse and custom properties',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{calls.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ let getters=0;
+ const accessor=[123];
+ Object.defineProperty(accessor,'0',{enumerable:true,configurable:true,
+  get(){getters++;throw Error('untrusted_getter');}});
+ const sparse=new Array(2);sparse[1]='present';
+ const extra=['safe'];extra.unexpected='hidden';
+ const inherited=['safe'];Object.setPrototypeOf(inherited,Array.prototype.concat([]));
+ await withTransaction(async query=>{
+  for(const params of [accessor,sparse,extra,inherited,new Array(257).fill(null)]){
+   await assert.rejects(query('SELECT $1',params),/invalid_transaction_query/);
+  }
+  assert.equal(getters,0);
+  assert.deepEqual(calls,['BEGIN']);
+  await query('SELECT $1',['safe']);
+ });
+ assert.deepEqual(calls,['BEGIN','SELECT $1','COMMIT']);
+});
