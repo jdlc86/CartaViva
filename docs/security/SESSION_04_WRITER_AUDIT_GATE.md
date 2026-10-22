@@ -108,3 +108,9 @@ La copia defensiva no autentica la visita ni autoriza importes; la evidencia eco
 `apps/api/src/catalog-quote-repository.mjs` compone la lectura autorizada de visita, el bloqueo de publicación y la inserción de cotización mostrada. Todos los métodos reciben la misma capacidad `query` de la transacción del llamador; el módulo no crea conexiones ni roles. `tests/catalog-quote-repository.test.mjs` prueba el flujo completo del emisor con SQL simulado, los parámetros de evidencia, la exclusión de credenciales en escrituras y rollback cuando la visita está revocada, el plato agotado o la inserción falla (commits `76c1b8bc`, `5afba6cc`).
 
 **Alcance:** integración de adaptadores con SQL simulado; no equivale a prueba PostgreSQL 17 de cotización contra RLS, ni concede permisos de escritura, ni activa endpoints. La confirmación duradera de pedidos y aceptación económica siguen pendientes.
+
+## Prueba de flujo de confirmación con repositorios compuestos (22-10-2026)
+
+`tests/catalog-confirmation-composed-flow.test.mjs` integra el coordinador con las lecturas reales del repositorio candidato y un escritor **inyectado de prueba**: valida orden de bloqueos, exclusión de credenciales en lecturas posteriores, replay, visita revocada, plato agotado, cambio de revisión que requiere aceptación y rollback ante fallo del escritor. El ensayo usa respuestas SQL simuladas; no prueba durabilidad ni permisos PostgreSQL. Commit `83c529d9`.
+
+Además, el coordinador enumera expresamente campos obligatorios y trata `acceptanceToken` como opcional para precios sin cambios, manteniendo `customerSessionToken` obligatorio (`65ce596a`, `b2c925ee`). No activa rutas, permisos ni escritura operativa.
