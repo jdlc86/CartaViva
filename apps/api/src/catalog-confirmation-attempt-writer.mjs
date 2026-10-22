@@ -10,7 +10,12 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const money=v=>Number.isSafeInteger(v)&&v>=0;
 const forbidden=['__proto__','constructor','prototype'];
-const safeJson=(v,depth=0,seen=new Set())=>{
+const safeJson=(v,depth=0,seen=new Set(),budget={nodes:0,bytes:0})=>{
+ if(++budget.nodes>4096)return false;
+ if(typeof v==='string'){
+  budget.bytes+=Buffer.byteLength(v,'utf8');
+  if(budget.bytes>65536)return false;
+ }
  if(depth>16)return false;
  if(v===null||typeof v==='string'||typeof v==='boolean')return true;
  if(typeof v==='number')return Number.isSafeInteger(v);
@@ -25,9 +30,11 @@ const safeJson=(v,depth=0,seen=new Set())=>{
    if(typeof k!=='string'||forbidden.includes(k))return false;
    if(Array.isArray(v)&&(!/^(0|[1-9][0-9]*)$/.test(k)||
       Number(k)>=v.length))return false;
+   budget.bytes+=Buffer.byteLength(k,'utf8');
+   if(budget.bytes>65536)return false;
    const descriptor=Object.getOwnPropertyDescriptor(v,k);
    if(!descriptor||!descriptor.enumerable||!Object.hasOwn(descriptor,'value')||
-      !safeJson(descriptor.value,depth+1,seen))return false;
+      !safeJson(descriptor.value,depth+1,seen,budget))return false;
   }
   return true;
  }finally{seen.delete(v);}
