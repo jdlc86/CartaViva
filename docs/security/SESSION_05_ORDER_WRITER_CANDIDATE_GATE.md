@@ -184,3 +184,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se añadieron cinco regresiones SQL desechables: `UPDATE` sobre `orders` para rol lector, `DELETE` sobre cotizaciones para `authenticated`, retirada de `FORCE RLS` en confirmaciones, desactivación del trigger anti-`TRUNCATE` de cotizaciones y eliminación de unicidad de idempotencia.
 - Cada mutación se aplica solo en una conexión transaccional del PostgreSQL 17 de CI, debe provocar un rechazo con mensaje esperado y se revierte al terminar la conexión. Se vuelve a ejecutar el gate sobre el esquema original.
 - Ninguna mutación es una migración operativa ni concede permisos persistentes.
+
+## Verificación de la fila bloqueada de ocupación
+
+- El escritor candidato comprueba que la fila `dining_tables FOR UPDATE` incluya `grouping_window_seconds` como entero seguro estrictamente positivo y `first_confirmed_at` como `null` o fecha JavaScript válida devuelta por el driver PostgreSQL.
+- Se rechazan estados malformados antes de cualquier `INSERT` de pedido o ledger. Pruebas negativas incluyen ventana nula, texto, cero, negativa o fraccionaria y fecha textual o inválida. Prueba positiva confirma la propagación de la fecha PostgreSQL al cálculo de agrupación.
+- No se alteran contratos de duración de ventana ni se concede acceso runtime. La verificación es una defensa adicional sobre las restricciones SQL.
