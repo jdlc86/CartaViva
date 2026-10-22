@@ -128,3 +128,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `a5f17ae`: el límite de transacción admite parámetros primitivos compatibles con las consultas actuales y `Date` copiados por valor. Rechaza objetos arbitrarios, arrays anidados, Buffer, funciones, símbolos, bigint, números no finitos y fechas inválidas antes de invocar el driver. Evita referencias mutables y serialización implícita no auditada.
 - `b772513`: prueba Node de rechazo de estos tipos sin emitir SQL y de aceptación de valores primitivos; se conservan las regresiones de rollback y snapshots.
 - No se modifican rutas HTTP, esquemas, grants ni pools. Ejecutar y verificar CI sobre el último HEAD.
+
+## Regresión de arrays de parámetros SQL
+
+- El HEAD `3a10e7f` superó Sabora CI `39840843270` y Bootstrap `39840843239` (SUCCESS).
+- `7c08f69`: antes de copiar los parámetros, el adaptador valida array denso, prototipo estándar, propiedades propias exclusivamente indexadas y descriptores de datos; limita a 256 bindings. No ejecuta getters de elementos ni acepta propiedades adicionales.
+- `786b264`: tests con array accessor-backed, sparse, propiedades inesperadas, prototipo cambiado y tamaño excesivo. Verifican cero getters ejecutados y cero consultas del driver para inputs rechazados.
+- Candidato desconectado de HTTP y roles operativos. Revalidar workflows sobre el nuevo HEAD.
