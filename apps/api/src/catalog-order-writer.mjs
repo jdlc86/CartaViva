@@ -2,7 +2,8 @@
 // HTTP, runtime DB roles and deployment. Requires a locked, authorized context
 // and trusted published economic evidence from the coordinator.
 import {randomUUID} from 'node:crypto';
-import {createCatalogConfirmationAttemptWriter} from './catalog-confirmation-attempt-writer.mjs';
+import {createCatalogConfirmationAttemptWriter,
+ assertCatalogConfirmationAttempt} from './catalog-confirmation-attempt-writer.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const opaque=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -38,6 +39,9 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
     throw Error('invalid_catalog_order_writer_scope');
    const orderId=newOrderId();
    if(!uuid.test(orderId))throw Error('invalid_catalog_order_id');
+   // Validate immutable economic evidence and consent before any SQL write.
+   // Ledger INSERT repeats the validation inside the same transaction.
+   assertCatalogConfirmationAttempt({...args,orderId});
    const {context,evidence}=args;
    // The legacy kitchen trigger reads orders.items. It must be derived
    // exclusively from the trusted published evidence, not browser JSON.
