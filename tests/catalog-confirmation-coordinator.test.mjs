@@ -298,3 +298,35 @@ test('malformed writer order ID aborts transaction without confirmed response',a
   assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','ROLLBACK']);
  }
 });
+
+test('coordinator rejects accessor-backed trusted adapter records before evaluating getters',async()=>{
+ let getterCalls=0;
+ const hostile=(record,key)=>{
+  const value={...record};
+  Object.defineProperty(value,key,{enumerable:true,get(){
+   getterCalls++;throw Error('hostile_adapter_getter');
+  }});
+  return value;
+ };
+ const validContext={authorized:true,canOrder:true,tableId:input.tableId,
+  visitId:input.visitId,actorId:input.actorId,basketId:input.basketId,
+  sessionId:'session-1'};
+ const validQuote={quoteId:'00000000-0000-4000-8000-000000000004',
+  evidence:displayed,publishedRevision:1,subtotalCents:1000,
+  discountCents:0,totalCents:1000};
+ const scenarios=[
+  [{lockContext:async()=>hostile(validContext,'authorized')},'order_context_forbidden'],
+  [{lookupIdempotency:async()=>hostile({requestFingerprint:'any',result:{}},'result')},'order_idempotency_conflict'],
+  [{lockCatalog:async()=>hostile({publishedRevision:1,snapshot,available:true},'available')},'order_catalog_unavailable'],
+  [{loadPreviousQuote:async()=>hostile(validQuote,'quoteId')},'order_previous_quote_unavailable'],
+  [{persist:async()=>hostile({orderId:'00000000-0000-4000-8000-000000000005'},'orderId')},'invalid_order_persistence_result']
+ ];
+ for(const [override,message] of scenarios){
+  const {confirm,calls}=make(override);
+  await assert.rejects(confirm(input),error=>{
+   assert.equal(error.message,message);return true;
+  });
+  assert.equal(calls.at(-1),'ROLLBACK');
+ }
+ assert.equal(getterCalls,0);
+});
