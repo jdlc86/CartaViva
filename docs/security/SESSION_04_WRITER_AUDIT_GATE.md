@@ -150,3 +150,9 @@ Cobertura: pruebas de orden de consultas, aislamiento de claves y contextos y co
 `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh` abre **dos conexiones independientes** al PostgreSQL 17 desechable, sin red, creado por `scripts/ci/postgres-migration-smoke.sh`. La primera toma `pg_advisory_xact_lock(hashtextextended(scope,0))` y mantiene la transacción abierta; la segunda intenta la misma clave. La prueba exige observar `wait_event_type='Lock'`, finalización posterior de ambas conexiones y liberación del bloqueo tras commit. El scope reproduce exactamente la serialización de `catalog-confirmation-read-repository.mjs`. Integración: commits `3a0794f5` y `bb7ef8ff`.
 
 **Limitación expresa:** demuestra el bloqueo de dos transacciones reales, no una carrera completa de inserción del pedido, ni prueba de identidad SQL verificada, política RLS de escritor, evidencia económica y aceptación persistidas. Mantener los endpoints y los grants de escritor inactivos hasta superar esas puertas.
+
+## Atomicidad de confirmación en PostgreSQL 17 aislado (22-10-2026)
+
+Se añadió `scripts/ci/catalog-confirmation-atomicity-smoke.sql` al pipeline `scripts/ci/postgres-migration-smoke.sh`. Crea mesa, artículo y cotización en una transacción de pruebas; en un savepoint inserta un pedido y su intento económico, revierte el savepoint y comprueba que **ninguno** subsiste. A continuación inserta otro pedido y su confirmación con la misma clave y comprueba que el par existe exactamente una vez, antes de hacer `ROLLBACK` del fixture completo. Commits `eb7d08fa`, `e0a9e8e4`, `a8fddf43`.
+
+Se trata de una comprobación SQL de atomicidad de los ledgers candidatos bajo el propietario del contenedor desechable, **no** del escritor de aplicación autenticado ni de carreras de inserción con dos clientes. No autoriza grants, rutas HTTP, despliegue ni cambios en el Supabase operativo.
