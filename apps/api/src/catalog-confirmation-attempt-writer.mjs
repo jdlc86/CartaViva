@@ -9,6 +9,16 @@ const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const money=v=>Number.isSafeInteger(v)&&v>=0;
+const safeRecord=v=>{
+ if(!plain(v))return false;
+ const keys=Reflect.ownKeys(v);
+ if(keys.length>64)return false;
+ return keys.every(k=>{
+  if(typeof k!=='string'||['__proto__','constructor','prototype'].includes(k))return false;
+  const d=Object.getOwnPropertyDescriptor(v,k);
+  return !!d&&d.enumerable&&Object.hasOwn(d,'value');
+ });
+};
 const forbidden=['__proto__','constructor','prototype'];
 const safeJson=(v,depth=0,seen=new Set(),budget={nodes:0,bytes:0})=>{
  if(++budget.nodes>4096)return false;
@@ -83,7 +93,7 @@ const validEvidence=e=>{
   BigInt(e.unitDiscountCents)*BigInt(e.quantity)===BigInt(e.discountCents)&&
   BigInt(unitTotal)*BigInt(e.quantity)===BigInt(e.totalCents);
 };
-const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
+const valid=(a)=>safeRecord(a)&&safeRecord(a.context)&&a.context.authorized===true&&
  a.context.canOrder===true&&uuid.test(a.context.tableId)&&
  uuid.test(a.context.sessionId)&&
  ['visitId','basketId','actorId'].every(k=>opaque(a.context[k]))&&
