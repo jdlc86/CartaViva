@@ -55,3 +55,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Esta prueba **no es** aún una ejecución directa del módulo Node con PostgreSQL: SQL y JavaScript permanecen separados. Se requiere test de integración con un adaptador de transacciones y pruebas concurrentes antes de cualquier activación.
 - Se normalizaron las continuaciones de shell de las pruebas SQL para evitar ambigüedad de escape.
 - **Puertas aún cerradas:** privilegios mínimos y política RLS para un writer de servidor; autenticación de sesión; validación de visita/cierre concurrentes en PostgreSQL; integración HTTP; publicación en Supabase. No habilitar el flujo por un CI verde.
+
+## Bloque adicional: carrera escritor frente a cierre y pedidos tardíos
+
+- Nuevo `scripts/ci/catalog-order-writer-close-concurrency-smoke.sh`: dos sesiones independientes de PostgreSQL 17, la primera retiene `FOR UPDATE` sobre mesa abierta y la segunda intenta cierre mediante `transition_table_ordering_candidate`. El test exige espera real de bloqueo y verifica que la mesa queda cerrada. Se ejecuta en el contenedor desechable del pipeline.
+- Ampliado `catalog-order-writer-sql-smoke.sql` con pedido posterior al vencimiento de la ventana, que debe clasificarse como `late` sin modificar `first_confirmed_at`. Se conserva cobertura de `first`, `grouped`, trigger de cocina y rollback.
+- **Limitación:** la carrera de cierre ejercita el bloqueo SQL del escritor, pero todavía no ejecuta el módulo Node ni una confirmación real completa en la primera sesión. No confundir esta prueba con acreditación end-to-end.
+- Las pruebas no conceden permisos de runtime y no tocan Supabase ni VPS. El PR continúa Draft y requiere acreditación CI del HEAD de este hito.
