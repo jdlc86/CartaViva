@@ -49,7 +49,11 @@ export function createPostgresTransaction({ pool } = {}) {
       // Detached operations must settle before ROLLBACK/release can reuse this connection.
       if (inFlight.size !== 0) {
         discardClient = error;
-        await Promise.allSettled([...inFlight]);
+        // A detached query can schedule more queries before it settles.
+        // Drain the entire set, not just its first snapshot, before rollback.
+        while (inFlight.size !== 0) {
+          await Promise.allSettled([...inFlight]);
+        }
       }
       if (began && !committed) {
         try { await client.query('ROLLBACK'); }
