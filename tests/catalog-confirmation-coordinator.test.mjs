@@ -43,12 +43,12 @@ test('idempotent replay bypasses catalog and never writes again',async()=>{
   lookupIdempotency:async(_q,{requestFingerprint})=>{
    calls.push('replay');
    savedFingerprint??=requestFingerprint;
-   return {requestFingerprint:savedFingerprint,result:{orderId:'existing'}};
+   return {requestFingerprint:savedFingerprint,result:{orderId:'00000000-0000-4000-8000-000000000005'}};
   }
  });
  const result=await confirm(input);
  assert.equal(result.status,'replayed');
- assert.equal(result.result.orderId,'existing');
+ assert.equal(result.result.orderId,'00000000-0000-4000-8000-000000000005');
  assert.deepEqual(calls,['BEGIN','context','replay','COMMIT']);
 });
 test('mismatched idempotency payload is rejected before catalog read',async()=>{
@@ -253,4 +253,26 @@ test('missing required session credential is rejected before transaction',async(
  const {customerSessionToken,...withoutSession}=input;
  await assert.rejects(confirm(withoutSession),/invalid_confirmation_input/);
  assert.deepEqual(calls,[]);
+});
+
+test('corrupt replay order identifiers abort without catalog reads or persistence',async()=>{
+ for(const orderId of [null,undefined,'', 'not-a-uuid',123,{},[],false]){
+  const {confirm,calls}=make({lookupIdempotency:async()=>{
+   calls.push('replay');
+   return {requestFingerprint:JSON.stringify({}),result:{orderId}};
+  }});
+  await assert.rejects(confirm(input),/order_idempotency_conflict/);
+  assert.deepEqual(calls,['BEGIN','context','replay','ROLLBACK']);
+ }
+});
+
+test('matching replay fingerprint still rejects a malformed persisted result',async()=>{
+ let fingerprint;
+ const {confirm,calls}=make({lookupIdempotency:async(_query,args)=>{
+  calls.push('replay');
+  fingerprint=args.requestFingerprint;
+  return {requestFingerprint:fingerprint,result:{orderId:'invalid-order-id'}};
+ }});
+ await assert.rejects(confirm(input),/order_idempotency_conflict/);
+ assert.deepEqual(calls,['BEGIN','context','replay','ROLLBACK']);
 });
