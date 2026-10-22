@@ -256,3 +256,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh` cubre ahora dos resultados de la primera transacción en PostgreSQL 17 desechable: `COMMIT` y `ROLLBACK`.
 - En ambos casos, una segunda sesión con idéntico alcance de idempotencia debe observar contención real sobre `pg_advisory_xact_lock` y poder adquirir el bloqueo tras finalizar la primera. El caso `ROLLBACK` acredita que un intento abortado no deja un claim persistente que bloquee el reintento.
 - No implica que se haya activado un endpoint ni que el coordinador Node se haya ejecutado todavía contra el driver PostgreSQL real.
+
+## Cardinalidad del bloqueo de idempotencia
+
+- El lector candidato rechaza respuestas de `pg_advisory_xact_lock` con más de una fila antes de consultar el ledger; se añadió prueba negativa.
+- La interfaz de consultas inyectadas continúa aceptando `rows: []` en los dobles de prueba que no materializan la fila void. Esta validación no equivale a certificar el driver PostgreSQL real.
