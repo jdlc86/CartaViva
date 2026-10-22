@@ -121,3 +121,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Comprobar GitHub Actions del último SHA antes de considerar validado este hito.
 
 - Cobertura adicional de mutación: concesión `EXECUTE` de la RPC legacy `confirm_order` al rol `authenticated` y creación de una política RLS permisiva de lectura en `catalog_displayed_quotes`. Ambas deben producir rechazo específico del gate. Total: siete mutaciones aisladas.
+
+## Replay y conflicto de idempotencia con pool inyectado
+
+- La prueba `catalog-order-confirmation-pool-candidate.test.mjs` ahora reutiliza el ledger simulado entre dos transacciones: una segunda confirmación idéntica devuelve `replayed` sin duplicar pedido ni ledger; la misma clave con cantidad diferente debe abortar con `order_idempotency_conflict` y `ROLLBACK`.
+- El alcance es **pool simulado en Node**, no integración Node–PostgreSQL real. La serialización de sesiones y la unicidad SQL continúan probándose separadamente en PG17 aislado. No se concede acceso ni se habilita endpoint.
