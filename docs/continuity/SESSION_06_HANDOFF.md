@@ -63,3 +63,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - El commit `169580b` obtuvo Sabora CI SUCCESS (`39809019473`) y Bootstrap SUCCESS (`39809019556`).
 - `20ddeab` amplía el smoke de PostgreSQL 17 con una segunda carrera: una transacción retiene `FOR UPDATE` y revierte, mientras otra espera para confirmar. La confirmación superviviente debe ser `first`, escribir `first_confirmed_at` y producir exactamente un pedido y una línea de cocina. Un intento abortado no puede consumir la ventana de agrupación.
 - La prueba se ejecuta en el mismo contenedor aislado y desechable del pipeline; no crea grants ni endpoints. **Pendiente:** comprobar el CI de este SHA y ejecutar el coordinador Node completo sobre PostgreSQL 17 con un driver real. No desplegar ni hacer merge.
+
+## Validación del resultado del bloqueo consultivo
+
+- `46be57a`: el lector de idempotencia rechaza respuestas SQL con una fila de bloqueo consultivo malformada, antes de leer el ledger. Conserva compatibilidad con el adaptador de respuesta vacía ya contemplado en las pruebas existentes; no cambia el alcance ni los permisos SQL.
+- `2dab04b`: regresiones para valores nulos, escalares y arrays en la respuesta del driver, exigiendo que nunca se consulte el ledger después de detectar una fila inválida.
+- Validar ambos workflows del último SHA. La composición Node+PostgreSQL 17 sigue pendiente de ejecución real; no confundir con los smoke SQL ya acreditados.
