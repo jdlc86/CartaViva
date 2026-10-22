@@ -181,3 +181,8 @@ No aplicar migraciones al Supabase operativo, no conectar Gestión a funciones e
 - `authenticated-staff-table-transitions.mjs` conecta el verificador RSA de clave pública fijada, la resolución de membresía activa de `staff_members` y la transición SQL de mesa bajo una única transacción. Ningún actor proviene de parámetros del navegador: se deriva exclusivamente del sujeto de JWT firmado y verificado.
 - `authenticated-staff-table-transitions.test.mjs` genera firmas RSA reales y prueba el recorrido completo del token al SELECT de membresía y la función de transición; verifica denegación de emisor incorrecto, cocina y suplantación explícita de actor. No usa claves de producción.
 - **Puertas aún cerradas:** falta confirmar el algoritmo y la rotación de claves de Supabase Auth real, diseñar rol DB de privilegio mínimo compatible con RLS/FORCE RLS, atribución del actor en auditoría inmutable y endpoints de gestión. Este módulo no habilita un servicio operativo y no concede privilegios SQL.
+
+## Endurecimiento de auditoría y credenciales (candidatos)
+- `20261021290000_sabora_table_ordering_audit_truncate_guard_candidate.sql` añade disparador de sentencia para impedir `TRUNCATE` de la auditoría de transiciones; antes solo se impedían `UPDATE` y `DELETE`. Smoke SQL amplía las pruebas negativas.
+- El verificador RS256 exige base64url canónico para los segmentos JWT; una firma con bits de relleno no canónicos se rechaza aunque decodifique a los mismos bytes. Prueba criptográfica de regresión incluida.
+- Estos controles **no** suplen el vínculo del actor auditado ni los privilegios mínimos para ejecutar transiciones; no montar rutas HTTP ni aplicar a Supabase operativo.
