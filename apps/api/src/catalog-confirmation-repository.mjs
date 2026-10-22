@@ -3,6 +3,19 @@
 import {createCatalogVisitContextRepository} from './catalog-visit-context-repository.mjs';
 import {createCatalogConfirmationReadRepository} from './catalog-confirmation-read-repository.mjs';
 
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const opaque=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+const scope=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
+ v.authorized===true&&v.canOrder===true&&uuid.test(v.tableId)&&uuid.test(v.sessionId)&&
+ ['visitId','basketId','actorId'].every(k=>opaque(v[k]));
+const validPersistArgs=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
+ scope(v.context)&&opaque(v.requestKey)&&v.requestKey.length>=8&&
+ typeof v.requestFingerprint==='string'&&v.requestFingerprint.length>0&&
+ Buffer.byteLength(v.requestFingerprint,'utf8')<=16384&&
+ uuid.test(v.quoteId)&&v.evidence!==null&&typeof v.evidence==='object'&&
+ !Array.isArray(v.evidence)&&typeof v.acceptanceVerified==='boolean'&&
+ typeof v.requiresAcceptance==='boolean'&&
+ (!v.requiresAcceptance||v.acceptanceVerified);
 export function createCatalogConfirmationRepository({persist}={}){
  if(typeof persist!=='function')throw Error('invalid_catalog_confirmation_writer');
  const visit=createCatalogVisitContextRepository();
@@ -13,8 +26,7 @@ export function createCatalogConfirmationRepository({persist}={}){
   lockCatalog:reads.lockCatalog,
   loadPreviousQuote:reads.loadPreviousQuote,
   async persist(query,args){
-   if(typeof query!=='function'||!args||typeof args!=='object'||
-      !args.context||args.context.authorized!==true||args.context.canOrder!==true)
+   if(typeof query!=='function'||!validPersistArgs(args))
     throw Error('invalid_catalog_confirmation_writer_scope');
    return persist(query,args);
   }
