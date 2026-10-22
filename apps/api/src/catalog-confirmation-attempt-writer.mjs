@@ -7,6 +7,16 @@ const key=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const money=v=>Number.isSafeInteger(v)&&v>=0;
+const forbidden=['__proto__','constructor','prototype'];
+const safeJson=(v,depth=0)=>{
+ if(depth>16)return false;
+ if(v===null||typeof v==='string'||typeof v==='boolean')return true;
+ if(typeof v==='number')return Number.isSafeInteger(v);
+ if(Array.isArray(v))return v.length<=512&&v.every(x=>safeJson(x,depth+1));
+ if(!plain(v))return false;
+ const keys=Object.keys(v);
+ return keys.length<=512&&keys.every(k=>!forbidden.includes(k)&&safeJson(v[k],depth+1));
+};
 const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
  a.context.canOrder===true&&uuid.test(a.context.tableId)&&
  uuid.test(a.context.sessionId)&&
@@ -15,11 +25,17 @@ const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
  Buffer.byteLength(a.requestFingerprint,'utf8')>0&&
  Buffer.byteLength(a.requestFingerprint,'utf8')<=16384&&
  uuid.test(a.quoteId)&&uuid.test(a.orderId)&&plain(a.evidence)&&
+ safeJson(a.evidence)&&a.evidence.schemaVersion===1&&
  uuid.test(a.evidence.itemId)&&Number.isSafeInteger(a.evidence.publishedRevision)&&
  a.evidence.publishedRevision>0&&
  [a.evidence.subtotalCents,a.evidence.discountCents,a.evidence.totalCents].every(money)&&
  a.evidence.discountCents<=a.evidence.subtotalCents&&
  a.evidence.totalCents===a.evidence.subtotalCents-a.evidence.discountCents&&
+ Number.isSafeInteger(a.evidence.quantity)&&a.evidence.quantity>=1&&
+ a.evidence.quantity<=50&&typeof a.evidence.itemName==='string'&&
+ a.evidence.itemName.trim().length>0&&Array.isArray(a.evidence.selected)&&
+ Array.isArray(a.evidence.allergens)&&money(a.evidence.basePriceCents)&&
+ [a.evidence.unitSubtotalCents,a.evidence.unitDiscountCents].every(money)&&
  typeof a.requiresAcceptance==='boolean'&&typeof a.acceptanceVerified==='boolean'&&
  (!a.requiresAcceptance||a.acceptanceVerified)&&
  (!a.acceptanceVerified||a.requiresAcceptance);
