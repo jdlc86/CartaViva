@@ -73,12 +73,12 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    // Reject malformed driver rows before the INSERT. The table lock must
    // describe a valid grouping window and a trustworthy first-confirmation
    // timestamp; coercion of null/strings is not a safe fallback.
-   if(!occupancy||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
+   if(!safeRecord(occupancy)||!Number.isSafeInteger(occupancy.grouping_window_seconds)||
       occupancy.grouping_window_seconds<=0||
       occupancy.grouping_window_seconds>2147483647||
       !(occupancy.first_confirmed_at===null||
         (occupancy.first_confirmed_at instanceof Date&&
-         Number.isFinite(occupancy.first_confirmed_at.getTime()))))
+         Number.isFinite(Date.prototype.getTime.call(occupancy.first_confirmed_at)))))
     throw Error('invalid_catalog_order_table_state');
    const result=await query(
     `WITH instant AS (SELECT clock_timestamp() AS at),
@@ -110,7 +110,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
      table.rows[0].first_confirmed_at,table.rows[0].grouping_window_seconds]
    );
    if(!result||!Array.isArray(result.rows)||result.rows.length!==1||
-      result.rows[0]?.id!==orderId||
+      !safeRecord(result.rows[0])||result.rows[0].id!==orderId||
       !['first','grouped','late'].includes(result.rows[0]?.grouping)||
       (occupancy.first_confirmed_at===null)!==(result.rows[0]?.grouping==='first')||
       result.rows[0]?.first_timestamp_written!==(result.rows[0]?.grouping==='first'))
