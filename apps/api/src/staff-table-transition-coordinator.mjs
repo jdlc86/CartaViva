@@ -8,7 +8,12 @@ export function createStaffTableTransitionCoordinator({withTransaction,resolveSt
     typeof transition!=='function')throw Error('invalid_staff_transition_coordinator');
  return async function changeTableState(input={}){
   if(!input||typeof input!=='object'||Array.isArray(input)||
-     Object.keys(input).some(k=>!['credential','tableId','target','pauseUntil'].includes(k)))
+     (Object.getPrototypeOf(input)!==Object.prototype&&Object.getPrototypeOf(input)!==null)||
+     Reflect.ownKeys(input).some(k=>typeof k!=='string'||
+       !['credential','tableId','target','pauseUntil'].includes(k)||
+       !Object.prototype.propertyIsEnumerable.call(input,k)||
+       !Object.prototype.hasOwnProperty.call(Object.getOwnPropertyDescriptors(input),k)||
+       !Object.prototype.hasOwnProperty.call(Object.getOwnPropertyDescriptor(input,k),'value')))
    throw Error('invalid_staff_transition_request');
   const {credential,tableId,target,pauseUntil=null}=input;
   if(typeof credential!=='string'||credential.length<32||credential.length>4096||
