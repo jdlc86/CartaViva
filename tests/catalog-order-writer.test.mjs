@@ -9,7 +9,7 @@ const ids={tableId:'00000000-0000-4000-8000-000000000001',
  orderId:'00000000-0000-4000-8000-000000000005'};
 const context={tableId:ids.tableId,sessionId:ids.sessionId,
  visitId:'visit_1',basketId:'basket_1',actorId:'actor_1',
- authorized:true,canOrder:true,customerAlias:'Cliente',customerIdentifier:'ID123'};
+ authorized:true,canOrder:true,customerAlias:'Cliente',customerIdentifier:'SB-23456789ABCD'};
 const evidence={schemaVersion:1,itemId:ids.itemId,publishedRevision:1,
  itemName:'Plato',category:'Primeros',quantity:2,basePriceCents:1000,
  selected:[],allergens:[],discount:null,unitSubtotalCents:1000,
@@ -52,6 +52,7 @@ test('candidate fails closed on lost table or invalid identity before ledger',as
   {context:{...context,canOrder:false}},
   {context:{...context,sessionId:'wrong'}},
   {context:{...context,customerAlias:undefined}},
+  {context:{...context,customerIdentifier:'ID123'}},
   {evidence:{...evidence,category:'invented'}},
   {evidence:{...evidence,quantity:0}},
   {quoteId:'bad'}
