@@ -80,3 +80,58 @@ BEGIN
 END \$verify\$;
 SQL
 echo 'PASS: concurrent first orders serialize into first/grouped'
+
+# Reverse outcome: a contender that held the first-order lock rolls back.
+# The waiting confirmation must become the first committed order, not grouped.
+table='00000000-0000-4000-8000-000000009465'
+session='00000000-0000-4000-8000-000000009466'
+second='00000000-0000-4000-8000-000000009467'
+psql_ci <<SQL
+INSERT INTO sabora.dining_tables(id,session_id,number,capacity,qr_token_hash,ordering_state)
+VALUES ('$table','$session',9462,4,decode(repeat('97',32),'hex'),'open');
+SQL
+holder_sql=$(cat <<SQL
+BEGIN;
+SET LOCAL lock_timeout='12s';
+SELECT first_confirmed_at,grouping_window_seconds
+ FROM sabora.dining_tables WHERE id='$table' AND session_id='$session'
+ AND ordering_state='open' FOR UPDATE;
+SELECT pg_sleep(3);
+ROLLBACK;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$holder_sql" &
+holder_pid=$!
+ready=0
+for attempt in $(seq 1 80); do
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+ "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(3)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then ready=1; break; fi
+ if ! kill -0 "$holder_pid" 2>/dev/null; then break; fi
+ sleep 0.05
+done
+if [[ "$ready" != 1 ]]; then wait "$holder_pid" || true; echo 'rollback holder did not acquire lock' >&2; exit 1; fi
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$(order_sql "$second" 0)" &
+second_pid=$!
+blocked=0
+for attempt in $(seq 1 80); do
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+ "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%first_confirmed_at,grouping_window_seconds%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then blocked=1; break; fi
+ sleep 0.05
+done
+wait "$holder_pid"
+wait "$second_pid"
+if [[ "$blocked" != 1 ]]; then echo 'waiting order did not block behind rollback holder' >&2; exit 1; fi
+psql_ci <<SQL
+DO \$verify\$
+BEGIN
+ IF (SELECT grouping FROM sabora.orders WHERE id='$second')<>'first'
+ OR (SELECT first_confirmed_at FROM sabora.dining_tables WHERE id='$table')
+    IS DISTINCT FROM (SELECT confirmed_at FROM sabora.orders WHERE id='$second')
+ OR (SELECT count(*) FROM sabora.orders WHERE table_id='$table')<>1
+ OR (SELECT count(*) FROM sabora.order_lines WHERE order_id='$second')<>1
+ THEN RAISE EXCEPTION 'rollback holder must not consume first-order window'; END IF;
+END \$verify\$;
+SQL
+echo 'PASS: rolled-back first contender does not consume grouping window'
