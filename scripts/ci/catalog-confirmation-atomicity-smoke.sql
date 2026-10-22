@@ -40,6 +40,8 @@ DECLARE
  v_session uuid;
  v_item uuid;
  v_quote uuid;
+ v_other_item uuid;
+ v_constraint text;
  v_order uuid;
  v_rejected boolean:=false;
 BEGIN
@@ -48,6 +50,8 @@ BEGIN
  SELECT item_id, id INTO STRICT v_item,v_quote
  FROM sabora.catalog_displayed_quotes
  WHERE table_id=v_table AND visit_id='visit-atomic';
+ INSERT INTO sabora.catalog_items(draft) VALUES ('{}'::jsonb)
+ RETURNING id INTO v_other_item;
  BEGIN
   INSERT INTO sabora.orders(
    table_id,session_id,company,employee_number,confirmed_at,grouping,items)
@@ -58,11 +62,15 @@ BEGIN
    table_id,session_id,visit_id,basket_id,actor_id,item_id,
    request_key,request_fingerprint,quote_id,economic_evidence,order_id)
   VALUES(v_table,v_session,'visit-atomic','basket-atomic','actor-atomic',
-   '00000000-0000-4000-8000-000000009999'::uuid,
+   v_other_item,
    'request-failed','fingerprint-failed',v_quote,
    '{"schemaVersion":1}'::jsonb,v_order);
   RAISE EXCEPTION 'invalid confirmation unexpectedly accepted';
  EXCEPTION WHEN foreign_key_violation THEN
+  GET STACKED DIAGNOSTICS v_constraint=CONSTRAINT_NAME;
+  IF v_constraint<>'catalog_confirmation_quote_scope' THEN
+   RAISE EXCEPTION 'unexpected failed-writer FK: %',v_constraint;
+  END IF;
   v_rejected:=true;
  END;
  IF NOT v_rejected THEN
