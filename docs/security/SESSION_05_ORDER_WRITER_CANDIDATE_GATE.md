@@ -48,3 +48,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `tests/catalog-order-confirmation-candidate.test.mjs` verifica con dobles de consulta el flujo correcto, rechazo por visita revocada o catálogo agotado y propagación del error del ledger al límite transaccional.
 - Estos tests prueban **orquestación**, no semántica PostgreSQL. Falta acreditar el SQL del escritor y carreras reales con PostgreSQL 17 desechable; el rollback real depende de `withTransaction` y debe probarse con el adaptador de producción antes de activar.
 - La compatibilidad del perfil con el identificador público y los bloqueos se verificó en pruebas de módulo; aún no existe autorización para runtime, despliegue ni merge.
+
+## Puerta SQL del escritor (bloque siguiente)
+
+- Se añadió `scripts/ci/catalog-order-writer-sql-smoke.sql` al pipeline de migraciones PostgreSQL 17 aislado. Cubre la sentencia `WITH created ... updated` que materializa el primer pedido, actualiza `first_confirmed_at`, genera `order_lines` mediante trigger, clasifica un segundo pedido como `grouped` y revierte pedido/línea en un savepoint.
+- Esta prueba **no es** aún una ejecución directa del módulo Node con PostgreSQL: SQL y JavaScript permanecen separados. Se requiere test de integración con un adaptador de transacciones y pruebas concurrentes antes de cualquier activación.
+- Se normalizaron las continuaciones de shell de las pruebas SQL para evitar ambigüedad de escape.
+- **Puertas aún cerradas:** privilegios mínimos y política RLS para un writer de servidor; autenticación de sesión; validación de visita/cierre concurrentes en PostgreSQL; integración HTTP; publicación en Supabase. No habilitar el flujo por un CI verde.
