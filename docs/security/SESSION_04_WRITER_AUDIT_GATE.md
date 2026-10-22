@@ -58,3 +58,9 @@ Commits `d6edbb925890644768e43a2341f5f915ea73866f` y `1603d8c7cb366d45dc131c27c9
 El coordinador ahora rechaza huellas canónicas superiores a 16 KiB y tokens de aceptación superiores a 4096 caracteres, antes de invocar `withTransaction`. Se agregaron pruebas negativas de cargas sobredimensionadas y un caso positivo de confirmación ordinaria. Commits: `940393f63aca7f007c1be93aeb2064f1dcfffced` y `1f31265ef419f5fefdf3ed10e52795a119a71a5e`.
 
 Esta defensa no sustituye límites de transporte HTTP, autorización de identidad, writer SQL ni confirmación transaccional completa; permanece como código candidato.
+
+## Límite de vida de la transacción PostgreSQL (22-10-2026)
+
+`apps/api/src/postgres-transaction.mjs` invalida el callback `query` una vez terminada la unidad de trabajo. Rechaza operaciones tardías después de commit o rollback. Además, si la unidad de trabajo devuelve el control con consultas pendientes sin esperar, impide el commit, espera su finalización antes de intentar rollback y descarta la conexión del pool. Nuevas regresiones en `tests/postgres-transaction.test.mjs`.
+
+Commits: `405efae8`, `55eb23b9`, `7a061233`, `f4f3bcac`, `65fb3dca`. Esta protección del adaptador no concede acceso SQL, no verifica identidad por sí sola y no habilita confirmación de pedidos.
