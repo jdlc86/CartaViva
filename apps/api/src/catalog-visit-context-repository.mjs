@@ -14,11 +14,11 @@ export function createCatalogVisitContextRepository(){
     throw Error('invalid_catalog_visit_context');
    const response=await query(
     `SELECT t.id AS table_id,t.session_id AS session_id,
-            v.visit_key AS visit_id,v.actor_id AS actor_id
+            v.visit_key AS visit_id,v.actor_id AS actor_id,\n            p.alias AS customer_alias,p.public_id AS customer_identifier
        FROM sabora.dining_tables AS t
        JOIN sabora.customer_table_visits AS v
          ON v.table_id=t.id AND v.session_id=t.session_id
-       JOIN sabora.customer_sessions AS s ON s.customer_id=v.customer_id
+       JOIN sabora.customer_sessions AS s ON s.customer_id=v.customer_id\n       JOIN sabora.customer_profiles AS p ON p.id=v.customer_id
       WHERE t.id=$1 AND v.visit_key=$2 AND v.actor_id=$3
         AND t.qr_token_hash=sha256(convert_to($4,'UTF8'))
         AND s.token_hash=sha256(convert_to($5,'UTF8'))
@@ -36,11 +36,11 @@ export function createCatalogVisitContextRepository(){
    if(!record)return Object.freeze({authorized:false,canOrder:false});
    if(!uuid.test(record.table_id)||!uuid.test(record.session_id)||
       record.table_id.toLowerCase()!==tableId.toLowerCase()||
-      record.visit_id!==visitId||record.actor_id!==actorId)
+      record.visit_id!==visitId||record.actor_id!==actorId||\n      typeof record.customer_alias!=='string'||!record.customer_alias.trim()||\n      typeof record.customer_identifier!=='string'||\n      !/^SB-[2-9A-HJ-NP-Y]{12}$/.test(record.customer_identifier))
     throw Error('invalid_catalog_visit_response');
    return Object.freeze({authorized:true,canOrder:true,
     tableId:record.table_id,sessionId:record.session_id,
-    visitId,basketId,actorId});
+    visitId,basketId,actorId,customerAlias:record.customer_alias,\n    customerIdentifier:record.customer_identifier});
   }
  });
 }
