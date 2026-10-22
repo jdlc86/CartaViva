@@ -221,3 +221,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - Los workflows `39856328018` (Sabora CI) y `39856328309` (Bootstrap) terminaron en fallo; el log de tests identifica `SyntaxError: Unexpected token 'throw'` en `apps/api/src/catalog-order-writer.mjs:87`, con cuatro suites afectadas por la importación del módulo.
 - `c075a59` restaura el paréntesis de cierre omitido en `!validTimestamp(occupancy.first_confirmed_at))`. No modifica el criterio de validación.
 - No considerar verde hasta comprobar GitHub Actions del nuevo HEAD. Mantener gate de activación cerrado.
+
+## Recuperación CI y parámetros Date de la transacción (23 oct 2026)
+
+- GitHub Actions del HEAD `1e7d0a2`: Sabora CI `39860700035` **SUCCESS** y Bootstrap `39860719188` **SUCCESS**; la regresión de sintaxis anterior está resuelta.
+- `54b250e`: la frontera `createPostgresTransaction` rechaza fechas `Date` falsificadas, subclases y fechas inválidas antes de enviar SQL, sin invocar métodos sobrescritos. Un `Date` ordinario se copia antes del envío al driver.
+- `fb7b671`: pruebas de rechazo y snapshot de fecha. La validación del nuevo HEAD debe verificarse en CI antes de declarar este bloque acreditado.
+- Se mantiene pendiente la integración completa Node–PostgreSQL 17 con rol mínimo y el gate de activación. No desplegar, conectar HTTP ni habilitar grants operativos.
