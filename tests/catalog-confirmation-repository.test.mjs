@@ -48,8 +48,34 @@ test('candidate writer rejects unauthorized scope before invoking persistence',a
  }),/invalid_catalog_confirmation_writer_scope/);
  assert.equal(called,0);
  const result=await repository.persist(async()=>({rows:[]}),{
-  context:scope,itemId,requestKey:'request-001'
+  context:scope,itemId,requestKey:'request-001',requestFingerprint:'fingerprint',
+  quoteId:orderId,evidence:{totalCents:1000},acceptanceVerified:false,
+  requiresAcceptance:false
  });
  assert.deepEqual(result,{orderId});
  assert.equal(called,1);
+});
+
+test('candidate writer rejects malformed economic scope and unverified reprice without SQL',async()=>{
+ let called=0;
+ const repository=createCatalogConfirmationRepository({persist:async()=>{called++;return {orderId};}});
+ const args={context:scope,requestKey:'request-001',requestFingerprint:'fingerprint',
+  quoteId:orderId,evidence:{totalCents:1000},acceptanceVerified:false,
+  requiresAcceptance:false};
+ for(const patch of [
+  {context:{...scope,canOrder:false}},
+  {context:{...scope,sessionId:'invalid'}},
+  {context:{...scope,visitId:'invalid visit'}},
+  {requestKey:'short'},
+  {requestFingerprint:'x'.repeat(17000)},
+  {quoteId:'invalid'},
+  {evidence:null},
+  {acceptanceVerified:'yes'},
+  {requiresAcceptance:true},
+  {requiresAcceptance:'false'}
+ ]){
+  await assert.rejects(repository.persist(async()=>({rows:[]}),{...args,...patch}),
+   /invalid_catalog_confirmation_writer_scope/);
+ }
+ assert.equal(called,0);
 });
