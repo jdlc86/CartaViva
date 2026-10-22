@@ -41,6 +41,12 @@ run_rejection "orders identity constraint removed" \
 run_rejection "ledger append-only trigger disabled" \
  'ALTER TABLE sabora.catalog_confirmation_attempts DISABLE TRIGGER catalog_confirmation_attempts_append_only;' \
  'economic ledger mutation guard missing or disabled'
+run_rejection "legacy confirm_order EXECUTE grant" \
+ 'GRANT EXECUTE ON FUNCTION sabora.confirm_order(uuid,text,text,text,text,jsonb) TO authenticated;' \
+ 'legacy confirm_order callable by runtime'
+run_rejection "ledger permissive RLS policy" \
+ 'CREATE POLICY candidate_bad_reader ON sabora.catalog_displayed_quotes FOR SELECT TO authenticated USING (true);' \
+ 'economic ledger unexpectedly has runtime policy'
 # All mutations must have been rolled back by connection termination.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$gate" >/dev/null
 printf 'Negative activation gate mutation regressions passed\n'
