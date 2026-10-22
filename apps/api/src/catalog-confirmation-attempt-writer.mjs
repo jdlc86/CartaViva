@@ -10,14 +10,27 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const money=v=>Number.isSafeInteger(v)&&v>=0;
 const forbidden=['__proto__','constructor','prototype'];
-const safeJson=(v,depth=0)=>{
+const safeJson=(v,depth=0,seen=new Set())=>{
  if(depth>16)return false;
  if(v===null||typeof v==='string'||typeof v==='boolean')return true;
  if(typeof v==='number')return Number.isSafeInteger(v);
- if(Array.isArray(v))return v.length<=512&&v.every(x=>safeJson(x,depth+1));
- if(!plain(v))return false;
- const keys=Object.keys(v);
- return keys.length<=512&&keys.every(k=>!forbidden.includes(k)&&safeJson(v[k],depth+1));
+ if(typeof v!=='object'||seen.has(v)||(!Array.isArray(v)&&!plain(v)))return false;
+ seen.add(v);
+ try{
+  const keys=Reflect.ownKeys(v);
+  if(keys.length>513||(Array.isArray(v)&&v.length>512))return false;
+  if(Array.isArray(v)&&keys.length!==v.length+1)return false;
+  for(const k of keys){
+   if(Array.isArray(v)&&k==='length')continue;
+   if(typeof k!=='string'||forbidden.includes(k))return false;
+   if(Array.isArray(v)&&(!/^(0|[1-9][0-9]*)$/.test(k)||
+      Number(k)>=v.length))return false;
+   const descriptor=Object.getOwnPropertyDescriptor(v,k);
+   if(!descriptor||!descriptor.enumerable||!Object.hasOwn(descriptor,'value')||
+      !safeJson(descriptor.value,depth+1,seen))return false;
+  }
+  return true;
+ }finally{seen.delete(v);}
 };
 const validEvidence=e=>{
  if(!plain(e)||!safeJson(e)||e.schemaVersion!==1||!uuid.test(e.itemId)||
