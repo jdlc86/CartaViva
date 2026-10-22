@@ -267,3 +267,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `apps/api/src/postgres-transaction.mjs` registra separadamente la presencia de un fallo del callback, incluso cuando el valor lanzado es `null`, `undefined`, `false`, `0` o una cadena vacía.
 - Un fallo posterior de `client.release()` no debe reemplazar ese valor original. La regresión cubre los cinco casos, con `ROLLBACK` y sin `COMMIT`.
 - Esta defensa no sustituye la prueba pendiente con un driver PostgreSQL real ni activa el candidato.
+
+## Decodificación económica sin coerción de objetos
+
+- `apps/api/src/catalog-confirmation-read-repository.mjs` comprueba el tipo y representación decimal de `published_revision` y los importes antes de invocar `Number()`. Así, un adaptador de datos defectuoso no puede provocar la ejecución de `valueOf`/`toString` de un objeto recibido como valor numérico.
+- La regresión prueba símbolos, objetos con coerción hostil, arrays y booleanos para la revisión y los tres importes. Exige rechazo determinista y cero invocaciones de los métodos de coerción.
+- Se mantiene el rechazo fail-closed de datos económicos malformados; el candidato no está conectado a HTTP, pool operativo ni Supabase de producción.
