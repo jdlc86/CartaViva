@@ -108,3 +108,28 @@ test('failed COMMIT and failed rollback preserve original error and discard clie
  assert.equal(releases.length,1);
  assert.equal(releases[0]?.message,'rollback unavailable');
 });
+
+test('a query capability retained by the callback cannot be used after commit',async()=>{
+ const fixture=fakePool();
+ let leakedQuery;
+ const withTransaction=createPostgresTransaction({pool:fixture.pool});
+ await withTransaction(async query=>{leakedQuery=query;await query('SELECT 1');});
+ await assert.rejects(leakedQuery('DELETE FROM sabora.dining_tables'),
+  /transaction_scope_closed/);
+ assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN','SELECT 1','COMMIT']);
+ assert.equal(fixture.releases(),1);
+});
+
+test('a query capability retained by a failed callback cannot run after rollback',async()=>{
+ const fixture=fakePool();
+ let leakedQuery;
+ const withTransaction=createPostgresTransaction({pool:fixture.pool});
+ await assert.rejects(withTransaction(async query=>{
+  leakedQuery=query;
+  throw Error('abort_work');
+ }),/abort_work/);
+ await assert.rejects(leakedQuery('UPDATE sabora.dining_tables SET number=1'),
+  /transaction_scope_closed/);
+ assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN','ROLLBACK']);
+ assert.equal(fixture.releases(),1);
+});
