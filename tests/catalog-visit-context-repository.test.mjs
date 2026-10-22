@@ -6,9 +6,11 @@ const sessionId='00000000-0000-4000-8000-000000000002';
 const input={tableId,visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci',
  qrToken:'q'.repeat(64),customerSessionToken:'s'.repeat(64)};
 const lock=createCatalogVisitContextRepository().lockContext;
+const profile={customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'};
 test('locked authorization binds QR, bearer session and durable visit',async()=>{
  const result=await lock(async(sql,args)=>{
   assert.match(sql,/FOR SHARE OF t,v,s/);
+  assert.match(sql,/JOIN sabora.customer_profiles AS p ON p.id=v.customer_id/);
   assert.match(sql,/v\.authorized_qr_version=t\.qr_version/);
   assert.match(sql,/t\.ordering_state='open'/);
   assert.match(sql,/t\.ordering_state='paused'/);
@@ -21,10 +23,11 @@ test('locked authorization binds QR, bearer session and durable visit',async()=>
   assert.match(sql,/s\.token_hash=sha256/);
   assert.deepEqual(args,[tableId,'visit-ci','actor-ci',input.qrToken,input.customerSessionToken]);
   assert.doesNotMatch(sql,new RegExp(input.qrToken));
-  return {rows:[{table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci'}]};
+  return {rows:[{table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci',...profile}]};
  },input);
  assert.deepEqual(result,{authorized:true,canOrder:true,tableId,sessionId,
-  visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci'});
+  visitId:'visit-ci',actorId:'actor-ci',basketId:'basket-ci',
+  customerAlias:'Cliente',customerIdentifier:'SB-23456789ABCD'});
 });
 test('expired, revoked or rotated credentials return forbidden scope',async()=>{
  const result=await lock(async()=>({rows:[]}),input);
