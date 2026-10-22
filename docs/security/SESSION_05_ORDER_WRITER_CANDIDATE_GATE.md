@@ -299,3 +299,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El lector PostgreSQL ya verificaba `order_id` antes de construir el resultado; esta defensa adicional evita confiar ciegamente en adaptadores de repositorio alternativos o defectuosos.
 - Se actualizó la prueba positiva para usar un UUID real y se añadieron regresiones negativas de resultados de replay malformados.
 - Sin activación de HTTP, permisos, pool operativo, merge ni despliegue.
+
+## Integridad de IDs de extremo a extremo
+
+- El coordinador candidato exige UUID válido en tres fronteras de persistencia: `previous.quoteId` obtenido del ledger confiable, `result.orderId` del escritor y `replay.result.orderId` de una confirmación previa. La igualdad de huella por sí sola no basta para devolver éxito.
+- Las pruebas unitarias sustituyen identificadores ficticios por UUIDs y comprueban rechazo con rollback ante IDs de cotización o pedido ausentes, malformados o de tipo inesperado.
+- Esta validación de formato no sustituye FKs, unicidad, transacción real ni autenticación. La integración PostgreSQL 17 con driver Node real permanece pendiente; no hay endpoints nuevos, grants, merge o despliegue.
