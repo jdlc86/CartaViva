@@ -126,7 +126,7 @@ export function createCatalogConfirmationAttemptWriter(){
      args.quoteId,JSON.stringify(evidence),args.orderId,args.acceptanceVerified]
    );
    if(!result||!Array.isArray(result.rows)||result.rows.length!==1||
-      !result.rows[0]||result.rows[0].order_id!==args.orderId)
+      !safeRecord(result.rows[0])||result.rows[0].order_id!==args.orderId)
     throw Error('invalid_catalog_confirmation_attempt_result');
    return Object.freeze({orderId:args.orderId});
   }
