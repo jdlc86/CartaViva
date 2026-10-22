@@ -20,3 +20,11 @@
 
 ## Estado
 Este registro es un análisis de bloqueo, **no** una concesión de permisos, activación de rutas, implementación de escritor ni certificación de seguridad. No modifica Supabase operativo, VPS ni Fleetia. PR debe permanecer Draft; merge y despliegue prohibidos sin autorización expresa.
+
+## Avance de frontera de entrada (22-10-2026)
+
+Se endureció `apps/api/src/staff-table-transition-coordinator.mjs` para rechazar objetos con prototipos exóticos, campos símbolo, campos ocultos y getters/setters, antes de resolver la sesión o abrir una transacción. Se añadieron pruebas de entradas hostiles y una prueba positiva de actor obtenido de sesión verificada en `tests/staff-transition-input-boundary.test.mjs`.
+
+Commits de implementación: `48a0709d73790481126b75994c50ae589cf683f0` y `3e7e862d056666d757a28de8a547b06453d50eaf`.
+
+**Alcance limitado:** el cambio es protección del límite de entrada JavaScript; no demuestra protección frente a suplantación si se otorgaran permisos SQL directos. No se ha implementado aún el rol escritor operativo, la atribución SQL individual, ni el flujo transaccional completo de pedido. Comprobar CI del HEAD exacto antes de considerar validado el cambio.
