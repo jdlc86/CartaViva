@@ -231,3 +231,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Cuatro pruebas nuevas cubren fallos simultáneos de consulta/liberación, `BEGIN`/liberación, `COMMIT`/liberación y liberación posterior a `COMMIT` exitoso. No se crea pool ni se habilita el escritor.
 
 - Regresión adicional: errores originales `Error` congelados se conservan aunque fallen tanto `ROLLBACK` como `release()`. No se intenta sobrescribir propiedades no escribibles. El cliente se descarta con la causa del fallo de reversión.
+
+## Cobertura negativa del coordinador completo: fallos parciales
+
+- `tests/catalog-order-confirmation-candidate.test.mjs` añade seis respuestas de ledger corruptas o contradictorias y nueve respuestas de ocupación/creación de pedido incorrectas. El coordinador debe producir `ROLLBACK` sin comunicar confirmación exitosa.
+- Una ocupación malformada impide el `INSERT` de pedido; una respuesta incorrecta del `INSERT` impide el ledger; una respuesta de ledger incorrecta revierte el flujo completo.
+- Esta cobertura valida el contrato de coordinación mediante consulta inyectada. No prueba todavía atomicidad física del driver Node contra PostgreSQL 17 ni autoriza conectar HTTP o privilegios runtime.
