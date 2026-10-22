@@ -30,7 +30,7 @@ export function createCatalogVisitContextRepository(){
         AND v.authorized_qr_version=t.qr_version
         AND v.revoked_at IS NULL AND v.expires_at>clock_timestamp()
         AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
-      FOR SHARE OF t,v,s`,
+      FOR UPDATE OF t FOR SHARE OF v,s`,
     [tableId,visitId,actorId,qrToken,customerSessionToken]);
    if(!response||!Array.isArray(response.rows)||response.rows.length>1)
     throw Error('invalid_catalog_visit_response');
