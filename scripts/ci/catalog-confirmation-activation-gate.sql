@@ -6,7 +6,8 @@ DO $gate$
 DECLARE
   role_name text;
   table_name text;
-  function_name text;
+  trigger_name text;
+  expected_trigger_count integer;
 BEGIN
   FOREACH role_name IN ARRAY ARRAY[
    'anon','authenticated','sabora_admin_writer',
@@ -39,6 +40,32 @@ BEGIN
    ) THEN
     RAISE EXCEPTION 'economic ledger RLS not forced: %',table_name;
    END IF;
+   FOREACH trigger_name IN ARRAY ARRAY[
+    table_name||'_append_only',table_name||'_no_truncate'
+   ] LOOP
+    IF NOT EXISTS (
+     SELECT 1 FROM pg_trigger tr
+     JOIN pg_class c ON c.oid=tr.tgrelid
+     JOIN pg_namespace n ON n.oid=c.relnamespace
+     JOIN pg_proc p ON p.oid=tr.tgfoid
+     JOIN pg_namespace pn ON pn.oid=p.pronamespace
+     WHERE n.nspname='sabora' AND c.relname=table_name
+       AND tr.tgname=trigger_name AND tr.tgenabled IN ('O','A')
+       AND NOT tr.tgisinternal
+       AND pn.nspname='sabora' AND p.proname='reject_catalog_ledger_mutation'
+       AND ((
+        trigger_name=table_name||'_append_only'
+        AND (tr.tgtype & 1)=1 AND (tr.tgtype & 2)=2
+        AND (tr.tgtype & 4)=4 AND (tr.tgtype & 8)=8
+       ) OR (
+        trigger_name=table_name||'_no_truncate'
+        AND (tr.tgtype & 1)=0 AND (tr.tgtype & 2)=2
+        AND (tr.tgtype & 32)=32
+       ))
+    ) THEN
+     RAISE EXCEPTION 'economic ledger mutation guard missing or disabled: %',trigger_name;
+    END IF;
+   END LOOP;
    IF EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname='sabora' AND tablename=table_name
@@ -46,6 +73,18 @@ BEGIN
     RAISE EXCEPTION 'economic ledger unexpectedly has runtime policy: %',table_name;
    END IF;
   END LOOP;
+
+  IF EXISTS (
+   SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='sabora' AND p.proname='reject_catalog_ledger_mutation'
+     AND p.prosecdef
+  ) THEN
+   RAISE EXCEPTION 'economic ledger mutation guard must be security invoker';
+  END IF;
+  IF has_function_privilege('public',
+      'sabora.reject_catalog_ledger_mutation()','EXECUTE') THEN
+   RAISE EXCEPTION 'economic ledger mutation guard exposed to PUBLIC';
+  END IF;
 
   IF NOT EXISTS (
    SELECT 1 FROM pg_constraint con
