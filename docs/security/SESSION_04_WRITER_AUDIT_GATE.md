@@ -82,3 +82,11 @@ No hay cambio de permisos, endpoint ni activación. La huella es una comparació
 Se ha corregido una divergencia entre `catalog-visit-context-repository.mjs` y `catalog-confirmation-coordinator.mjs`: la confirmación exige ahora `qrToken` y `customerSessionToken` y los remite a `lockContext` dentro de la misma transacción. Se rechazan credenciales ausentes o malformadas antes de SQL. **Las credenciales quedan excluidas de la huella de idempotencia**, que identifica los datos económicos de la solicitud, no secretos de sesión. Pruebas de regresión en `tests/catalog-confirmation-coordinator.test.mjs`. Commits `0cbf1b46` y `59645679`.
 
 Sigue siendo un candidato no operativo: la comprobación de credenciales depende de que el repositorio de contexto real se integre y de que los roles SQL, el escritor de pedidos, la auditoría y las pruebas PostgreSQL queden acreditados. No se activan rutas ni se concede ningún permiso.
+
+## Composición candidata de lecturas autorizadas (22-10-2026)
+
+`apps/api/src/catalog-confirmation-repository.mjs` compone el bloqueo de visita con QR y sesión del cliente, la consulta de idempotencia, el bloqueo de publicación y la lectura de cotización anterior. Exige la inyección explícita de un `persist` transaccional: **no proporciona ni simula un escritor duradero por defecto**. Su guard de autorización es una defensa complementaria, no reemplaza RLS ni la revalidación transaccional del escritor.
+
+`tests/catalog-confirmation-repository.test.mjs` cubre ausencia de escritor, secuencia de lecturas, SQL parametrizado, exclusión de credenciales en la consulta de replay y rechazo de contexto no autorizado. Commits `99f001ab`, `463a1ba1`.
+
+**No operativo:** el adaptador de persistencia, permisos SQL de mínimo privilegio, auditoría atribuida y prueba de confirmación completa contra PostgreSQL 17 siguen pendientes. No hay activación HTTP ni despliegue.
