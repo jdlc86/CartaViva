@@ -244,3 +244,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se verifica que `first_confirmed_at` coincide exactamente con `orders.confirmed_at` del primer pedido y que un segundo pedido `grouped` no modifica ese instante.
 - Tras simular el vencimiento de la ventana, se verifica que un pedido `late` no reinicia la ventana y conserva el instante vencido.
 - Estas aserciones usan SQL real sobre el PostgreSQL 17 aislado de CI. La prueba sigue siendo SQL separada, no la integración del coordinador Node mediante driver PostgreSQL.
+
+## Atomicidad de proyección de cocina y rechazo de claves repetidas en PostgreSQL 17
+
+- `scripts/ci/catalog-confirmation-atomicity-smoke.sql` verifica ahora que `order_lines` desaparece junto con `orders` y el ledger tras revertir la confirmación, y que la confirmación válida produce exactamente una línea de cocina.
+- Se añade una transacción de prueba que inserta un segundo pedido y su línea de cocina, intenta reutilizar el mismo alcance y `request_key`, y exige rechazo por la restricción `catalog_confirmation_idempotency`. El subbloque revertido no debe alterar el pedido/ledger originales ni dejar pedidos o líneas de cocina adicionales.
+- Esto demuestra comportamiento de restricciones, disparadores y rollback sobre PostgreSQL 17 desechable; no reemplaza una integración Node/driver real ni activa permisos o endpoints.
