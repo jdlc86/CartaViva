@@ -8,7 +8,7 @@ export function createPostgresTransaction({ pool } = {}) {
     if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
       throw Error('invalid_transaction_client');
     }
-    let pendingQueries = 0;
+    const inFlight = new Set();
     let active = false;
     let began = false;
     let committed = false;
@@ -20,12 +20,13 @@ export function createPostgresTransaction({ pool } = {}) {
       active = true;
       const result = await work(async (sql, parameters = []) => {
         if (!active) throw Error('transaction_scope_closed');
-        pendingQueries++;
-        try { return await client.query(sql, parameters); }
-        finally { pendingQueries--; }
+        const operation = Promise.resolve().then(() => client.query(sql, parameters));
+        inFlight.add(operation);
+        try { return await operation; }
+        finally { inFlight.delete(operation); }
       });
       active = false;
-      if (pendingQueries !== 0) throw Error('transaction_queries_not_awaited');
+      if (inFlight.size !== 0) throw Error('transaction_queries_not_awaited');
       commitAttempted = true;
       await client.query('COMMIT');
       committed = true;
@@ -35,6 +36,11 @@ export function createPostgresTransaction({ pool } = {}) {
       // A failed BEGIN or COMMIT may leave the connection state uncertain.
       // Never return an uncertain connection to the pool.
       if (!began || commitAttempted) discardClient = error;
+      // Detached operations must settle before ROLLBACK/release can reuse this connection.
+      if (inFlight.size !== 0) {
+        discardClient = error;
+        await Promise.allSettled([...inFlight]);
+      }
       if (began && !committed) {
         try { await client.query('ROLLBACK'); }
         catch (rollbackError) {
