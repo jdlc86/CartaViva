@@ -247,3 +247,25 @@ test('malformed single-row advisory lock responses fail before ledger read',asyn
   assert.equal(calls,1);
  }
 });
+
+test('all catalog readers reject accessor-backed, inherited and dangerous scope before SQL',async()=>{
+ let getters=0,sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const accessor={...context};
+ Object.defineProperty(accessor,'authorized',{enumerable:true,
+  get(){getters++;throw Error('untrusted_getter');}});
+ const inherited=Object.assign(Object.create({inherited:true}),context);
+ const dangerous={...context};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:'malicious'});
+ for(const invalid of [accessor,inherited,dangerous]){
+  await assert.rejects(repo.lookupIdempotency(query,{
+   context:invalid,requestKey:'request-001',requestFingerprint:'fingerprint'
+  }),/invalid_catalog_repository_scope/);
+  await assert.rejects(repo.lockCatalog(query,{context:invalid,itemId}),
+   /invalid_catalog_repository_scope/);
+  await assert.rejects(repo.loadPreviousQuote(query,{context:invalid,itemId}),
+   /invalid_catalog_repository_scope/);
+ }
+ assert.equal(getters,0);
+ assert.equal(sqlCalls,0);
+});
