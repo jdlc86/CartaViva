@@ -38,10 +38,12 @@ WITH instant AS (SELECT clock_timestamp() AS at),
    FROM created WHERE t.id=:'table_id' AND created.grouping='first'
   RETURNING t.id
  )
-SELECT created.id AS first_order_id,created.grouping AS first_grouping
+SELECT created.id AS first_order_id,created.grouping AS first_grouping,
+ (updated.id IS NOT NULL) AS first_timestamp_written
  FROM created LEFT JOIN updated ON true \gset
 
 SELECT 1 / CASE WHEN :'first_grouping'='first'
+ AND :'first_timestamp_written'='t'
  AND (SELECT first_confirmed_at IS NOT NULL FROM sabora.dining_tables
       WHERE id=:'table_id')
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'first_order_id')=1
@@ -69,9 +71,11 @@ WITH instant AS (SELECT clock_timestamp() AS at),
    FROM created WHERE t.id=:'table_id' AND created.grouping='first'
   RETURNING t.id
  )
-SELECT created.id AS grouped_order_id,created.grouping AS grouped_grouping
+SELECT created.id AS grouped_order_id,created.grouping AS grouped_grouping,
+ (updated.id IS NOT NULL) AS grouped_timestamp_written
  FROM created LEFT JOIN updated ON true \gset
 SELECT 1 / CASE WHEN :'grouped_grouping'='grouped'
+ AND :'grouped_timestamp_written'='f'
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'grouped_order_id')=1
  THEN 1 ELSE 0 END AS grouped_order_verified;
 
@@ -100,9 +104,11 @@ WITH instant AS (SELECT clock_timestamp() AS at),
    FROM created WHERE t.id=:'table_id' AND created.grouping='first'
   RETURNING t.id
  )
-SELECT created.id AS late_order_id,created.grouping AS late_grouping
+SELECT created.id AS late_order_id,created.grouping AS late_grouping,
+ (updated.id IS NOT NULL) AS late_timestamp_written
  FROM created LEFT JOIN updated ON true \gset
 SELECT 1 / CASE WHEN :'late_grouping'='late'
+ AND :'late_timestamp_written'='f'
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'late_order_id')=1
  AND (SELECT first_confirmed_at<clock_timestamp()-interval '9 minutes'
       FROM sabora.dining_tables WHERE id=:'table_id')
