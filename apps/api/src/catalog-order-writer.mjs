@@ -86,7 +86,8 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
           WHERE t.id=$2 AND created.grouping='first'
          RETURNING t.id
        )
-     SELECT created.id,created.grouping FROM created
+     SELECT created.id,created.grouping,
+       (updated.id IS NOT NULL) AS first_timestamp_written FROM created
        LEFT JOIN updated ON true`,
     [orderId,context.tableId,context.sessionId,
      context.customerAlias.trim(),context.customerIdentifier.trim(),context.visitId,
@@ -96,7 +97,8 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    if(!result||!Array.isArray(result.rows)||result.rows.length!==1||
       result.rows[0]?.id!==orderId||
       !['first','grouped','late'].includes(result.rows[0]?.grouping)||
-      (occupancy.first_confirmed_at===null)!==(result.rows[0]?.grouping==='first'))
+      (occupancy.first_confirmed_at===null)!==(result.rows[0]?.grouping==='first')||
+      result.rows[0]?.first_timestamp_written!==(result.rows[0]?.grouping==='first'))
     throw Error('catalog_order_context_changed');
    // The coordinator's transaction must rollback the order if this fails.
    await ledger.insertConfirmation(query,{...args,orderId});
