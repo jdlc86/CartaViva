@@ -165,3 +165,22 @@ test('first-order timestamp update must be confirmed by SQL before ledger insert
   assert.equal(statements.length,2,'no ledger insert on missing or contradictory timestamp update');
  }
 });
+
+test('invalid economic evidence and consent never reach table lock or order INSERT',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ for(const patch of [
+  {evidence:{...evidence,totalCents:1999}},
+  {evidence:{...evidence,basePriceCents:999}},
+  {evidence:{...evidence,selected:[{id:'extra',name:'Extra',priceCents:1,allergens:[]}]}},
+  {requestFingerprint:''},
+  {requestKey:'bad'},
+  {requiresAcceptance:true,acceptanceVerified:false},
+  {requiresAcceptance:false,acceptanceVerified:true}
+ ]){
+  let queries=0;
+  await assert.rejects(writer.persist(async()=>{
+   queries++;throw Error('unexpected_SQL');
+  },{...args,...patch}),/invalid_catalog_confirmation_attempt/);
+  assert.equal(queries,0,'invalid ledger evidence must fail before SQL');
+ }
+});
