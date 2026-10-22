@@ -101,7 +101,7 @@ WITH instant AS (SELECT clock_timestamp() AS at),
   RETURNING t.id
  )
 SELECT created.id AS late_order_id,created.grouping AS late_grouping
- FROM created LEFT JOIN updated ON true \\gset
+ FROM created LEFT JOIN updated ON true \gset
 SELECT 1 / CASE WHEN :'late_grouping'='late'
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'late_order_id')=1
  AND (SELECT first_confirmed_at<clock_timestamp()-interval '9 minutes'
