@@ -86,20 +86,7 @@ test('pool candidate never checks out a connection for invalid clock',()=>{
 
 test('pool candidate discards client if COMMIT fails after a completed callback',async()=>{
  const statements=[],releases=[];
- const confirm=createCatalogOrderConfirmationPoolCandidate({
-  pool:{async connect(){return {
-   async query(sql){
-    statements.push(sql);
-    if(sql==='COMMIT')throw Error('commit_uncertain');
-    if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};
-    return {rows:[]};
-   },
-   release(error){releases.push(error);}
-  };}},
-  secretKey:'x'.repeat(32)
- });
- // A denied visit triggers rollback before COMMIT. Exercise COMMIT directly
- // through the same production transaction adapter instead.
+ // Exercise COMMIT through the transaction adapter used by the candidate.
  const {createPostgresTransaction}=await import('../apps/api/src/postgres-transaction.mjs');
  const withTransaction=createPostgresTransaction({
   pool:{async connect(){return {
@@ -113,5 +100,4 @@ test('pool candidate discards client if COMMIT fails after a completed callback'
  assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
  assert.equal(releases.length,1);
  assert.match(releases[0].message,/commit_uncertain/);
- assert.equal(typeof confirm,'function');
 });
