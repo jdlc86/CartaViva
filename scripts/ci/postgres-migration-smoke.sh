@@ -43,6 +43,8 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 bash scripts/ci/catalog-order-writer-close-concurrency-smoke.sh "$container"
 # Reverse race: staff closes first; a subsequent candidate writer must block then refuse.
 bash scripts/ci/catalog-order-writer-close-first-concurrency-smoke.sh "$container"
+# A competing staff close that rolls back must not permanently block ordering.
+bash scripts/ci/catalog-order-writer-close-rollback-concurrency-smoke.sh "$container"
 # Prove locked customer identity serializes with a concurrent profile edit.
 bash scripts/ci/catalog-profile-confirmation-concurrency-smoke.sh "$container"
 # Verify staff lifecycle role gates without runtime grants.
