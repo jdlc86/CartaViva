@@ -106,3 +106,24 @@ test('composed writer refuses accessor-backed arguments and context before persi
  assert.equal(getterCalls,0);
  assert.equal(persistCalls,0);
 });
+
+test('composition rejects economic evidence containers with accessors or inherited properties',async()=>{
+ let invoked=0;
+ const repository=createCatalogConfirmationRepository({persist:async()=>{invoked++;}});
+ const base={context:scope,itemId,requestKey:'request-001',
+  requestFingerprint:'fingerprint',quoteId:orderId,
+  evidence:{totalCents:1000},acceptanceVerified:false,requiresAcceptance:false};
+ let getterCalls=0;
+ const accessor={totalCents:1000};
+ Object.defineProperty(accessor,'discountCents',{enumerable:true,
+  get(){getterCalls++;throw Error('hostile_evidence_getter');}});
+ const inherited=Object.assign(Object.create({unsafe:true}),{totalCents:1000});
+ const dangerous={totalCents:1000};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:1});
+ for(const evidence of [accessor,inherited,dangerous]){
+  await assert.rejects(repository.persist(async()=>{}, {...base,evidence}),
+   /invalid_catalog_confirmation_writer_scope/);
+ }
+ assert.equal(getterCalls,0);
+ assert.equal(invoked,0);
+});
