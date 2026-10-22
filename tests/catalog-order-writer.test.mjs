@@ -92,3 +92,39 @@ test('writer persists trimmed trusted alias and keeps kitchen projection derived
  assert.deepEqual(JSON.parse(calls[1].params[7]),
   [{category:'starter',name:evidence.itemName,quantity:evidence.quantity}]);
 });
+
+test('locked table state must be well-formed before an order or ledger INSERT',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ const badRows=[
+  null,{}, {first_confirmed_at:null,grouping_window_seconds:null},
+  {first_confirmed_at:null,grouping_window_seconds:'300'},
+  {first_confirmed_at:null,grouping_window_seconds:0},
+  {first_confirmed_at:null,grouping_window_seconds:-1},
+  {first_confirmed_at:null,grouping_window_seconds:1.5},
+  {first_confirmed_at:'2026-10-22T12:00:00Z',grouping_window_seconds:300},
+  {first_confirmed_at:new Date('invalid'),grouping_window_seconds:300}
+ ];
+ for(const bad of badRows){
+  let queries=0;
+  await assert.rejects(writer.persist(async()=>{
+   queries++;
+   return {rows:[bad]};
+  },args),/invalid_catalog_order_table_state/);
+  assert.equal(queries,1,'invalid occupancy must not reach INSERT');
+ }
+});
+
+test('valid PostgreSQL timestamp from locked table is forwarded to grouping SQL',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ const first=new Date('2026-10-22T12:00:00.000Z');
+ const calls=[];
+ const result=await writer.persist(async(sql,params)=>{
+  calls.push({sql,params});
+  if(calls.length===1)return {rows:[{first_confirmed_at:first,grouping_window_seconds:300}]};
+  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'grouped'}]};
+  return {rows:[{order_id:ids.orderId}]};
+ },args);
+ assert.equal(result.orderId,ids.orderId);
+ assert.equal(calls[1].params[8],first);
+ assert.equal(calls[1].params[9],300);
+});
