@@ -228,3 +228,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `54b250e`: la frontera `createPostgresTransaction` rechaza fechas `Date` falsificadas, subclases y fechas inválidas antes de enviar SQL, sin invocar métodos sobrescritos. Un `Date` ordinario se copia antes del envío al driver.
 - `fb7b671`: pruebas de rechazo y snapshot de fecha. La validación del nuevo HEAD debe verificarse en CI antes de declarar este bloque acreditado.
 - Se mantiene pendiente la integración completa Node–PostgreSQL 17 con rol mínimo y el gate de activación. No desplegar, conectar HTTP ni habilitar grants operativos.
+
+## Matriz integrada de fallo de respuestas SQL (23 oct 2026)
+
+- HEAD previo `c92d5fc`: Sabora CI `39862649867` **SUCCESS** y Bootstrap `39862649990` **SUCCESS**.
+- `6fcc7be`: el test del candidato completo con pool inyectado introduce filas SQL de prototipo heredado en siete fronteras: visita, advisory lock, catálogo, cotización, bloqueo de mesa, inserción de pedido y ledger. En cada caso exige transacción `BEGIN → ROLLBACK → RELEASE`, ausencia de `COMMIT` y ausencia de inserción de ledger antes de alcanzar su fase.
+- Esta matriz usa driver simulado; **no es** la integración real Node–PostgreSQL 17. Sigue pendiente esa integración, así como la acreditación del rol escritor de mínimos privilegios y auditoría antes de cualquier HTTP, grants o despliegue.
+- Validar CI del nuevo HEAD antes de dar por acreditada la matriz.
