@@ -7,6 +7,7 @@ import {assertDisplayedQuoteMatchesConfirmation} from './catalog-displayed-quote
 
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+const validUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
@@ -96,8 +97,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    });
    if(replay!==null){
     if(!plain(replay)||replay.requestFingerprint!==requestFingerprint||
-       !plain(replay.result)||typeof replay.result.orderId!=='string'||
-       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replay.result.orderId))
+       !plain(replay.result)||!validUuid(replay.result.orderId))
       throw Error('order_idempotency_conflict');
     return Object.freeze({status:'replayed',result:replay.result});
    }
@@ -112,7 +112,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    });
    if(!plain(previous))throw Error('order_previous_quote_unavailable');
    // A durable writer must bind its confirmation to the exact locked quote.
-   if(typeof previous.quoteId!=='string'||!previous.quoteId)
+   if(!validUuid(previous.quoteId))
     throw Error('order_previous_quote_unavailable');
    const nowMs=clock();
    if(!Number.isSafeInteger(nowMs)||nowMs<0)throw Error('invalid_confirmation_clock');
@@ -134,7 +134,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
     acceptanceVerified:decision.acceptanceVerified,
     requiresAcceptance:decision.requiresAcceptance
    });
-   if(!plain(result)||typeof result.orderId!=='string'||!result.orderId)
+   if(!plain(result)||!validUuid(result.orderId))
     throw Error('invalid_order_persistence_result');
    return Object.freeze({status:'confirmed',result});
   });
