@@ -338,3 +338,48 @@ test('falsy thrown callback values are preserved even if release fails',async()=
   assert.deepEqual(statements,['BEGIN','ROLLBACK']);
  }
 });
+
+test('rollback drains queries spawned by an already detached query before releasing client',async()=>{
+ const statements=[],releases=[];
+ let firstStarted,finishFirst,secondStarted,finishSecond;
+ const firstEntered=new Promise(resolve=>{firstStarted=resolve;});
+ const firstGate=new Promise(resolve=>{finishFirst=resolve;});
+ const secondEntered=new Promise(resolve=>{secondStarted=resolve;});
+ const secondGate=new Promise(resolve=>{finishSecond=resolve;});
+ let queryCapability;
+ const client={
+  async query(sql){
+   statements.push(sql);
+   if(sql==='SELECT first'){
+    firstStarted();
+    await firstGate;
+    // Simulate a continuation of an already in-flight query scheduling
+    // another query before the transaction boundary is closed.
+    void queryCapability('SELECT second');
+   }
+   if(sql==='SELECT second'){
+    secondStarted();
+    await secondGate;
+   }
+   return {rows:[]};
+  },
+  release:reason=>releases.push(reason)
+ };
+ const transaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ const pending=transaction(async query=>{
+  queryCapability=query;
+  void query('SELECT first');
+  await firstEntered;
+  throw Error('abort_with_detached_query');
+ });
+ await firstEntered;
+ finishFirst();
+ await secondEntered;
+ assert.equal(statements.includes('ROLLBACK'),false);
+ assert.equal(releases.length,0);
+ finishSecond();
+ await assert.rejects(pending,/abort_with_detached_query/);
+ assert.deepEqual(statements,['BEGIN','SELECT first','SELECT second','ROLLBACK']);
+ assert.equal(releases.length,1);
+ assert.match(releases[0]?.message??'',/abort_with_detached_query/);
+});
