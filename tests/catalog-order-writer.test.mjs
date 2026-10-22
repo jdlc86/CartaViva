@@ -22,7 +22,7 @@ test('candidate writes legacy kitchen projection and economic ledger on one quer
  const query=async(sql,params)=>{
   calls.push({sql,params});
   if(calls.length===1)return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'first'}]};
+  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'first',first_timestamp_written:true}]};
   return {rows:[{order_id:ids.orderId}]};
  };
  const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
@@ -71,7 +71,7 @@ test('ledger rejection propagates to caller transaction rather than reporting su
  await assert.rejects(writer.persist(async()=>{
   calls++;
   if(calls===1)return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-  if(calls===2)return {rows:[{id:ids.orderId,grouping:'first'}]};
+  if(calls===2)return {rows:[{id:ids.orderId,grouping:'first',first_timestamp_written:true}]};
   throw Error('ledger_rejected');
  },args),/ledger_rejected/);
  assert.equal(calls,3);
@@ -83,7 +83,7 @@ test('writer persists trimmed trusted alias and keeps kitchen projection derived
  await writer.persist(async(sql,params)=>{
   calls.push({sql,params});
   if(calls.length===1)return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'first'}]};
+  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'first',first_timestamp_written:true}]};
   return {rows:[{order_id:ids.orderId}]};
  },{...args,context:{...context,customerAlias:'  Cliente  '}});
  assert.equal(calls[1].params[3],'Cliente');
@@ -121,7 +121,7 @@ test('valid PostgreSQL timestamp from locked table is forwarded to grouping SQL'
  const result=await writer.persist(async(sql,params)=>{
   calls.push({sql,params});
   if(calls.length===1)return {rows:[{first_confirmed_at:first,grouping_window_seconds:300}]};
-  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'grouped'}]};
+  if(calls.length===2)return {rows:[{id:ids.orderId,grouping:'grouped',first_timestamp_written:false}]};
   return {rows:[{order_id:ids.orderId}]};
  },args);
  assert.equal(result.orderId,ids.orderId);
@@ -140,8 +140,26 @@ test('writer rejects inconsistent SQL grouping before immutable ledger INSERT',a
   await assert.rejects(writer.persist(async sql=>{
    statements.push(sql);
    if(statements.length===1)return {rows:[{first_confirmed_at:first,grouping_window_seconds:300}]};
-   return {rows:[{id:ids.orderId,grouping}]};
+   return {rows:[{id:ids.orderId,grouping,first_timestamp_written:grouping==='first'}]};
   },args),/catalog_order_context_changed/);
   assert.equal(statements.length,2,'invalid grouping must not insert economic ledger');
+ }
+});
+
+test('first-order timestamp update must be confirmed by SQL before ledger insert',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ for(const [first,grouping,updated] of [
+  [null,'first',false],
+  [null,'first',null],
+  [new Date('2026-10-22T12:00:00Z'),'grouped',true],
+  [new Date('2026-10-22T12:00:00Z'),'late',undefined]
+ ]){
+  const statements=[];
+  await assert.rejects(writer.persist(async sql=>{
+   statements.push(sql);
+   if(statements.length===1)return {rows:[{first_confirmed_at:first,grouping_window_seconds:300}]};
+   return {rows:[{id:ids.orderId,grouping,first_timestamp_written:updated}]};
+  },args),/catalog_order_context_changed/);
+  assert.equal(statements.length,2,'no ledger insert on missing or contradictory timestamp update');
  }
 });
