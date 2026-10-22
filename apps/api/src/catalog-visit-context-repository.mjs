@@ -3,9 +3,23 @@
 // This is NOT a runtime writer and grants no database permissions.
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const opaque=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+const safeRecord=v=>{
+ if(v===null||typeof v!=='object'||Array.isArray(v))return false;
+ const proto=Object.getPrototypeOf(v);
+ if(proto!==Object.prototype&&proto!==null)return false;
+ const keys=Reflect.ownKeys(v);
+ if(keys.length>32)return false;
+ return keys.every(k=>{
+  if(typeof k!=='string'||['__proto__','constructor','prototype'].includes(k))return false;
+  const d=Object.getOwnPropertyDescriptor(v,k);
+  return !!d&&d.enumerable&&Object.hasOwn(d,'value');
+ });
+};
 export function createCatalogVisitContextRepository(){
  return Object.freeze({
-  async lockContext(query,{tableId,visitId,actorId,basketId,qrToken,customerSessionToken}={}){
+  async lockContext(query,args={}){
+   if(!safeRecord(args))throw Error('invalid_catalog_visit_context');
+   const {tableId,visitId,actorId,basketId,qrToken,customerSessionToken}=args;
    if(typeof query!=='function'||!uuid.test(tableId)||!opaque(visitId)||
       !opaque(actorId)||!opaque(basketId)||
       typeof qrToken!=='string'||qrToken.length<32||qrToken.length>512||
