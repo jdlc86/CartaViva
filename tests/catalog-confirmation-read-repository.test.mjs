@@ -235,3 +235,15 @@ test('malformed idempotency ledger row aborts rather than creating another order
   assert.equal(calls,2);
  }
 });
+
+test('malformed single-row advisory lock responses fail before ledger read',async()=>{
+ for(const malformed of [null,undefined,false,0,'',[],['invalid']]){
+  let calls=0;
+  await assert.rejects(repo.lookupIdempotency(async()=>{
+   calls++;
+   return {rows:[malformed]};
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+  assert.equal(calls,1);
+ }
+});
