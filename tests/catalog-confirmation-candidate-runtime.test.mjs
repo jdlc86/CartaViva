@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCatalogConfirmationCandidate} from '../apps/api/src/catalog-confirmation-candidate-runtime.mjs';
+import {createCatalogOrderConfirmationPoolCandidate} from '../apps/api/src/catalog-order-confirmation-candidate.mjs';
 
 test('candidate composition rejects malformed input without checking out a connection',async()=>{
  let checkouts=0;
- const confirm=createCatalogConfirmationCandidate({
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
   pool:{async connect(){checkouts++;throw Error('unexpected_checkout');}},
   secretKey:'x'.repeat(32)
  });
@@ -13,10 +13,10 @@ test('candidate composition rejects malformed input without checking out a conne
 });
 
 test('candidate composition fails closed if PostgreSQL pool or signing secret is absent',()=>{
- assert.throws(()=>createCatalogConfirmationCandidate({
+ assert.throws(()=>createCatalogOrderConfirmationPoolCandidate({
   pool:{connect:async()=>{}},secretKey:'short'
  }),/invalid_confirmation_coordinator/);
- assert.throws(()=>createCatalogConfirmationCandidate({
+ assert.throws(()=>createCatalogOrderConfirmationPoolCandidate({
   secretKey:'x'.repeat(32)
  }),/invalid_transaction_pool/);
 });
@@ -24,7 +24,7 @@ test('candidate composition fails closed if PostgreSQL pool or signing secret is
 test('candidate composition begins transaction and rolls back on forbidden visit',async()=>{
  const statements=[];
  let releases=0;
- const confirm=createCatalogConfirmationCandidate({
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
   pool:{async connect(){return {
    async query(sql){statements.push(sql);if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};
     return {rows:[]};},
@@ -47,7 +47,7 @@ test('candidate composition begins transaction and rolls back on forbidden visit
 
 test('candidate composition rejects invalid UUID generator before any checkout',()=>{
  let checkouts=0;
- assert.throws(()=>createCatalogConfirmationCandidate({
+ assert.throws(()=>createCatalogOrderConfirmationPoolCandidate({
   pool:{async connect(){checkouts++;throw Error('unexpected_checkout');}},
   secretKey:'x'.repeat(32),newOrderId:'not-a-function'
  }),/invalid_catalog_order_writer/);
@@ -56,7 +56,7 @@ test('candidate composition rejects invalid UUID generator before any checkout',
 
 test('candidate composition propagates a failed BEGIN and discards connection',async()=>{
  const statements=[],releases=[];
- const confirm=createCatalogConfirmationCandidate({
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
   pool:{async connect(){return {
    async query(sql){statements.push(sql);throw Error('begin_failed');},
    release(error){releases.push(error);}
