@@ -20,8 +20,7 @@ test('valid pinned RS256 JWT yields trusted subject and verified flags',async()=
   issuerValid:true,audienceValid:true,notExpired:true});
 });
 test('rejects tampering, other signing keys and algorithm confusion',async()=>{
- for(const t of [token({...claims,sub:'00000000-0000-4000-8000-000000009002'})
-  .replace(/.$/,'a'),token(claims,undefined,other),
+ for(const t of [(()=>{const parts=token().split('.');parts[1]=enc({...claims,sub:'00000000-0000-4000-8000-000000009002'});return parts.join('.');})(),token(claims,undefined,other),
   token(claims,{alg:'none',typ:'JWT'}),token().split('.').slice(0,2).join('.')+'.bad']){
   assert.deepEqual(await verify(t),{verified:false});
  }
