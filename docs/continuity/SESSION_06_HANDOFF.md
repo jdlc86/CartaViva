@@ -178,3 +178,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `696d55e` y `0b97837`: el lector de visita verifica que la fila de identidad devuelta sea un registro de datos simple antes de acceder a mesa, sesión, alias o identificador público; regresiones con getter, herencia y clave peligrosa.
 - `e3927e5` y `9630370`: el lector de catálogo aplica la misma defensa a filas de idempotencia, publicación y cotización; pruebas negativas exigen rechazo sin ejecutar getters de respuesta.
 - Los controles complementan el bloqueo SQL de visita y la validación económica, pero no reemplazan la integración Node–PostgreSQL 17 ni la acreditación del rol de mínimos privilegios. No se habilitan HTTP, grants, merge o despliegue.
+
+## Validación de registros económicos anidados
+
+- El commit `347d98c` quedó acreditado con Sabora CI `39854058829` y Bootstrap `39854058711`, ambos SUCCESS.
+- `8826946`: los lectores de catálogo publicado y cotización rechazan ahora estructuras económicas anidadas con getters, propiedades heredadas o claves peligrosas. Una publicación inválida se considera no disponible; una cotización persistida inválida aborta la operación.
+- `da5a0b3`: regresiones negativas para ambos lectores; ningún getter hostil debe ejecutarse.
+- Esta defensa es de **forma de objeto**. No sustituye la validación económica de contenido ni las pruebas de ejecución real Node–PostgreSQL 17. El candidato sigue sin permisos de runtime ni conexión HTTP.
