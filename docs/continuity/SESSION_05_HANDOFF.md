@@ -4,8 +4,8 @@
 **Repositorio único autorizado:** `jdlc86/CartaViva`.
 **Rama:** `feat/sabora-pnpm-bootstrap`.
 **PR:** [#2](https://github.com/jdlc86/CartaViva/pull/2), **Draft**, sin merge.
-**HEAD comprobado antes de crear este documento:** `3834b46da4eeb3d7c2d20c3975fa0c183b85a862`.
-**GitHub Actions en ese SHA:** Sabora CI `39759537282` **SUCCESS** y Bootstrap Sabora lockfile `39759537273` **SUCCESS**. La creación de este handoff producirá un SHA nuevo: verificar ambos workflows del nuevo HEAD; nunca heredar un verde anterior.
+**HEAD comprobado al actualizar este documento:** `63c8f26af6c17ebd9bfcb30e481321fd8e0db816`.
+**GitHub Actions en ese SHA:** Sabora CI `39759950282` **SUCCESS** y Bootstrap Sabora lockfile `39759950246` **SUCCESS**. La creación de este handoff producirá un SHA nuevo: verificar ambos workflows del nuevo HEAD; nunca heredar un verde anterior.
 
 ## 1. Mandato y límites no negociables
 
@@ -83,4 +83,16 @@ El esquema legacy de `sabora.orders` y su función antigua `sabora.confirm_order
 
 ## 7. Punto de entrega
 
-Documento preparado sobre el estado **verificado** de `3834b46d` con ambos workflows SUCCESS. La creación de `SESSION_05_HANDOFF.md` genera un commit adicional; **la sesión 5 debe comprobar el nuevo HEAD y su CI** antes de continuar. El PR #2 permanece Draft y no se autoriza merge ni despliegue.
+Documento actualizado sobre el estado **verificado** de `63c8f26a` con ambos workflows SUCCESS. La creación de `SESSION_05_HANDOFF.md` genera un commit adicional; **la sesión 5 debe comprobar el nuevo HEAD y su CI** antes de continuar. El PR #2 permanece Draft y no se autoriza merge ni despliegue.
+
+## 8. Actualización posterior al primer handoff (22-10-2026)
+
+El documento de sesión 5 ya existía al comenzar esta actualización. Se conserva íntegra su estructura y se añade el avance posterior al corte original `3834b46d`:
+
+- `d157c24e`: el adaptador `catalog-confirmation-attempt-writer.mjs` utiliza ahora el motor compartido de precios `priceCatalogLine` para **recalcular la evidencia económica** antes de escribir en el ledger, contrastando subtotal y descuento unitarios y subtotal, descuento y total de línea. Se rechazan alteraciones de precio base, extras y descuentos incluso si los totales falsificados son internamente coherentes.
+- `a4a319db`: pruebas del recálculo con extras y descuentos fijos/porcentuales; se corrigieron fallos de la primera iteración.
+- `63c8f26a`: documentación de la frontera de recálculo y sus límites. **Sabora CI y Bootstrap SUCCESS en este HEAD**.
+
+**Límite pendiente:** el recálculo con la evidencia no prueba por sí solo que un extra pertenezca a la publicación autorizada ni que la revisión, disponibilidad y consentimiento sigan vigentes. Esas comprobaciones deben permanecer ligadas a lectura y bloqueo de catálogo, visita autorizada y transacción completa. No se han activado endpoints, permisos ni escritor operativo.
+
+**Acción inmediata de sesión 5:** verificar HEAD/CI del commit que actualiza este documento y después estudiar el esquema legacy `sabora.orders` y su acoplamiento con cocina/caja, antes de diseñar un escritor que no obligue a inventar `company` ni `employee_number`. Documentar y probar migraciones candidatas solo en PostgreSQL 17 aislado. Mantener PR #2 Draft.
