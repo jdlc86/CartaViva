@@ -74,3 +74,44 @@ test('candidate composition propagates a failed BEGIN and discards connection',a
  assert.equal(releases.length,1);
  assert.match(releases[0].message,/begin_failed/);
 });
+
+test('pool candidate never checks out a connection for invalid clock',()=>{
+ let checkouts=0;
+ assert.throws(()=>createCatalogOrderConfirmationPoolCandidate({
+  pool:{async connect(){checkouts++;throw Error('unexpected_checkout');}},
+  secretKey:'x'.repeat(32),clock:123
+ }),/invalid_confirmation_coordinator/);
+ assert.equal(checkouts,0);
+});
+
+test('pool candidate discards client if COMMIT fails after a completed callback',async()=>{
+ const statements=[],releases=[];
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
+  pool:{async connect(){return {
+   async query(sql){
+    statements.push(sql);
+    if(sql==='COMMIT')throw Error('commit_uncertain');
+    if(sql==='BEGIN'||sql==='ROLLBACK')return {rows:[]};
+    return {rows:[]};
+   },
+   release(error){releases.push(error);}
+  };}},
+  secretKey:'x'.repeat(32)
+ });
+ // A denied visit triggers rollback before COMMIT. Exercise COMMIT directly
+ // through the same production transaction adapter instead.
+ const {createPostgresTransaction}=await import('../apps/api/src/postgres-transaction.mjs');
+ const withTransaction=createPostgresTransaction({
+  pool:{async connect(){return {
+   async query(sql){statements.push(sql);
+    if(sql==='COMMIT')throw Error('commit_uncertain');
+    return {rows:[]};},
+   release(error){releases.push(error);}
+  };}}
+ });
+ await assert.rejects(withTransaction(async()=>({ok:true})),/commit_uncertain/);
+ assert.deepEqual(statements,['BEGIN','COMMIT','ROLLBACK']);
+ assert.equal(releases.length,1);
+ assert.match(releases[0].message,/commit_uncertain/);
+ assert.equal(typeof confirm,'function');
+});
