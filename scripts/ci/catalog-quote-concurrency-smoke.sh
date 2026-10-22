@@ -93,3 +93,82 @@ BEGIN
 END $verify$;
 SQL
 echo 'PASS: concurrent confirmation idempotency (two independent PostgreSQL sessions)'
+
+
+# Recovery race: an uncommitted attempt that rolls back must not poison the
+# idempotency key. The waiting transaction must be able to insert and commit.
+rollback_sql=$(cat <<'SQL'
+BEGIN;
+INSERT INTO sabora.catalog_confirmation_attempts
+(table_id,session_id,visit_id,basket_id,actor_id,item_id,request_key,
+ request_fingerprint,quote_id,economic_evidence,order_id)
+VALUES
+('00000000-0000-4000-8000-000000009101','00000000-0000-4000-8000-000000009102',
+ 'visit-ci','basket-ci','actor-ci','00000000-0000-4000-8000-000000009103',
+ 'concurrent-rollback','rolled-back','00000000-0000-4000-8000-000000009106',
+ '{}','00000000-0000-4000-8000-000000009104');
+SELECT pg_sleep(4);
+ROLLBACK;
+SQL
+)
+recovery_sql=$(cat <<'SQL'
+BEGIN;
+SET LOCAL lock_timeout='10s';
+INSERT INTO sabora.catalog_confirmation_attempts
+(table_id,session_id,visit_id,basket_id,actor_id,item_id,request_key,
+ request_fingerprint,quote_id,economic_evidence,order_id)
+VALUES
+('00000000-0000-4000-8000-000000009101','00000000-0000-4000-8000-000000009102',
+ 'visit-ci','basket-ci','actor-ci','00000000-0000-4000-8000-000000009103',
+ 'concurrent-rollback','recovered','00000000-0000-4000-8000-000000009106',
+ '{}','00000000-0000-4000-8000-000000009105')
+ON CONFLICT ON CONSTRAINT catalog_confirmation_idempotency DO NOTHING;
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$rollback_sql" &
+rollback_pid=$!
+ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$rollback_pid" 2>/dev/null; then break; fi
+ state=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(4)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$state" == 1 ]]; then ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$ready" != 1 ]]; then
+ wait "$rollback_pid" || true
+ echo 'Rollback contender did not reach uncommitted insert state' >&2
+ exit 1
+fi
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$recovery_sql" &
+recovery_pid=$!
+blocked=0
+for attempt in $(seq 1 60); do
+ state=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE '%concurrent-rollback%' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$state" == 1 ]]; then blocked=1; break; fi
+ sleep 0.05
+done
+wait "$rollback_pid"
+wait "$recovery_pid"
+if [[ "$blocked" != 1 ]]; then
+ echo 'Recovery contender did not wait for uncommitted idempotency key' >&2
+ exit 1
+fi
+psql_ci <<'SQL'
+DO $verify_recovery$
+DECLARE n integer; fp text;
+BEGIN
+ SELECT count(*),min(request_fingerprint) INTO n,fp
+ FROM sabora.catalog_confirmation_attempts
+ WHERE table_id='00000000-0000-4000-8000-000000009101'
+  AND session_id='00000000-0000-4000-8000-000000009102'
+  AND visit_id='visit-ci' AND basket_id='basket-ci' AND actor_id='actor-ci'
+  AND request_key='concurrent-rollback';
+ IF n<>1 OR fp<>'recovered' THEN
+  RAISE EXCEPTION 'rollback idempotency recovery broken: count %, fingerprint %',n,fp;
+ END IF;
+END $verify_recovery$;
+SQL
+echo 'PASS: rollback releases contested idempotency key for waiting transaction'
