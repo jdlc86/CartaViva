@@ -292,3 +292,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El lector transaccional solo interpreta `rows: []` como ausencia de catálogo, cotización o confirmación previa. Si el driver devuelve una fila presente pero `null`, `undefined`, primitiva o array, rechaza con `invalid_catalog_repository_response`.
 - El caso es especialmente relevante para la idempotencia: una fila malformada no debe confundirse con ausencia de confirmación previa y provocar un segundo intento de escritura.
 - Regresiones cubren los tres lectores y garantizan que el rechazo se produce antes de cualquier operación de persistencia. No se habilitan conexiones, permisos, endpoints ni despliegues.
+
+## Contrato de replay validado extremo a extremo
+
+- El coordinador ya no devuelve `replayed` únicamente por igualdad de huella. Exige también que `result` sea un objeto simple y que `result.orderId` sea un UUID válido. Un resultado corrupto aborta la transacción con `order_idempotency_conflict` sin consultar catálogo ni persistir.
+- El lector PostgreSQL ya verificaba `order_id` antes de construir el resultado; esta defensa adicional evita confiar ciegamente en adaptadores de repositorio alternativos o defectuosos.
+- Se actualizó la prueba positiva para usar un UUID real y se añadieron regresiones negativas de resultados de replay malformados.
+- Sin activación de HTTP, permisos, pool operativo, merge ni despliegue.
