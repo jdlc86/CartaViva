@@ -2,7 +2,19 @@
 // handler or privileges are created here. All calls use the caller's one
 // checked-out transaction client; the future writer must provide authorization.
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const scope=v=>v&&typeof v==='object'&&!Array.isArray(v)&&
+const safeRecord=v=>{
+ if(v===null||typeof v!=='object'||Array.isArray(v)||
+    (Object.getPrototypeOf(v)!==Object.prototype&&Object.getPrototypeOf(v)!==null))
+  return false;
+ const keys=Reflect.ownKeys(v);
+ if(keys.length>64)return false;
+ return keys.every(k=>{
+  if(typeof k!=='string'||['__proto__','constructor','prototype'].includes(k))return false;
+  const descriptor=Object.getOwnPropertyDescriptor(v,k);
+  return !!descriptor&&descriptor.enumerable&&Object.hasOwn(descriptor,'value');
+ });
+};
+const scope=v=>safeRecord(v)&&
  v.authorized===true&&v.canOrder===true&&
  uuid.test(v.tableId)&&uuid.test(v.sessionId)&&
  ['visitId','basketId','actorId'].every(k=>typeof v[k]==='string'&&
