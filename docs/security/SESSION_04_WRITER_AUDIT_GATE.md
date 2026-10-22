@@ -176,3 +176,9 @@ Esto complementa el caso previo en que gana la primera transacción con `COMMIT`
 ### Corrección del fixture de recuperación concurrente
 
 La primera ejecución detectó que el fixture intentaba reutilizar un `order_id` ya vinculado a otra confirmación y falló correctamente por `catalog_confirmation_order_once`, antes de llegar a la carrera prevista. Se corrigió creando dos pedidos nuevos exclusivos para las transacciones de rollback y recuperación (`eb205761`). Este error era de datos de prueba, no evidencia de fallo del bloqueo. La acreditación requiere CI verde del nuevo HEAD.
+
+## Adaptador candidato de inserción de confirmación (22-10-2026)
+
+Se incorporó `apps/api/src/catalog-confirmation-attempt-writer.mjs` (commit `f9160ebb`) con un único `INSERT` parametrizado en `sabora.catalog_confirmation_attempts`. Valida contexto autorizado, UUID de mesa/sesión/artículo/cotización/pedido, clave y huella idempotentes, evidencia de revisión e importes enteros coherentes. Solo acepta `accepted_reprice=true` cuando el coordinador ya acreditó `requiresAcceptance` y `acceptanceVerified`; la marca temporal la genera `clock_timestamp()` en PostgreSQL, nunca el navegador. La FK compuesta y la unicidad de DB continúan como defensas obligatorias. Pruebas positivas y negativas en `tests/catalog-confirmation-attempt-writer.test.mjs` (commit `36070c2f`).
+
+**No es un escritor de pedidos completo:** exige un `orderId` confiable que todavía debe generar un escritor autenticado en la **misma transacción**, sin aceptar los campos corporativos heredados del navegador. No se ha conectado este adaptador a HTTP, no se han concedido permisos SQL y no se ha modificado Supabase operativo. El booleano de aceptación es una afirmación interna del coordinador, no prueba autónoma de interacción de usuario; falta acreditar el circuito de consentimiento completo antes de activación.
