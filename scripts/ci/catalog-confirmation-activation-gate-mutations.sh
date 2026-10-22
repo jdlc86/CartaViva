@@ -73,7 +73,7 @@ run_rejection "candidate writer bypasses RLS" \
  'candidate writer has unsafe role attributes'
 run_rejection "candidate writer becomes superuser" \
  'ALTER ROLE sabora_admin_writer SUPERUSER;' \
- 'candidate writer has unsafe role attributes'
+ 'candidate order/ledger privilege leaked'
 run_rejection "candidate writer can create roles" \
  'ALTER ROLE sabora_admin_writer CREATEROLE;' \
  'candidate writer has unsafe role attributes'
