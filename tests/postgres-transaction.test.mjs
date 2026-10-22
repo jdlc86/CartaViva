@@ -133,3 +133,35 @@ test('a query capability retained by a failed callback cannot run after rollback
  assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN','ROLLBACK']);
  assert.equal(fixture.releases(),1);
 });
+
+test('detached query cannot cross COMMIT; rollback waits for it and discards connection',async()=>{
+ const statements=[];
+ const releases=[];
+ let resolveQuery;
+ let started;
+ const queryStarted=new Promise(resolve=>{started=resolve;});
+ const client={
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='SELECT slow'){
+    started();
+    await new Promise(resolve=>{resolveQuery=resolve;});
+   }
+   return {rows:[]};
+  },
+  release:reason=>releases.push(reason)
+ };
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ const pending=withTransaction(async query=>{
+  void query('SELECT slow');
+  await queryStarted;
+  return 'must-not-commit';
+ });
+ await Promise.resolve();
+ assert.equal(statements.includes('COMMIT'),false);
+ resolveQuery();
+ await assert.rejects(pending,/transaction_queries_not_awaited/);
+ assert.deepEqual(statements,['BEGIN','SELECT slow','ROLLBACK']);
+ assert.equal(releases.length,1);
+ assert.match(releases[0]?.message??'',/transaction_queries_not_awaited/);
+});
