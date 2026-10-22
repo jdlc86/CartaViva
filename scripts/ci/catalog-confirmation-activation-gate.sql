@@ -32,6 +32,26 @@ BEGIN
    END IF;
   END LOOP;
 
+  -- Dormant writer must not be a privilege bridge. Effective ACL checks
+  -- alone cannot detect membership escalation or dangerous role attributes.
+  IF EXISTS (
+   SELECT 1 FROM pg_roles
+    WHERE rolname='sabora_admin_writer'
+      AND (rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb
+           OR rolreplication OR rolinherit OR rolcanlogin)
+  ) THEN
+   RAISE EXCEPTION 'candidate writer has unsafe role attributes';
+  END IF;
+  IF EXISTS (
+   SELECT 1 FROM pg_auth_members m
+   JOIN pg_roles granted ON granted.oid=m.roleid
+   JOIN pg_roles member ON member.oid=m.member
+   WHERE granted.rolname='sabora_admin_writer'
+      OR member.rolname='sabora_admin_writer'
+  ) THEN
+   RAISE EXCEPTION 'candidate writer participates in role membership';
+  END IF;
+
   -- The candidate identity bridge must remain protected by FORCE RLS and
   -- schema-level checks even if a future refactor alters the writer.
   IF NOT EXISTS (
