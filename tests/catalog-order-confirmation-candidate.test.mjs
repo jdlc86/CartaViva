@@ -16,7 +16,7 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
-function fixture({revoked=false,failLedger=false,soldOut=false,ledgerResponse}={}){
+function fixture({revoked=false,failLedger=false,soldOut=false,ledgerResponse,orderResponse,tableResponse}={}){
  const statements=[],events=[];
  const query=async(sql,args)=>{
   statements.push({sql,args});
@@ -33,8 +33,9 @@ function fixture({revoked=false,failLedger=false,soldOut=false,ledgerResponse}={
    id:quoteId,published_revision:'1',subtotal_cents:'1000',
    discount_cents:'0',total_cents:'1000',evidence}]};
   if(sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))
-   return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-  if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first',first_timestamp_written:true}]};
+   return tableResponse===undefined?{rows:[{first_confirmed_at:null,grouping_window_seconds:300}]}:tableResponse;
+  if(sql.includes('INSERT INTO sabora.orders'))return orderResponse===undefined?
+   {rows:[{id:orderId,grouping:'first',first_timestamp_written:true}]}:orderResponse;
   if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')){
    if(failLedger)throw Error('ledger_failure');
    return ledgerResponse===undefined?{rows:[{order_id:orderId}]}:ledgerResponse;
@@ -97,5 +98,29 @@ test('malformed ledger RETURNING rolls back both order and occupancy in coordina
   assert.equal(f.statements.filter(s=>s.sql.includes('INSERT INTO sabora.orders')).length,1);
   assert.equal(f.statements.filter(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
   assert.equal(f.statements.some(s=>s.sql.includes('COMMIT')),false);
+ }
+});
+
+test('coordinator rejects malformed occupancy and order INSERT results before ledger',async()=>{
+ for(const tableResponse of [
+  null,{rows:[]},{rows:[{first_confirmed_at:null,grouping_window_seconds:0}]},
+  {rows:[{first_confirmed_at:null,grouping_window_seconds:'300'}]}
+ ]){
+  const f=fixture({tableResponse});
+  await assert.rejects(f.confirm(input),/catalog_order_context_changed|invalid_catalog_order_table_state/);
+  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+  assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),false);
+  assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false);
+ }
+ for(const orderResponse of [
+  null,{rows:[]},{rows:[{id:quoteId,grouping:'first',first_timestamp_written:true}]},
+  {rows:[{id:orderId,grouping:'first',first_timestamp_written:false}]},
+  {rows:[{id:orderId,grouping:'late',first_timestamp_written:false}]}
+ ]){
+  const f=fixture({orderResponse});
+  await assert.rejects(f.confirm(input),/catalog_order_context_changed/);
+  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
+  assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),true);
+  assert.equal(f.statements.some(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false);
  }
 });
