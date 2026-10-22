@@ -111,3 +111,10 @@ test('quote issuance snapshots mutable selections before asynchronous context lo
  assert.equal(result.quoteId,quoteId);
  assert.deepEqual(mutable.selection.extras,[]);
 });
+
+test('oversized quote selections are rejected without opening a transaction',async()=>{
+ const {issue,calls}=fixture();
+ await assert.rejects(issue({...input,selection:{options:{},extras:[],
+  comment:'x'.repeat(17000)}}),/invalid_catalog_quote_input/);
+ assert.deepEqual(calls,[]);
+});
