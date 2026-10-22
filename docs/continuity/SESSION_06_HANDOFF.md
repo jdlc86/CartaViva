@@ -116,3 +116,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `b513092`: el adaptador transaccional copia el array de parámetros antes de diferir la llamada al cliente PostgreSQL. Impide que una mutación posterior del array por el llamador altere los parámetros posicionales efectivamente enviados al driver.
 - `eb896e2`: test que muta el array inmediatamente tras solicitar la consulta y comprueba que el driver recibe la copia original; añade regresión de revocación de consulta retenida tras COMMIT.
 - El candidato continúa desconectado de HTTP y de cualquier pool operativo; no cambia los permisos ni los contratos de migración. Validación de CI pendiente sobre el último HEAD.
+
+## Parámetros temporales de PostgreSQL
+
+- `5058c63`: la copia del array de parámetros transaccionales incluye una copia por valor de los objetos `Date`, que el escritor de pedidos utiliza para `first_confirmed_at`. Se rechazan fechas inválidas antes de enviar SQL al driver; la transacción realiza rollback.
+- `c6a48d0`: pruebas de mutación posterior del objeto `Date` y rechazo de `Invalid Date`, además de las pruebas anteriores de array y cierre de ámbito.
+- Sin dependencia `pg` nueva, sin conexiones operativas y sin activar el candidato en HTTP. Validación CI requerida en el nuevo HEAD.
