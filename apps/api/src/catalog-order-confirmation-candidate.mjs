@@ -1,9 +1,15 @@
-// Offline-only composition of the existing confirmation coordinator and the
-// candidate order+ledger writer. No pool, HTTP route, role grant or deployment.
+// Offline-only composition: transaction coordinator + locked catalog reads +
+// order and economic ledger writer. No pool, HTTP, runtime grant or deployment.
+import {createCatalogConfirmationCoordinator} from './catalog-confirmation-coordinator.mjs';
 import {createCatalogConfirmationRepository} from './catalog-confirmation-repository.mjs';
 import {createCatalogOrderWriter} from './catalog-order-writer.mjs';
 
 export function createCatalogOrderConfirmationCandidate({withTransaction,secretKey,clock,newOrderId}={}){
  const writer=createCatalogOrderWriter({newOrderId});
- return createCatalogConfirmationRepository({persist:(query,args)=>writer.persist(query,args)});
+ const repository=createCatalogConfirmationRepository({
+  persist:(query,args)=>writer.persist(query,args)
+ });
+ return createCatalogConfirmationCoordinator({
+  withTransaction,repository,secretKey,clock
+ });
 }
