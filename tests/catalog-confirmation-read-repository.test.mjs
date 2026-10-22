@@ -20,7 +20,7 @@ test('scoped idempotency lookup binds all six fields and locks existing row',asy
 });
 test('missing idempotency record is not a replay',async()=>{
  assert.equal(await repo.lookupIdempotency(async()=>({rows:[]}),
-  {context,requestKey:'request-001'}),null);
+  {context,requestKey:'request-001',requestFingerprint:'fingerprint'}),null);
 });
 test('catalog locks publication and refuses sold out or withdrawn',async()=>{
  for(const extra of [{sold_out:true,withdrawn_at:null},
