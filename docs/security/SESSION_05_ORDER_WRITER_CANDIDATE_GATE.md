@@ -137,3 +137,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El test de composición con pool simulado incorpora rotación de QR (rechazo **antes** de consultar el ledger de idempotencia), cotización vencida y catálogo agotado. Todos deben producir `ROLLBACK`, liberar la conexión y no insertar ni pedido ni intento de confirmación.
 - Se conserva el caso de visita revocada **después** de una confirmación exitosa: el replay se rechaza por contexto no autorizado antes de consultar la clave previa.
 - Estas pruebas ejercitan las decisiones de Node mediante respuestas simuladas; no son un sustituto de pruebas de SQL real de QR, expiración y stock. La activación sigue bloqueada por la integración Node–PostgreSQL 17, el rol mínimo y la auditoría individual.
+
+## Frontera de entrada sin checkout (22-10-2026)
+
+- Nuevas regresiones del candidato con pool inyectado comprueban que campos económicos o de identidad ajenos al contrato (`priceCents`, `economicEvidence`, `publishedRevision`, `customerAlias`, `customerIdentifier`, `company`, `sessionId`) se rechazan **antes de adquirir conexión**.
+- También se rechazan getters de entrada, estructuras cíclicas y tokens de aceptación de tipo o tamaño incorrectos sin iniciar transacción. Los tests exigen cero llamadas a `pool.connect()`.
+- La validación temprana limita la superficie de ataque y el uso de conexiones; no acredita aún autenticación de red, rol SQL mínimo ni integración Node–PostgreSQL real.
