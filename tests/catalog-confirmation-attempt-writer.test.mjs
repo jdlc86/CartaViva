@@ -153,3 +153,19 @@ test('standalone ledger accepts valid small immutable evidence after budget chec
  assert.equal(result.orderId,orderId);
  assert.equal(calls,1);
 });
+
+test('ledger global byte budget counts cumulative short strings, not only one oversized value',async()=>{
+ let sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const values=Array.from({length:400},(_,i)=>({
+  id:'extra_'+i,name:'ñ'.repeat(90),priceCents:0,allergens:[]
+ }));
+ // This fixture exceeds the 50-selected-items business limit as well;
+ // keep the pressure in an extension property to exercise safeJson itself.
+ const extra=Array.from({length:400},()=>('ñ'.repeat(90)));
+ await assert.rejects(writer.insertConfirmation(query,{
+  ...args,evidence:{...evidence,extraEvidence:extra}
+ }),/invalid_catalog_confirmation_attempt/);
+ assert.equal(sqlCalls,0);
+ assert.equal(values.length,400);
+});
