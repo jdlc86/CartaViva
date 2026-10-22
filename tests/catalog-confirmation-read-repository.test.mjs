@@ -123,3 +123,24 @@ test('scoped advisory lock separates request keys, sessions and actors',async()=
  }
  assert.equal(new Set(locks).size,4);
 });
+
+test('numeric evidence cannot use JavaScript coercion of null blank or exponent values',async()=>{
+ for(const invalid of [null,'','  ','1e3','+1000','01',-1,1.5,{},'9007199254740993']){
+  const baseline={id:quoteId,published_revision:'3',subtotal_cents:'1000',
+   discount_cents:'0',total_cents:'1000',evidence:{schemaVersion:1}};
+  for(const field of ['published_revision','subtotal_cents','discount_cents','total_cents']){
+   await assert.rejects(repo.loadPreviousQuote(async()=>({rows:[{...baseline,[field]:invalid}]}),
+    {context,itemId}),/invalid_catalog_repository_response/);
+  }
+ }
+});
+
+test('catalog revision refuses coercible but noncanonical database values',async()=>{
+ for(const revision of [null,'',' ','1e2','01','+1',{},1.5]){
+  const result=await repo.lockCatalog(async()=>({rows:[{
+   published_revision:revision,published_snapshot:{priceCents:1000},
+   withdrawn_at:null,sold_out:false
+  }]}),{context,itemId});
+  assert.equal(result.available,false);
+ }
+});
