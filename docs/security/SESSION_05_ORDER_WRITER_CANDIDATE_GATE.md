@@ -34,3 +34,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El escritor candidato rechaza identificadores no canónicos y caracteres de control en alias. Se actualizaron las pruebas correspondientes.
 - El shell local no resuelve `github.com`; la ejecución local de tests del repositorio no está acreditada. Las consultas de workflow del último SHA no devolvieron runs; **CI pendiente**, no verde.
 - El escritor continúa **sin conexión al coordinador operativo**, sin grants ni HTTP. Sigue pendiente smoke real PostgreSQL 17 para el SQL del escritor, agrupación y rollback.
+
+## Corrección de orden de bloqueos y nueva puerta CI
+
+- `catalog-visit-context-repository.mjs` adquiere `FOR UPDATE OF t` antes de `FOR SHARE OF v,s`, evitando que dos confirmaciones intenten elevar simultáneamente un bloqueo compartido de mesa. Sigue pendiente prueba concurrente PostgreSQL 17 de esta secuencia exacta.
+- `scripts/ci/catalog-order-identity-compatibility-smoke.sql` prueba en transacción revertida la inserción legacy y candidata, el trigger de líneas de cocina y el rechazo de identidad mezclada.
+- `postgres-migration-smoke.sh` ejecuta la nueva prueba después de migrar PostgreSQL 17 desechable. No se conecta a Supabase operativo.
+- GitHub Actions detectó diez tests de composición con fixtures antiguos sin `customer_alias`/`customer_identifier`. Se corrigieron en los tests de confirmación, repositorio y cotización. La existencia de commits de corrección no implica CI verde; comprobar el HEAD más reciente.
