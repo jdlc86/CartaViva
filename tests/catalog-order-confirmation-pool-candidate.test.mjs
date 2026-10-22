@@ -16,7 +16,8 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
-function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false,\n soldOut=false,quoteExpired=false,rotatedQr=false}={}){
+function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false,
+ soldOut=false,quoteExpired=false,rotatedQr=false}={}){
  const statements=[],events=[];
  let releases=0,connects=0,storedAttempt=null,visitClosed=closed;
  const client={
