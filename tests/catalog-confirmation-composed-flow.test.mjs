@@ -25,6 +25,7 @@ function fixture({revoked=false,soldOut=false,storedFingerprint=null,
  let persisted=0;
  const query=async(sql,args)=>{
   statements.push({sql,args});
+  if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
   if(sql.includes('FROM sabora.dining_tables'))return {rows:(revoked||
    args[3]!==activeQr||args[4]!==activeSessionToken)?[]:[{
    table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId
@@ -71,11 +72,12 @@ test('real candidate reads and injected writer share authorized confirmation tra
  assert.equal(result.result.orderId,orderId);
  assert.deepEqual(f.events,['BEGIN','COMMIT']);
  assert.equal(f.persisted,1);
- assert.equal(f.statements.length,4);
+ assert.equal(f.statements.length,5);
  assert.match(f.statements[0].sql,/FOR SHARE OF t,v,s/);
- assert.match(f.statements[1].sql,/FOR UPDATE/);
- assert.match(f.statements[2].sql,/FOR SHARE/);
+ assert.match(f.statements[1].sql,/pg_advisory_xact_lock/);
+ assert.match(f.statements[2].sql,/FOR UPDATE/);
  assert.match(f.statements[3].sql,/FOR SHARE/);
+ assert.match(f.statements[4].sql,/FOR SHARE/);
  assert.equal(JSON.stringify(f.statements.slice(1)).includes(input.qrToken),false);
  assert.equal(JSON.stringify(f.statements.slice(1)).includes(input.customerSessionToken),false);
 });
@@ -90,7 +92,7 @@ test('sold-out catalog fails before quote and writer',async()=>{
  const f=fixture({soldOut:true});
  await assert.rejects(f.confirm(input),/order_catalog_unavailable/);
  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
- assert.equal(f.statements.length,3);
+ assert.equal(f.statements.length,5);
  assert.equal(f.persisted,0);
 });
 test('revision change requires acceptance without writing an order',async()=>{
@@ -121,6 +123,7 @@ test('same scoped replay is returned before catalog and writer',async()=>{
  const confirm=createCatalogConfirmationCoordinator({
   repository:wrapped,secretKey,clock:()=>1792600000000,
   withTransaction:async work=>work(async(sql,args)=>{
+   if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
    if(sql.includes('FROM sabora.dining_tables'))return {rows:[{
     table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId
    }]};
@@ -152,6 +155,6 @@ test('conflicting idempotency fingerprint aborts without consulting catalog or w
  const f=fixture({storedFingerprint:'different_request'});
  await assert.rejects(f.confirm(input),/order_idempotency_conflict/);
  assert.deepEqual(f.events,['BEGIN','ROLLBACK']);
- assert.equal(f.statements.length,2);
+ assert.equal(f.statements.length,3);
  assert.equal(f.persisted,0);
 });
