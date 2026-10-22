@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCatalogOrderConfirmationPoolCandidate} from '../apps/api/src/catalog-order-confirmation-candidate.mjs';
+import {buildCatalogLineEvidence} from '../apps/api/src/catalog-line-evidence.mjs';
 
 const tableId='00000000-0000-4000-8000-000000000001';
 const sessionId='00000000-0000-4000-8000-000000000002';
@@ -12,6 +13,8 @@ const snapshot={name:'Plato CI',category:'Primeros',priceCents:1000,
 const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
  itemId,selection:{options:{},extras:[]},quantity:1,requestKey:'request-001',
  qrToken:'q'.repeat(64),customerSessionToken:'s'.repeat(64)};
+
+const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
 function harness({failLedger=false,closed=false}={}){
  const statements=[],events=[];
@@ -32,12 +35,7 @@ function harness({failLedger=false,closed=false}={}){
     published_revision:'1',published_snapshot:snapshot,withdrawn_at:null,sold_out:false}]};
    if(sql.includes('FROM sabora.catalog_displayed_quotes'))return {rows:[{
     id:quoteId,published_revision:'1',subtotal_cents:'1000',
-    discount_cents:'0',total_cents:'1000',evidence:{
-     schemaVersion:1,itemId,publishedRevision:1,itemName:'Plato CI',
-     category:'Primeros',quantity:1,basePriceCents:1000,options:[],
-     extras:[],subtotalCents:1000,discountCents:0,totalCents:1000,
-     allergens:[],discount:null
-    }}]};
+    discount_cents:'0',total_cents:'1000',evidence}]};
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))
     return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
    if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first'}]};
