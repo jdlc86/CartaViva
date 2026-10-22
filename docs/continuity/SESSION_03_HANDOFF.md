@@ -347,3 +347,9 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `6c393ebc`: coordinador transaccional de transiciones de mesa con `resolveStaffSession` e invocación SQL parametrizada.
 - `5d3ccae6`: pruebas de credencial, rol activo, transición y rollback; `ff1796d9`: rechazo estricto de campos adicionales/actor suplantado.
 - `46a1e0d2`: arquitectura actualizada. **Pendiente** implementar resolución real de sesión staff, grants mínimos y auditoría de actor sin confiar en valores del cliente. Ninguna ruta montada, ningún despliegue.
+
+## Sesión 3 — resolución candidata de sesión staff
+- `96168ef4`: `verified-staff-session-resolver.mjs` usa un verificador de credencial externo y contrasta sujeto verificado contra membresía activa con SELECT/FOR SHARE.
+- `9cf62f6b`: pruebas de firma/issuer/audience/expiry delegados, sesión ausente y contradicciones DB.
+- `f6933490`, `8eb9f9eb`: coordinador deniega cocina; fixtures de rol y test de denegación.
+- `8bdb795c`: arquitectura. **No hay todavía implementación criptográfica concreta** ni concesión de roles DB, endpoint HTTP o auditoría atribuida. No desplegar ni activar.
