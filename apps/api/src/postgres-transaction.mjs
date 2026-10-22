@@ -53,7 +53,10 @@ export function createPostgresTransaction({ pool } = {}) {
         try { await client.query('ROLLBACK'); }
         catch (rollbackError) {
           discardClient = rollbackError;
-          if (error && typeof error === 'object') error.rollbackError = rollbackError;
+          if (error && typeof error === 'object') {
+            try { error.rollbackError = rollbackError; }
+            catch { /* Preserve immutable original errors. */ }
+          }
         }
       }
       throw error;
