@@ -312,3 +312,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El ledger repite la validación en su propia inserción: defensa en profundidad dentro de la misma transacción.
 - Las regresiones negativas exigen **cero consultas SQL** ante importes manipulados, extras inconsistentes, huella/clave inválidas o consentimiento contradictorio. Antes, estos fallos se detectaban después de insertar el pedido candidato y dependían exclusivamente del rollback.
 - El nuevo gate reduce escrituras innecesarias pero **no reemplaza el rollback obligatorio** si un fallo posterior ocurre. Sin conexión a HTTP, roles operativos, Supabase o VPS.
+
+## Presupuesto de recursos también en el ledger autónomo
+
+- El validador `safeJson` del escritor económico independiente incorpora un presupuesto global de **4096 nodos** y **65536 bytes UTF-8** sumando nombres de propiedades y valores de texto. Los límites anteriores por profundidad, cardinalidad, prototipos, ciclos, getters y arrays dispersos permanecen.
+- No se confía únicamente en el `snapshotInput` del coordinador: una invocación directa del adaptador de ledger con estructura ramificada o texto multibyte excesivo también falla antes de ejecutar SQL.
+- Se añadieron pruebas negativas de ramificación y textos grandes, más un caso positivo pequeño. El bloque continúa desconectado de HTTP y producción.
