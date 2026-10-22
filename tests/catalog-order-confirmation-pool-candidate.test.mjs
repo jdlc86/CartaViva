@@ -17,12 +17,21 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
 function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false,
- soldOut=false,quoteExpired=false,rotatedQr=false}={}){
+ soldOut=false,quoteExpired=false,rotatedQr=false,corruptStage=null}={}){
  const statements=[],events=[];
  let releases=0,connects=0,storedAttempt=null,visitClosed=closed;
  const client={
   async query(sql,args=[]){
    statements.push({sql,args});
+   if(corruptStage&&sql!=='BEGIN'&&sql!=='COMMIT'&&sql!=='ROLLBACK'&&
+      ((corruptStage==='visit'&&sql.includes('customer_table_visits'))||
+       (corruptStage==='advisory'&&sql.includes('pg_advisory_xact_lock'))||
+       (corruptStage==='catalog'&&sql.includes('FROM sabora.catalog_items'))||
+       (corruptStage==='quote'&&sql.includes('FROM sabora.catalog_displayed_quotes'))||
+       (corruptStage==='table'&&sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))||
+       (corruptStage==='order'&&sql.includes('INSERT INTO sabora.orders'))||
+       (corruptStage==='ledger'&&sql.includes('INSERT INTO sabora.catalog_confirmation_attempts'))))
+    return {rows:[Object.assign(Object.create({unexpected:true}),{order_id:orderId})]};
    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK'){
     events.push(sql);
     if(sql==='COMMIT'&&commitFails)throw Error('commit_uncertain');
@@ -178,5 +187,23 @@ test('malformed acceptance token is rejected before acquiring the database conne
   const h=harness();
   await assert.rejects(h.confirm({...input,acceptanceToken}),/invalid_confirmation_input/);
   assert.equal(h.connects,0);
+ }
+});
+
+test('all seven SQL response boundaries reject inherited rows and rollback atomically',async()=>{
+ const stages=['visit','advisory','catalog','quote','table','order','ledger'];
+ for(const stage of stages){
+  const h=harness({corruptStage:stage});
+  await assert.rejects(h.confirm(input),error=>{
+   assert.ok(error instanceof Error,`missing domain error for ${stage}`);
+   return true;
+  });
+  assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE'],stage);
+  assert.equal(h.releases,1,stage);
+  assert.equal(h.connects,1,stage);
+  assert.equal(h.statements.some(x=>x.sql==='COMMIT'),false,stage);
+  if(stage!=='ledger'){
+   assert.equal(h.statements.some(x=>x.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false,stage);
+  }
  }
 });
