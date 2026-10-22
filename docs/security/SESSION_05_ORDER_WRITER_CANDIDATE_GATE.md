@@ -273,3 +273,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `apps/api/src/catalog-confirmation-read-repository.mjs` comprueba el tipo y representación decimal de `published_revision` y los importes antes de invocar `Number()`. Así, un adaptador de datos defectuoso no puede provocar la ejecución de `valueOf`/`toString` de un objeto recibido como valor numérico.
 - La regresión prueba símbolos, objetos con coerción hostil, arrays y booleanos para la revisión y los tres importes. Exige rechazo determinista y cero invocaciones de los métodos de coerción.
 - Se mantiene el rechazo fail-closed de datos económicos malformados; el candidato no está conectado a HTTP, pool operativo ni Supabase de producción.
+
+## Límite de tipo para la ventana de agrupación
+
+- El escritor candidato comprueba que `grouping_window_seconds` leído bajo `FOR UPDATE` está dentro del rango positivo `int4` de PostgreSQL (máximo 2.147.483.647), antes de enviar el valor al parámetro `$10::integer` de `make_interval`.
+- Pruebas negativas incluyen `2147483648` y `Number.MAX_SAFE_INTEGER`; ninguna debe llegar a insertar pedidos ni ledger.
+- La validación es defensiva ante respuestas de adaptador malformadas; no modifica la ventana de negocio configurada ni sus restricciones SQL.
