@@ -305,3 +305,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El coordinador candidato exige UUID válido en tres fronteras de persistencia: `previous.quoteId` obtenido del ledger confiable, `result.orderId` del escritor y `replay.result.orderId` de una confirmación previa. La igualdad de huella por sí sola no basta para devolver éxito.
 - Las pruebas unitarias sustituyen identificadores ficticios por UUIDs y comprueban rechazo con rollback ante IDs de cotización o pedido ausentes, malformados o de tipo inesperado.
 - Esta validación de formato no sustituye FKs, unicidad, transacción real ni autenticación. La integración PostgreSQL 17 con driver Node real permanece pendiente; no hay endpoints nuevos, grants, merge o despliegue.
+
+## Validación económica antes de escribir pedidos
+
+- El escritor candidato ahora ejecuta `assertCatalogConfirmationAttempt({...args,orderId})` **antes del bloqueo de mesa y del INSERT de pedido**. Se reutiliza exactamente el validador del ledger, que recalcula precios, extras y descuentos y verifica consentimiento, huella y alcance.
+- El ledger repite la validación en su propia inserción: defensa en profundidad dentro de la misma transacción.
+- Las regresiones negativas exigen **cero consultas SQL** ante importes manipulados, extras inconsistentes, huella/clave inválidas o consentimiento contradictorio. Antes, estos fallos se detectaban después de insertar el pedido candidato y dependían exclusivamente del rollback.
+- El nuevo gate reduce escrituras innecesarias pero **no reemplaza el rollback obligatorio** si un fallo posterior ocurre. Sin conexión a HTTP, roles operativos, Supabase o VPS.
