@@ -188,3 +188,9 @@ Se incorporó `apps/api/src/catalog-confirmation-attempt-writer.mjs` (commit `f9
 La validación de `catalog-confirmation-attempt-writer.mjs` ahora exige los campos principales de `buildCatalogLineEvidence` (versión 1, nombre, cantidad, base, subtotales, selección, alérgenos y descuento), además de revisión y totales. Un guard de JSON rechaza tipos no serializables, enteros inseguros, profundidad excesiva y claves peligrosas antes de enviar SQL. Pruebas negativas ampliadas en `tests/catalog-confirmation-attempt-writer.test.mjs`. Commits `da508b9e` y `3473a308`.
 
 No es una comprobación criptográfica de la evidencia ni sustituye el cálculo desde catálogo bloqueado; solo debe invocarlo el coordinador con evidencia construida en servidor. Sigue sin conectar HTTP ni conceder privilegios.
+
+## Consistencia aritmética de evidencia antes del ledger (22-10-2026)
+
+El adaptador candidato de confirmación verifica con `BigInt` que `subtotalCents = unitSubtotalCents × quantity`, `discountCents = unitDiscountCents × quantity` y `totalCents = (unitSubtotalCents − unitDiscountCents) × quantity`, además de la identidad `totalCents = subtotalCents − discountCents`. Rechaza cantidades fuera de 1–50, categorías no admitidas, selecciones con importes negativos y alérgenos malformados. Los tests cubren cantidades múltiples válidas y manipulaciones de totales. Commits `ea4a6520`, `f43e04fd`.
+
+Este guard solo comprueba consistencia del objeto entregado **por el servidor**; no demuestra pertenencia de extras ni integridad respecto al catálogo publicado bloqueado. Mantener inactivos el writer de pedidos, grants y rutas HTTP.
