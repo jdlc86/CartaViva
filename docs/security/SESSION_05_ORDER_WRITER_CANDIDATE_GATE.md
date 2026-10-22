@@ -126,3 +126,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - La prueba `catalog-order-confirmation-pool-candidate.test.mjs` ahora reutiliza el ledger simulado entre dos transacciones: una segunda confirmación idéntica devuelve `replayed` sin duplicar pedido ni ledger; la misma clave con cantidad diferente debe abortar con `order_idempotency_conflict` y `ROLLBACK`.
 - El alcance es **pool simulado en Node**, no integración Node–PostgreSQL real. La serialización de sesiones y la unicidad SQL continúan probándose separadamente en PG17 aislado. No se concede acceso ni se habilita endpoint.
+
+## Replay con visita revocada
+
+- La regresión de pool inyectado confirma que una solicitud previamente confirmada **no** puede reutilizar su clave idempotente tras revocar la visita: `lockContext` se evalúa antes de `lookupIdempotency`, la segunda transacción revierte y no crea otro pedido ni ledger.
+- Esta prueba comprueba el orden del coordinador con respuestas simuladas; la garantía de carrera real con cierre de mesa sigue dependiendo de los bloqueos PostgreSQL 17 y del futuro test Node–PG real. No activa permisos.
