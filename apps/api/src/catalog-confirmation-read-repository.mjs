@@ -16,7 +16,11 @@ const safeDbInteger=v=>(typeof v==='number'&&Number.isSafeInteger(v))||
 const row=(response)=>{
  if(!response||!Array.isArray(response.rows)||response.rows.length>1)
   throw Error('invalid_catalog_repository_response');
- return response.rows[0]??null;
+ if(response.rows.length===0)return null;
+ const record=response.rows[0];
+ if(!record||typeof record!=='object'||Array.isArray(record))
+  throw Error('invalid_catalog_repository_response');
+ return record;
 };
 export function createCatalogConfirmationReadRepository(){
  return Object.freeze({
