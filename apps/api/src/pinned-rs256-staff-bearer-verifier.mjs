@@ -6,7 +6,10 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function decode(segment){
  if(typeof segment!=='string'||!segment||!/^[A-Za-z0-9_-]+$/.test(segment))
   throw Error('invalid_staff_jwt');
- return Buffer.from(segment,'base64url');
+ const bytes=Buffer.from(segment,'base64url');
+ if(bytes.length===0||bytes.toString('base64url')!==segment)
+  throw Error('invalid_staff_jwt');
+ return bytes;
 }
 export function createPinnedRs256StaffBearerVerifier({
  publicKey,issuer,audience='authenticated',clock=()=>Date.now(),maxTokenAgeSeconds=3600
