@@ -6,12 +6,15 @@ import {createCatalogConfirmationRepository} from './catalog-confirmation-reposi
 import {createCatalogOrderWriter} from './catalog-order-writer.mjs';
 
 export function createCatalogConfirmationCandidate({pool,secretKey,clock=Date.now,newOrderId}={}){
+ // Validate all required dependencies before creating the candidate.
+ // No connection is checked out until an actual confirmation request.
+ const withTransaction=createPostgresTransaction({pool});
  const writer=createCatalogOrderWriter(newOrderId===undefined?{}:{newOrderId});
  const repository=createCatalogConfirmationRepository({
   persist:(query,args)=>writer.persist(query,args)
  });
  return createCatalogConfirmationCoordinator({
-  withTransaction:createPostgresTransaction({pool}),
+  withTransaction,
   repository,secretKey,clock
  });
 }
