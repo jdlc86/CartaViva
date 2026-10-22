@@ -17,6 +17,29 @@ const safeJson=(v,depth=0)=>{
  const keys=Object.keys(v);
  return keys.length<=512&&keys.every(k=>!forbidden.includes(k)&&safeJson(v[k],depth+1));
 };
+const validEvidence=e=>{
+ if(!plain(e)||!safeJson(e)||e.schemaVersion!==1||!uuid.test(e.itemId)||
+  !Number.isSafeInteger(e.publishedRevision)||e.publishedRevision<=0||
+  typeof e.itemName!=='string'||!e.itemName.trim()||
+  [...e.itemName].length>160||!['Bebidas','Primeros','Segundos','Postres'].includes(e.category)||
+  !Number.isSafeInteger(e.quantity)||e.quantity<1||e.quantity>50||
+  !Array.isArray(e.selected)||e.selected.length>128||
+  !e.selected.every(s=>plain(s)&&typeof s.id==='string'&&s.id.length>0&&
+   typeof s.name==='string'&&s.name.trim().length>0&&money(s.priceCents)&&
+   Array.isArray(s.allergens)&&s.allergens.every(a=>typeof a==='string'))||
+  !Array.isArray(e.allergens)||e.allergens.length>32||
+  !e.allergens.every(a=>typeof a==='string'&&a.trim().length>0)||
+  !(e.discount===null||plain(e.discount))||
+  ![e.basePriceCents,e.unitSubtotalCents,e.unitDiscountCents,
+    e.subtotalCents,e.discountCents,e.totalCents].every(money)||
+  e.unitDiscountCents>e.unitSubtotalCents||
+  e.discountCents>e.subtotalCents||
+  e.totalCents!==e.subtotalCents-e.discountCents)return false;
+ const unitTotal=e.unitSubtotalCents-e.unitDiscountCents;
+ return BigInt(e.unitSubtotalCents)*BigInt(e.quantity)===BigInt(e.subtotalCents)&&
+  BigInt(e.unitDiscountCents)*BigInt(e.quantity)===BigInt(e.discountCents)&&
+  BigInt(unitTotal)*BigInt(e.quantity)===BigInt(e.totalCents);
+};
 const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
  a.context.canOrder===true&&uuid.test(a.context.tableId)&&
  uuid.test(a.context.sessionId)&&
@@ -24,18 +47,7 @@ const valid=(a)=>plain(a)&&plain(a.context)&&a.context.authorized===true&&
  key(a.requestKey)&&typeof a.requestFingerprint==='string'&&
  Buffer.byteLength(a.requestFingerprint,'utf8')>0&&
  Buffer.byteLength(a.requestFingerprint,'utf8')<=16384&&
- uuid.test(a.quoteId)&&uuid.test(a.orderId)&&plain(a.evidence)&&
- safeJson(a.evidence)&&a.evidence.schemaVersion===1&&
- uuid.test(a.evidence.itemId)&&Number.isSafeInteger(a.evidence.publishedRevision)&&
- a.evidence.publishedRevision>0&&
- [a.evidence.subtotalCents,a.evidence.discountCents,a.evidence.totalCents].every(money)&&
- a.evidence.discountCents<=a.evidence.subtotalCents&&
- a.evidence.totalCents===a.evidence.subtotalCents-a.evidence.discountCents&&
- Number.isSafeInteger(a.evidence.quantity)&&a.evidence.quantity>=1&&
- a.evidence.quantity<=50&&typeof a.evidence.itemName==='string'&&
- a.evidence.itemName.trim().length>0&&Array.isArray(a.evidence.selected)&&
- Array.isArray(a.evidence.allergens)&&money(a.evidence.basePriceCents)&&
- [a.evidence.unitSubtotalCents,a.evidence.unitDiscountCents].every(money)&&
+ uuid.test(a.quoteId)&&uuid.test(a.orderId)&&validEvidence(a.evidence)&&
  typeof a.requiresAcceptance==='boolean'&&typeof a.acceptanceVerified==='boolean'&&
  (!a.requiresAcceptance||a.acceptanceVerified)&&
  (!a.acceptanceVerified||a.requiresAcceptance);
