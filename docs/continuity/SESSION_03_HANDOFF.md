@@ -368,3 +368,8 @@ Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del rep
 - `dac449b3`: composición backend de firma RS256 verificada, identidad staff activa y transición SQL en una transacción; sin HTTP ni grants.
 - `6d45b32a`: pruebas con firmas RSA reales de camino completo, actor suplantado, emisor incorrecto y cocina.
 - `45028f8e`: arquitectura y bloqueos de activación actualizados. Pendiente resolver clave/rotación Auth real, mínimos privilegios SQL, actor de auditoría y ruta de gestión. No merge ni despliegue.
+
+## Sesión 3 — endurecimiento adicional de seguridad
+- `66485df9`: disparador de sentencia que bloquea TRUNCATE de la auditoría de mesas; `ae98f3fa`: smoke negativo.
+- `7a1acb73`: validación de base64url canónico de JWT RS256; `9f089cc9`: regresión sobre bits de relleno de firma.
+- `bd0e4915`: contrato de seguridad actualizado. Sin cambios operativos ni grants. Revisar CI del HEAD antes de declarar hito validado.
