@@ -20,7 +20,13 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
       args.context.authorized!==true||args.context.canOrder!==true||
       !uuid.test(args.context.tableId)||!uuid.test(args.context.sessionId)||
       !opaque(args.context.visitId)||!opaque(args.context.basketId)||
-      !opaque(args.context.actorId)||!plain(args.evidence)||
+      !opaque(args.context.actorId)||
+      typeof args.context.customerAlias!=='string'||
+      !args.context.customerAlias.trim()||
+      [...args.context.customerAlias].length>160||
+      typeof args.context.customerIdentifier!=='string'||
+      !args.context.customerIdentifier.trim()||
+      [...args.context.customerIdentifier].length>80||!plain(args.evidence)||
       !Object.hasOwn(categories,args.evidence.category)||
       typeof args.evidence.itemName!=='string'||
       !args.evidence.itemName.trim()||
@@ -66,7 +72,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
      )
      SELECT id,grouping FROM created`,
     [orderId,context.tableId,context.sessionId,
-     context.actorId,context.actorId,context.visitId,
+     context.customerAlias.trim(),context.customerIdentifier.trim(),context.visitId,
      JSON.stringify(evidence),JSON.stringify(items)]
    );
    if(!result||!Array.isArray(result.rows)||result.rows.length!==1||
