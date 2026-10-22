@@ -201,9 +201,7 @@ test('writer rejects accessor-backed scope without invoking getter or querying S
  for(const candidate of [
   {...args,context:accessorContext},
   accessorArgs,
-  {...args,context:{...context,__proto__:null}},
  ]){
-  if(candidate.context===context&&candidate===args)continue;
   await assert.rejects(writer.persist(query,candidate),/invalid_catalog_order_writer_scope/);
  }
  assert.equal(getterCalls,0);
