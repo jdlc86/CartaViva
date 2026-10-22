@@ -1,7 +1,7 @@
 // Offline RS256 verifier for Supabase Auth access tokens. The trusted
 // backend supplies a pinned public key and expected issuer/audience.
 // Never accept an untrusted JWT header URL or algorithm as a key source.
-import {createPublicKey,verify as verifySignature} from 'node:crypto';
+import {createPublicKey,KeyObject,verify as verifySignature} from 'node:crypto';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function decode(segment){
  if(typeof segment!=='string'||!segment||!/^[A-Za-z0-9_-]+$/.test(segment))
@@ -16,7 +16,7 @@ export function createPinnedRs256StaffBearerVerifier({
     !Number.isSafeInteger(maxTokenAgeSeconds)||maxTokenAgeSeconds<60||
     maxTokenAgeSeconds>86400)throw Error('invalid_staff_jwt_configuration');
  let key;
- try{key=createPublicKey(publicKey);}catch{throw Error('invalid_staff_jwt_configuration');}
+ try{key=publicKey instanceof KeyObject?publicKey:createPublicKey(publicKey);}catch{throw Error('invalid_staff_jwt_configuration');}
  if(key.asymmetricKeyType!=='rsa')throw Error('invalid_staff_jwt_configuration');
  return async function verifyBearer(token){
   const denied=Object.freeze({verified:false});
