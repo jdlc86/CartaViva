@@ -250,3 +250,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `scripts/ci/catalog-confirmation-atomicity-smoke.sql` verifica ahora que `order_lines` desaparece junto con `orders` y el ledger tras revertir la confirmación, y que la confirmación válida produce exactamente una línea de cocina.
 - Se añade una transacción de prueba que inserta un segundo pedido y su línea de cocina, intenta reutilizar el mismo alcance y `request_key`, y exige rechazo por la restricción `catalog_confirmation_idempotency`. El subbloque revertido no debe alterar el pedido/ledger originales ni dejar pedidos o líneas de cocina adicionales.
 - Esto demuestra comportamiento de restricciones, disparadores y rollback sobre PostgreSQL 17 desechable; no reemplaza una integración Node/driver real ni activa permisos o endpoints.
+
+## Reintento de idempotencia tras aborto concurrente
+
+- `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh` cubre ahora dos resultados de la primera transacción en PostgreSQL 17 desechable: `COMMIT` y `ROLLBACK`.
+- En ambos casos, una segunda sesión con idéntico alcance de idempotencia debe observar contención real sobre `pg_advisory_xact_lock` y poder adquirir el bloqueo tras finalizar la primera. El caso `ROLLBACK` acredita que un intento abortado no deja un claim persistente que bloquee el reintento.
+- No implica que se haya activado un endpoint ni que el coordinador Node se haya ejecutado todavía contra el driver PostgreSQL real.
