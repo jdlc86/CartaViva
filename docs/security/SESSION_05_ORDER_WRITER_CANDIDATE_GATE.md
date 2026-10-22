@@ -207,3 +207,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - Cuatro pruebas adicionales fuerzan temporalmente `SUPERUSER`, `CREATEROLE`, `CREATEDB` y `REPLICATION` sobre el escritor dormido; la puerta debe rechazar cada atributo. Total de mutaciones nuevas de atributos y membresías en este bloque: nueve.
 - Se usa exclusivamente el contenedor PostgreSQL 17 desechable de CI. Cada alteración se ejecuta en una transacción descartada tras el rechazo; se repite la puerta sobre el estado restaurado.
+
+## Corrección de la prueba SUPERUSER
+
+- La mutación `SUPERUSER` fue correctamente rechazada por la primera barrera de privilegios efectivos (`candidate order/ledger privilege leaked`), antes de alcanzar la barrera de atributos. El fallo de CI era una expectativa incorrecta del texto de error, no una aceptación del privilegio.
+- La regresión ahora exige ese rechazo temprano; las demás mutaciones conservan sus expectativas específicas. Se requiere nuevo CI verde para acreditar el conjunto.
