@@ -52,3 +52,9 @@ Commits: `91b927144c369b0fef3a920580051f40807fea0e` y `0e512fa69d8a9cad0c78b4950
 El coordinador `catalog-confirmation-coordinator.mjs` ahora construye una copia de los datos no confiables antes de consultar repositorios o calcular huellas de idempotencia. La copia rechaza getters/setters, símbolos, propiedades no enumerables, prototipos exóticos, ciclos, arreglos dispersos, nombres peligrosos y profundidad excesiva. Pruebas negativas añadidas a `tests/catalog-confirmation-coordinator.test.mjs`.
 
 Commits `d6edbb925890644768e43a2341f5f915ea73866f` y `1603d8c7cb366d45dc131c27c9b1e6e044c974c0`. Este control es solo defensa en profundidad del candidato y no demuestra por sí mismo una transacción SQL completa, ni autoriza rutas HTTP o permisos productivos.
+
+## Límite de tamaño para confirmación candidata (22-10-2026)
+
+El coordinador ahora rechaza huellas canónicas superiores a 16 KiB y tokens de aceptación superiores a 4096 caracteres, antes de invocar `withTransaction`. Se agregaron pruebas negativas de cargas sobredimensionadas y un caso positivo de confirmación ordinaria. Commits: `940393f63aca7f007c1be93aeb2064f1dcfffced` y `1f31265ef419f5fefdf3ed10e52795a119a71a5e`.
+
+Esta defensa no sustituye límites de transporte HTTP, autorización de identidad, writer SQL ni confirmación transaccional completa; permanece como código candidato.
