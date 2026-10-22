@@ -16,14 +16,17 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
-function harness({failLedger=false,closed=false}={}){
+function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false}={}){
  const statements=[],events=[];
  let releases=0,connects=0;
  const client={
   async query(sql,args=[]){
    statements.push({sql,args});
    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK'){
-    events.push(sql);return {rows:[]};
+    events.push(sql);
+    if(sql==='COMMIT'&&commitFails)throw Error('commit_uncertain');
+    if(sql==='ROLLBACK'&&rollbackFails)throw Error('rollback_failed');
+    return {rows:[]};
    }
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('customer_table_visits'))
     return {rows:closed?[]:[{table_id:tableId,session_id:sessionId,
@@ -79,4 +82,18 @@ test('revoked visit denies before order insertion and rolls back',async()=>{
  await assert.rejects(h.confirm(input),/order_context_forbidden/);
  assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
  assert.equal(h.statements.some(s=>s.sql.includes('INSERT INTO sabora.orders')),false);
+});
+
+test('uncertain commit discards the PostgreSQL client rather than returning it to pool',async()=>{
+ const h=harness({commitFails:true});
+ await assert.rejects(h.confirm(input),/commit_uncertain/);
+ assert.deepEqual(h.events,['BEGIN','COMMIT','ROLLBACK','DISCARD']);
+ assert.equal(h.releases,1);
+});
+test('failed rollback discards the PostgreSQL client after ledger error',async()=>{
+ const h=harness({failLedger:true,rollbackFails:true});
+ await assert.rejects(h.confirm(input),error=>
+  error.message==='ledger_failure'&&error.rollbackError?.message==='rollback_failed');
+ assert.deepEqual(h.events,['BEGIN','ROLLBACK','DISCARD']);
+ assert.equal(h.releases,1);
 });
