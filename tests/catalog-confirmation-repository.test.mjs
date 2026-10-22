@@ -19,6 +19,7 @@ test('candidate composition locks visit before scoped replay and never exposes s
  const repository=createCatalogConfirmationRepository({persist:async()=>({orderId})});
  const query=async(sql,parameters)=>{
   statements.push({sql,parameters});
+  if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
   if(sql.includes('FROM sabora.dining_tables'))return {rows:[{
    table_id:tableId,session_id:sessionId,visit_id:'visit-ci',actor_id:'actor-ci'
   }]};
