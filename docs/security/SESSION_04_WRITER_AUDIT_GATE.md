@@ -64,3 +64,9 @@ Esta defensa no sustituye límites de transporte HTTP, autorización de identida
 `apps/api/src/postgres-transaction.mjs` invalida el callback `query` una vez terminada la unidad de trabajo. Rechaza operaciones tardías después de commit o rollback. Además, si la unidad de trabajo devuelve el control con consultas pendientes sin esperar, impide el commit, espera su finalización antes de intentar rollback y descarta la conexión del pool. Nuevas regresiones en `tests/postgres-transaction.test.mjs`.
 
 Commits: `405efae8`, `55eb23b9`, `7a061233`, `f4f3bcac`, `65fb3dca`. Esta protección del adaptador no concede acceso SQL, no verifica identidad por sí sola y no habilita confirmación de pedidos.
+
+## Regresión de concurrencia del adaptador (22-10-2026)
+
+La prueba de consultas desacopladas fue corregida para esperar explícitamente el inicio de la consulta antes de liberarla (`6193ddb6`), evitando depender de una única microtarea. Se añaden casos que rechazan una consulta retenida durante un COMMIT pendiente y que comprueban rollback tras error de consulta (`c5c3ceef`). Estos son tests de control de vida de la conexión, no pruebas de concurrencia de pedidos contra PostgreSQL real.
+
+La aceptación depende de que los workflows del HEAD definitivo terminen SUCCESS; no basta con ejecuciones verdes de commits anteriores.
