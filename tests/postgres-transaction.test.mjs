@@ -166,3 +166,55 @@ test('detached query cannot cross COMMIT; rollback waits for it and discards con
  assert.equal(releases.length,1);
  assert.match(releases[0]?.message??'',/transaction_queries_not_awaited/);
 });
+
+test('retained query is revoked while COMMIT is still pending',async()=>{
+ let releaseCommit;
+ let commitStarted;
+ const commitEntered=new Promise(resolve=>{commitStarted=resolve;});
+ const statements=[];
+ const client={
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='COMMIT'){
+    const gate=new Promise(resolve=>{releaseCommit=resolve;});
+    commitStarted();
+    await gate;
+   }
+   return {rows:[]};
+  },
+  release:()=>{}
+ };
+ let retained;
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ const pending=withTransaction(async query=>{retained=query;return 'ok';});
+ await commitEntered;
+ await assert.rejects(retained('SELECT after work'),/transaction_scope_closed/);
+ releaseCommit();
+ assert.equal(await pending,'ok');
+ assert.deepEqual(statements,['BEGIN','COMMIT']);
+});
+
+test('detached query failure still rolls back without committing',async()=>{
+ const statements=[];
+ let started;
+ const queryStarted=new Promise(resolve=>{started=resolve;});
+ const client={
+  query:async sql=>{
+   statements.push(sql);
+   if(sql==='SELECT rejected'){
+    started();
+    throw Error('detached_db_failure');
+   }
+   return {rows:[]};
+  },
+  release:()=>{}
+ };
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ await assert.rejects(withTransaction(async query=>{
+  const detached=query('SELECT rejected');
+  await queryStarted;
+  await assert.rejects(detached,/detached_db_failure/);
+  throw Error('work_failed');
+ }),/work_failed/);
+ assert.deepEqual(statements,['BEGIN','SELECT rejected','ROLLBACK']);
+});
