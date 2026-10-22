@@ -41,3 +41,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `scripts/ci/catalog-order-identity-compatibility-smoke.sql` prueba en transacción revertida la inserción legacy y candidata, el trigger de líneas de cocina y el rechazo de identidad mezclada.
 - `postgres-migration-smoke.sh` ejecuta la nueva prueba después de migrar PostgreSQL 17 desechable. No se conecta a Supabase operativo.
 - GitHub Actions detectó diez tests de composición con fixtures antiguos sin `customer_alias`/`customer_identifier`. Se corrigieron en los tests de confirmación, repositorio y cotización. La existencia de commits de corrección no implica CI verde; comprobar el HEAD más reciente.
+
+## Integración offline de coordinador y escritor
+
+- `apps/api/src/catalog-order-confirmation-candidate.mjs` ensambla el coordinador de confirmación, el repositorio de lectura y el escritor de pedido+ledger con una transacción suministrada por el llamador. **No** crea pool, ruta HTTP, rol ni concesión SQL.
+- `tests/catalog-order-confirmation-candidate.test.mjs` verifica con dobles de consulta el flujo correcto, rechazo por visita revocada o catálogo agotado y propagación del error del ledger al límite transaccional.
+- Estos tests prueban **orquestación**, no semántica PostgreSQL. Falta acreditar el SQL del escritor y carreras reales con PostgreSQL 17 desechable; el rollback real depende de `withTransaction` y debe probarse con el adaptador de producción antes de activar.
+- La compatibilidad del perfil con el identificador público y los bloqueos se verificó en pruebas de módulo; aún no existe autorización para runtime, despliegue ni merge.
