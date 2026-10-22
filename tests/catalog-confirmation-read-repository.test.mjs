@@ -79,3 +79,12 @@ test('idempotency lookup rejects absent and oversized request fingerprints befor
  }
  assert.equal(calls,0);
 });
+
+test('corrupt persisted replay fingerprint is rejected',async()=>{
+ for(const fingerprint of ['', 'x'.repeat(16385)]){
+  await assert.rejects(repo.lookupIdempotency(async()=>({rows:[{
+   request_fingerprint:fingerprint,order_id:orderId
+  }]}),{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+ }
+});
