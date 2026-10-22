@@ -80,8 +80,7 @@ export function createCatalogConfirmationReadRepository(){
    if(!record)return null;
    if(!safeDbInteger(record.published_revision)||
       Number(record.published_revision)<1||
-      !record.published_snapshot||typeof record.published_snapshot!=='object'||
-      Array.isArray(record.published_snapshot))
+      !safeRecord(record.published_snapshot))
     return {available:false,publishedRevision:0,snapshot:null};
    return {publishedRevision:Number(record.published_revision),snapshot:record.published_snapshot,
     available:record.withdrawn_at===null&&record.sold_out===false};
@@ -108,7 +107,7 @@ export function createCatalogConfirmationReadRepository(){
    if(amounts.some(x=>x<0)||amounts[1]>amounts[0]||
       amounts[0]-amounts[1]!==amounts[2])
     throw Error('invalid_catalog_repository_response');
-   if(!record.evidence||typeof record.evidence!=='object'||Array.isArray(record.evidence))
+   if(!safeRecord(record.evidence))
     throw Error('invalid_catalog_repository_response');
    return {quoteId:record.id,evidence:record.evidence,
     publishedRevision:Number(record.published_revision),
