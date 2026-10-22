@@ -96,3 +96,9 @@ Sigue siendo un candidato no operativo: la comprobación de credenciales depende
 El lector `catalog-confirmation-read-repository.mjs` exige ahora `authorized === true` y `canOrder === true` en sus tres métodos de lectura, antes de consultar SQL. Se añaden regresiones para contextos revocados o no autorizados, sin consultas ejecutadas (`9d4f29ae`, `60fbb00a`). Es una barrera de adaptador, no una prueba criptográfica de identidad ni sustituto de RLS; la autorización real sigue dependiendo del bloqueo y verificación de la visita con credenciales actuales.
 
 No hay cambios en permisos ni en la base operativa. La persistencia económica de pedidos y su auditoría siguen pendientes.
+
+## Endurecimiento de entrada de cotizaciones (22-10-2026)
+
+El emisor candidato `catalog-quote-issuer.mjs` copia de forma independiente el payload antes de cualquier `await` o transacción. Rechaza getters/setters, propiedades ocultas o simbólicas, prototipos ajenos, referencias circulares, arreglos dispersos, nombres de propiedades peligrosos y profundidad excesiva. También limita la representación JSON a 16 KiB antes de SQL. Pruebas de entradas maliciosas y ausencia de consultas en `tests/catalog-quote-issuer.test.mjs` (commits `87d7e2f1`, `411b4996`, `ad08f788`, `a2fcba84`).
+
+La copia defensiva no autentica la visita ni autoriza importes; la evidencia económica sigue derivándose del snapshot publicado bajo bloqueo. La ruta de cotización continúa inactiva en producción.
