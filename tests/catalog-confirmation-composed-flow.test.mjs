@@ -28,7 +28,8 @@ function fixture({revoked=false,soldOut=false,storedFingerprint=null,
   if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
   if(sql.includes('FROM sabora.dining_tables'))return {rows:(revoked||
    args[3]!==activeQr||args[4]!==activeSessionToken)?[]:[{
-   table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId
+   table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId,
+    customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'
   }]};
   if(sql.includes('FROM sabora.catalog_confirmation_attempts'))
    return {rows:storedFingerprint===null?[]:[{
@@ -73,7 +74,7 @@ test('real candidate reads and injected writer share authorized confirmation tra
  assert.deepEqual(f.events,['BEGIN','COMMIT']);
  assert.equal(f.persisted,1);
  assert.equal(f.statements.length,5);
- assert.match(f.statements[0].sql,/FOR SHARE OF t,v,s/);
+ assert.match(f.statements[0].sql,/FOR UPDATE OF t FOR SHARE OF v,s/);
  assert.match(f.statements[1].sql,/pg_advisory_xact_lock/);
  assert.match(f.statements[2].sql,/FOR UPDATE/);
  assert.match(f.statements[3].sql,/FOR SHARE/);
@@ -125,7 +126,8 @@ test('same scoped replay is returned before catalog and writer',async()=>{
   withTransaction:async work=>work(async(sql,args)=>{
    if(sql.includes('pg_advisory_xact_lock'))return {rows:[{}]};
    if(sql.includes('FROM sabora.dining_tables'))return {rows:[{
-    table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId
+    table_id:tableId,session_id:sessionId,visit_id:input.visitId,actor_id:input.actorId,
+    customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'
    }]};
    if(sql.includes('FROM sabora.catalog_confirmation_attempts'))
     return {rows:[{request_fingerprint:fingerprint,order_id:orderId}]};
