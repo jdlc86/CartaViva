@@ -58,9 +58,12 @@ export function createPostgresTransaction({ pool } = {}) {
           // rather than passing mutable user-owned references to pg.
           if (value !== null && typeof value === 'object')
             throw Error('invalid_transaction_query');
+          if (typeof value === 'string' &&
+              (Buffer.byteLength(value, 'utf8') > 65536 || value.includes('\u0000')))
+            throw Error('invalid_transaction_query');
           if (typeof value === 'function' || typeof value === 'symbol' ||
               typeof value === 'bigint' ||
-              (typeof value === 'number' && !Number.isFinite(value)))
+              (typeof value === 'number' && !Number.isSafeInteger(value)))
             throw Error('invalid_transaction_query');
           return value;
         });
