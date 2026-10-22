@@ -38,6 +38,9 @@ bash scripts/ci/catalog-table-close-concurrency-smoke.sh "$container"
 # Fail closed if any candidate staff transition or audit grant becomes public.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/staff-transition-activation-gate.sql
+# Fail closed if economic ledgers or legacy order confirmation gain runtime access.
+docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-confirmation-activation-gate.sql
 # Verify append-only table transition audit on isolated PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-ordering-audit-smoke.sql
