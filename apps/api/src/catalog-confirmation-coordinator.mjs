@@ -96,7 +96,9 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    });
    if(replay!==null){
     if(!plain(replay)||replay.requestFingerprint!==requestFingerprint||
-       !own(replay,'result'))throw Error('order_idempotency_conflict');
+       !plain(replay.result)||typeof replay.result.orderId!=='string'||
+       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(replay.result.orderId))
+      throw Error('order_idempotency_conflict');
     return Object.freeze({status:'replayed',result:replay.result});
    }
    // Catalog lock and availability must remain held through persist/commit.
