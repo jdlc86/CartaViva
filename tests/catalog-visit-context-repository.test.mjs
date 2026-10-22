@@ -9,7 +9,7 @@ const lock=createCatalogVisitContextRepository().lockContext;
 const profile={customer_alias:'Cliente',customer_identifier:'SB-23456789ABCD'};
 test('locked authorization binds QR, bearer session and durable visit',async()=>{
  const result=await lock(async(sql,args)=>{
-  assert.match(sql,/FOR SHARE OF t,v,s/);
+  assert.match(sql,/FOR UPDATE OF t FOR SHARE OF v,s/);
   assert.match(sql,/JOIN sabora.customer_profiles AS p ON p.id=v.customer_id/);
   assert.match(sql,/v\.authorized_qr_version=t\.qr_version/);
   assert.match(sql,/t\.ordering_state='open'/);
