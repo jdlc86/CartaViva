@@ -68,3 +68,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - El lector de visita ahora bloquea también la fila de `customer_profiles` con `FOR SHARE OF v,s,p`, mientras conserva `FOR UPDATE OF t`. Así la identidad atribuida al pedido no puede modificarse concurrentemente mediante una actualización del perfil durante la transacción de confirmación.
 - Se valida que el alias autenticado tenga 1–80 caracteres Unicode, no sea vacío y no contenga caracteres de control; el identificador público debe respetar `SB-[2-9A-HJ-NP-Y]{12}`. Las pruebas unitarias incluyen rechazos explícitos.
 - El bloqueo de perfil presupone que el flujo de edición del perfil usa UPDATE normal sobre la misma fila. La prueba de concurrencia entre edición de perfil y pedido real sigue pendiente, así como un adaptador Node conectado a PG17; este hito **no** autoriza endpoints ni roles de escritura.
+
+## Puerta de concurrencia de edición de perfil (22-10-2026)
+
+- Nuevo `scripts/ci/catalog-profile-confirmation-concurrency-smoke.sh` ejecutado desde `postgres-migration-smoke.sh` contra PostgreSQL 17 desechable y sin red. Una transacción bloquea `customer_profiles` con `FOR SHARE`; otra intenta editar `alias`. La prueba exige observar una espera de tipo `Lock`, después completar ambas transacciones y verificar que la edición termina.
+- Esto acredita el conflicto de bloqueos PostgreSQL utilizado por `catalog-visit-context-repository.mjs`, pero **no** ejecuta aún el SELECT completo del módulo Node ni su transacción real. Se mantiene la puerta de integración Node/PG17 y los grants de runtime cerrados.
+- No se toca Supabase operativo, ni VPS compartido, ni Fleetia. Requiere comprobar el estado final de CI del commit.
