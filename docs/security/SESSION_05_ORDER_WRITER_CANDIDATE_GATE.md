@@ -167,3 +167,8 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - La suite de PostgreSQL 17 desechable incluye `catalog-order-writer-close-rollback-concurrency-smoke.sh`. Dos sesiones independientes: el camarero obtiene el bloqueo al cerrar, la confirmación candidata espera, y la transacción del camarero ejecuta `ROLLBACK`. La confirmación debe recuperar el bloqueo y observar la mesa **abierta**, sin conservar un cierre abortado.
 - Complementa las dos carreras de `COMMIT` ya probadas: pedido primero/cierre después y cierre primero/pedido después. Todas usan fixtures de mesa y personal separados, sin conexiones a Supabase ni VPS.
 - Sigue sin acreditarse el coordinador Node completo contra PostgreSQL con rol mínimo; el PR permanece Draft y no se habilitan rutas de escritura.
+
+## Respuesta del bloqueo de idempotencia
+
+- La consulta `pg_advisory_xact_lock` debe completar sin error y devolver un objeto de respuesta con `rows` array; si el adaptador devuelve `null` o una respuesta malformada se aborta la transacción antes de leer el ledger.
+- No se infiere la posesión del bloqueo de una cantidad fija de filas: PostgreSQL expone un resultado de función `void`, y el contrato de prueba puede usar arrays vacíos. La serialización efectiva sigue acreditada por la carrera de sesiones PostgreSQL 17.
