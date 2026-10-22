@@ -75,6 +75,39 @@ SELECT 1 / CASE WHEN :'grouped_grouping'='grouped'
  AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'grouped_order_id')=1
  THEN 1 ELSE 0 END AS grouped_order_verified;
 
+-- Simulate expiry of the grouping window and verify the writer marks late.
+UPDATE sabora.dining_tables
+ SET first_confirmed_at=clock_timestamp()-interval '10 minutes'
+ WHERE id=:'table_id';
+WITH instant AS (SELECT clock_timestamp() AS at),
+ created AS (
+  INSERT INTO sabora.orders
+   (id,table_id,session_id,company,employee_number,
+    customer_alias,customer_identifier,customer_visit_key,
+    economic_snapshot,confirmed_at,grouping,items)
+  SELECT gen_random_uuid(),:'table_id',:'session_id',NULL,NULL,
+   'Cliente','SB-23456789ABCD','visit-writer',
+   '{"schemaVersion":1,"totalCents":1000}'::jsonb,instant.at,
+   CASE WHEN t.first_confirmed_at IS NULL THEN 'first'
+    WHEN instant.at<t.first_confirmed_at+
+     make_interval(secs=>t.grouping_window_seconds)
+    THEN 'grouped' ELSE 'late' END,
+   '[{"category":"starter","name":"Plato","quantity":1}]'::jsonb
+  FROM instant CROSS JOIN sabora.dining_tables t WHERE t.id=:'table_id'
+  RETURNING id,grouping,confirmed_at
+ ), updated AS (
+  UPDATE sabora.dining_tables t SET first_confirmed_at=created.confirmed_at
+   FROM created WHERE t.id=:'table_id' AND created.grouping='first'
+  RETURNING t.id
+ )
+SELECT created.id AS late_order_id,created.grouping AS late_grouping
+ FROM created LEFT JOIN updated ON true \\gset
+SELECT 1 / CASE WHEN :'late_grouping'='late'
+ AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'late_order_id')=1
+ AND (SELECT first_confirmed_at<clock_timestamp()-interval '9 minutes'
+      FROM sabora.dining_tables WHERE id=:'table_id')
+ THEN 1 ELSE 0 END AS late_order_verified;
+
 -- Ledger failure must roll back the newly created order and kitchen line.
 SAVEPOINT before_failed_confirmation;
 INSERT INTO sabora.orders
