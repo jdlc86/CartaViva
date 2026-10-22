@@ -6,7 +6,11 @@ const allowed=new Set(['open','paused','closed']);
 export function createStaffTableTransitionCoordinator({withTransaction,resolveStaffSession,transition}={}){
  if(typeof withTransaction!=='function'||typeof resolveStaffSession!=='function'||
     typeof transition!=='function')throw Error('invalid_staff_transition_coordinator');
- return async function changeTableState({credential,tableId,target,pauseUntil=null}={}){
+ return async function changeTableState(input={}){
+  if(!input||typeof input!=='object'||Array.isArray(input)||
+     Object.keys(input).some(k=>!['credential','tableId','target','pauseUntil'].includes(k)))
+   throw Error('invalid_staff_transition_request');
+  const {credential,tableId,target,pauseUntil=null}=input;
   if(typeof credential!=='string'||credential.length<32||credential.length>4096||
      !uuid.test(tableId)||!allowed.has(target)||
      (pauseUntil!==null&&(target!=='paused'||typeof pauseUntil!=='string'||
