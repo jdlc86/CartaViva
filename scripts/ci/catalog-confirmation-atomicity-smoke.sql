@@ -50,7 +50,8 @@ BEGIN
  FROM sabora.dining_tables WHERE number=930101;
  SELECT item_id, id INTO STRICT v_item,v_quote
  FROM sabora.catalog_displayed_quotes
- WHERE table_id=v_table AND visit_id='visit-atomic';
+ WHERE table_id=v_table AND visit_id='visit-atomic'
+  AND actor_id='actor-atomic';
  INSERT INTO sabora.catalog_items(draft) VALUES ('{}'::jsonb)
  RETURNING id INTO v_other_item;
  BEGIN
@@ -129,7 +130,8 @@ BEGIN
  FROM sabora.dining_tables WHERE number=930101;
  SELECT item_id,id INTO STRICT v_item,v_quote
  FROM sabora.catalog_displayed_quotes
- WHERE table_id=v_table AND visit_id='visit-atomic';
+ WHERE table_id=v_table AND visit_id='visit-atomic'
+  AND actor_id='actor-atomic';
  SELECT order_id INTO STRICT v_existing_order
  FROM sabora.catalog_confirmation_attempts
  WHERE table_id=v_table AND request_key='request-atomic';
@@ -182,7 +184,8 @@ BEGIN
  FROM sabora.dining_tables WHERE number=930101;
  SELECT item_id,id INTO STRICT v_item,v_quote
  FROM sabora.catalog_displayed_quotes
- WHERE table_id=v_table AND visit_id='visit-atomic';
+ WHERE table_id=v_table AND visit_id='visit-atomic'
+  AND actor_id='actor-atomic';
  INSERT INTO sabora.catalog_displayed_quotes(
   table_id,session_id,visit_id,basket_id,actor_id,item_id,
   published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
@@ -224,7 +227,8 @@ BEGIN
  FROM sabora.dining_tables WHERE number=930101;
  SELECT item_id,id INTO STRICT v_item,v_quote
  FROM sabora.catalog_displayed_quotes
- WHERE table_id=v_table AND visit_id='visit-atomic';
+ WHERE table_id=v_table AND visit_id='visit-atomic'
+  AND actor_id='actor-atomic';
  SELECT id INTO STRICT v_order FROM sabora.orders
  WHERE table_id=v_table AND employee_number='atomic';
  FOR i IN 1..2 LOOP
