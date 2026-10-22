@@ -112,3 +112,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - Se detectó una vía de fuga de cliente en `createPostgresTransaction`: si `pool.connect()` devolvía un objeto con `release` pero sin `query`, el adaptador lanzaba `invalid_transaction_client` sin liberar el checkout. Ahora intenta `release(Error('invalid_transaction_client'))` antes de rechazarlo, descartando la sesión defectuosa. Si el propio `release` falla, se conserva el error de validación; no se ha emitido SQL.
 - Nuevas regresiones en `tests/postgres-transaction.test.mjs`: cliente malformado liberable, `release` que falla y resultado nulo. Esta mejora solo prueba el límite del pool inyectado; no supone conexión real a PG17.
 - Siguen pendientes driver PostgreSQL de Node en entorno aislado, autenticación y permisos mínimos verificables, auditoría individual, endpoints y autorización de activación. No hay cambios en Supabase operativo ni despliegues.
+
+## Pruebas de mutación del gate negativo (22-10-2026)
+
+- `scripts/ci/catalog-confirmation-activation-gate-mutations.sh` ejecuta cinco alteraciones deliberadamente inseguras **solo en PostgreSQL 17 desechable**: `GRANT INSERT` sobre `orders`, `GRANT SELECT` sobre el ledger, desactivación de `FORCE RLS` en pedidos, eliminación de `CHECK` del alias y desactivación del trigger append-only del ledger.
+- Cada mutación se introduce dentro de una transacción temporal; el gate debe **rechazarla por la causa esperada**. El cierre de la conexión revierte cualquier alteración. Al final se vuelve a ejecutar el gate limpio para demostrar que las mutaciones no persistieron.
+- Integrado en `postgres-migration-smoke.sh`. Este control prueba que la barrera negativa detecta regresiones; **no** autoriza el rol futuro, ni sustituye la integración real Node–PostgreSQL y la auditoría individual.
+- Comprobar GitHub Actions del último SHA antes de considerar validado este hito.
