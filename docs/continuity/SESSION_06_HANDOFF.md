@@ -37,3 +37,9 @@ Al revisar el árbol completo se confirmó que `apps/api/src/catalog-order-confi
 - `ce974e7a`: se elimina `catalog-confirmation-candidate-runtime.mjs` por redundante.
 
 El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQL grants, ni publica rutas. Comprobar CI del SHA final antes de afirmar éxito.
+
+## Puerta adicional de transacciones (sesión 6)
+
+- `ed2e5c8` acreditado por Sabora CI `39806156979` y Bootstrap `39806157027`, ambos SUCCESS.
+- `b08280d` / `0d14117`: cobertura del rechazo de reloj no funcional sin checkout y de COMMIT fallido que descarta la conexión del pool incluso si el intento de ROLLBACK se completa.
+- Este bloque es exclusivamente regresión del adaptador y no debe confundirse con integración Node/PG17: sigue pendiente driver real y entorno aislado. Mantener el PR Draft, sin despliegue ni concesiones SQL.
