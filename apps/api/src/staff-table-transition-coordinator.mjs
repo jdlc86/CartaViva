@@ -1,7 +1,7 @@
 // Candidate application boundary for staff table transitions.
 // The actor comes only from a trusted authenticated session resolver.
 // No route is mounted and no SQL role is granted by this module.
-const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const allowed=new Set(['open','paused','closed']);
 export function createStaffTableTransitionCoordinator({withTransaction,resolveStaffSession,transition}={}){
  if(typeof withTransaction!=='function'||typeof resolveStaffSession!=='function'||
