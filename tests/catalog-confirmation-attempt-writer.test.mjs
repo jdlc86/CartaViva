@@ -193,3 +193,37 @@ test('closed ledger schema still accepts generated percentage discount evidence'
  assert.deepEqual(result,{orderId});
  assert.equal(sqlCalls,1);
 });
+
+test('standalone ledger rejects accessor-backed trusted scope without invoking getters',async()=>{
+ let getterCalls=0;
+ let sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const accessorContext={...context};
+ Object.defineProperty(accessorContext,'visitId',{enumerable:true,get(){
+  getterCalls++;throw Error('unsafe_context_getter');
+ }});
+ const accessorArgs={...args};
+ Object.defineProperty(accessorArgs,'requestFingerprint',{enumerable:true,get(){
+  getterCalls++;throw Error('unsafe_request_getter');
+ }});
+ for(const candidate of [{...args,context:accessorContext},accessorArgs]){
+  await assert.rejects(writer.insertConfirmation(query,candidate),
+   /invalid_catalog_confirmation_attempt/);
+ }
+ assert.equal(getterCalls,0);
+ assert.equal(sqlCalls,0);
+});
+
+test('standalone ledger rejects inherited scope and forbidden own keys',async()=>{
+ let sqlCalls=0;
+ const query=async()=>{sqlCalls++;throw Error('unexpected_SQL');};
+ const inherited=Object.create({authorized:true});
+ Object.assign(inherited,context);
+ const forbidden={...context};
+ Object.defineProperty(forbidden,'constructor',{value:'spoof',enumerable:true});
+ for(const candidate of [{...args,context:inherited},{...args,context:forbidden}]){
+  await assert.rejects(writer.insertConfirmation(query,candidate),
+   /invalid_catalog_confirmation_attempt/);
+ }
+ assert.equal(sqlCalls,0);
+});
