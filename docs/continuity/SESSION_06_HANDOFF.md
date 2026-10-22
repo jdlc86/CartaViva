@@ -96,3 +96,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 
 - Sabora CI `39827769584` falló en PostgreSQL 17: el bloque `basket_isolation` seleccionaba `item_id INTO STRICT` desde varias cotizaciones de un mismo actor y cesta (la prueba de idempotencia admite múltiples cotizaciones históricas). El fallo fue `query returned more than one row`.
 - `553226f` limita la selección del identificador del ítem a una fila de fixture, sin reducir las comprobaciones de independencia entre cestas. Revisar los workflows del nuevo SHA.
+
+## Hito de endurecimiento del smoke de idempotencia
+
+- CI `39828013256` y Bootstrap `39828013354` fallaron en PostgreSQL 17 con `query returned more than one row`: tras insertar una cotización de `basket-other`, el bloque `acceptance_integrity` seguía seleccionando por actor y visita sin restringir cesta.
+- `8eeb1de` fija explícitamente `basket_id='basket-atomic'` en las cuatro consultas originales que recuperan cotizaciones para los bloques de atomicidad, duplicados, aislamiento de actor y consistencia de aceptación.
+- `4b2e773` añade un test Node rápido que exige ese alcance en las cuatro fixtures, conserva las dos pruebas de aislamiento y verifica el `ROLLBACK` final. Evita depender exclusivamente del smoke PostgreSQL más costoso para detectar este error.
+- Revalidar Sabora CI y Bootstrap en el último HEAD antes de acreditar el hito. Sin despliegue, migración operativa ni cambios de permisos.
