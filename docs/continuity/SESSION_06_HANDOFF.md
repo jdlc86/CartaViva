@@ -122,3 +122,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `5058c63`: la copia del array de parámetros transaccionales incluye una copia por valor de los objetos `Date`, que el escritor de pedidos utiliza para `first_confirmed_at`. Se rechazan fechas inválidas antes de enviar SQL al driver; la transacción realiza rollback.
 - `c6a48d0`: pruebas de mutación posterior del objeto `Date` y rechazo de `Invalid Date`, además de las pruebas anteriores de array y cierre de ámbito.
 - Sin dependencia `pg` nueva, sin conexiones operativas y sin activar el candidato en HTTP. Validación CI requerida en el nuevo HEAD.
+
+## Tipos permitidos en bindings SQL del candidato
+
+- `a5f17ae`: el límite de transacción admite parámetros primitivos compatibles con las consultas actuales y `Date` copiados por valor. Rechaza objetos arbitrarios, arrays anidados, Buffer, funciones, símbolos, bigint, números no finitos y fechas inválidas antes de invocar el driver. Evita referencias mutables y serialización implícita no auditada.
+- `b772513`: prueba Node de rechazo de estos tipos sin emitir SQL y de aceptación de valores primitivos; se conservan las regresiones de rollback y snapshots.
+- No se modifican rutas HTTP, esquemas, grants ni pools. Ejecutar y verificar CI sobre el último HEAD.
