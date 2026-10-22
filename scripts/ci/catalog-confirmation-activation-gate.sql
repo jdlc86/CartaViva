@@ -16,12 +16,14 @@ BEGIN
    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=role_name) THEN
     RAISE EXCEPTION 'missing expected isolated role: %',role_name;
    END IF;
+   -- The candidate order writer is not activated for any runtime identity.
+   -- Check both the new economic ledgers and the legacy orders projection.
    FOREACH table_name IN ARRAY ARRAY[
-    'catalog_displayed_quotes','catalog_confirmation_attempts'
+    'orders','catalog_displayed_quotes','catalog_confirmation_attempts'
    ] LOOP
     IF has_table_privilege(role_name,'sabora.'||table_name,
        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
-     RAISE EXCEPTION 'economic ledger privilege leaked: % %',role_name,table_name;
+     RAISE EXCEPTION 'candidate order/ledger privilege leaked: % %',role_name,table_name;
     END IF;
    END LOOP;
    IF has_function_privilege(role_name,
