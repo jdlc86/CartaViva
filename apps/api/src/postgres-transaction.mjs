@@ -21,6 +21,7 @@ export function createPostgresTransaction({ pool } = {}) {
     let commitAttempted = false;
     let discardClient = null;
     let workError = null;
+    let hasWorkError = false;
     try {
       await client.query('BEGIN');
       began = true;
@@ -40,6 +41,7 @@ export function createPostgresTransaction({ pool } = {}) {
       return result;
     } catch (error) {
       workError = error;
+      hasWorkError = true;
       active = false;
       // A failed BEGIN or COMMIT may leave the connection state uncertain.
       // Never return an uncertain connection to the pool.
@@ -67,7 +69,7 @@ export function createPostgresTransaction({ pool } = {}) {
       } catch (releaseError) {
         // A release failure must not replace the original SQL/COMMIT error.
         // On a successful COMMIT it is still a failure, never report success.
-        if (workError) {
+        if (hasWorkError) {
           if (workError && typeof workError === 'object') {
             try { workError.releaseError = releaseError; }
             catch { /* Preserve immutable original errors. */ }
