@@ -34,6 +34,17 @@ export function createPostgresTransaction({ pool } = {}) {
             !Array.isArray(parameters)) throw Error('invalid_transaction_query');
         // Snapshot parameter bindings before the deferred driver invocation;
         // a caller must not be able to swap values after handing off SQL.
+        // Reject accessor-backed arrays before reading values: Array#map
+        // would otherwise invoke attacker-controlled getters.
+        if (Reflect.ownKeys(parameters).length !== parameters.length + 1 ||
+            parameters.length > 256 ||
+            Object.getPrototypeOf(parameters) !== Array.prototype)
+          throw Error('invalid_transaction_query');
+        for (let index = 0; index < parameters.length; index++) {
+          const descriptor = Object.getOwnPropertyDescriptor(parameters, String(index));
+          if (!descriptor || !Object.hasOwn(descriptor, 'value'))
+            throw Error('invalid_transaction_query');
+        }
         const boundParameters = parameters.map(value => {
           // The order writer passes a PostgreSQL timestamp as a Date. Copy it
           // too: cloning only the outer array would leave mutable timestamps.
