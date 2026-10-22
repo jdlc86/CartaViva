@@ -39,19 +39,29 @@ const safeJson=(v,depth=0,seen=new Set(),budget={nodes:0,bytes:0})=>{
   return true;
  }finally{seen.delete(v);}
 };
+const exactKeys=(value,expected)=>plain(value)&&
+ Object.keys(value).length===expected.length&&
+ expected.every(k=>Object.hasOwn(value,k));
+const evidenceKeys=['schemaVersion','itemId','publishedRevision','itemName',
+ 'category','quantity','basePriceCents','selected','allergens','discount',
+ 'unitSubtotalCents','unitDiscountCents','subtotalCents','discountCents','totalCents'];
+const selectedKeys=['id','name','priceCents','allergens'];
+const validDiscount=d=>d===null||
+ (plain(d)&&((d.type==='fixed'&&exactKeys(d,['type','amountCents']))||
+ (d.type==='percent'&&exactKeys(d,['type','basisPoints']))));
 const validEvidence=e=>{
- if(!plain(e)||!safeJson(e)||e.schemaVersion!==1||!uuid.test(e.itemId)||
+ if(!plain(e)||!safeJson(e)||!exactKeys(e,evidenceKeys)||e.schemaVersion!==1||!uuid.test(e.itemId)||
   !Number.isSafeInteger(e.publishedRevision)||e.publishedRevision<=0||
   typeof e.itemName!=='string'||!e.itemName.trim()||
   [...e.itemName].length>160||!['Bebidas','Primeros','Segundos','Postres'].includes(e.category)||
   !Number.isSafeInteger(e.quantity)||e.quantity<1||e.quantity>20||
   !Array.isArray(e.selected)||e.selected.length>50||
-  !e.selected.every(s=>plain(s)&&typeof s.id==='string'&&s.id.length>0&&
+  !e.selected.every(s=>exactKeys(s,selectedKeys)&&typeof s.id==='string'&&s.id.length>0&&
    typeof s.name==='string'&&s.name.trim().length>0&&money(s.priceCents)&&
    Array.isArray(s.allergens)&&s.allergens.every(a=>typeof a==='string'))||
   !Array.isArray(e.allergens)||e.allergens.length>32||
   !e.allergens.every(a=>typeof a==='string'&&a.trim().length>0)||
-  !(e.discount===null||plain(e.discount))||
+  !validDiscount(e.discount)||
   ![e.basePriceCents,e.unitSubtotalCents,e.unitDiscountCents,
     e.subtotalCents,e.discountCents,e.totalCents].every(money)||
   e.unitDiscountCents>e.unitSubtotalCents||
