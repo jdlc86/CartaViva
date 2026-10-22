@@ -190,3 +190,21 @@ test('symbol, hidden, sparse array and dangerous nested keys are rejected',async
  await assert.rejects(confirm({...input,selection:dangerous}),/invalid_confirmation_input/);
  assert.deepEqual(calls,[]);
 });
+
+test('oversized confirmation payload and acceptance token fail before transaction',async()=>{
+ const {confirm,calls}=make();
+ await assert.rejects(confirm({...input,selection:{extras:[],note:'x'.repeat(17000)}}),
+  /invalid_confirmation_input/);
+ await assert.rejects(confirm({...input,acceptanceToken:'x'.repeat(4097)}),
+  /invalid_confirmation_input/);
+ await assert.rejects(confirm({...input,acceptanceToken:{token:'forged'}}),
+  /invalid_confirmation_input/);
+ assert.deepEqual(calls,[]);
+});
+
+test('a normal bounded confirmation still reaches the same locked workflow',async()=>{
+ const {confirm,calls}=make();
+ const result=await confirm({...input});
+ assert.equal(result.status,'confirmed');
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','COMMIT']);
+});
