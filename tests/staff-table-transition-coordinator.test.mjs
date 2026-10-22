@@ -69,3 +69,11 @@ test('kitchen staff cannot perform table lifecycle changes',async()=>{
   /staff_session_forbidden/);
  assert.deepEqual(calls,['BEGIN','ROLLBACK']);
 });
+
+test('kitchen membership cannot open, pause or close a table',async()=>{
+ const {coordinator,calls}=fixture({resolveStaffSession:async()=>({
+  authenticated:true,active:true,actorId,role:'kitchen'
+ })});
+ await assert.rejects(coordinator({credential,tableId,target:'open'}),/staff_session_forbidden/);
+ assert.deepEqual(calls,['BEGIN','ROLLBACK']);
+});
