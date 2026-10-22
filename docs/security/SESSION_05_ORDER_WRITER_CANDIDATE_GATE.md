@@ -131,3 +131,9 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 
 - La regresión de pool inyectado confirma que una solicitud previamente confirmada **no** puede reutilizar su clave idempotente tras revocar la visita: `lockContext` se evalúa antes de `lookupIdempotency`, la segunda transacción revierte y no crea otro pedido ni ledger.
 - Esta prueba comprueba el orden del coordinador con respuestas simuladas; la garantía de carrera real con cierre de mesa sigue dependiendo de los bloqueos PostgreSQL 17 y del futuro test Node–PG real. No activa permisos.
+
+## Nuevos casos negativos del candidato con pool inyectado
+
+- El test de composición con pool simulado incorpora rotación de QR (rechazo **antes** de consultar el ledger de idempotencia), cotización vencida y catálogo agotado. Todos deben producir `ROLLBACK`, liberar la conexión y no insertar ni pedido ni intento de confirmación.
+- Se conserva el caso de visita revocada **después** de una confirmación exitosa: el replay se rechaza por contexto no autorizado antes de consultar la clave previa.
+- Estas pruebas ejercitan las decisiones de Node mediante respuestas simuladas; no son un sustituto de pruebas de SQL real de QR, expiración y stock. La activación sigue bloqueada por la integración Node–PostgreSQL 17, el rol mínimo y la auditoría individual.
