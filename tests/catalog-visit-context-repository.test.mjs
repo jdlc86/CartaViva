@@ -86,3 +86,20 @@ test('visit authorization refuses accessor-backed credentials before getter exec
  assert.equal(getters,0);
  assert.equal(sqlCalls,0);
 });
+
+test('visit identity rows cannot invoke getters or inherit trusted fields',async()=>{
+ let getterCalls=0;
+ const base={table_id:tableId,session_id:sessionId,visit_id:'visit-ci',
+  actor_id:'actor-ci',...profile};
+ const accessor={...base};
+ Object.defineProperty(accessor,'customer_alias',{enumerable:true,
+  get(){getterCalls++;throw Error('malicious_row_getter');}});
+ const inherited=Object.assign(Object.create({inherited:true}),base);
+ const dangerous={...base};
+ Object.defineProperty(dangerous,'__proto__',{enumerable:true,value:'bad'});
+ for(const row of [accessor,inherited,dangerous]){
+  await assert.rejects(lock(async()=>({rows:[row]}),input),
+   /invalid_catalog_visit_response/);
+ }
+ assert.equal(getterCalls,0);
+});
