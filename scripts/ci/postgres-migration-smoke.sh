@@ -39,6 +39,8 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Verify atomic occupancy boundary and revocation on close.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-occupancy-boundary-smoke.sql
+# Two competing first confirmations must serialize into first + grouped.
+bash scripts/ci/catalog-order-writer-double-first-concurrency-smoke.sh "$container"
 # Prove candidate order writer's table FOR UPDATE serializes with staff close.
 bash scripts/ci/catalog-order-writer-close-concurrency-smoke.sh "$container"
 # Reverse race: staff closes first; a subsequent candidate writer must block then refuse.
