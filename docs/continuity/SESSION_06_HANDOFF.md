@@ -166,3 +166,9 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `80ba803`: la capa de composición verifica que el objeto de evidencia económica sea un registro simple sin accessors, propiedades heredadas ni claves de prototipo peligrosas, antes de entregar el control al escritor económico que efectúa las comprobaciones de contenido y aritmética.
 - `3ae7902`: pruebas negativas de getters, herencia y clave `__proto__` en la evidencia, sin invocar el adaptador de persistencia.
 - La validación del contenedor no sustituye el recálculo económico ni la comprobación de origen del catálogo publicado. No se habilita HTTP, grants ni conexión a Supabase operativo.
+
+## Frontera de credenciales de visita QR
+
+- `bb2472c`: `catalog-visit-context-repository.mjs` valida los descriptores del registro de entrada antes de desestructurar QR, token de sesión cliente, mesa, visita y actor. Rechaza getters, símbolos, claves peligrosas, herencia y estructuras desmesuradas.
+- `00da618`: regresión negativa con getter hostil en QR, contexto heredado y clave de prototipo; exige cero lecturas del getter y cero consultas SQL.
+- El bloqueo de visita sigue comprobando las credenciales y la ocupación mediante SQL parametrizado, dentro de la transacción del coordinador candidato. No se habilita endpoint ni permiso operativo. Verificar CI del HEAD antes de acreditar.
