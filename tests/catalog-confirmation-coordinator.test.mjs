@@ -20,8 +20,8 @@ const make=(overrides={})=>{
   lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true,tableId:input.tableId,visitId:input.visitId,actorId:input.actorId,basketId:input.basketId,sessionId:'session-1'};},
   lookupIdempotency:async()=>{calls.push('replay');return null;},
   lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
-  loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'quote-1',evidence:displayed,publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
-  persist:async(_query,args)=>{calls.push('persist');assert.equal(args.quoteId,'quote-1');return {orderId:'order-1',evidence:args.evidence};},
+  loadPreviousQuote:async()=>{calls.push('previous');return {quoteId:'00000000-0000-4000-8000-000000000004',evidence:displayed,publishedRevision:1,subtotalCents:1000,discountCents:0,totalCents:1000};},
+  persist:async(_query,args)=>{calls.push('persist');assert.equal(args.quoteId,'00000000-0000-4000-8000-000000000004');return {orderId:'00000000-0000-4000-8000-000000000005',evidence:args.evidence};},
   ...overrides
  };
  const confirm=createCatalogConfirmationCoordinator({
@@ -113,7 +113,7 @@ test('missing or malformed trusted previous quote aborts before persistence',asy
 test('a trusted previous revision mismatch requires consent despite client silence',async()=>{
  const {confirm,calls}=make({
   loadPreviousQuote:async()=>{calls.push('previous');return {
-   quoteId:'quote-1',evidence:{...displayed,publishedRevision:2},publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
+   quoteId:'00000000-0000-4000-8000-000000000004',evidence:{...displayed,publishedRevision:2},publishedRevision:2,subtotalCents:1000,discountCents:0,totalCents:1000
   };}
  });
  const result=await confirm(input);
@@ -136,7 +136,7 @@ test('changed quantity cannot silently reuse a displayed quote',async()=>{
 });
 test('corrupt stored evidence is rejected even if amounts look correct',async()=>{
  const {confirm}=make({loadPreviousQuote:async()=>({
-  quoteId:'quote-1',publishedRevision:1,subtotalCents:1000,
+  quoteId:'00000000-0000-4000-8000-000000000004',publishedRevision:1,subtotalCents:1000,
   discountCents:0,totalCents:1000,evidence:{...displayed,totalCents:999}
  })});
  await assert.rejects(confirm(input),/order_displayed_quote_invalid/);
@@ -275,4 +275,26 @@ test('matching replay fingerprint still rejects a malformed persisted result',as
  }});
  await assert.rejects(confirm(input),/order_idempotency_conflict/);
  assert.deepEqual(calls,['BEGIN','context','replay','ROLLBACK']);
+});
+
+test('malformed trusted quote ID aborts before decision and persistence',async()=>{
+ for(const quoteId of ['quote-1','',null,undefined,{},false]){
+  const {confirm,calls}=make({loadPreviousQuote:async()=>{
+   calls.push('previous');
+   return {quoteId,evidence:displayed,publishedRevision:1,
+    subtotalCents:1000,discountCents:0,totalCents:1000};
+  }});
+  await assert.rejects(confirm(input),/order_previous_quote_unavailable/);
+  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
+ }
+});
+
+test('malformed writer order ID aborts transaction without confirmed response',async()=>{
+ for(const orderId of ['order-1','',null,undefined,{},false]){
+  const {confirm,calls}=make({persist:async()=>{
+   calls.push('persist');return {orderId};
+  }});
+  await assert.rejects(confirm(input),/invalid_order_persistence_result/);
+  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','persist','ROLLBACK']);
+ }
 });
