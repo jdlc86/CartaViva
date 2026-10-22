@@ -28,6 +28,7 @@ VALUES (:'table_id',:'session_id','visit-atomic','basket-atomic','actor-atomic',
 ROLLBACK TO SAVEPOINT before_order;
 SELECT 1 / CASE WHEN
  NOT EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'rolled_order_id')
+ AND NOT EXISTS (SELECT 1 FROM sabora.order_lines WHERE order_id=:'rolled_order_id')
  AND NOT EXISTS (SELECT 1 FROM sabora.catalog_confirmation_attempts
   WHERE table_id=:'table_id' AND request_key='request-atomic')
  THEN 1 ELSE 0 END AS rollback_atomicity_verified;
@@ -80,6 +81,11 @@ BEGIN
   WHERE table_id=v_table AND employee_number='failed-writer') THEN
   RAISE EXCEPTION 'orphaned order survived confirmation FK failure';
  END IF;
+ IF EXISTS(SELECT 1 FROM sabora.order_lines l
+  JOIN sabora.orders o ON o.id=l.order_id
+  WHERE o.table_id=v_table AND o.employee_number='failed-writer') THEN
+  RAISE EXCEPTION 'orphaned kitchen projection survived confirmation FK failure';
+ END IF;
  IF EXISTS(SELECT 1 FROM sabora.catalog_confirmation_attempts
   WHERE table_id=v_table AND request_key='request-failed') THEN
   RAISE EXCEPTION 'failed confirmation survived FK failure';
@@ -102,6 +108,7 @@ SELECT 1 / CASE WHEN
   WHERE table_id=:'table_id' AND request_key='request-atomic'
    AND order_id=:'committed_order_id')=1
  AND EXISTS (SELECT 1 FROM sabora.orders WHERE id=:'committed_order_id')
+ AND (SELECT count(*) FROM sabora.order_lines WHERE order_id=:'committed_order_id')=1
  THEN 1 ELSE 0 END AS committed_pair_verified;
 -- Neither a fabricated acceptance timestamp nor a missing acceptance timestamp
 -- may be stored as evidence of a repricing decision.
