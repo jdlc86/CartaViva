@@ -444,3 +444,32 @@ test('transaction rejects a query after the work callback resolves',async()=>{
  await assert.rejects(retained('SELECT after commit'),/transaction_scope_closed/);
  assert.deepEqual(statements,['BEGIN','COMMIT']);
 });
+
+test('transaction snapshots mutable PostgreSQL Date bindings before driver dispatch',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async(sql,params)=>{calls.push({sql,params});return {rows:[]};},
+  release:()=>{}
+ })}});
+ await withTransaction(async query=>{
+  const first=new Date('2026-10-22T12:00:00.000Z');
+  const expected=first.getTime();
+  const pending=query('SELECT $1::timestamptz',[first]);
+  first.setTime(0);
+  await pending;
+  assert.equal(calls[1].params[0].getTime(),expected);
+  assert.notEqual(calls[1].params[0],first);
+ });
+ assert.deepEqual(calls.map(call=>call.sql),['BEGIN','SELECT $1::timestamptz','COMMIT']);
+});
+
+test('invalid Date binding aborts before driver query and rolls back',async()=>{
+ const calls=[];
+ const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+  query:async sql=>{calls.push(sql);return {rows:[]};},
+  release:()=>{}
+ })}});
+ await assert.rejects(withTransaction(query=>query('SELECT $1::timestamptz',[new Date(NaN)])),
+  /invalid_transaction_query/);
+ assert.deepEqual(calls,['BEGIN','ROLLBACK']);
+});
