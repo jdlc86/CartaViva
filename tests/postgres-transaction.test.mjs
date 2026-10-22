@@ -319,3 +319,22 @@ test('frozen original error survives failed ROLLBACK and failed release',async()
  assert.equal(releases.length,1);
  assert.equal(releases[0]?.message,'rollback_failed');
 });
+
+test('falsy thrown callback values are preserved even if release fails',async()=>{
+ for(const thrown of [null,undefined,false,0,'']){
+  const statements=[];
+  const withTransaction=createPostgresTransaction({pool:{connect:async()=>({
+   query:async sql=>{statements.push(sql);return {rows:[]};},
+   release:()=>{throw Error('release_failed');}
+  })}});
+  let rejected=false;
+  try{
+   await withTransaction(async()=>{throw thrown;});
+  }catch(error){
+   rejected=true;
+   assert.equal(error,thrown);
+  }
+  assert.equal(rejected,true);
+  assert.deepEqual(statements,['BEGIN','ROLLBACK']);
+ }
+});
