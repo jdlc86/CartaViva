@@ -20,7 +20,8 @@ export function createStaffTableTransitionCoordinator({withTransaction,resolveSt
   return withTransaction(async query=>{
    const session=await resolveStaffSession(query,{credential});
    if(!session||session.authenticated!==true||!uuid.test(session.actorId)||
-      session.active!==true)throw Error('staff_session_forbidden');
+      session.active!==true||!['waiter','admin','root'].includes(session.role))
+    throw Error('staff_session_forbidden');
    const result=await transition(query,{
     actorId:session.actorId,tableId,target,pauseUntil
    });
