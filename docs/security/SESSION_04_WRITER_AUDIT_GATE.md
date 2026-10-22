@@ -76,3 +76,9 @@ La aceptación depende de que los workflows del HEAD definitivo terminen SUCCESS
 `catalog-confirmation-read-repository.mjs` exige ahora una huella canónica no vacía y acotada (16 KiB) para consultar la idempotencia, además de rechazar huellas almacenadas malformadas. Las consultas siguen parametrizadas y acotadas por mesa, sesión, visita, cesta, actor y clave de solicitud. Las regresiones están en `tests/catalog-confirmation-read-repository.test.mjs` (commits `be9f0c24`, `388f52f3`, `b341d835`, `712acac0`).
 
 No hay cambio de permisos, endpoint ni activación. La huella es una comparación de identidad de petición, no un mecanismo criptográfico de autorización.
+
+## Credenciales de visita para confirmación candidata (22-10-2026)
+
+Se ha corregido una divergencia entre `catalog-visit-context-repository.mjs` y `catalog-confirmation-coordinator.mjs`: la confirmación exige ahora `qrToken` y `customerSessionToken` y los remite a `lockContext` dentro de la misma transacción. Se rechazan credenciales ausentes o malformadas antes de SQL. **Las credenciales quedan excluidas de la huella de idempotencia**, que identifica los datos económicos de la solicitud, no secretos de sesión. Pruebas de regresión en `tests/catalog-confirmation-coordinator.test.mjs`. Commits `0cbf1b46` y `59645679`.
+
+Sigue siendo un candidato no operativo: la comprobación de credenciales depende de que el repositorio de contexto real se integre y de que los roles SQL, el escritor de pedidos, la auditoría y las pruebas PostgreSQL queden acreditados. No se activan rutas ni se concede ningún permiso.
