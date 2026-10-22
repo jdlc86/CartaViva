@@ -154,3 +154,39 @@ test('a replay is forbidden when locked visit scope is inconsistent',async()=>{
   assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
  }
 });
+
+test('untrusted accessor cannot execute before transaction',async()=>{
+ const {confirm,calls}=make();
+ let getterCalls=0;
+ const request={...input};
+ Object.defineProperty(request,'tableId',{enumerable:true,get(){getterCalls++;throw Error('getter_executed');}});
+ await assert.rejects(confirm(request),/invalid_confirmation_input/);
+ assert.equal(getterCalls,0);
+ assert.deepEqual(calls,[]);
+});
+
+test('nested accessor and cyclic selection fail closed before transaction',async()=>{
+ const {confirm,calls}=make();
+ const selection={extras:[]};
+ Object.defineProperty(selection,'injected',{enumerable:true,get(){throw Error('nested_getter_executed');}});
+ await assert.rejects(confirm({...input,selection}),/invalid_confirmation_input/);
+ const cyclic={extras:[]};
+ cyclic.self=cyclic;
+ await assert.rejects(confirm({...input,selection:cyclic}),/invalid_confirmation_input/);
+ assert.deepEqual(calls,[]);
+});
+
+test('symbol, hidden, sparse array and dangerous nested keys are rejected',async()=>{
+ const {confirm,calls}=make();
+ const symbol={...input};
+ symbol[Symbol('actorId')]='forged';
+ await assert.rejects(confirm(symbol),/invalid_confirmation_input/);
+ const hidden={...input};
+ Object.defineProperty(hidden,'actorIdOverride',{value:'forged',enumerable:false});
+ await assert.rejects(confirm(hidden),/invalid_confirmation_input/);
+ const sparse={...input,selection:{extras:new Array(2)}};
+ await assert.rejects(confirm(sparse),/invalid_confirmation_input/);
+ const dangerous=JSON.parse('{"extras":[],"__proto__":{"admin":true}}');
+ await assert.rejects(confirm({...input,selection:dangerous}),/invalid_confirmation_input/);
+ assert.deepEqual(calls,[]);
+});
