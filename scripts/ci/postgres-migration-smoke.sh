@@ -35,7 +35,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-staff-transition-smoke.sql
 # Verify staff close waits for a customer transaction's table lock.
 bash scripts/ci/catalog-table-close-concurrency-smoke.sh "$container"
-# Verify append-only table transition audit on isolated PostgreSQL.
+# Fail closed if any candidate staff transition or audit grant becomes public.\ndocker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \\\n < scripts/ci/staff-transition-activation-gate.sql\n# Verify append-only table transition audit on isolated PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-table-ordering-audit-smoke.sql
 # Exercise two competing DB sessions and assert only the first request survives.
