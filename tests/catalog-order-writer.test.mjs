@@ -128,3 +128,20 @@ test('valid PostgreSQL timestamp from locked table is forwarded to grouping SQL'
  assert.equal(calls[1].params[8],first);
  assert.equal(calls[1].params[9],300);
 });
+
+test('writer rejects inconsistent SQL grouping before immutable ledger INSERT',async()=>{
+ const writer=createCatalogOrderWriter({newOrderId:()=>ids.orderId});
+ for(const [first,grouping] of [
+  [null,'grouped'],[null,'late'],[null,'unknown'],
+  [new Date('2026-10-22T12:00:00Z'),'first'],
+  [new Date('2026-10-22T12:00:00Z'),'unknown']
+ ]){
+  const statements=[];
+  await assert.rejects(writer.persist(async sql=>{
+   statements.push(sql);
+   if(statements.length===1)return {rows:[{first_confirmed_at:first,grouping_window_seconds:300}]};
+   return {rows:[{id:ids.orderId,grouping}]};
+  },args),/catalog_order_context_changed/);
+  assert.equal(statements.length,2,'invalid grouping must not insert economic ledger');
+ }
+});
