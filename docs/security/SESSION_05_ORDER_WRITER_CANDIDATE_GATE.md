@@ -81,3 +81,10 @@ No se ha tocado Supabase operativo, VPS, Fleetia, ni se ha realizado merge o des
 - `tests/catalog-order-confirmation-pool-candidate.test.mjs` verifica el límite de cliente único con doble de pool: `BEGIN` y `COMMIT` para confirmación; `BEGIN` y `ROLLBACK` ante fallo de ledger o visita revocada; liberación de cliente; pedido y ledger en el mismo contexto.
 - El escritor valida ahora alias con el máximo de 80 caracteres Unicode del perfil, no 160. El quote del test se deriva del constructor económico canónico.
 - **Aún no acreditado:** ejecución real de código Node sobre PostgreSQL 17 (sin dependencia `pg` en el paquete API), permisos mínimos del rol dedicado, RLS, integración HTTP y pruebas de carreras del flujo completo. La activación continúa bloqueada.
+
+## Robustez de la transacción de confirmación (bloque posterior)
+
+- Se agregaron pruebas del adaptador `createPostgresTransaction` integrado en el candidato para dos fallos de conexión: COMMIT incierto y ROLLBACK fallido. Ambos casos deben liberar el cliente con indicación de descarte, nunca reciclar una sesión transaccional incierta.
+- Se añadieron los módulos del flujo candidato al `build` de `@sabora/api` mediante `node --check`. Se conservan tests de confirmación, rechazo de visita y fallo de ledger con pool simulado.
+- No se introdujo dependencia `pg`, credenciales, pool operativo, ruta HTTP ni grants. El smoke de PostgreSQL 17 valida SQL y carreras de bloqueo por separado; la ejecución de todo el coordinador Node contra la instancia real sigue siendo una puerta pendiente.
+- Los workflows de GitHub del HEAD deben verificarse tras este cambio. La activación continúa prohibida.
