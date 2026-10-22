@@ -218,3 +218,25 @@ test('detached query failure still rolls back without committing',async()=>{
  }),/work_failed/);
  assert.deepEqual(statements,['BEGIN','SELECT rejected','ROLLBACK']);
 });
+
+test('malformed checked-out client with release is discarded before BEGIN',async()=>{
+ const reasons=[];
+ const client={release:reason=>reasons.push(reason)};
+ const transaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ await assert.rejects(transaction(async()=>{}),/invalid_transaction_client/);
+ assert.equal(reasons.length,1);
+ assert.match(reasons[0]?.message??'',/invalid_transaction_client/);
+});
+
+test('malformed checked-out client with throwing release preserves validation error',async()=>{
+ let attempts=0;
+ const client={release:()=>{attempts++;throw Error('release_failure');}};
+ const transaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ await assert.rejects(transaction(async()=>{}),/invalid_transaction_client/);
+ assert.equal(attempts,1);
+});
+
+test('null checked-out client is rejected without attempting a transaction',async()=>{
+ const transaction=createPostgresTransaction({pool:{connect:async()=>null}});
+ await assert.rejects(transaction(async()=>{}),/invalid_transaction_client/);
+});
