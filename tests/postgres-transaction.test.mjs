@@ -144,8 +144,9 @@ test('detached query cannot cross COMMIT; rollback waits for it and discards con
   query:async sql=>{
    statements.push(sql);
    if(sql==='SELECT slow'){
+    const gate=new Promise(resolve=>{resolveQuery=resolve;});
     started();
-    await new Promise(resolve=>{resolveQuery=resolve;});
+    await gate;
    }
    return {rows:[]};
   },
