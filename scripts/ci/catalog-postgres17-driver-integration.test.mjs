@@ -16,7 +16,7 @@ const parsed=new URL(url);
 if(process.env.GITHUB_ACTIONS!=='true'||
    !modulePath.startsWith('/tmp/tmp')||
    !modulePath.endsWith('/node_modules/pg')||
-   !/^[A-Za-z0-9_-]+$/.test(modulePath.slice(8,-16)))
+   !/^[A-Za-z0-9_.-]+$/.test(modulePath.slice(8,-16)))
  throw Error('disposable_pg17_harness_required');
 if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||
    parsed.pathname!=='/postgres')throw Error('unsafe_pg17_harness_target');
