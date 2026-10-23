@@ -333,3 +333,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `adb955220e46316bd8d57ae72fac695c9e884ec8`: nuevo caso PG17 sobre dos conexiones independientes del pool. Crea mesa abierta y visita válida en Docker efímero, retiene en la transacción A el lock de UPDATE que pausa la mesa, y lanza en la transacción B `createCatalogVisitContextRepository().lockContext`. La lectura de autorización debe esperar el lock, y tras COMMIT de la pausa debe devolver `authorized=false`, `canOrder=false`. Se comprueba estado persistido `paused`.
 - Esta prueba comprueba el orden transaccional **pausa antes de autorización**, no todos los posibles interleavings ni una confirmación HTTP. La tabla fixture queda exclusivamente en contenedor PG17 desechable, sin producción.
 - El gate de caducidad del commit `7dc21d08dc3662498482063d94d7f30caca1f06c` seguía en curso al comenzar este bloque. **Nuevo SHA pendiente de CI**. No atribuir SUCCESS sin consultar los resultados.
+
+### Corrección tras fallo real de CI: restricción de duración de visita (2026-10-23)
+
+- El HEAD `7dc21d08dc3662498482063d94d7f30caca1f06c` **falló** en Sabora CI `39940306394` y Bootstrap `39940306251` en el paso de driver PG17: `customer_table_visit_lifetime` (SQLSTATE `23514`). Las diez pruebas anteriores pasaron; falló la prueba nueva de expiración de visita.
+- Fuente de verdad: migración `20261021240000_sabora_customer_table_visits_candidate.sql` exige `expires_at > granted_at`. El fixture intentaba escribir expiración anterior a `granted_at`, un estado imposible. Corregido en commit `1536a9e3df62d0788af1c5d94c48e5f7a45309a7`: modelar visita concedida hace dos horas y caducada hace un minuto, conservando el invariante. Sin alterar la migración ni el modelo.
+- Se añadió en paralelo prueba de carrera pausa/autorización (commit `adb955220e46316bd8d57ae72fac695c9e884ec8`), aún no validada. Inspeccionar CI del nuevo HEAD antes de declarar gate verde.
