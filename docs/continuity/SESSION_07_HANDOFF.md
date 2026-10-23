@@ -736,3 +736,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `2e5209148113741aedc966466b1d9b277401956f` tuvo Sabora CI y Bootstrap FAIL por test 419 (`tests/isolated-pool-identity-preflight.test.mjs`): esperaba release normal incluso para resultado SQL de identidad malformado, mientras que el adaptador descarta correctamente la conexión.
 - Actualizada la prueba: resultados SQL estructuralmente inválidos implican `release(true)` (discard); identidades válidas pero no autorizadas implican release normal. El adaptador de producción no se debilitó.
 - Confirmar CI de `4404b639a5985d40e09e24b92630eb312281ce0b` o HEAD posterior antes de declarar verde.
+
+### Preflight sin consultas para configuración de pools compartidos (23-10-2026)
+
+- HEAD anterior `0766e05310de4aca6e225aa8d5e089dbf5b313ee`: ambos workflows SUCCESS.
+- La composición verificada comprueba **antes de abrir conexiones** que no se ha suministrado el mismo pool, el mismo `options.user` o el mismo `options.connectionString`. Una configuración compartida se rechaza sin SQL ni rutas registradas.
+- Regresión Fastify confirma que GET catálogo y POST confirmación permanecen 404 y los pools no reciben consultas.
+- Las opciones declaradas no reemplazan la comprobación efectiva `current_user/session_user`, grants, RLS ni PostgreSQL 17 desechable. Sin activación productiva.
