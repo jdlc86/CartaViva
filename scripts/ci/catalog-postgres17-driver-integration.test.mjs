@@ -1068,3 +1068,52 @@ test('PG17 rejects malformed visit grants at the database boundary',async()=>{
   assert.equal(existing.rows[0].total,0);
  });
 });
+
+test('PG17 rejects revoked visits and preserves independent valid visits',async()=>{
+ const {createCatalogVisitContextRepository}=await import(
+  '../../apps/api/src/catalog-visit-context-repository.mjs');
+ const repo=createCatalogVisitContextRepository();
+ const tableId='cafe0000-0000-4000-8000-0000000000f9';
+ const customerId='cafe0000-0000-4000-8000-0000000000fa';
+ const qrToken='ci_selective_revoke_qr_'.repeat(4);
+ const sessionToken='ci_selective_revoke_session_'.repeat(4);
+ const first={tableId,visitId:'visit_selective_first',
+  actorId:'actor_selective_first',basketId:'basket_selective_first',
+  qrToken,customerSessionToken:sessionToken};
+ const second={...first,visitId:'visit_selective_second',
+  actorId:'actor_selective_second',basketId:'basket_selective_second'};
+ await withTransaction(async query=>{
+  const t=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930319,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCP','Cliente revocación selectiva')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions
+   (customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),
+    clock_timestamp()+interval '1 hour')`,[customerId,sessionToken]);
+  for(const visit of [first,second]){
+   await query(`INSERT INTO sabora.customer_table_visits
+    (table_id,session_id,customer_id,visit_key,actor_id,
+     authorized_qr_version,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+    [tableId,t.rows[0].session_id,customerId,visit.visitId,
+     visit.actorId,t.rows[0].qr_version]);
+  }
+ });
+ const beforeFirst=await withTransaction(query=>repo.lockContext(query,first));
+ const beforeSecond=await withTransaction(query=>repo.lockContext(query,second));
+ assert.equal(beforeFirst.authorized,true);
+ assert.equal(beforeSecond.authorized,true);
+ await withTransaction(query=>query(`UPDATE sabora.customer_table_visits
+  SET revoked_at=clock_timestamp()
+  WHERE table_id=$1 AND visit_key=$2 AND actor_id=$3`,
+  [tableId,first.visitId,first.actorId]));
+ const afterFirst=await withTransaction(query=>repo.lockContext(query,first));
+ const afterSecond=await withTransaction(query=>repo.lockContext(query,second));
+ assert.equal(afterFirst.authorized,false);
+ assert.equal(afterFirst.canOrder,false);
+ assert.equal(afterSecond.authorized,true);
+ assert.equal(afterSecond.canOrder,true);
+});
