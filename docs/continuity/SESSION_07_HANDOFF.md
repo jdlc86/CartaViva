@@ -570,3 +570,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - Añadida regresión Fastify en `tests/catalog-http-fastify-integration.test.mjs`: parámetros `role=admin`, `includeDraft=true`, `restaurant_id` y `sold_out=false` y cabeceras de autorización/cookie forjadas no alteran el SQL autorizado ni el DTO público. El agotado permanece visible pero no seleccionable. `POST /api/v1/catalog` devuelve 404, sin consulta.
 - Este test utiliza consulta inyectada simulada. No se registra la ruta en servidor productivo ni se habilita credencial de base de datos. Verificar CI del nuevo HEAD.
+
+### Hito vertical candidato: confirmación de pedidos por HTTP (23-10-2026)
+
+- Nuevo `apps/api/src/customer-order-confirmation-http-candidate.mjs`: ruta **opt-in** `POST /api/v1/customer/orders/confirm`, con dependencia `confirm` inyectada. La autorización durable QR/visita/sesión y transacción se delegan obligatoriamente al coordinador `catalog-confirmation-coordinator.mjs` existente. No es un endpoint registrado en `server.mjs`.
+- La respuesta minimiza el DTO a `status` y `orderId`; confirmación 201, replay idempotente 200, aceptación de cambio 409 **sin publicar todavía token ni evidencia económica**. Errores conocidos se mapean a 400/403/409; desconocidos a 503 sin detalles internos. Cabeceras no-store/nosniff y límite de cuerpo.
+- `tests/customer-order-confirmation-http-candidate.test.mjs`: Fastify real con coordinador simulado; éxito/replay, aceptación pendiente, fallos conocidos y privados, respuesta malformada, entrada inválida y ausencia de dependencia.
+- **No operativo**: faltan contrato público versionado para reaceptación de precios, integración de credenciales/roles transaccionales, prueba real del circuito completo QR→pedido→cocina y validación de CI. No activar en runtime ni Supabase operativo antes de esas puertas. No se tocó `apps/management/**` de Codex.
