@@ -81,3 +81,89 @@ test('candidate route is not registered with missing confirmation dependency',()
   /invalid_customer_order_route_configuration/);
  assert.equal(called,false);
 });
+
+test('HTTP confirmation delegates opaque QR and session to transactional coordinator',async t=>{
+ const {createCatalogConfirmationCoordinator}=await import(
+  '../apps/api/src/catalog-confirmation-coordinator.mjs');
+ const {buildCatalogLineEvidence}=await import(
+  '../apps/api/src/catalog-line-evidence.mjs');
+ const snapshot={name:'Plato',category:'Segundos',priceCents:1000,
+  allergens:[],options:[],extras:[],discount:null};
+ const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
+  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
+  selection:{extras:[]},quantity:1,requestKey:'request-001',
+  acceptanceToken:null,qrToken:'q'.repeat(48),
+  customerSessionToken:'s'.repeat(48)};
+ const evidence=buildCatalogLineEvidence({itemId:input.itemId,
+  publishedRevision:1,snapshot,selection:input.selection,quantity:1});
+ const calls=[];
+ const repository={
+  lockContext:async(_query,args)=>{
+   calls.push('lockContext');
+   assert.equal(args.qrToken,input.qrToken);
+   assert.equal(args.customerSessionToken,input.customerSessionToken);
+   return {authorized:true,canOrder:true,tableId:input.tableId,
+    visitId:input.visitId,basketId:input.basketId,actorId:input.actorId,
+    sessionId:'session-1'};
+  },
+  lookupIdempotency:async()=>{calls.push('lookupIdempotency');return null;},
+  lockCatalog:async()=>{calls.push('lockCatalog');return {
+   publishedRevision:1,snapshot,available:true};},
+  loadPreviousQuote:async()=>{calls.push('loadPreviousQuote');return {
+   quoteId:'00000000-0000-4000-8000-000000000004',
+   evidence,publishedRevision:1,subtotalCents:1000,
+   discountCents:0,totalCents:1000};},
+  persist:async()=>{calls.push('persist');return {
+   orderId:id,evidence:{internalSecret:'never expose'}};}
+ };
+ const confirm=createCatalogConfirmationCoordinator({
+  repository,secretKey:'isolated-test-only-long-server-side-secret-key',
+  clock:()=>1792600000000,
+  withTransaction:async work=>{
+   calls.push('BEGIN');
+   try{
+    const result=await work(async()=>{});
+    calls.push('COMMIT');
+    return result;
+   }catch(error){calls.push('ROLLBACK');throw error;}
+  }
+ });
+ const app=create(confirm);t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:input});
+ assert.equal(r.statusCode,201);
+ assert.deepEqual(r.json(),{status:'confirmed',orderId:id});
+ assert.deepEqual(calls,['BEGIN','lockContext','lookupIdempotency',
+  'lockCatalog','loadPreviousQuote','persist','COMMIT']);
+ assert.equal(r.body.includes('internalSecret'),false);
+});
+test('HTTP confirmation never reads catalog or writes after forbidden visit',async t=>{
+ const {createCatalogConfirmationCoordinator}=await import(
+  '../apps/api/src/catalog-confirmation-coordinator.mjs');
+ const calls=[];
+ const confirm=createCatalogConfirmationCoordinator({
+  secretKey:'isolated-test-only-long-server-side-secret-key',
+  clock:()=>1792600000000,
+  withTransaction:async work=>{
+   calls.push('BEGIN');
+   try{const result=await work(async()=>{});calls.push('COMMIT');return result;}
+   catch(error){calls.push('ROLLBACK');throw error;}
+  },
+  repository:{
+   lockContext:async()=>{calls.push('lockContext');return {authorized:false};},
+   lookupIdempotency:async()=>{calls.push('lookupIdempotency');return null;},
+   lockCatalog:async()=>{calls.push('lockCatalog');return null;},
+   loadPreviousQuote:async()=>{calls.push('loadPreviousQuote');return null;},
+   persist:async()=>{calls.push('persist');return null;}
+  }
+ });
+ const app=create(confirm);t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
+   actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
+   selection:{extras:[]},quantity:1,requestKey:'request-001',
+   qrToken:'q'.repeat(48),customerSessionToken:'s'.repeat(48)}});
+ assert.equal(r.statusCode,403);
+ assert.deepEqual(r.json(),{error:'order_context_forbidden'});
+ assert.deepEqual(calls,['BEGIN','lockContext','ROLLBACK']);
+});
