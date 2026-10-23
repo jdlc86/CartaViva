@@ -288,3 +288,11 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Estudio dentro de Administración → Catálogo; conserva original, genera derivados, compara versiones y exige aprobación/publicación manual. Prohibido añadir ingredientes o modificar el plato; la fidelidad se verifica humanamente.
 - Credenciales y llamadas solo en backend; control de acceso, cuotas/costes, auditoría, almacenamiento privado, límites de archivos y ausencia de envío de datos personales. Formatos previstos 5:4, 4:3 y 1:1.
 - **No está implementado ni conectado**; no se autorizan migraciones operativas, despliegue, merge ni cambios en Fleetia.
+
+### Contrato de trabajo paralelo Codex Desktop — estudio de imágenes (2026-10-23)
+
+- Contrato actualizado en `docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md` mediante commit `5eeb18e377d2c0274ea6daa76604a31e62892ea7`.
+- Codex tiene alcance **solo frontend administrativo** del Estudio de imágenes, en rama propia y PR Draft a `feat/sabora-pnpm-bootstrap`. No tocar backend, SQL, PWA cliente, workflows, infraestructura ni este documento de continuidad.
+- **Diseño visual existente aprobado es obligatorio**: inspeccionar fuente de verdad y reutilizar tokens, componentes y patrones. No crear estilos globales, paleta, tipografía o navegación nuevos. Si el contrato visual no se puede localizar, documentar el bloqueo y no inventar diseño.
+- Generación Gemini, aprobación persistente y publicación real permanecerán inhabilitadas hasta integración backend autorizada; no simular éxitos ni usar claves reales.
+- El asistente principal conserva pedidos, visitas, QR, autorización y PG17; no merge/despliegue ni modificación operativa de Supabase/VPS/Fleetia.
