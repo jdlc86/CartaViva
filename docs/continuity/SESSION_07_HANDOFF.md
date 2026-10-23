@@ -120,3 +120,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `e063e48f5d85652d4213e84a6b94d4245d976c91`: el primer pedido del smoke de 60 segundos usa ahora el mismo `CASE` de estado de ocupación de la mesa que el escritor real; se eliminó la clasificación constante que no probaba la decisión de agrupación. La primera marca temporal se deriva de la mesa en PostgreSQL, no de una etiqueta prefijada.
 - Los workflows del HEAD documental `600c3ec` permanecían **queued** al comprobarlos. Consultar la ejecución del HEAD más reciente; no dar por acreditado el nuevo smoke hasta que termine. La integración Node–PG17 con `pg` sigue pendiente.
+
+## Gate adicional: fixture de ventana y rollback verificable (23-10-2026)
+
+- `888d1b606b59a7d35f274f3ffd45adcaaf1829fe`: antes del primer pedido se verifica en PostgreSQL que la mesa de prueba tiene **60 segundos**, estado abierto y primera confirmación nula. Un cambio accidental al valor por defecto de 300 segundos rompe el smoke.
+- `4df97ed6b0fc44f2ed88e23ec5d3d6a2631ed7a8`: tras `ROLLBACK`, el smoke consulta PostgreSQL y exige ausencia de la mesa, los tres pedidos y sus líneas de cocina. La limpieza se **comprueba**, no se presupone.
+- Los workflows anteriores seguían en cola durante esta sesión; las pruebas de este HEAD deben acreditarse antes de marcar el gate verde. Pendiente integración Node real con driver `pg`, lockfile auténtico y permisos mínimos.
