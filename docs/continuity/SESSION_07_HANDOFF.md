@@ -92,3 +92,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `e245b4ace83f63f113e6a0575d2c83b9f7754d13`: `catalog-confirmation-repository.mjs` exige equivalencia lógica entre `requiresAcceptance` y `acceptanceVerified` en la llamada de persistencia: no permite aceptación fabricada cuando no existe recotización ni confirmación sin aceptación cuando es necesaria. El escritor económico ya tenía esta defensa; ahora se rechaza antes de llamar al adaptador `persist`.
 - `010245bdd077e7929ea4d05df56dcca970d4d98f`: regresiones para ambos estados inválidos y ambos válidos, con contador de invocaciones de persistencia.
 - La implementación sigue **desconectada** de HTTP, roles operativos y Supabase. Esta corrección no reemplaza la integración real Node/PostgreSQL 17 ni su gate de permisos.
+
+## Endurecimiento de cotización económica previa (23-10-2026)
+
+- `cc89d8046ae1e79b84ebde7a9503f1d3fef67553`: `catalog-confirmation-decision.mjs` comprueba que el registro `previous` tiene prototipo simple, propiedades de datos propias y enumerables, sin símbolos ni accesores, **antes** de leer importes o revisión. Se evita ejecutar getters no confiables en la decisión económica.
+- `01636013aaf6129ec43fdb5ce077aeb1ed352744`: regresiones de getter con contador, símbolos y prototipo heredado.
+- Los workflows del HEAD anterior `df7ce93` estaban aún en progreso al comprobarlos. El gate real Node–PG17 y los permisos del writer continúan pendientes. PR Draft; ninguna ruta o credencial operativa habilitada.
