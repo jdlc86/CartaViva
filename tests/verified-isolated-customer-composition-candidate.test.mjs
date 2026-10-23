@@ -66,3 +66,25 @@ test('invalid secret and adapters do not query or register',async()=>{
  assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
  await app.close();
 });
+
+test('shared declared database identity is rejected before any SQL or route registration',async()=>{
+ for(const sharedField of ['user','connectionString']){
+  const events=[],app=Fastify();
+  const r=pool(reader,events),w=pool(writer,events);
+  if(sharedField==='user')w.options.user=r.options.user;
+  else{
+   r.options.connectionString='postgres://same-connection';
+   w.options.connectionString='postgres://same-connection';
+  }
+  await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+   catalogReaderPool:r,orderWriterPool:w,
+   expectedCatalogLogin:reader,expectedOrderLogin:writer,
+   confirmationSecret:secret
+  }),/invalid_verified_customer_composition/);
+  assert.deepEqual(events,[]);
+  assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+  assert.equal((await app.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
+  await app.close();
+ }
+});
