@@ -27,6 +27,9 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Verify nondefault grouping window and first-timestamp preservation in real PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-writer-configurable-window-smoke.sql
+# Verify order-writer table lock rejects closed, paused and stale sessions in PG17.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-order-table-state-gate-smoke.sql
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
