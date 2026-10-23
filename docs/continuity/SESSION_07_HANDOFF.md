@@ -221,3 +221,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `31ae91c2832c6b263d7d7133007eac03d4eee98e`: el test Node rechaza su ejecución sin `GITHUB_ACTIONS=true` o cuando `SABORA_CI_PG_MODULE` no apunta al módulo `pg` instalado en el directorio temporal creado por el harness. Ya existía validación de DSN loopback `postgres@127.0.0.1/postgres` y el shell exige GitHub Actions antes de arrancar Docker.
 - Este control protege contra invocaciones accidentales con módulos de runtime ajenos; no sustituye el aislamiento de red/credenciales ni autoriza uso sobre VPS o Supabase. CI del nuevo HEAD pendiente.
+
+### Límites de tiempo para el gate real PG17
+
+- `218620d1fbda7e994874cdf82a3d1acc9f4c9ea1`: el `pg.Pool` exclusivo del harness Node añade límites de sesión PostgreSQL: `statement_timeout=15000`, `lock_timeout=5000`, `idle_in_transaction_session_timeout=20000` (milisegundos). La conexión ya tiene `connectionTimeoutMillis=3000`. Esto evita que una regresión de bloqueos del test quede esperando indefinidamente y acota transacciones abandonadas.
+- No modifica configuración operativa, esquema, contratos ni comportamiento del runtime. El gate de concurrencia debe comprobarse en CI; no inferir SUCCESS sin verificar el HEAD exacto.
