@@ -23,3 +23,19 @@ test('administrative read composition wires a route with separate pools only',()
  assert.equal(registered[0][1].preHandler.length,2);
  assert.equal(typeof registered[0][2],'function');
 });
+
+test('administrative composition refuses incomplete pools without registering routes',()=>{
+ const routes=[];
+ const app={get:(...args)=>routes.push(args)};
+ const good={query:async()=>({rows:[]})};
+ for(const options of [
+  {staffPool:{},adminTablesPool:good},
+  {staffPool:good,adminTablesPool:{}},
+  {staffPool:null,adminTablesPool:good},
+  {staffPool:good,adminTablesPool:null}
+ ]){
+  assert.throws(()=>registerProtectedAdminTablesReadFromPools(app,options),
+   /invalid_admin_tables_pool_isolation/);
+ }
+ assert.equal(routes.length,0);
+});
