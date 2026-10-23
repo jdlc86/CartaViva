@@ -730,3 +730,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - En HEAD `1a80e7efe8f20c57e05aacde0ba6d5dda15665a3` fallaron ambos workflows por `tests/isolated-pool-identity-preflight.test.mjs`: la prueba esperaba `discard` aunque una consulta de identidad SQL válida debe liberar normalmente el cliente.
 - Ajustada la expectativa de liberación sin modificar el comportamiento de producción. Añadidos casos que comprueban que un lector con identidad errónea no abre conexión escritora y que el mismo objeto pool queda rechazado antes de consultas.
 - **Verificar el CI del nuevo HEAD**; no declarar success por adelantado.
+
+### Reparación de preflight de identidades de pools (23-10-2026)
+
+- HEAD `2e5209148113741aedc966466b1d9b277401956f` tuvo Sabora CI y Bootstrap FAIL por test 419 (`tests/isolated-pool-identity-preflight.test.mjs`): esperaba release normal incluso para resultado SQL de identidad malformado, mientras que el adaptador descarta correctamente la conexión.
+- Actualizada la prueba: resultados SQL estructuralmente inválidos implican `release(true)` (discard); identidades válidas pero no autorizadas implican release normal. El adaptador de producción no se debilitó.
+- Confirmar CI de `4404b639a5985d40e09e24b92630eb312281ce0b` o HEAD posterior antes de declarar verde.
