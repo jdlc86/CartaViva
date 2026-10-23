@@ -59,10 +59,13 @@ SELECT 1 / CASE WHEN count(*)=0 THEN 1 ELSE 0 END AS indefinite_pause_denied
 -- effective state transition has an independently verified contract.
 UPDATE sabora.dining_tables
  SET pause_until=clock_timestamp()-interval '1 hour' WHERE id=:'table_id';
+-- State transitions may rotate the session: use the current session for eligibility.
+SELECT session_id AS active_session_id FROM sabora.dining_tables
+ WHERE id=:'table_id' \gset
 SELECT 1 / CASE WHEN count(*)=1 THEN 1 ELSE 0 END AS expired_pause_allowed
  FROM (
   SELECT id FROM sabora.dining_tables
-  WHERE id=:'table_id' AND session_id=:'session_id'
+  WHERE id=:'table_id' AND session_id=:'active_session_id'
     AND (ordering_state='open' OR
          (ordering_state='paused' AND pause_until IS NOT NULL
           AND pause_until<=clock_timestamp()))
