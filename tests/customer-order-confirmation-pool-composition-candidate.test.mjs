@@ -72,3 +72,40 @@ test('pool composition fails closed before registering route with missing depend
  }),/invalid_customer_order_pool_composition/);
  return app.close();
 });
+
+test('Fastify pool composition rejects invalid trusted visit row and rolls back',async t=>{
+ const events=[];
+ const app=Fastify();t.after(()=>app.close());
+ registerCustomerOrderConfirmationFromPoolCandidate(app,{
+  secretKey,pool:{connect:async()=>({
+   query:async sql=>{
+    events.push(sql);
+    if(sql.includes('FROM sabora.dining_tables AS t'))return {rows:[{
+     table_id:input.tableId,session_id:'00000000-0000-4000-8000-000000000002',
+     visit_id:input.visitId,actor_id:input.actorId,
+     customer_alias:'Valid alias',customer_identifier:'invalid-private-id'
+    }]};
+    return {rows:[]};
+   },
+   release:error=>events.push(error?'discard':'clean')
+  })}
+ });
+ const r=await app.inject({method:'POST',url:endpoint,payload:input});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+ assert.equal(r.body.includes('invalid-private-id'),false);
+ assert.ok(events.includes('ROLLBACK'));
+ assert.equal(events.includes('COMMIT'),false);
+ assert.equal(events.at(-1),'clean');
+});
+test('Fastify pool composition rejects malformed connection before SQL',async t=>{
+ let discarded=0;
+ const app=Fastify();t.after(()=>app.close());
+ registerCustomerOrderConfirmationFromPoolCandidate(app,{
+  secretKey,pool:{connect:async()=>({release:()=>{discarded++;}})}
+ });
+ const r=await app.inject({method:'POST',url:endpoint,payload:input});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+ assert.equal(discarded,1);
+});
