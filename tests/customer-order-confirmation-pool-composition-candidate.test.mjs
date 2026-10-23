@@ -6,7 +6,7 @@ const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.ur
 const Fastify=requireApi('fastify');
 const endpoint='/api/v1/customer/orders/confirm';
 const secretKey='only-for-isolated-integration-tests-long-secret-key';
-const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
+const input={tableId:'00000000-0000-4000-8000-000000000001',visitId:'visit-1',basketId:'basket-1',
  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
  selection:{extras:[]},quantity:1,requestKey:'request-001',
  qrToken:'q'.repeat(48),customerSessionToken:'s'.repeat(48)};
