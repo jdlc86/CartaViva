@@ -66,7 +66,8 @@ SELECT ordering_state,pause_until,
  FROM sabora.dining_tables WHERE id=:'table_id';
 
 -- Session rotation invalidates the old session, even when table is open.
-UPDATE sabora.dining_tables SET ordering_state='open' WHERE id=:'table_id';
+UPDATE sabora.dining_tables
+ SET ordering_state='open',pause_until=NULL WHERE id=:'table_id';
 SELECT 1 / CASE WHEN count(*)=0 THEN 1 ELSE 0 END AS wrong_session_denied
  FROM (
   SELECT id FROM sabora.dining_tables
