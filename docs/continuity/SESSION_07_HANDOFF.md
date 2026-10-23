@@ -548,3 +548,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `80ab878f9094aeb52bc956d6a17ca555dc5f1fbd`: Sabora CI 39969973665 **SUCCESS** y Bootstrap 39969973632 **SUCCESS**.
 - Ampliada la suite Fastify `tests/catalog-http-fastify-integration.test.mjs`: caída del pool produce 503 sin revelar detalles; fallo de `SET LOCAL ROLE sabora_catalog_reader` provoca rollback y descarte de conexión, sin devolver datos.
 - Sigue siendo pool simulado dentro de HTTP real. El endpoint permanece opt-in, sin registro en `server.mjs`, credenciales ni despliegue. Verificar el CI del HEAD actual.
+
+### Validación íntegra del lookahead de mesas (23-10-2026)
+
+- HEAD anterior `4aa747800f3a2fca9df43aa5994f6eb1e7e60918`: Sabora CI y Bootstrap **SUCCESS**.
+- `admin-read-projection-candidate.mjs` valida todas las filas recibidas de SQL, incluida la fila adicional de lookahead para paginación; rechaza estado, capacidad, número inválido o duplicado/desordenado antes de emitir una página/cursor.
+- Regresión en `tests/admin-read-projection-candidate.test.mjs`. Sin activación HTTP en `server.mjs`, sin credenciales ni despliegue. CI del HEAD actual pendiente de comprobación.
