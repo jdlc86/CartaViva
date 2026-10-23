@@ -14,7 +14,9 @@ export function registerIsolatedCustomerCatalogAndOrders(app,{
     !orderWriterPool||typeof orderWriterPool.connect!=='function'||
     catalogReaderPool===orderWriterPool||
     typeof confirmationSecret!=='string'||
-    Buffer.byteLength(confirmationSecret,'utf8')<32)
+    Buffer.byteLength(confirmationSecret,'utf8')<32||
+    (clock!==undefined&&typeof clock!=='function')||
+    (newOrderId!==undefined&&typeof newOrderId!=='function'))
   throw Error('invalid_isolated_customer_composition');
  // Register only after checking both injected boundaries. No runtime
  // fallback to admin pools, shared Supabase clients or environment secrets.
