@@ -594,3 +594,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Nuevo `apps/client/src/customer-order-transport.ts` **candidato aislado**: `createCustomerOrderTransport` con `fetch` inyectado, POST JSON, sin cookies automáticas, no-store y sin redirecciones. Respuesta mínima validada `confirmed` (201) / `replayed` (200) con UUID; errores públicos tipados, ocultando respuestas malformadas.
 - No integrado aún en `apps/client/src/main.tsx`: no presentar botones de pedido operativo ni almacenar credenciales en UI hasta cerrar flujo QR/visita y contrato de reaceptación.
 - Comprobar compilación TypeScript y CI del HEAD; ningún cambio en administración de Codex, runtime productivo, Supabase operativo o VPS.
+
+### Hito: composición Fastify → pool PostgreSQL inyectado (23-10-2026)
+
+- Añadido `apps/api/src/customer-order-confirmation-pool-composition-candidate.mjs` para ensamblar explícitamente la ruta HTTP, el coordinador de confirmación, el repositorio y `createPostgresTransaction` usando un pool inyectado. No crea conexiones, no lee secretos de entorno y no registra rutas en el servidor principal.
+- Nueva suite `tests/customer-order-confirmation-pool-composition-candidate.test.mjs`: verifica rechazo de precio falsificado sin checkout, transacción con autorización de visita denegada y rollback, y error SQL privado con respuesta HTTP 503 sin filtraciones. Utiliza un cliente `pg` simulado, **no** una base PostgreSQL real.
+- Último HEAD previo `6b2414a940470157498cf3843daa1bf8a2757f59`: Sabora CI 39974013642 SUCCESS; Bootstrap 39974013572 SUCCESS. El nuevo HEAD requiere CI independiente.
+- Puertas pendientes: PostgreSQL 17 desechable de extremo a extremo, política y grants de la identidad de escritura, integración QR→cocina, contrato público de aceptación de repricing. Sin deploy, merge ni modificaciones operativas.
