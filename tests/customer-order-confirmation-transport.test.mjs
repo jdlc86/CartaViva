@@ -90,3 +90,41 @@ test('client confirmation rejects forged prices and incomplete authorization bef
   assert.equal(calls,0);
  }
 });
+
+test('client confirmation forwards AbortSignal without retrying an aborted request',async()=>{
+ const controller=new AbortController();
+ let calls=0;
+ const result=await confirmCustomerOrder({payload,signal:controller.signal,
+  fetchImpl:async(_url,options)=>{
+   calls++;
+   assert.equal(options.signal,controller.signal);
+   controller.abort();
+   throw Error('aborted');
+  }});
+ assert.deepEqual(result,{status:'unavailable'});
+ assert.equal(calls,1);
+});
+test('client confirmation maps every documented rejection to its exact HTTP status',async()=>{
+ for(const [status,error] of [
+  [400,'invalid_confirmation_input'],
+  [403,'order_context_forbidden'],
+  [409,'order_idempotency_conflict'],
+  [409,'order_confirmation_conflict'],
+  [409,'acceptance_required'],
+  [503,'order_confirmation_unavailable']
+ ]){
+  assert.deepEqual(await confirmCustomerOrder({payload,
+   fetchImpl:async()=>response(status,{error})}),{status:'rejected',error});
+ }
+});
+test('client confirmation does not expose unexpected private server responses',async()=>{
+ for(const data of [
+  {error:'order_confirmation_unavailable',stack:'internal'},
+  {error:'database_password'},
+  {status:'confirmed',orderId,sessionToken:'private'},
+  null,[],{status:'confirmed',orderId:null}
+ ]){
+  assert.deepEqual(await confirmCustomerOrder({payload,
+   fetchImpl:async()=>response(503,data)}),{status:'unavailable'});
+ }
+});
