@@ -296,3 +296,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Codex: **frontend completo** de `apps/management/**` — Resumen, Carta/Catálogo y Estudio de imágenes, Mesas y QR, Comandas, Equipo; priorizar Mesas/QR y Catálogo/Estudio. Respetar **estilos visuales aprobados** sin crear diseño nuevo; sin APIs, datos operativos ficticios ni operaciones no conectadas.
 - Asistente principal: backend, cliente, PostgreSQL 17, seguridad, contratos, visitas, pedidos y QR. No solapamiento de archivos. Codex usa rama propia y PR Draft con base `feat/sabora-pnpm-bootstrap`; documenta en `docs/design/SABORA_ADMIN_UI_CODEX_HANDOFF.md`.
 - Sin merge, despliegue, Supabase operativo, VPS, Fleetia, secretos ni Gemini real. Verificar build/tests/CI por SHA exacto antes de declarar validación.
+
+### Regresión de revocación de contexto antes de replay (2026-10-23)
+
+- Commit `48d996ed3c8a91e3807d6081211a19ed56633666`: nuevo `tests/catalog-confirmation-context-revocation.test.mjs` en el conjunto ejecutado por `pnpm test`.
+- Pruebas de frontera del coordinador: QR revocado, mesa pausada, visita cerrada, discrepancias de visita, actor y cesta. En cada caso `order_context_forbidden` debe producirse **antes** de consultar idempotencia o escribir. Caso positivo de orden de llamadas: contexto → replay → catálogo, con catálogo no disponible.
+- Esta regresión usa **adaptador simulado** y no demuestra que las funciones SQL reales revoquen correctamente un QR o cambien estados. Próximo hito: pruebas de revocación/rotación/mesa pausada/visita cerrada en PostgreSQL 17 efímero y verificación del resultado de GitHub Actions sobre el HEAD exacto.
+- Se preserva el reparto: Codex solo `apps/management/**` conforme al encargo vigente; asistente principal mantiene pruebas/backend. Sin despliegue, merge, cambios en Supabase operativo o VPS.
