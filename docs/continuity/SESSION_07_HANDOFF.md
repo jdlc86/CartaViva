@@ -518,3 +518,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `5ec30860faa727be6cdbf3ca52a5548343cebd97`: Sabora CI **SUCCESS** (39963102839); Bootstrap run 39963102954 estaba en progreso al consultar.
 - `tests/admin-tables-read-http-malformed.test.mjs`: prueba HTTP real con respuesta SQL de id inválido, número/capacidad incorrectos, descripción no textual, estado desconocido y duplicados/desorden; espera 503 sin detalles internos. Comprueba además que columnas adicionales desconocidas no se serialicen.
 - Pendiente CI del HEAD; sin conexión operativa, despliegue ni modificación de interfaces de Codex.
+
+### Aislamiento de argumentos del lector SQL (23-10-2026)
+
+- `0d4e3ef454ef2f967b0b219cbd31c5299fe610d5`: Sabora CI **SUCCESS** (39963427121), Bootstrap **SUCCESS** (39963426856).
+- `apps/api/src/admin-tables-reader-query.mjs` entrega copia de los parámetros SQL al pool para evitar mutación de argumentos del llamante; prueba de regresión añadida en `tests/admin-tables-reader-query.test.mjs`.
+- El cambio es solo de código y tests. No hay credenciales, conexión ni despliegue operativo. CI del nuevo HEAD pendiente.
