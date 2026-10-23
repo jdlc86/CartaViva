@@ -6,6 +6,9 @@ if [[ -z "${GITHUB_ACTIONS:-}" || "${GITHUB_ACTIONS}" != true ]]; then
   exit 1
 fi
 for tool in docker node npm; do command -v "$tool" >/dev/null; done
+# Fail fast before npm installation, Docker startup or SQL migrations.
+# A syntax regression must not consume a full disposable PG17 run.
+node --check scripts/ci/catalog-postgres17-driver-integration.test.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 cleanup() {
