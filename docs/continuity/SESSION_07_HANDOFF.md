@@ -481,3 +481,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Migración candidata `20261023010000_sabora_admin_tables_reader_candidate.sql`: rol `sabora_admin_tables_reader` NOLOGIN, sin BYPASSRLS ni membresías; solo SELECT de id/number/capacity/description/ordering_state en `sabora.dining_tables`, con política SELECT de FORCE RLS. No permite QR hashes, cambios de mesa, catálogo ni personal.
 - `scripts/ci/admin-tables-reader-grants-smoke.sql` integrado en `scripts/ci/postgres-migration-smoke.sh`: inspecciona rol, RLS, columnas permitidas, denegación de columnas sensibles y privilegios de escritura/otras tablas. **Pendiente** CI de este nuevo bloque; si falla, reparar en PG17 desechable, nunca aplicar migración al operativo.
 - No se ha aprovisionado login, pool ni ruta en `server.mjs`; activación sujeta a revisión independiente de seguridad.
+
+### Prueba efectiva de permisos del rol de mesas (23-10-2026)
+
+- Gate previo `1355b305`: Sabora CI **SUCCESS** (39957553808), Bootstrap **SUCCESS** (39957553762).
+- `scripts/ci/admin-tables-reader-effective-access-smoke.sql`: prueba SQL bajo `SET LOCAL ROLE sabora_admin_tables_reader` en PostgreSQL 17 desechable. Inserta mesa de prueba, comprueba lectura por RLS y rechaza consulta de hash QR, UPDATE y lectura de empleados. El fixture y el cambio de rol se revierten al finalizar.
+- Integrado en `scripts/ci/postgres-migration-smoke.sh`. Pendiente resultado CI del nuevo HEAD. No se ha concedido LOGIN ni se han creado conexiones operativas.
