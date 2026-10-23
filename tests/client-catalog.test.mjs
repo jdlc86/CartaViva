@@ -10,7 +10,7 @@ const source=readFileSync(new URL('../apps/client/src/catalog.ts',import.meta.ur
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports',javascript)(module,module.exports);
-const {parsePublishedCatalog,filterCatalog,formatPrice,categories}=module.exports;
+const {parsePublishedCatalog,filterCatalog,formatPrice,categories,searchPublishedCatalog}=module.exports;
 const valid={id:'00000000-0000-4000-8000-000000000001',name:'Agua',category:'Bebidas',priceCents:150,available:true,allergens:[]};
 test('catalog accepts valid published presentation and filters categories',()=>{
  const items=parsePublishedCatalog([valid,{...valid,id:'00000000-0000-4000-8000-000000000002',category:'Postres',available:false}]);
@@ -40,4 +40,18 @@ test('published catalog input is not mutated',()=>{
  const items=parsePublishedCatalog(Object.freeze([source]));
  assert.deepEqual(items[0].allergens,['gluten']);
  assert.notEqual(items[0].allergens,source.allergens);
+});
+
+test('searchable menu combines category, accents, allergens and availability',()=>{
+ const rows=parsePublishedCatalog([
+  {...valid,name:'Café con leche',available:true,allergens:['Lácteos']},
+  {...valid,id:'00000000-0000-4000-8000-000000000002',
+   name:'Tarta de limón',category:'Postres',available:false,allergens:['Gluten']}
+ ]);
+ assert.equal(searchPublishedCatalog(rows,'Todos','cafe').length,1);
+ assert.equal(searchPublishedCatalog(rows,'Todos','LACTEOS').length,1);
+ assert.equal(searchPublishedCatalog(rows,'Postres','limon').length,1);
+ assert.equal(searchPublishedCatalog(rows,'Postres','limon',true).length,0);
+ assert.equal(searchPublishedCatalog(rows,'Bebidas','limon').length,0);
+ assert.deepEqual(searchPublishedCatalog(rows,'Todos','',true),[rows[0]]);
 });
