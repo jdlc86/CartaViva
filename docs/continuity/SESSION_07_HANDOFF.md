@@ -144,3 +144,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - CI `39917621554` y Bootstrap `39917621687` fallaron en el mismo smoke PG17; no fue el lockfile. El log confirmó que una mesa `paused` con `pause_until` vencido satisface el predicado del escritor (`eligible_by_writer_predicate=t`). El fallo ocurrió **después**, al intentar `UPDATE ordering_state='open'` conservando `pause_until`, lo que viola la restricción `dining_table_pause_state`.
 - `0390b72eb09dbd0bd7cd9af9dd8441ea63485437`: la transición de fixture a `open` limpia **atómicamente** `pause_until=NULL`, conforme a la restricción SQL. El comportamiento de pausa vencida queda observado por consulta SQL; su aserción estricta de aceptación deberá restituirse antes del gate definitivo.
 - No hay cambio de migraciones ni del escritor operativo. Revalidar ambos workflows antes de dar por cerrado el fallo.
+
+### Segundo fallo real y corrección de sesión activa
+
+- Ambos workflows del commit `177ac298a5c3f7bbb9904df38d995645a05cb2ed` terminaron **FAILURE** en `expired_pause_allowed`, después de pasar las comprobaciones anteriores.
+- La prueba había conservado `session_id` del INSERT inicial a pesar de las transiciones de estado. `7ebb4a335457af969785821473d7beee82abc49c` lee el `session_id` **actual** antes de comprobar la pausa vencida; conserva una prueba independiente que rechaza explícitamente una sesión incorrecta. Esta hipótesis debe contrastarse en el nuevo CI; no declarar validación hasta entonces.
+- Sin cambios en contratos operativos, migraciones, rol de runtime o endpoints. Continúa pendiente la prueba Node + driver `pg` real y su lockfile.
