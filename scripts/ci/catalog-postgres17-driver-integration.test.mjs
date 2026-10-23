@@ -6,6 +6,7 @@ import {createCatalogOrderWriter} from '../../apps/api/src/catalog-order-writer.
 import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence.mjs';
 import {createCatalogConfirmationReadRepository} from '../../apps/api/src/catalog-confirmation-read-repository.mjs';
 import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/catalog-order-confirmation-candidate.mjs';
+import {issueCatalogRepriceAcceptance} from '../../apps/api/src/catalog-reprice-acceptance.mjs';
 
 // Explicitly opt-in only for the disposable PostgreSQL 17 GitHub CI harness.
 // No operational DSN is read from runtime configuration.
@@ -488,4 +489,41 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  const parallelAttempts=await pool.query(`SELECT count(*)::integer AS n
   FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[parallelId]);
  assert.equal(parallelAttempts.rows[0].n,1);
+ // Re-publication must never silently accept a changed price. The quote is
+ // append-only and remains bound to the originally displayed 1200 cents.
+ const revised={...snapshot,priceCents:1600};
+ await withTransaction(async query=>{
+  await query(`UPDATE sabora.catalog_items
+   SET draft=$2::jsonb,draft_revision=2 WHERE id=$1`,
+   [itemId,JSON.stringify(revised)]);
+  const published=await query(
+   'SELECT sabora.publish_catalog_item($1::uuid,2::bigint) AS revision',[itemId]);
+  assert.equal(Number(published.rows[0].revision),2);
+ });
+ const changedInput={...input,requestKey:'authorized_reprice_0003'};
+ const consentSecret='ci-only-catalog-coordinator-secret-key-32';
+ const repriced=createCatalogOrderConfirmationPoolCandidate({
+  pool,secretKey:consentSecret,newOrderId:()=>'cafe0000-0000-4000-8000-0000000000a5'
+ });
+ const pending=await repriced(changedInput);
+ assert.equal(pending.status,'acceptance_required');
+ assert.equal(pending.decision.currentTotalCents,1600);
+ assert.equal(pending.decision.previousTotalCents,1200);
+ const consent=issueCatalogRepriceAcceptance({
+  basketId,actorId,itemId,publishedRevision:2,snapshot:revised,
+  selection,quantity:1,secretKey:consentSecret,nowMs:Date.now()
+ });
+ await assert.rejects(repriced({...changedInput,acceptanceToken:consent.token,
+  basketId:'different_basket'}),/order_context_forbidden|order_previous_quote_unavailable/);
+ const accepted=await repriced({...changedInput,acceptanceToken:consent.token});
+ assert.equal(accepted.status,'confirmed');
+ assert.equal(accepted.result.orderId,'cafe0000-0000-4000-8000-0000000000a5');
+ const consentReplay=await repriced({...changedInput,acceptanceToken:consent.token});
+ assert.equal(consentReplay.status,'replayed');
+ const acceptedLedger=await pool.query(`SELECT accepted_reprice,economic_evidence
+  FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,
+  [accepted.result.orderId]);
+ assert.equal(acceptedLedger.rows.length,1);
+ assert.equal(acceptedLedger.rows[0].accepted_reprice,true);
+ assert.equal(acceptedLedger.rows[0].economic_evidence.totalCents,1600);
 });
