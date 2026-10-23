@@ -13,7 +13,8 @@ function plain(v){
   });
 }
 function assertRows(result){
- if(!result||typeof result!=='object'||!Object.hasOwn(result,'rows')||\n    !Array.isArray(result.rows)||result.rows.length>101||
+ if(!result||typeof result!=='object'||!Object.hasOwn(result,'rows')||
+    !Array.isArray(result.rows)||result.rows.length>101||
     result.rows.some(row=>!plain(row)))throw Error('invalid_admin_projection_response');
  return result.rows;
 }
