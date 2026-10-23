@@ -249,3 +249,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `15bc7f6d321c4efd6c1018e05063473eb8a8fb6a`: el gate de escritor canónico ejecuta `UPDATE` y `DELETE` directos sobre un intento económico real y exige que ambos sean rechazados por PostgreSQL. Cada operación se encapsula en `SAVEPOINT` y se restaura mediante `ROLLBACK TO SAVEPOINT`; se vuelve a leer el fingerprint original para comprobar que no hubo alteración.
 - Se revalida la exclusión de cotización caducada y se conserva rollback integral de la transacción fixture. **No se introduce limpieza destructiva del ledger**. Este gate debe verificarse contra el HEAD exacto en GitHub Actions.
+
+### Hallazgo CI: cotizaciones también son append-only
+
+- Los workflows del HEAD `d95705944f8572ac58fe3ff1be52ac1072c68af6` fallaron con `catalog_ledger_append_only` (SQLSTATE 23514) al intentar `UPDATE sabora.catalog_displayed_quotes SET expires_at=...` en la prueba de escritor real. Los otros siete subtests pasaron.
+- `6bc8bcdc739dbcf4e3bf24f35bbca652d8af70aa` retira esa mutación de prueba: la caducidad no se debe simular editando un registro de evidencia económica protegido. Se mantiene el test de integridad de ledger con `SAVEPOINT` y rollback y se preserva el registro de cotización original.
+- No se altera el trigger, la migración ni la política append-only. Validación del nuevo HEAD pendiente.
