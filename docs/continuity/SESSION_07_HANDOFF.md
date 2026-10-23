@@ -691,3 +691,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD anterior `ea5dc696cef62973837454d7d40b0a52833441bd`: Sabora CI y Bootstrap SUCCESS.
 - `isolated-customer-composition-candidate.mjs` rechaza pools diferentes con el mismo `options.connectionString`, además de mismo objeto o mismo `options.user`. Nueva regresión verifica fallo previo al registro de endpoints.
 - Comprobación defensiva de configuración declarada, **no prueba identidad efectiva de roles ni aislamiento real PostgreSQL**. No habilitar servidor operativo sin validación PG17 y credenciales mínimas independientes.
+
+### Preflight de identidad efectiva PostgreSQL (23-10-2026)
+
+- Nuevo módulo opt-in `apps/api/src/isolated-pool-identity-preflight.mjs` y pruebas `tests/isolated-pool-identity-preflight.test.mjs`.
+- Con pools inyectados y nombres de login esperados explícitos, consulta `SELECT current_user AS role_name, session_user AS login_name` por separado. Rechaza identidades inesperadas, cambio de rol, login compartido, filas malformadas y errores SQL; no devuelve secretos ni detalles de conexión. Libera clientes.
+- **Límite:** todavía no se ha ejecutado esta comprobación contra PG17 real ni se conecta automáticamente al runtime; es una pieza preparatoria para un gate aislado. No certifica grants ni RLS. No despliegue ni acceso a Supabase operativo.
+- HEAD `545aa353d4ac25685f3d3e63ed75ad34da0715f3` tenía ambos workflows SUCCESS antes de los nuevos commits. Verificar CI nuevo.
