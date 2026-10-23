@@ -4,19 +4,22 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const errors=new Set(['invalid_confirmation_input','order_context_forbidden',
  'order_idempotency_conflict','order_confirmation_conflict',
  'order_confirmation_unavailable','acceptance_required']);
-const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
+const plain=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||
   Object.getPrototypeOf(value)===null);
-const validKeys=(obj,keys)=>plain(obj)&&Object.keys(obj).length===keys.length&&
+const validKeys=(obj: unknown,keys: string[])=>plain(obj)&&Object.keys(obj).length===keys.length&&
  keys.every(key=>Object.hasOwn(obj,key));
 export async function confirmCustomerOrder({fetchImpl=globalThis.fetch,
- endpoint='/api/v1/customer/orders/confirm',payload,signal}={}){
+ endpoint='/api/v1/customer/orders/confirm',payload,signal}: {
+ fetchImpl?: typeof fetch;endpoint?: string;payload: Record<string, unknown>;
+ signal?: AbortSignal;
+}): Promise<{status:'confirmed'|'replayed';orderId:string}|{status:'rejected';error:string}|{status:'unavailable'}>{
  if(typeof fetchImpl!=='function'||typeof endpoint!=='string'||
     !endpoint.startsWith('/')||endpoint.startsWith('//')||
     endpoint.includes('#')||endpoint.includes('?')||
     !plain(payload)||typeof payload.requestKey!=='string')
   throw Error('invalid_customer_confirmation_transport');
- let response;
+ let response: Response;
  try{
   response=await fetchImpl(endpoint,{
    method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
