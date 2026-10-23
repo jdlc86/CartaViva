@@ -226,3 +226,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `218620d1fbda7e994874cdf82a3d1acc9f4c9ea1`: el `pg.Pool` exclusivo del harness Node añade límites de sesión PostgreSQL: `statement_timeout=15000`, `lock_timeout=5000`, `idle_in_transaction_session_timeout=20000` (milisegundos). La conexión ya tiene `connectionTimeoutMillis=3000`. Esto evita que una regresión de bloqueos del test quede esperando indefinidamente y acota transacciones abandonadas.
 - No modifica configuración operativa, esquema, contratos ni comportamiento del runtime. El gate de concurrencia debe comprobarse en CI; no inferir SUCCESS sin verificar el HEAD exacto.
+
+### Incidencia CI del gate de módulo temporal — corrección
+
+- En el HEAD `e0d4118ae57eac2fce1b575a2f62f8eeb527baf9`, Sabora CI `39927673131` y Bootstrap `39927673090` terminaron **FAILURE** en el paso Node/PG17, antes de ejecutar los tests: `SyntaxError: Invalid regular expression flags` causado por la expresión regular de validación de ruta del módulo temporal.
+- `7ed04619d7b8d934c4e9cac4942c44846c66e423` inició la corrección; `6d1623ace95289ccee23591acb37d416ff5431a6` sustituyó la expresión problemática por validación de prefijo/sufijo y segmento alfanumérico, y **conservó explícitamente** el guard de conexión `127.0.0.1/postgres` que no debe eliminarse.
+- Verificar el resultado de ambos workflows del nuevo HEAD. No declarar verde por la corrección de código sin evidencia CI.
