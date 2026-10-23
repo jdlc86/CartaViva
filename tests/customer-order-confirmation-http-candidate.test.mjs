@@ -167,3 +167,34 @@ test('HTTP confirmation never reads catalog or writes after forbidden visit',asy
  assert.deepEqual(r.json(),{error:'order_context_forbidden'});
  assert.deepEqual(calls,['BEGIN','lockContext','ROLLBACK']);
 });
+
+test('HTTP rejects forged client pricing before beginning transactional confirmation',async t=>{
+ const {createCatalogConfirmationCoordinator}=await import(
+  '../apps/api/src/catalog-confirmation-coordinator.mjs');
+ let transactions=0;
+ const confirm=createCatalogConfirmationCoordinator({
+  secretKey:'isolated-test-only-long-server-side-secret-key',
+  clock:()=>1792600000000,
+  withTransaction:async()=>{transactions++;throw Error('should-not-open');},
+  repository:{
+   lockContext:async()=>null,lookupIdempotency:async()=>null,
+   lockCatalog:async()=>null,loadPreviousQuote:async()=>null,
+   persist:async()=>null
+  }
+ });
+ const app=create(confirm);t.after(()=>app.close());
+ const base={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
+  actorId:'actor-1',itemId:'123e4567-e89b-12d3-a456-426614174000',
+  selection:{extras:[]},quantity:1,requestKey:'request-001',
+  qrToken:'q'.repeat(48),customerSessionToken:'s'.repeat(48)};
+ for(const extra of [
+  {totalCents:1},{priceCents:1},{publishedRevision:999},
+  {previous:{totalCents:1}},{requestKey:'bad'}
+ ]){
+  const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+   payload:{...base,...extra}});
+  assert.equal(r.statusCode,400);
+  assert.deepEqual(r.json(),{error:'invalid_confirmation_input'});
+ }
+ assert.equal(transactions,0);
+});
