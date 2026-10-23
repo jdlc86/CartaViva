@@ -530,3 +530,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `39ffaef10bc54d97b645d988a9c7e11ec9d68171`: Sabora CI **SUCCESS** (39963808571), Bootstrap **SUCCESS** (39963808556).
 - `scripts/ci/admin-tables-reader-grants-smoke.sql` ahora verifica que `sabora_admin_tables_reader` no sea miembro de otros roles y que `anon`, `authenticated` y `sabora_catalog_reader` no sean miembros de ese rol. Se conserva la prueba de permisos efectivos bajo `SET LOCAL ROLE` existente.
 - No hay asignación de membresía operativa ni cambio en Supabase. CI del nuevo HEAD pendiente.
+
+### Validación anticipada de pools (23-10-2026)
+
+- `b7891bb0cbd835c949579fb827e6653b13f97f0a`: Sabora CI **SUCCESS** (39964323488), Bootstrap **SUCCESS** (39964323219).
+- `apps/api/src/admin-tables-read-composition.mjs` rechaza pools nulos, compartidos o sin método `query` antes de registrar la ruta; prueba de regresión en `tests/admin-tables-read-composition.test.mjs`.
+- La comprobación de objetos no acredita identidades SQL diferentes; sigue siendo obligatoria una verificación explícita de credenciales/roles mínimos antes de cualquier activación. CI del HEAD nuevo pendiente.
