@@ -161,3 +161,16 @@ test('isolated composition permits distinct declared database users',async()=>{
  assert.equal((await app.inject({method:'GET',url:'/api/v1/catalog'})).statusCode,200);
  await app.close();
 });
+
+test('isolated composition rejects identical declared connection strings across pools',async()=>{
+ const app=Fastify();
+ const reader={...pool([]),options:{connectionString:'postgres://shared-identity@localhost/sabora'}};
+ const writer={...pool([]),options:{connectionString:'postgres://shared-identity@localhost/sabora'}};
+ assert.throws(()=>registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:reader,orderWriterPool:writer,confirmationSecret:secret
+ }),/invalid_isolated_customer_composition/);
+ assert.equal((await app.inject({method:'GET',url:'/api/v1/catalog'})).statusCode,404);
+ assert.equal((await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{}})).statusCode,404);
+ await app.close();
+});
