@@ -174,3 +174,50 @@ test('isolated composition rejects identical declared connection strings across 
   payload:{}})).statusCode,404);
  await app.close();
 });
+
+test('isolated composition rejects invalid customer confirmation before writer SQL',async()=>{
+ const reads=[],writes=[];
+ const app=Fastify();
+ registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:pool(reads),orderWriterPool:pool(writes),
+  confirmationSecret:secret
+ });
+ const payload={
+  tableId:'00000000-0000-4000-8000-000000000010',
+  visitId:'visit-001',basketId:'basket-001',actorId:'actor-001',
+  itemId,selection:{},quantity:1,requestKey:'request-001',
+  qrToken:'q'.repeat(32),customerSessionToken:'s'.repeat(32),
+  totalCents:1
+ };
+ const response=await app.inject({method:'POST',
+  url:'/api/v1/customer/orders/confirm',payload});
+ assert.equal(response.statusCode,400);
+ assert.deepEqual(response.json(),{error:'invalid_confirmation_input'});
+ assert.deepEqual(writes,[]);
+ assert.deepEqual(reads,[]);
+ await app.close();
+});
+test('isolated composition catalog SQL errors do not access order writer pool',async()=>{
+ const reads=[],writes=[];
+ const brokenReader={connect:async()=>({
+  query:async sql=>{
+   reads.push(sql);
+   if(sql===createCatalogReaderSql())throw Error('private_db_error');
+   return {rows:[]};
+  },
+  release:discard=>reads.push(discard?'discard':'release')
+ })};
+ const app=Fastify();
+ registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:brokenReader,orderWriterPool:pool(writes),
+  confirmationSecret:secret
+ });
+ const response=await app.inject({method:'GET',url:'/api/v1/catalog'});
+ assert.equal(response.statusCode,503);
+ assert.deepEqual(response.json(),{error:'catalog_unavailable'});
+ assert.equal(response.body.includes('private_db_error'),false);
+ assert.deepEqual(writes,[]);
+ assert.deepEqual(reads,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',
+  createCatalogReaderSql(),'ROLLBACK','discard']);
+ await app.close();
+});
