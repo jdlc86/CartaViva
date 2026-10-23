@@ -624,3 +624,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Añadido `apps/client/src/order-confirmation-transport.ts`: cliente HTTP POST explícito para la ruta candidata, sin cookies (`credentials: omit`), sin caché, sin redirecciones, sin reintentos automáticos. Acepta `fetch` inyectable y `AbortSignal`; valida respuestas públicas mínimas, identifica rechazo conocido y falla cerrado ante red/JSON/estado inesperados.
 - No está conectado todavía a la interfaz PWA: se requiere flujo de visita autenticada, presupuesto mostrado y consentimiento de repricing conforme al contrato antes de habilitar pedidos. No se ha tocado `apps/management`.
 - Último HEAD verificado antes del cambio `e941202584b40799c048bb34f14081ae74b1eaa7`: Sabora CI y Bootstrap SUCCESS. Nuevo HEAD requiere CI.
+
+### Cliente: pruebas de transporte y correspondencia HTTP (23-10-2026)
+
+- `apps/client/src/order-confirmation-transport.ts` ahora exige correspondencia exacta entre código HTTP y error público: 400/invalid, 403/forbidden, 409/conflict o acceptance_required, 503/unavailable. Las combinaciones incoherentes fallan cerrado.
+- `tests/customer-order-confirmation-transport.test.mjs` transpila el TypeScript real con la dependencia TypeScript del cliente y comprueba: POST sin cookies/caché/redirecciones, confirmación 201, replay 200, aceptación requerida 409, respuestas contradictorias, campos adicionales, tipo MIME inválido, caída de red sin reintento y rechazo de URLs externas.
+- Sigue sin conectarse a la UI cliente; no se ha activado el endpoint en `server.mjs`. HEAD anterior `69e92174cce6bcf30191f6e49f06245d2838db31`: CI 39981970369 y Bootstrap 39981970475 SUCCESS. Verificar CI del nuevo HEAD.
