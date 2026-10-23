@@ -704,8 +704,11 @@ test('PG17 independently rejects expired visit and expired customer session',asy
   const initial=await repository.lockContext(query,args);
   assert.equal(initial.authorized,true);
   // Expire only the visit: bearer and QR stay valid.
+  // The schema requires expires_at > granted_at. Model a visit
+  // granted in the past rather than writing an impossible lifetime.
   await query(`UPDATE sabora.customer_table_visits
-   SET expires_at=clock_timestamp()-interval '1 minute'
+   SET granted_at=clock_timestamp()-interval '2 hours',
+       expires_at=clock_timestamp()-interval '1 minute'
    WHERE table_id=$1 AND visit_key=$2`,[tableId,visitId]);
   const expiredVisit=await repository.lockContext(query,args);
   assert.equal(expiredVisit.authorized,false);
