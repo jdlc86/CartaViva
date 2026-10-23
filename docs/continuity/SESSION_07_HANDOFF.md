@@ -630,3 +630,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `apps/client/src/order-confirmation-transport.ts` ahora exige correspondencia exacta entre código HTTP y error público: 400/invalid, 403/forbidden, 409/conflict o acceptance_required, 503/unavailable. Las combinaciones incoherentes fallan cerrado.
 - `tests/customer-order-confirmation-transport.test.mjs` transpila el TypeScript real con la dependencia TypeScript del cliente y comprueba: POST sin cookies/caché/redirecciones, confirmación 201, replay 200, aceptación requerida 409, respuestas contradictorias, campos adicionales, tipo MIME inválido, caída de red sin reintento y rechazo de URLs externas.
 - Sigue sin conectarse a la UI cliente; no se ha activado el endpoint en `server.mjs`. HEAD anterior `69e92174cce6bcf30191f6e49f06245d2838db31`: CI 39981970369 y Bootstrap 39981970475 SUCCESS. Verificar CI del nuevo HEAD.
+
+### Transporte cliente: preflight de autorización y economía (23-10-2026)
+
+- El transporte `apps/client/src/order-confirmation-transport.ts` ahora rechaza **antes de fetch** campos económicos no autorizados (`totalCents`, `priceCents`, `publishedRevision`), campos ajenos al contrato, ausencia de contexto de visita y tokens o clave de idempotencia de longitud/formato inválido.
+- `tests/customer-order-confirmation-transport.test.mjs` incorpora regresiones que verifican cero solicitudes HTTP en estos casos; la decisión final y la autorización durable siguen siendo exclusivas del servidor.
+- HEAD previo `d1bfd24a02c0c7bea0b9c29c5a9232e4bde0f2a6`: Sabora CI 39982567408 SUCCESS, Bootstrap 39982567480 SUCCESS. Nuevo HEAD sin verificar todavía.
