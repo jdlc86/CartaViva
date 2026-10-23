@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createCatalogOrderWriter} from '../../apps/api/src/catalog-order-writer.mjs';
 import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence.mjs';
+import {createCatalogConfirmationReadRepository} from '../../apps/api/src/catalog-confirmation-read-repository.mjs';
 
 // Explicitly opt-in only for the disposable PostgreSQL 17 GitHub CI harness.
 // No operational DSN is read from runtime configuration.
@@ -200,6 +201,36 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   assert.equal(ledger.rows.length,1);
   assert.equal(ledger.rows[0].order_id,orderId);
   assert.deepEqual(ledger.rows[0].economic_evidence,evidence);
+  // Real repository replay: the immutable ledger must be queryable with
+  // the exact six-column authorized scope and return the original order.
+  const reads=createCatalogConfirmationReadRepository();
+  const replay=await reads.lookupIdempotency(query,{
+   context,requestKey:args.requestKey,
+   requestFingerprint:args.requestFingerprint
+  });
+  assert.deepEqual(replay,{
+   requestFingerprint:args.requestFingerprint,
+   result:{orderId}
+  });
+  const absentReplay=await reads.lookupIdempotency(query,{
+   context:{...context,basketId:'another_basket'},
+   requestKey:args.requestKey,
+   requestFingerprint:args.requestFingerprint
+  });
+  assert.equal(absentReplay,null);
+  const otherActorReplay=await reads.lookupIdempotency(query,{
+   context:{...context,actorId:'another_actor'},
+   requestKey:args.requestKey,
+   requestFingerprint:args.requestFingerprint
+  });
+  assert.equal(otherActorReplay,null);
+  const lockedCatalog=await reads.lockCatalog(query,{context,itemId});
+  assert.equal(lockedCatalog.available,false,
+   'unpublished catalog item must not be orderable by coordinator');
+  const loadedQuote=await reads.loadPreviousQuote(query,{context,itemId});
+  assert.equal(loadedQuote.quoteId,quote.rows[0].id);
+  assert.deepEqual(loadedQuote.evidence,evidence);
+  assert.equal(loadedQuote.totalCents,evidence.totalCents);
   // The canonical writer (not a copied CTE) must respect both sides of
   // the real configurable grouping window and produce kitchen projections.
   for(const [index,expected,elapsed] of [
