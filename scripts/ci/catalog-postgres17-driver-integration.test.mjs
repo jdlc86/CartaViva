@@ -668,3 +668,69 @@ test('PG17 rejects revoked customer bearer while QR and visit remain active',asy
   client.release();
  }
 });
+
+test('PG17 independently rejects expired visit and expired customer session',async()=>{
+ const {createCatalogVisitContextRepository}=await import(
+  '../../apps/api/src/catalog-visit-context-repository.mjs');
+ const repository=createCatalogVisitContextRepository();
+ const tableId='cafe0000-0000-4000-8000-0000000000c1';
+ const customerId='cafe0000-0000-4000-8000-0000000000c2';
+ const qrToken='ci_expiry_qr_'.repeat(4);
+ const sessionToken='ci_expiry_session_'.repeat(4);
+ const visitId='visit_expiry_isolation',actorId='actor_expiry_isolation';
+ const basketId='basket_expiry_isolation';
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const query=(sql,params)=>client.query(sql,params);
+  const table=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930312,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCF','Cliente expiración')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions
+   (customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),
+    clock_timestamp()+interval '1 hour')`,[customerId,sessionToken]);
+  await query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,
+    authorized_qr_version,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+   [tableId,table.rows[0].session_id,customerId,visitId,actorId,
+    table.rows[0].qr_version]);
+  const args={tableId,visitId,actorId,basketId,qrToken,
+   customerSessionToken:sessionToken};
+  const initial=await repository.lockContext(query,args);
+  assert.equal(initial.authorized,true);
+  // Expire only the visit: bearer and QR stay valid.
+  await query(`UPDATE sabora.customer_table_visits
+   SET expires_at=clock_timestamp()-interval '1 minute'
+   WHERE table_id=$1 AND visit_key=$2`,[tableId,visitId]);
+  const expiredVisit=await repository.lockContext(query,args);
+  assert.equal(expiredVisit.authorized,false);
+  assert.equal(expiredVisit.canOrder,false);
+  // Restore visit, expire only the customer bearer.
+  await query(`UPDATE sabora.customer_table_visits
+   SET expires_at=clock_timestamp()+interval '1 hour'
+   WHERE table_id=$1 AND visit_key=$2`,[tableId,visitId]);
+  const restored=await repository.lockContext(query,args);
+  assert.equal(restored.authorized,true);
+  await query(`UPDATE sabora.customer_sessions
+   SET expires_at=clock_timestamp()-interval '1 minute'
+   WHERE customer_id=$1`,[customerId]);
+  const expiredSession=await repository.lockContext(query,args);
+  assert.equal(expiredSession.authorized,false);
+  assert.equal(expiredSession.canOrder,false);
+  const unchanged=await query(`SELECT t.ordering_state,
+   v.revoked_at, v.expires_at>clock_timestamp() AS visit_active
+   FROM sabora.dining_tables t JOIN sabora.customer_table_visits v
+    ON v.table_id=t.id WHERE t.id=$1`,[tableId]);
+  assert.equal(unchanged.rows[0].ordering_state,'open');
+  assert.equal(unchanged.rows[0].revoked_at,null);
+  assert.equal(unchanged.rows[0].visit_active,true);
+ }finally{
+  await client.query('ROLLBACK').catch(()=>{});
+  client.release();
+ }
+});
