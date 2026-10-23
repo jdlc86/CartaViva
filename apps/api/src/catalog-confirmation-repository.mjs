@@ -28,7 +28,8 @@ const validPersistArgs=v=>safeRecord(v)&&
  uuid.test(v.quoteId)&&safeRecord(v.evidence)&&
  typeof v.acceptanceVerified==='boolean'&&
  typeof v.requiresAcceptance==='boolean'&&
- (!v.requiresAcceptance||v.acceptanceVerified);
+ (!v.requiresAcceptance||v.acceptanceVerified)&&
+ (!v.acceptanceVerified||v.requiresAcceptance);
 export function createCatalogConfirmationRepository({persist}={}){
  if(typeof persist!=='function')throw Error('invalid_catalog_confirmation_writer');
  const visit=createCatalogVisitContextRepository();
