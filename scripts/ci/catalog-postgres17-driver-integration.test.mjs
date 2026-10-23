@@ -20,6 +20,13 @@ if(process.env.GITHUB_ACTIONS!=='true'||
  throw Error('disposable_pg17_harness_required');
 if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||
    parsed.pathname!=='/postgres')throw Error('unsafe_pg17_harness_target');
+// Reject credentials and parameters that could redirect a nominally loopback
+// connection. The harness owns the password and database, not the caller.
+if(parsed.password!=='sabora_ci_ephemeral_only'||
+   parsed.search!==''||parsed.hash!==''||parsed.port===''||
+   !/^[0-9]+$/.test(parsed.port)||
+   parsed.protocol!=='postgresql:')
+ throw Error('unsafe_pg17_harness_target');
 const require=createRequire(import.meta.url);
 const {Pool}=require(modulePath);
 const pool=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,
