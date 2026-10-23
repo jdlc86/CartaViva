@@ -61,3 +61,19 @@ test('returns immutable evidence and does not mutate previous quote',()=>{
  assert.equal(Object.isFrozen(result),true);
  assert.equal(Object.isFrozen(result.evidence),true);
 });
+
+test('rejects getter-backed previous quote without invoking untrusted accessors',()=>{
+ let accessed=0;
+ const p={...previous};
+ Object.defineProperty(p,'totalCents',{enumerable:true,get(){accessed++;return 1000;}});
+ assert.throws(()=>decide({previous:p}),/invalid_catalog_confirmation/);
+ assert.equal(accessed,0);
+});
+test('rejects previous quote with non-data symbol and custom prototype',()=>{
+ const symbolQuote={...previous};
+ symbolQuote[Symbol('hidden')]=true;
+ assert.throws(()=>decide({previous:symbolQuote}),/invalid_catalog_confirmation/);
+ const inherited=Object.create({publishedRevision:1});
+ Object.assign(inherited,previous);
+ assert.throws(()=>decide({previous:inherited}),/invalid_catalog_confirmation/);
+});
