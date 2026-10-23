@@ -719,8 +719,10 @@ test('PG17 independently rejects expired visit and expired customer session',asy
    WHERE table_id=$1 AND visit_key=$2`,[tableId,visitId]);
   const restored=await repository.lockContext(query,args);
   assert.equal(restored.authorized,true);
+  // Preserve the session's lifetime constraint when modeling expiry.
   await query(`UPDATE sabora.customer_sessions
-   SET expires_at=clock_timestamp()-interval '1 minute'
+   SET created_at=clock_timestamp()-interval '2 hours',
+       expires_at=clock_timestamp()-interval '1 minute'
    WHERE customer_id=$1`,[customerId]);
   const expiredSession=await repository.lockContext(query,args);
   assert.equal(expiredSession.authorized,false);
