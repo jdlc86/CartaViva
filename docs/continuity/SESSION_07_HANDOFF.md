@@ -698,3 +698,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Con pools inyectados y nombres de login esperados explícitos, consulta `SELECT current_user AS role_name, session_user AS login_name` por separado. Rechaza identidades inesperadas, cambio de rol, login compartido, filas malformadas y errores SQL; no devuelve secretos ni detalles de conexión. Libera clientes.
 - **Límite:** todavía no se ha ejecutado esta comprobación contra PG17 real ni se conecta automáticamente al runtime; es una pieza preparatoria para un gate aislado. No certifica grants ni RLS. No despliegue ni acceso a Supabase operativo.
 - HEAD `545aa353d4ac25685f3d3e63ed75ad34da0715f3` tenía ambos workflows SUCCESS antes de los nuevos commits. Verificar CI nuevo.
+
+### Composición verificada por identidades efectivas (23-10-2026)
+
+- Nuevo `apps/api/src/verified-isolated-customer-composition-candidate.mjs`: puerta asíncrona opt-in que comprueba `current_user` y `session_user` de pools separados antes de registrar rutas públicas. Si falla la verificación no registra GET catálogo ni POST confirmación. No se importa en `server.mjs`.
+- `tests/verified-isolated-customer-composition-candidate.test.mjs`: integración Fastify de verificación previa, fallo cerrado de login lector/escritor, ausencia de endpoints tras fallo y validación de configuración antes de consultar SQL.
+- **Importante:** pruebas actuales usan dobles de pool; no equivalen a prueba real PostgreSQL 17, revisión de grants o RLS. No habilitar producción.
+- HEAD previo `8c250bc243d3f5a8b6a49ed27546f205f6fe6340` tenía workflows en curso al comprobarlo. Validar CI del nuevo HEAD antes de declarar éxito.
