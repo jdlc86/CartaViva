@@ -10,7 +10,7 @@ function readSources(directory) {
   return readdirSync(directory, {withFileTypes: true}).flatMap((entry) => {
     const absolute = `${directory}/${entry.name}`;
     if (entry.isDirectory()) return readSources(absolute);
-    if (!['.tsx', '.css'].includes(extname(entry.name))) return [];
+    if (!['.tsx', '.css', '.js'].includes(extname(entry.name))) return [];
     return [{path: absolute, source: readFileSync(absolute, 'utf8')}];
   });
 }
@@ -47,8 +47,11 @@ test('privileged actions use the shared disabled control', () => {
     'Guardar borrador',
     'Publicar cambios',
     'Mejorar con Google',
+    'Rechazar resultado',
     'Aprobar versión',
     'Aplicar al plato',
+    'Preparar publicación',
+    'Publicar en catálogo',
     'Cambiar estado',
     'Registrar incidencia',
     'Gestionar titularidad',
@@ -61,11 +64,15 @@ test('privileged actions use the shared disabled control', () => {
 
 test('image studio is local-only and exposes the three approved review ratios', () => {
   const studio = readFileSync(new URL('../src/views/ImageStudio.tsx', import.meta.url), 'utf8');
+  const model = readFileSync(new URL('../src/image-studio-model.js', import.meta.url), 'utf8');
+  const lifecycle = readFileSync(new URL('../src/image-preview-lifecycle.js', import.meta.url), 'utf8');
   assert.match(studio, /type="file"/);
-  assert.match(studio, /URL\.createObjectURL/);
-  assert.match(studio, /URL\.revokeObjectURL/);
-  assert.match(studio, /Sólo vista previa local/);
-  for (const ratio of ['5:4', '4:3', '1:1']) assert.match(studio, new RegExp(ratio));
+  assert.match(lifecycle, /createObjectURL/);
+  assert.match(lifecycle, /revokeObjectURL/);
+  assert.match(studio, /Sólo preparación local/);
+  for (const ratio of ['5:4', '4:3', '1:1']) assert.match(model, new RegExp(ratio));
+  for (const control of ['Iluminación', 'Encuadre', 'Fondo', 'Presentación']) assert.match(model, new RegExp(control));
+  for (const state of ['Cargando', 'Error', 'Rechazada', 'Aprobada']) assert.match(studio, new RegExp(state));
 });
 
 test('approved visual tokens, responsive gates and accessibility motion rule remain present', () => {
