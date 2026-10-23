@@ -121,3 +121,22 @@ test('isolated composition rejects unauthenticated structurally valid order with
  assert.deepEqual(reads,[]);
  await app.close();
 });
+
+test('invalid optional adapters fail before any route registration',async()=>{
+ for(const invalid of [{clock:123},{newOrderId:'untrusted'}]){
+  const app=Fastify();
+  const reads=[],writes=[];
+  assert.throws(()=>registerIsolatedCustomerCatalogAndOrders(app,{
+   catalogReaderPool:pool(reads),orderWriterPool:pool(writes),
+   confirmationSecret:secret,...invalid
+  }),/invalid_isolated_customer_composition/);
+  const catalog=await app.inject({method:'GET',url:'/api/v1/catalog'});
+  const order=await app.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',payload:{}});
+  assert.equal(catalog.statusCode,404);
+  assert.equal(order.statusCode,404);
+  assert.deepEqual(reads,[]);
+  assert.deepEqual(writes,[]);
+  await app.close();
+ }
+});
