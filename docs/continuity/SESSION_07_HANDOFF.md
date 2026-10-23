@@ -560,3 +560,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `bbcf8db80cce4cbb47cd1e1d9f8d03785b934dc4`: Sabora CI 39971608187 **SUCCESS** y Bootstrap 39971608196 **SUCCESS**.
 - La suite Fastify `tests/admin-tables-read-http-malformed.test.mjs` ahora prueba que un lookahead SQL inválido (duplicado, capacidad/estado inválidos o desordenado) provoca 503 sin entregar la primera página parcial. Caso positivo de cursor validado incluido.
 - La API sigue sin registro operativo de lectura administrativa; pools de prueba simulados y membresía fake. CI del nuevo HEAD pendiente.
+
+### Integración Fastify: proyección de catálogo hostil (23-10-2026)
+
+- Ampliación `tests/catalog-http-fastify-integration.test.mjs`: cuatro respuestas SQL adversas (precio negativo, extras económicos no representables, snapshot nulo e ID duplicado) deben responder 503 sin filtrar metadatos privados. Se verifica activación de rol SQL y liberación limpia de la transacción de solo lectura.
+- El pool de este test es simulado; el PostgreSQL 17 real se comprueba por CI separado. La ruta no se registra en `server.mjs`. Revalidar las Actions del HEAD nuevo.
