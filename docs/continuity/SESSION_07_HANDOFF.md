@@ -126,3 +126,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `888d1b606b59a7d35f274f3ffd45adcaaf1829fe`: antes del primer pedido se verifica en PostgreSQL que la mesa de prueba tiene **60 segundos**, estado abierto y primera confirmación nula. Un cambio accidental al valor por defecto de 300 segundos rompe el smoke.
 - `4df97ed6b0fc44f2ed88e23ec5d3d6a2631ed7a8`: tras `ROLLBACK`, el smoke consulta PostgreSQL y exige ausencia de la mesa, los tres pedidos y sus líneas de cocina. La limpieza se **comprueba**, no se presupone.
 - Los workflows anteriores seguían en cola durante esta sesión; las pruebas de este HEAD deben acreditarse antes de marcar el gate verde. Pendiente integración Node real con driver `pg`, lockfile auténtico y permisos mínimos.
+
+## PG17 real: bloqueo de mesa antes de confirmar (23-10-2026)
+
+- `33143d7cece0ed93486f7af31e2fa5dc42a159d0`: smoke `scripts/ci/catalog-order-table-state-gate-smoke.sql` que ejecuta el predicado `SELECT ... FOR UPDATE` del escritor candidato contra PostgreSQL 17 real. Casos: mesa abierta permitida; cerrada denegada; pausa futura denegada; pausa sin caducidad denegada; pausa vencida permitida; sesión distinta denegada. El fixture se revierte y se verifica su ausencia.
+- `1bf41c5cb267913e780794457cf721c9b14c1d07`: integración en `scripts/ci/postgres-migration-smoke.sh`. Este gate comprueba la frontera SQL, no el driver Node ni un grant operativo.
+- Los workflows anteriores estaban en cola; **no afirmar CI verde** para estos cambios sin inspeccionar sus ejecuciones. La integración real `pg` + lockfile auténtico sigue pendiente.
