@@ -235,3 +235,10 @@ El bloqueo de driver real permanece. Este cambio no instala `pg`, no habilita SQ
 - `6fcc7be`: el test del candidato completo con pool inyectado introduce filas SQL de prototipo heredado en siete fronteras: visita, advisory lock, catálogo, cotización, bloqueo de mesa, inserción de pedido y ledger. En cada caso exige transacción `BEGIN → ROLLBACK → RELEASE`, ausencia de `COMMIT` y ausencia de inserción de ledger antes de alcanzar su fase.
 - Esta matriz usa driver simulado; **no es** la integración real Node–PostgreSQL 17. Sigue pendiente esa integración, así como la acreditación del rol escritor de mínimos privilegios y auditoría antes de cualquier HTTP, grants o despliegue.
 - Validar CI del nuevo HEAD antes de dar por acreditada la matriz.
+
+## Matriz integrada de ocupación del candidato (23 oct 2026)
+
+- HEAD previo `eeff794`: Sabora CI `39863173915` y Bootstrap `39863173765` completados **SUCCESS**.
+- `addde1e` y `ebb1500`: se amplía el harness del candidato con pool transaccional inyectado para ejercitar los tres resultados de agrupación (`first`, `grouped`, `late`) y sus parámetros SQL de primera confirmación/ventana. Los tests comprueban `BEGIN → COMMIT → RELEASE` y una única inserción de ledger.
+- Se añaden escenarios de contradicción entre primera confirmación y agrupación devuelta, así como ventanas inválidas: exigen `BEGIN → ROLLBACK → RELEASE` y ausencia de inserción de ledger o pedido, según el punto de fallo.
+- Esta matriz usa **driver simulado**, no PostgreSQL 17 real. La integración real Node–PG17, el rol de mínimos privilegios, auditoría y autorización de activación siguen pendientes. No se habilita HTTP ni grants.
