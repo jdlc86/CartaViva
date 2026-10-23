@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {registerAdminTablesReadRoute} from '../apps/api/src/admin-tables-read-route.mjs';
 const userId='cafe0000-0000-4000-8000-000000000001';
 function harness({authorized=true,query=async()=>({rows:[]})}={}){
- let options;
- registerAdminTablesReadRoute({get:(path,config)=>{
-  assert.equal(path,'/api/v1/admin/tables');options=config;
+ let options,handler;
+ registerAdminTablesReadRoute({get:(path,config,fn)=>{
+  assert.equal(path,'/api/v1/admin/tables');options=config;handler=fn;
  }},{query,forRoles:roles=>{
   assert.deepEqual(roles,['admin','waiter']);
   return [async(req,reply)=>{
@@ -26,7 +26,7 @@ function harness({authorized=true,query=async()=>({rows:[]})}={}){
    await hook(request,reply);
    if(reply.sent)return {status:reply.status,body:reply.body,headers};
   }
-  const response=await options.handler(request,reply);
+  const response=await handler(request,reply);
   return {status:reply.status,body:reply.sent?reply.body:response,headers};
  };
 }
