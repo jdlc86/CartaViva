@@ -33,7 +33,7 @@ export function createAdminReadProjectionCandidate({query}={}){
    const rows=assertRows(await query(
     ADMIN_TABLES_SQL,[afterNumber,limit+1]));
    if(rows.length>limit+1)throw Error('invalid_admin_projection_response');
-   const items=rows.slice(0,limit).map(row=>{
+   const validated=rows.map(row=>{
     if(!uuid.test(row.id)||!Number.isSafeInteger(row.number)||row.number<=afterNumber||
        !Number.isSafeInteger(row.capacity)||row.capacity<1||
        (row.description!==null&&typeof row.description!=='string')||
@@ -42,8 +42,9 @@ export function createAdminReadProjectionCandidate({query}={}){
     return Object.freeze({id:row.id,number:row.number,capacity:row.capacity,
      description:row.description,orderingState:row.ordering_state});
    });
-   if(items.some((item,i)=>i>0&&item.number<=items[i-1].number))
+   if(validated.some((item,i)=>i>0&&item.number<=validated[i-1].number))
     throw Error('invalid_admin_projection_response');
+   const items=validated.slice(0,limit);
    return Object.freeze({version:1,items:Object.freeze(items),
     nextAfterNumber:rows.length>limit?items.at(-1).number:null});
   }
