@@ -660,3 +660,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Nuevo `tests/isolated-customer-composition-candidate.test.mjs`: prueba Fastify de lectura pública bajo rol de catálogo, aislamiento de pools y rechazo de pedido inválido antes de SQL.
 - El commit `7bf2f9afdc9794d399d03c3fca7e2899e5caa485` tuvo ambos workflows SUCCESS. Los commits nuevos requieren CI.
 - Sigue pendiente cerrar el flujo real QR/visita/quote/pedido/cocina con PostgreSQL 17 desechable; la composición es opt-in para pruebas, no activación operativa.
+
+### CI composición cliente y regresiones (23-10-2026)
+
+- El commit `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows porque el test nuevo importaba `fastify` desde la raíz, donde pnpm no expone la dependencia. Corregido mediante `createRequire` desde `apps/api/package.json`.
+- Pruebas adicionales de la composición aislada: ante fallo de lectura, respuesta pública 503 sin filtración de errores SQL, ROLLBACK y descarte de cliente; varias lecturas consecutivas no usan el pool escritor.
+- Validar CI de HEAD antes de declarar el hito superado. Sin activación en servidor ni acceso a recursos productivos.
