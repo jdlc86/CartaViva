@@ -85,3 +85,39 @@ test('Fastify catalog rejects role escalation and releases connection',async t=>
  assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',
   'ROLLBACK','discard']);
 });
+
+test('Fastify catalog rejects hostile published snapshots and never returns draft metadata',async t=>{
+ const app=Fastify();t.after(()=>app.close());
+ const events=[];
+ let rows=[];
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool:{
+  connect:async()=>({
+   query:async sql=>{
+    events.push(sql);
+    if(sql===createCatalogReaderSql())return {rows};
+    return {rows:[]};
+   },
+   release:discard=>events.push(discard?'discard':'clean')
+  })
+ }})});
+ const cases=[
+  [{id,published_snapshot:{name:'Invalid',category:'Bebidas',
+   priceCents:-1,allergens:[]},sold_out:false}],
+  [{id,published_snapshot:{name:'Agua',category:'Bebidas',
+   priceCents:100,allergens:[],extras:[{secret:'private'}]},sold_out:false}],
+  [{id,published_snapshot:null,sold_out:false}],
+  [{id,published_snapshot:{name:'Agua',category:'Bebidas',
+   priceCents:100,allergens:[]},sold_out:false},
+   {id,published_snapshot:{name:'Duplicated',category:'Bebidas',
+   priceCents:100,allergens:[]},sold_out:false}]
+ ];
+ for(const candidate of cases){
+  rows=candidate;
+  const r=await app.inject({method:'GET',url:'/api/v1/catalog'});
+  assert.equal(r.statusCode,503);
+  assert.deepEqual(r.json(),{error:'catalog_unavailable'});
+  assert.equal(r.body.includes('private'),false);
+ }
+ assert.equal(events.filter(x=>x==='SET LOCAL ROLE sabora_catalog_reader').length,cases.length);
+ assert.equal(events.filter(x=>x==='clean').length,cases.length);
+});
