@@ -1,3 +1,4 @@
+import {ADMIN_TABLES_SQL} from './admin-tables-reader-query.mjs';
 // Candidate administrative read boundary. No HTTP routes, runtime connection or grants.
 // Staff identity and membership must be checked by the existing protected-route hooks.
 const roles=new Set(['admin','waiter','kitchen']);
@@ -30,9 +31,7 @@ export function createAdminReadProjectionCandidate({query}={}){
       !Number.isSafeInteger(afterNumber)||afterNumber<0)
     throw Error('invalid_admin_projection_page');
    const rows=assertRows(await query(
-    `SELECT id,number,capacity,description,ordering_state
-       FROM sabora.dining_tables WHERE number>$1
-      ORDER BY number,id LIMIT $2`,[afterNumber,limit+1]));
+    ADMIN_TABLES_SQL,[afterNumber,limit+1]));
    if(rows.length>limit+1)throw Error('invalid_admin_projection_response');
    const items=rows.slice(0,limit).map(row=>{
     if(!uuid.test(row.id)||!Number.isSafeInteger(row.number)||row.number<=afterNumber||
