@@ -636,3 +636,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El transporte `apps/client/src/order-confirmation-transport.ts` ahora rechaza **antes de fetch** campos económicos no autorizados (`totalCents`, `priceCents`, `publishedRevision`), campos ajenos al contrato, ausencia de contexto de visita y tokens o clave de idempotencia de longitud/formato inválido.
 - `tests/customer-order-confirmation-transport.test.mjs` incorpora regresiones que verifican cero solicitudes HTTP en estos casos; la decisión final y la autorización durable siguen siendo exclusivas del servidor.
 - HEAD previo `d1bfd24a02c0c7bea0b9c29c5a9232e4bde0f2a6`: Sabora CI 39982567408 SUCCESS, Bootstrap 39982567480 SUCCESS. Nuevo HEAD sin verificar todavía.
+
+### Transporte cliente: regresiones de red y contrato público (23-10-2026)
+
+- `tests/customer-order-confirmation-transport.test.mjs` amplía cobertura para propagación de `AbortSignal`, prohibición de reintentos tras cancelación, mapeo exhaustivo de códigos públicos por HTTP y rechazo de respuestas que incorporen secretos/campos privados.
+- El HEAD anterior `5869dea527ea805b6ffb330dc680f964caa89519` pasó Sabora CI y Bootstrap; verificar CI del nuevo HEAD antes de declarar el bloque verde.
+- Sigue pendiente el hito de integración real QR/visita/quote/confirmación/cocina sobre PG17 desechable; el cliente HTTP no está conectado a la UI.
