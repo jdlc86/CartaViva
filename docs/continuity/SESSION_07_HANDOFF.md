@@ -542,3 +542,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD anterior `382e3dabb3eff28ae99a31e3355e66fabf421218`: Sabora CI 39964864883 **SUCCESS** y Bootstrap 39964864903 **SUCCESS**.
 - `tests/catalog-http-fastify-integration.test.mjs` monta `GET /api/v1/catalog` en Fastify real, con `createCatalogScopedQuery` y pool simulado. Acredita `BEGIN → SET LOCAL ROLE sabora_catalog_reader → SELECT RPC → COMMIT`, proyección pública sin columnas privadas, headers no-store/nosniff, y fallo de SQL con `ROLLBACK`, conexión descartada y 503 sin secretos.
 - La prueba es HTTP real pero **el pool PostgreSQL es simulado**. El smoke de driver PostgreSQL 17 sigue siendo un gate independiente. `server.mjs` no registra esta ruta ni se habilitan credenciales/producción. Consultar CI del HEAD antes de afirmar éxito.
+
+### HTTP catálogo: fallos de conexión y activación de rol (23-10-2026)
+
+- `80ab878f9094aeb52bc956d6a17ca555dc5f1fbd`: Sabora CI 39969973665 **SUCCESS** y Bootstrap 39969973632 **SUCCESS**.
+- Ampliada la suite Fastify `tests/catalog-http-fastify-integration.test.mjs`: caída del pool produce 503 sin revelar detalles; fallo de `SET LOCAL ROLE sabora_catalog_reader` provoca rollback y descarte de conexión, sin devolver datos.
+- Sigue siendo pool simulado dentro de HTTP real. El endpoint permanece opt-in, sin registro en `server.mjs`, credenciales ni despliegue. Verificar el CI del HEAD actual.
