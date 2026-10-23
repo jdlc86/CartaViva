@@ -1208,7 +1208,8 @@ test('PG17 rejects expired visit and expired bearer independently',async()=>{
    SET expires_at=clock_timestamp()+interval '30 minutes'
    WHERE table_id=$1 AND visit_key=$2`,[tableId,args.visitId]);
   await query(`UPDATE sabora.customer_sessions
-   SET expires_at=clock_timestamp()-interval '1 minute'
+   SET created_at=clock_timestamp()-interval '2 hours',
+       expires_at=clock_timestamp()-interval '1 minute'
    WHERE customer_id=$1`,[customerId]);
  });
  const denied=await withTransaction(query=>repo.lockContext(query,args));
