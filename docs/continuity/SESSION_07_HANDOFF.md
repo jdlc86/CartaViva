@@ -80,3 +80,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `3850801a8ad43b56950437e61438d5cb62a91db8`: `catalog-visit-context-repository.mjs` solo interpreta `rows: []` como ausencia legítima de visita. Si el driver declara una fila pero devuelve `null`, `undefined`, primitivo u objeto inválido, se rechaza con `invalid_catalog_visit_response` en vez de convertir corrupción del adaptador en «no autorizado». No se amplían permisos ni se conceden autorizaciones.
 - `a321f59edb9fead931399a4af7fdc7b2802b9b7d`: pruebas negativas y positivas para distinguir ausencia de fila y respuesta malformada.
 - Este es un endurecimiento de la frontera Node simulada, **no la integración Node + PostgreSQL 17 real**. Revalidar el HEAD final en CI y mantener el gate de driver/lockfile/integración real pendiente.
+
+## Puerta reproducible del lockfile (23-10-2026)
+
+- Se verificó el HEAD `2429f3306ef9fbc73790fefd934124101b60af24`: **Sabora CI 39908161042 SUCCESS** y **Bootstrap Sabora lockfile 39908161060 SUCCESS**.
+- Commit `67a7ea05d4271f61e67910e5746405cc3be17a87`: el workflow `.github/workflows/bootstrap-lockfile.yml` ahora ejecuta `git diff --exit-code -- pnpm-lock.yaml` inmediatamente después de regenerar el lockfile, antes de instalar/testear. Si el manifiesto cambia sin actualizar el lockfile versionado, el gate falla aunque pnpm pueda regenerarlo localmente. Se mantiene `contents: read` y `persist-credentials: false`; no hay escritura automática ni despliegue.
+- **CI de este nuevo HEAD pendiente de acreditación**. La integración Node–PG17 real requiere incorporar `pg` con lockfile generado auténticamente, no una resolución inventada; el workflow ahora detectará ese desacople.
