@@ -413,3 +413,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `9f840d6dd497dffd49d86fb94bedc8fc49823717`: prueba PG17 con visita y sesión inicialmente válidas; primero caduca la visita mientras el bearer sigue vigente y se rechaza; después se restaura únicamente el vencimiento de visita en el fixture y caduca el bearer, comprobando rechazo independiente. No modifica el contrato ni expone endpoint.
 - En la última consulta, Sabora CI `39946779829` y Bootstrap `39946779702` del commit `540532fb` seguían en ejecución; el nuevo test queda pendiente de su propio gate.
 - Se conserva aislamiento de Codex y prohibición de despliegue.
+
+### Corrección del gate PG17 de caducidad independiente (2026-10-23)
+
+- CI de HEAD `83ff79a9c7fbacbdc46c6e55e9e31cb6e21d31d6` falló: 19/20 tests PG17 pasan; el test de caducidad independiente intentó retroceder `expires_at` de `customer_sessions` sin ajustar `created_at`, infringiendo `customer_session_expiry_check`. Bootstrap también figuraba FAILURE en ese SHA.
+- Commit `7e322d5bbe9be492984410f862aa47a20d74449b` corrige únicamente el fixture: al simular sesión expirada se retrocede `created_at` dos horas, manteniendo `expires_at` un minuto en el pasado. **No se relaja ninguna restricción SQL**.
+- Verificar el nuevo CI antes de declarar verde. Evitar ediciones concurrentes sin volver a leer SHA del archivo.
