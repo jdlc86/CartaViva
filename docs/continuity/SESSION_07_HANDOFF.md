@@ -428,3 +428,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - La PWA administrativa incorpora resumen, mesas/QR, catálogo, comandas, equipo y Estudio de imágenes local con revisión. **No es backend operativo**: acciones privilegiadas, Google, aprobación durable, publicación, almacenamiento y asociación siguen deshabilitados.
 - Siguiente prioridad según el handoff de Codex: contratos de lectura administrativa autenticada, comenzando por proyecciones read-only de mesas y catálogo, con autorización servidor y estados versionados. No deducir rutas ni tablas a partir de la interfaz. Antes de habilitar escritura, acreditar identidad, membresía, titularidad, auditoría e idempotencia.
 - No se ejecutó despliegue, merge a rama principal, migración Supabase operativa, ni intervención en VPS/Fleetia.
+
+### Candidato de proyección administrativa de mesas (23-10-2026)
+
+- `apps/api/src/admin-read-projection-candidate.mjs`: lectura candidata inyectable sin conexión ni rutas HTTP; admite exclusivamente rol administrativo o camarero indicado por un llamador **que deberá haber verificado autenticación y membresía con los hooks protegidos**. El argumento `role` por sí solo **no es autorización** y no debe exponerse como contrato público.
+- Proyección versionada `version:1` con paginación keyset por número de mesa, límites 1–100 y lista explícita de campos `id,number,capacity,description,orderingState`; no devuelve hashes QR, tokens ni identificadores de sesión. Fallo cerrado ante respuestas inesperadas.
+- `tests/admin-read-projection-candidate.test.mjs`: controles de roles, no consulta ante rechazo, paginación, ausencia de secretos y respuestas inválidas.
+- **Estado:** candidato no conectado a runtime, sin autorización transaccional demostrada ni concesiones SQL. Pendiente acreditar compatibilidad de columnas y permisos con PG17 aislado y CI de HEAD; no habilitar lectura HTTP hasta disponer de estos gates. La proyección de catálogo se abordará después de verificar sus contratos exactos.
