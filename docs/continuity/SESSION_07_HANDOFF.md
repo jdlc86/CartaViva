@@ -724,3 +724,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `035276c8d0f8c607ede75915877c41394211f930`: Sabora CI y Bootstrap FAIL. Logs: pruebas 419 y 593, expectativas erróneas de `release` frente a `discard` al fallar identidad/SQL.
 - Corregidas `tests/isolated-pool-identity-preflight.test.mjs` y `tests/verified-isolated-customer-composition-candidate.test.mjs` para exigir descarte de conexión insegura; código de seguridad sin cambios.
 - Verificar los workflows de `5434a527a81f7031d1def9cfebaf13bcdcfb20d7` o posterior antes de continuar integración.
+
+### CI identidad de pools (23-10-2026, noche)
+
+- En HEAD `1a80e7efe8f20c57e05aacde0ba6d5dda15665a3` fallaron ambos workflows por `tests/isolated-pool-identity-preflight.test.mjs`: la prueba esperaba `discard` aunque una consulta de identidad SQL válida debe liberar normalmente el cliente.
+- Ajustada la expectativa de liberación sin modificar el comportamiento de producción. Añadidos casos que comprueban que un lector con identidad errónea no abre conexión escritora y que el mismo objeto pool queda rechazado antes de consultas.
+- **Verificar el CI del nuevo HEAD**; no declarar success por adelantado.
