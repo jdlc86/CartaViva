@@ -474,3 +474,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `3748275adf3c33976e12134ee039de7e3c758597`: Sabora CI **SUCCESS** (39952877160) y Bootstrap **SUCCESS** (39952877143).
 - Nuevo `apps/api/src/admin-tables-reader-query.mjs`: consulta SQL exacta y parámetros numéricos acotados para un futuro pool exclusivo de lectura de mesas; deniega cualquier otra sentencia. `apps/api/src/admin-read-projection-candidate.mjs` comparte la sentencia canónica; `tests/admin-tables-reader-query.test.mjs` cubre inyección SQL y límites.
 - **No se ha creado rol ni conexión operativa**. El allowlist de aplicación es defensa adicional, no sustituye los permisos de base de datos ni RLS. Pendiente revisar grants/identidad SQL real y probar permisos negativos con PostgreSQL 17 desechable antes de conectar a Fastify.
+
+### Rol SQL mínimo para mesas (23-10-2026)
+
+- `62df5b9e575a197563f1b0dbafd0e3bf7faf3274`: Sabora CI **SUCCESS** (39954607967), Bootstrap **SUCCESS** (39954607901).
+- Migración candidata `20261023010000_sabora_admin_tables_reader_candidate.sql`: rol `sabora_admin_tables_reader` NOLOGIN, sin BYPASSRLS ni membresías; solo SELECT de id/number/capacity/description/ordering_state en `sabora.dining_tables`, con política SELECT de FORCE RLS. No permite QR hashes, cambios de mesa, catálogo ni personal.
+- `scripts/ci/admin-tables-reader-grants-smoke.sql` integrado en `scripts/ci/postgres-migration-smoke.sh`: inspecciona rol, RLS, columnas permitidas, denegación de columnas sensibles y privilegios de escritura/otras tablas. **Pendiente** CI de este nuevo bloque; si falla, reparar en PG17 desechable, nunca aplicar migración al operativo.
+- No se ha aprovisionado login, pool ni ruta en `server.mjs`; activación sujeta a revisión independiente de seguridad.
