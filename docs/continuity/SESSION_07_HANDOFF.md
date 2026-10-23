@@ -401,3 +401,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `592bfbc3a96f547f54d766a1834cfa2ef6a27b5b`: Sabora CI `39945657370` SUCCESS, Bootstrap `39945657379` SUCCESS, incluidas restricciones SQL de visitas y recuperación por SAVEPOINT.
 - Commit `344d74272b16f901b8a3f7eecacb9523cb81f76a`: prueba PG17 de revocación selectiva; dos visitas válidas de la misma mesa y mismo cliente se autorizan independientemente, revocar la primera no revoca la segunda. El gate CI de esta nueva prueba queda pendiente.
 - No se añade API de revocación ni grants. Continuar sin tocar la interfaz de Codex.
+
+### Reapertura de mesa y frontera de ocupación (2026-10-23)
+
+- Commit `28c1a89428c6c764b859d0dd5e17455096fc970b`: prueba PG17 de ciclo abierto → cerrado → abierto, con visita antigua inicialmente válida. Comprueba rotación de `session_id`, revocación duradera y rechazo de visita antigua incluso después de reabrir la mesa. No se crea writer HTTP ni grants.
+- El gate del commit `9ec9b511300ea4c836bea3bdca5d97efd0291138` seguía `in_progress` en la última consulta; no atribuirle SUCCESS sin verificar. El nuevo test también necesita su propio gate.
+- Continúa el aislamiento del trabajo de Codex en `apps/management/**`, sin conciliación prematura ni despliegues.
