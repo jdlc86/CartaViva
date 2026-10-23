@@ -487,3 +487,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Gate previo `1355b305`: Sabora CI **SUCCESS** (39957553808), Bootstrap **SUCCESS** (39957553762).
 - `scripts/ci/admin-tables-reader-effective-access-smoke.sql`: prueba SQL bajo `SET LOCAL ROLE sabora_admin_tables_reader` en PostgreSQL 17 desechable. Inserta mesa de prueba, comprueba lectura por RLS y rechaza consulta de hash QR, UPDATE y lectura de empleados. El fixture y el cambio de rol se revierten al finalizar.
 - Integrado en `scripts/ci/postgres-migration-smoke.sh`. Pendiente resultado CI del nuevo HEAD. No se ha concedido LOGIN ni se han creado conexiones operativas.
+
+### Prueba de permisos efectivos PG17 (23-10-2026)
+
+- Sobre `1355b305383b43a25bf4fd5ca325b836a0aabebd`: Sabora CI **SUCCESS** (39957553808) y Bootstrap **SUCCESS** (39957553762).
+- `scripts/ci/admin-tables-reader-effective-smoke.sql` ejecuta SELECT real como `sabora_admin_tables_reader` mediante `SET LOCAL ROLE` en PostgreSQL 17 desechable, verificando lectura de columnas públicas y rechazo de QR hash, personal, catálogo y UPDATE. Se integra en `scripts/ci/postgres-migration-smoke.sh`.
+- Pendiente comprobar nuevo CI. Esta prueba no concede LOGIN ni sustituye revisión de rol operativo/credenciales. Ninguna migración ha sido aplicada a Supabase operativo.
