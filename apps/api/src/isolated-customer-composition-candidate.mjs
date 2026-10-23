@@ -13,6 +13,9 @@ export function registerIsolatedCustomerCatalogAndOrders(app,{
     !catalogReaderPool||typeof catalogReaderPool.connect!=='function'||
     !orderWriterPool||typeof orderWriterPool.connect!=='function'||
     catalogReaderPool===orderWriterPool||
+    (typeof catalogReaderPool.options?.connectionString==='string'&&
+     typeof orderWriterPool.options?.connectionString==='string'&&
+     catalogReaderPool.options.connectionString===orderWriterPool.options.connectionString)||
     (typeof catalogReaderPool.options?.user==='string'&&
      typeof orderWriterPool.options?.user==='string'&&
      catalogReaderPool.options.user===orderWriterPool.options.user)||
