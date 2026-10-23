@@ -262,3 +262,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Invoca `createCatalogOrderConfirmationPoolCandidate` con `pg.Pool` real, espera `confirmed`, repite la misma petición y espera `replayed`, rechaza un cambio de cantidad bajo la misma clave idempotente y rechaza un QR erróneo aun con pedido ya confirmado. Verifica exactamente una orden, una línea de cocina y un intento económico.
 - A diferencia de los fixtures negativos anteriores, estos registros deben ser visibles desde conexiones diferentes: se confirman en la **base desechable** antes de llamar al coordinador y el contenedor/volúmenes se eliminan al finalizar el shell. No se permite ejecutar este test en una base operativa ni borrar el ledger.
 - **Pendiente:** verificar CI exacto del commit; ampliar con repricing/aceptación y concurrencia real de confirmaciones. No conectar HTTP, permisos runtime, Supabase operativo ni VPS.
+
+### Concurrencia positiva real en el pool PG17
+
+- `c56be46d52e6a245f73ca983e130701b95f75d9f`: el fixture positivo añade tres confirmaciones simultáneas del mismo contexto autorizado y una clave idempotente nueva sobre el pool real (`max:4`). Debe producir exactamente un `confirmed`, dos `replayed`, el mismo UUID de pedido y una sola fila de orden y ledger para la clave.
+- La comprobación prueba el lock advisory transaccional y el replay de la ruta compuesta, no solo una consulta SQL aislada. Es una prueba exclusivamente de Docker PG17 efímero. Se mantiene sin conexión HTTP ni Supabase operativo.
+- No declarar el gate verde hasta inspeccionar las ejecuciones de Sabora CI y Bootstrap del HEAD exacto. El siguiente bloque es consentimiento explícito de repricing y revocación de acceso.
