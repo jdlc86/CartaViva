@@ -850,3 +850,66 @@ test('PG17 serializes staff pause behind an already authorized visit',async()=>{
   a.release();b.release();
  }
 });
+
+test('PG17 serializes table closure after an authorized visit and revokes its session',async()=>{
+ const {createCatalogVisitContextRepository}=await import(
+  '../../apps/api/src/catalog-visit-context-repository.mjs');
+ const repo=createCatalogVisitContextRepository();
+ const tableId='cafe0000-0000-4000-8000-0000000000f1';
+ const customerId='cafe0000-0000-4000-8000-0000000000f2';
+ const qrToken='ci_close_race_qr_'.repeat(4);
+ const sessionToken='ci_close_race_session_'.repeat(4);
+ const visitId='visit_close_race',actorId='actor_close_race';
+ const basketId='basket_close_race';
+ const initial=await withTransaction(async query=>{
+  const t=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930315,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCJ','Cliente cierre concurrente')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions
+   (customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),
+    clock_timestamp()+interval '1 hour')`,[customerId,sessionToken]);
+  await query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,
+    authorized_qr_version,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+   [tableId,t.rows[0].session_id,customerId,visitId,actorId,
+    t.rows[0].qr_version]);
+  return t.rows[0].session_id;
+ });
+ const a=await pool.connect(),b=await pool.connect();
+ const args={tableId,visitId,actorId,basketId,qrToken,
+  customerSessionToken:sessionToken};
+ try{
+  await a.query('BEGIN');
+  await b.query('BEGIN');
+  const granted=await repo.lockContext((sql,params)=>a.query(sql,params),args);
+  assert.equal(granted.authorized,true);
+  let finished=false;
+  const pending=b.query(`UPDATE sabora.dining_tables
+   SET ordering_state='closed',pause_until=NULL WHERE id=$1`,[tableId])
+   .then(value=>{finished=true;return value;});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(finished,false,'closure must wait for authorized visit lock');
+  await a.query('COMMIT');
+  assert.equal((await pending).rowCount,1);
+  await b.query('COMMIT');
+  const state=await pool.query(`SELECT ordering_state,session_id
+   FROM sabora.dining_tables WHERE id=$1`,[tableId]);
+  assert.equal(state.rows[0].ordering_state,'closed');
+  assert.notEqual(state.rows[0].session_id,initial);
+  const visit=await pool.query(`SELECT revoked_at
+   FROM sabora.customer_table_visits
+   WHERE table_id=$1 AND visit_key=$2`,[tableId,visitId]);
+  assert.ok(visit.rows[0].revoked_at instanceof Date);
+  const denied=await withTransaction(query=>repo.lockContext(query,args));
+  assert.equal(denied.authorized,false);
+  assert.equal(denied.canOrder,false);
+ }finally{
+  await Promise.allSettled([a.query('ROLLBACK'),b.query('ROLLBACK')]);
+  a.release();b.release();
+ }
+});
