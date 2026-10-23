@@ -36,6 +36,12 @@ jobs:
           pnpm --version
       - name: Generate lockfile from package manifests
         run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+      - name: Reject stale committed lockfile
+        run: |
+          git diff --exit-code -- pnpm-lock.yaml || {
+            echo 'ERROR: committed pnpm-lock.yaml differs from pnpm-generated lockfile'
+            exit 1
+          }
       - name: Verify lockfile is usable
         run: |
           test -s pnpm-lock.yaml
