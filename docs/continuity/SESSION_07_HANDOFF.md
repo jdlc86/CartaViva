@@ -588,3 +588,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - Añadida prueba Fastify + coordinador real que rechaza `totalCents`, `priceCents`, `publishedRevision`, `previous` y claves de idempotencia malformadas antes de iniciar ninguna transacción. HTTP 400 con error público acotado; cero llamadas al adaptador transaccional.
 - Se mantiene ruta opt-in sin registro en `server.mjs`; sin conexión productiva ni despliegue. CI del HEAD nuevo pendiente de verificación.
+
+### Transporte cliente para confirmación HTTP (23-10-2026)
+
+- Nuevo `apps/client/src/customer-order-transport.ts` **candidato aislado**: `createCustomerOrderTransport` con `fetch` inyectado, POST JSON, sin cookies automáticas, no-store y sin redirecciones. Respuesta mínima validada `confirmed` (201) / `replayed` (200) con UUID; errores públicos tipados, ocultando respuestas malformadas.
+- No integrado aún en `apps/client/src/main.tsx`: no presentar botones de pedido operativo ni almacenar credenciales en UI hasta cerrar flujo QR/visita y contrato de reaceptación.
+- Comprobar compilación TypeScript y CI del HEAD; ningún cambio en administración de Codex, runtime productivo, Supabase operativo o VPS.
