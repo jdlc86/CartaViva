@@ -554,3 +554,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD anterior `4aa747800f3a2fca9df43aa5994f6eb1e7e60918`: Sabora CI y Bootstrap **SUCCESS**.
 - `admin-read-projection-candidate.mjs` valida todas las filas recibidas de SQL, incluida la fila adicional de lookahead para paginación; rechaza estado, capacidad, número inválido o duplicado/desordenado antes de emitir una página/cursor.
 - Regresión en `tests/admin-read-projection-candidate.test.mjs`. Sin activación HTTP en `server.mjs`, sin credenciales ni despliegue. CI del HEAD actual pendiente de comprobación.
+
+### Verificación HTTP real de lookahead de mesas (23-10-2026)
+
+- HEAD `bbcf8db80cce4cbb47cd1e1d9f8d03785b934dc4`: Sabora CI 39971608187 **SUCCESS** y Bootstrap 39971608196 **SUCCESS**.
+- La suite Fastify `tests/admin-tables-read-http-malformed.test.mjs` ahora prueba que un lookahead SQL inválido (duplicado, capacidad/estado inválidos o desordenado) provoca 503 sin entregar la primera página parcial. Caso positivo de cursor validado incluido.
+- La API sigue sin registro operativo de lectura administrativa; pools de prueba simulados y membresía fake. CI del nuevo HEAD pendiente.
