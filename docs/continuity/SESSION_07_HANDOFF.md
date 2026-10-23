@@ -244,3 +244,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `7b147d8470e8b4d6d736cb8ba86e1ae7a8da6951`: el shell de CI ejecuta `node --check` sobre el test del driver antes de instalar dependencias, arrancar Docker o migrar la base desechable. Errores sintácticos fallan pronto.
 - `2aa64666e2c961ba1fbfdf6a2d838edc1f2f4102`: el test rechaza URL de PG17 con contraseña distinta de la credencial efímera fijada por el harness, sin puerto, con query string o fragmento, o con protocolo distinto de `postgresql:`. Se mantienen el host `127.0.0.1`, usuario `postgres` y base `postgres`. Estos controles son exclusivos del gate CI y no modifican conexiones de producción.
 - Las pruebas del HEAD deben revisarse antes de declarar el gate acreditado. Sin cambios en Fleetia, VPS o Supabase.
+
+### Inmutabilidad de ledger en PG17 real
+
+- `15bc7f6d321c4efd6c1018e05063473eb8a8fb6a`: el gate de escritor canónico ejecuta `UPDATE` y `DELETE` directos sobre un intento económico real y exige que ambos sean rechazados por PostgreSQL. Cada operación se encapsula en `SAVEPOINT` y se restaura mediante `ROLLBACK TO SAVEPOINT`; se vuelve a leer el fingerprint original para comprobar que no hubo alteración.
+- Se revalida la exclusión de cotización caducada y se conserva rollback integral de la transacción fixture. **No se introduce limpieza destructiva del ledger**. Este gate debe verificarse contra el HEAD exacto en GitHub Actions.
