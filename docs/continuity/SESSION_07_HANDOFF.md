@@ -165,3 +165,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `5e200e07879fe250b81d7d04e41eb17005bcbc86` amplía `scripts/ci/catalog-postgres17-driver-integration.test.mjs`: ahora Node y el driver `pg` ejecutan en PostgreSQL 17 el CTE real de inserción y marca temporal para `first/grouped/late`, verifican las líneas de cocina, hacen `ROLLBACK` y comprueban desde otra conexión que no quedan pedidos ni líneas. Se mantiene el aislamiento del runner y la limpieza del contenedor.
 - Nuevo gate SQL consultado **desde Node**: `pg_class` exige `relrowsecurity`, `relforcerowsecurity` y ausencia de `INSERT` para `anon` y `authenticated` en `orders`, `order_lines` y `catalog_confirmation_attempts`. Esto no equivale a acreditar un rol escritor de mínimos privilegios.
 - Pendiente revisar CI de este HEAD; los nuevos escenarios todavía no acreditan la fábrica completa `createCatalogOrderConfirmationPoolCandidate`, replay y consentimiento económico reales. No activar runtime ni grants.
+
+### Regresión Bootstrap y recuperación de readiness PG17
+
+- En `fdd82e680d4d435d1a4f891728c1c9df97c74612`: **Sabora CI 39923096985 SUCCESS**, **Bootstrap 39923096842 FAILURE**. El log del Bootstrap localizó el fallo en el arranque del nuevo contenedor del harness Node: `psql: connection to server on socket ... failed`. No fue una regresión del test de pedidos ni de RLS; la ejecución ni siquiera llegó a migraciones del nuevo contenedor.
+- `e0143609471de04c0a7b2fb7086193f416422cce`: el harness espera hasta 60 intentos por una **consulta SQL efectiva** `SELECT 1` y, si no llega a estar disponible, muestra logs del contenedor antes de fallar. Se mantiene `trap` de limpieza y aislamiento loopback.
+- Revalidar ambos workflows del HEAD nuevo. No atribuir SUCCESS al cambio de readiness hasta que terminen.
