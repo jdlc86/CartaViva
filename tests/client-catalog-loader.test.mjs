@@ -21,7 +21,7 @@ test('catalog loader uses same-origin URL, no credentials or cache',async()=>{
   assert.equal(options.credentials,'omit');
   assert.equal(options.cache,'no-store');
   assert.equal(options.redirect,'error');
-  return {ok:true,json:async()=>[valid]};
+  return {ok:true,headers:{get:()=> 'application/json'},json:async()=>[valid]};
  });
  assert.equal(result.status,'ready');
  assert.deepEqual(result.items,[valid]);
@@ -29,7 +29,7 @@ test('catalog loader uses same-origin URL, no credentials or cache',async()=>{
 test('catalog loader returns controlled errors for HTTP, malformed data and network failures',async()=>{
  for(const fetcher of [
   async()=>({ok:false,status:503}),
-  async()=>({ok:true,json:async()=>[{...valid,priceCents:-1}]}),
+  async()=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>[{...valid,priceCents:-1}]}),
   async()=>{throw Error('internal details');}
  ]){
   const state=await loadPublishedCatalog(fetcher);
@@ -51,13 +51,13 @@ test('catalog loader propagates cancellation signal without credentials',async()
 });
 test('catalog loader handles invalid JSON and oversized catalog without exposing payload',async()=>{
  for(const payload of [Array(501).fill(valid),{secret:'internal-data'}]){
-  const state=await loadPublishedCatalog(async()=>({ok:true,json:async()=>payload}));
+  const state=await loadPublishedCatalog(async()=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>payload}));
   assert.deepEqual(state,{status:'error',message:'Inténtalo de nuevo más tarde.'});
   assert.equal(JSON.stringify(state).includes('internal-data'),false);
  }
 });
 test('catalog loader accepts an empty published menu',async()=>{
- const state=await loadPublishedCatalog(async()=>({ok:true,json:async()=>[]}));
+ const state=await loadPublishedCatalog(async()=>({ok:true,headers:{get:()=> 'application/json'},json:async()=>[]}));
  assert.deepEqual(state,{status:'ready',items:[]});
 });
 
@@ -84,7 +84,7 @@ test('client consumes API HTTP response and rejects private database fields',asy
   assert.equal(url,'/api/v1/catalog');
   assert.equal(options.credentials,'omit');
   const reply={header:()=>reply,code:status=>{reply.status=status;return reply;},
-   send:body=>({ok:reply.status===200,json:async()=>body})};
+   send:body=>({ok:reply.status===200,headers:{get:()=> 'application/json'},json:async()=>body})};
   return handler({},reply);
  });
  assert.deepEqual(state,{status:'ready',items:[{...valid,available:false}]});
@@ -97,9 +97,18 @@ test('client fails closed when API returns a database error',async()=>{
  registerCatalogHttpRoute({get:(_path,fn)=>{handler=fn;}},{query:async()=>{throw Error('private_database_secret');}});
  const state=await loadPublishedCatalog(async()=>{
   const reply={header:()=>reply,code:status=>{reply.status=status;return reply;},
-   send:body=>({ok:reply.status===200,json:async()=>body})};
+   send:body=>({ok:reply.status===200,headers:{get:()=> 'application/json'},json:async()=>body})};
   return handler({},reply);
  });
  assert.deepEqual(state,{status:'error',message:'Inténtalo de nuevo más tarde.'});
  assert.equal(JSON.stringify(state).includes('private_database_secret'),false);
+});
+
+test('catalog loader rejects HTML and absent content type even with HTTP 200',async()=>{
+ for(const contentType of [null,'text/html','application/problem+json']){
+  const state=await loadPublishedCatalog(async()=>({
+   ok:true,headers:{get:()=>contentType},json:async()=>[valid]
+  }));
+  assert.deepEqual(state,{status:'error',message:'Inténtalo de nuevo más tarde.'});
+ }
 });
