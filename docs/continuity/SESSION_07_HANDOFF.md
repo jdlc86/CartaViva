@@ -350,3 +350,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `3f79d4d87b9ee9664650ed548602e1b6ab135946`: **Sabora CI 39941886186 SUCCESS** y **Bootstrap 39941886176 SUCCESS** (GitHub Actions). Incluye 12 pruebas reales del driver PG17, entre ellas caducidad independiente de visita y bearer y carrera pausa/autorización.
 - La solución respeta los constraints `customer_table_visit_lifetime` y `customer_session_expiry_check` sin cambios en migraciones. No hay despliegue, merge, alteración de Supabase operativo ni intervención sobre Fleetia.
 - Próximo bloque: analizar los interleavings inversos y posibles puntos de integración con API sin tocar la interfaz administrativa asignada a Codex. Evitar presentar el gate PG17 como prueba HTTP extremo a extremo.
+
+### Carrera inversa y fallo transitorio de Docker Hub (2026-10-23)
+
+- HEAD `3f20be344d876211411e9c9a806db9a7991ad0ce`: Bootstrap `39942134392` **SUCCESS**, Sabora CI `39942134407` **FAILURE** en `Build isolated Sabora API image`, al consultar `node:22-alpine` desde Docker Hub (HTTP 502 de `registry-1.docker.io`). El log confirma pasos anteriores de PG17, tests y build correctos; **no es un fallo demostrado de la aplicación**. Se mantiene pendiente un gate CI completo verde.
+- Commit `fca28b3b550a69bf334bb4e2e93a319f63a9515a`: prueba PostgreSQL 17 de orden inverso: transacción A mantiene el lock de autorización válido sobre mesa abierta; transacción B intenta pausar mesa y debe bloquearse; tras COMMIT A, B completa el cambio, y una nueva autorización debe resultar denegada. Fixture efímero; no prueba endpoint HTTP.
+- El test inverso está pendiente de CI. No se cambió Dockerfile, infraestructura operativa ni el frontend de Codex. No hacer merge/despliegue.
