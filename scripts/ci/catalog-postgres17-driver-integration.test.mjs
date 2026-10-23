@@ -913,3 +913,60 @@ test('PG17 serializes table closure after an authorized visit and revokes its se
   a.release();b.release();
  }
 });
+
+test('PG17 serializes customer bearer revocation against concurrent visit authorization',async()=>{
+ const {createCatalogVisitContextRepository}=await import(
+  '../../apps/api/src/catalog-visit-context-repository.mjs');
+ const repo=createCatalogVisitContextRepository();
+ const tableId='cafe0000-0000-4000-8000-0000000000f3';
+ const customerId='cafe0000-0000-4000-8000-0000000000f4';
+ const qrToken='ci_revoke_race_qr_'.repeat(4);
+ const sessionToken='ci_revoke_race_session_'.repeat(4);
+ const visitId='visit_revoke_race',actorId='actor_revoke_race';
+ const basketId='basket_revoke_race';
+ await withTransaction(async query=>{
+  const t=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930316,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCK','Cliente revocación concurrente')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions
+   (customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),
+    clock_timestamp()+interval '1 hour')`,[customerId,sessionToken]);
+  await query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,
+    authorized_qr_version,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+   [tableId,t.rows[0].session_id,customerId,visitId,actorId,
+    t.rows[0].qr_version]);
+ });
+ const args={tableId,visitId,actorId,basketId,qrToken,
+  customerSessionToken:sessionToken};
+ const a=await pool.connect(),b=await pool.connect();
+ try{
+  await a.query('BEGIN');
+  await b.query('BEGIN');
+  const authorized=await repo.lockContext((sql,params)=>a.query(sql,params),args);
+  assert.equal(authorized.authorized,true);
+  let finished=false;
+  const pending=b.query(`UPDATE sabora.customer_sessions
+   SET revoked_at=clock_timestamp() WHERE customer_id=$1`,[customerId])
+   .then(value=>{finished=true;return value;});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(finished,false,'bearer revocation must wait for visit lock');
+  await a.query('COMMIT');
+  assert.equal((await pending).rowCount,1);
+  await b.query('COMMIT');
+  const denied=await withTransaction(query=>repo.lockContext(query,args));
+  assert.equal(denied.authorized,false);
+  assert.equal(denied.canOrder,false);
+  const table=await pool.query(`SELECT ordering_state FROM sabora.dining_tables
+   WHERE id=$1`,[tableId]);
+  assert.equal(table.rows[0].ordering_state,'open');
+ }finally{
+  await Promise.allSettled([a.query('ROLLBACK'),b.query('ROLLBACK')]);
+  a.release();b.release();
+ }
+});
