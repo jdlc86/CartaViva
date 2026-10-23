@@ -30,21 +30,6 @@ test('actual node-postgres driver commits SQL and decodes PG17 results',async()=
  assert.equal(result.value,17);
 });
 
-test('actual driver rolls back writes and releases connection after error',async()=>{
- const table='pg_temp.sabora_driver_rollback';
- await withTransaction(async query=>{
-  await query('CREATE TEMP TABLE sabora_driver_rollback (id integer PRIMARY KEY) ON COMMIT PRESERVE ROWS');
- });
- await assert.rejects(withTransaction(async query=>{
-  await query('INSERT INTO '+table+'(id) VALUES ($1)',[71]);
-  throw Error('forced_rollback');
- }),/forced_rollback/);
- // TEMP tables are session-local. Use a persistent isolated fixture for
- // cross-connection verification below instead.
- const count=await pool.query('SELECT count(*)::integer AS n FROM sabora.orders WHERE false');
- assert.equal(count.rows[0].n,0);
-});
-
 test('actual PG17 transaction rollback is visible across pool connections',async()=>{
  const id='cafe0000-0000-4000-8000-000000000071';
  const before=await pool.query('SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE id=$1',[id]);
@@ -63,8 +48,6 @@ test('real PG17 serializes concurrent advisory locks on distinct clients',async(
  const first=pool.connect();
  const second=pool.connect();
  const [a,b]=await Promise.all([first,second]);
- let release;
- const gate=new Promise(resolve=>{release=resolve;});
  try{
   await a.query('BEGIN');
   await b.query('BEGIN');
@@ -72,14 +55,12 @@ test('real PG17 serializes concurrent advisory locks on distinct clients',async(
   let acquired=false;
   const waiter=b.query('SELECT pg_advisory_xact_lock($1)',[930271])
    .then(()=>{acquired=true;});
-  await b.query('SELECT 1').catch(()=>{}); // do not depend on second command order
   assert.equal(acquired,false);
   await a.query('COMMIT');
   await waiter;
   assert.equal(acquired,true);
   await b.query('COMMIT');
  } finally{
-  release();
   await Promise.allSettled([a.query('ROLLBACK'),b.query('ROLLBACK')]);
   a.release();b.release();
  }
