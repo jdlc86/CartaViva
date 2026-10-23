@@ -364,3 +364,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - GitHub devuelve `mergeable=false` para el PR #3 con base `feat/sabora-pnpm-bootstrap`. Su base SHA observada `7dc21d08dc3662498482063d94d7f30caca1f06c` es anterior al HEAD actual. **No fusionar automáticamente**; primero conciliar historia y comprobar conflictos y CI del árbol integrado. Conservar PR Draft.
 - El fallo PG17 `customer_session_expiry_check` descrito en el handoff de Codex correspondía a una versión anterior de la rama base. El commit `3f79d4d87b9ee9664650ed548602e1b6ab135946` pasó Sabora CI `39941886186` y Bootstrap `39941886176`. Un fallo posterior de Sabora CI `39942134407` correspondió a HTTP 502 de Docker Hub al resolver `node:22-alpine`, no al frontend.
 - El frontend entregado es **no operativo**: mutaciones administrativas bloqueadas hasta existir contratos backend autorizados. No inventar endpoints ni activar botones. Mantener prohibición de despliegue, merge a rama principal, cambios en Supabase operativo o VPS sin autorización.
+
+### Paralelismo autorizado con Codex, fase 2 Estudio de imágenes (2026-10-23)
+
+- El usuario confirma que ha encargado a Codex la segunda fase visual del Estudio de imágenes. Hasta recibir su SHA e informe final, **no modificar `apps/management/**` ni conciliar/fusionar PR #3**.
+- El desarrollo principal continúa en backend, pruebas PG17 y documentación de contratos existentes. Evitar implementar endpoints de imágenes o integrar Google sin diseño, autorización, aislamiento y presupuesto confirmados.
+- Estado verificado de HEAD `6aa884920590b28009df1d965c5e6640326f6458`: Sabora CI `39942799320` SUCCESS y Bootstrap `39942799369` SUCCESS. El test de carrera inversa PG17 añadido en `fca28b3b` queda incluido en ese gate verde.
+- Próxima conciliación tras Codex: verificar diff, actualizar base, resolver conflictos, validar contratos reales, probar CI del árbol integrado. No desplegar ni afectar Fleetia.
