@@ -21,7 +21,7 @@ if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||
 const require=createRequire(import.meta.url);
 const {Pool}=require(modulePath);
 const pool=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,
- idleTimeoutMillis:1000});
+ idleTimeoutMillis:1000,options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'});
 const withTransaction=createPostgresTransaction({pool});
 test.after(async()=>{await pool.end();});
 
