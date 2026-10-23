@@ -344,3 +344,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - HEAD `0b5f44b8e3cd7d2b1cbbd314835b74be8fa3706a`: Sabora CI `39940617788` y Bootstrap `39940617773` fallaron en el mismo test de expiración, ahora por `customer_session_expiry_check` (SQLSTATE `23514`). **11 de 12 subtests PG17 pasaron**, incluida la carrera entre pausa y autorización.
 - Commit `53966f7e7f52e102e4c1c38729028518f665a6b6`: el fixture de sesión caducada actualiza `created_at` a dos horas atrás y `expires_at` a un minuto atrás, sin relajar el esquema. Resultado CI del commit pendiente.
+
+### Gate verde de expiración y concurrencia (2026-10-23)
+
+- HEAD `3f79d4d87b9ee9664650ed548602e1b6ab135946`: **Sabora CI 39941886186 SUCCESS** y **Bootstrap 39941886176 SUCCESS** (GitHub Actions). Incluye 12 pruebas reales del driver PG17, entre ellas caducidad independiente de visita y bearer y carrera pausa/autorización.
+- La solución respeta los constraints `customer_table_visit_lifetime` y `customer_session_expiry_check` sin cambios en migraciones. No hay despliegue, merge, alteración de Supabase operativo ni intervención sobre Fleetia.
+- Próximo bloque: analizar los interleavings inversos y posibles puntos de integración con API sin tocar la interfaz administrativa asignada a Codex. Evitar presentar el gate PG17 como prueba HTTP extremo a extremo.
