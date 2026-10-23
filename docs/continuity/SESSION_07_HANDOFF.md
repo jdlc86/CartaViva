@@ -685,3 +685,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `254e7f094079278e0841cb9eb4f233e8a1de35c4` pasó ambos workflows SUCCESS.
 - La composición opt-in rechaza ahora dos pools diferentes cuando ambos declaran el mismo `options.user`; prueba Fastify confirma que el registro falla antes de exponer rutas. Dos usuarios declarados diferentes siguen admitidos.
 - **Límite:** esta comprobación no prueba la identidad efectiva de PostgreSQL ni reemplaza los permisos mínimos y las pruebas PG17; un pool sin `options.user` no se puede certificar por esta comprobación. Sin conexión al servidor productivo.
+
+### Protección adicional de pools declarados (23-10-2026)
+
+- HEAD anterior `ea5dc696cef62973837454d7d40b0a52833441bd`: Sabora CI y Bootstrap SUCCESS.
+- `isolated-customer-composition-candidate.mjs` rechaza pools diferentes con el mismo `options.connectionString`, además de mismo objeto o mismo `options.user`. Nueva regresión verifica fallo previo al registro de endpoints.
+- Comprobación defensiva de configuración declarada, **no prueba identidad efectiva de roles ni aislamiento real PostgreSQL**. No habilitar servidor operativo sin validación PG17 y credenciales mínimas independientes.
