@@ -601,3 +601,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Nueva suite `tests/customer-order-confirmation-pool-composition-candidate.test.mjs`: verifica rechazo de precio falsificado sin checkout, transacción con autorización de visita denegada y rollback, y error SQL privado con respuesta HTTP 503 sin filtraciones. Utiliza un cliente `pg` simulado, **no** una base PostgreSQL real.
 - Último HEAD previo `6b2414a940470157498cf3843daa1bf8a2757f59`: Sabora CI 39974013642 SUCCESS; Bootstrap 39974013572 SUCCESS. El nuevo HEAD requiere CI independiente.
 - Puertas pendientes: PostgreSQL 17 desechable de extremo a extremo, política y grants de la identidad de escritura, integración QR→cocina, contrato público de aceptación de repricing. Sin deploy, merge ni modificaciones operativas.
+
+### Pool HTTP: rechazo de visita corrupta y conexión inválida (23-10-2026)
+
+- `tests/customer-order-confirmation-pool-composition-candidate.test.mjs` cubre respuesta de visita durable con identificador de cliente inválido: 503, rollback y ausencia de filtraciones; también cliente de pool sin método query: 503 y descarte de conexión.
+- Son pruebas de integración con pool simulado; PostgreSQL 17 real continúa pendiente. No se activó ningún endpoint ni se modificó infraestructura.
