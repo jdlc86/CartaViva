@@ -642,3 +642,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `tests/customer-order-confirmation-transport.test.mjs` amplía cobertura para propagación de `AbortSignal`, prohibición de reintentos tras cancelación, mapeo exhaustivo de códigos públicos por HTTP y rechazo de respuestas que incorporen secretos/campos privados.
 - El HEAD anterior `5869dea527ea805b6ffb330dc680f964caa89519` pasó Sabora CI y Bootstrap; verificar CI del nuevo HEAD antes de declarar el bloque verde.
 - Sigue pendiente el hito de integración real QR/visita/quote/confirmación/cocina sobre PG17 desechable; el cliente HTTP no está conectado a la UI.
+
+### Catálogo público: cierre ante respuesta no JSON (23-10-2026)
+
+- `apps/client/src/catalog-loader.ts` exige `Content-Type: application/json` antes de procesar el catálogo. Una respuesta HTML de proxy/error no se interpreta como carta publicada.
+- Sin conexión a la sesión de mesa ni activación de pedidos. Sigue pendiente validación integral con PostgreSQL 17 desechable.
