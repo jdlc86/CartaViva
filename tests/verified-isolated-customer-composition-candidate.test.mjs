@@ -50,7 +50,8 @@ test('failed preflight leaves both HTTP routes unregistered and hides SQL errors
   assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
   assert.equal((await app.inject({method:'POST',
    url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
-  assert.equal(events.filter(x=>x==='release').length,broken===reader?1:2);
+  assert.equal(events.filter(x=>x==='release').length,broken===reader?0:1);
+  assert.equal(events.filter(x=>x==='discard').length,1);
   await app.close();
  }
 });
