@@ -515,6 +515,31 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  });
  await assert.rejects(repriced({...changedInput,acceptanceToken:consent.token,
   basketId:'different_basket'}),/order_context_forbidden|order_previous_quote_unavailable/);
+ // Rejected or stale consent must not create an order or consume the key.
+ const expired=issueCatalogRepriceAcceptance({
+  basketId,actorId,itemId,publishedRevision:2,snapshot:revised,
+  selection,quantity:1,secretKey:consentSecret,nowMs:Date.now()-700000,
+  ttlSeconds:60
+ });
+ const wrongActor=issueCatalogRepriceAcceptance({
+  basketId,actorId:'different_actor',itemId,publishedRevision:2,
+  snapshot:revised,selection,quantity:1,secretKey:consentSecret,
+  nowMs:Date.now()
+ });
+ const wrongBasket=issueCatalogRepriceAcceptance({
+  basketId:'different_basket',actorId,itemId,publishedRevision:2,
+  snapshot:revised,selection,quantity:1,secretKey:consentSecret,
+  nowMs:Date.now()
+ });
+ for(const token of [expired.token,wrongActor.token,wrongBasket.token,
+  consent.token.slice(0,-1)+(consent.token.endsWith('a')?'b':'a')]){
+  const denied=await repriced({...changedInput,acceptanceToken:token});
+  assert.equal(denied.status,'acceptance_required');
+ }
+ const beforeConsent=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE request_key=$1
+   AND table_id=$2`,[changedInput.requestKey,tableId]);
+ assert.equal(beforeConsent.rows[0].n,0);
  const accepted=await repriced({...changedInput,acceptanceToken:consent.token});
  assert.equal(accepted.status,'confirmed');
  assert.equal(accepted.result.orderId,'cafe0000-0000-4000-8000-0000000000a5');
