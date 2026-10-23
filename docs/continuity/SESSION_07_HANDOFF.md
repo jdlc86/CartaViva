@@ -321,3 +321,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `de46802ecda1b39f5db15f09c22c1b81829d33a9`: nuevo test integrado en `scripts/ci/catalog-postgres17-driver-integration.test.mjs` para aislar la causa de rechazo del token de sesión de cliente.
 - Fixture PG17 efímero, con transacción revertida al terminar: mesa `open`, QR vigente, visita sin revocar y sin caducar, sesión de cliente inicialmente válida. Primero `lockContext` devuelve `authorized=true` y `canOrder=true`; luego se revoca únicamente `customer_sessions.revoked_at`, se comprueba que mesa, QR y visita permanecen vigentes, y `lockContext` debe devolver ambos flags `false`.
 - El test prueba autorización del repositorio de visitas, no una ruta HTTP operativa. CI del SHA exacto pendiente; prohibido extrapolar éxito hasta confirmación. Codex conserva frontend administrativo sin solapamiento.
+
+### Gate de caducidad independiente de visita y sesión (2026-10-23)
+
+- Resultado verificado del commit `d1d62f7dafecc1da9ad480135b7995e603d7e2a8`: **Sabora CI 39939947192 SUCCESS** y **Bootstrap 39939947202 SUCCESS**. Incluye el caso de bearer revocado con visita activa.
+- Commit `3afc1e165b9f4dba05af0303fcc0695013728933`: nuevo caso PostgreSQL 17 efímero, `scripts/ci/catalog-postgres17-driver-integration.test.mjs`, que verifica por separado expiración de `customer_table_visits.expires_at` y de `customer_sessions.expires_at`, partiendo de un acceso válido. El fixture restaura la visita antes de caducar el bearer y verifica que la mesa sigue abierta y la visita no está revocada. Rollback final, sin Supabase operativo.
+- **Pendiente:** comprobar GitHub Actions para este nuevo HEAD. Este gate solo demuestra el repositorio de autorización; no habilita HTTP ni producción. Codex conserva exclusivamente `apps/management/**`.
