@@ -565,3 +565,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - Ampliación `tests/catalog-http-fastify-integration.test.mjs`: cuatro respuestas SQL adversas (precio negativo, extras económicos no representables, snapshot nulo e ID duplicado) deben responder 503 sin filtrar metadatos privados. Se verifica activación de rol SQL y liberación limpia de la transacción de solo lectura.
 - El pool de este test es simulado; el PostgreSQL 17 real se comprueba por CI separado. La ruta no se registra en `server.mjs`. Revalidar las Actions del HEAD nuevo.
+
+### Catálogo HTTP: parámetros hostiles y solo lectura (23-10-2026)
+
+- Añadida regresión Fastify en `tests/catalog-http-fastify-integration.test.mjs`: parámetros `role=admin`, `includeDraft=true`, `restaurant_id` y `sold_out=false` y cabeceras de autorización/cookie forjadas no alteran el SQL autorizado ni el DTO público. El agotado permanece visible pero no seleccionable. `POST /api/v1/catalog` devuelve 404, sin consulta.
+- Este test utiliza consulta inyectada simulada. No se registra la ruta en servidor productivo ni se habilita credencial de base de datos. Verificar CI del nuevo HEAD.
