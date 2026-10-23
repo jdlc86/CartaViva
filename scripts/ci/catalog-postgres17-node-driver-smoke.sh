@@ -19,11 +19,11 @@ npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --pa
 docker run -d --name "$container" \
  --publish 127.0.0.1::5432 \
  -e POSTGRES_PASSWORD=sabora_ci_ephemeral_only postgres:17-alpine >/dev/null
-# pg_isready can briefly report ready while entrypoint is still initializing.
-# Require a successful SQL query before proceeding with migrations.
+# The Docker entrypoint starts a temporary socket-only PostgreSQL server before
+# restarting the final TCP listener. Require TCP SQL readiness, not the socket.
 ready=false
 for attempt in $(seq 1 60); do
- if docker exec "$container" psql -X -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then
+ if docker exec "$container" psql -X -h 127.0.0.1 -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then
   ready=true
   break
  fi
@@ -34,13 +34,13 @@ if [[ "$ready" != true ]]; then
  docker logs "$container" >&2 || true
  exit 1
 fi
-docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+docker exec -i "$container" psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
 SQL
 for migration in supabase/migrations/*.sql; do
  test -f "$migration"
- docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" >/dev/null
+ docker exec -i "$container" psql -X -h 127.0.0.1 -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" >/dev/null
 done
 port="$(docker port "$container" 5432/tcp)"
 [[ "$port" =~ ^127\.0\.0\.1:[0-9]+$ ]] || { echo "Unexpected bind: $port" >&2; exit 1; }
