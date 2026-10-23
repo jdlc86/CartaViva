@@ -14,7 +14,10 @@ export function createVerifiedAdminTableReader({query}={}){
       !['admin','waiter'].includes(staff.role))
     throw Error('admin_projection_forbidden');
    if(options===null||typeof options!=='object'||Array.isArray(options)||
-      Object.keys(options).some(k=>!['limit','afterNumber'].includes(k)))
+      (Object.getPrototypeOf(options)!==Object.prototype&&Object.getPrototypeOf(options)!==null)||
+      Reflect.ownKeys(options).some(k=>typeof k!=='string'||
+       !['limit','afterNumber'].includes(k)||
+       !Object.hasOwn(Object.getOwnPropertyDescriptors(options)[k],'value')))
     throw Error('invalid_admin_projection_page');
    return candidate.listTables({role:staff.role,...options});
   }
