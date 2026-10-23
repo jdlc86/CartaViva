@@ -21,9 +21,13 @@ WITH instant AS (SELECT clock_timestamp() AS at),
   SELECT gen_random_uuid(),:'table_id',:'session_id',NULL,NULL,
    'Cliente','SB-23456789ABCD','visit-window',
    '{"schemaVersion":1,"totalCents":1000}'::jsonb,instant.at,
-   CASE WHEN $Q$first$Q$='first' THEN 'first' ELSE 'late' END,
+   CASE WHEN t.first_confirmed_at IS NULL THEN 'first'
+    WHEN instant.at<t.first_confirmed_at+
+     make_interval(secs=>t.grouping_window_seconds)
+    THEN 'grouped' ELSE 'late' END,
    '[{"category":"starter","name":"Plato","quantity":1}]'::jsonb
-  FROM instant RETURNING id,grouping,confirmed_at
+  FROM instant CROSS JOIN sabora.dining_tables t WHERE t.id=:'table_id'
+  RETURNING id,grouping,confirmed_at
  ), updated AS (
   UPDATE sabora.dining_tables t SET first_confirmed_at=created.confirmed_at
   FROM created WHERE t.id=:'table_id' AND created.grouping='first'
