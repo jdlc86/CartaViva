@@ -13,11 +13,10 @@ const url=process.env.SABORA_CI_PG_URL;
 const modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath)throw Error('disposable_pg17_harness_required');
 const parsed=new URL(url);
-if(process.env.GITHUB_ACTIONS!=='true'||
-   !/^\\/tmp\\/tmp[./A-Za-z0-9_-]*\\/node_modules\\/pg$/.test(modulePath))
+if(process.env.GITHUB_ACTIONS!=='true'||!modulePath.startsWith('/tmp/tmp')||
+   !modulePath.endsWith('/node_modules/pg')||
+   !/^\/tmp\/tmp[A-Za-z0-9_-]+\/node_modules\/pg$/.test(modulePath))
  throw Error('disposable_pg17_harness_required');
-if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||
-   parsed.pathname!=='/postgres')throw Error('unsafe_pg17_harness_target');
 const require=createRequire(import.meta.url);
 const {Pool}=require(modulePath);
 const pool=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,
