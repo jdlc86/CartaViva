@@ -10,6 +10,11 @@ const errorCodes: Record<number, ReadonlySet<string>>={
 const plain=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||
   Object.getPrototypeOf(value)===null);
+const allowedPayload=new Set(['tableId','visitId','basketId','actorId',
+ 'itemId','selection','quantity','requestKey','acceptanceToken',
+ 'qrToken','customerSessionToken']);
+const requiredPayload=['tableId','visitId','basketId','actorId','itemId',
+ 'selection','quantity','requestKey','qrToken','customerSessionToken'];
 const validKeys=(obj: unknown,keys: string[])=>plain(obj)&&Object.keys(obj).length===keys.length&&
  keys.every(key=>Object.hasOwn(obj,key));
 export async function confirmCustomerOrder({fetchImpl=globalThis.fetch,
@@ -20,7 +25,15 @@ export async function confirmCustomerOrder({fetchImpl=globalThis.fetch,
  if(typeof fetchImpl!=='function'||typeof endpoint!=='string'||
     !endpoint.startsWith('/')||endpoint.startsWith('//')||
     endpoint.includes('#')||endpoint.includes('?')||
-    !plain(payload)||typeof payload.requestKey!=='string')
+    !plain(payload)||Object.keys(payload).some(k=>!allowedPayload.has(k))||
+    requiredPayload.some(k=>!Object.hasOwn(payload,k))||
+    typeof payload.requestKey!=='string'||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(payload.requestKey)||
+    typeof payload.qrToken!=='string'||payload.qrToken.length<32||
+    payload.qrToken.length>512||
+    typeof payload.customerSessionToken!=='string'||
+    payload.customerSessionToken.length<32||
+    payload.customerSessionToken.length>512)
   throw Error('invalid_customer_confirmation_transport');
  let response: Response;
  try{
