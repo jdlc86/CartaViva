@@ -471,4 +471,21 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  const attempts=await pool.query(`SELECT count(*)::integer AS n
   FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
  assert.equal(attempts.rows[0].n,1);
+ // Competing real pool clients must serialize one new idempotency key.
+ // A new candidate uses random UUIDs; only one writer may win.
+ const concurrent=createCatalogOrderConfirmationPoolCandidate({
+  pool,secretKey:'ci-only-catalog-coordinator-secret-key-32'
+ });
+ const parallelInput={...input,requestKey:'authorized_parallel_0002'};
+ const results=await Promise.all(Array.from({length:3},()=>concurrent(parallelInput)));
+ assert.equal(results.filter(x=>x.status==='confirmed').length,1);
+ assert.equal(results.filter(x=>x.status==='replayed').length,2);
+ const parallelId=results[0].result.orderId;
+ assert.ok(results.every(x=>x.result.orderId===parallelId));
+ const parallelOrders=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.orders WHERE id=$1 AND session_id=$2`,[parallelId,inserted]);
+ assert.equal(parallelOrders.rows[0].n,1);
+ const parallelAttempts=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[parallelId]);
+ assert.equal(parallelAttempts.rows[0].n,1);
 });
