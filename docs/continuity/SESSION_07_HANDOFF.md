@@ -666,3 +666,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El commit `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows porque el test nuevo importaba `fastify` desde la raíz, donde pnpm no expone la dependencia. Corregido mediante `createRequire` desde `apps/api/package.json`.
 - Pruebas adicionales de la composición aislada: ante fallo de lectura, respuesta pública 503 sin filtración de errores SQL, ROLLBACK y descarte de cliente; varias lecturas consecutivas no usan el pool escritor.
 - Validar CI de HEAD antes de declarar el hito superado. Sin activación en servidor ni acceso a recursos productivos.
+
+### Corrección CI composición aislada (23-10-2026)
+
+- HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` en la nueva prueba de composición. La dependencia existe en el workspace `apps/api`, no en la raíz.
+- `tests/isolated-customer-composition-candidate.test.mjs` usa ahora `createRequire(new URL('../apps/api/package.json',import.meta.url))` para resolver Fastify desde el workspace correcto.
+- Commit correctivo `54590381528880c1bf845305b40f344505b10cd7`; verificar workflows antes de declarar verde.
