@@ -140,3 +140,24 @@ test('invalid optional adapters fail before any route registration',async()=>{
   await app.close();
  }
 });
+
+test('isolated composition rejects two different pools declaring the same database user',async()=>{
+ const app=Fastify();
+ const reader={...pool([]),options:{user:'shared_runtime_user'}};
+ const writer={...pool([]),options:{user:'shared_runtime_user'}};
+ assert.throws(()=>registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:reader,orderWriterPool:writer,confirmationSecret:secret
+ }),/invalid_isolated_customer_composition/);
+ assert.equal((await app.inject({method:'GET',url:'/api/v1/catalog'})).statusCode,404);
+ await app.close();
+});
+test('isolated composition permits distinct declared database users',async()=>{
+ const app=Fastify();
+ const reader={...pool([]),options:{user:'sabora_catalog_login'}};
+ const writer={...pool([]),options:{user:'sabora_order_login'}};
+ registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:reader,orderWriterPool:writer,confirmationSecret:secret
+ });
+ assert.equal((await app.inject({method:'GET',url:'/api/v1/catalog'})).statusCode,200);
+ await app.close();
+});
