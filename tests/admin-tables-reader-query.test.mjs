@@ -19,3 +19,13 @@ test('administrative SQL reader permits only the exact bounded statement',async(
  ])await assert.rejects(query(sql,params),/admin_tables_query_not_allowed/);
  assert.equal(seen.length,1);
 });
+
+test('administrative reader shields pagination arguments from a mutating driver',async()=>{
+ const input=[2,3];
+ const query=createAdminTablesReaderQuery({pool:{query:async(_sql,params)=>{
+  params[0]=999;
+  return {rows:[]};
+ }}});
+ await query(ADMIN_TABLES_SQL,input);
+ assert.deepEqual(input,[2,3]);
+});
