@@ -48,8 +48,9 @@ export function createCatalogVisitContextRepository(){
     [tableId,visitId,actorId,qrToken,customerSessionToken]);
    if(!response||!Array.isArray(response.rows)||response.rows.length>1)
     throw Error('invalid_catalog_visit_response');
+   if(response.rows.length===0)
+    return Object.freeze({authorized:false,canOrder:false});
    const record=response.rows[0];
-   if(!record)return Object.freeze({authorized:false,canOrder:false});
    if(!safeRecord(record))throw Error('invalid_catalog_visit_response');
    if(!uuid.test(record.table_id)||!uuid.test(record.session_id)||
       record.table_id.toLowerCase()!==tableId.toLowerCase()||
