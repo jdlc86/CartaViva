@@ -395,3 +395,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Gate del HEAD `2d980b6cded55047454a27169d99ce0a98f90ecd`: Sabora CI `39945296804` SUCCESS; Bootstrap `39945296830` SUCCESS. Carrera de rotación QR acreditada.
 - Commit `dbdb11e6feb17612a2b183b460c43e32ceb08ddf`: regresión PostgreSQL 17 de restricciones `visit_key`, `actor_id` y `customer_table_visit_lifetime`, con SAVEPOINT y rollback parcial tras cada error SQL para comprobar que no quedan visitas inválidas. Gate de este commit pendiente.
 - Mantener separadas las candidatas SQL y el runtime, y no tocar `apps/management/**` hasta entrega de Codex.
+
+### Revocación selectiva de visita y gate de restricciones (2026-10-23)
+
+- HEAD `592bfbc3a96f547f54d766a1834cfa2ef6a27b5b`: Sabora CI `39945657370` SUCCESS, Bootstrap `39945657379` SUCCESS, incluidas restricciones SQL de visitas y recuperación por SAVEPOINT.
+- Commit `344d74272b16f901b8a3f7eecacb9523cb81f76a`: prueba PG17 de revocación selectiva; dos visitas válidas de la misma mesa y mismo cliente se autorizan independientemente, revocar la primera no revoca la segunda. El gate CI de esta nueva prueba queda pendiente.
+- No se añade API de revocación ni grants. Continuar sin tocar la interfaz de Codex.
