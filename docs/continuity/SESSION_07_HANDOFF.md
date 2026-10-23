@@ -705,3 +705,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `tests/verified-isolated-customer-composition-candidate.test.mjs`: integración Fastify de verificación previa, fallo cerrado de login lector/escritor, ausencia de endpoints tras fallo y validación de configuración antes de consultar SQL.
 - **Importante:** pruebas actuales usan dobles de pool; no equivalen a prueba real PostgreSQL 17, revisión de grants o RLS. No habilitar producción.
 - HEAD previo `8c250bc243d3f5a8b6a49ed27546f205f6fe6340` tenía workflows en curso al comprobarlo. Validar CI del nuevo HEAD antes de declarar éxito.
+
+### Higiene de conexiones del preflight de identidad (23-10-2026)
+
+- HEAD anterior `a41c38bd6e74ed858a89e67bbb4325936f45e4fb`: Sabora CI y Bootstrap SUCCESS.
+- `isolated-pool-identity-preflight.mjs`: un cliente que falla la consulta o devuelve identidad malformada se libera con `release(true)` para descartarlo del pool; los clientes con lectura de identidad válida se devuelven normalmente. La discrepancia de identidad esperada sigue rechazándose sin exponer secretos.
+- Pruebas cubren lectura correcta, filas malformadas, fallo de consulta del lector y del escritor y descarte selectivo. CI de nuevos commits pendiente de comprobación.
+- No hay ejecución sobre PG17 real ni despliegue; los cambios solo afectan al módulo opt-in y a sus pruebas.
