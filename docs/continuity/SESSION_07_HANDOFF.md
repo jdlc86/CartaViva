@@ -255,3 +255,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Los workflows del HEAD `d95705944f8572ac58fe3ff1be52ac1072c68af6` fallaron con `catalog_ledger_append_only` (SQLSTATE 23514) al intentar `UPDATE sabora.catalog_displayed_quotes SET expires_at=...` en la prueba de escritor real. Los otros siete subtests pasaron.
 - `6bc8bcdc739dbcf4e3bf24f35bbca652d8af70aa` retira esa mutación de prueba: la caducidad no se debe simular editando un registro de evidencia económica protegido. Se mantiene el test de integridad de ledger con `SAVEPOINT` y rollback y se preserva el registro de cotización original.
 - No se altera el trigger, la migración ni la política append-only. Validación del nuevo HEAD pendiente.
+
+### Ruta positiva real del coordinador con QR, sesión y visita
+
+- `036e5754bb10d4a13ccc3472a61c66f86f1f46d6` añade al test Node+PostgreSQL 17 un fixture **confirmado exclusivamente en el contenedor Docker efímero de CI**: mesa abierta con hash de QR, perfil de cliente, hash de sesión, visita con versión de QR vigente, artículo publicado con snapshot validable y cotización económica persistida.
+- Invoca `createCatalogOrderConfirmationPoolCandidate` con `pg.Pool` real, espera `confirmed`, repite la misma petición y espera `replayed`, rechaza un cambio de cantidad bajo la misma clave idempotente y rechaza un QR erróneo aun con pedido ya confirmado. Verifica exactamente una orden, una línea de cocina y un intento económico.
+- A diferencia de los fixtures negativos anteriores, estos registros deben ser visibles desde conexiones diferentes: se confirman en la **base desechable** antes de llamar al coordinador y el contenedor/volúmenes se eliminan al finalizar el shell. No se permite ejecutar este test en una base operativa ni borrar el ledger.
+- **Pendiente:** verificar CI exacto del commit; ampliar con repricing/aceptación y concurrencia real de confirmaciones. No conectar HTTP, permisos runtime, Supabase operativo ni VPS.
