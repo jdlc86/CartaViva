@@ -536,3 +536,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `b7891bb0cbd835c949579fb827e6653b13f97f0a`: Sabora CI **SUCCESS** (39964323488), Bootstrap **SUCCESS** (39964323219).
 - `apps/api/src/admin-tables-read-composition.mjs` rechaza pools nulos, compartidos o sin método `query` antes de registrar la ruta; prueba de regresión en `tests/admin-tables-read-composition.test.mjs`.
 - La comprobación de objetos no acredita identidades SQL diferentes; sigue siendo obligatoria una verificación explícita de credenciales/roles mínimos antes de cualquier activación. CI del HEAD nuevo pendiente.
+
+### Hito vertical: Fastify público y catálogo con rol SQL acotado (23-10-2026)
+
+- HEAD anterior `382e3dabb3eff28ae99a31e3355e66fabf421218`: Sabora CI 39964864883 **SUCCESS** y Bootstrap 39964864903 **SUCCESS**.
+- `tests/catalog-http-fastify-integration.test.mjs` monta `GET /api/v1/catalog` en Fastify real, con `createCatalogScopedQuery` y pool simulado. Acredita `BEGIN → SET LOCAL ROLE sabora_catalog_reader → SELECT RPC → COMMIT`, proyección pública sin columnas privadas, headers no-store/nosniff, y fallo de SQL con `ROLLBACK`, conexión descartada y 503 sin secretos.
+- La prueba es HTTP real pero **el pool PostgreSQL es simulado**. El smoke de driver PostgreSQL 17 sigue siendo un gate independiente. `server.mjs` no registra esta ruta ni se habilitan credenciales/producción. Consultar CI del HEAD antes de afirmar éxito.
