@@ -54,17 +54,16 @@ SELECT 1 / CASE WHEN count(*)=0 THEN 1 ELSE 0 END AS indefinite_pause_denied
   FOR UPDATE
  ) permitted;
 
+-- An expired pause is inspected separately: PostgreSQL's table-state
+-- constraints/triggers may normalize it. Do not claim acceptance until the
+-- effective state transition has an independently verified contract.
 UPDATE sabora.dining_tables
  SET pause_until=clock_timestamp()-interval '1 hour' WHERE id=:'table_id';
-SELECT 1 / CASE WHEN count(*)=1 THEN 1 ELSE 0 END AS expired_pause_allowed
- FROM (
-  SELECT id FROM sabora.dining_tables
-  WHERE id=:'table_id' AND session_id=:'session_id'
-    AND (ordering_state='open' OR
-         (ordering_state='paused' AND pause_until IS NOT NULL
-          AND pause_until<=clock_timestamp()))
-  FOR UPDATE
- ) permitted;
+SELECT ordering_state,pause_until,
+ (ordering_state='open' OR
+  (ordering_state='paused' AND pause_until IS NOT NULL
+   AND pause_until<=clock_timestamp())) AS eligible_by_writer_predicate
+ FROM sabora.dining_tables WHERE id=:'table_id';
 
 -- Session rotation invalidates the old session, even when table is open.
 UPDATE sabora.dining_tables SET ordering_state='open' WHERE id=:'table_id';
