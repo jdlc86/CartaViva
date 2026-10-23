@@ -29,17 +29,17 @@ test('preflight checks effective PostgreSQL current_user and session_user on sep
  assert.deepEqual(w.releases,['release']);
 });
 test('preflight fails closed on impersonation, same role and role switching',async()=>{
- for(const [r,w] of [
+ for(const [index,[r,w]] of [
   [pool(writer),pool(writer)],
   [pool(reader,'shared_login'),pool(writer)],
   [pool(reader),pool(writer,reader)],
   [pool(reader),pool(reader)],
   [pool(reader,reader,{rows:[]}),pool(writer)],
   [pool(reader,reader,{rows:[{role_name:reader,login_name:reader},{role_name:reader,login_name:reader}]}),pool(writer)]
- ]){
+ ].entries()){
   await assert.rejects(()=>assertIsolatedCustomerPoolIdentities(args(r,w)),
    /invalid_pool_identity_preflight/);
-  assert.deepEqual(r.releases,[r.releases[0]==='discard'?'discard':'release']);
+  assert.deepEqual(r.releases,[index>=4?'discard':'release']);
  }
 });
 test('preflight never reveals database error or accepts unknown roles',async()=>{
