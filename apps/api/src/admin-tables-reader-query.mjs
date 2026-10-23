@@ -10,6 +10,6 @@ export function createAdminTablesReaderQuery({pool}={}){
      !Number.isSafeInteger(params[0])||params[0]<0||
      !Number.isSafeInteger(params[1])||params[1]<2||params[1]>101)
    throw Error('admin_tables_query_not_allowed');
-  return pool.query(sql,params);
+  return pool.query(sql,[...params]);
  };
 }
