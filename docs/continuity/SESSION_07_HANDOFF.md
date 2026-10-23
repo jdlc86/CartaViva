@@ -442,3 +442,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Las pruebas unitarias previas del candidato terminaron con Sabora CI y Bootstrap **SUCCESS** sobre `1d17d7c61703c8e53606373517e324222ddd49f5`.
 - **Pendiente:** comprobar resultado de GitHub Actions del nuevo SHA. Si falla por discrepancia de esquema, corregir candidato o fixture según el esquema documentado, nunca aplicar cambios al Supabase operativo para acomodar el test.
 - No conectar rutas HTTP ni habilitar botones hasta verificar autorización de servidor y permisos SQL mínimos.
+
+### Corrección PG17 y composición de identidad administrativa (23-10-2026)
+
+- Gate real PG17 sobre `c68ff141`: ambas Actions **FAILURE** por la subprueba 21/21 de proyección administrativa; las 20 pruebas previas pasaron. Causa: el envelope `Result` de `node-postgres` es una instancia del driver, no un objeto plano. Se mantiene validación estricta de `rows`, y se acepta el envelope del driver en `apps/api/src/admin-read-projection-candidate.mjs`; corrección final `814c171389c8770317e3aaaa39f9b361a2b944f6`.
+- Nuevo `apps/api/src/verified-admin-table-reader.mjs` y `tests/verified-admin-table-reader.test.mjs`: composición candidata que exige `verifiedIdentity` y `verifiedStaff` del mismo usuario y solo permite roles admin/waiter. Prohíbe inyectar `role` en opciones. **No equivale a verificar la membresía por sí mismo**; depende de hooks protegidos existentes y aún no está conectado a rutas.
+- Pendiente comprobar GitHub Actions del SHA posterior a la corrección. Sin despliegue, migraciones operativas ni concesión de permisos.
