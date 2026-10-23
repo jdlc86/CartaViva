@@ -38,3 +38,18 @@ test('admin read candidate rejects invalid pages and malformed SQL results',asyn
  }]})});
  await assert.rejects(bad.listTables({role:'admin'}),/invalid_admin_projection_response/);
 });
+
+test('admin pagination rejects malformed or unsorted lookahead row before returning page',async()=>{
+ for(const candidate of [
+  {...row(3),number:0},
+  {...row(3),number:2},
+  {...row(3),ordering_state:'unknown'},
+  {...row(3),capacity:0}
+ ]){
+  const read=createAdminReadProjectionCandidate({query:async()=>({
+   rows:[row(1),row(2),candidate]
+  })});
+  await assert.rejects(read.listTables({role:'admin',limit:2}),
+   /invalid_admin_projection_response/);
+ }
+});
