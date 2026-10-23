@@ -158,3 +158,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `scripts/ci/catalog-postgres17-driver-integration.test.mjs` usa el driver real `pg.Pool` con `createPostgresTransaction`: confirma transacción y decodificación de resultados, comprueba rollback de una inserción real en `sabora.dining_tables` desde otra conexión y comprueba serialización de dos clientes por `pg_advisory_xact_lock`. Es un primer gate del adaptador de transacciones, **no** la acreditación completa del coordinador catálogo→pedido→ledger.
 - Ambos workflows (`Sabora CI` y `Bootstrap Sabora lockfile`) ejecutan el gate adicional después de migraciones SQL. El contenedor temporal solo expone loopback en un runner efímero; no se toca Fleetia, Supabase ni producción.
 - **No declarar verde** hasta revisar los resultados de GitHub Actions para el HEAD de este bloque. Mantener PR #2 Draft; sin merge ni despliegue.
+
+### Extensión del gate Node real: agrupación, cocina y RLS (23-10-2026)
+
+- El HEAD `2a3ab5b54e26cd4230a9d560de4a03a40af287ce` quedó **SUCCESS** en Sabora CI `39922661503` y Bootstrap `39922661547`; acredita el adaptador transaccional real en PostgreSQL 17.
+- `5e200e07879fe250b81d7d04e41eb17005bcbc86` amplía `scripts/ci/catalog-postgres17-driver-integration.test.mjs`: ahora Node y el driver `pg` ejecutan en PostgreSQL 17 el CTE real de inserción y marca temporal para `first/grouped/late`, verifican las líneas de cocina, hacen `ROLLBACK` y comprueban desde otra conexión que no quedan pedidos ni líneas. Se mantiene el aislamiento del runner y la limpieza del contenedor.
+- Nuevo gate SQL consultado **desde Node**: `pg_class` exige `relrowsecurity`, `relforcerowsecurity` y ausencia de `INSERT` para `anon` y `authenticated` en `orders`, `order_lines` y `catalog_confirmation_attempts`. Esto no equivale a acreditar un rol escritor de mínimos privilegios.
+- Pendiente revisar CI de este HEAD; los nuevos escenarios todavía no acreditan la fábrica completa `createCatalogOrderConfirmationPoolCandidate`, replay y consentimiento económico reales. No activar runtime ni grants.
