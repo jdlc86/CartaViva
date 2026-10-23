@@ -24,6 +24,9 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Exercise the actual candidate order CTE, kitchen trigger and grouping.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-writer-sql-smoke.sql
+# Verify nondefault grouping window and first-timestamp preservation in real PG17.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-order-writer-configurable-window-smoke.sql
 # Exercise ledger constraints with disposable fixtures, rolled back in SQL.
 docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-quote-ledger-smoke.sql
