@@ -7,7 +7,8 @@ import {registerAdminTablesReadRoute} from './admin-tables-read-route.mjs';
 export function registerProtectedAdminTablesReadFromPools(app,{
  staffPool,adminTablesPool,issuer,getTrustedKeys,verify,observe
 }={}){
- if(!staffPool||!adminTablesPool||staffPool===adminTablesPool)
+ if(!staffPool||!adminTablesPool||staffPool===adminTablesPool||
+    typeof staffPool.query!=='function'||typeof adminTablesPool.query!=='function')
   throw Error('invalid_admin_tables_pool_isolation');
  const forRoles=createStaffProtectedHooksFromPool({
   pool:staffPool,issuer,getTrustedKeys,verify,observe
