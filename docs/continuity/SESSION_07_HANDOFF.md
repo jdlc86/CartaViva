@@ -419,3 +419,12 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - CI de HEAD `83ff79a9c7fbacbdc46c6e55e9e31cb6e21d31d6` falló: 19/20 tests PG17 pasan; el test de caducidad independiente intentó retroceder `expires_at` de `customer_sessions` sin ajustar `created_at`, infringiendo `customer_session_expiry_check`. Bootstrap también figuraba FAILURE en ese SHA.
 - Commit `7e322d5bbe9be492984410f862aa47a20d74449b` corrige únicamente el fixture: al simular sesión expirada se retrocede `created_at` dos horas, manteniendo `expires_at` un minuto en el pasado. **No se relaja ninguna restricción SQL**.
 - Verificar el nuevo CI antes de declarar verde. Evitar ediciones concurrentes sin volver a leer SHA del archivo.
+
+### Conciliación frontend administrativo Codex Fase 2 (23-10-2026)
+
+- Entrega Codex PR #3 `feat/sabora-management-ui`, SHA `a4e10eecfb92a239b92bcef3f0d4efc95c5ef2f9`, conforme a `docs/design/SABORA_ADMIN_UI_CODEX_HANDOFF.md`.
+- **Integración autorizada expresamente por el usuario** y ejecutada con merge no destructivo al desarrollo `feat/sabora-pnpm-bootstrap`: SHA `9fbc534644269af6463af314a46a5dce29945910`. PR #3 fusionado; PR #2 sigue como línea de desarrollo.
+- Sobre el SHA de merge: `Sabora CI` run `39947741785` **SUCCESS**; `Bootstrap Sabora lockfile` run `39947741886` **SUCCESS**.
+- La PWA administrativa incorpora resumen, mesas/QR, catálogo, comandas, equipo y Estudio de imágenes local con revisión. **No es backend operativo**: acciones privilegiadas, Google, aprobación durable, publicación, almacenamiento y asociación siguen deshabilitados.
+- Siguiente prioridad según el handoff de Codex: contratos de lectura administrativa autenticada, comenzando por proyecciones read-only de mesas y catálogo, con autorización servidor y estados versionados. No deducir rutas ni tablas a partir de la interfaz. Antes de habilitar escritura, acreditar identidad, membresía, titularidad, auditoría e idempotencia.
+- No se ejecutó despliegue, merge a rama principal, migración Supabase operativa, ni intervención en VPS/Fleetia.
