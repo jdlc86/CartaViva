@@ -76,3 +76,19 @@ test('writer query failure discards only the failed writer connection',async()=>
  assert.deepEqual(r.releases,['release']);
  assert.deepEqual(w.releases,['discard']);
 });
+
+test('preflight never opens writer connection after reader role mismatch',async()=>{
+ const r=pool(writer),w=pool(writer);
+ await assert.rejects(()=>assertIsolatedCustomerPoolIdentities(args(r,w)),
+  /invalid_pool_identity_preflight/);
+ assert.deepEqual(r.releases,['release']);
+ assert.deepEqual(w.queries,[]);
+});
+test('preflight refuses identical pool objects without opening a connection',async()=>{
+ const shared=pool(reader);
+ await assert.rejects(()=>assertIsolatedCustomerPoolIdentities({
+  catalogReaderPool:shared,orderWriterPool:shared,
+  expectedCatalogLogin:reader,expectedOrderLogin:writer
+ }),/invalid_pool_identity_preflight/);
+ assert.deepEqual(shared.queries,[]);
+});
