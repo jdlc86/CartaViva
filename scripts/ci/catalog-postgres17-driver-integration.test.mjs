@@ -401,3 +401,74 @@ test('real PG17 coordinator rejects QR mismatch even for an existing open table'
   FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
  assert.equal(attempts.rows[0].n,0);
 });
+
+test('real PG17 coordinator confirms authorized visit and replays without duplicate order',async()=>{
+ // All committed fixtures live only in the CI-owned Docker PostgreSQL instance;
+ // the shell trap removes the entire container and its anonymous volumes.
+ const tableId='cafe0000-0000-4000-8000-0000000000a1';
+ const itemId='cafe0000-0000-4000-8000-0000000000a2';
+ const customerId='cafe0000-0000-4000-8000-0000000000a3';
+ const orderId='cafe0000-0000-4000-8000-0000000000a4';
+ const qrToken='ci_authorized_qr_'.repeat(4);
+ const sessionToken='ci_authorized_session_'.repeat(3);
+ const snapshot={name:'Plato autorizado',category:'Primeros',priceCents:1200,
+  allergens:[],options:[],extras:[],discount:null};
+ const selection={options:{},extras:[]};
+ const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
+  snapshot,selection,quantity:1});
+ const visitId='visit_real_authorized',actorId='actor_real_authorized';
+ const basketId='basket_real_authorized';
+ const inserted=await withTransaction(async query=>{
+  const table=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930301,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCD','Cliente autorizado')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),clock_timestamp()+interval '1 hour')`,
+   [customerId,sessionToken]);
+  await query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,clock_timestamp()+interval '1 hour')`,
+   [tableId,table.rows[0].session_id,customerId,visitId,actorId,
+    table.rows[0].qr_version]);
+  await query(`INSERT INTO sabora.catalog_items
+   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
+   VALUES ($1,$2::jsonb,1,1,$2::jsonb,clock_timestamp())`,
+   [itemId,JSON.stringify(snapshot)]);
+  await query(`INSERT INTO sabora.catalog_displayed_quotes
+   (table_id,session_id,visit_id,basket_id,actor_id,item_id,
+    published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10::jsonb,
+    clock_timestamp()+interval '5 minutes')`,
+   [tableId,table.rows[0].session_id,visitId,basketId,actorId,itemId,
+    evidence.subtotalCents,evidence.discountCents,evidence.totalCents,
+    JSON.stringify(evidence)]);
+  return table.rows[0].session_id;
+ });
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
+  pool,secretKey:'ci-only-catalog-coordinator-secret-key-32',
+  newOrderId:()=>orderId
+ });
+ const input={tableId,visitId,basketId,actorId,itemId,selection,quantity:1,
+  requestKey:'authorized_real_0001',qrToken,customerSessionToken:sessionToken};
+ const first=await confirm(input);
+ assert.equal(first.status,'confirmed');
+ assert.equal(first.result.orderId,orderId);
+ const replay=await confirm(input);
+ assert.equal(replay.status,'replayed');
+ assert.equal(replay.result.orderId,orderId);
+ await assert.rejects(confirm({...input,quantity:2}),/order_idempotency_conflict/);
+ await assert.rejects(confirm({...input,qrToken:'wrong_'.repeat(8)}),
+  /order_context_forbidden/);
+ const orders=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.orders WHERE id=$1 AND session_id=$2`,[orderId,inserted]);
+ assert.equal(orders.rows[0].n,1);
+ const lines=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.order_lines WHERE order_id=$1`,[orderId]);
+ assert.equal(lines.rows[0].n,1);
+ const attempts=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
+ assert.equal(attempts.rows[0].n,1);
+});
