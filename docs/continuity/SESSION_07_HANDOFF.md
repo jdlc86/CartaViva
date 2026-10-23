@@ -577,3 +577,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - La respuesta minimiza el DTO a `status` y `orderId`; confirmación 201, replay idempotente 200, aceptación de cambio 409 **sin publicar todavía token ni evidencia económica**. Errores conocidos se mapean a 400/403/409; desconocidos a 503 sin detalles internos. Cabeceras no-store/nosniff y límite de cuerpo.
 - `tests/customer-order-confirmation-http-candidate.test.mjs`: Fastify real con coordinador simulado; éxito/replay, aceptación pendiente, fallos conocidos y privados, respuesta malformada, entrada inválida y ausencia de dependencia.
 - **No operativo**: faltan contrato público versionado para reaceptación de precios, integración de credenciales/roles transaccionales, prueba real del circuito completo QR→pedido→cocina y validación de CI. No activar en runtime ni Supabase operativo antes de esas puertas. No se tocó `apps/management/**` de Codex.
+
+### Hito: Fastify → coordinador transaccional real de pedidos (23-10-2026)
+
+- `tests/customer-order-confirmation-http-candidate.test.mjs` conecta la ruta Fastify real con `createCatalogConfirmationCoordinator` real. Comprueba que el QR opaco y el token de sesión pasan a `lockContext` dentro de transacción, seguidos de idempotencia, bloqueo de catálogo, cita previa y persistencia, antes de COMMIT. El DTO HTTP no expone evidencia económica interna.
+- Caso negativo: visita no autorizada aborta con 403 y ROLLBACK, sin consultar catálogo ni persistir pedidos.
+- Repositorio y transacción siguen simulados: **no** prueba aún PostgreSQL real ni funcionamiento QR→cocina. Sin activar ruta en `server.mjs`, sin modificar Supabase operativo, VPS, Fleetia ni interfaz de Codex. Revisar CI del HEAD antes de afirmar validación.
