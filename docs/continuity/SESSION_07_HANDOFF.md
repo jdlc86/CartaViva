@@ -111,3 +111,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD previo `9d9275860202e9a0b450293e1b0aa3b2aed96ad8` acreditado: Sabora CI `39910161877` SUCCESS y Bootstrap `39910161856` SUCCESS.
 - `aa8f2a09a48d195e23e2451bf9b5823fff9ede36`: el simulador de la composición completa admite primera confirmación previa y ventana configurable. Nuevas regresiones para pedido **grouped** antes de vencer la ventana, **late** exactamente al vencer, bloqueo de escritura si sube el precio sin consentimiento y replay con fingerprint distinto. Conserva la primera marca temporal y comprueba rollback y liberación de conexión.
 - Estas pruebas complementan, **no sustituyen**, los smoke SQL PG17 existentes. Sigue pendiente la conexión Node + `pg` a PG17 real, migraciones/fixtures y rol mínimo. No se han cambiado dependencias ni generado un lockfile ficticio.
+
+## PostgreSQL 17 real: ventana configurable de agrupación (23-10-2026)
+
+- `f5abb1541cc165fdfb390c307cb48cae6fb549c1`: nuevo `scripts/ci/catalog-order-writer-configurable-window-smoke.sql` para una mesa aislada con ventana de **60 segundos** (distinta de 300): confirma primer pedido, segundo pedido dentro de ventana, tercero fuera de ventana, proyección de cocina y preservación del primer timestamp en ambos casos. Los datos se revierten con `ROLLBACK`.
+- `e20b17ec0814a39b6f721f4e0650d4c2743fa821`: incorpora el smoke al script canónico `scripts/ci/postgres-migration-smoke.sh`, en contenedor PostgreSQL 17 `--network none` de GitHub CI.
+- **Alcance:** SQL real en PostgreSQL 17, pero no driver Node `pg`. El gate de integración de Node, lockfile y mínimos privilegios sigue pendiente. Corregir CI si falla antes de dar el bloque por acreditado.
