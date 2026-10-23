@@ -188,3 +188,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `1329f0e9dd6f1e80358b954caa6f366d6ca0a21c`: el mismo fixture transaccional invoca ahora `createCatalogOrderWriter` **tres veces** contra PostgreSQL 17 real: primera confirmación, agrupación a 30 segundos y llegada tardía a 301 segundos, usando nuevas quotes y claves idempotentes por intento. Comprueba para cada una la clasificación, la proyección de cocina y la fila de ledger, sin copiar la implementación del CTE.
 - Se mantiene el rechazo de quote inválida bajo `SAVEPOINT` y el `ROLLBACK` de todo el fixture, imprescindible porque el ledger es append-only. No se cambia el comportamiento operativo ni la migración.
 - **No confundir este gate con el coordinador completo**: falta validar la lectura autorizada de QR/visita y la resolución de precio/reprice con el `pg.Pool` real. Pendiente CI del nuevo HEAD.
+
+### Carrera de inicialización Docker PostgreSQL: socket temporal frente a TCP final
+
+- El Bootstrap `39926305324` del HEAD `193ec177...` falló al crear los roles: `psql: connection to server on socket ... No such file or directory`. La comprobación SQL previa contra el socket podía conectar al **servidor temporal del entrypoint**, que se detiene antes de arrancar PostgreSQL definitivo. Esperar más tiempo al socket no garantiza disponibilidad del servidor final.
+- `bc338d9d0e79dd8a88ff73989fd302a559943a82` exige conexión **TCP `127.0.0.1` dentro del contenedor** para readiness, roles y migraciones; `0eca9e3de48cec2dc5c30273fa0e79b34726d859` añade `PGPASSWORD` de CI para autenticar ese TCP. La contraseña solo corresponde al contenedor desechable, no a ningún entorno real.
+- Esta solución evita depender de la vida del socket de inicialización. Revisar ambos workflows del HEAD; la prueba Node sigue siendo un gate aislado sin permisos de runtime ni despliegue.
