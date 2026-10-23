@@ -274,3 +274,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `a833f12763bf47df59a27424f50f3e1eccba2fa2` extiende el fixture autorizado: republica un plato de 1200 a 1600 céntimos con `sabora.publish_catalog_item`, manteniendo inmutable la cotización previa.
 - El coordinador debe devolver `acceptance_required` sin insertar pedido, luego acepta exclusivamente un token HMAC emitido para el mismo actor, cesta, artículo, revisión, selección y cantidad; un cambio de cesta se rechaza. Tras consentimiento se confirma el pedido, se repite idempotentemente y se comprueba `accepted_reprice=true` y evidencia de 1600 céntimos en el ledger real.
 - Todo permanece en el PostgreSQL 17 de Docker efímero de GitHub Actions. Es prueba candidata; no equivale a activar el flujo HTTP ni a desplegar. Inspeccionar resultado del HEAD exacto y corregir cualquier regresión antes de considerar el gate cerrado.
+
+### Rechazos de consentimiento en PG17 real
+
+- `12268d02ea6f944ba952695663103fd7127f2a26`: amplía el caso de cambio de precio con tokens HMAC caducados, emitidos para otro actor, emitidos para otra cesta y manipulados. Cada uno debe producir `acceptance_required` sin insertar intento económico ni consumir la clave idempotente. Después, el token correcto debe confirmar y registrar la evidencia.
+- Los rechazos se ejecutan sobre el mismo contexto autorizado, sin confiar en datos económicos del cliente. No se modifican tablas de cotizaciones inmutables.
+- CI del HEAD pendiente; no activar HTTP, roles runtime, migraciones operativas, merge ni VPS.
