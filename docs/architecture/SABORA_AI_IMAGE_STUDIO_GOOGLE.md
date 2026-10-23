@@ -36,3 +36,13 @@ La elección de Google **no implica** que exista una integración activa, una AP
 Sin merge, migraciones en Supabase operativo ni despliegue VPS sin autorización expresa. **Fleetia y cualquier otro proyecto del VPS quedan completamente fuera de alcance**.
 
 Documento de continuidad: `docs/continuity/SESSION_07_HANDOFF.md`.
+
+## Contrato de trabajo paralelo y conformidad visual
+
+La implementación inicial del estudio en Codex Desktop se limita a la **PWA administrativa**, sin llamadas a Google, backend, migraciones, permisos operativos ni publicación real. Debe realizarse en una **rama propia** desde el HEAD actualizado de `feat/sabora-pnpm-bootstrap` y mediante **PR Draft** dirigido a dicha rama, sin merge. El desarrollo del backend de pedidos, sesiones, visitas, QR, catálogo transaccional y PostgreSQL corresponde al asistente principal. No se permite solapamiento ni edición de `apps/api/**`, `apps/client/**`, `supabase/**`, `scripts/ci/**` ni `.github/workflows/**`.
+
+**Los estilos visuales aprobados ya existen y son vinculantes.** Antes de codificar, localizar y leer la documentación de diseño vigente, componentes, tokens, CSS y patrones aprobados en el repositorio. No crear otro design system, paleta, tipografía, navegación, cabecera ni estructura global; no añadir bibliotecas visuales sin autorización. Reutilizar los estilos aprobados y limitar el CSS nuevo al estudio, evitando efectos globales. No asumir que cualquier maqueta actual representa automáticamente un estilo aprobado: contrastar con documentación. Si no puede identificarse con certeza el contrato visual, documentar el bloqueo y no inventar un diseño.
+
+El ámbito permitido se limita a `apps/management/src/main.tsx`, componentes y lógica local nuevos bajo `apps/management/src/image-studio/`, pruebas locales en `apps/management/tests/` y estilos **estrictamente acotados** en `apps/management/src/style.css` si son indispensables y compatibles. La documentación de entrega se guardará en `docs/design/SABORA_IMAGE_STUDIO_UI_HANDOFF.md`; no editar la continuidad compartida de sesión 7. Cualquier ampliación requiere coordinación previa.
+
+El estudio debe mostrar selección y vista previa local, validación de archivos, formatos previstos, comparación y estados vacíos/errores; toda acción de generación, aprobación persistente o publicación debe quedar deshabilitada y rotulada como pendiente de backend. Prohibido simular éxito de Gemini o datos operativos. Validar build, TypeScript y pruebas disponibles; aportar evidencias visuales si el entorno lo permite, además de informe de conformidad con los estilos aprobados y estado CI del SHA exacto. No desplegar ni tocar Supabase operativo, VPS, Fleetia u otros proyectos.
