@@ -327,3 +327,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Resultado verificado del commit `d1d62f7dafecc1da9ad480135b7995e603d7e2a8`: **Sabora CI 39939947192 SUCCESS** y **Bootstrap 39939947202 SUCCESS**. Incluye el caso de bearer revocado con visita activa.
 - Commit `3afc1e165b9f4dba05af0303fcc0695013728933`: nuevo caso PostgreSQL 17 efímero, `scripts/ci/catalog-postgres17-driver-integration.test.mjs`, que verifica por separado expiración de `customer_table_visits.expires_at` y de `customer_sessions.expires_at`, partiendo de un acceso válido. El fixture restaura la visita antes de caducar el bearer y verifica que la mesa sigue abierta y la visita no está revocada. Rollback final, sin Supabase operativo.
 - **Pendiente:** comprobar GitHub Actions para este nuevo HEAD. Este gate solo demuestra el repositorio de autorización; no habilita HTTP ni producción. Codex conserva exclusivamente `apps/management/**`.
+
+### Carrera real entre pausa de mesa y autorización (2026-10-23)
+
+- Commit `adb955220e46316bd8d57ae72fac695c9e884ec8`: nuevo caso PG17 sobre dos conexiones independientes del pool. Crea mesa abierta y visita válida en Docker efímero, retiene en la transacción A el lock de UPDATE que pausa la mesa, y lanza en la transacción B `createCatalogVisitContextRepository().lockContext`. La lectura de autorización debe esperar el lock, y tras COMMIT de la pausa debe devolver `authorized=false`, `canOrder=false`. Se comprueba estado persistido `paused`.
+- Esta prueba comprueba el orden transaccional **pausa antes de autorización**, no todos los posibles interleavings ni una confirmación HTTP. La tabla fixture queda exclusivamente en contenedor PG17 desechable, sin producción.
+- El gate de caducidad del commit `7dc21d08dc3662498482063d94d7f30caca1f06c` seguía en curso al comenzar este bloque. **Nuevo SHA pendiente de CI**. No atribuir SUCCESS sin consultar los resultados.
