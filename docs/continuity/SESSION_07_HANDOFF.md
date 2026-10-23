@@ -756,3 +756,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `apps/client/src/catalog.ts`, `apps/client/src/main.tsx` y `tests/client-catalog.test.mjs` implementan y prueban la funcionalidad. Pedidos permanecen bloqueados hasta autorización de visita QR.
 - Se reparó también el fallo CI previo de importación de Fastify en tests desde el workspace raíz usando `createRequire` relativo a `apps/api/package.json`.
 - Comprobar CI del nuevo HEAD antes de darlo por verde. No hay despliegue.
+
+### Reparación y ampliación del hito de composición aislada (24-10-2026)
+
+- CI de `2094d8d6193f2fdf23153be06ec505b610d1fddf` rojo por `ERR_MODULE_NOT_FOUND: fastify` al importar desde `tests/` (workspace raíz). Corregido con `createRequire` anclado a `apps/api/package.json`, sin añadir dependencias globales.
+- La suite `tests/isolated-customer-composition-candidate.test.mjs` ahora también comprueba rechazo de precios forjados sin SQL y rollback/descartado del lector cuando falla la consulta; los errores privados no salen por HTTP y el pool escritor permanece intacto.
+- **Puerta de hito**: comprobar ambos workflows del último HEAD; no considerar cerrado hasta SUCCESS. Continúan pendientes visitas QR reales y conexión a la PWA.
