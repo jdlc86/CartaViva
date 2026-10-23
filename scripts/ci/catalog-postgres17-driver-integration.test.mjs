@@ -5,6 +5,7 @@ import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction
 import {createCatalogOrderWriter} from '../../apps/api/src/catalog-order-writer.mjs';
 import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence.mjs';
 import {createCatalogConfirmationReadRepository} from '../../apps/api/src/catalog-confirmation-read-repository.mjs';
+import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/catalog-order-confirmation-candidate.mjs';
 
 // Explicitly opt-in only for the disposable PostgreSQL 17 GitHub CI harness.
 // No operational DSN is read from runtime configuration.
@@ -299,4 +300,28 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
  const absentLedger=await pool.query(`SELECT count(*)::integer AS n
   FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
  assert.equal(absentLedger.rows[0].n,0);
+});
+
+test('real PG17 coordinator refuses unrecognized QR/visit and never persists',async()=>{
+ const tableId='cafe0000-0000-4000-8000-000000000091';
+ const itemId='cafe0000-0000-4000-8000-000000000092';
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
+  pool,secretKey:'ci-only-catalog-coordinator-secret-key-32',
+  newOrderId:()=> 'cafe0000-0000-4000-8000-000000000093'
+ });
+ const input={tableId,visitId:'visit_real_denied',basketId:'basket_real_denied',
+  actorId:'actor_real_denied',itemId,selection:{options:{},extras:[]},
+  quantity:1,requestKey:'request_real_denied_01',
+  qrToken:'q'.repeat(64),customerSessionToken:'s'.repeat(64)};
+ const table=await pool.query('SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE id=$1',[tableId]);
+ assert.equal(table.rows[0].n,0);
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ // A replay key cannot bypass visit authorization, even with a real pool.
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ const orders=await pool.query('SELECT count(*)::integer AS n FROM sabora.orders WHERE id=$1',
+  ['cafe0000-0000-4000-8000-000000000093']);
+ assert.equal(orders.rows[0].n,0);
+ const attempts=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
+ assert.equal(attempts.rows[0].n,0);
 });
