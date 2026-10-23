@@ -486,8 +486,10 @@ test('query boundary rejects mutable and nonserializable SQL bindings before dri
    await assert.rejects(query('SELECT $1',[value]),/invalid_transaction_query/);
   }
   assert.deepEqual(calls,['BEGIN']);
+  await assert.rejects(query('SELECT $1, $2, $3, $4, $5',
+   ['safe',123,true,null,undefined]),/invalid_transaction_query/);
   await query('SELECT $1, $2, $3, $4, $5',
-   ['safe',123,true,null,undefined]);
+   ['safe',123,true,null,null]);
  });
  assert.deepEqual(calls,['BEGIN','SELECT $1, $2, $3, $4, $5','COMMIT']);
 });
