@@ -38,3 +38,11 @@ export function filterCatalog(items:readonly MenuItem[],category:CategoryFilter)
 export function formatPrice(priceCents:number){
  return new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(priceCents/100);
 }
+
+export function searchPublishedCatalog(items:readonly MenuItem[],category:CategoryFilter,search:string,onlyAvailable=false):readonly MenuItem[]{
+ const normalized=search.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es-ES');
+ const categoryItems=filterCatalog(items,category);
+ return categoryItems.filter(item=>(!onlyAvailable||item.available)&&
+  (!normalized||[item.name,item.category,...item.allergens].some(value=>
+   value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es-ES').includes(normalized))));
+}
