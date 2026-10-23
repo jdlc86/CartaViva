@@ -66,8 +66,8 @@ export function createPostgresTransaction({ pool } = {}) {
           if (typeof value === 'string' &&
               (Buffer.byteLength(value, 'utf8') > 65536 || value.includes('\u0000')))
             throw Error('invalid_transaction_query');
-          if (typeof value === 'function' || typeof value === 'symbol' ||
-              typeof value === 'bigint' ||
+          if (value === undefined || typeof value === 'function' ||
+              typeof value === 'symbol' || typeof value === 'bigint' ||
               (typeof value === 'number' && !Number.isSafeInteger(value)))
             throw Error('invalid_transaction_query');
           return value;
