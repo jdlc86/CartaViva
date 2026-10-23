@@ -712,3 +712,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `isolated-pool-identity-preflight.mjs`: un cliente que falla la consulta o devuelve identidad malformada se libera con `release(true)` para descartarlo del pool; los clientes con lectura de identidad válida se devuelven normalmente. La discrepancia de identidad esperada sigue rechazándose sin exponer secretos.
 - Pruebas cubren lectura correcta, filas malformadas, fallo de consulta del lector y del escritor y descarte selectivo. CI de nuevos commits pendiente de comprobación.
 - No hay ejecución sobre PG17 real ni despliegue; los cambios solo afectan al módulo opt-in y a sus pruebas.
+
+### CI de composición aislada: corrección de resolución pnpm
+
+- HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf`: ambos workflows FAIL por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importarlo desde el directorio raíz `tests/`. Con pnpm, Fastify pertenece al workspace `apps/api`.
+- Corregido el test para cargar Fastify mediante `createRequire(new URL('../apps/api/package.json', import.meta.url))`, sin alterar dependencias ni lockfile.
+- Verificar ambos workflows del nuevo HEAD antes de declarar éxito. No se modificaron servidores, Supabase ni Fleetia.
