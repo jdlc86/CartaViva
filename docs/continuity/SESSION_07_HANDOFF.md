@@ -407,3 +407,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `28c1a89428c6c764b859d0dd5e17455096fc970b`: prueba PG17 de ciclo abierto → cerrado → abierto, con visita antigua inicialmente válida. Comprueba rotación de `session_id`, revocación duradera y rechazo de visita antigua incluso después de reabrir la mesa. No se crea writer HTTP ni grants.
 - El gate del commit `9ec9b511300ea4c836bea3bdca5d97efd0291138` seguía `in_progress` en la última consulta; no atribuirle SUCCESS sin verificar. El nuevo test también necesita su propio gate.
 - Continúa el aislamiento del trabajo de Codex en `apps/management/**`, sin conciliación prematura ni despliegues.
+
+### Caducidades independientes de visita y bearer (2026-10-23)
+
+- Commit `9f840d6dd497dffd49d86fb94bedc8fc49823717`: prueba PG17 con visita y sesión inicialmente válidas; primero caduca la visita mientras el bearer sigue vigente y se rechaza; después se restaura únicamente el vencimiento de visita en el fixture y caduca el bearer, comprobando rechazo independiente. No modifica el contrato ni expone endpoint.
+- En la última consulta, Sabora CI `39946779829` y Bootstrap `39946779702` del commit `540532fb` seguían en ejecución; el nuevo test queda pendiente de su propio gate.
+- Se conserva aislamiento de Codex y prohibición de despliegue.
