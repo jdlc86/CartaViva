@@ -768,3 +768,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Los workflows del HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf` fallaron por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importar desde `tests/isolated-customer-composition-candidate.test.mjs`. Con pnpm, Fastify pertenece al workspace `apps/api`, no al paquete raíz.
 - El test ahora resuelve Fastify mediante `createRequire(new URL('../apps/api/package.json',import.meta.url))`. No se añadió dependencia global ni se cambió el lockfile.
 - Verificar CI del commit correctivo antes de declarar el hito cerrado.
+
+### Incidencia de integración: resolución Fastify en workspace (24-10-2026)
+
+- Commit `2094d8d6193f2fdf23153be06ec505b610d1fddf`: ambos workflows fallaron en Test. Logs: `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importarlo desde `tests/isolated-customer-composition-candidate.test.mjs` (raíz del monorepo).
+- Corrección `0eb450510c128f747cb71251e911d266eea72358`: resolver Fastify con `createRequire(new URL('../apps/api/package.json',import.meta.url))`, conforme a otras pruebas del repositorio.
+- No declarar CI verde hasta verificar ejecución posterior. Priorizar pruebas de integración real y funcionalidades completas, no más endurecimientos triviales aislados.
