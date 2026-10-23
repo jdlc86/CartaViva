@@ -551,4 +551,50 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  assert.equal(acceptedLedger.rows.length,1);
  assert.equal(acceptedLedger.rows[0].accepted_reprice,true);
  assert.equal(acceptedLedger.rows[0].economic_evidence.totalCents,1600);
+ // Revocation gates are checked before idempotent replay, even for a
+ // previously confirmed request key. All fixtures are in disposable PG17.
+ const priorCount=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
+ const assertDeniedWithoutWrite=async candidate=>{
+  await assert.rejects(confirm(candidate),/order_context_forbidden/);
+  const current=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
+  assert.equal(current.rows[0].n,priorCount.rows[0].n);
+ };
+ // Paused without deadline blocks both a new order and an existing replay.
+ await pool.query(`UPDATE sabora.dining_tables
+  SET ordering_state='paused',pause_until=NULL WHERE id=$1`,[tableId]);
+ await assertDeniedWithoutWrite(input);
+ await assertDeniedWithoutWrite({...input,requestKey:'paused_new_0004'});
+ // An elapsed pause allows the existing visit and idempotent replay.
+ await pool.query(`UPDATE sabora.dining_tables
+  SET pause_until=clock_timestamp()-interval '1 second' WHERE id=$1`,[tableId]);
+ const resumed=await confirm(input);
+ assert.equal(resumed.status,'replayed');
+ // Rotating QR hash/version invalidates old bearer and old visit grant.
+ const newQr='ci_rotated_qr_'.repeat(4);
+ await pool.query(`UPDATE sabora.dining_tables
+  SET ordering_state='open',pause_until=NULL,
+      qr_token_hash=sha256(convert_to($2,'UTF8')),
+      qr_version=qr_version+1 WHERE id=$1`,[tableId,newQr]);
+ await assertDeniedWithoutWrite(input);
+ await assertDeniedWithoutWrite({...input,qrToken:newQr});
+ // Closing occupancy revokes visits and changes the table session.
+ const beforeClose=await pool.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[tableId]);
+ await pool.query(`UPDATE sabora.dining_tables
+  SET ordering_state='closed' WHERE id=$1`,[tableId]);
+ const afterClose=await pool.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[tableId]);
+ assert.notEqual(afterClose.rows[0].session_id,beforeClose.rows[0].session_id);
+ const visit=await pool.query(`SELECT revoked_at FROM
+  sabora.customer_table_visits WHERE table_id=$1 AND visit_key=$2`,
+  [tableId,visitId]);
+ assert.equal(visit.rows.length,1);
+ assert.ok(visit.rows[0].revoked_at instanceof Date);
+ await assertDeniedWithoutWrite({...input,qrToken:newQr});
+ // Reopening the table must never resurrect a previous visit.
+ await pool.query(`UPDATE sabora.dining_tables
+  SET ordering_state='open' WHERE id=$1`,[tableId]);
+ await assertDeniedWithoutWrite({...input,qrToken:newQr});
 });
