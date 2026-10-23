@@ -371,3 +371,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El desarrollo principal continúa en backend, pruebas PG17 y documentación de contratos existentes. Evitar implementar endpoints de imágenes o integrar Google sin diseño, autorización, aislamiento y presupuesto confirmados.
 - Estado verificado de HEAD `6aa884920590b28009df1d965c5e6640326f6458`: Sabora CI `39942799320` SUCCESS y Bootstrap `39942799369` SUCCESS. El test de carrera inversa PG17 añadido en `fca28b3b` queda incluido en ese gate verde.
 - Próxima conciliación tras Codex: verificar diff, actualizar base, resolver conflictos, validar contratos reales, probar CI del árbol integrado. No desplegar ni afectar Fleetia.
+
+### Prueba concurrente de cierre de mesa (2026-10-23)
+
+- Commit `88203fe0f019f173f8babb0885d9e3af9b13e70a`: añade a `scripts/ci/catalog-postgres17-driver-integration.test.mjs` la carrera inversa entre una autorización ya bloqueada en transacción A y el cierre de la mesa en B. Verifica que B espera, después cambia `session_id`, el trigger revoca la visita antigua y la autorización posterior falla.
+- Usa PostgreSQL 17 desechable y credenciales de prueba efímeras; no introduce grants, endpoint runtime ni cambios operativos.
+- **CI del nuevo test pendiente de confirmación**; no confundir con el gate verde previo de `6aa88492`. Codex sigue encargado del Estudio de imágenes; no tocar `apps/management/**` ni conciliar todavía.
