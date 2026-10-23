@@ -98,3 +98,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `cc89d8046ae1e79b84ebde7a9503f1d3fef67553`: `catalog-confirmation-decision.mjs` comprueba que el registro `previous` tiene prototipo simple, propiedades de datos propias y enumerables, sin símbolos ni accesores, **antes** de leer importes o revisión. Se evita ejecutar getters no confiables en la decisión económica.
 - `01636013aaf6129ec43fdb5ce077aeb1ed352744`: regresiones de getter con contador, símbolos y prototipo heredado.
 - Los workflows del HEAD anterior `df7ce93` estaban aún en progreso al comprobarlos. El gate real Node–PG17 y los permisos del writer continúan pendientes. PR Draft; ninguna ruta o credencial operativa habilitada.
+
+## Composición completa mediante pool inyectado — regresión de integración simulada (23-10-2026)
+
+- Se verificó HEAD `a171f54cf86a0dca574305f6fe724d5fe9b84430`: **Sabora CI 39908580417 SUCCESS** y **Bootstrap 39908580378 SUCCESS**.
+- Commit `3ec8a1f1c00888cd2bcde893a93e708894bb6940`: nueva suite `tests/catalog-confirmation-pool-end-to-end.test.mjs`, que ejecuta **la fábrica completa** `createCatalogOrderConfirmationPoolCandidate` pasando por `createPostgresTransaction`, autorización de visita, bloqueo de idempotencia, catálogo, quote, order writer y ledger. Comprueba commit único, proyección de cocina, replay sin segunda escritura, rollback por fallo de ledger, visita revocada, agotado, aceptación HMAC por bajada de precio y conflicto de fingerprint. Verifica liberación de conexiones.
+- **Límite explícito:** el pool de esta suite simula SQL en memoria. No demuestra semántica de PostgreSQL, bloqueos reales, grants ni RLS. El siguiente hito obligatorio sigue siendo driver `pg` declarado y lockfile real, PG17 desechable y suite sobre conexiones físicas. No confundir esta suite con la acreditación del hito.
+- CI del nuevo HEAD debe consultarse y corregirse si falla. PR Draft, sin merge, VPS, Fleetia, Supabase operativo ni activación HTTP.
