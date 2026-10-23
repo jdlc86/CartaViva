@@ -238,3 +238,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Los workflows `39928118609` y `39928118555` del HEAD `112387be...` fallaron en el guard `disposable_pg17_harness_required` antes de iniciar tests. Causa: `mktemp -d` crea directorios `/tmp/tmp.XXXXXXXX` y la expresión de validación del sufijo no permitía el punto.
 - `4b5eedfbf781d9fd71d5b0d82d12b2e21ef7870d` permite el punto exclusivamente en el segmento temporal validado. Siguen siendo obligatorios `GITHUB_ACTIONS=true`, el prefijo `/tmp/tmp`, el sufijo `/node_modules/pg` y DSN de loopback.
 - Validar las pruebas completas sobre el nuevo HEAD antes de ampliar el flujo positivo.
+
+### Gate de preflight y DSN estrictamente desechable
+
+- `7b147d8470e8b4d6d736cb8ba86e1ae7a8da6951`: el shell de CI ejecuta `node --check` sobre el test del driver antes de instalar dependencias, arrancar Docker o migrar la base desechable. Errores sintácticos fallan pronto.
+- `2aa64666e2c961ba1fbfdf6a2d838edc1f2f4102`: el test rechaza URL de PG17 con contraseña distinta de la credencial efímera fijada por el harness, sin puerto, con query string o fragmento, o con protocolo distinto de `postgresql:`. Se mantienen el host `127.0.0.1`, usuario `postgres` y base `postgres`. Estos controles son exclusivos del gate CI y no modifican conexiones de producción.
+- Las pruebas del HEAD deben revisarse antes de declarar el gate acreditado. Sin cambios en Fleetia, VPS o Supabase.
