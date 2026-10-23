@@ -109,3 +109,60 @@ test('Fastify pool composition rejects malformed connection before SQL',async t=
  assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
  assert.equal(discarded,1);
 });
+
+test('Fastify injected pool confirms order and ledger in one transaction',async t=>{
+ const {buildCatalogLineEvidence}=await import('../apps/api/src/catalog-line-evidence.mjs');
+ const orderId='00000000-0000-4000-8000-000000000005';
+ const quoteId='00000000-0000-4000-8000-000000000004';
+ const snapshot={name:'Plato',category:'Segundos',priceCents:1000,
+  allergens:[],options:[],extras:[],discount:null};
+ const evidence=buildCatalogLineEvidence({
+  itemId:input.itemId,publishedRevision:1,snapshot,
+  selection:input.selection,quantity:input.quantity
+ });
+ const events=[];
+ const app=Fastify();t.after(()=>app.close());
+ registerCustomerOrderConfirmationFromPoolCandidate(app,{
+  secretKey,newOrderId:()=>orderId,clock:()=>1792600000000,
+  pool:{connect:async()=>({
+   query:async(sql,params)=>{
+    events.push(sql);
+    if(sql.includes('FROM sabora.dining_tables AS t'))return {rows:[{
+     table_id:input.tableId,session_id:'00000000-0000-4000-8000-000000000002',
+     visit_id:input.visitId,actor_id:input.actorId,
+     customer_alias:'Cliente',
+     customer_identifier:'SB-222222222222'
+    }]};
+    if(sql.includes('FROM sabora.catalog_confirmation_attempts'))return {rows:[]};
+    if(sql.includes('FROM sabora.catalog_items'))return {rows:[{
+     published_revision:1,published_snapshot:snapshot,
+     withdrawn_at:null,sold_out:false
+    }]};
+    if(sql.includes('FROM sabora.catalog_displayed_quotes'))return {rows:[{
+     id:quoteId,published_revision:1,subtotal_cents:1000,
+     discount_cents:0,total_cents:1000,evidence
+    }]};
+    if(sql.includes('SELECT first_confirmed_at,grouping_window_seconds'))
+     return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
+    if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{
+     id:orderId,grouping:'first',first_timestamp_written:true
+    }]};
+    if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts'))
+     return {rows:[{order_id:orderId}]};
+    return {rows:[]};
+   },
+   release:error=>events.push(error?'discard':'clean')
+  })}
+ });
+ const r=await app.inject({method:'POST',url:endpoint,payload:input});
+ assert.equal(r.statusCode,201);
+ assert.deepEqual(r.json(),{status:'confirmed',orderId});
+ const orderIndex=events.findIndex(sql=>sql.includes('INSERT INTO sabora.orders'));
+ const ledgerIndex=events.findIndex(sql=>sql.includes(
+  'INSERT INTO sabora.catalog_confirmation_attempts'));
+ assert.ok(orderIndex>0);
+ assert.ok(ledgerIndex>orderIndex);
+ assert.ok(events.indexOf('COMMIT')>ledgerIndex);
+ assert.equal(events.includes('ROLLBACK'),false);
+ assert.equal(events.at(-1),'clean');
+});
