@@ -462,3 +462,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Parámetros estrictos `limit` (1–100) y `afterNumber` (entero no negativo), `Cache-Control: no-store`, `nosniff`, 400 por parámetros inválidos, 403 por ausencia de autorización, 503 sin detalles internos ante errores de consulta.
 - `tests/admin-tables-read-route.test.mjs` valida autorización, paginación, bloqueo de inyección de roles y aislamiento de errores con harness sin dependencias adicionales.
 - **Pendiente antes de activar**: pool con identidad SQL de mínimo privilegio, lectura autorizada real con políticas RLS, conexión de hooks autenticados desde bootstrap y CI de HEAD. El módulo no constituye un servicio operativo.
+
+### Recuperación del gate de CI y endurecimiento del lector (23-10-2026)
+
+- CI de `01b44b43`: **Sabora CI 39952500613 FAILURE** y **Bootstrap 39952500612 FAILURE**, ambos por un defecto del harness HTTP nuevo: capturaba `app.get(path, options, handler)` como si el handler estuviera dentro de options. Corrección `ed393a9fd5a4def248fedb78f78d59ae2bbd86c8`.
+- Endurecimiento `00c7b79eb3a08832420b3de888429dc63827f0a3`: el lector verificado rechaza objetos de paginación con prototipos no planos, símbolos o getters, además de roles inyectados.
+- Verificar ambos workflows sobre el HEAD más reciente; no interpretar fallos de test como fallo del contrato de autorización. La ruta permanece opt-in y sin montar en `server.mjs`.
