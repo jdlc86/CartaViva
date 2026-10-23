@@ -679,3 +679,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - La composición aislada valida `clock` y `newOrderId` antes de registrar la primera ruta; una configuración inválida no deja el GET público registrado parcialmente.
 - Regresión Fastify comprueba que ambos endpoints permanecen 404 y ningún pool recibe consultas ante adaptadores inválidos.
 - Los commits posteriores requieren comprobación CI. Sin activación en servidor operativo ni despliegue.
+
+### Identidad de pools aislados (23-10-2026)
+
+- HEAD `254e7f094079278e0841cb9eb4f233e8a1de35c4` pasó ambos workflows SUCCESS.
+- La composición opt-in rechaza ahora dos pools diferentes cuando ambos declaran el mismo `options.user`; prueba Fastify confirma que el registro falla antes de exponer rutas. Dos usuarios declarados diferentes siguen admitidos.
+- **Límite:** esta comprobación no prueba la identidad efectiva de PostgreSQL ni reemplaza los permisos mínimos y las pruebas PG17; un pool sin `options.user` no se puede certificar por esta comprobación. Sin conexión al servidor productivo.
