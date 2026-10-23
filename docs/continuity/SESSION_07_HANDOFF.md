@@ -309,3 +309,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `76dfd53f9c39359669459373c2fa169422ed320e`: extensión del test de coordinador en `scripts/ci/catalog-postgres17-driver-integration.test.mjs`, sobre el mismo fixture autorizado de pedido confirmado, replay, concurrencia y repricing.
 - Casos añadidos sobre PostgreSQL real: pausa indefinida bloquea nuevas claves y replay; pausa vencida permite replay; rotación del hash/version QR invalida token anterior y autorización de visita aunque se use el token nuevo; cierre de mesa cambia sesión, revoca visita y bloquea replay; reapertura no resucita la visita anterior. Se verifica que los intentos económicos append-only no crezcan ante cada rechazo.
 - La prueba es **candidata pendiente de ejecución CI**; no afirmar éxito hasta observar Sabora CI del SHA exacto. No aplica migraciones en Supabase operativo ni usa VPS. Codex continúa en frontend administrativo independiente.
+
+### Resultado CI y defensa adicional de sesión de cliente (2026-10-23)
+
+- Para el HEAD `0f3bd5ef3318c0974bd6915df969bbbb0ad99405`: **Sabora CI 39939456864 SUCCESS** y **Bootstrap 39939456843 SUCCESS**. El gate PG17 de pausa/rotación/cierre quedó validado por el workflow que ejecuta `scripts/ci/catalog-postgres17-node-driver-smoke.sh`.
+- Commit `1dbd581b145c0c02790f5ff28278d3d13630cf38`: caso adicional de defensa en profundidad que revoca el bearer de sesión del cliente después del cierre/reapertura y verifica rechazo de replay y de una clave nueva, sin alterar el ledger económico original. Este caso comparte una visita ya revocada: **no demuestra por sí solo el aislamiento de revocación de bearer con visita activa**. Esa prueba independiente sigue pendiente.
+- Validación del nuevo SHA aún pendiente. No se ha realizado despliegue, merge ni cambio operativo en Supabase/VPS.
