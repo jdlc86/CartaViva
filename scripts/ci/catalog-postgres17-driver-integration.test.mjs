@@ -1216,3 +1216,20 @@ test('PG17 rejects expired visit and expired bearer independently',async()=>{
  assert.equal(denied.authorized,false);
  assert.equal(denied.canOrder,false);
 });
+
+test('PG17 administrative table projection returns bounded non-secret rows',async()=>{
+ const {createAdminReadProjectionCandidate}=await import('../../apps/api/src/admin-read-projection-candidate.mjs');
+ const read=createAdminReadProjectionCandidate({query:(sql,params)=>pool.query(sql,params)});
+ const id='cafe0000-0000-4000-8000-0000000000af';
+ await pool.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,ordering_state)
+  VALUES ($1,930399,4,decode(repeat('af',32),'hex'),'closed')`,[id]);
+ const result=await read.listTables({role:'admin',afterNumber:930398,limit:1});
+ assert.equal(result.version,1);
+ assert.equal(result.items.length,1);
+ assert.equal(result.items[0].id,id);
+ assert.equal(result.items[0].number,930399);
+ assert.equal(result.items[0].orderingState,'closed');
+ assert.ok(!Object.hasOwn(result.items[0],'qrTokenHash'));
+ assert.equal(result.nextAfterNumber,null);
+});
