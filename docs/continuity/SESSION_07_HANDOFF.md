@@ -200,3 +200,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El HEAD `3e8462b7952b8706cb311e772d2b85209310599d` quedó **SUCCESS** en Sabora CI `39926587276` y Bootstrap `39926587372`, incluyendo la corrección de readiness TCP del PostgreSQL 17 desechable.
 - `e7d02c0abac1e698f822e2997d462d2c49aaf030`: amplía el gate real `pg` para ejecutar `createCatalogConfirmationReadRepository` dentro de la misma transacción del escritor. Acredita búsqueda del intento en ledger por ámbito completo y clave, ausencia de replay para otra cesta u otro actor, lectura de la quote con evidencia económica exacta y rechazo de un catálogo aún no publicado. Se mantiene el rollback integral de fixtures append-only.
 - Pendiente verificar CI del HEAD actualizado y acreditar el flujo completo `createCatalogOrderConfirmationPoolCandidate` con autorización real de sesión/visita/QR y consentimiento ante repricing. No activar endpoints, grants ni producción.
+
+### Primer gate del coordinador completo contra PG17 real: denegación de visita
+
+- `76a9a32c741497b0b2a3bb9eeae1110f67f98625` añade al harness `pg.Pool` real la composición `createCatalogOrderConfirmationPoolCandidate`. Se presenta una petición sintácticamente válida pero sin visita/QR registrados; el coordinador debe responder `order_context_forbidden` tanto en el primer intento como en un supuesto replay. Se comprueba ausencia de pedido y ledger. Esta es una prueba real de la frontera de autorización negativa, no una simulación del pool.
+- **Falta la ruta positiva** de visita autenticada, publicación de catálogo, cotización y aceptación de cambio de precio con fixtures reales. El candidato sigue sin HTTP, grants operativos ni despliegue. Verificar los workflows del HEAD.
