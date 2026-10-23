@@ -435,3 +435,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Proyección versionada `version:1` con paginación keyset por número de mesa, límites 1–100 y lista explícita de campos `id,number,capacity,description,orderingState`; no devuelve hashes QR, tokens ni identificadores de sesión. Fallo cerrado ante respuestas inesperadas.
 - `tests/admin-read-projection-candidate.test.mjs`: controles de roles, no consulta ante rechazo, paginación, ausencia de secretos y respuestas inválidas.
 - **Estado:** candidato no conectado a runtime, sin autorización transaccional demostrada ni concesiones SQL. Pendiente acreditar compatibilidad de columnas y permisos con PG17 aislado y CI de HEAD; no habilitar lectura HTTP hasta disponer de estos gates. La proyección de catálogo se abordará después de verificar sus contratos exactos.
+
+### Gate PostgreSQL 17 para proyección administrativa
+
+- Commit `71528ec03a5c6b2b3cacfb5f50c88229e4f7c8ab`: se añadió al harness Node/driver PostgreSQL 17 aislado la prueba de lectura real de mesa mediante `createAdminReadProjectionCandidate`, incluyendo shape versionado y exclusión de secretos QR.
+- Las pruebas unitarias previas del candidato terminaron con Sabora CI y Bootstrap **SUCCESS** sobre `1d17d7c61703c8e53606373517e324222ddd49f5`.
+- **Pendiente:** comprobar resultado de GitHub Actions del nuevo SHA. Si falla por discrepancia de esquema, corregir candidato o fixture según el esquema documentado, nunca aplicar cambios al Supabase operativo para acomodar el test.
+- No conectar rutas HTTP ni habilitar botones hasta verificar autorización de servidor y permisos SQL mínimos.
