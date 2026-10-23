@@ -18,6 +18,9 @@ for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
+# Verify administrative reader least-privilege grants and FORCE RLS in isolated PG17.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/admin-tables-reader-grants-smoke.sql
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
