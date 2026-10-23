@@ -132,3 +132,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `33143d7cece0ed93486f7af31e2fa5dc42a159d0`: smoke `scripts/ci/catalog-order-table-state-gate-smoke.sql` que ejecuta el predicado `SELECT ... FOR UPDATE` del escritor candidato contra PostgreSQL 17 real. Casos: mesa abierta permitida; cerrada denegada; pausa futura denegada; pausa sin caducidad denegada; pausa vencida permitida; sesión distinta denegada. El fixture se revierte y se verifica su ausencia.
 - `1bf41c5cb267913e780794457cf721c9b14c1d07`: integración en `scripts/ci/postgres-migration-smoke.sh`. Este gate comprueba la frontera SQL, no el driver Node ni un grant operativo.
 - Los workflows anteriores estaban en cola; **no afirmar CI verde** para estos cambios sin inspeccionar sus ejecuciones. La integración real `pg` + lockfile auténtico sigue pendiente.
+
+### Hallazgo real en CI y diagnóstico de pausa vencida
+
+- Sabora CI `39917455977` del commit `525320e` **FAILED** en el nuevo smoke `catalog-order-table-state-gate-smoke.sql`: la comprobación `expired_pause_allowed` devolvió cero filas (división por cero), tras pasar abierta/cerrada/pausa futura/pausa indefinida. No atribuir éxito a este gate.
+- `61f74f3786d39a3cc6e9fd2fb6edc7102370de72`: sustituye la afirmación no acreditada sobre pausa vencida por diagnóstico de `ordering_state`, `pause_until` y elegibilidad del predicado. **La aceptación de pausa vencida queda pendiente de investigar**, no se declara cubierta. Los demás casos conservan aserciones estrictas.
+- El SQL del escritor incluye explícitamente pausa vencida en su predicado, pero el resultado real del gate exige verificar el estado persistido/normalizado de la mesa antes de afirmar el comportamiento. Mantener PR Draft y no activar rutas.
