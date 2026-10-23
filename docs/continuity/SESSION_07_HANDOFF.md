@@ -468,3 +468,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - CI de `01b44b43`: **Sabora CI 39952500613 FAILURE** y **Bootstrap 39952500612 FAILURE**, ambos por un defecto del harness HTTP nuevo: capturaba `app.get(path, options, handler)` como si el handler estuviera dentro de options. Corrección `ed393a9fd5a4def248fedb78f78d59ae2bbd86c8`.
 - Endurecimiento `00c7b79eb3a08832420b3de888429dc63827f0a3`: el lector verificado rechaza objetos de paginación con prototipos no planos, símbolos o getters, además de roles inyectados.
 - Verificar ambos workflows sobre el HEAD más reciente; no interpretar fallos de test como fallo del contrato de autorización. La ruta permanece opt-in y sin montar en `server.mjs`.
+
+### Gate SQL de lector administrativo (23-10-2026)
+
+- `3748275adf3c33976e12134ee039de7e3c758597`: Sabora CI **SUCCESS** (39952877160) y Bootstrap **SUCCESS** (39952877143).
+- Nuevo `apps/api/src/admin-tables-reader-query.mjs`: consulta SQL exacta y parámetros numéricos acotados para un futuro pool exclusivo de lectura de mesas; deniega cualquier otra sentencia. `apps/api/src/admin-read-projection-candidate.mjs` comparte la sentencia canónica; `tests/admin-tables-reader-query.test.mjs` cubre inyección SQL y límites.
+- **No se ha creado rol ni conexión operativa**. El allowlist de aplicación es defensa adicional, no sustituye los permisos de base de datos ni RLS. Pendiente revisar grants/identidad SQL real y probar permisos negativos con PostgreSQL 17 desechable antes de conectar a Fastify.
