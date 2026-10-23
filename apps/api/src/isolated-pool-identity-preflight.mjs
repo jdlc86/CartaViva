@@ -4,6 +4,7 @@ const roleName=value=>typeof value==='string'&&/^[a-z][a-z0-9_]{0,62}$/.test(val
 async function identity(pool){
  if(!pool||typeof pool.connect!=='function')throw Error('invalid_pool_identity_preflight');
  let client;
+ let valid=false;
  try{
   client=await pool.connect();
   if(!client||typeof client.query!=='function'||typeof client.release!=='function')
@@ -14,11 +15,12 @@ async function identity(pool){
   const row=result.rows[0];
   if(!row||!roleName(row.role_name)||!roleName(row.login_name))
    throw Error('invalid_pool_identity_preflight');
+  valid=true;
   return {role:row.role_name,login:row.login_name};
  }catch{
   throw Error('invalid_pool_identity_preflight');
  }finally{
-  if(client)try{client.release();}catch{}
+  if(client)try{client.release(!valid);}catch{}
  }
 }
 export async function assertIsolatedCustomerPoolIdentities({
