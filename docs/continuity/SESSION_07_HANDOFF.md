@@ -647,3 +647,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `apps/client/src/catalog-loader.ts` exige `Content-Type: application/json` antes de procesar el catálogo. Una respuesta HTML de proxy/error no se interpreta como carta publicada.
 - Sin conexión a la sesión de mesa ni activación de pedidos. Sigue pendiente validación integral con PostgreSQL 17 desechable.
+
+### CI rojo identificado y reparación de fixtures (23-10-2026)
+
+- HEAD `3d30a107fa05a28e79600356910e5415e3f9484b`: Sabora CI y Bootstrap FAIL. Los logs muestran 3 fallos en `tests/client-catalog-loader.test.mjs` (casos de catálogo válido y ruta integrada), provocados por mocks HTTP que omitían `Content-Type` tras endurecer el cliente.
+- Reparados los mocks de éxito para declarar `application/json` y añadida regresión para HTML, cabecera ausente y `application/problem+json`. No se ha revertido la validación de seguridad.
+- **No declarar verde** hasta confirmar ambos workflows del commit de reparación. No hay cambios de infraestructura ni despliegue.
