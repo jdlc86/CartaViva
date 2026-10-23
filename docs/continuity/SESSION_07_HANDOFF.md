@@ -524,3 +524,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `0d4e3ef454ef2f967b0b219cbd31c5299fe610d5`: Sabora CI **SUCCESS** (39963427121), Bootstrap **SUCCESS** (39963426856).
 - `apps/api/src/admin-tables-reader-query.mjs` entrega copia de los parámetros SQL al pool para evitar mutación de argumentos del llamante; prueba de regresión añadida en `tests/admin-tables-reader-query.test.mjs`.
 - El cambio es solo de código y tests. No hay credenciales, conexión ni despliegue operativo. CI del nuevo HEAD pendiente.
+
+### Gate de membresía SQL (23-10-2026)
+
+- `39ffaef10bc54d97b645d988a9c7e11ec9d68171`: Sabora CI **SUCCESS** (39963808571), Bootstrap **SUCCESS** (39963808556).
+- `scripts/ci/admin-tables-reader-grants-smoke.sql` ahora verifica que `sabora_admin_tables_reader` no sea miembro de otros roles y que `anon`, `authenticated` y `sabora_catalog_reader` no sean miembros de ese rol. Se conserva la prueba de permisos efectivos bajo `SET LOCAL ROLE` existente.
+- No hay asignación de membresía operativa ni cambio en Supabase. CI del nuevo HEAD pendiente.
