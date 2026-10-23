@@ -65,3 +65,88 @@ test('real PG17 serializes concurrent advisory locks on distinct clients',async(
   a.release();b.release();
  }
 });
+
+test('PG17 catalog writer transaction persists first/grouped/late kitchen projections and rolls back fixture',async()=>{
+ const id='cafe0000-0000-4000-8000-000000000072';
+ const orderIds=['cafe0000-0000-4000-8000-000000000073',
+  'cafe0000-0000-4000-8000-000000000074',
+  'cafe0000-0000-4000-8000-000000000075'];
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const inserted=await client.query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds)
+   VALUES ($1,930272,4,decode(repeat('72',32),'hex'),'open',60)
+   RETURNING session_id`,[id]);
+  const session=inserted.rows[0].session_id;
+  for(const [index,orderId] of orderIds.entries()){
+   if(index===1)await client.query(`UPDATE sabora.dining_tables
+    SET first_confirmed_at=clock_timestamp()-interval '30 seconds' WHERE id=$1`,[id]);
+   if(index===2)await client.query(`UPDATE sabora.dining_tables
+    SET first_confirmed_at=clock_timestamp()-interval '61 seconds' WHERE id=$1`,[id]);
+   const state=await client.query(`SELECT first_confirmed_at,grouping_window_seconds
+    FROM sabora.dining_tables WHERE id=$1 AND session_id=$2
+    AND ordering_state='open' FOR UPDATE`,[id,session]);
+   assert.equal(state.rows.length,1);
+   const {first_confirmed_at:previous,grouping_window_seconds:seconds}=state.rows[0];
+   const result=await client.query(`WITH instant AS (SELECT clock_timestamp() AS at),
+    created AS (
+      INSERT INTO sabora.orders
+       (id,table_id,session_id,company,employee_number,
+        customer_alias,customer_identifier,customer_visit_key,
+        economic_snapshot,confirmed_at,grouping,items)
+      SELECT $1,$2,$3,NULL,NULL,'Cliente','SB-23456789ABCD','visit-pg-driver',
+       '{"schemaVersion":1,"totalCents":1000}'::jsonb,instant.at,
+       CASE WHEN $4::timestamptz IS NULL THEN 'first'
+        WHEN instant.at<$4::timestamptz+make_interval(secs=>$5::integer)
+        THEN 'grouped' ELSE 'late' END,
+       '[{"category":"starter","name":"Plato","quantity":1}]'::jsonb
+      FROM instant RETURNING id,grouping,confirmed_at
+    ), updated AS (
+      UPDATE sabora.dining_tables t SET first_confirmed_at=created.confirmed_at
+      FROM created WHERE t.id=$2 AND created.grouping='first'
+      RETURNING t.id
+    )
+    SELECT created.id,created.grouping,
+      (updated.id IS NOT NULL) AS first_timestamp_written
+    FROM created LEFT JOIN updated ON true`,
+    [orderId,id,session,previous,seconds]);
+   assert.equal(result.rows.length,1);
+   assert.equal(result.rows[0].grouping,['first','grouped','late'][index]);
+   assert.equal(result.rows[0].first_timestamp_written,index===0);
+   const lines=await client.query(`SELECT count(*)::integer AS n
+    FROM sabora.order_lines WHERE order_id=$1`,[orderId]);
+   assert.equal(lines.rows[0].n,1);
+  }
+  const firstTimestamp=await client.query(`SELECT first_confirmed_at
+   FROM sabora.dining_tables WHERE id=$1`,[id]);
+  assert.ok(firstTimestamp.rows[0].first_confirmed_at instanceof Date);
+  await client.query('ROLLBACK');
+  const surviving=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.orders WHERE id=ANY($1::uuid[])`,[orderIds]);
+  assert.equal(surviving.rows[0].n,0);
+  const survivingLines=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.order_lines WHERE order_id=ANY($1::uuid[])`,[orderIds]);
+  assert.equal(survivingLines.rows[0].n,0);
+ } finally{
+  await client.query('ROLLBACK').catch(()=>{});
+  client.release();
+ }
+});
+
+test('PG17 real schema enforces RLS and excludes anonymous order-writing grants',async()=>{
+ const relations=['orders','order_lines','catalog_confirmation_attempts'];
+ const rows=await pool.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+  has_table_privilege('anon',c.oid,'INSERT') AS anon_insert,
+  has_table_privilege('authenticated',c.oid,'INSERT') AS authenticated_insert
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])
+    AND c.relkind IN ('r','p')`,[relations]);
+ assert.equal(rows.rows.length,relations.length);
+ for(const row of rows.rows){
+  assert.equal(row.relrowsecurity,true,row.relname+' must enable RLS');
+  assert.equal(row.relforcerowsecurity,true,row.relname+' must force RLS');
+  assert.equal(row.anon_insert,false,row.relname+' must deny anon INSERT');
+  assert.equal(row.authenticated_insert,false,row.relname+' must deny authenticated INSERT');
+ }
+});
