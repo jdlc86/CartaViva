@@ -289,10 +289,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Credenciales y llamadas solo en backend; control de acceso, cuotas/costes, auditoría, almacenamiento privado, límites de archivos y ausencia de envío de datos personales. Formatos previstos 5:4, 4:3 y 1:1.
 - **No está implementado ni conectado**; no se autorizan migraciones operativas, despliegue, merge ni cambios en Fleetia.
 
-### Contrato de trabajo paralelo Codex Desktop — estudio de imágenes (2026-10-23)
+### Encargo corregido y vigente para Codex Desktop — PWA administrativa completa (2026-10-23)
 
-- Contrato actualizado en `docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md` mediante commit `5eeb18e377d2c0274ea6daa76604a31e62892ea7`.
-- Codex tiene alcance **solo frontend administrativo** del Estudio de imágenes, en rama propia y PR Draft a `feat/sabora-pnpm-bootstrap`. No tocar backend, SQL, PWA cliente, workflows, infraestructura ni este documento de continuidad.
-- **Diseño visual existente aprobado es obligatorio**: inspeccionar fuente de verdad y reutilizar tokens, componentes y patrones. No crear estilos globales, paleta, tipografía o navegación nuevos. Si el contrato visual no se puede localizar, documentar el bloqueo y no inventar diseño.
-- Generación Gemini, aprobación persistente y publicación real permanecerán inhabilitadas hasta integración backend autorizada; no simular éxitos ni usar claves reales.
-- El asistente principal conserva pedidos, visitas, QR, autorización y PG17; no merge/despliegue ni modificación operativa de Supabase/VPS/Fleetia.
+- Se detectó y corrigió el error documental: la asignación anterior limitaba indebidamente Codex al Estudio de imágenes. Queda **sustituida**.
+- Fuente de verdad del encargo: `docs/architecture/SABORA_ADMIN_PARALLEL_CODEX_WORK_ORDER.md` (introducido en commit `52febf387e138bc869faef5a315ff2ad33b5438d`). El contrato `docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md` describe solo el submódulo fotográfico.
+- Codex: **frontend completo** de `apps/management/**` — Resumen, Carta/Catálogo y Estudio de imágenes, Mesas y QR, Comandas, Equipo; priorizar Mesas/QR y Catálogo/Estudio. Respetar **estilos visuales aprobados** sin crear diseño nuevo; sin APIs, datos operativos ficticios ni operaciones no conectadas.
+- Asistente principal: backend, cliente, PostgreSQL 17, seguridad, contratos, visitas, pedidos y QR. No solapamiento de archivos. Codex usa rama propia y PR Draft con base `feat/sabora-pnpm-bootstrap`; documenta en `docs/design/SABORA_ADMIN_UI_CODEX_HANDOFF.md`.
+- Sin merge, despliegue, Supabase operativo, VPS, Fleetia, secretos ni Gemini real. Verificar build/tests/CI por SHA exacto antes de declarar validación.
