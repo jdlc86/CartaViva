@@ -115,3 +115,14 @@ SELECT 1 / CASE WHEN :'late_grouping'='late'
  AND (SELECT count(*)=1 FROM sabora.order_lines WHERE order_id=:'late_order_id')
  THEN 1 ELSE 0 END AS late_window_verified;
 ROLLBACK;
+
+-- The rollback is part of the safety gate, not merely fixture cleanup.
+-- psql variables survive the transaction, so assert no order, kitchen line
+-- or table fixture remains after the disposable test completes.
+SELECT 1 / CASE WHEN
+ NOT EXISTS (SELECT 1 FROM sabora.dining_tables WHERE id=:'table_id')
+ AND NOT EXISTS (SELECT 1 FROM sabora.orders
+  WHERE id IN (:'first_order_id',:'grouped_order_id',:'late_order_id'))
+ AND NOT EXISTS (SELECT 1 FROM sabora.order_lines
+  WHERE order_id IN (:'first_order_id',:'grouped_order_id',:'late_order_id'))
+ THEN 1 ELSE 0 END AS configurable_window_rollback_verified;
