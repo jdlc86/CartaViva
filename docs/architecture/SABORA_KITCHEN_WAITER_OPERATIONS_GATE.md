@@ -1,6 +1,7 @@
 # Puerta de operaciones de cocina y camarero — Sabora
 
-Fecha: 2026-10-24  
+Fecha: 2026-10-24
+
 Estado: **candidato integrado, sin activación operativa ni grants de runtime**
 
 Este documento delimita el bloque implementado en la rama

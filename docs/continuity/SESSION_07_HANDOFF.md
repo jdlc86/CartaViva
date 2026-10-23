@@ -774,3 +774,45 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `2094d8d6193f2fdf23153be06ec505b610d1fddf`: ambos workflows fallaron en Test. Logs: `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importarlo desde `tests/isolated-customer-composition-candidate.test.mjs` (raíz del monorepo).
 - Corrección `0eb450510c128f747cb71251e911d266eea72358`: resolver Fastify con `createRequire(new URL('../apps/api/package.json',import.meta.url))`, conforme a otras pruebas del repositorio.
 - No declarar CI verde hasta verificar ejecución posterior. Priorizar pruebas de integración real y funcionalidades completas, no más endurecimientos triviales aislados.
+
+### Retorno Codex Desktop — cocina y camarero operativos (24-10-2026)
+
+- Rama: `codex/sabora-kitchen-waiter-operational`, creada desde
+  `8297a71cbc776574fbb055078c0326af4d46a247` de
+  `feat/sabora-pnpm-bootstrap`.
+- Commit de persistencia/API/CI: `46b4662` (`feat(operations): add atomic
+  kitchen waiter workflow`). El commit de interfaz y continuidad es el HEAD de
+  la rama y queda identificado en el PR Draft.
+- Implementado un candidato integrado por línea para
+  `confirmed -> preparing -> ready -> picked_up`, con autorización por identidad
+  verificada, revalidación de membresía en la transacción, locks, correlación
+  idempotente, aviso durable a sala, confirmación de recogida e historial
+  append-only.
+- Añadidas rutas Fastify opt-in y una composición con pools separados. No están
+  importadas por `server.mjs`, no leen credenciales ni pueden activarse hasta
+  aprobar la identidad SQL de mínimos privilegios, sus RLS/grants y el bootstrap
+  de autenticación de la PWA.
+- La vista de Comandas de `apps/management` recupera el estado desde el servidor,
+  agrupa por mesa, presenta carga/error/vacío/operación en curso, bloquea doble
+  clic y consulta historial. Sin gateway autorizado conserva el estado vacío y
+  las acciones deshabilitadas; no usa datos ficticios ni persistencia local.
+- `supabase/migrations/20261023225024_sabora_kitchen_waiter_operations_candidate.sql`
+  es una migración candidata probada solo en PostgreSQL 17 desechable. No se
+  aplicó a Supabase operativo.
+- Pruebas locales: `pnpm test` — 613/613 pruebas raíz/API y 15/15 de management;
+  `pnpm build` — correcto; `tsc --noEmit -p apps/management/tsconfig.json` —
+  correcto; `scripts/ci/postgres-migration-smoke.sh` — correcto en contenedor
+  PostgreSQL 17 sin red. El driver de integración PG17 se añadió
+  al workflow y mantiene su guard de CI, por lo que su resultado definitivo se
+  verificará en GitHub Actions.
+- Entrega y cancelación permanecen deshabilitadas. `picked_up` no significa
+  entrega; cancelar exige todavía contrato durable de expediente, arbitraje,
+  límites antifraude, ajuste/reembolso y destinatarios. Implementarlas ahora
+  inventaría decisiones prohibidas por el contrato consolidado.
+- Documento de puerta: `docs/architecture/SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md`.
+  No hubo merge, despliegue, servicios Google, modificación de Fleetia, VPS ni
+  recursos compartidos.
+- Siguiente bloque recomendado: aprobar login/RLS/grants y preflight efectivos
+  en PostgreSQL 17 desechable; después conectar el transporte autenticado de la
+  PWA. En paralelo, cerrar el contrato de entrega e incidencias antes de añadir
+  esas mutaciones.
