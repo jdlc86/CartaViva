@@ -53,3 +53,35 @@ test('Fastify public catalog fails closed and discards connection on SQL error',
  assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',
   createCatalogReaderSql(),'ROLLBACK','discard']);
 });
+
+test('Fastify catalog does not checkout SQL connection when pool is unavailable',async t=>{
+ let checkout=0;
+ const app=Fastify();t.after(()=>app.close());
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({
+  pool:{connect:async()=>{checkout++;throw Error('private pool connection detail');}}
+ })});
+ const r=await app.inject({method:'GET',url:'/api/v1/catalog'});
+ assert.equal(checkout,1);
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'catalog_unavailable'});
+ assert.equal(r.body.includes('private pool connection detail'),false);
+});
+test('Fastify catalog rejects role escalation and releases connection',async t=>{
+ const statements=[];
+ const app=Fastify();t.after(()=>app.close());
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool:{
+  connect:async()=>({
+   query:async sql=>{
+    statements.push(sql);
+    if(sql==='SET LOCAL ROLE sabora_catalog_reader')throw Error('permission denied');
+    return {rows:[]};
+   },
+   release:discard=>statements.push(discard?'discard':'clean')
+  })
+ }})});
+ const r=await app.inject({method:'GET',url:'/api/v1/catalog'});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'catalog_unavailable'});
+ assert.deepEqual(statements,['BEGIN','SET LOCAL ROLE sabora_catalog_reader',
+  'ROLLBACK','discard']);
+});
