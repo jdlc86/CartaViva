@@ -339,3 +339,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El HEAD `7dc21d08dc3662498482063d94d7f30caca1f06c` **falló** en Sabora CI `39940306394` y Bootstrap `39940306251` en el paso de driver PG17: `customer_table_visit_lifetime` (SQLSTATE `23514`). Las diez pruebas anteriores pasaron; falló la prueba nueva de expiración de visita.
 - Fuente de verdad: migración `20261021240000_sabora_customer_table_visits_candidate.sql` exige `expires_at > granted_at`. El fixture intentaba escribir expiración anterior a `granted_at`, un estado imposible. Corregido en commit `1536a9e3df62d0788af1c5d94c48e5f7a45309a7`: modelar visita concedida hace dos horas y caducada hace un minuto, conservando el invariante. Sin alterar la migración ni el modelo.
 - Se añadió en paralelo prueba de carrera pausa/autorización (commit `adb955220e46316bd8d57ae72fac695c9e884ec8`), aún no validada. Inspeccionar CI del nuevo HEAD antes de declarar gate verde.
+
+### Segundo diagnóstico de CI: duración de sesión de cliente (2026-10-23)
+
+- HEAD `0b5f44b8e3cd7d2b1cbbd314835b74be8fa3706a`: Sabora CI `39940617788` y Bootstrap `39940617773` fallaron en el mismo test de expiración, ahora por `customer_session_expiry_check` (SQLSTATE `23514`). **11 de 12 subtests PG17 pasaron**, incluida la carrera entre pausa y autorización.
+- Commit `53966f7e7f52e102e4c1c38729028518f665a6b6`: el fixture de sesión caducada actualiza `created_at` a dos horas atrás y `expires_at` a un minuto atrás, sin relajar el esquema. Resultado CI del commit pendiente.
