@@ -21,6 +21,9 @@ done
 # Verify administrative reader least-privilege grants and FORCE RLS in isolated PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-grants-smoke.sql
+# Exercise actual SQL execution under the restricted reader identity.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/admin-tables-reader-effective-access-smoke.sql
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
