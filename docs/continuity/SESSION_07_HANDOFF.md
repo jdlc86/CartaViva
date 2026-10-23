@@ -618,3 +618,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Añadida prueba de integración Fastify → coordinador → repositorio → adaptador transaccional con SQL simulado: después de insertar el pedido, falla la escritura del ledger económico. Se exige HTTP 503 sin detalle privado, ROLLBACK después de la escritura fallida y **ausencia de COMMIT**.
 - No equivale a comprobar rollback efectivo en PostgreSQL real; esa prueba sigue pendiente con PG17 desechable.
 - HEAD previo `f0ffed305685be6410cc37df36a07aa876ef19f8`: Sabora CI 39976240990 SUCCESS y Bootstrap 39976241048 SUCCESS.
+
+### Cliente: transporte candidato de confirmación (23-10-2026)
+
+- Añadido `apps/client/src/order-confirmation-transport.ts`: cliente HTTP POST explícito para la ruta candidata, sin cookies (`credentials: omit`), sin caché, sin redirecciones, sin reintentos automáticos. Acepta `fetch` inyectable y `AbortSignal`; valida respuestas públicas mínimas, identifica rechazo conocido y falla cerrado ante red/JSON/estado inesperados.
+- No está conectado todavía a la interfaz PWA: se requiere flujo de visita autenticada, presupuesto mostrado y consentimiento de repricing conforme al contrato antes de habilitar pedidos. No se ha tocado `apps/management`.
+- Último HEAD verificado antes del cambio `e941202584b40799c048bb34f14081ae74b1eaa7`: Sabora CI y Bootstrap SUCCESS. Nuevo HEAD requiere CI.
