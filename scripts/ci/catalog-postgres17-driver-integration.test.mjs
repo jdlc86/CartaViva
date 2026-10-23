@@ -340,3 +340,44 @@ test('real PG17 coordinator refuses unrecognized QR/visit and never persists',as
   FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
  assert.equal(attempts.rows[0].n,0);
 });
+
+test('real PG17 coordinator rejects QR mismatch even for an existing open table',async()=>{
+ const tableId='cafe0000-0000-4000-8000-000000000094';
+ const itemId='cafe0000-0000-4000-8000-000000000095';
+ const orderId='cafe0000-0000-4000-8000-000000000096';
+ const correctQr='real_correct_qr_token_'.repeat(3);
+ const confirm=createCatalogOrderConfirmationPoolCandidate({
+  pool,secretKey:'ci-only-catalog-coordinator-secret-key-32',
+  newOrderId:()=>orderId
+ });
+ const input={tableId,visitId:'visit_real_qr_denied',basketId:'basket_real_qr_denied',
+  actorId:'actor_real_qr_denied',itemId,selection:{options:{},extras:[]},
+  quantity:1,requestKey:'request_real_qr_denied_01',
+  qrToken:'wrong_qr_token_'.repeat(4),customerSessionToken:'s'.repeat(64)};
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  await client.query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930294,4,sha256(convert_to($2,'UTF8')),'open')`,
+   [tableId,correctQr]);
+  // The candidate uses a different connection and cannot see uncommitted
+  // fixtures. Assert authorization through the real repository on this client
+  // while the table exists, then roll the fixture back without DELETE.
+  const {createCatalogVisitContextRepository}=await import(
+   '../../apps/api/src/catalog-visit-context-repository.mjs');
+  const repo=createCatalogVisitContextRepository();
+  const context=await repo.lockContext((sql,args)=>client.query(sql,args),input);
+  assert.equal(context.authorized,false);
+  assert.equal(context.canOrder,false);
+ }finally{
+  await client.query('ROLLBACK').catch(()=>{});
+  client.release();
+ }
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ const orders=await pool.query('SELECT count(*)::integer AS n FROM sabora.orders WHERE id=$1',[orderId]);
+ assert.equal(orders.rows[0].n,0);
+ const attempts=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE table_id=$1`,[tableId]);
+ assert.equal(attempts.rows[0].n,0);
+});
