@@ -672,3 +672,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` en la nueva prueba de composición. La dependencia existe en el workspace `apps/api`, no en la raíz.
 - `tests/isolated-customer-composition-candidate.test.mjs` usa ahora `createRequire(new URL('../apps/api/package.json',import.meta.url))` para resolver Fastify desde el workspace correcto.
 - Commit correctivo `54590381528880c1bf845305b40f344505b10cd7`; verificar workflows antes de declarar verde.
+
+### Cierre de composición parcial (23-10-2026)
+
+- HEAD previo `c00d07cdb1c2688e1a4bfea6ce1f198d20be9f0d`: ambos workflows SUCCESS.
+- La composición aislada valida `clock` y `newOrderId` antes de registrar la primera ruta; una configuración inválida no deja el GET público registrado parcialmente.
+- Regresión Fastify comprueba que ambos endpoints permanecen 404 y ningún pool recibe consultas ante adaptadores inválidos.
+- Los commits posteriores requieren comprobación CI. Sin activación en servidor operativo ni despliegue.
