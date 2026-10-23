@@ -239,7 +239,7 @@ test('Fastify and PG17 integrate board, transition, replay and authorization res
   const board = await app.inject({method: 'GET',
     url: '/api/v1/operations/order-lines?status=confirmed&limit=100',
     headers: {authorization}});
-  assert.equal(board.statusCode, 200);
+  assert.equal(board.statusCode, 200, board.body);
   assert.ok(board.json().items.some((line) => line.lineId === item.lineId));
   const payload = {targetStatus: 'preparing', correlationId: 'pg_http_transition_107'};
   const first = await app.inject({method: 'POST',
@@ -248,7 +248,7 @@ test('Fastify and PG17 integrate board, transition, replay and authorization res
   const replay = await app.inject({method: 'POST',
     url: `/api/v1/operations/order-lines/${item.lineId}/transitions`,
     headers: {authorization}, payload});
-  assert.equal(first.statusCode, 201);
-  assert.equal(replay.statusCode, 200);
+  assert.equal(first.statusCode, 201, first.body);
+  assert.equal(replay.statusCode, 200, replay.body);
   assert.equal(first.json().eventId, replay.json().eventId);
 });
