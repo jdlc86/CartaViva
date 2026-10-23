@@ -205,3 +205,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `76a9a32c741497b0b2a3bb9eeae1110f67f98625` añade al harness `pg.Pool` real la composición `createCatalogOrderConfirmationPoolCandidate`. Se presenta una petición sintácticamente válida pero sin visita/QR registrados; el coordinador debe responder `order_context_forbidden` tanto en el primer intento como en un supuesto replay. Se comprueba ausencia de pedido y ledger. Esta es una prueba real de la frontera de autorización negativa, no una simulación del pool.
 - **Falta la ruta positiva** de visita autenticada, publicación de catálogo, cotización y aceptación de cambio de precio con fixtures reales. El candidato sigue sin HTTP, grants operativos ni despliegue. Verificar los workflows del HEAD.
+
+### Aislamiento de cotización real y cambios concurrentes de rama
+
+- `b8e525d752a04e8f10ede5cda240274781159719`: el gate Node+PG17 comprueba además que `loadPreviousQuote` no devuelve cotizaciones para otra sesión de mesa ni otra visita, ni devuelve una cotización caducada. Se usa `SAVEPOINT` para expirar temporalmente el fixture y restaurarlo sin mutaciones duraderas.
+- Durante este bloque se detectó un **avance concurrente de la rama** (HEAD `76a9a32...`), que ya añadió una prueba del coordinador real para QR/visita inexistentes. Se releyó el archivo y se aplicó el cambio sobre su versión nueva, sin sobrescribir la prueba concurrente. Revisar los workflows del HEAD final antes de afirmar éxito.
