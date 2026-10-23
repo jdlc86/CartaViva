@@ -762,3 +762,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - CI de `2094d8d6193f2fdf23153be06ec505b610d1fddf` rojo por `ERR_MODULE_NOT_FOUND: fastify` al importar desde `tests/` (workspace raíz). Corregido con `createRequire` anclado a `apps/api/package.json`, sin añadir dependencias globales.
 - La suite `tests/isolated-customer-composition-candidate.test.mjs` ahora también comprueba rechazo de precios forjados sin SQL y rollback/descartado del lector cuando falla la consulta; los errores privados no salen por HTTP y el pool escritor permanece intacto.
 - **Puerta de hito**: comprobar ambos workflows del último HEAD; no considerar cerrado hasta SUCCESS. Continúan pendientes visitas QR reales y conexión a la PWA.
+
+### Reparación CI de composición aislada (24-10-2026)
+
+- Los workflows del HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf` fallaron por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importar desde `tests/isolated-customer-composition-candidate.test.mjs`. Con pnpm, Fastify pertenece al workspace `apps/api`, no al paquete raíz.
+- El test ahora resuelve Fastify mediante `createRequire(new URL('../apps/api/package.json',import.meta.url))`. No se añadió dependencia global ni se cambió el lockfile.
+- Verificar CI del commit correctivo antes de declarar el hito cerrado.
