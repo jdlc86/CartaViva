@@ -138,3 +138,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Sabora CI `39917455977` del commit `525320e` **FAILED** en el nuevo smoke `catalog-order-table-state-gate-smoke.sql`: la comprobación `expired_pause_allowed` devolvió cero filas (división por cero), tras pasar abierta/cerrada/pausa futura/pausa indefinida. No atribuir éxito a este gate.
 - `61f74f3786d39a3cc6e9fd2fb6edc7102370de72`: sustituye la afirmación no acreditada sobre pausa vencida por diagnóstico de `ordering_state`, `pause_until` y elegibilidad del predicado. **La aceptación de pausa vencida queda pendiente de investigar**, no se declara cubierta. Los demás casos conservan aserciones estrictas.
 - El SQL del escritor incluye explícitamente pausa vencida en su predicado, pero el resultado real del gate exige verificar el estado persistido/normalizado de la mesa antes de afirmar el comportamiento. Mantener PR Draft y no activar rutas.
+
+### Resolución de fallo de CI: restricción de estado de pausa
+
+- CI `39917621554` y Bootstrap `39917621687` fallaron en el mismo smoke PG17; no fue el lockfile. El log confirmó que una mesa `paused` con `pause_until` vencido satisface el predicado del escritor (`eligible_by_writer_predicate=t`). El fallo ocurrió **después**, al intentar `UPDATE ordering_state='open'` conservando `pause_until`, lo que viola la restricción `dining_table_pause_state`.
+- `0390b72eb09dbd0bd7cd9af9dd8441ea63485437`: la transición de fixture a `open` limpia **atómicamente** `pause_until=NULL`, conforme a la restricción SQL. El comportamiento de pausa vencida queda observado por consulta SQL; su aserción estricta de aceptación deberá restituirse antes del gate definitivo.
+- No hay cambio de migraciones ni del escritor operativo. Revalidar ambos workflows antes de dar por cerrado el fallo.
