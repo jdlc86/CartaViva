@@ -31,6 +31,16 @@ BEGIN
  EXCEPTION WHEN insufficient_privilege THEN NULL;
  END;
  BEGIN
+  EXECUTE 'SET LOCAL ROLE sabora_catalog_reader';
+  RAISE EXCEPTION 'admin reader assumed catalog role';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ BEGIN
+  EXECUTE 'SET LOCAL ROLE authenticated';
+  RAISE EXCEPTION 'admin reader assumed browser role';
+ EXCEPTION WHEN insufficient_privilege THEN NULL;
+ END;
+ BEGIN
   UPDATE sabora.dining_tables SET capacity=9 WHERE number=9321;
   RAISE EXCEPTION 'admin reader allowed update';
  EXCEPTION WHEN insufficient_privilege THEN NULL;
