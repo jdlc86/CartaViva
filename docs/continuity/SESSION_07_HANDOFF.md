@@ -61,3 +61,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Esta mejora es un **guard unitario**, no evidencia de Node + PostgreSQL 17 real. La integración con driver declarado/lockfile, fixtures SQL, concurrencia, atomicidad e identidad de mínimos privilegios **sigue pendiente**. No se han habilitado rutas HTTP ni grants operativos.
 - Al momento de publicar el test, la consulta de workflows del nuevo HEAD devolvió una lista vacía: **CI nuevo todavía no acreditado**. Consultar de nuevo el HEAD y las ejecuciones antes de declarar SUCCESS.
 - Sin merge, despliegue, acceso al VPS ni cambios en Supabase operativo o Fleetia.
+
+## CI de regresión y corrección (23-10-2026)
+
+- En HEAD `762f4bb2`, los workflows `39907644598` (Sabora CI) y `39907644616` (Bootstrap) terminaron **FAILURE**. Los logs de ambos identifican **1 fallo entre 504 tests**: `tests/postgres-transaction.test.mjs`, prueba «query boundary rejects mutable and nonserializable SQL bindings before driver dispatch». La prueba antigua aún esperaba que `undefined` fuese aceptado como binding, en contradicción con el nuevo guard fail-closed.
+- Commit `fe5306ca80e8ebfa70c25572cc66db1d5435c5ca`: se actualiza la expectativa de esa prueba para exigir rechazo de `undefined` y mantener la ejecución positiva con `null` explícito. El guard de producción no se revierte.
+- **Verificación pendiente:** consultar workflows de `fe5306ca` y del HEAD documental final. No atribuir SUCCESS hasta comprobar las ejecuciones nuevas.
