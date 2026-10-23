@@ -9,6 +9,13 @@ BEGIN
   AND NOT rolcanlogin AND NOT rolbypassrls AND NOT rolsuper
   AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit)
  THEN RAISE EXCEPTION 'admin tables reader role unsafe'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles child ON child.oid=m.member
+  JOIN pg_roles parent ON parent.oid=m.roleid WHERE child.rolname=role_name)
+ THEN RAISE EXCEPTION 'admin tables reader unexpectedly inherits a role'; END IF;
+ IF EXISTS(SELECT 1 FROM pg_auth_members m JOIN pg_roles parent ON parent.oid=m.roleid
+  JOIN pg_roles child ON child.oid=m.member WHERE parent.rolname=role_name
+  AND child.rolname IN ('anon','authenticated','sabora_catalog_reader'))
+ THEN RAISE EXCEPTION 'admin tables reader membership leaked'; END IF;
  IF NOT EXISTS(SELECT 1 FROM pg_class WHERE oid='sabora.dining_tables'::regclass
   AND relrowsecurity AND relforcerowsecurity)
  THEN RAISE EXCEPTION 'admin tables require FORCE RLS'; END IF;
