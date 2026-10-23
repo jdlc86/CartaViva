@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import Fastify from 'fastify';
+import {createRequire} from 'node:module';
+const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
+const Fastify=requireApi('fastify');
 import {registerIsolatedCustomerCatalogAndOrders} from '../apps/api/src/isolated-customer-composition-candidate.mjs';
 import {createCatalogReaderSql} from '../apps/api/src/catalog-reader-query.mjs';
 
