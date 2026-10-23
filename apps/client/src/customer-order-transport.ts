@@ -45,7 +45,7 @@ export function createCustomerOrderTransport({fetchImpl,baseUrl=''}:{fetchImpl?:
    if(!record(body))
     throw new CustomerOrderTransportError('order_confirmation_unavailable',503);
    if(response.status===201||response.status===200){
-    if(!statuses.has(body.status as string)||!typeof body.orderId!=='string'||!uuid.test(body.orderId)||
+    if(!statuses.has(body.status as string)||typeof body.orderId!=='string'||!uuid.test(body.orderId)||
        (response.status===201)!==(body.status==='confirmed'))
      throw new CustomerOrderTransportError('order_confirmation_unavailable',503);
     return Object.freeze({status:body.status as 'confirmed'|'replayed',orderId:body.orderId as string});
