@@ -493,3 +493,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Sobre `1355b305383b43a25bf4fd5ca325b836a0aabebd`: Sabora CI **SUCCESS** (39957553808) y Bootstrap **SUCCESS** (39957553762).
 - `scripts/ci/admin-tables-reader-effective-smoke.sql` ejecuta SELECT real como `sabora_admin_tables_reader` mediante `SET LOCAL ROLE` en PostgreSQL 17 desechable, verificando lectura de columnas públicas y rechazo de QR hash, personal, catálogo y UPDATE. Se integra en `scripts/ci/postgres-migration-smoke.sh`.
 - Pendiente comprobar nuevo CI. Esta prueba no concede LOGIN ni sustituye revisión de rol operativo/credenciales. Ninguna migración ha sido aplicada a Supabase operativo.
+
+### Composición autenticada de lectura administrativa (23-10-2026)
+
+- `966d2391eac0f55da9ac40218c619c3b4732df02`: Sabora CI **SUCCESS** (39958049700), Bootstrap **SUCCESS** (39958049720).
+- `apps/api/src/admin-tables-read-composition.mjs` prepara un montaje explícito de `GET /api/v1/admin/tables` con autenticación JWT, membresía durable actual y un pool SQL distinto para el lector de mesas. Rechaza reutilizar el mismo objeto de pool entre autorización y proyección.
+- `tests/admin-tables-read-composition.test.mjs` comprueba aislamiento y registro opt-in; no abre conexiones ni registra la ruta en `server.mjs`.
+- Gate pendiente: aprovisionamiento y acreditación de credenciales separadas de mínimos privilegios, pruebas HTTP reales con hooks de autorización y CI del HEAD. El rechazo de objetos de pool idénticos no demuestra por sí solo que las credenciales sean diferentes; revisar identidad SQL antes de activación.
