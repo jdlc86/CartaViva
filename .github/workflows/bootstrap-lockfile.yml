@@ -50,6 +50,8 @@ jobs:
           pnpm build
       - name: Test Sabora migration in disposable PostgreSQL 17
         run: bash scripts/ci/postgres-migration-smoke.sh
+      - name: Exercise real Node pg driver against disposable loopback-only PostgreSQL 17
+        run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
       - name: Validate isolated Docker Compose
         run: docker compose -f deploy/compose.sabora.yml config --quiet
       - name: Build isolated Sabora API image
