@@ -36,4 +36,4 @@ port="$(docker port "$container" 5432/tcp)"
 [[ "$port" =~ ^127\.0\.0\.1:[0-9]+$ ]] || { echo "Unexpected bind: $port" >&2; exit 1; }
 export SABORA_CI_PG_URL="postgresql://postgres:sabora_ci_ephemeral_only@$port/postgres"
 export SABORA_CI_PG_MODULE="$tmp/node_modules/pg"
-node --test tests/catalog-postgres17-driver-integration.test.mjs
+node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
