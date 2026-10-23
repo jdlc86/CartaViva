@@ -749,3 +749,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El commit `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows porque el nuevo test importaba `fastify` desde la raíz, mientras que pnpm instala la dependencia en `apps/api`.
 - El test ahora resuelve Fastify desde `apps/api/package.json` mediante `createRequire`, sin añadir dependencias al workspace raíz.
 - Comprobar el CI del commit de reparación antes de considerar el bloque aprobado.
+
+### Funcionalidad completa: exploración de carta pública (24-10-2026)
+
+- La PWA cliente ahora permite buscar por nombre/categoría/alérgenos sin distinguir acentos o mayúsculas, combinar filtros de categoría y mostrar solo productos disponibles. Opera exclusivamente sobre el catálogo publicado ya cargado; no requiere identidad ni envía búsquedas al servidor.
+- `apps/client/src/catalog.ts`, `apps/client/src/main.tsx` y `tests/client-catalog.test.mjs` implementan y prueban la funcionalidad. Pedidos permanecen bloqueados hasta autorización de visita QR.
+- Se reparó también el fallo CI previo de importación de Fastify en tests desde el workspace raíz usando `createRequire` relativo a `apps/api/package.json`.
+- Comprobar CI del nuevo HEAD antes de darlo por verde. No hay despliegue.
