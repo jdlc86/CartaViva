@@ -280,3 +280,11 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `12268d02ea6f944ba952695663103fd7127f2a26`: amplía el caso de cambio de precio con tokens HMAC caducados, emitidos para otro actor, emitidos para otra cesta y manipulados. Cada uno debe producir `acceptance_required` sin insertar intento económico ni consumir la clave idempotente. Después, el token correcto debe confirmar y registrar la evidencia.
 - Los rechazos se ejecutan sobre el mismo contexto autorizado, sin confiar en datos económicos del cliente. No se modifican tablas de cotizaciones inmutables.
 - CI del HEAD pendiente; no activar HTTP, roles runtime, migraciones operativas, merge ni VPS.
+
+### Decisión de producto: Estudio de imágenes con IA de Google (2026-10-23)
+
+- Documento normativo añadido: `docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md` (commit `4e7f9accb8c070a199c403f326130a99aa47243f`).
+- Proveedor restringido al ecosistema **Google**: Gemini con edición/generación de imágenes mediante API Google, con evaluación de Vertex AI si conviene en producción. Modelo y versión configurables y pendientes de verificación.
+- Estudio dentro de Administración → Catálogo; conserva original, genera derivados, compara versiones y exige aprobación/publicación manual. Prohibido añadir ingredientes o modificar el plato; la fidelidad se verifica humanamente.
+- Credenciales y llamadas solo en backend; control de acceso, cuotas/costes, auditoría, almacenamiento privado, límites de archivos y ausencia de envío de datos personales. Formatos previstos 5:4, 4:3 y 1:1.
+- **No está implementado ni conectado**; no se autorizan migraciones operativas, despliegue, merge ni cambios en Fleetia.
