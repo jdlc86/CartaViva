@@ -95,3 +95,29 @@ test('isolated composition never uses writer pool for public catalog',async()=>{
  assert.deepEqual(writes,[]);
  await app.close();
 });
+
+test('isolated composition rejects unauthenticated structurally valid order without writing',async()=>{
+ const reads=[],writes=[];
+ const app=Fastify();
+ registerIsolatedCustomerCatalogAndOrders(app,{
+  catalogReaderPool:pool(reads),orderWriterPool:pool(writes),
+  confirmationSecret:secret
+ });
+ const response=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{
+   tableId:itemId,visitId:'visit-001',basketId:'basket-001',
+   actorId:'actor-001',itemId,selection:{},quantity:1,
+   requestKey:'request-001',qrToken:'q'.repeat(32),
+   customerSessionToken:'s'.repeat(32)
+  }
+ });
+ assert.equal(response.statusCode,403);
+ assert.deepEqual(response.json(),{error:'order_context_forbidden'});
+ assert.equal(response.headers['cache-control'],'no-store');
+ assert.equal(response.body.includes('qrToken'),false);
+ assert.equal(writes.includes('COMMIT'),false);
+ assert.equal(writes.includes('BEGIN'),true);
+ assert.equal(writes.includes('ROLLBACK'),true);
+ assert.deepEqual(reads,[]);
+ await app.close();
+});
