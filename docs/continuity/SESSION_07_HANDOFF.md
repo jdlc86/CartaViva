@@ -653,3 +653,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `3d30a107fa05a28e79600356910e5415e3f9484b`: Sabora CI y Bootstrap FAIL. Los logs muestran 3 fallos en `tests/client-catalog-loader.test.mjs` (casos de catálogo válido y ruta integrada), provocados por mocks HTTP que omitían `Content-Type` tras endurecer el cliente.
 - Reparados los mocks de éxito para declarar `application/json` y añadida regresión para HTML, cabecera ausente y `application/problem+json`. No se ha revertido la validación de seguridad.
 - **No declarar verde** hasta confirmar ambos workflows del commit de reparación. No hay cambios de infraestructura ni despliegue.
+
+### Composición HTTP aislada cliente (23-10-2026)
+
+- Nuevo `apps/api/src/isolated-customer-composition-candidate.mjs`: composición explícita de GET /api/v1/catalog y POST /api/v1/customer/orders/confirm sobre **pools inyectados distintos**, con secreto de confirmación suministrado por el llamador. No crea pools, no lee secretos, no se importa en `server.mjs`, no despliega ni toca Supabase operativo.
+- Nuevo `tests/isolated-customer-composition-candidate.test.mjs`: prueba Fastify de lectura pública bajo rol de catálogo, aislamiento de pools y rechazo de pedido inválido antes de SQL.
+- El commit `7bf2f9afdc9794d399d03c3fca7e2899e5caa485` tuvo ambos workflows SUCCESS. Los commits nuevos requieren CI.
+- Sigue pendiente cerrar el flujo real QR/visita/quote/pedido/cocina con PostgreSQL 17 desechable; la composición es opt-in para pruebas, no activación operativa.
