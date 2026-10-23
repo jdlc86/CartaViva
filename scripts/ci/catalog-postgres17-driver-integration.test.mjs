@@ -1166,3 +1166,52 @@ test('PG17 prevents stale visit authorization after table closure and reopening'
  assert.equal(denied.authorized,false);
  assert.equal(denied.canOrder,false);
 });
+
+test('PG17 rejects expired visit and expired bearer independently',async()=>{
+ const {createCatalogVisitContextRepository}=await import(
+  '../../apps/api/src/catalog-visit-context-repository.mjs');
+ const repo=createCatalogVisitContextRepository();
+ const tableId='cafe0000-0000-4000-8000-0000000000fd';
+ const customerId='cafe0000-0000-4000-8000-0000000000fe';
+ const qrToken='ci_expiry_independent_qr_'.repeat(4);
+ const sessionToken='ci_expiry_independent_session_'.repeat(4);
+ const args={tableId,visitId:'visit_expiry_independent',
+  actorId:'actor_expiry_independent',basketId:'basket_expiry_independent',
+  qrToken,customerSessionToken:sessionToken};
+ await withTransaction(async query=>{
+  const t=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930321,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,qrToken]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCS','Cliente caducidades separadas')`,[customerId]);
+  await query(`INSERT INTO sabora.customer_sessions
+   (customer_id,token_hash,expires_at)
+   VALUES ($1,sha256(convert_to($2,'UTF8')),
+    clock_timestamp()+interval '1 hour')`,[customerId,sessionToken]);
+  await query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,
+    authorized_qr_version,granted_at,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,
+    clock_timestamp()-interval '1 hour',
+    clock_timestamp()+interval '30 minutes')`,
+   [tableId,t.rows[0].session_id,customerId,args.visitId,
+    args.actorId,t.rows[0].qr_version]);
+ });
+ assert.equal((await withTransaction(query=>repo.lockContext(query,args))).authorized,true);
+ await withTransaction(query=>query(`UPDATE sabora.customer_table_visits
+  SET expires_at=clock_timestamp()-interval '1 minute'
+  WHERE table_id=$1 AND visit_key=$2`,[tableId,args.visitId]));
+ assert.equal((await withTransaction(query=>repo.lockContext(query,args))).authorized,false);
+ await withTransaction(async query=>{
+  await query(`UPDATE sabora.customer_table_visits
+   SET expires_at=clock_timestamp()+interval '30 minutes'
+   WHERE table_id=$1 AND visit_key=$2`,[tableId,args.visitId]);
+  await query(`UPDATE sabora.customer_sessions
+   SET expires_at=clock_timestamp()-interval '1 minute'
+   WHERE customer_id=$1`,[customerId]);
+ });
+ const denied=await withTransaction(query=>repo.lockContext(query,args));
+ assert.equal(denied.authorized,false);
+ assert.equal(denied.canOrder,false);
+});
