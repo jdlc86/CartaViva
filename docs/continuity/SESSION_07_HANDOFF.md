@@ -500,3 +500,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `apps/api/src/admin-tables-read-composition.mjs` prepara un montaje explícito de `GET /api/v1/admin/tables` con autenticación JWT, membresía durable actual y un pool SQL distinto para el lector de mesas. Rechaza reutilizar el mismo objeto de pool entre autorización y proyección.
 - `tests/admin-tables-read-composition.test.mjs` comprueba aislamiento y registro opt-in; no abre conexiones ni registra la ruta en `server.mjs`.
 - Gate pendiente: aprovisionamiento y acreditación de credenciales separadas de mínimos privilegios, pruebas HTTP reales con hooks de autorización y CI del HEAD. El rechazo de objetos de pool idénticos no demuestra por sí solo que las credenciales sean diferentes; revisar identidad SQL antes de activación.
+
+### Integración Fastify autenticada en pruebas (23-10-2026)
+
+- `cd335d6030c109fb2a99fcea042c381c743d03cb`: Sabora CI **SUCCESS** (39961332372), Bootstrap **SUCCESS** (39961332380).
+- `tests/admin-tables-read-http-integration.test.mjs` monta únicamente en una instancia Fastify de prueba la composición opt-in de `GET /api/v1/admin/tables`. Prueba JWT ausente/inválido, miembro activo waiter, suspensión, rol kitchen, caída del lector de personal y caída del lector de mesas, y que la lectura SQL use el pool separado.
+- Las identidades y pools son dobles de prueba; no son credenciales operativas ni una prueba de conectividad a Supabase. `server.mjs` sigue sin registrar la ruta. Pendiente CI del nuevo commit.
