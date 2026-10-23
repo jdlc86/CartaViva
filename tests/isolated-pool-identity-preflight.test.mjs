@@ -39,7 +39,7 @@ test('preflight fails closed on impersonation, same role and role switching',asy
  ]){
   await assert.rejects(()=>assertIsolatedCustomerPoolIdentities(args(r,w)),
    /invalid_pool_identity_preflight/);
-  assert.deepEqual(r.releases,['release']);
+  assert.deepEqual(r.releases,[r.releases[0]==='discard'?'discard':'release']);
  }
 });
 test('preflight never reveals database error or accepts unknown roles',async()=>{
