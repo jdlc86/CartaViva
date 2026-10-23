@@ -612,3 +612,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Nueva prueba en `tests/customer-order-confirmation-pool-composition-candidate.test.mjs`: Fastify real → composición real → coordinador y repositorio reales → adaptador de transacción real, usando únicamente un cliente SQL simulado. Simula filas de visita autorizada, ausencia de replay, catálogo publicado, cita mostrada, bloqueo de mesa, INSERT de pedido y ledger; exige HTTP 201, respuesta mínima, orden de escrituras y COMMIT posterior a ambas.
 - Este hito verifica la **orquestación**, no PostgreSQL real ni triggers de cocina. No se habilita ruta en runtime; la próxima puerta es PostgreSQL 17 desechable con migraciones y verificación del trigger/cola de cocina.
 - HEAD anterior `822a799ae14793ddc5a6e2090cbd24129dd5333d`: Sabora CI 39975142303 SUCCESS y Bootstrap 39975142408 SUCCESS. CI del nuevo HEAD pendiente.
+
+### Confirmación económica atómica: fallo de ledger (23-10-2026)
+
+- Añadida prueba de integración Fastify → coordinador → repositorio → adaptador transaccional con SQL simulado: después de insertar el pedido, falla la escritura del ledger económico. Se exige HTTP 503 sin detalle privado, ROLLBACK después de la escritura fallida y **ausencia de COMMIT**.
+- No equivale a comprobar rollback efectivo en PostgreSQL real; esa prueba sigue pendiente con PG17 desechable.
+- HEAD previo `f0ffed305685be6410cc37df36a07aa876ef19f8`: Sabora CI 39976240990 SUCCESS y Bootstrap 39976241048 SUCCESS.
