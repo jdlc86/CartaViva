@@ -121,3 +121,33 @@ test('Fastify catalog rejects hostile published snapshots and never returns draf
  assert.equal(events.filter(x=>x==='SET LOCAL ROLE sabora_catalog_reader').length,cases.length);
  assert.equal(events.filter(x=>x==='clean').length,cases.length);
 });
+
+test('Fastify catalog remains public read-only for hostile request metadata',async t=>{
+ const app=Fastify();t.after(()=>app.close());
+ const queries=[];
+ registerCatalogHttpRoute(app,{query:async(sql,params)=>{
+  queries.push([sql,params]);
+  return {rows:[{id,published_snapshot:{
+   name:'Agua',category:'Bebidas',priceCents:100,allergens:[]
+  },sold_out:true}]};
+ }});
+ for(const url of [
+  '/api/v1/catalog?role=admin&includeDraft=true',
+  '/api/v1/catalog?restaurant_id=another&sold_out=false'
+ ]){
+  const r=await app.inject({method:'GET',url,
+   headers:{authorization:'Bearer forged',cookie:'session=forged'}});
+  assert.equal(r.statusCode,200);
+  assert.deepEqual(r.json(),[{id,name:'Agua',category:'Bebidas',
+   priceCents:100,available:false,allergens:[]}]);
+  assert.equal(r.headers['cache-control'],'no-store');
+ }
+ assert.deepEqual(queries,[
+  [createCatalogReaderSql(),[]],
+  [createCatalogReaderSql(),[]]
+ ]);
+ const post=await app.inject({method:'POST',url:'/api/v1/catalog',
+  payload:{draft:true}});
+ assert.equal(post.statusCode,404);
+ assert.equal(queries.length,2);
+});
