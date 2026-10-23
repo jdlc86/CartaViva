@@ -17,7 +17,8 @@ const input={tableId,visitId:'visit-ci',basketId:'basket-ci',actorId:'actor-ci',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,snapshot,selection:input.selection,quantity:1});
 
 function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=false,
- soldOut=false,quoteExpired=false,rotatedQr=false,corruptStage=null}={}){
+ soldOut=false,quoteExpired=false,rotatedQr=false,corruptStage=null,
+ firstConfirmedAt=null,grouping='first',groupingWindowSeconds=300}={}){
  const statements=[],events=[];
  let releases=0,connects=0,storedAttempt=null,visitClosed=closed;
  const client={
@@ -50,8 +51,8 @@ function harness({failLedger=false,closed=false,commitFails=false,rollbackFails=
     id:quoteId,published_revision:'1',subtotal_cents:'1000',
     discount_cents:'0',total_cents:'1000',evidence}]};
    if(sql.includes('FROM sabora.dining_tables')&&sql.includes('FOR UPDATE'))
-    return {rows:[{first_confirmed_at:null,grouping_window_seconds:300}]};
-   if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping:'first',first_timestamp_written:true}]};
+    return {rows:[{first_confirmed_at:firstConfirmedAt,grouping_window_seconds:groupingWindowSeconds}]};
+   if(sql.includes('INSERT INTO sabora.orders'))return {rows:[{id:orderId,grouping,first_timestamp_written:grouping==='first'}]};
    if(sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')){
     if(failLedger)throw Error('ledger_failure');
     storedAttempt={request_fingerprint:args[7],order_id:orderId};
@@ -205,5 +206,45 @@ test('all seven SQL response boundaries reject inherited rows and rollback atomi
   if(stage!=='ledger'){
    assert.equal(h.statements.some(x=>x.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')),false,stage);
   }
+ }
+});
+
+test('pool candidate preserves first, grouped and late occupancy decisions and ledger atomicity',async()=>{
+ for(const scenario of [
+  {name:'first',firstConfirmedAt:null,grouping:'first'},
+  {name:'grouped',firstConfirmedAt:new Date('2026-10-22T12:00:00Z'),grouping:'grouped'},
+  {name:'late',firstConfirmedAt:new Date('2026-10-22T12:00:00Z'),grouping:'late'}
+ ]){
+  const h=harness(scenario);
+  const result=await h.confirm(input);
+  assert.equal(result.status,'confirmed',scenario.name);
+  const order=h.statements.find(x=>x.sql.includes('INSERT INTO sabora.orders'));
+  assert.ok(order,scenario.name);
+  assert.equal(order.args[8],scenario.firstConfirmedAt,scenario.name);
+  assert.equal(order.args[9],300,scenario.name);
+  assert.equal(h.statements.filter(x=>x.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
+  assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE'],scenario.name);
+ }
+});
+
+test('inconsistent first/grouped/late INSERT response rolls back without economic ledger',async()=>{
+ for(const scenario of [
+  {firstConfirmedAt:null,grouping:'grouped'},
+  {firstConfirmedAt:new Date('2026-10-22T12:00:00Z'),grouping:'first'},
+  {firstConfirmedAt:new Date('2026-10-22T12:00:00Z'),grouping:'unexpected'}
+ ]){
+  const h=harness(scenario);
+  await assert.rejects(h.confirm(input),/catalog_order_context_changed/);
+  assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
+  assert.equal(h.statements.filter(x=>x.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,0);
+ }
+});
+
+test('invalid grouping window from locked table rolls back before order INSERT',async()=>{
+ for(const seconds of [0,-1,1.5,2147483648]){
+  const h=harness({groupingWindowSeconds:seconds});
+  await assert.rejects(h.confirm(input),/invalid_catalog_order_table_state/);
+  assert.deepEqual(h.events,['BEGIN','ROLLBACK','RELEASE']);
+  assert.equal(h.statements.filter(x=>x.sql.includes('INSERT INTO sabora.orders')).length,0);
  }
 });
