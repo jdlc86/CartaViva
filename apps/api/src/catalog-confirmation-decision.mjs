@@ -4,10 +4,21 @@
 import {buildCatalogLineEvidence} from './catalog-line-evidence.mjs';
 import {verifyCatalogRepriceAcceptance} from './catalog-reprice-acceptance.mjs';
 
-const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
+ (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
+const safePrevious=v=>{
+ if(!plain(v))return false;
+ const keys=Reflect.ownKeys(v);
+ return keys.length<=32&&keys.every(k=>{
+  if(typeof k!=='string'||['__proto__','constructor','prototype'].includes(k))
+   return false;
+  const descriptor=Object.getOwnPropertyDescriptor(v,k);
+  return !!descriptor&&descriptor.enumerable&&Object.hasOwn(descriptor,'value');
+ });
+};
 const money=v=>Number.isSafeInteger(v)&&v>=0;
 const revision=v=>Number.isSafeInteger(v)&&v>0;
-const previousValid=p=>plain(p)&&revision(p.publishedRevision)&&
+const previousValid=p=>safePrevious(p)&&revision(p.publishedRevision)&&
  money(p.subtotalCents)&&money(p.discountCents)&&money(p.totalCents)&&
  p.discountCents<=p.subtotalCents&&p.subtotalCents-p.discountCents===p.totalCents;
 
