@@ -10,7 +10,16 @@ export async function registerVerifiedIsolatedCustomerRoutes(app,{
  if(!app||typeof app.get!=='function'||typeof app.post!=='function'||
     typeof confirmationSecret!=='string'||Buffer.byteLength(confirmationSecret,'utf8')<32||
     (clock!==undefined&&typeof clock!=='function')||
-    (newOrderId!==undefined&&typeof newOrderId!=='function'))
+    (newOrderId!==undefined&&typeof newOrderId!=='function')||
+    !catalogReaderPool||typeof catalogReaderPool.connect!=='function'||
+    !orderWriterPool||typeof orderWriterPool.connect!=='function'||
+    catalogReaderPool===orderWriterPool||
+    (typeof catalogReaderPool.options?.connectionString==='string'&&
+     typeof orderWriterPool.options?.connectionString==='string'&&
+     catalogReaderPool.options.connectionString===orderWriterPool.options.connectionString)||
+    (typeof catalogReaderPool.options?.user==='string'&&
+     typeof orderWriterPool.options?.user==='string'&&
+     catalogReaderPool.options.user===orderWriterPool.options.user))
   throw Error('invalid_verified_customer_composition');
  try{
   await assertIsolatedCustomerPoolIdentities({
