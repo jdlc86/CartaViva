@@ -86,3 +86,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Se verificó el HEAD `2429f3306ef9fbc73790fefd934124101b60af24`: **Sabora CI 39908161042 SUCCESS** y **Bootstrap Sabora lockfile 39908161060 SUCCESS**.
 - Commit `67a7ea05d4271f61e67910e5746405cc3be17a87`: el workflow `.github/workflows/bootstrap-lockfile.yml` ahora ejecuta `git diff --exit-code -- pnpm-lock.yaml` inmediatamente después de regenerar el lockfile, antes de instalar/testear. Si el manifiesto cambia sin actualizar el lockfile versionado, el gate falla aunque pnpm pueda regenerarlo localmente. Se mantiene `contents: read` y `persist-credentials: false`; no hay escritura automática ni despliegue.
 - **CI de este nuevo HEAD pendiente de acreditación**. La integración Node–PG17 real requiere incorporar `pg` con lockfile generado auténticamente, no una resolución inventada; el workflow ahora detectará ese desacople.
+
+## Consistencia de consentimiento en frontera de repositorio (23-10-2026)
+
+- `e245b4ace83f63f113e6a0575d2c83b9f7754d13`: `catalog-confirmation-repository.mjs` exige equivalencia lógica entre `requiresAcceptance` y `acceptanceVerified` en la llamada de persistencia: no permite aceptación fabricada cuando no existe recotización ni confirmación sin aceptación cuando es necesaria. El escritor económico ya tenía esta defensa; ahora se rechaza antes de llamar al adaptador `persist`.
+- `010245bdd077e7929ea4d05df56dcca970d4d98f`: regresiones para ambos estados inválidos y ambos válidos, con contador de invocaciones de persistencia.
+- La implementación sigue **desconectada** de HTTP, roles operativos y Supabase. Esta corrección no reemplaza la integración real Node/PostgreSQL 17 ni su gate de permisos.
