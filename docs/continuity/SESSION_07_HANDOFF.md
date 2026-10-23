@@ -383,3 +383,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Gate verde confirmado del HEAD `2cacec3b60879a82738d5c24996a0934962fd4d1`: Sabora CI `39943441044` SUCCESS y Bootstrap `39943441049` SUCCESS, incluida la carrera de cierre de mesa.
 - Commit `f7d79fa8f5e8f62433aafcc1e70953755bf0ae22`: test PG17 que retiene la autorización válida en transacción A mientras B intenta revocar el bearer de cliente. El `FOR SHARE OF s` debe hacer esperar la revocación hasta COMMIT A; después la sesión revocada debe negar la siguiente autorización, aunque la mesa continúe abierta. Nuevo gate CI pendiente.
 - Este test prueba serialización SQL y no equivale a un endpoint de revocación operativo. No intervenir en interfaz de Codex ni en Supabase operativo.
+
+### Gate verde de revocación y nueva carrera de rotación QR (2026-10-23)
+
+- HEAD `b7fbca5036fb8d43ecaf34ac83716f35bc00d48f`: Sabora CI `39943795832` SUCCESS y Bootstrap `39943795827` SUCCESS; se acredita la carrera de revocación del bearer.
+- Commit `a2cdcf2f2875eaaac358412fd53bba6a7eba9061`: test PG17 de rotación QR mientras una autorización de visita retiene el lock de mesa. Exige que la rotación espere, que el QR anterior sea rechazado y que la visita con versión anterior no funcione tampoco con el QR nuevo. Mantiene la mesa abierta. Gate del nuevo test pendiente.
+- Todas estas son pruebas de candidato backend, no contratos HTTP desplegados. No modificar `apps/management/**` mientras Codex trabaja.
