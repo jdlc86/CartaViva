@@ -512,3 +512,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `ae8fd8c00da01538a07dcf8617c8f901586862d8`: Sabora CI **SUCCESS** (39961696826) y Bootstrap **SUCCESS** (39961696643).
 - `tests/admin-tables-read-http-pagination.test.mjs` verifica con Fastify real páginas sucesivas, cursor, límite, parámetros inesperados, enteros fuera de rango, respuesta SQL desordenada y revocación del rol entre peticiones. La membresía se vuelve a consultar para cada petición autenticada, incluso las inválidas.
 - Este bloque es solo de pruebas y no activa `server.mjs`. CI del HEAD nuevo pendiente.
+
+### Gate de filas SQL malformadas (23-10-2026)
+
+- `5ec30860faa727be6cdbf3ca52a5548343cebd97`: Sabora CI **SUCCESS** (39963102839); Bootstrap run 39963102954 estaba en progreso al consultar.
+- `tests/admin-tables-read-http-malformed.test.mjs`: prueba HTTP real con respuesta SQL de id inválido, número/capacidad incorrectos, descripción no textual, estado desconocido y duplicados/desorden; espera 503 sin detalles internos. Comprueba además que columnas adicionales desconocidas no se serialicen.
+- Pendiente CI del HEAD; sin conexión operativa, despliegue ni modificación de interfaces de Codex.
