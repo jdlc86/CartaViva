@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
+import {createCatalogOrderWriter} from '../../apps/api/src/catalog-order-writer.mjs';
+import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence.mjs';
 
 // Explicitly opt-in only for the disposable PostgreSQL 17 GitHub CI harness.
 // No operational DSN is read from runtime configuration.
@@ -148,5 +150,75 @@ test('PG17 real schema enforces RLS and excludes anonymous order-writing grants'
   assert.equal(row.relforcerowsecurity,true,row.relname+' must force RLS');
   assert.equal(row.anon_insert,false,row.relname+' must deny anon INSERT');
   assert.equal(row.authenticated_insert,false,row.relname+' must deny authenticated INSERT');
+ }
+});
+
+test('canonical Node writer persists order + ledger + kitchen atomically on real PG17',async()=>{
+ const tableId='cafe0000-0000-4000-8000-000000000081';
+ const itemId='cafe0000-0000-4000-8000-000000000082';
+ const orderId='cafe0000-0000-4000-8000-000000000083';
+ const snapshot={name:'Plato',category:'Primeros',priceCents:1000,
+  allergens:[],options:[],extras:[],discount:null};
+ const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
+  snapshot,selection:{options:{},extras:[]},quantity:1});
+ const setup=await withTransaction(async query=>{
+  const table=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930281,4,decode(repeat('81',32),'hex'),'open')
+   RETURNING session_id`,[tableId]);
+  await query(`INSERT INTO sabora.catalog_items(id,draft)
+   VALUES ($1,'{}'::jsonb)`,[itemId]);
+  const context={authorized:true,canOrder:true,tableId,
+   sessionId:table.rows[0].session_id,visitId:'visit_real_writer',
+   basketId:'basket_real_writer',actorId:'actor_real_writer',
+   customerAlias:'Cliente',customerIdentifier:'SB-23456789ABCD'};
+  const quote=await query(`INSERT INTO sabora.catalog_displayed_quotes
+   (table_id,session_id,visit_id,basket_id,actor_id,item_id,
+    published_revision,subtotal_cents,discount_cents,total_cents,
+    evidence,expires_at)
+   VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10::jsonb,
+    clock_timestamp()+interval '5 minutes')
+   RETURNING id`,[tableId,context.sessionId,context.visitId,
+   context.basketId,context.actorId,itemId,evidence.subtotalCents,
+   evidence.discountCents,evidence.totalCents,JSON.stringify(evidence)]);
+  return {context,quoteId:quote.rows[0].id};
+ });
+ const writer=createCatalogOrderWriter({newOrderId:()=>orderId});
+ const args={...setup,requestKey:'real_writer_0001',
+  requestFingerprint:'real_writer_fingerprint_0001',evidence,
+  requiresAcceptance:false,acceptanceVerified:false};
+ try{
+  const result=await withTransaction(query=>writer.persist(query,args));
+  assert.equal(result.orderId,orderId);
+  const saved=await pool.query(`SELECT grouping FROM sabora.orders WHERE id=$1`,[orderId]);
+  assert.equal(saved.rows[0].grouping,'first');
+  const kitchen=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.order_lines WHERE order_id=$1`,[orderId]);
+  assert.equal(kitchen.rows[0].n,1);
+  const ledger=await pool.query(`SELECT order_id,economic_evidence
+   FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
+  assert.equal(ledger.rows.length,1);
+  assert.equal(ledger.rows[0].order_id,orderId);
+  assert.deepEqual(ledger.rows[0].economic_evidence,evidence);
+  // A failed second attempt must not leave a new order or kitchen line.
+  const failedId='cafe0000-0000-4000-8000-000000000084';
+  const failedWriter=createCatalogOrderWriter({newOrderId:()=>failedId});
+  await assert.rejects(withTransaction(query=>failedWriter.persist(query,{
+   ...args,requestKey:'real_writer_0002',
+   quoteId:'cafe0000-0000-4000-8000-000000000099'
+  })));
+  const absent=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.orders WHERE id=$1`,[failedId]);
+  assert.equal(absent.rows[0].n,0);
+  const absentKitchen=await pool.query(`SELECT count(*)::integer AS n
+   FROM sabora.order_lines WHERE order_id=$1`,[failedId]);
+  assert.equal(absentKitchen.rows[0].n,0);
+ } finally{
+  // CI-only fixtures have a unique scope and must not survive the test.
+  await pool.query('DELETE FROM sabora.catalog_confirmation_attempts WHERE table_id=$1',[tableId]);
+  await pool.query('DELETE FROM sabora.orders WHERE table_id=$1',[tableId]);
+  await pool.query('DELETE FROM sabora.catalog_displayed_quotes WHERE table_id=$1',[tableId]);
+  await pool.query('DELETE FROM sabora.catalog_items WHERE id=$1',[itemId]);
+  await pool.query('DELETE FROM sabora.dining_tables WHERE id=$1',[tableId]);
  }
 });
