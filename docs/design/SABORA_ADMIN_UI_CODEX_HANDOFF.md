@@ -209,7 +209,12 @@ Ninguno de estos contratos, endpoints, tablas, credenciales, jobs o integracione
 | Responsive | PASS en 360/390/430/768/1024/1440; sin overflow horizontal |
 | Consola del navegador | PASS, sin errores ni avisos observados |
 
-El build necesitó ejecutarse fuera del sandbox local porque `esbuild` no podía leer `vite.config.ts` bajo ese aislamiento; el mismo comando terminó correctamente. GitHub Actions del SHA de Fase 2 se comprobarán después de publicar el commit.
+El build necesitó ejecutarse fuera del sandbox local porque `esbuild` no podía leer `vite.config.ts` bajo ese aislamiento; el mismo comando terminó correctamente.
+
+GitHub Actions del commit de código de Fase 2 `f94fdc8191dfa6ff0731251aed6de579bd902601`:
+
+- `Sabora CI` [run 39946469295](https://github.com/jdlc86/CartaViva/actions/runs/39946469295): **SUCCESS**, incluidas pruebas, migraciones PostgreSQL 17, driver real, build, Compose, imagen API y smoke tests aislados.
+- `Bootstrap Sabora lockfile` [run 39946469297](https://github.com/jdlc86/CartaViva/actions/runs/39946469297): **SUCCESS**.
 
 ### Operaciones no realizadas en la Fase 2
 
