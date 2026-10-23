@@ -1033,3 +1033,38 @@ test('PG17 QR rotation waits for active authorization and invalidates old visit'
   a.release();b.release();
  }
 });
+
+test('PG17 rejects malformed visit grants at the database boundary',async()=>{
+ const tableId='cafe0000-0000-4000-8000-0000000000f7';
+ const customerId='cafe0000-0000-4000-8000-0000000000f8';
+ await withTransaction(async query=>{
+  const table=await query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,ordering_state)
+   VALUES ($1,930318,4,sha256(convert_to($2,'UTF8')),'open')
+   RETURNING session_id,qr_version`,[tableId,'ci_constraints_qr_'.repeat(4)]);
+  await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+   VALUES ($1,'SB-23456789ABCN','Cliente restricciones SQL')`,[customerId]);
+  const args=[tableId,table.rows[0].session_id,customerId,
+   table.rows[0].qr_version];
+  for(const [visitKey,actorId,grantedOffset,expiryOffset] of [
+   ['bad/visit','actor_valid',-10,10],
+   ['valid_visit','bad/actor',-10,10],
+   ['invalid_lifetime','actor_valid',10,-10]
+  ]){
+   await query('SAVEPOINT invalid_visit');
+   await assert.rejects(query(`INSERT INTO sabora.customer_table_visits
+    (table_id,session_id,customer_id,visit_key,actor_id,
+     authorized_qr_version,granted_at,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,
+      clock_timestamp()+($7::integer * interval '1 second'),
+      clock_timestamp()+($8::integer * interval '1 second'))`,
+    [args[0],args[1],args[2],visitKey,actorId,args[3],
+     grantedOffset,expiryOffset]));
+   await query('ROLLBACK TO SAVEPOINT invalid_visit');
+   await query('RELEASE SAVEPOINT invalid_visit');
+  }
+  const existing=await query(`SELECT count(*)::integer AS total
+   FROM sabora.customer_table_visits WHERE table_id=$1`,[tableId]);
+  assert.equal(existing.rows[0].total,0);
+ });
+});
