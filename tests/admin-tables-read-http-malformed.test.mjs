@@ -42,3 +42,34 @@ test('Fastify admin table projection rejects malformed SQL rows without exposing
  }
  assert.equal(calls,cases.length);
 });
+
+test('Fastify rejects malformed pagination lookahead before disclosing first page',async t=>{
+ let rows=[];
+ const app=Fastify();t.after(()=>app.close());
+ registerProtectedAdminTablesReadFromPools(app,{
+  issuer:'https://example.invalid/auth/v1',
+  getTrustedKeys:async()=>[],verify:()=>({userId}),
+  staffPool:{query:async()=>({rows:[{role:'waiter',state:'active'}]})},
+  adminTablesPool:{query:async()=>({rows})}
+ });
+ const send=()=>app.inject({method:'GET',url:'/api/v1/admin/tables?limit=1',
+  headers:{authorization:'Bearer abc.def.ghi'}});
+ const first={...valid,number:1};
+ for(const lookahead of [
+  {...valid,number:1},
+  {...valid,number:2,capacity:0},
+  {...valid,number:2,ordering_state:'unknown'},
+  {...valid,number:0}
+ ]){
+  rows=[first,lookahead];
+  const r=await send();
+  assert.equal(r.statusCode,503);
+  assert.deepEqual(r.json(),{error:'admin_projection_unavailable'});
+  assert.equal(r.body.includes(first.id),false);
+ }
+ rows=[first,{...valid,number:2}];
+ const good=await send();
+ assert.equal(good.statusCode,200);
+ assert.equal(good.json().nextAfterNumber,1);
+ assert.deepEqual(good.json().items.map(item=>item.number),[1]);
+});
