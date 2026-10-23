@@ -11,8 +11,11 @@ function headers(reply) {
 }
 
 function exactPlainObject(value, keys) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) ||
-      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) return false;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  const fastifyQueryPrototype = prototype !== null && prototype !== Object.prototype &&
+    Object.getPrototypeOf(prototype) === null && Reflect.ownKeys(prototype).length === 0;
+  if (prototype !== Object.prototype && prototype !== null && !fastifyQueryPrototype) return false;
   const allowed = new Set(keys);
   return Reflect.ownKeys(value).every((key) => {
     if (typeof key !== 'string' || !allowed.has(key) ||

@@ -168,6 +168,10 @@ test('HTTP transition exposes created and replayed outcomes without accepting ac
     },
   }});
   t.after(() => app.close());
+  const board = await app.inject({method: 'GET',
+    url: '/api/v1/operations/order-lines?status=confirmed&limit=10',
+    headers: {authorization: 'Bearer test'}});
+  assert.equal(board.statusCode, 200);
   const body = {targetStatus: 'preparing', correlationId: 'transition_http_001'};
   const first = await app.inject({method: 'POST',
     url: `/api/v1/operations/order-lines/${lineId}/transitions`,
