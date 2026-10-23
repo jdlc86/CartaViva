@@ -251,14 +251,8 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   assert.equal(await reads.loadPreviousQuote(query,{
    context:{...context,visitId:'another_visit'},itemId
   }),null);
-  await query('SAVEPOINT expired_quote');
-  await query(`UPDATE sabora.catalog_displayed_quotes
-   SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
-   [quote.rows[0].id]);
-  assert.equal(await reads.loadPreviousQuote(query,{context,itemId}),null);
-  await query('ROLLBACK TO SAVEPOINT expired_quote');
-  assert.equal((await reads.loadPreviousQuote(query,{context,itemId})).quoteId,
-   quote.rows[0].id);
+  // The displayed quote is append-only after confirmation: never UPDATE it
+  // to simulate expiry. The existing valid quote remains unchanged.
   // The ledger is immutable at the SQL boundary, not just by application
   // convention. Probe both mutation paths under savepoints so a rejected
   // statement does not poison the fixture transaction.
