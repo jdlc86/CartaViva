@@ -10,7 +10,11 @@ const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext
 const {confirmCustomerOrder}=await import('data:text/javascript;base64,'+
  Buffer.from(js).toString('base64'));
 const orderId='00000000-0000-4000-8000-000000000005';
-const payload={requestKey:'request-001'};
+const payload={tableId:'00000000-0000-4000-8000-000000000001',
+ visitId:'visit-001',basketId:'basket-001',actorId:'actor-001',
+ itemId:'00000000-0000-4000-8000-000000000003',selection:{},quantity:1,
+ requestKey:'request-001',qrToken:'q'.repeat(32),
+ customerSessionToken:'s'.repeat(32)};
 const response=(status,body,contentType='application/json')=>({
  status,headers:{get:name=>name==='content-type'?contentType:null},
  json:async()=>body
@@ -64,6 +68,23 @@ test('client confirmation blocks external or ambiguous endpoint before network',
   '/api/v1/customer/orders/confirm?debug=true','/api#fragment']){
   let calls=0;
   await assert.rejects(()=>confirmCustomerOrder({payload,endpoint,
+   fetchImpl:async()=>{calls++;return response(201,{status:'confirmed',orderId});}}),
+   /invalid_customer_confirmation_transport/);
+  assert.equal(calls,0);
+ }
+});
+
+test('client confirmation rejects forged prices and incomplete authorization before POST',async()=>{
+ for(const malicious of [
+  {...payload,totalCents:1},{...payload,priceCents:1},
+  {...payload,publishedRevision:99},
+  {...payload,requestKey:'short'},
+  {...payload,qrToken:'short'},
+  {...payload,customerSessionToken:'short'},
+  Object.fromEntries(Object.entries(payload).filter(([key])=>key!=='visitId'))
+ ]){
+  let calls=0;
+  await assert.rejects(()=>confirmCustomerOrder({payload:malicious,
    fetchImpl:async()=>{calls++;return response(201,{status:'confirmed',orderId});}}),
    /invalid_customer_confirmation_transport/);
   assert.equal(calls,0);
