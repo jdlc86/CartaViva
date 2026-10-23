@@ -210,3 +210,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `b8e525d752a04e8f10ede5cda240274781159719`: el gate Node+PG17 comprueba además que `loadPreviousQuote` no devuelve cotizaciones para otra sesión de mesa ni otra visita, ni devuelve una cotización caducada. Se usa `SAVEPOINT` para expirar temporalmente el fixture y restaurarlo sin mutaciones duraderas.
 - Durante este bloque se detectó un **avance concurrente de la rama** (HEAD `76a9a32...`), que ya añadió una prueba del coordinador real para QR/visita inexistentes. Se releyó el archivo y se aplicó el cambio sobre su versión nueva, sin sobrescribir la prueba concurrente. Revisar los workflows del HEAD final antes de afirmar éxito.
+
+### Gate PG17: QR incorrecto contra mesa existente
+
+- `7e9b4273a412ac6b9cc474f5b775fdacf02b6908` añade un fixture de mesa abierta **existente** con hash QR real en PostgreSQL 17; el repositorio canónico `createCatalogVisitContextRepository` recibe un QR incorrecto y debe denegar autorización. El fixture se ejecuta dentro de `BEGIN/ROLLBACK`, sin limpieza por DELETE.
+- Se comprueba además que el coordinador con el mismo intento rechazado no genera pedidos ni ledger después del rollback del fixture. **Alcance explícito:** la prueba de QR contra mesa existente ejecuta el repositorio en su propia transacción; la llamada posterior al coordinador ocurre sin mesa persistida, por lo que aún no acredita el rechazo del coordinador contra una mesa existente confirmada en otra conexión.
+- Próximo hito: fixture comprometido con aislamiento de datos de CI y limpieza segura, o transacción controlada que permita probar ruta positiva de visita+QR+sesión con el coordinador completo. No activar HTTP ni grants.
