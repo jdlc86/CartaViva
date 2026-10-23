@@ -194,3 +194,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - El Bootstrap `39926305324` del HEAD `193ec177...` falló al crear los roles: `psql: connection to server on socket ... No such file or directory`. La comprobación SQL previa contra el socket podía conectar al **servidor temporal del entrypoint**, que se detiene antes de arrancar PostgreSQL definitivo. Esperar más tiempo al socket no garantiza disponibilidad del servidor final.
 - `bc338d9d0e79dd8a88ff73989fd302a559943a82` exige conexión **TCP `127.0.0.1` dentro del contenedor** para readiness, roles y migraciones; `0eca9e3de48cec2dc5c30273fa0e79b34726d859` añade `PGPASSWORD` de CI para autenticar ese TCP. La contraseña solo corresponde al contenedor desechable, no a ningún entorno real.
 - Esta solución evita depender de la vida del socket de inicialización. Revisar ambos workflows del HEAD; la prueba Node sigue siendo un gate aislado sin permisos de runtime ni despliegue.
+
+### Gate Node real: lectura del ledger, aislamiento de replay y quote
+
+- El HEAD `3e8462b7952b8706cb311e772d2b85209310599d` quedó **SUCCESS** en Sabora CI `39926587276` y Bootstrap `39926587372`, incluyendo la corrección de readiness TCP del PostgreSQL 17 desechable.
+- `e7d02c0abac1e698f822e2997d462d2c49aaf030`: amplía el gate real `pg` para ejecutar `createCatalogConfirmationReadRepository` dentro de la misma transacción del escritor. Acredita búsqueda del intento en ledger por ámbito completo y clave, ausencia de replay para otra cesta u otro actor, lectura de la quote con evidencia económica exacta y rechazo de un catálogo aún no publicado. Se mantiene el rollback integral de fixtures append-only.
+- Pendiente verificar CI del HEAD actualizado y acreditar el flujo completo `createCatalogOrderConfirmationPoolCandidate` con autorización real de sesión/visita/QR y consentimiento ante repricing. No activar endpoints, grants ni producción.
