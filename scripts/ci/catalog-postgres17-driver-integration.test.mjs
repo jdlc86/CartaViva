@@ -1233,3 +1233,17 @@ test('PG17 administrative table projection returns bounded non-secret rows',asyn
  assert.ok(!Object.hasOwn(result.items[0],'qrTokenHash'));
  assert.equal(result.nextAfterNumber,null);
 });
+
+test('PG17 verified administrative reader rejects role forgery and reads authorized tables',async()=>{
+ const {createVerifiedAdminTableReader}=await import('../../apps/api/src/verified-admin-table-reader.mjs');
+ const reader=createVerifiedAdminTableReader({query:(sql,params)=>pool.query(sql,params)});
+ const userId='cafe0000-0000-4000-8000-0000000000b1';
+ const identity={verifiedIdentity:{userId},verifiedStaff:{userId,role:'admin'}};
+ await assert.rejects(reader.listTables({verifiedIdentity:{userId},
+  verifiedStaff:{userId,role:'root'}}),/admin_projection_forbidden/);
+ await assert.rejects(reader.listTables(identity,{role:'admin'}),/invalid_admin_projection_page/);
+ const result=await reader.listTables(identity,{limit:1,afterNumber:930398});
+ assert.equal(result.version,1);
+ assert.ok(result.items.length<=1);
+ assert.ok(result.items.every(item=>!Object.hasOwn(item,'qrTokenHash')));
+});
