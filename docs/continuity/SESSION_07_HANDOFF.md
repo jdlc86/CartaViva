@@ -377,3 +377,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `88203fe0f019f173f8babb0885d9e3af9b13e70a`: añade a `scripts/ci/catalog-postgres17-driver-integration.test.mjs` la carrera inversa entre una autorización ya bloqueada en transacción A y el cierre de la mesa en B. Verifica que B espera, después cambia `session_id`, el trigger revoca la visita antigua y la autorización posterior falla.
 - Usa PostgreSQL 17 desechable y credenciales de prueba efímeras; no introduce grants, endpoint runtime ni cambios operativos.
 - **CI del nuevo test pendiente de confirmación**; no confundir con el gate verde previo de `6aa88492`. Codex sigue encargado del Estudio de imágenes; no tocar `apps/management/**` ni conciliar todavía.
+
+### Revocación concurrente de bearer (2026-10-23)
+
+- Gate verde confirmado del HEAD `2cacec3b60879a82738d5c24996a0934962fd4d1`: Sabora CI `39943441044` SUCCESS y Bootstrap `39943441049` SUCCESS, incluida la carrera de cierre de mesa.
+- Commit `f7d79fa8f5e8f62433aafcc1e70953755bf0ae22`: test PG17 que retiene la autorización válida en transacción A mientras B intenta revocar el bearer de cliente. El `FOR SHARE OF s` debe hacer esperar la revocación hasta COMMIT A; después la sesión revocada debe negar la siguiente autorización, aunque la mesa continúe abierta. Nuevo gate CI pendiente.
+- Este test prueba serialización SQL y no equivale a un endpoint de revocación operativo. No intervenir en interfaz de Codex ni en Supabase operativo.
