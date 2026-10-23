@@ -232,3 +232,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - En el HEAD `e0d4118ae57eac2fce1b575a2f62f8eeb527baf9`, Sabora CI `39927673131` y Bootstrap `39927673090` terminaron **FAILURE** en el paso Node/PG17, antes de ejecutar los tests: `SyntaxError: Invalid regular expression flags` causado por la expresión regular de validación de ruta del módulo temporal.
 - `7ed04619d7b8d934c4e9cac4942c44846c66e423` inició la corrección; `6d1623ace95289ccee23591acb37d416ff5431a6` sustituyó la expresión problemática por validación de prefijo/sufijo y segmento alfanumérico, y **conservó explícitamente** el guard de conexión `127.0.0.1/postgres` que no debe eliminarse.
 - Verificar el resultado de ambos workflows del nuevo HEAD. No declarar verde por la corrección de código sin evidencia CI.
+
+### Corrección de segundo fallo CI del harness
+
+- Los workflows `39928118609` y `39928118555` del HEAD `112387be...` fallaron en el guard `disposable_pg17_harness_required` antes de iniciar tests. Causa: `mktemp -d` crea directorios `/tmp/tmp.XXXXXXXX` y la expresión de validación del sufijo no permitía el punto.
+- `4b5eedfbf781d9fd71d5b0d82d12b2e21ef7870d` permite el punto exclusivamente en el segmento temporal validado. Siguen siendo obligatorios `GITHUB_ACTIONS=true`, el prefijo `/tmp/tmp`, el sufijo `/node_modules/pg` y DSN de loopback.
+- Validar las pruebas completas sobre el nuevo HEAD antes de ampliar el flujo positivo.
