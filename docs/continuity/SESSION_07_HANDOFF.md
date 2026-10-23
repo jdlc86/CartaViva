@@ -743,3 +743,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - La composición verificada comprueba **antes de abrir conexiones** que no se ha suministrado el mismo pool, el mismo `options.user` o el mismo `options.connectionString`. Una configuración compartida se rechaza sin SQL ni rutas registradas.
 - Regresión Fastify confirma que GET catálogo y POST confirmación permanecen 404 y los pools no reciben consultas.
 - Las opciones declaradas no reemplazan la comprobación efectiva `current_user/session_user`, grants, RLS ni PostgreSQL 17 desechable. Sin activación productiva.
+
+### Reparación de CI de composición aislada (24-10-2026)
+
+- El commit `2094d8d6193f2fdf23153be06ec505b610d1fddf` falló en ambos workflows porque el nuevo test importaba `fastify` desde la raíz, mientras que pnpm instala la dependencia en `apps/api`.
+- El test ahora resuelve Fastify desde `apps/api/package.json` mediante `createRequire`, sin añadir dependencias al workspace raíz.
+- Comprobar el CI del commit de reparación antes de considerar el bloque aprobado.
