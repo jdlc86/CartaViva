@@ -27,6 +27,10 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Exercise effective SQL access under SET LOCAL ROLE (disposable PG17 only).
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-effective-smoke.sql
+# Keep kitchen/waiter operations private until an independently provisioned
+# runtime identity passes security review.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/order-operations-grants-smoke.sql
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
@@ -97,7 +101,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>19 then raise exception 'Expected nineteen RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>20 then raise exception 'Expected twenty RLS protected single-restaurant tables, got %',v_count; end if;
  if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' and c.relname='catalog_items' and c.relrowsecurity and c.relforcerowsecurity) then raise exception 'catalog RLS protection missing'; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
@@ -119,7 +123,8 @@ begin
   if has_function_privilege(v_role,'sabora.confirm_order(uuid,text,text,text,text,jsonb)','EXECUTE')
    or has_function_privilege(v_role,'sabora.rotate_table_qr(uuid,text)','EXECUTE')
    or has_function_privilege(v_role,'sabora.transition_order_status(uuid,uuid,text,text)','EXECUTE')
-   or has_function_privilege(v_role,'sabora.transition_order_line(uuid,uuid,text)','EXECUTE') then
+   or has_function_privilege(v_role,'sabora.transition_order_line(uuid,uuid,text)','EXECUTE')
+   or has_function_privilege(v_role,'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)','EXECUTE') then
     raise exception 'client RPC access';
   end if;
  end loop;

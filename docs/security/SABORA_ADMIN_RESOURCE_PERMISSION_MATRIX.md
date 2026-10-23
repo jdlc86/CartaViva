@@ -59,3 +59,26 @@ Consecuencias para la futura operación:
 - Evitar otorgar permisos de tabla completos: cualquier futura concesión debe justificarse por columna y operación, y verificarse con una identidad SQL no propietaria en PostgreSQL desechable.
 
 Esta verificación documental no introduce una migración ni modifica el esquema operativo.
+
+## Ficha candidata: preparación y recogida por línea (2026-10-24)
+
+La migración candidata `20261023225024_sabora_kitchen_waiter_operations_candidate.sql`
+y los módulos `order-operations-*` implementan y prueban el circuito
+`confirmed -> preparing -> ready -> picked_up`. Esta ficha **no concede grants
+ni activa rutas**.
+
+| Elemento | Límite implementado |
+| --- | --- |
+| Identidad de usuario | Sujeto JWT verificado y membresía persistente coincidente; actor y rol del navegador se rechazan |
+| Autoridad | Cocina inicia/finaliza preparación; camarero confirma recogida; ADMIN puede ejecutar las tres transiciones |
+| Transacción | Revalidación de membresía, lock de línea, estado, aviso, evento y correlación comparten transacción |
+| Reintentos | Clave por actor y correlación; replay idéntico y conflicto ante parámetros distintos |
+| Auditoría | `order_line_events` y resultados de correlación append-only |
+| SQL directo | Función `SECURITY INVOKER`; sin permisos para `PUBLIC`, `anon` ni `authenticated` |
+| Datos expuestos | Proyección operativa mínima; el historial devuelve rol, no identificador privado del actor |
+| Exclusiones | Sin entrega, cancelación, arbitraje, ajuste económico ni polling |
+| Puerta pendiente | Login técnico, RLS permisiva mínima, grants, preflight de identidad efectiva y bootstrap HTTP/PWA aprobados |
+
+La autorización de negocio implementada no convierte el pool del servidor en
+una identidad SQL autorizada. Hasta cerrar la puerta pendiente, la composición
+permanece opt-in y fuera de `server.mjs`.
