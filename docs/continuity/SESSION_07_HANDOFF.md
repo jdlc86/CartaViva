@@ -718,3 +718,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `2094d8d6193f2fdf23153be06ec505b610d1fddf`: ambos workflows FAIL por `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importarlo desde el directorio raíz `tests/`. Con pnpm, Fastify pertenece al workspace `apps/api`.
 - Corregido el test para cargar Fastify mediante `createRequire(new URL('../apps/api/package.json', import.meta.url))`, sin alterar dependencias ni lockfile.
 - Verificar ambos workflows del nuevo HEAD antes de declarar éxito. No se modificaron servidores, Supabase ni Fleetia.
+
+### Corrección de regresión CI en preflight de pools (23-10-2026)
+
+- HEAD `035276c8d0f8c607ede75915877c41394211f930`: Sabora CI y Bootstrap FAIL. Logs: pruebas 419 y 593, expectativas erróneas de `release` frente a `discard` al fallar identidad/SQL.
+- Corregidas `tests/isolated-pool-identity-preflight.test.mjs` y `tests/verified-isolated-customer-composition-candidate.test.mjs` para exigir descarte de conexión insegura; código de seguridad sin cambios.
+- Verificar los workflows de `5434a527a81f7031d1def9cfebaf13bcdcfb20d7` o posterior antes de continuar integración.
