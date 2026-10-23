@@ -182,3 +182,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - En el HEAD `4691e9b9063b501664a1f5f7a2e0410b0e6d462f`, el gate Node del escritor canónico falló con SQLSTATE `23514 catalog_ledger_append_only`. El fallo fue causado por la **limpieza del propio test**, que intentaba hacer `DELETE` de `catalog_confirmation_attempts` tras comprobar la escritura. La restricción de inmutabilidad operativa funcionó correctamente y no debe relajarse.
 - `e6909030bc956e8d681dec9b48c2eb21f1b15639` sustituye ese cleanup por un `BEGIN` de fixture, un `SAVEPOINT` para simular quote inválida y un `ROLLBACK` final de toda la transacción, sin modificar ni borrar filas del ledger confirmado. Comprueba dentro de la transacción pedido/línea/evidencia y fuera de ella la ausencia de residuos. Es el patrón obligatorio para este test de integración.
 - El gate comprueba atomicidad del escritor real en una transacción de prueba; **no acredita persistencia duradera tras COMMIT** ni autorización del coordinador. No activar producción ni declarar verde hasta que CI concluya.
+
+### Ampliación del escritor canónico real: first/grouped/late
+
+- `1329f0e9dd6f1e80358b954caa6f366d6ca0a21c`: el mismo fixture transaccional invoca ahora `createCatalogOrderWriter` **tres veces** contra PostgreSQL 17 real: primera confirmación, agrupación a 30 segundos y llegada tardía a 301 segundos, usando nuevas quotes y claves idempotentes por intento. Comprueba para cada una la clasificación, la proyección de cocina y la fila de ledger, sin copiar la implementación del CTE.
+- Se mantiene el rechazo de quote inválida bajo `SAVEPOINT` y el `ROLLBACK` de todo el fixture, imprescindible porque el ledger es append-only. No se cambia el comportamiento operativo ni la migración.
+- **No confundir este gate con el coordinador completo**: falta validar la lectura autorizada de QR/visita y la resolución de precio/reprice con el `pg.Pool` real. Pendiente CI del nuevo HEAD.
