@@ -220,7 +220,8 @@ test('pool candidate preserves first, grouped and late occupancy decisions and l
   assert.equal(result.status,'confirmed',scenario.name);
   const order=h.statements.find(x=>x.sql.includes('INSERT INTO sabora.orders'));
   assert.ok(order,scenario.name);
-  assert.equal(order.args[8],scenario.firstConfirmedAt,scenario.name);
+  assert.equal(order.args[8]===null?null:order.args[8].getTime(),
+   scenario.firstConfirmedAt===null?null:scenario.firstConfirmedAt.getTime(),scenario.name);
   assert.equal(order.args[9],300,scenario.name);
   assert.equal(h.statements.filter(x=>x.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts')).length,1);
   assert.deepEqual(h.events,['BEGIN','COMMIT','RELEASE'],scenario.name);
