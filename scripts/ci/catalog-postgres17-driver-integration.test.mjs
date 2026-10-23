@@ -200,6 +200,43 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   assert.equal(ledger.rows.length,1);
   assert.equal(ledger.rows[0].order_id,orderId);
   assert.deepEqual(ledger.rows[0].economic_evidence,evidence);
+  // The canonical writer (not a copied CTE) must respect both sides of
+  // the real configurable grouping window and produce kitchen projections.
+  for(const [index,expected,elapsed] of [
+   [0,'grouped',30],[1,'late',301]
+  ]){
+   const subsequentId='cafe0000-0000-4000-8000-00000000008'+(5+index);
+   await query(`UPDATE sabora.dining_tables
+    SET first_confirmed_at=clock_timestamp()-make_interval(secs=>$2)
+    WHERE id=$1`,[tableId,elapsed]);
+   const subsequentQuote=await query(`INSERT INTO sabora.catalog_displayed_quotes
+    (table_id,session_id,visit_id,basket_id,actor_id,item_id,
+     published_revision,subtotal_cents,discount_cents,total_cents,
+     evidence,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10::jsonb,
+     clock_timestamp()+interval '5 minutes') RETURNING id`,
+    [tableId,context.sessionId,context.visitId,context.basketId,
+     context.actorId,itemId,evidence.subtotalCents,evidence.discountCents,
+     evidence.totalCents,JSON.stringify(evidence)]);
+   const subsequentWriter=createCatalogOrderWriter({
+    newOrderId:()=>subsequentId
+   });
+   const written=await subsequentWriter.persist(query,{
+    ...args,quoteId:subsequentQuote.rows[0].id,
+    requestKey:'real_writer_group_'+index
+   });
+   assert.equal(written.orderId,subsequentId);
+   const grouping=await query('SELECT grouping FROM sabora.orders WHERE id=$1',
+    [subsequentId]);
+   assert.equal(grouping.rows[0].grouping,expected);
+   const kitchenRows=await query(`SELECT count(*)::integer AS n
+    FROM sabora.order_lines WHERE order_id=$1`,[subsequentId]);
+   assert.equal(kitchenRows.rows[0].n,1);
+   const confirmation=await query(`SELECT count(*)::integer AS n
+    FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,
+    [subsequentId]);
+   assert.equal(confirmation.rows[0].n,1);
+  }
   // A bad quote must fail inside a savepoint; the outer transaction and
   // its original successful ledger entry remain untouched.
   await query('SAVEPOINT bad_quote');
