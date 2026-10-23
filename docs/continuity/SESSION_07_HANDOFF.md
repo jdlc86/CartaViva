@@ -268,3 +268,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `c56be46d52e6a245f73ca983e130701b95f75d9f`: el fixture positivo añade tres confirmaciones simultáneas del mismo contexto autorizado y una clave idempotente nueva sobre el pool real (`max:4`). Debe producir exactamente un `confirmed`, dos `replayed`, el mismo UUID de pedido y una sola fila de orden y ledger para la clave.
 - La comprobación prueba el lock advisory transaccional y el replay de la ruta compuesta, no solo una consulta SQL aislada. Es una prueba exclusivamente de Docker PG17 efímero. Se mantiene sin conexión HTTP ni Supabase operativo.
 - No declarar el gate verde hasta inspeccionar las ejecuciones de Sabora CI y Bootstrap del HEAD exacto. El siguiente bloque es consentimiento explícito de repricing y revocación de acceso.
+
+### Repricing firmado: prueba integrada con PG17
+
+- `a833f12763bf47df59a27424f50f3e1eccba2fa2` extiende el fixture autorizado: republica un plato de 1200 a 1600 céntimos con `sabora.publish_catalog_item`, manteniendo inmutable la cotización previa.
+- El coordinador debe devolver `acceptance_required` sin insertar pedido, luego acepta exclusivamente un token HMAC emitido para el mismo actor, cesta, artículo, revisión, selección y cantidad; un cambio de cesta se rechaza. Tras consentimiento se confirma el pedido, se repite idempotentemente y se comprueba `accepted_reprice=true` y evidencia de 1600 céntimos en el ledger real.
+- Todo permanece en el PostgreSQL 17 de Docker efímero de GitHub Actions. Es prueba candidata; no equivale a activar el flujo HTTP ni a desplegar. Inspeccionar resultado del HEAD exacto y corregir cualquier regresión antes de considerar el gate cerrado.
