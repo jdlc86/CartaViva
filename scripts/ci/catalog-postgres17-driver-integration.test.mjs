@@ -259,6 +259,27 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   await query('ROLLBACK TO SAVEPOINT expired_quote');
   assert.equal((await reads.loadPreviousQuote(query,{context,itemId})).quoteId,
    quote.rows[0].id);
+  // The ledger is immutable at the SQL boundary, not just by application
+  // convention. Probe both mutation paths under savepoints so a rejected
+  // statement does not poison the fixture transaction.
+  await query('SAVEPOINT immutable_update');
+  await assert.rejects(query(`UPDATE sabora.catalog_confirmation_attempts
+   SET request_fingerprint='tampered' WHERE order_id=$1`,[orderId]));
+  await query('ROLLBACK TO SAVEPOINT immutable_update');
+  await query('SAVEPOINT immutable_delete');
+  await assert.rejects(query(`DELETE FROM sabora.catalog_confirmation_attempts
+   WHERE order_id=$1`,[orderId]));
+  await query('ROLLBACK TO SAVEPOINT immutable_delete');
+  const immutable=await query(`SELECT request_fingerprint FROM
+   sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
+  assert.equal(immutable.rows[0].request_fingerprint,args.requestFingerprint);
+  // Invalid or expired displayed quotes must not weaken the transaction.
+  await query('SAVEPOINT expired_quote_read');
+  await query(`UPDATE sabora.catalog_displayed_quotes
+   SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+   [quote.rows[0].id]);
+  assert.equal(await reads.loadPreviousQuote(query,{context,itemId}),null);
+  await query('ROLLBACK TO SAVEPOINT expired_quote_read');
   // The canonical writer (not a copied CTE) must respect both sides of
   // the real configurable grouping window and produce kitchen projections.
   for(const [index,expected,elapsed] of [
