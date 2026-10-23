@@ -597,4 +597,20 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  await pool.query(`UPDATE sabora.dining_tables
   SET ordering_state='open' WHERE id=$1`,[tableId]);
  await assertDeniedWithoutWrite({...input,qrToken:newQr});
+ // A revoked customer bearer must not be revived by an otherwise open
+ // table, a valid QR, or an old idempotency key.
+ await pool.query(`UPDATE sabora.customer_sessions
+  SET revoked_at=clock_timestamp()
+  WHERE customer_id=$1 AND token_hash=sha256(convert_to($2,'UTF8'))`,
+  [customerId,sessionToken]);
+ const revokedSessions=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.customer_sessions WHERE customer_id=$1
+   AND revoked_at IS NOT NULL`,[customerId]);
+ assert.equal(revokedSessions.rows[0].n,1);
+ await assertDeniedWithoutWrite(input);
+ await assertDeniedWithoutWrite({...input,requestKey:'revoked_bearer_0005'});
+ // The original economic ledger remains immutable and present.
+ const retained=await pool.query(`SELECT count(*)::integer AS n
+  FROM sabora.catalog_confirmation_attempts WHERE order_id=$1`,[orderId]);
+ assert.equal(retained.rows[0].n,1);
 });
