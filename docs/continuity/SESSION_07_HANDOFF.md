@@ -606,3 +606,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 
 - `tests/customer-order-confirmation-pool-composition-candidate.test.mjs` cubre respuesta de visita durable con identificador de cliente inválido: 503, rollback y ausencia de filtraciones; también cliente de pool sin método query: 503 y descarte de conexión.
 - Son pruebas de integración con pool simulado; PostgreSQL 17 real continúa pendiente. No se activó ningún endpoint ni se modificó infraestructura.
+
+### Hito: confirmación completa con pool inyectado (23-10-2026)
+
+- Nueva prueba en `tests/customer-order-confirmation-pool-composition-candidate.test.mjs`: Fastify real → composición real → coordinador y repositorio reales → adaptador de transacción real, usando únicamente un cliente SQL simulado. Simula filas de visita autorizada, ausencia de replay, catálogo publicado, cita mostrada, bloqueo de mesa, INSERT de pedido y ledger; exige HTTP 201, respuesta mínima, orden de escrituras y COMMIT posterior a ambas.
+- Este hito verifica la **orquestación**, no PostgreSQL real ni triggers de cocina. No se habilita ruta en runtime; la próxima puerta es PostgreSQL 17 desechable con migraciones y verificación del trigger/cola de cocina.
+- HEAD anterior `822a799ae14793ddc5a6e2090cbd24129dd5333d`: Sabora CI 39975142303 SUCCESS y Bootstrap 39975142408 SUCCESS. CI del nuevo HEAD pendiente.
