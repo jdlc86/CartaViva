@@ -74,3 +74,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Se releyeron la fábrica canónica `catalog-order-confirmation-candidate.mjs`, el coordinador, repositorio, escritor, `scripts/ci/postgres-migration-smoke.sh`, `package.json`, `apps/api/package.json` y `pnpm-lock.yaml`. La API todavía no declara `pg` y el lockfile no contiene un paquete `pg@`; el smoke actual ejecuta SQL dentro de Docker `--network none`, no un driver Node conectado a PostgreSQL.
 - **Siguiente bloque indivisible:** declarar y bloquear el driver de PostgreSQL en el lockfile; crear harness Node real con PostgreSQL 17 desechable y conectividad exclusivamente local/aislada; reutilizar migraciones y fixtures verificables; ejecutar la fábrica canónica contra el driver; comprobar idempotencia, cierre concurrente, agrupación, rechazo y rollback; acreditar RLS y rol mínimo sin activar grants de producción. No introducir una dependencia sin regenerar y validar el lockfile reproducible.
 - Mantener PR Draft y prohibición de merge/despliegue y de uso de VPS/Fleetia/Supabase operativo.
+
+## Corrección de frontera de autorización de visita (23-10-2026)
+
+- `3850801a8ad43b56950437e61438d5cb62a91db8`: `catalog-visit-context-repository.mjs` solo interpreta `rows: []` como ausencia legítima de visita. Si el driver declara una fila pero devuelve `null`, `undefined`, primitivo u objeto inválido, se rechaza con `invalid_catalog_visit_response` en vez de convertir corrupción del adaptador en «no autorizado». No se amplían permisos ni se conceden autorizaciones.
+- `a321f59edb9fead931399a4af7fdc7b2802b9b7d`: pruebas negativas y positivas para distinguir ausencia de fila y respuesta malformada.
+- Este es un endurecimiento de la frontera Node simulada, **no la integración Node + PostgreSQL 17 real**. Revalidar el HEAD final en CI y mantener el gate de driver/lockfile/integración real pendiente.
