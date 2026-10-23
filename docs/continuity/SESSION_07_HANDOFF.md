@@ -389,3 +389,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - HEAD `b7fbca5036fb8d43ecaf34ac83716f35bc00d48f`: Sabora CI `39943795832` SUCCESS y Bootstrap `39943795827` SUCCESS; se acredita la carrera de revocación del bearer.
 - Commit `a2cdcf2f2875eaaac358412fd53bba6a7eba9061`: test PG17 de rotación QR mientras una autorización de visita retiene el lock de mesa. Exige que la rotación espere, que el QR anterior sea rechazado y que la visita con versión anterior no funcione tampoco con el QR nuevo. Mantiene la mesa abierta. Gate del nuevo test pendiente.
 - Todas estas son pruebas de candidato backend, no contratos HTTP desplegados. No modificar `apps/management/**` mientras Codex trabaja.
+
+### Restricciones SQL de visitas y gate QR (2026-10-23)
+
+- Gate del HEAD `2d980b6cded55047454a27169d99ce0a98f90ecd`: Sabora CI `39945296804` SUCCESS; Bootstrap `39945296830` SUCCESS. Carrera de rotación QR acreditada.
+- Commit `dbdb11e6feb17612a2b183b460c43e32ceb08ddf`: regresión PostgreSQL 17 de restricciones `visit_key`, `actor_id` y `customer_table_visit_lifetime`, con SAVEPOINT y rollback parcial tras cada error SQL para comprobar que no quedan visitas inválidas. Gate de este commit pendiente.
+- Mantener separadas las candidatas SQL y el runtime, y no tocar `apps/management/**` hasta entrega de Codex.
