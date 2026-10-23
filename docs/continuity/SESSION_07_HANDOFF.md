@@ -583,3 +583,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `tests/customer-order-confirmation-http-candidate.test.mjs` conecta la ruta Fastify real con `createCatalogConfirmationCoordinator` real. Comprueba que el QR opaco y el token de sesión pasan a `lockContext` dentro de transacción, seguidos de idempotencia, bloqueo de catálogo, cita previa y persistencia, antes de COMMIT. El DTO HTTP no expone evidencia económica interna.
 - Caso negativo: visita no autorizada aborta con 403 y ROLLBACK, sin consultar catálogo ni persistir pedidos.
 - Repositorio y transacción siguen simulados: **no** prueba aún PostgreSQL real ni funcionamiento QR→cocina. Sin activar ruta en `server.mjs`, sin modificar Supabase operativo, VPS, Fleetia ni interfaz de Codex. Revisar CI del HEAD antes de afirmar validación.
+
+### Confirmación HTTP: rechazo temprano de precios falsificados (23-10-2026)
+
+- Añadida prueba Fastify + coordinador real que rechaza `totalCents`, `priceCents`, `publishedRevision`, `previous` y claves de idempotencia malformadas antes de iniciar ninguna transacción. HTTP 400 con error público acotado; cero llamadas al adaptador transaccional.
+- Se mantiene ruta opt-in sin registro en `server.mjs`; sin conexión productiva ni despliegue. CI del HEAD nuevo pendiente de verificación.
