@@ -315,3 +315,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Para el HEAD `0f3bd5ef3318c0974bd6915df969bbbb0ad99405`: **Sabora CI 39939456864 SUCCESS** y **Bootstrap 39939456843 SUCCESS**. El gate PG17 de pausa/rotación/cierre quedó validado por el workflow que ejecuta `scripts/ci/catalog-postgres17-node-driver-smoke.sh`.
 - Commit `1dbd581b145c0c02790f5ff28278d3d13630cf38`: caso adicional de defensa en profundidad que revoca el bearer de sesión del cliente después del cierre/reapertura y verifica rechazo de replay y de una clave nueva, sin alterar el ledger económico original. Este caso comparte una visita ya revocada: **no demuestra por sí solo el aislamiento de revocación de bearer con visita activa**. Esa prueba independiente sigue pendiente.
 - Validación del nuevo SHA aún pendiente. No se ha realizado despliegue, merge ni cambio operativo en Supabase/VPS.
+
+### Revocación independiente de bearer con visita todavía activa (2026-10-23)
+
+- Commit `de46802ecda1b39f5db15f09c22c1b81829d33a9`: nuevo test integrado en `scripts/ci/catalog-postgres17-driver-integration.test.mjs` para aislar la causa de rechazo del token de sesión de cliente.
+- Fixture PG17 efímero, con transacción revertida al terminar: mesa `open`, QR vigente, visita sin revocar y sin caducar, sesión de cliente inicialmente válida. Primero `lockContext` devuelve `authorized=true` y `canOrder=true`; luego se revoca únicamente `customer_sessions.revoked_at`, se comprueba que mesa, QR y visita permanecen vigentes, y `lockContext` debe devolver ambos flags `false`.
+- El test prueba autorización del repositorio de visitas, no una ruta HTTP operativa. CI del SHA exacto pendiente; prohibido extrapolar éxito hasta confirmación. Codex conserva frontend administrativo sin solapamiento.
