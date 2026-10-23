@@ -7,11 +7,13 @@ INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,
 VALUES (930192,4,decode(repeat('92',32),'hex'),'open',60)
 RETURNING id AS table_id,session_id \gset
 
--- The first order must establish the occupancy timestamp.
-SELECT first_confirmed_at,grouping_window_seconds
- FROM sabora.dining_tables
- WHERE id=:'table_id' AND session_id=:'session_id'
- FOR UPDATE \gset
+-- The first order must establish the occupancy timestamp. Reject a fixture
+-- that silently used the default 300-second window instead of the requested 60.
+SELECT 1 / CASE WHEN grouping_window_seconds=60
+ AND first_confirmed_at IS NULL AND ordering_state='open'
+ THEN 1 ELSE 0 END AS configurable_window_fixture_verified
+ FROM sabora.dining_tables WHERE id=:'table_id' AND session_id=:'session_id'
+ FOR UPDATE;
 WITH instant AS (SELECT clock_timestamp() AS at),
  created AS (
   INSERT INTO sabora.orders
