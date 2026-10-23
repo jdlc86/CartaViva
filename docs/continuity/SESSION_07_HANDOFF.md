@@ -455,3 +455,10 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `apps/api/src/verified-admin-catalog-reader.mjs`: adaptador read-only de **catálogo publicado únicamente**, `version:1`, `scope:'published'`; requiere identidad y personal admin verificados y un lector RPC restringido inyectado. No consulta borradores, no autoriza escritura, no crea pool ni registra ruta. Reutilizar `readPublishedCatalog` desde `catalog-reader-query.mjs` y su identidad de mínimo privilegio, **nunca un pool administrativo**.
 - `tests/verified-admin-catalog-reader.test.mjs`: rechazo previo a consulta de identidad no verificada/rol no admin, respuesta versionada y fallo cerrado ante importes inválidos.
 - **Pendientes**: validar CI del HEAD, endurecer composición real de hooks y permisos de la lectura de mesas con rol mínimo, confirmar contratos de catálogo editorial y después decidir endpoints autenticados. No conectar frontend ni activar publicación mientras falten gates.
+
+### Lectura administrativa HTTP opt-in (23-10-2026)
+
+- `apps/api/src/admin-tables-read-route.mjs` registra `GET /api/v1/admin/tables` **únicamente por invocación explícita**, exige `forRoles(['admin','waiter'])` inyectado y pasa el contexto `verifiedIdentity/verifiedStaff` al lector; no acepta roles del navegador. `server.mjs` permanece sin importar ni registrar este endpoint.
+- Parámetros estrictos `limit` (1–100) y `afterNumber` (entero no negativo), `Cache-Control: no-store`, `nosniff`, 400 por parámetros inválidos, 403 por ausencia de autorización, 503 sin detalles internos ante errores de consulta.
+- `tests/admin-tables-read-route.test.mjs` valida autorización, paginación, bloqueo de inyección de roles y aislamiento de errores con harness sin dependencias adicionales.
+- **Pendiente antes de activar**: pool con identidad SQL de mínimo privilegio, lectura autorizada real con políticas RLS, conexión de hooks autenticados desde bootstrap y CI de HEAD. El módulo no constituye un servicio operativo.
