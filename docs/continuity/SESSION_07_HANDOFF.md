@@ -303,3 +303,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Pruebas de frontera del coordinador: QR revocado, mesa pausada, visita cerrada, discrepancias de visita, actor y cesta. En cada caso `order_context_forbidden` debe producirse **antes** de consultar idempotencia o escribir. Caso positivo de orden de llamadas: contexto → replay → catálogo, con catálogo no disponible.
 - Esta regresión usa **adaptador simulado** y no demuestra que las funciones SQL reales revoquen correctamente un QR o cambien estados. Próximo hito: pruebas de revocación/rotación/mesa pausada/visita cerrada en PostgreSQL 17 efímero y verificación del resultado de GitHub Actions sobre el HEAD exacto.
 - Se preserva el reparto: Codex solo `apps/management/**` conforme al encargo vigente; asistente principal mantiene pruebas/backend. Sin despliegue, merge, cambios en Supabase operativo o VPS.
+
+### Gate integrado de revocación en PostgreSQL 17 desechable (2026-10-23)
+
+- Commit `76dfd53f9c39359669459373c2fa169422ed320e`: extensión del test de coordinador en `scripts/ci/catalog-postgres17-driver-integration.test.mjs`, sobre el mismo fixture autorizado de pedido confirmado, replay, concurrencia y repricing.
+- Casos añadidos sobre PostgreSQL real: pausa indefinida bloquea nuevas claves y replay; pausa vencida permite replay; rotación del hash/version QR invalida token anterior y autorización de visita aunque se use el token nuevo; cierre de mesa cambia sesión, revoca visita y bloquea replay; reapertura no resucita la visita anterior. Se verifica que los intentos económicos append-only no crezcan ante cada rechazo.
+- La prueba es **candidata pendiente de ejecución CI**; no afirmar éxito hasta observar Sabora CI del SHA exacto. No aplica migraciones en Supabase operativo ni usa VPS. Codex continúa en frontend administrativo independiente.
