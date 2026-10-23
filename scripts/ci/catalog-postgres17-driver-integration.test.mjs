@@ -232,6 +232,21 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   assert.equal(loadedQuote.quoteId,quote.rows[0].id);
   assert.deepEqual(loadedQuote.evidence,evidence);
   assert.equal(loadedQuote.totalCents,evidence.totalCents);
+  assert.equal(await reads.loadPreviousQuote(query,{
+   context:{...context,sessionId:'cafe0000-0000-4000-8000-000000000098'},
+   itemId
+  }),null);
+  assert.equal(await reads.loadPreviousQuote(query,{
+   context:{...context,visitId:'another_visit'},itemId
+  }),null);
+  await query('SAVEPOINT expired_quote');
+  await query(`UPDATE sabora.catalog_displayed_quotes
+   SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1`,
+   [quote.rows[0].id]);
+  assert.equal(await reads.loadPreviousQuote(query,{context,itemId}),null);
+  await query('ROLLBACK TO SAVEPOINT expired_quote');
+  assert.equal((await reads.loadPreviousQuote(query,{context,itemId})).quoteId,
+   quote.rows[0].id);
   // The canonical writer (not a copied CTE) must respect both sides of
   // the real configurable grouping window and produce kitchen projections.
   for(const [index,expected,elapsed] of [
