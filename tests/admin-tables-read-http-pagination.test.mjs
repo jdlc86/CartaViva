@@ -47,5 +47,5 @@ test('Fastify administrative table pagination is bounded, ordered and fail-close
  role='kitchen';
  r=await send('?limit=2');assert.equal(r.statusCode,403);
  assert.equal(tableReads,3);
- assert.equal(membershipReads,14);
+ assert.equal(membershipReads,13);
 });
