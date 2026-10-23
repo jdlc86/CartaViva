@@ -216,3 +216,8 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `7e9b4273a412ac6b9cc474f5b775fdacf02b6908` añade un fixture de mesa abierta **existente** con hash QR real en PostgreSQL 17; el repositorio canónico `createCatalogVisitContextRepository` recibe un QR incorrecto y debe denegar autorización. El fixture se ejecuta dentro de `BEGIN/ROLLBACK`, sin limpieza por DELETE.
 - Se comprueba además que el coordinador con el mismo intento rechazado no genera pedidos ni ledger después del rollback del fixture. **Alcance explícito:** la prueba de QR contra mesa existente ejecuta el repositorio en su propia transacción; la llamada posterior al coordinador ocurre sin mesa persistida, por lo que aún no acredita el rechazo del coordinador contra una mesa existente confirmada en otra conexión.
 - Próximo hito: fixture comprometido con aislamiento de datos de CI y limpieza segura, o transacción controlada que permita probar ruta positiva de visita+QR+sesión con el coordinador completo. No activar HTTP ni grants.
+
+### Endurecimiento del harness Node/PG17
+
+- `31ae91c2832c6b263d7d7133007eac03d4eee98e`: el test Node rechaza su ejecución sin `GITHUB_ACTIONS=true` o cuando `SABORA_CI_PG_MODULE` no apunta al módulo `pg` instalado en el directorio temporal creado por el harness. Ya existía validación de DSN loopback `postgres@127.0.0.1/postgres` y el shell exige GitHub Actions antes de arrancar Docker.
+- Este control protege contra invocaciones accidentales con módulos de runtime ajenos; no sustituye el aislamiento de red/credenciales ni autoriza uso sobre VPS o Supabase. CI del nuevo HEAD pendiente.
