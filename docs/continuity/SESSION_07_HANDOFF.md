@@ -506,3 +506,9 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - `cd335d6030c109fb2a99fcea042c381c743d03cb`: Sabora CI **SUCCESS** (39961332372), Bootstrap **SUCCESS** (39961332380).
 - `tests/admin-tables-read-http-integration.test.mjs` monta únicamente en una instancia Fastify de prueba la composición opt-in de `GET /api/v1/admin/tables`. Prueba JWT ausente/inválido, miembro activo waiter, suspensión, rol kitchen, caída del lector de personal y caída del lector de mesas, y que la lectura SQL use el pool separado.
 - Las identidades y pools son dobles de prueba; no son credenciales operativas ni una prueba de conectividad a Supabase. `server.mjs` sigue sin registrar la ruta. Pendiente CI del nuevo commit.
+
+### Gate de paginación HTTP de mesas (23-10-2026)
+
+- `ae8fd8c00da01538a07dcf8617c8f901586862d8`: Sabora CI **SUCCESS** (39961696826) y Bootstrap **SUCCESS** (39961696643).
+- `tests/admin-tables-read-http-pagination.test.mjs` verifica con Fastify real páginas sucesivas, cursor, límite, parámetros inesperados, enteros fuera de rango, respuesta SQL desordenada y revocación del rol entre peticiones. La membresía se vuelve a consultar para cada petición autenticada, incluso las inválidas.
+- Este bloque es solo de pruebas y no activa `server.mjs`. CI del HEAD nuevo pendiente.
