@@ -401,3 +401,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La confirmación `confirmed` o `replayed` resuelve la retención. No se realiza reintento automático ni se persisten tokens en almacenamiento local.
 - Pruebas de registro y flujo cubren caída de red, bloqueo de reset, cambio de revisión, replay con clave original y liberación tras resolución.
 - `f6412ee` pasó ambos workflows; `d8a022f` estaba en ejecución al inicio. Este SHA requiere CI verde. Sin registro de ruta ni activación productiva.
+
+## 54. Recuperación de resultados HTTP ambiguos y clasificación segura (24-10-2026)
+
+- La ruta HTTP candidata deja de leer `error?.message` directamente para conflictos de idempotencia; usa exclusivamente el clasificador `failureCode` que evita getters. No se registra en `server.mjs`.
+- La composición de cliente conserva la identidad de petición `unresolved` no solo ante fallo de red, sino también ante HTTP 503 (`order_confirmation_unavailable`) y respuestas HTTP malformadas (`confirmation_unexpected_response`): ninguna acredita que el servidor no haya confirmado la transacción.
+- Pruebas de regresión cubren 503 y éxito HTTP malformado, bloqueo de reset/cambio de cesta y recuperación explícita mediante `replayed` con la misma clave. No hay reintento automático ni persistencia local de tokens.
+- Los workflows del bloque 53 fueron SUCCESS. Este SHA requiere sus propios resultados de CI; sin despliegue, merge ni acceso a recursos compartidos.
