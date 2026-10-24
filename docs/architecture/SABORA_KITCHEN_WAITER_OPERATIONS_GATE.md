@@ -218,3 +218,13 @@ prepara ni marca listo. La prueba Fastify verifica que en estos casos no se
 invoca siquiera al coordinador. El repositorio mantiene la misma denegación
 antes de SQL y PostgreSQL vuelve a comprobar los permisos transaccionales.
 Las rutas siguen sin montarse en el servidor de producción.
+
+## Clasificación explícita de errores de transición
+
+La capa de repositorio distingue entradas malformadas
+(`invalid_order_line_transition`, respuesta HTTP 400) de destinos válidos
+pero incompatibles con el rol (`order_operations_forbidden`, HTTP 403).
+La comprobación se realiza antes de SQL. Las pruebas de repositorio y el
+harness PG17 validan esa distinción; la denegación no se convierte en un
+conflicto 409 ni en una indisponibilidad 503. No cambia la política de
+permisos SQL ni autoriza el montaje operativo.
