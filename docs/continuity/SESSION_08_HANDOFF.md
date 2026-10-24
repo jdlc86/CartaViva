@@ -301,3 +301,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Añadidas pruebas para getters hostiles en `authorized` y `quantity`, verificando rechazo antes de generar la clave idempotente.
 - La implementación permanece candidata, sin PWA real conectada ni ruta de confirmación registrada. CI pendiente para este SHA.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 40. Consistencia de expiración de consentimiento en cliente (24-10-2026)
+
+- `parseRepricingChallenge` ahora verifica que `repricing.expiresAt` coincida con el segundo componente del token HMAC `v1.<expiresAt>.<fingerprint>.<mac>`, además de comprobar caducidad y forma del DTO.
+- `tests/customer-confirmation-flow.test.mjs` comprueba que un desafío inconsistente se rechaza antes de abrir el panel de consentimiento y se informa como fallo.
+- Es una validación de coherencia, **no** una verificación HMAC en navegador: la firma solo se verifica en el servidor transaccional.
+- Los SHA `df98d9e` y `3fb254a` tenían Sabora CI y Bootstrap SUCCESS. El nuevo HEAD sigue pendiente de CI. Sin merge ni despliegue.
