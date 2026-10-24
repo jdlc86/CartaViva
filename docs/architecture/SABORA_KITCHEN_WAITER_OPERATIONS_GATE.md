@@ -248,3 +248,13 @@ coincide con el filtro de estado solicitado, se rechaza el resultado
 completo con `invalid_order_operations_sql_result`. La prueba unitaria
 simula resultados SQL incompatibles para cocina, sala y administración.
 Esta validación de salida no sustituye RLS ni habilita el acceso SQL positivo.
+
+## Integridad del historial de transiciones
+
+El repositorio verifica que cada evento devuelto por SQL represente
+únicamente uno de los tres saltos consecutivos autorizados:
+`confirmed → preparing`, `preparing → ready` o `ready → picked_up`.
+Los saltos, retrocesos y repeticiones de estado se rechazan antes de
+producir el DTO público; las pruebas cubren resultados SQL falsos. Este
+control no acredita por sí solo el orden temporal completo de eventos ni
+reemplaza el contrato transaccional y las políticas RLS pendientes.
