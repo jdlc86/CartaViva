@@ -64,3 +64,12 @@ creados exclusivamente en el contenedor CI. También comprueba que ninguno
 puede ejecutar la RPC invoker. Esto detecta concesiones accidentales mientras
 no exista el diseño de acceso positivo; no demuestra todavía que el runtime
 pueda operar con una identidad de mínimos privilegios.
+
+## Prueba adicional de FORCE RLS en PG17
+
+El test de identidad crea temporalmente un permiso SELECT para el login de
+operaciones **solo en el contenedor desechable**, verifica que la tabla de
+reintentos mantiene `relrowsecurity` y `relforcerowsecurity` activos y que una
+lectura bajo esa identidad no devuelve filas sin política permisiva. Revoca
+el permiso en un bloque `finally` antes de destruir el entorno. Esta prueba
+no constituye un GRANT operativo ni valida todavía el flujo positivo.
