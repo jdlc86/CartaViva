@@ -237,3 +237,14 @@ puede solicitar `confirmed` ni `preparing`. Las peticiones prohibidas
 responden `403` antes de invocar al coordinador; los filtros permitidos
 continúan hacia el coordinador, donde se revalida la membresía. Pruebas
 Fastify verifican ambos recorridos. Las rutas permanecen sin montar.
+
+## Integridad de proyecciones SQL por rol
+
+El repositorio verifica ahora las filas del tablero **después** de la
+consulta, antes de construir la respuesta pública. Si la consulta devuelve
+una línea fuera de la visibilidad del rol autenticado (cocina: sin
+`picked_up`; sala: sin `confirmed` ni `preparing`) o una línea que no
+coincide con el filtro de estado solicitado, se rechaza el resultado
+completo con `invalid_order_operations_sql_result`. La prueba unitaria
+simula resultados SQL incompatibles para cocina, sala y administración.
+Esta validación de salida no sustituye RLS ni habilita el acceso SQL positivo.
