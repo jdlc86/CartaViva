@@ -213,6 +213,37 @@ async function httpHarness({role = 'kitchen', operations} = {}) {
   return app;
 }
 
+test('HTTP rejects forbidden board filters before coordinator and allows scoped ones', async (t) => {
+  const observed = [];
+  const operations = {
+    async listBoard(_ctx, page) { observed.push(page); return {version: 1, items: []}; },
+    async listHistory() { return {events: []}; },
+    async transitionLine() { throw Error('unexpected_transition'); },
+  };
+  for (const [role, forbiddenStatus, permittedStatus] of [
+    ['kitchen', 'picked_up', 'preparing'],
+    ['waiter', 'confirmed', 'picked_up'],
+    ['waiter', 'preparing', 'ready'],
+  ]) {
+    const app = await httpHarness({role, operations});
+    t.after(() => app.close());
+    const forbidden = await app.inject({
+      method: 'GET',
+      url: `/api/v1/operations/order-lines?status=${forbiddenStatus}`,
+      headers: {authorization: 'Bearer test'},
+    });
+    assert.equal(forbidden.statusCode, 403);
+    assert.deepEqual(forbidden.json(), {error: 'forbidden'});
+    const allowed = await app.inject({
+      method: 'GET',
+      url: `/api/v1/operations/order-lines?status=${permittedStatus}`,
+      headers: {authorization: 'Bearer test'},
+    });
+    assert.equal(allowed.statusCode, 200);
+  }
+  assert.equal(observed.length, 3);
+});
+
 test('HTTP rejects role-incompatible transition before calling coordinator', async (t) => {
   let transitions = 0;
   const operations = {
