@@ -219,3 +219,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La composición `packages/customer-consent/src/customer-confirmation-*.mjs` queda lista como candidato aislado, sin activar ni registrar la ruta del backend.
 - Próximo bloque real: implementar contratos de sesión autorizada/cesta y conectar a ellos el montaje; no fabricar una identidad desde el alias ni usar datos de demostración como reales.
 - CI del SHA `049d254` seguía en curso al inicio de este bloque; CI del nuevo HEAD pendiente. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 29. Contrato candidato de petición desde sesión y cesta autorizadas (24-10-2026)
+
+- CI del SHA `049d254`: Sabora CI `40088705350` SUCCESS y Bootstrap `40088705355` SUCCESS. CI del SHA `23492aa`: Sabora CI `40088773296` SUCCESS y Bootstrap `40088773257` SUCCESS.
+- Nuevo `packages/customer-consent/src/customer-authorized-request.mjs`: lector inyectado `readContext/readBasket/createRequestKey` que solo produce una petición cuando el contexto declara `authorized=true`, `canOrder=true` y la cesta `confirmable=true`; requiere identificadores de mesa/visita/actor/cesta/plato, tokens QR y sesión, selección, cantidad y clave de idempotencia. No deriva autorización del alias ni de preferencias de localStorage.
+- Validación de campos permitidos, tamaño, IDs y tokens; rechaza selecciones cíclicas o con getters antes de serializar. Tests `tests/customer-authorized-request.test.mjs` para contexto/cesta, rechazo, entradas malformadas y objetos adversarios.
+- **Límite de seguridad:** `authorized` y `confirmable` en el navegador son solo señales de preparación de UI; no prueban permisos. La única autoridad es la transacción PostgreSQL del servidor y su comprobación de QR, visita, sesión y mesa. No conectar a PWA real hasta tener lectores alimentados por endpoints autorizados.
+- CI del nuevo SHA pendiente. PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
