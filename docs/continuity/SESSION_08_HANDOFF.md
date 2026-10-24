@@ -286,3 +286,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Prueba `late HTTP success after destroy cannot resurrect the authorized flow`: respuesta 201 diferida tras `destroy()`, sin notificaciones y con estado final `disposed`.
 - Se verificó el coordinador `catalog-confirmation-coordinator.mjs`: autorización transaccional precede a búsqueda de idempotencia y la respuesta replay exige huella idéntica; no se cambió ese contrato.
 - CI del SHA `3fb254a` SUCCESS en ambos workflows; CI de los cambios posteriores aún pendiente. No se registró ruta real ni se tocó infraestructura.
+
+## 38. Corrección determinista de prueba de respuesta HTTP tardía (24-10-2026)
+
+- `Sabora CI` run `40089707611` para `21edbf2` falló en la nueva prueba de destrucción durante confirmación. Causa: el test destruía el flujo después de dos microtareas sin garantizar que `fetchImpl` hubiera comenzado; la implementación rechazó correctamente con `confirmation_flow_disposed` durante la lectura del contexto.
+- Se reemplazó la espera temporal por una señal explícita `entered` que se resuelve dentro de `fetchImpl`. Solo después se ejecuta `destroy()` y se libera la respuesta HTTP diferida. Así se comprueba exactamente el escenario previsto y sin carrera del test.
+- No se relajó el control de autorización ni el guard de destrucción. CI del nuevo SHA pendiente.
+- PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
