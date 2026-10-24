@@ -25,15 +25,26 @@ test('customer confirmation returns minimal DTO and idempotent replay without ev
   assert.equal(r.body.includes('private'),false);
  }
 });
-test('customer confirmation does not leak acceptance token or private pricing evidence',async t=>{
+test('customer confirmation exposes only bounded repricing DTO, never private evidence',async t=>{
+ const token='v1.1792600300000.'+'a'.repeat(64)+'.'+'b'.repeat(64);
  const app=create(async()=>({status:'acceptance_required',
-  decision:{requiresAcceptance:true,token:'secret-acceptance',evidence:{private:1}}}));
+  decision:{requiresAcceptance:true,previousTotalCents:1000,
+   currentTotalCents:1100,differenceCents:100,
+   previousPublishedRevision:1,currentPublishedRevision:2,
+   evidence:{private:'never-expose'},token:'private-token'},
+  acceptance:{token,expiresAt:1792600300000,private:'never-expose'}}));
  t.after(()=>app.close());
  const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
   payload:{requestKey:'request-001'}});
  assert.equal(r.statusCode,409);
- assert.deepEqual(r.json(),{error:'acceptance_required'});
- assert.equal(r.body.includes('secret'),false);
+ assert.deepEqual(r.json(),{error:'acceptance_required',repricing:{
+  schemaVersion:1,previousTotalCents:1000,currentTotalCents:1100,
+  differenceCents:100,previousPublishedRevision:1,
+  currentPublishedRevision:2,acceptanceToken:token,expiresAt:1792600300000
+ }});
+ assert.equal(r.headers['cache-control'],'no-store');
+ assert.equal(r.body.includes('never-expose'),false);
+ assert.equal(r.body.includes('private-token'),false);
 });
 test('customer confirmation maps known failures and hides unexpected backend details',async t=>{
  let message='order_context_forbidden';
