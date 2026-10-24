@@ -310,3 +310,16 @@ cursor solicitado. Se rechazan páginas desordenadas, repetidas, con fechas
 inválidas o que retrocedan sobre el cursor. Las pruebas cubren una página
 válida con overflow y los rechazos anteriores. Es validación defensiva de
 la proyección, no una concesión de permisos ni un mecanismo de despacho.
+
+## Orden global del historial y límite del rol histórico
+
+La proyección comprueba también el orden global ascendente de los eventos
+por `(occurred_at, event_id)` según el `ORDER BY` de la consulta, además de
+la continuidad de cada línea y la unicidad de eventos. La prueba cubre
+inversiones temporales, desempate de identificadores y orden válido entre
+líneas distintas. **No se infiere autorización histórica desde `actor_role`:**
+la consulta une `order_line_events` con el rol **actual** de
+`staff_members`, que puede haber cambiado desde que ocurrió el evento.
+Para auditar el rol ejercido en el momento de la transición hace falta
+un snapshot durable aprobado en el contrato, no una validación contra el
+rol actual. No se ha cambiado el esquema ni habilitado rutas.
