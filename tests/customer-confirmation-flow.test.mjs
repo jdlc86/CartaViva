@@ -216,3 +216,18 @@ test('error response cannot execute an accessor-backed error discriminant',async
  assert.equal(events.at(-1).type,'failed');
  flow.destroy();
 });
+
+test('nested getter and toJSON cannot execute during confirmation serialization',async()=>{
+ const {document,container}=dom();let sends=0;
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:()=>{},fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ const nested={extras:['cheese']};
+ Object.defineProperty(nested,'price',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ await assert.rejects(flow.confirm({...request,selection:nested}),
+  /invalid_confirmation_request/);
+ const withToJson={...request,selection:{toJSON(){throw Error('toJSON_executed');}}};
+ await assert.rejects(flow.confirm(withToJson),/invalid_confirmation_request/);
+ assert.equal(sends,0);
+ flow.destroy();
+});
