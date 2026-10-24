@@ -522,3 +522,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se añade test unitario de regresión en `tests/catalog-visit-context-repository.test.mjs`: el lector de visitas rechaza explícitamente un payload completo de confirmación sin ejecutar SQL, mientras acepta la proyección de exactamente seis credenciales (`tableId`, `visitId`, `actorId`, `basketId`, `qrToken`, `customerSessionToken`).
 - Esto protege la corrección de §70 contra la reintroducción de campos de pedido en la interfaz de autorización. El test verifica parámetros vinculados y la respuesta prohibida cuando no hay visita válida.
 - El fallo histórico de §68/§69 se diagnosticó en PG17: ambos workflows fallaban porque el test de integración pasaba el payload completo directamente a `lockContext`. §70 corrigió la llamada. No cerrar §70/§71 sin confirmar ambos workflows verdes.
+
+## 72. Pruebas de seguridad de parámetros transaccionales (24-10-2026)
+
+- Se amplían los tests de `postgres-transaction.mjs` con diez casos de SQL o bindings inválidos (undefined, Infinity, decimal, bigint, objeto, fecha inválida, cadena con NUL, array anidado, SQL vacío y contenedor no-array). Todos deben abortar antes de enviar la consulta al driver, con `ROLLBACK` y liberación del cliente.
+- Se añade prueba de snapshot de parámetros: modificar el array original inmediatamente después de llamar `query` no cambia los valores enviados al driver.
+- Se mantienen las validaciones existentes; no se modifica la implementación productiva, las migraciones ni el endpoint. Verificar CI/Bootstrap del SHA final.
