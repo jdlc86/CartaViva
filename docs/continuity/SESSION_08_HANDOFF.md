@@ -339,3 +339,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Dos pruebas Fastify nuevas comprueban respuestas 503 genéricas, sin ejecución de getters hostiles ni filtración de información, cuando el adaptador devuelve `orderId` o `currentTotalCents` ejecutables.
 - El commit `bbccd75` superó Sabora CI y Bootstrap; `7628cc5` seguía en ejecución al comienzo de este bloque. El nuevo SHA requiere CI.
 - Ruta candidata **no registrada** en `server.mjs`. PR #2 Draft; sin merge, despliegue ni tocar Fleetia, VPS o Supabase operativo.
+
+## 45. Excepciones internas no confiables en HTTP (24-10-2026)
+
+- El adaptador HTTP candidato consulta el descriptor propio de `message` en los errores capturados y nunca ejecuta getters de errores arrojados por dependencias. Los `Error` normales conservan el mapeo conocido; objetos hostiles reciben `503 order_confirmation_unavailable` sin detalles.
+- Añadida prueba Fastify con getter hostil en el objeto lanzado por `confirm`.
+- El SHA anterior `7628cc5` tenía ambos workflows SUCCESS. Este bloque requiere verificación CI antes de considerarse cerrado.
+- Ruta candidata sin registrar, PR #2 Draft, sin merge, despliegue ni acceso a Fleetia/VPS/Supabase operativo.
