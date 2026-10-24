@@ -13,7 +13,7 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
      request.requestKey.length>128)
    throw Error('invalid_confirmation_request');
   const body=JSON.stringify(request);
-  if(Buffer.byteLength(body,'utf8')>65536)
+  if(new TextEncoder().encode(body).length>65536)
    throw Error('invalid_confirmation_request');
   let response;
   try{
