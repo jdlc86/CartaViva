@@ -26,6 +26,11 @@ const dataRecord=v=>{
  });
 };
 const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
+const ownMethod=(object,name)=>{
+ const descriptor=Object.getOwnPropertyDescriptor(object,name);
+ return !!descriptor&&descriptor.enumerable&&own(descriptor,'value')&&
+  typeof descriptor.value==='function';
+};
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
  'requestKey','acceptanceToken','qrToken','customerSessionToken'];
 // Snapshot untrusted JSON data once, without invoking getters or accepting
@@ -71,7 +76,7 @@ const stable=v=>{
 };
 export function createCatalogConfirmationCoordinator({withTransaction,repository,secretKey,clock}={}){
  if(typeof withTransaction!=='function'||!plain(repository)||
-    requiredMethods.some(name=>typeof repository[name]!=='function')||
+    requiredMethods.some(name=>!ownMethod(repository,name))||
     typeof clock!=='function'||typeof secretKey!=='string'||Buffer.byteLength(secretKey)<32)
   throw Error('invalid_confirmation_coordinator');
  return async function confirm(rawInput){
