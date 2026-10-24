@@ -116,3 +116,11 @@ esquema `sabora` y falla si alguno de los dos logins dispone de `USAGE`,
 `SELECT` o `UPDATE` sobre cualquiera de ellas. El inventario no presupone
 que las tablas sean el único recurso SQL capaz de alterar datos o exponer
 identificadores. No se conceden privilegios de secuencia en esta fase.
+
+## Comprobación explícita de la función candidata
+
+La prueba de PostgreSQL 17 vuelve a verificar, mediante la firma exacta
+`regprocedure`, que ninguno de los dos logins técnicos puede ejecutar
+`transition_order_line_idempotent_candidate(uuid,uuid,text,text)`.
+La revisión de otras funciones heredadas del esquema queda separada: no se
+asume que sus contratos o permisos puedan modificarse sin inventario previo.
