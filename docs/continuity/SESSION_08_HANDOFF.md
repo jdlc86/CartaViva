@@ -120,3 +120,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se refuerza el smoke PG17 de confirmación: la línea recién creada debe estar en `confirmed` y no deben existir avisos de recogida ni eventos de transición antes de una acción autorizada del personal.
 - La recepción verificable de una comanda/despacho sigue siendo un hito separado del estado de línea `preparing`; no inventar un acuse ni marcar `picked_up` como entrega.
 - El bloque queda pendiente del CI del nuevo SHA. Sin merge ni activación de PR #4, sin despliegues ni cambios de Fleetia/VPS/Supabase operativo.
+
+## 16. Regresión de integración HTTP→confirmación→línea de cocina (24-10-2026)
+
+- Nuevo `tests/customer-confirmation-kitchen-handoff.test.mjs` ejercita Fastify HTTP real y el coordinador transaccional de confirmación con repositorio en memoria que simula el trigger SQL, **no sustituye el smoke PostgreSQL 17**.
+- Casos: primera confirmación devuelve 201 y proyecta una sola línea `confirmed` sin aviso ni evento; replay de misma clave devuelve 200 y el mismo pedido sin segunda línea; reutilización de clave con cantidad diferente devuelve 409 y no duplica cocina; fallo de ledger después de proyectar línea revierte pedido/línea; visita revocada devuelve 403 sin crear comanda.
+- Complementa el smoke real `catalog-confirmation-kitchen-durability-smoke.sql` y el contrato `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md`. **No simula ni afirma recepción por cocina, despacho ni autorización de personal del PR #4.**
+- CI del SHA nuevo pendiente de confirmación. Sin merge ni activación, sin Fleetia/VPS/Supabase operativo.
