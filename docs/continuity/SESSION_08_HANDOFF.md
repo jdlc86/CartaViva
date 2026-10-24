@@ -155,3 +155,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Causa identificada: el literal regex de la ruta HTTP buscaba barra invertida antes del separador `.` del token HMAC (`\\.`) en vez de punto literal (`\.`), rechazando todos los tokens válidos y convirtiendo el resultado en `503`.
 - Corregido el regex en `apps/api/src/customer-order-confirmation-http-candidate.mjs`. No se relajan los controles del token, revisión, diferencia de precios o caducidad. Nuevo CI obligatorio antes de cerrar este hito.
 - El flujo sigue sin montar en runtime; no merge, no VPS, no Fleetia, no Supabase operativo.
+
+## 21. Cierre CI de repricing y controlador candidato PWA (24-10-2026)
+
+- SHA `639b39196d612751d9a7cf7f32e5266b11a73bd1`: **Sabora CI 40081303875 SUCCESS** y **Bootstrap 40081303867 SUCCESS**. Queda cerrado el bug de expresión regular del token.
+- Se añade `packages/customer-consent/src/repricing-consent.mjs`, controlador candidato sin red ni almacenamiento, para la futura PWA cliente. Expone exclusivamente importes/revisiones/caducidad, no el token al render; `present` no envía nada, `decline` descarta, `accept` solo envía desde una acción explícita, consume el token antes de iniciar red y rechaza dobles clics. Una nueva respuesta `409` exige otra aceptación explícita.
+- `tests/customer-repricing-consent-controller.test.mjs` cubre reducción de precio, cancelación, caducidad, DTO malformado, token no filtrado, doble clic y segundo cambio de precio.
+- **No se ha montado en ninguna PWA ni ruta runtime**; es una pieza integrable que no afirma UX final. La revisión visual/accesible de consentimiento sigue pendiente. CI del nuevo HEAD pendiente.
+- PR #2 Draft. Sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
