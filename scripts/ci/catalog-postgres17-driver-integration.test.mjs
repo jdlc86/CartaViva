@@ -388,7 +388,8 @@ test('real PG17 coordinator rejects QR mismatch even for an existing open table'
   const {createCatalogVisitContextRepository}=await import(
    '../../apps/api/src/catalog-visit-context-repository.mjs');
   const repo=createCatalogVisitContextRepository();
-  const context=await repo.lockContext((sql,args)=>client.query(sql,args),input);
+  const {itemId,selection,quantity,requestKey,...visitCredentials}=input;
+   const context=await repo.lockContext((sql,args)=>client.query(sql,args),visitCredentials);
   assert.equal(context.authorized,false);
   assert.equal(context.canOrder,false);
  }finally{
