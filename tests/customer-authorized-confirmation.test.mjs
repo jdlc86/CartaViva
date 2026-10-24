@@ -71,7 +71,7 @@ test('concurrent confirmations are fenced before reading another basket',async()
  assert.throws(()=>app.resetForNewBasket(),/confirmation_flow_busy/);
  release();
  await first;
- assert.equal(reads,1);
+ assert.equal(reads,2); // initial snapshot and pre-submit revalidation
  assert.equal(sends,1);
  app.destroy();
 });
