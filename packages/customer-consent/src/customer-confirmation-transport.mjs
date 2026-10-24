@@ -5,6 +5,28 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
 const data=(v,k)=>{const d=Object.getOwnPropertyDescriptor(v,k);
  return !!d&&d.enumerable&&own(d,'value');};
+// Validate the entire JSON tree before JSON.stringify: nested getters, toJSON,
+// cycles and non-JSON values must never execute or silently change the order.
+const safeJson=(value,seen=new Set(),depth=0,budget={nodes:0})=>{
+ if(++budget.nodes>4096||depth>16)return false;
+ if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+ if(typeof value==='number')return Number.isSafeInteger(value);
+ if(typeof value!=='object'||seen.has(value)||
+    (!Array.isArray(value)&&!plain(value)))return false;
+ seen.add(value);
+ const keys=Reflect.ownKeys(value);
+ if(keys.length>512||(Array.isArray(value)&&
+    keys.filter(k=>k!=='length').length!==value.length))return false;
+ for(const k of keys){
+  if(k==='length'&&Array.isArray(value))continue;
+  if(typeof k!=='string'||['__proto__','prototype','constructor','toJSON'].includes(k)||
+     !data(value,k)||k.length>128||
+     (Array.isArray(value)&&(!/^(0|[1-9][0-9]*)$/.test(k)||Number(k)>=value.length))||
+     !safeJson(Object.getOwnPropertyDescriptor(value,k).value,seen,depth+1,budget))return false;
+ }
+ seen.delete(value);
+ return true;
+};
 const validUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/api/v1/customer/orders/confirm'}={}){
  if(typeof fetchImpl!=='function'||endpoint!=='/api/v1/customer/orders/confirm')
@@ -16,7 +38,7 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
    throw Error('invalid_confirmation_request');
   // The authorized reader normally supplies a validated snapshot. This
   // transport still rejects accessor-backed DTOs before serialization.
-  if(Reflect.ownKeys(request).some(k=>typeof k!=='string'||!data(request,k)))
+  if(!safeJson(request))
    throw Error('invalid_confirmation_request');
   const body=JSON.stringify(request);
   if(new TextEncoder().encode(body).length>65536)
