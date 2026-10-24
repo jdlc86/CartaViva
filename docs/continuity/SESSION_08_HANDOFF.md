@@ -493,3 +493,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se comprueba explícitamente que cada una de las seis dimensiones del ámbito de bloqueo (mesa, sesión, visita, cesta, actor, requestKey) altera exclusivamente su posición en el JSON pasado a `hashtextextended`.
 - Los casos de driver son tests unitarios de regresión; los escenarios de bloqueo entre sesiones continúan cubiertos por el smoke PG17 desechable. Bloques 64 y 65 aún estaban en CI al iniciar; este SHA también requiere ambos workflows verdes.
 - No se habilita el endpoint HTTP ni se modifican otros proyectos o ramas.
+
+## 67. Pruebas negativas de publicación y dinero de cotización (24-10-2026)
+
+- Se amplían los tests del lector de confirmación: revisiones de publicación cero, mayores que el entero seguro o expresadas en notación exponencial y snapshots ausentes deben producir catálogo no disponible, nunca confirmación implícita.
+- Se comprueba el rechazo de cotizaciones con importes negativos, descuentos superiores al subtotal, suma inconsistente, notación exponencial, importes fuera de rango seguro, revisión inválida o evidencia no-objeto. Un ítem inexistente no puede marcarse disponible.
+- Solo se añaden pruebas unitarias en `tests/catalog-confirmation-read-repository.test.mjs`; no se cambian contratos, migraciones ni rutas productivas. Verificar Sabora CI y Bootstrap del SHA final.
