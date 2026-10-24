@@ -308,3 +308,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-confirmation-flow.test.mjs` comprueba que un desafío inconsistente se rechaza antes de abrir el panel de consentimiento y se informa como fallo.
 - Es una validación de coherencia, **no** una verificación HMAC en navegador: la firma solo se verifica en el servidor transaccional.
 - Los SHA `df98d9e` y `3fb254a` tenían Sabora CI y Bootstrap SUCCESS. El nuevo HEAD sigue pendiente de CI. Sin merge ni despliegue.
+
+## 41. Endurecimiento de DTO de consentimiento y transporte (24-10-2026)
+
+- `parseRepricingChallenge` rechaza getters en los campos de `response.error`, `response.repricing` y en cada campo económico de `repricing`, antes de leerlos. Rechaza también claves simbólicas o extras al comprobar `Reflect.ownKeys`.
+- `createCustomerOrderConfirmationTransport` exige campos de datos propios y enumerables para `error` y `status` antes de inspeccionar el resultado JSON; evita ejecutar accesores en esos discriminantes.
+- Nueva regresión de flujo verifica que un getter hostil en `currentTotalCents` no se ejecuta, no abre panel de consentimiento y produce un fallo controlado.
+- `72becf9` tuvo Sabora CI `40090032793` y Bootstrap `40090032776` SUCCESS. Los cambios de este bloque están pendientes de CI.
+- Ruta y PWA siguen sin activar, PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
