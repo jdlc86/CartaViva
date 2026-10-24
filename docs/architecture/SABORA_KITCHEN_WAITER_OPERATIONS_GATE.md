@@ -299,3 +299,14 @@ mensajes con sufijos o prefijos inesperados se devuelven como 503 genérico,
 sin detalles privados. Se elimina la clasificación por subcadenas, que
 podía confundir mensajes arbitrarios del driver con errores autorizados.
 La batería Fastify prueba códigos públicos y redacción de secretos.
+
+## Integridad de la paginación del tablero
+
+La lectura del tablero comprueba **todas** las filas devueltas por SQL,
+incluida la fila adicional utilizada para calcular `nextCursor`: orden
+estrictamente creciente por `(confirmed_at, order_id, line_number)`,
+identificador de línea no repetido y posición estrictamente posterior al
+cursor solicitado. Se rechazan páginas desordenadas, repetidas, con fechas
+inválidas o que retrocedan sobre el cursor. Las pruebas cubren una página
+válida con overflow y los rechazos anteriores. Es validación defensiva de
+la proyección, no una concesión de permisos ni un mecanismo de despacho.
