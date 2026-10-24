@@ -350,6 +350,19 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    // Database CREATE is independent of schema CREATE and would let a
+    // technical login provision arbitrary schemas in the same database.
+    await admin.query('GRANT CREATE ON DATABASE postgres TO sabora_ci_operations_identity');
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query('REVOKE CREATE ON DATABASE postgres FROM sabora_ci_operations_identity');
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // The startup gate must also reject schema drift, not just GRANT drift.
     // Both alterations are confined to the disposable PostgreSQL 17 database.
     // Restore the invariant in finally even when an assertion fails.
