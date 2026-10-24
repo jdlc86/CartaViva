@@ -224,3 +224,24 @@ test('HTTP confirmation never represents persistence as kitchen receipt',async t
  assert.equal(response.body.includes('dispatch'),false);
  assert.equal(response.body.includes('receipt'),false);
 });
+
+test('HTTP refuses inconsistent repricing challenges without leaking evidence',async t=>{
+ const token='v1.1792600300000.'+'a'.repeat(64)+'.'+'b'.repeat(64);
+ let variant='equal_revision';
+ const app=create(async()=>({status:'acceptance_required',
+  decision:{requiresAcceptance:true,previousTotalCents:1000,
+   currentTotalCents:1100,differenceCents:100,
+   previousPublishedRevision:1,
+   currentPublishedRevision:variant==='equal_revision'?1:2},
+  acceptance:{token,expiresAt:variant==='expiry_mismatch'?1792600300001:1792600300000}
+ }));
+ t.after(()=>app.close());
+ for(const mode of ['equal_revision','expiry_mismatch']){
+  variant=mode;
+  const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+   payload:{requestKey:'request-001'}});
+  assert.equal(r.statusCode,503);
+  assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+  assert.equal(r.headers['cache-control'],'no-store');
+ }
+});
