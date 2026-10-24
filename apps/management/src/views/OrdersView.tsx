@@ -35,6 +35,7 @@ function visibleInWorkspace(line: OrderLineItem, workspace: OrderWorkspace) {
 export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway | null}) {
   const readEpoch = useRef(0);
   const historyEpoch = useRef(0);
+  const transitionAttempts = useRef(new Map<string, {targetStatus: string; correlationId: string}>());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
@@ -83,12 +84,18 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     if (!action) return;
     setPendingLines((current) => new Set(current).add(line.lineId));
     setError(null);
+    const previousAttempt = transitionAttempts.current.get(line.lineId);
+    const correlationId = previousAttempt?.targetStatus === action.targetStatus
+      ? previousAttempt.correlationId
+      : `ui_${crypto.randomUUID().replaceAll('-', '_')}`;
+    transitionAttempts.current.set(line.lineId, {targetStatus: action.targetStatus, correlationId});
     try {
       await gateway.transitionLine({
         lineId: line.lineId,
         targetStatus: action.targetStatus,
-        correlationId: `ui_${crypto.randomUUID().replaceAll('-', '_')}`,
+        correlationId,
       });
+      transitionAttempts.current.delete(line.lineId);
       await load();
     } catch {
       setError('La operación no se confirmó. El estado se recargará antes de permitir otro intento.');
