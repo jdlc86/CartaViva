@@ -200,6 +200,19 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
+test('repository rejects duplicate history event identifiers even across distinct lines', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    event_id: eventId, line_id: lineId, line_number: 1,
+    name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
+    occurred_at: confirmedAt, actor_role: 'kitchen',
+  };
+  await assert.rejects(repository.listHistory(async () => ({rows: [
+    base,
+    {...base, line_id: '60000000-0000-4000-8000-000000000006', line_number: 2},
+  ]}), {actorId, role: 'admin', orderId, limit: 10}), /invalid_order_operations_sql_result/);
+});
+
 test('repository rejects discontinuous or out-of-order history for the same line', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
