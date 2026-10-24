@@ -589,7 +589,7 @@ test('invalid query bindings abort before driver execution and roll back',async(
   ['SELECT $1',[BigInt(1)]],
   ['SELECT $1',[{}]],
   ['SELECT $1',[new Date(NaN)]],
-  ['SELECT $1',['bad\\u0000text']],
+  ['SELECT $1',['bad\u0000text']],
   ['SELECT $1',[['nested']]],
   ['',[]],
   ['SELECT 1',{}]
