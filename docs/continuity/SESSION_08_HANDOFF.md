@@ -374,3 +374,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - El registro de idempotencia expone su identidad actual de cesta/revisión para comparar con el snapshot autorizado; la clave sigue siendo estable durante resultados ambiguos.
 - Dos pruebas cubren cambio de revisión y pérdida de disponibilidad entre lecturas. Esto es una barrera cliente de consistencia, no sustituye revalidación transaccional en servidor ni autoriza activar la ruta.
 - El SHA `026286b` pasó ambos workflows; `7083126` estaba en ejecución al inicio. Este bloque requiere CI. Sin merge ni despliegue.
+
+## 50. Corrección CI del fence de cesta y getters de disponibilidad (24-10-2026)
+
+- `7083126` pasó Sabora CI y Bootstrap. `a61b2c4` falló en ambos workflows porque la prueba de concurrencia esperaba una lectura de cesta, pero el nuevo fence realiza deliberadamente dos lecturas (snapshot y revalidación antes de HTTP). Se ajustó la expectativa sin relajar la prohibición de confirmaciones concurrentes.
+- La segunda lectura valida `basketId`, `revision` y `confirmable` mediante descriptores propios de datos enumerables; no ejecuta getters de adaptadores hostiles. Prueba de regresión añadida.
+- Pendiente comprobar ambos workflows para este SHA antes de cerrar. Sigue sin montarse el cliente ni registrarse la ruta de confirmación; sin despliegues o merges.
