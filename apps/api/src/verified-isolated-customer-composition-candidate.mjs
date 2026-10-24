@@ -1,6 +1,7 @@
 // Opt-in async gate: verify effective PostgreSQL logins BEFORE registering
 // any HTTP route. No runtime import, database provisioning or deployment.
 import {assertIsolatedCustomerPoolIdentities} from './isolated-pool-identity-preflight.mjs';
+import {assertIsolatedCustomerSqlCapabilities} from './isolated-customer-sql-capabilities-preflight.mjs';
 import {registerIsolatedCustomerCatalogAndOrders} from './isolated-customer-composition-candidate.mjs';
 
 export async function registerVerifiedIsolatedCustomerRoutes(app,{
@@ -23,6 +24,9 @@ export async function registerVerifiedIsolatedCustomerRoutes(app,{
   throw Error('invalid_verified_customer_composition');
  try{
   await assertIsolatedCustomerPoolIdentities({
+   catalogReaderPool,orderWriterPool,expectedCatalogLogin,expectedOrderLogin
+  });
+  await assertIsolatedCustomerSqlCapabilities({
    catalogReaderPool,orderWriterPool,expectedCatalogLogin,expectedOrderLogin
   });
  }catch{
