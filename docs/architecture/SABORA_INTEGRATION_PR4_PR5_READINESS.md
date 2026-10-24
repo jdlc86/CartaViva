@@ -79,3 +79,9 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - La vista de operaciones conserva en memoria por línea la correlación de una transición cuyo resultado HTTP fue incierto; al reintentar el **mismo estado destino** reutiliza la correlación original para permitir replay durable, en lugar de producir una segunda operación con una clave nueva.
 - La correlación se descarta tras una respuesta de transición confirmada; una transición distinta obtiene otra clave. Se mantiene la prohibición de doble clic mientras la solicitud está pendiente y la recarga posterior del tablero.
 - Se añadió test de contrato para la reutilización y las barreras contra respuestas tardías. No se habilita almacenamiento persistente ni se altera el contrato de base de datos.
+
+## Pruebas de composición segura (sin activación)
+
+- Se añadió `tests/order-operations-composition.test.mjs` para rechazar el mismo pool SQL, identidades SQL iguales, cadenas de conexión iguales y pools sin `connect`, además de exigir que `server.mjs` no importe ni registre las rutas candidatas.
+- Se comprueba también que la composición no crea conexiones ni consume configuración de entorno por sí misma. Esta prueba no sustituye los preflights de `current_user/session_user` ni autoriza grants operativos.
+- El bloque runtime continúa bloqueado por los permisos y contratos descritos en `SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md`.
