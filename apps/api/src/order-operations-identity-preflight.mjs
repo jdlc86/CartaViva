@@ -48,6 +48,20 @@ async function inspect(pool, expectedRole) {
                     OR has_table_privilege(current_user, resource.oid, 'REFERENCES')
                     OR has_table_privilege(current_user, resource.oid, 'TRIGGER')))
                 AS accessible_private_tables,
+              (SELECT count(*)::integer FROM pg_catalog.pg_class resource
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relkind = 'S'
+                  AND (has_sequence_privilege(current_user, resource.oid, 'USAGE')
+                    OR has_sequence_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_sequence_privilege(current_user, resource.oid, 'UPDATE')))
+                AS accessible_private_sequences,
+              (SELECT count(*)::integer FROM pg_catalog.pg_proc routine
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = routine.pronamespace
+                WHERE ns.nspname = 'sabora'
+                  AND routine.prosecdef
+                  AND has_function_privilege(current_user, routine.oid, 'EXECUTE'))
+                AS accessible_private_definer_routines,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -68,6 +82,10 @@ async function inspect(pool, expectedRole) {
         row.candidate_rpc_execute !== false ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         row.accessible_private_tables !== 0 ||
+        row.accessible_private_sequences !== 0 ||
+        !Number.isSafeInteger(row.accessible_private_sequences) ||
+        row.accessible_private_definer_routines !== 0 ||
+        !Number.isSafeInteger(row.accessible_private_definer_routines) ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
