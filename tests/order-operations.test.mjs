@@ -106,6 +106,21 @@ test('repository blocks role-incompatible projections before SQL', async () => {
   assert.equal(queries, 0);
 });
 
+test('repository denies role-incompatible transitions without any SQL call', async () => {
+  const repository = createOrderOperationsRepository();
+  let queries = 0;
+  const query = async () => { queries++; throw Error('unexpected_sql'); };
+  for (const [role, targetStatus] of [
+    ['kitchen', 'picked_up'], ['waiter', 'preparing'],
+    ['waiter', 'ready'], ['unknown', 'ready'],
+  ]) {
+    await assert.rejects(repository.transitionLine(query, {
+      actorId, role, lineId, targetStatus, correlationId: 'transition_003',
+    }), /invalid_order_line_transition/);
+  }
+  assert.equal(queries, 0);
+});
+
 test('repository validates idempotent transition and history results', async () => {
   const repository = createOrderOperationsRepository();
   const transition = await repository.transitionLine(async () => ({rows: [{
@@ -116,7 +131,7 @@ test('repository validates idempotent transition and history results', async () 
     repeated: false,
     event_id: eventId,
     notification_id: notificationId,
-  }]}), {actorId, lineId, targetStatus: 'ready', correlationId: 'transition_002'});
+  }]}), {actorId, role: 'kitchen', lineId, targetStatus: 'ready', correlationId: 'transition_002'});
   assert.deepEqual(transition, {
     version: 1,
     orderId,
