@@ -353,3 +353,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La función pura `failureCode` se exporta y se prueba directamente con un getter hostil, sin depender de la transformación interna de excepciones de Fastify. Se comprueba además que un `Error` ordinario conserva su código conocido.
 - La ruta candidata sigue enviando 503 genérico cuando su propio bloque `catch` recibe un error no reconocido. No se modifica la ruta real ni el servidor de producción.
 - Este SHA requiere CI verde; no atribuirle éxito antes de verificar ambos workflows.
+
+## 47. Validación temprana de selecciones de cesta (24-10-2026)
+
+- El lector autorizado de la PWA rechaza claves arbitrarias en arrays de selección y la propiedad `toJSON`, incluso cuando no es una función. Así se alinea la frontera previa a `structuredClone` con el transporte JSON estricto.
+- Nuevas pruebas comprueban arrays con propiedades extras, arrays dispersos con propiedades añadidas y campos `toJSON` dentro de la selección.
+- La rama mantiene sin montar la confirmación de cliente hasta disponer de sesión y cesta confiables; no se registra la ruta HTTP.
+- La regresión de Fastify del bloque 46 se corrigió separando el clasificador puro; los workflows de `5bd605f` aún se estaban ejecutando al comenzar este bloque. El nuevo SHA requiere CI verde.
