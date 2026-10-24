@@ -10,20 +10,27 @@ export function createAuthorizedCustomerConfirmation({
  const readRequest=createAuthorizedCustomerRequestReader({
   readContext,readBasket,createRequestKey:basket=>keys.forBasket(basket)
  });
- const flow=createCustomerConfirmationFlow({fetchImpl,document,container,onOutcome,clock});
+ let settled=false;
+ const flow=createCustomerConfirmationFlow({fetchImpl,document,container,clock,
+  onOutcome:event=>{
+   if(event.type==='submitted'&&['confirmed','replayed'].includes(event.result?.status))settled=true;
+   onOutcome?.(event);
+  }});
  let disposed=false;
  let active=false;
  return Object.freeze({
-  get status(){return disposed?'disposed':active?'submitting':flow.status;},
+  get status(){return disposed?'disposed':settled?'completed':active?'submitting':flow.status;},
   async confirm(){
    if(disposed)throw Error('confirmation_flow_disposed');
-   if(active||flow.status!=='idle')throw Error('confirmation_flow_busy');
+   if(active||settled||flow.status!=='idle')throw Error('confirmation_flow_busy');
    active=true;
    try{
     const request=await readRequest();
     if(disposed)throw Error('confirmation_flow_disposed');
     keys.begin();
-    return await flow.confirm(request);
+    const result=await flow.confirm(request);
+    if(['confirmed','replayed'].includes(result?.status))settled=true;
+    return result;
    }finally{
     keys.end();active=false;
    }
@@ -35,7 +42,7 @@ export function createAuthorizedCustomerConfirmation({
   resetForNewBasket(){
    if(disposed)throw Error('confirmation_flow_disposed');
    if(active||flow.status!=='idle')throw Error('confirmation_flow_busy');
-   keys.reset();
+   keys.reset();settled=false;
   },
   destroy(){disposed=true;flow.destroy();}
  });
