@@ -244,3 +244,23 @@ que la comprobación vuelve a aceptar las identidades de cero concesiones.
 Esto prueba el bloqueo frente a una configuración peligrosa, **no** prueba
 una vinculación positiva del actor ni autoriza a ejecutar la RPC desde el
 login compartido. El entorno operativo permanece sin grants.
+
+## Hito de seguridad cerrado: aislamiento SQL negativo verificado
+
+**Evidencia CI del commit `978ad603828d2277d1ccce14db86861b4c5138d2`**:
+Sabora CI, ejecución `40103973848`, SUCCESS; Bootstrap Sabora
+lockfile, ejecución `40103973858`, SUCCESS.
+
+El alcance comprobado incluye inspección de identidades reales en PostgreSQL
+17 efímero, cero privilegios sobre tablas, secuencias y rutinas privilegiadas
+del esquema privado, denegación de ejecución de la RPC candidata y rechazo
+del preflight ante concesiones accidentales. Los ensayos revocan sus grants
+temporales dentro del contenedor desechable. Este hito cierra la **puerta
+negativa de seguridad**, no la habilitación del flujo operativo.
+
+**Criterio que sigue abierto:** ningún login técnico compartido puede recibir
+permisos para mutar comandas hasta que el actor de cada solicitud quede
+vinculado de forma verificable y no falsificable ante PostgreSQL, con
+autorización transaccional, RLS y pruebas de suplantación directa por SQL.
+Las rutas continúan sin montarse; tampoco se autoriza un despliegue ni
+modificaciones de Supabase operativo.
