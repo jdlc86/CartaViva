@@ -200,6 +200,24 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
+test('repository rejects impossible historical state edges returned by SQL', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    event_id: eventId, line_id: lineId, line_number: 1,
+    name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
+    occurred_at: confirmedAt, actor_role: 'kitchen',
+  };
+  for (const [from_status, to_status] of [
+    ['confirmed', 'ready'], ['ready', 'preparing'],
+    ['picked_up', 'ready'], ['ready', 'ready'],
+  ]) {
+    await assert.rejects(repository.listHistory(async () => ({
+      rows: [{...base, from_status, to_status}],
+    }), {actorId, role: 'admin', orderId, limit: 10}),
+    /invalid_order_operations_sql_result/);
+  }
+});
+
 test('repository rejects impossible SQL transition results and missing pickup notifications', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
