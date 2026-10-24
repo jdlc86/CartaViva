@@ -20,22 +20,24 @@ export function mountCustomerOrderConfirmation({
  root.append(button,status,container);
  let disposed=false;
  let busy=false;
+ let settled=false;
  const report=event=>{
   if(disposed)return;
   if(event.type==='repricing_required')status.textContent='Revisa el cambio de precio antes de continuar.';
   if(event.type==='declined')status.textContent='No se ha aceptado el nuevo precio.';
   if(event.type==='failed')status.textContent='No se ha podido verificar el pedido. Comprueba su estado antes de reintentarlo.';
   if(event.type==='submitted'){
+   if(event.result?.status==='confirmed'||event.result?.status==='replayed')settled=true;
    status.textContent=event.result?.status==='confirmed'?'Pedido confirmado.':
     event.result?.status==='replayed'?'Pedido ya registrado.':
     'No se ha confirmado el pedido. Revisa su estado.';
   }
-  if(!busy&&flow.status==='idle')button.disabled=false;
+  if(!busy&&flow.status==='idle')button.disabled=settled;
   onState(event);
  };
  const flow=createCustomerConfirmationFlow({fetchImpl,document,container,clock,onOutcome:report});
  button.addEventListener('click',async()=>{
-  if(disposed||busy||flow.status!=='idle')return;
+  if(disposed||busy||settled||flow.status!=='idle')return;
   busy=true;button.disabled=true;
   try{
    const request=await readRequest();
@@ -46,11 +48,16 @@ export function mountCustomerOrderConfirmation({
    report({type:'failed',error:error instanceof Error?error.message:'confirmation_failed'});
   }finally{
    busy=false;
-   if(!disposed)button.disabled=flow.status!=='idle';
+   if(!disposed)button.disabled=settled||flow.status!=='idle';
   }
  });
  return Object.freeze({
-  get status(){return flow.status;},
+  get status(){return disposed?'disposed':settled?'completed':flow.status;},
+  resetForNewOrder(){
+   if(disposed)throw Error('confirmation_mount_disposed');
+   if(busy||flow.status!=='idle')throw Error('confirmation_flow_busy');
+   settled=false;status.textContent='';button.disabled=false;
+  },
   destroy(){
    disposed=true;
    flow.destroy();
