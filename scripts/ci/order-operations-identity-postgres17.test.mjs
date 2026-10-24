@@ -117,6 +117,24 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     );
     assert.deepEqual(sequenceGrants.rows, [],
       'technical login unexpectedly accesses a private schema sequence');
+    // Functions are a separate attack surface: the only explicit operational
+    // candidate must remain inaccessible, including its default PUBLIC grant.
+    // This inventory deliberately does not assert that unrelated legacy
+    // functions are private; that requires a separate migration review.
+    const candidateExecution = await admin.query(
+      `SELECT roles.rolname AS role_name,
+              has_function_privilege(roles.oid,
+                'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure,
+                'EXECUTE') AS can_execute
+         FROM pg_catalog.pg_roles roles
+        WHERE roles.rolname = ANY($1::text[])
+        ORDER BY roles.rolname`,
+      [[staffRole, operationsRole]]
+    );
+    assert.deepEqual(candidateExecution.rows, [
+      {role_name: operationsRole, can_execute: false},
+      {role_name: staffRole, can_execute: false},
+    ].sort((a, b) => a.role_name.localeCompare(b.role_name)));
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
