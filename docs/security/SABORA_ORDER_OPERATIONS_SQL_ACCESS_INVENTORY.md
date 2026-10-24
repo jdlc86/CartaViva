@@ -274,3 +274,15 @@ y `FORCE ROW LEVEL SECURITY`, tal como exige la migración existente.
 Cualquier desviación rechaza el arranque; no se asume que
 `order_line_events` tenga FORCE RLS porque su migración no lo declara.
 Esta verificación es negativa y no autoriza GRANTs ni el montaje de rutas.
+
+## Ensayo directo de concesión peligrosa de EXECUTE
+
+El harness PostgreSQL 17 desechable concede temporalmente `EXECUTE` sobre
+la firma exacta `transition_order_line_idempotent_candidate(uuid,uuid,text,text)`
+al login operativo, comprueba que PostgreSQL reconoce el permiso y exige
+que el preflight rechace el arranque. En `finally` revoca la concesión y
+comprueba que el preflight vuelve a aceptar las identidades sin permisos.
+La prueba no llama a la función para mutar datos y no se ejecuta sobre
+Supabase operativo. **No resuelve** la suplantación potencial del parámetro
+`p_actor_user_id`; conserva el bloqueo hasta disponer de vinculación de
+actor no falsificable y un contrato de privilegios positivo aprobado.
