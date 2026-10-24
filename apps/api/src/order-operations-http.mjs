@@ -31,6 +31,9 @@ function mapError(error, reply) {
       message.includes('role_not_allowed')) {
     return reply.code(403).send({error: 'forbidden'});
   }
+  if (message === 'invalid_order_line_transition') {
+    return reply.code(403).send({error: 'forbidden'});
+  }
   if (message.includes('line_not_found') || message.includes('order_not_found')) {
     return reply.code(404).send({error: 'order_operation_not_found'});
   }
