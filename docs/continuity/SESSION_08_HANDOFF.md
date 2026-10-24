@@ -179,3 +179,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas `tests/customer-confirmation-transport.test.mjs` cubren opciones HTTP, conservación de clave idempotente, challenge, red ambigua, respuesta malformada y filtrado de errores.
 - Este adaptador **no equivale a una integración completa de PWA**: falta cablear sesión real, UI y transporte en la app cliente, y activar la ruta solo tras preflight de permisos SQL y revisión de seguridad. CI pendiente del nuevo SHA.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 24. Composición completa candidata del flujo de confirmación cliente (24-10-2026)
+
+- SHA `9f05e372f6d141406727078994e7665720492c64`: Sabora CI `40081773119` SUCCESS y Bootstrap `40081773118` SUCCESS. Panel y transporte quedan validados por ambos workflows.
+- Nuevo `packages/customer-consent/src/customer-confirmation-flow.mjs`: orquesta `transport → controller → panel`, recibe el contexto de sesión y petición del llamador, y emite eventos explícitos a la PWA. En `409` muestra la comparación sin reintentar; el usuario acepta o rechaza. Un segundo `409` exige nueva aceptación. No almacena tokens ni rota `requestKey` ante red ambigua.
+- `tests/customer-confirmation-flow.test.mjs` verifica flujo integrado, rechazo, fallo de red y segundo cambio de revisión, sin llamadas externas. **CI del nuevo SHA pendiente**.
+- La integración es **candidata aislada**, no una pantalla montada en el runtime de la PWA ni una autorización de despliegue. Quedan por conectar los componentes con sesión real y revisar accesibilidad visual/teclado y roles/SQL.
+- PR #2 Draft. Sin merge, VPS, Fleetia ni Supabase operativo.
