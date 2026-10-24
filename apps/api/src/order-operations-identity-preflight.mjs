@@ -46,7 +46,11 @@ async function inspect(pool, expectedRole) {
                     OR has_table_privilege(current_user, resource.oid, 'DELETE')
                     OR has_table_privilege(current_user, resource.oid, 'TRUNCATE')
                     OR has_table_privilege(current_user, resource.oid, 'REFERENCES')
-                    OR has_table_privilege(current_user, resource.oid, 'TRIGGER')))
+                    OR has_table_privilege(current_user, resource.oid, 'TRIGGER')
+                    OR has_any_column_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_any_column_privilege(current_user, resource.oid, 'INSERT')
+                    OR has_any_column_privilege(current_user, resource.oid, 'UPDATE')
+                    OR has_any_column_privilege(current_user, resource.oid, 'REFERENCES')))
                 AS accessible_private_tables,
               (SELECT count(*)::integer FROM pg_catalog.pg_class resource
                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
