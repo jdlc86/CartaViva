@@ -27,9 +27,11 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
        !Number.isSafeInteger(d.differenceCents)||
        d.currentTotalCents-d.previousTotalCents!==d.differenceCents||
        !revision(d.previousPublishedRevision)||!revision(d.currentPublishedRevision)||
+       d.previousPublishedRevision===d.currentPublishedRevision||
        !validResult(a)||typeof a.token!=='string'||
        !/^v1\.[0-9]{1,16}\.[a-f0-9]{64}\.[a-f0-9]{64}$/.test(a.token)||
-       !Number.isSafeInteger(a.expiresAt)||a.expiresAt<0)
+       !Number.isSafeInteger(a.expiresAt)||a.expiresAt<=0||
+       Number(a.token.split('.')[1])!==a.expiresAt)
      throw Error('invalid_confirmation_result');
     // Explicit allowlist: never serialize internal evidence or catalog snapshot.
     return reply.code(409).send({error:'acceptance_required',
