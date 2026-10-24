@@ -73,3 +73,33 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     assert.ok(operationsPool.state.releases[0] instanceof Error);
   }
 });
+
+test('preflight discards a SQL client when identity inspection fails', async () => {
+  const staffPool = pool(roles.staffRole);
+  const state = {releases: []};
+  const operationsPool = {
+    async connect() {
+      return {
+        async query() { throw Error('sql_connection_failed'); },
+        release(error) { state.releases.push(error); },
+      };
+    },
+  };
+  await assert.rejects(preflightOrderOperationsIdentities({
+    staffPool, operationsPool, ...roles,
+  }), /sql_connection_failed/);
+  assert.equal(state.releases.length, 1);
+  assert.match(state.releases[0].message, /sql_connection_failed/);
+});
+
+test('preflight rejects malformed SQL identity results', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = {
+    async connect() {
+      return {query: async () => ({rows: []}), release() {}};
+    },
+  };
+  await assert.rejects(preflightOrderOperationsIdentities({
+    staffPool, operationsPool, ...roles,
+  }), /order_operations_sql_identity_rejected/);
+});
