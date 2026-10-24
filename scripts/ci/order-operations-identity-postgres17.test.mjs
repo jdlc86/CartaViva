@@ -58,6 +58,17 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         'SELECT * FROM sabora.transition_order_line_idempotent_candidate(NULL,NULL,NULL,NULL)'),
       /permission denied/);
     } finally { operationClient.release(); }
+    // Prove that a non-superuser login with an added role membership is rejected.
+    await admin.query('CREATE ROLE sabora_ci_forbidden_membership NOLOGIN');
+    await admin.query('GRANT sabora_ci_forbidden_membership TO sabora_ci_operations_identity');
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query('REVOKE sabora_ci_forbidden_membership FROM sabora_ci_operations_identity');
+      await admin.query('DROP ROLE sabora_ci_forbidden_membership');
+    }
   } finally {
     await staffPool.end();
     await operationsPool.end();
