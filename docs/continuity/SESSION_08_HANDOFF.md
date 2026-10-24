@@ -427,3 +427,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - El coordinador candidato exige métodos `lockContext`, `lookupIdempotency`, `lockCatalog`, `loadPreviousQuote` y `persist` como propiedades propias, enumerables y de datos del adaptador `repository`; la configuración ya no invoca getters al evaluar dependencias.
 - Prueba de regresión: `persist` getter hostil, heredado y no enumerable son rechazados en construcción, sin ejecución de getter ni transacciones.
 - El bloque 56 (`4b68146`) seguía en ejecución al iniciar; este commit también necesita CI y Bootstrap verdes. No se registra la ruta HTTP ni se despliega.
+
+## 58. Pruebas de replay canónico y separación de credenciales (24-10-2026)
+
+- Verificado en GitHub Actions que `8951dfb` (bloque 57) pasó Sabora CI y Bootstrap; también pasó `4b68146` (bloque 56). Los commits de ida/vuelta del límite arbitrario de cantidad terminaron en `9e1c296`, cuyo CI y Bootstrap también fueron SUCCESS; el contrato original se conservó.
+- Nuevas pruebas del coordinador candidato verifican que el replay con igual clave y contenido lógico pero campos en distinto orden y credenciales QR/sesión renovadas devuelve `replayed` sin segunda lectura de catálogo ni escritura. Las credenciales no forman parte del fingerprint económico; sí deben autorizarse nuevamente bajo bloqueo.
+- Una prueba adicional exige conflicto de idempotencia si se cambia la cantidad conservando la clave; debe abortar después de comprobar el contexto, antes de leer catálogo o escribir.
+- Este nuevo SHA requiere ambos workflows verdes. Sin integración productiva, merge, despliegue ni cambios de la PWA de administración asignada a Codex.
