@@ -66,8 +66,11 @@ export function createRepricingConsentController({submit,clock=Date.now}={}){
     const result=await submit({...structuredClone(current.request),
      acceptanceToken:current.challenge.acceptanceToken});
     // A second repricing must be displayed again, never accepted recursively.
-    if(plain(result)&&result.error==='acceptance_required')
-     this.present(result,current.request);
+    if(plain(result)&&result.error==='acceptance_required'){
+     const challenge=parseRepricingChallenge(result,{nowMs:clock()});
+     generation++;
+     pending={challenge,request:structuredClone(current.request),generation};
+    }
     return result;
    }finally{inFlight=false;}
   }
