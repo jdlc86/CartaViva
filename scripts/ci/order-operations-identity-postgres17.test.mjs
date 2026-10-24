@@ -35,10 +35,10 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
   const staffPool = makePool(staffRole, 'sabora_ci_staff_ephemeral');
   const operationsPool = makePool(operationsRole, 'sabora_ci_operations_ephemeral');
   try {
+    await admin.query('GRANT USAGE ON SCHEMA sabora TO sabora_ci_staff_identity, sabora_ci_operations_identity');
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
-    await admin.query('GRANT USAGE ON SCHEMA sabora TO sabora_ci_staff_identity, sabora_ci_operations_identity');
     // Explicit negative matrix: schema visibility alone must not grant access
     // to any operational table or the candidate SECURITY INVOKER RPC.
     const resources = [
