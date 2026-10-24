@@ -210,3 +210,17 @@ tras la revocación, el mismo par de identidades debe volver a superar la
 comprobación. Los permisos se conceden y revocan exclusivamente dentro del
 contenedor desechable de CI. Esta batería valida el rechazo de grants
 peligrosos, **no** una política positiva de acceso de producción.
+
+## Puerta ampliada a secuencias y rutinas privilegiadas
+
+El preflight en tiempo de arranque ahora exige cero permisos efectivos
+`USAGE`, `SELECT` o `UPDATE` sobre cualquier secuencia del esquema `sabora`,
+y cero permisos `EXECUTE` sobre funciones `SECURITY DEFINER` del mismo
+esquema, para ambos logins técnicos. Esta inspección complementa la
+prohibición de permisos sobre tablas y sobre la RPC candidata exacta.
+Los tests unitarios simulan concesiones indebidas y PostgreSQL 17 desechable
+prueba el rechazo tras conceder temporalmente `USAGE` sobre una secuencia
+creada para CI, así como la recuperación después de revocarla. No se
+habilitan grants positivos ni se activa el servicio. Este gate negativo
+requiere rediseño explícito antes de habilitar cualquier capacidad SQL
+legítima de lectura o escritura.
