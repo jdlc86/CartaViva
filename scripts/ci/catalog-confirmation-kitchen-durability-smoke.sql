@@ -51,19 +51,25 @@ SELECT 1 / CASE WHEN :'replayed_order_id'=:'confirmed_order_id'
 DO $failed$
 DECLARE
  v_order uuid;
+ v_table uuid;
+ v_session uuid;
+ v_item uuid;
+ v_quote uuid;
  v_before_orders bigint;
  v_before_lines bigint;
  v_rejected boolean:=false;
 BEGIN
- SELECT count(*) INTO v_before_orders FROM sabora.orders WHERE table_id=:'table_id'::uuid;
+ SELECT id,session_id INTO STRICT v_table,v_session FROM sabora.dining_tables WHERE number=930292;
+ SELECT id,item_id INTO STRICT v_quote,v_item FROM sabora.catalog_displayed_quotes WHERE table_id=v_table AND visit_id='visit-kitchen';
+ SELECT count(*) INTO v_before_orders FROM sabora.orders WHERE table_id=v_table;
  SELECT count(*) INTO v_before_lines FROM sabora.order_lines l
- JOIN sabora.orders o ON o.id=l.order_id WHERE o.table_id=:'table_id'::uuid;
+ JOIN sabora.orders o ON o.id=l.order_id WHERE o.table_id=v_table;
  BEGIN
   INSERT INTO sabora.orders(
    table_id,session_id,company,employee_number,customer_alias,
    customer_identifier,customer_visit_key,economic_snapshot,
    confirmed_at,grouping,items)
-  VALUES (:'table_id'::uuid,:'session_id'::uuid,NULL,NULL,
+  VALUES (v_table,v_session,NULL,NULL,
    'Cliente','SB-23456789ABCD','visit-kitchen',
    '{"schemaVersion":1,"totalCents":1000}'::jsonb,clock_timestamp(),'grouped',
    '[{"category":"main","name":"Duplicado","quantity":1}]'::jsonb)
@@ -71,17 +77,17 @@ BEGIN
   INSERT INTO sabora.catalog_confirmation_attempts(
    table_id,session_id,visit_id,basket_id,actor_id,item_id,
    request_key,request_fingerprint,quote_id,economic_evidence,order_id)
-  VALUES (:'table_id'::uuid,:'session_id'::uuid,'visit-kitchen','basket-kitchen',
-   'actor-kitchen',:'item_id'::uuid,'kitchen-key-01','fingerprint-kitchen-01',
-   :'quote_id'::uuid,'{"schemaVersion":1,"totalCents":1000}'::jsonb,v_order);
+  VALUES (v_table,v_session,'visit-kitchen','basket-kitchen',
+   'actor-kitchen',v_item,'kitchen-key-01','fingerprint-kitchen-01',
+   v_quote,'{"schemaVersion":1,"totalCents":1000}'::jsonb,v_order);
  EXCEPTION WHEN unique_violation THEN
   v_rejected:=true;
  END;
  IF NOT v_rejected THEN RAISE EXCEPTION 'duplicate confirmation accepted'; END IF;
- IF (SELECT count(*) FROM sabora.orders WHERE table_id=:'table_id'::uuid)<>v_before_orders
+ IF (SELECT count(*) FROM sabora.orders WHERE table_id=v_table)<>v_before_orders
  OR (SELECT count(*) FROM sabora.order_lines l
      JOIN sabora.orders o ON o.id=l.order_id
-     WHERE o.table_id=:'table_id'::uuid)<>v_before_lines
+     WHERE o.table_id=v_table)<>v_before_lines
  THEN RAISE EXCEPTION 'duplicate confirmation leaked kitchen projection'; END IF;
 END $failed$;
 -- All fixture writes are rolled back; no runtime grants or provisioning.
