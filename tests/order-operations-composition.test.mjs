@@ -24,6 +24,41 @@ test('operations composition rejects shared or indistinguishable SQL identities'
     operationsPool: {options: {}, connect: null}}), /pool_isolation/);
 });
 
+test('pool isolation rejects before inspecting either SQL login or mounting routes', async () => {
+  const events = [];
+  const shared = {
+    options: {user: 'sabora_staff_reader', connectionString: 'postgres://shared'},
+    query() { events.push('staff.query'); },
+    async connect() { events.push('pool.connect'); throw Error('unexpected_connection'); },
+  };
+  const app = {
+    get() { events.push('app.get'); },
+    post() { events.push('app.post'); },
+  };
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    staffPool: shared, operationsPool: shared,
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+  }), /pool_isolation/);
+  assert.deepEqual(events, []);
+});
+
+test('verified composition rejects equal declared SQL roles before querying', async () => {
+  const events = [];
+  const makePool = (user, connectionString) => ({
+    options: {user, connectionString},
+    query() { events.push('query'); },
+    async connect() { events.push('connect'); throw Error('unexpected_connection'); },
+  });
+  await assert.rejects(registerVerifiedOrderOperationsFromPools({
+    get() { events.push('get'); }, post() { events.push('post'); },
+  }, {
+    staffPool: makePool('sabora_staff_reader', 'postgres://staff'),
+    operationsPool: makePool('sabora_operations', 'postgres://operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_staff_reader',
+  }), /pool_isolation/);
+  assert.deepEqual(events, []);
+});
+
 test('operations remain opt-in and never import into the production server', () => {
   const source = readFileSync(new URL('../apps/api/src/server.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /order-operations-composition|registerOrderOperationsFromPools|registerOrderOperationsHttp/);
