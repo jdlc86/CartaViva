@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {AdminCatalogGateway} from './catalog-read-model';
+import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
@@ -22,9 +23,11 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
 export function ManagementApp({
   tablesGateway,
   catalogGateway,
+  operationsGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
   catalogGateway?: AdminCatalogGateway;
+  operationsGateway?: OrderOperationsGateway;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
@@ -63,7 +66,7 @@ export function ManagementApp({
   const activeView = area === 'resumen' ? <SummaryView/>
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
-    : area === 'comandas' ? <OrdersView/>
+    : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : <TeamView/>;
 
   return (
