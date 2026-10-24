@@ -70,6 +70,16 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       );
       assert.equal(rpc.rows[0].can_execute, false);
     }
+    // Runtime logins must not be able to create schema objects or inspect
+    // privileged role metadata through inherited membership.
+    for (const role of [staffRole, operationsRole]) {
+      const schema = await admin.query(
+        `SELECT has_schema_privilege($1, 'sabora', 'USAGE') AS can_use,
+                has_schema_privilege($1, 'sabora', 'CREATE') AS can_create`,
+        [role]
+      );
+      assert.deepEqual(schema.rows, [{can_use: true, can_create: false}]);
+    }
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
