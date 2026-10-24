@@ -24,7 +24,7 @@ const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
-function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevision=1}={}){
+function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevision=1,nowMs=1792600000000}={}){
  const state={orders:[],lines:[],notifications:[],events:[],ledger:[]};
  let transactions=0;
  let rollbacks=0;
@@ -57,7 +57,7 @@ function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevi
   }
  };
  const confirm=createCatalogConfirmationCoordinator({
-  repository,secretKey,clock:()=>1792600000000,
+  repository,secretKey,clock:()=>nowMs,
   withTransaction:async work=>{
    transactions++;
    const before=clone();
@@ -154,4 +154,38 @@ test('forged acceptance cannot produce an order or kitchen line',async t=>{
  assert.equal(f.state.orders.length,0);
  assert.equal(f.state.lines.length,0);
  assert.equal(f.state.ledger.length,0);
+});
+
+test('expired repricing acceptance never reaches kitchen or ledger',async t=>{
+ const issuedAt=1792600000000;
+ const f=fixture({publishedRevision:2,nowMs:issuedAt+300001});
+ t.after(()=>f.app.close());
+ const {token}=issueCatalogRepriceAcceptance({
+  basketId:input.basketId,actorId:input.actorId,secretKey,
+  nowMs:issuedAt,itemId,publishedRevision:2,
+  snapshot,selection:input.selection,quantity:1
+ });
+ const response=await f.send({...input,acceptanceToken:token});
+ assert.equal(response.statusCode,409);
+ assert.deepEqual(response.json(),{error:'acceptance_required'});
+ assert.equal(f.state.orders.length,0);
+ assert.equal(f.state.lines.length,0);
+ assert.equal(f.state.ledger.length,0);
+});
+
+test('repricing token is not transferable to another basket or actor',async t=>{
+ const {token}=issueCatalogRepriceAcceptance({
+  basketId:input.basketId,actorId:input.actorId,secretKey,
+  nowMs:1792600000000,itemId,publishedRevision:2,
+  snapshot,selection:input.selection,quantity:1
+ });
+ for(const changes of [{basketId:'basket-other'},{actorId:'actor-other'}]){
+  const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+  const response=await f.send({...input,...changes,acceptanceToken:token});
+  assert.equal(response.statusCode,409);
+  assert.deepEqual(response.json(),{error:'acceptance_required'});
+  assert.equal(f.state.orders.length,0);
+  assert.equal(f.state.lines.length,0);
+  assert.equal(f.state.ledger.length,0);
+ }
 });
