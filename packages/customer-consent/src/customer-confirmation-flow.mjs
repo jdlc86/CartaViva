@@ -15,12 +15,13 @@ export function createCustomerConfirmationFlow({
  let panel=null;
  let busy=false;
  let disposed=false;
+ let generation=0;
  const close=()=>{panel?.destroy();panel=null;};
  const notify=event=>{if(!disposed)onOutcome(event);};
  const show=()=>{
   close();
   panel=mountRepricingConsentPanel({document,container,controller,onOutcome:event=>{
-   if(event.type==='declined'){close();notify(event);}
+   if(event.type==='declined'){generation++;close();notify(event);}
    else if(event.type==='submitted'){
     if(controller.status==='awaiting_explicit_acceptance'){
      panel?.refresh();notify({type:'repricing_required'});
@@ -39,21 +40,25 @@ export function createCustomerConfirmationFlow({
    if(!plain(request)||Object.hasOwn(request,'acceptanceToken'))
     throw Error('invalid_confirmation_request');
    busy=true;
+   const requestGeneration=++generation;
    try{
     const result=await transport(request);
+    if(disposed||generation!==requestGeneration)return result;
     if(result.error==='acceptance_required'){
      controller.present(result,request);
      show();notify({type:'repricing_required',comparison:controller.comparison});
     }else notify({type:'submitted',result});
     return result;
    }catch(error){
-    notify({type:'failed',error:error instanceof Error?error.message:'confirmation_failed'});
+    if(!disposed&&generation===requestGeneration)
+     notify({type:'failed',error:error instanceof Error?error.message:'confirmation_failed'});
     throw error;
    }finally{busy=false;}
   },
   decline(){if(disposed)throw Error('confirmation_flow_disposed');
-   controller.decline();close();notify({type:'declined'});
+   if(busy)throw Error('confirmation_flow_busy');
+   generation++;controller.decline();close();notify({type:'declined'});
   },
-  destroy(){disposed=true;controller.decline();close();}
+  destroy(){generation++;disposed=true;controller.decline();close();}
  });
 }
