@@ -91,3 +91,10 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se implementó `preflightOrderOperationsIdentities` como utilidad explícita, no importada desde `server.mjs`. Comprueba en conexiones reales y separadas `current_user`, `session_user`, `rolsuper`, `rolbypassrls` y `rolcanlogin` para dos nombres de rol esperados y distintos; rechaza superusuarios, BYPASSRLS, SET ROLE y roles compartidos.
 - La comprobación falla cerrada, descarta conexiones con resultado incierto y dispone de tests negativos de identidad y privilegios. No crea usuarios ni concede permisos.
 - **Pendiente**: ejecutar el preflight con identidades PostgreSQL reales de mínimos privilegios en PG17 desechable, aprobar RLS/grants específicos y autorizar por separado la activación. La existencia del helper no habilita las rutas.
+
+## Prueba de identidad real PG17 desechable
+
+- El harness CI `catalog-postgres17-node-driver-smoke.sh` ejecuta ahora `order-operations-identity-postgres17.test.mjs` tras las migraciones sobre el contenedor PostgreSQL 17 de uso único, vinculado a `127.0.0.1`.
+- El test crea **solo dentro de ese contenedor** dos LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS independientes y ejecuta el preflight real. Concede únicamente USAGE de esquema en el contenedor para comprobar denegación directa de lectura de reintentos y ejecución de RPC operacional sin GRANT.
+- No se crea ninguna identidad ni se cambia permiso en Supabase o VPS operativo. No se concede permiso operativo a los roles CI.
+- El nuevo HEAD debe pasar Sabora CI y Bootstrap antes de considerarse validado.
