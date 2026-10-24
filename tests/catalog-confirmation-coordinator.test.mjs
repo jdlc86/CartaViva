@@ -511,3 +511,29 @@ test('replay with another request key cannot inherit prior durable result',async
  assert.equal(typeof fingerprint,'string');
  assert.equal(calls.filter(step=>step==='persist').length,2);
 });
+
+test('invalid transaction clock rolls back before issuing consent or writing orders',async()=>{
+ for(const now of [-1,NaN,Infinity,1.5,'1792600000000',null]){
+  const {confirm,calls}=make({ });
+  const custom=createCatalogConfirmationCoordinator({
+   withTransaction:async work=>{calls.push('BEGIN');try{
+    const value=await work(async()=>{});calls.push('COMMIT');return value;
+   }catch(error){calls.push('ROLLBACK');throw error;}},
+   repository:{
+    lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true,
+     tableId:input.tableId,sessionId:'session-1',visitId:input.visitId,
+     basketId:input.basketId,actorId:input.actorId};},
+    lookupIdempotency:async()=>{calls.push('replay');return null;},
+    lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
+    loadPreviousQuote:async()=>{calls.push('previous');return {
+     quoteId:'00000000-0000-4000-8000-000000000004',
+     evidence:displayed,publishedRevision:1,subtotalCents:1000,
+     discountCents:0,totalCents:1000};},
+    persist:async()=>{calls.push('persist');throw Error('unexpected_persist');}
+   },secretKey,clock:()=>now
+  });
+  await assert.rejects(custom(input),/invalid_confirmation_clock/);
+  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
+  void confirm;
+ }
+});
