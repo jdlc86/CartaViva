@@ -368,3 +368,88 @@ El primer intento de build dentro del sandbox de Windows falló porque esbuild n
 ### Siguiente bloque recomendado
 
 Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que existan montajes runtime autorizados y contratos HTTP coincidentes, con pruebas de `401/403/503` y revocación. Si esos gates continúan cerrados, el siguiente bloque frontend debe limitarse a otra proyección versionada que ya exista; no activar escrituras ni inventar DTOs para Resumen, Equipo o Catálogo editorial.
+
+---
+
+## Hito posterior — actualización explícita y estados resilientes de lectura (2026-10-24)
+
+### Referencia y alcance
+
+- Rama: `codex/sabora-management-tables-workspace`; PR [#5](https://github.com/jdlc86/CartaViva/pull/5) en estado **Draft**, con base `feat/sabora-pnpm-bootstrap`.
+- El PR administrativo anterior [#3](https://github.com/jdlc86/CartaViva/pull/3) está `MERGED`; este trabajo continúa exclusivamente en su PR sucesor y no modifica el PR #2.
+- Base actual incorporada sin conflicto: `8951dfbaaef096e9bba31ed623d17e7f8554c3c7`; merge de actualización `b05cf6a`.
+- Commit funcional: `9d676b82e1eea67abb6a4744b79667157191eece` (`feat(management): harden explicit read refreshes`).
+- Diferencia funcional limitada a `apps/management/**`; la única documentación modificada es este handoff.
+
+### Funcionalidad implementada
+
+1. Mesas y Catálogo ofrecen actualización manual de la proyección conectada, sin temporizadores, reintentos ocultos ni polling.
+2. La actualización conserva visible el último snapshot validado. Si la nueva lectura falla, no borra datos, no aplica respuestas parciales y ofrece un reintento explícito.
+3. Una lectura nueva aborta e invalida la anterior. Esto cubre desmontaje, sustitución de gateway, recarga, actualización y la colisión entre paginación de mesas y actualización completa.
+4. Las respuestas tardías no pueden sobrescribir una lectura posterior. Finalizar una tarea obsoleta tampoco libera ni invalida la tarea vigente.
+5. Una actualización correcta conserva la selección actual si el recurso continúa presente; en caso contrario selecciona el primer elemento válido o deja la selección vacía.
+6. Mesas reinicia de forma coherente su cursor a la primera página al actualizar; un fallo de paginación sigue conservando las páginas ya validadas.
+7. El estado compartido distingue lectura cargada, actualización en curso y fallo recuperable mediante texto visible, `aria-busy`, anuncio `aria-live` y `role="alert"` sin duplicar anuncios.
+8. La barra de estado responde a móvil con objetivo táctil de 44 px, botón a ancho completo y animación compatible con `prefers-reduced-motion`.
+9. El resumen de categorías publicadas se calcula en una sola pasada memoizada sobre el snapshot recibido.
+10. Alta/edición de mesas, QR, borradores, disponibilidad, retirada y publicación continúan deshabilitados. El entrypoint no instancia transportes y la aplicación distribuida permanece desconectada por defecto.
+
+### Archivos del hito
+
+- `apps/management/src/latest-read-task.js` y `.d.ts`: coordinador independiente de la última lectura, cancelación, vigencia y finalización segura.
+- `apps/management/src/views/TablesView.tsx`: actualización conservadora, cancelación de paginación obsoleta, selección y cursor coherentes.
+- `apps/management/src/views/CatalogView.tsx`: actualización conservadora compartida entre Platos y Categorías, selección estable y agrupación memoizada.
+- `apps/management/src/components/Primitives.tsx` e `Icon.tsx`: barra de estado accesible e icono de actualización.
+- `apps/management/src/style.css`: estados visuales, animación y responsive de la barra de lectura.
+- `apps/management/tests/latest-read-task.test.mjs`: sustitución, cancelación, finalización idempotente y aislamiento entre tareas.
+- `apps/management/tests/ui-contract.test.mjs`: actualización explícita, ausencia de `setInterval`, cancelación, conservación ante error y anuncios accesibles.
+
+### Decisiones técnicas
+
+1. El coordinador no almacena datos ni conoce React: sólo entrega `AbortSignal` y una comprobación de vigencia. Los componentes conservan la propiedad de su snapshot validado.
+2. Un refresh no cambia la fase a carga inicial, de modo que la interfaz no confunde indisponibilidad momentánea con ausencia de datos y no oculta información ya verificada.
+3. El refresh de mesas reemplaza las páginas cargadas por una primera página nueva y su cursor. Mezclar páginas de snapshots distintos habría producido una lista temporalmente incoherente.
+4. Se mantiene una única lectura activa por workspace. Esta política evita carreras sin introducir deduplicación, caché o semántica de backend no documentada.
+5. Se aplicó la revisión React del entorno: inicialización estable en `useRef`, efectos con limpieza, actualizaciones funcionales de selección, cálculos derivados memoizados y componentes definidos fuera del render.
+
+### Validaciones locales
+
+| Comando o comprobación | Resultado |
+| --- | --- |
+| `pnpm --filter @sabora/management test` | PASS, 28/28 |
+| `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS, TypeScript estricto |
+| `node --test tests/management-scaffold.test.mjs` | PASS, 3/3 |
+| `pnpm test` | PASS, 691/691 sobre la base actual |
+| `pnpm --filter @sabora/management build` | PASS, 42 módulos; JS 282,94 kB y CSS 43,10 kB antes de gzip |
+| `pnpm build` | PASS, API + PWA cliente + PWA gestión |
+| Navegador 1265 px y 390 × 844 | PASS en Mesas y Catálogo desconectados, sin overflow horizontal |
+| Consola del navegador | PASS, 0 errores y 0 avisos |
+| Controles privilegiados | PASS, QR y escrituras de mesas/catálogo permanecen deshabilitados |
+| `git diff --check` | PASS |
+
+La instalación exacta se restauró con `pnpm install --frozen-lockfile --force` sin modificar el lockfile. Los builds Vite se ejecutaron fuera del sandbox local porque esbuild no podía resolver `vite.config.ts` bajo ese aislamiento; ambos terminaron correctamente.
+
+### GitHub Actions
+
+- `Sabora CI` [run 40093626823](https://github.com/jdlc86/CartaViva/actions/runs/40093626823), job `validate` `120871227499`: **SUCCESS** para `9d676b82e1eea67abb6a4744b79667157191eece` en 1m44s.
+- El job completó lockfile, tests, migraciones en PostgreSQL 17 desechable, driver `pg` real, build, Compose, construcción de imagen API y smoke tests aislados.
+- GitHub emitió únicamente avisos de plataforma por la transición de actions desde Node 20 y la futura migración de `ubuntu-latest`; no hubo fallo atribuible al repositorio.
+
+### Riesgos y dependencias pendientes
+
+1. La barra de actualización sólo aparece cuando se inyecta un gateway y la primera lectura termina correctamente; el bundle de producción continúa sin composición runtime administrativa.
+2. Siguen pendientes contratos/montajes HTTP coincidentes, sesión verificada, tratamiento de `401/403/503`, expiración y revocación antes de conectar ambos gateways.
+3. Las mutaciones necesitan contratos separados con autorización de servidor, control de versión, idempotencia y auditoría. Una lectura verde no autoriza a reutilizar sus privilegios para escritura.
+4. La proyección de catálogo v1 no contiene imagen, y la proyección de mesas no contiene secretos QR. La interfaz no debe inferirlos ni añadirlos al DTO.
+5. Una actualización de mesas vuelve deliberadamente a la primera página; restaurar una posición profunda exigiría un contrato de snapshot/cursor estable que no existe.
+
+### Operaciones no realizadas
+
+- No se modificaron `apps/api/**`, `apps/client/**`, `packages/customer-consent/**`, migraciones PostgreSQL, escritores transaccionales ni workflows.
+- No se añadió `fetch`, autenticación, endpoint, dato de demostración, almacenamiento del navegador, polling, caché o QR ficticio.
+- No se accedió ni modificó Fleetia, VPS, Supabase operativo, Google ni otro repositorio o servicio.
+- No se hizo merge, despliegue ni cambio del estado Draft del PR.
+
+### Siguiente bloque recomendado
+
+Mantener las escrituras cerradas y conectar el adaptador runtime de lectura sólo cuando el backend publique el contrato HTTP administrativo versionado y las reglas de sesión. La siguiente ampliación frontend independiente puede mejorar Resumen o Equipo únicamente si aparece una proyección documentada; sin ella, debe centrarse en accesibilidad y pruebas de los estados ya contratados, no en inventar datos o acciones.
