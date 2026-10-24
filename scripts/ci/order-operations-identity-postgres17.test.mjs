@@ -299,6 +299,37 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    // Runtime guard against an accidental EXECUTE grant on the candidate RPC:
+    // the actor UUID argument is not cryptographically bound to the SQL login.
+    await admin.query(
+      'GRANT EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) TO sabora_ci_operations_identity'
+    );
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query(
+        'REVOKE EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) FROM sabora_ci_operations_identity'
+      );
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+
+    // A technical login must never be allowed to create objects in the
+    // operational schema, even while table privileges remain revoked.
+    await admin.query('GRANT CREATE ON SCHEMA sabora TO sabora_ci_operations_identity');
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query('REVOKE CREATE ON SCHEMA sabora FROM sabora_ci_operations_identity');
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
