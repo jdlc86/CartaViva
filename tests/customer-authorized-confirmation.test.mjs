@@ -248,3 +248,47 @@ test('ambiguous confirmation forbids reset or different basket until replay reso
  assert.equal(generated,1);
  app.destroy();
 });
+
+test('HTTP 503 keeps idempotency key pinned until explicit replay',async()=>{
+ const {document,container}=dom();let calls=0,revision=1,generated=0;
+ const sent=[];
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,readBasket:()=>({...basket,revision}),
+  createRequestKey:()=> 'request_'+(++generated),onOutcome:()=>{},
+  fetchImpl:async(_url,options)=>{
+   sent.push(JSON.parse(options.body));
+   return ++calls===1?
+    {status:503,json:async()=>({error:'order_confirmation_unavailable'})}:
+    {status:200,json:async()=>({status:'replayed',orderId})};
+  }});
+ const first=await app.confirm();
+ assert.equal(first.error,'order_confirmation_unavailable');
+ assert.throws(()=>app.resetForNewBasket(),/request_key_pending_confirmation/);
+ revision=2;
+ await assert.rejects(app.confirm(),/request_key_pending_confirmation/);
+ assert.equal(calls,1);
+ revision=1;
+ assert.equal((await app.confirm()).status,'replayed');
+ assert.equal(sent[0].requestKey,sent[1].requestKey);
+ assert.equal(generated,1);
+ app.resetForNewBasket();
+ app.destroy();
+});
+test('malformed HTTP success keeps original key for safe explicit retry',async()=>{
+ const {document,container}=dom();let calls=0,generated=0;
+ const sent=[];
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,readBasket:()=>basket,
+  createRequestKey:()=> 'request_'+(++generated),onOutcome:()=>{},
+  fetchImpl:async(_url,options)=>{
+   sent.push(JSON.parse(options.body));
+   return ++calls===1?
+    {status:201,json:async()=>({status:'confirmed',orderId:'malformed'})}:
+    {status:200,json:async()=>({status:'replayed',orderId})};
+  }});
+ await assert.rejects(app.confirm(),/confirmation_unexpected_response/);
+ assert.throws(()=>app.resetForNewBasket(),/request_key_pending_confirmation/);
+ assert.equal((await app.confirm()).status,'replayed');
+ assert.equal(sent[0].requestKey,sent[1].requestKey);
+ app.destroy();
+});
