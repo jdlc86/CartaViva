@@ -350,6 +350,36 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    // The startup gate must also reject schema drift, not just GRANT drift.
+    // Both alterations are confined to the disposable PostgreSQL 17 database.
+    // Restore the invariant in finally even when an assertion fails.
+    for (const [unsafeDdl, restoreDdl] of [
+      [
+        'ALTER TABLE sabora.order_line_transition_requests NO FORCE ROW LEVEL SECURITY',
+        'ALTER TABLE sabora.order_line_transition_requests FORCE ROW LEVEL SECURITY',
+      ],
+      [
+        'ALTER TABLE sabora.order_line_transition_requests DISABLE ROW LEVEL SECURITY',
+        'ALTER TABLE sabora.order_line_transition_requests ENABLE ROW LEVEL SECURITY',
+      ],
+      [
+        'ALTER FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) SECURITY DEFINER',
+        'ALTER FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) SECURITY INVOKER',
+      ],
+    ]) {
+      await admin.query(unsafeDdl);
+      try {
+        await assert.rejects(preflightOrderOperationsIdentities({
+          staffPool, operationsPool, staffRole, operationsRole,
+        }), /order_operations_sql_identity_rejected/,
+        `preflight accepted unsafe DDL: ${unsafeDdl}`);
+      } finally {
+        await admin.query(restoreDdl);
+      }
+      assert.deepEqual(await preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    }
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
