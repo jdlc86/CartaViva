@@ -330,3 +330,24 @@ test('coordinator rejects accessor-backed trusted adapter records before evaluat
  }
  assert.equal(getterCalls,0);
 });
+
+test('invalid line identity and quantity never open a transaction',async()=>{
+ const {confirm,calls}=make();
+ for(const changes of [{itemId:''},{itemId:42},{quantity:0},
+  {quantity:-1},{quantity:1.5},{quantity:Number.MAX_SAFE_INTEGER+1},
+  {quantity:null}]){
+  await assert.rejects(confirm({...input,...changes}),/invalid_confirmation_input/);
+ }
+ assert.deepEqual(calls,[]);
+});
+test('toJSON keys in untrusted selection are rejected before transaction',async()=>{
+ const {confirm,calls}=make();
+ for(const selection of [
+  {extras:[],toJSON:'forged'},
+  {extras:[{toJSON:'forged'}]},
+  {extras:[],nested:{toJSON:'forged'}}
+ ]){
+  await assert.rejects(confirm({...input,selection}),/invalid_confirmation_input/);
+ }
+ assert.deepEqual(calls,[]);
+});
