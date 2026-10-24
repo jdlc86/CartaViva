@@ -36,6 +36,17 @@ SELECT 1 / CASE WHEN
  AND (SELECT count(*) FROM sabora.catalog_confirmation_attempts
       WHERE order_id=:'confirmed_order_id')=1
  THEN 1 ELSE 0 END AS kitchen_projection_created;
+-- Integration boundary with PR #4: the order writer creates a confirmed
+-- kitchen line, but cannot forge a kitchen transition or pickup notification.
+-- PR #4's separate staff-authorized operations begin at confirmed.
+SELECT 1 / CASE WHEN
+ (SELECT count(*) FROM sabora.order_lines
+  WHERE order_id=:'confirmed_order_id' AND status='confirmed')=1
+ AND NOT EXISTS (SELECT 1 FROM sabora.pickup_notifications
+                 WHERE order_id=:'confirmed_order_id')
+ AND NOT EXISTS (SELECT 1 FROM sabora.order_line_events
+                 WHERE order_id=:'confirmed_order_id')
+ THEN 1 ELSE 0 END AS kitchen_staff_handoff_boundary_verified;
 -- An idempotent replay must return the existing order, not insert another.
 SELECT order_id AS replayed_order_id
  FROM sabora.catalog_confirmation_attempts
