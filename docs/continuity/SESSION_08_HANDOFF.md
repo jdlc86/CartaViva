@@ -265,3 +265,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La comprobación es de **consistencia de formato**, no verificación criptográfica: la validez HMAC se verifica exclusivamente en el coordinador transaccional antes de persistir. No se exponen evidencias internas en errores.
 - Regresiones en `tests/customer-order-confirmation-http-candidate.test.mjs`: revisiones inconsistentes y expiración discordante devuelven `503 order_confirmation_unavailable`, sin presentar consentimiento inválido.
 - Ruta aún candidata no registrada en `server.mjs`; no habilitar sin autorización real y transacción PostgreSQL. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 35. Incidencia CI corregida tras inspección de logs (24-10-2026)
+
+- Se inspeccionaron logs de `Sabora CI` run `40089398727` y `Bootstrap` run `40089398720` del SHA `d86f5b3`: ambos fallaron en el mismo test `top-level accessors are rejected without executing and selection is snapshotted`, 658/659 tests aprobados.
+- Causa verificada: la selección base ya contenía `extras:['cheese']`; la prueba esperaba incorrectamente `[]` tras mutar el original. Corregida la expectativa a `['cheese']` en `tests/customer-authorized-request.test.mjs`, conservando la comprobación de aislamiento de snapshot.
+- En este bloque se añadió además comprobación de consistencia entre revisiones de precio y fecha de expiración incluida en el token HMAC del DTO HTTP, con tests negativos.
+- Pendiente CI del HEAD corregido. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
