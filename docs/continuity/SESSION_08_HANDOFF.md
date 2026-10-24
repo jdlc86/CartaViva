@@ -367,3 +367,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Pruebas nuevas comprueban getters hostiles e identificadores heredados; no se genera ninguna clave ni se ejecuta un getter ante esas entradas.
 - Se conserva la misma clave para la misma cesta y revisión y se prohíbe rotarla durante confirmaciones pendientes.
 - Los workflows de `026286b` estaban en ejecución al comenzar el bloque; este SHA requiere CI. Sin integración productiva, merge o despliegue.
+
+## 49. Fence de revisión de cesta antes del envío HTTP (24-10-2026)
+
+- La composición candidata `createAuthorizedCustomerConfirmation` relee la cesta confiable inmediatamente antes de enviar. Si cambian `basketId`, `revision` o `confirmable`, falla con `customer_basket_changed_before_confirmation` y no envía HTTP.
+- El registro de idempotencia expone su identidad actual de cesta/revisión para comparar con el snapshot autorizado; la clave sigue siendo estable durante resultados ambiguos.
+- Dos pruebas cubren cambio de revisión y pérdida de disponibilidad entre lecturas. Esto es una barrera cliente de consistencia, no sustituye revalidación transaccional en servidor ni autoriza activar la ruta.
+- El SHA `026286b` pasó ambos workflows; `7083126` estaba en ejecución al inicio. Este bloque requiere CI. Sin merge ni despliegue.
