@@ -171,3 +171,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas `tests/customer-repricing-consent-panel.test.mjs`: render accesible, ausencia del token en DOM, rechazo sin escrituras, aceptación única, guardia durante petición pendiente.
 - Es un componente integrable **no montado todavía en la PWA real**. La UX visual final y la integración con transporte de API/sesión deben validarse antes de activación. CI del nuevo HEAD pendiente.
 - PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 23. Adaptador HTTP aislado para la confirmación desde PWA (24-10-2026)
+
+- Nuevo `packages/customer-consent/src/customer-confirmation-transport.mjs`: `fetch` inyectado, ruta relativa fija `/api/v1/customer/orders/confirm`, `credentials: same-origin`, `cache: no-store`, `redirect: error`, JSON y límite de 64 KiB. No almacena credenciales ni cambia `requestKey`.
+- Ante fallo de red devuelve error de estado desconocido, **nunca confirma éxito ni fabrica un identificador**. Rechaza respuestas exitosas sin UUID y filtra errores privados del servidor. El `409 acceptance_required` se pasa al controlador que valida el DTO y exige pulsación explícita.
+- Nuevas pruebas `tests/customer-confirmation-transport.test.mjs` cubren opciones HTTP, conservación de clave idempotente, challenge, red ambigua, respuesta malformada y filtrado de errores.
+- Este adaptador **no equivale a una integración completa de PWA**: falta cablear sesión real, UI y transporte en la app cliente, y activar la ruta solo tras preflight de permisos SQL y revisión de seguridad. CI pendiente del nuevo SHA.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
