@@ -26,8 +26,10 @@ const validSelection=(v,depth=0,seen=new Set())=>{
  return valid;
 };
 export function validateCustomerConfirmationRequest(input){
- if(!plain(input)||Object.keys(input).length>12||
-    Object.keys(input).some(k=>!allowed.has(k))||
+ const descriptors=plain(input)?Object.getOwnPropertyDescriptors(input):null;
+ if(!descriptors||Reflect.ownKeys(input).length>12||
+    Reflect.ownKeys(input).some(k=>typeof k!=='string'||!allowed.has(k)||
+     !descriptors[k]?.enumerable||!own(descriptors[k],'value'))||
     fields.some(k=>!own(input,k))||
     !id(input.tableId)||!id(input.visitId)||!id(input.basketId)||
     !id(input.actorId)||!id(input.itemId)||!key(input.requestKey)||
@@ -40,7 +42,7 @@ export function validateCustomerConfirmationRequest(input){
  const encoded=JSON.stringify(input);
  if(new TextEncoder().encode(encoded).length>16384)
   throw Error('invalid_customer_confirmation_request');
- return Object.freeze({...input});
+ return Object.freeze(structuredClone(input));
 }
 export function createAuthorizedCustomerRequestReader({readContext,readBasket,createRequestKey}={}){
  if(typeof readContext!=='function'||typeof readBasket!=='function'||
