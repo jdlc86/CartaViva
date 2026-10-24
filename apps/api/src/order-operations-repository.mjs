@@ -162,10 +162,12 @@ export function createOrderOperationsRepository() {
 
     async transitionLine(query, {actorId, role, lineId, targetStatus, correlationId}) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role) ||
-          (role === 'kitchen' && targetStatus === 'picked_up') ||
-          (role === 'waiter' && targetStatus !== 'picked_up') ||
           !UUID.test(lineId) || !TARGETS.has(targetStatus) || !CORRELATION.test(correlationId)) {
         throw Error('invalid_order_line_transition');
+      }
+      if ((role === 'kitchen' && targetStatus === 'picked_up') ||
+          (role === 'waiter' && targetStatus !== 'picked_up')) {
+        throw Error('order_operations_forbidden');
       }
       const rows = assertResult(await query(
         `SELECT updated_order_id, updated_line_id, previous_status,
