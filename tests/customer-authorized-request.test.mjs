@@ -74,3 +74,19 @@ test('top-level accessors are rejected without executing and selection is snapsh
  safe.selection.extras.push('untrusted_mutation');
  assert.deepEqual(validated.selection.extras,['cheese']);
 });
+
+test('authorized reader rejects getter-backed session and basket without invoking getters or generating key',async()=>{
+ let generated=0;
+ const maliciousContext={...context};
+ Object.defineProperty(maliciousContext,'authorized',{enumerable:true,get(){throw Error('getter_executed');}});
+ const maliciousBasket={...basket};
+ Object.defineProperty(maliciousBasket,'quantity',{enumerable:true,get(){throw Error('getter_executed');}});
+ for(const [readContext,readBasket] of [
+  [()=>maliciousContext,()=>basket],[()=>context,()=>maliciousBasket]
+ ]){
+  const reader=createAuthorizedCustomerRequestReader({readContext,readBasket,
+   createRequestKey:()=>{generated++;return key;}});
+  await assert.rejects(reader(),/customer_session_not_authorized/);
+ }
+ assert.equal(generated,0);
+});
