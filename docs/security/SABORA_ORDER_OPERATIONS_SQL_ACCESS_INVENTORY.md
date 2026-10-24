@@ -286,3 +286,7 @@ La prueba no llama a la función para mutar datos y no se ejecuta sobre
 Supabase operativo. **No resuelve** la suplantación potencial del parámetro
 `p_actor_user_id`; conserva el bloqueo hasta disponer de vinculación de
 actor no falsificable y un contrato de privilegios positivo aprobado.
+
+## Ensayos de deriva de permisos en PostgreSQL 17
+
+El harness desechable concede y revoca temporalmente tres privilegios de riesgo para demostrar el comportamiento **fail-closed** del preflight real: `SELECT` sobre `sabora.staff_members`, `EXECUTE` sobre la RPC candidata de transición y `CREATE` sobre el esquema `sabora`. Cada concesión debe provocar el rechazo de las identidades técnicas; tras la revocación se exige de nuevo el resultado válido. Son pruebas exclusivas de GitHub Actions contra PostgreSQL 17 efímero. No son instrucciones de aprovisionamiento ni autorización para conceder permisos en Supabase operativo. La ausencia de permisos sigue siendo la condición deliberada de este gate; la vinculación no falsificable del actor continúa siendo un bloqueo de activación.
