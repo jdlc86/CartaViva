@@ -9,6 +9,12 @@ const token=v=>typeof v==='string'&&v.length>=32&&v.length<=512;
 const fields=['tableId','visitId','basketId','actorId','itemId','selection',
  'quantity','requestKey','qrToken','customerSessionToken'];
 const allowed=new Set([...fields,'acceptanceToken']);
+// Adapter DTOs must be own, enumerable data fields; never invoke getters
+// while evaluating authorization or constructing a confirmation request.
+const dataFields=(value,names)=>plain(value)&&names.every(name=>{
+ const d=Object.getOwnPropertyDescriptor(value,name);
+ return !!d&&d.enumerable&&own(d,'value');
+});
 const validSelection=(v,depth=0,seen=new Set())=>{
  if(depth>8)return false;
  if(v===null||typeof v==='boolean'||typeof v==='string'&&v.length<=1024||
@@ -50,8 +56,12 @@ export function createAuthorizedCustomerRequestReader({readContext,readBasket,cr
   throw Error('invalid_customer_request_reader');
  return async()=>{
   const [context,basket]=await Promise.all([readContext(),readBasket()]);
-  if(!plain(context)||context.authorized!==true||context.canOrder!==true||
-     !plain(basket)||basket.confirmable!==true)
+  if(!dataFields(context,['authorized','canOrder','tableId','visitId',
+       'actorId','qrToken','customerSessionToken'])||
+     !dataFields(basket,['confirmable','basketId','revision','itemId',
+       'selection','quantity'])||
+     context.authorized!==true||context.canOrder!==true||
+     basket.confirmable!==true)
    throw Error('customer_session_not_authorized');
   const request={
    tableId:context.tableId,visitId:context.visitId,actorId:context.actorId,
