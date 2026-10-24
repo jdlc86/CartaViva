@@ -408,3 +408,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La composición de cliente conserva la identidad de petición `unresolved` no solo ante fallo de red, sino también ante HTTP 503 (`order_confirmation_unavailable`) y respuestas HTTP malformadas (`confirmation_unexpected_response`): ninguna acredita que el servidor no haya confirmado la transacción.
 - Pruebas de regresión cubren 503 y éxito HTTP malformado, bloqueo de reset/cambio de cesta y recuperación explícita mediante `replayed` con la misma clave. No hay reintento automático ni persistencia local de tokens.
 - Los workflows del bloque 53 fueron SUCCESS. Este SHA requiere sus propios resultados de CI; sin despliegue, merge ni acceso a recursos compartidos.
+
+## 55. Validación de línea en el escritor candidato antes de SQL (24-10-2026)
+
+- El coordinador Node.js rechaza `itemId` ausente o mal formado y `quantity` no entero positivo seguro antes de abrir la transacción; anteriormente estas entradas alcanzaban la fase de bloqueo de contexto y catálogo.
+- El snapshot de entrada prohíbe ahora propiedades `toJSON` en cualquier nivel, evitando divergencias entre la representación canónica y serializaciones externas; se alinea con la frontera del lector de cliente.
+- Nuevas pruebas comprueban identificadores y cantidades inválidos y `toJSON` anidado, con cero transacciones iniciadas. La ruta candidata continúa sin registrar en el servidor.
+- El bloque 54 (`283fa79`) pasó Sabora CI y Bootstrap; el nuevo SHA exige ambos workflows verdes antes de cerrarse. Sin merge ni despliegue.
