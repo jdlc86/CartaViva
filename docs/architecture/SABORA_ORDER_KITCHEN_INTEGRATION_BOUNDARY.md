@@ -30,3 +30,26 @@ PR #4 declara solo las transiciones por línea `confirmed → preparing → read
 - No introducir `delivered`, cancelación o reembolso parcial sin contrato económico y autorización específica.
 
 No se ha realizado merge, despliegue, ni modificación de Supabase operativo, Fleetia o VPS.
+
+## DTO público candidato para consentimiento de cambio de precio
+
+La ruta candidata `POST /api/v1/customer/orders/confirm` responde `409` con
+`error: acceptance_required` y `repricing` de versión `schemaVersion: 1`.
+Su lista cerrada de campos es `previousTotalCents`,
+`currentTotalCents`, `differenceCents` (con signo),
+`previousPublishedRevision`, `currentPublishedRevision`,
+`acceptanceToken` y `expiresAt` (epoch milisegundos).
+
+El token se emite en servidor después de bloquear visita, mesa y catálogo;
+está firmado con HMAC y vincula actor, cesta, plato, selección, cantidad,
+revisión y snapshot económico. Caduca a los cinco minutos por defecto.
+El cliente debe **mostrar ambos importes y la diferencia y obtener una
+aceptación humana explícita**, incluso si la diferencia es cero pero cambió
+la revisión o si el precio disminuyó. Solo entonces puede repetir la misma
+petición con `acceptanceToken`; no confirmar automáticamente.
+
+La respuesta nunca incluye evidencia interna ni snapshot completo, no se
+almacena en caché y no acredita recepción por cocina. La ruta sigue sin
+montarse en `server.mjs`. El DTO es **candidato técnico**, no una
+autorización para activar producción; el diseño y la UX de aceptación de
+la PWA deben revisarse antes de integrar.
