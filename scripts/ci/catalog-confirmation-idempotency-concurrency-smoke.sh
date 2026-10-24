@@ -185,3 +185,43 @@ if [[ "$(printf '%s' "$basket_independent" | tr -d '[:space:]')" != t ]]; then
  exit 1
 fi
 echo 'PASS: reused request key in a different basket has an independent advisory lock'
+
+# A distinct actor using the same basket and request key must also remain
+# independent; the ledger's unique scope includes actor identity.
+actor_scope='["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000002","visit-ci","basket-ci","actor-other","request-001"]'
+actor_key_sql="hashtextextended('$actor_scope',0)"
+actor_holder_sql=$(cat <<SQL
+BEGIN;
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_sleep(3);
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$actor_holder_sql" &
+actor_holder_pid=$!
+actor_ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$actor_holder_pid" 2>/dev/null; then break; fi
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(3)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then actor_ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$actor_ready" != 1 ]]; then
+ wait "$actor_holder_pid" || true
+ echo 'Actor-scope holder did not acquire lock' >&2
+ exit 1
+fi
+actor_independent=$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+BEGIN;
+SET LOCAL lock_timeout='1s';
+SELECT pg_try_advisory_xact_lock($actor_key_sql);
+COMMIT;
+SQL
+)
+wait "$actor_holder_pid"
+if [[ "$(printf '%s' "$actor_independent" | tr -d '[:space:]')" != t ]]; then
+ echo 'Distinct actor with reused request key unexpectedly blocked' >&2
+ exit 1
+fi
+echo 'PASS: distinct actors sharing basket and request key have independent advisory locks'
