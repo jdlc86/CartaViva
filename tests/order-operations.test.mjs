@@ -413,6 +413,35 @@ test('HTTP board validates cursors and maps authorization, conflict and private 
   assert.equal(unavailable.body.includes('secret'), false);
 });
 
+test('HTTP maps only exact domain errors and never leaks driver messages', async (t) => {
+  const errors = [
+    ['actor_not_authorized', 403, 'forbidden'],
+    ['role_not_allowed_for_line_transition', 403, 'forbidden'],
+    ['line_not_found', 404, 'order_operation_not_found'],
+    ['order_not_found', 404, 'order_operation_not_found'],
+    ['line_transition_idempotency_conflict', 409, 'order_operation_conflict'],
+    ['invalid_order_history_request', 400, 'invalid_order_operation'],
+    ['driver forbidden connection=secret', 503, 'order_operations_unavailable'],
+    ['invalid_line_transition unexpected SQL detail=secret', 503, 'order_operations_unavailable'],
+    ['line_not_found;password=secret', 503, 'order_operations_unavailable'],
+  ];
+  for (const [message, code, publicError] of errors) {
+    const app = await httpHarness({operations: {
+      listBoard: async () => { throw Error(message); },
+      listHistory: async () => ({events: []}),
+      transitionLine: async () => ({repeated: false}),
+    }});
+    t.after(() => app.close());
+    const response = await app.inject({
+      method: 'GET', url: '/api/v1/operations/order-lines',
+      headers: {authorization: 'Bearer test'},
+    });
+    assert.equal(response.statusCode, code, message);
+    assert.deepEqual(response.json(), {error: publicError}, message);
+    assert.equal(response.body.includes('secret'), false);
+  }
+});
+
 test('untrusted operation inputs cannot replace verified actor or staff role', async () => {
   const observed = [];
   const repository = {
