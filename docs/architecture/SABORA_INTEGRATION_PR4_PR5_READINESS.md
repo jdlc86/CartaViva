@@ -51,3 +51,10 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - La prueba real Node + driver `pg` de cocina/camareros se ejecuta ahora desde `catalog-postgres17-node-driver-smoke.sh`, usando únicamente su PostgreSQL 17 desechable en GitHub Actions. Su ejecución no autoriza runtime.
 - Nueva prueba de regresión comprueba que parámetros de cliente no reemplazan `actorId` ni `role` verificados en ninguna de las tres operaciones.
 - **No declarar CI verde hasta consultar las ejecuciones correspondientes al HEAD final.**
+
+## Integración PR #5 — lectura de Mesas/Catálogo
+
+- CI confirmado verde para el bloque de operaciones de cocina y camareros anterior: Sabora CI #1785 y Bootstrap #1759 sobre `e3dca3629df14322385ef6ceb18a66b4a24e77c8`.
+- Se han trasladado a esta rama aislada los modelos de lectura/paginación, controlador de respuestas concurrentes, navegación, vistas de Mesas y Catálogo, componentes compartidos, composición UI, estilos y pruebas de PR #5. Se conserva la naturaleza **solo lectura** y sin gateway autenticado runtime; las escrituras y QR continúan deshabilitados.
+- La hoja `style.css` fue tomada de PR #5 para preservar sus vistas; la integración de la UI operativa de PR #4 (OrdersView y estilos) **no** está hecha. Antes de incorporar OrdersView de PR #4, conciliar CSS por selectores y verificar regresiones visuales.
+- Este traslado es candidato sujeto a CI de HEAD; no declarar verde ni funcionalidad operativa hasta comprobar Actions. No se montaron rutas ni se realizaron merges/despliegues.
