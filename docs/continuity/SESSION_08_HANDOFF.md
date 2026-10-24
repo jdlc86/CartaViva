@@ -89,3 +89,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Este es un **gate negativo de seguridad**, no una autorización de provisionamiento. Si se aprueba una activación futura habrá que reemplazarlo por pruebas de acceso positivo/negativo con credenciales SQL reales y revisar contratos de RLS.
 - Verificación local limitada: el contenedor de trabajo no tiene Docker, PostgreSQL ni acceso DNS a GitHub; **no se han ejecutado** `pnpm test`, `pnpm build` ni el smoke PG17 en esta sesión. Consultar los workflows del HEAD antes de declarar el hito validado. Si el gate detecta una incompatibilidad con migraciones existentes, corregir tras leer los logs, sin deshabilitarlo silenciosamente.
 - El recorrido QR→visita→catálogo→pedido→cocina sigue sin acreditación E2E. No activar `server.mjs`, no desplegar ni modificar los recursos de Fleetia.
+
+## 12. Cierre verificable de barrera negativa y pruebas de mutación (24-10-2026)
+
+- HEAD previo `1c1bcd2ab02ebb310c5b7b9c47f4978f835eb3b7`: **Sabora CI 40079954180 SUCCESS** y **Bootstrap Sabora lockfile 40079954025 SUCCESS**, verificados desde GitHub. Esto acredita el smoke PostgreSQL 17 aislado y los tests incluidos en ese SHA, no la activación operativa.
+- Nuevo `scripts/ci/customer-runtime-activation-gate-mutations.sh` fuerza cambios peligrosos en una transacción desechable y exige que `customer-runtime-activation-gate.sql` rechace cada uno por la causa esperada: logins inesperados, atributos inseguros, membresía filtrada y grants económicos indebidos. Después reejecuta el gate sin mutaciones para detectar cualquier fuga.
+- `scripts/ci/postgres-migration-smoke.sh` ejecuta la suite de mutaciones justo después del gate negativo, antes de las pruebas del escritor. Todas las operaciones se realizan dentro del contenedor PostgreSQL 17 con `--network none`; **no se tocan recursos externos**.
+- Hito técnico alcanzado únicamente tras CI verde del nuevo SHA: barrera negativa de activación SQL probada también contra mutaciones. No es todavía un hito vertical QR→pedido→cocina: el escritor continúa sin roles/grants de ejecución aprobados y las rutas no se montan en `server.mjs`.
+- No merge, no despliegue, no Supabase operativo, no Fleetia, sin cambios a UI Codex.
