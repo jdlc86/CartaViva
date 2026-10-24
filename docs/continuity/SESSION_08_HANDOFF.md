@@ -235,3 +235,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-request-key-registry.test.mjs`: reintentos ambiguos, bloqueo durante envío, cambio de revisión, nueva cesta y entradas inválidas.
 - Integración prevista: pasar `registry.forBasket` como `createRequestKey` al lector autorizado, y envolver la confirmación con `begin/end`. La clave es defensa de duplicación del cliente; la garantía durable depende de la transacción y la tabla de idempotencia del servidor.
 - CI del SHA anterior `e7b1c22` seguía `in_progress` al iniciar; CI del nuevo HEAD pendiente. PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 31. Composición candidata autorizada con idempotencia y consentimiento (24-10-2026)
+
+- `packages/customer-consent/src/customer-authorized-confirmation.mjs` compone lector autorizado, registro de clave idempotente por revisión de cesta y flujo de confirmación/consentimiento. Rechaza envíos sin contexto/cesta listos, bloquea concurrencia y prohíbe segunda confirmación tras `confirmed/replayed` hasta `resetForNewBasket()`.
+- En fallo de red ambiguo conserva la clave para permitir consulta/reintento con el mismo identificador, sin asumir éxito; un cambio de precio sigue exigiendo aceptación humana desde el panel.
+- `tests/customer-authorized-confirmation.test.mjs`: envío autorizado, no duplicación, rearme explícito, repetición con la misma clave y bloqueo por sesión no autorizada.
+- **No integrado en `apps/client`**: aún no existen lectores de sesión y cesta autorizados. La transacción de servidor sigue siendo la autoridad; no montar con mocks en producción.
+- CI del nuevo SHA pendiente. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
