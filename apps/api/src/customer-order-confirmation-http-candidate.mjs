@@ -37,7 +37,7 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
    if(error?.message==='order_idempotency_conflict')
     return reply.code(409).send({error:'order_idempotency_conflict'});
    if(['order_catalog_unavailable','order_previous_quote_unavailable',
-     'order_displayed_quote_invalid'].includes(error?.message))
+     'order_displayed_quote_invalid','catalog_order_context_changed'].includes(error?.message))
     return reply.code(409).send({error:'order_confirmation_conflict'});
    return reply.code(503).send({error:'order_confirmation_unavailable'});
   }
