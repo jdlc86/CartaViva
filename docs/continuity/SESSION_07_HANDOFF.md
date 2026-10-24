@@ -774,3 +774,12 @@ Leer el HEAD real y comprobar si la integración Node–PostgreSQL 17 y el gate 
 - Commit `2094d8d6193f2fdf23153be06ec505b610d1fddf`: ambos workflows fallaron en Test. Logs: `ERR_MODULE_NOT_FOUND: Cannot find package 'fastify'` al importarlo desde `tests/isolated-customer-composition-candidate.test.mjs` (raíz del monorepo).
 - Corrección `0eb450510c128f747cb71251e911d266eea72358`: resolver Fastify con `createRequire(new URL('../apps/api/package.json',import.meta.url))`, conforme a otras pruebas del repositorio.
 - No declarar CI verde hasta verificar ejecución posterior. Priorizar pruebas de integración real y funcionalidades completas, no más endurecimientos triviales aislados.
+
+## Cierre verificable de sesión 7 y traspaso a sesión 8 (24-10-2026)
+
+- Fuente de verdad: repositorio `jdlc86/CartaViva`, contrato `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md` y documentación vigente. Esta bitácora es histórica; prevalecen los archivos reales y el HEAD.
+- HEAD comprobado **antes de este cierre documental**: `a79a3edf8fd603a8b3694e91fbc6ddac78d50d14`, rama `feat/sabora-pnpm-bootstrap`, PR #2. GitHub Actions **Sabora CI SUCCESS** (40076744555) y **Bootstrap Sabora lockfile SUCCESS** (40076744557).
+- El trabajo incluye lector público de catálogo y búsqueda/filtros de la PWA, transporte de confirmación de pedidos, composición opt-in de rutas cliente con pools separados, y preflight de identidad de conexiones. Son piezas parciales: **no declarar flujo QR → visita → pedido → cocina operativo**.
+- Las pruebas de composición y preflight de pools vistas hasta aquí usan dobles; no sustituyen PostgreSQL 17 real, grants/RLS mínimos, concurrencia ni prueba E2E. La interfaz administrativa es trabajo de Codex: evitar modificaciones conflictivas.
+- No se ha autorizado merge ni despliegue, ni cambios a Supabase operativo o VPS compartido; Fleetia y otros contenedores son intocables.
+- Continuación detallada en `docs/continuity/SESSION_08_HANDOFF.md`. Tras publicar estos documentos, verificar el nuevo HEAD y los workflows de GitHub Actions, sin atribuirles por adelantado el éxito del HEAD anterior.

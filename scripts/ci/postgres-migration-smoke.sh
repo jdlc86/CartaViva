@@ -27,6 +27,11 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Exercise effective SQL access under SET LOCAL ROLE (disposable PG17 only).
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-effective-smoke.sql
+# Fail closed if customer runtime logins or economic grants are activated prematurely.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/customer-runtime-activation-gate.sql
+# Prove the customer activation gate detects deliberately unsafe SQL changes.
+bash scripts/ci/customer-runtime-activation-gate-mutations.sh "$container"
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
@@ -45,6 +50,9 @@ docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Prove order and economic confirmation commit/rollback together in PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-confirmation-atomicity-smoke.sql
+# Verify confirmed orders are projected into kitchen exactly once and failed retries roll back.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-confirmation-kitchen-durability-smoke.sql
 # Validate candidate durable visit grants in disposable PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-visit-ledger-smoke.sql

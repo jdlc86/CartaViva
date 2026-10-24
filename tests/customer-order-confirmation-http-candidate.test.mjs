@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {registerCustomerOrderConfirmationRoute} from '../apps/api/src/customer-order-confirmation-http-candidate.mjs';
+import {registerCustomerOrderConfirmationRoute,failureCode} from '../apps/api/src/customer-order-confirmation-http-candidate.mjs';
 const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
 const Fastify=requireApi('fastify');
 const id='00000000-0000-4000-8000-000000000005';
@@ -25,15 +25,26 @@ test('customer confirmation returns minimal DTO and idempotent replay without ev
   assert.equal(r.body.includes('private'),false);
  }
 });
-test('customer confirmation does not leak acceptance token or private pricing evidence',async t=>{
+test('customer confirmation exposes only bounded repricing DTO, never private evidence',async t=>{
+ const token='v1.1792600300000.'+'a'.repeat(64)+'.'+'b'.repeat(64);
  const app=create(async()=>({status:'acceptance_required',
-  decision:{requiresAcceptance:true,token:'secret-acceptance',evidence:{private:1}}}));
+  decision:{requiresAcceptance:true,previousTotalCents:1000,
+   currentTotalCents:1100,differenceCents:100,
+   previousPublishedRevision:1,currentPublishedRevision:2,
+   evidence:{private:'never-expose'},token:'private-token'},
+  acceptance:{token,expiresAt:1792600300000,private:'never-expose'}}));
  t.after(()=>app.close());
  const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
   payload:{requestKey:'request-001'}});
  assert.equal(r.statusCode,409);
- assert.deepEqual(r.json(),{error:'acceptance_required'});
- assert.equal(r.body.includes('secret'),false);
+ assert.deepEqual(r.json(),{error:'acceptance_required',repricing:{
+  schemaVersion:1,previousTotalCents:1000,currentTotalCents:1100,
+  differenceCents:100,previousPublishedRevision:1,
+  currentPublishedRevision:2,acceptanceToken:token,expiresAt:1792600300000
+ }});
+ assert.equal(r.headers['cache-control'],'no-store');
+ assert.equal(r.body.includes('never-expose'),false);
+ assert.equal(r.body.includes('private-token'),false);
 });
 test('customer confirmation maps known failures and hides unexpected backend details',async t=>{
  let message='order_context_forbidden';
@@ -46,6 +57,7 @@ test('customer confirmation maps known failures and hides unexpected backend det
   ['order_catalog_unavailable',409,'order_confirmation_conflict'],
   ['order_previous_quote_unavailable',409,'order_confirmation_conflict'],
   ['order_displayed_quote_invalid',409,'order_confirmation_conflict'],
+  ['catalog_order_context_changed',409,'order_confirmation_conflict'],
   ['postgres://private:secret@localhost',503,'order_confirmation_unavailable']
  ]){
   message=error;
@@ -197,4 +209,70 @@ test('HTTP rejects forged client pricing before beginning transactional confirma
   assert.deepEqual(r.json(),{error:'invalid_confirmation_input'});
  }
  assert.equal(transactions,0);
+});
+
+test('HTTP confirmation never represents persistence as kitchen receipt',async t=>{
+ const app=create(async()=>({status:'confirmed',result:{
+  orderId:id,kitchenReceived:true,dispatchId:'private',receiptAt:'private'
+ }}));
+ t.after(()=>app.close());
+ const response=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(response.statusCode,201);
+ assert.deepEqual(response.json(),{status:'confirmed',orderId:id});
+ assert.equal(response.body.includes('kitchen'),false);
+ assert.equal(response.body.includes('dispatch'),false);
+ assert.equal(response.body.includes('receipt'),false);
+});
+
+test('HTTP refuses inconsistent repricing challenges without leaking evidence',async t=>{
+ const token='v1.1792600300000.'+'a'.repeat(64)+'.'+'b'.repeat(64);
+ let variant='equal_revision';
+ const app=create(async()=>({status:'acceptance_required',
+  decision:{requiresAcceptance:true,previousTotalCents:1000,
+   currentTotalCents:1100,differenceCents:100,
+   previousPublishedRevision:1,
+   currentPublishedRevision:variant==='equal_revision'?1:2},
+  acceptance:{token,expiresAt:variant==='expiry_mismatch'?1792600300001:1792600300000}
+ }));
+ t.after(()=>app.close());
+ for(const mode of ['equal_revision','expiry_mismatch']){
+  variant=mode;
+  const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+   payload:{requestKey:'request-001'}});
+  assert.equal(r.statusCode,503);
+  assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+  assert.equal(r.headers['cache-control'],'no-store');
+ }
+});
+
+test('HTTP candidate rejects accessor-backed domain order ID without invoking getter',async t=>{
+ const result={};
+ Object.defineProperty(result,'orderId',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const app=create(async()=>({status:'confirmed',result}));
+ t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+});
+test('HTTP candidate rejects accessor-backed repricing decision without leaking fields',async t=>{
+ const decision={requiresAcceptance:true};
+ Object.defineProperty(decision,'currentTotalCents',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const app=create(async()=>({status:'acceptance_required',decision,
+  acceptance:{token:'secret',expiresAt:123}}));
+ t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+});
+
+test('hostile error message accessor is never executed by classifier',()=>{
+ const thrown={};
+ Object.defineProperty(thrown,'message',{get(){throw Error('accessor_executed');}});
+ assert.equal(failureCode(thrown),null);
+ assert.equal(failureCode(Error('order_context_forbidden')),'order_context_forbidden');
 });

@@ -4,6 +4,7 @@
 // persist() must atomically consume acceptance and insert immutable evidence.
 import {decideCatalogLineConfirmation} from './catalog-confirmation-decision.mjs';
 import {assertDisplayedQuoteMatchesConfirmation} from './catalog-displayed-quote-binding.mjs';
+import {issueCatalogRepriceAcceptance} from './catalog-reprice-acceptance.mjs';
 
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -18,13 +19,18 @@ const dataRecord=v=>{
  const keys=Reflect.ownKeys(v);
  if(keys.length>64)return false;
  return keys.every(key=>{
-  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+  if(typeof key!=='string'||['__proto__','prototype','constructor','toJSON'].includes(key))
    return false;
   const descriptor=Object.getOwnPropertyDescriptor(v,key);
   return !!descriptor&&descriptor.enumerable&&own(descriptor,'value');
  });
 };
 const requiredMethods=['lockContext','lookupIdempotency','lockCatalog','loadPreviousQuote','persist'];
+const ownMethod=(object,name)=>{
+ const descriptor=Object.getOwnPropertyDescriptor(object,name);
+ return !!descriptor&&descriptor.enumerable&&own(descriptor,'value')&&
+  typeof descriptor.value==='function';
+};
 const payloadKeys=['tableId','visitId','basketId','actorId','itemId','selection','quantity',
  'requestKey','acceptanceToken','qrToken','customerSessionToken'];
 // Snapshot untrusted JSON data once, without invoking getters or accepting
@@ -47,7 +53,7 @@ const snapshotInput=(value,seen=new Set(),depth=0,budget={nodes:0,bytes:0})=>{
   throw Error('invalid_confirmation_input');
  for(const key of keys){
   if(key==='length'&&Array.isArray(value))continue;
-  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+  if(typeof key!=='string'||['__proto__','prototype','constructor','toJSON'].includes(key))
    throw Error('invalid_confirmation_input');
   const descriptor=Object.getOwnPropertyDescriptor(value,key);
   if(!descriptor||!descriptor.enumerable||!own(descriptor,'value'))
@@ -70,7 +76,7 @@ const stable=v=>{
 };
 export function createCatalogConfirmationCoordinator({withTransaction,repository,secretKey,clock}={}){
  if(typeof withTransaction!=='function'||!plain(repository)||
-    requiredMethods.some(name=>typeof repository[name]!=='function')||
+    requiredMethods.some(name=>!ownMethod(repository,name))||
     typeof clock!=='function'||typeof secretKey!=='string'||Buffer.byteLength(secretKey)<32)
   throw Error('invalid_confirmation_coordinator');
  return async function confirm(rawInput){
@@ -80,6 +86,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
       'requestKey','qrToken','customerSessionToken'].some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
      !validId(input.actorId)||!validId(input.basketId)||
+     !validId(input.itemId)||!Number.isSafeInteger(input.quantity)||
+     input.quantity<1||
      typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
      typeof input.customerSessionToken!=='string'||
      input.customerSessionToken.length<32||input.customerSessionToken.length>512)
@@ -139,7 +147,13 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    assertDisplayedQuoteMatchesConfirmation({previous,currentEvidence:decision.evidence});
    if(decision.status==='acceptance_required'){
     // Read-only outcome: transaction commits without persisting an order.
-    return Object.freeze({status:'acceptance_required',decision});
+    const issued=issueCatalogRepriceAcceptance({
+     basketId:input.basketId,actorId:input.actorId,secretKey,nowMs,
+     itemId:input.itemId,publishedRevision:published.publishedRevision,
+     snapshot:published.snapshot,selection:input.selection,quantity:input.quantity
+    });
+    return Object.freeze({status:'acceptance_required',decision,
+     acceptance:Object.freeze({token:issued.token,expiresAt:issued.expiresAt})});
    }
    const result=await repository.persist(query,{
     context,requestKey,requestFingerprint,quoteId:previous.quoteId,
