@@ -181,6 +181,30 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         WHERE ns.nspname = 'sabora' AND routine.prosecdef`
     );
     assert.ok(Number.isSafeInteger(definerCount.rows[0]?.total));
+    // Temporary grants are made only inside the disposable CI database.
+    // Each escalation must independently block route-registration preflight.
+    for (const [grant, revoke] of [
+      [
+        'GRANT CREATE ON SCHEMA sabora TO sabora_ci_operations_identity',
+        'REVOKE CREATE ON SCHEMA sabora FROM sabora_ci_operations_identity',
+      ],
+      [
+        'GRANT EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) TO sabora_ci_operations_identity',
+        'REVOKE EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) FROM sabora_ci_operations_identity',
+      ],
+    ]) {
+      await admin.query(grant);
+      try {
+        await assert.rejects(preflightOrderOperationsIdentities({
+          staffPool, operationsPool, staffRole, operationsRole,
+        }), /order_operations_sql_identity_rejected/);
+      } finally {
+        await admin.query(revoke);
+      }
+      assert.deepEqual(await preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    }
     // Prove the runtime preflight detects an accidental table grant, not
     // merely that the offline catalog inventory reports it.
     await admin.query('GRANT SELECT ON sabora.staff_members TO sabora_ci_operations_identity');
