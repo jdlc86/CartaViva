@@ -189,3 +189,13 @@ invocación directa del repositorio y esperar el rechazo local de una
 transición de sala incompatible. Esto preserva las comprobaciones de rollback,
 concurrencia e idempotencia sin retirar la defensa previa al SQL. La corrección
 responde a los fallos del workflow `40102104928` y `40102104861`.
+
+## Corrección de regresión de CI (2026-10-24)
+
+Tras introducir la denegación anticipada de transiciones incompatibles con
+el rol, dos aserciones del harness PostgreSQL 17 quedaron desfasadas: la
+transición de camarero a `ready` ahora se rechaza antes de llegar a la RPC,
+y la prueba de rollback debía pasar explícitamente el rol `kitchen` al
+repositorio. Ambas pruebas se han alineado con el contrato nuevo sin relajar
+las comprobaciones de seguridad. La aceptación depende de la ejecución verde
+de los dos workflows sobre el SHA actualizado.
