@@ -90,7 +90,7 @@ test('PG17 persists the complete preparation, ready notification and pickup cycl
 
   await assert.rejects(operations.transitionLine(waiter, {
     lineId: item.lineId, targetStatus: 'ready', correlationId: 'pg_waiter_cannot_ready_101',
-  }), /invalid_order_line_transition/);
+  }), /order_operations_forbidden/);
   const ready = await operations.transitionLine(kitchen, {
     lineId: item.lineId, targetStatus: 'ready', correlationId: 'pg_cycle_ready_101',
   });
