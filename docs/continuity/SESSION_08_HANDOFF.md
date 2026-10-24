@@ -427,3 +427,86 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - El coordinador candidato exige métodos `lockContext`, `lookupIdempotency`, `lockCatalog`, `loadPreviousQuote` y `persist` como propiedades propias, enumerables y de datos del adaptador `repository`; la configuración ya no invoca getters al evaluar dependencias.
 - Prueba de regresión: `persist` getter hostil, heredado y no enumerable son rechazados en construcción, sin ejecución de getter ni transacciones.
 - El bloque 56 (`4b68146`) seguía en ejecución al iniciar; este commit también necesita CI y Bootstrap verdes. No se registra la ruta HTTP ni se despliega.
+
+## 58. Pruebas de replay canónico y separación de credenciales (24-10-2026)
+
+- Verificado en GitHub Actions que `8951dfb` (bloque 57) pasó Sabora CI y Bootstrap; también pasó `4b68146` (bloque 56). Los commits de ida/vuelta del límite arbitrario de cantidad terminaron en `9e1c296`, cuyo CI y Bootstrap también fueron SUCCESS; el contrato original se conservó.
+- Nuevas pruebas del coordinador candidato verifican que el replay con igual clave y contenido lógico pero campos en distinto orden y credenciales QR/sesión renovadas devuelve `replayed` sin segunda lectura de catálogo ni escritura. Las credenciales no forman parte del fingerprint económico; sí deben autorizarse nuevamente bajo bloqueo.
+- Una prueba adicional exige conflicto de idempotencia si se cambia la cantidad conservando la clave; debe abortar después de comprobar el contexto, antes de leer catálogo o escribir.
+- Este nuevo SHA requiere ambos workflows verdes. Sin integración productiva, merge, despliegue ni cambios de la PWA de administración asignada a Codex.
+
+## 59. Revocación de visita frente a replay idempotente (24-10-2026)
+
+- Añadida prueba de integración del coordinador candidato con dos confirmaciones consecutivas: la primera persiste con contexto autorizado; la segunda usa la misma clave y contenido, pero `lockContext` devuelve visita revocada.
+- El resultado exigido es `order_context_forbidden` con ROLLBACK, sin consultar ledger de idempotencia, catálogo ni volver a persistir. Un replay no elude la autorización actual bajo bloqueo.
+- Bloque 58 pendiente de resultado final de ambos workflows al comenzar; este SHA también requiere CI. No se monta ruta HTTP ni se toca la PWA de administración de Codex, VPS, Fleetia o Supabase operativo.
+
+## 60. Aislamiento de identidad y privacidad del ledger de replay (24-10-2026)
+
+- Bloque 58 (`3598454`) verificado con Sabora CI #1728 y Bootstrap #1708 SUCCESS. El bloque 59 (`324d354`) seguía en ejecución al iniciar esta sesión.
+- Suite ampliada del coordinador candidato: identidad ajena en mesa, visita, actor o cesta se rechaza bajo bloqueo antes de consultar el ledger; `canOrder=false` deniega también replays; un contexto sin autorización no llama a los adaptadores de ledger, catálogo, cotización ni escritura; una clave distinta no puede apropiarse de un replay anterior.
+- Las pruebas usan adaptadores aislados y verifican secuencias de BEGIN/ROLLBACK; no sustituyen las carreras SQL sobre PostgreSQL 17. Este SHA exige CI verde antes de considerar cerrado el bloque.
+- Sin merge, despliegue, registro de endpoint ni modificación de Fleetia, VPS, Supabase operativo o la PWA de administración de Codex.
+
+## 61. Concurrencia real PostgreSQL 17: ámbitos de claves independientes (24-10-2026)
+
+- Bloque 60 (`bb0ea3b`) verificado en GitHub Actions: Sabora CI #1732 y Bootstrap #1712 SUCCESS.
+- Ampliado `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh`: tras los casos existentes de serialización de una misma clave y liberación tras rollback, ahora mantiene una transacción con bloqueo de `request-001` y comprueba desde otra conexión PG17 que `request-002` puede adquirir su propio advisory lock inmediatamente.
+- El caso se ejecuta en el PostgreSQL 17 desechable de CI y evita introducir por accidente una exclusión global que bloquee pedidos independientes. Mantiene el ámbito de hash y la política de locks existentes; no cambia SQL productivo.
+- Requiere verificación de los workflows del SHA de este bloque antes de declararlo cerrado. No merge, endpoint activo, despliegue ni cambios en Fleetia, VPS, Supabase operativo o rama de administración de Codex.
+
+## 62. Reutilización de clave entre cestas aisladas: prueba PG17 (24-10-2026)
+
+- Se amplía el smoke de concurrencia del ledger con un segundo caso independiente: misma `request-001` pero `basket-other` mientras otra conexión mantiene el bloqueo transaccional de `basket-ci`. Se exige `pg_try_advisory_xact_lock` verdadero en la segunda sesión y liberación tras commit.
+- El ámbito del advisory lock conserva mesa, sesión, visita, cesta, actor y clave. Se evita convertir por error la clave de petición en un mutex global entre cestas. El script se ejecuta únicamente sobre PG17 desechable de CI.
+- Bloque 61 (`59636e1`) seguía en CI al inicio de esta sesión; verificar ambos workflows del último SHA antes de dar por cerrado el bloque 62. Sin cambios en producción ni en la rama de Codex.
+
+## 63. Aislamiento de bloqueo entre actores de la misma cesta (24-10-2026)
+
+- Bloques 61 (`59636e1`) y 62 (`41798ab`) cerrados con Sabora CI #1735/#1737 y Bootstrap #1714/#1716 SUCCESS.
+- Extendido el smoke PostgreSQL 17 de idempotencia con dos sesiones reales: una retiene el advisory lock para `actor-ci` y otra debe adquirir sin espera el ámbito `actor-other` aun con la misma mesa, sesión, visita, cesta y `request-001`.
+- El nuevo caso protege el aislamiento por actor definido por el ledger; se mantienen los casos previos de serialización de la misma clave, rollback y ámbitos independientes por clave y cesta.
+- Verificar CI/Bootstrap del SHA final para cerrar este bloque. Sin activación de endpoint, merge, despliegue ni modificaciones a Codex, Fleetia, VPS o Supabase operativo.
+
+## 63. Aislamiento concurrente por participante (24-10-2026)
+
+- Bloques 61 y 62 confirmados SUCCESS en Sabora CI #1735/#1737 y Bootstrap #1714/#1716.
+- Se extiende `catalog-confirmation-idempotency-concurrency-smoke.sh` con una tercera sesión concurrente independiente: misma mesa, sesión, visita, cesta y clave de petición, pero `actor-other` en lugar de `actor-ci`.
+- Mientras el actor original mantiene su advisory lock de transacción, el segundo actor debe adquirir inmediatamente su propio bloqueo mediante `pg_try_advisory_xact_lock`. Se conserva el ámbito completo de bloqueo y la ejecución sobre PostgreSQL 17 desechable.
+- Verificar los workflows de este SHA antes de cerrar el bloque. Sin activación de endpoint, integración de otras ramas, merge ni despliegue.
+
+## 64. Aislamiento de locks tras nueva visita de mesa (24-10-2026)
+
+- Se amplía el smoke de idempotencia concurrente PostgreSQL 17 para verificar que `visit-other` y `visit-ci` no comparten bloqueo advisory aun reutilizando la misma mesa, sesión, cesta, actor y clave de petición de la fixture.
+- La prueba conserva la transacción que bloquea la primera visita y exige `pg_try_advisory_xact_lock` exitoso desde una conexión independiente para la segunda visita; garantiza que el ámbito incluye `visit_id`.
+- Bloque 63 seguía con workflows en curso al inicio; verificar ambos workflows del SHA 64 antes de declararlo cerrado. Sin merges, despliegues ni cambios en la rama de administración.
+
+## 65. Antifalsos positivos en pruebas de concurrencia de locks (24-10-2026)
+
+- Los cuatro casos de ámbitos independientes del smoke PG17 (clave, cesta, actor y visita) comprueban ahora que la sesión que retiene el bloqueo original sigue viva inmediatamente después del intento de adquirir el bloqueo independiente. Sin este guard, un `pg_try_advisory_xact_lock` exitoso después del COMMIT del holder podría generar un falso positivo.
+- Se mantienen los checks previos de espera activa y la salida no cero si el holder terminó antes de la comprobación. No cambia el escritor SQL ni se activa la ruta HTTP.
+- Bloques 63 y 64 aún estaban ejecutando workflows al comenzar. Este SHA requiere CI y Bootstrap verdes antes de cerrar el bloque.
+
+## 66. Validación de respuestas de ledger y ámbito completo de advisory lock (24-10-2026)
+
+- Ampliada la suite `tests/catalog-confirmation-read-repository.test.mjs` con casos de respuestas de driver inválidas antes de consultar el ledger, registros durables malformados y rechazo de UUID/fingerprint incorrectos.
+- Se comprueba explícitamente que cada una de las seis dimensiones del ámbito de bloqueo (mesa, sesión, visita, cesta, actor, requestKey) altera exclusivamente su posición en el JSON pasado a `hashtextextended`.
+- Los casos de driver son tests unitarios de regresión; los escenarios de bloqueo entre sesiones continúan cubiertos por el smoke PG17 desechable. Bloques 64 y 65 aún estaban en CI al iniciar; este SHA también requiere ambos workflows verdes.
+- No se habilita el endpoint HTTP ni se modifican otros proyectos o ramas.
+
+## 67. Pruebas negativas de publicación y dinero de cotización (24-10-2026)
+
+- Se amplían los tests del lector de confirmación: revisiones de publicación cero, mayores que el entero seguro o expresadas en notación exponencial y snapshots ausentes deben producir catálogo no disponible, nunca confirmación implícita.
+- Se comprueba el rechazo de cotizaciones con importes negativos, descuentos superiores al subtotal, suma inconsistente, notación exponencial, importes fuera de rango seguro, revisión inválida o evidencia no-objeto. Un ítem inexistente no puede marcarse disponible.
+- Solo se añaden pruebas unitarias en `tests/catalog-confirmation-read-repository.test.mjs`; no se cambian contratos, migraciones ni rutas productivas. Verificar Sabora CI y Bootstrap del SHA final.
+
+## 68. Validación estricta del contexto de visita y credenciales (24-10-2026)
+
+- `catalog-visit-context-repository.mjs` ahora rechaza campos adicionales en los argumentos de autorización, además de sus protecciones existentes contra getters, prototipos y campos peligrosos. Se restringe el contrato a `tableId`, `visitId`, `actorId`, `basketId`, `qrToken` y `customerSessionToken`.
+- Nuevas regresiones para envolturas de respuesta de driver inválidas, contradicciones independientes de mesa/sesión/visita/actor y campos accessor adicionales tanto en entrada como en respuesta; no se ejecutan getters externos.
+- Se conserva el acceso únicamente desde el coordinador candidato sin ruta HTTP montada; el cambio no concede permisos, no modifica migraciones ni activa infraestructura. Verificar ambos workflows antes de cerrar.
+
+## 69. Reloj inválido impide confirmar pedidos (24-10-2026)
+
+- Se añade regresión al coordinador para tiempos negativos, NaN, Infinity, decimales, texto y null. En todos los casos la transacción se revierte después de verificar contexto, ledger, catálogo y cotización; no llega a `persist` ni emite una confirmación.
+- La validación `Number.isSafeInteger(nowMs) && nowMs>=0` ya existía; este bloque la asegura con pruebas explícitas. No se modifica infraestructura, ruta HTTP ni esquema SQL. CI y Bootstrap del SHA pendientes de verificación.

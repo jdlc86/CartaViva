@@ -379,3 +379,161 @@ test('coordinator constructor rejects getter-backed or inherited repository meth
   /invalid_confirmation_coordinator/);
  assert.equal(getters,0);
 });
+
+test('idempotent replay survives reordered request fields and rotated credentials',async()=>{
+ let persistedFingerprint=null;
+ let writes=0;
+ let catalogReads=0;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(persistedFingerprint===null){
+    persistedFingerprint=requestFingerprint;
+    return null;
+   }
+   return {requestFingerprint:persistedFingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  },
+  lockCatalog:async()=>{
+   calls.push('catalog');catalogReads++;
+   return {publishedRevision:1,snapshot,available:true};
+  },
+  persist:async(_query,args)=>{
+   calls.push('persist');writes++;
+   return {orderId:'00000000-0000-4000-8000-000000000005',
+    evidence:args.evidence};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ const reversed=Object.fromEntries(Object.entries(input).reverse());
+ reversed.qrToken='r'.repeat(48);
+ reversed.customerSessionToken='t'.repeat(48);
+ assert.equal((await confirm(reversed)).status,'replayed');
+ assert.equal(writes,1);
+ assert.equal(catalogReads,1);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous',
+  'persist','COMMIT','BEGIN','context','replay','COMMIT']);
+});
+test('idempotency key cannot replay a changed quantity even after context lock',async()=>{
+ let fingerprint;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(!fingerprint){fingerprint=requestFingerprint;return null;}
+   return {requestFingerprint:fingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ await assert.rejects(confirm({...input,quantity:2}),/order_idempotency_conflict/);
+ assert.deepEqual(calls.slice(-4),['BEGIN','context','replay','ROLLBACK']);
+});
+
+test('idempotent replay reauthorizes context and denies a revoked visit',async()=>{
+ let fingerprint;
+ let lockCount=0;
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');lockCount++;
+   return {authorized:lockCount===1,canOrder:true,
+    tableId:input.tableId,visitId:input.visitId,
+    basketId:input.basketId,actorId:input.actorId,sessionId:'session-1'};
+  },
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(!fingerprint){fingerprint=requestFingerprint;return null;}
+   return {requestFingerprint:fingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.deepEqual(calls.slice(-3),['BEGIN','context','ROLLBACK']);
+});
+
+test('foreign visit, actor or basket cannot access replay ledger',async()=>{
+ for(const field of ['tableId','visitId','actorId','basketId']){
+  const {confirm,calls}=make({
+   lockContext:async()=>{
+    calls.push('context');
+    return {authorized:true,canOrder:true,
+     tableId:input.tableId,visitId:input.visitId,
+     actorId:input.actorId,basketId:input.basketId,
+     sessionId:'session-1'};
+   }
+  });
+  await assert.rejects(confirm({...input,[field]:'foreign-identity'}),
+   /order_context_forbidden/);
+  assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+ }
+});
+test('revoked canOrder denies even an existing idempotent replay',async()=>{
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');
+   return {authorized:true,canOrder:false,
+    tableId:input.tableId,visitId:input.visitId,
+    actorId:input.actorId,basketId:input.basketId,
+    sessionId:'session-1'};
+  }
+ });
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+});
+test('failed authorization does not execute catalog or persistence adapters',async()=>{
+ let forbiddenCalls=0;
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');return {authorized:false};
+  },
+  lookupIdempotency:async()=>{forbiddenCalls++;throw Error('ledger_exposed');},
+  lockCatalog:async()=>{forbiddenCalls++;throw Error('catalog_exposed');},
+  loadPreviousQuote:async()=>{forbiddenCalls++;throw Error('quote_exposed');},
+  persist:async()=>{forbiddenCalls++;throw Error('write_exposed');}
+ });
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.equal(forbiddenCalls,0);
+ assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+});
+test('replay with another request key cannot inherit prior durable result',async()=>{
+ let fingerprint;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestKey,requestFingerprint})=>{
+   calls.push('replay');
+   if(requestKey==='request-001'){
+    fingerprint=requestFingerprint;return null;
+   }
+   return null;
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ assert.equal((await confirm({...input,requestKey:'request-002'})).status,'confirmed');
+ assert.equal(typeof fingerprint,'string');
+ assert.equal(calls.filter(step=>step==='persist').length,2);
+});
+
+test('invalid transaction clock rolls back before issuing consent or writing orders',async()=>{
+ for(const now of [-1,NaN,Infinity,1.5,'1792600000000',null]){
+  const {confirm,calls}=make({ });
+  const custom=createCatalogConfirmationCoordinator({
+   withTransaction:async work=>{calls.push('BEGIN');try{
+    const value=await work(async()=>{});calls.push('COMMIT');return value;
+   }catch(error){calls.push('ROLLBACK');throw error;}},
+   repository:{
+    lockContext:async()=>{calls.push('context');return {authorized:true,canOrder:true,
+     tableId:input.tableId,sessionId:'session-1',visitId:input.visitId,
+     basketId:input.basketId,actorId:input.actorId};},
+    lookupIdempotency:async()=>{calls.push('replay');return null;},
+    lockCatalog:async()=>{calls.push('catalog');return {publishedRevision:1,snapshot,available:true};},
+    loadPreviousQuote:async()=>{calls.push('previous');return {
+     quoteId:'00000000-0000-4000-8000-000000000004',
+     evidence:displayed,publishedRevision:1,subtotalCents:1000,
+     discountCents:0,totalCents:1000};},
+    persist:async()=>{calls.push('persist');throw Error('unexpected_persist');}
+   },secretKey,clock:()=>now
+  });
+  await assert.rejects(custom(input),/invalid_confirmation_clock/);
+  assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous','ROLLBACK']);
+  void confirm;
+ }
+});
