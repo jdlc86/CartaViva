@@ -90,7 +90,7 @@ test('PG17 persists the complete preparation, ready notification and pickup cycl
 
   await assert.rejects(operations.transitionLine(waiter, {
     lineId: item.lineId, targetStatus: 'ready', correlationId: 'pg_waiter_cannot_ready_101',
-  }), /role_not_allowed_for_line_transition/);
+  }), /invalid_order_line_transition/);
   const ready = await operations.transitionLine(kitchen, {
     lineId: item.lineId, targetStatus: 'ready', correlationId: 'pg_cycle_ready_101',
   });
@@ -151,6 +151,7 @@ test('PG17 rolls back line, notification, event and idempotency record together'
     await repository.verifyMembership(query, {actorId: kitchenId, role: 'kitchen'});
     await repository.transitionLine(query, {
       actorId: kitchenId,
+      role: 'kitchen',
       lineId: item.lineId,
       targetStatus: 'preparing',
       correlationId: 'pg_forced_rollback_104',
