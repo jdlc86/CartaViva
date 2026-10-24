@@ -105,3 +105,14 @@ desechable:
 
 No se aplicó ninguna migración a Supabase operativo, no se desplegó y no se
 modificó infraestructura compartida.
+
+## Composición con verificación previa explícita
+
+`registerVerifiedOrderOperationsFromPools(app, options)` ejecuta el preflight
+asíncrono de las identidades SQL antes de delegar el registro de rutas. Una
+identidad incorrecta o un fallo de inspección impiden montar las rutas; las
+pruebas comprueban que el objeto HTTP no recibe registros en ese caso.
+La función es **opt-in**, no está importada por `server.mjs`, y no abre ni
+configura conexiones. El bootstrap operativo sigue bloqueado por los grants,
+las políticas RLS y el contrato de autorización pendientes. La composición
+histórica no debe utilizarse como bypass del nuevo gate de activación.
