@@ -19,7 +19,7 @@ const dataRecord=v=>{
  const keys=Reflect.ownKeys(v);
  if(keys.length>64)return false;
  return keys.every(key=>{
-  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+  if(typeof key!=='string'||['__proto__','prototype','constructor','toJSON'].includes(key))
    return false;
   const descriptor=Object.getOwnPropertyDescriptor(v,key);
   return !!descriptor&&descriptor.enumerable&&own(descriptor,'value');
@@ -81,6 +81,8 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
       'requestKey','qrToken','customerSessionToken'].some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
      !validId(input.actorId)||!validId(input.basketId)||
+     !validId(input.itemId)||!Number.isSafeInteger(input.quantity)||
+     input.quantity<1||
      typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
      typeof input.customerSessionToken!=='string'||
      input.customerSessionToken.length<32||input.customerSessionToken.length>512)
