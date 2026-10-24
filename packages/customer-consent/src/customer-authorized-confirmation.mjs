@@ -66,8 +66,14 @@ export function createAuthorizedCustomerConfirmation({
         .some(name=>contextValue(name)!==request[name]))
      throw Error('customer_basket_changed_before_confirmation');
     const result=await flow.confirm(request);
-    if(!disposed&&['confirmed','replayed'].includes(result?.status))settled=true;
+    if(!disposed&&['confirmed','replayed'].includes(result?.status)){
+     keys.resolve();settled=true;
+    }
     return result;
+   }catch(error){
+    if(error instanceof Error&&error.message==='confirmation_network_unknown')
+     keys.markUnresolved();
+    throw error;
    }finally{
     keys.end();active=false;
    }
