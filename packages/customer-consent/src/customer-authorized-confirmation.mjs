@@ -69,9 +69,13 @@ export function createAuthorizedCustomerConfirmation({
     if(!disposed&&['confirmed','replayed'].includes(result?.status)){
      keys.resolve();settled=true;
     }
+    // A 503 is not proof that the transaction failed before COMMIT.
+    if(!disposed&&result?.error==='order_confirmation_unavailable')
+     keys.markUnresolved();
     return result;
    }catch(error){
-    if(error instanceof Error&&error.message==='confirmation_network_unknown')
+    if(error instanceof Error&&['confirmation_network_unknown',
+       'confirmation_unexpected_response'].includes(error.message))
      keys.markUnresolved();
     throw error;
    }finally{
