@@ -265,3 +265,43 @@ if [[ "$(printf '%s' "$actor_independent" | tr -d '[:space:]')" != t ]]; then
  exit 1
 fi
 echo 'PASS: reused request key by another actor has an independent advisory lock'
+
+# A different visit on the same physical table must not inherit the old
+# visit's request-key lock after table turnover.
+visit_scope='["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000002","visit-other","basket-ci","actor-ci","request-001"]'
+visit_key_sql="hashtextextended('$visit_scope',0)"
+visit_holder_sql=$(cat <<SQL
+BEGIN;
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_sleep(3);
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$visit_holder_sql" &
+visit_holder_pid=$!
+visit_ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$visit_holder_pid" 2>/dev/null; then break; fi
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(3)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then visit_ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$visit_ready" != 1 ]]; then
+ wait "$visit_holder_pid" || true
+ echo 'Visit-scope holder did not acquire lock' >&2
+ exit 1
+fi
+visit_independent=$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+BEGIN;
+SET LOCAL lock_timeout='1s';
+SELECT pg_try_advisory_xact_lock($visit_key_sql);
+COMMIT;
+SQL
+)
+wait "$visit_holder_pid"
+if [[ "$(printf '%s' "$visit_independent" | tr -d '[:space:]')" != t ]]; then
+ echo 'Distinct visit with reused request key unexpectedly blocked' >&2
+ exit 1
+fi
+echo 'PASS: request key reused by another visit has an independent advisory lock'
