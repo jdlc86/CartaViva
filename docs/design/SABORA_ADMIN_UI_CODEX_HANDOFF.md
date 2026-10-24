@@ -377,7 +377,8 @@ Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que exis
 
 - Rama: `codex/sabora-management-tables-workspace`; PR [#5](https://github.com/jdlc86/CartaViva/pull/5) en estado **Draft**, con base `feat/sabora-pnpm-bootstrap`.
 - El PR administrativo anterior [#3](https://github.com/jdlc86/CartaViva/pull/3) está `MERGED`; este trabajo continúa exclusivamente en su PR sucesor y no modifica el PR #2.
-- Base incorporada inicialmente en `8951dfbaaef096e9bba31ed623d17e7f8554c3c7` mediante `b05cf6a`, sincronizada después con `ea01357613894085a221de7a2d4be52fd259b370` mediante `0237610` y cerrada sobre la corrección verde `b947ce101a490062eb9c62f718c29808c57c4336` mediante `c48a990`; ninguno de esos avances modificó `apps/management/**`.
+- Base incorporada inicialmente en `8951dfbaaef096e9bba31ed623d17e7f8554c3c7` mediante `b05cf6a`, sincronizada después con `ea01357613894085a221de7a2d4be52fd259b370` mediante `0237610` y cerrada localmente sobre la corrección verde `b947ce101a490062eb9c62f718c29808c57c4336` mediante `c48a990`; ninguno de esos avances modificó `apps/management/**`.
+- Durante la verificación final la base avanzó hasta `5b5c21cb17383643f517d2d20a5611eef80a890a` sólo en `tests/postgres-transaction.test.mjs` y `docs/continuity/SESSION_08_HANDOFF.md`. Ese avance no se incorporó: su propio CI es rojo por una regresión del escritor PostgreSQL, fuera del alcance administrativo autorizado, aunque GitHub sí lo incluye en el merge virtual del PR.
 - Commit funcional: `9d676b82e1eea67abb6a4744b79667157191eece` (`feat(management): harden explicit read refreshes`).
 - Diferencia funcional limitada a `apps/management/**`; la única documentación modificada es este handoff.
 
@@ -419,7 +420,7 @@ Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que exis
 | `pnpm --filter @sabora/management test` | PASS, 28/28 |
 | `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS, TypeScript estricto |
 | `node --test tests/management-scaffold.test.mjs` | PASS, 3/3 |
-| `pnpm test` | PASS, 709/709 sobre la base final integrada |
+| `pnpm test` | PASS, 709/709 sobre la última base verde integrada (`b947ce1`) |
 | `pnpm --filter @sabora/management build` | PASS, 42 módulos; JS 282,94 kB y CSS 43,10 kB antes de gzip |
 | `pnpm build` | PASS, API + PWA cliente + PWA gestión |
 | Navegador 1265 px y 390 × 844 | PASS en Mesas y Catálogo desconectados, sin overflow horizontal |
@@ -433,15 +434,18 @@ La instalación exacta se restauró con `pnpm install --frozen-lockfile --force`
 
 - `Sabora CI` [run 40093626823](https://github.com/jdlc86/CartaViva/actions/runs/40093626823), job `validate` `120871227499`: **SUCCESS** para `9d676b82e1eea67abb6a4744b79667157191eece` en 1m44s.
 - El job completó lockfile, tests, migraciones en PostgreSQL 17 desechable, driver `pg` real, build, Compose, construcción de imagen API y smoke tests aislados.
-- GitHub emitió únicamente avisos de plataforma por la transición de actions desde Node 20 y la futura migración de `ubuntu-latest`; no hubo fallo atribuible al repositorio.
+- La base posterior `5b5c21c` falla en su propia ejecución `Sabora CI` [run 40095083643](https://github.com/jdlc86/CartaViva/actions/runs/40095083643): 710/711 pruebas pasan y falla `invalid query bindings abort before driver execution and roll back` en `tests/postgres-transaction.test.mjs:584` por `Missing expected rejection`.
+- El merge virtual del HEAD documental reproduce exactamente ese fallo ajeno en [run 40095109030](https://github.com/jdlc86/CartaViva/actions/runs/40095109030), job `120875597107`. No se modifica ni se evita desde este PR porque exigiría intervenir en el escritor transaccional o sus pruebas, ambos pertenecientes al desarrollo backend paralelo.
+- En la ejecución verde del commit funcional GitHub emitió únicamente avisos de plataforma por la transición de actions desde Node 20 y la futura migración de `ubuntu-latest`.
 
 ### Riesgos y dependencias pendientes
 
-1. La barra de actualización sólo aparece cuando se inyecta un gateway y la primera lectura termina correctamente; el bundle de producción continúa sin composición runtime administrativa.
-2. Siguen pendientes contratos/montajes HTTP coincidentes, sesión verificada, tratamiento de `401/403/503`, expiración y revocación antes de conectar ambos gateways.
-3. Las mutaciones necesitan contratos separados con autorización de servidor, control de versión, idempotencia y auditoría. Una lectura verde no autoriza a reutilizar sus privilegios para escritura.
-4. La proyección de catálogo v1 no contiene imagen, y la proyección de mesas no contiene secretos QR. La interfaz no debe inferirlos ni añadirlos al DTO.
-5. Una actualización de mesas vuelve deliberadamente a la primera página; restaurar una posición profunda exigiría un contrato de snapshot/cursor estable que no existe.
+1. El gate actual del PR queda bloqueado por la regresión preexistente introducida en la base `5b5c21c`; se necesita una corrección en la rama backend antes de poder obtener un CI verde del merge virtual.
+2. La barra de actualización sólo aparece cuando se inyecta un gateway y la primera lectura termina correctamente; el bundle de producción continúa sin composición runtime administrativa.
+3. Siguen pendientes contratos/montajes HTTP coincidentes, sesión verificada, tratamiento de `401/403/503`, expiración y revocación antes de conectar ambos gateways.
+4. Las mutaciones necesitan contratos separados con autorización de servidor, control de versión, idempotencia y auditoría. Una lectura verde no autoriza a reutilizar sus privilegios para escritura.
+5. La proyección de catálogo v1 no contiene imagen, y la proyección de mesas no contiene secretos QR. La interfaz no debe inferirlos ni añadirlos al DTO.
+6. Una actualización de mesas vuelve deliberadamente a la primera página; restaurar una posición profunda exigiría un contrato de snapshot/cursor estable que no existe.
 
 ### Operaciones no realizadas
 
