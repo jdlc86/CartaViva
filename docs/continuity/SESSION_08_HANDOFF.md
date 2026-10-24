@@ -480,3 +480,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se amplía el smoke de idempotencia concurrente PostgreSQL 17 para verificar que `visit-other` y `visit-ci` no comparten bloqueo advisory aun reutilizando la misma mesa, sesión, cesta, actor y clave de petición de la fixture.
 - La prueba conserva la transacción que bloquea la primera visita y exige `pg_try_advisory_xact_lock` exitoso desde una conexión independiente para la segunda visita; garantiza que el ámbito incluye `visit_id`.
 - Bloque 63 seguía con workflows en curso al inicio; verificar ambos workflows del SHA 64 antes de declararlo cerrado. Sin merges, despliegues ni cambios en la rama de administración.
+
+## 65. Antifalsos positivos en pruebas de concurrencia de locks (24-10-2026)
+
+- Los cuatro casos de ámbitos independientes del smoke PG17 (clave, cesta, actor y visita) comprueban ahora que la sesión que retiene el bloqueo original sigue viva inmediatamente después del intento de adquirir el bloqueo independiente. Sin este guard, un `pg_try_advisory_xact_lock` exitoso después del COMMIT del holder podría generar un falso positivo.
+- Se mantienen los checks previos de espera activa y la salida no cero si el holder terminó antes de la comprobación. No cambia el escritor SQL ni se activa la ruta HTTP.
+- Bloques 63 y 64 aún estaban ejecutando workflows al comenzar. Este SHA requiere CI y Bootstrap verdes antes de cerrar el bloque.
