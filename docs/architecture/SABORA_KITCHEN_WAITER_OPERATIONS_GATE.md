@@ -209,3 +209,12 @@ administración y desacuerdo entre el UUID autenticado y el del empleado.
 Las pruebas exigen cero transacciones para estos casos. Esta defensa del
 backend no vincula por sí sola la identidad al login SQL compartido: el
 bloqueo de suplantación directa de la RPC sigue vigente.
+
+## Restricciones de transición en la frontera HTTP
+
+La ruta candidata de transición rechaza con `403 forbidden` los destinos
+incompatibles con el rol de personal verificado: cocina no recoge y sala no
+prepara ni marca listo. La prueba Fastify verifica que en estos casos no se
+invoca siquiera al coordinador. El repositorio mantiene la misma denegación
+antes de SQL y PostgreSQL vuelve a comprobar los permisos transaccionales.
+Las rutas siguen sin montarse en el servidor de producción.
