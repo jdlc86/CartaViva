@@ -272,3 +272,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Causa verificada: la selección base ya contenía `extras:['cheese']`; la prueba esperaba incorrectamente `[]` tras mutar el original. Corregida la expectativa a `['cheese']` en `tests/customer-authorized-request.test.mjs`, conservando la comprobación de aislamiento de snapshot.
 - En este bloque se añadió además comprobación de consistencia entre revisiones de precio y fecha de expiración incluida en el token HMAC del DTO HTTP, con tests negativos.
 - Pendiente CI del HEAD corregido. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 36. Pruebas de cierre del ciclo de vida del flujo autorizado (24-10-2026)
+
+- Ampliado `tests/customer-authorized-confirmation.test.mjs` con tres pruebas de integración: (1) dos confirmaciones simultáneas no leen dos veces la cesta ni realizan dos POST; (2) destrucción del componente durante lectura asíncrona del contexto impide cualquier POST posterior; (3) una denegación HTTP conserva la clave idempotente para un reintento explícito de la misma revisión, sin éxito ficticio.
+- Se mantiene la frontera: el cliente no constituye autoridad de sesión ni de cesta, y no se registra ruta pública en `apps/api/src/server.mjs`.
+- CI del SHA `3fb254a` seguía en curso en la última consulta; CI de los nuevos tests pendiente. No marcar verde sin resultados.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
