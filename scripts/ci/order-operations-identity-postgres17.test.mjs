@@ -38,6 +38,7 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    await admin.query('GRANT USAGE ON SCHEMA sabora TO sabora_ci_staff_identity, sabora_ci_operations_identity');
     const staffClient = await staffPool.connect();
     try {
       const role = await staffClient.query('SELECT current_user, session_user');
