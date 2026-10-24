@@ -39,6 +39,33 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     await admin.query('GRANT USAGE ON SCHEMA sabora TO sabora_ci_staff_identity, sabora_ci_operations_identity');
+    // Explicit negative matrix: schema visibility alone must not grant access
+    // to any operational table or the candidate SECURITY INVOKER RPC.
+    const resources = [
+      'staff_members', 'orders', 'order_lines', 'dining_tables',
+      'pickup_notifications', 'order_line_events', 'order_line_transition_requests',
+    ];
+    for (const role of [staffRole, operationsRole]) {
+      for (const resource of resources) {
+        const privileges = await admin.query(
+          `SELECT has_table_privilege($1, 'sabora.' || $2, 'SELECT') AS can_read,
+                  has_table_privilege($1, 'sabora.' || $2, 'INSERT') AS can_insert,
+                  has_table_privilege($1, 'sabora.' || $2, 'UPDATE') AS can_update,
+                  has_table_privilege($1, 'sabora.' || $2, 'DELETE') AS can_delete`,
+          [role, resource]
+        );
+        assert.deepEqual(privileges.rows, [{
+          can_read: false, can_insert: false, can_update: false, can_delete: false,
+        }], `unexpected privileges for ${role} on ${resource}`);
+      }
+      const rpc = await admin.query(
+        `SELECT has_function_privilege(
+          $1, 'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)', 'EXECUTE'
+        ) AS can_execute`,
+        [role]
+      );
+      assert.equal(rpc.rows[0].can_execute, false);
+    }
     const staffClient = await staffPool.connect();
     try {
       const role = await staffClient.query('SELECT current_user, session_user');
