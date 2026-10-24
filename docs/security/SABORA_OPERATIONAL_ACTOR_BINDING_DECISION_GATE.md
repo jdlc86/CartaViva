@@ -56,3 +56,13 @@ Para cada negativo se inspeccionan estado, filas de eventos, notificaciones y co
 5. Solicitar autorización explícita para cualquier activación, grant operativo, merge o despliegue.
 
 **Estado:** no hay diseño aprobado; la composición opt-in y el preflight de cero concesiones deben seguir bloqueando la activación. Fleetia y otros recursos del VPS quedan fuera de alcance.
+
+## Evidencia negativa adicional del harness PG17
+
+El ensayo desechable ejecuta ahora llamadas directas a la RPC candidata
+con dos UUID de actor elegidos por el cliente, desde **ambos** logins SQL
+técnicos restringidos. Exige `permission denied` y compara antes y después
+los recuentos de eventos, notificaciones y correlaciones durables. Esto
+prueba el cierre negativo de la configuración actual, **no** la identidad
+criptográfica positiva del actor: las llamadas legítimas siguen bloqueadas
+hasta aprobar y demostrar una arquitectura que resista la suplantación.
