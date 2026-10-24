@@ -205,6 +205,23 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         staffPool, operationsPool, staffRole, operationsRole,
       }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     }
+    // A direct RPC EXECUTE grant would let a technical login supply a
+    // different staff actor UUID. Detect and reject it before mounting HTTP.
+    await admin.query(`GRANT EXECUTE ON FUNCTION
+      sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)
+      TO sabora_ci_operations_identity`);
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query(`REVOKE EXECUTE ON FUNCTION
+        sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)
+        FROM sabora_ci_operations_identity`);
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // Prove the runtime preflight detects an accidental table grant, not
     // merely that the offline catalog inventory reports it.
     await admin.query('GRANT SELECT ON sabora.staff_members TO sabora_ci_operations_identity');
