@@ -27,6 +27,9 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Exercise effective SQL access under SET LOCAL ROLE (disposable PG17 only).
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-effective-smoke.sql
+# Fail closed if customer runtime logins or economic grants are activated prematurely.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/customer-runtime-activation-gate.sql
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
