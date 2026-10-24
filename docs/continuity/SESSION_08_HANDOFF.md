@@ -279,3 +279,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se mantiene la frontera: el cliente no constituye autoridad de sesión ni de cesta, y no se registra ruta pública en `apps/api/src/server.mjs`.
 - CI del SHA `3fb254a` seguía en curso en la última consulta; CI de los nuevos tests pendiente. No marcar verde sin resultados.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 37. Cierre de respuesta tardía tras destruir la composición (24-10-2026)
+
+- `customer-authorized-confirmation.mjs` comprueba `disposed` también antes de marcar `settled` tras una respuesta tardía de `confirm()`. El estado `disposed` es terminal y los callbacks ya estaban suprimidos.
+- Prueba `late HTTP success after destroy cannot resurrect the authorized flow`: respuesta 201 diferida tras `destroy()`, sin notificaciones y con estado final `disposed`.
+- Se verificó el coordinador `catalog-confirmation-coordinator.mjs`: autorización transaccional precede a búsqueda de idempotencia y la respuesta replay exige huella idéntica; no se cambió ese contrato.
+- CI del SHA `3fb254a` SUCCESS en ambos workflows; CI de los cambios posteriores aún pendiente. No se registró ruta real ni se tocó infraestructura.
