@@ -447,3 +447,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Suite ampliada del coordinador candidato: identidad ajena en mesa, visita, actor o cesta se rechaza bajo bloqueo antes de consultar el ledger; `canOrder=false` deniega también replays; un contexto sin autorización no llama a los adaptadores de ledger, catálogo, cotización ni escritura; una clave distinta no puede apropiarse de un replay anterior.
 - Las pruebas usan adaptadores aislados y verifican secuencias de BEGIN/ROLLBACK; no sustituyen las carreras SQL sobre PostgreSQL 17. Este SHA exige CI verde antes de considerar cerrado el bloque.
 - Sin merge, despliegue, registro de endpoint ni modificación de Fleetia, VPS, Supabase operativo o la PWA de administración de Codex.
+
+## 61. Concurrencia real PostgreSQL 17: ámbitos de claves independientes (24-10-2026)
+
+- Bloque 60 (`bb0ea3b`) verificado en GitHub Actions: Sabora CI #1732 y Bootstrap #1712 SUCCESS.
+- Ampliado `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh`: tras los casos existentes de serialización de una misma clave y liberación tras rollback, ahora mantiene una transacción con bloqueo de `request-001` y comprueba desde otra conexión PG17 que `request-002` puede adquirir su propio advisory lock inmediatamente.
+- El caso se ejecuta en el PostgreSQL 17 desechable de CI y evita introducir por accidente una exclusión global que bloquee pedidos independientes. Mantiene el ámbito de hash y la política de locks existentes; no cambia SQL productivo.
+- Requiere verificación de los workflows del SHA de este bloque antes de declararlo cerrado. No merge, endpoint activo, despliegue ni cambios en Fleetia, VPS, Supabase operativo o rama de administración de Codex.
