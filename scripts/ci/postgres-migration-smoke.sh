@@ -50,6 +50,9 @@ docker exec -i "$container" psql -a -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Prove order and economic confirmation commit/rollback together in PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-confirmation-atomicity-smoke.sql
+# Verify confirmed orders are projected into kitchen exactly once and failed retries roll back.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/catalog-confirmation-kitchen-durability-smoke.sql
 # Validate candidate durable visit grants in disposable PostgreSQL.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-visit-ledger-smoke.sql
