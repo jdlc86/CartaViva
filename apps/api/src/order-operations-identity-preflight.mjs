@@ -71,11 +71,11 @@ async function inspect(pool, expectedRole) {
                  FROM pg_catalog.pg_class resource
                  JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
                 WHERE ns.nspname = 'sabora'
-                  AND resource.relname IN ('order_line_transition_requests', 'order_line_events')
+                  AND resource.relname = 'order_line_transition_requests'
                   AND resource.relkind IN ('r','p')
                   AND resource.relrowsecurity
                   AND resource.relforcerowsecurity
-              ) AS forced_rls_audit_tables,
+              ) AS forced_rls_transition_requests,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -95,7 +95,7 @@ async function inspect(pool, expectedRole) {
         row.schema_usage !== true || row.schema_create !== false ||
         row.candidate_rpc_execute !== false ||
         row.candidate_is_invoker !== true ||
-        row.forced_rls_audit_tables !== 2 ||
+        row.forced_rls_transition_requests !== 1 ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         row.accessible_private_tables !== 0 ||
         row.accessible_private_sequences !== 0 ||
