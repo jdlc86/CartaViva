@@ -316,3 +316,7 @@ regresión estática**, complementarias a los ensayos reales de PostgreSQL 17,
 no pruebas de vinculación criptográfica del actor. Una futura activación
 exigirá rediseñar deliberadamente estos controles junto con el contrato SQL,
 las pruebas de suplantación y la autorización expresa correspondiente.
+
+## Prueba de deriva de esquema en PostgreSQL 17 (24-10-2026)
+
+El harness de integración, ejecutado **solo en PostgreSQL 17 desechable**, altera temporalmente tres invariantes de la frontera de operaciones: elimina `FORCE ROW LEVEL SECURITY` de `order_line_transition_requests`, deshabilita RLS de esa tabla y cambia la RPC candidata a `SECURITY DEFINER`. Cada alteración debe provocar rechazo del preflight para ambos logins técnicos. Un bloque `finally` restaura el DDL y se exige un nuevo preflight positivo después de cada restauración. Estas pruebas detectan deriva del esquema antes de registrar rutas, pero **no autorizan grants positivos**, ni resuelven la vinculación verificable del actor SQL. No hay cambios en Supabase operativo ni despliegue.
