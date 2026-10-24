@@ -298,6 +298,35 @@ test('repository rejects discontinuous or out-of-order history for the same line
   assert.equal(valid.events.length, 2);
 });
 
+test('repository rejects historical transitions attributed to forbidden staff roles', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    event_id: eventId, line_id: lineId, line_number: 1,
+    name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
+    occurred_at: confirmedAt, actor_role: 'kitchen',
+  };
+  for (const override of [
+    {actor_role: 'waiter', from_status: 'confirmed', to_status: 'preparing'},
+    {actor_role: 'waiter', from_status: 'preparing', to_status: 'ready'},
+    {actor_role: 'kitchen', from_status: 'ready', to_status: 'picked_up'},
+  ]) {
+    await assert.rejects(repository.listHistory(async () => ({
+      rows: [{...base, ...override}],
+    }), {actorId, role: 'admin', orderId, limit: 10}),
+    /invalid_order_operations_sql_result/);
+  }
+  for (const override of [
+    {actor_role: 'kitchen', from_status: 'preparing', to_status: 'ready'},
+    {actor_role: 'waiter', from_status: 'ready', to_status: 'picked_up'},
+    {actor_role: 'admin', from_status: 'confirmed', to_status: 'preparing'},
+  ]) {
+    const result = await repository.listHistory(async () => ({
+      rows: [{...base, ...override}],
+    }), {actorId, role: 'admin', orderId, limit: 10});
+    assert.equal(result.events.length, 1);
+  }
+});
+
 test('repository rejects impossible historical state edges returned by SQL', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
