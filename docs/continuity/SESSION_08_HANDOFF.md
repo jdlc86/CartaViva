@@ -194,3 +194,12 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-confirmation-flow.test.mjs` añade dos pruebas de carreras: destrucción durante `fetch` pendiente y rechazo durante envío pendiente. Se preservan las pruebas de aceptación explícita, reaceptación y no duplicación.
 - CI del SHA anterior `ac827037` seguía `in_progress` en la última consulta; el SHA nuevo requiere sus propios resultados. No considerar cerrado hasta ambos workflows verdes.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 26. Punto de montaje candidato PWA y contrato HTTP estricto (24-10-2026)
+
+- SHA `ac8270372b8ccb1fcd79733d6e362fdaf10d32a0`: **Sabora CI 40088406863 SUCCESS** y **Bootstrap 40088406822 SUCCESS**. Composición cliente validada.
+- `packages/customer-consent/src/customer-confirmation-transport.mjs` exige correspondencia exacta entre `201 confirmed` y `200 replayed` conforme a la ruta HTTP candidata; evita tratar combinaciones anómalas como éxito. Tests ampliados.
+- `packages/customer-consent/src/customer-confirmation-mount.mjs`: punto de montaje opt-in con botón «Confirmar pedido», estado accesible `aria-live`, contenedor del diálogo de consentimiento, `readRequest()` inyectado y `destroy()` que desmonta la vista. El montaje no crea sesión, no inventa credenciales, no se conecta al servidor real y no registra la ruta.
+- `tests/customer-confirmation-mount.test.mjs`: éxito, rechazo de repricing sin segunda llamada y destrucción con respuesta tardía. CI del nuevo HEAD pendiente.
+- Pendiente enlazar este montaje con el shell de la PWA real, según la rama correspondiente y su contrato normativo, y realizar revisión visual/teclado antes de activar.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
