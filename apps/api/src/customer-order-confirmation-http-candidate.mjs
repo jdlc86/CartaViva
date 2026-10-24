@@ -28,7 +28,7 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
        d.currentTotalCents-d.previousTotalCents!==d.differenceCents||
        !revision(d.previousPublishedRevision)||!revision(d.currentPublishedRevision)||
        !validResult(a)||typeof a.token!=='string'||
-       !/^v1\\.[0-9]{1,16}\\.[a-f0-9]{64}\\.[a-f0-9]{64}$/.test(a.token)||
+       !/^v1\.[0-9]{1,16}\.[a-f0-9]{64}\.[a-f0-9]{64}$/.test(a.token)||
        !Number.isSafeInteger(a.expiresAt)||a.expiresAt<0)
      throw Error('invalid_confirmation_result');
     // Explicit allowlist: never serialize internal evidence or catalog snapshot.
