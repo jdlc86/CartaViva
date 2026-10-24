@@ -24,7 +24,15 @@ async function inspect(pool, expectedRole) {
               session_user::text AS session_role,
               role.rolsuper AS superuser,
               role.rolbypassrls AS bypass_rls,
-              role.rolcanlogin AS can_login
+              role.rolcanlogin AS can_login,
+              role.rolinherit AS inherits_roles,
+              role.rolcreaterole AS can_create_role,
+              role.rolcreatedb AS can_create_db,
+              role.rolreplication AS can_replicate,
+              EXISTS (
+                SELECT 1 FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.member = role.oid
+              ) AS has_role_memberships
          FROM pg_catalog.pg_roles role
         WHERE role.rolname = current_user`
     );
@@ -33,7 +41,10 @@ async function inspect(pool, expectedRole) {
     }
     const row = result.rows[0];
     if (row.current_role !== expectedRole || row.session_role !== expectedRole ||
-        row.superuser !== false || row.bypass_rls !== false || row.can_login !== true) {
+        row.superuser !== false || row.bypass_rls !== false || row.can_login !== true ||
+        row.inherits_roles !== false || row.can_create_role !== false ||
+        row.can_create_db !== false || row.can_replicate !== false ||
+        row.has_role_memberships !== false) {
       throw Error('order_operations_sql_identity_rejected');
     }
     return Object.freeze({role: expectedRole});
