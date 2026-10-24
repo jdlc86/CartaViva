@@ -108,3 +108,11 @@ vista, vista materializada, tabla particionada o tabla externa** del esquema
 `sabora`. Se comprueban los siete privilegios de tabla. El barrido se ejecuta
 antes del GRANT temporal de prueba; cualquier resultado no vacío bloquea CI.
 No es una concesión de acceso positivo.
+
+## Barrido de secuencias privadas
+
+El test de identidades también recorre las secuencias (`relkind = 'S'`) del
+esquema `sabora` y falla si alguno de los dos logins dispone de `USAGE`,
+`SELECT` o `UPDATE` sobre cualquiera de ellas. El inventario no presupone
+que las tablas sean el único recurso SQL capaz de alterar datos o exponer
+identificadores. No se conceden privilegios de secuencia en esta fase.
