@@ -57,3 +57,57 @@ test('no authorization or unready basket prevents sending any HTTP request',asyn
  assert.equal(sends,0);
  app.destroy();
 });
+
+test('concurrent confirmations are fenced before reading another basket',async()=>{
+ const {document,container}=dom();
+ let release,reads=0,sends=0;
+ const gate=new Promise(resolve=>{release=resolve;});
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,readBasket:async()=>{reads++;await gate;return basket;},
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;return {status:201,json:async()=>({status:'confirmed',orderId})};}});
+ const first=app.confirm();
+ await assert.rejects(app.confirm(),/confirmation_flow_busy/);
+ assert.throws(()=>app.resetForNewBasket(),/confirmation_flow_busy/);
+ release();
+ await first;
+ assert.equal(reads,1);
+ assert.equal(sends,1);
+ app.destroy();
+});
+test('destroy during asynchronous context read prevents HTTP submission',async()=>{
+ const {document,container}=dom();
+ let release,sends=0;
+ const gate=new Promise(resolve=>{release=resolve;});
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:async()=>{await gate;return context;},readBasket:()=>basket,
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ const pending=app.confirm();
+ app.destroy();
+ release();
+ await assert.rejects(pending,/confirmation_flow_disposed/);
+ assert.equal(sends,0);
+ assert.equal(app.status,'disposed');
+});
+test('HTTP authorization denial retains idempotency identity for explicit retry',async()=>{
+ const {document,container}=dom();
+ const sent=[];let generated=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,readBasket:()=>basket,
+  createRequestKey:()=> 'request_'+(++generated),onOutcome:()=>{},
+  fetchImpl:async(_url,options)=>{
+   sent.push(JSON.parse(options.body));
+   return sent.length===1?
+    {status:403,json:async()=>({error:'order_context_forbidden'})}:
+    {status:200,json:async()=>({status:'replayed',orderId})};
+  }});
+ const denied=await app.confirm();
+ assert.equal(denied.error,'order_context_forbidden');
+ assert.equal(app.status,'idle');
+ const replay=await app.confirm();
+ assert.equal(replay.status,'replayed');
+ assert.equal(generated,1);
+ assert.equal(sent[0].requestKey,sent[1].requestKey);
+ app.destroy();
+});
