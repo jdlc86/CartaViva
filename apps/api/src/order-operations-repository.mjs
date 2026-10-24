@@ -253,8 +253,11 @@ export function createOrderOperationsRepository() {
           actorRole: row.actor_role,
         });
       });
+      const eventIds = new Set();
       const lastByLine = new Map();
       for (const event of events) {
+        if (eventIds.has(event.eventId)) throw Error('invalid_order_operations_sql_result');
+        eventIds.add(event.eventId);
         const previous = lastByLine.get(event.lineId);
         if (previous && (previous.toStatus !== event.fromStatus ||
             previous.occurredAt > event.occurredAt)) {
