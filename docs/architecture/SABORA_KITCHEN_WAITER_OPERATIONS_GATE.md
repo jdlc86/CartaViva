@@ -169,3 +169,14 @@ y que `rolvaliduntil`, si existe, es una fecha válida. Esta comprobación
 adicional es de integridad de los resultados SQL, no constituye una política
 de caducidad o de límites de conexiones: esos valores siguen pendientes del
 contrato de aprovisionamiento de identidades.
+
+## Validación de la respuesta de transición
+
+La capa de repositorio rechaza resultados SQL inconsistentes incluso si
+la consulta devuelve una fila: solo se admiten transiciones adyacentes
+`confirmed → preparing → ready → picked_up`; el estado `preparing` no
+puede devolver un aviso de recogida, mientras que `ready` y `picked_up`
+requieren un identificador válido de aviso. La prueba unitaria cubre
+estados no adyacentes, avisos ausentes o sobrantes e identificadores de
+línea inválidos. Estas garantías no autorizan por sí mismas la RPC ni
+el montaje HTTP.
