@@ -415,3 +415,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - El snapshot de entrada prohíbe ahora propiedades `toJSON` en cualquier nivel, evitando divergencias entre la representación canónica y serializaciones externas; se alinea con la frontera del lector de cliente.
 - Nuevas pruebas comprueban identificadores y cantidades inválidos y `toJSON` anidado, con cero transacciones iniciadas. La ruta candidata continúa sin registrar en el servidor.
 - El bloque 54 (`283fa79`) pasó Sabora CI y Bootstrap; el nuevo SHA exige ambos workflows verdes antes de cerrarse. Sin merge ni despliegue.
+
+## 56. Corrección de regresión CI: `toJSON` debe rechazarse en el snapshot de entrada (24-10-2026)
+
+- Ambos workflows del bloque 55 (`68acf96`) fallaron durante `Test`: la prohibición `toJSON` se aplicó por error solo a `dataRecord` (adaptadores confiables), mientras que `snapshotInput` seguía admitiendo la propiedad en el JSON entrante; la prueba observó `invalid_catalog_selection` dentro de la transacción en lugar de `invalid_confirmation_input` antes de SQL.
+- Corregido el bucle recursivo de `snapshotInput` para rechazar `toJSON` en cualquier profundidad antes de abrir la transacción. Se conservan las pruebas introducidas en el bloque 55 como regresión.
+- Este commit exige CI verde; PR #2 Draft, sin registro de ruta HTTP, merge o despliegue.
