@@ -510,3 +510,15 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 
 - Se añade regresión al coordinador para tiempos negativos, NaN, Infinity, decimales, texto y null. En todos los casos la transacción se revierte después de verificar contexto, ledger, catálogo y cotización; no llega a `persist` ni emite una confirmación.
 - La validación `Number.isSafeInteger(nowMs) && nowMs>=0` ya existía; este bloque la asegura con pruebas explícitas. No se modifica infraestructura, ruta HTTP ni esquema SQL. CI y Bootstrap del SHA pendientes de verificación.
+
+## 70. Reparación de regresión PG17 tras restricción de argumentos de visita (24-10-2026)
+
+- **Incidencia real**: Sabora CI #1754 y Bootstrap #1732 fallaron en el paso de driver PG17; 21/22 tests de integración pasaron. La prueba `real PG17 coordinator rejects QR mismatch even for an existing open table` invocaba directamente `lockContext` con el payload completo de confirmación, que incluía `itemId`, `selection`, `quantity` y `requestKey` fuera del contrato estricto de visita introducido en §68.
+- **Corrección**: la prueba de integración pasa solo los seis campos autorizados de credenciales de visita al repositorio; mantiene intacta la prueba end-to-end `confirm(input)` con el payload completo. Se preserva el rechazo de campos extraños en `lockContext`.
+- Verificar Sabora CI y Bootstrap en el SHA de este hito. Sin merge, despliegue ni intervención sobre Fleetia/VPS/Supabase operativo.
+
+## 71. Guardia contractual de proyección credenciales → autorización (24-10-2026)
+
+- Se añade test unitario de regresión en `tests/catalog-visit-context-repository.test.mjs`: el lector de visitas rechaza explícitamente un payload completo de confirmación sin ejecutar SQL, mientras acepta la proyección de exactamente seis credenciales (`tableId`, `visitId`, `actorId`, `basketId`, `qrToken`, `customerSessionToken`).
+- Esto protege la corrección de §70 contra la reintroducción de campos de pedido en la interfaz de autorización. El test verifica parámetros vinculados y la respuesta prohibida cuando no hay visita válida.
+- El fallo histórico de §68/§69 se diagnosticó en PG17: ambos workflows fallaban porque el test de integración pasaba el payload completo directamente a `lockContext`. §70 corrigió la llamada. No cerrar §70/§71 sin confirmar ambos workflows verdes.

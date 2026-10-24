@@ -144,3 +144,23 @@ test('authorization does not allow unexpected credential or row properties to ru
   /invalid_catalog_visit_response/);
  assert.equal(reads,0);
 });
+
+test('visit reader accepts only six scoped credentials, never a full order payload',async()=>{
+ let queries=0;
+ const fullOrder={...input,itemId:'00000000-0000-4000-8000-000000000003',
+  selection:{extras:[]},quantity:1,requestKey:'request-001'};
+ await assert.rejects(lock(async()=>{queries++;return {rows:[]};},fullOrder),
+  /invalid_catalog_visit_context/);
+ assert.equal(queries,0);
+ const scoped=Object.fromEntries(
+  ['tableId','visitId','actorId','basketId','qrToken','customerSessionToken']
+   .map(key=>[key,fullOrder[key]]));
+ const result=await lock(async(_sql,params)=>{
+  queries++;
+  assert.deepEqual(params,[input.tableId,input.visitId,input.actorId,
+   input.qrToken,input.customerSessionToken]);
+  return {rows:[]};
+ },scoped);
+ assert.deepEqual(result,{authorized:false,canOrder:false});
+ assert.equal(queries,1);
+});
