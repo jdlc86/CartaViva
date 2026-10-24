@@ -107,7 +107,12 @@ export function createOrderOperationsRepository() {
         [role, status, cursor?.confirmedAt ?? null, cursor?.orderId ?? null,
           cursor?.lineNumber ?? null, limit + 1]
       ));
-      if (rows.length > limit + 1) throw Error('invalid_order_operations_sql_result');
+      if (rows.length > limit + 1 || rows.some(row =>
+        (role === 'kitchen' && row?.status === 'picked_up') ||
+        (role === 'waiter' && (row?.status === 'confirmed' || row?.status === 'preparing')) ||
+        (status !== null && row?.status !== status))) {
+        throw Error('invalid_order_operations_sql_result');
+      }
       const page = rows.slice(0, limit).map((row) => {
         if (!UUID.test(row?.order_id) || !UUID.test(row?.line_id) ||
             !Number.isSafeInteger(row?.table_number) || row.table_number < 1 ||
