@@ -467,3 +467,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Extendido el smoke PostgreSQL 17 de idempotencia con dos sesiones reales: una retiene el advisory lock para `actor-ci` y otra debe adquirir sin espera el ámbito `actor-other` aun con la misma mesa, sesión, visita, cesta y `request-001`.
 - El nuevo caso protege el aislamiento por actor definido por el ledger; se mantienen los casos previos de serialización de la misma clave, rollback y ámbitos independientes por clave y cesta.
 - Verificar CI/Bootstrap del SHA final para cerrar este bloque. Sin activación de endpoint, merge, despliegue ni modificaciones a Codex, Fleetia, VPS o Supabase operativo.
+
+## 63. Aislamiento concurrente por participante (24-10-2026)
+
+- Bloques 61 y 62 confirmados SUCCESS en Sabora CI #1735/#1737 y Bootstrap #1714/#1716.
+- Se extiende `catalog-confirmation-idempotency-concurrency-smoke.sh` con una tercera sesión concurrente independiente: misma mesa, sesión, visita, cesta y clave de petición, pero `actor-other` en lugar de `actor-ci`.
+- Mientras el actor original mantiene su advisory lock de transacción, el segundo actor debe adquirir inmediatamente su propio bloqueo mediante `pg_try_advisory_xact_lock`. Se conserva el ámbito completo de bloqueo y la ejecución sobre PostgreSQL 17 desechable.
+- Verificar los workflows de este SHA antes de cerrar el bloque. Sin activación de endpoint, integración de otras ramas, merge ni despliegue.
