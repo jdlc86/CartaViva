@@ -24,7 +24,7 @@ const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
-function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevision=1,nowMs=1792600000000}={}){
+function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevision=1,nowMs=1792600000000,contextActorId=input.actorId,contextBasketId=input.basketId}={}){
  const state={orders:[],lines:[],notifications:[],events:[],ledger:[]};
  let transactions=0;
  let rollbacks=0;
@@ -36,8 +36,8 @@ function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevi
   async lockContext(){
    if(forbidden)return {authorized:false};
    return {authorized:true,canOrder:true,tableId:input.tableId,
-    sessionId:'session-1',visitId:input.visitId,basketId:input.basketId,
-    actorId:input.actorId};
+    sessionId:'session-1',visitId:input.visitId,basketId:contextBasketId,
+    actorId:contextActorId};
   },
   async lookupIdempotency(_query,{requestKey,requestFingerprint}){
    const row=state.ledger.find(row=>row.requestKey===requestKey);
@@ -180,7 +180,9 @@ test('repricing token is not transferable to another basket or actor',async t=>{
   snapshot,selection:input.selection,quantity:1
  });
  for(const changes of [{basketId:'basket-other'},{actorId:'actor-other'}]){
-  const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+  const f=fixture({publishedRevision:2,
+   contextActorId:changes.actorId??input.actorId,
+   contextBasketId:changes.basketId??input.basketId});t.after(()=>f.app.close());
   const response=await f.send({...input,...changes,acceptanceToken:token});
   assert.equal(response.statusCode,409);
   assert.deepEqual(response.json(),{error:'acceptance_required'});
