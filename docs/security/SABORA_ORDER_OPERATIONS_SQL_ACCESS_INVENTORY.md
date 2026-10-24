@@ -132,3 +132,12 @@ del esquema `sabora` que resulte ejecutable por los dos logins técnicos.
 La inspección utiliza `has_function_privilege` y no presupone que revocar la
 RPC candidata bloquee otras vías de ejecución. La definición de permisos
 positivos sigue pendiente de aprobación y pruebas específicas.
+
+## Denegaciones ejercidas con los logins reales
+
+Además de consultar `has_schema_privilege` y `has_table_privilege`, el harness
+PG17 intenta bajo **cada login técnico** ejecutar `CREATE TABLE` en `sabora`
+y leer directamente `sabora.staff_members` antes de cualquier GRANT temporal.
+Ambas operaciones deben fallar por permisos. Esto prueba la frontera negativa
+a nivel de sesión SQL, pero no demuestra todavía la operación positiva de
+cocina y sala, que permanece bloqueada hasta diseñar y validar RLS y grants.
