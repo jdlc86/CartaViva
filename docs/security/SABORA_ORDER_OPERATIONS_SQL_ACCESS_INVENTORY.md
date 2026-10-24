@@ -224,3 +224,13 @@ creada para CI, así como la recuperación después de revocarla. No se
 habilitan grants positivos ni se activa el servicio. Este gate negativo
 requiere rediseño explícito antes de habilitar cualquier capacidad SQL
 legítima de lectura o escritura.
+
+## Ensayo positivo de detección de SECURITY DEFINER indebido
+
+El harness PostgreSQL 17 crea temporalmente una función inocua `SECURITY DEFINER`
+en el esquema privado, revoca su permiso público por defecto y concede
+`EXECUTE` únicamente al login operativo efímero. El preflight debe fallar;
+tras revocar `EXECUTE` debe volver a aceptar ambos logins. La función se
+elimina en `finally` dentro del contenedor desechable. Esta prueba cubre
+la detección real de concesiones peligrosas a rutinas privilegiadas, sin
+habilitar el acceso positivo ni ejecutar DDL en Supabase operativo.
