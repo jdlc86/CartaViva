@@ -580,3 +580,42 @@ test('transaction snapshots Date without invoking overridden getTime',async()=>{
  assert.notEqual(parameter,date);
  assert.deepEqual(fixture.calls.map(([sql])=>sql),['BEGIN','SELECT $1','COMMIT']);
 });
+
+test('invalid query bindings abort before driver execution and roll back',async()=>{
+ const cases=[
+  ['SELECT $1',[undefined]],
+  ['SELECT $1',[Infinity]],
+  ['SELECT $1',[1.25]],
+  ['SELECT $1',[BigInt(1)]],
+  ['SELECT $1',[{}]],
+  ['SELECT $1',[new Date(NaN)]],
+  ['SELECT $1',['bad\\u0000text']],
+  ['SELECT $1',[['nested']]],
+  ['',[]],
+  ['SELECT 1',{}]
+ ];
+ for(const [sql,parameters] of cases){
+  const fixture=fakePool();
+  const transaction=createPostgresTransaction({pool:fixture.pool});
+  await assert.rejects(transaction(query=>query(sql,parameters)),
+   /invalid_transaction_query/);
+  assert.deepEqual(fixture.calls.map(([statement])=>statement),
+   ['BEGIN','ROLLBACK']);
+  assert.equal(fixture.releases(),1);
+ }
+});
+test('parameter snapshots do not observe later mutation of original array',async()=>{
+ const calls=[];
+ const client={query:async(sql,values)=>{
+  calls.push([sql,values]);
+  return {rows:[]};
+ },release:()=>{}};
+ const transaction=createPostgresTransaction({pool:{connect:async()=>client}});
+ const params=['original'];
+ await transaction(async query=>{
+  const pending=query('SELECT $1',params);
+  params[0]='modified';
+  await pending;
+ });
+ assert.equal(calls[1][1][0],'original');
+});
