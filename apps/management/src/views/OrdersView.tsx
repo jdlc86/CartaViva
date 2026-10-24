@@ -34,6 +34,7 @@ function visibleInWorkspace(line: OrderLineItem, workspace: OrderWorkspace) {
 
 export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway | null}) {
   const readEpoch = useRef(0);
+  const historyEpoch = useRef(0);
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
@@ -102,11 +103,16 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   };
 
   const showHistory = async (orderId: string) => {
+    const epoch = ++historyEpoch.current;
     if (!gateway) return;
     setHistoryOrderId(orderId);
     setHistory(null);
-    try { setHistory(await gateway.listHistory({orderId, limit: 100})); }
-    catch { setError('No se pudo recuperar el historial de esta comanda.'); }
+    try {
+      const result = await gateway.listHistory({orderId, limit: 100});
+      if (epoch === historyEpoch.current) setHistory(result);
+    } catch {
+      if (epoch === historyEpoch.current) setError('No se pudo recuperar el historial de esta comanda.');
+    }
   };
 
   return (
