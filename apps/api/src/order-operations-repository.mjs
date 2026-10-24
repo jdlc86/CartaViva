@@ -279,9 +279,17 @@ export function createOrderOperationsRepository() {
       });
       const eventIds = new Set();
       const lastByLine = new Map();
+      let lastEvent = null;
       for (const event of events) {
-        if (eventIds.has(event.eventId)) throw Error('invalid_order_operations_sql_result');
+        if (eventIds.has(event.eventId) ||
+            (event.toStatus === 'picked_up' && !['admin', 'waiter'].includes(event.actorRole)) ||
+            (event.toStatus !== 'picked_up' && !['admin', 'kitchen'].includes(event.actorRole)) ||
+            (lastEvent && (lastEvent.occurredAt > event.occurredAt ||
+              (lastEvent.occurredAt === event.occurredAt && lastEvent.eventId >= event.eventId)))) {
+          throw Error('invalid_order_operations_sql_result');
+        }
         eventIds.add(event.eventId);
+        lastEvent = event;
         const previous = lastByLine.get(event.lineId);
         if (previous && (previous.toStatus !== event.fromStatus ||
             previous.occurredAt > event.occurredAt)) {
