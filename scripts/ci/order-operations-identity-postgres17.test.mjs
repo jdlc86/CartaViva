@@ -66,6 +66,25 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       );
       assert.equal(rpc.rows[0].can_execute, false);
     }
+    // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
+    // runs on the disposable database only and revokes its temporary grant.
+    await admin.query(
+      'GRANT SELECT ON sabora.order_line_transition_requests TO sabora_ci_operations_identity'
+    );
+    try {
+      const restricted = await operationsPool.query(
+        'SELECT actor_user_id, correlation_id FROM sabora.order_line_transition_requests'
+      );
+      assert.deepEqual(restricted.rows, []);
+      const policies = await admin.query(`SELECT relrowsecurity, relforcerowsecurity
+        FROM pg_catalog.pg_class
+        WHERE oid = 'sabora.order_line_transition_requests'::regclass`);
+      assert.deepEqual(policies.rows, [{relrowsecurity: true, relforcerowsecurity: true}]);
+    } finally {
+      await admin.query(
+        'REVOKE SELECT ON sabora.order_line_transition_requests FROM sabora_ci_operations_identity'
+      );
+    }
     const staffClient = await staffPool.connect();
     try {
       const role = await staffClient.query('SELECT current_user, session_user');
