@@ -46,6 +46,7 @@ test('customer confirmation maps known failures and hides unexpected backend det
   ['order_catalog_unavailable',409,'order_confirmation_conflict'],
   ['order_previous_quote_unavailable',409,'order_confirmation_conflict'],
   ['order_displayed_quote_invalid',409,'order_confirmation_conflict'],
+  ['catalog_order_context_changed',409,'order_confirmation_conflict'],
   ['postgres://private:secret@localhost',503,'order_confirmation_unavailable']
  ]){
   message=error;
@@ -197,4 +198,18 @@ test('HTTP rejects forged client pricing before beginning transactional confirma
   assert.deepEqual(r.json(),{error:'invalid_confirmation_input'});
  }
  assert.equal(transactions,0);
+});
+
+test('HTTP confirmation never represents persistence as kitchen receipt',async t=>{
+ const app=create(async()=>({status:'confirmed',result:{
+  orderId:id,kitchenReceived:true,dispatchId:'private',receiptAt:'private'
+ }}));
+ t.after(()=>app.close());
+ const response=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(response.statusCode,201);
+ assert.deepEqual(response.json(),{status:'confirmed',orderId:id});
+ assert.equal(response.body.includes('kitchen'),false);
+ assert.equal(response.body.includes('dispatch'),false);
+ assert.equal(response.body.includes('receipt'),false);
 });
