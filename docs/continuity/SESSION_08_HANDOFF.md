@@ -80,3 +80,12 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Si falla una comprobación, la composición devuelve `invalid_verified_customer_composition` y ninguna ruta queda registrada. No se ha modificado `server.mjs` ni habilitado el tráfico operativo.
 - Se amplían los dobles en `tests/verified-isolated-customer-composition-candidate.test.mjs` y se añade regresión que exige rechazo ante ejecución directa indebida del RPC por el login lector.
 - **Pendiente antes de certificar el hito:** ejecutar `pnpm test`, `pnpm build`, PostgreSQL 17 desechable con roles/grants reales y revisar GitHub Actions del SHA final. Este bloque no acredita todavía RLS efectiva, funciones escritoras ni el circuito QR→cocina.
+
+## 11. Bloque de cierre: frontera de activación SQL en PG17 desechable (24-10-2026)
+
+- El preflight opt-in exige ahora `NOINHERIT`, ausencia de `CREATEDB`, `CREATEROLE` y `REPLICATION` para **ambos** logins; además, el login escritor no puede ejecutar directamente el RPC público de catálogo ni asumir su rol.
+- Pruebas de regresión ampliadas en `tests/isolated-customer-sql-capabilities-preflight.test.mjs` y `tests/verified-isolated-customer-composition-candidate.test.mjs`.
+- Nuevo `scripts/ci/customer-runtime-activation-gate.sql` integrado en `scripts/ci/postgres-migration-smoke.sh`: verifica en PostgreSQL 17 aislado que los logins `sabora_catalog_login` y `sabora_order_login` aún no estén provisionados; comprueba el rol `sabora_catalog_reader`, membresías peligrosas y ausencia de grants de escritura económica para clientes. La ejecución está incluida en el pipeline existente, no depende de Supabase ni del VPS.
+- Este es un **gate negativo de seguridad**, no una autorización de provisionamiento. Si se aprueba una activación futura habrá que reemplazarlo por pruebas de acceso positivo/negativo con credenciales SQL reales y revisar contratos de RLS.
+- Verificación local limitada: el contenedor de trabajo no tiene Docker, PostgreSQL ni acceso DNS a GitHub; **no se han ejecutado** `pnpm test`, `pnpm build` ni el smoke PG17 en esta sesión. Consultar los workflows del HEAD antes de declarar el hito validado. Si el gate detecta una incompatibilidad con migraciones existentes, corregir tras leer los logs, sin deshabilitarlo silenciosamente.
+- El recorrido QR→visita→catálogo→pedido→cocina sigue sin acreditación E2E. No activar `server.mjs`, no desplegar ni modificar los recursos de Fleetia.
