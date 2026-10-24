@@ -200,6 +200,32 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
+test('repository rejects discontinuous or out-of-order history for the same line', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    event_id: eventId, line_id: lineId, line_number: 1,
+    name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
+    occurred_at: confirmedAt, actor_role: 'kitchen',
+  };
+  for (const second of [
+    {from_status: 'ready', to_status: 'picked_up', occurred_at: new Date('2026-10-24T10:01:00.000Z')},
+    {from_status: 'preparing', to_status: 'ready', occurred_at: new Date('2026-10-24T09:59:00.000Z')},
+    {from_status: 'confirmed', to_status: 'preparing', occurred_at: new Date('2026-10-24T10:01:00.000Z')},
+  ]) {
+    await assert.rejects(repository.listHistory(async () => ({rows: [
+      base,
+      {...base, ...second, event_id: '60000000-0000-4000-8000-000000000006'},
+    ]}), {actorId, role: 'admin', orderId, limit: 10}), /invalid_order_operations_sql_result/);
+  }
+  const valid = await repository.listHistory(async () => ({rows: [
+    base,
+    {...base, event_id: '60000000-0000-4000-8000-000000000006',
+      from_status: 'preparing', to_status: 'ready',
+      occurred_at: new Date('2026-10-24T10:01:00.000Z')},
+  ]}), {actorId, role: 'admin', orderId, limit: 10});
+  assert.equal(valid.events.length, 2);
+});
+
 test('repository rejects impossible historical state edges returned by SQL', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
