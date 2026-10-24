@@ -61,3 +61,16 @@ test('accessor and cyclic basket selections fail before JSON serialization',()=>
  assert.throws(()=>validateCustomerConfirmationRequest({...base,selection:cycle}),
   /invalid_customer_confirmation_request/);
 });
+
+test('top-level accessors are rejected without executing and selection is snapshotted',()=>{
+ const base={...context,...basket,requestKey:key};
+ delete base.authorized;delete base.canOrder;delete base.confirmable;
+ Object.defineProperty(base,'actorId',{enumerable:true,get(){throw Error('getter_executed');}});
+ assert.throws(()=>validateCustomerConfirmationRequest(base),
+  /invalid_customer_confirmation_request/);
+ const safe={...context,...basket,requestKey:key};
+ delete safe.authorized;delete safe.canOrder;delete safe.confirmable;
+ const validated=validateCustomerConfirmationRequest(safe);
+ safe.selection.extras.push('untrusted_mutation');
+ assert.deepEqual(validated.selection.extras,[]);
+});
