@@ -9,6 +9,13 @@ const validResult=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
 const data=(v,k)=>{if(!validResult(v))return false;
  const d=Object.getOwnPropertyDescriptor(v,k);
  return !!d&&d.enumerable&&Object.hasOwn(d,'value');};
+// A thrown value is untrusted too: never invoke its message getter while
+// mapping an internal failure to a public error code.
+const failureCode=error=>{
+ if(!error||typeof error!=='object')return null;
+ const d=Object.getOwnPropertyDescriptor(error,'message');
+ return d&&Object.hasOwn(d,'value')&&typeof d.value==='string'?d.value:null;
+};
 export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
  if(!app||typeof app.post!=='function'||typeof confirm!=='function')
   throw Error('invalid_customer_order_route_configuration');
@@ -58,14 +65,15 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
     status:result.status,orderId:result.result.orderId
    });
   }catch(error){
-   if(error?.message==='invalid_confirmation_input')
+   const code=failureCode(error);
+   if(code==='invalid_confirmation_input')
     return reply.code(400).send({error:'invalid_confirmation_input'});
-   if(error?.message==='order_context_forbidden')
+   if(code==='order_context_forbidden')
     return reply.code(403).send({error:'order_context_forbidden'});
    if(error?.message==='order_idempotency_conflict')
     return reply.code(409).send({error:'order_idempotency_conflict'});
    if(['order_catalog_unavailable','order_previous_quote_unavailable',
-     'order_displayed_quote_invalid','catalog_order_context_changed'].includes(error?.message))
+     'order_displayed_quote_invalid','catalog_order_context_changed'].includes(code))
     return reply.code(409).send({error:'order_confirmation_conflict'});
    return reply.code(503).send({error:'order_confirmation_unavailable'});
   }
