@@ -29,7 +29,7 @@ export function createAuthorizedCustomerConfirmation({
     if(disposed)throw Error('confirmation_flow_disposed');
     keys.begin();
     const result=await flow.confirm(request);
-    if(['confirmed','replayed'].includes(result?.status))settled=true;
+    if(!disposed&&['confirmed','replayed'].includes(result?.status))settled=true;
     return result;
    }finally{
     keys.end();active=false;
