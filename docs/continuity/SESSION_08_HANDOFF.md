@@ -434,3 +434,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas del coordinador candidato verifican que el replay con igual clave y contenido lógico pero campos en distinto orden y credenciales QR/sesión renovadas devuelve `replayed` sin segunda lectura de catálogo ni escritura. Las credenciales no forman parte del fingerprint económico; sí deben autorizarse nuevamente bajo bloqueo.
 - Una prueba adicional exige conflicto de idempotencia si se cambia la cantidad conservando la clave; debe abortar después de comprobar el contexto, antes de leer catálogo o escribir.
 - Este nuevo SHA requiere ambos workflows verdes. Sin integración productiva, merge, despliegue ni cambios de la PWA de administración asignada a Codex.
+
+## 59. Revocación de visita frente a replay idempotente (24-10-2026)
+
+- Añadida prueba de integración del coordinador candidato con dos confirmaciones consecutivas: la primera persiste con contexto autorizado; la segunda usa la misma clave y contenido, pero `lockContext` devuelve visita revocada.
+- El resultado exigido es `order_context_forbidden` con ROLLBACK, sin consultar ledger de idempotencia, catálogo ni volver a persistir. Un replay no elude la autorización actual bajo bloqueo.
+- Bloque 58 pendiente de resultado final de ambos workflows al comenzar; este SHA también requiere CI. No se monta ruta HTTP ni se toca la PWA de administración de Codex, VPS, Fleetia o Supabase operativo.
