@@ -80,6 +80,20 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       );
       assert.deepEqual(schema.rows, [{can_use: true, can_create: false}]);
     }
+    // A metadata check is not sufficient: exercise the SQL denial with the
+    // actual login sessions before any temporary grants are introduced.
+    for (const [role, clientPool] of [
+      [staffRole, staffPool], [operationsRole, operationsPool],
+    ]) {
+      await assert.rejects(clientPool.query(
+        'CREATE TABLE sabora.sabora_ci_forbidden_ddl (id integer)'
+      ), /permission denied/,
+      `${role} unexpectedly created an object in the private schema`);
+      await assert.rejects(clientPool.query(
+        'SELECT * FROM sabora.staff_members LIMIT 1'
+      ), /permission denied/,
+      `${role} unexpectedly read staff membership without an explicit grant`);
+    }
     // Check the two independent logins against the whole private schema.
     // A grant on an unrelated table would bypass the seven-resource inventory.
     const unexpectedGrants = await admin.query(
