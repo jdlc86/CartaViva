@@ -5,15 +5,21 @@ const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
 const safeCents=v=>Number.isSafeInteger(v)&&v>=0;
 const safeRevision=v=>Number.isSafeInteger(v)&&v>0;
 const tokenPattern=/^v1\.[0-9]{1,16}\.[a-f0-9]{64}\.[a-f0-9]{64}$/;
+const ownData=(value,name)=>{
+ const d=Object.getOwnPropertyDescriptor(value,name);
+ return !!d&&d.enumerable&&Object.hasOwn(d,'value');
+};
 const fields=['schemaVersion','previousTotalCents','currentTotalCents',
  'differenceCents','previousPublishedRevision','currentPublishedRevision',
  'acceptanceToken','expiresAt'];
 export function parseRepricingChallenge(response,{nowMs=Date.now()}={}){
- if(!plain(response)||response.error!=='acceptance_required'||
+ if(!plain(response)||!ownData(response,'error')||
+    !ownData(response,'repricing')||response.error!=='acceptance_required'||
     !plain(response.repricing)||!Number.isSafeInteger(nowMs)||nowMs<0)
   throw Error('invalid_repricing_challenge');
  const r=response.repricing;
- if(Object.keys(r).length!==fields.length||fields.some(key=>!Object.hasOwn(r,key))||
+ if(Reflect.ownKeys(r).length!==fields.length||
+    fields.some(field=>!ownData(r,field))||
     r.schemaVersion!==1||!safeCents(r.previousTotalCents)||
     !safeCents(r.currentTotalCents)||!Number.isSafeInteger(r.differenceCents)||
     r.currentTotalCents-r.previousTotalCents!==r.differenceCents||
