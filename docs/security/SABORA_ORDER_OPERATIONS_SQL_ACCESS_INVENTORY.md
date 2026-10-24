@@ -1,6 +1,6 @@
 # Inventario de acceso SQL para cocina y sala — revisión sin GRANT
 
-Estado: **candidato para revisión, NO autorizado para ejecución en Supabase ni despliegue**.
+Estado: **frontera mutadora HMAC candidata validada en PG17 desechable; NO autorizada para Supabase ni despliegue**.
 Fecha: 2026-10-24. Un solo restaurante Sabora.
 
 Este inventario se deriva exclusivamente de las consultas de
@@ -8,7 +8,8 @@ Este inventario se deriva exclusivamente de las consultas de
 `transition_order_line_idempotent_candidate` en
 `supabase/migrations/20261023225024_sabora_kitchen_waiter_operations_candidate.sql`
 y la puerta `docs/architecture/SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md`.
-No crea roles, políticas ni permisos.
+La migración candidata posterior `20261024190000` propone un owner sellado,
+keyring y wrapper; no crea login, secreto, fila de clave ni GRANT de runtime.
 
 ## Identidades y operaciones
 
@@ -320,3 +321,42 @@ las pruebas de suplantación y la autorización expresa correspondiente.
 ## Prueba de deriva de esquema en PostgreSQL 17 (24-10-2026)
 
 El harness de integración, ejecutado **solo en PostgreSQL 17 desechable**, altera temporalmente tres invariantes de la frontera de operaciones: elimina `FORCE ROW LEVEL SECURITY` de `order_line_transition_requests`, deshabilita RLS de esa tabla y cambia la RPC candidata a `SECURITY DEFINER`. Cada alteración debe provocar rechazo del preflight para ambos logins técnicos. Un bloque `finally` restaura el DDL y se exige un nuevo preflight positivo después de cada restauración. Estas pruebas detectan deriva del esquema antes de registrar rutas, pero **no autorizan grants positivos**, ni resuelven la vinculación verificable del actor SQL. No hay cambios en Supabase operativo ni despliegue.
+
+## Actualización P0: superficie positiva mínima de transición (24-10-2026)
+
+La decisión completa está en
+`docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`. El login técnico de
+transición candidato tiene una única capacidad positiva: `USAGE` de esquema y
+`EXECUTE` sobre
+`transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)`.
+No puede leer ni modificar tablas o columnas, leer el keyring, usar secuencias,
+crear objetos, adoptar el rol owner ni ejecutar ninguna de estas RPC con actor
+libre:
+
+- `transition_order_line_idempotent_candidate(uuid,uuid,text,text)`;
+- `transition_order_line(uuid,uuid,text)`;
+- `transition_order_status(uuid,uuid,text,text)`;
+- `transition_table_ordering_candidate(uuid,uuid,text,timestamptz)`.
+
+El wrapper verifica HMAC sobre audiencia, clave, `session_user`, actor, línea,
+destino, correlación/nonce y vigencia; después revalida clave, tiempo,
+membresía y rol bajo locks. El owner `NOLOGIN` recibe solo columnas, policies y
+funciones necesarias. El keyring nace vacío y la migración no concede el
+wrapper a ningún login.
+
+El preflight positivo separado exige exactamente un `SECURITY DEFINER`
+ejecutable, owner sellado y `search_path` fijo, cero tablas/secuencias y cero
+RPC antiguas. El preflight de registro de rutas conserva cero funciones
+privilegiadas: lectura de tablero/historial aún no dispone de contrato SQL
+positivo y por ello la composición HTTP completa permanece bloqueada.
+
+En PG17 desechable se reproduce primero la suplantación del diseño anterior y
+se revierte; después el mismo login mínimo no puede cambiar actor mediante
+UUID, GUC, `SET ROLE` o llamada a RPC antigua. Las capacidades alteradas,
+expiradas, usadas para otra operación o emitidas para otro rol de base se
+rechazan sin efectos. También se ejercitan rotación, suspensión, replay,
+concurrencia, rollback y denegación directa de tablas/keyring/secuencias/DDL.
+
+Esta superficie es una propuesta versionada y probada, no un procedimiento de
+producción. Provisionar claves, login o GRANT requiere aprobación operativa
+independiente; no se ha tocado Supabase operativo.
