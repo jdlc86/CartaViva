@@ -13,7 +13,8 @@ test('operations composition rejects shared or indistinguishable SQL identities'
   const staffPool = pool('sabora_staff_reader', 'postgres://staff');
   const operationPool = pool('sabora_operations', 'postgres://operations');
   const app = {get() {}, post() {}};
-  const base = {staffPool, operationsPool: operationPool};
+  const base = {staffPool, operationsPool: operationPool,
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations'};
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {...base, operationsPool: staffPool}), /pool_isolation/);
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {...base,
     operationsPool: pool('sabora_staff_reader', 'postgres://operations')}), /pool_isolation/);
