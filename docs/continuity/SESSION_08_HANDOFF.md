@@ -203,3 +203,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-confirmation-mount.test.mjs`: éxito, rechazo de repricing sin segunda llamada y destrucción con respuesta tardía. CI del nuevo HEAD pendiente.
 - Pendiente enlazar este montaje con el shell de la PWA real, según la rama correspondiente y su contrato normativo, y realizar revisión visual/teclado antes de activar.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 27. Cierre de pedido y rearme explícito de la PWA candidata (24-10-2026)
+
+- El punto de montaje `customer-confirmation-mount.mjs` ahora bloquea el botón tras `confirmed` o `replayed` para evitar que una nueva pulsación confirme otra vez el mismo pedido. Solo `resetForNewOrder()`, invocado por el host cuando realmente cambia a una nueva cesta, rearma el botón.
+- `resetForNewOrder()` rechaza ejecución durante solicitud en vuelo o mientras espera consentimiento; también rechaza uso después de `destroy()`.
+- Dos nuevas pruebas en `customer-confirmation-mount.test.mjs` cubren no repetición y bloqueo de reset durante la operación.
+- CI anterior `0c3b008` estaba en curso en la última consulta. Nuevo SHA pendiente de CI. Sigue sin estar montado en la PWA real ni activada la ruta HTTP.
+- PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
