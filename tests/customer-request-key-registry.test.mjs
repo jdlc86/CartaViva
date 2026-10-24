@@ -34,3 +34,20 @@ test('invalid basket and generated key fail closed',()=>{
  assert.throws(()=>registry.forBasket({basketId:'basket_1',revision:1}),/invalid_request_key/);
  assert.throws(()=>registry.forBasket({basketId:'',revision:1}),/invalid_request_key_basket/);
 });
+
+test('basket identity accessors and inherited identifiers cannot generate or reuse keys',()=>{
+ let calls=0;
+ const registry=createCustomerRequestKeyRegistry({createKey:()=>{calls++;return 'request_12345678';}});
+ const malicious={basketId:'basket_1'};
+ Object.defineProperty(malicious,'revision',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ assert.throws(()=>registry.forBasket(malicious),/invalid_request_key_basket/);
+ const inherited=Object.create({basketId:'basket_1',revision:1});
+ assert.throws(()=>registry.forBasket(inherited),/invalid_request_key_basket/);
+ const accessor={revision:1};
+ Object.defineProperty(accessor,'basketId',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ assert.throws(()=>registry.forBasket(accessor),/invalid_request_key_basket/);
+ assert.equal(calls,0);
+ assert.equal(registry.key,null);
+});
