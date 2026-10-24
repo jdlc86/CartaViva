@@ -43,3 +43,11 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se han trasladado desde PR #4 a **esta rama aislada** cuatro módulos API opt-in, dos suites Node, migración candidata, gate documental y dos verificaciones PostgreSQL 17. No se ha importado ni montado el código desde `server.mjs`; no hay grants operativos ni despliegue.
 - Se ha corregido al trasladar el coordinador un límite de confianza: los argumentos de página/petición no pueden sobrescribir `actorId` ni `role` verificados. El spread ahora coloca el contexto de personal al final. Pendiente añadir regresión explícita y verificar CI.
 - Los scripts PG17 trasladados todavía no se han conectado a los workflows; su presencia no equivale a ejecución ni certificación. La integración de vistas PR #5 sigue pendiente.
+
+## CI de operaciones candidato — siguiente iteración
+
+- Se verificó fallo real de ambos workflows tras añadir la migración: la comprobación heredada exigía 19 tablas RLS; la nueva tabla `sabora.order_line_transition_requests` eleva el total a 20. Se actualizó el recuento y se exige protección RLS + FORCE RLS específica de esa tabla.
+- El smoke de grants de operaciones se ejecuta ahora en `postgres-migration-smoke.sh` tras aplicar todas las migraciones.
+- La prueba real Node + driver `pg` de cocina/camareros se ejecuta ahora desde `catalog-postgres17-node-driver-smoke.sh`, usando únicamente su PostgreSQL 17 desechable en GitHub Actions. Su ejecución no autoriza runtime.
+- Nueva prueba de regresión comprueba que parámetros de cliente no reemplazan `actorId` ni `role` verificados en ninguna de las tres operaciones.
+- **No declarar CI verde hasta consultar las ejecuciones correspondientes al HEAD final.**
