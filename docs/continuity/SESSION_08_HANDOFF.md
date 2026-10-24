@@ -421,3 +421,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Ambos workflows del bloque 55 (`68acf96`) fallaron durante `Test`: la prohibición `toJSON` se aplicó por error solo a `dataRecord` (adaptadores confiables), mientras que `snapshotInput` seguía admitiendo la propiedad en el JSON entrante; la prueba observó `invalid_catalog_selection` dentro de la transacción en lugar de `invalid_confirmation_input` antes de SQL.
 - Corregido el bucle recursivo de `snapshotInput` para rechazar `toJSON` en cualquier profundidad antes de abrir la transacción. Se conservan las pruebas introducidas en el bloque 55 como regresión.
 - Este commit exige CI verde; PR #2 Draft, sin registro de ruta HTTP, merge o despliegue.
+
+## 57. Métodos del adaptador transaccional con descriptores seguros (24-10-2026)
+
+- El coordinador candidato exige métodos `lockContext`, `lookupIdempotency`, `lockCatalog`, `loadPreviousQuote` y `persist` como propiedades propias, enumerables y de datos del adaptador `repository`; la configuración ya no invoca getters al evaluar dependencias.
+- Prueba de regresión: `persist` getter hostil, heredado y no enumerable son rechazados en construcción, sin ejecución de getter ni transacciones.
+- El bloque 56 (`4b68146`) seguía en ejecución al iniciar; este commit también necesita CI y Bootstrap verdes. No se registra la ruta HTTP ni se despliega.
