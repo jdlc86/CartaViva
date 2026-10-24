@@ -3,6 +3,8 @@
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
+const data=(v,k)=>{const d=Object.getOwnPropertyDescriptor(v,k);
+ return !!d&&d.enumerable&&own(d,'value');};
 const validUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/api/v1/customer/orders/confirm'}={}){
  if(typeof fetchImpl!=='function'||endpoint!=='/api/v1/customer/orders/confirm')
@@ -29,7 +31,9 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
    throw Error('confirmation_unexpected_response');
   let result;
   try{result=await response.json();}catch{throw Error('confirmation_unexpected_response');}
-  if(!plain(result)||typeof result.error!=='string'&&typeof result.status!=='string')
+  if(!plain(result)||(!data(result,'error')&&!data(result,'status'))||
+     (data(result,'error')&&typeof result.error!=='string')||
+     (data(result,'status')&&typeof result.status!=='string'))
    throw Error('confirmation_unexpected_response');
   if(response.status===409&&result.error==='acceptance_required'){
    // The consent controller validates the full repricing DTO before display.
