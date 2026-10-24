@@ -258,3 +258,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Añadida regresión en `tests/customer-authorized-request.test.mjs` para getter hostil y aislamiento de snapshot.
 - En la última consulta, Sabora CI del bloque de composición `75672ac` terminó SUCCESS (`40089237433`); Bootstrap seguía en curso. Los workflows de `ffd3046` seguían en curso. Nuevo HEAD pendiente de CI.
 - PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 34. Coherencia de desafío de cambio de precio en frontera HTTP (24-10-2026)
+
+- En `apps/api/src/customer-order-confirmation-http-candidate.mjs` se rechazan desafíos de cambio de precio con revisiones anterior/actual iguales o expiración declarada distinta de la codificada en el token HMAC `v1.<expiresAt>.<fingerprint>.<mac>`.
+- La comprobación es de **consistencia de formato**, no verificación criptográfica: la validez HMAC se verifica exclusivamente en el coordinador transaccional antes de persistir. No se exponen evidencias internas en errores.
+- Regresiones en `tests/customer-order-confirmation-http-candidate.test.mjs`: revisiones inconsistentes y expiración discordante devuelven `503 order_confirmation_unavailable`, sin presentar consentimiento inválido.
+- Ruta aún candidata no registrada en `server.mjs`; no habilitar sin autorización real y transacción PostgreSQL. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
