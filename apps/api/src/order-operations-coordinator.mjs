@@ -6,8 +6,12 @@ const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 function trustedStaff(context) {
   if (!context || typeof context !== 'object' || Array.isArray(context) ||
       !context.verifiedIdentity || !context.verifiedStaff ||
+      typeof context.verifiedIdentity !== 'object' || Array.isArray(context.verifiedIdentity) ||
+      typeof context.verifiedStaff !== 'object' || Array.isArray(context.verifiedStaff) ||
       !UUID.test(context.verifiedIdentity.userId) ||
-      context.verifiedStaff.userId?.toLowerCase() !== context.verifiedIdentity.userId.toLowerCase() ||
+      typeof context.verifiedStaff.userId !== 'string' ||
+      !UUID.test(context.verifiedStaff.userId) ||
+      context.verifiedStaff.userId.toLowerCase() !== context.verifiedIdentity.userId.toLowerCase() ||
       !ROLES.has(context.verifiedStaff.role)) {
     throw Error('order_operations_forbidden');
   }
