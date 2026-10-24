@@ -145,3 +145,43 @@ if [[ "$(printf '%s' "$independent" | tr -d '[:space:]')" != t ]]; then
  exit 1
 fi
 echo 'PASS: distinct request keys do not share the same advisory transaction lock'
+
+# The request key alone must not become the global lock identity:
+# the same key in another basket is an independent scope.
+basket_scope='["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000002","visit-ci","basket-other","actor-ci","request-001"]'
+basket_key_sql="hashtextextended('$basket_scope',0)"
+basket_holder_sql=$(cat <<SQL
+BEGIN;
+SELECT pg_advisory_xact_lock($key_sql);
+SELECT pg_sleep(3);
+COMMIT;
+SQL
+)
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres <<<"$basket_holder_sql" &
+basket_holder_pid=$!
+basket_ready=0
+for attempt in $(seq 1 70); do
+ if ! kill -0 "$basket_holder_pid" 2>/dev/null; then break; fi
+ n=$(docker exec "$container" psql -X -Atq -U postgres -d postgres -c \
+  "SELECT count(*) FROM pg_stat_activity WHERE query LIKE '%SELECT pg_sleep(3)%' AND state='active' AND pid<>pg_backend_pid();" | tr -d '[:space:]')
+ if [[ "$n" == 1 ]]; then basket_ready=1; break; fi
+ sleep 0.05
+done
+if [[ "$basket_ready" != 1 ]]; then
+ wait "$basket_holder_pid" || true
+ echo 'Basket-scope holder did not acquire lock' >&2
+ exit 1
+fi
+basket_independent=$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
+BEGIN;
+SET LOCAL lock_timeout='1s';
+SELECT pg_try_advisory_xact_lock($basket_key_sql);
+COMMIT;
+SQL
+)
+wait "$basket_holder_pid"
+if [[ "$(printf '%s' "$basket_independent" | tr -d '[:space:]')" != t ]]; then
+ echo 'Distinct basket with reused request key unexpectedly blocked' >&2
+ exit 1
+fi
+echo 'PASS: reused request key in a different basket has an independent advisory lock'
