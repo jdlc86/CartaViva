@@ -177,10 +177,15 @@ export function createOrderOperationsRepository() {
       ));
       if (rows.length !== 1) throw Error('invalid_order_operations_sql_result');
       const row = rows[0];
-      if (!UUID.test(row?.updated_order_id) || row?.updated_line_id?.toLowerCase() !== lineId.toLowerCase() ||
+      if (!UUID.test(row?.updated_order_id) || !UUID.test(row?.updated_line_id) ||
+          row.updated_line_id.toLowerCase() !== lineId.toLowerCase() ||
           !UUID.test(row?.event_id) || !['confirmed', 'preparing', 'ready'].includes(row?.previous_status) ||
           row?.current_status !== targetStatus || typeof row?.repeated !== 'boolean' ||
-          (row.notification_id !== null && !UUID.test(row.notification_id))) {
+          !((row.previous_status === 'confirmed' && targetStatus === 'preparing') ||
+            (row.previous_status === 'preparing' && targetStatus === 'ready') ||
+            (row.previous_status === 'ready' && targetStatus === 'picked_up')) ||
+          ((targetStatus === 'ready' || targetStatus === 'picked_up') && !UUID.test(row.notification_id)) ||
+          (targetStatus === 'preparing' && row.notification_id !== null)) {
         throw Error('invalid_order_operations_sql_result');
       }
       return Object.freeze({
