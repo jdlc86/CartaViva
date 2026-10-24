@@ -199,3 +199,13 @@ y la prueba de rollback debía pasar explícitamente el rol `kitchen` al
 repositorio. Ambas pruebas se han alineado con el contrato nuevo sin relajar
 las comprobaciones de seguridad. La aceptación depende de la ejecución verde
 de los dos workflows sobre el SHA actualizado.
+
+## Comprobación estricta de contexto de actor
+
+El coordinador rechaza antes de abrir una transacción las identidades
+verificadas malformadas: identificadores de empleado no UUID, objetos de
+identidad que sean arrays, roles fuera del conjunto de cocina, sala y
+administración y desacuerdo entre el UUID autenticado y el del empleado.
+Las pruebas exigen cero transacciones para estos casos. Esta defensa del
+backend no vincula por sí sola la identidad al login SQL compartido: el
+bloqueo de suplantación directa de la RPC sigue vigente.
