@@ -174,3 +174,15 @@ candidatos. Una prueba comprueba que estos rechazos no ejecutan SQL. Esta
 comprobación complementa, pero **no sustituye**, la revalidación transaccional
 de membresía en PostgreSQL ni resuelve la suplantación directa del actor en la
 RPC invoker. El acceso positivo permanece sin autorización.
+
+## Puerta de arranque frente a concesión accidental de RPC
+
+El preflight de ambas identidades SQL ahora comprueba en la propia sesión
+`USAGE` sobre el esquema privado, ausencia de `CREATE` y ausencia de
+`EXECUTE` sobre la firma exacta de la RPC candidata. Si alguien concede
+acceso a la función cuyo parámetro `p_actor_user_id` todavía no está ligado
+criptográficamente a la identidad HTTP, el arranque opt-in **se rechaza**
+antes de registrar rutas. El harness PostgreSQL 17 concede únicamente
+`USAGE` de esquema a los logins efímeros antes de comprobar el preflight;
+no concede `EXECUTE` ni permisos de escritura. Se trata de una puerta
+negativa deliberada, no de habilitación positiva del servicio.
