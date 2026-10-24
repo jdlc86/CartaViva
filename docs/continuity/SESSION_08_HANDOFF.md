@@ -460,3 +460,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se amplía el smoke de concurrencia del ledger con un segundo caso independiente: misma `request-001` pero `basket-other` mientras otra conexión mantiene el bloqueo transaccional de `basket-ci`. Se exige `pg_try_advisory_xact_lock` verdadero en la segunda sesión y liberación tras commit.
 - El ámbito del advisory lock conserva mesa, sesión, visita, cesta, actor y clave. Se evita convertir por error la clave de petición en un mutex global entre cestas. El script se ejecuta únicamente sobre PG17 desechable de CI.
 - Bloque 61 (`59636e1`) seguía en CI al inicio de esta sesión; verificar ambos workflows del último SHA antes de dar por cerrado el bloque 62. Sin cambios en producción ni en la rama de Codex.
+
+## 63. Aislamiento de bloqueo entre actores de la misma cesta (24-10-2026)
+
+- Bloques 61 (`59636e1`) y 62 (`41798ab`) cerrados con Sabora CI #1735/#1737 y Bootstrap #1714/#1716 SUCCESS.
+- Extendido el smoke PostgreSQL 17 de idempotencia con dos sesiones reales: una retiene el advisory lock para `actor-ci` y otra debe adquirir sin espera el ámbito `actor-other` aun con la misma mesa, sesión, visita, cesta y `request-001`.
+- El nuevo caso protege el aislamiento por actor definido por el ledger; se mantienen los casos previos de serialización de la misma clave, rollback y ámbitos independientes por clave y cesta.
+- Verificar CI/Bootstrap del SHA final para cerrar este bloque. Sin activación de endpoint, merge, despliegue ni modificaciones a Codex, Fleetia, VPS o Supabase operativo.
