@@ -106,3 +106,9 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - No implica otorgamiento de grants ni activación del endpoint.
 
 - El harness PG17 prueba además una membresía SQL real añadida temporalmente al login de operaciones: el preflight debe rechazarla, y el test revoca y elimina ese rol auxiliar antes de destruir el contenedor.
+
+## Cierre de inventario de privilegios operativos
+
+- Se añadió `docs/security/SABORA_ORDER_OPERATIONS_SQL_ACCESS_INVENTORY.md` con los recursos SQL exactos que utiliza la lectura del tablero, el historial y la transición invoker, y una puerta de aprobación que exige pruebas positivas y negativas bajo RLS.
+- La prueba PG17 ejercita ahora `SET ROLE` real, además de membresía SQL real; la suite Node comprueba el descarte de clientes si falla la inspección de identidad.
+- El inventario no concede permisos ni modifica Supabase. El último HEAD debe superar ambos workflows antes de considerarse cerrado.
