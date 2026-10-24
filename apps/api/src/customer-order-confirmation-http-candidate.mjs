@@ -70,7 +70,7 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
     return reply.code(400).send({error:'invalid_confirmation_input'});
    if(code==='order_context_forbidden')
     return reply.code(403).send({error:'order_context_forbidden'});
-   if(error?.message==='order_idempotency_conflict')
+   if(code==='order_idempotency_conflict')
     return reply.code(409).send({error:'order_idempotency_conflict'});
    if(['order_catalog_unavailable','order_previous_quote_unavailable',
      'order_displayed_quote_invalid','catalog_order_context_changed'].includes(code))
