@@ -380,3 +380,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `7083126` pasó Sabora CI y Bootstrap. `a61b2c4` falló en ambos workflows porque la prueba de concurrencia esperaba una lectura de cesta, pero el nuevo fence realiza deliberadamente dos lecturas (snapshot y revalidación antes de HTTP). Se ajustó la expectativa sin relajar la prohibición de confirmaciones concurrentes.
 - La segunda lectura valida `basketId`, `revision` y `confirmable` mediante descriptores propios de datos enumerables; no ejecuta getters de adaptadores hostiles. Prueba de regresión añadida.
 - Pendiente comprobar ambos workflows para este SHA antes de cerrar. Sigue sin montarse el cliente ni registrarse la ruta de confirmación; sin despliegues o merges.
+
+## 51. Revalidación conjunta de visita, sesión y cesta antes de HTTP (24-10-2026)
+
+- La composición candidata vuelve a consultar tanto `readContext` como `readBasket` antes del envío; exige que autorización y permiso de pedido continúen vigentes y que mesa, visita, actor, QR y token de sesión coincidan con el snapshot.
+- Las comprobaciones utilizan descriptores propios enumerables, sin invocar getters de las propiedades comprobadas. Cambios de sesión/permiso producen `customer_basket_changed_before_confirmation` sin petición HTTP.
+- Pruebas añadidas: revocación de `canOrder` y rotación de `customerSessionToken` entre las dos lecturas. La revalidación cliente no sustituye bloqueo/autorización transaccional del backend.
+- CI del bloque 50 en curso al comenzar; el nuevo SHA requiere verificación independiente. No se activa confirmación real ni se despliega.
