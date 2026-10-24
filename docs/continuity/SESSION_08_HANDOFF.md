@@ -316,3 +316,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nueva regresión de flujo verifica que un getter hostil en `currentTotalCents` no se ejecuta, no abre panel de consentimiento y produce un fallo controlado.
 - `72becf9` tuvo Sabora CI `40090032793` y Bootstrap `40090032776` SUCCESS. Los cambios de este bloque están pendientes de CI.
 - Ruta y PWA siguen sin activar, PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 42. Transporte de confirmación sin getters ejecutables (24-10-2026)
+
+- `customer-confirmation-transport.mjs` rechaza propiedades de acceso y símbolos en el DTO de petición **antes** de serializar el cuerpo HTTP; exige `requestKey` como propiedad de datos propia.
+- En respuestas de confirmación `200/201`, `orderId` también debe ser una propiedad de datos propia antes de validarlo. Un getter no puede fabricar ni interferir con el éxito.
+- Dos pruebas de flujo verifican que getters hostiles en `requestKey` y `orderId` no se ejecutan, no producen POST en el primer caso ni notifican éxito en el segundo.
+- El commit `72becf9` tenía ambos workflows SUCCESS. CI de este HEAD pendiente. Sin registrar ruta real, sin merge ni despliegue.
