@@ -21,7 +21,8 @@ export function parseRepricingChallenge(response,{nowMs=Date.now()}={}){
     !safeRevision(r.currentPublishedRevision)||
     r.currentPublishedRevision===r.previousPublishedRevision||
     typeof r.acceptanceToken!=='string'||!tokenPattern.test(r.acceptanceToken)||
-    !Number.isSafeInteger(r.expiresAt)||r.expiresAt<=nowMs)
+    !Number.isSafeInteger(r.expiresAt)||r.expiresAt<=nowMs||
+    Number(r.acceptanceToken.split('.')[1])!==r.expiresAt)
   throw Error('invalid_repricing_challenge');
  return Object.freeze({...r});
 }
