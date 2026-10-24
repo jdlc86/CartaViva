@@ -18,7 +18,8 @@ const safeRecord=v=>{
 export function createCatalogVisitContextRepository(){
  return Object.freeze({
   async lockContext(query,args={}){
-   if(!safeRecord(args))throw Error('invalid_catalog_visit_context');
+   if(!safeRecord(args)||Object.keys(args).some(key=>!['tableId','visitId','actorId','basketId','qrToken','customerSessionToken'].includes(key)))
+    throw Error('invalid_catalog_visit_context');
    const {tableId,visitId,actorId,basketId,qrToken,customerSessionToken}=args;
    if(typeof query!=='function'||!uuid.test(tableId)||!opaque(visitId)||
       !opaque(actorId)||!opaque(basketId)||
