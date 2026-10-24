@@ -104,3 +104,5 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - El preflight exige además `NOINHERIT`, ausencia de membresías PostgreSQL y ausencia de `CREATEROLE`, `CREATEDB` y `REPLICATION`. Un LOGIN no es suficiente si puede asumir privilegios por membresía o administrar roles.
 - Las pruebas negativas de cada atributo se ejecutan en la suite Node; la prueba PG17 desechable usa identidades `NOINHERIT` sin membresías.
 - No implica otorgamiento de grants ni activación del endpoint.
+
+- El harness PG17 prueba además una membresía SQL real añadida temporalmente al login de operaciones: el preflight debe rechazarla, y el test revoca y elimina ese rol auxiliar antes de destruir el contenedor.
