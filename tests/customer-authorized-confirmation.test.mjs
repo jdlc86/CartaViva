@@ -195,3 +195,31 @@ test('session token rotation before send blocks HTTP',async()=>{
  assert.equal(sends,0);
  app.destroy();
 });
+
+test('item or quantity mutation with unchanged revision cannot be submitted',async()=>{
+ for(const mutation of [{itemId:'dish_2'},{quantity:2},
+  {selection:{extras:['new']}}]){
+  const {document,container}=dom();let reads=0,sends=0;
+  const app=createAuthorizedCustomerConfirmation({document,container,
+   readContext:()=>context,
+   readBasket:()=>++reads===1?basket:{...basket,...mutation},
+   createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+   fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+  await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+  assert.equal(sends,0);
+  app.destroy();
+ }
+});
+test('semantically equal selection with reordered keys passes revalidation',async()=>{
+ const {document,container}=dom();let reads=0,sends=0;
+ const first={...basket,selection:{a:1,b:2}};
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,
+  readBasket:()=>++reads===1?first:{...first,selection:{b:2,a:1}},
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;return {status:201,
+   json:async()=>({status:'confirmed',orderId})};}});
+ assert.equal((await app.confirm()).status,'confirmed');
+ assert.equal(sends,1);
+ app.destroy();
+});
