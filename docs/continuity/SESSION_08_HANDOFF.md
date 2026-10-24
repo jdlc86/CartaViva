@@ -148,3 +148,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas Fastify verifican DTO, no filtración de datos internos y secuencia 409 → aceptación explícita con token → 201 y una sola línea de cocina. Se mantienen los casos de expiración, falsificación y no transferibilidad.
 - Contrato detallado en `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md`. La PWA todavía no tiene pantalla aprobada de consentimiento y la ruta sigue opt-in sin montar. **No activar en producción**.
 - CI del SHA nuevo pendiente; PR #2 Draft, sin merge, VPS, Supabase operativo ni Fleetia.
+
+## 20. CI rojo y corrección del patrón de token de consentimiento (24-10-2026)
+
+- SHA `cd61da4dc57721d5c1d0c6ce59d812caaed6aed1`: **Sabora CI 40081194453 FAILURE** (615/620 tests), **Bootstrap 40081194423 FAILURE** en validación. Logs indican cinco respuestas `503` en lugar de `409` en pruebas de repricing.
+- Causa identificada: el literal regex de la ruta HTTP buscaba barra invertida antes del separador `.` del token HMAC (`\\.`) en vez de punto literal (`\.`), rechazando todos los tokens válidos y convirtiendo el resultado en `503`.
+- Corregido el regex en `apps/api/src/customer-order-confirmation-http-candidate.mjs`. No se relajan los controles del token, revisión, diferencia de precios o caducidad. Nuevo CI obligatorio antes de cerrar este hito.
+- El flujo sigue sin montar en runtime; no merge, no VPS, no Fleetia, no Supabase operativo.
