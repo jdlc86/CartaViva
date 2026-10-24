@@ -234,6 +234,31 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
+test('repository rejects globally unordered history while allowing mutable staff roles', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    event_id: eventId, line_id: lineId, line_number: 1,
+    name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
+    occurred_at: confirmedAt, actor_role: 'waiter',
+  };
+  const another = {...base,
+    event_id: '60000000-0000-4000-8000-000000000006',
+    line_id: '70000000-0000-4000-8000-000000000007',
+    line_number: 2, actor_role: 'kitchen',
+  };
+  const read = rows => repository.listHistory(async () => ({rows}),
+    {actorId, role: 'admin', orderId, limit: 10});
+  await assert.rejects(read([
+    {...base, occurred_at: new Date('2026-10-24T10:01:00.000Z')},
+    {...another, occurred_at: confirmedAt},
+  ]), /invalid_order_operations_sql_result/);
+  await assert.rejects(read([another, base]),
+    /invalid_order_operations_sql_result/);
+  const valid = await read([base, another]);
+  assert.equal(valid.events.length, 2);
+  assert.equal(valid.events[0].actorRole, 'waiter');
+});
+
 test('repository rejects duplicate history event identifiers even across distinct lines', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
