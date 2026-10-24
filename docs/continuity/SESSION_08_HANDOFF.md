@@ -211,3 +211,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Dos nuevas pruebas en `customer-confirmation-mount.test.mjs` cubren no repetición y bloqueo de reset durante la operación.
 - CI anterior `0c3b008` estaba en curso en la última consulta. Nuevo SHA pendiente de CI. Sigue sin estar montado en la PWA real ni activada la ruta HTTP.
 - PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 28. Inspección real de la PWA cliente y límite de activación (24-10-2026)
+
+- Inspeccionado `apps/client/src/main.tsx`: el cliente es todavía un prototipo de consulta de carta; guarda solo alias/empresa como preferencias de presentación en localStorage y **no posee autenticación, cookie de sesión, visita de mesa ni cesta confirmable**. No es seguro montar el adaptador de confirmación como si esas garantías existieran.
+- Actualizada la pantalla real del menú con aviso visible y accesible de que pedidos y confirmación están deshabilitados hasta que el backend valide mesa, visita e identidad. No hay botones engañosos de confirmar pedidos.
+- La composición `packages/customer-consent/src/customer-confirmation-*.mjs` queda lista como candidato aislado, sin activar ni registrar la ruta del backend.
+- Próximo bloque real: implementar contratos de sesión autorizada/cesta y conectar a ellos el montaje; no fabricar una identidad desde el alias ni usar datos de demostración como reales.
+- CI del SHA `049d254` seguía en curso al inicio de este bloque; CI del nuevo HEAD pendiente. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
