@@ -250,3 +250,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - También se aplica tras la aceptación explícita de un cambio de precio; no se muestra éxito si la confirmación posterior falla.
 - `tests/customer-confirmation-flow.test.mjs` añade regresiones para denegación de autorización y error tras consentimiento. No modifica el contrato HTTP ni habilita el endpoint.
 - CI del nuevo SHA pendiente; PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 33. Endurecimiento de entrada y ciclo de vida del candidato cliente (24-10-2026)
+
+- `customer-authorized-request.mjs` ahora rechaza campos top-level basados en getters/accesores y copia el objeto de petición antes de entregarlo al transporte, evitando que mutaciones posteriores del objeto de cesta alteren la selección pendiente.
+- `customer-authorized-confirmation.mjs` no notifica resultados al host después de `destroy()`.
+- Añadida regresión en `tests/customer-authorized-request.test.mjs` para getter hostil y aislamiento de snapshot.
+- En la última consulta, Sabora CI del bloque de composición `75672ac` terminó SUCCESS (`40089237433`); Bootstrap seguía en curso. Los workflows de `ffd3046` seguían en curso. Nuevo HEAD pendiente de CI.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
