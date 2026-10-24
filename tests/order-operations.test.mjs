@@ -137,7 +137,7 @@ test('repository denies role-incompatible transitions without any SQL call', asy
   ]) {
     await assert.rejects(repository.transitionLine(query, {
       actorId, role, lineId, targetStatus, correlationId: 'transition_003',
-    }), /invalid_order_line_transition/);
+    }), role === 'unknown' ? /invalid_order_line_transition/ : /order_operations_forbidden/);
   }
   assert.equal(queries, 0);
 });
