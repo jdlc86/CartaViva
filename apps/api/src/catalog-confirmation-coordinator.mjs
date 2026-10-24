@@ -8,6 +8,7 @@ import {issueCatalogRepriceAcceptance} from './catalog-reprice-acceptance.mjs';
 
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+const validQuantity=v=>Number.isSafeInteger(v)&&v>=1&&v<=10000;
 const validUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const own=(v,k)=>Object.prototype.hasOwnProperty.call(v,k);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
@@ -86,8 +87,7 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
       'requestKey','qrToken','customerSessionToken'].some(k=>!own(input,k))||
      !validKey(input.requestKey)||!validId(input.tableId)||!validId(input.visitId)||
      !validId(input.actorId)||!validId(input.basketId)||
-     !validId(input.itemId)||!Number.isSafeInteger(input.quantity)||
-     input.quantity<1||
+     !validId(input.itemId)||!validQuantity(input.quantity)||
      typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512||
      typeof input.customerSessionToken!=='string'||
      input.customerSessionToken.length<32||input.customerSessionToken.length>512)
