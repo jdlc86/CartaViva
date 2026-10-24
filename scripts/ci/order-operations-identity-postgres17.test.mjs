@@ -51,11 +51,15 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
           `SELECT has_table_privilege($1, 'sabora.' || $2, 'SELECT') AS can_read,
                   has_table_privilege($1, 'sabora.' || $2, 'INSERT') AS can_insert,
                   has_table_privilege($1, 'sabora.' || $2, 'UPDATE') AS can_update,
-                  has_table_privilege($1, 'sabora.' || $2, 'DELETE') AS can_delete`,
+                  has_table_privilege($1, 'sabora.' || $2, 'DELETE') AS can_delete,
+                  has_table_privilege($1, 'sabora.' || $2, 'TRUNCATE') AS can_truncate,
+                  has_table_privilege($1, 'sabora.' || $2, 'REFERENCES') AS can_reference,
+                  has_table_privilege($1, 'sabora.' || $2, 'TRIGGER') AS can_trigger`,
           [role, resource]
         );
         assert.deepEqual(privileges.rows, [{
           can_read: false, can_insert: false, can_update: false, can_delete: false,
+          can_truncate: false, can_reference: false, can_trigger: false,
         }], `unexpected privileges for ${role} on ${resource}`);
       }
       const rpc = await admin.query(
