@@ -132,3 +132,13 @@ test('connected view blocks duplicate clicks and keeps delivery and cancellation
   assert.match(source, /Entrega y cancelación siguen bloqueadas/);
   assert.doesNotMatch(source, /targetStatus:\s*['"]delivered['"]|targetStatus:\s*['"]cancelled['"]/);
 });
+
+test('kitchen UI preserves correlation for an uncertain transition retry and guards stale reads', () => {
+  const source = readFileSync(new URL('../src/views/OrdersView.tsx', import.meta.url), 'utf8');
+  assert.match(source, /previousAttempt\?\.targetStatus === action\.targetStatus/);
+  assert.match(source, /previousAttempt\.correlationId/);
+  assert.match(source, /transitionAttempts\.current\.set\(line\.lineId/);
+  assert.match(source, /transitionAttempts\.current\.delete\(line\.lineId\)/);
+  assert.match(source, /epoch !== readEpoch\.current/);
+  assert.match(source, /epoch === historyEpoch\.current/);
+});
