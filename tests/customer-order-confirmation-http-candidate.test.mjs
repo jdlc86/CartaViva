@@ -269,3 +269,13 @@ test('HTTP candidate rejects accessor-backed repricing decision without leaking 
  assert.equal(r.statusCode,503);
  assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
 });
+
+test('HTTP maps thrown accessor message to generic 503',async t=>{
+ const thrown={};
+ Object.defineProperty(thrown,'message',{get(){throw Error('accessor_executed');}});
+ const app=create(async()=>{throw thrown;});
+ t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',payload:{requestKey:'request-001'}});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+});
