@@ -98,3 +98,9 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - El test crea **solo dentro de ese contenedor** dos LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS independientes y ejecuta el preflight real. Concede únicamente USAGE de esquema en el contenedor para comprobar denegación directa de lectura de reintentos y ejecución de RPC operacional sin GRANT.
 - No se crea ninguna identidad ni se cambia permiso en Supabase o VPS operativo. No se concede permiso operativo a los roles CI.
 - El nuevo HEAD debe pasar Sabora CI y Bootstrap antes de considerarse validado.
+
+## Endurecimiento del preflight de identidad SQL
+
+- El preflight exige además `NOINHERIT`, ausencia de membresías PostgreSQL y ausencia de `CREATEROLE`, `CREATEDB` y `REPLICATION`. Un LOGIN no es suficiente si puede asumir privilegios por membresía o administrar roles.
+- Las pruebas negativas de cada atributo se ejecutan en la suite Node; la prueba PG17 desechable usa identidades `NOINHERIT` sin membresías.
+- No implica otorgamiento de grants ni activación del endpoint.
