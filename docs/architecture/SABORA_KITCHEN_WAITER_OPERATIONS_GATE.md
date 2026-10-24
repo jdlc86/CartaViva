@@ -180,3 +180,12 @@ requieren un identificador válido de aviso. La prueba unitaria cubre
 estados no adyacentes, avisos ausentes o sobrantes e identificadores de
 línea inválidos. Estas garantías no autorizan por sí mismas la RPC ni
 el montaje HTTP.
+
+## Compatibilidad del harness PostgreSQL 17
+
+Tras incorporar el rechazo anticipado por rol en el repositorio, las pruebas
+reales de PG17 se actualizaron para suministrar el rol de cocina en la
+invocación directa del repositorio y esperar el rechazo local de una
+transición de sala incompatible. Esto preserva las comprobaciones de rollback,
+concurrencia e idempotencia sin retirar la defensa previa al SQL. La corrección
+responde a los fallos del workflow `40102104928` y `40102104861`.
