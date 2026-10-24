@@ -299,3 +299,72 @@ Las capturas PNG versionadas existentes pertenecen a la entrega anterior y no se
 ### Siguiente bloque recomendado
 
 Cuando el backend autorice y monte la lectura de mesas, crear la composición runtime mínima que implemente `AdminTablesGateway` y probar `401/403/503`, expiración y revocación sin relajar la validación frontend. Después, aplicar el mismo patrón a una proyección administrativa de catálogo **solo si** aparece su contrato versionado; no activar mutaciones de mesa o QR como parte de esa integración de lectura.
+
+---
+
+## Hito posterior — lectura del catálogo publicado (2026-10-24)
+
+### Referencia y alcance
+
+- Rama aislada: `codex/sabora-management-tables-workspace`; PR Draft #5 con base `feat/sabora-pnpm-bootstrap`.
+- Base remota comprobada antes de editar: `a79a3edf8fd603a8b3694e91fbc6ddac78d50d14`. Su avance desde `8297a71` no introduce diferencia de árbol respecto al punto de bifurcación de esta rama.
+- Commit funcional: `c057550ae14fca392423f3c89c27fc9855ab2831` (`feat(management): add published catalog read workspace`).
+- Alcance exclusivo: `apps/management/**` y este handoff. No se modifican API, cliente, PostgreSQL, migraciones, workflows ni el PR paralelo #4.
+
+El hito utiliza el contrato ya versionado por `createVerifiedAdminCatalogReader`: envelope `version: 1`, `scope: 'published'` y elementos públicos `id`, `name`, `category`, `priceCents`, `available` y `allergens`. No generaliza esta lectura a borradores ni usa la ruta pública no montada como si fuese autenticación administrativa.
+
+### Funcionalidad implementada
+
+1. Puerto inyectable `AdminCatalogGateway`; el entrypoint distribuido no lo instancia y no contiene `fetch`, credenciales ni persistencia del navegador.
+2. Validación cerrada del envelope y de cada plato: objetos de datos planos, allowlist exacta, UUID único, nombre acotado, categorías documentadas por el DTO vigente, céntimos enteros no negativos, disponibilidad booleana y alérgenos acotados.
+3. Rechazo previo a lectura de propiedades accesoras en platos y arrays de alérgenos; las respuestas inválidas no producen una vista parcial.
+4. Estados desconectado, carga, error recuperable, vacío y datos disponibles. La carga ocurre al entrar y el reintento es explícito, sin polling ni reintentos ocultos.
+5. Exploración maestro-detalle del catálogo publicado, selección accesible, búsqueda local por nombre/categoría/alérgeno y filtros locales de categoría.
+6. Precio presentado desde céntimos mediante formato EUR; agotado permanece visible y marcado como no disponible.
+7. Categorías visibles derivadas únicamente de los platos publicados recibidos. `Todos` se conserva como filtro virtual y no se representa como registro persistido.
+8. La ficha identifica que la fotografía no forma parte de la proyección v1. Borrador, creación, retirada y publicación continúan mediante controles deshabilitados.
+9. El estado global sólo anuncia «lectura parcial» si se inyecta una proyección de mesas o catálogo; por defecto la compilación sigue en modo no operativo.
+
+### Archivos del hito
+
+- `apps/management/src/catalog-read-model.js` y `.d.ts`: gateway, DTO versionado, validación cerrada, búsqueda y formato monetario.
+- `apps/management/src/views/CatalogView.tsx`: ciclo de lectura, estados, filtros, selección, detalle publicado y agrupación de categorías.
+- `apps/management/src/main.tsx`: inyección opcional e independiente del gateway de catálogo.
+- `apps/management/src/style.css`: lista, filtros y categorías responsive mediante tokens aprobados.
+- `apps/management/tests/catalog-read-model.test.mjs`: contrato válido, payloads hostiles, una sola solicitud, cancelación, filtros y precios.
+- `apps/management/tests/ui-contract.test.mjs`: guardias de desconexión por defecto, estados y bloqueo de mutaciones.
+
+### Validaciones
+
+| Comando o comprobación | Resultado |
+| --- | --- |
+| `pnpm --filter @sabora/management test` | PASS, 24/24 |
+| `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS |
+| `pnpm --filter @sabora/management build` | PASS fuera del sandbox local; 41 módulos, JS 280,37 kB y CSS 41,90 kB antes de gzip |
+| `pnpm test` | PASS, 603/603 |
+| `pnpm build` | PASS, API + PWA cliente + PWA gestión |
+| Navegador 1440 × 1000 y 390 × 844 | PASS, Catálogo desconectado, controles privilegiados bloqueados y sin overflow de página |
+| Consola del navegador | PASS, 0 errores y 0 avisos |
+| `git diff --check` del bloque funcional | PASS |
+
+El primer intento de build dentro del sandbox de Windows falló porque esbuild no podía leer `vite.config.ts`; la repetición autorizada fuera de ese aislamiento terminó correctamente. No es un fallo de TypeScript ni del bundle.
+
+### Dependencias antes de conectar el gateway
+
+1. Una composición runtime administrativa que obtenga identidad verificada y membresía ADMIN durable en servidor. El navegador no puede aportar rol, actor ni titularidad como autoridad.
+2. Un contrato HTTP autenticado y versionado que entregue exactamente `{version: 1, scope: 'published', items}`. La ruta pública candidata `GET /api/v1/catalog` devuelve un array y permanece sin montar; no implementa este gateway administrativo.
+3. Pool/login de lectura catalogado con mínimos privilegios, preflight de identidad efectivo y activación expresamente autorizada. Las pruebas candidatas no aprovisionan producción.
+4. Tratamiento documentado de `401`, `403`, `503`, revocación y expiración al construir el adaptador HTTP; no se deduce en la vista.
+5. Contratos separados para borradores, edición de categorías, disponibilidad, retirada y publicación, con autorización, control de versión, auditoría e idempotencia. Esta lectura no habilita ninguna mutación.
+6. Extensión explícita del DTO si se desea mostrar una imagen publicada. La interfaz no fabrica URL, asset ni relación con el Estudio de imágenes.
+
+### Límites y operaciones no realizadas
+
+- No se añadió transporte HTTP, autenticación, datos de demostración, polling, caché, almacenamiento local ni imagen ficticia.
+- No se conectaron borradores ni acciones editoriales y no se reutilizó la lectura pública como autorización administrativa.
+- No se modificaron backend, cliente, PostgreSQL, Supabase operativo, VPS, Fleetia, servicios Google ni otros repositorios.
+- No se hizo merge ni despliegue. El PR permanece Draft.
+
+### Siguiente bloque recomendado
+
+Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que existan montajes runtime autorizados y contratos HTTP coincidentes, con pruebas de `401/403/503` y revocación. Si esos gates continúan cerrados, el siguiente bloque frontend debe limitarse a otra proyección versionada que ya exista; no activar escrituras ni inventar DTOs para Resumen, Equipo o Catálogo editorial.
