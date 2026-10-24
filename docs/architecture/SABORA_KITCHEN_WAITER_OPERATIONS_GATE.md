@@ -116,3 +116,13 @@ La función es **opt-in**, no está importada por `server.mjs`, y no abre ni
 configura conexiones. El bootstrap operativo sigue bloqueado por los grants,
 las políticas RLS y el contrato de autorización pendientes. La composición
 histórica no debe utilizarse como bypass del nuevo gate de activación.
+
+## Eliminación de bypass de composición
+
+La función síncrona de registro `registerOrderOperationsFromPools` pasa a ser
+**privada del módulo**. La única exportación que registra rutas desde pools es
+`registerVerifiedOrderOperationsFromPools`, que requiere preflight de identidad
+SQL previo. Las pruebas de composición usan la exportación verificada y
+comprueban que la variante sin verificación no se exporta. El servidor
+operativo continúa sin importar este módulo; no se habilita el flujo hasta
+superar la puerta de permisos RLS y autenticación documentada.
