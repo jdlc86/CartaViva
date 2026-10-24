@@ -36,7 +36,8 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
    return result;
   }
   if([200,201].includes(response.status)){
-   if(result.status!=='confirmed'&&result.status!=='replayed'||
+   if((response.status===201&&result.status!=='confirmed')||
+      (response.status===200&&result.status!=='replayed')||
       !validUuid(result.orderId))
     throw Error('confirmation_unexpected_response');
    return Object.freeze({status:result.status,orderId:result.orderId});
