@@ -187,3 +187,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-confirmation-flow.test.mjs` verifica flujo integrado, rechazo, fallo de red y segundo cambio de revisión, sin llamadas externas. **CI del nuevo SHA pendiente**.
 - La integración es **candidata aislada**, no una pantalla montada en el runtime de la PWA ni una autorización de despliegue. Quedan por conectar los componentes con sesión real y revisar accesibilidad visual/teclado y roles/SQL.
 - PR #2 Draft. Sin merge, VPS, Fleetia ni Supabase operativo.
+
+## 25. Protección del flujo cliente ante navegación y resultados HTTP tardíos (24-10-2026)
+
+- Se añade control de generación al orquestador `packages/customer-consent/src/customer-confirmation-flow.mjs`: si la PWA desmonta la vista mientras espera red, un `409` tardío no puede volver a abrir el diálogo ni emitir eventos. `decline()` se bloquea durante la primera confirmación en vuelo.
+- `tests/customer-confirmation-flow.test.mjs` añade dos pruebas de carreras: destrucción durante `fetch` pendiente y rechazo durante envío pendiente. Se preservan las pruebas de aceptación explícita, reaceptación y no duplicación.
+- CI del SHA anterior `ac827037` seguía `in_progress` en la última consulta; el SHA nuevo requiere sus propios resultados. No considerar cerrado hasta ambos workflows verdes.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
