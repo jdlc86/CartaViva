@@ -172,3 +172,26 @@ test('pre-submit basket readiness getter is rejected without execution',async()=
  assert.equal(sends,0);
  app.destroy();
 });
+
+test('visit authorization revoked between snapshot and send blocks HTTP',async()=>{
+ const {document,container}=dom();let contexts=0,sends=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>({...context,canOrder:++contexts===1}),
+  readBasket:()=>basket,createRequestKey:()=> 'request_12345678',
+  onOutcome:()=>{},fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+ assert.equal(contexts,2);
+ assert.equal(sends,0);
+ app.destroy();
+});
+test('session token rotation before send blocks HTTP',async()=>{
+ const {document,container}=dom();let contexts=0,sends=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>({...context,customerSessionToken:++contexts===1?
+   context.customerSessionToken:'r'.repeat(32)}),
+  readBasket:()=>basket,createRequestKey:()=> 'request_12345678',
+  onOutcome:()=>{},fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+ assert.equal(sends,0);
+ app.destroy();
+});
