@@ -37,3 +37,9 @@ Comparación GitHub contra `feat/sabora-pnpm-bootstrap`:
 ## Seguridad operativa
 
 Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejecutado despliegue, alterado credenciales, tocado el VPS compartido ni modificado recursos de Fleetia.
+
+## Avance de integración aislada — primera fase (24-10-2026)
+
+- Se han trasladado desde PR #4 a **esta rama aislada** cuatro módulos API opt-in, dos suites Node, migración candidata, gate documental y dos verificaciones PostgreSQL 17. No se ha importado ni montado el código desde `server.mjs`; no hay grants operativos ni despliegue.
+- Se ha corregido al trasladar el coordinador un límite de confianza: los argumentos de página/petición no pueden sobrescribir `actorId` ni `role` verificados. El spread ahora coloca el contexto de personal al final. Pendiente añadir regresión explícita y verificar CI.
+- Los scripts PG17 trasladados todavía no se han conectado a los workflows; su presencia no equivale a ejecución ni certificación. La integración de vistas PR #5 sigue pendiente.
