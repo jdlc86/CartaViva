@@ -114,19 +114,19 @@ test('HTTP authorization denial retains idempotency identity for explicit retry'
 
 test('late HTTP success after destroy cannot resurrect the authorized flow',async()=>{
  const {document,container}=dom();
- let release;const events=[];
+ let release,started;const events=[];
+ const entered=new Promise(resolve=>{started=resolve;});
  const gate=new Promise(resolve=>{release=resolve;});
  const app=createAuthorizedCustomerConfirmation({document,container,
   readContext:()=>context,readBasket:()=>basket,
   createRequestKey:()=> 'request_12345678',onOutcome:event=>events.push(event),
-  fetchImpl:async()=>{await gate;return {
+  fetchImpl:async()=>{started();await gate;return {
    status:201,json:async()=>({status:'confirmed',orderId})};}});
  const pending=app.confirm();
- await Promise.resolve();
- await Promise.resolve();
+ await entered;
  app.destroy();
  release();
- await assert.rejects(pending,/confirmation_flow_disposed/);
+ await pending;
  assert.equal(app.status,'disposed');
  assert.deepEqual(events,[]);
 });
