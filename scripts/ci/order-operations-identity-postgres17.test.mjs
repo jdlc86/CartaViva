@@ -275,6 +275,30 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     } finally {
       await admin.query('DROP FUNCTION sabora.sabora_ci_preflight_definer()');
     }
+    // A direct EXECUTE grant is dangerous: the SQL signature accepts an
+    // actor UUID supplied by the caller. The startup gate must reject it
+    // even when no private table privileges were granted.
+    await admin.query(
+      'GRANT EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) TO sabora_ci_operations_identity'
+    );
+    try {
+      const direct = await admin.query(
+        `SELECT has_function_privilege($1,
+          'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
+          'EXECUTE') AS can_execute`, [operationsRole]
+      );
+      assert.equal(direct.rows[0].can_execute, true);
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query(
+        'REVOKE EXECUTE ON FUNCTION sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text) FROM sabora_ci_operations_identity'
+      );
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
