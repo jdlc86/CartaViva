@@ -118,6 +118,29 @@ test('repository returns a bounded kitchen projection without private identifier
   assert.equal(Object.hasOwn(board.items[0], 'sessionId'), false);
 });
 
+test('repository rejects SQL board rows outside verified role or requested filter', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    order_id: orderId, line_id: lineId, table_number: 12,
+    customer_label: 'Mesa Ana', confirmed_at: confirmedAt, grouping: 'first',
+    line_number: 1, category: 'main', name: 'Arroz', quantity: 2,
+    status: 'ready', notification_id: notificationId,
+    notification_created_at: confirmedAt, notification_acknowledged_at: null,
+  };
+  for (const [role, status, returned] of [
+    ['kitchen', null, 'picked_up'],
+    ['waiter', null, 'confirmed'],
+    ['waiter', null, 'preparing'],
+    ['admin', 'ready', 'confirmed'],
+    ['kitchen', 'preparing', 'ready'],
+  ]) {
+    await assert.rejects(repository.listBoard(async () => ({
+      rows: [{...base, status: returned}],
+    }), {actorId, role, status, limit: 10, cursor: null}),
+    /invalid_order_operations_sql_result/);
+  }
+});
+
 test('repository blocks role-incompatible projections before SQL', async () => {
   const repository = createOrderOperationsRepository();
   let queries = 0;
