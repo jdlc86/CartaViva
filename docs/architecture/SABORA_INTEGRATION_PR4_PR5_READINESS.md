@@ -66,3 +66,10 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - `ManagementApp` admite ahora `operationsGateway?: OrderOperationsGateway` inyectado desde fuera. Sin gateway la vista permanece desconectada y no se realizan operaciones; no hay creación de credenciales ni transporte implícito.
 - Los flujos de lectura, transición y consulta de historial siguen sujetos a autenticación, RLS y grants de mínimos privilegios pendientes. Esta integración UI **no** habilita runtime por sí misma.
 - Validación del HEAD final pendiente de GitHub Actions; mantener PR #7 Draft y no desplegar.
+
+## Cierre de integración y endurecimiento de lecturas
+
+- Sobre `56d1a75b7352e9538bba3ed0e73ec7ece4f0be8c` los dos workflows finalizaron **SUCCESS**: Sabora CI #1814 y Bootstrap #1788. Integración PR #4 + PR #5 validada en ese SHA.
+- Se añadió protección contra respuestas tardías en la vista de cocina: los refrescos de tablero y solicitudes de historial solo pueden publicar el resultado de su generación vigente. El cambio de gateway y el desmontaje invalidan las lecturas del tablero en vuelo.
+- Estas correcciones posteriores requieren **su propio CI verde** antes de declarar el nuevo HEAD validado.
+- El gateway y las rutas siguen sin activación runtime, sin grants y sin despliegue.
