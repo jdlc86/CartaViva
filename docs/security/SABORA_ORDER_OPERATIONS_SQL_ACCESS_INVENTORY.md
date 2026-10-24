@@ -98,3 +98,13 @@ y ausencia de `CREATE` para ambos logins técnicos. El smoke SQL del candidato
 incluye `TRUNCATE`, `REFERENCES` y `TRIGGER` en la denegación a `PUBLIC`,
 `anon` y `authenticated` sobre la tabla de correlaciones. Estas comprobaciones
 se ejecutan únicamente en PostgreSQL 17 desechable de CI.
+
+## Barrido de tablas fuera del inventario
+
+Además de las 98 comprobaciones de los siete recursos conocidos, el harness
+PostgreSQL 17 recorre `pg_class` y `pg_namespace` para detectar concesiones
+accidentales a cualquiera de los dos logins técnicos sobre **cualquier tabla,
+vista, vista materializada, tabla particionada o tabla externa** del esquema
+`sabora`. Se comprueban los siete privilegios de tabla. El barrido se ejecuta
+antes del GRANT temporal de prueba; cualquier resultado no vacío bloquea CI.
+No es una concesión de acceso positivo.
