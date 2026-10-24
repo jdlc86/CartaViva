@@ -31,6 +31,11 @@ async function inspect(pool, expectedRole) {
               role.rolreplication AS can_replicate,
               role.rolconnlimit AS connection_limit,
               role.rolvaliduntil AS password_valid_until,
+              has_schema_privilege(current_user, 'sabora', 'USAGE') AS schema_usage,
+              has_schema_privilege(current_user, 'sabora', 'CREATE') AS schema_create,
+              has_function_privilege(current_user,
+                'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
+                'EXECUTE') AS candidate_rpc_execute,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -47,6 +52,8 @@ async function inspect(pool, expectedRole) {
         row.inherits_roles !== false || row.can_create_role !== false ||
         row.can_create_db !== false || row.can_replicate !== false ||
         row.has_role_memberships !== false ||
+        row.schema_usage !== true || row.schema_create !== false ||
+        row.candidate_rpc_execute !== false ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
