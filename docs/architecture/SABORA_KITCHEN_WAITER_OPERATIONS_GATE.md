@@ -153,3 +153,11 @@ sin interfaz requerida o con credenciales/URL indistinguibles. La entrada
 pública sigue siendo únicamente la composición asíncrona verificada; no se
 montan endpoints en `server.mjs`. La refactorización no concede permisos ni
 modifica la semántica del contrato HTTP.
+
+## Matriz de regresión del aislamiento
+
+Las pruebas de composición cubren pools ausentes, métodos SQL ausentes,
+identidad de usuario repetida y cadena de conexión repetida. Cada rechazo
+comprueba ausencia de consultas SQL, conexiones y registro de rutas HTTP.
+Estas pruebas no sustituyen el preflight de roles reales ni los ensayos de
+permisos positivos en PostgreSQL 17.
