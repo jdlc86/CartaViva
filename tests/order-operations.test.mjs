@@ -156,6 +156,27 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
+test('repository rejects impossible SQL transition results and missing pickup notifications', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    updated_order_id: orderId, updated_line_id: lineId,
+    previous_status: 'preparing', current_status: 'ready',
+    repeated: false, event_id: eventId, notification_id: notificationId,
+  };
+  for (const [targetStatus, override] of [
+    ['ready', {previous_status: 'confirmed'}],
+    ['ready', {notification_id: null}],
+    ['picked_up', {previous_status: 'ready', current_status: 'picked_up', notification_id: null}],
+    ['preparing', {previous_status: 'confirmed', current_status: 'preparing', notification_id: notificationId}],
+    ['ready', {updated_line_id: null}],
+  ]) {
+    await assert.rejects(repository.transitionLine(async () => ({
+      rows: [{...base, ...override}],
+    }), {actorId, role: 'admin', lineId, targetStatus, correlationId: 'transition_004'}),
+    /invalid_order_operations_sql_result/);
+  }
+});
+
 async function httpHarness({role = 'kitchen', operations} = {}) {
   const app = Fastify({logger: false});
   const forRoles = (allowed) => [async (request, reply) => {
