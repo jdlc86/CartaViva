@@ -20,7 +20,7 @@ BEGIN
 
   FOREACH v_role IN ARRAY ARRAY['public','anon','authenticated'] LOOP
     IF has_table_privilege(v_role,
-      'sabora.order_line_transition_requests','SELECT,INSERT,UPDATE,DELETE') THEN
+      'sabora.order_line_transition_requests','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
       RAISE EXCEPTION 'unexpected order operation table privilege for %', v_role;
     END IF;
     IF has_function_privilege(v_role,
