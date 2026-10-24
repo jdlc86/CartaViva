@@ -135,6 +135,27 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       {role_name: operationsRole, can_execute: false},
       {role_name: staffRole, can_execute: false},
     ].sort((a, b) => a.role_name.localeCompare(b.role_name)));
+    // A schema-wide inventory of routines prevents a future migration from
+    // silently exposing new SECURITY DEFINER functions to runtime logins.
+    // Only newly introduced definer routines are flagged here; the positive
+    // privilege design still needs its own explicit review.
+    const elevatedRoutines = await admin.query(
+      `SELECT routine.proname AS routine_name,
+              pg_catalog.pg_get_function_identity_arguments(routine.oid) AS arguments
+         FROM pg_catalog.pg_proc routine
+         JOIN pg_catalog.pg_namespace ns ON ns.oid = routine.pronamespace
+        WHERE ns.nspname = 'sabora'
+          AND routine.prosecdef
+          AND EXISTS (
+            SELECT 1 FROM pg_catalog.pg_roles roles
+             WHERE roles.rolname = ANY($1::text[])
+               AND has_function_privilege(roles.oid, routine.oid, 'EXECUTE')
+          )
+        ORDER BY routine.proname, arguments`,
+      [[staffRole, operationsRole]]
+    );
+    assert.deepEqual(elevatedRoutines.rows, [],
+      'technical login unexpectedly executes a SECURITY DEFINER routine');
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
