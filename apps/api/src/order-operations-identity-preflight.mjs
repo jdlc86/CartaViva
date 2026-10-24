@@ -33,6 +33,7 @@ async function inspect(pool, expectedRole) {
               role.rolvaliduntil AS password_valid_until,
               has_schema_privilege(current_user, 'sabora', 'USAGE') AS schema_usage,
               has_schema_privilege(current_user, 'sabora', 'CREATE') AS schema_create,
+              has_database_privilege(current_user, current_database(), 'CREATE') AS database_create,
               has_function_privilege(current_user,
                 'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
                 'EXECUTE') AS candidate_rpc_execute,
@@ -97,6 +98,7 @@ async function inspect(pool, expectedRole) {
         row.can_create_db !== false || row.can_replicate !== false ||
         row.has_role_memberships !== false ||
         row.schema_usage !== true || row.schema_create !== false ||
+        row.database_create !== false ||
         row.candidate_rpc_execute !== false ||
         row.candidate_is_invoker !== true ||
         row.forced_rls_transition_requests !== 1 ||
