@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
 import type {OrderOperationsGateway} from '../order-operations-gateway.js';
@@ -33,6 +33,7 @@ function visibleInWorkspace(line: OrderLineItem, workspace: OrderWorkspace) {
 }
 
 export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway | null}) {
+  const readEpoch = useRef(0);
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
@@ -43,22 +44,28 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const active = workspaces.find((item) => item.id === workspace) ?? workspaces[0];
 
   const load = useCallback(async () => {
-    if (!gateway) return;
+    const epoch = ++readEpoch.current;
+    if (!gateway) { setBoard(null); setPhase('idle'); return; }
     setPhase('loading');
     setError(null);
     try {
       const result = await gateway.listBoard({limit: 100});
+      if (epoch !== readEpoch.current) return;
       setBoard(result);
       setPhase('ready');
       if (result.role === 'waiter') setWorkspace('floor');
     } catch {
+      if (epoch !== readEpoch.current) return;
       setBoard(null);
       setError('No se pudo recuperar el estado confirmado. Reintenta cuando la conexión esté disponible.');
       setPhase('error');
     }
   }, [gateway]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { readEpoch.current += 1; };
+  }, [load]);
 
   const items = useMemo(() => board?.items.filter((line) => visibleInWorkspace(line, workspace)) ?? [],
     [board, workspace]);
