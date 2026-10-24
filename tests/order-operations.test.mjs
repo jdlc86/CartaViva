@@ -64,6 +64,27 @@ test('coordinator rejects identity and membership mismatch before opening SQL tr
   assert.equal(transactions, 0);
 });
 
+test('coordinator rejects malformed verified actor context without opening a transaction', async () => {
+  let transactions = 0;
+  const operations = createOrderOperationsCoordinator({
+    repository: {
+      verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {},
+    },
+    withTransaction: async () => { transactions++; },
+  });
+  for (const invalid of [
+    {verifiedIdentity: {userId: actorId}, verifiedStaff: {userId: 1, role: 'kitchen'}},
+    {verifiedIdentity: {userId: actorId}, verifiedStaff: {userId: null, role: 'kitchen'}},
+    {verifiedIdentity: {userId: actorId}, verifiedStaff: {userId: 'invalid', role: 'kitchen'}},
+    {verifiedIdentity: [], verifiedStaff: {userId: actorId, role: 'kitchen'}},
+    {verifiedIdentity: {userId: actorId}, verifiedStaff: []},
+    {verifiedIdentity: {userId: actorId}, verifiedStaff: {userId: actorId, role: 'root'}},
+  ]) {
+    await assert.rejects(operations.listBoard(invalid, {}), /order_operations_forbidden/);
+  }
+  assert.equal(transactions, 0);
+});
+
 test('repository returns a bounded kitchen projection without private identifiers', async () => {
   const repository = createOrderOperationsRepository();
   const queries = [];
