@@ -3,6 +3,7 @@
 import {createAuthorizedCustomerRequestReader} from './customer-authorized-request.mjs';
 import {createCustomerRequestKeyRegistry} from './customer-request-key-registry.mjs';
 import {createCustomerConfirmationFlow} from './customer-confirmation-flow.mjs';
+import {validateCustomerConfirmationRequest} from './customer-authorized-request.mjs';
 export function createAuthorizedCustomerConfirmation({
  readContext,readBasket,createRequestKey,fetchImpl,document,container,onOutcome,clock
 }={}){
@@ -43,7 +44,20 @@ export function createAuthorizedCustomerConfirmation({
      return d&&d.enumerable&&Object.hasOwn(d,'value')?d.value:undefined;
     };
     const revision=ownValue('revision');
-    if(ownValue('basketId')!==request.basketId||
+    let sameLine=false;
+    try{
+     const candidate=validateCustomerConfirmationRequest({
+      ...request,itemId:ownValue('itemId'),selection:ownValue('selection'),
+      quantity:ownValue('quantity')
+     });
+     const canonical=value=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&
+      !Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
+     sameLine=candidate.itemId===request.itemId&&
+      candidate.quantity===request.quantity&&
+      canonical(candidate.selection)===canonical(request.selection);
+    }catch{sameLine=false;}
+
+    if(!sameLine||ownValue('basketId')!==request.basketId||
        !Number.isSafeInteger(revision)||
        keys.identity!==request.basketId+':'+revision||
        ownValue('confirmable')!==true||
