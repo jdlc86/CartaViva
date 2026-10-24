@@ -140,3 +140,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se amplía `tests/customer-confirmation-kitchen-handoff.test.mjs` con pruebas HTTP→coordinador de caducidad del token firmado y de su no transferibilidad entre actor/cesta, incluso cuando la visita alternativa está autorizada. Ambos casos devuelven `409 acceptance_required` y dejan pedidos, líneas de cocina y ledger vacíos.
 - La prueba parametriza el reloj del coordinador y el contexto de visita, sin esperar tiempo real ni abrir conexiones externas. El token de aceptación sigue sin publicarse en el DTO HTTP, pendiente de contrato aprobado.
 - No se activa ruta en `server.mjs`; PR #2 Draft; sin merge ni despliegue.
+
+## 19. DTO público candidato de cambio de precio y consentimiento explícito (24-10-2026)
+
+- El coordinador emite un token HMAC temporal, ligado a actor/cesta/plato/revisión/selección/cantidad/snapshot, **solo** tras autorizar la visita y bloquear catálogo y antes de escribir el pedido.
+- La ruta HTTP candidata devuelve `409 acceptance_required` con comparación monetaria en céntimos, revisiones, token y expiración en una lista cerrada `repricing.schemaVersion=1`; nunca serializa evidencia ni snapshot privados.
+- Nuevas pruebas Fastify verifican DTO, no filtración de datos internos y secuencia 409 → aceptación explícita con token → 201 y una sola línea de cocina. Se mantienen los casos de expiración, falsificación y no transferibilidad.
+- Contrato detallado en `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md`. La PWA todavía no tiene pantalla aprobada de consentimiento y la ruta sigue opt-in sin montar. **No activar en producción**.
+- CI del SHA nuevo pendiente; PR #2 Draft, sin merge, VPS, Supabase operativo ni Fleetia.
