@@ -141,6 +141,40 @@ test('repository rejects SQL board rows outside verified role or requested filte
   }
 });
 
+test('repository validates ordering, cursor and overflow row before returning a board', async () => {
+  const repository = createOrderOperationsRepository();
+  const base = {
+    order_id: orderId, line_id: lineId, table_number: 12,
+    customer_label: 'Mesa Ana', confirmed_at: confirmedAt, grouping: 'first',
+    line_number: 1, category: 'main', name: 'Arroz', quantity: 2,
+    status: 'ready', notification_id: notificationId,
+    notification_created_at: confirmedAt, notification_acknowledged_at: null,
+  };
+  const second = {
+    ...base, line_id: '60000000-0000-4000-8000-000000000006',
+    line_number: 2,
+  };
+  const options = {actorId, role: 'kitchen', status: 'ready', limit: 1, cursor: null};
+  const valid = await repository.listBoard(async () => ({rows: [base, second]}), options);
+  assert.equal(valid.items.length, 1);
+  assert.deepEqual(valid.nextCursor, {
+    confirmedAt: confirmedAt.toISOString(), orderId, lineNumber: 1,
+  });
+  for (const rows of [
+    [second, base],
+    [base, {...second, line_id: lineId}],
+    [base, {...second, confirmed_at: new Date('2026-10-24T09:59:00.000Z')}],
+    [base, {...second, confirmed_at: 'not-a-date'}],
+  ]) {
+    await assert.rejects(repository.listBoard(async () => ({rows}), options),
+      /invalid_order_operations_sql_result/);
+  }
+  await assert.rejects(repository.listBoard(async () => ({rows: [base]}), {
+    ...options,
+    cursor: {confirmedAt: confirmedAt.toISOString(), orderId, lineNumber: 1},
+  }), /invalid_order_operations_sql_result/);
+});
+
 test('repository blocks role-incompatible projections before SQL', async () => {
   const repository = createOrderOperationsRepository();
   let queries = 0;
