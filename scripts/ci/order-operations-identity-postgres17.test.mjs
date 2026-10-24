@@ -235,6 +235,26 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    // Column-scoped SELECT does not imply a table-wide SELECT grant.
+    // It must nevertheless fail the runtime preflight (otherwise a technical
+    // login could read a private column despite the table privilege matrix).
+    await admin.query('GRANT SELECT (user_id) ON sabora.staff_members TO sabora_ci_operations_identity');
+    try {
+      const columnOnly = await admin.query(
+        `SELECT has_table_privilege($1, 'sabora.staff_members', 'SELECT') AS table_select,
+                has_column_privilege($1, 'sabora.staff_members', 'user_id', 'SELECT') AS column_select`,
+        [operationsRole]
+      );
+      assert.deepEqual(columnOnly.rows, [{table_select: false, column_select: true}]);
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query('REVOKE SELECT (user_id) ON sabora.staff_members FROM sabora_ci_operations_identity');
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // An unrelated private sequence must also trigger the startup gate.
     // All objects are ephemeral in this disposable PostgreSQL 17 container.
     await admin.query('CREATE SEQUENCE sabora.sabora_ci_preflight_sequence');
