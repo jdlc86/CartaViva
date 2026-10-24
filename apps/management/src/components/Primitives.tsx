@@ -55,11 +55,52 @@ export function EmptyState({
   );
 }
 
-export function ConnectionNotice({children}: {children: ReactNode}) {
+export function ConnectionNotice({
+  children,
+  title = 'Acceso administrativo no habilitado.',
+  tone = 'warning',
+}: {
+  children: ReactNode;
+  title?: string;
+  tone?: 'warning' | 'brand';
+}) {
   return (
-    <div className="connection-notice" role="status">
-      <Icon name="lock" size={18}/>
-      <p><strong>Acceso administrativo no habilitado.</strong> {children}</p>
+    <div className={`connection-notice connection-notice--${tone}`} role="status">
+      <Icon name={tone === 'brand' ? 'info' : 'lock'} size={18}/>
+      <p><strong>{title}</strong> {children}</p>
+    </div>
+  );
+}
+
+export function LoadingState({title, description}: {title: string; description: string}) {
+  return (
+    <div className="loading-state" role="status" aria-live="polite">
+      <span className="loading-state__mark" aria-hidden="true"/>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+    </div>
+  );
+}
+
+export function ErrorState({
+  title,
+  description,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="error-state" role="alert">
+      <span className="error-state__icon"><Icon name="alert" size={22}/></span>
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+        {onRetry ? <button className="button" type="button" onClick={onRetry}>Reintentar lectura</button> : null}
+      </div>
     </div>
   );
 }

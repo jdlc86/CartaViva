@@ -36,6 +36,31 @@ test('management source has no network, browser persistence or Google runtime in
   assert.doesNotMatch(combined, /qrcode|qr-code|data:image\/[^;]+;base64/i);
 });
 
+test('navigation is deep-linkable and the tables transport remains injected and disconnected by default', () => {
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
+  assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
+  assert.match(main, /window\.addEventListener\('popstate'/);
+  assert.match(main, /<ManagementApp\/>/);
+  assert.doesNotMatch(main, /<ManagementApp tablesGateway=/);
+  assert.match(tables, /gateway\?: AdminTablesGateway/);
+  assert.match(tables, /No se conserva una respuesta parcial/);
+  assert.match(tables, /no existe sondeo automático/i);
+});
+
+test('tables cover read states while every mutation and QR operation stays locked', () => {
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  for (const state of ['disconnected', 'loading', 'ready', 'error']) {
+    assert.match(tables, new RegExp(`'${state}'`));
+  }
+  for (const label of ['ABIERTA', 'PAUSADA', 'CERRADA']) assert.match(tables, new RegExp(label));
+  assert.match(tables, /Cargar más mesas/);
+  assert.match(tables, /Filtrar mesas cargadas/);
+  assert.match(tables, /state-control[\s\S]*disabled/);
+  assert.match(tables, /La lectura no expone secretos QR/);
+});
+
 test('privileged actions use the shared disabled control', () => {
   const primitives = readFileSync(new URL('../src/components/Primitives.tsx', import.meta.url), 'utf8');
   assert.match(primitives, /button className="button button--locked" type="button" disabled/);
