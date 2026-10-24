@@ -54,3 +54,13 @@ No crea roles, políticas ni permisos.
 
 Ninguna concesión se considera aprobada por este documento. No se modifica
 Fleetia, el VPS ni la base de datos operativa.
+
+## Prueba automatizada de matriz negativa
+
+`order-operations-identity-postgres17.test.mjs` inspecciona mediante
+`has_table_privilege` las cuatro operaciones `SELECT`, `INSERT`, `UPDATE` y
+`DELETE` de **las siete tablas anteriores** para los dos logins técnicos
+creados exclusivamente en el contenedor CI. También comprueba que ninguno
+puede ejecutar la RPC invoker. Esto detecta concesiones accidentales mientras
+no exista el diseño de acceso positivo; no demuestra todavía que el runtime
+pueda operar con una identidad de mínimos privilegios.
