@@ -303,3 +303,16 @@ que el privilegio global de tabla sigue siendo falso y exige que el preflight
 rechace la identidad; finalmente revoca la concesión y comprueba recuperación.
 Esta prueba se ejecuta exclusivamente sobre PostgreSQL desechable de CI.
 No constituye autorización para grants positivos ni para montar rutas.
+
+## Gate de regresión de activación (hito CI)
+
+`tests/order-operations-activation-gate.test.mjs` añade cuatro verificaciones
+al `pnpm test` general: el servidor de producción no importa ni registra las
+rutas candidatas; la migración conserva la RPC con parámetro de actor y sus
+revocaciones, `SECURITY INVOKER` y FORCE RLS; la composición pública ejecuta
+el preflight antes de registrar rutas; y el preflight sigue rechazando permisos
+sobre RPC, tablas, secuencias y funciones privilegiadas. Son **guardias de
+regresión estática**, complementarias a los ensayos reales de PostgreSQL 17,
+no pruebas de vinculación criptográfica del actor. Una futura activación
+exigirá rediseñar deliberadamente estos controles junto con el contrato SQL,
+las pruebas de suplantación y la autorización expresa correspondiente.
