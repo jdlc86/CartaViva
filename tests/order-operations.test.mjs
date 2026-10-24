@@ -218,3 +218,25 @@ test('HTTP board validates cursors and maps authorization, conflict and private 
   assert.equal(unavailable.statusCode, 503);
   assert.equal(unavailable.body.includes('secret'), false);
 });
+
+test('untrusted operation inputs cannot replace verified actor or staff role', async () => {
+  const observed = [];
+  const repository = {
+    async verifyMembership(_query, staff) { observed.push(['membership', staff]); },
+    async listBoard(_query, input) { observed.push(['board', input]); return {version: 1, items: []}; },
+    async transitionLine(_query, input) { observed.push(['transition', input]); return {version: 1}; },
+    async listHistory(_query, input) { observed.push(['history', input]); return {version: 1}; },
+  };
+  const operations = createOrderOperationsCoordinator({
+    repository,
+    withTransaction: async work => work(async () => ({rows: []})),
+  });
+  const forged = {actorId: '90000000-0000-4000-8000-000000000009', role: 'admin'};
+  await operations.listBoard(context('waiter'), {...forged, limit: 10});
+  await operations.transitionLine(context('waiter'), {...forged, lineId, targetStatus: 'picked_up'});
+  await operations.listHistory(context('waiter'), {...forged, orderId});
+  for (const [, input] of observed) {
+    assert.equal(input.actorId, actorId);
+    assert.equal(input.role, 'waiter');
+  }
+});
