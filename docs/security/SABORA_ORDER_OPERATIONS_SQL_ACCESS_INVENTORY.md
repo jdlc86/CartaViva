@@ -264,3 +264,13 @@ vinculado de forma verificable y no falsificable ante PostgreSQL, con
 autorización transaccional, RLS y pruebas de suplantación directa por SQL.
 Las rutas continúan sin montarse; tampoco se autoriza un despliegue ni
 modificaciones de Supabase operativo.
+
+## Verificación del contrato estructural en preflight
+
+La puerta de arranque comprueba también que la RPC candidata conserve
+`SECURITY INVOKER` y que la tabla de correlaciones
+`order_line_transition_requests` mantenga `ENABLE ROW LEVEL SECURITY`
+y `FORCE ROW LEVEL SECURITY`, tal como exige la migración existente.
+Cualquier desviación rechaza el arranque; no se asume que
+`order_line_events` tenga FORCE RLS porque su migración no lo declara.
+Esta verificación es negativa y no autoriza GRANTs ni el montaje de rutas.
