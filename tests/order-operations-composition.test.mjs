@@ -59,6 +59,36 @@ test('verified composition rejects equal declared SQL roles before querying', as
   assert.deepEqual(events, []);
 });
 
+test('all malformed pool configurations fail before connections and route registration', async () => {
+  const events = [];
+  const makePool = (user, connectionString) => ({
+    options: {user, connectionString},
+    query() { events.push('query'); },
+    async connect() { events.push('connect'); throw Error('unexpected_connection'); },
+  });
+  const staffPool = makePool('sabora_staff_reader', 'postgres://staff');
+  const operationsPool = makePool('sabora_operations', 'postgres://operations');
+  const app = {
+    get() { events.push('get'); },
+    post() { events.push('post'); },
+  };
+  const base = {staffPool, operationsPool,
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations'};
+  for (const override of [
+    {staffPool: null},
+    {operationsPool: null},
+    {staffPool: {options: {}, query: null}},
+    {operationsPool: {options: {}, connect: null}},
+    {operationsPool: makePool('sabora_staff_reader', 'postgres://operations')},
+    {operationsPool: makePool('sabora_operations', 'postgres://staff')},
+  ]) {
+    await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+      ...base, ...override,
+    }), /invalid_order_operations_pool_isolation/);
+    assert.deepEqual(events, [], 'a rejected pool must have no SQL or HTTP side effects');
+  }
+});
+
 test('operations remain opt-in and never import into the production server', () => {
   const source = readFileSync(new URL('../apps/api/src/server.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /order-operations-composition|registerOrderOperationsFromPools|registerOrderOperationsHttp/);
