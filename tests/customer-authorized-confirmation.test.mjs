@@ -126,7 +126,7 @@ test('late HTTP success after destroy cannot resurrect the authorized flow',asyn
  await Promise.resolve();
  app.destroy();
  release();
- await pending;
+ await assert.rejects(pending,/confirmation_flow_disposed/);
  assert.equal(app.status,'disposed');
  assert.deepEqual(events,[]);
 });
