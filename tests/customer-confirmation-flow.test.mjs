@@ -146,3 +146,19 @@ test('client refuses mismatched HMAC token expiry before displaying consent',asy
  assert.equal(events.at(-1).type,'failed');
  flow.destroy();
 });
+
+test('consent rejects accessor-backed repricing response without executing getters',async()=>{
+ const {document,container}=dom();const events=[];
+ const bad={...challenge,repricing:{...challenge.repricing}};
+ Object.defineProperty(bad.repricing,'currentTotalCents',{
+  enumerable:true,get(){throw Error('getter_executed');}
+ });
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:409,json:async()=>bad
+  })});
+ await assert.rejects(flow.confirm(request),/invalid_repricing_challenge/);
+ assert.equal(container.children.length,0);
+ assert.equal(events.at(-1).type,'failed');
+ flow.destroy();
+});
