@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import type {AdminCatalogGateway} from './catalog-read-model';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
@@ -18,7 +19,13 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
   {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
 ];
 
-export function ManagementApp({tablesGateway}: {tablesGateway?: AdminTablesGateway}) {
+export function ManagementApp({
+  tablesGateway,
+  catalogGateway,
+}: {
+  tablesGateway?: AdminTablesGateway;
+  catalogGateway?: AdminCatalogGateway;
+}) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
   const focusAfterNavigation = useRef(false);
@@ -54,7 +61,7 @@ export function ManagementApp({tablesGateway}: {tablesGateway?: AdminTablesGatew
   };
 
   const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
     : area === 'comandas' ? <OrdersView/>
     : <TeamView/>;
@@ -68,8 +75,8 @@ export function ManagementApp({tablesGateway}: {tablesGateway?: AdminTablesGatew
         </button>
         <div className="header-status">
           <span className="status-dot" aria-hidden="true"/>
-          <span>{tablesGateway ? 'Mesas en solo lectura' : 'Sin acceso a datos'}</span>
-          <strong>{tablesGateway ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
+          <span>{tablesGateway || catalogGateway ? 'Proyecciones en solo lectura' : 'Sin acceso a datos'}</span>
+          <strong>{tablesGateway || catalogGateway ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
         </div>
       </header>
 
