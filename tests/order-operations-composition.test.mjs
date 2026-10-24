@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {registerOrderOperationsFromPools} from '../apps/api/src/order-operations-composition.mjs';
+import {registerOrderOperationsFromPools, registerVerifiedOrderOperationsFromPools} from '../apps/api/src/order-operations-composition.mjs';
 
 const pool = (user, connectionString) => ({
   options: {user, connectionString},
@@ -28,4 +28,24 @@ test('operations remain opt-in and never import into the production server', () 
   assert.doesNotMatch(source, /order-operations-composition|registerOrderOperationsFromPools|registerOrderOperationsHttp/);
   const composition = readFileSync(new URL('../apps/api/src/order-operations-composition.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(composition, /process\.env|new Pool\(|DATABASE_URL|SUPABASE_URL/);
+});
+
+
+test('verified composition refuses route registration before SQL identity preflight', async () => {
+  const registrations = [];
+  const app = {
+    get(...args) { registrations.push(['get', ...args]); },
+    post(...args) { registrations.push(['post', ...args]); },
+  };
+  const staffPool = pool('sabora_staff_reader', 'postgres://staff');
+  const operationsPool = pool('sabora_operations', 'postgres://operations');
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    staffPool, operationsPool,
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+  }), /invalid_order_operations_sql_client/);
+  assert.equal(registrations.length, 0);
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
+  }), /invalid_order_operations_sql_identity/);
+  assert.equal(registrations.length, 0);
 });
