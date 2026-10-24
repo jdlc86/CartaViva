@@ -126,3 +126,13 @@ SQL previo. Las pruebas de composición usan la exportación verificada y
 comprueban que la variante sin verificación no se exporta. El servidor
 operativo continúa sin importar este módulo; no se habilita el flujo hasta
 superar la puerta de permisos RLS y autenticación documentada.
+
+## Corrección de regresión CI
+
+Los workflows del commit `951d710` detectaron un fallo en el test de composición:
+la prueba había migrado al gate verificado sin suministrar `staffRole` ni
+`operationsRole`, por lo que rechazaba el contrato de identidad antes de
+comprobar aislamiento. Se añadieron ambos roles al fixture y una comprobación
+inmediata de aislamiento en el gate asíncrono antes de ejecutar SQL. El nuevo
+HEAD requiere validación de ambos workflows; no se considera validado por el
+simple cambio de fixture.
