@@ -30,6 +30,7 @@ export function mountCustomerOrderConfirmation({
     event.result?.status==='replayed'?'Pedido ya registrado.':
     'No se ha confirmado el pedido. Revisa su estado.';
   }
+  if(!busy&&flow.status==='idle')button.disabled=false;
   onState(event);
  };
  const flow=createCustomerConfirmationFlow({fetchImpl,document,container,clock,onOutcome:report});
