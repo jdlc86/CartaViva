@@ -39,6 +39,13 @@ function registerOrderOperationsFromPools(app, {
 // The existing synchronous composition remains unmounted by server.mjs.
 export async function registerVerifiedOrderOperationsFromPools(app, options = {}) {
   const {staffPool, operationsPool, staffRole, operationsRole} = options;
+  if (!staffPool || !operationsPool || staffPool === operationsPool ||
+      typeof staffPool.query !== 'function' || typeof operationsPool.connect !== 'function' ||
+      (staffPool.options?.user && staffPool.options.user === operationsPool.options?.user) ||
+      (staffPool.options?.connectionString &&
+        staffPool.options.connectionString === operationsPool.options?.connectionString)) {
+    throw Error('invalid_order_operations_pool_isolation');
+  }
   await preflightOrderOperationsIdentities({
     staffPool, operationsPool, staffRole, operationsRole,
   });
