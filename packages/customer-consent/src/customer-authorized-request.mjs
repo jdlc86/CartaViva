@@ -24,7 +24,9 @@ const validSelection=(v,depth=0,seen=new Set())=>{
  if(keys.length>128||(Array.isArray(v)&&keys.length!==v.length))return false;
  seen.add(v);
  const valid=keys.every(k=>{
-  if(typeof k!=='string'||k.length>128||['__proto__','prototype','constructor'].includes(k))return false;
+  if(typeof k!=='string'||k.length>128||
+     ['__proto__','prototype','constructor','toJSON'].includes(k)||
+     (Array.isArray(v)&&(!/^(0|[1-9][0-9]*)$/.test(k)||Number(k)>=v.length)))return false;
   const d=Object.getOwnPropertyDescriptor(v,k);
   return !!d&&d.enumerable&&own(d,'value')&&validSelection(d.value,depth+1,seen);
  });
