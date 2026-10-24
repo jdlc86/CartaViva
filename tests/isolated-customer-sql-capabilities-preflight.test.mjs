@@ -6,8 +6,9 @@ const readerLogin='sabora_catalog_login';
 const writerLogin='sabora_order_login';
 const row=(login,more={})=>({
  effective_role:login,login_role:login,can_login:true,
- bypass_rls:false,superuser:false,can_set_catalog_reader:login===readerLogin,
- ...(login===readerLogin?{direct_catalog_execute:false,scoped_catalog_execute:true}:{}),
+ bypass_rls:false,superuser:false,
+ create_db:false,create_role:false,replication:false,inherit_role:false,can_set_catalog_reader:login===readerLogin,
+ ...(login===readerLogin?{direct_catalog_execute:false,scoped_catalog_execute:true}:{direct_catalog_execute:false}),
  ...more
 });
 const pool=(result,events=[])=>({connect:async()=>({
@@ -35,6 +36,12 @@ test('capability gate rejects dangerous catalog and writer privileges',async()=>
   [row(readerLogin),row(writerLogin,{can_set_catalog_reader:true})],
   [row(readerLogin),row(writerLogin,{bypass_rls:true})],
   [row(readerLogin),row(writerLogin,{superuser:true})],
+  [row(readerLogin,{create_db:true}),row(writerLogin)],
+  [row(readerLogin,{create_role:true}),row(writerLogin)],
+  [row(readerLogin,{replication:true}),row(writerLogin)],
+  [row(readerLogin,{inherit_role:true}),row(writerLogin)],
+  [row(readerLogin),row(writerLogin,{direct_catalog_execute:true})],
+  [row(readerLogin),row(writerLogin,{inherit_role:true})],
   [row(readerLogin,{login_role:'wrong_login'}),row(writerLogin)]
  ];
  for(const [reader,writer] of cases)
