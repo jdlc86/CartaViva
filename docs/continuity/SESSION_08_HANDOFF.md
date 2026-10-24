@@ -127,3 +127,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Casos: primera confirmación devuelve 201 y proyecta una sola línea `confirmed` sin aviso ni evento; replay de misma clave devuelve 200 y el mismo pedido sin segunda línea; reutilización de clave con cantidad diferente devuelve 409 y no duplica cocina; fallo de ledger después de proyectar línea revierte pedido/línea; visita revocada devuelve 403 sin crear comanda.
 - Complementa el smoke real `catalog-confirmation-kitchen-durability-smoke.sql` y el contrato `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md`. **No simula ni afirma recepción por cocina, despacho ni autorización de personal del PR #4.**
 - CI del SHA nuevo pendiente de confirmación. Sin merge ni activación, sin Fleetia/VPS/Supabase operativo.
+
+## 17. Cierre del handoff HTTP y puerta de consentimiento de precios (24-10-2026)
+
+- SHA `427c7c21ec9d989cc599f8ff44310850e157f558`: **Sabora CI 40080756766 SUCCESS** y **Bootstrap 40080756789 SUCCESS**. El bloque de regresión HTTP→coordinador→proyección de cocina queda cerrado en CI.
+- Ampliación de `tests/customer-confirmation-kitchen-handoff.test.mjs`: si la publicación cambia de revisión, la ruta devuelve `409 acceptance_required` y **no** crea pedido/línea/ledger; el token firmado para la nueva revisión permite una única confirmación; un token falsificado no llega a cocina.
+- Estas pruebas solo ejercitan el consentimiento en el candidato HTTP y un repositorio transaccional simulado; la consistencia real de SQL sigue cubierta por los smokes PostgreSQL 17. **La respuesta HTTP aún no ofrece un DTO público aprobado para presentar al comensal la comparación de precios ni entregar un token seguro**: no activar el flujo PWA como si estuviera completo.
+- CI del nuevo HEAD pendiente. PR #2 Draft; no merge, despliegue ni recursos de Fleetia/VPS/Supabase operativo.
