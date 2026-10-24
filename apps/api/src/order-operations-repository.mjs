@@ -230,6 +230,12 @@ export function createOrderOperationsRepository() {
         [orderId, limit]
       ));
       if (rows.length > limit) throw Error('invalid_order_operations_sql_result');
+      if (rows.some(row =>
+        (row?.from_status !== 'confirmed' || row?.to_status !== 'preparing') &&
+        (row?.from_status !== 'preparing' || row?.to_status !== 'ready') &&
+        (row?.from_status !== 'ready' || row?.to_status !== 'picked_up'))) {
+        throw Error('invalid_order_operations_sql_result');
+      }
       const events = rows.map((row) => {
         if (!UUID.test(row?.event_id) || !UUID.test(row?.line_id) ||
             !Number.isSafeInteger(row?.line_number) || row.line_number < 1 ||
