@@ -379,3 +379,52 @@ test('coordinator constructor rejects getter-backed or inherited repository meth
   /invalid_confirmation_coordinator/);
  assert.equal(getters,0);
 });
+
+test('idempotent replay survives reordered request fields and rotated credentials',async()=>{
+ let persistedFingerprint=null;
+ let writes=0;
+ let catalogReads=0;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(persistedFingerprint===null){
+    persistedFingerprint=requestFingerprint;
+    return null;
+   }
+   return {requestFingerprint:persistedFingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  },
+  lockCatalog:async()=>{
+   calls.push('catalog');catalogReads++;
+   return {publishedRevision:1,snapshot,available:true};
+  },
+  persist:async(_query,args)=>{
+   calls.push('persist');writes++;
+   return {orderId:'00000000-0000-4000-8000-000000000005',
+    evidence:args.evidence};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ const reversed=Object.fromEntries(Object.entries(input).reverse());
+ reversed.qrToken='r'.repeat(48);
+ reversed.customerSessionToken='t'.repeat(48);
+ assert.equal((await confirm(reversed)).status,'replayed');
+ assert.equal(writes,1);
+ assert.equal(catalogReads,1);
+ assert.deepEqual(calls,['BEGIN','context','replay','catalog','previous',
+  'persist','COMMIT','BEGIN','context','replay','COMMIT']);
+});
+test('idempotency key cannot replay a changed quantity even after context lock',async()=>{
+ let fingerprint;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(!fingerprint){fingerprint=requestFingerprint;return null;}
+   return {requestFingerprint:fingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ await assert.rejects(confirm({...input,quantity:2}),/order_idempotency_conflict/);
+ assert.deepEqual(calls.slice(-4),['BEGIN','context','replay','ROLLBACK']);
+});
