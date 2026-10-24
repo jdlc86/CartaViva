@@ -80,6 +80,25 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       );
       assert.deepEqual(schema.rows, [{can_use: true, can_create: false}]);
     }
+    // Check the two independent logins against the whole private schema.
+    // A grant on an unrelated table would bypass the seven-resource inventory.
+    const unexpectedGrants = await admin.query(
+      `SELECT roles.rolname AS role_name, tables.relname AS table_name,
+              privilege.privilege AS privilege
+         FROM pg_catalog.pg_roles roles
+         CROSS JOIN pg_catalog.pg_class tables
+         JOIN pg_catalog.pg_namespace ns ON ns.oid = tables.relnamespace
+         CROSS JOIN (VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'),
+                            ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')) privilege(privilege)
+        WHERE roles.rolname = ANY($1::text[])
+          AND ns.nspname = 'sabora'
+          AND tables.relkind IN ('r','p','v','m','f')
+          AND has_table_privilege(roles.oid, tables.oid, privilege.privilege)
+        ORDER BY roles.rolname, tables.relname, privilege.privilege`,
+      [[staffRole, operationsRole]]
+    );
+    assert.deepEqual(unexpectedGrants.rows, [],
+      'technical login unexpectedly accesses a table outside the explicit inventory');
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
