@@ -428,3 +428,25 @@ test('idempotency key cannot replay a changed quantity even after context lock',
  await assert.rejects(confirm({...input,quantity:2}),/order_idempotency_conflict/);
  assert.deepEqual(calls.slice(-4),['BEGIN','context','replay','ROLLBACK']);
 });
+
+test('idempotent replay reauthorizes context and denies a revoked visit',async()=>{
+ let fingerprint;
+ let lockCount=0;
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');lockCount++;
+   return {authorized:lockCount===1,canOrder:true,
+    tableId:input.tableId,visitId:input.visitId,
+    basketId:input.basketId,actorId:input.actorId,sessionId:'session-1'};
+  },
+  lookupIdempotency:async(_query,{requestFingerprint})=>{
+   calls.push('replay');
+   if(!fingerprint){fingerprint=requestFingerprint;return null;}
+   return {requestFingerprint:fingerprint,
+    result:{orderId:'00000000-0000-4000-8000-000000000005'}};
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.deepEqual(calls.slice(-3),['BEGIN','context','ROLLBACK']);
+});
