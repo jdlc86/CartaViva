@@ -10,6 +10,7 @@ export function createCustomerRequestKeyRegistry({createKey}={}){
  if(typeof createKey!=='function')throw Error('invalid_request_key_registry');
  let current=null;
  let pending=false;
+ let unresolved=false;
  return Object.freeze({
   forBasket(basket){
    if(!plain(basket)||!ownData(basket,'basketId')||
@@ -18,7 +19,7 @@ export function createCustomerRequestKeyRegistry({createKey}={}){
     throw Error('invalid_request_key_basket');
    const identity=basket.basketId+':'+basket.revision;
    if(current?.identity===identity)return current.key;
-   if(pending)throw Error('request_key_pending_confirmation');
+   if(pending||unresolved)throw Error('request_key_pending_confirmation');
    const key=createKey();
    if(!validKey(key))throw Error('invalid_request_key');
    current=Object.freeze({identity,key});
@@ -29,11 +30,14 @@ export function createCustomerRequestKeyRegistry({createKey}={}){
    pending=true;
   },
   end(){pending=false;},
+  markUnresolved(){if(!current)throw Error('request_key_pending_confirmation');unresolved=true;},
+  resolve(){unresolved=false;},
+  get unresolved(){return unresolved;},
   get identity(){return current?.identity??null;},
   get pending(){return pending;},
   get key(){return current?.key??null;},
   reset(){
-   if(pending)throw Error('request_key_pending_confirmation');
+   if(pending||unresolved)throw Error('request_key_pending_confirmation');
    current=null;
   }
  });
