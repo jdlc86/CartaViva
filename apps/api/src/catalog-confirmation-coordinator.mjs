@@ -4,6 +4,7 @@
 // persist() must atomically consume acceptance and insert immutable evidence.
 import {decideCatalogLineConfirmation} from './catalog-confirmation-decision.mjs';
 import {assertDisplayedQuoteMatchesConfirmation} from './catalog-displayed-quote-binding.mjs';
+import {issueCatalogRepriceAcceptance} from './catalog-reprice-acceptance.mjs';
 
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -139,7 +140,13 @@ export function createCatalogConfirmationCoordinator({withTransaction,repository
    assertDisplayedQuoteMatchesConfirmation({previous,currentEvidence:decision.evidence});
    if(decision.status==='acceptance_required'){
     // Read-only outcome: transaction commits without persisting an order.
-    return Object.freeze({status:'acceptance_required',decision});
+    const issued=issueCatalogRepriceAcceptance({
+     basketId:input.basketId,actorId:input.actorId,secretKey,nowMs,
+     itemId:input.itemId,publishedRevision:published.publishedRevision,
+     snapshot:published.snapshot,selection:input.selection,quantity:input.quantity
+    });
+    return Object.freeze({status:'acceptance_required',decision,
+     acceptance:Object.freeze({token:issued.token,expiresAt:issued.expiresAt})});
    }
    const result=await repository.persist(query,{
     context,requestKey,requestFingerprint,quoteId:previous.quoteId,
