@@ -136,3 +136,11 @@ comprobar aislamiento. Se añadieron ambos roles al fixture y una comprobación
 inmediata de aislamiento en el gate asíncrono antes de ejecutar SQL. El nuevo
 HEAD requiere validación de ambos workflows; no se considera validado por el
 simple cambio de fixture.
+
+## Pruebas de ausencia de efectos secundarios
+
+La suite de composición verifica explícitamente que un pool compartido o
+dos roles declarados idénticos provocan rechazo **antes** de consultar SQL
+y sin registrar rutas HTTP. Esta comprobación complementa el preflight
+positivo de identidad, no sustituye la revisión de grants/RLS. El acceso
+positivo y la activación continúan pendientes.
