@@ -428,6 +428,34 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         'REVOKE SELECT ON sabora.order_line_transition_requests FROM sabora_ci_operations_identity'
       );
     }
+    // Direct SQL actor impersonation is the critical activation blocker:
+    // arbitrary UUID parameters must not be accepted from either technical
+    // login, and denied calls must not produce operational side effects.
+    const beforeImpersonation = await admin.query(
+      `SELECT (SELECT count(*)::integer FROM sabora.order_line_events) AS events,
+              (SELECT count(*)::integer FROM sabora.pickup_notifications) AS notifications,
+              (SELECT count(*)::integer FROM sabora.order_line_transition_requests) AS retries`
+    );
+    for (const technicalPool of [staffPool, operationsPool]) {
+      for (const forgedActor of [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+      ]) {
+        await assert.rejects(technicalPool.query(
+          `SELECT * FROM sabora.transition_order_line_idempotent_candidate(
+            $1::uuid, $2::uuid, $3::text, $4::text)`,
+          [forgedActor, '00000000-0000-4000-8000-000000000003',
+            'preparing', 'forgedActorCorrelation01']
+        ), /permission denied/);
+      }
+    }
+    const afterImpersonation = await admin.query(
+      `SELECT (SELECT count(*)::integer FROM sabora.order_line_events) AS events,
+              (SELECT count(*)::integer FROM sabora.pickup_notifications) AS notifications,
+              (SELECT count(*)::integer FROM sabora.order_line_transition_requests) AS retries`
+    );
+    assert.deepEqual(afterImpersonation.rows, beforeImpersonation.rows,
+      'denied actor impersonation unexpectedly mutated durable operational records');
     const staffClient = await staffPool.connect();
     try {
       const role = await staffClient.query('SELECT current_user, session_user');
