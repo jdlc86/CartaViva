@@ -1,6 +1,10 @@
 // In-memory idempotency identity for one basket revision. Never persist tokens,
 // and never rotate the request key after an ambiguous network outcome.
 const validId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
+const ownData=(v,k)=>{const d=Object.getOwnPropertyDescriptor(v,k);
+ return !!d&&d.enumerable&&Object.hasOwn(d,'value');};
+const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
+ (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const validKey=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 export function createCustomerRequestKeyRegistry({createKey}={}){
  if(typeof createKey!=='function')throw Error('invalid_request_key_registry');
@@ -8,7 +12,8 @@ export function createCustomerRequestKeyRegistry({createKey}={}){
  let pending=false;
  return Object.freeze({
   forBasket(basket){
-   if(!basket||typeof basket!=='object'||!validId(basket.basketId)||
+   if(!plain(basket)||!ownData(basket,'basketId')||
+      !ownData(basket,'revision')||!validId(basket.basketId)||
       !Number.isSafeInteger(basket.revision)||basket.revision<1)
     throw Error('invalid_request_key_basket');
    const identity=basket.basketId+':'+basket.revision;
