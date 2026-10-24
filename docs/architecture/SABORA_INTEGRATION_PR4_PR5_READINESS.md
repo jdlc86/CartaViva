@@ -58,3 +58,11 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se han trasladado a esta rama aislada los modelos de lectura/paginación, controlador de respuestas concurrentes, navegación, vistas de Mesas y Catálogo, componentes compartidos, composición UI, estilos y pruebas de PR #5. Se conserva la naturaleza **solo lectura** y sin gateway autenticado runtime; las escrituras y QR continúan deshabilitados.
 - La hoja `style.css` fue tomada de PR #5 para preservar sus vistas; la integración de la UI operativa de PR #4 (OrdersView y estilos) **no** está hecha. Antes de incorporar OrdersView de PR #4, conciliar CSS por selectores y verificar regresiones visuales.
 - Este traslado es candidato sujeto a CI de HEAD; no declarar verde ni funcionalidad operativa hasta comprobar Actions. No se montaron rutas ni se realizaron merges/despliegues.
+
+## Integración de interfaz cocina/sala — tercera fase
+
+- Se han trasladado el gateway de operaciones inyectable, su modelo de estados/historial, las declaraciones TypeScript, la suite de comportamiento y la vista operativa de cocina/sala desde PR #4.
+- Se han añadido únicamente los selectores de estilo operativos ausentes a la hoja consolidada de PR #5; **no** se ha reemplazado la hoja completa con la versión antigua de PR #4.
+- `ManagementApp` admite ahora `operationsGateway?: OrderOperationsGateway` inyectado desde fuera. Sin gateway la vista permanece desconectada y no se realizan operaciones; no hay creación de credenciales ni transporte implícito.
+- Los flujos de lectura, transición y consulta de historial siguen sujetos a autenticación, RLS y grants de mínimos privilegios pendientes. Esta integración UI **no** habilita runtime por sí misma.
+- Validación del HEAD final pendiente de GitHub Actions; mantener PR #7 Draft y no desplegar.
