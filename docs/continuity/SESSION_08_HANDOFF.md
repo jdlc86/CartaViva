@@ -62,3 +62,14 @@ Antes de implementar:
 
 ## 8. Primera respuesta esperada de sesión 8
 Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger un bloque vertical completo y comenzar su implementación con autonomía. Priorizar resultados probados frente a informes de progreso repetitivos. Al finalizar, indicar commits, tests, CI y qué NO está operativo.
+
+
+## 9. Hito parcial: preflight SQL de capacidades, no activado (24-10-2026)
+
+- Se añade `apps/api/src/isolated-customer-sql-capabilities-preflight.mjs` con verificación opt-in y **solo lectura** de capacidades SQL para logins de catálogo y escritor separados.
+- Comprueba identidad efectiva y de sesión, `LOGIN`, ausencia de `SUPERUSER` y `BYPASSRLS`, permiso de `SET ROLE sabora_catalog_reader` únicamente para el lector, y ejecución de `sabora.read_published_catalog()` solo bajo el rol lector. Rechaza la ejecución directa por el login de catálogo.
+- El preflight falla cerrado y no devuelve errores internos SQL ni secretos. Las consultas no modifican datos ni permisos.
+- Pruebas añadidas: `tests/isolated-customer-sql-capabilities-preflight.test.mjs` (identidades, privilegios indebidos, fallos SQL y no apertura del escritor cuando falla el lector).
+- **Límite crítico:** este módulo NO está registrado en `server.mjs` ni en la composición verificada. NO certifica todavía todos los grants sobre tablas, políticas RLS efectivas, funciones del escritor ni PostgreSQL 17 real; requiere matriz SQL y pruebas en base desechable antes de conectarlo a producción.
+- Los tests añadidos son dobles de conexión: no deben presentarse como integración PG17. Verificar el estado de GitHub Actions del último SHA antes de declarar verde.
+- Sin cambios a gestión Codex, Supabase operativo, VPS, Fleetia, merge o despliegue.
