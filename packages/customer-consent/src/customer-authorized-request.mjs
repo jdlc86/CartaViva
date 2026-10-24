@@ -58,7 +58,7 @@ export function createAuthorizedCustomerRequestReader({readContext,readBasket,cr
   const [context,basket]=await Promise.all([readContext(),readBasket()]);
   if(!dataFields(context,['authorized','canOrder','tableId','visitId',
        'actorId','qrToken','customerSessionToken'])||
-     !dataFields(basket,['confirmable','basketId','revision','itemId',
+     !dataFields(basket,['confirmable','basketId','itemId',
        'selection','quantity'])||
      context.authorized!==true||context.canOrder!==true||
      basket.confirmable!==true)
