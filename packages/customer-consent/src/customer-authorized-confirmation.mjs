@@ -14,7 +14,7 @@ export function createAuthorizedCustomerConfirmation({
  const flow=createCustomerConfirmationFlow({fetchImpl,document,container,clock,
   onOutcome:event=>{
    if(event.type==='submitted'&&['confirmed','replayed'].includes(event.result?.status))settled=true;
-   onOutcome?.(event);
+   if(!disposed)onOutcome?.(event);
   }});
  let disposed=false;
  let active=false;
