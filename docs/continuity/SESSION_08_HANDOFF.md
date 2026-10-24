@@ -243,3 +243,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-authorized-confirmation.test.mjs`: envío autorizado, no duplicación, rearme explícito, repetición con la misma clave y bloqueo por sesión no autorizada.
 - **No integrado en `apps/client`**: aún no existen lectores de sesión y cesta autorizados. La transacción de servidor sigue siendo la autoridad; no montar con mocks en producción.
 - CI del nuevo SHA pendiente. PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 32. Clasificación segura de resultados HTTP en el flujo cliente (24-10-2026)
+
+- Corregido `customer-confirmation-flow.mjs`: respuestas de error del servidor (`403`, `503`, conflictos, etc.) se notifican como `failed`, **nunca** como `submitted`. Solo `confirmed/replayed` constituyen resultado confirmado.
+- También se aplica tras la aceptación explícita de un cambio de precio; no se muestra éxito si la confirmación posterior falla.
+- `tests/customer-confirmation-flow.test.mjs` añade regresiones para denegación de autorización y error tras consentimiento. No modifica el contrato HTTP ni habilita el endpoint.
+- CI del nuevo SHA pendiente; PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
