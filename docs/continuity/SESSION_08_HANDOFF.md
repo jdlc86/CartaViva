@@ -112,3 +112,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nueva regresión: el DTO público de confirmación no puede afirmar `kitchenReceived`, `dispatchId` ni `receiptAt` aunque un adaptador devuelva tales campos. Una confirmación persistida no acredita recepción por cocina.
 - **Próximo contrato pendiente de implementar, no inferido:** identificador de comanda/despacho independiente, revisión vigente, exclusión transaccional del despacho, acuse de recepción verificable por cocina y autorización por rol. Consultar el trabajo concurrente de cocina/camarero antes de diseñar migraciones o rutas. No activar el candidato HTTP sin el contrato económico de repricing y grants aprobados.
 - Nuevos cambios sujetos a CI del HEAD actual; no merge, no VPS, no Supabase operativo ni Fleetia.
+
+## 15. Integración entre ramas: frontera pedido→cocina contrastada con PR #4 (24-10-2026)
+
+- Se leyó el contrato real `docs/architecture/SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md` y la migración candidata del PR #4 (`codex/sabora-kitchen-waiter-operational`). El PR ya implementa las transiciones `confirmed→preparing→ready→picked_up`, avisos y correlaciones; **no duplicar ese trabajo** en la rama del escritor.
+- Nuevo documento `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md` registra responsabilidades, invariantes de handoff y criterios de aceptación antes de integrar ramas.
+- Se refuerza el smoke PG17 de confirmación: la línea recién creada debe estar en `confirmed` y no deben existir avisos de recogida ni eventos de transición antes de una acción autorizada del personal.
+- La recepción verificable de una comanda/despacho sigue siendo un hito separado del estado de línea `preparing`; no inventar un acuse ni marcar `picked_up` como entrega.
+- El bloque queda pendiente del CI del nuevo SHA. Sin merge ni activación de PR #4, sin despliegues ni cambios de Fleetia/VPS/Supabase operativo.
