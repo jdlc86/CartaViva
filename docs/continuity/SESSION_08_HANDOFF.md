@@ -499,3 +499,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se amplían los tests del lector de confirmación: revisiones de publicación cero, mayores que el entero seguro o expresadas en notación exponencial y snapshots ausentes deben producir catálogo no disponible, nunca confirmación implícita.
 - Se comprueba el rechazo de cotizaciones con importes negativos, descuentos superiores al subtotal, suma inconsistente, notación exponencial, importes fuera de rango seguro, revisión inválida o evidencia no-objeto. Un ítem inexistente no puede marcarse disponible.
 - Solo se añaden pruebas unitarias en `tests/catalog-confirmation-read-repository.test.mjs`; no se cambian contratos, migraciones ni rutas productivas. Verificar Sabora CI y Bootstrap del SHA final.
+
+## 68. Validación estricta del contexto de visita y credenciales (24-10-2026)
+
+- `catalog-visit-context-repository.mjs` ahora rechaza campos adicionales en los argumentos de autorización, además de sus protecciones existentes contra getters, prototipos y campos peligrosos. Se restringe el contrato a `tableId`, `visitId`, `actorId`, `basketId`, `qrToken` y `customerSessionToken`.
+- Nuevas regresiones para envolturas de respuesta de driver inválidas, contradicciones independientes de mesa/sesión/visita/actor y campos accessor adicionales tanto en entrada como en respuesta; no se ejecutan getters externos.
+- Se conserva el acceso únicamente desde el coordinador candidato sin ruta HTTP montada; el cambio no concede permisos, no modifica migraciones ni activa infraestructura. Verificar ambos workflows antes de cerrar.
