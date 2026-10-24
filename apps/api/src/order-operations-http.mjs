@@ -76,6 +76,11 @@ export function registerOrderOperationsHttp(app, {forRoles, operations} = {}) {
           new Date(query.afterConfirmedAt).toISOString() !== query.afterConfirmedAt))) {
       return reply.code(400).send({error: 'invalid_order_operation'});
     }
+    const role = request.verifiedStaff?.role;
+    if ((role === 'kitchen' && status === 'picked_up') ||
+        (role === 'waiter' && (status === 'confirmed' || status === 'preparing'))) {
+      return reply.code(403).send({error: 'forbidden'});
+    }
     try {
       const result = await operations.listBoard(requestContext(request), {
         status,
