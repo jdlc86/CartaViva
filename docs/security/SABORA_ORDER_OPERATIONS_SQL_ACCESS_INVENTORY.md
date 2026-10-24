@@ -199,3 +199,14 @@ RLS positivas y contrato SQL revisado. El harness PostgreSQL 17 efímero
 prueba que un `GRANT SELECT` accidental hace fallar el preflight y que
 revocarlo restaura el resultado esperado. No se conceden permisos operativos
 ni se modifica Supabase real.
+
+## Pruebas de concesiones accidentales en PostgreSQL 17 efímero
+
+El harness de identidades comprueba de forma independiente tres escaladas
+transitorias del login operativo: `CREATE` sobre el esquema `sabora`,
+`EXECUTE` sobre la función candidata de transición con actor parametrizado,
+y `SELECT` sobre `staff_members`. Cada concesión debe impedir el preflight;
+tras la revocación, el mismo par de identidades debe volver a superar la
+comprobación. Los permisos se conceden y revocan exclusivamente dentro del
+contenedor desechable de CI. Esta batería valida el rechazo de grants
+peligrosos, **no** una política positiva de acceso de producción.
