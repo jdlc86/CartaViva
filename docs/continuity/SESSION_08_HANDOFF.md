@@ -134,3 +134,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Ampliación de `tests/customer-confirmation-kitchen-handoff.test.mjs`: si la publicación cambia de revisión, la ruta devuelve `409 acceptance_required` y **no** crea pedido/línea/ledger; el token firmado para la nueva revisión permite una única confirmación; un token falsificado no llega a cocina.
 - Estas pruebas solo ejercitan el consentimiento en el candidato HTTP y un repositorio transaccional simulado; la consistencia real de SQL sigue cubierta por los smokes PostgreSQL 17. **La respuesta HTTP aún no ofrece un DTO público aprobado para presentar al comensal la comparación de precios ni entregar un token seguro**: no activar el flujo PWA como si estuviera completo.
 - CI del nuevo HEAD pendiente. PR #2 Draft; no merge, despliegue ni recursos de Fleetia/VPS/Supabase operativo.
+
+## 18. Consentimiento firmado: caducidad y aislamiento de actor/cesta (24-10-2026)
+
+- Se amplía `tests/customer-confirmation-kitchen-handoff.test.mjs` con pruebas HTTP→coordinador de caducidad del token firmado y de su no transferibilidad entre actor/cesta, incluso cuando la visita alternativa está autorizada. Ambos casos devuelven `409 acceptance_required` y dejan pedidos, líneas de cocina y ledger vacíos.
+- La prueba parametriza el reloj del coordinador y el contexto de visita, sin esperar tiempo real ni abrir conexiones externas. El token de aceptación sigue sin publicarse en el DTO HTTP, pendiente de contrato aprobado.
+- No se activa ruta en `server.mjs`; PR #2 Draft; sin merge ni despliegue.
