@@ -331,3 +331,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Pruebas de flujo nuevas: getters en `status` y `error`, getter anidado y `toJSON` hostil; no producen confirmación falsa ni serialización ejecutable.
 - El bloque anterior `045669b` superó ambos workflows. `bbccd75` seguía en ejecución al comenzar este bloque; el nuevo SHA aún requiere CI.
 - Candidato sin montar en PWA ni registrar ruta, PR #2 Draft, sin merge ni despliegue ni tocar Fleetia/VPS/Supabase operativo.
+
+## 44. DTO HTTP del servidor sin getters de adaptadores (24-10-2026)
+
+- `customer-order-confirmation-http-candidate.mjs` valida que los campos necesarios del resultado del coordinador (`status`, `result.orderId`, `decision`, campos económicos y `acceptance`) sean propiedades propias de datos antes de leerlos y de proyectar el DTO público.
+- La petición candidata rechaza propiedades top-level de acceso y símbolos antes de invocar `confirm`. El coordinador mantiene su validación recursiva y la transacción.
+- Dos pruebas Fastify nuevas comprueban respuestas 503 genéricas, sin ejecución de getters hostiles ni filtración de información, cuando el adaptador devuelve `orderId` o `currentTotalCents` ejecutables.
+- El commit `bbccd75` superó Sabora CI y Bootstrap; `7628cc5` seguía en ejecución al comienzo de este bloque. El nuevo SHA requiere CI.
+- Ruta candidata **no registrada** en `server.mjs`. PR #2 Draft; sin merge, despliegue ni tocar Fleetia, VPS o Supabase operativo.
