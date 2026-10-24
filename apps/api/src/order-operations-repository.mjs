@@ -265,7 +265,11 @@ export function createOrderOperationsRepository() {
             !Number.isSafeInteger(row?.line_number) || row.line_number < 1 ||
             typeof row?.name !== 'string' || row.name.trim().length === 0 ||
             !STATUSES.has(row?.from_status) || !STATUSES.has(row?.to_status) ||
-            !ROLES.has(row?.actor_role)) throw Error('invalid_order_operations_sql_result');
+            !ROLES.has(row?.actor_role) ||
+            (row.actor_role === 'waiter' && row.to_status !== 'picked_up') ||
+            (row.actor_role === 'kitchen' && row.to_status === 'picked_up')) {
+          throw Error('invalid_order_operations_sql_result');
+        }
         return Object.freeze({
           eventId: row.event_id,
           lineId: row.line_id,
