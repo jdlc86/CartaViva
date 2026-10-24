@@ -28,6 +28,16 @@ export function createAuthorizedCustomerConfirmation({
     const request=await readRequest();
     if(disposed)throw Error('confirmation_flow_disposed');
     keys.begin();
+    // Re-read the authoritative basket immediately before sending. If it
+    // changed while the session/request snapshot was assembled, fail closed.
+    const latest=await readBasket();
+    if(disposed)throw Error('confirmation_flow_disposed');
+    if(!latest||typeof latest!=='object'||
+       Object.getOwnPropertyDescriptor(latest,'basketId')?.value!==request.basketId||
+       !Number.isSafeInteger(Object.getOwnPropertyDescriptor(latest,'revision')?.value)||
+       keys.identity!==request.basketId+':'+Object.getOwnPropertyDescriptor(latest,'revision').value||
+       latest.confirmable!==true)
+     throw Error('customer_basket_changed_before_confirmation');
     const result=await flow.confirm(request);
     if(!disposed&&['confirmed','replayed'].includes(result?.status))settled=true;
     return result;
