@@ -113,6 +113,30 @@ export function createOrderOperationsRepository() {
         (status !== null && row?.status !== status))) {
         throw Error('invalid_order_operations_sql_result');
       }
+      // Validate the entire SQL page, including the overflow row used only to
+      // compute nextCursor. Reject malformed ordering and cursor regressions.
+      let previousKey = cursor === null ? null : [
+        cursor.confirmedAt, cursor.orderId.toLowerCase(), cursor.lineNumber,
+      ];
+      const seenLines = new Set();
+      for (const row of rows) {
+        const confirmedAt = asDate(row?.confirmed_at);
+        if (!UUID.test(row?.order_id) || !UUID.test(row?.line_id) ||
+            !Number.isSafeInteger(row?.line_number) || row.line_number < 1) {
+          throw Error('invalid_order_operations_sql_result');
+        }
+        const key = [confirmedAt, row.order_id.toLowerCase(), row.line_number];
+        if (previousKey && (key[0] < previousKey[0] ||
+            (key[0] === previousKey[0] && key[1] < previousKey[1]) ||
+            (key[0] === previousKey[0] && key[1] === previousKey[1] &&
+              key[2] <= previousKey[2]))) {
+          throw Error('invalid_order_operations_sql_result');
+        }
+        const lineKey = row.line_id.toLowerCase();
+        if (seenLines.has(lineKey)) throw Error('invalid_order_operations_sql_result');
+        seenLines.add(lineKey);
+        previousKey = key;
+      }
       const page = rows.slice(0, limit).map((row) => {
         if (!UUID.test(row?.order_id) || !UUID.test(row?.line_id) ||
             !Number.isSafeInteger(row?.table_number) || row.table_number < 1 ||
