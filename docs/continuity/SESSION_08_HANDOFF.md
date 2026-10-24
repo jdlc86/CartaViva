@@ -440,3 +440,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Añadida prueba de integración del coordinador candidato con dos confirmaciones consecutivas: la primera persiste con contexto autorizado; la segunda usa la misma clave y contenido, pero `lockContext` devuelve visita revocada.
 - El resultado exigido es `order_context_forbidden` con ROLLBACK, sin consultar ledger de idempotencia, catálogo ni volver a persistir. Un replay no elude la autorización actual bajo bloqueo.
 - Bloque 58 pendiente de resultado final de ambos workflows al comenzar; este SHA también requiere CI. No se monta ruta HTTP ni se toca la PWA de administración de Codex, VPS, Fleetia o Supabase operativo.
+
+## 60. Aislamiento de identidad y privacidad del ledger de replay (24-10-2026)
+
+- Bloque 58 (`3598454`) verificado con Sabora CI #1728 y Bootstrap #1708 SUCCESS. El bloque 59 (`324d354`) seguía en ejecución al iniciar esta sesión.
+- Suite ampliada del coordinador candidato: identidad ajena en mesa, visita, actor o cesta se rechaza bajo bloqueo antes de consultar el ledger; `canOrder=false` deniega también replays; un contexto sin autorización no llama a los adaptadores de ledger, catálogo, cotización ni escritura; una clave distinta no puede apropiarse de un replay anterior.
+- Las pruebas usan adaptadores aislados y verifican secuencias de BEGIN/ROLLBACK; no sustituyen las carreras SQL sobre PostgreSQL 17. Este SHA exige CI verde antes de considerar cerrado el bloque.
+- Sin merge, despliegue, registro de endpoint ni modificación de Fleetia, VPS, Supabase operativo o la PWA de administración de Codex.
