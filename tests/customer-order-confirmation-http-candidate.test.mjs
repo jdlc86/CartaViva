@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {registerCustomerOrderConfirmationRoute} from '../apps/api/src/customer-order-confirmation-http-candidate.mjs';
+import {registerCustomerOrderConfirmationRoute,failureCode} from '../apps/api/src/customer-order-confirmation-http-candidate.mjs';
 const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
 const Fastify=requireApi('fastify');
 const id='00000000-0000-4000-8000-000000000005';
@@ -270,12 +270,9 @@ test('HTTP candidate rejects accessor-backed repricing decision without leaking 
  assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
 });
 
-test('HTTP maps thrown accessor message to generic 503',async t=>{
+test('hostile error message accessor is never executed by classifier',()=>{
  const thrown={};
  Object.defineProperty(thrown,'message',{get(){throw Error('accessor_executed');}});
- const app=create(async()=>{throw thrown;});
- t.after(()=>app.close());
- const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',payload:{requestKey:'request-001'}});
- assert.equal(r.statusCode,503);
- assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+ assert.equal(failureCode(thrown),null);
+ assert.equal(failureCode(Error('order_context_forbidden')),'order_context_forbidden');
 });
