@@ -186,3 +186,16 @@ antes de registrar rutas. El harness PostgreSQL 17 concede únicamente
 `USAGE` de esquema a los logins efímeros antes de comprobar el preflight;
 no concede `EXECUTE` ni permisos de escritura. Se trata de una puerta
 negativa deliberada, no de habilitación positiva del servicio.
+
+## Preflight en tiempo de arranque: cero tablas privadas
+
+El gate de identidades inspecciona ahora el catálogo completo de tablas,
+vistas y tablas externas de `sabora`, para los siete privilegios de tabla.
+Rechaza el arranque si cualquiera de los dos logins técnicos puede ejercer
+alguno de ellos, incluso en una tabla no incluida en el inventario de siete
+recursos. Esta política de **cero concesiones** es temporal y deliberada:
+se mantendrá hasta contar con autorización verificable de actor, políticas
+RLS positivas y contrato SQL revisado. El harness PostgreSQL 17 efímero
+prueba que un `GRANT SELECT` accidental hace fallar el preflight y que
+revocarlo restaura el resultado esperado. No se conceden permisos operativos
+ni se modifica Supabase real.
