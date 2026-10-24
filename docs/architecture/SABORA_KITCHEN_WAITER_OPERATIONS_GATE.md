@@ -278,3 +278,11 @@ firma de la RPC del preflight, antes de producir el error interno de
 identidad. El harness acepta ambas formas de denegación, sin admitir una
 comprobación exitosa bajo el rol alternativo. La prueba continúa en la base
 de datos efímera de GitHub Actions, no en Supabase operativo.
+
+## Unicidad de identificadores del historial
+
+La proyección rechaza identificadores de evento repetidos en la respuesta,
+incluso si las filas afectadas pertenecen a líneas diferentes del mismo
+pedido. La comprobación complementa la continuidad por línea y evita
+presentar una historia duplicada como si fueran dos eventos durables.
+La garantía primaria de unicidad continúa correspondiendo a PostgreSQL.
