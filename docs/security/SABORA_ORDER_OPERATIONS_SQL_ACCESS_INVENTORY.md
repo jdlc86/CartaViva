@@ -141,3 +141,26 @@ y leer directamente `sabora.staff_members` antes de cualquier GRANT temporal.
 Ambas operaciones deben fallar por permisos. Esto prueba la frontera negativa
 a nivel de sesión SQL, pero no demuestra todavía la operación positiva de
 cocina y sala, que permanece bloqueada hasta diseñar y validar RLS y grants.
+
+## Hallazgo de diseño: identidad de actor en RPC invoker
+
+La función candidata recibe `p_actor_user_id` como argumento y consulta
+`staff_members` para comprobar rol y estado. Esta comprobación **no demuestra
+por sí sola que el UUID corresponda al usuario autenticado de la petición**:
+el login SQL operativo es una identidad técnica compartida. La ruta HTTP
+debe obtener el actor exclusivamente del token verificado y nunca del cuerpo
+del cliente; además, antes de conceder `EXECUTE`, se debe demostrar con
+pruebas que el contexto de identidad no puede falsificarse por una conexión
+SQL con el mismo login técnico.
+
+La validación positiva debe distinguir al menos estas dos amenazas:
+1. Un usuario HTTP no puede elegir el UUID de otro miembro activo.
+2. Un cliente SQL con el login operativo no puede invocar directamente la
+   función con un UUID de un actor más privilegiado para eludir la
+   autorización de negocio.
+
+Por tanto, **un GRANT EXECUTE a la función candidata sin vinculación
+criptográfica o verificable del actor es insuficiente**. Mantener denegado
+`EXECUTE` y no montar la ruta hasta resolver la vinculación del actor
+en el contrato y en pruebas reales. No se introduce una solución ad hoc
+basada únicamente en una variable de sesión controlable por el login.
