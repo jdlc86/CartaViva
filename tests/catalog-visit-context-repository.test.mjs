@@ -103,3 +103,44 @@ test('visit identity rows cannot invoke getters or inherit trusted fields',async
  }
  assert.equal(getterCalls,0);
 });
+
+test('authorization rejects invalid driver envelopes and does not infer an active visit',async()=>{
+ for(const response of [null,{}, {rows:null},{rows:{}},{rows:[{},{}]},
+  {rows:[null]},{rows:[[]]}]){
+  await assert.rejects(lock(async()=>response,input),
+   /invalid_catalog_visit_response/);
+ }
+});
+test('authorization checks table and actor identity independently',async()=>{
+ const base={table_id:tableId,session_id:sessionId,visit_id:input.visitId,
+  actor_id:input.actorId,...profile};
+ for(const patch of [
+  {table_id:'00000000-0000-4000-8000-000000000099'},
+  {session_id:'not-uuid'},
+  {visit_id:'visit-other'},
+  {actor_id:'actor-other'},
+  {table_id:null}
+ ]){
+  await assert.rejects(lock(async()=>({rows:[{...base,...patch}]}),input),
+   /invalid_catalog_visit_response/);
+ }
+});
+test('authorization does not allow unexpected credential or row properties to run getters',async()=>{
+ let reads=0,queries=0;
+ const query=async()=>{queries++;return {rows:[]};};
+ const args={...input};
+ Object.defineProperty(args,'extra',{enumerable:true,get(){
+  reads++;throw Error('extra_getter');
+ }});
+ await assert.rejects(lock(query,args),/invalid_catalog_visit_context/);
+ assert.equal(reads,0);
+ assert.equal(queries,0);
+ const record={table_id:tableId,session_id:sessionId,visit_id:input.visitId,
+  actor_id:input.actorId,...profile};
+ Object.defineProperty(record,'extra',{enumerable:true,get(){
+  reads++;throw Error('row_extra_getter');
+ }});
+ const result=await lock(async()=>({rows:[record]}),input);
+ assert.equal(result.authorized,true);
+ assert.equal(reads,0);
+});
