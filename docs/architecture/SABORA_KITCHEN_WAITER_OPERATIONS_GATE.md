@@ -144,3 +144,12 @@ dos roles declarados idénticos provocan rechazo **antes** de consultar SQL
 y sin registrar rutas HTTP. Esta comprobación complementa el preflight
 positivo de identidad, no sustituye la revisión de grants/RLS. El acceso
 positivo y la activación continúan pendientes.
+
+## Unificación del control de aislamiento
+
+Las dos rutas internas de composición comparten ahora una única validación
+privada `assertIsolatedPools`, que rechaza pools ausentes, compartidos,
+sin interfaz requerida o con credenciales/URL indistinguibles. La entrada
+pública sigue siendo únicamente la composición asíncrona verificada; no se
+montan endpoints en `server.mjs`. La refactorización no concede permisos ni
+modifica la semántica del contrato HTTP.
