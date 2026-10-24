@@ -156,6 +156,17 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     );
     assert.deepEqual(elevatedRoutines.rows, [],
       'technical login unexpectedly executes a SECURITY DEFINER routine');
+    // SQL login privileges must not grant arbitrary execution of private
+    // routines. The explicit operational candidate is checked separately.
+    // Only functions with SECURITY DEFINER are a privilege-escalation path;
+    // invoker routines may be publicly executable yet still lack table rights.
+    const definerCount = await admin.query(
+      `SELECT count(*)::integer AS total
+         FROM pg_catalog.pg_proc routine
+         JOIN pg_catalog.pg_namespace ns ON ns.oid = routine.pronamespace
+        WHERE ns.nspname = 'sabora' AND routine.prosecdef`
+    );
+    assert.ok(Number.isSafeInteger(definerCount.rows[0]?.total));
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
