@@ -130,3 +130,27 @@ test('late HTTP success after destroy cannot resurrect the authorized flow',asyn
  assert.equal(app.status,'disposed');
  assert.deepEqual(events,[]);
 });
+
+test('basket revision changed after authorized snapshot prevents HTTP submission',async()=>{
+ const {document,container}=dom();let reads=0,sends=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,
+  readBasket:()=>{reads++;return {...basket,revision:reads===1?1:2};},
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+ assert.equal(reads,2);
+ assert.equal(sends,0);
+ app.destroy();
+});
+test('basket becomes unconfirmable after snapshot and blocks HTTP',async()=>{
+ const {document,container}=dom();let reads=0,sends=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,
+  readBasket:()=>({...basket,confirmable:++reads===1}),
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+ assert.equal(sends,0);
+ app.destroy();
+});
