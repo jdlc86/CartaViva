@@ -377,7 +377,7 @@ Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que exis
 
 - Rama: `codex/sabora-management-tables-workspace`; PR [#5](https://github.com/jdlc86/CartaViva/pull/5) en estado **Draft**, con base `feat/sabora-pnpm-bootstrap`.
 - El PR administrativo anterior [#3](https://github.com/jdlc86/CartaViva/pull/3) está `MERGED`; este trabajo continúa exclusivamente en su PR sucesor y no modifica el PR #2.
-- Base incorporada inicialmente en `8951dfbaaef096e9bba31ed623d17e7f8554c3c7` mediante `b05cf6a` y sincronizada al cierre con `ea01357613894085a221de7a2d4be52fd259b370` mediante `0237610`; ninguno de esos avances modificó `apps/management/**`.
+- Base incorporada inicialmente en `8951dfbaaef096e9bba31ed623d17e7f8554c3c7` mediante `b05cf6a`, sincronizada después con `ea01357613894085a221de7a2d4be52fd259b370` mediante `0237610` y cerrada sobre la corrección verde `b947ce101a490062eb9c62f718c29808c57c4336` mediante `c48a990`; ninguno de esos avances modificó `apps/management/**`.
 - Commit funcional: `9d676b82e1eea67abb6a4744b79667157191eece` (`feat(management): harden explicit read refreshes`).
 - Diferencia funcional limitada a `apps/management/**`; la única documentación modificada es este handoff.
 
@@ -419,7 +419,7 @@ Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que exis
 | `pnpm --filter @sabora/management test` | PASS, 28/28 |
 | `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS, TypeScript estricto |
 | `node --test tests/management-scaffold.test.mjs` | PASS, 3/3 |
-| `pnpm test` | PASS, 708/708 sobre la base final integrada |
+| `pnpm test` | PASS, 709/709 sobre la base final integrada |
 | `pnpm --filter @sabora/management build` | PASS, 42 módulos; JS 282,94 kB y CSS 43,10 kB antes de gzip |
 | `pnpm build` | PASS, API + PWA cliente + PWA gestión |
 | Navegador 1265 px y 390 × 844 | PASS en Mesas y Catálogo desconectados, sin overflow horizontal |
