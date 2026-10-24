@@ -10,9 +10,13 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
  if(typeof fetchImpl!=='function'||endpoint!=='/api/v1/customer/orders/confirm')
   throw Error('invalid_customer_confirmation_transport');
  return async function submit(request,{signal}={}){
-  if(!plain(request)||!own(request,'requestKey')||
+  if(!plain(request)||!data(request,'requestKey')||
      typeof request.requestKey!=='string'||request.requestKey.length<8||
      request.requestKey.length>128)
+   throw Error('invalid_confirmation_request');
+  // The authorized reader normally supplies a validated snapshot. This
+  // transport still rejects accessor-backed DTOs before serialization.
+  if(Reflect.ownKeys(request).some(k=>typeof k!=='string'||!data(request,k)))
    throw Error('invalid_confirmation_request');
   const body=JSON.stringify(request);
   if(new TextEncoder().encode(body).length>65536)
@@ -42,7 +46,7 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
   if([200,201].includes(response.status)){
    if((response.status===201&&result.status!=='confirmed')||
       (response.status===200&&result.status!=='replayed')||
-      !validUuid(result.orderId))
+      !data(result,'orderId')||!validUuid(result.orderId))
     throw Error('confirmation_unexpected_response');
    return Object.freeze({status:result.status,orderId:result.orderId});
   }
