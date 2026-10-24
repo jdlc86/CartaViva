@@ -528,3 +528,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se amplían los tests de `postgres-transaction.mjs` con diez casos de SQL o bindings inválidos (undefined, Infinity, decimal, bigint, objeto, fecha inválida, cadena con NUL, array anidado, SQL vacío y contenedor no-array). Todos deben abortar antes de enviar la consulta al driver, con `ROLLBACK` y liberación del cliente.
 - Se añade prueba de snapshot de parámetros: modificar el array original inmediatamente después de llamar `query` no cambia los valores enviados al driver.
 - Se mantienen las validaciones existentes; no se modifica la implementación productiva, las migraciones ni el endpoint. Verificar CI/Bootstrap del SHA final.
+
+## 73. Reparación CI transversal tras entrega Codex PR #5 (24-10-2026)
+
+- La entrega independiente Codex en `codex/sabora-management-tables-workspace` (PR Draft #5, SHA `6fbff90597d0e3e8b5b63cc5613b390b3b5029c2`) reportó CI rojo por `tests/postgres-transaction.test.mjs` ajeno a la interfaz; se comprobó el run #40095334170, fallo `Missing expected rejection` en la prueba introducida en §72.
+- Causa: la prueba pretendía enviar un NUL real, pero usaba la secuencia escapada literal `\\u0000`, que es texto válido y correctamente aceptado por el driver. Se corrige la prueba para usar el carácter NUL mediante escape JavaScript `\\u0000` interpretado al evaluar la cadena (una única barra invertida en el archivo fuente). La implementación transaccional existente no necesitaba cambios.
+- Mantener PR #5 en Draft sin tocar la rama Codex. La composición autenticada runtime y las escrituras de Mesas/QR/Catálogo continúan pendientes. Confirmar ambos workflows del commit reparado antes de declarar base verde; no merge ni despliegue.
