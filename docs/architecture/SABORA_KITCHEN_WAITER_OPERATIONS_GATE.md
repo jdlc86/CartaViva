@@ -286,3 +286,16 @@ incluso si las filas afectadas pertenecen a líneas diferentes del mismo
 pedido. La comprobación complementa la continuidad por línea y evita
 presentar una historia duplicada como si fueran dos eventos durables.
 La garantía primaria de unicidad continúa correspondiendo a PostgreSQL.
+
+## Cierre de frontera de errores HTTP
+
+La capa HTTP clasifica únicamente **códigos de error de dominio exactos**:
+403 para `order_operations_forbidden`, `actor_not_authorized` y
+`role_not_allowed_for_line_transition`; 404 para `line_not_found` y
+`order_not_found`; 409 para `invalid_line_transition` y
+`line_transition_idempotency_conflict`; 400 para los tres errores de
+validación de petición previstos. Los errores de motor SQL, transporte y
+mensajes con sufijos o prefijos inesperados se devuelven como 503 genérico,
+sin detalles privados. Se elimina la clasificación por subcadenas, que
+podía confundir mensajes arbitrarios del driver con errores autorizados.
+La batería Fastify prueba códigos públicos y redacción de secretos.
