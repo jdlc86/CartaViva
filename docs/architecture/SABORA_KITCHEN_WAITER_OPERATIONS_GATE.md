@@ -258,3 +258,14 @@ Los saltos, retrocesos y repeticiones de estado se rechazan antes de
 producir el DTO público; las pruebas cubren resultados SQL falsos. Este
 control no acredita por sí solo el orden temporal completo de eventos ni
 reemplaza el contrato transaccional y las políticas RLS pendientes.
+
+## Continuidad por línea del historial
+
+Además de validar cada transición individual, la proyección del historial
+comprueba la continuidad de estados entre eventos consecutivos **de la
+misma línea** y que sus marcas temporales no retrocedan. Se mantienen
+cadenas independientes para cada línea del pedido. Las pruebas incluyen
+saltos, repeticiones, retrocesos temporales y una cadena válida. La
+consulta sigue limitada por `limit`: esta verificación cubre únicamente
+los eventos devueltos, no garantiza que no existan eventos anteriores
+omitidos por paginación ni reemplaza las restricciones transaccionales.
