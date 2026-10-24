@@ -387,3 +387,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Las comprobaciones utilizan descriptores propios enumerables, sin invocar getters de las propiedades comprobadas. Cambios de sesión/permiso producen `customer_basket_changed_before_confirmation` sin petición HTTP.
 - Pruebas añadidas: revocación de `canOrder` y rotación de `customerSessionToken` entre las dos lecturas. La revalidación cliente no sustituye bloqueo/autorización transaccional del backend.
 - CI del bloque 50 en curso al comenzar; el nuevo SHA requiere verificación independiente. No se activa confirmación real ni se despliega.
+
+## 52. Fence de contenido de línea durante confirmación (24-10-2026)
+
+- La revalidación previa a HTTP compara también `itemId`, `quantity` y `selection` con el snapshot autorizado, incluso si la revisión de cesta no cambió. Se valida primero la selección con el contrato estricto del DTO y se compara su JSON canónico con claves de objeto ordenadas.
+- Nuevas pruebas rechazan cambios de plato, cantidad y selección sin incrementar revisión; se acepta el mismo contenido con distinto orden de claves. No se realizan peticiones HTTP ante discrepancias.
+- `dc1b971` pasó ambos workflows. `f6412ee` continuaba en ejecución al iniciar este bloque; el nuevo SHA requiere CI.
+- La ruta de confirmación continúa sin montarse; la autoridad final de contexto, precios y escritura pertenece a la transacción PostgreSQL del servidor.
