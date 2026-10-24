@@ -81,3 +81,28 @@ test('a second repricing challenge requires a second deliberate button click',as
  assert.equal(container.children.length,0);
  flow.destroy();
 });
+
+test('destroy during an in-flight request cannot reopen consent UI',async()=>{
+ const {document,container}=dom();const events=[];
+ let resolve;
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:()=>new Promise(r=>{resolve=r;})});
+ const pending=flow.confirm(request);
+ flow.destroy();
+ resolve({status:409,json:async()=>challenge});
+ const result=await pending;
+ assert.equal(result.error,'acceptance_required');
+ assert.equal(flow.status,'disposed');
+ assert.equal(container.children.length,0);
+ assert.equal(events.length,0);
+});
+test('decline is blocked while first confirmation is still in flight',async()=>{
+ const {document,container}=dom();let resolve;
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:()=>{},fetchImpl:()=>new Promise(r=>{resolve=r;})});
+ const pending=flow.confirm(request);
+ assert.throws(()=>flow.decline(),/confirmation_flow_busy/);
+ resolve({status:201,json:async()=>({status:'confirmed',orderId})});
+ await pending;
+ flow.destroy();
+});
