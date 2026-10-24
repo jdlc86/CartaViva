@@ -406,3 +406,36 @@ test('idempotency lock scope changes independently for each identity dimension',
    base.filter((_,i)=>i!==index));
  }
 });
+
+test('catalog publication rejects malformed rows without trusting their availability',async()=>{
+ for(const record of [
+  {published_revision:'0',published_snapshot:{priceCents:1000},withdrawn_at:null,sold_out:false},
+  {published_revision:'9007199254740993',published_snapshot:{priceCents:1000},withdrawn_at:null,sold_out:false},
+  {published_revision:'1e3',published_snapshot:{priceCents:1000},withdrawn_at:null,sold_out:false},
+  {published_revision:1,published_snapshot:null,withdrawn_at:null,sold_out:false}
+ ]){
+  const result=await repo.lockCatalog(async()=>({rows:[record]}),{context,itemId});
+  assert.equal(result.available,false);
+  assert.equal(result.publishedRevision,0);
+  assert.equal(result.snapshot,null);
+ }
+});
+test('quote reader rejects invalid money representations and mismatched totals',async()=>{
+ const base={id:quoteId,published_revision:1,subtotal_cents:1000,
+  discount_cents:200,total_cents:800,evidence:{schemaVersion:1}};
+ for(const record of [
+  {...base,subtotal_cents:'1e3'},
+  {...base,discount_cents:-1},
+  {...base,discount_cents:1200},
+  {...base,total_cents:801},
+  {...base,total_cents:'9007199254740993'},
+  {...base,published_revision:0},
+  {...base,evidence:[]}
+ ]){
+  await assert.rejects(repo.loadPreviousQuote(async()=>({rows:[record]}),
+   {context,itemId}),/invalid_catalog_repository_response/);
+ }
+});
+test('missing catalog publication is not treated as available',async()=>{
+ assert.equal(await repo.lockCatalog(async()=>({rows:[]}),{context,itemId}),null);
+});
