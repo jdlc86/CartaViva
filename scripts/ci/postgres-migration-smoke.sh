@@ -30,6 +30,8 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
 # Fail closed if customer runtime logins or economic grants are activated prematurely.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/customer-runtime-activation-gate.sql
+# Prove the customer activation gate detects deliberately unsafe SQL changes.
+bash scripts/ci/customer-runtime-activation-gate-mutations.sh "$container"
 # Exercise legacy/candidate identity compatibility and kitchen trigger in disposable PG17.
 docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/catalog-order-identity-compatibility-smoke.sql
