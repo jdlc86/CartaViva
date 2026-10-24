@@ -7,6 +7,7 @@ import {createRequire} from 'node:module';
 import {createCatalogConfirmationCoordinator} from '../apps/api/src/catalog-confirmation-coordinator.mjs';
 import {registerCustomerOrderConfirmationRoute} from '../apps/api/src/customer-order-confirmation-http-candidate.mjs';
 import {buildCatalogLineEvidence} from '../apps/api/src/catalog-line-evidence.mjs';
+import {issueCatalogRepriceAcceptance} from '../apps/api/src/catalog-reprice-acceptance.mjs';
 
 const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
 const Fastify=requireApi('fastify');
@@ -23,7 +24,7 @@ const input={tableId:'table-1',visitId:'visit-1',basketId:'basket-1',
 const evidence=buildCatalogLineEvidence({itemId,publishedRevision:1,
  snapshot,selection:input.selection,quantity:1});
 
-function fixture({forbidden=false,failAfterKitchenProjection=false}={}){
+function fixture({forbidden=false,failAfterKitchenProjection=false,publishedRevision=1}={}){
  const state={orders:[],lines:[],notifications:[],events:[],ledger:[]};
  let transactions=0;
  let rollbacks=0;
@@ -43,7 +44,7 @@ function fixture({forbidden=false,failAfterKitchenProjection=false}={}){
    return row?{requestFingerprint:row.requestFingerprint,
     result:{orderId:row.orderId}}:null;
   },
-  async lockCatalog(){return {publishedRevision:1,snapshot,available:true};},
+  async lockCatalog(){return {publishedRevision,snapshot,available:true};},
   async loadPreviousQuote(){return {quoteId,evidence,publishedRevision:1,
    subtotalCents:1000,discountCents:0,totalCents:1000};},
   async persist(_query,{requestKey,requestFingerprint}){
@@ -119,4 +120,38 @@ test('revoked visit rejects replay before reading or writing kitchen projection'
  assert.deepEqual(f.state.lines,[]);
  assert.equal(f.state.ledger.length,0);
  assert.equal(f.rollbacks,1);
+});
+
+test('changed published revision cannot reach kitchen without explicit acceptance',async t=>{
+ const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+ const response=await f.send();
+ assert.equal(response.statusCode,409);
+ assert.deepEqual(response.json(),{error:'acceptance_required'});
+ assert.deepEqual(f.state,{orders:[],lines:[],notifications:[],events:[],ledger:[]});
+ assert.equal(f.transactions,1);
+ assert.equal(f.rollbacks,0);
+});
+
+test('signed acceptance for the new revision permits one confirmed kitchen line',async t=>{
+ const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+ const {token}=issueCatalogRepriceAcceptance({
+  basketId:input.basketId,actorId:input.actorId,secretKey,
+  nowMs:1792600000000,itemId,publishedRevision:2,
+  snapshot,selection:input.selection,quantity:1
+ });
+ const response=await f.send({...input,acceptanceToken:token});
+ assert.equal(response.statusCode,201);
+ assert.deepEqual(response.json(),{status:'confirmed',orderId});
+ assert.deepEqual(f.state.lines,[{orderId,status:'confirmed'}]);
+ assert.equal(f.state.ledger.length,1);
+ assert.equal(f.state.notifications.length,0);
+});
+
+test('forged acceptance cannot produce an order or kitchen line',async t=>{
+ const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+ const response=await f.send({...input,acceptanceToken:'forged'});
+ assert.notEqual(response.statusCode,201);
+ assert.equal(f.state.orders.length,0);
+ assert.equal(f.state.lines.length,0);
+ assert.equal(f.state.ledger.length,0);
 });
