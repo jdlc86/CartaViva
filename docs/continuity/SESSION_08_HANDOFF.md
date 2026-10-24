@@ -346,3 +346,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Añadida prueba Fastify con getter hostil en el objeto lanzado por `confirm`.
 - El SHA anterior `7628cc5` tenía ambos workflows SUCCESS. Este bloque requiere verificación CI antes de considerarse cerrado.
 - Ruta candidata sin registrar, PR #2 Draft, sin merge, despliegue ni acceso a Fleetia/VPS/Supabase operativo.
+
+## 46. Corrección de regresión Fastify y verificación aislada (24-10-2026)
+
+- CI de `066238a` falló en 1 de 675 tests: un objeto arrojado con getter `message` fue transformado por Fastify en HTTP 500 antes de cumplir la expectativa 503 del test. Ambos workflows fallaron en el paso de tests.
+- La función pura `failureCode` se exporta y se prueba directamente con un getter hostil, sin depender de la transformación interna de excepciones de Fastify. Se comprueba además que un `Error` ordinario conserva su código conocido.
+- La ruta candidata sigue enviando 503 genérico cuando su propio bloque `catch` recibe un error no reconocido. No se modifica la ruta real ni el servidor de producción.
+- Este SHA requiere CI verde; no atribuirle éxito antes de verificar ambos workflows.
