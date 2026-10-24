@@ -227,3 +227,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Validación de campos permitidos, tamaño, IDs y tokens; rechaza selecciones cíclicas o con getters antes de serializar. Tests `tests/customer-authorized-request.test.mjs` para contexto/cesta, rechazo, entradas malformadas y objetos adversarios.
 - **Límite de seguridad:** `authorized` y `confirmable` en el navegador son solo señales de preparación de UI; no prueban permisos. La única autoridad es la transacción PostgreSQL del servidor y su comprobación de QR, visita, sesión y mesa. No conectar a PWA real hasta tener lectores alimentados por endpoints autorizados.
 - CI del nuevo SHA pendiente. PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 30. Clave idempotente estable por revisión de cesta (24-10-2026)
+
+- Nuevo `packages/customer-consent/src/customer-request-key-registry.mjs`: registro en memoria de la clave idempotente asociada a `basketId + revision`. Mantiene la misma clave tras errores de red ambiguos; solo genera otra cuando cambia la cesta/revisión o se reinicia explícitamente fuera de una operación pendiente.
+- `begin/end` impiden cambiar de revisión o reiniciar la identidad mientras exista confirmación en vuelo. No almacena secretos ni persiste en localStorage.
+- `tests/customer-request-key-registry.test.mjs`: reintentos ambiguos, bloqueo durante envío, cambio de revisión, nueva cesta y entradas inválidas.
+- Integración prevista: pasar `registry.forBasket` como `createRequestKey` al lector autorizado, y envolver la confirmación con `begin/end`. La clave es defensa de duplicación del cliente; la garantía durable depende de la transacción y la tabla de idempotencia del servidor.
+- CI del SHA anterior `e7b1c22` seguía `in_progress` al iniciar; CI del nuevo HEAD pendiente. PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
