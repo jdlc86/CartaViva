@@ -234,3 +234,13 @@ tras revocar `EXECUTE` debe volver a aceptar ambos logins. La función se
 elimina en `finally` dentro del contenedor desechable. Esta prueba cubre
 la detección real de concesiones peligrosas a rutinas privilegiadas, sin
 habilitar el acceso positivo ni ejecutar DDL en Supabase operativo.
+
+## Ensayo de regresión: concesión directa de RPC
+
+En PostgreSQL 17 desechable, la suite concede temporalmente `EXECUTE` a
+la identidad de operaciones sobre la firma exacta de la función candidata,
+comprueba que el preflight rechaza el arranque, revoca el permiso y verifica
+que la comprobación vuelve a aceptar las identidades de cero concesiones.
+Esto prueba el bloqueo frente a una configuración peligrosa, **no** prueba
+una vinculación positiva del actor ni autoriza a ejecutar la RPC desde el
+login compartido. El entorno operativo permanece sin grants.
