@@ -62,3 +62,32 @@ test('destroy prevents late response from touching detached UI',async()=>{
  assert.equal(events.length,0);
  assert.equal(root.children.every(n=>n.removed),true);
 });
+
+test('confirmed order cannot be sent again until host explicitly resets for a new order',async()=>{
+ const {document,root}=dom();let sends=0;
+ const mount=mountCustomerOrderConfirmation({document,root,
+  readRequest:()=>({requestKey:'request-001'}),onState:()=>{},
+  fetchImpl:async()=>{sends++;return {status:201,json:async()=>({status:'confirmed',orderId})};}});
+ await root.children[0].click();
+ assert.equal(mount.status,'completed');
+ assert.equal(root.children[0].disabled,true);
+ await root.children[0].click();
+ assert.equal(sends,1);
+ mount.resetForNewOrder();
+ assert.equal(root.children[0].disabled,false);
+ await root.children[0].click();
+ assert.equal(sends,2);
+ mount.destroy();
+});
+test('reset for new order is forbidden while confirmation is pending',async()=>{
+ const {document,root}=dom();let resolve;
+ const mount=mountCustomerOrderConfirmation({document,root,
+  readRequest:()=>({requestKey:'request-001'}),onState:()=>{},
+  fetchImpl:()=>new Promise(r=>{resolve=r;})});
+ const pending=root.children[0].click();
+ await Promise.resolve();await Promise.resolve();
+ assert.throws(()=>mount.resetForNewOrder(),/confirmation_flow_busy/);
+ resolve({status:201,json:async()=>({status:'confirmed',orderId})});
+ await pending;
+ mount.destroy();
+});
