@@ -162,3 +162,29 @@ test('consent rejects accessor-backed repricing response without executing gette
  assert.equal(events.at(-1).type,'failed');
  flow.destroy();
 });
+
+test('transport rejects accessor-backed request before any HTTP call',async()=>{
+ const {document,container}=dom();let calls=0;
+ const unsafe={...request};
+ Object.defineProperty(unsafe,'requestKey',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:()=>{},fetchImpl:async()=>{calls++;throw Error('unexpected');}});
+ await assert.rejects(flow.confirm(unsafe),/invalid_confirmation_request/);
+ assert.equal(calls,0);
+ flow.destroy();
+});
+test('transport rejects accessor-backed order ID without reporting success',async()=>{
+ const {document,container}=dom();const events=[];
+ const bad={status:'confirmed'};
+ Object.defineProperty(bad,'orderId',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:201,json:async()=>bad
+  })});
+ await assert.rejects(flow.confirm(request),/confirmation_unexpected_response/);
+ assert.equal(events.at(-1).type,'failed');
+ assert.equal(events.some(e=>e.type==='submitted'),false);
+ flow.destroy();
+});
