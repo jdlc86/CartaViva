@@ -139,6 +139,13 @@ SELECT pg_try_advisory_xact_lock($different_key_sql);
 COMMIT;
 SQL
 )
+# Confirm the holder is still active: otherwise try-lock could pass only
+# because the first transaction had already committed.
+if ! kill -0 "$holder_pid" 2>/dev/null; then
+ echo 'Independent scope probe raced past the holder transaction' >&2
+ wait "$holder_pid" || true
+ exit 1
+fi
 wait "$holder_pid"
 if [[ "$(printf '%s' "$independent" | tr -d '[:space:]')" != t ]]; then
  echo 'Independent idempotency scope unexpectedly blocked' >&2
@@ -179,6 +186,13 @@ SELECT pg_try_advisory_xact_lock($basket_key_sql);
 COMMIT;
 SQL
 )
+# Confirm the holder is still active: otherwise try-lock could pass only
+# because the first transaction had already committed.
+if ! kill -0 "$basket_holder_pid" 2>/dev/null; then
+ echo 'Independent scope probe raced past the holder transaction' >&2
+ wait "$basket_holder_pid" || true
+ exit 1
+fi
 wait "$basket_holder_pid"
 if [[ "$(printf '%s' "$basket_independent" | tr -d '[:space:]')" != t ]]; then
  echo 'Distinct basket with reused request key unexpectedly blocked' >&2
@@ -219,6 +233,13 @@ SELECT pg_try_advisory_xact_lock($actor_key_sql);
 COMMIT;
 SQL
 )
+# Confirm the holder is still active: otherwise try-lock could pass only
+# because the first transaction had already committed.
+if ! kill -0 "$actor_holder_pid" 2>/dev/null; then
+ echo 'Independent scope probe raced past the holder transaction' >&2
+ wait "$actor_holder_pid" || true
+ exit 1
+fi
 wait "$actor_holder_pid"
 if [[ "$(printf '%s' "$actor_independent" | tr -d '[:space:]')" != t ]]; then
  echo 'Distinct actor with reused request key unexpectedly blocked' >&2
@@ -299,6 +320,13 @@ SELECT pg_try_advisory_xact_lock($visit_key_sql);
 COMMIT;
 SQL
 )
+# Confirm the holder is still active: otherwise try-lock could pass only
+# because the first transaction had already committed.
+if ! kill -0 "$visit_holder_pid" 2>/dev/null; then
+ echo 'Independent scope probe raced past the holder transaction' >&2
+ wait "$visit_holder_pid" || true
+ exit 1
+fi
 wait "$visit_holder_pid"
 if [[ "$(printf '%s' "$visit_independent" | tr -d '[:space:]')" != t ]]; then
  echo 'Distinct visit with reused request key unexpectedly blocked' >&2
