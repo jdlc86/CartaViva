@@ -51,3 +51,18 @@ test('basket identity accessors and inherited identifiers cannot generate or reu
  assert.equal(calls,0);
  assert.equal(registry.key,null);
 });
+
+test('unresolved outcome pins request identity until explicit resolution',()=>{
+ let n=0;
+ const registry=createCustomerRequestKeyRegistry({createKey:()=> 'request_'+(++n)});
+ const first={basketId:'basket_1',revision:1};
+ const key=registry.forBasket(first);
+ registry.begin();registry.markUnresolved();registry.end();
+ assert.equal(registry.unresolved,true);
+ assert.equal(registry.forBasket(first),key);
+ assert.throws(()=>registry.forBasket({...first,revision:2}),/request_key_pending_confirmation/);
+ assert.throws(()=>registry.reset(),/request_key_pending_confirmation/);
+ registry.resolve();
+ assert.equal(registry.unresolved,false);
+ assert.notEqual(registry.forBasket({...first,revision:2}),key);
+});
