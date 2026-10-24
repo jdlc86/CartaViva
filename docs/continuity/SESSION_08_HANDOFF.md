@@ -394,3 +394,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas rechazan cambios de plato, cantidad y selección sin incrementar revisión; se acepta el mismo contenido con distinto orden de claves. No se realizan peticiones HTTP ante discrepancias.
 - `dc1b971` pasó ambos workflows. `f6412ee` continuaba en ejecución al iniciar este bloque; el nuevo SHA requiere CI.
 - La ruta de confirmación continúa sin montarse; la autoridad final de contexto, precios y escritura pertenece a la transacción PostgreSQL del servidor.
+
+## 53. Retención de clave tras resultado de red incierto (24-10-2026)
+
+- La composición autorizada marca la clave de idempotencia como `unresolved` si el transporte devuelve `confirmation_network_unknown`. Mientras siga incierta, `resetForNewBasket()` y una cesta/revisión distinta quedan bloqueados; el mismo snapshot puede reintentarse explícitamente con la misma clave.
+- La confirmación `confirmed` o `replayed` resuelve la retención. No se realiza reintento automático ni se persisten tokens en almacenamiento local.
+- Pruebas de registro y flujo cubren caída de red, bloqueo de reset, cambio de revisión, replay con clave original y liberación tras resolución.
+- `f6412ee` pasó ambos workflows; `d8a022f` estaba en ejecución al inicio. Este SHA requiere CI verde. Sin registro de ruta ni activación productiva.
