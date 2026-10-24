@@ -133,3 +133,16 @@ test('server rejection after explicit consent cannot be reported as submitted',a
  assert.equal(events.some(e=>e.type==='submitted'),false);
  flow.destroy();
 });
+
+test('client refuses mismatched HMAC token expiry before displaying consent',async()=>{
+ const {document,container}=dom();const events=[];
+ const forged={...challenge,repricing:{...challenge.repricing,expiresAt:now+300001}};
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:409,json:async()=>forged
+  })});
+ await assert.rejects(flow.confirm(request),/invalid_repricing_challenge/);
+ assert.equal(container.children.length,0);
+ assert.equal(events.at(-1).type,'failed');
+ flow.destroy();
+});
