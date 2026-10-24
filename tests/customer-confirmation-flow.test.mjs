@@ -188,3 +188,31 @@ test('transport rejects accessor-backed order ID without reporting success',asyn
  assert.equal(events.some(e=>e.type==='submitted'),false);
  flow.destroy();
 });
+
+test('success response cannot use an accessor-backed status discriminant',async()=>{
+ const {document,container}=dom();const events=[];
+ const bad={error:'unused',orderId};
+ Object.defineProperty(bad,'status',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:201,json:async()=>bad
+  })});
+ await assert.rejects(flow.confirm(request),/confirmation_unexpected_response/);
+ assert.equal(events.some(e=>e.type==='submitted'),false);
+ flow.destroy();
+});
+test('error response cannot execute an accessor-backed error discriminant',async()=>{
+ const {document,container}=dom();const events=[];
+ const bad={status:'untrusted'};
+ Object.defineProperty(bad,'error',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:403,json:async()=>bad
+  })});
+ const outcome=await flow.confirm(request);
+ assert.equal(outcome.error,'order_confirmation_unavailable');
+ assert.equal(events.at(-1).type,'failed');
+ flow.destroy();
+});
