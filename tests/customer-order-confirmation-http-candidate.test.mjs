@@ -245,3 +245,27 @@ test('HTTP refuses inconsistent repricing challenges without leaking evidence',a
   assert.equal(r.headers['cache-control'],'no-store');
  }
 });
+
+test('HTTP candidate rejects accessor-backed domain order ID without invoking getter',async t=>{
+ const result={};
+ Object.defineProperty(result,'orderId',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const app=create(async()=>({status:'confirmed',result}));
+ t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+});
+test('HTTP candidate rejects accessor-backed repricing decision without leaking fields',async t=>{
+ const decision={requiresAcceptance:true};
+ Object.defineProperty(decision,'currentTotalCents',{enumerable:true,
+  get(){throw Error('getter_executed');}});
+ const app=create(async()=>({status:'acceptance_required',decision,
+  acceptance:{token:'secret',expiresAt:123}}));
+ t.after(()=>app.close());
+ const r=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  payload:{requestKey:'request-001'}});
+ assert.equal(r.statusCode,503);
+ assert.deepEqual(r.json(),{error:'order_confirmation_unavailable'});
+});
