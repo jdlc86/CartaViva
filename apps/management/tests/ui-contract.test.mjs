@@ -34,6 +34,25 @@ test('management source has no network, browser persistence or Google runtime in
   assert.doesNotMatch(combined, /\blocalStorage\b|\bsessionStorage\b|document\.cookie/);
   assert.doesNotMatch(combined, /googleapis\.com|generativelanguage|aiplatform|AIza[0-9A-Za-z_-]+/i);
   assert.doesNotMatch(combined, /qrcode|qr-code|data:image\/[^;]+;base64/i);
+  assert.doesNotMatch(combined, /\bsetInterval\s*\(/);
+});
+
+test('connected reads refresh explicitly, cancel stale work and preserve the visible snapshot on refresh failure', () => {
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
+  const primitives = readFileSync(new URL('../src/components/Primitives.tsx', import.meta.url), 'utf8');
+
+  for (const view of [tables, catalog]) {
+    assert.match(view, /createLatestReadTaskController/);
+    assert.match(view, /readController\.start\(\)/);
+    assert.match(view, /readController\.cancel\(\)/);
+    assert.match(view, /setRefreshError\(true\)/);
+    assert.match(view, /<SnapshotToolbar/);
+  }
+  assert.match(primitives, /Última lectura conservada/);
+  assert.match(primitives, /no se aplicó una respuesta parcial/);
+  assert.match(primitives, /aria-live=\{refreshFailed \? undefined : 'polite'\}/);
+  assert.match(primitives, /disabled=\{refreshing\}/);
 });
 
 test('navigation is deep-linkable and read transports remain injected and disconnected by default', () => {

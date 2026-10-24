@@ -17,8 +17,10 @@ import {
   LoadingState,
   LockedButton,
   PageHeader,
+  SnapshotToolbar,
   StatusBadge,
 } from '../components/Primitives';
+import {createLatestReadTaskController, type LatestReadTaskController} from '../latest-read-task';
 import {ImageStudio} from './ImageStudio';
 
 type CatalogSection = 'dishes' | 'categories' | 'studio';
@@ -30,6 +32,7 @@ type CatalogReadProps = Readonly<{
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRetry: () => void;
+  refreshing: boolean;
 }>;
 
 export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
@@ -38,38 +41,66 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
   const [items, setItems] = useState<readonly AdminPublishedCatalogItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
-  const generationRef = useRef(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState(false);
+  const readControllerRef = useRef<LatestReadTaskController | null>(null);
+  if (readControllerRef.current === null) readControllerRef.current = createLatestReadTaskController();
+  const readController = readControllerRef.current;
 
   useEffect(() => {
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const controller = new AbortController();
+    const task = readController.start();
+    setRefreshing(false);
+    setRefreshError(false);
 
     if (!gateway) {
       setPhase('disconnected');
       setItems([]);
       setSelectedId(null);
-      return () => controller.abort();
+      task.finish();
+      return () => readController.cancel();
     }
 
     setPhase('loading');
     setItems([]);
     setSelectedId(null);
 
-    void loadAdminPublishedCatalog(gateway, {signal: controller.signal})
+    void loadAdminPublishedCatalog(gateway, {signal: task.signal})
       .then((catalog) => {
-        if (generationRef.current !== generation || controller.signal.aborted) return;
+        if (!task.isCurrent()) return;
         setItems(catalog.items);
         setSelectedId(catalog.items[0]?.id ?? null);
         setPhase('ready');
       })
       .catch(() => {
-        if (generationRef.current !== generation || controller.signal.aborted) return;
+        if (!task.isCurrent()) return;
         setPhase('error');
+      })
+      .finally(() => {
+        task.finish();
       });
 
-    return () => controller.abort();
-  }, [gateway, reloadVersion]);
+    return () => readController.cancel();
+  }, [gateway, readController, reloadVersion]);
+
+  const refreshCatalog = async () => {
+    if (!gateway || phase !== 'ready' || refreshing) return;
+    const task = readController.start();
+    setRefreshing(true);
+    setRefreshError(false);
+
+    try {
+      const catalog = await loadAdminPublishedCatalog(gateway, {signal: task.signal});
+      if (!task.isCurrent()) return;
+      setItems(catalog.items);
+      setSelectedId((current) => catalog.items.some((item) => item.id === current) ? current : catalog.items[0]?.id ?? null);
+    } catch {
+      if (task.isCurrent()) setRefreshError(true);
+    } finally {
+      const isCurrent = task.isCurrent();
+      task.finish();
+      if (isCurrent) setRefreshing(false);
+    }
+  };
 
   const readProps: CatalogReadProps = {
     phase,
@@ -77,6 +108,7 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
     selectedId,
     onSelect: setSelectedId,
     onRetry: () => setReloadVersion((value) => value + 1),
+    refreshing,
   };
 
   return (
@@ -109,6 +141,15 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
         </button>
       </div>
 
+      {section !== 'studio' && phase === 'ready' ? (
+        <SnapshotToolbar
+          subject="catálogo publicado"
+          refreshing={refreshing}
+          refreshFailed={refreshError}
+          onRefresh={() => void refreshCatalog()}
+        />
+      ) : null}
+
       {section === 'dishes' ? <DishWorkspace {...readProps}/> : null}
       {section === 'categories' ? <CategoryWorkspace {...readProps}/> : null}
       {section === 'studio' ? <ImageStudio/> : null}
@@ -116,7 +157,7 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
   );
 }
 
-function DishWorkspace({phase, items, selectedId, onSelect, onRetry}: CatalogReadProps) {
+function DishWorkspace({phase, items, selectedId, onSelect, onRetry, refreshing}: CatalogReadProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CatalogCategoryFilter>('Todos');
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
@@ -127,7 +168,7 @@ function DishWorkspace({phase, items, selectedId, onSelect, onRetry}: CatalogRea
 
   return (
     <div className="workbench">
-      <section className="workbench__master panel" aria-labelledby="dish-list-title" aria-busy={phase === 'loading'}>
+      <section className="workbench__master panel" aria-labelledby="dish-list-title" aria-busy={phase === 'loading' || refreshing}>
         <div className="panel-heading panel-heading--stacked">
           <div className="catalog-list-heading">
             <div><span className="eyebrow">Exploración publicada</span><h2 id="dish-list-title">Platos</h2></div>
@@ -256,18 +297,24 @@ function DishWorkspace({phase, items, selectedId, onSelect, onRetry}: CatalogRea
   );
 }
 
-function CategoryWorkspace({phase, items, onRetry}: CatalogReadProps) {
-  const visibleCategories = CATALOG_CATEGORIES.slice(1).map((category) => {
-    const categoryItems = items.filter((item) => item.category === category);
-    return {
-      category,
-      count: categoryItems.length,
-      available: categoryItems.filter((item) => item.available).length,
-    };
-  }).filter((category) => category.count > 0);
+function CategoryWorkspace({phase, items, onRetry, refreshing}: CatalogReadProps) {
+  const visibleCategories = useMemo(() => {
+    const counts = new Map<string, {count: number; available: number}>();
+    for (const item of items) {
+      const current = counts.get(item.category) ?? {count: 0, available: 0};
+      counts.set(item.category, {
+        count: current.count + 1,
+        available: current.available + (item.available ? 1 : 0),
+      });
+    }
+    return CATALOG_CATEGORIES.slice(1).flatMap((category) => {
+      const count = counts.get(category);
+      return count ? [{category, ...count}] : [];
+    });
+  }, [items]);
 
   return (
-    <section className="panel catalog-categories" aria-labelledby="category-workspace-title" aria-busy={phase === 'loading'}>
+    <section className="panel catalog-categories" aria-labelledby="category-workspace-title" aria-busy={phase === 'loading' || refreshing}>
       <div className="panel-heading">
         <div>
           <span className="eyebrow">Proyección publicada</span>

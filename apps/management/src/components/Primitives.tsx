@@ -105,6 +105,53 @@ export function ErrorState({
   );
 }
 
+export function SnapshotToolbar({
+  subject,
+  refreshing,
+  refreshFailed,
+  onRefresh,
+}: {
+  subject: string;
+  refreshing: boolean;
+  refreshFailed: boolean;
+  onRefresh: () => void;
+}) {
+  const title = refreshing
+    ? 'Actualizando lectura'
+    : refreshFailed ? 'Última lectura conservada' : 'Lectura cargada';
+  const description = refreshing
+    ? `Solicitando una nueva lectura validada de ${subject} sin ocultar los datos visibles.`
+    : refreshFailed
+      ? 'La actualización falló y no se aplicó una respuesta parcial.'
+      : 'Los datos sólo cambian cuando solicitas una actualización; no existe sondeo automático.';
+
+  return (
+    <section
+      className={refreshFailed ? 'snapshot-toolbar snapshot-toolbar--error' : 'snapshot-toolbar'}
+      aria-label={`Estado de la lectura de ${subject}`}
+      aria-busy={refreshing}
+    >
+      <span className="snapshot-toolbar__icon">
+        <Icon name={refreshFailed ? 'alert' : 'info'} size={20}/>
+      </span>
+      <div
+        className="snapshot-toolbar__copy"
+        role={refreshFailed ? 'alert' : undefined}
+        aria-live={refreshFailed ? undefined : 'polite'}
+      >
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <button className="button" type="button" disabled={refreshing} onClick={onRefresh}>
+        <span className={refreshing ? 'snapshot-toolbar__refresh snapshot-toolbar__refresh--active' : 'snapshot-toolbar__refresh'}>
+          <Icon name="refresh" size={18}/>
+        </span>
+        {refreshing ? 'Actualizando…' : refreshFailed ? 'Reintentar actualización' : 'Actualizar lectura'}
+      </button>
+    </section>
+  );
+}
+
 export function StatusBadge({children, tone = 'neutral'}: {children: ReactNode; tone?: 'neutral' | 'brand' | 'warning' | 'danger'}) {
   return <span className={`badge badge--${tone}`}>{children}</span>;
 }

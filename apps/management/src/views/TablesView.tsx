@@ -8,8 +8,10 @@ import {
   LoadingState,
   LockedButton,
   PageHeader,
+  SnapshotToolbar,
   StatusBadge,
 } from '../components/Primitives';
+import {createLatestReadTaskController, type LatestReadTaskController} from '../latest-read-task';
 import {
   loadAdminTablesPage,
   mergeAdminTables,
@@ -46,14 +48,17 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [paginationError, setPaginationError] = useState(false);
-  const generationRef = useRef(0);
-  const paginationControllerRef = useRef<AbortController | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState(false);
+  const readControllerRef = useRef<LatestReadTaskController | null>(null);
+  if (readControllerRef.current === null) readControllerRef.current = createLatestReadTaskController();
+  const readController = readControllerRef.current;
 
   useEffect(() => {
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const controller = new AbortController();
+    const task = readController.start();
     setLoadingMore(false);
+    setRefreshing(false);
+    setRefreshError(false);
 
     if (!gateway) {
       setPhase('disconnected');
@@ -62,10 +67,8 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
       setSelectedId(null);
       setFilter('');
       setPaginationError(false);
-      return () => {
-        controller.abort();
-        paginationControllerRef.current?.abort();
-      };
+      task.finish();
+      return () => readController.cancel();
     }
 
     setPhase('loading');
@@ -74,24 +77,24 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
     setSelectedId(null);
     setPaginationError(false);
 
-    void loadAdminTablesPage(gateway, {afterNumber: 0, limit: TABLE_PAGE_SIZE, signal: controller.signal})
+    void loadAdminTablesPage(gateway, {afterNumber: 0, limit: TABLE_PAGE_SIZE, signal: task.signal})
       .then((page) => {
-        if (generationRef.current !== generation || controller.signal.aborted) return;
+        if (!task.isCurrent()) return;
         setTables(page.items);
         setNextAfterNumber(page.nextAfterNumber);
         setSelectedId(page.items[0]?.id ?? null);
         setPhase('ready');
       })
       .catch(() => {
-        if (generationRef.current !== generation || controller.signal.aborted) return;
+        if (!task.isCurrent()) return;
         setPhase('error');
+      })
+      .finally(() => {
+        task.finish();
       });
 
-    return () => {
-      controller.abort();
-      paginationControllerRef.current?.abort();
-    };
-  }, [gateway, reloadVersion]);
+    return () => readController.cancel();
+  }, [gateway, readController, reloadVersion]);
 
   const selectedTable = tables.find((table) => table.id === selectedId) ?? null;
   const visibleTables = useMemo(() => {
@@ -105,26 +108,52 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
   }, [filter, tables]);
 
   const loadMore = async () => {
-    if (!gateway || nextAfterNumber === null || loadingMore) return;
-    const generation = generationRef.current;
-    const controller = new AbortController();
-    paginationControllerRef.current = controller;
+    if (!gateway || nextAfterNumber === null || loadingMore || refreshing) return;
+    const task = readController.start();
     setLoadingMore(true);
     setPaginationError(false);
     try {
       const page = await loadAdminTablesPage(gateway, {
         afterNumber: nextAfterNumber,
         limit: TABLE_PAGE_SIZE,
-        signal: controller.signal,
+        signal: task.signal,
       });
-      if (generationRef.current !== generation || controller.signal.aborted) return;
+      if (!task.isCurrent()) return;
       setTables((current) => mergeAdminTables(current, page.items));
       setNextAfterNumber(page.nextAfterNumber);
     } catch {
-      if (generationRef.current === generation && !controller.signal.aborted) setPaginationError(true);
+      if (task.isCurrent()) setPaginationError(true);
     } finally {
-      if (paginationControllerRef.current === controller) paginationControllerRef.current = null;
-      if (generationRef.current === generation && !controller.signal.aborted) setLoadingMore(false);
+      const isCurrent = task.isCurrent();
+      task.finish();
+      if (isCurrent) setLoadingMore(false);
+    }
+  };
+
+  const refreshTables = async () => {
+    if (!gateway || phase !== 'ready' || refreshing) return;
+    const task = readController.start();
+    setLoadingMore(false);
+    setPaginationError(false);
+    setRefreshing(true);
+    setRefreshError(false);
+
+    try {
+      const page = await loadAdminTablesPage(gateway, {
+        afterNumber: 0,
+        limit: TABLE_PAGE_SIZE,
+        signal: task.signal,
+      });
+      if (!task.isCurrent()) return;
+      setTables(page.items);
+      setNextAfterNumber(page.nextAfterNumber);
+      setSelectedId((current) => page.items.some((table) => table.id === current) ? current : page.items[0]?.id ?? null);
+    } catch {
+      if (task.isCurrent()) setRefreshError(true);
+    } finally {
+      const isCurrent = task.isCurrent();
+      task.finish();
+      if (isCurrent) setRefreshing(false);
     }
   };
 
@@ -147,8 +176,17 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
         </ConnectionNotice>
       )}
 
+      {phase === 'ready' ? (
+        <SnapshotToolbar
+          subject="mesas"
+          refreshing={refreshing}
+          refreshFailed={refreshError}
+          onRefresh={() => void refreshTables()}
+        />
+      ) : null}
+
       <div className="workbench">
-        <section className="workbench__master panel" aria-labelledby="table-list-title" aria-busy={phase === 'loading'}>
+        <section className="workbench__master panel" aria-labelledby="table-list-title" aria-busy={phase === 'loading' || refreshing}>
           <div className="panel-heading panel-heading--stacked">
             <div className="table-list-heading">
               <div>
@@ -239,7 +277,7 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
           {phase === 'ready' && nextAfterNumber !== null ? (
             <div className="table-pagination">
               {paginationError ? <p role="alert">No se pudo cargar la página siguiente. Las mesas visibles se conservan.</p> : null}
-              <button className="button" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
+              <button className="button" type="button" disabled={loadingMore || refreshing} onClick={() => void loadMore()}>
                 {loadingMore ? 'Cargando…' : paginationError ? 'Reintentar más mesas' : 'Cargar más mesas'}
               </button>
             </div>
