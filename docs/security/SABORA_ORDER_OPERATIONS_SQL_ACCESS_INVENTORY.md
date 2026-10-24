@@ -58,8 +58,8 @@ Fleetia, el VPS ni la base de datos operativa.
 ## Prueba automatizada de matriz negativa
 
 `order-operations-identity-postgres17.test.mjs` inspecciona mediante
-`has_table_privilege` las cuatro operaciones `SELECT`, `INSERT`, `UPDATE` y
-`DELETE` de **las siete tablas anteriores** para los dos logins técnicos
+`has_table_privilege` las siete operaciones `SELECT`, `INSERT`, `UPDATE`,
+`DELETE`, `TRUNCATE`, `REFERENCES` y `TRIGGER` de **las siete tablas anteriores** para los dos logins técnicos
 creados exclusivamente en el contenedor CI. También comprueba que ninguno
 puede ejecutar la RPC invoker. Esto detecta concesiones accidentales mientras
 no exista el diseño de acceso positivo; no demuestra todavía que el runtime
@@ -81,3 +81,12 @@ temporal de la tabla de reintentos no amplía permisos de `INSERT`, `UPDATE`,
 `DELETE`, `TRUNCATE` ni `EXECUTE` sobre la RPC de transición. La prueba
 sigue siendo una verificación negativa de seguridad: **no constituye la
 implementación de la política positiva para cocina/sala**.
+
+## Ampliación de matriz negativa (7 × 7 × 2)
+
+El harness desechable de PostgreSQL 17 comprueba siete tipos de privilegio
+para cada una de las siete tablas operativas, bajo las dos identidades SQL
+independientes: **98 comprobaciones de privilegio**, además de la comprobación
+EXECUTE de la RPC para cada identidad. Los permisos de definición de claves
+foráneas (`REFERENCES`) y triggers (`TRIGGER`) quedan explícitamente cubiertos;
+ninguna de estas pruebas concede permisos operativos.
