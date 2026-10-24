@@ -354,3 +354,55 @@ test('advisory lock rejects accessor-backed and inherited response rows before l
  }
  assert.equal(getters,0);
 });
+
+test('idempotency lookup rejects malformed lock responses before ledger access',async()=>{
+ for(const response of [null,{}, {rows:null},{rows:[{},{}]},
+  {rows:[null]},{rows:[{get request_fingerprint(){throw Error('getter');}}]}]){
+  let calls=0;
+  await assert.rejects(repo.lookupIdempotency(async()=>{
+   calls++;return response;
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+  assert.equal(calls,1);
+ }
+});
+test('idempotency ledger rejects forged or malformed durable replay rows',async()=>{
+ for(const record of [
+  {request_fingerprint:'fingerprint',order_id:'not-uuid'},
+  {request_fingerprint:'',order_id:orderId},
+  {request_fingerprint:'x'.repeat(16385),order_id:orderId},
+  {request_fingerprint:42,order_id:orderId},
+  {request_fingerprint:'fingerprint',order_id:null},
+  Object.create({request_fingerprint:'fingerprint',order_id:orderId})
+ ]){
+  let calls=0;
+  await assert.rejects(repo.lookupIdempotency(async()=>{
+   calls++;
+   return calls===1?{rows:[{}]}:{rows:[record]};
+  },{context,requestKey:'request-001',requestFingerprint:'fingerprint'}),
+  /invalid_catalog_repository_response/);
+  assert.equal(calls,2);
+ }
+});
+test('idempotency lock scope changes independently for each identity dimension',async()=>{
+ const base=[tableId,sessionId,'visit-1','basket-1','actor-1','request-001'];
+ const variants=[
+  [{...context,tableId:'00000000-0000-4000-8000-000000000011'},'request-001',0],
+  [{...context,sessionId:'00000000-0000-4000-8000-000000000012'},'request-001',1],
+  [{...context,visitId:'visit-2'},'request-001',2],
+  [{...context,basketId:'basket-2'},'request-001',3],
+  [{...context,actorId:'actor-2'},'request-001',4],
+  [context,'request-002',5]
+ ];
+ for(const [scope,key,index] of variants){
+  let captured;
+  await repo.lookupIdempotency(async(sql,args)=>{
+   if(sql.includes('pg_advisory_xact_lock'))captured=JSON.parse(args[0]);
+   return {rows:[]};
+  },{context:scope,requestKey:key,requestFingerprint:'fingerprint'});
+  assert.equal(captured.length,6);
+  assert.notEqual(captured[index],base[index]);
+  assert.deepEqual(captured.filter((_,i)=>i!==index),
+   base.filter((_,i)=>i!==index));
+ }
+});
