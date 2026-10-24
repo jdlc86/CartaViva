@@ -25,20 +25,33 @@ function exactPlainObject(value, keys) {
   });
 }
 
+// Match only known domain error codes. Substring matching would allow a
+// database/driver message containing "forbidden" to masquerade as a 403.
+const FORBIDDEN_ERRORS = new Set([
+  'order_operations_forbidden', 'actor_not_authorized',
+  'role_not_allowed_for_line_transition',
+]);
+const NOT_FOUND_ERRORS = new Set(['line_not_found', 'order_not_found']);
+const CONFLICT_ERRORS = new Set([
+  'invalid_line_transition', 'line_transition_idempotency_conflict',
+]);
+const INPUT_ERRORS = new Set([
+  'invalid_order_operations_page', 'invalid_order_history_request',
+  'invalid_order_line_transition',
+]);
+
 function mapError(error, reply) {
   const message = typeof error?.message === 'string' ? error.message : '';
-  if (message.includes('forbidden') || message.includes('actor_not_authorized') ||
-      message.includes('role_not_allowed')) {
+  if (FORBIDDEN_ERRORS.has(message)) {
     return reply.code(403).send({error: 'forbidden'});
   }
-  if (message.includes('line_not_found') || message.includes('order_not_found')) {
+  if (NOT_FOUND_ERRORS.has(message)) {
     return reply.code(404).send({error: 'order_operation_not_found'});
   }
-  if (message.includes('invalid_line_transition') || message.includes('idempotency_conflict')) {
+  if (CONFLICT_ERRORS.has(message)) {
     return reply.code(409).send({error: 'order_operation_conflict'});
   }
-  if (message.includes('invalid_order_operations_page') || message.includes('invalid_order_history_request') ||
-      message.includes('invalid_order_line_transition')) {
+  if (INPUT_ERRORS.has(message)) {
     return reply.code(400).send({error: 'invalid_order_operation'});
   }
   return reply.code(503).send({error: 'order_operations_unavailable'});
