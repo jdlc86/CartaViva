@@ -154,3 +154,21 @@ test('basket becomes unconfirmable after snapshot and blocks HTTP',async()=>{
  assert.equal(sends,0);
  app.destroy();
 });
+
+test('pre-submit basket readiness getter is rejected without execution',async()=>{
+ const {document,container}=dom();let reads=0,sends=0;
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,
+  readBasket:()=>{
+   if(++reads===1)return basket;
+   const altered={...basket};
+   Object.defineProperty(altered,'confirmable',{enumerable:true,
+    get(){throw Error('getter_executed');}});
+   return altered;
+  },
+  createRequestKey:()=> 'request_12345678',onOutcome:()=>{},
+  fetchImpl:async()=>{sends++;throw Error('unexpected');}});
+ await assert.rejects(app.confirm(),/customer_basket_changed_before_confirmation/);
+ assert.equal(sends,0);
+ app.destroy();
+});
