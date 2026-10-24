@@ -124,3 +124,11 @@ La prueba de PostgreSQL 17 vuelve a verificar, mediante la firma exacta
 `transition_order_line_idempotent_candidate(uuid,uuid,text,text)`.
 La revisión de otras funciones heredadas del esquema queda separada: no se
 asume que sus contratos o permisos puedan modificarse sin inventario previo.
+
+## Inspección de rutinas con privilegios elevados
+
+El harness consulta `pg_proc` y rechaza cualquier rutina `SECURITY DEFINER`
+del esquema `sabora` que resulte ejecutable por los dos logins técnicos.
+La inspección utiliza `has_function_privilege` y no presupone que revocar la
+RPC candidata bloquee otras vías de ejecución. La definición de permisos
+positivos sigue pendiente de aprobación y pruebas específicas.
