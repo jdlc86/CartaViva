@@ -85,3 +85,9 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se añadió `tests/order-operations-composition.test.mjs` para rechazar el mismo pool SQL, identidades SQL iguales, cadenas de conexión iguales y pools sin `connect`, además de exigir que `server.mjs` no importe ni registre las rutas candidatas.
 - Se comprueba también que la composición no crea conexiones ni consume configuración de entorno por sí misma. Esta prueba no sustituye los preflights de `current_user/session_user` ni autoriza grants operativos.
 - El bloque runtime continúa bloqueado por los permisos y contratos descritos en `SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md`.
+
+## Preflight de identidad SQL sin activación
+
+- Se implementó `preflightOrderOperationsIdentities` como utilidad explícita, no importada desde `server.mjs`. Comprueba en conexiones reales y separadas `current_user`, `session_user`, `rolsuper`, `rolbypassrls` y `rolcanlogin` para dos nombres de rol esperados y distintos; rechaza superusuarios, BYPASSRLS, SET ROLE y roles compartidos.
+- La comprobación falla cerrada, descarta conexiones con resultado incierto y dispone de tests negativos de identidad y privilegios. No crea usuarios ni concede permisos.
+- **Pendiente**: ejecutar el preflight con identidades PostgreSQL reales de mínimos privilegios en PG17 desechable, aprobar RLS/grants específicos y autorizar por separado la activación. La existencia del helper no habilita las rutas.
