@@ -73,3 +73,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - **Límite crítico:** este módulo NO está registrado en `server.mjs` ni en la composición verificada. NO certifica todavía todos los grants sobre tablas, políticas RLS efectivas, funciones del escritor ni PostgreSQL 17 real; requiere matriz SQL y pruebas en base desechable antes de conectarlo a producción.
 - Los tests añadidos son dobles de conexión: no deben presentarse como integración PG17. Verificar el estado de GitHub Actions del último SHA antes de declarar verde.
 - Sin cambios a gestión Codex, Supabase operativo, VPS, Fleetia, merge o despliegue.
+
+## 10. Integración de puerta SQL con rutas opt-in (24-10-2026)
+
+- `registerVerifiedIsolatedCustomerRoutes` exige ahora **ambas** comprobaciones antes de registrar las rutas: identidad SQL efectiva y capacidades SQL de los logins independientes. La validación se ejecuta antes de exponer `GET /api/v1/catalog` y `POST /api/v1/customer/orders/confirm`.
+- Si falla una comprobación, la composición devuelve `invalid_verified_customer_composition` y ninguna ruta queda registrada. No se ha modificado `server.mjs` ni habilitado el tráfico operativo.
+- Se amplían los dobles en `tests/verified-isolated-customer-composition-candidate.test.mjs` y se añade regresión que exige rechazo ante ejecución directa indebida del RPC por el login lector.
+- **Pendiente antes de certificar el hito:** ejecutar `pnpm test`, `pnpm build`, PostgreSQL 17 desechable con roles/grants reales y revisar GitHub Actions del SHA final. Este bloque no acredita todavía RLS efectiva, funciones escritoras ni el circuito QR→cocina.
