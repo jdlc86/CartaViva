@@ -97,3 +97,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `scripts/ci/postgres-migration-smoke.sh` ejecuta la suite de mutaciones justo después del gate negativo, antes de las pruebas del escritor. Todas las operaciones se realizan dentro del contenedor PostgreSQL 17 con `--network none`; **no se tocan recursos externos**.
 - Hito técnico alcanzado únicamente tras CI verde del nuevo SHA: barrera negativa de activación SQL probada también contra mutaciones. No es todavía un hito vertical QR→pedido→cocina: el escritor continúa sin roles/grants de ejecución aprobados y las rutas no se montan en `server.mjs`.
 - No merge, no despliegue, no Supabase operativo, no Fleetia, sin cambios a UI Codex.
+
+## 13. Bloque candidato: durabilidad de proyección de cocina en PG17 (24-10-2026)
+
+- Nuevo `scripts/ci/catalog-confirmation-kitchen-durability-smoke.sql` integrado en `scripts/ci/postgres-migration-smoke.sh`. Sobre PostgreSQL 17 desechable verifica en una transacción que una confirmación persistida produce exactamente un pedido, una línea de cocina por plato y un intento económico vinculado; que la consulta de reintento por clave idempotente recupera el mismo pedido sin crear otro; y que una confirmación duplicada rechazada por restricción única revierte tanto el pedido tentativo como su proyección de cocina.
+- Las pruebas usan los esquemas y triggers existentes, sin crear grants, rutas ni cuentas de producción. Todas las filas de prueba se revierten al terminar.
+- **Límite:** prueba persistencia de proyección, no acuse verificable de recepción por cocina, despacho, stock ni flujo completo de PWA. La composición del escritor sigue inactiva en `server.mjs`.
+- El bloque queda **pendiente de cierre** hasta que GitHub Actions confirme el nuevo smoke SQL y la suite completa sobre el SHA actual. No modificar Fleetia, VPS ni Supabase operativo.
