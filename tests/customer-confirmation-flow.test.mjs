@@ -106,3 +106,30 @@ test('decline is blocked while first confirmation is still in flight',async()=>{
  await pending;
  flow.destroy();
 });
+
+test('server authorization rejection is reported as failure, never success',async()=>{
+ const {document,container}=dom();const events=[];
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>({
+   status:403,json:async()=>({error:'order_context_forbidden'})
+  })});
+ const result=await flow.confirm(request);
+ assert.equal(result.error,'order_context_forbidden');
+ assert.equal(events.at(-1).type,'failed');
+ assert.equal(events.some(e=>e.type==='submitted'),false);
+ flow.destroy();
+});
+test('server rejection after explicit consent cannot be reported as submitted',async()=>{
+ const {document,container}=dom();const events=[];let calls=0;
+ const flow=createCustomerConfirmationFlow({document,container,clock:()=>now,
+  onOutcome:e=>events.push(e),fetchImpl:async()=>{
+   calls++;return calls===1?{status:409,json:async()=>challenge}:
+    {status:503,json:async()=>({error:'order_confirmation_unavailable'})};
+  }});
+ await flow.confirm(request);
+ await container.children[0].children.at(-2).click();
+ assert.equal(calls,2);
+ assert.equal(events.at(-1).type,'failed');
+ assert.equal(events.some(e=>e.type==='submitted'),false);
+ flow.destroy();
+});
