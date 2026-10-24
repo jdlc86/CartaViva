@@ -234,12 +234,12 @@ test('repository validates idempotent transition and history results', async () 
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
 });
 
-test('repository rejects globally unordered history while allowing mutable staff roles', async () => {
+test('repository rejects globally unordered history with role-compatible event rows', async () => {
   const repository = createOrderOperationsRepository();
   const base = {
     event_id: eventId, line_id: lineId, line_number: 1,
     name: 'Arroz', from_status: 'confirmed', to_status: 'preparing',
-    occurred_at: confirmedAt, actor_role: 'waiter',
+    occurred_at: confirmedAt, actor_role: 'kitchen',
   };
   const another = {...base,
     event_id: '60000000-0000-4000-8000-000000000006',
@@ -256,7 +256,7 @@ test('repository rejects globally unordered history while allowing mutable staff
     /invalid_order_operations_sql_result/);
   const valid = await read([base, another]);
   assert.equal(valid.events.length, 2);
-  assert.equal(valid.events[0].actorRole, 'waiter');
+  assert.equal(valid.events[0].actorRole, 'kitchen');
 });
 
 test('repository rejects duplicate history event identifiers even across distinct lines', async () => {
