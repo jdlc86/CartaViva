@@ -48,7 +48,7 @@ const snapshotInput=(value,seen=new Set(),depth=0,budget={nodes:0,bytes:0})=>{
   throw Error('invalid_confirmation_input');
  for(const key of keys){
   if(key==='length'&&Array.isArray(value))continue;
-  if(typeof key!=='string'||['__proto__','prototype','constructor'].includes(key))
+  if(typeof key!=='string'||['__proto__','prototype','constructor','toJSON'].includes(key))
    throw Error('invalid_confirmation_input');
   const descriptor=Object.getOwnPropertyDescriptor(value,key);
   if(!descriptor||!descriptor.enumerable||!own(descriptor,'value'))
