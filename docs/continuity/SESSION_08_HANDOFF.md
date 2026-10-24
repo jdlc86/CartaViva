@@ -293,3 +293,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se reemplazó la espera temporal por una señal explícita `entered` que se resuelve dentro de `fetchImpl`. Solo después se ejecuta `destroy()` y se libera la respuesta HTTP diferida. Así se comprueba exactamente el escenario previsto y sin carrera del test.
 - No se relajó el control de autorización ni el guard de destrucción. CI del nuevo SHA pendiente.
 - PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 39. DTO de sesión y cesta sin accesores ejecutables (24-10-2026)
+
+- `createAuthorizedCustomerRequestReader` comprueba que los campos obligatorios del contexto autorizado y de la cesta sean propiedades propias, enumerables y de datos antes de leerlas; getters maliciosos no pueden ejecutarse en el límite de adaptación.
+- `revision` continúa siendo responsabilidad de `createCustomerRequestKeyRegistry`, no del lector genérico de solicitudes; evita modificar indebidamente el contrato de lectura existente.
+- Añadidas pruebas para getters hostiles en `authorized` y `quantity`, verificando rechazo antes de generar la clave idempotente.
+- La implementación permanece candidata, sin PWA real conectada ni ruta de confirmación registrada. CI pendiente para este SHA.
+- PR #2 Draft; sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
