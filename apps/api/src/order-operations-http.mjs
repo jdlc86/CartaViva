@@ -98,11 +98,16 @@ export function registerOrderOperationsHttp(app, {forRoles, operations} = {}) {
   }, async (request, reply) => {
     headers(reply);
     const {lineId} = request.params ?? {};
+    const verifiedRole = request.verifiedStaff?.role;
     const body = request.body;
     if (!UUID.test(lineId) || !exactPlainObject(body, ['targetStatus', 'correlationId']) ||
         Reflect.ownKeys(body).length !== 2 || !TARGET_SET.has(body.targetStatus) ||
         !CORRELATION.test(body.correlationId)) {
       return reply.code(400).send({error: 'invalid_order_operation'});
+    }
+    if ((verifiedRole === 'kitchen' && body.targetStatus === 'picked_up') ||
+        (verifiedRole === 'waiter' && body.targetStatus !== 'picked_up')) {
+      return reply.code(403).send({error: 'forbidden'});
     }
     try {
       const result = await operations.transitionLine(requestContext(request), {
