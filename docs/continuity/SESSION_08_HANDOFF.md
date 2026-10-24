@@ -323,3 +323,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - En respuestas de confirmación `200/201`, `orderId` también debe ser una propiedad de datos propia antes de validarlo. Un getter no puede fabricar ni interferir con el éxito.
 - Dos pruebas de flujo verifican que getters hostiles en `requestKey` y `orderId` no se ejecutan, no producen POST en el primer caso ni notifican éxito en el segundo.
 - El commit `72becf9` tenía ambos workflows SUCCESS. CI de este HEAD pendiente. Sin registrar ruta real, sin merge ni despliegue.
+
+## 43. Árbol JSON de confirmación validado antes de serializar (24-10-2026)
+
+- El transporte candidato valida recursivamente el DTO de petición antes de `JSON.stringify`: solo datos JSON seguros, propiedades propias de datos, arrays densos, sin símbolos, getters, ciclos, funciones, `toJSON` ni claves peligrosas; límites de profundidad 16, nodos 4096 y claves 512 por objeto, manteniendo el límite existente de 64 KiB de cuerpo.
+- Las respuestas HTTP 200/201 requieren `status` propio de datos; las respuestas de error solo consultan `error` si es propio de datos. No se ejecutan getters de discriminantes.
+- Pruebas de flujo nuevas: getters en `status` y `error`, getter anidado y `toJSON` hostil; no producen confirmación falsa ni serialización ejecutable.
+- El bloque anterior `045669b` superó ambos workflows. `bbccd75` seguía en ejecución al comenzar este bloque; el nuevo SHA aún requiere CI.
+- Candidato sin montar en PWA ni registrar ruta, PR #2 Draft, sin merge ni despliegue ni tocar Fleetia/VPS/Supabase operativo.
