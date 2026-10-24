@@ -181,6 +181,19 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         WHERE ns.nspname = 'sabora' AND routine.prosecdef`
     );
     assert.ok(Number.isSafeInteger(definerCount.rows[0]?.total));
+    // Prove the runtime preflight detects an accidental table grant, not
+    // merely that the offline catalog inventory reports it.
+    await admin.query('GRANT SELECT ON sabora.staff_members TO sabora_ci_operations_identity');
+    try {
+      await assert.rejects(preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), /order_operations_sql_identity_rejected/);
+    } finally {
+      await admin.query('REVOKE SELECT ON sabora.staff_members FROM sabora_ci_operations_identity');
+    }
+    assert.deepEqual(await preflightOrderOperationsIdentities({
+      staffPool, operationsPool, staffRole, operationsRole,
+    }), {staff: {role: staffRole}, operations: {role: operationsRole}});
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
