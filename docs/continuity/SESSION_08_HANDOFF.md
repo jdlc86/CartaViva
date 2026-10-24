@@ -505,3 +505,8 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `catalog-visit-context-repository.mjs` ahora rechaza campos adicionales en los argumentos de autorización, además de sus protecciones existentes contra getters, prototipos y campos peligrosos. Se restringe el contrato a `tableId`, `visitId`, `actorId`, `basketId`, `qrToken` y `customerSessionToken`.
 - Nuevas regresiones para envolturas de respuesta de driver inválidas, contradicciones independientes de mesa/sesión/visita/actor y campos accessor adicionales tanto en entrada como en respuesta; no se ejecutan getters externos.
 - Se conserva el acceso únicamente desde el coordinador candidato sin ruta HTTP montada; el cambio no concede permisos, no modifica migraciones ni activa infraestructura. Verificar ambos workflows antes de cerrar.
+
+## 69. Reloj inválido impide confirmar pedidos (24-10-2026)
+
+- Se añade regresión al coordinador para tiempos negativos, NaN, Infinity, decimales, texto y null. En todos los casos la transacción se revierte después de verificar contexto, ledger, catálogo y cotización; no llega a `persist` ni emite una confirmación.
+- La validación `Number.isSafeInteger(nowMs) && nowMs>=0` ya existía; este bloque la asegura con pruebas explícitas. No se modifica infraestructura, ruta HTTP ni esquema SQL. CI y Bootstrap del SHA pendientes de verificación.
