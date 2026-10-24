@@ -22,7 +22,7 @@ function pool(role, overrides = {}) {
             schema_usage: true, schema_create: false, candidate_rpc_execute: false,
             accessible_private_tables: 0, accessible_private_sequences: 0,
             accessible_private_definer_routines: 0,
-            candidate_is_invoker: true, forced_rls_audit_tables: 2,
+            candidate_is_invoker: true, forced_rls_transition_requests: 1,
             ...overrides,
           }]};
         },
@@ -77,7 +77,7 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     {accessible_private_sequences: 1}, {accessible_private_sequences: null},
     {accessible_private_definer_routines: 1}, {accessible_private_definer_routines: '0'},
     {candidate_is_invoker: false}, {candidate_is_invoker: null},
-    {forced_rls_audit_tables: 1}, {forced_rls_audit_tables: null},
+    {forced_rls_transition_requests: 0}, {forced_rls_transition_requests: null},
   ]) {
     const staffPool = pool(roles.staffRole);
     const operationsPool = pool(roles.operationsRole, override);
