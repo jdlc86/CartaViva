@@ -161,3 +161,11 @@ identidad de usuario repetida y cadena de conexión repetida. Cada rechazo
 comprueba ausencia de consultas SQL, conexiones y registro de rutas HTTP.
 Estas pruebas no sustituyen el preflight de roles reales ni los ensayos de
 permisos positivos en PostgreSQL 17.
+
+## Metadatos del login técnico
+
+El preflight verifica también que `rolconnlimit` tiene formato entero válido
+y que `rolvaliduntil`, si existe, es una fecha válida. Esta comprobación
+adicional es de integridad de los resultados SQL, no constituye una política
+de caducidad o de límites de conexiones: esos valores siguen pendientes del
+contrato de aprovisionamiento de identidades.
