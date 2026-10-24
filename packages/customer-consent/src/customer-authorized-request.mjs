@@ -9,14 +9,21 @@ const token=v=>typeof v==='string'&&v.length>=32&&v.length<=512;
 const fields=['tableId','visitId','basketId','actorId','itemId','selection',
  'quantity','requestKey','qrToken','customerSessionToken'];
 const allowed=new Set([...fields,'acceptanceToken']);
-const validSelection=(v,depth=0)=>{
+const validSelection=(v,depth=0,seen=new Set())=>{
  if(depth>8)return false;
  if(v===null||typeof v==='boolean'||typeof v==='string'&&v.length<=1024||
     typeof v==='number'&&Number.isSafeInteger(v))return true;
- if(Array.isArray(v))return v.length<=128&&v.every(x=>validSelection(x,depth+1));
- if(!plain(v)||Object.keys(v).length>64)return false;
- return Object.keys(v).every(k=>!['__proto__','prototype','constructor'].includes(k)&&
-  k.length<=128&&validSelection(v[k],depth+1));
+ if(!Array.isArray(v)&&!plain(v)||seen.has(v))return false;
+ const keys=Reflect.ownKeys(v).filter(k=>k!=='length'||!Array.isArray(v));
+ if(keys.length>128||(Array.isArray(v)&&keys.length!==v.length))return false;
+ seen.add(v);
+ const valid=keys.every(k=>{
+  if(typeof k!=='string'||k.length>128||['__proto__','prototype','constructor'].includes(k))return false;
+  const d=Object.getOwnPropertyDescriptor(v,k);
+  return !!d&&d.enumerable&&own(d,'value')&&validSelection(d.value,depth+1,seen);
+ });
+ seen.delete(v);
+ return valid;
 };
 export function validateCustomerConfirmationRequest(input){
  if(!plain(input)||Object.keys(input).length>12||
