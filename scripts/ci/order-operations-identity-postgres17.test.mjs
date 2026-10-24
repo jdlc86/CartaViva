@@ -236,6 +236,28 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     assert.deepEqual(await preflightOrderOperationsIdentities({
       staffPool, operationsPool, staffRole, operationsRole,
     }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    // SECURITY DEFINER is an independent privilege-escalation surface.
+    // The temporary function is harmless, lives only in disposable PG17,
+    // and its default PUBLIC EXECUTE grant is explicitly revoked.
+    await admin.query(`CREATE FUNCTION sabora.sabora_ci_preflight_definer()
+      RETURNS integer LANGUAGE sql SECURITY DEFINER
+      SET search_path = pg_catalog AS 'SELECT 1'`);
+    try {
+      await admin.query('REVOKE ALL ON FUNCTION sabora.sabora_ci_preflight_definer() FROM PUBLIC');
+      await admin.query('GRANT EXECUTE ON FUNCTION sabora.sabora_ci_preflight_definer() TO sabora_ci_operations_identity');
+      try {
+        await assert.rejects(preflightOrderOperationsIdentities({
+          staffPool, operationsPool, staffRole, operationsRole,
+        }), /order_operations_sql_identity_rejected/);
+      } finally {
+        await admin.query('REVOKE EXECUTE ON FUNCTION sabora.sabora_ci_preflight_definer() FROM sabora_ci_operations_identity');
+      }
+      assert.deepEqual(await preflightOrderOperationsIdentities({
+        staffPool, operationsPool, staffRole, operationsRole,
+      }), {staff: {role: staffRole}, operations: {role: operationsRole}});
+    } finally {
+      await admin.query('DROP FUNCTION sabora.sabora_ci_preflight_definer()');
+    }
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
