@@ -55,6 +55,7 @@ test('verified composition rejects equal declared SQL roles before querying', as
     staffPool: makePool('sabora_staff_reader', 'postgres://staff'),
     operationsPool: makePool('sabora_operations', 'postgres://operations'),
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_staff_reader',
+    issueTransitionCapability() {},
   }), /pool_isolation/);
   assert.deepEqual(events, []);
 });
@@ -109,10 +110,23 @@ test('verified composition refuses route registration before SQL identity prefli
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool,
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+    issueTransitionCapability() {},
   }), /invalid_order_operations_sql_client/);
   assert.equal(registrations.length, 0);
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
+    issueTransitionCapability() {},
   }), /invalid_order_operations_sql_identity/);
   assert.equal(registrations.length, 0);
+});
+
+test('verified composition rejects a missing capability issuer before SQL or routes', async () => {
+  const events = [];
+  const app = {get() { events.push('get'); }, post() { events.push('post'); }};
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    staffPool: pool('sabora_staff_reader', 'postgres://staff'),
+    operationsPool: pool('sabora_operations', 'postgres://operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+  }), /invalid_order_operation_capability_issuer/);
+  assert.deepEqual(events, []);
 });

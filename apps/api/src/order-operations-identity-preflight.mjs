@@ -10,7 +10,7 @@ function validateRole(role) {
   return role;
 }
 
-async function inspect(pool, expectedRole) {
+async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} = {}) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
   if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
@@ -37,6 +37,18 @@ async function inspect(pool, expectedRole) {
               has_function_privilege(current_user,
                 'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
                 'EXECUTE') AS candidate_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
+                'EXECUTE') AS authorized_rpc_execute,
+              (SELECT count(*)::integer
+                 FROM unnest(ARRAY[
+                   'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure,
+                   'sabora.transition_order_line(uuid,uuid,text)'::regprocedure,
+                   'sabora.transition_order_status(uuid,uuid,text,text)'::regprocedure,
+                   'sabora.transition_table_ordering_candidate(uuid,uuid,text,timestamptz)'::regprocedure
+                 ]) unsafe_actor_rpc
+                WHERE has_function_privilege(current_user, unsafe_actor_rpc, 'EXECUTE')
+              ) AS unsafe_actor_rpc_execute,
               (SELECT count(*)::integer FROM pg_catalog.pg_class resource
                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
                 WHERE ns.nspname = 'sabora'
@@ -72,6 +84,23 @@ async function inspect(pool, expectedRole) {
                 WHERE routine.oid =
                   'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure
               ) AS candidate_is_invoker,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_search_path_locked,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
                  JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
@@ -81,6 +110,32 @@ async function inspect(pool, expectedRole) {
                   AND resource.relrowsecurity
                   AND resource.relforcerowsecurity
               ) AS forced_rls_transition_requests,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_class resource
+                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relname = 'order_operation_signing_keys'
+                  AND resource.relkind IN ('r','p')
+                  AND resource.relrowsecurity
+                  AND resource.relforcerowsecurity
+              ) AS forced_rls_signing_keys,
+              (SELECT owner.rolcanlogin = false
+                      AND owner.rolsuper = false
+                      AND owner.rolbypassrls = false
+                      AND owner.rolinherit = false
+                      AND owner.rolcreaterole = false
+                      AND owner.rolcreatedb = false
+                      AND owner.rolreplication = false
+                 FROM pg_catalog.pg_roles owner
+                WHERE owner.rolname = 'sabora_order_operations_fn_owner'
+              ) AS authorized_owner_is_sealed,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_auth_members membership
+                 JOIN pg_catalog.pg_roles owner
+                   ON owner.oid = membership.roleid
+                    OR owner.oid = membership.member
+                WHERE owner.rolname = 'sabora_order_operations_fn_owner'
+              ) AS authorized_owner_memberships,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -100,13 +155,21 @@ async function inspect(pool, expectedRole) {
         row.schema_usage !== true || row.schema_create !== false ||
         row.database_create !== false ||
         row.candidate_rpc_execute !== false ||
+        row.unsafe_actor_rpc_execute !== 0 ||
+        row.authorized_rpc_execute !== allowAuthorizedTransition ||
         row.candidate_is_invoker !== true ||
+        row.authorized_is_definer !== true ||
+        row.authorized_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_search_path_locked !== true ||
+        row.authorized_owner_is_sealed !== true ||
+        row.authorized_owner_memberships !== 0 ||
         row.forced_rls_transition_requests !== 1 ||
+        row.forced_rls_signing_keys !== 1 ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         row.accessible_private_tables !== 0 ||
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
-        row.accessible_private_definer_routines !== 0 ||
+        row.accessible_private_definer_routines !== (allowAuthorizedTransition ? 1 : 0) ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
@@ -135,4 +198,13 @@ export async function preflightOrderOperationsIdentities({
   const staff = await inspect(staffPool, staffRole);
   const operations = await inspect(operationsPool, operationsRole);
   return Object.freeze({staff, operations});
+}
+
+// Candidate-only positive gate for the mutation principal. It is deliberately
+// separate from route registration: board/history still have no approved SQL
+// read boundary, so the normal composition keeps requiring a fully closed
+// operations login and remains impossible to activate accidentally.
+export async function preflightOrderTransitionIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {allowAuthorizedTransition: true});
 }
