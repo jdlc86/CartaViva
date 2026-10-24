@@ -228,3 +228,12 @@ La comprobación se realiza antes de SQL. Las pruebas de repositorio y el
 harness PG17 validan esa distinción; la denegación no se convierte en un
 conflicto 409 ni en una indisponibilidad 503. No cambia la política de
 permisos SQL ni autoriza el montaje operativo.
+
+## Alcance de filtros del tablero en HTTP
+
+La API candidata aplica ahora la misma frontera de rol que el repositorio
+para los filtros de estado: cocina no puede solicitar `picked_up` y sala no
+puede solicitar `confirmed` ni `preparing`. Las peticiones prohibidas
+responden `403` antes de invocar al coordinador; los filtros permitidos
+continúan hacia el coordinador, donde se revalida la membresía. Pruebas
+Fastify verifican ambos recorridos. Las rutas permanecen sin montar.
