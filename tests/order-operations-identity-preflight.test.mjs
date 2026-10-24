@@ -19,6 +19,7 @@ function pool(role, overrides = {}) {
             inherits_roles: false, can_create_role: false, can_create_db: false,
             can_replicate: false, has_role_memberships: false,
             connection_limit: -1, password_valid_until: null,
+            schema_usage: true, schema_create: false, candidate_rpc_execute: false,
             ...overrides,
           }]};
         },
@@ -66,6 +67,8 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     {can_replicate: true}, {has_role_memberships: true},
     {connection_limit: 'invalid'}, {connection_limit: -2},
     {password_valid_until: 'invalid'},
+    {schema_usage: false}, {schema_create: true},
+    {candidate_rpc_execute: true}, {candidate_rpc_execute: null},
   ]) {
     const staffPool = pool(roles.staffRole);
     const operationsPool = pool(roles.operationsRole, override);
