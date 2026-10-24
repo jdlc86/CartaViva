@@ -1,0 +1,56 @@
+name: Sabora CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require genuine pnpm lockfile
+        run: |
+          test -s pnpm-lock.yaml || {
+            echo 'ERROR: generate pnpm-lock.yaml using pnpm install before CI'
+            exit 1
+          }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test
+        run: pnpm test
+      - name: Test Sabora migrations in disposable PostgreSQL 17
+        run: bash scripts/ci/postgres-migration-smoke.sh
+      - name: Exercise real Node pg driver against disposable loopback-only PostgreSQL 17
+        run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
+      - name: Build
+        run: pnpm build
+      - name: Validate Docker Compose
+        run: docker compose -f deploy/compose.sabora.yml config --quiet
+      - name: Build isolated Sabora API image
+        run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
+      - name: Smoke-test API container without host port or shared network
+        run: |
+          docker run --rm --network none --entrypoint node sabora-api:ci --check src/server.mjs
+          docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
+      - name: Exercise live API health inside isolated container
+        run: |
+          id=$(docker run -d --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges sabora-api:ci)
+          trap 'docker rm -f "$id" >/dev/null 2>&1 || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec "$id" node -e "fetch('http://127.0.0.1:4100/health').then(async r => { const body=await r.json(); process.exit(r.ok && body.service==='sabora-api' ? 0 : 1) }).catch(()=>process.exit(1))"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$id"
+          exit 1

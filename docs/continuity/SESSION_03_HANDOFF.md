@@ -1,0 +1,375 @@
+# CartaViva / Sabora — Continuidad para la sesión 3
+
+Fecha: 2026-10-21. Documento de traspaso; **la documentación versionada del repositorio es la fuente de verdad**. Verificar rama, HEAD, PR y CI en GitHub antes de modificar código. No asumir que el último commit mencionado aquí sigue siendo HEAD.
+
+## Alcance y reglas no negociables
+- Repositorio autorizado exclusivamente: `jdlc86/CartaViva`. Rama de trabajo conocida: `feat/sabora-pnpm-bootstrap`; PR conocido: **#2 (Draft)**. No hacer merge ni desplegar sin autorización expresa.
+- **Sabora es un único restaurante**, con PWA Cliente y PWA Gestión independientes; CartaViva es el directorio central de restaurantes, no una base de datos compartida de negocio.
+- Supabase operativo Sabora: proyecto `byhvmumqivmunkmomhup`. No aplicar migraciones, cambiar roles, crear credenciales o modificar datos operativos sin autorización específica. No usar el proyecto para pruebas destructivas.
+- VPS compartido con Fleetia y otros proyectos: **no tocar recursos de Fleetia ni de terceros**. Desplegar/reiniciar/eliminar Sabora nunca puede detener, alterar ni depender de sus contenedores. Despliegue al VPS exige autorización expresa y aislamiento completo.
+- Solo un ROOT; varios ADMIN, con un único ADMIN titular de escritura. Identidad cliente basada en alias y empresa opcional; passkey recuperable y sesión segura aún no operativas. No confundir prototipos con funcionalidades desplegadas.
+- Sin solicitar revisión Codex mientras no haya créditos. Mantener pruebas, commits, CI y documentación por hito.
+
+## Lecturas obligatorias al iniciar
+1. `docs/continuity/SESSION_02_HANDOFF.md` (histórico extenso y decisiones).
+2. `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md` (contrato funcional).
+3. `docs/architecture/SABORA_TECHNICAL_ROADMAP_INFRASTRUCTURE_V1.md`.
+4. `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md` (puertas del catálogo; parte del apartado «Estado actual» puede haber quedado obsoleta: contrastar siempre con código y migraciones).
+5. `apps/api/src/server.mjs`, `apps/client/src/main.tsx`, migraciones y scripts CI antes de cambiar rutas o privilegios.
+
+## Estado de implementación verificado por archivos
+- Migraciones candidatas de catálogo: `20261021180000_sabora_catalog_publication_foundation.sql`, `20261021190000_sabora_catalog_publication_guard.sql`, `20261021200000_sabora_catalog_reader.sql`. Separan borrador y snapshot publicado; validación provisional; rol de lectura NOLOGIN y RPC restringida. **No aplicadas al Supabase operativo**.
+- El publicador rechaza actualmente opciones, extras y descuentos no vacíos: pendiente su validación económica completa. `apps/api/src/catalog-pricing.mjs` es cálculo puro no integrado con pedidos.
+- Backend: `catalog-publication.mjs`, `catalog-reader-query.mjs`, `catalog-scoped-query.mjs`, `catalog-pool-config.mjs`, `catalog-http-route.mjs`. Ruta opt-in `GET /api/v1/catalog` **no registrada en `server.mjs`**; no hay pool operativo ni login provisionado.
+- Cliente: `apps/client/src/catalog.ts`, `catalog-loader.ts`, `main.tsx` solicitan la ruta en mismo origen, muestran carga/error/reintento, filtran categorías y muestran agotados. Sin endpoint activo, la carta real no se puede cargar. No hay pedidos operativos.
+- Pruebas: `tests/catalog-*.test.mjs`, `tests/client-catalog*.test.mjs`, `scripts/ci/postgres-migration-smoke.sh`, `scripts/ci/catalog-reader-login-smoke.sh`. El login NOINHERIT de prueba solo se crea en PostgreSQL desechable.
+
+## Incidencia CI más reciente conocida y prioridad inmediata
+- Commit `5a786f7`: Sabora CI run **39644807586** FAILED y Bootstrap run **39644807603** FAILED.
+- Causa terminal comprobada en logs: `permission denied for schema sabora` en la prueba de login `catalog-reader-login-smoke.sh` al evaluar permisos. Otros errores `admin_ownership_audit_action_check` y `stale_owner` proceden de pruebas negativas intencionadas; no confundirlos con la causa final.
+- `SESSION_02_HANDOFF.md` registra un commit posterior **`7dd8c0f`** que concede USAGE sobre el esquema **solo al login del contenedor de prueba**, sin SELECT ni EXECUTE heredado. **Comprobar si está en HEAD y si el CI posterior pasó**; no darlo por verde sin consultar runs y logs.
+- La prueba debe acreditar: login NOINHERIT sin SELECT directo ni EXECUTE heredado, RPC disponible solo tras `SET LOCAL ROLE sabora_catalog_reader` en transacción, y reversión al COMMIT. Revisar cuidadosamente si el permiso USAGE de esquema es compatible con el modelo de aislamiento y no se extiende a producción.
+
+## Siguientes pasos sugeridos
+1. Consultar HEAD de la rama y los dos workflows del último commit. Reparar cualquier CI rojo; repetir en PostgreSQL 17 desechable y documentar evidencias.
+2. Revisar RLS/FORCE RLS, propietario SECURITY DEFINER, GRANT/REVOKE y privilegios efectivos del lector. Añadir regresiones negativas si faltan.
+3. Validar extremo a extremo contrato SQL → adaptador API → respuesta HTTP → parser Cliente en pruebas aisladas, sin habilitar servidor ni desplegar.
+4. Diseñar aprovisionamiento de login dedicado y montaje opt-in seguro; **pedir autorización antes de cambios operativos**.
+5. Completar validación económica del catálogo y titularidad del ADMIN escritor antes de habilitar publicación desde Gestión. No habilitar pedidos hasta autorización por mesa, precios e idempotencia.
+6. Mantener este archivo o crear el siguiente handoff cuando haya un hito importante.
+
+## Metodología y límites de entrega
+- Trabajar solo en `jdlc86/CartaViva`, con commits pequeños pero coherentes, tests relevantes y documentación actualizada. No afirmar que algo está funcionando en producción cuando solo es código candidato.
+- Verificar GitHub Actions mediante runs y logs, no inferir éxito de un commit. No solicitar Codex por falta de créditos.
+- Ningún merge, despliegue, reinicio de contenedores, operación sobre Fleetia, cambio operativo de Supabase o intervención en el VPS sin autorización expresa.
+
+## Sesión 3 — primer hito de continuidad (2026-10-21)
+- HEAD inicial verificado: `dc6bc3fe4f4e6d0454cd3cf6860401f6d9ec3e26`; PR #2 sigue Draft.
+- GitHub Actions del HEAD inicial: Sabora CI `39645612485` SUCCESS y Bootstrap `39645612528` SUCCESS. La incidencia de permisos del lector en CI de sesión 2 quedó corregida en la rama. No confundir este éxito con preparación para producción.
+- Revisados `catalog-http-route.mjs`, `catalog-reader-query.mjs`, `catalog-scoped-query.mjs` y `server.mjs`: endpoint público aún opt-in, sin registro operativo ni pool.
+- Commit `c5aba8d1896051c02967db4cc065fc314e256676`: añade regresiones negativas al test HTTP del catálogo para configuración ausente, filas SQL inválidas y snapshot con precio negativo. **Validación CI del commit pendiente**; si falla, investigar logs y corregir antes de avanzar.
+- Sin cambios en Supabase, VPS, Fleetia, despliegues o merge; sin revisión Codex.
+- Próxima prioridad: verificar CI del nuevo HEAD, confirmar que el snapshot inválido efectivamente produce 503 y, si no, endurecer la proyección y su prueba. Luego comprobar privilegios del lector y composición SQL → HTTP → cliente en entorno aislado.
+
+## Sesión 3 — regresiones de transacción del lector (2026-10-21)
+- Confirmados SUCCESS ambos workflows sobre `c5aba8d` (Sabora CI `39645806343`, Bootstrap `39645806387`) y sobre `69ba120f` (Sabora CI `39645855080`, Bootstrap `39645855055`).
+- Commit `e95092523564c5faefea6d01642975cc3bac1362`: nuevas pruebas de rechazo de parámetros arbitrarios antes de checkout, fallo al activar rol, fallo de COMMIT y error de conexión al pool. El código de ejecución permanece sin modificación; todas son pruebas de regresión de cierre seguro.
+- Pendiente verificar conclusión de CI sobre el commit nuevo y el de esta documentación. No se habilita ruta, credenciales ni producción.
+
+## Sesión 3 — frontera del adaptador SQL del catálogo
+- Commit `6a0baadb9c84a915f3f38b991173e32fa2868d02`: regresiones para IDs duplicados, más de 500 filas, disponibilidad mal tipada y no exposición de campos draft desde el adaptador SQL. No hay cambios en contratos ni rutas operativas.
+- Al inicio de este bloque los workflows `e950925` y `8262a05` seguían en ejecución; comprobar su conclusión y la del nuevo HEAD antes de afirmar éxito.
+- El endpoint sigue sin montarse en `server.mjs`. No se han utilizado recursos operativos.
+
+## Sesión 3 — integración HTTP y lector transaccional
+- Commit `cf8f94d4eae50d784cf642eb67e67984cedda6bf`: pruebas de integración en memoria entre `registerCatalogHttpRoute` y `createCatalogScopedQuery`, verificando BEGIN, SET LOCAL ROLE, RPC permitida, COMMIT, liberación limpia, ausencia de campos draft y, ante fallo, 503 genérico, ROLLBACK y descarte de conexión.
+- No es una prueba PostgreSQL real ni un despliegue; el endpoint sigue sin registrarse en el servidor operativo.
+- Verificar CI del último HEAD antes de declarar el hito validado.
+
+## Sesión 3 — pruebas de consumidor PWA (2026-10-21)
+- Verificado SUCCESS en Sabora CI y Bootstrap para `6a0baad`, `cbe6df0` y `cf8f94d`. En ese momento el commit documental `dd41bc7` seguía ejecutándose.
+- Commit `bbd06482e48e4fc4b59e6a579c9a26e8cab0f65d`: pruebas de señal AbortController, JSON malformado, límite de 500 elementos y catálogo vacío en el loader de la PWA Cliente. No se alteran las llamadas operativas ni se monta el endpoint.
+- Pendiente verificar workflows sobre último HEAD. Las pruebas usan fetch simulado, no PostgreSQL real.
+
+## Sesión 3 — endurecimiento del smoke de login PostgreSQL
+- Commit `d7f4950045554e6b0df1dc72713cd3e299ac2209`: `scripts/ci/catalog-reader-login-smoke.sh` comprueba que el login técnico es NOINHERIT y NOBYPASSRLS y que ni el login ni el rol activado pueden leer o modificar directamente `sabora.catalog_items` (SELECT/INSERT/UPDATE/DELETE). Conserva comprobación de RPC restringida y restauración de rol al terminar la transacción.
+- El script está limitado al contenedor PostgreSQL 17 desechable utilizado por CI; no aprovisiona credenciales en Supabase operativo.
+- CI sobre este commit y el último HEAD pendiente de comprobación.
+
+## Sesión 3 — comprobación efectiva de denegación RPC
+- Commit `99b9db99c5ddb263f430835675871f42e9fa41ac`: smoke SQL del login lector intenta ejecutar directamente `sabora.read_published_catalog()` antes de SET LOCAL ROLE y después de COMMIT; ambos intentos deben fallar con `insufficient_privilege`. Complementa los metadatos ACL con ejecución negativa real.
+- Antes de este commit, CI y Bootstrap SUCCESS para `bbd0648` y `67b9cd4`; los runs de `d7f4950` y `09d59f0` aún estaban en curso al consultar.
+- Solo contenedor PostgreSQL desechable en GitHub Actions; no se han tocado Supabase operativo, VPS ni Fleetia. Verificar CI del último HEAD.
+
+## Sesión 3 — aislamiento del lector frente a identidad y personal
+- Commit `c438483a31a37dfec542f92b1b1ba9ca03bb816f`: smoke SQL bajo SET LOCAL ROLE `sabora_catalog_reader` intenta SELECT real de `sabora.customer_profiles`, `sabora.customer_sessions` y `sabora.staff_members`. Deben fallar por privilegios insuficientes. No se modifica SQL de producción ni se conceden privilegios.
+- CI y Bootstrap SUCCESS sobre `d7f4950` y `09d59f0`; los runs de `99b9db9` y `48429e7` todavía estaban ejecutándose al iniciar este hito.
+- Validar último HEAD mediante Actions; prohibido utilizar Supabase operativo y VPS compartido para estas pruebas.
+
+## Sesión 3 — robustez transaccional del lector
+- Al inicio de este bloque, los dos workflows de GitHub Actions estaban SUCCESS para `99b9db9`, `48429e7`, `c438483` y `eb55ef2`.
+- Commit `38a55737ad30f76b5c33dac673030039b376d644`: pruebas del adaptador SQL para fallo de BEGIN sin ROLLBACK improcedente, fallo de ROLLBACK sin ocultar error original, y descarte de cliente incompleto del pool. No cambia el contrato operativo ni activa ruta HTTP.
+- Verificar CI del nuevo commit y último HEAD; PostgreSQL operativo y VPS siguen fuera del alcance.
+
+## Sesión 3 — integración SQL → HTTP → PWA Cliente
+- Commit `db7c717ade139d154f8506e7314c1e72f80052a0`: tests in-memory que conectan el pool simulado con SET LOCAL ROLE, el handler HTTP y el loader TypeScript de la PWA. Comprueban agotado visible/no disponible, ausencia de datos de borrador, liberación limpia tras COMMIT y fallo cerrado de la PWA ante error interno de API.
+- No hay conexión a PostgreSQL real en este test de integración, ni montaje de ruta en `server.mjs`. Las pruebas PostgreSQL 17 desechable siguen separadas en CI.
+- El commit `eb55ef2` ya tenía ambos workflows SUCCESS. Verificar CI del nuevo HEAD antes de declarar validado este hito.
+
+## Sesión 3 — configuración del pool lector
+- Commit `dcffc1d09aecd396d248afdff4c822954e4e19de`: amplía tests de `catalog-pool-config.mjs` para asegurar objeto y SSL inmutables, timeouts y límite de pool esperados, rechazo de puertos no válidos y mensajes de error que no exponen la contraseña.
+- No se crean conexiones ni credenciales; `server.mjs` sigue sin montar el endpoint. No hay despliegue.
+- Los workflows del hito SQL–HTTP–PWA (`db7c717`, `a4234f2`) estaban en ejecución al comenzar. Verificar CI del último HEAD.
+
+## Sesión 3 — denegaciones SQL reales sobre tabla de catálogo
+- Commit `ff3d2929dfd94e183ac7d0bb67c38f0f51829353`: el login técnico autenticado por TCP activa `SET LOCAL ROLE sabora_catalog_reader` y ejecuta SELECT y UPDATE reales contra `sabora.catalog_items`. Ambos deben recibir `insufficient_privilege`; complementa la verificación ACL y las denegaciones de datos personales.
+- Previamente ambos workflows SUCCESS para `dcffc1d`; Bootstrap SUCCESS para `f8ce465`, Sabora CI todavía en curso.
+- No se han aplicado migraciones ni abierto conexiones a Supabase operativo; CI usa PostgreSQL 17 desechable. Verificar nuevos runs.
+
+## Sesión 3 — rechazo de catálogo HTTP incoherente
+- Commit `82832222a9615508ae96b36dcafc39ae93639217`: pruebas de la ruta HTTP ante IDs duplicados de publicación y `sold_out` no booleano; debe fallar cerrado con 503, sin devolver catálogo parcial. No se cambia código de producción ni se habilita el endpoint.
+- Los workflows para `ff3d292` y `157c183` estaban todavía ejecutándose al iniciar este bloque. Comprobar CI de este hito.
+
+## Sesión 3 — filas anómalas de RPC del catálogo
+- Commit `6fe384a76d22c52efc81cc4e8f42ec6486ba22c9`: tests de `readPublishedCatalog` para menú publicado vacío y filas no válidas (null, número, snapshot ausente y disponibilidad no booleana). No se activa endpoint ni se modifica producción.
+- Al iniciar, `ff3d292` tenía Sabora CI y Bootstrap SUCCESS; `157c183` tenía Sabora CI SUCCESS. Verificar los workflows del nuevo HEAD.
+
+## Sesión 3 — corrección de CI del contrato RPC
+- `6fe384a` y `dceb5fb`: Sabora CI y Bootstrap FAILED; job de Test mostró 228/229 tests PASS, falló `SQL adapter rejects non-row primitives and invalid published snapshots` con `Missing expected rejection`. No era fallo de PostgreSQL.
+- Commit `7034dc472c98fe21567e1a4a34db3da923207077`: el adaptador `readPublishedCatalog` rechaza filas RPC primitivas, null o sin `published_snapshot` antes de proyectarlas. A diferencia del proyector genérico que puede omitir borradores, la RPC restringida promete únicamente filas publicadas y debe fallar cerrado.
+- `8283222` y `e5251e1` tenían ambos workflows SUCCESS. Verificar CI del nuevo commit correctivo antes de considerarlo resuelto.
+
+## Sesión 3 — PWA Gestión: estructura de navegación no operativa
+- `7034dc4`: Sabora CI y Bootstrap SUCCESS, validando corrección del adaptador RPC; `95c8ad5`: Bootstrap SUCCESS y Sabora CI pendiente al comenzar.
+- Commits `10ba9106bad1cb52317062e60e95cf6932892741` y `c2b2b5ceba9346c47b243c3166be6d7d02de780c`: PWA Gestión con navegación accesible y responsive entre Resumen, Carta, Mesas/QR, Comandas y Equipo. Muestra requisitos de activación por área, no datos ficticios ni acciones de escritura.
+- **No es un panel administrativo funcional**: no existe login ni llamadas a API en esta interfaz; acceso y operaciones permanecen expresamente inhabilitados. Revisar CI/build de Gestión tras el cambio.
+
+## Sesión 3 — gate de interfaz Gestión no operativa
+- Commit `23578d8ed808169ee3a3011550fa5ff34d371aae`: `tests/management-scaffold.test.mjs` valida cinco áreas, aviso explícito de no operatividad, accesibilidad de navegación y ausencia de llamadas HTTP, WebSocket, almacenamiento de sesión y formularios de escritura en la maqueta.
+- Sabora CI SUCCESS en `10ba910` y `c2b2b5c`; Bootstrap SUCCESS en `10ba910`. Bootstrap de `c2b2b5c` seguía en curso al iniciar.
+- Esta regresión es una barrera estática de alcance limitado, no reemplaza pruebas de autorización del backend. Comprobar CI de HEAD antes de avanzar.
+
+## Sesión 3 — reconciliación documental de la puerta de catálogo
+- Commit `e8e9ee3c22901fd5fff200052a09baf136a0c638`: actualización aditiva de `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md` para distinguir el «Estado actual» histórico de los componentes y pruebas realmente versionados. Mantiene explícitos los bloqueos de despliegue, conexión y publicación.
+- No se modificó el runtime ni Supabase. Verificar los runs CI de la rama.
+
+## Sesión 3 — pruebas adicionales de precios
+- Commit `8eb0b563005b96f15ed3edd31b4da8b8d049af86`: casos de gratuidad, descuento porcentual completo, redondeo por unidad antes de multiplicar, overflow de importes y entradas inválidas en `tests/catalog-pricing.test.mjs`. `priceCatalogLine` continúa siendo cálculo puro sin endpoint de pedido.
+- `23578d8` y `a07e392`: Sabora CI y Bootstrap SUCCESS. Verificar los nuevos workflows de pruebas económicas.
+
+## Sesión 3 — endurecimiento del acumulador de extras
+- `8eb0b56`: Sabora CI y Bootstrap SUCCESS, incluyendo pruebas de descuento completo, redondeo y overflow.
+- Commits `2c1091a40a981215d39587081d588dc10308807f` y `944939c663dcccbd773eab08906252d1d65344aa`: el cálculo puro de precios comprueba overflow en cada acumulación de extras y al sumar el precio base, antes de cualquier descuento. Regresiones para el límite `Number.MAX_SAFE_INTEGER`.
+- Sin activación de API, publicación administrativa, pedidos, migraciones operativas ni despliegue. Comprobar CI de este cambio.
+
+## Sesión 3 — límites de multiplicación por cantidad
+- `2c1091a` y `944939c`: Sabora CI y Bootstrap SUCCESS; `b6039ae`: Sabora CI SUCCESS.
+- Commits `3d48da6bb969d2ebfb369cd51417867c44b8f740` y `95f88875d25a152d35b825ca430452afb0d0ce8f`: el cálculo puro valida que subtotal bruto y descuento unitario multiplicados por cantidad permanezcan en el rango seguro, incluso con descuento del 100 %. Pruebas del límite exacto y del primer céntimo fuera del rango.
+- Verificar CI; no se habilitaron pedidos, pagos, administración ni migraciones operativas.
+
+## Sesión 3 — entrada de cálculo de precios
+- Commits `f7a1b97260e671ef54911c599cd88b029d224dc3` y `4171968c6a2fd721fca0058e20d71d6757873fcb`: `priceCatalogLine` rechaza de manera uniforme entradas null, undefined, primitivas y arrays con `invalid_catalog_price`, en vez de dejar escapar errores de destructuración. Test de regresión.
+- El validador SQL de publicación `20261021190000_sabora_catalog_publication_guard.sql` **todavía rechaza options/extras no vacíos y descuentos distintos de null**. No afirmar que la validación económica de publicación esté terminada; debe diseñarse y probarse transaccionalmente antes de habilitar Gestión.
+- Sin cambios operativos; verificar los dos workflows del último HEAD.
+
+## Sesión 3 — casos negativos de publicación económica PostgreSQL
+- Commit `e278c1cb923f43b16a2bd0625040df5a5b3b79fc`: smoke de PostgreSQL 17 desechable amplía pruebas negativas de `validate_catalog_snapshot`: céntimos fraccionarios, negativos, importes fuera de límite, extras no validados, descuento fijo no validado y alérgeno nulo. Mantiene la prohibición de publicar reglas económicas aún no implementadas.
+- No altera migraciones ni producción. Verificar CI; el soporte positivo de extras/opciones/descuentos sigue pendiente de diseño, validación y pruebas transaccionales.
+
+## Sesión 3 — proyección pública sin pérdida silenciosa de reglas económicas
+- Commits `c047821bebbe51e63263fb0d1649b9e62b925911` y `0860df271b9e47a6822b9fe87d619dc7f1cb6b23`: `projectPublishedCatalog` rechaza snapshots publicados con `options`/`extras` no vacíos o `discount` no nulo porque el DTO público actual no puede representarlos. Las variantes vacías/neutras siguen permitidas. Pruebas de regresión.
+- Esto **no implementa** extras/opciones/descuentos; impide presentar un precio incompleto si llegaran a publicarse por una vía futura. La publicación SQL sigue bloqueando reglas no implementadas. Verificar CI.
+
+## Sesión 3 — contrato de implementación económica
+- Commit `4ef5371cddbfe6016787786eeb03c4a5b647570d`: nuevo `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md`. Define puertas de implementación para DTO versionado, validación de extras/opciones/descuentos, publicación con revisión esperada, selección cotizada en servidor, recálculo y aceptación explícita, snapshots inmutables y pruebas aisladas. Es diseño no operativo derivado del contrato funcional, no funcionalidad implementada.
+- No relajar la validación SQL ni la proyección pública hasta que se implemente y pruebe el contrato completo.
+
+## Sesión 3 — validador candidato de modificadores económicos
+- Commits `747d6839d08ad8158d6c442a0edb743607f211fa` y `93bb7373f62ffee00bb71f817e2f0bab57626799`: `apps/api/src/catalog-economic-modifiers.mjs` y pruebas puras. Contrato **candidato** explícito para opciones con valores, extras, disponibilidad, alérgenos y descuentos fijos/porcentuales. Rechaza duplicados, importes inválidos, límites excesivos y claves inesperadas.
+- **No conectado** a `publish_catalog_item`, proyección pública, endpoints ni pedidos. El SQL vigente continúa rechazando extras/opciones no vacíos y descuentos no nulos. Antes de integrar, revisar compatibilidad del contrato candidato con el funcional, establecer IDs persistentes, versión JSON y validación PostgreSQL equivalente.
+- Codex se reserva para auditoría posterior. Verificar CI de HEAD.
+
+## Sesión 3 — bloque amplio: cotización segura y recálculo candidato
+- Commits `dbcbb938`, `85d5afab`: nueva `quoteCatalogSelection` y pruebas. Cotización pura desde snapshot confiable, comprobando pertenencia, IDs, disponibilidad, selección obligatoria, máximos, duplicados, desglose de extras/opciones y alérgenos.
+- Commits `e3dc365f`, `16f46d0b`: `compareCatalogQuote` y pruebas. Recalcula y exige aceptación explícita si cambia la revisión publicada, subtotal, descuento o total, **incluidas las bajadas de precio**. No confirma pedidos.
+- Commits `a523be1e`, `15278726`: refuerzo de acceso a grupos con `Object.hasOwn` y límite agregado de 50 modificadores, con regresiones.
+- `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md` actualizado en `b22aa436`.
+- Todas las funciones siguen **aisladas**: sin API, sin DB operativa, sin publicación ni pedidos habilitados. Verificar Sabora CI/Bootstrap para cada HEAD. Siguiente puerta: definir versión de JSON y migración PostgreSQL equivalente con pruebas en DB desechable antes de integración.
+
+## Sesión 3 — candidato PostgreSQL de modificadores económicos
+- Commits `506622dcc3fe4570575cfecb0bb68e66bf6bb86e` y `79c9360d1bc447c50f41f68f1e18dd83e7dec675`: migración aditiva `20261021210000_sabora_catalog_economic_candidate_validation.sql` con funciones aisladas para validar opciones, valores, extras, disponibilidad, alérgenos y descuentos, más smoke PostgreSQL 17 desechable.
+- Los roles de aplicación no reciben EXECUTE; `publish_catalog_item` y `validate_catalog_snapshot` permanecen intactos y siguen bloqueando extras/opciones/descuentos no neutros. El smoke comprueba expresamente que el candidato **no** desbloquea la publicación.
+- Pendiente comprobar CI y comparar semántica del validador SQL con JavaScript; sin despliegue ni migración operativa.
+
+## Corrección de concurrencia de cambios en la rama
+- Al implementar el candidato SQL se detectó una migración canónica ya incorporada en otro commit de la misma rama: `supabase/migrations/20261021210000_sabora_catalog_economic_candidate.sql` (CI y Bootstrap del commit `2fc8051d`: SUCCESS).
+- La migración adicional `20261021210000_sabora_catalog_economic_candidate_validation.sql` duplicaba la firma `sabora.validate_catalog_economic_modifiers(jsonb)`, causando fallos de migración CI. Se **eliminó** la migración duplicada en `30ff5e0fc09ca9895362d01d07f0c67dff1c49ae`. Conservar exclusivamente la canónica; no reintroducir duplicados.
+- El smoke de casos positivos/negativos y comprobación de permisos añadido en `79c9360d` permanece en `scripts/ci/postgres-migration-smoke.sh`. Volver a verificar CI de HEAD tras la eliminación.
+- Los fallos de CI anteriores a esta corrección son reales y no deben declararse verdes retrospectivamente.
+
+## Sesión 3 — endurecimiento SQL y pruebas diferenciales económicas
+- Commits `e08c9133`, `cfaf23c6`: se restauró la migración canónica desde un commit conocido para eliminar una corrupción accidental de edición; se añadió comprobación explícita de tipos `id`/`name` y se cambió el consumo de la función SQL auxiliar a `IS DISTINCT FROM TRUE`, de forma que `NULL` nunca valide modificadores. `cfaf23c6`: Sabora CI y Bootstrap SUCCESS.
+- Commits `2b6e15c6` y `dc9d3a72`: casos negativos equivalentes en PostgreSQL y JS para campos ausentes/nulos, IDs incorrectos y valores duplicados.
+- Commits `42183805` y `9608bcdd`: `scripts/ci/catalog-economic-parity.mjs` genera expectativas desde `validateEconomicModifiers` para 29 casos y las ejecuta contra la función candidata SQL en PostgreSQL 17 desechable desde el smoke. Es una puerta de **equivalencia diferencial**, no activación de publicación.
+- Verificar CI del HEAD tras incorporar la prueba diferencial. La función de publicación operativa sigue sin aceptar opciones/extras/descuentos y sin grants de escritura.
+
+## Sesión 3 — extensión determinista de la puerta diferencial
+- `06b23aae`: `scripts/ci/catalog-economic-parity.mjs` añade 300 mutaciones deterministas (semilla fija) a los 29 casos explícitos; compara automáticamente 329 entradas entre `validateEconomicModifiers` JS y la función candidata SQL en PostgreSQL 17 desechable. Mutaciones de estructuras, nombres, IDs, tipos, importes, disponibilidad, límites y descuentos.
+- La generación usa PRNG local determinista, sin red ni datos operativos. Esta cobertura no demuestra equivalencia formal; **no** modifica la publicación, DTO público, pedidos, roles ni despliegue.
+- Revisar GitHub Actions del commit final antes de declarar verde; ante divergencia, corregir la semántica y conservar el caso como regresión.
+
+## Sesión 3 — incidencia descubierta por fuzz determinista
+- La puerta de 329 casos encontró un fallo en `uniqueIds` de `apps/api/src/catalog-economic-modifiers.mjs`: acceso a `.id` sobre `null` en colecciones antes del rechazo. Se corrigió en `9cc705a8`, con CI y Bootstrap SUCCESS.
+- `fb3e7efa`: pruebas unitarias explícitas de entradas `null` en extras y valores de opción.
+- `3edc1337`: documentación de la cobertura y alcance. Comprobar ambos workflows del último HEAD antes de cerrar el bloque.
+- Sin merge, sin activación de pedidos, sin cambios en Supabase operativo ni VPS.
+
+## Sesión 3 — evidencia económica v1 y cálculo porcentual exacto
+- `13bf7fad`, `02d0f53f`: `apps/api/src/catalog-line-evidence.mjs`, constructor puro `buildCatalogLineEvidence` que fija `schemaVersion:1`, ID de artículo, revisión publicada, selección, importes, alérgenos y descuento en un objeto profundamente congelado. Se eliminó deliberadamente un validador de evidencia independiente que no podía demostrar procedencia de DB.
+- `2cb36795`: pruebas de evidencia congelada, independencia ante mutaciones posteriores, revisión/identificadores y entradas malformadas.
+- `7c8cae23`, `10322d77`: cálculo porcentual exacto con `BigInt` para evitar desbordamiento de producto intermedio; pruebas de límites de enteros seguros. La primera ejecución CI de `7c8cae23` falló por una aserción previa que esperaba rechazo de un caso ahora válido; se actualizó en `10322d77`. Verificar CI final.
+- `455557ff`: contrato de arquitectura actualizado. Nada conectado a confirmación de pedidos, DB operativa, publicación SQL, HTTP ni PWA. Próxima puerta: transacción real que bloquee revisión, resuelva pertenencia y persista evidencia atómica con idempotencia y aceptación explícita.
+
+## Sesión 3 — candidato de aceptación firmada de recotización
+- `821a0b61`: módulo puro `apps/api/src/catalog-reprice-acceptance.mjs` con token HMAC-SHA256 firmado por servidor, ligado a cesta, identidad, revisión publicada, selección, cantidad, evidencia económica y caducidad máxima de diez minutos.
+- `2ad2d1a3`, `d28a65b8`: pruebas de firma, manipulación, caducidad, subida/bajada de precio, cambio de descuento, disponibilidad, identidad y revisión; caso de manipulación hecho determinista.
+- `3e513aff`: arquitectura aclara que **token firmado no equivale a consentimiento humano ni a idempotencia**. Falta registro transaccional de aceptación y validación de permisos/visita/mesa en DB. No montar rutas ni usar en producción.
+- Revisar CI del HEAD tras documentación. Sin merge, sin despliegue, sin escritura en Supabase operativo ni recursos del VPS.
+
+## Sesión 3: puerta de confirmación económica aislada
+- fe4c6a5d: decisión previa a confirmar según revisión, precio y aceptación firmada.
+- bfbb0027: pruebas de subida, bajada, revisión, descuento, identidad, caducidad y datos alterados.
+- 75d9d27a: documentación de arquitectura. Pendiente: autorización de visita, bloqueo transaccional, idempotencia, consentimiento duradero y persistencia atómica.
+- Sin conexión HTTP ni operaciones en entornos productivos.
+
+## Sesión 3 — coordinador transaccional candidato
+- 94c40bd7: coordinador aislado con transacción, bloqueo de contexto, replay idempotente, bloqueo de catálogo, decisión de aceptación y persistencia delegada.
+- c9b8862d: pruebas con adaptador simulado de secuencia, rollback, replay, cambios de revisión, consentimiento y entradas prohibidas.
+- 072b2d84: documentación de los límites. No hay adaptador PostgreSQL real, consumo durable de aceptación ni ruta HTTP. No activar pedidos.
+- Pendiente: SQL de idempotencia, bloqueo real, autorización QR/visita y pruebas concurrentes en PostgreSQL 17 aislado.
+
+## Sesión 3 — cierre de falsificación de cotización previa
+- `83f63a3d`: eliminado `previous` del payload cliente de `catalog-confirmation-coordinator`. El nuevo método obligatorio `loadPreviousQuote` debe leer cotización anterior confiable dentro de la transacción. Sin registro previo, fallo cerrado.
+- `9414db30`: tests de `previous` falsificado, registro anterior inexistente y cambio de revisión almacenada. El CI intermedio de `83f63a3d` falló porque los tests antiguos aún esperaban el contrato anterior; verificar CI del HEAD actualizado.
+- `0492272a`: documentación de arquitectura y advertencia explícita: sin repositorio PostgreSQL real que guarde y bloquee cotizaciones mostradas no se puede activar pedidos.
+- Prohibido desplegar, mezclar o tocar Supabase/Fleetia/VPS sin autorización.
+
+## Sesión 3 — almacenamiento económico candidato en PostgreSQL
+- `0848651e`, `f5c161c6`: migración privada `20261021220000_sabora_catalog_quote_ledger_candidate.sql`, con cotizaciones mostradas y confirmaciones idempotentes, FK compuesta por visita/cesta/actor, checks económicos y RLS forzado.
+- `8bc47f4a`: CI PostgreSQL 17 desechable valida 17 tablas RLS, unicidad, FK y ausencia de grants en roles de runtime. Verificar resultado final.
+- `fc9f34de`: contrato de arquitectura. No hay escritor, rutas, permisos ni integración con el coordinador. Sin despliegue ni cambios a Supabase operativo o VPS.
+
+## Sesión 3 — pruebas negativas reales del ledger
+- `ead0f933`: se exige mismo artículo en cotización y confirmación, y mismo par mesa/sesión en confirmación y pedido mediante FK compuestas.
+- `b358ba1e`: CI comprueba presencia de las restricciones y de `item_id`.
+- `247d10e4`, `2aecb98c`: script SQL de pruebas negativas en PostgreSQL 17 aislado; valida duplicado idempotente, cruce de artículo, visita, mesa y totales erróneos. Se ejecuta en transacción con `ROLLBACK`.
+- `0898056a`: reparación de línea SQL truncada durante edición de la migración. Los CI intermedios fallaron; verificar workflows del HEAD final.
+- `d95cbbc5`: contrato de arquitectura actualizado. **No** hay escritor real ni despliegue.
+
+- Corrección posterior `b07298e6`: reparado completamente el CHECK SQL de `request_key` (edición por índices, sin sustitución con `$` interpretado por JavaScript). Los runs intermedios fallaron al parsear la migración; verificar los workflows del HEAD tras esta corrección.
+
+- Corrección `de0e12fb`: se detectaron **varios bloques SQL duplicados después del primer COMMIT** en la migración candidata, originados por sustituciones de cadenas con el metacarácter `$`. Se eliminó toda la cola duplicada y se verificó que quedara un único COMMIT y ambas FK compuestas.
+- Corrección `2e34182f`: la prueba negativa de artículo/visita usaba un pedido de otra mesa y disparaba antes la FK de pedido. Se añadió un segundo pedido de la mesa correcta para aislar el rechazo exacto de la FK de cotización. CI pendiente de confirmar.
+- Regla de edición: al modificar SQL por GitHub usar cortes por índices o `replace(...,()=>replacement)`, verificar longitud, número de COMMIT y ausencia de colas duplicadas antes de commit.
+
+## Sesión 3 — dos conexiones concurrentes en PostgreSQL 17 aislado
+- `72efdbed`: script `scripts/ci/catalog-quote-concurrency-smoke.sh` prueba dos transacciones independientes con igual clave idempotente y pedidos/huellas diferentes, sincronizadas mientras la primera inserción no está confirmada; comprueba que solo persiste el primer intento.
+- `d4424f61`: integración del script en el smoke de migraciones del PostgreSQL 17 sin red.
+- `19cab3a7`: arquitectura documenta alcance y límites: **no** hay todavía escritor restringido, autorización QR ni aceptación durable; la concurrencia del índice no equivale a seguridad extremo a extremo.
+- Verificar workflows del HEAD. No aplicar a Supabase operativo ni desplegar.
+
+## Sesión 3 — inmutabilidad del ledger económico
+- `22c9b837`: migración candidata `20261021230000_sabora_catalog_ledger_append_only_candidate.sql`, triggers `BEFORE UPDATE OR DELETE` que rechazan mutaciones ordinarias en cotizaciones y confirmaciones.
+- `33189760`: prueba SQL de UPDATE y DELETE sobre ambas tablas, con error esperado `catalog_ledger_append_only`.
+- `89bfe91a`: CI comprueba que ambos triggers estén habilitados en PostgreSQL 17 desechable.
+- `f28f2cff`: arquitectura y límites documentados. Pendiente imprescindible: escritor restringido, autorización de visita/mesa, consentimiento explícito y pruebas transaccionales de extremo a extremo. No hay activación de pedidos, merge, despliegue ni cambios operativos.
+
+## Sesión 3 — cierre TRUNCATE del ledger económico
+- `383edc47`: dos triggers BEFORE TRUNCATE para cotizaciones y confirmaciones; los triggers UPDATE/DELETE previos no interceptaban TRUNCATE.
+- `49b2accb`: pruebas SQL negativas TRUNCATE en ambas tablas.
+- `a750e339`: gate CI comprueba cuatro triggers habilitados.
+- `6948b2a7`: documentación de arquitectura. Verificar workflows de HEAD. Sin escritor, sin HTTP, sin Supabase operativo, sin despliegue ni merge.
+
+## Sesión 3 — adaptador SQL de lectura y vinculación de cotización
+- `0a2f762c`: adaptador `catalog-confirmation-read-repository.mjs` con lecturas parametrizadas y bloqueadas de replay, catálogo y cotización no caducada; no abre conexiones ni instala permisos.
+- `22f19003`: pruebas de aislamiento de contexto, bloqueos, revisión, expiración y fallo cerrado ante datos inconsistentes.
+- `b84cb50f`, `5abb09f0`: el coordinador exige `quoteId` confiable y lo entrega al escritor; tests de rechazo si falta.
+- `4b22e1fb`: documentación de arquitectura. PENDIENTE: verificar correspondencia entre selección/cantidad mostradas y confirmadas, autorización real QR/visita, escritor transaccional restringido, aceptación explícita durable y pruebas de integración. No conectar rutas HTTP.
+
+## Sesión 3 — selección/cantidad de cotización vinculada
+- `9d00493a`: `catalog-displayed-quote-binding.mjs` compara evidencia confiable con importes/revisión almacenados, artículo, cantidad y conjunto de modificadores seleccionados.
+- `f0d00ab0`: lectura SQL incluye la evidencia del ledger.
+- `e39ebca0`: coordinador aplica el guard antes de devolver aceptación o persistir.
+- `fde6169a`, `0b191233`, `a3f57cf7`: tests de cantidad cambiada, evidencia corrupta, extras intercambiados y revisión legítima.
+- `c277ca34`: arquitectura actualizada. CI de los primeros commits falló durante actualización de fixtures; verificar resultado del HEAD.
+- Pendiente: emisión autenticada de cotizaciones, autorización QR/visita, escritor de mínimos privilegios y persistencia atómica. Sin activación de HTTP ni producción.
+
+## Sesión 3 — emisión transaccional candidata de cotizaciones
+- `43e96e2a`: `catalog-quote-issuer.mjs`, coordinador aislado: autorizar/bloquear contexto, bloquear publicación, cotizar desde snapshot confiable, insertar evidencia y devolver cotización con TTL.
+- `01ba4ed0`: pruebas de orden de operaciones, precio confiable, contexto ajeno/revocado, agotados, rollback y rechazo de inyección de importes.
+- `d26c96fc`: arquitectura documenta límites y pendiente de implementación.
+- No se ha creado escritor SQL ni permisos, no se ha activado API/HTTP ni se ha tocado Supabase operativo. Siguiente prioridad: `lockContext` real de QR/visita, inserción de cotización con mínimos privilegios y test integrado PostgreSQL 17. Revisar CI del último HEAD.
+
+## Sesión 3 — adaptador INSERT parametrizado de cotizaciones
+- `53b3114c`: `catalog-quote-insert-repository.mjs` parametriza inserción de evidencia en ledger de cotizaciones; valida contexto, importes y caducidad; no abre conexiones ni otorga privilegios.
+- `d4a1d3f4`: pruebas de parámetros SQL, validación previa y respuesta de DB.
+- `b9a9b657`: documentación de arquitectura y límites de confianza.
+- **Pendiente crítico:** `lockContext` realmente autorizado por QR/visita/actor, escritor de mínimos privilegios, integración SQL real y aceptación transaccional. No conectar HTTP ni aplicar a Supabase operativo. Verificar workflows del HEAD.
+
+## Sesión 3 — verificación candidata QR/mesa/sesión
+- `e0ed12ad`: `catalog-table-qr-verifier.mjs` usa SQL parametrizado y bloqueo `FOR SHARE` para comparar hash SHA-256 del QR con mesa/sesión. No es un `lockContext` de visita.
+- `5b407b1d`: tests de token rotado, sesión errónea, entradas inválidas y resultados contradictorios.
+- `40bcd2fd`: contrato de arquitectura actualizado. No interpretar la posesión del QR como autorización de identidad, visita o cesta. Siguiente paso: modelo durable de visita + identidad y escritor mínimo con integración PostgreSQL 17.
+- Sin conexión operativa, merge ni despliegue.
+
+## Sesión 3 — grants de visita y verificación de sesión de cliente
+- `77d85f43`: tabla candidata `customer_table_visits`, privada, con mesa/sesión/cliente/actor/visita, versión QR, caducidad y revocación. Ningún permiso operativo concedido.
+- `f29c1fd0`, `7a41afbe`: smoke de PostgreSQL 17 para scope/unicidad/expiración y conteo de 18 tablas RLS.
+- `f85ce172`: `catalog-visit-context-repository.mjs` comprueba hash QR y hash de sesión cliente contra visita vigente con `FOR SHARE`.
+- `3ed231f3`, `4f256c8d`: emisor de cotizaciones exige QR y token de cliente; tests adaptados tras primer fallo de fixtures.
+- `82f0402a`: tests de scope y expiración/revocación de la consulta; `72152e7a`: arquitectura.
+- **No conectar todavía**: falta estado de mesa abierta/pausada/cerrada, autorización efectiva de visita en la API, escritor restringido, registro seguro de consentimiento y despliegue autorizado. Revisar CI del HEAD. Sin cambios operativos.
+
+## Sesión 3 — estado operativo de mesa y bloqueo de pedidos
+- `5e1320d2`: migración candidata de estado de mesa `closed` por defecto, `open`, `paused` y `pause_until`.
+- `888a5b0e`: `lockContext` exige mesa abierta o pausa temporal vencida además de QR/visita/sesión.
+- `530abfa1`: pruebas unitarias de predicados SQL de estado.
+- `a56f3585`, `673a6b0a`: smoke PostgreSQL 17 de estados y restricciones incorporado a CI.
+- `c8e97c4b`: arquitectura documentada. Pendiente: transiciones de personal con autorización, pruebas SQL integradas del predicado y concurrencia, escritor mínimo, consentimiento durable. Sin activación, merge ni despliegue.
+
+## Sesión 3 — cierre y separación entre ocupaciones
+- `34118b63`: disparadores SQL candidatos que, al cerrar una mesa abierta/pausada, rotan la sesión de ocupación, reinician la agrupación y revocan grants de visita previos en la misma transacción.
+- `3e030ab3`: smoke SQL de pausa, cierre, revocación y reapertura sin reutilizar permisos antiguos; `a3e28ba8` lo incorpora al CI PostgreSQL 17 aislado.
+- `fb835b5f`: corrección de continuación shell en el smoke de visitas; `3aa67301`: contrato de arquitectura.
+- **Pendiente:** autorización staff real para transiciones, rol SQL mínimo, validación de concurrencia entre cierre y pedido, estado/visita de pago histórico y rutas HTTP. No desplegar, no merge, no modificar Supabase operativo ni Fleetia.
+
+## Sesión 3 — transición de mesa bajo rol de personal (candidata)
+- `8c06e504`: función SQL privada de transición de mesa, bloqueo de membresía activa y mesa, permiso `waiter/admin/root`, denegación de cocina e invitados, validación de pausas y de cambios de estado.
+- `8ecd7899`: smoke PostgreSQL 17 de autorización, estados, rotación al cerrar y denegación EXECUTE para roles runtime. `dc072dd8`: integración CI.
+- `39b41382`: arquitectura actualizada. La función **no** autentica al actor por sí sola: falta conexión a sesión de personal verificada, ACL de mínimo privilegio, auditoría y pruebas de carrera cierre/confirmación. No activar HTTP, no desplegar, no aplicar a Supabase operativo. Revisar CI del HEAD.
+
+## Sesión 3 — concurrencia cierre/autorización de pedido
+- `e2c2ab67`: smoke de dos conexiones PostgreSQL independientes para carrera cierre vs bloqueo de mesa abierta.
+- `33859866`: smoke incorporado a CI desechable PostgreSQL 17; `d71a9da9`: arquitectura documentada.
+- Garantía probada: cierre espera el bloqueo `FOR SHARE` de autorización de pedido y futuras autorizaciones no ven mesa abierta. **No equivale a confirmación real de pedido**; escritor, consentimiento, auditoría y privilegios siguen pendientes. No conectar HTTP ni producción.
+
+## Sesión 3 — concurrencia cierre de mesa versus cliente
+- `1165ae9e`: prueba de dos conexiones PostgreSQL 17 para verificar que `FOR SHARE` de cliente bloquea `FOR UPDATE` de cierre por personal hasta COMMIT.
+- `1b181ca7`: smoke integrado en el CI aislado; `126a2c07`: arquitectura y alcance documentados.
+- Esto no equivale a confirmar una orden completa. Pendiente: persistencia de comanda, consentimiento durable, identidad staff confiable y auditoría. No merge ni despliegue.
+
+## Sesión 3 — auditoría candidata de cambios de mesa
+- `96c77c55`: tabla y triggers append-only de auditoría de estados de mesa; registra estado, pausa y sesión de ocupación anterior/nueva, sin EXECUTE/ACL de runtime.
+- `7ab9ac03`: smoke de auditoría, inmutabilidad y ACL; `081b406b`: integración CI y conteo 19 tablas RLS.
+- `03047526`: arquitectura y limitación explícita: identidad de actor todavía NULL por ausencia de sesión staff acreditada. No es auditoría de usuario final; no activar operaciones hasta resolver procedencia del actor y grants restringidos.
+
+## Sesión 3 — límite de identidad de personal
+- `6c393ebc`: coordinador transaccional de transiciones de mesa con `resolveStaffSession` e invocación SQL parametrizada.
+- `5d3ccae6`: pruebas de credencial, rol activo, transición y rollback; `ff1796d9`: rechazo estricto de campos adicionales/actor suplantado.
+- `46a1e0d2`: arquitectura actualizada. **Pendiente** implementar resolución real de sesión staff, grants mínimos y auditoría de actor sin confiar en valores del cliente. Ninguna ruta montada, ningún despliegue.
+
+## Sesión 3 — resolución candidata de sesión staff
+- `96168ef4`: `verified-staff-session-resolver.mjs` usa un verificador de credencial externo y contrasta sujeto verificado contra membresía activa con SELECT/FOR SHARE.
+- `9cf62f6b`: pruebas de firma/issuer/audience/expiry delegados, sesión ausente y contradicciones DB.
+- `f6933490`, `8eb9f9eb`: coordinador deniega cocina; fixtures de rol y test de denegación.
+- `8bdb795c`: arquitectura. **No hay todavía implementación criptográfica concreta** ni concesión de roles DB, endpoint HTTP o auditoría atribuida. No desplegar ni activar.
+
+## Sesión 3 — resolución candidata de sesión staff
+- `3b2f3c46`: resolver de credencial externa verificada, lookup de membresía activa con `FOR SHARE`; `3939a5f6`: tests de token no verificado, sesión inactiva y resultados contradictorios.
+- `82c444a6`: gate de rol `waiter/admin/root` en coordinador; `e9bea45b`: prueba de rechazo de cocina; `e8bffb5d`: arquitectura.
+- **No existe implementación de verificación real del token, conexión SQL runtime, ni atribución auditable del actor**. Mantener función y HTTP sin activar; no tocar Supabase operativo, Fleetia ni VPS.
+
+## Sesión 3 — verificador criptográfico RS256 de personal
+- `efd30ff6`: verificador JWT RS256 con clave pública RSA fijada por backend y comprobación estricta de issuer, audiencia, firma, sujeto, iat, exp y vida máxima.
+- `dda2d21c`: tests de firmas RSA reales, clave incorrecta, claims inválidos y algoritmo no permitido; `8a219a18`: arquitectura y límites de integración.
+- **Pendiente:** comprobar algoritmo real de firma Supabase Auth, fijar claves de forma segura con rotación, integrar con resolver staff y conexión SQL restringida, atribuir actor en auditoría. Sin ruta HTTP, sin despliegue, sin cambios a Supabase operativo.
+
+## Sesión 3 — composición de JWT verificado y transiciones de mesa
+- `dac449b3`: composición backend de firma RS256 verificada, identidad staff activa y transición SQL en una transacción; sin HTTP ni grants.
+- `6d45b32a`: pruebas con firmas RSA reales de camino completo, actor suplantado, emisor incorrecto y cocina.
+- `45028f8e`: arquitectura y bloqueos de activación actualizados. Pendiente resolver clave/rotación Auth real, mínimos privilegios SQL, actor de auditoría y ruta de gestión. No merge ni despliegue.
+
+## Sesión 3 — endurecimiento adicional de seguridad
+- `66485df9`: disparador de sentencia que bloquea TRUNCATE de la auditoría de mesas; `ae98f3fa`: smoke negativo.
+- `7a1acb73`: validación de base64url canónico de JWT RS256; `9f089cc9`: regresión sobre bits de relleno de firma.
+- `bd0e4915`: contrato de seguridad actualizado. Sin cambios operativos ni grants. Revisar CI del HEAD antes de declarar hito validado.

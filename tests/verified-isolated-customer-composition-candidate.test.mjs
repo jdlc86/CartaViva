@@ -1,0 +1,119 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {registerVerifiedIsolatedCustomerRoutes} from '../apps/api/src/verified-isolated-customer-composition-candidate.mjs';
+const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
+const Fastify=requireApi('fastify');
+const reader='sabora_catalog_login',writer='sabora_order_login';
+const secret='test-confirmation-secret-'.repeat(3);
+function pool(login,events,{broken=false}={}){
+ return {options:{user:login},connect:async()=>({
+  query:async sql=>{
+   events.push(sql);
+   if(broken)throw Error('private_connection_secret');
+   if(sql==='SELECT current_user AS role_name, session_user AS login_name')
+    return {rows:[{role_name:login,login_name:login}]};
+   if(sql.includes('FROM pg_roles WHERE rolname = current_user'))return {rows:[{
+    effective_role:login,login_role:login,can_login:true,
+    bypass_rls:false,superuser:false,
+ create_db:false,create_role:false,replication:false,inherit_role:false,can_set_catalog_reader:login===reader,
+    ...(login===reader?{direct_catalog_execute:false,scoped_catalog_execute:true}:{direct_catalog_execute:false})
+   }]};
+   return {rows:[]};
+  },
+  release:discard=>events.push(discard?'discard':'release')
+ })};
+}
+test('verified composition preflights both effective logins before exposing routes',async()=>{
+ const events=[],app=Fastify();
+ const r=pool(reader,events),w=pool(writer,events);
+ await registerVerifiedIsolatedCustomerRoutes(app,{
+  catalogReaderPool:r,orderWriterPool:w,
+  expectedCatalogLogin:reader,expectedOrderLogin:writer,
+  confirmationSecret:secret
+ });
+ assert.equal(events.filter(x=>x==='release').length,4);
+ assert.equal(events.filter(x=>typeof x==='string'&&x.includes('FROM pg_roles')).length,2);
+ const invalid=await app.inject({method:'POST',
+  url:'/api/v1/customer/orders/confirm',payload:{totalCents:1}});
+ assert.equal(invalid.statusCode,400);
+ assert.deepEqual(invalid.json(),{error:'invalid_confirmation_input'});
+ assert.equal((await app.inject('/api/v1/catalog')).statusCode,200);
+ await app.close();
+});
+test('failed preflight leaves both HTTP routes unregistered and hides SQL errors',async()=>{
+ for(const broken of [reader,writer]){
+  const events=[],app=Fastify();
+  const r=pool(reader,events,{broken:broken===reader});
+  const w=pool(writer,events,{broken:broken===writer});
+  await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+   catalogReaderPool:r,orderWriterPool:w,
+   expectedCatalogLogin:reader,expectedOrderLogin:writer,
+   confirmationSecret:secret
+  }),error=>error.message==='invalid_verified_customer_composition');
+  assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+  assert.equal((await app.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
+  assert.equal(events.filter(x=>x==='release').length,broken===reader?0:1);
+  assert.equal(events.filter(x=>x==='discard').length,1);
+  await app.close();
+ }
+});
+test('invalid secret and adapters do not query or register',async()=>{
+ const events=[],app=Fastify();
+ await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+  catalogReaderPool:pool(reader,events),orderWriterPool:pool(writer,events),
+  expectedCatalogLogin:reader,expectedOrderLogin:writer,
+  confirmationSecret:'short'
+ }),/invalid_verified_customer_composition/);
+ assert.deepEqual(events,[]);
+ assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+ await app.close();
+});
+
+test('shared declared database identity is rejected before any SQL or route registration',async()=>{
+ for(const sharedField of ['user','connectionString']){
+  const events=[],app=Fastify();
+  const r=pool(reader,events),w=pool(writer,events);
+  if(sharedField==='user')w.options.user=r.options.user;
+  else{
+   r.options.connectionString='postgres://same-connection';
+   w.options.connectionString='postgres://same-connection';
+  }
+  await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+   catalogReaderPool:r,orderWriterPool:w,
+   expectedCatalogLogin:reader,expectedOrderLogin:writer,
+   confirmationSecret:secret
+  }),/invalid_verified_customer_composition/);
+  assert.deepEqual(events,[]);
+  assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+  assert.equal((await app.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
+  await app.close();
+ }
+});
+
+test('verified composition rejects excessive SQL capabilities before HTTP registration',async()=>{
+ const events=[],app=Fastify();
+ const r=pool(reader,events),w=pool(writer,events);
+ const original=r.connect;
+ r.connect=async()=>{
+  const client=await original();
+  const query=client.query;
+  client.query=async sql=>{
+   const result=await query(sql);
+   if(sql.includes('FROM pg_roles'))result.rows[0].direct_catalog_execute=true;
+   return result;
+  };
+  return client;
+ };
+ await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+  catalogReaderPool:r,orderWriterPool:w,
+  expectedCatalogLogin:reader,expectedOrderLogin:writer,
+  confirmationSecret:secret
+ }),/invalid_verified_customer_composition/);
+ assert.equal(events.filter(x=>x.includes?.('FROM pg_roles')).length,1);
+ assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+ assert.equal((await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
+ await app.close();
+});

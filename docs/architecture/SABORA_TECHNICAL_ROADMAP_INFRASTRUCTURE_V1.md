@@ -2,6 +2,13 @@
 
 Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica implementación ni contratación.
 
+## Alcance aprobado (2026-10-20): un restaurante por instalación
+- Sabora opera **un restaurante por instalación**. No incorpora tablas `restaurants` multitenant, `restaurant_id` por recurso, selector de restaurantes ni autorización cruzada entre instalaciones.
+- CartaViva mantiene **un directorio central separado** de instalaciones, con código alfanumérico y origen HTTPS de cada PWA; el QR incluye identidad de restaurante y mesa y una credencial revocable que valida la instalación de destino.
+- Cada restaurante dispone de **dos PWA independientes**: `apps/client` para comensales y `apps/management` para camareros, cocina y administración. Cada restaurante tiene además backend, proyecto/base de datos y despliegue propios; pueden alojarse en VPS diferentes o en contenedores aislados.
+- El proyecto Supabase de Sabora es `byhvmumqivmunkmomhup`. El proyecto separado de directorio CartaViva es `indoaqfmsfmueuqoilwv`, ambos en la organización RESTAURANTE. El directorio no almacena datos operativos de los restaurantes.
+- Se mantiene aislamiento estricto frente a Fleetia y demás proyectos del VPS. No hay autorización para despliegue.
+
 ## Decisiones confirmadas por el propietario
 - Sabora utilizará **un proyecto Supabase propio**, separado del proyecto de Fleetia, para PostgreSQL, autenticación y almacenamiento. No compartir bases de datos, usuarios, claves ni políticas entre productos.
 - Se **propone reutilizar el VPS ya contratado para Fleetia** como alojamiento de aplicaciones, API y servicios auxiliares de Sabora, **condicionado a verificar previamente su capacidad y aislamiento**. No se autoriza intervenir en los contenedores o despliegues de Fleetia.
@@ -19,11 +26,11 @@ Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica
 - GitHub Actions para CI y despliegue por commit, con entornos separados. Tecnologías concretas, versiones y proveedores de ejecución quedan sujetos a prueba técnica.
 
 ## Secuencia de entrega y puertas
-**Fase 0 — Fundamentos:** inventario del repositorio y contratos vigentes; estructura del monorepo; decisiones de aislamiento multi-restaurante, modelo transaccional, límites de autorización, estrategia de pruebas y amenazas. Salida: arquitectura y ADRs revisados.
+**Fase 0 — Fundamentos:** inventario del repositorio y contratos vigentes; estructura del monorepo; decisiones de modelo transaccional, límites de autorización, estrategia de pruebas y amenazas. Salida: arquitectura y ADRs revisados.
 
 **Fase 1 — Plataforma y seguridad:** proyecto Supabase de Sabora, migraciones versionadas, API mínima, identidad/Passkeys, invitación→activación explícita, roles ROOT/ADMIN/operativos, titularidad única de escritura, auditoría append-only, CI y entorno aislado. Salida: pruebas de permisos, concurrencia, recuperación y migraciones.
 
-**Fase 2 — Gestión y catálogo:** restaurantes, empleados, catálogo, opciones/extras, alérgenos, disponibilidad, precios e impuestos, descuentos sobre plato más extras, publicaciones y trazabilidad de cambios. Salida: pruebas de autorización y cálculo monetario en céntimos/decimal exacto.
+**Fase 2 — Gestión y catálogo:** configuración del restaurante único, empleados, catálogo, opciones/extras, alérgenos, disponibilidad, precios e impuestos, descuentos sobre plato más extras, publicaciones y trazabilidad de cambios. Salida: pruebas de autorización y cálculo monetario en céntimos/decimal exacto.
 
 **Fase 3 — Operación sin cobros reales:** mesas, QR, visitas, cuentas, cesta, comandas, cocina, sala, pausa/reanudación, notificaciones y recuperación de desconexiones. Salida: flujos completos e idempotentes; pruebas de eventos obsoletos y concurrencia.
 
