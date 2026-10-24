@@ -90,3 +90,11 @@ independientes: **98 comprobaciones de privilegio**, además de la comprobación
 EXECUTE de la RPC para cada identidad. Los permisos de definición de claves
 foráneas (`REFERENCES`) y triggers (`TRIGGER`) quedan explícitamente cubiertos;
 ninguna de estas pruebas concede permisos operativos.
+
+## Puerta de esquema y smoke SQL
+
+La matriz de identidades comprueba también `USAGE` en el esquema `sabora`
+y ausencia de `CREATE` para ambos logins técnicos. El smoke SQL del candidato
+incluye `TRUNCATE`, `REFERENCES` y `TRIGGER` en la denegación a `PUBLIC`,
+`anon` y `authenticated` sobre la tabla de correlaciones. Estas comprobaciones
+se ejecutan únicamente en PostgreSQL 17 desechable de CI.
