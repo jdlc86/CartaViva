@@ -2,6 +2,7 @@ import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-po
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
+import {preflightOrderOperationsIdentities} from './order-operations-identity-preflight.mjs';
 
 // Opt-in only. The application bootstrap must supply independently provisioned
 // staff-reader and operational pools. This module opens no connection, reads no
@@ -32,4 +33,14 @@ export function registerOrderOperationsFromPools(app, {
     withTransaction: createPostgresTransaction({pool: operationsPool}),
   });
   registerOrderOperationsHttp(app, {forRoles, operations});
+}
+
+// Separate asynchronous gate: never mount routes before identity verification.
+// The existing synchronous composition remains unmounted by server.mjs.
+export async function registerVerifiedOrderOperationsFromPools(app, options = {}) {
+  const {staffPool, operationsPool, staffRole, operationsRole} = options;
+  await preflightOrderOperationsIdentities({
+    staffPool, operationsPool, staffRole, operationsRole,
+  });
+  return registerOrderOperationsFromPools(app, options);
 }
