@@ -49,3 +49,15 @@ test('rejects missing ids, invalid quantities, tokens and unsupported fields',()
  ])assert.throws(()=>validateCustomerConfirmationRequest(changed),
   /invalid_customer_confirmation_request/);
 });
+
+test('accessor and cyclic basket selections fail before JSON serialization',()=>{
+ const base={...context,...basket,requestKey:key};
+ delete base.authorized;delete base.canOrder;delete base.confirmable;
+ const accessor={};
+ Object.defineProperty(accessor,'extras',{enumerable:true,get(){throw Error('getter_executed');}});
+ assert.throws(()=>validateCustomerConfirmationRequest({...base,selection:accessor}),
+  /invalid_customer_confirmation_request/);
+ const cycle={};cycle.self=cycle;
+ assert.throws(()=>validateCustomerConfirmationRequest({...base,selection:cycle}),
+  /invalid_customer_confirmation_request/);
+});
