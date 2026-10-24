@@ -454,3 +454,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Ampliado `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh`: tras los casos existentes de serialización de una misma clave y liberación tras rollback, ahora mantiene una transacción con bloqueo de `request-001` y comprueba desde otra conexión PG17 que `request-002` puede adquirir su propio advisory lock inmediatamente.
 - El caso se ejecuta en el PostgreSQL 17 desechable de CI y evita introducir por accidente una exclusión global que bloquee pedidos independientes. Mantiene el ámbito de hash y la política de locks existentes; no cambia SQL productivo.
 - Requiere verificación de los workflows del SHA de este bloque antes de declararlo cerrado. No merge, endpoint activo, despliegue ni cambios en Fleetia, VPS, Supabase operativo o rama de administración de Codex.
+
+## 62. Reutilización de clave entre cestas aisladas: prueba PG17 (24-10-2026)
+
+- Se amplía el smoke de concurrencia del ledger con un segundo caso independiente: misma `request-001` pero `basket-other` mientras otra conexión mantiene el bloqueo transaccional de `basket-ci`. Se exige `pg_try_advisory_xact_lock` verdadero en la segunda sesión y liberación tras commit.
+- El ámbito del advisory lock conserva mesa, sesión, visita, cesta, actor y clave. Se evita convertir por error la clave de petición en un mutex global entre cestas. El script se ejecuta únicamente sobre PG17 desechable de CI.
+- Bloque 61 (`59636e1`) seguía en CI al inicio de esta sesión; verificar ambos workflows del último SHA antes de dar por cerrado el bloque 62. Sin cambios en producción ni en la rama de Codex.
