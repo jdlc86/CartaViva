@@ -351,3 +351,31 @@ test('toJSON keys in untrusted selection are rejected before transaction',async(
  }
  assert.deepEqual(calls,[]);
 });
+
+test('coordinator constructor rejects getter-backed or inherited repository methods',()=>{
+ let getters=0;
+ const valid={
+  lockContext:async()=>{},lookupIdempotency:async()=>{},
+  lockCatalog:async()=>{},loadPreviousQuote:async()=>{},persist:async()=>{}
+ };
+ const config=repository=>({withTransaction:async()=>{},
+  repository,secretKey:'isolated-test-only-long-server-side-secret-key',
+  clock:()=>1792600000000});
+ const accessor={...valid};
+ Object.defineProperty(accessor,'persist',{enumerable:true,get(){
+  getters++;throw Error('repository_getter_executed');
+ }});
+ assert.throws(()=>createCatalogConfirmationCoordinator(config(accessor)),
+  /invalid_confirmation_coordinator/);
+ const inherited=Object.create({persist:valid.persist});
+ Object.assign(inherited,{lockContext:valid.lockContext,
+  lookupIdempotency:valid.lookupIdempotency,lockCatalog:valid.lockCatalog,
+  loadPreviousQuote:valid.loadPreviousQuote});
+ assert.throws(()=>createCatalogConfirmationCoordinator(config(inherited)),
+  /invalid_confirmation_coordinator/);
+ const hidden={...valid};
+ Object.defineProperty(hidden,'persist',{value:valid.persist,enumerable:false});
+ assert.throws(()=>createCatalogConfirmationCoordinator(config(hidden)),
+  /invalid_confirmation_coordinator/);
+ assert.equal(getters,0);
+});
