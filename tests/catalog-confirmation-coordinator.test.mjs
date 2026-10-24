@@ -450,3 +450,64 @@ test('idempotent replay reauthorizes context and denies a revoked visit',async()
  await assert.rejects(confirm(input),/order_context_forbidden/);
  assert.deepEqual(calls.slice(-3),['BEGIN','context','ROLLBACK']);
 });
+
+test('foreign visit, actor or basket cannot access replay ledger',async()=>{
+ for(const field of ['tableId','visitId','actorId','basketId']){
+  const {confirm,calls}=make({
+   lockContext:async()=>{
+    calls.push('context');
+    return {authorized:true,canOrder:true,
+     tableId:input.tableId,visitId:input.visitId,
+     actorId:input.actorId,basketId:input.basketId,
+     sessionId:'session-1'};
+   }
+  });
+  await assert.rejects(confirm({...input,[field]:'foreign-identity'}),
+   /order_context_forbidden/);
+  assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+ }
+});
+test('revoked canOrder denies even an existing idempotent replay',async()=>{
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');
+   return {authorized:true,canOrder:false,
+    tableId:input.tableId,visitId:input.visitId,
+    actorId:input.actorId,basketId:input.basketId,
+    sessionId:'session-1'};
+  }
+ });
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+});
+test('failed authorization does not execute catalog or persistence adapters',async()=>{
+ let forbiddenCalls=0;
+ const {confirm,calls}=make({
+  lockContext:async()=>{
+   calls.push('context');return {authorized:false};
+  },
+  lookupIdempotency:async()=>{forbiddenCalls++;throw Error('ledger_exposed');},
+  lockCatalog:async()=>{forbiddenCalls++;throw Error('catalog_exposed');},
+  loadPreviousQuote:async()=>{forbiddenCalls++;throw Error('quote_exposed');},
+  persist:async()=>{forbiddenCalls++;throw Error('write_exposed');}
+ });
+ await assert.rejects(confirm(input),/order_context_forbidden/);
+ assert.equal(forbiddenCalls,0);
+ assert.deepEqual(calls,['BEGIN','context','ROLLBACK']);
+});
+test('replay with another request key cannot inherit prior durable result',async()=>{
+ let fingerprint;
+ const {confirm,calls}=make({
+  lookupIdempotency:async(_query,{requestKey,requestFingerprint})=>{
+   calls.push('replay');
+   if(requestKey==='request-001'){
+    fingerprint=requestFingerprint;return null;
+   }
+   return null;
+  }
+ });
+ assert.equal((await confirm(input)).status,'confirmed');
+ assert.equal((await confirm({...input,requestKey:'request-002'})).status,'confirmed');
+ assert.equal(typeof fingerprint,'string');
+ assert.equal(calls.filter(step=>step==='persist').length,2);
+});
