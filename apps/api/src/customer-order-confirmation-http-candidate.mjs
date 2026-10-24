@@ -2,6 +2,8 @@
 // Durable QR, visit and customer-session authorization occurs inside confirm()
 // under the same PostgreSQL transaction as idempotency and order persistence.
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cents=v=>Number.isSafeInteger(v)&&v>=0;
+const revision=v=>Number.isSafeInteger(v)&&v>0;
 const validResult=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
@@ -19,9 +21,23 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
    if(result.status==='acceptance_required'){
     if(!validResult(result.decision)||result.decision.requiresAcceptance!==true)
      throw Error('invalid_confirmation_result');
-    // Do not serialize internal decision/evidence or signed token until a
-    // versioned, reviewed public repricing DTO is approved.
-    return reply.code(409).send({error:'acceptance_required'});
+    const d=result.decision;
+    const a=result.acceptance;
+    if(!cents(d.previousTotalCents)||!cents(d.currentTotalCents)||
+       !Number.isSafeInteger(d.differenceCents)||
+       d.currentTotalCents-d.previousTotalCents!==d.differenceCents||
+       !revision(d.previousPublishedRevision)||!revision(d.currentPublishedRevision)||
+       !validResult(a)||typeof a.token!=='string'||
+       !/^v1\\.[0-9]{1,16}\\.[a-f0-9]{64}\\.[a-f0-9]{64}$/.test(a.token)||
+       !Number.isSafeInteger(a.expiresAt)||a.expiresAt<0)
+     throw Error('invalid_confirmation_result');
+    // Explicit allowlist: never serialize internal evidence or catalog snapshot.
+    return reply.code(409).send({error:'acceptance_required',
+     repricing:{schemaVersion:1,previousTotalCents:d.previousTotalCents,
+      currentTotalCents:d.currentTotalCents,differenceCents:d.differenceCents,
+      previousPublishedRevision:d.previousPublishedRevision,
+      currentPublishedRevision:d.currentPublishedRevision,
+      acceptanceToken:a.token,expiresAt:a.expiresAt}});
    }
    if(!['confirmed','replayed'].includes(result.status)||
       !validResult(result.result)||!uuid.test(result.result.orderId))
