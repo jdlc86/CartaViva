@@ -36,6 +36,18 @@ async function inspect(pool, expectedRole) {
               has_function_privilege(current_user,
                 'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
                 'EXECUTE') AS candidate_rpc_execute,
+              (SELECT count(*)::integer FROM pg_catalog.pg_class resource
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relkind IN ('r','p','v','m','f')
+                  AND (has_table_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_table_privilege(current_user, resource.oid, 'INSERT')
+                    OR has_table_privilege(current_user, resource.oid, 'UPDATE')
+                    OR has_table_privilege(current_user, resource.oid, 'DELETE')
+                    OR has_table_privilege(current_user, resource.oid, 'TRUNCATE')
+                    OR has_table_privilege(current_user, resource.oid, 'REFERENCES')
+                    OR has_table_privilege(current_user, resource.oid, 'TRIGGER')))
+                AS accessible_private_tables,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -54,6 +66,8 @@ async function inspect(pool, expectedRole) {
         row.has_role_memberships !== false ||
         row.schema_usage !== true || row.schema_create !== false ||
         row.candidate_rpc_execute !== false ||
+        !Number.isSafeInteger(row.accessible_private_tables) ||
+        row.accessible_private_tables !== 0 ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
