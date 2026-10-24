@@ -73,3 +73,11 @@ reintentos mantiene `relrowsecurity` y `relforcerowsecurity` activos y que una
 lectura bajo esa identidad no devuelve filas sin política permisiva. Revoca
 el permiso en un bloque `finally` antes de destruir el entorno. Esta prueba
 no constituye un GRANT operativo ni valida todavía el flujo positivo.
+
+## Alcance negativo del GRANT temporal
+
+La prueba de PostgreSQL 17 comprueba adicionalmente que el `GRANT SELECT`
+temporal de la tabla de reintentos no amplía permisos de `INSERT`, `UPDATE`,
+`DELETE`, `TRUNCATE` ni `EXECUTE` sobre la RPC de transición. La prueba
+sigue siendo una verificación negativa de seguridad: **no constituye la
+implementación de la política positiva para cocina/sala**.
