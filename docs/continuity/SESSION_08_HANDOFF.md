@@ -163,3 +163,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - `tests/customer-repricing-consent-controller.test.mjs` cubre reducción de precio, cancelación, caducidad, DTO malformado, token no filtrado, doble clic y segundo cambio de precio.
 - **No se ha montado en ninguna PWA ni ruta runtime**; es una pieza integrable que no afirma UX final. La revisión visual/accesible de consentimiento sigue pendiente. CI del nuevo HEAD pendiente.
 - PR #2 Draft. Sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
+
+## 22. Panel accesible de consentimiento de precio, candidato PWA (24-10-2026)
+
+- SHA `1adcfd449255ef7fc6f7023bee1761e7c9741a79`: Sabora CI `40081485930` SUCCESS; Bootstrap `40081485927` aún pendiente en el momento de la consulta.
+- Nuevo `packages/customer-consent/src/repricing-consent-panel.mjs`: panel DOM en español con importes anterior/actual/diferencia, revisiones, diálogo ARIA, foco inicial y botones separados «Acepto el nuevo importe y confirmo el pedido» / «No aceptar». El token firmado permanece encapsulado en el controlador, nunca se incorpora al DOM. Botones bloqueados durante el envío, sin confirmación automática ni almacenamiento.
+- Nuevas pruebas `tests/customer-repricing-consent-panel.test.mjs`: render accesible, ausencia del token en DOM, rechazo sin escrituras, aceptación única, guardia durante petición pendiente.
+- Es un componente integrable **no montado todavía en la PWA real**. La UX visual final y la integración con transporte de API/sesión deben validarse antes de activación. CI del nuevo HEAD pendiente.
+- PR #2 Draft, sin merge, despliegue, Fleetia, VPS ni Supabase operativo.
