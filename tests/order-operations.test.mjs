@@ -213,6 +213,32 @@ async function httpHarness({role = 'kitchen', operations} = {}) {
   return app;
 }
 
+test('HTTP rejects role-incompatible transition before calling coordinator', async (t) => {
+  let transitions = 0;
+  const operations = {
+    async listBoard() { return {items: []}; },
+    async listHistory() { return {events: []}; },
+    async transitionLine() { transitions++; throw Error('unexpected_transition'); },
+  };
+  for (const [role, targetStatus] of [
+    ['kitchen', 'picked_up'],
+    ['waiter', 'preparing'],
+    ['waiter', 'ready'],
+  ]) {
+    const app = await httpHarness({role, operations});
+    t.after(() => app.close());
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/operations/order-lines/${lineId}/transitions`,
+      headers: {authorization: 'Bearer test'},
+      payload: {targetStatus, correlationId: 'http_role_guard_001'},
+    });
+    assert.equal(response.statusCode, 403);
+    assert.deepEqual(response.json(), {error: 'forbidden'});
+  }
+  assert.equal(transitions, 0);
+});
+
 test('HTTP transition exposes created and replayed outcomes without accepting actor or role', async (t) => {
   const received = [];
   const app = await httpHarness({operations: {
