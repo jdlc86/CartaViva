@@ -269,3 +269,12 @@ saltos, repeticiones, retrocesos temporales y una cadena válida. La
 consulta sigue limitada por `limit`: esta verificación cubre únicamente
 los eventos devueltos, no garantiza que no existan eventos anteriores
 omitidos por paginación ni reemplaza las restricciones transaccionales.
+
+## Comportamiento de SET ROLE en PG17
+
+El ensayo con `SET ROLE` sobre el login técnico puede fallar en el propio
+motor PostgreSQL con `permission denied for schema sabora` al evaluar la
+firma de la RPC del preflight, antes de producir el error interno de
+identidad. El harness acepta ambas formas de denegación, sin admitir una
+comprobación exitosa bajo el rol alternativo. La prueba continúa en la base
+de datos efímera de GitHub Actions, no en Supabase operativo.
