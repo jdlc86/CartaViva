@@ -13,6 +13,11 @@ function pool(login,events,{broken=false}={}){
    if(broken)throw Error('private_connection_secret');
    if(sql==='SELECT current_user AS role_name, session_user AS login_name')
     return {rows:[{role_name:login,login_name:login}]};
+   if(sql.includes('FROM pg_roles WHERE rolname = current_user'))return {rows:[{
+    effective_role:login,login_role:login,can_login:true,
+    bypass_rls:false,superuser:false,can_set_catalog_reader:login===reader,
+    ...(login===reader?{direct_catalog_execute:false,scoped_catalog_execute:true}:{})
+   }]};
    return {rows:[]};
   },
   release:discard=>events.push(discard?'discard':'release')
@@ -26,10 +31,8 @@ test('verified composition preflights both effective logins before exposing rout
   expectedCatalogLogin:reader,expectedOrderLogin:writer,
   confirmationSecret:secret
  });
- assert.deepEqual(events,[
-  'SELECT current_user AS role_name, session_user AS login_name','release',
-  'SELECT current_user AS role_name, session_user AS login_name','release'
- ]);
+ assert.equal(events.filter(x=>x==='release').length,4);
+ assert.equal(events.filter(x=>typeof x==='string'&&x.includes('FROM pg_roles')).length,2);
  const invalid=await app.inject({method:'POST',
   url:'/api/v1/customer/orders/confirm',payload:{totalCents:1}});
  assert.equal(invalid.statusCode,400);
@@ -87,4 +90,29 @@ test('shared declared database identity is rejected before any SQL or route regi
    url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
   await app.close();
  }
+});
+
+test('verified composition rejects excessive SQL capabilities before HTTP registration',async()=>{
+ const events=[],app=Fastify();
+ const r=pool(reader,events),w=pool(writer,events);
+ const original=r.connect;
+ r.connect=async()=>{
+  const client=await original();
+  const query=client.query;
+  client.query=async sql=>{
+   const result=await query(sql);
+   if(sql.includes('FROM pg_roles'))result.rows[0].direct_catalog_execute=true;
+   return result;
+  };
+  return client;
+ };
+ await assert.rejects(()=>registerVerifiedIsolatedCustomerRoutes(app,{
+  catalogReaderPool:r,orderWriterPool:w,
+  expectedCatalogLogin:reader,expectedOrderLogin:writer,
+  confirmationSecret:secret
+ }),/invalid_verified_customer_composition/);
+ assert.equal(events.filter(x=>x.includes?.('FROM pg_roles')).length,1);
+ assert.equal((await app.inject('/api/v1/catalog')).statusCode,404);
+ assert.equal((await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',payload:{}})).statusCode,404);
+ await app.close();
 });
