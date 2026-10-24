@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
@@ -11,8 +14,7 @@ const modulePath = process.env.SABORA_CI_PG_MODULE;
 if (!url || !modulePath) throw Error('disposable_pg17_harness_required');
 const parsed = new URL(url);
 if (process.env.GITHUB_ACTIONS !== 'true' ||
-    !modulePath.startsWith('/tmp/tmp') || !modulePath.endsWith('/node_modules/pg') ||
-    !/^[A-Za-z0-9_.-]+$/.test(modulePath.slice(8, -16)) ||
+    !isDisposablePgModulePath(modulePath) ||
     parsed.protocol !== 'postgresql:' || parsed.hostname !== '127.0.0.1' ||
     parsed.username !== 'postgres' || parsed.password !== 'sabora_ci_ephemeral_only' ||
     parsed.pathname !== '/postgres' || parsed.port === '' ||
@@ -31,7 +33,14 @@ const pool = new Pool({
 });
 const withTransaction = createPostgresTransaction({pool});
 const repository = createOrderOperationsRepository();
-const operations = createOrderOperationsCoordinator({withTransaction, repository});
+const keyId = 'ci_pg17_operations_key';
+const signingSecret = randomBytes(32);
+const issueTransitionCapability = createOrderOperationCapabilityIssuer({
+  keyId, secret: signingSecret, databaseRole: 'postgres',
+});
+const operations = createOrderOperationsCoordinator({
+  withTransaction, repository, issueTransitionCapability,
+});
 
 const kitchenId = 'd1000000-0000-4000-8000-000000000001';
 const waiterId = 'd1000000-0000-4000-8000-000000000002';
@@ -61,6 +70,10 @@ async function fixture({suffix, actorAlias = 'Mesa operativa'}) {
 }
 
 test.before(async () => {
+  await pool.query(`INSERT INTO sabora.order_operation_signing_keys
+    (key_id, hmac_key, not_before, expires_at)
+    VALUES ($1, decode($2, 'hex'), clock_timestamp() - interval '1 minute',
+            clock_timestamp() + interval '1 hour')`, [keyId, signingSecret.toString('hex')]);
   await pool.query(`INSERT INTO sabora.staff_members(user_id, role, state) VALUES
     ($1, 'kitchen', 'active'),
     ($2, 'waiter', 'active'),
@@ -155,6 +168,10 @@ test('PG17 rolls back line, notification, event and idempotency record together'
       lineId: item.lineId,
       targetStatus: 'preparing',
       correlationId: 'pg_forced_rollback_104',
+      capability: issueTransitionCapability({
+        actorId: kitchenId, lineId: item.lineId, targetStatus: 'preparing',
+        correlationId: 'pg_forced_rollback_104',
+      }),
     });
     throw Error('forced_mid_operation_failure');
   }), /forced_mid_operation_failure/);
@@ -189,10 +206,10 @@ test('PG17 staff suspension wins before a waiting operational mutation', async (
     await new Promise((resolve) => setTimeout(resolve, 75));
     assert.equal(settled, false);
     await blocker.query('COMMIT');
-    await assert.rejects(attempt, /order_operations_forbidden/);
+    await assert.rejects(attempt, /actor_not_authorized/);
     await assert.rejects(operations.transitionLine(context(suspendedKitchenId, 'kitchen'), {
       lineId: prior.lineId, targetStatus: 'preparing', correlationId: 'pg_before_suspension_108',
-    }), /order_operations_forbidden/);
+    }), /actor_not_authorized/);
     await assert.rejects(pool.query(
       `SELECT * FROM sabora.transition_order_line_idempotent_candidate($1,$2,$3,$4)`,
       [suspendedKitchenId, prior.lineId, 'preparing', 'pg_before_suspension_108']

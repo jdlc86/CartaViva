@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createCatalogOrderWriter} from '../../apps/api/src/catalog-order-writer.mjs';
 import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence.mjs';
@@ -15,9 +16,7 @@ const modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath)throw Error('disposable_pg17_harness_required');
 const parsed=new URL(url);
 if(process.env.GITHUB_ACTIONS!=='true'||
-   !modulePath.startsWith('/tmp/tmp')||
-   !modulePath.endsWith('/node_modules/pg')||
-   !/^[A-Za-z0-9_.-]+$/.test(modulePath.slice(8,-16)))
+   !isDisposablePgModulePath(modulePath))
  throw Error('disposable_pg17_harness_required');
 if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||
    parsed.pathname!=='/postgres')throw Error('unsafe_pg17_harness_target');
