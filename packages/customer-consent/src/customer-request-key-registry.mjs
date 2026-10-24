@@ -29,6 +29,7 @@ export function createCustomerRequestKeyRegistry({createKey}={}){
    pending=true;
   },
   end(){pending=false;},
+  get identity(){return current?.identity??null;},
   get pending(){return pending;},
   get key(){return current?.key??null;},
   reset(){
