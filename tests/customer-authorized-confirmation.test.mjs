@@ -223,3 +223,28 @@ test('semantically equal selection with reordered keys passes revalidation',asyn
  assert.equal(sends,1);
  app.destroy();
 });
+
+test('ambiguous confirmation forbids reset or different basket until replay resolves',async()=>{
+ const {document,container}=dom();let revision=1,generated=0,sends=0;
+ const sent=[];
+ const app=createAuthorizedCustomerConfirmation({document,container,
+  readContext:()=>context,readBasket:()=>({...basket,revision}),
+  createRequestKey:()=> 'request_'+(++generated),onOutcome:()=>{},
+  fetchImpl:async(_url,options)=>{
+   sent.push(JSON.parse(options.body));sends++;
+   if(sends===1)throw Error('offline');
+   return {status:200,json:async()=>({status:'replayed',orderId})};
+  }});
+ await assert.rejects(app.confirm(),/confirmation_network_unknown/);
+ assert.throws(()=>app.resetForNewBasket(),/request_key_pending_confirmation/);
+ revision=2;
+ await assert.rejects(app.confirm(),/request_key_pending_confirmation/);
+ assert.equal(sends,1);
+ revision=1;
+ assert.equal((await app.confirm()).status,'replayed');
+ assert.equal(sent[0].requestKey,sent[1].requestKey);
+ app.resetForNewBasket();
+ revision=2;
+ assert.equal(generated,1);
+ app.destroy();
+});
