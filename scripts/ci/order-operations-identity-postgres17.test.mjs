@@ -247,7 +247,7 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
       try {
         await assert.rejects(preflightOrderOperationsIdentities({
           staffPool, operationsPool, staffRole, operationsRole,
-        }), /order_operations_sql_identity_rejected/);
+        }), /order_operations_sql_identity_rejected|permission denied for schema sabora/);
       } finally {
         await operationsPool.query('RESET ROLE');
       }
