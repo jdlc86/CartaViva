@@ -25,7 +25,9 @@ export function createCustomerConfirmationFlow({
    else if(event.type==='submitted'){
     if(controller.status==='awaiting_explicit_acceptance'){
      panel?.refresh();notify({type:'repricing_required'});
-    }else{close();notify({type:'submitted',result:event.result});}
+    }else if(['confirmed','replayed'].includes(event.result?.status)){
+     close();notify({type:'submitted',result:event.result});
+    }else{close();notify({type:'failed',error:event.result?.error??'confirmation_failed'});}
    }else if(event.type==='failed'){
     close();notify(event);
    }
@@ -47,7 +49,9 @@ export function createCustomerConfirmationFlow({
     if(result.error==='acceptance_required'){
      controller.present(result,request);
      show();notify({type:'repricing_required',comparison:controller.comparison});
-    }else notify({type:'submitted',result});
+    }else if(['confirmed','replayed'].includes(result.status)){
+     notify({type:'submitted',result});
+    }else notify({type:'failed',error:result.error??'confirmation_failed'});
     return result;
    }catch(error){
     if(!disposed&&generation===requestGeneration)
