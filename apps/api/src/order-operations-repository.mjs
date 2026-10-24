@@ -253,6 +253,15 @@ export function createOrderOperationsRepository() {
           actorRole: row.actor_role,
         });
       });
+      const lastByLine = new Map();
+      for (const event of events) {
+        const previous = lastByLine.get(event.lineId);
+        if (previous && (previous.toStatus !== event.fromStatus ||
+            previous.occurredAt > event.occurredAt)) {
+          throw Error('invalid_order_operations_sql_result');
+        }
+        lastByLine.set(event.lineId, event);
+      }
       return Object.freeze({version: 1, orderId, events: Object.freeze(events)});
     },
   });
