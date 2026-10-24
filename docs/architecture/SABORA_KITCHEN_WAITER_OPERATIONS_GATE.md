@@ -323,3 +323,14 @@ la consulta une `order_line_events` con el rol **actual** de
 Para auditar el rol ejercido en el momento de la transición hace falta
 un snapshot durable aprobado en el contrato, no una validación contra el
 rol actual. No se ha cambiado el esquema ni habilitado rutas.
+
+## Consistencia del rol histórico
+
+La proyección de eventos verifica también la matriz de autorización del
+actor histórico: `waiter` únicamente puede figurar en el paso
+`ready → picked_up`; `kitchen` únicamente en `confirmed → preparing` o
+`preparing → ready`; `admin` puede figurar en cualquiera de los tres pasos.
+Se rechaza la respuesta completa si un evento contradice esa matriz. Las
+pruebas incluyen casos válidos e inválidos por rol. La comprobación de salida
+no sustituye la autorización transaccional de la escritura ni resuelve el
+bloqueo de identidad SQL no falsificable.
