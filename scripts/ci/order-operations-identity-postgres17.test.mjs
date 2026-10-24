@@ -76,6 +76,22 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
         'SELECT actor_user_id, correlation_id FROM sabora.order_line_transition_requests'
       );
       assert.deepEqual(restricted.rows, []);
+      // Even with a narrowly scoped read grant, write and RPC privileges
+      // must remain unavailable to the operations login.
+      const stillDenied = await admin.query(
+        `SELECT has_table_privilege($1, 'sabora.order_line_transition_requests', 'INSERT') AS can_insert,
+                has_table_privilege($1, 'sabora.order_line_transition_requests', 'UPDATE') AS can_update,
+                has_table_privilege($1, 'sabora.order_line_transition_requests', 'DELETE') AS can_delete,
+                has_table_privilege($1, 'sabora.order_line_transition_requests', 'TRUNCATE') AS can_truncate,
+                has_function_privilege($1,
+                  'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
+                  'EXECUTE') AS can_execute`,
+        [operationsRole]
+      );
+      assert.deepEqual(stillDenied.rows, [{
+        can_insert: false, can_update: false, can_delete: false,
+        can_truncate: false, can_execute: false,
+      }]);
       const policies = await admin.query(`SELECT relrowsecurity, relforcerowsecurity
         FROM pg_catalog.pg_class
         WHERE oid = 'sabora.order_line_transition_requests'::regclass`);
