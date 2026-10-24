@@ -73,3 +73,9 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se añadió protección contra respuestas tardías en la vista de cocina: los refrescos de tablero y solicitudes de historial solo pueden publicar el resultado de su generación vigente. El cambio de gateway y el desmontaje invalidan las lecturas del tablero en vuelo.
 - Estas correcciones posteriores requieren **su propio CI verde** antes de declarar el nuevo HEAD validado.
 - El gateway y las rutas siguen sin activación runtime, sin grants y sin despliegue.
+
+## Reintentos de transición desde la PWA
+
+- La vista de operaciones conserva en memoria por línea la correlación de una transición cuyo resultado HTTP fue incierto; al reintentar el **mismo estado destino** reutiliza la correlación original para permitir replay durable, en lugar de producir una segunda operación con una clave nueva.
+- La correlación se descarta tras una respuesta de transición confirmada; una transición distinta obtiene otra clave. Se mantiene la prohibición de doble clic mientras la solicitud está pendiente y la recarga posterior del tablero.
+- Se añadió test de contrato para la reutilización y las barreras contra respuestas tardías. No se habilita almacenamiento persistente ni se altera el contrato de base de datos.
