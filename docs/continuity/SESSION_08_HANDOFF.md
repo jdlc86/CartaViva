@@ -474,3 +474,9 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Se extiende `catalog-confirmation-idempotency-concurrency-smoke.sh` con una tercera sesión concurrente independiente: misma mesa, sesión, visita, cesta y clave de petición, pero `actor-other` en lugar de `actor-ci`.
 - Mientras el actor original mantiene su advisory lock de transacción, el segundo actor debe adquirir inmediatamente su propio bloqueo mediante `pg_try_advisory_xact_lock`. Se conserva el ámbito completo de bloqueo y la ejecución sobre PostgreSQL 17 desechable.
 - Verificar los workflows de este SHA antes de cerrar el bloque. Sin activación de endpoint, integración de otras ramas, merge ni despliegue.
+
+## 64. Aislamiento de locks tras nueva visita de mesa (24-10-2026)
+
+- Se amplía el smoke de idempotencia concurrente PostgreSQL 17 para verificar que `visit-other` y `visit-ci` no comparten bloqueo advisory aun reutilizando la misma mesa, sesión, cesta, actor y clave de petición de la fixture.
+- La prueba conserva la transacción que bloquea la primera visita y exige `pg_try_advisory_xact_lock` exitoso desde una conexión independiente para la segunda visita; garantiza que el ámbito incluye `visit_id`.
+- Bloque 63 seguía con workflows en curso al inicio; verificar ambos workflows del SHA 64 antes de declararlo cerrado. Sin merges, despliegues ni cambios en la rama de administración.
