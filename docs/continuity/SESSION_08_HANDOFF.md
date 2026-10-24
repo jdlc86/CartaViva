@@ -534,3 +534,46 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - La entrega independiente Codex en `codex/sabora-management-tables-workspace` (PR Draft #5, SHA `6fbff90597d0e3e8b5b63cc5613b390b3b5029c2`) reportó CI rojo por `tests/postgres-transaction.test.mjs` ajeno a la interfaz; se comprobó el run #40095334170, fallo `Missing expected rejection` en la prueba introducida en §72.
 - Causa: la prueba pretendía enviar un NUL real, pero usaba la secuencia escapada literal `\\u0000`, que es texto válido y correctamente aceptado por el driver. Se corrige la prueba para usar el carácter NUL mediante escape JavaScript `\\u0000` interpretado al evaluar la cadena (una única barra invertida en el archivo fuente). La implementación transaccional existente no necesitaba cambios.
 - Mantener PR #5 en Draft sin tocar la rama Codex. La composición autenticada runtime y las escrituras de Mesas/QR/Catálogo continúan pendientes. Confirmar ambos workflows del commit reparado antes de declarar base verde; no merge ni despliegue.
+
+## 74. Retorno Codex — frontera P0 de actor SQL (25-10-2026)
+
+- Rama exclusiva `codex/sabora-p0-actor-sql-binding`, creada desde
+  `964f1415cf264d786d53349e371fc78ff227f668` de
+  `integration/sabora-order-management-review` / PR #7 Draft. El nuevo PR debe
+  permanecer Draft y apuntar a esa rama de integración.
+- Commit funcional `de04faba7cf70c918cdda13de30250db11b4cf5c`
+  (`fix(security): bind order actors to signed SQL capabilities`).
+- Se reprodujo en PG17 efímero el P0 del diseño anterior: un login técnico con
+  la superficie invoker podía suministrar el UUID de un ADMIN activo y crear
+  transición, evento y correlación atribuidos a ese actor. La fixture revierte
+  la transacción y revoca policies/grants temporales.
+- Nueva migración candidata `20261024190000`: keyring HMAC vacío con FORCE RLS,
+  owner `NOLOGIN` sellado, privilegios por columna y wrapper con `search_path`
+  fijo. No incorpora secreto, login o GRANT operativo.
+- El emisor Node liga audiencia, `keyId`, `session_user`, actor, línea, destino,
+  correlación como nonce/jti y vigencia. El repositorio ya no llama la RPC de
+  actor libre. El wrapper revalida firma, clave, expiración después de locks,
+  membresía/rol, replay, transición, aviso y auditoría en una transacción.
+- El preflight positivo acepta únicamente el wrapper; rechaza tablas,
+  secuencias, owners, funciones adicionales y las cuatro RPC antiguas con actor
+  parametrizado. El preflight de composición completa sigue cerrado para no
+  montar tablero/historial sin un contrato de lectura SQL positivo.
+- Pruebas locales: `pnpm test` **758/758 PASS**; harness desechable
+  `catalog-postgres17-node-driver-smoke.sh`: catálogo **22/22**, operaciones
+  **6/6**, identidad/adversario **12/12 PASS**. Incluye cocina, camarero, ADMIN,
+  SQL directo, GUC, `SET ROLE`, tampering, expiración tras espera, rotación,
+  suspensión/cambio de rol, replay (también destino `NULL`), concurrencia,
+  rollback, Fastify y matriz de privilegios. El smoke integral
+  `postgres-migration-smoke.sh` también pasa en PG17 desechable; `pnpm build`
+  pasa para API, cliente y gestión.
+- Una revisión de bypass independiente encontró en el primer candidato la
+  propagación SQL de `NULL` en HMAC/fingerprint y la aceptación tardía de un
+  owner preexistente inseguro. Se corrigieron con rechazo/digests fail-closed,
+  `IS DISTINCT FROM`, regresión PG17 y validación de atributos/membresías antes
+  de cualquier `GRANT` u ownership. Confirmar ambos workflows del SHA publicado
+  antes del cierre final.
+- Decisión y riesgos: `docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+  Pendientes operativos: aprobar HMAC/pgcrypto, custodia y rotación, provisionar
+  credenciales/GRANT mediante proceso separado y diseñar la lectura mínima.
+- No se montaron rutas en `server.mjs`; no hubo merge, despliegue, acceso o
+  migración a Supabase operativo, ni cambios en Fleetia o el VPS.

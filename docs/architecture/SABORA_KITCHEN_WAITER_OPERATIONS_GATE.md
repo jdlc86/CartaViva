@@ -33,20 +33,22 @@ operativo en el navegador y no se ha incorporado sondeo automático.
 - La composición es opt-in y exige pools inyectados y declaradamente separados
   para lectura de personal y operaciones. No lee variables de entorno, no abre
   conexiones y no se importa desde `server.mjs`.
-- La función SQL es `SECURITY INVOKER`. La tabla de reintentos tiene RLS
-  habilitada y forzada. `PUBLIC`, `anon` y `authenticated` no reciben permisos
-  de tabla ni ejecución de la función.
-- No se ha creado un login operativo ni una política RLS permisiva. La ruta no
-  puede activarse hasta aprobar y probar la identidad PostgreSQL de mínimos
-  privilegios y su bootstrap.
+- La RPC histórica con actor parametrizado continúa `SECURITY INVOKER` y sin
+  `EXECUTE`. La nueva frontera candidata exige una capacidad HMAC ligada a
+  actor, rol de `session_user`, línea, destino, correlación y vigencia dentro
+  de un wrapper `SECURITY DEFINER` con owner `NOLOGIN` sellado.
+- No se ha creado un login operativo, secreto, clave ni GRANT de runtime. La
+  transición candidata sí se prueba con un login mínimo efímero en PG17, pero
+  las rutas completas no pueden activarse hasta aprobar provisión/rotación de
+  claves y una frontera de lectura para tablero e historial.
 
 ## Atomicidad, concurrencia e idempotencia
 
 La correlación pertenece al actor verificado. Una petición nueva:
 
-1. valida identificadores y transición;
-2. toma un advisory lock transaccional sobre actor y correlación;
-3. estabiliza y revalida la membresía activa, también para un replay;
+1. valida identificadores, transición y capacidad firmada;
+2. bloquea la clave y toma un advisory lock sobre actor y correlación;
+3. estabiliza y revalida la membresía activa y la vigencia después de esperas;
 4. reproduce el resultado durable si existe el mismo fingerprint o rechaza la
    reutilización con parámetros diferentes;
 5. bloquea la línea con `FOR UPDATE`;
@@ -334,3 +336,26 @@ Se rechaza la respuesta completa si un evento contradice esa matriz. Las
 pruebas incluyen casos válidos e inválidos por rol. La comprobación de salida
 no sustituye la autorización transaccional de la escritura ni resuelve el
 bloqueo de identidad SQL no falsificable.
+
+## Resolución técnica candidata del P0 de actor SQL (24-10-2026)
+
+La mutación deja de pasar un UUID desnudo a la RPC invoker. Node emite una
+capacidad HMAC de vida corta ligada a la audiencia de transición, la clave, el
+rol SQL exacto, actor, línea, destino, correlación y tiempos. PostgreSQL exige
+que el rol firmado sea `session_user`, verifica la firma con un keyring que el
+login técnico no puede leer, estabiliza clave y membresía y revalida expiración
+después de esperas por locks. Solo entonces consulta replay o muta.
+
+La correlación firmada es el nonce/jti del flujo y sigue siendo la clave durable
+de idempotencia por actor. El wrapper conserva las mismas tres transiciones,
+aviso, auditoría, rollback y locks del contrato; no añade entrega ni
+cancelación. El harness PG17 reproduce la suplantación anterior y demuestra
+que, con la superficie corregida, la credencial SQL técnica no puede atribuir
+una transición a otro actor sin poseer una capacidad válida para esa operación.
+
+Este cierre es **técnico y candidato**, no una activación: no hay secretos,
+claves, logins ni grants operativos versionados. Las rutas permanecen fuera de
+`server.mjs`; la composición completa conserva su gate cerrado porque las
+lecturas de tablero/historial no tienen aún un límite SQL positivo aprobado.
+El despliegue exige decisión de custodia/rotación de claves y nueva validación
+en un entorno autorizado, nunca mediante aplicación automática a Supabase.
