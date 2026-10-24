@@ -164,3 +164,13 @@ criptográfica o verificable del actor es insuficiente**. Mantener denegado
 `EXECUTE` y no montar la ruta hasta resolver la vinculación del actor
 en el contrato y en pruebas reales. No se introduce una solución ad hoc
 basada únicamente en una variable de sesión controlable por el login.
+
+## Defensa de transición previa al SQL
+
+El repositorio de operaciones ahora rechaza de forma anticipada los pares
+rol/destino incompatibles: cocina no puede solicitar `picked_up` y sala solo
+puede solicitar `picked_up`; el rol administrativo conserva los tres destinos
+candidatos. Una prueba comprueba que estos rechazos no ejecutan SQL. Esta
+comprobación complementa, pero **no sustituye**, la revalidación transaccional
+de membresía en PostgreSQL ni resuelve la suplantación directa del actor en la
+RPC invoker. El acceso positivo permanece sin autorización.
