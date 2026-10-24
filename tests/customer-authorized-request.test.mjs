@@ -72,5 +72,5 @@ test('top-level accessors are rejected without executing and selection is snapsh
  delete safe.authorized;delete safe.canOrder;delete safe.confirmable;
  const validated=validateCustomerConfirmationRequest(safe);
  safe.selection.extras.push('untrusted_mutation');
- assert.deepEqual(validated.selection.extras,[]);
+ assert.deepEqual(validated.selection.extras,['cheese']);
 });
