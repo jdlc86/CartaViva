@@ -29,6 +29,8 @@ async function inspect(pool, expectedRole) {
               role.rolcreaterole AS can_create_role,
               role.rolcreatedb AS can_create_db,
               role.rolreplication AS can_replicate,
+              role.rolconnlimit AS connection_limit,
+              role.rolvaliduntil AS password_valid_until,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -44,7 +46,11 @@ async function inspect(pool, expectedRole) {
         row.superuser !== false || row.bypass_rls !== false || row.can_login !== true ||
         row.inherits_roles !== false || row.can_create_role !== false ||
         row.can_create_db !== false || row.can_replicate !== false ||
-        row.has_role_memberships !== false) {
+        row.has_role_memberships !== false ||
+        !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
+        (row.password_valid_until !== null &&
+          (!(row.password_valid_until instanceof Date) ||
+            !Number.isFinite(row.password_valid_until.getTime())))) {
       throw Error('order_operations_sql_identity_rejected');
     }
     return Object.freeze({role: expectedRole});
