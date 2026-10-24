@@ -39,12 +39,13 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
      (data(result,'error')&&typeof result.error!=='string')||
      (data(result,'status')&&typeof result.status!=='string'))
    throw Error('confirmation_unexpected_response');
-  if(response.status===409&&result.error==='acceptance_required'){
+  if(response.status===409&&data(result,'error')&&
+     result.error==='acceptance_required'){
    // The consent controller validates the full repricing DTO before display.
    return result;
   }
   if([200,201].includes(response.status)){
-   if((response.status===201&&result.status!=='confirmed')||
+   if(!data(result,'status')||(response.status===201&&result.status!=='confirmed')||
       (response.status===200&&result.status!=='replayed')||
       !data(result,'orderId')||!validUuid(result.orderId))
     throw Error('confirmation_unexpected_response');
@@ -55,7 +56,7 @@ export function createCustomerOrderConfirmationTransport({fetchImpl,endpoint='/a
    'order_catalog_unavailable','order_previous_quote_unavailable',
    'order_displayed_quote_invalid','order_selection_changed',
    'order_confirmation_unavailable']);
-  return Object.freeze({error:allowed.has(result.error)?result.error:
+  return Object.freeze({error:data(result,'error')&&allowed.has(result.error)?result.error:
    'order_confirmation_unavailable'});
  };
 }
