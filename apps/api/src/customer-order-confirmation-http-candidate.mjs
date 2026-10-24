@@ -11,7 +11,7 @@ const data=(v,k)=>{if(!validResult(v))return false;
  return !!d&&d.enumerable&&Object.hasOwn(d,'value');};
 // A thrown value is untrusted too: never invoke its message getter while
 // mapping an internal failure to a public error code.
-const failureCode=error=>{
+export const failureCode=error=>{
  if(!error||typeof error!=='object')return null;
  const d=Object.getOwnPropertyDescriptor(error,'message');
  return d&&Object.hasOwn(d,'value')&&typeof d.value==='string'?d.value:null;
