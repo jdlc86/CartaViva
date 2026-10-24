@@ -486,3 +486,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Los cuatro casos de ámbitos independientes del smoke PG17 (clave, cesta, actor y visita) comprueban ahora que la sesión que retiene el bloqueo original sigue viva inmediatamente después del intento de adquirir el bloqueo independiente. Sin este guard, un `pg_try_advisory_xact_lock` exitoso después del COMMIT del holder podría generar un falso positivo.
 - Se mantienen los checks previos de espera activa y la salida no cero si el holder terminó antes de la comprobación. No cambia el escritor SQL ni se activa la ruta HTTP.
 - Bloques 63 y 64 aún estaban ejecutando workflows al comenzar. Este SHA requiere CI y Bootstrap verdes antes de cerrar el bloque.
+
+## 66. Validación de respuestas de ledger y ámbito completo de advisory lock (24-10-2026)
+
+- Ampliada la suite `tests/catalog-confirmation-read-repository.test.mjs` con casos de respuestas de driver inválidas antes de consultar el ledger, registros durables malformados y rechazo de UUID/fingerprint incorrectos.
+- Se comprueba explícitamente que cada una de las seis dimensiones del ámbito de bloqueo (mesa, sesión, visita, cesta, actor, requestKey) altera exclusivamente su posición en el JSON pasado a `hashtextextended`.
+- Los casos de driver son tests unitarios de regresión; los escenarios de bloqueo entre sesiones continúan cubiertos por el smoke PG17 desechable. Bloques 64 y 65 aún estaban en CI al iniciar; este SHA también requiere ambos workflows verdes.
+- No se habilita el endpoint HTTP ni se modifican otros proyectos o ramas.
