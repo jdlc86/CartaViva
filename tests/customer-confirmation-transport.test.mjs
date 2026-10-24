@@ -31,12 +31,14 @@ test('network ambiguity cannot claim success or regenerate correlation key',asyn
 test('invalid success response and unexpected status fail closed',async()=>{
  for(const [status,result] of [
   [201,{status:'confirmed',orderId:'not-a-uuid'}],
+  [200,{status:'replayed',orderId}],
   [200,{status:'confirmed',orderId}],
+  [201,{status:'replayed',orderId}],
   [302,{error:'redirect'}],
   [201,{status:'replayed',orderId:'not-a-uuid'}]
  ]){
   const submit=createCustomerOrderConfirmationTransport({fetchImpl:mock(status,result)});
-  if(status===200)assert.deepEqual(await submit(request),result);
+  if(status===200&&result.status==='replayed')assert.deepEqual(await submit(request),result);
   else await assert.rejects(submit(request),/confirmation_unexpected_response/);
  }
 });
