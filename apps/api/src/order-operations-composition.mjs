@@ -7,7 +7,7 @@ import {preflightOrderOperationsIdentities} from './order-operations-identity-pr
 // Opt-in only. The application bootstrap must supply independently provisioned
 // staff-reader and operational pools. This module opens no connection, reads no
 // environment variable and is deliberately not imported by server.mjs.
-export function registerOrderOperationsFromPools(app, {
+function registerOrderOperationsFromPools(app, {
   staffPool,
   operationsPool,
   issuer,
