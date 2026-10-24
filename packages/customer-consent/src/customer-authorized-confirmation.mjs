@@ -32,11 +32,16 @@ export function createAuthorizedCustomerConfirmation({
     // changed while the session/request snapshot was assembled, fail closed.
     const latest=await readBasket();
     if(disposed)throw Error('confirmation_flow_disposed');
-    if(!latest||typeof latest!=='object'||
-       Object.getOwnPropertyDescriptor(latest,'basketId')?.value!==request.basketId||
-       !Number.isSafeInteger(Object.getOwnPropertyDescriptor(latest,'revision')?.value)||
-       keys.identity!==request.basketId+':'+Object.getOwnPropertyDescriptor(latest,'revision').value||
-       latest.confirmable!==true)
+    const ownValue=(name)=>{
+     const d=latest&&typeof latest==='object'?
+      Object.getOwnPropertyDescriptor(latest,name):null;
+     return d&&d.enumerable&&Object.hasOwn(d,'value')?d.value:undefined;
+    };
+    const revision=ownValue('revision');
+    if(ownValue('basketId')!==request.basketId||
+       !Number.isSafeInteger(revision)||
+       keys.identity!==request.basketId+':'+revision||
+       ownValue('confirmable')!==true)
      throw Error('customer_basket_changed_before_confirmation');
     const result=await flow.confirm(request);
     if(!disposed&&['confirmed','replayed'].includes(result?.status))settled=true;
