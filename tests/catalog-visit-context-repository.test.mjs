@@ -140,7 +140,7 @@ test('authorization does not allow unexpected credential or row properties to ru
  Object.defineProperty(record,'extra',{enumerable:true,get(){
   reads++;throw Error('row_extra_getter');
  }});
- const result=await lock(async()=>({rows:[record]}),input);
- assert.equal(result.authorized,true);
+ await assert.rejects(lock(async()=>({rows:[record]}),input),
+  /invalid_catalog_visit_response/);
  assert.equal(reads,0);
 });
