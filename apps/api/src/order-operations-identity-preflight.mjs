@@ -62,6 +62,20 @@ async function inspect(pool, expectedRole) {
                   AND routine.prosecdef
                   AND has_function_privilege(current_user, routine.oid, 'EXECUTE'))
                 AS accessible_private_definer_routines,
+              (SELECT NOT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure
+              ) AS candidate_is_invoker,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_class resource
+                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relname IN ('order_line_transition_requests', 'order_line_events')
+                  AND resource.relkind IN ('r','p')
+                  AND resource.relrowsecurity
+                  AND resource.relforcerowsecurity
+              ) AS forced_rls_audit_tables,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
@@ -80,6 +94,8 @@ async function inspect(pool, expectedRole) {
         row.has_role_memberships !== false ||
         row.schema_usage !== true || row.schema_create !== false ||
         row.candidate_rpc_execute !== false ||
+        row.candidate_is_invoker !== true ||
+        row.forced_rls_audit_tables !== 2 ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         row.accessible_private_tables !== 0 ||
         row.accessible_private_sequences !== 0 ||
