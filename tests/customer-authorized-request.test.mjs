@@ -90,3 +90,16 @@ test('authorized reader rejects getter-backed session and basket without invokin
  }
  assert.equal(generated,0);
 });
+
+test('authorized selection rejects custom array keys and toJSON before snapshot',()=>{
+ const base={...context,...basket,requestKey:key};
+ delete base.authorized;delete base.canOrder;delete base.confirmable;
+ const array=['cheese'];array.custom='hidden';
+ assert.throws(()=>validateCustomerConfirmationRequest({...base,
+  selection:{extras:array}}),/invalid_customer_confirmation_request/);
+ const sparse=[];sparse.length=1;sparse.custom='cheese';
+ assert.throws(()=>validateCustomerConfirmationRequest({...base,
+  selection:{extras:sparse}}),/invalid_customer_confirmation_request/);
+ assert.throws(()=>validateCustomerConfirmationRequest({...base,
+  selection:{toJSON:'shadow'}}),/invalid_customer_confirmation_request/);
+});
