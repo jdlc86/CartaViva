@@ -6,6 +6,9 @@ const cents=v=>Number.isSafeInteger(v)&&v>=0;
 const revision=v=>Number.isSafeInteger(v)&&v>0;
 const validResult=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
+const data=(v,k)=>{if(!validResult(v))return false;
+ const d=Object.getOwnPropertyDescriptor(v,k);
+ return !!d&&d.enumerable&&Object.hasOwn(d,'value');};
 export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
  if(!app||typeof app.post!=='function'||typeof confirm!=='function')
   throw Error('invalid_customer_order_route_configuration');
@@ -13,17 +16,23 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
   reply.header('Cache-Control','no-store');
   reply.header('X-Content-Type-Options','nosniff');
   const body=request.body;
-  if(!validResult(body)||Object.keys(body).length>16)
+  if(!validResult(body)||Reflect.ownKeys(body).length>16||
+     Reflect.ownKeys(body).some(k=>typeof k!=='string'||!data(body,k)))
    return reply.code(400).send({error:'invalid_confirmation_input'});
   try{
    const result=await confirm(body);
    if(!validResult(result))throw Error('invalid_confirmation_result');
+   if(!data(result,'status'))throw Error('invalid_confirmation_result');
    if(result.status==='acceptance_required'){
-    if(!validResult(result.decision)||result.decision.requiresAcceptance!==true)
+    if(!data(result,'decision')||!data(result.decision,'requiresAcceptance')||
+       result.decision.requiresAcceptance!==true||!data(result,'acceptance'))
      throw Error('invalid_confirmation_result');
     const d=result.decision;
     const a=result.acceptance;
-    if(!cents(d.previousTotalCents)||!cents(d.currentTotalCents)||
+    if(['previousTotalCents','currentTotalCents','differenceCents',
+        'previousPublishedRevision','currentPublishedRevision'].some(k=>!data(d,k))||
+       !data(a,'token')||!data(a,'expiresAt')||
+       !cents(d.previousTotalCents)||!cents(d.currentTotalCents)||
        !Number.isSafeInteger(d.differenceCents)||
        d.currentTotalCents-d.previousTotalCents!==d.differenceCents||
        !revision(d.previousPublishedRevision)||!revision(d.currentPublishedRevision)||
@@ -42,7 +51,8 @@ export function registerCustomerOrderConfirmationRoute(app,{confirm}={}){
       acceptanceToken:a.token,expiresAt:a.expiresAt}});
    }
    if(!['confirmed','replayed'].includes(result.status)||
-      !validResult(result.result)||!uuid.test(result.result.orderId))
+      !data(result,'result')||!data(result.result,'orderId')||
+      !uuid.test(result.result.orderId))
     throw Error('invalid_confirmation_result');
    return reply.code(result.status==='confirmed'?201:200).send({
     status:result.status,orderId:result.result.orderId
