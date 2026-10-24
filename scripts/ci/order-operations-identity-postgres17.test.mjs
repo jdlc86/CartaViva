@@ -99,6 +99,24 @@ test('PG17 preflight accepts distinct nonprivileged login identities and rejects
     );
     assert.deepEqual(unexpectedGrants.rows, [],
       'technical login unexpectedly accesses a table outside the explicit inventory');
+    // Sequence privileges are independent of table grants. No technical
+    // identity may consume, inspect or advance a sequence in this schema.
+    const sequenceGrants = await admin.query(
+      `SELECT roles.rolname AS role_name, sequences.relname AS sequence_name,
+              privilege.privilege AS privilege
+         FROM pg_catalog.pg_roles roles
+         CROSS JOIN pg_catalog.pg_class sequences
+         JOIN pg_catalog.pg_namespace ns ON ns.oid = sequences.relnamespace
+         CROSS JOIN (VALUES ('USAGE'), ('SELECT'), ('UPDATE')) privilege(privilege)
+        WHERE roles.rolname = ANY($1::text[])
+          AND ns.nspname = 'sabora'
+          AND sequences.relkind = 'S'
+          AND has_sequence_privilege(roles.oid, sequences.oid, privilege.privilege)
+        ORDER BY roles.rolname, sequences.relname, privilege.privilege`,
+      [[staffRole, operationsRole]]
+    );
+    assert.deepEqual(sequenceGrants.rows, [],
+      'technical login unexpectedly accesses a private schema sequence');
     // A narrowly granted SELECT still cannot bypass FORCE RLS. The test
     // runs on the disposable database only and revokes its temporary grant.
     await admin.query(
