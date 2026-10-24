@@ -360,3 +360,10 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Nuevas pruebas comprueban arrays con propiedades extras, arrays dispersos con propiedades añadidas y campos `toJSON` dentro de la selección.
 - La rama mantiene sin montar la confirmación de cliente hasta disponer de sesión y cesta confiables; no se registra la ruta HTTP.
 - La regresión de Fastify del bloque 46 se corrigió separando el clasificador puro; los workflows de `5bd605f` aún se estaban ejecutando al comenzar este bloque. El nuevo SHA requiere CI verde.
+
+## 48. Identidad de cesta segura para idempotencia (24-10-2026)
+
+- `customer-request-key-registry.mjs` ahora exige que `basketId` y `revision` sean propiedades propias, enumerables y de datos de un objeto plano antes de consultar o reutilizar una clave de idempotencia.
+- Pruebas nuevas comprueban getters hostiles e identificadores heredados; no se genera ninguna clave ni se ejecuta un getter ante esas entradas.
+- Se conserva la misma clave para la misma cesta y revisión y se prohíbe rotarla durante confirmaciones pendientes.
+- Los workflows de `026286b` estaban en ejecución al comenzar el bloque; este SHA requiere CI. Sin integración productiva, merge o despliegue.
