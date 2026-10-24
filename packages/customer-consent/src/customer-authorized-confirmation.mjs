@@ -30,18 +30,26 @@ export function createAuthorizedCustomerConfirmation({
     keys.begin();
     // Re-read the authoritative basket immediately before sending. If it
     // changed while the session/request snapshot was assembled, fail closed.
-    const latest=await readBasket();
+    const [latest,latestContext]=await Promise.all([readBasket(),readContext()]);
     if(disposed)throw Error('confirmation_flow_disposed');
     const ownValue=(name)=>{
      const d=latest&&typeof latest==='object'?
       Object.getOwnPropertyDescriptor(latest,name):null;
      return d&&d.enumerable&&Object.hasOwn(d,'value')?d.value:undefined;
     };
+    const contextValue=(name)=>{
+     const d=latestContext&&typeof latestContext==='object'?
+      Object.getOwnPropertyDescriptor(latestContext,name):null;
+     return d&&d.enumerable&&Object.hasOwn(d,'value')?d.value:undefined;
+    };
     const revision=ownValue('revision');
     if(ownValue('basketId')!==request.basketId||
        !Number.isSafeInteger(revision)||
        keys.identity!==request.basketId+':'+revision||
-       ownValue('confirmable')!==true)
+       ownValue('confirmable')!==true||
+       contextValue('authorized')!==true||contextValue('canOrder')!==true||
+       ['tableId','visitId','actorId','qrToken','customerSessionToken']
+        .some(name=>contextValue(name)!==request[name]))
      throw Error('customer_basket_changed_before_confirmation');
     const result=await flow.confirm(request);
     if(!disposed&&['confirmed','replayed'].includes(result?.status))settled=true;
