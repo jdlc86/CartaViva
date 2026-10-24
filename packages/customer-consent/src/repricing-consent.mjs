@@ -30,7 +30,6 @@ export function createRepricingConsentController({submit,clock=Date.now}={}){
   throw Error('invalid_repricing_controller');
  let pending=null;
  let inFlight=false;
- let generation=0;
  const status=()=>pending?'awaiting_explicit_acceptance':'idle';
  return Object.freeze({
   get status(){return status();},
@@ -47,17 +46,16 @@ export function createRepricingConsentController({submit,clock=Date.now}={}){
    if(!plain(originalRequest)||Object.hasOwn(originalRequest,'acceptanceToken'))
     throw Error('invalid_repricing_request');
    const challenge=parseRepricingChallenge(response,{nowMs:clock()});
-   generation++;
-   pending={challenge,request:structuredClone(originalRequest),generation};
+   pending={challenge,request:structuredClone(originalRequest)};
    return this.comparison;
   },
-  decline(){generation++;pending=null;},
+  decline(){pending=null;},
   async accept(){
    if(inFlight)throw Error('repricing_request_in_flight');
    if(!pending)throw Error('repricing_acceptance_not_pending');
    const current=pending;
    if(clock()>=current.challenge.expiresAt){
-    generation++;pending=null;throw Error('repricing_acceptance_expired');
+    pending=null;throw Error('repricing_acceptance_expired');
    }
    inFlight=true;
    // Clear before network: an accidental double click cannot re-send consent.
@@ -68,8 +66,7 @@ export function createRepricingConsentController({submit,clock=Date.now}={}){
     // A second repricing must be displayed again, never accepted recursively.
     if(plain(result)&&result.error==='acceptance_required'){
      const challenge=parseRepricingChallenge(result,{nowMs:clock()});
-     generation++;
-     pending={challenge,request:structuredClone(current.request),generation};
+     pending={challenge,request:structuredClone(current.request)};
     }
     return result;
    }finally{inFlight=false;}
