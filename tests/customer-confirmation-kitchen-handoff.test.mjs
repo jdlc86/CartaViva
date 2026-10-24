@@ -126,7 +126,11 @@ test('changed published revision cannot reach kitchen without explicit acceptanc
  const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
  const response=await f.send();
  assert.equal(response.statusCode,409);
- assert.deepEqual(response.json(),{error:'acceptance_required'});
+ assert.equal(response.json().error,'acceptance_required');
+ assert.equal(response.json().repricing.schemaVersion,1);
+ assert.equal(response.json().repricing.previousTotalCents,1000);
+ assert.equal(response.json().repricing.currentTotalCents,1000);
+ assert.equal(response.json().repricing.differenceCents,0);
  assert.deepEqual(f.state,{orders:[],lines:[],notifications:[],events:[],ledger:[]});
  assert.equal(f.transactions,1);
  assert.equal(f.rollbacks,0);
@@ -167,7 +171,11 @@ test('expired repricing acceptance never reaches kitchen or ledger',async t=>{
  });
  const response=await f.send({...input,acceptanceToken:token});
  assert.equal(response.statusCode,409);
- assert.deepEqual(response.json(),{error:'acceptance_required'});
+ assert.equal(response.json().error,'acceptance_required');
+ assert.equal(response.json().repricing.schemaVersion,1);
+ assert.equal(response.json().repricing.previousTotalCents,1000);
+ assert.equal(response.json().repricing.currentTotalCents,1000);
+ assert.equal(response.json().repricing.differenceCents,0);
  assert.equal(f.state.orders.length,0);
  assert.equal(f.state.lines.length,0);
  assert.equal(f.state.ledger.length,0);
@@ -185,9 +193,38 @@ test('repricing token is not transferable to another basket or actor',async t=>{
    contextBasketId:changes.basketId??input.basketId});t.after(()=>f.app.close());
   const response=await f.send({...input,...changes,acceptanceToken:token});
   assert.equal(response.statusCode,409);
-  assert.deepEqual(response.json(),{error:'acceptance_required'});
+  assert.equal(response.json().error,'acceptance_required');
+ assert.equal(response.json().repricing.schemaVersion,1);
+ assert.equal(response.json().repricing.previousTotalCents,1000);
+ assert.equal(response.json().repricing.currentTotalCents,1000);
+ assert.equal(response.json().repricing.differenceCents,0);
   assert.equal(f.state.orders.length,0);
   assert.equal(f.state.lines.length,0);
   assert.equal(f.state.ledger.length,0);
  }
+});
+
+test('public repricing DTO supports explicit acceptance and then one kitchen projection',async t=>{
+ const f=fixture({publishedRevision:2});t.after(()=>f.app.close());
+ const first=await f.send();
+ assert.equal(first.statusCode,409);
+ const response=first.json();
+ assert.deepEqual(Object.keys(response).sort(),['error','repricing']);
+ assert.deepEqual(Object.keys(response.repricing).sort(),[
+  'acceptanceToken','currentPublishedRevision','currentTotalCents',
+  'differenceCents','expiresAt','previousPublishedRevision',
+  'previousTotalCents','schemaVersion'].sort());
+ assert.equal(response.repricing.previousPublishedRevision,1);
+ assert.equal(response.repricing.currentPublishedRevision,2);
+ assert.equal(response.repricing.previousTotalCents,1000);
+ assert.equal(response.repricing.currentTotalCents,1000);
+ assert.equal(response.repricing.differenceCents,0);
+ assert.equal(response.repricing.schemaVersion,1);
+ assert.equal(f.state.orders.length,0);
+ const accepted=await f.send({...input,acceptanceToken:response.repricing.acceptanceToken});
+ assert.equal(accepted.statusCode,201);
+ assert.deepEqual(accepted.json(),{status:'confirmed',orderId});
+ assert.equal(f.state.orders.length,1);
+ assert.equal(f.state.lines.length,1);
+ assert.equal(f.state.ledger.length,1);
 });
