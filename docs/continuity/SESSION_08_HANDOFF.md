@@ -104,3 +104,11 @@ Informar el HEAD/PR/CI reales, resumir brechas relevantes del contrato, escoger 
 - Las pruebas usan los esquemas y triggers existentes, sin crear grants, rutas ni cuentas de producción. Todas las filas de prueba se revierten al terminar.
 - **Límite:** prueba persistencia de proyección, no acuse verificable de recepción por cocina, despacho, stock ni flujo completo de PWA. La composición del escritor sigue inactiva en `server.mjs`.
 - El bloque queda **pendiente de cierre** hasta que GitHub Actions confirme el nuevo smoke SQL y la suite completa sobre el SHA actual. No modificar Fleetia, VPS ni Supabase operativo.
+
+## 14. Cierre CI de durabilidad y semántica de confirmación/recepción (24-10-2026)
+
+- SHA `f320c15b8998f3c16f0f532250fbef916679f327`: `Sabora CI` **40080266759 SUCCESS** y `Bootstrap Sabora lockfile` **40080266758 SUCCESS**. Quedan validadas en el PG17 aislado la proyección de una línea de cocina, el replay idempotente y el rollback de una confirmación duplicada.
+- Corrección del candidato HTTP: `catalog_order_context_changed` (cierre o cambio de estado de mesa entre autorización y escritura) devuelve **409 `order_confirmation_conflict`** y no 503. El cliente debe revalidar su estado; no reenviar automáticamente una petición de resultado incierto.
+- Nueva regresión: el DTO público de confirmación no puede afirmar `kitchenReceived`, `dispatchId` ni `receiptAt` aunque un adaptador devuelva tales campos. Una confirmación persistida no acredita recepción por cocina.
+- **Próximo contrato pendiente de implementar, no inferido:** identificador de comanda/despacho independiente, revisión vigente, exclusión transaccional del despacho, acuse de recepción verificable por cocina y autorización por rol. Consultar el trabajo concurrente de cocina/camarero antes de diseñar migraciones o rutas. No activar el candidato HTTP sin el contrato económico de repricing y grants aprobados.
+- Nuevos cambios sujetos a CI del HEAD actual; no merge, no VPS, no Supabase operativo ni Fleetia.
