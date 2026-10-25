@@ -118,3 +118,23 @@ montado en `server.mjs` y no existen credencial/login/grant de producción.
 Tampoco existe material recuperable para correo, worker, proveedor ni endpoint.
 Un trabajo `dispatching` no se cancela porque el proveedor puede estar en
 vuelo; la aceptación tardía continúa protegida por la revalidación durable.
+
+## Candidatos de cifrado y recuperación previa al despacho (25-10-2026)
+
+Se incorporan `staff-invitation-envelope-candidate.mjs` y
+`staff-invitation-claim-recovery-candidate.mjs`, con pruebas unitarias
+de AES-256-GCM, autenticación de contexto, detección de alteraciones,
+hash del token, nonces independientes y fencing de claims caducados.
+
+El cifrado usa AAD ligado a enrollment, versión y hash. Las claves
+permanecen inyectadas; no se guardan ni se provisionan claves operativas.
+El candidato de recuperación rota el fence únicamente para `claimed`
+caducados: **nunca** reintenta automáticamente `dispatching` porque
+puede existir un envío externo en vuelo. Los jobs ambiguos requieren
+reconciliación explícita.
+
+**No declarar el hito completo:** todavía no existe columna cifrada
+en la outbox, custodia transaccional de material recuperable, gestión
+de claves/rotación, grants restringidos de recuperación ni pruebas
+PG17 de reinicio del worker. Los módulos no están montados en rutas,
+worker o servidor. Son propuestas de diseño sin aprobación operativa.
