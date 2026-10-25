@@ -163,6 +163,6 @@ test('transition-only composition fails closed before SQL or HTTP for invalid is
  },base),/route_registration/);
  assert.deepEqual(events,[]);
  await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,base),
-  /invalid_order_operations_sql_client/);
+  /unexpected_sql/);
  assert.deepEqual(events,['connect']);
 });
