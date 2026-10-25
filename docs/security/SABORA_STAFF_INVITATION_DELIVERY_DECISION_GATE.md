@@ -295,3 +295,30 @@ debe revalidar el estado vigente. La función candidata todavía
 no resuelve ciclo operativo de claves, retención/borrado, worker,
 proveedor, aislamiento de identidad de worker ni despliegue.
 El gate operativo permanece abierto.
+
+## Selector de claves y rotación lógica candidata (25-10-2026)
+
+El módulo `staff-invitation-keyring-candidate.mjs` admite una
+única clave `active` para nuevas invitaciones, claves
+`decrypt_only` para descifrar sobres anteriores y claves
+`disabled` que se rechazan. Se rechazan IDs duplicados,
+múltiples claves activas y material distinto de 32 bytes.
+El componente copia los buffers recibidos y devueltos,
+y al cerrarse sobrescribe sus copias internas y deniega
+operaciones posteriores. La sobrescritura no garantiza
+el borrado de otras copias del secreto en el proceso,
+GC, memoria intercambiada o sistemas externos.
+
+Pruebas: cifrado con clave antigua, rotación de la clave
+activa, descifrado histórico mediante clave `decrypt_only`,
+rechazo de clave `disabled`, ausencia de aliasing de
+buffers y cierre idempotente. Commit `9693c17`:
+Sabora CI y Bootstrap SUCCESS.
+
+**Alcance:** es un selector de claves **en memoria, candidato**.
+No aprovisiona ni rota secretos operativos, no persiste
+configuraciones, no elimina sobres y no impone una política
+de caducidad. Una clave `decrypt_only` debe permanecer
+disponible mientras existan sobres que dependan de ella,
+o esos sobres deben dejar de ser recuperables según una
+política aprobada. El gate de entrega continúa abierto.
