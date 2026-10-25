@@ -78,3 +78,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Nuevo borrador `docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`, fuera de `supabase/migrations`: tabla con estado de entrega, unicidad inscripción+versión, fence, marcas temporales, índices y RLS FORCE. No concede permisos a nadie.
 - Test de contrato verifica RLS, ausencia de grants y que el borrador no está en el directorio de migraciones operativas.
 - **No está ejecutado en PostgreSQL 17 ni integrado con el escritor transaccional.** El modelo de entrega remota no resuelve todavía el envío concurrente con revocación, el material secreto protegido, reintentos ni la auditoría de entrega. Debe revisarse y probarse antes de promoverlo a migración real.
+
+## Hito 2 — gate de entrega y pruebas de carreras simuladas
+
+- Nuevo `docs/security/SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md`: recoge la ausencia de contrato aprobado, los límites de atomicidad frente al proveedor externo y los requisitos pendientes de decisión; no modifica la normativa.
+- `tests/staff-invitation-claim-race-candidate.test.mjs` cubre carreras simuladas de dos claims, revocación y reenvío observados bajo lock, y rollback ante fila inválida. **Son simulaciones de adaptador, no ensayos concurrentes en PostgreSQL 17**.
+- La regla de seguridad es que un correo tardío nunca pueda conferir acceso porque la aceptación valida el estado durable vigente. No se ha habilitado ningún envío.
