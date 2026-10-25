@@ -162,7 +162,9 @@ export function createOrderOperationsRepository() {
         seenLines.add(lineKey);
         previousKey = key;
       }
-      const page = rows.slice(0, limit).map((row) => {
+      // Validate the overflow row too: it determines whether pagination continues
+      // and must not bypass the same SQL-result contract as visible rows.
+      const validatedRows = rows.map((row) => {
         if (!UUID.test(row?.order_id) || !UUID.test(row?.line_id) ||
             !Number.isSafeInteger(row?.table_number) || row.table_number < 1 ||
             typeof row?.customer_label !== 'string' || row.customer_label.trim().length === 0 ||
@@ -201,6 +203,7 @@ export function createOrderOperationsRepository() {
           notification,
         });
       });
+      const page = validatedRows.slice(0, limit);
       const last = page.at(-1);
       return Object.freeze({
         version: 1,
