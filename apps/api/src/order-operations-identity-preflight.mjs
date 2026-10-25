@@ -158,7 +158,7 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
         row.superuser !== false || row.bypass_rls !== false || row.can_login !== true ||
         row.inherits_roles !== false || row.can_create_role !== false ||
         row.can_create_db !== false || row.can_replicate !== false ||
-        row.has_role_memberships !== false ||
+        row.has_role_memberships !== false || row.has_role_grantees !== false ||
         row.schema_usage !== true || row.schema_create !== false ||
         row.database_create !== false ||
         row.candidate_rpc_execute !== false ||
