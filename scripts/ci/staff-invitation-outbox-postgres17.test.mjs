@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomBytes} from 'node:crypto';
+import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/src/staff-invitation-envelope-candidate.mjs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -870,4 +871,60 @@ test('PG17 restricted recovery login has only EXECUTE and rotates stale fence',a
   } finally {
     await pool.end();
   }
+});
+
+test('PG17 encrypted custody candidate is atomic with outbox transaction and rejects mismatches',async()=>{
+  const sql=await readFile(new URL(
+    '../../docs/security/sql-candidates/staff_invitation_custody_pg17.sql',import.meta.url),'utf8');
+  await admin.query(sql);
+  const token='A'.repeat(48);
+  const tokenHash=digest(token);
+  const enrollment=await seedEnrollment({tokenHash});
+  const jobId=uuid('c');
+  const key=randomBytes(32);
+  const envelope=sealStaffInvitationToken({
+    token,enrollmentId:enrollment.enrollmentId,inviteVersion:enrollment.version,
+    tokenHashHex:tokenHash,key,keyId:'candidate_key_001',
+  });
+  const write=async(query,id=jobId,hash=tokenHash,tag=envelope.tag)=>{
+    await query({text:`SELECT sabora.store_staff_invitation_custody_candidate(
+      $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
+    values:[id,enrollment.enrollmentId,enrollment.version,hash,envelope.keyId,
+      envelope.nonce,envelope.ciphertext,tag]});
+  };
+  await assert.rejects(withTransaction(async query=>{
+    await query({text:`INSERT INTO sabora.staff_invitation_outbox
+      (id,enrollment_id,invite_version,invite_token_hash)
+      VALUES ($1,$2,$3,decode($4,'hex'))`,
+    values:[jobId,enrollment.enrollmentId,enrollment.version,tokenHash]});
+    await write(query,jobId,'f'.repeat(64));
+  }),error=>error?.code==='23514');
+  const rolledBack=await admin.query(`SELECT count(*)::integer AS n
+    FROM sabora.staff_invitation_outbox WHERE id=$1`,[jobId]);
+  assert.equal(rolledBack.rows[0].n,0);
+  await withTransaction(async query=>{
+    await query({text:`INSERT INTO sabora.staff_invitation_outbox
+      (id,enrollment_id,invite_version,invite_token_hash)
+      VALUES ($1,$2,$3,decode($4,'hex'))`,
+    values:[jobId,enrollment.enrollmentId,enrollment.version,tokenHash]});
+    await write(query);
+  });
+  const stored=await admin.query(`SELECT key_id,encode(nonce,'base64') AS nonce,
+    encode(ciphertext,'base64') AS ciphertext,encode(tag,'base64') AS tag,
+    encode(token_hash,'hex') AS token_hash
+    FROM sabora.staff_invitation_custody_candidate WHERE job_id=$1`,[jobId]);
+  assert.equal(stored.rows.length,1);
+  assert.equal(stored.rows[0].token_hash,tokenHash);
+  assert.equal(stored.rows[0].ciphertext.includes(token),false);
+  assert.equal(openStaffInvitationToken({
+    envelope,enrollmentId:enrollment.enrollmentId,
+    inviteVersion:enrollment.version,tokenHashHex:tokenHash,key,
+  }),token);
+  await assert.rejects(withTransaction(query=>write(query)),error=>error?.code==='23505');
+  const deniedRead=await admin.query(`SELECT has_table_privilege(
+    $1,'sabora.staff_invitation_custody_candidate','SELECT') AS can_read`,
+  [runtimeCredentials.role]);
+  assert.equal(deniedRead.rows[0].can_read,false);
+  await assert.rejects(runtime.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),
+    error=>error?.code==='42501');
 });
