@@ -50,3 +50,36 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     assert.equal(observed[0].role, 'kitchen');
   });
 }
+
+for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
+  test(`${operation} rejects own __proto__ before SQL`, async () => {
+    let transactions = 0;
+    const input = JSON.parse('{"__proto__":{"admin":true},"limit":10}');
+    const coordinator = createOrderOperationsCoordinator({
+      withTransaction: async () => { transactions++; },
+      repository: {verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {}},
+    });
+    await assert.rejects(coordinator[operation](context, input), /invalid_order_operations_input/);
+    assert.equal(transactions, 0);
+    assert.equal({}.admin, undefined);
+  });
+
+  test(`${operation} ignores forged actor and role even when supplied as own properties`, async () => {
+    const observed = [];
+    const repository = {
+      verifyMembership: async (_query, staff) => staff,
+      listBoard: async (_query, input) => { observed.push(input); return 'ok'; },
+      transitionLine: async (_query, input) => { observed.push(input); return 'ok'; },
+      listHistory: async (_query, input) => { observed.push(input); return 'ok'; },
+    };
+    const coordinator = createOrderOperationsCoordinator({
+      repository, withTransaction: async callback => callback(async () => {}),
+    });
+    assert.equal(await coordinator[operation](context, {
+      actorId: '22222222-2222-4222-8222-222222222222',
+      role: 'admin', limit: 10,
+    }), 'ok');
+    assert.equal(observed[0].actorId, actorId);
+    assert.equal(observed[0].role, 'kitchen');
+  });
+}
