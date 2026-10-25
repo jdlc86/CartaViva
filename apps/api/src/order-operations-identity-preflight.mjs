@@ -10,7 +10,7 @@ function validateRole(role) {
   return role;
 }
 
-async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} = {}) {
+async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, allowStaffReader = false} = {}) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
   if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
@@ -37,6 +37,24 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
               has_schema_privilege(current_user, 'sabora', 'USAGE') AS schema_usage,
               has_schema_privilege(current_user, 'sabora', 'CREATE') AS schema_create,
               has_database_privilege(current_user, current_database(), 'CREATE') AS database_create,
+              (has_column_privilege(current_user, 'sabora.staff_members', 'user_id', 'SELECT')
+               AND has_column_privilege(current_user, 'sabora.staff_members', 'role', 'SELECT')
+               AND has_column_privilege(current_user, 'sabora.staff_members', 'state', 'SELECT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'SELECT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'INSERT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'UPDATE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'DELETE')
+               AND NOT EXISTS (
+                 SELECT 1 FROM pg_catalog.pg_attribute attribute
+                 WHERE attribute.attrelid = 'sabora.staff_members'::regclass
+                   AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                   AND attribute.attname NOT IN ('user_id', 'role', 'state')
+                   AND (has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'SELECT')
+                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'INSERT')
+                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'UPDATE')
+                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'REFERENCES'))
+               )) AS staff_reader_exact_columns,
+
               has_function_privilege(current_user,
                 'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
                 'EXECUTE') AS candidate_rpc_execute,
@@ -173,7 +191,8 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
         row.forced_rls_transition_requests !== 1 ||
         row.forced_rls_signing_keys !== 1 ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
-        row.accessible_private_tables !== 0 ||
+        row.accessible_private_tables !== (allowStaffReader ? 1 : 0) ||
+        row.staff_reader_exact_columns !== allowStaffReader ||
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !== (allowAuthorizedTransition ? 1 : 0) ||
@@ -228,5 +247,5 @@ export async function preflightOrderTransitionIdentity({pool, role} = {}) {
 // the mutation RPC and cannot substitute for staff HTTP cryptographic auth.
 export async function preflightOrderTransitionStaffIdentity({pool, role} = {}) {
   const expectedRole = validateRole(role);
-  return inspect(pool, expectedRole);
+  return inspect(pool, expectedRole, {allowStaffReader: true});
 }
