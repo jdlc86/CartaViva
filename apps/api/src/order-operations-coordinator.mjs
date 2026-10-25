@@ -83,7 +83,7 @@ export function createOrderOperationsCoordinator({
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(page);
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
+        assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listBoard(query, {...safeInput, ...staff});
       });
     },
@@ -109,7 +109,7 @@ export function createOrderOperationsCoordinator({
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(input);
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
+        assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listHistory(query, {...safeInput, ...staff});
       });
     },
