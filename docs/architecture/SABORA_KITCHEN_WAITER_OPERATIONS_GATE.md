@@ -456,3 +456,30 @@ este bloque como cerrado. Resolver el conflicto con
 la base exige reconciliar el código y la documentación
 normativa, sin merge a producción, y volver a ejecutar
 ambos workflows sobre el SHA resultante.
+
+## Recuperación de CI y corrección del gate de mutación (25-10-2026)
+
+Los workflows `Sabora CI` y `Bootstrap Sabora lockfile`
+se ejecutan ahora también mediante `push` sobre la rama
+`integration/sabora-hito1-identity-staff`. Esto permite
+validar el HEAD sin depender de que GitHub genere el merge
+ref del PR #11, que todavía indica `mergeable_state=dirty`.
+El cambio no despliega, fusiona ni activa endpoints.
+
+La primera ejecución real detectó una regresión en la
+prueba de composición: se había dejado una comprobación
+SQL de la mutación accidentalmente dentro de un comentario
+de código. El commit `bbd491f` restaura la ejecución
+obligatoria y secuencial de
+`preflightOrderTransitionStaffIdentity` y
+`preflightOrderTransitionIdentity` antes de crear hooks
+o registrar la ruta. Los dos roles declarados deben ser
+distintos. Ambos workflows sobre `bbd491f` terminaron
+`SUCCESS` (runs `40231185079` y `40231185082`).
+
+**Alcance aceptado:** composición candidata y pruebas
+de mutación aislada; no se consideran autorizados
+tablero/historial ni autenticación o activación operativa.
+El conflicto del PR #11 sigue pendiente de reconciliación
+con la rama base y no debe confundirse con el resultado
+verde del código de la rama de integración.
