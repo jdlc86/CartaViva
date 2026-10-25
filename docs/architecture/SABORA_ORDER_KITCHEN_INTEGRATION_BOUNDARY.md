@@ -53,3 +53,26 @@ almacena en caché y no acredita recepción por cocina. La ruta sigue sin
 montarse en `server.mjs`. El DTO es **candidato técnico**, no una
 autorización para activar producción; el diseño y la UX de aceptación de
 la PWA deben revisarse antes de integrar.
+
+## Aceptación HTTP de cocina y sala en SHA de integración (25-10-2026)
+
+`tests/order-operations-http-lifecycle-acceptance.test.mjs`
+ejecuta las rutas reales Fastify de operaciones con un
+repositorio de estados **simulado**, y recorre:
+`confirmed → preparing → ready → picked_up`, visibilidad
+de tablero por rol, aviso de recogida y su acuse,
+historial, replay idempotente, conflictos de correlación
+y rechazo de transiciones prohibidas para cocina y
+camarero. Commit `9eb2605`: Sabora CI y Bootstrap SUCCESS.
+
+**Límite de evidencia:** este recorrido prueba integración
+HTTP/coordinador y contrato observable, pero no demuestra
+la transacción SQL ni las restricciones PostgreSQL 17 de
+la transición en esa misma prueba. Las pruebas PG17 del
+escritor y de operaciones son evidencias complementarias;
+no deben presentarse como aceptación integral
+cliente → cocina → camarero en un mismo banco PG17.
+El estado `picked_up` acredita recogida por sala, **no
+entrega al comensal**. El acuse de recepción de comanda
+y la activación de las dos PWA siguen pendientes.
+Sin montaje operativo, merge ni despliegue.
