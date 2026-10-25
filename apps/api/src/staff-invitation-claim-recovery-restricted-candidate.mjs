@@ -1,5 +1,5 @@
 // Candidate-only restricted principal adapter. Never mounted on runtime routes.
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const RESTRICTED_STAFF_CLAIM_RECOVERY_SQL =
   'SELECT sabora.reclaim_staff_invitation_claim_candidate($1::uuid,$2::uuid,$3::integer) AS fence';
 export function createRestrictedStaffClaimRecoveryCandidate({query}={}){
