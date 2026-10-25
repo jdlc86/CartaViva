@@ -1,6 +1,6 @@
 // Candidate-only lease recovery: only 'claimed' (never 'dispatching') is reclaimable.
 // A dispatching message may already be in flight; automatic retries are unsafe.
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const STAFF_INVITATION_RECLAIM_SQL = `UPDATE sabora.staff_invitation_outbox
   SET fence=gen_random_uuid(),claimed_at=clock_timestamp(),
       updated_at=clock_timestamp()
