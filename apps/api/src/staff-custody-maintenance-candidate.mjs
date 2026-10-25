@@ -3,8 +3,9 @@
 const SQL = 'SELECT sabora.purge_terminal_staff_invitation_custody_candidate($1::timestamptz,$2::integer) AS removed';
 const ISO_UTC=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/;
 export const STAFF_CUSTODY_PURGE_SQL=SQL;
-export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date()}={}){
-  if(typeof query!=='function'||typeof clock!=='function')
+export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date(),approvalAuthority}={}){
+  if(typeof query!=='function'||typeof clock!=='function'||
+    (approvalAuthority!==undefined && typeof approvalAuthority.verifyAndConsume!=='function'))
     throw Error('invalid_staff_custody_maintenance_config');
   return Object.freeze({
     async run({cutoff,maxRows=100,maxBatches=1,authorization,dryRun=true}={}){
@@ -19,11 +20,14 @@ export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date
         Date.parse(cutoff)>now.getTime())
         throw Error('invalid_staff_custody_maintenance_cutoff');
       if(dryRun!==false)return Object.freeze({executed:false,removed:0,batches:0});
-      if(!authorization||authorization.action!=='purge_terminal_staff_custody'||
-        authorization.cutoff!==cutoff||
-        authorization.maxRows!==maxRows||
-        authorization.maxBatches!==maxBatches||
-        authorization.approved!==true)
+      const verified=approvalAuthority
+        ? await approvalAuthority.verifyAndConsume(authorization,{cutoff,maxRows,maxBatches})
+        : authorization;
+      if(!verified||verified.action!=='purge_terminal_staff_custody'||
+        verified.cutoff!==cutoff||
+        verified.maxRows!==maxRows||
+        verified.maxBatches!==maxBatches||
+        verified.approved!==true)
         throw Error('staff_custody_maintenance_not_authorized');
       let removed=0,batches=0;
       for(let i=0;i<maxBatches;i++){
