@@ -596,3 +596,53 @@ test('Fastify + restricted PG17 login: full signed kitchen-to-waiter mutation, r
   await assert.rejects(operationsPool.query(
     'SELECT * FROM sabora.order_lines LIMIT 1'),/permission denied/);
 });
+
+test('Fastify + restricted PG17: parallel retries and competing actors stay atomic',async t=>{
+ const item=await fixture(215);
+ const other=await fixture(216);
+ const app=Fastify({logger:false});
+ registerOrderOperationsHttp(app,{
+  forRoles:roles=>[async(request,reply)=>{
+   const [scheme,userId,role]=String(request.headers.authorization??'').split(' ');
+   if(scheme!=='Test'||!roles.includes(role))
+    return reply.code(401).send({error:'unauthorized'});
+   request.verifiedIdentity={userId};
+   request.verifiedStaff={userId,role};
+  }],
+  operations,
+ });
+ await app.ready();
+ t.after(()=>app.close());
+ const kitchen={authorization:`Test ${kitchenId} kitchen`};
+ const adminActor={authorization:`Test ${adminId} admin`};
+ const send=(headers,lineId,targetStatus,correlationId)=>app.inject({
+  method:'POST',
+  url:`/api/v1/operations/order-lines/${lineId}/transitions`,
+  headers,payload:{targetStatus,correlationId},
+ });
+ // Two HTTP requests from one actor must commit exactly once.
+ const retries=await Promise.all([
+  send(kitchen,item.lineId,'preparing','signed_parallel_http_215'),
+  send(kitchen,item.lineId,'preparing','signed_parallel_http_215'),
+ ]);
+ assert.deepEqual(retries.map(r=>r.statusCode).sort(),[200,201]);
+ assert.equal(retries[0].json().eventId,retries[1].json().eventId);
+ assert.deepEqual(await state(item.lineId),{
+  status:'preparing',events:1,requests:1,notifications:0,
+ });
+ // Different actors competing for the same next state cannot both win.
+ const competitors=await Promise.all([
+  send(kitchen,other.lineId,'preparing','signed_compete_kitchen_216'),
+  send(adminActor,other.lineId,'preparing','signed_compete_admin_216'),
+ ]);
+ assert.deepEqual(competitors.map(r=>r.statusCode).sort(),[201,409]);
+ assert.deepEqual(await state(other.lineId),{
+  status:'preparing',events:1,requests:1,notifications:0,
+ });
+ // Reusing an actor correlation with a different operation never mutates.
+ const conflict=await send(kitchen,other.lineId,'ready','signed_parallel_http_215');
+ assert.equal(conflict.statusCode,409,conflict.body);
+ assert.deepEqual(await state(other.lineId),{
+  status:'preparing',events:1,requests:1,notifications:0,
+ });
+});
