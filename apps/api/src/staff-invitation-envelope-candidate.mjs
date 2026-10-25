@@ -9,11 +9,11 @@ const TOKEN = /^[A-Za-z0-9_-]{32,512}$/;
 const ALGORITHM = 'aes-256-gcm';
 const CONTEXT = 'sabora.staff-invitation-delivery.v1';
 
-function context({enrollmentId, inviteVersion, tokenHashHex}) {
+function context({enrollmentId, inviteVersion, tokenHashHex, keyId}) {
   if (!UUID.test(enrollmentId ?? '') ||
       !Number.isSafeInteger(inviteVersion) || inviteVersion < 1 ||
-      !HASH.test(tokenHashHex ?? '')) throw Error('invalid_staff_delivery_envelope_context');
-  return Buffer.from([CONTEXT,enrollmentId.toLowerCase(),String(inviteVersion),tokenHashHex].join('\n'),'utf8');
+      !HASH.test(tokenHashHex ?? '') || !KEY_ID.test(keyId ?? '')) throw Error('invalid_staff_delivery_envelope_context');
+  return Buffer.from([CONTEXT,enrollmentId.toLowerCase(),String(inviteVersion),tokenHashHex,keyId].join('\n'),'utf8');
 }
 function keyBytes(key) {
   if (!Buffer.isBuffer(key) || key.length !== 32) throw Error('invalid_staff_delivery_encryption_key');
@@ -34,7 +34,7 @@ function decode(value, size) {
 export function sealStaffInvitationToken({token, enrollmentId, inviteVersion, tokenHashHex, keyId, key, nonce = randomBytes(12)} = {}) {
   if (typeof token !== 'string' || !TOKEN.test(token) || !KEY_ID.test(keyId ?? '') ||
       !Buffer.isBuffer(nonce) || nonce.length !== 12) throw Error('invalid_staff_delivery_encryption_input');
-  const aad=context({enrollmentId,inviteVersion,tokenHashHex});
+  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId});
   const digest=createHash('sha256').update(token,'utf8').digest();
   if (!timingSafeEqual(digest,Buffer.from(tokenHashHex,'hex'))) throw Error('staff_delivery_token_hash_mismatch');
   const cipher=createCipheriv(ALGORITHM,keyBytes(key),nonce);
@@ -45,16 +45,19 @@ export function sealStaffInvitationToken({token, enrollmentId, inviteVersion, to
     ciphertext:ciphertext.toString('base64url'), tag:cipher.getAuthTag().toString('base64url'),
   });
 }
-export function openStaffInvitationToken({envelope,enrollmentId,inviteVersion,tokenHashHex,key} = {}) {
-  const aad=context({enrollmentId,inviteVersion,tokenHashHex});
+export function openStaffInvitationToken({envelope,enrollmentId,inviteVersion,tokenHashHex,key,keyId} = {}) {
   if (!exact(envelope,['version','keyId','nonce','ciphertext','tag']) ||
       envelope.version !== 1 || !KEY_ID.test(envelope.keyId ?? '') ||
-      typeof envelope.ciphertext !== 'string' || envelope.ciphertext.length > 1024) {
+      typeof envelope.ciphertext !== 'string' || envelope.ciphertext.length > 684 ||
+      envelope.ciphertext.length < 43 ||
+      (keyId !== undefined && envelope.keyId !== keyId)) {
     throw Error('invalid_staff_delivery_envelope');
   }
+  const aad=context({enrollmentId,inviteVersion,tokenHashHex,keyId:envelope.keyId});
   const nonce=decode(envelope.nonce,12);
   const tag=decode(envelope.tag,16);
   const ciphertext=decode(envelope.ciphertext,Buffer.from(envelope.ciphertext,'base64url').length);
+  if (ciphertext.length < 32 || ciphertext.length > 512) throw Error('invalid_staff_delivery_envelope');
   try {
     const decipher=createDecipheriv(ALGORITHM,keyBytes(key),nonce);
     decipher.setAAD(aad);
