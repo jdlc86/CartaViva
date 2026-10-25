@@ -73,6 +73,46 @@ export function createStaffInvitationOutboxRepository() {
       });
       return parseCandidate(jobId, result?.rows);
     },
+    async lockDispatchingDelivery(query, jobId, fence) {
+      if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence)) {
+        throw Error('invalid_staff_delivery_sql_input');
+      }
+      const result = await query({
+        text: `SELECT id FROM sabora.staff_invitation_outbox
+          WHERE id = $1::uuid AND fence = $2::uuid AND state = 'dispatching'
+          FOR UPDATE`,
+        values: [jobId.toLowerCase(), fence.toLowerCase()],
+      });
+      if (!Array.isArray(result?.rows) || result.rows.length > 1) {
+        throw Error('invalid_staff_delivery_sql_result');
+      }
+      if (result.rows.length === 1 && result.rows[0]?.id !== jobId.toLowerCase()) {
+        throw Error('invalid_staff_delivery_sql_result');
+      }
+      return result.rows.length === 1;
+    },
+    async finishDispatchingDelivery(query, jobId, fence, nextState) {
+      if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence) ||
+          !['delivered', 'failed'].includes(nextState)) {
+        throw Error('invalid_staff_delivery_sql_input');
+      }
+      const result = await query({
+        text: `UPDATE sabora.staff_invitation_outbox
+          SET state = $3::text,
+            delivered_at = CASE WHEN $3::text = 'delivered'
+              THEN clock_timestamp() ELSE NULL END,
+            updated_at = clock_timestamp()
+          WHERE id = $1::uuid AND fence = $2::uuid AND state = 'dispatching'
+          RETURNING id`,
+        values: [jobId.toLowerCase(), fence.toLowerCase(), nextState],
+      });
+      if (!Array.isArray(result?.rows) || result.rows.length > 1 ||
+          (result.rows.length === 1 &&
+           result.rows[0]?.id !== jobId.toLowerCase())) {
+        throw Error('invalid_staff_delivery_sql_result');
+      }
+      return Object.freeze({finished: result.rows.length === 1});
+    },
     async lockReconciliationCandidate(query, jobId) {
       if (typeof query !== 'function' || !UUID.test(jobId)) {
         throw Error('invalid_staff_delivery_sql_input');
