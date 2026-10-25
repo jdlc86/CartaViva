@@ -14,7 +14,10 @@ async function inspect(pool, expectedRole) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
   if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
-    if (typeof client?.release === 'function') client.release(Error('invalid_order_operations_sql_client'));
+    if (typeof client?.release === 'function') {
+      try { client.release(Error('invalid_order_operations_sql_client')); }
+      catch { /* Preserve the malformed-client error. */ }
+    }
     throw Error('invalid_order_operations_sql_client');
   }
   let discard = null;
@@ -120,7 +123,16 @@ async function inspect(pool, expectedRole) {
     discard = error;
     throw error;
   } finally {
-    client.release(discard);
+    try { client.release(discard); }
+    catch (releaseError) {
+      // A failed inspection must retain its original cause. A successful
+      // inspection with a failed release is never accepted as healthy.
+      if (!discard) throw releaseError;
+      if (discard && typeof discard === 'object') {
+        try { discard.releaseError = releaseError; }
+        catch { /* Preserve immutable SQL errors. */ }
+      }
+    }
   }
 }
 
