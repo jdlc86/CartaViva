@@ -4,6 +4,7 @@ import {createHash, randomBytes} from 'node:crypto';
 import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/src/staff-invitation-envelope-candidate.mjs';
 import {createStaffInvitationCustodyCoordinatorCandidate} from '../../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
 import {createStaffDispatchEnvelopeReaderCandidate} from '../../apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs';
+import {createStaffCustodyNonceConsumerCandidate} from '../../apps/api/src/staff-custody-nonce-consumer-candidate.mjs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -1150,4 +1151,37 @@ test('PG17 terminal custody purge is bounded, privileged and idempotent',async()
     FROM sabora.staff_invitation_outbox WHERE id=ANY($1::uuid[])`,
     [cases.map(x=>x.jobId)]);
   assert.equal(remaining.rows[0].n,3);
+});
+
+test('PG17 durable nonce consumption is atomic across concurrent runtime pools',async()=>{
+  const sql=await readFile(new URL(
+    '../../docs/security/sql-candidates/staff_custody_approval_nonce_pg17.sql',
+    import.meta.url),'utf8');
+  await admin.query(sql);
+  await admin.query(`GRANT EXECUTE ON FUNCTION
+    sabora.consume_staff_custody_approval_nonce_candidate(uuid,timestamptz,text)
+    TO ${runtimeCredentials.role}`);
+  const consumerA=createStaffCustodyNonceConsumerCandidate({
+    query:(...args)=>runtime.query(...args),
+  });
+  const consumerB=createStaffCustodyNonceConsumerCandidate({
+    query:(...args)=>runtimeB.query(...args),
+  });
+  const nonce=uuid('d'),expiry=new Date(Date.now()+120000).toISOString();
+  const results=await Promise.all(Array.from({length:16},(_,i)=>
+    (i%2===0?consumerA:consumerB)(nonce,expiry,'staff_root_001')));
+  assert.equal(results.filter(Boolean).length,1);
+  assert.equal(results.filter(x=>x===false).length,15);
+  assert.equal(await consumerB(nonce,expiry,'staff_root_001'),false);
+  const stored=await admin.query(`SELECT nonce,actor_id FROM
+    sabora.staff_custody_approval_nonce_candidate WHERE nonce=$1`,[nonce]);
+  assert.deepEqual(stored.rows,[{nonce,actor_id:'staff_root_001'}]);
+  await assert.rejects(runtime.query(
+    'SELECT * FROM sabora.staff_custody_approval_nonce_candidate'),
+    error=>error?.code==='42501');
+  await assert.rejects(runtime.query(
+    'DELETE FROM sabora.staff_custody_approval_nonce_candidate'),
+    error=>error?.code==='42501');
+  assert.equal(await consumerA(uuid('e'),
+    new Date(Date.now()-60000).toISOString(),'staff_root_001'),false);
 });
