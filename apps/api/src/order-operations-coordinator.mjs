@@ -3,22 +3,31 @@ import {createOrderOperationsRepository} from './order-operations-repository.mjs
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 
-function trustedStaff(context) {
-  if (!context || typeof context !== 'object' || Array.isArray(context) ||
-      !context.verifiedIdentity || !context.verifiedStaff ||
-      typeof context.verifiedIdentity !== 'object' || Array.isArray(context.verifiedIdentity) ||
-      typeof context.verifiedStaff !== 'object' || Array.isArray(context.verifiedStaff) ||
-      !UUID.test(context.verifiedIdentity.userId) ||
-      typeof context.verifiedStaff.userId !== 'string' ||
-      !UUID.test(context.verifiedStaff.userId) ||
-      context.verifiedStaff.userId.toLowerCase() !== context.verifiedIdentity.userId.toLowerCase() ||
-      !ROLES.has(context.verifiedStaff.role)) {
+function ownData(object, key) {
+  if (!object || typeof object !== 'object' || Array.isArray(object) ||
+      (Object.getPrototypeOf(object) !== Object.prototype &&
+       Object.getPrototypeOf(object) !== null)) {
     throw Error('order_operations_forbidden');
   }
-  return Object.freeze({
-    actorId: context.verifiedIdentity.userId,
-    role: context.verifiedStaff.role,
-  });
+  const descriptor = Object.getOwnPropertyDescriptor(object, key);
+  if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+    throw Error('order_operations_forbidden');
+  }
+  return descriptor.value;
+}
+
+function trustedStaff(context) {
+  const identity = ownData(context, 'verifiedIdentity');
+  const verifiedStaff = ownData(context, 'verifiedStaff');
+  const actorId = ownData(identity, 'userId');
+  const staffId = ownData(verifiedStaff, 'userId');
+  const role = ownData(verifiedStaff, 'role');
+  if (typeof actorId !== 'string' || !UUID.test(actorId) ||
+      typeof staffId !== 'string' || !UUID.test(staffId) ||
+      staffId.toLowerCase() !== actorId.toLowerCase() || !ROLES.has(role)) {
+    throw Error('order_operations_forbidden');
+  }
+  return Object.freeze({actorId, role});
 }
 
 function assertSafeInput(value) {
