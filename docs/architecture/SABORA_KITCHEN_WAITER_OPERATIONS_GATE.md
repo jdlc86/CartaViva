@@ -334,3 +334,18 @@ Se rechaza la respuesta completa si un evento contradice esa matriz. Las
 pruebas incluyen casos válidos e inválidos por rol. La comprobación de salida
 no sustituye la autorización transaccional de la escritura ni resuelve el
 bloqueo de identidad SQL no falsificable.
+
+## Vinculación positiva del actor (Hito 1, no activada)
+
+`870230f` sustituye la futura vía de escritura por
+`transition_order_line_authorized_candidate(...)`. Una capacidad HMAC efímera
+liga el login real (`session_user`), actor verificado, línea, transición,
+correlación y tiempos. PostgreSQL verifica la firma, bloquea clave y membresía,
+revalida caducidad y ejecuta transición, evento, aviso e idempotencia en la
+misma transacción. El harness PG17 demuestra que UUID, GUC, `SET ROLE`, firma
+alterada, rol equivocado, expiración y revocación no elevan autoridad.
+
+La RPC antigua sigue sin `EXECUTE`; el nuevo wrapper tampoco tiene grants ni
+clave runtime. Las lecturas de tablero/historial y la provisión operativa siguen
+pendientes, de modo que las rutas permanecen sin montar. El detalle está en
+`docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
