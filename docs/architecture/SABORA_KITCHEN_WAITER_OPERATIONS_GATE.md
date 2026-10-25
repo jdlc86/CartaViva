@@ -483,3 +483,25 @@ tablero/historial ni autenticación o activación operativa.
 El conflicto del PR #11 sigue pendiente de reconciliación
 con la rama base y no debe confundirse con el resultado
 verde del código de la rama de integración.
+
+## Aceptación positiva de la composición de transición aislada (25-10-2026)
+
+La prueba `transition-only composition verifies two independent
+SQL principals before mounting POST` en
+`tests/order-operations-composition.test.mjs` valida
+la secuencia positiva de los dos preflights SQL con
+identidades distintas, liberación de las conexiones y
+registro exclusivo de `POST /api/v1/operations/order-lines/:lineId/transitions`.
+Comprueba ausencia física de las rutas GET de tablero e
+historial y respuesta `401` a una solicitud sin token
+válido. Es una aceptación con pools SQL simulados y
+Fastify real; no sustituye los tests PostgreSQL 17
+desechables del login restringido ni acredita el
+bootstrap de producción.
+
+Commit `b75a56d`: workflows `Sabora CI`
+`40231650770` y `Bootstrap Sabora lockfile`
+`40231650771` ambos `SUCCESS`, incluidas sus
+pruebas PostgreSQL 17 desechables. El PR #11 sigue
+en Draft y mantiene su conflicto de integración;
+ninguna ruta fue montada en el servidor operativo.
