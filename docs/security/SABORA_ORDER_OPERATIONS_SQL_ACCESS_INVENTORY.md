@@ -361,3 +361,8 @@ La incorporación de pruebas de entrada Node no equivale a un merge completo de 
 El gate candidato rechaza `rolconnlimit = 0` y credenciales `rolvaliduntil` caducadas, además de límites negativos inválidos y fechas no válidas. Los errores de inspección SQL tienen precedencia sobre errores secundarios de liberación de conexión; si la inspección fue correcta y falla `release`, el preflight también falla cerrado. Los clientes SQL malformados no ocultan su error original por una excepción de liberación. Se incorporan pruebas Node de estos casos al branch de reconciliación, sin alterar la verificación de firma SQL ni autorizar rutas de lectura.
 
 Esta aceptación depende de los workflows del SHA de reconciliación; no supone habilitar logins, grants, SQL operativo, merge o despliegue.
+
+
+## Reconciliación de membresía de roles SQL (25-10-2026)
+
+Se añade al preflight de ambos logins técnicos el rechazo de membresías de rol **en las dos direcciones**: cuando el login es miembro de otro rol (`membership.member`) y cuando terceros son miembros del rol de login (`membership.roleid`). Esto evita aceptar un login aparentemente aislado que delega sus privilegios a otro principal. Se mantiene la comprobación separada del propietario sellado de la función autorizada, los grants cero sobre tablas privadas y la única RPC firmada candidata. Pruebas Node comprueban ambos sentidos y ambos logins. No se ha creado ni alterado ningún rol real.
