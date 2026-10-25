@@ -101,3 +101,10 @@ No confundir integración del código candidato con disponibilidad funcional en 
 
 - `docs/security/sql-candidates/README_PG17_VERIFICATION.md` detalla precondiciones, privilegios, pruebas con dos conexiones y carreras, criterios de fallo y registro de evidencias.
 - **No se ha ejecutado este plan**; no debe confundirse con las pruebas unitarias ni con una certificación PostgreSQL real. Sin credenciales operativas ni despliegue.
+
+## Hito 2 — frontera previa a dispatch (25-10-2026)
+
+- `staff-invitation-dispatch-guard.mjs` introduce una segunda comprobación transaccional de inscripción y claim con fence justo antes de autorizar la operación de dispatch. El repositorio inyectado debe implementar `lockClaimedDelivery` y `authorizeDispatch` con semántica SQL atómica.
+- `tests/staff-invitation-dispatch-guard.test.mjs`: cuatro casos de éxito condicionado, revocación/aceptación/rotación, fence obsoleto y configuración inválida. Ejecución local aislada Node.js: **4/4 PASS**.
+- **Advertencia:** una autorización previa al envío no puede garantizar que un mensaje externo no llegue después de una revocación. El servidor debe validar el estado durable al aceptar el token. No hay proveedor, worker, implementación SQL del dispatch ni garantía de entrega activados. PostgreSQL 17 real sigue pendiente.
+- Base validada: `8f0ac2ba6bd1c01aedb0dc38ce294b503d112f97`, Sabora CI #40182111408 SUCCESS y Bootstrap #40182111403 SUCCESS.
