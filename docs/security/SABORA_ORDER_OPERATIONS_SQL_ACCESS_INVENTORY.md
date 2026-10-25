@@ -383,3 +383,10 @@ El gate de identidad SQL cuenta ahora con pruebas de regresión que cubren tres 
 ## Validación completa de fila de desbordamiento en tablero (25-10-2026)
 
 El repositorio candidato `listBoard` valida ahora **todas** las filas devueltas por SQL, incluida la fila `limit + 1` usada exclusivamente para decidir `nextCursor`. Antes solo se validaban su orden y sus identificadores, mientras que los campos de proyección completos se validaban únicamente en las filas visibles. La fila adicional no puede eludir el contrato de mesa, alias, cantidad, categoría, agrupación y notificación. Pruebas negativas de regresión en `tests/order-operations.test.mjs`; la puerta de lectura SQL y su montaje HTTP permanecen cerrados. El estado de aceptación corresponde al CI del commit que contenga esta documentación.
+
+
+## Auditoría Codex PR #13: transición bloqueada y lector de personal (25-10-2026)
+
+Codex identificó un P1 por caducidad de la capacidad durante la espera del bloqueo `order_lines FOR UPDATE`. La migración candidata vuelve a consultar `clock_timestamp()` y rechaza la capacidad o clave caducadas **después** de adquirir dicho bloqueo y antes de mutar. El harness `scripts/ci/order-operations-postgres17-integration.test.mjs` incorpora una prueba de espera real y ausencia de efectos persistentes.
+
+También se identificó un P2: el login de lectura de personal no podía cumplir simultáneamente el preflight de cero privilegios y la consulta `SELECT role, state FROM sabora.staff_members WHERE user_id=$1`. La puerta candidata de transiciones separa ahora el preflight del lector: exige exclusivamente SELECT de columnas `user_id`, `role`, `state`, sin SELECT de tabla completa ni acceso a otras columnas o relaciones; el mutador conserva cero acceso directo y una única función autorizada. La composición permanece opt-in, sin activación de GET, merge ni despliegue. Este cambio **no provisiona roles ni concede permisos**; su verificación con dos logins reales de PG17 sigue siendo un criterio pendiente de cierre, junto al P2 de idempotencia durable de invitaciones.
