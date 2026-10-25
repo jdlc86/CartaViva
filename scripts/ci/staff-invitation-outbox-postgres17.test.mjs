@@ -940,9 +940,10 @@ test('PG17 lifecycle + outbox + encrypted custody commit or rollback as one unit
   const tokenHash=digest(token);
   const capability=issueLifecycle({
     actorId:ownerId,action:'invite',enrollmentId,
-    requestedRole:'waiter',
+    subjectUserId:null,requestedRole:'waiter',
     inviteeEmailHashHex:digest('custody-atomic@example.invalid'),
-    inviteTokenHashHex:tokenHash,correlationId:'custody_atomic_001',
+    inviteTokenHashHex:tokenHash,credentialEvidenceHashHex:null,
+    reason:null,correlationId:'custody_atomic_001',
   });
   await assert.rejects(coordinator.transitionAndStore({
     capability,token:'C'.repeat(48),
