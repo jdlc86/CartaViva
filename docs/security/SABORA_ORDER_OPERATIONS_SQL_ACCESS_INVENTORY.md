@@ -345,3 +345,36 @@ current_database(), 'CREATE') = false`. Este privilegio es independiente de
 otros esquemas dentro de la base. El harness PostgreSQL 17 efímero concede
 `CREATE` temporalmente al login de operaciones, exige rechazo del preflight,
 revoca el permiso y exige recuperación. No modifica ninguna base operativa.
+
+
+## Reconciliación candidata PR #11: entradas y capacidades (25-10-2026)
+
+En la rama independiente `integration/sabora-pr11-reconciliation` se han integrado las defensas de entrada de la rama base sobre el coordinador que utiliza capacidades de transición firmadas. El contexto `verifiedIdentity`/`verifiedStaff` se lee exclusivamente mediante propiedades propias de datos; se rechazan getters y propiedades heredadas. Los parámetros de tablero, transición e historial se copian antes de la espera asíncrona a un objeto de prototipo nulo, con rechazo de claves `__proto__`, símbolos, accesores y objetos no planos. El actor y rol enviados al repositorio continúan siendo los de la identidad verificada, no los del llamante. La capacidad se emite desde la copia validada.
+
+**Diferencia normativa que NO debe borrarse durante el merge:** la rama base verificaba `verifyMembership` para cada transición, mientras que el candidato actual delega la revocación y membresía de las mutaciones al wrapper SQL que verifica la capacidad firmada y revalida al actor bajo bloqueo. No se ha reintroducido una consulta directa a `staff_members` con el login restringido, porque abriría permisos incompatibles con el preflight. Las lecturas de tablero e historial siguen siendo candidatas sin concesión positiva SQL y no deben activarse.
+
+La incorporación de pruebas de entrada Node no equivale a un merge completo de las ramas, ni acredita autorización SQL de lectura, PG17 conjunto o despliegue. Requiere CI de la rama de reconciliación y revisión posterior de los cambios pendientes de preflight y de los tests de la rama base.
+
+
+## Reconciliación del preflight de credenciales y cierre de conexiones (25-10-2026)
+
+El gate candidato rechaza `rolconnlimit = 0` y credenciales `rolvaliduntil` caducadas, además de límites negativos inválidos y fechas no válidas. Los errores de inspección SQL tienen precedencia sobre errores secundarios de liberación de conexión; si la inspección fue correcta y falla `release`, el preflight también falla cerrado. Los clientes SQL malformados no ocultan su error original por una excepción de liberación. Se incorporan pruebas Node de estos casos al branch de reconciliación, sin alterar la verificación de firma SQL ni autorizar rutas de lectura.
+
+Esta aceptación depende de los workflows del SHA de reconciliación; no supone habilitar logins, grants, SQL operativo, merge o despliegue.
+
+
+## Reconciliación de membresía de roles SQL (25-10-2026)
+
+Se añade al preflight de ambos logins técnicos el rechazo de membresías de rol **en las dos direcciones**: cuando el login es miembro de otro rol (`membership.member`) y cuando terceros son miembros del rol de login (`membership.roleid`). Esto evita aceptar un login aparentemente aislado que delega sus privilegios a otro principal. Se mantiene la comprobación separada del propietario sellado de la función autorizada, los grants cero sobre tablas privadas y la única RPC firmada candidata. Pruebas Node comprueban ambos sentidos y ambos logins. No se ha creado ni alterado ningún rol real.
+
+
+## Reconciliación de comprobación de membresía en lecturas (25-10-2026)
+
+Las rutas candidatas de tablero e historial, todavía **no montadas**, solo continúan si `verifyMembership` devuelve un registro explícito con `actorId` UUID coincidente con la identidad autenticada y `role` coincidente con el rol del personal verificado. Se rechazan respuestas ausentes, contradictorias o malformadas antes de ejecutar la lectura operativa. Se conserva la captura previa e inmutable de parámetros. Esta validación Node no concede privilegios de lectura SQL ni satisface por sí sola el gate de lecturas actor-bound pendiente.
+
+Las transiciones no hacen una segunda lectura directa de membresía desde el login restringido; la función SQL de capacidad autorizada realiza la verificación de firma y revalidación bajo bloqueo. Pruebas específicas distinguen ambas rutas para evitar que la reconciliación reintroduzca permisos de tabla sobre el principal de operaciones.
+
+
+## Verificación de cierre de conexiones en preflight (25-10-2026)
+
+El gate de identidad SQL cuenta ahora con pruebas de regresión que cubren tres salidas anómalas: fallo de liberación tras inspección exitosa (no se autoriza el inicio), fallo de liberación mientras se propaga un error de inspección (se preserva el error primario) y cliente SQL malformado cuyo método `release` falla (se conserva el rechazo por cliente inválido). Estas pruebas no alteran credenciales ni recursos SQL reales. La validación completa de CI debe consultarse sobre el commit final de la rama, no inferirse de una ejecución anterior.

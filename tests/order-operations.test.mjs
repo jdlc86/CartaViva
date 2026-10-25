@@ -32,7 +32,7 @@ function context(role = 'kitchen') {
 test('coordinator binds a transition capability and leaves membership revalidation to SQL', async () => {
   const calls = [];
   const repository = {
-    async verifyMembership(_query, staff) { calls.push(['membership', staff]); },
+    async verifyMembership(_query, staff) { calls.push(['membership', staff]); return {...staff}; },
     async listBoard(_query, input) { calls.push(['board', input]); return {version: 1, role: input.role, items: []}; },
     async transitionLine(_query, input) { calls.push(['transition', input]); return {version: 1}; },
     async listHistory(_query, input) { calls.push(['history', input]); return {version: 1}; },
@@ -584,7 +584,7 @@ test('HTTP maps only exact domain errors and never leaks driver messages', async
 test('untrusted operation inputs cannot replace verified actor or staff role', async () => {
   const observed = [];
   const repository = {
-    async verifyMembership(_query, staff) { observed.push(['membership', staff]); },
+    async verifyMembership(_query, staff) { observed.push(['membership', staff]); return {...staff}; },
     async listBoard(_query, input) { observed.push(['board', input]); return {version: 1, items: []}; },
     async transitionLine(_query, input) { observed.push(['transition', input]); return {version: 1}; },
     async listHistory(_query, input) { observed.push(['history', input]); return {version: 1}; },

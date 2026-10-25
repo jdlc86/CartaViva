@@ -15,7 +15,10 @@ const roles=new Set(['kitchen','waiter','admin']);
 function fixture(){
  const state={status:'confirmed',events:[],notification:null,transitions:0,transactions:0};
  const repository={
-  async verifyMembership(_query,{role}){if(!roles.has(role))throw Error('order_operations_forbidden');},
+  async verifyMembership(_query,{actorId,role}){
+   if(!roles.has(role))throw Error('order_operations_forbidden');
+   return {actorId,role};
+  },
   async listBoard(_query,{role,status}){
    const visible=role==='admin'||
     (role==='kitchen'&&state.status!=='picked_up')||
