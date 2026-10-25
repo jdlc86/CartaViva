@@ -100,3 +100,18 @@ en la tabla outbox. Antes de cualquier promoción será necesaria una
 rutina SQL autorizada y una prueba PG17 de rollback, reenvío y replay
 sobre la misma transacción y con el principal restringido.
 No hay autorización para crear permisos runtime, enviar correo ni desplegar.
+
+## Evidencia adicional de encolado PG17 desechable (25-10-2026)
+
+El commit `a45f1a2` amplía el harness PostgreSQL 17 con tres casos:
+confirmación de versión/hash al encolar, rollback de la rotación ante colisión
+de clave primaria en outbox y denegación de INSERT directo al login no
+privilegiado. Ambos workflows del commit terminaron en SUCCESS.
+
+**Límite preciso:** estas pruebas utilizan una transición SQL de prueba
+inyectada en el coordinador de encolado, ejecutada con el principal
+administrador **exclusivamente en el contenedor desechable**. No prueban
+todavía el wrapper HMAC de ciclo de vida y la inserción con un mismo login
+runtime restringido: el esquema de outbox no concede esos permisos.
+No presentar esta evidencia como validación de identidad SQL operativa,
+ni promover a migraciones o activar la entrega hasta resolver el gate.
