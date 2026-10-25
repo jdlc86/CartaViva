@@ -472,3 +472,29 @@ antes de la purga evita el replay pero no asegura una
 transacción atómica entre consumo y purga; un fallo posterior
 requiere una nueva autorización. No se ha ejecutado ninguna
 purga operativa.
+
+## Prueba integral de mantenimiento con concesión de un solo uso (25-10-2026)
+
+Se añadió a `scripts/ci/staff-invitation-outbox-postgres17.test.mjs`
+un recorrido real de extremo a extremo en PostgreSQL 17
+desechable: creación de invitación y custodia cifrada,
+paso del outbox a estado terminal, emisión de autorización
+HMAC vinculada al actor y al alcance, dry-run sin consumo,
+consumo persistente del nonce por el runtime restringido,
+purga acotada mediante otra conexión, rechazo de replay,
+verificación de ausencia de ciphertext y conservación del
+registro outbox. Commit `c217ab1`: Sabora CI y Bootstrap
+SUCCESS.
+
+La prueba demuestra que los módulos candidatos se pueden
+componer sin el antiguo bypass de aprobación booleana y
+sin privilegios de tabla directos en la identidad de runtime.
+
+**El gate operativo permanece abierto:** no se ha aprobado
+la retención ni implementado el vínculo autenticado entre
+persona autorizadora y `actorId`, ni un proceso operativo
+para la clave HMAC o identidad dedicada de mantenimiento.
+El consumo del nonce y la purga no comparten transacción
+atómica; la semántica actual es de autorización de un solo
+intento, sin reintento destructivo bajo la misma concesión.
+No hay despliegue ni ejecución en Supabase operativo.
