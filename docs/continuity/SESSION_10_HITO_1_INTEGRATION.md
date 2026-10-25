@@ -84,3 +84,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Nuevo `docs/security/SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md`: recoge la ausencia de contrato aprobado, los límites de atomicidad frente al proveedor externo y los requisitos pendientes de decisión; no modifica la normativa.
 - `tests/staff-invitation-claim-race-candidate.test.mjs` cubre carreras simuladas de dos claims, revocación y reenvío observados bajo lock, y rollback ante fila inválida. **Son simulaciones de adaptador, no ensayos concurrentes en PostgreSQL 17**.
 - La regla de seguridad es que un correo tardío nunca pueda conferir acceso porque la aceptación valida el estado durable vigente. No se ha habilitado ningún envío.
+
+## CI y endurecimiento de frontera SQL
+
+- Commit `ad3c30c602d9edf23dfc53533dcb25c2670e761c`: **Sabora CI #40181256584 SUCCESS** y **Bootstrap #40181256588 SUCCESS**.
+- `tests/staff-invitation-outbox-boundary.test.mjs` amplía la cobertura del adaptador candidato: parametrización de UUID, rechazo de cardinalidad/fence incorrectos, trabajo ausente sin UPDATE y estado no reconocido.
+- Las pruebas adicionales son unitarias; siguen pendientes la migración y las pruebas PostgreSQL 17 reales, el material cifrado y la aprobación normativa del envío.
