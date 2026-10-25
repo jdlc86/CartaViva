@@ -162,3 +162,30 @@ mínimos en PostgreSQL 17 desechable. No hay login/grant operativo,
 worker real, migración operativa, secreto recuperable, proveedor ni
 reconciliación de `dispatching` ambiguo. El gate general de entrega
 permanece abierto.
+
+## Custodia cifrada candidata: transacción real PostgreSQL 17 (25-10-2026)
+
+`sql-candidates/staff_invitation_custody_pg17.sql` incorpora
+`staff_invitation_custody_candidate`, FORCE RLS, restricciones
+de formato criptográfico, unicidad por inscripción/versión, referencia
+a outbox y función `SECURITY INVOKER` que exige que el trabajo
+esté `pending` y coincidan inscripción, versión y hash.
+Se almacena únicamente el sobre AES-256-GCM (nonce, ciphertext,
+tag y key id), no token en claro ni clave. La prueba PG17 ejecuta
+INSERT de outbox y custodia en una sola transacción: un hash
+incongruente provoca rollback de ambos; la operación correcta
+persiste el sobre; la duplicación falla; el login restringido
+de lifecycle/outbox no puede leer la custodia.
+
+Evidencia: `acfd19b` con Sabora CI y Bootstrap SUCCESS tras corregir
+el comentario SQL y el padding Base64URL detectados en CI.
+
+**Alcance y gate abierto:** esta prueba utiliza administrador
+del PostgreSQL 17 desechable para escribir la custodia. No existe
+todavía wrapper integrado que enlace transición HMAC, outbox y
+sobre cifrado bajo un principal SQL restringido. La función
+`SECURITY INVOKER` no tiene grant operativo y no se habilita
+un worker ni lectura autorizada de tokens. Gestión y rotación
+de claves, recuperación segura en caso de reinicio, reenvío,
+revocación y entrega externa requieren aprobación y nuevas pruebas.
+No activar el esquema en Supabase operativo.
