@@ -366,3 +366,24 @@ Estas defensas son exclusivamente de la capa Node.js. No convierten el UUID
 que recibe la RPC invoker en una identidad SQL autenticada. Se mantiene
 bloqueada la habilitación de EXECUTE, de GRANT positivos y del montaje HTTP
 hasta cerrar las pruebas de autorización SQL directa con PostgreSQL 17.
+
+
+## Preflight: cierre de EXECUTE implícito y límite de activación
+
+El preflight de identidades ahora contabiliza también las funciones `SECURITY
+INVOKER` accesibles del esquema privado `sabora`, además de las funciones
+`SECURITY DEFINER`. Se exige cero en ambos grupos: un `EXECUTE` heredado
+de `PUBLIC` puede exponer una vía no prevista incluso si la RPC candidata
+está expresamente denegada. La comprobación es de denegación, no concede
+permisos ni cambia la base de datos.
+
+**Bloqueo de integración que debe resolverse antes de habilitar rutas:**
+el preflight exige cero permisos de lectura/escritura en todas las tablas
+privadas para ambas identidades; sin embargo, el repositorio de operaciones
+consulta `sabora.staff_members` y las tablas de comandas directamente.
+Por tanto, una configuración que supere este preflight negativo no tiene
+todavía los permisos positivos necesarios para operar. No debe interpretarse
+un SUCCESS de CI como prueba de que el flujo esté listo para producción.
+La resolución exige una arquitectura SQL de autorización no falsificable,
+permisos positivos estrictamente delimitados y pruebas reales de PostgreSQL
+17 con suplantación, revocación y concurrencia.
