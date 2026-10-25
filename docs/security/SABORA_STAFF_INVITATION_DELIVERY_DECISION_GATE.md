@@ -262,3 +262,36 @@ en PostgreSQL 17 desechable. Subhito de custodia restringida
 candidata cerrado; sigue sin existir un principal operativo,
 gestión y rotación de claves, lectura segura para worker,
 política de borrado, proveedor o despliegue autorizado.
+
+## Lectura cifrada para despacho con fence y vigencia (25-10-2026)
+
+El candidato `sql-candidates/staff_invitation_dispatch_envelope_pg17.sql`
+define un propietario de lectura `NOLOGIN/NOINHERIT/NOBYPASSRLS`
+independiente, con RLS y SELECT limitado a columnas necesarias
+de inscripción, outbox y custodia. Solo expone mediante
+`read_staff_invitation_dispatch_envelope_candidate(job_id,fence)`
+el sobre cifrado si el trabajo está `dispatching`, el fence
+coincide, existe autorización de despacho y el estado, la
+versión y el hash actuales de la inscripción siguen vigentes.
+No concede lectura directa a la identidad de aplicación.
+
+El lector Node `staff-invitation-dispatch-envelope-reader-candidate.mjs`
+resuelve la clave fuera de PostgreSQL y autentica el sobre con
+AES-256-GCM y el AAD que liga `keyId`, inscripción, versión
+y hash. La clave y el token en claro no se guardan en PostgreSQL.
+No se monta en servidor ni se invoca proveedor.
+
+Prueba PostgreSQL 17: sin acceso directo a tablas, sin sobre
+antes de `dispatching`, rechazo de fence erróneo, lectura
+correcta después de autorizar, y rechazo después de invalidar
+el hash vigente. La primera ejecución detectó un fixture que
+violaba la progresión de estados; se corrigió el fixture.
+Commit `74ddbac`: Sabora CI y Bootstrap SUCCESS.
+
+**Límite de seguridad:** una lectura autorizada no puede impedir
+que ocurra una revocación inmediatamente después de devolver el
+sobre, ni revocar un correo en vuelo. La aceptación del token
+debe revalidar el estado vigente. La función candidata todavía
+no resuelve ciclo operativo de claves, retención/borrado, worker,
+proveedor, aislamiento de identidad de worker ni despliegue.
+El gate operativo permanece abierto.
