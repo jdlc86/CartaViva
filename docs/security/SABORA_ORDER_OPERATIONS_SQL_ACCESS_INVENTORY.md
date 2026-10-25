@@ -378,3 +378,8 @@ Las transiciones no hacen una segunda lectura directa de membresía desde el log
 ## Verificación de cierre de conexiones en preflight (25-10-2026)
 
 El gate de identidad SQL cuenta ahora con pruebas de regresión que cubren tres salidas anómalas: fallo de liberación tras inspección exitosa (no se autoriza el inicio), fallo de liberación mientras se propaga un error de inspección (se preserva el error primario) y cliente SQL malformado cuyo método `release` falla (se conserva el rechazo por cliente inválido). Estas pruebas no alteran credenciales ni recursos SQL reales. La validación completa de CI debe consultarse sobre el commit final de la rama, no inferirse de una ejecución anterior.
+
+
+## Validación completa de fila de desbordamiento en tablero (25-10-2026)
+
+El repositorio candidato `listBoard` valida ahora **todas** las filas devueltas por SQL, incluida la fila `limit + 1` usada exclusivamente para decidir `nextCursor`. Antes solo se validaban su orden y sus identificadores, mientras que los campos de proyección completos se validaban únicamente en las filas visibles. La fila adicional no puede eludir el contrato de mesa, alias, cantidad, categoría, agrupación y notificación. Pruebas negativas de regresión en `tests/order-operations.test.mjs`; la puerta de lectura SQL y su montaje HTTP permanecen cerrados. El estado de aceptación corresponde al CI del commit que contenga esta documentación.
