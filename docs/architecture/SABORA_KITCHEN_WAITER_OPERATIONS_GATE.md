@@ -505,3 +505,27 @@ Commit `b75a56d`: workflows `Sabora CI`
 pruebas PostgreSQL 17 desechables. El PR #11 sigue
 en Draft y mantiene su conflicto de integración;
 ninguna ruta fue montada en el servidor operativo.
+
+## Gate atómico de configuración y dos identidades SQL (25-10-2026)
+
+La composición candidata `registerVerifiedOrderTransitionsOnlyFromPools`
+rechaza `issuer` ausente/vacío, `getTrustedKeys` no invocable
+y hooks opcionales `verify`/`observe` no invocables
+**antes** de abrir conexiones SQL. Después inspecciona
+primero el login de personal y después el login técnico
+de mutaciones; si falla cualquiera de las inspecciones,
+descarta la conexión fallida y no registra ninguna ruta.
+Los tests `transition-only rejects missing or malformed
+authentication wiring without SQL or routes` y
+`transition-only fails atomically on either SQL principal,
+never mounting HTTP routes` ejercitan ambos caminos.
+Commits `8800b1b`, `6f07cdc`, `76b865b`.
+
+Aceptación CI del commit `76b865b`: `Sabora CI`
+run `40232010918` y `Bootstrap Sabora lockfile`
+run `40232010985`, ambos `SUCCESS`. Estas pruebas
+validan configuración y fail-closed de la composición
+con dobles SQL simulados; el workflow incluye sus
+suites PG17 desechables independientes. No autorizan
+lectura de tablero/historial, ni montan operaciones en
+`server.mjs`, ni resuelven el conflicto del PR #11.
