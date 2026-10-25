@@ -136,3 +136,27 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Se detectó un defecto real en el borrador SQL: `dispatching→failed` retenía `dispatch_authorized_at`, pero el constraint anterior lo prohibía. Ahora `failed` conserva ese timestamp, coherente con el flujo de registro de resultado.
 - Los constraints terminales exigen `provider_outcome IS NOT NULL` explícito, para evitar el comportamiento de `CHECK` con expresiones `UNKNOWN` en PostgreSQL.
 - Se actualizaron y ampliaron las pruebas de contrato. La corrección permanece exclusivamente en `docs/security/sql-candidates`, fuera de migraciones operativas.
+
+## Cierre de validación real PG17 para invitaciones/outbox (25-10-2026)
+
+- Commit de código y pruebas: `bab8f59`. El nuevo harness aplica todas las
+  migraciones en `postgres:17-alpine`, aplica después el SQL candidato desde
+  `docs/` y usa el driver real con conexiones independientes.
+- Primera ejecución: 5/8. Se reprodujeron tres fallos: `pending` aceptaba
+  intentos consumidos, el claim no actualizaba `updated_at` y dispatch no
+  incrementaba `attempts`.
+- Tras corregir constraints y adaptador: 8/8. Cobertura: RLS/ACL, formas y
+  timestamps, transición completa, fencing incorrecto, dos claimers,
+  revocación y reenvío concurrentes, unicidad/replay, proveedor ambiguo y
+  mensaje tardío sin reactivación.
+- Regresión local: 830/830; pruebas focalizadas: 48/48; build API correcto. El
+  contenedor y el módulo temporal se eliminaron al finalizar.
+- El harness queda conectado a los dos workflows mediante
+  `catalog-postgres17-node-driver-smoke.sh`. Los resultados de CI deben
+  atribuirse solo al SHA final que incluya este documento.
+
+Límites conservados: SQL fuera de migraciones operativas, cero grants/login,
+sin secreto recuperable, enqueue transaccional, lease/reclaim, worker,
+proveedor o correo real. Un envío ya en vuelo puede concluir después de una
+revocación; la garantía es que la aceptación revalida el estado durable y no
+reactiva el enrollment. No se tocó Fleetia, Supabase operativo ni VPS.

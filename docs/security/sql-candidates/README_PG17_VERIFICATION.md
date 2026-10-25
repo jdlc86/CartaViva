@@ -1,8 +1,9 @@
 # Outbox candidate — PostgreSQL 17 disposable verification
 
-This file is a **test plan**, not evidence of execution. The outbox schema
-lives at `docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`
-and must not be installed on operational Supabase.
+State: **executed locally and integrated into GitHub Actions on 2026-10-25**.
+The schema remains a design-only candidate at
+`docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`; passing
+these tests does not authorize installing it on operational Supabase.
 
 ## Preconditions
 
@@ -11,32 +12,65 @@ Use a disposable PostgreSQL 17 database containing the prerequisite
 candidate migration. Use a test-only role with permission to create the
 outbox table; do not reuse production credentials or the shared VPS.
 
-## Validation sequence
+## Automated harness
 
-1. Create the prerequisite schema in a disposable PostgreSQL 17 database.
-2. Apply the outbox SQL candidate and confirm transaction commits.
-3. Verify `relrowsecurity` and `relforcerowsecurity` are both true.
-4. Verify `PUBLIC` has no direct table privileges and no permissive
-   policies exist. Verify an unprivileged login cannot read or mutate.
-5. Under an isolated owner/test principal, insert a staff enrollment and
-   one pending outbox job with matching hash/version. Confirm duplicate
-   `(enrollment_id,invite_version)` is rejected.
-6. Exercise the adapter SQL with two independent database connections and
-   transactions. Confirm the first `FOR UPDATE OF o,e` blocks the second
-   until commit; only one conditional `pending→claimed` succeeds.
-7. Race `revoke` and `resend` against a claim. Ensure the subsequent
-   transaction observes the durable state and cannot claim a stale token.
-8. Confirm malformed hashes, invalid state, null fence on claimed work,
-   and illegal timestamp combinations are rejected by constraints.
-9. Roll back/clean the disposable database and record exact PostgreSQL
-   version, test commands, output, SHA and CI run IDs in continuity docs.
+`scripts/ci/staff-invitation-outbox-postgres17.test.mjs` runs through the same
+loopback-only disposable container and temporary pinned `pg@8.16.3` module as
+the other real-driver suites. The wrapper refuses non-GitHub targets, verifies
+the exact ephemeral URL and removes the container and module directory on exit.
+Both workflows invoke it from
+`scripts/ci/catalog-postgres17-node-driver-smoke.sh` after applying every
+operational migration; the test then applies the outbox SQL from `docs/` only
+inside that disposable database.
+
+The eight real PostgreSQL cases verify:
+
+1. PostgreSQL 17, FORCE RLS, zero policies/grants and denial to a real
+   unprivileged login.
+2. Hash/state/claim/outcome constraints, attempt-state coupling, paired
+   cancellation fencing and monotonic timestamps.
+3. `pending → claimed → dispatching → delivered`, including a wrong fence
+   before dispatch and after completion.
+4. Two independent claimers blocked by `FOR UPDATE`; exactly one fence wins.
+5. `revoke↔claim`: revocation waits for the lock, then blocks dispatch,
+   reconciliation cancels the claimed job and late acceptance is denied by the
+   staff lifecycle wrapper.
+6. `resend↔claim`: the old version becomes superseded, the new version is
+   unique, and re-claiming the same job is a no-op.
+7. Provider result `unknown` is persisted once as terminal `failed`, remains
+   visibly ambiguous and is never automatically retried.
+8. A provider may accept an already in-flight message after revocation, but the
+   enrollment remains `revoked`; outbox delivery never activates staff.
+
+## Defects found by the first real run
+
+The initial run passed 5/8 and exposed three defects that mock/static tests had
+not detected:
+
+- `pending` accepted a nonzero `attempts` value;
+- `pending→claimed` did not advance `updated_at`, leaving it older than
+  `claimed_at`;
+- `claimed→dispatching` never incremented `attempts`.
+
+The correction couples attempts to state, increments the counter only when a
+dispatch is authorized, updates the claim timestamp atomically, rejects a
+half-populated cancellation fence and requires `updated_at` to cover every
+durable transition timestamp. The repeated local run passed **8/8**. Root
+regression passed **830/830**, focused invitation tests **48/48**, and the API
+syntax build passed before commit `bab8f59`.
 
 ## Unresolved gates
 
-The candidate schema deliberately grants no runtime permissions. It has
-no encrypted invitation secret and no transactional enqueue in the staff
-lifecycle function. It is therefore **not deployable**. Provider delivery,
-retry semantics, expiry, revocation in flight and actor binding still require
-the separate security decision gate.
+The candidate schema deliberately grants no runtime permissions. It has no
+encrypted invitation secret, no transactional enqueue in the staff lifecycle
+function, no approved worker identity/policies and no lease-expiry/reclaim
+protocol. It is therefore **not deployable**. The provider remains unselected;
+`accepted` means only provider acceptance, and an `unknown` response is kept
+terminal to avoid a duplicate email after a possibly successful request.
+
+There is intentionally no attempt to make an external email atomic with a
+database revocation. A dispatch already in flight may finish; safety comes from
+revalidating the durable enrollment and token during acceptance. No worker,
+endpoint or real email is activated by this verification.
 
 A mock transaction test cannot substitute for these checks.

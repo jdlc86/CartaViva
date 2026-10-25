@@ -1,6 +1,7 @@
 # Hito 2 — decisión pendiente: entrega durable de invitaciones del personal
 
-Estado: **gate de diseño, no aprobado ni activado**. Fecha: 2026-10-25.
+Estado: **esquema candidato validado en PG17; gate operativo no aprobado ni
+activado**. Fecha: 2026-10-25.
 
 ## Fuente normativa y alcance
 
@@ -43,17 +44,37 @@ el proveedor entregue el mensaje después. El correo tardío no confiere acceso.
 6. **Pruebas de aceptación:** PostgreSQL 17 desechable con carreras
    `revoke↔claim`, `resend↔claim`, dos workers, pérdida de respuesta
    del proveedor, replay y reinicio del worker; comprobar que una aceptación
-   tardía siempre se deniega.
+   tardía siempre se deniega. La matriz de esquema/transacciones ya cubre los
+   cinco primeros riesgos salvo el reinicio/lease de un worker, que continúa
+   pendiente porque no existe protocolo de expiración de claims.
 
 ## Estado del código
 
 `staff-invitation-delivery-policy.mjs` es una política auxiliar.
 `staff-invitation-claim-candidate.mjs` y
 `staff-invitation-outbox-repository-candidate.mjs` son candidatos no montados.
-El SQL en `docs/security/sql-candidates/` es un borrador no ejecutado en
-PostgreSQL 17 y **no pertenece a las migraciones operativas**.
+El SQL en `docs/security/sql-candidates/` se ejecuta ahora únicamente desde el
+harness desechable `staff-invitation-outbox-postgres17.test.mjs`; **no pertenece
+a las migraciones operativas**. El harness usa conexiones reales y está
+integrado en los dos workflows, pero no crea una identidad runtime ni concede
+permisos positivos.
 
-**Gate:** no mover el SQL a `supabase/migrations`, no montar el worker,
-no entregar secretos ni desplegar hasta aprobar explícitamente las decisiones
-anteriores y verificar las pruebas. Ningún recurso de Fleetia ni del VPS
-compartido forma parte de este trabajo.
+## Evidencia PostgreSQL 17 y correcciones
+
+La primera ejecución real pasó 5/8 y demostró tres incoherencias: intentos no
+ligados al estado, `updated_at` obsoleto después del claim y contador de intentos
+sin incrementar al autorizar dispatch. Se corrigieron en el esquema y en el
+adaptador SQL. También se endurecieron el fence parcial de `cancelled` y el
+orden de timestamps.
+
+La repetición local pasó 8/8: constraints/RLS, transición completa, fence
+obsoleto, dos claimers, revocación, reenvío, unicidad/replay, resultado ambiguo
+y aceptación tardía del proveedor sin reactivación. La regresión general pasó
+830/830 y la focalizada 48/48. La evidencia reproducible y los límites están en
+`sql-candidates/README_PG17_VERIFICATION.md`.
+
+**Gate:** no mover el SQL a `supabase/migrations`, no montar el worker, no
+entregar secretos ni desplegar hasta aprobar explícitamente las decisiones
+anteriores. La validación del esquema no resuelve material cifrado, enqueue
+atómico, proveedor, identidad SQL, lease/reclaim ni retención. Ningún recurso
+de Fleetia ni del VPS compartido forma parte de este trabajo.
