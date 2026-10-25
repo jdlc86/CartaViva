@@ -110,6 +110,46 @@ async function createInvitation({role = 'waiter', token = null} = {}) {
   return {enrollmentId, token: chosenToken, role, capability};
 }
 
+test('PG17 invite replay ignores regenerated enrollment/token but rejects changed intent', async () => {
+  const first = await createInvitation();
+  const regenerated = lifecycleCapability({
+    action: 'invite', enrollmentId: uuid('a', 800001), requestedRole: first.role,
+    inviteeEmailHashHex: first.capability.inviteeEmailHashHex,
+    inviteTokenHashHex: digest('different_fresh_delivery_token'),
+    correlationId: first.capability.correlationId,
+  });
+  const replay = await runLifecycle(regenerated);
+  assert.equal(replay.repeated, true);
+  assert.equal(replay.result_enrollment_id, first.enrollmentId);
+  assert.deepEqual(await auditCounts(first.enrollmentId), {audit: 1, requests: 1});
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.staff_enrollments WHERE id=$1',
+    [regenerated.enrollmentId])).rows[0].n, 0);
+  await assert.rejects(runLifecycle(lifecycleCapability({
+    ...{
+      action: 'invite', enrollmentId: uuid('a', 800002), requestedRole: 'kitchen',
+      inviteeEmailHashHex: first.capability.inviteeEmailHashHex,
+      inviteTokenHashHex: digest('another_token'),
+      correlationId: first.capability.correlationId,
+    },
+  })), /staff_lifecycle_idempotency_conflict/);
+});
+
+test('PG17 resend replay ignores regenerated token and increments version once', async () => {
+  const first = await createInvitation();
+  const correlationId = 'resend_durable_retry_01';
+  const resend = (token) => lifecycleCapability({
+    action: 'resend', enrollmentId: first.enrollmentId,
+    inviteTokenHashHex: digest(token), correlationId,
+  });
+  const original = await runLifecycle(resend('resend_original_token'));
+  assert.equal(original.repeated, false);
+  const replay = await runLifecycle(resend('resend_regenerated_token'));
+  assert.equal(replay.repeated, true);
+  assert.equal(replay.result_invite_version, original.result_invite_version);
+  assert.equal((await enrollmentState(first.enrollmentId)).invite_version, original.result_invite_version);
+  assert.deepEqual(await auditCounts(first.enrollmentId), {audit: 2, requests: 2});
+});
+
 async function accept(invitation, subjectId, suffix = sequence) {
   return runLifecycle(lifecycleCapability({
     actorId: subjectId, action: 'accept', enrollmentId: invitation.enrollmentId,
