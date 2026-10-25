@@ -30,7 +30,7 @@ test('provider accepted: persist delivered, without claiming inbox delivery', as
   assert.match(tx.statements[0].text, /state = 'dispatching'/);
   assert.match(tx.statements[0].text, /FOR UPDATE/);
   assert.match(tx.statements[1].text, /state = \$3::text/);
-  assert.deepEqual(tx.statements[1].values, [jobId, fence, 'delivered']);
+  assert.deepEqual(tx.statements[1].values, [jobId, fence, 'delivered', 'accepted']);
 });
 
 test('unknown provider outcome is terminal, flagged ambiguous, and not retried', async () => {
@@ -42,7 +42,7 @@ test('unknown provider outcome is terminal, flagged ambiguous, and not retried',
   assert.deepEqual(result, {
     recorded: true, state: 'failed', retryable: false, ambiguous: true,
   });
-  assert.deepEqual(tx.statements[1].values, [jobId, fence, 'failed']);
+  assert.deepEqual(tx.statements[1].values, [jobId, fence, 'failed', 'unknown']);
 });
 
 test('permanent failure cannot schedule automatic resend', async () => {
@@ -88,10 +88,10 @@ test('SQL adapter rejects forged completion row and malformed next state', async
   const repo = createStaffInvitationOutboxRepository();
   await assert.rejects(repo.finishDispatchingDelivery(
     async () => ({rows: [{id: '60000000-0000-4000-8000-000000000006'}]}),
-    jobId, fence, 'delivered',
+    jobId, fence, 'delivered', 'accepted',
   ), /invalid_staff_delivery_sql_result/);
   await assert.rejects(repo.finishDispatchingDelivery(
     async () => {throw Error('should_not_execute');},
-    jobId, fence, 'pending',
+    jobId, fence, 'pending', 'accepted',
   ), /invalid_staff_delivery_sql_input/);
 });
