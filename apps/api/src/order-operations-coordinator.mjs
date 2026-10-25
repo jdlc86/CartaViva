@@ -21,6 +21,15 @@ function trustedStaff(context) {
   });
 }
 
+function assertVerifiedMembership(verified, staff) {
+  if (!verified || typeof verified !== 'object' || Array.isArray(verified) ||
+      typeof verified.actorId !== 'string' || !UUID.test(verified.actorId) ||
+      verified.actorId.toLowerCase() !== staff.actorId.toLowerCase() ||
+      verified.role !== staff.role) {
+    throw Error('order_operations_forbidden');
+  }
+}
+
 export function createOrderOperationsCoordinator({withTransaction, repository = createOrderOperationsRepository()} = {}) {
   if (typeof withTransaction !== 'function' || !repository ||
       typeof repository.verifyMembership !== 'function' ||
@@ -34,7 +43,8 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
     async listBoard(context, page) {
       const staff = trustedStaff(context);
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
+        const verified = await repository.verifyMembership(query, staff);
+        assertVerifiedMembership(verified, staff);
         return repository.listBoard(query, {...page, ...staff});
       });
     },
@@ -42,7 +52,8 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
     async transitionLine(context, input) {
       const staff = trustedStaff(context);
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
+        const verified = await repository.verifyMembership(query, staff);
+        assertVerifiedMembership(verified, staff);
         return repository.transitionLine(query, {...input, ...staff});
       });
     },
@@ -50,7 +61,8 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
     async listHistory(context, input) {
       const staff = trustedStaff(context);
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
+        const verified = await repository.verifyMembership(query, staff);
+        assertVerifiedMembership(verified, staff);
         return repository.listHistory(query, {...input, ...staff});
       });
     },
