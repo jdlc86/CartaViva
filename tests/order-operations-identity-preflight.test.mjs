@@ -178,10 +178,10 @@ test('SQL inspection explicitly checks both routine classes and role grant direc
   });
   assert.equal(seen.length, 2);
   for (const sql of seen) {
-    assert.match(sql, /NOT routine\\.prosecdef/);
-    assert.match(sql, /routine\\.prosecdef/);
-    assert.match(sql, /membership\\.member = role\\.oid/);
-    assert.match(sql, /membership\\.roleid = role\\.oid/);
+    assert.match(sql, /NOT routine\.prosecdef/);
+    assert.match(sql, /routine\.prosecdef/);
+    assert.match(sql, /membership\.member = role\.oid/);
+    assert.match(sql, /membership\.roleid = role\.oid/);
     assert.match(sql, /has_any_column_privilege/);
   }
 });
