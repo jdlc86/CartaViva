@@ -10,6 +10,8 @@ Fecha: 2026-10-18. Fase: **documentación y revisión de requisitos**. Sin imple
 - **Dos PWA independientes por instalación:** `apps/client` para comensales y `apps/management` para camareros, cocina y administración, con permisos de servidor por rol. Son aplicaciones instalables distintas, no una PWA universal que cambia entre restaurantes.
 - Se excluye la multitenencia dentro de Sabora, no la posibilidad de desplegar múltiples restaurantes independientes. Cada instalación debe permanecer aislada de cualquier infraestructura, servicio, dato o proyecto externo a CartaViva/Sabora. Los despliegues no deben modificar ni interrumpir recursos ajenos.
 
+El alcance del repositorio y las garantías de aislamiento operacional se detallan en [CARTAVIVA_PROJECT_BOUNDARY.md](CARTAVIVA_PROJECT_BOUNDARY.md); no se incorporan proyectos ajenos a este contrato.
+
 ## Jerarquía y trazabilidad
 Las decisiones explícitas más recientes prevalecen sobre formulaciones anteriores del mismo asunto. Se preservan como antecedentes `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md`; no deben interpretarse sus preguntas antiguas como decisiones todavía abiertas si este contrato las resuelve. No inferir implementación del contenido documental.
 
