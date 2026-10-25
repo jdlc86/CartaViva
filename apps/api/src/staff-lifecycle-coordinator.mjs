@@ -184,7 +184,10 @@ export function createStaffLifecycleCoordinator({
       });
       const result = await withTransaction(async (query) =>
         repository.transition(query, capability));
-      return deliveryResult(result, deliveryToken);
+      // A repeated correlation reuses the original durable transition, but a
+      // freshly generated invitation token is NOT the original stored hash.
+      // Never hand this new, invalid token to a delivery provider.
+      return deliveryResult(result, result.repeated === true ? null : deliveryToken);
     },
   });
 }
