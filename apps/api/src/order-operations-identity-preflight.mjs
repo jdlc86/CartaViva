@@ -70,6 +70,12 @@ async function inspect(pool, expectedRole) {
                   AND routine.prosecdef
                   AND has_function_privilege(current_user, routine.oid, 'EXECUTE'))
                 AS accessible_private_definer_routines,
+              (SELECT count(*)::integer FROM pg_catalog.pg_proc routine
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = routine.pronamespace
+                WHERE ns.nspname = 'sabora'
+                  AND NOT routine.prosecdef
+                  AND has_function_privilege(current_user, routine.oid, 'EXECUTE'))
+                AS accessible_private_invoker_routines,
               (SELECT NOT routine.prosecdef
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid =
@@ -114,6 +120,8 @@ async function inspect(pool, expectedRole) {
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !== 0 ||
+        row.accessible_private_invoker_routines !== 0 ||
+        !Number.isSafeInteger(row.accessible_private_invoker_routines) ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
