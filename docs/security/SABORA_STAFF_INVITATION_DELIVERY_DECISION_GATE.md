@@ -78,3 +78,25 @@ entregar secretos ni desplegar hasta aprobar explícitamente las decisiones
 anteriores. La validación del esquema no resuelve material cifrado, enqueue
 atómico, proveedor, identidad SQL, lease/reclaim ni retención. Ningún recurso
 de Fleetia ni del VPS compartido forma parte de este trabajo.
+
+## Candidato de encolado transaccional (25-10-2026)
+
+Se añadió `apps/api/src/staff-invitation-enqueue-candidate.mjs` con
+`transitionAndEnqueue`: recibe un `withTransaction` inyectado, ejecuta la
+transición durable y después inserta una sola intención de entrega en la misma
+transacción. El SQL comprueba `enrollment_id`, estado `invited`, versión y
+hash vigentes; `ON CONFLICT` no puede convertir una colisión en éxito.
+Un replay de la transición no vuelve a insertar. Si falla el INSERT, la
+operación arroja error para forzar rollback de la transacción completa.
+Las pruebas unitarias están en
+`tests/staff-invitation-enqueue-candidate.test.mjs`.
+
+**Alcance deliberado:** candidato aislado y sin material recuperable; no se
+ha conectado al coordinador operativo ni al worker. Las pruebas con
+transacciones inyectadas **no demuestran todavía** el encolado en PG17 con
+el principal SQL de mínimo privilegio. El owner actual del wrapper
+`SECURITY DEFINER` no confiere al caller permiso para INSERT directo
+en la tabla outbox. Antes de cualquier promoción será necesaria una
+rutina SQL autorizada y una prueba PG17 de rollback, reenvío y replay
+sobre la misma transacción y con el principal restringido.
+No hay autorización para crear permisos runtime, enviar correo ni desplegar.
