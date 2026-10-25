@@ -22,16 +22,27 @@ function trustedStaff(context) {
 }
 
 function assertSafeInput(value) {
-  if (value === undefined) return {};
+  if (value === undefined) return Object.freeze(Object.create(null));
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       (Object.getPrototypeOf(value) !== Object.prototype &&
-       Object.getPrototypeOf(value) !== null) ||
-      !Reflect.ownKeys(value).every(key => typeof key === 'string' &&
-        Object.prototype.propertyIsEnumerable.call(value, key) &&
-        Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'))) {
+       Object.getPrototypeOf(value) !== null)) {
     throw Error('invalid_order_operations_input');
   }
-  return value;
+  const snapshot = Object.create(null);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string' || key === '__proto__' ||
+        !Object.prototype.propertyIsEnumerable.call(value, key)) {
+      throw Error('invalid_order_operations_input');
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+      throw Error('invalid_order_operations_input');
+    }
+    Object.defineProperty(snapshot, key, {
+      value: descriptor.value, enumerable: true, writable: false, configurable: false,
+    });
+  }
+  return Object.freeze(snapshot);
 }
 
 function assertVerifiedMembership(verified, staff) {
