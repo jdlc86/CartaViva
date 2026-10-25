@@ -55,3 +55,30 @@ test('candidate rejects unsupported enrollment states', async () => {
     ({rows: [row({enrollment_state: 'unknown'})]}), jobId),
   /invalid_staff_delivery_sql_result/);
 });
+
+test('accessor-backed SQL row is rejected without evaluating getter', async () => {
+  let evaluated = false;
+  const malicious = {
+    job_id: jobId, enrollment_id: id, invite_version: 1,
+    invite_token_hash_hex: hash, current_invite_version: 1,
+    current_invite_token_hash_hex: hash, enrollment_state: 'invited',
+  };
+  Object.defineProperty(malicious, 'enrollment_state', {
+    enumerable: true, get() {evaluated = true; throw Error('getter_executed');},
+  });
+  await assert.rejects(createStaffInvitationOutboxRepository()
+    .lockDeliveryCandidate(async () => ({rows: [malicious]}), jobId),
+  /invalid_staff_delivery_sql_result/);
+  assert.equal(evaluated, false);
+});
+
+test('malformed job identifier is rejected before a claim mutation', async () => {
+  const malformed = {
+    job_id: 'not-a-uuid', enrollment_id: id, invite_version: 1,
+    invite_token_hash_hex: hash, current_invite_version: 1,
+    current_invite_token_hash_hex: hash, enrollment_state: 'invited',
+  };
+  await assert.rejects(createStaffInvitationOutboxRepository()
+    .lockDeliveryCandidate(async () => ({rows: [malformed]}), jobId),
+  /invalid_staff_delivery_sql_result/);
+});
