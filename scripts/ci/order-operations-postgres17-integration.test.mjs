@@ -158,6 +158,44 @@ test('PG17 serializes repeated and competing concurrent operations', async () =>
   assert.equal(persisted.rows[0].n, 1);
 });
 
+test('PG17 rejects expired capability after waiting for the order-line row lock', async () => {
+  const item = await fixture({suffix: '109'});
+  const shortIssuer = createOrderOperationCapabilityIssuer({
+    keyId, secret: signingSecret, databaseRole: 'postgres', ttlMs: 1000,
+  });
+  const blocker = await pool.connect();
+  let attempted = false;
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM sabora.order_lines WHERE id=$1 FOR UPDATE', [item.lineId]);
+    const pending = repository.transitionLine(
+      (sql, params) => pool.query(sql, params),
+      {
+        actorId: kitchenId, role: 'kitchen', lineId: item.lineId,
+        targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_109',
+        capability: shortIssuer({
+          actorId: kitchenId, lineId: item.lineId,
+          targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_109',
+        }),
+      },
+    ).then(() => { attempted = true; }, (error) => { attempted = true; throw error; });
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    assert.equal(attempted, false, 'transition must wait for the line lock');
+    await blocker.query('COMMIT');
+    await assert.rejects(pending, /invalid_order_operation_capability/);
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    blocker.release();
+  }
+  const result = await pool.query(`SELECT lines.status,
+    (SELECT count(*)::integer FROM sabora.order_line_transition_requests req
+      WHERE req.order_line_id=lines.id) AS request_count,
+    (SELECT count(*)::integer FROM sabora.order_line_events events
+      WHERE events.order_line_id=lines.id) AS event_count
+    FROM sabora.order_lines lines WHERE lines.id=$1`, [item.lineId]);
+  assert.deepEqual(result.rows[0], {status: 'confirmed', request_count: 0, event_count: 0});
+});
+
 test('PG17 rolls back line, notification, event and idempotency record together', async () => {
   const item = await fixture({suffix: '104'});
   await assert.rejects(withTransaction(async (query) => {
