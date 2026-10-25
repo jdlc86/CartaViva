@@ -379,3 +379,27 @@ diseñar y probar proyecciones SQL acotadas por actor y rol
 con permisos mínimos, además de la autenticación real,
 antes de habilitar las rutas. No hay despliegue,
 migración operativa ni merge.
+
+## Aceptación de concurrencia HTTP con identidad SQL restringida (25-10-2026)
+
+La suite PG17 desechable
+`scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora el test `Fastify + restricted PG17: parallel retries
+and competing actors stay atomic`. Ejecuta solicitudes
+Fastify simultáneas con el login técnico de operaciones
+restringido y autorización de transición firmada.
+Verifica que dos reintentos concurrentes del mismo actor
+producen un solo evento persistido y respuestas 201/200
+con el mismo `eventId`; dos actores distintos compitiendo
+por el mismo cambio producen 201/409 y un solo evento;
+y una correlación reutilizada con otro destino responde
+409 sin efectos adicionales. Commit `77d7b4f`:
+Sabora CI y Bootstrap SUCCESS.
+
+Esta prueba **no** amplía permisos de lectura del
+tablero/historial, no autentica personas en producción
+(el actor HTTP sigue siendo un inyector de test) y no
+habilita las rutas operativas. Permanece pendiente el
+gate de proyecciones SQL de lectura acotadas por actor
+y rol, la integración PWA y la aceptación del recorrido
+completo desde confirmación del cliente.
