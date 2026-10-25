@@ -11,6 +11,7 @@ import {authorizeStaffInvitationDispatch} from '../../apps/api/src/staff-invitat
 import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
 import {reconcileStaffInvitationJob} from '../../apps/api/src/staff-invitation-reconciliation-candidate.mjs';
 import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-invitation-outbox-repository-candidate.mjs';
+import {createStaffInvitationEnqueueCandidate} from '../../apps/api/src/staff-invitation-enqueue-candidate.mjs';
 
 const url = process.env.SABORA_CI_PG_URL;
 const modulePath = process.env.SABORA_CI_PG_MODULE;
@@ -460,4 +461,85 @@ test('PG17 late provider acceptance after revocation never activates staff', asy
     enrollment_state: 'revoked', outbox_state: 'delivered',
     provider_outcome: 'accepted',
   });
+});
+
+function enqueueHarness({forceInsertFailure = false} = {}) {
+  const lifecycleRepository = {
+    async transition(query, capability) {
+      const changed = await query(`UPDATE sabora.staff_enrollments
+        SET invite_version=invite_version+1,
+          invite_token_hash=decode($2,'hex'),
+          last_invited_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE id=$1 AND state='invited'
+        RETURNING id,invite_version`,
+      [capability.enrollmentId, capability.inviteTokenHashHex]);
+      if (changed.rowCount !== 1) throw Error('enqueue_test_lifecycle_missing');
+      return {enrollmentId: changed.rows[0].id,
+        inviteVersion: changed.rows[0].invite_version,
+        currentState: 'invited', repeated: false};
+    },
+  };
+  return createStaffInvitationEnqueueCandidate({
+    uuid: () => forceInsertFailure ? 'c2000000-0000-4000-8000-000000000000' : uuid('c'),
+    lifecycleRepository,
+    withTransaction: async callback => {
+      const client = await admin.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback((...args) => client.query(...args));
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+      } finally { client.release(); }
+    },
+  });
+}
+
+test('PG17 transactional enqueue commits matching version/hash after lifecycle update', async () => {
+  const enrollment = await seedEnrollment();
+  const nextHash = digest('enqueue-success-' + enrollment.enrollmentId);
+  const result = await enqueueHarness().transitionAndEnqueue({
+    action: 'resend', enrollmentId: enrollment.enrollmentId, inviteTokenHashHex: nextHash,
+  });
+  assert.equal(result.enqueued, true);
+  const stored = await admin.query(`SELECT e.invite_version AS current_version,
+      encode(e.invite_token_hash,'hex') AS current_hash,
+      o.invite_version AS job_version,
+      encode(o.invite_token_hash,'hex') AS job_hash
+    FROM sabora.staff_enrollments e
+    JOIN sabora.staff_invitation_outbox o ON o.enrollment_id=e.id
+    WHERE e.id=$1`, [enrollment.enrollmentId]);
+  assert.deepEqual(stored.rows, [{
+    current_version: 2, current_hash: nextHash,
+    job_version: 2, job_hash: nextHash,
+  }]);
+});
+
+test('PG17 failed enqueue rolls back lifecycle version and token rotation', async () => {
+  const enrollment = await seedEnrollment();
+  const collision = 'c2000000-0000-4000-8000-000000000000';
+  const other = await seedEnrollment();
+  await seedJob(other, {jobId: collision});
+  const nextHash = digest('enqueue-rollback-' + enrollment.enrollmentId);
+  await assert.rejects(enqueueHarness({forceInsertFailure: true}).transitionAndEnqueue({
+    action: 'resend', enrollmentId: enrollment.enrollmentId, inviteTokenHashHex: nextHash,
+  }), error => error?.code === '23505');
+  const state = await admin.query(`SELECT invite_version,
+      encode(invite_token_hash,'hex') AS hash
+    FROM sabora.staff_enrollments WHERE id=$1`, [enrollment.enrollmentId]);
+  assert.deepEqual(state.rows, [{invite_version: 1, hash: enrollment.tokenHash}]);
+  const count = await admin.query(`SELECT count(*)::integer AS jobs
+    FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1`, [enrollment.enrollmentId]);
+  assert.equal(count.rows[0].jobs, 0);
+});
+
+test('PG17 denied runtime principal cannot enqueue directly', async () => {
+  const enrollment = await seedEnrollment();
+  await assert.rejects(denied.query(`INSERT INTO sabora.staff_invitation_outbox
+    (id,enrollment_id,invite_version,invite_token_hash)
+    VALUES ($1,$2,1,decode($3,'hex'))`,
+  [uuid('c'), enrollment.enrollmentId, enrollment.tokenHash]),
+  error => error?.code === '42501');
 });
