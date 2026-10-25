@@ -5,6 +5,8 @@ import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/
 import {createStaffInvitationCustodyCoordinatorCandidate} from '../../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
 import {createStaffDispatchEnvelopeReaderCandidate} from '../../apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs';
 import {createStaffCustodyNonceConsumerCandidate} from '../../apps/api/src/staff-custody-nonce-consumer-candidate.mjs';
+import {createStaffCustodyApprovalAuthorityCandidate} from '../../apps/api/src/staff-custody-approval-authority-candidate.mjs';
+import {createStaffCustodyMaintenanceCandidate} from '../../apps/api/src/staff-custody-maintenance-candidate.mjs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -1184,4 +1186,58 @@ test('PG17 durable nonce consumption is atomic across concurrent runtime pools',
     error=>error?.code==='42501');
   assert.equal(await consumerA(uuid('e'),
     new Date(Date.now()-60000).toISOString(),'staff_root_001'),false);
+});
+
+test('PG17 signed maintenance grant is consumed once and purges only terminal ciphertext',async()=>{
+  const now=new Date();
+  const cutoff=new Date(now.getTime()-3600000).toISOString();
+  const token='G'.repeat(48),tokenHash=digest(token),key=randomBytes(32);
+  const enrollment=await seedEnrollment({tokenHash});
+  const jobId=await seedJob(enrollment);
+  const envelope=sealStaffInvitationToken({
+    token,enrollmentId:enrollment.enrollmentId,inviteVersion:enrollment.version,
+    tokenHashHex:tokenHash,key,keyId:'candidate_key_001',
+  });
+  await admin.query(`SELECT sabora.store_staff_invitation_custody_candidate(
+    $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
+    [jobId,enrollment.enrollmentId,enrollment.version,tokenHash,
+      envelope.keyId,envelope.nonce,envelope.ciphertext,envelope.tag]);
+  await admin.query(`UPDATE sabora.staff_invitation_outbox
+    SET state='cancelled',updated_at=clock_timestamp()-interval '2 days',
+    created_at=clock_timestamp()-interval '3 days' WHERE id=$1`,[jobId]);
+  await admin.query(`UPDATE sabora.staff_invitation_custody_candidate
+    SET created_at=clock_timestamp()-interval '2 days' WHERE job_id=$1`,[jobId]);
+  await admin.query(`GRANT EXECUTE ON FUNCTION
+    sabora.purge_terminal_staff_invitation_custody_candidate(timestamptz,integer)
+    TO ${runtimeCredentials.role}`);
+  const consumer=createStaffCustodyNonceConsumerCandidate({
+    query:(...args)=>runtime.query(...args),
+  });
+  const authority=createStaffCustodyApprovalAuthorityCandidate({
+    secret:randomBytes(32),allowedActors:['staff_root_001'],
+    consumeNonce:consumer,
+  });
+  const maintenance=createStaffCustodyMaintenanceCandidate({
+    query:(...args)=>runtimeB.query(...args),approvalAuthority:authority,
+  });
+  const grant=authority.issue({
+    actorId:'staff_root_001',cutoff,maxRows:1,maxBatches:2,
+  });
+  const options={cutoff,maxRows:1,maxBatches:2,authorization:grant};
+  assert.deepEqual(await maintenance.run(options),
+    {executed:false,removed:0,batches:0});
+  const before=await admin.query(`SELECT count(*)::integer AS n FROM
+    sabora.staff_custody_approval_nonce_candidate WHERE nonce=$1`,[grant.nonce]);
+  assert.equal(before.rows[0].n,0);
+  const result=await maintenance.run({...options,dryRun:false});
+  assert.deepEqual(result,{executed:true,removed:1,batches:2});
+  await assert.rejects(maintenance.run({...options,dryRun:false}),
+    /staff_custody_approval_replayed/);
+  const custody=await admin.query(`SELECT count(*)::integer AS n FROM
+    sabora.staff_invitation_custody_candidate WHERE job_id=$1`,[jobId]);
+  assert.equal(custody.rows[0].n,0);
+  const outbox=await admin.query(`SELECT count(*)::integer AS n FROM
+    sabora.staff_invitation_outbox WHERE id=$1`,[jobId]);
+  assert.equal(outbox.rows[0].n,1);
+  authority.close();
 });
