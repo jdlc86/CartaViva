@@ -9,8 +9,12 @@ export const STAFF_INVITATION_CUSTODY_INSERT_SQL = `SELECT
     $5::text,$6::text,$7::text,$8::text
   )`;
 
+export const STAFF_INVITATION_CUSTODY_RESTRICTED_SQL = STAFF_INVITATION_CUSTODY_INSERT_SQL.replace(
+  'store_staff_invitation_custody_candidate(',
+  'store_staff_invitation_custody_restricted_candidate(');
+
 export function createStaffInvitationCustodyCoordinatorCandidate({
-  withTransaction, encryptionKey, keyId,
+  withTransaction, encryptionKey, keyId, restrictedCustody = false,
 } = {}) {
   if (typeof withTransaction !== 'function' ||
       !Buffer.isBuffer(encryptionKey) || encryptionKey.length !== 32 ||
@@ -33,7 +37,7 @@ export function createStaffInvitationCustodyCoordinatorCandidate({
           tokenHashHex:capability.inviteTokenHashHex,
           keyId, key:encryptionKey,
         });
-        await query(STAFF_INVITATION_CUSTODY_INSERT_SQL, [
+        await query(restrictedCustody ? STAFF_INVITATION_CUSTODY_RESTRICTED_SQL : STAFF_INVITATION_CUSTODY_INSERT_SQL, [
           result.jobId,result.transition.enrollmentId,result.transition.inviteVersion,
           capability.inviteTokenHashHex,envelope.keyId,envelope.nonce,
           envelope.ciphertext,envelope.tag,
