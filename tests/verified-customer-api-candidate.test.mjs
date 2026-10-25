@@ -79,3 +79,41 @@ test('shared SQL identity and invalid secrets fail closed without exposing readi
  assert.deepEqual(events,[]);
  assert.equal((await app.inject('/ready')).statusCode,404);
 });
+
+test('readiness turns 503 when reader or writer fails after successful startup',async t=>{
+ const events=[],app=Fastify();t.after(()=>app.close());
+ const config=options(events);
+ await registerVerifiedCustomerApiCandidate(app,config);
+ assert.equal((await app.inject('/ready')).statusCode,200);
+ const oldReader=config.catalogReaderPool.connect;
+ config.catalogReaderPool.connect=async()=>{throw Error('private_reader_secret');};
+ let response=await app.inject('/ready');
+ assert.equal(response.statusCode,503);
+ assert.deepEqual(response.json(),{status:'unavailable'});
+ assert.equal(response.body.includes('private'),false);
+ config.catalogReaderPool.connect=oldReader;
+ const oldWriter=config.orderWriterPool.connect;
+ config.orderWriterPool.connect=async()=>{throw Error('private_writer_secret');};
+ response=await app.inject('/ready');
+ assert.equal(response.statusCode,503);
+ assert.deepEqual(response.json(),{status:'unavailable'});
+ config.orderWriterPool.connect=oldWriter;
+ assert.equal((await app.inject('/ready')).statusCode,200);
+});
+test('readiness rejects changed effective SQL identity and discards suspect connection',async t=>{
+ const events=[],app=Fastify();t.after(()=>app.close());
+ const config=options(events);
+ await registerVerifiedCustomerApiCandidate(app,config);
+ const old=config.orderWriterPool.connect;
+ config.orderWriterPool.connect=async()=>{
+  const client=await old();
+  const query=client.query;
+  client.query=async sql=>sql==='SELECT current_user AS role_name, session_user AS login_name'?
+   {rows:[{role_name:'postgres',login_name:'postgres'}]}:query(sql);
+  return client;
+ };
+ const response=await app.inject('/ready');
+ assert.equal(response.statusCode,503);
+ assert.deepEqual(response.json(),{status:'unavailable'});
+ assert.ok(events.some(([login,event])=>login===writer&&event==='discard'));
+});
