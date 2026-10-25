@@ -145,3 +145,26 @@ Antes de activarlo hay que resolver los gates normativos
 de identidad, permisos y aprovisionamiento de logins,
 y ejecutar aceptación integral sobre infraestructura
 aislada autorizada.
+
+## Disponibilidad dinámica de API de cliente (25-10-2026)
+
+La composición candidata
+`apps/api/src/verified-customer-api-candidate.mjs`
+integra ahora
+`apps/api/src/isolated-customer-readiness-candidate.mjs`.
+Tras superar el preflight inicial y registrar las rutas,
+`GET /ready` comprueba en cada solicitud los logins
+`current_user` y `session_user` de los dos pools
+independientes. Ante desconexión, error de consulta o
+deriva de identidad devuelve `503` y un DTO fijo
+`{status:"unavailable"}`, sin detalles SQL. Libera las
+conexiones sanas y descarta las sospechosas. Las pruebas
+comprueban caída de cada pool, deriva de rol, recuperación
+y ausencia de fuga de secretos. Commit `91f4fc0`:
+Sabora CI y Bootstrap SUCCESS.
+
+**Alcance:** esta ruta de disponibilidad es un candidato
+opt-in, no montado en `server.mjs`. El sondeo no reemplaza
+las verificaciones transaccionales de permisos y contexto
+de cada pedido ni certifica entrega a cocina. No se
+configuran despliegues, cron ni infraestructura operativa.
