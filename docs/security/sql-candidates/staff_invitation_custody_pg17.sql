@@ -52,9 +52,9 @@ BEGIN
     key_id,nonce,ciphertext,tag
   ) VALUES (
     p_job_id,p_enrollment_id,p_invite_version,decode(p_token_hash_hex,'hex'),1,
-    p_key_id,decode(translate(p_nonce,'-_','+/'),'base64'),
-    decode(translate(p_ciphertext,'-_','+/'),'base64'),
-    decode(translate(p_tag,'-_','+/'),'base64')
+    p_key_id,decode(rpad(translate(p_nonce,'-_','+/'),((length(p_nonce)+3)/4)*4,'='),'base64'),
+    decode(rpad(translate(p_ciphertext,'-_','+/'),((length(p_ciphertext)+3)/4)*4,'='),'base64'),
+    decode(rpad(translate(p_tag,'-_','+/'),((length(p_tag)+3)/4)*4,'='),'base64')
   );
 END
 $body$;
