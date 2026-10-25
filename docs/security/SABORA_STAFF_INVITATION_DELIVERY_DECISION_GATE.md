@@ -404,3 +404,33 @@ sistema real de control de acceso.
 identidad del ejecutor, el mecanismo de autorización
 verificable, las ventanas de mantenimiento y la operación
 de producción deben aprobarse antes de cualquier uso real.
+
+## Autorización firmada de mantenimiento (25-10-2026)
+
+El candidato `staff-custody-approval-authority-candidate.mjs`
+emite y verifica concesiones HMAC-SHA256 para la acción
+`purge_terminal_staff_custody`, vinculadas a actor de
+lista permitida, cutoff, tamaño de lote, número de lotes,
+emisión, caducidad y nonce. El plazo máximo es de 300 s;
+la comparación de MAC es constante en tiempo. El verificador
+exige `consumeNonce` proporcionado por el integrador y
+rechaza la repetición si este devuelve false. El coordinador
+`staff-custody-maintenance-candidate.mjs` permite configurar
+`approvalAuthority` y, en ese modo, exige verificar y
+consumir la autorización antes de ejecutar SQL destructivo.
+
+Pruebas: aprobación válida de un solo uso, firma manipulada,
+cambio de alcance, actor no permitido, expiración, repetición,
+cierre del verificador y modo dry-run sin consumir concesiones.
+Commit `930598c`, Sabora CI y Bootstrap SUCCESS.
+
+**Límites y riesgos abiertos:** `consumeNonce` es una
+dependencia inyectada; el test usa memoria y NO demuestra
+atomicidad duradera entre procesos. No hay autenticación
+operativa de la persona que aprueba ni custodia operativa de
+la clave HMAC. El coordinador conserva la vía candidata
+anterior de aprobación booleana cuando NO se configura
+`approvalAuthority`: **esa vía no constituye autorización
+segura** y debe eliminarse antes de conectar cualquier
+ejecutor real. No hay scheduler, identidad de producción,
+política de retención aprobada ni permiso de despliegue.
