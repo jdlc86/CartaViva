@@ -90,3 +90,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Commit `ad3c30c602d9edf23dfc53533dcb25c2670e761c`: **Sabora CI #40181256584 SUCCESS** y **Bootstrap #40181256588 SUCCESS**.
 - `tests/staff-invitation-outbox-boundary.test.mjs` amplía la cobertura del adaptador candidato: parametrización de UUID, rechazo de cardinalidad/fence incorrectos, trabajo ausente sin UPDATE y estado no reconocido.
 - Las pruebas adicionales son unitarias; siguen pendientes la migración y las pruebas PostgreSQL 17 reales, el material cifrado y la aprobación normativa del envío.
+
+## Hito 2 — endurecimiento del parseo de filas SQL
+
+- El adaptador de outbox valida el UUID del trabajo y exige propiedades de datos propias antes de acceder a los campos de una fila SQL; rechaza getters de objetos manipulados.
+- Dos regresiones adicionales comprueban que no se evalúan getters y que un identificador de trabajo malformado no se acepta.
+- Son defensas del adaptador candidato; no sustituyen pruebas PostgreSQL 17 ni autorizan envío.
