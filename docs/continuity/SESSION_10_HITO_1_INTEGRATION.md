@@ -48,3 +48,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Pruebas unitarias verifican las denegaciones y la admisión exclusiva de la invitación vigente.
 - **No es una outbox duradera ni una garantía transaccional:** la decisión en memoria puede quedar obsoleta inmediatamente después de leer el estado. Para garantizar revocación frente a una entrega concurrente hace falta diseñar y probar el bloqueo/arbitraje de envío en PostgreSQL 17, almacenamiento cifrado del material necesario para entrega, límites de reintentos, deduplicación y tratamiento de fallos del proveedor. No introducir una migración ni habilitar el worker antes de aprobar esos contratos.
 - El Hito 2 sigue abierto; la política es una defensa auxiliar y no acredita entrega ni activación. La CI de este nuevo SHA debe verificarse por separado.
+
+## Incidencia CI del subbloque de entrega y corrección
+
+- En `5b2a268`, ambos workflows fallaron: 781/786 pruebas raíz, 5 fallos concentrados en `staff-invitation-delivery-policy.test.mjs`.
+- Causa demostrada en logs: el validador UUID de la política tenía cuatro grupos en lugar de cinco y rechazaba inscripciones válidas antes de evaluar su estado.
+- Corregido en `e6d1f99` con patrón UUID 8-4-4-4-12. La corrección requiere nueva verificación CI; no atribuirle éxito hasta observar los workflows.
