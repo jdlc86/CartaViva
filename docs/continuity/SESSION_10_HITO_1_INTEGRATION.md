@@ -41,3 +41,10 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - `tests/staff-lifecycle-http-candidate.test.mjs` prueba entradas falsificadas, requisitos de identidad, ocultación de secretos y errores de entrega.
 - **Limitación funcional relevante:** persistir invitación y entregar correo no es una única transacción; el 503 de entrega no deshace el alta. La recuperación duradera mediante outbox/cola, la idempotencia de reenvíos y el contrato del proveedor deben cerrarse antes de activar rutas. Tampoco se ha implementado aquí WebAuthn ni autenticación JWT HTTP.
 - Ninguna ruta se monta; no hay nuevos grants, claves ni migración aplicada a Supabase operativo. Nuevos commits requieren CI en su SHA final.
+
+## Hito 2 — primer subbloque de entrega segura (25-10-2026)
+
+- Se añade una política pura `decideStaffInvitationDelivery` que descarta trabajos asociados a inscripciones revocadas, aceptadas o sustituidas por reenvío (versión/hash de token distinto).
+- Pruebas unitarias verifican las denegaciones y la admisión exclusiva de la invitación vigente.
+- **No es una outbox duradera ni una garantía transaccional:** la decisión en memoria puede quedar obsoleta inmediatamente después de leer el estado. Para garantizar revocación frente a una entrega concurrente hace falta diseñar y probar el bloqueo/arbitraje de envío en PostgreSQL 17, almacenamiento cifrado del material necesario para entrega, límites de reintentos, deduplicación y tratamiento de fallos del proveedor. No introducir una migración ni habilitar el worker antes de aprobar esos contratos.
+- El Hito 2 sigue abierto; la política es una defensa auxiliar y no acredita entrega ni activación. La CI de este nuevo SHA debe verificarse por separado.
