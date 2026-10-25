@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {randomBytes,createHash} from 'node:crypto';
 import {createStaffInvitationKeyringCandidate} from '../apps/api/src/staff-invitation-keyring-candidate.mjs';
 import {sealStaffInvitationToken,openStaffInvitationToken} from '../apps/api/src/staff-invitation-envelope-candidate.mjs';
+import {createStaffInvitationCustodyCoordinatorCandidate} from '../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
+import {createStaffDispatchEnvelopeReaderCandidate} from '../apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs';
 
 const enrollmentId='11111111-2222-4333-8444-555555555555';
 const token='T'.repeat(48);
@@ -58,5 +60,56 @@ test('keyring does not retain caller buffer and does not expose internal buffer'
   selected.close();
   assert.throws(()=>selected.active(),/staff_keyring_closed/);
   assert.throws(()=>selected.resolveKey('staff_live_001'),/staff_keyring_closed/);
+  selected.close();
+});
+
+test('fenced reader resolves decrypt-only historical key after writer rotation',async()=>{
+  const oldKey=randomBytes(32);
+  const oldRing=ring('staff_old_001',[key('staff_old_001','active',oldKey)]);
+  const envelope=sealStaffInvitationToken({
+    token,enrollmentId,inviteVersion:1,tokenHashHex,
+    ...oldRing.active(),
+  });
+  oldRing.close();
+  const rotated=ring('staff_new_002',[
+    key('staff_old_001','decrypt_only',oldKey),
+    key('staff_new_002','active'),
+  ]);
+  const jobId='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const fence='bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+  const row={
+    result_enrollment_id:enrollmentId,result_invite_version:1,
+    result_token_hash_hex:tokenHashHex,result_key_id:envelope.keyId,
+    result_nonce:envelope.nonce,result_ciphertext:envelope.ciphertext,
+    result_tag:envelope.tag,
+  };
+  const reader=createStaffDispatchEnvelopeReaderCandidate({
+    keyring:rotated,
+    query:async(sql,values)=>{
+      assert.match(sql,/read_staff_invitation_dispatch_envelope_candidate/);
+      assert.deepEqual(values,[jobId,fence]);
+      return {rows:[row]};
+    },
+  });
+  assert.equal((await reader.read({jobId,fence})).token,token);
+  assert.throws(()=>createStaffDispatchEnvelopeReaderCandidate({
+    keyring:rotated,resolveKey:()=>oldKey,query:async()=>({rows:[]}),
+  }),/invalid_staff_dispatch_envelope_reader_config/);
+  rotated.close();
+  await assert.rejects(reader.read({jobId,fence}),/staff_keyring_closed/);
+});
+test('atomic writer selects current keyring key only after transition',async()=>{
+  const selected=ring('staff_new_002',[key('staff_new_002','active')]);
+  const coordinator=createStaffInvitationCustodyCoordinatorCandidate({
+    keyring:selected,
+    withTransaction:async callback=>callback(async()=>({rows:[]})),
+  });
+  await assert.rejects(coordinator.transitionAndStore({
+    capability:{action:'invalid'},token,
+  }),/invalid_staff_custody_input/);
+  assert.throws(()=>createStaffInvitationCustodyCoordinatorCandidate({
+    keyring:selected,encryptionKey:randomBytes(32),
+    withTransaction:async()=>{},
+  }),/invalid_staff_custody_coordinator_config/);
   selected.close();
 });
