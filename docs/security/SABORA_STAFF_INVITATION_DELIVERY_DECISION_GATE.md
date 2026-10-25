@@ -322,3 +322,28 @@ de caducidad. Una clave `decrypt_only` debe permanecer
 disponible mientras existan sobres que dependan de ella,
 o esos sobres deben dejar de ser recuperables según una
 política aprobada. El gate de entrega continúa abierto.
+
+## Integración del selector rotatorio en emisión y lectura (25-10-2026)
+
+El coordinador candidato `staff-invitation-custody-coordinator-candidate.mjs`
+admite `keyring` como alternativa excluyente a
+`encryptionKey/keyId`: selecciona la clave activa al
+cifrar el token dentro de la transacción. El lector candidato
+`staff-invitation-dispatch-envelope-reader-candidate.mjs`
+admite el mismo selector como alternativa excluyente a
+`resolveKey` y descifra sobres históricos mediante
+la clave identificada en el sobre, incluso cuando está
+en estado `decrypt_only`. Una clave `disabled` no
+es recuperable mediante el selector.
+
+Las pruebas verifican la lectura histórica después de
+rotación, rechazo de configuración ambigua y rechazo
+de uso del selector después de su cierre. Commit
+`9401e3e`: Sabora CI y Bootstrap SUCCESS.
+
+**Límites:** la integración sigue siendo candidata y
+no está montada en el servidor operativo. La configuración
+de claves se inyecta en memoria; no existe aprovisionamiento
+de secretos, procedimiento operativo de rotación, política
+aprobada de borrado de ciphertext ni proveedor de correo.
+No se autoriza despliegue ni migración.
