@@ -45,3 +45,20 @@ test('mismatched hash and malformed key are rejected before encryption',()=>{
   assert.throws(()=>sealStaffInvitationToken({...args,tokenHashHex:'b'.repeat(64)}),/staff_delivery_token_hash_mismatch/);
   assert.throws(()=>sealStaffInvitationToken({...args,key:Buffer.alloc(16)}),/invalid_staff_delivery_encryption_key/);
 });
+
+test('key identity is authenticated and an explicit expected key id is enforced',()=>{
+  const envelope=sealStaffInvitationToken(args);
+  assert.equal(open(envelope,{keyId}),token);
+  assert.throws(()=>open({...envelope,keyId:'candidate_key_002'}),
+    /staff_delivery_decryption_denied/);
+  assert.throws(()=>open(envelope,{keyId:'candidate_key_002'}),
+    /invalid_staff_delivery_envelope/);
+});
+test('malformed or undersized ciphertext fails before decrypt',()=>{
+  const envelope=sealStaffInvitationToken(args);
+  for(const ciphertext of ['', 'A', 'A'.repeat(2000),
+    Buffer.alloc(20).toString('base64url')]){
+    assert.throws(()=>open({...envelope,ciphertext}),
+      /invalid_staff_delivery_envelope/);
+  }
+});
