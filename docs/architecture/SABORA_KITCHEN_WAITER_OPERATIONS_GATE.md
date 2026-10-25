@@ -403,3 +403,35 @@ habilita las rutas operativas. Permanece pendiente el
 gate de proyecciones SQL de lectura acotadas por actor
 y rol, la integración PWA y la aceptación del recorrido
 completo desde confirmación del cliente.
+
+## Composición opt-in de mutaciones sin lectura (25-10-2026)
+
+El registro HTTP `registerOrderOperationsHttp` acepta
+`transitionOnly: true`, que monta exclusivamente
+`POST /api/v1/operations/order-lines/:lineId/transitions`;
+no registra tablero ni historial, cuyos privilegios SQL
+siguen expresamente sin aprobar. El comportamiento completo
+anterior permanece como opción predeterminada para
+harness y pruebas, **no** para activación operativa.
+
+`registerVerifiedOrderTransitionsOnlyFromPools` es una
+composición candidata separada. Antes de registrar la ruta
+comprueba aislamiento de pools, diferencia de roles SQL,
+login restringido de personal sin RPC de mutación y
+login restringido de operaciones con la RPC firmada
+autorizada. Inyecta hooks criptográficos de personal
+existentes, transacción PostgreSQL y emisor de capacidad;
+no importa `server.mjs`, no lee secretos de entorno,
+no aprovisiona ni activa conexiones. La suite
+`tests/order-operations-transition-only-http.test.mjs`
+comprueba la ausencia física de las rutas GET, el POST,
+compatibilidad con el registro completo y rechazo de
+configuración ambigua.
+
+**Puerta aún cerrada:** la composición candidata no
+sustituye la verificación de permisos y bootstrap del
+lector de personal en un despliegue real. No se habilitan
+proyecciones SQL de lectura ni se declara producción
+lista. Sigue prohibido abrir SELECT generales sobre
+tablas privadas o montar esta ruta en el servidor
+operativo sin completar los gates normativos.
