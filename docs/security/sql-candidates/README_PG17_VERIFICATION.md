@@ -103,3 +103,21 @@ revalidating the durable enrollment and token during acceptance. No worker,
 endpoint or real email is activated by this verification.
 
 A mock transaction test cannot substitute for these checks.
+
+## Pre-dispatch claim recovery candidate (2026-10-25)
+
+Commit `c986de9` adds two real PostgreSQL 17 integration cases
+for `staff-invitation-claim-recovery-candidate.mjs`:
+
+- An expired `claimed` row receives a new random fence; replay with the
+  stale fence does not reclaim it, and stale dispatch authorization fails.
+  The new fence can authorize dispatch exactly once.
+- A fresh `claimed` row cannot be reclaimed. A `dispatching` row is
+  excluded by the candidate's SQL predicate and cannot be reclaimed.
+
+Both workflows completed SUCCESS for `c986de9`.
+**Security boundary:** these new recovery cases use the disposable
+administrator fixture and do **not** prove a restricted recovery principal.
+The SQL is an unmounted candidate, not an operational migration, and does
+not provide worker grants, encrypted persistence, key rotation, or a
+reconciliation protocol for ambiguous in-flight sends.
