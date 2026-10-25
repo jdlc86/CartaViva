@@ -5,7 +5,7 @@ const ISO_UTC=/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/;
 export const STAFF_CUSTODY_PURGE_SQL=SQL;
 export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date(),approvalAuthority}={}){
   if(typeof query!=='function'||typeof clock!=='function'||
-    (approvalAuthority!==undefined && typeof approvalAuthority.verifyAndConsume!=='function'))
+    typeof approvalAuthority?.verifyAndConsume!=='function')
     throw Error('invalid_staff_custody_maintenance_config');
   return Object.freeze({
     async run({cutoff,maxRows=100,maxBatches=1,authorization,dryRun=true}={}){
@@ -20,9 +20,7 @@ export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date
         Date.parse(cutoff)>now.getTime())
         throw Error('invalid_staff_custody_maintenance_cutoff');
       if(dryRun!==false)return Object.freeze({executed:false,removed:0,batches:0});
-      const verified=approvalAuthority
-        ? await approvalAuthority.verifyAndConsume(authorization,{cutoff,maxRows,maxBatches})
-        : authorization;
+      const verified=await approvalAuthority.verifyAndConsume(authorization,{cutoff,maxRows,maxBatches});
       if(!verified||verified.action!=='purge_terminal_staff_custody'||
         verified.cutoff!==cutoff||
         verified.maxRows!==maxRows||
