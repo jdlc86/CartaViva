@@ -93,3 +93,34 @@ test('accessor-backed action is rejected without invoking the getter', async () 
   assert.equal(accessed, false);
   assert.equal(calls.length, 0);
 });
+
+test('idempotent replay never delivers a newly generated but invalid invitation token', async () => {
+  let tokenGenerations = 0;
+  const coordinator = createStaffLifecycleCoordinator({
+    withTransaction: async callback => callback(async () => ({rows: []})),
+    repository: {async transition(_query, capability) {
+      return Object.freeze({
+        enrollmentId: capability.enrollmentId,
+        currentState: 'invited',
+        repeated: true,
+        inviteVersion: 1,
+      });
+    }},
+    issueCapability: value => value,
+    issueInvitationToken: () => {
+      tokenGenerations++;
+      return token;
+    },
+    hashInviteeEmail: () => 'b'.repeat(64),
+    verifyCredentialRegistration: async () => Buffer.alloc(32),
+    uuid: () => enrollmentId,
+  });
+  const result = await coordinator.transition({
+    verifiedIdentity: {userId: adminId},
+    verifiedStaff: {userId: adminId, role: 'admin'},
+  }, {action: 'invite', email: 'person@example.com', requestedRole: 'waiter',
+    correlationId: 'invite_staff_replay_001'});
+  assert.equal(tokenGenerations, 1);
+  assert.equal(result.repeated, true);
+  assert.equal(result[STAFF_INVITATION_DELIVERY_TOKEN], undefined);
+});
