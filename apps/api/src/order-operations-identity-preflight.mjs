@@ -208,3 +208,10 @@ export async function preflightOrderTransitionIdentity({pool, role} = {}) {
   const expectedRole = validateRole(role);
   return inspect(pool, expectedRole, {allowAuthorizedTransition: true});
 }
+
+// Staff-only SQL gate for transition-only registration. Does not authorize
+// the mutation RPC and cannot substitute for staff HTTP cryptographic auth.
+export async function preflightOrderTransitionStaffIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole);
+}
