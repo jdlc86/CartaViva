@@ -33,3 +33,11 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - `tests/staff-lifecycle-composition.test.mjs` verifica ausencia de conexiones cuando faltan dependencias, rechazo de roles prohibidos antes de abrir conexiones, liberación tras preflight fallido y que `server.mjs` no importa la composición.
 - **No se habilitan rutas ni grants.** El módulo no emite correo, no autentica HTTP ni aprovisiona claves; esas decisiones permanecen pendientes de contrato y autorización.
 - Los commits de este bloque requieren CI del SHA final; la certificación verde de `52f9a374` no los cubre.
+
+## Bloque HTTP candidato sin activación (25-10-2026)
+
+- `staff-lifecycle-http-candidate.mjs` ofrece un adaptador inyectable **no registrado en `server.mjs`**. Rechaza campos de actor/rol no previstos, exige contexto verificado y devuelve códigos cerrados sin filtrar errores internos.
+- El token de invitación viaja únicamente hacia una dependencia de entrega confiable, nunca al JSON HTTP. Una entrega fallida devuelve 503, sin afirmar que el envío se completó.
+- `tests/staff-lifecycle-http-candidate.test.mjs` prueba entradas falsificadas, requisitos de identidad, ocultación de secretos y errores de entrega.
+- **Limitación funcional relevante:** persistir invitación y entregar correo no es una única transacción; el 503 de entrega no deshace el alta. La recuperación duradera mediante outbox/cola, la idempotencia de reenvíos y el contrato del proveedor deben cerrarse antes de activar rutas. Tampoco se ha implementado aquí WebAuthn ni autenticación JWT HTTP.
+- Ninguna ruta se monta; no hay nuevos grants, claves ni migración aplicada a Supabase operativo. Nuevos commits requieren CI en su SHA final.
