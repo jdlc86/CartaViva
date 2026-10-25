@@ -178,3 +178,50 @@ test('preflight rejects SQL role membership in both directions for both principa
     }
   }
 });
+
+test('preflight fails closed if a successful SQL inspection cannot release its client', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = pool(roles.operationsRole);
+  operationsPool.connect = async () => ({
+    async query() {
+      const reference = pool(roles.operationsRole);
+      return (await (await reference.connect()).query('SELECT current_user')).rows
+        ? {rows: (await (await reference.connect()).query('SELECT current_user')).rows}
+        : {rows: []};
+    },
+    release() { throw Error('sql_release_failed'); },
+  });
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /sql_release_failed/,
+  );
+});
+
+test('preflight preserves inspection error when releasing a discarded client also fails', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = {
+    async connect() {
+      return {
+        async query() { throw Error('sql_inspection_failed'); },
+        release() { throw Error('sql_release_failed'); },
+      };
+    },
+  };
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /sql_inspection_failed/,
+  );
+});
+
+test('preflight preserves malformed client rejection if discard release fails', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = {
+    async connect() {
+      return {release() { throw Error('sql_release_failed'); }};
+    },
+  };
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /invalid_order_operations_sql_client/,
+  );
+});
