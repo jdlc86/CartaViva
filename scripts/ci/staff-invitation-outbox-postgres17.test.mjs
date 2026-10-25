@@ -1086,6 +1086,7 @@ test('PG17 fenced dispatch envelope read is restricted and current-version only'
   assert.equal(opened.token,token);
   assert.equal(opened.inviteVersion,enrollment.version);
   await admin.query(`UPDATE sabora.staff_enrollments
-    SET state='revoked' WHERE id=$1`,[enrollment.enrollmentId]);
+    SET invite_token_hash=decode($2,'hex') WHERE id=$1`,
+    [enrollment.enrollmentId,digest('superseded-token')]);
   assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
 });
