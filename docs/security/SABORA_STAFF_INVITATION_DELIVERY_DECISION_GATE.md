@@ -189,3 +189,28 @@ un worker ni lectura autorizada de tokens. Gestión y rotación
 de claves, recuperación segura en caso de reinicio, reenvío,
 revocación y entrega externa requieren aprobación y nuevas pruebas.
 No activar el esquema en Supabase operativo.
+
+## Custodia cifrada transaccional candidata (25-10-2026)
+
+El candidato `staff-invitation-custody-coordinator-candidate.mjs`
+compone en una transacción de PostgreSQL 17 la transición HMAC, el
+INSERT de outbox y el almacenamiento del sobre AES-256-GCM mediante
+`staff_invitation_custody_pg17.sql`. El sobre queda vinculado al
+enrollment, versión y hash de token; el texto claro y la clave no
+persisten en la base de datos. El replay de correlación no vuelve
+a almacenar el sobre.
+
+Evidencia en CI: un token deliberadamente incongruente revierte
+inscripción, outbox y custodia; una ejecución válida confirma los
+tres registros; el replay no duplica custodia. La prueba de alteración
+del sobre se hizo determinista para evitar falsos negativos. Commit
+`cf19d2a`: Sabora CI y Bootstrap SUCCESS.
+
+**Alcance estricto:** la composición candidata se prueba con el
+administrador del contenedor PG17 desechable. NO está demostrado un
+principal de custodia con mínimo privilegio, ni el acoplamiento
+operativo con el coordinador de identidad, ni el manejo de clave
+y rotación, ni la recuperación de sobre por worker, ni revocación
+y limpieza de ciphertext, ni proveedor de correo. La función SQL
+de custodia es SECURITY INVOKER sin grants runtime y no es una
+migración operativa. El gate de entrega sigue abierto.
