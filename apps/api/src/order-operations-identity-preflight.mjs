@@ -87,7 +87,11 @@ async function inspect(pool, expectedRole) {
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
-              ) AS has_role_memberships
+              ) AS has_role_memberships,
+              EXISTS (
+                SELECT 1 FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.roleid = role.oid
+              ) AS has_role_grantees
          FROM pg_catalog.pg_roles role
         WHERE role.rolname = current_user`
     );
@@ -99,7 +103,7 @@ async function inspect(pool, expectedRole) {
         row.superuser !== false || row.bypass_rls !== false || row.can_login !== true ||
         row.inherits_roles !== false || row.can_create_role !== false ||
         row.can_create_db !== false || row.can_replicate !== false ||
-        row.has_role_memberships !== false ||
+        row.has_role_memberships !== false || row.has_role_grantees !== false ||
         row.schema_usage !== true || row.schema_create !== false ||
         row.database_create !== false ||
         row.candidate_rpc_execute !== false ||
