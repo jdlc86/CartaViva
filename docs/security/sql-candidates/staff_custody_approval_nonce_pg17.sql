@@ -14,8 +14,13 @@ CREATE ROLE sabora_staff_approval_nonce_owner NOLOGIN NOINHERIT NOSUPERUSER
   NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
 REVOKE ALL ON SCHEMA sabora FROM sabora_staff_approval_nonce_owner;
 GRANT USAGE ON SCHEMA sabora TO sabora_staff_approval_nonce_owner;
+GRANT SELECT (nonce) ON sabora.staff_custody_approval_nonce_candidate
+  TO sabora_staff_approval_nonce_owner;
 GRANT INSERT (nonce,actor_id,expires_at)
   ON sabora.staff_custody_approval_nonce_candidate TO sabora_staff_approval_nonce_owner;
+CREATE POLICY staff_custody_approval_nonce_select
+  ON sabora.staff_custody_approval_nonce_candidate FOR SELECT
+  TO sabora_staff_approval_nonce_owner USING (true);
 CREATE POLICY staff_custody_approval_nonce_insert
   ON sabora.staff_custody_approval_nonce_candidate FOR INSERT
   TO sabora_staff_approval_nonce_owner
