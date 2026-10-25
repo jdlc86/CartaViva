@@ -349,3 +349,33 @@ La RPC antigua sigue sin `EXECUTE`; el nuevo wrapper tampoco tiene grants ni
 clave runtime. Las lecturas de tablero/historial y la provisión operativa siguen
 pendientes, de modo que las rutas permanecen sin montar. El detalle está en
 `docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
+## Aceptación HTTP de mutación con login PostgreSQL restringido (25-10-2026)
+
+La suite `scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora una prueba Fastify + coordinador + PostgreSQL 17
+**desechable** que usa el login técnico de operaciones
+`NOSUPERUSER NOBYPASSRLS NOINHERIT` y únicamente la RPC
+de transición autorizada por firma. Recorre
+`confirmed → preparing → ready → picked_up`, valida
+notificación durable, reintentos sin duplicados, ausencia
+de actor HTTP y transiciones incompatibles con el rol.
+Comprueba persistencia de tres eventos, tres solicitudes
+de transición y una notificación. Commit `99a8af5`:
+Sabora CI y Bootstrap SUCCESS.
+
+La misma prueba exige `503` con DTO público fijo para
+tablero e historial, porque las capacidades SQL de lectura
+siguen sin aprobarse; el login restringido tampoco puede
+leer directamente `sabora.order_lines`. La identidad
+HTTP se inyecta mediante un mecanismo **solo de test**,
+no representa autenticación de producción.
+
+**Conclusión del gate:** queda validada la mutación
+firmada con login restringido, pero **no** la activación
+integral de operaciones. No se deben conceder SELECT
+generales para hacer pasar tablero/historial. Es necesario
+diseñar y probar proyecciones SQL acotadas por actor y rol
+con permisos mínimos, además de la autenticación real,
+antes de habilitar las rutas. No hay despliegue,
+migración operativa ni merge.
