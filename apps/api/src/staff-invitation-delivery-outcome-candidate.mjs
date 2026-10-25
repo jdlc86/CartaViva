@@ -25,7 +25,7 @@ export async function recordStaffInvitationDeliveryOutcome({
     // not prove inbox delivery and never activates a staff enrollment.
     const nextState = outcome === 'accepted' ? 'delivered' : 'failed';
     const result = await repository.finishDispatchingDelivery(
-      query, jobId, fence, nextState,
+      query, jobId, fence, nextState, outcome,
     );
     if (!result || result.finished !== true) {
       throw Error('staff_delivery_outcome_lost_race');
