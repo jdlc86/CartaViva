@@ -22,7 +22,8 @@ export function createStaffInvitationCustodyCoordinatorCandidate({
       if (!capability || !['invite','resend'].includes(capability.action) ||
           typeof token !== 'string') throw Error('invalid_staff_custody_input');
       // The DB determines the actual invite version; no version is trusted from callers.
-      return withTransaction(async query => {
+      return withTransaction(async rawQuery => {
+        const query = (text,values) => rawQuery({text,values});
         const enqueue = createStaffInvitationEnqueueCandidate({query});
         const result = await enqueue.transitionAndEnqueue(capability);
         if (result.repeated) return Object.freeze({...result, stored:false});
