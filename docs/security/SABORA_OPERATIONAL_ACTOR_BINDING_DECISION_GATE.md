@@ -1,6 +1,10 @@
-# Puerta de decisión: vinculación de actor HTTP ↔ PostgreSQL (propuesta, no contrato aprobado)
+# Puerta de decisión: vinculación de actor HTTP ↔ PostgreSQL
 
-Fecha: 2026-10-24. Estado: **bloqueador de activación**. Alcance: Sabora, un restaurante. Esta nota no sustituye el contrato funcional consolidado ni concede permisos.
+Fecha: 2026-10-24; decisión candidata registrada el 2026-10-25. Estado:
+**bloqueo técnico resuelto en candidato, activación aún bloqueada**. Alcance:
+Sabora, un restaurante. Esta nota no sustituye el contrato funcional
+consolidado ni concede permisos. La decisión completa y su evidencia están en
+`SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
 
 ## Evidencia y amenaza
 
@@ -17,11 +21,16 @@ Los parámetros SQL, `SET LOCAL`, `set_config`, una variable GUC personalizada y
 5. Revocación de personal, repetición idempotente, concurrencia y fallo intermedio deben mantener las garantías ya probadas en PG17.
 6. No se deben habilitar rutas en `server.mjs`, ejecutar grants positivos ni desplegar hasta que el diseño y las pruebas sean aprobados.
 
-## Alternativas a evaluar; ninguna seleccionada
+## Alternativas evaluadas
 
 **A. Identidades SQL por actor.** PostgreSQL verifica al actor mediante `session_user` o identidad de sesión que no pueda cambiarse con `SET ROLE`. Requiere aprovisionamiento y revocación de credenciales por persona, aislamiento de conexiones y políticas RLS; evaluar si es operativamente viable sin exponer credenciales a la PWA.
 
-**B. Evidencia firmada verificada dentro de PostgreSQL.** La base de datos valida emisor, audiencia, caducidad, sujeto y firma de un comprobante que el login técnico no pueda emitir. Debe verificarse que el secreto o clave de firma no sea legible ni sustituible por el login SQL, que la validación no dependa de una GUC falsificable y que la verificación sea transaccional. Requiere revisión criptográfica y de extensiones disponibles; no asumir soporte en Supabase.
+**B. Evidencia firmada verificada dentro de PostgreSQL — seleccionada como
+candidato.** La base de datos valida audiencia, caducidad, actor, rol SQL,
+operación y firma de una capacidad que el login técnico no puede emitir. El
+secreto queda en un keyring con RLS forzada, inaccesible al login, y la
+verificación no depende de GUC. La implementación usa HMAC-SHA-256 de
+`pgcrypto`; su provisión operativa sigue pendiente de aprobación.
 
 **C. Mediación por identidad privilegiada aislada.** Un componente confiable ejecuta operaciones después de autenticar al actor y reduce la superficie del login expuesto. Requiere demostrar que el login técnico ordinario no puede llamar directamente a mutaciones equivalentes, ni usar las credenciales del mediador. Una mera capa Node con el mismo login SQL compartido no satisface por sí sola este requisito.
 
@@ -55,7 +64,11 @@ Para cada negativo se inspeccionan estado, filas de eventos, notificaciones y co
 4. Integrar en coordinador/repositorio, actualizar documentación y obtener CI verde en SHA común.
 5. Solicitar autorización explícita para cualquier activación, grant operativo, merge o despliegue.
 
-**Estado:** no hay diseño aprobado; la composición opt-in y el preflight de cero concesiones deben seguir bloqueando la activación. Fleetia y otros recursos del VPS quedan fuera de alcance.
+**Estado actualizado:** el diseño candidato está implementado y demostrado en
+PostgreSQL 17 desechable por `870230f`. La composición HTTP general continúa
+bloqueada porque no se han aprobado ni provisionado clave, login o grants y la
+frontera positiva de lectura aún está pendiente. Fleetia y otros recursos del
+VPS quedan fuera de alcance.
 
 ## Evidencia negativa adicional del harness PG17
 
@@ -66,3 +79,17 @@ los recuentos de eventos, notificaciones y correlaciones durables. Esto
 prueba el cierre negativo de la configuración actual, **no** la identidad
 criptográfica positiva del actor: las llamadas legítimas siguen bloqueadas
 hasta aprobar y demostrar una arquitectura que resista la suplantación.
+
+## Resolución demostrada del Hito 1
+
+La migración `20261024190000_sabora_order_operation_actor_capability_candidate.sql`
+y el harness asociado añaden la prueba positiva que faltaba: capacidades HMAC
+efímeras ligadas a `session_user`, actor, línea, destino, correlación y ventana
+temporal. El login restringido solo puede ejecutar el wrapper autorizado y no
+puede leer el keyring ni acceder directamente a tablas, columnas, secuencias o
+RPC anteriores. Los ensayos cubren falsificación, GUC, `SET ROLE`, expiración,
+revocación, replay, conflicto, concurrencia y rollback.
+
+La resolución es técnica, no operativa. El keyring permanece vacío, no se crea
+login runtime, no se concede `EXECUTE` y `server.mjs` no monta rutas. Cualquier
+activación requiere una decisión separada y autorización explícita.

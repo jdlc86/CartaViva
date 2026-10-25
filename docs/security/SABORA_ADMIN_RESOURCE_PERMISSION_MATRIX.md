@@ -4,7 +4,7 @@ Estado: **inventario para revisión; ningún GRANT autorizado**. Derivada de mig
 
 | Recurso SQL | Lectura necesaria | Mutación prevista | Autoridad de negocio | Estado de concesión |
 | --- | --- | --- | --- | --- |
-| `sabora.staff_members` | `user_id, role, state` para revalidar actor y destinatario | Altas, activación y cambios de personal: contrato específico pendiente | ADMIN titular; protección ROOT | **Bloqueado**; lector técnico separado ya existente |
+| `sabora.staff_members` | `user_id, role, state` para revalidar actor y destinatario | Activación, suspensión y revocación por wrapper de ciclo; alta durable previa en `staff_enrollments` | ADMIN titular activo; ROOT excluido/protegido | **Candidato probado; activación bloqueada**; sin login, clave ni EXECUTE runtime |
 | `sabora.admin_write_ownership` | `owner_user_id` con bloqueo `FOR UPDATE` | Transferir propietario; `assigned_at` | Workflow de cesión; ROOT forzosa auditada | **Bloqueado** |
 | `sabora.admin_ownership_proposals` | Propuesta, participantes, estado, correlación | Solicitud, oferta, aceptación, rechazo y cancelación | Actores y transiciones del workflow | **Bloqueado** |
 | `sabora.admin_ownership_audit` | Correlación y payload para replay | Solo `INSERT` append-only; nunca UPDATE/DELETE/TRUNCATE | Workflow autorizado en misma transacción | **Bloqueado** |
@@ -19,7 +19,7 @@ Estado: **inventario para revisión; ningún GRANT autorizado**. Derivada de mig
 2. No habilitar un writer con `UPDATE` indiscriminado en todas las tablas. Separar gobierno ROOT, configuración administrativa y operaciones de cocina/camarero.
 3. El rol `sabora_admin_writer` sigue NOLOGIN/NOINHERIT/NOBYPASSRLS y sin USAGE ni grants; no existe un LOGIN operativo autorizado.
 4. Para cada recurso falta concretar columnas, funciones, políticas RLS, owner SQL, operación HTTP, auditoría y pruebas positivas/negativas con identidad de mínimos privilegios.
-5. La lectura de `staff_members` por `sabora_staff_reader` **no** autoriza mutaciones administrativas. Los procedimientos de gobierno requieren una estrategia separada de acceso a los datos bajo RLS, aún no aprobada.
+5. La lectura de `staff_members` por `sabora_staff_reader` **no** autoriza mutaciones administrativas. El ciclo candidato usa owner sellado, RLS y privilegios por columna dentro de una única rutina firmada; no reutiliza el lector.
 6. Las funciones existentes de pedidos/QR/estados no son un permiso para otorgar EXECUTE al writer administrativo; cada operación exige su propio límite.
 
 ## Puerta para pasar de matriz a implementación
@@ -45,6 +45,20 @@ La primera operación candidata a un futuro contrato de permisos mínimos es **m
 | Puerta pendiente | Diseño aprobado de RLS, auditoría, contrato HTTP, conexión SQL y bootstrap/recuperación de ROOT |
 
 El uso de `restaurant_settings` como primera candidata no implica que la tabla ya tenga una clave singleton apropiada, política RLS específica o columnas de auditoría; esos elementos deben comprobarse contra el esquema y migraciones antes de cualquier implementación.
+
+## Ficha implementada: ciclo de personal (candidato no activado)
+
+La migración `20261025081318_staff_identity_lifecycle_candidate.sql` concreta la
+operación pendiente de personal con un registro durable anterior a Auth,
+transiciones explícitas, revocación desde cualquier estado, owner sellado,
+RLS forzada, grants por columna, auditoría append-only e idempotencia durable.
+ADMIN debe ser activo y titular; ROOT y ADMIN no titular se deniegan. El
+invitado solo acepta/registra su propio UUID autenticado. La capacidad HMAC
+liga también el login SQL y todo el payload. No se ha concedido acceso runtime.
+
+La especificación y matriz PG17 están en
+`SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md`. Esta ficha no autoriza aplicar la
+migración ni habilitar rutas.
 
 ## Cotejo de esquema: `restaurant_settings` (2026-10-21)
 

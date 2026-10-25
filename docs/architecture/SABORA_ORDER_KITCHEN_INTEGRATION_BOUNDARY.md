@@ -53,3 +53,53 @@ almacena en caché y no acredita recepción por cocina. La ruta sigue sin
 montarse en `server.mjs`. El DTO es **candidato técnico**, no una
 autorización para activar producción; el diseño y la UX de aceptación de
 la PWA deben revisarse antes de integrar.
+
+## Aceptación HTTP de cocina y sala en SHA de integración (25-10-2026)
+
+`tests/order-operations-http-lifecycle-acceptance.test.mjs`
+ejecuta las rutas reales Fastify de operaciones con un
+repositorio de estados **simulado**, y recorre:
+`confirmed → preparing → ready → picked_up`, visibilidad
+de tablero por rol, aviso de recogida y su acuse,
+historial, replay idempotente, conflictos de correlación
+y rechazo de transiciones prohibidas para cocina y
+camarero. Commit `9eb2605`: Sabora CI y Bootstrap SUCCESS.
+
+**Límite de evidencia:** este recorrido prueba integración
+HTTP/coordinador y contrato observable, pero no demuestra
+la transacción SQL ni las restricciones PostgreSQL 17 de
+la transición en esa misma prueba. Las pruebas PG17 del
+escritor y de operaciones son evidencias complementarias;
+no deben presentarse como aceptación integral
+cliente → cocina → camarero en un mismo banco PG17.
+El estado `picked_up` acredita recogida por sala, **no
+entrega al comensal**. El acuse de recepción de comanda
+y la activación de las dos PWA siguen pendientes.
+Sin montaje operativo, merge ni despliegue.
+
+## Aceptación Fastify + PostgreSQL 17 en un mismo recorrido (25-10-2026)
+
+El test `Fastify + PG17: kitchen ready, waiter pickup,
+durable notification, replay and history` de
+`scripts/ci/order-operations-postgres17-integration.test.mjs`
+ejecuta ahora en una misma prueba HTTP real Fastify,
+coordinador y repositorio SQL sobre PostgreSQL 17
+**desechable**. Verifica `confirmed → preparing → ready →
+picked_up`, prohibiciones de rol, tablero de camarero,
+aviso pendiente y acuse de recogida, replay con igual
+`eventId`, historial y persistencia final exacta de
+tres eventos, tres claves de transición y una notificación.
+Commit `ce16de3`: Sabora CI y Bootstrap SUCCESS.
+
+**Límites normativos:** esta prueba usa el pool privilegiado
+del harness CI para el circuito de lectura/escritura; no
+acredita que el login restringido de operaciones tenga
+permiso para leer tablero e historial. Los tests de
+identidad restringida son independientes y su composición
+operativa permanece bloqueada por el gate SQL. El actor
+HTTP del harness se simula expresamente con cabecera
+`Test`, no es autenticación de producción. Tampoco
+demuestra el recorrido completo desde una PWA de cliente,
+ni recepción del despacho en cocina, ni entrega final
+al comensal. Sin activación, migración operativa,
+merge o despliegue.

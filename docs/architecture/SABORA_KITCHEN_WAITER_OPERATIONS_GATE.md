@@ -334,3 +334,72 @@ Se rechaza la respuesta completa si un evento contradice esa matriz. Las
 pruebas incluyen casos válidos e inválidos por rol. La comprobación de salida
 no sustituye la autorización transaccional de la escritura ni resuelve el
 bloqueo de identidad SQL no falsificable.
+
+## Vinculación positiva del actor (Hito 1, no activada)
+
+`870230f` sustituye la futura vía de escritura por
+`transition_order_line_authorized_candidate(...)`. Una capacidad HMAC efímera
+liga el login real (`session_user`), actor verificado, línea, transición,
+correlación y tiempos. PostgreSQL verifica la firma, bloquea clave y membresía,
+revalida caducidad y ejecuta transición, evento, aviso e idempotencia en la
+misma transacción. El harness PG17 demuestra que UUID, GUC, `SET ROLE`, firma
+alterada, rol equivocado, expiración y revocación no elevan autoridad.
+
+La RPC antigua sigue sin `EXECUTE`; el nuevo wrapper tampoco tiene grants ni
+clave runtime. Las lecturas de tablero/historial y la provisión operativa siguen
+pendientes, de modo que las rutas permanecen sin montar. El detalle está en
+`docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
+## Aceptación HTTP de mutación con login PostgreSQL restringido (25-10-2026)
+
+La suite `scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora una prueba Fastify + coordinador + PostgreSQL 17
+**desechable** que usa el login técnico de operaciones
+`NOSUPERUSER NOBYPASSRLS NOINHERIT` y únicamente la RPC
+de transición autorizada por firma. Recorre
+`confirmed → preparing → ready → picked_up`, valida
+notificación durable, reintentos sin duplicados, ausencia
+de actor HTTP y transiciones incompatibles con el rol.
+Comprueba persistencia de tres eventos, tres solicitudes
+de transición y una notificación. Commit `99a8af5`:
+Sabora CI y Bootstrap SUCCESS.
+
+La misma prueba exige `503` con DTO público fijo para
+tablero e historial, porque las capacidades SQL de lectura
+siguen sin aprobarse; el login restringido tampoco puede
+leer directamente `sabora.order_lines`. La identidad
+HTTP se inyecta mediante un mecanismo **solo de test**,
+no representa autenticación de producción.
+
+**Conclusión del gate:** queda validada la mutación
+firmada con login restringido, pero **no** la activación
+integral de operaciones. No se deben conceder SELECT
+generales para hacer pasar tablero/historial. Es necesario
+diseñar y probar proyecciones SQL acotadas por actor y rol
+con permisos mínimos, además de la autenticación real,
+antes de habilitar las rutas. No hay despliegue,
+migración operativa ni merge.
+
+## Aceptación de concurrencia HTTP con identidad SQL restringida (25-10-2026)
+
+La suite PG17 desechable
+`scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora el test `Fastify + restricted PG17: parallel retries
+and competing actors stay atomic`. Ejecuta solicitudes
+Fastify simultáneas con el login técnico de operaciones
+restringido y autorización de transición firmada.
+Verifica que dos reintentos concurrentes del mismo actor
+producen un solo evento persistido y respuestas 201/200
+con el mismo `eventId`; dos actores distintos compitiendo
+por el mismo cambio producen 201/409 y un solo evento;
+y una correlación reutilizada con otro destino responde
+409 sin efectos adicionales. Commit `77d7b4f`:
+Sabora CI y Bootstrap SUCCESS.
+
+Esta prueba **no** amplía permisos de lectura del
+tablero/historial, no autentica personas en producción
+(el actor HTTP sigue siendo un inyector de test) y no
+habilita las rutas operativas. Permanece pendiente el
+gate de proyecciones SQL de lectura acotadas por actor
+y rol, la integración PWA y la aceptación del recorrido
+completo desde confirmación del cliente.

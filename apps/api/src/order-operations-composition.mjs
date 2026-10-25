@@ -24,6 +24,7 @@ function registerOrderOperationsFromPools(app, {
   getTrustedKeys,
   verify,
   observe,
+  issueTransitionCapability,
 } = {}) {
   assertIsolatedPools(staffPool, operationsPool);
   const forRoles = createStaffProtectedHooksFromPool({
@@ -35,6 +36,7 @@ function registerOrderOperationsFromPools(app, {
   });
   const operations = createOrderOperationsCoordinator({
     withTransaction: createPostgresTransaction({pool: operationsPool}),
+    issueTransitionCapability,
   });
   registerOrderOperationsHttp(app, {forRoles, operations});
 }
@@ -42,8 +44,13 @@ function registerOrderOperationsFromPools(app, {
 // Separate asynchronous gate: never mount routes before identity verification.
 // The existing synchronous composition remains unmounted by server.mjs.
 export async function registerVerifiedOrderOperationsFromPools(app, options = {}) {
-  const {staffPool, operationsPool, staffRole, operationsRole} = options;
+  const {
+    staffPool, operationsPool, staffRole, operationsRole, issueTransitionCapability,
+  } = options;
   assertIsolatedPools(staffPool, operationsPool);
+  if (typeof issueTransitionCapability !== 'function') {
+    throw Error('invalid_order_operation_capability_issuer');
+  }
   await preflightOrderOperationsIdentities({
     staffPool, operationsPool, staffRole, operationsRole,
   });

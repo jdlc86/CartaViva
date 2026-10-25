@@ -21,12 +21,17 @@ function trustedStaff(context) {
   });
 }
 
-export function createOrderOperationsCoordinator({withTransaction, repository = createOrderOperationsRepository()} = {}) {
+export function createOrderOperationsCoordinator({
+  withTransaction,
+  repository = createOrderOperationsRepository(),
+  issueTransitionCapability,
+} = {}) {
   if (typeof withTransaction !== 'function' || !repository ||
       typeof repository.verifyMembership !== 'function' ||
       typeof repository.listBoard !== 'function' ||
       typeof repository.transitionLine !== 'function' ||
-      typeof repository.listHistory !== 'function') {
+      typeof repository.listHistory !== 'function' ||
+      typeof issueTransitionCapability !== 'function') {
     throw Error('invalid_order_operations_coordinator');
   }
 
@@ -41,9 +46,17 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
 
     async transitionLine(context, input) {
       const staff = trustedStaff(context);
+      const capability = issueTransitionCapability({
+        actorId: staff.actorId,
+        lineId: input?.lineId,
+        targetStatus: input?.targetStatus,
+        correlationId: input?.correlationId,
+      });
       return withTransaction(async (query) => {
-        await repository.verifyMembership(query, staff);
-        return repository.transitionLine(query, {...input, ...staff});
+        // The capability-verifying SQL wrapper revalidates active membership
+        // under lock. A separate direct staff query here would require table
+        // privileges on the shared operations login and reopen the SQL bypass.
+        return repository.transitionLine(query, {...input, ...staff, capability});
       });
     },
 

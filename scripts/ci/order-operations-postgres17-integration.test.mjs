@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
+import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
@@ -11,8 +14,7 @@ const modulePath = process.env.SABORA_CI_PG_MODULE;
 if (!url || !modulePath) throw Error('disposable_pg17_harness_required');
 const parsed = new URL(url);
 if (process.env.GITHUB_ACTIONS !== 'true' ||
-    !modulePath.startsWith('/tmp/tmp') || !modulePath.endsWith('/node_modules/pg') ||
-    !/^[A-Za-z0-9_.-]+$/.test(modulePath.slice(8, -16)) ||
+    !isDisposablePgModulePath(modulePath) ||
     parsed.protocol !== 'postgresql:' || parsed.hostname !== '127.0.0.1' ||
     parsed.username !== 'postgres' || parsed.password !== 'sabora_ci_ephemeral_only' ||
     parsed.pathname !== '/postgres' || parsed.port === '' ||
@@ -31,7 +33,14 @@ const pool = new Pool({
 });
 const withTransaction = createPostgresTransaction({pool});
 const repository = createOrderOperationsRepository();
-const operations = createOrderOperationsCoordinator({withTransaction, repository});
+const keyId = 'ci_pg17_operations_key';
+const signingSecret = randomBytes(32);
+const issueTransitionCapability = createOrderOperationCapabilityIssuer({
+  keyId, secret: signingSecret, databaseRole: 'postgres',
+});
+const operations = createOrderOperationsCoordinator({
+  withTransaction, repository, issueTransitionCapability,
+});
 
 const kitchenId = 'd1000000-0000-4000-8000-000000000001';
 const waiterId = 'd1000000-0000-4000-8000-000000000002';
@@ -61,6 +70,10 @@ async function fixture({suffix, actorAlias = 'Mesa operativa'}) {
 }
 
 test.before(async () => {
+  await pool.query(`INSERT INTO sabora.order_operation_signing_keys
+    (key_id, hmac_key, not_before, expires_at)
+    VALUES ($1, decode($2, 'hex'), clock_timestamp() - interval '1 minute',
+            clock_timestamp() + interval '1 hour')`, [keyId, signingSecret.toString('hex')]);
   await pool.query(`INSERT INTO sabora.staff_members(user_id, role, state) VALUES
     ($1, 'kitchen', 'active'),
     ($2, 'waiter', 'active'),
@@ -155,6 +168,10 @@ test('PG17 rolls back line, notification, event and idempotency record together'
       lineId: item.lineId,
       targetStatus: 'preparing',
       correlationId: 'pg_forced_rollback_104',
+      capability: issueTransitionCapability({
+        actorId: kitchenId, lineId: item.lineId, targetStatus: 'preparing',
+        correlationId: 'pg_forced_rollback_104',
+      }),
     });
     throw Error('forced_mid_operation_failure');
   }), /forced_mid_operation_failure/);
@@ -189,10 +206,10 @@ test('PG17 staff suspension wins before a waiting operational mutation', async (
     await new Promise((resolve) => setTimeout(resolve, 75));
     assert.equal(settled, false);
     await blocker.query('COMMIT');
-    await assert.rejects(attempt, /order_operations_forbidden/);
+    await assert.rejects(attempt, /actor_not_authorized/);
     await assert.rejects(operations.transitionLine(context(suspendedKitchenId, 'kitchen'), {
       lineId: prior.lineId, targetStatus: 'preparing', correlationId: 'pg_before_suspension_108',
-    }), /order_operations_forbidden/);
+    }), /actor_not_authorized/);
     await assert.rejects(pool.query(
       `SELECT * FROM sabora.transition_order_line_idempotent_candidate($1,$2,$3,$4)`,
       [suspendedKitchenId, prior.lineId, 'preparing', 'pg_before_suspension_108']
@@ -252,4 +269,68 @@ test('Fastify and PG17 integrate board, transition, replay and authorization res
   assert.equal(first.statusCode, 201, first.body);
   assert.equal(replay.statusCode, 200, replay.body);
   assert.equal(first.json().eventId, replay.json().eventId);
+});
+
+test('Fastify + PG17: kitchen ready, waiter pickup, durable notification, replay and history',async t=>{
+  const item=await fixture({suffix:'109'});
+  const app=Fastify({logger:false});
+  const forRoles=roles=>[async(request,reply)=>{
+    const [scheme,userId,role]=String(request.headers.authorization??'').split(' ');
+    if(scheme!=='Test'||!roles.includes(role))
+      return reply.code(401).send({error:'unauthorized'});
+    request.verifiedIdentity={userId};
+    request.verifiedStaff={userId,role};
+  }];
+  registerOrderOperationsHttp(app,{forRoles,operations});
+  await app.ready();
+  t.after(()=>app.close());
+  const kitchen={authorization:`Test ${kitchenId} kitchen`};
+  const waiter={authorization:`Test ${waiterId} waiter`};
+  const post=(headers,targetStatus,correlationId)=>app.inject({
+    method:'POST',
+    url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+    headers,payload:{targetStatus,correlationId},
+  });
+  const board=(headers,status)=>app.inject({
+    method:'GET',url:`/api/v1/operations/order-lines?status=${status}&limit=100`,
+    headers,
+  });
+  assert.ok((await board(kitchen,'confirmed')).json().items.some(x=>x.lineId===item.lineId));
+  assert.equal((await post(waiter,'preparing','pg_http_forbidden_109')).statusCode,403);
+  assert.equal((await post(kitchen,'picked_up','pg_http_forbidden2_109')).statusCode,403);
+  const preparing=await post(kitchen,'preparing','pg_http_prepare_109');
+  assert.equal(preparing.statusCode,201,preparing.body);
+  const ready=await post(kitchen,'ready','pg_http_ready_109');
+  assert.equal(ready.statusCode,201,ready.body);
+  const notificationId=ready.json().notificationId;
+  assert.ok(notificationId);
+  const alert=(await board(waiter,'ready')).json().items.find(x=>x.lineId===item.lineId);
+  assert.equal(alert.notification.id,notificationId);
+  assert.equal(alert.notification.acknowledgedAt,null);
+  const pickup=await post(waiter,'picked_up','pg_http_pickup_109');
+  assert.equal(pickup.statusCode,201,pickup.body);
+  assert.equal(pickup.json().notificationId,notificationId);
+  const replay=await post(waiter,'picked_up','pg_http_pickup_109');
+  assert.equal(replay.statusCode,200,replay.body);
+  assert.equal(replay.json().eventId,pickup.json().eventId);
+  const finished=(await board(waiter,'picked_up')).json().items.find(x=>x.lineId===item.lineId);
+  assert.ok(finished.notification.acknowledgedAt);
+  assert.equal((await board(kitchen,'ready')).json().items.some(x=>x.lineId===item.lineId),false);
+  const history=await app.inject({method:'GET',
+    url:`/api/v1/operations/orders/${item.orderId}/history`,
+    headers:waiter});
+  assert.equal(history.statusCode,200,history.body);
+  assert.deepEqual(history.json().events.map(e=>e.toStatus),
+    ['preparing','ready','picked_up']);
+  const durable=await pool.query(`SELECT lines.status,
+    (SELECT count(*)::integer FROM sabora.order_line_events events
+      WHERE events.order_line_id=lines.id) AS event_count,
+    (SELECT count(*)::integer FROM sabora.order_line_transition_requests requests
+      WHERE requests.order_line_id=lines.id) AS request_count,
+    (SELECT count(*)::integer FROM sabora.pickup_notifications notifications
+      WHERE notifications.order_line_id=lines.id) AS notification_count
+    FROM sabora.order_lines lines WHERE lines.id=$1`,[item.lineId]);
+  assert.deepEqual(durable.rows[0],{
+    status:'picked_up',event_count:3,request_count:3,notification_count:1,
+  });
 });
