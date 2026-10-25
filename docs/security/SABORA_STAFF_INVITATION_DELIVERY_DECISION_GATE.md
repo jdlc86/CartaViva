@@ -214,3 +214,18 @@ y rotación, ni la recuperación de sobre por worker, ni revocación
 y limpieza de ciphertext, ni proveedor de correo. La función SQL
 de custodia es SECURITY INVOKER sin grants runtime y no es una
 migración operativa. El gate de entrega sigue abierto.
+
+## Endurecimiento de identidad de clave y formato de sobre (25-10-2026)
+
+El identificador de clave `keyId` ahora está incluido en el AAD
+AES-256-GCM junto a inscripción, versión y hash. Alterar `keyId`
+rompe la autenticación criptográfica, y el consumidor puede exigir
+un `keyId` explícito para impedir sustituciones de claves. El
+descifrado limita el ciphertext a 32–512 bytes, rechaza formato
+no canónico y sobrecampos. Pruebas unitarias de sustitución de
+`keyId`, formato y límites superadas en `1e33f0c` (Sabora CI
+y Bootstrap SUCCESS).
+
+Este subhito de integridad de sobre queda validado. No representa
+aprovisionamiento/rotación de claves ni autorización de lectura
+del material cifrado. El gate operativo continúa abierto.
