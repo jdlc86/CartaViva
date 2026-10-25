@@ -10,8 +10,7 @@ export function createStaffCustodyMaintenanceCandidate({query,clock=()=>new Date
     async run({cutoff,maxRows=100,maxBatches=1,authorization,dryRun=true}={}){
       if(typeof cutoff!=='string'||!ISO_UTC.test(cutoff)||
         !Number.isFinite(Date.parse(cutoff))||
-        new Date(cutoff).toISOString()!==new Date(Date.parse(cutoff)).toISOString().replace('.000Z','Z') &&
-        new Date(cutoff).toISOString()!==cutoff ||
+        new Date(cutoff).toISOString().slice(0,19)!==cutoff.slice(0,19) ||
         !Number.isSafeInteger(maxRows)||maxRows<1||maxRows>500||
         !Number.isSafeInteger(maxBatches)||maxBatches<1||maxBatches>20)
         throw Error('invalid_staff_custody_maintenance_parameters');
