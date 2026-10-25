@@ -72,3 +72,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - `staff-invitation-outbox-repository-candidate.mjs` contiene SQL parametrizado de lectura con `FOR UPDATE OF o,e` y claim condicional `pending→claimed`, con fence UUID generado en PostgreSQL.
 - Pruebas verifican secuencia SQL, denegación por revocación, filas duplicadas/inválidas y carrera perdida.
 - **La tabla `sabora.staff_invitation_outbox` aún NO existe en la migración del proyecto**: este módulo es deliberadamente no ejecutable en el entorno operativo y no se ha montado en runtime. Falta migración candidata con RLS/grants mínimos, almacenamiento seguro de secretos y protocolo de entrega con garantías frente a revocación concurrente. No considerar cerrada la outbox.
+
+## Hito 2 — esquema SQL de revisión aislada (25-10-2026)
+
+- Nuevo borrador `docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`, fuera de `supabase/migrations`: tabla con estado de entrega, unicidad inscripción+versión, fence, marcas temporales, índices y RLS FORCE. No concede permisos a nadie.
+- Test de contrato verifica RLS, ausencia de grants y que el borrador no está en el directorio de migraciones operativas.
+- **No está ejecutado en PostgreSQL 17 ni integrado con el escritor transaccional.** El modelo de entrega remota no resuelve todavía el envío concurrente con revocación, el material secreto protegido, reintentos ni la auditoría de entrega. Debe revisarse y probarse antes de promoverlo a migración real.
