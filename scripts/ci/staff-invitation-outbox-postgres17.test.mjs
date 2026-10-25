@@ -977,3 +977,67 @@ test('PG17 lifecycle + outbox + encrypted custody commit or rollback as one unit
   [enrollmentId]);
   assert.equal(count.rows[0].n,1);
 });
+
+test('PG17 restricted custody owner commits atomic invite and denies direct access',async()=>{
+  const overlay=await readFile(new URL(
+    '../../docs/security/sql-candidates/staff_invitation_custody_restricted_pg17.sql',
+    import.meta.url),'utf8');
+  await admin.query(overlay);
+  await admin.query(`GRANT EXECUTE ON FUNCTION
+    sabora.store_staff_invitation_custody_restricted_candidate(
+      uuid,uuid,integer,text,text,text,text,text) TO ${runtimeCredentials.role}`);
+  const privileges=await runtime.query(`SELECT
+    session_user::text AS login,current_user::text AS effective,
+    has_table_privilege(current_user,'sabora.staff_invitation_custody_candidate','SELECT') AS can_read,
+    has_table_privilege(current_user,'sabora.staff_invitation_custody_candidate','INSERT') AS can_insert,
+    has_table_privilege(current_user,'sabora.staff_invitation_outbox','SELECT') AS can_read_outbox,
+    has_function_privilege(current_user,
+      'sabora.store_staff_invitation_custody_restricted_candidate(uuid,uuid,integer,text,text,text,text,text)',
+      'EXECUTE') AS can_store`);
+  assert.deepEqual(privileges.rows,[{
+    login:runtimeCredentials.role,effective:runtimeCredentials.role,
+    can_read:false,can_insert:false,can_read_outbox:false,can_store:true,
+  }]);
+  await assert.rejects(runtime.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),
+    error=>error?.code==='42501');
+  await assert.rejects(runtime.query(`INSERT INTO sabora.staff_invitation_custody_candidate(
+    job_id,enrollment_id,invite_version,token_hash,envelope_version,key_id,nonce,ciphertext,tag
+  ) VALUES (gen_random_uuid(),gen_random_uuid(),1,decode($1,'hex'),1,
+    'candidate_key_001',decode($2,'hex'),decode($3,'hex'),decode($4,'hex'))`,
+  ['a'.repeat(64),'b'.repeat(24),'c'.repeat(64),'d'.repeat(32)]),
+  error=>error?.code==='42501');
+  const token='R'.repeat(48);
+  const enrollmentId=uuid('d');
+  const capability=integratedCapability({
+    action:'invite',enrollmentId,requestedRole:'waiter',
+    inviteeEmailHashHex:digest('restricted-custody@example.invalid'),
+    inviteTokenHashHex:digest(token),correlationId:'restricted_custody_001',
+  });
+  const coordinator=createStaffInvitationCustodyCoordinatorCandidate({
+    withTransaction:callback=>withTransaction(callback,runtime),
+    encryptionKey:randomBytes(32),keyId:'candidate_key_001',restrictedCustody:true,
+  });
+  await assert.rejects(coordinator.transitionAndStore({capability,token:'X'.repeat(48)}),
+    /staff_delivery_token_hash_mismatch/);
+  const rolled=await admin.query(`SELECT count(*)::integer AS n FROM
+    sabora.staff_enrollments WHERE id=$1`,[enrollmentId]);
+  assert.equal(rolled.rows[0].n,0);
+  const result=await coordinator.transitionAndStore({capability,token});
+  assert.equal(result.stored,true);
+  assert.equal(result.enqueued,true);
+  const record=await admin.query(`SELECT c.job_id,
+    encode(c.token_hash,'hex') AS token_hash,c.key_id
+    FROM sabora.staff_invitation_custody_candidate c
+    JOIN sabora.staff_invitation_outbox o ON o.id=c.job_id
+    WHERE c.enrollment_id=$1 AND c.invite_version=o.invite_version`,[enrollmentId]);
+  assert.equal(record.rows.length,1);
+  assert.equal(record.rows[0].job_id,result.jobId);
+  assert.equal(record.rows[0].token_hash,digest(token));
+  const replay=await coordinator.transitionAndStore({capability,token});
+  assert.equal(replay.stored,false);
+  assert.equal(replay.repeated,true);
+  await assert.rejects(runtime.query(`SELECT sabora.store_staff_invitation_custody_candidate(
+    $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
+  [result.jobId,enrollmentId,1,digest(token),'candidate_key_001',
+    'a'.repeat(16),'b'.repeat(48),'c'.repeat(22)]),error=>error?.code==='42501');
+});
