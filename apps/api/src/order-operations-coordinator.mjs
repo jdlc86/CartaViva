@@ -55,10 +55,11 @@ function assertSafeInput(value) {
 }
 
 function assertVerifiedMembership(verified, staff) {
-  if (!verified || typeof verified !== 'object' || Array.isArray(verified) ||
-      typeof verified.actorId !== 'string' || !UUID.test(verified.actorId) ||
-      verified.actorId.toLowerCase() !== staff.actorId.toLowerCase() ||
-      verified.role !== staff.role) {
+  const actorId = ownData(verified, 'actorId');
+  const role = ownData(verified, 'role');
+  if (typeof actorId !== 'string' || !UUID.test(actorId) ||
+      actorId.toLowerCase() !== staff.actorId.toLowerCase() ||
+      role !== staff.role) {
     throw Error('order_operations_forbidden');
   }
 }
