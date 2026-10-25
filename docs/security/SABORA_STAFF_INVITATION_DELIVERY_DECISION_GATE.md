@@ -347,3 +347,32 @@ de claves se inyecta en memoria; no existe aprovisionamiento
 de secretos, procedimiento operativo de rotación, política
 aprobada de borrado de ciphertext ni proveedor de correo.
 No se autoriza despliegue ni migración.
+
+## Purga candidata acotada de custodia terminal (25-10-2026)
+
+El candidato `sql-candidates/staff_invitation_custody_purge_pg17.sql`
+crea un principal `NOLOGIN/NOINHERIT/NOBYPASSRLS` independiente
+con permisos limitados a SELECT del estado/fecha de outbox y
+SELECT/DELETE del sobre cifrado. La función de acceso restringido
+`purge_terminal_staff_invitation_custody_candidate(cutoff,max_rows)`
+elimina como máximo 500 sobres por invocación y exclusivamente
+cuando el trabajo está en estado terminal
+`cancelled`, `delivered` o `failed`, tanto el cambio de estado
+como la creación del sobre preceden al cutoff explícito, y
+la función no recibe un cutoff futuro. El outbox no se elimina.
+No se conceden privilegios directos de DELETE al runtime.
+
+Las pruebas en PostgreSQL 17 desechable comprueban rechazo de
+límite cero, límite mayor de 500 y cutoff futuro, denegación
+de DELETE directo, preservación de sobre `pending`,
+eliminación por lotes de sobres `cancelled`, repetición
+idempotente y permanencia de todos los registros outbox.
+Evidencia: commit `095f0e2`, Sabora CI y Bootstrap SUCCESS.
+
+**Decisión normativa aún pendiente:** no existe duración
+aprobada de retención, planificación operativa ni autorización
+para ejecutar la purga. El cutoff es explícito y solo
+sirve para la validación candidata. La eliminación de filas
+no constituye borrado físico garantizado en WAL, copias
+de seguridad o réplicas, ni elimina los hashes persistentes.
+No debe aplicarse en Supabase operativo.
