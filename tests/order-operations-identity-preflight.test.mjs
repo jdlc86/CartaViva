@@ -17,7 +17,7 @@ function pool(role, overrides = {}) {
             current_role: role, session_role: role,
             superuser: false, bypass_rls: false, can_login: true,
             inherits_roles: false, can_create_role: false, can_create_db: false,
-            can_replicate: false, has_role_memberships: false,
+            can_replicate: false, has_role_memberships: false, has_role_grantees: false,
             connection_limit: -1, password_valid_until: null,
             schema_usage: true, schema_create: false, database_create: false, candidate_rpc_execute: false,
             accessible_private_tables: 0, accessible_private_sequences: 0,
@@ -66,7 +66,7 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
   for (const override of [
     {session_role: 'postgres'}, {current_role: 'postgres'},
     {superuser: true}, {bypass_rls: true}, {can_login: false},
-    {inherits_roles: true}, {can_create_role: true}, {can_create_db: true},
+    {inherits_roles: true}, {has_role_grantees: true}, {can_create_role: true}, {can_create_db: true},
     {can_replicate: true}, {has_role_memberships: true},
     {connection_limit: 'invalid'}, {connection_limit: -2},
     {password_valid_until: 'invalid'},
