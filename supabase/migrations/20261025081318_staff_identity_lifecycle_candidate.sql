@@ -509,6 +509,23 @@ BEGIN
     WHERE request.actor_user_id = p_actor_user_id
       AND request.correlation_id = p_correlation_id;
   IF FOUND THEN
+    -- Durable replay must not disclose or revive a revoked invitation.
+    -- Lock the original enrollment, not a freshly generated retry UUID.
+    SELECT enrollment.* INTO v_enrollment
+      FROM sabora.staff_enrollments enrollment
+      WHERE enrollment.id = v_request.enrollment_id
+      FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'staff_enrollment_not_found' USING errcode = 'P0002';
+    END IF;
+    IF v_enrollment.state = 'revoked' AND p_action <> 'revoke' THEN
+      RAISE EXCEPTION 'staff_enrollment_revoked' USING errcode = '42501';
+    END IF;
+    v_now := clock_timestamp();
+    v_now_ms := floor(extract(epoch FROM v_now) * 1000)::bigint;
+    IF p_expires_at_ms <= v_now_ms OR v_key_expires_at <= v_now THEN
+      RAISE EXCEPTION 'invalid_staff_lifecycle_capability' USING errcode = '42501';
+    END IF;
     IF v_request.request_fingerprint IS DISTINCT FROM v_fingerprint THEN
       RAISE EXCEPTION 'staff_lifecycle_idempotency_conflict' USING errcode = '23505';
     END IF;
