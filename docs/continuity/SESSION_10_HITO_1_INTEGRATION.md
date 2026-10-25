@@ -130,3 +130,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - El resultado `unknown` es terminal `failed`, queda identificado de forma durable y **no se reintenta automáticamente**: un proveedor podría haber aceptado la petición aunque se perdiera su respuesta. `accepted` significa aceptación del proveedor, no entrega en buzón ni activación del personal.
 - Siete pruebas de contrato y flujo simulado cubren aceptación, fallo permanente, ambigüedad, fence ausente, carrera perdida y parámetros inválidos.
 - Pendientes antes de operar: aprobación del contrato de proveedor, almacenamiento seguro del secreto de entrega, enqueue transaccional, gestión de expiración de claims y pruebas SQL reales de la outbox en PostgreSQL 17. No se ha montado ningún worker ni endpoint; ninguna entrega real.
+
+## Corrección integral de coherencia SQL terminal
+
+- Se detectó un defecto real en el borrador SQL: `dispatching→failed` retenía `dispatch_authorized_at`, pero el constraint anterior lo prohibía. Ahora `failed` conserva ese timestamp, coherente con el flujo de registro de resultado.
+- Los constraints terminales exigen `provider_outcome IS NOT NULL` explícito, para evitar el comportamiento de `CHECK` con expresiones `UNKNOWN` en PostgreSQL.
+- Se actualizaron y ampliaron las pruebas de contrato. La corrección permanece exclusivamente en `docs/security/sql-candidates`, fuera de migraciones operativas.
