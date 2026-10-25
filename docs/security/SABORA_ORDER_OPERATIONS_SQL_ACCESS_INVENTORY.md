@@ -373,3 +373,8 @@ Se añade al preflight de ambos logins técnicos el rechazo de membresías de ro
 Las rutas candidatas de tablero e historial, todavía **no montadas**, solo continúan si `verifyMembership` devuelve un registro explícito con `actorId` UUID coincidente con la identidad autenticada y `role` coincidente con el rol del personal verificado. Se rechazan respuestas ausentes, contradictorias o malformadas antes de ejecutar la lectura operativa. Se conserva la captura previa e inmutable de parámetros. Esta validación Node no concede privilegios de lectura SQL ni satisface por sí sola el gate de lecturas actor-bound pendiente.
 
 Las transiciones no hacen una segunda lectura directa de membresía desde el login restringido; la función SQL de capacidad autorizada realiza la verificación de firma y revalidación bajo bloqueo. Pruebas específicas distinguen ambas rutas para evitar que la reconciliación reintroduzca permisos de tabla sobre el principal de operaciones.
+
+
+## Verificación de cierre de conexiones en preflight (25-10-2026)
+
+El gate de identidad SQL cuenta ahora con pruebas de regresión que cubren tres salidas anómalas: fallo de liberación tras inspección exitosa (no se autoriza el inicio), fallo de liberación mientras se propaga un error de inspección (se preserva el error primario) y cliente SQL malformado cuyo método `release` falla (se conserva el rechazo por cliente inválido). Estas pruebas no alteran credenciales ni recursos SQL reales. La validación completa de CI debe consultarse sobre el commit final de la rama, no inferirse de una ejecución anterior.
