@@ -36,7 +36,7 @@ test('authenticated context rejects version, enrollment and hash substitution',(
 test('tampered ciphertext, tag, nonce or extra metadata fail closed',()=>{
   const envelope=sealStaffInvitationToken(args);
   for(const field of ['nonce','tag','ciphertext']){
-    const altered={...envelope,[field]:'A'+envelope[field].slice(1)};
+    const altered={...envelope,[field]:(envelope[field][0]==='A'?'B':'A')+envelope[field].slice(1)};
     assert.throws(()=>open(altered),/staff_delivery_(decryption_denied|envelope)/);
   }
   assert.throws(()=>open({...envelope,debug:token}),/invalid_staff_delivery_envelope/);
