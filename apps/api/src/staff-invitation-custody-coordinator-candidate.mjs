@@ -14,11 +14,12 @@ export const STAFF_INVITATION_CUSTODY_RESTRICTED_SQL = STAFF_INVITATION_CUSTODY_
   'store_staff_invitation_custody_restricted_candidate(');
 
 export function createStaffInvitationCustodyCoordinatorCandidate({
-  withTransaction, encryptionKey, keyId, restrictedCustody = false,
+  withTransaction, encryptionKey, keyId, keyring, restrictedCustody = false,
 } = {}) {
   if (typeof withTransaction !== 'function' ||
-      !Buffer.isBuffer(encryptionKey) || encryptionKey.length !== 32 ||
-      typeof keyId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(keyId)) {
+      (keyring ? (typeof keyring.active !== 'function' || encryptionKey !== undefined || keyId !== undefined) :
+        (!Buffer.isBuffer(encryptionKey) || encryptionKey.length !== 32 ||
+        typeof keyId !== 'string' || !/^[A-Za-z0-9_-]{8,64}$/.test(keyId)))) {
     throw Error('invalid_staff_custody_coordinator_config');
   }
   return Object.freeze({
@@ -31,11 +32,12 @@ export function createStaffInvitationCustodyCoordinatorCandidate({
         const enqueue = createStaffInvitationEnqueueCandidate({query});
         const result = await enqueue.transitionAndEnqueue(capability);
         if (result.repeated) return Object.freeze({...result, stored:false});
+        const selected = keyring ? keyring.active() : {keyId,key:encryptionKey};
         const envelope = sealStaffInvitationToken({
           token, enrollmentId:result.transition.enrollmentId,
           inviteVersion:result.transition.inviteVersion,
           tokenHashHex:capability.inviteTokenHashHex,
-          keyId, key:encryptionKey,
+          keyId:selected.keyId, key:selected.key,
         });
         await query(restrictedCustody ? STAFF_INVITATION_CUSTODY_RESTRICTED_SQL : STAFF_INVITATION_CUSTODY_INSERT_SQL, [
           result.jobId,result.transition.enrollmentId,result.transition.inviteVersion,
