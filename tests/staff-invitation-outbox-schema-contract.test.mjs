@@ -35,3 +35,10 @@ test('candidate dispatch authorization is durable and fenced by schema constrain
   assert.match(sql, /state IN \('dispatching', 'delivered'\) AND dispatch_authorized_at IS NOT NULL/);
   assert.match(sql, /dispatch_authorized_at >= claimed_at/);
 });
+
+test('failed dispatch preserves authorization timestamp and requires nonnull outcome', async () => {
+  const sql = await readFile(file, 'utf8');
+  assert.match(sql, /state IN \\('dispatching', 'delivered', 'failed'\\) AND dispatch_authorized_at IS NOT NULL/);
+  assert.match(sql, /state = 'failed' AND provider_outcome IS NOT NULL/);
+  assert.match(sql, /state = 'delivered' AND provider_outcome IS NOT NULL/);
+});
