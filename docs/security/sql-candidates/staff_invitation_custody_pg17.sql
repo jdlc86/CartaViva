@@ -1,5 +1,5 @@
-// Design-only encrypted custody. Never installed on operational Supabase.
-// No token plaintext or encryption key is stored in PostgreSQL.
+-- Design-only encrypted custody. Never installed on operational Supabase.
+-- No token plaintext or encryption key is stored in PostgreSQL.
 BEGIN;
 CREATE TABLE sabora.staff_invitation_custody_candidate (
   job_id uuid PRIMARY KEY REFERENCES sabora.staff_invitation_outbox(id) ON DELETE RESTRICT,
