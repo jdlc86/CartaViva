@@ -270,3 +270,67 @@ test('Fastify and PG17 integrate board, transition, replay and authorization res
   assert.equal(replay.statusCode, 200, replay.body);
   assert.equal(first.json().eventId, replay.json().eventId);
 });
+
+test('Fastify + PG17: kitchen ready, waiter pickup, durable notification, replay and history',async t=>{
+  const item=await fixture({suffix:'109'});
+  const app=Fastify({logger:false});
+  const forRoles=roles=>[async(request,reply)=>{
+    const [scheme,userId,role]=String(request.headers.authorization??'').split(' ');
+    if(scheme!=='Test'||!roles.includes(role))
+      return reply.code(401).send({error:'unauthorized'});
+    request.verifiedIdentity={userId};
+    request.verifiedStaff={userId,role};
+  }];
+  registerOrderOperationsHttp(app,{forRoles,operations});
+  await app.ready();
+  t.after(()=>app.close());
+  const kitchen={authorization:`Test ${kitchenId} kitchen`};
+  const waiter={authorization:`Test ${waiterId} waiter`};
+  const post=(headers,targetStatus,correlationId)=>app.inject({
+    method:'POST',
+    url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+    headers,payload:{targetStatus,correlationId},
+  });
+  const board=(headers,status)=>app.inject({
+    method:'GET',url:`/api/v1/operations/order-lines?status=${status}&limit=100`,
+    headers,
+  });
+  assert.ok((await board(kitchen,'confirmed')).json().items.some(x=>x.lineId===item.lineId));
+  assert.equal((await post(waiter,'preparing','pg_http_forbidden_109')).statusCode,403);
+  assert.equal((await post(kitchen,'picked_up','pg_http_forbidden2_109')).statusCode,403);
+  const preparing=await post(kitchen,'preparing','pg_http_prepare_109');
+  assert.equal(preparing.statusCode,201,preparing.body);
+  const ready=await post(kitchen,'ready','pg_http_ready_109');
+  assert.equal(ready.statusCode,201,ready.body);
+  const notificationId=ready.json().notificationId;
+  assert.ok(notificationId);
+  const alert=(await board(waiter,'ready')).json().items.find(x=>x.lineId===item.lineId);
+  assert.equal(alert.notification.id,notificationId);
+  assert.equal(alert.notification.acknowledgedAt,null);
+  const pickup=await post(waiter,'picked_up','pg_http_pickup_109');
+  assert.equal(pickup.statusCode,201,pickup.body);
+  assert.equal(pickup.json().notificationId,notificationId);
+  const replay=await post(waiter,'picked_up','pg_http_pickup_109');
+  assert.equal(replay.statusCode,200,replay.body);
+  assert.equal(replay.json().eventId,pickup.json().eventId);
+  const finished=(await board(waiter,'picked_up')).json().items.find(x=>x.lineId===item.lineId);
+  assert.ok(finished.notification.acknowledgedAt);
+  assert.equal((await board(kitchen,'ready')).json().items.some(x=>x.lineId===item.lineId),false);
+  const history=await app.inject({method:'GET',
+    url:`/api/v1/operations/orders/${item.orderId}/history`,
+    headers:waiter});
+  assert.equal(history.statusCode,200,history.body);
+  assert.deepEqual(history.json().events.map(e=>e.toStatus),
+    ['preparing','ready','picked_up']);
+  const durable=await pool.query(`SELECT lines.status,
+    (SELECT count(*)::integer FROM sabora.order_line_events events
+      WHERE events.order_line_id=lines.id) AS event_count,
+    (SELECT count(*)::integer FROM sabora.order_line_transition_requests requests
+      WHERE requests.order_line_id=lines.id) AS request_count,
+    (SELECT count(*)::integer FROM sabora.pickup_notifications notifications
+      WHERE notifications.order_line_id=lines.id) AS notification_count
+    FROM sabora.order_lines lines WHERE lines.id=$1`,[item.lineId]);
+  assert.deepEqual(durable.rows[0],{
+    status:'picked_up',event_count:3,request_count:3,notification_count:1,
+  });
+});
