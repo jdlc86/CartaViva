@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {registerVerifiedOrderOperationsFromPools} from '../apps/api/src/order-operations-composition.mjs';
+import {registerVerifiedOrderOperationsFromPools, registerVerifiedOrderTransitionsOnlyFromPools} from '../apps/api/src/order-operations-composition.mjs';
 
 const pool = (user, connectionString) => ({
   options: {user, connectionString},
@@ -129,4 +129,40 @@ test('verified composition rejects a missing capability issuer before SQL or rou
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
   }), /invalid_order_operation_capability_issuer/);
   assert.deepEqual(events, []);
+});
+
+test('transition-only composition fails closed before SQL or HTTP for invalid isolation, issuer or route',async()=>{
+ const events=[];
+ const make=(user,uri)=>({
+  options:{user,connectionString:uri},
+  query(){events.push('query');},
+  async connect(){events.push('connect');throw Error('unexpected_sql');},
+ });
+ const staffPool=make('sabora_staff_reader','postgres://staff');
+ const operationsPool=make('sabora_operations','postgres://operations');
+ const app={
+  hasRoute(){return false;},
+  get(){events.push('get');},
+  post(){events.push('post');},
+ };
+ const base={staffPool,operationsPool,
+  staffRole:'sabora_staff_reader',operationsRole:'sabora_operations',
+  issueTransitionCapability(){},
+ };
+ for(const options of [
+  {...base,operationsPool:staffPool},
+  {...base,operationsRole:base.staffRole},
+  {...base,issueTransitionCapability:null},
+ ]) {
+  await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,options),
+   /pool_isolation|capability_issuer/);
+  assert.deepEqual(events,[]);
+ }
+ await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools({
+  ...app,hasRoute(){return true;},
+ },base),/route_registration/);
+ assert.deepEqual(events,[]);
+ await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,base),
+  /invalid_order_operations_sql_client/);
+ assert.deepEqual(events,['connect']);
 });
