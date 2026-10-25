@@ -782,7 +782,8 @@ test('PG17 expired claimed job receives new fence; stale worker cannot dispatch'
   const first = await claimCurrentStaffInvitation({withTransaction, repository, jobId});
   assert.equal(first.claimed, true);
   await admin.query(`UPDATE sabora.staff_invitation_outbox
-    SET claimed_at=clock_timestamp()-interval '2 minutes'
+    SET created_at=clock_timestamp()-interval '3 minutes',
+        claimed_at=clock_timestamp()-interval '2 minutes'
     WHERE id=$1`, [jobId]);
   const recovery = createStaffInvitationClaimRecoveryCandidate({withTransaction});
   const second = await recovery.reclaim({jobId, staleFence:first.fence, leaseSeconds:60});
