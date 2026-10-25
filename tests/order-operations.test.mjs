@@ -14,6 +14,14 @@ const eventId = '40000000-0000-4000-8000-000000000004';
 const notificationId = '50000000-0000-4000-8000-000000000005';
 const confirmedAt = new Date('2026-10-24T10:00:00.000Z');
 
+function capability({actorId: actor, lineId: line, targetStatus, correlationId}) {
+  return Object.freeze({
+    keyId: 'test_key_01', databaseRole: 'sabora_operations',
+    actorId: actor, lineId: line, targetStatus, correlationId,
+    issuedAtMs: 1_000, expiresAtMs: 16_000, signatureHex: 'a'.repeat(64),
+  });
+}
+
 function context(role = 'kitchen') {
   return {
     verifiedIdentity: {userId: actorId},
@@ -21,7 +29,7 @@ function context(role = 'kitchen') {
   };
 }
 
-test('coordinator revalidates current membership inside every transaction', async () => {
+test('coordinator binds a transition capability and leaves membership revalidation to SQL', async () => {
   const calls = [];
   const repository = {
     async verifyMembership(_query, staff) { calls.push(['membership', staff]); },
@@ -32,6 +40,7 @@ test('coordinator revalidates current membership inside every transaction', asyn
   const transactions = [];
   const operations = createOrderOperationsCoordinator({
     repository,
+    issueTransitionCapability: capability,
     withTransaction: async (work) => {
       transactions.push('BEGIN');
       const result = await work(async () => ({rows: []}));
@@ -44,9 +53,10 @@ test('coordinator revalidates current membership inside every transaction', asyn
   await operations.listHistory(context(), {orderId, limit: 10});
   assert.deepEqual(transactions, ['BEGIN', 'COMMIT', 'BEGIN', 'COMMIT', 'BEGIN', 'COMMIT']);
   assert.deepEqual(calls.map(([name]) => name), [
-    'membership', 'board', 'membership', 'transition', 'membership', 'history',
+    'membership', 'board', 'transition', 'membership', 'history',
   ]);
-  assert.equal(calls[3][1].actorId, actorId);
+  assert.equal(calls[2][1].actorId, actorId);
+  assert.equal(calls[2][1].capability.actorId, actorId);
 });
 
 test('coordinator rejects identity and membership mismatch before opening SQL transaction', async () => {
@@ -56,6 +66,7 @@ test('coordinator rejects identity and membership mismatch before opening SQL tr
       verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {},
     },
     withTransaction: async () => { transactions += 1; },
+    issueTransitionCapability: capability,
   });
   await assert.rejects(operations.listBoard({
     verifiedIdentity: {userId: actorId},
@@ -71,6 +82,7 @@ test('coordinator rejects malformed verified actor context without opening a tra
       verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {},
     },
     withTransaction: async () => { transactions++; },
+    issueTransitionCapability: capability,
   });
   for (const invalid of [
     {verifiedIdentity: {userId: actorId}, verifiedStaff: {userId: 1, role: 'kitchen'}},
@@ -201,7 +213,13 @@ test('repository denies role-incompatible transitions without any SQL call', asy
 
 test('repository validates idempotent transition and history results', async () => {
   const repository = createOrderOperationsRepository();
-  const transition = await repository.transitionLine(async () => ({rows: [{
+  const observed = [];
+  const transitionCapability = capability({
+    actorId, lineId, targetStatus: 'ready', correlationId: 'transition_002',
+  });
+  const transition = await repository.transitionLine(async (sql, parameters) => {
+    observed.push({sql, parameters});
+    return {rows: [{
     updated_order_id: orderId,
     updated_line_id: lineId,
     previous_status: 'preparing',
@@ -209,7 +227,9 @@ test('repository validates idempotent transition and history results', async () 
     repeated: false,
     event_id: eventId,
     notification_id: notificationId,
-  }]}), {actorId, role: 'kitchen', lineId, targetStatus: 'ready', correlationId: 'transition_002'});
+  }]};
+  }, {actorId, role: 'kitchen', lineId, targetStatus: 'ready',
+    correlationId: 'transition_002', capability: transitionCapability});
   assert.deepEqual(transition, {
     version: 1,
     orderId,
@@ -220,6 +240,12 @@ test('repository validates idempotent transition and history results', async () 
     eventId,
     notificationId,
   });
+  assert.match(observed[0].sql, /transition_order_line_authorized_candidate/);
+  assert.deepEqual(observed[0].parameters, [
+    transitionCapability.keyId, transitionCapability.databaseRole, actorId, lineId,
+    'ready', 'transition_002', transitionCapability.issuedAtMs,
+    transitionCapability.expiresAtMs, transitionCapability.signatureHex,
+  ]);
   const history = await repository.listHistory(async () => ({rows: [{
     event_id: eventId,
     line_id: lineId,
@@ -232,6 +258,30 @@ test('repository validates idempotent transition and history results', async () 
   }]}), {actorId, role: 'kitchen', orderId, limit: 20});
   assert.equal(history.events[0].actorRole, 'kitchen');
   assert.equal(Object.hasOwn(history.events[0], 'actorUserId'), false);
+});
+
+test('repository rejects a missing, altered or overlong capability before SQL', async () => {
+  const repository = createOrderOperationsRepository();
+  let queries = 0;
+  const base = {
+    actorId, role: 'kitchen', lineId, targetStatus: 'preparing',
+    correlationId: 'transition_capability_001',
+  };
+  const valid = capability(base);
+  for (const invalid of [
+    undefined,
+    {...valid, actorId: '90000000-0000-4000-8000-000000000009'},
+    {...valid, targetStatus: 'ready'},
+    {...valid, correlationId: 'transition_capability_002'},
+    {...valid, expiresAtMs: valid.issuedAtMs + 30_001},
+    {...valid, signatureHex: 'A'.repeat(64)},
+    {...valid, extra: true},
+  ]) {
+    await assert.rejects(repository.transitionLine(async () => { queries++; }, {
+      ...base, capability: invalid,
+    }), /invalid_order_operation_capability/);
+  }
+  assert.equal(queries, 0);
 });
 
 test('repository rejects globally unordered history with role-compatible event rows', async () => {
@@ -361,7 +411,8 @@ test('repository rejects impossible SQL transition results and missing pickup no
   ]) {
     await assert.rejects(repository.transitionLine(async () => ({
       rows: [{...base, ...override}],
-    }), {actorId, role: 'admin', lineId, targetStatus, correlationId: 'transition_004'}),
+    }), {actorId, role: 'admin', lineId, targetStatus, correlationId: 'transition_004',
+      capability: capability({actorId, lineId, targetStatus, correlationId: 'transition_004'})}),
     /invalid_order_operations_sql_result/);
   }
 });
@@ -541,6 +592,7 @@ test('untrusted operation inputs cannot replace verified actor or staff role', a
   const operations = createOrderOperationsCoordinator({
     repository,
     withTransaction: async work => work(async () => ({rows: []})),
+    issueTransitionCapability: capability,
   });
   const forged = {actorId: '90000000-0000-4000-8000-000000000009', role: 'admin'};
   await operations.listBoard(context('waiter'), {...forged, limit: 10});

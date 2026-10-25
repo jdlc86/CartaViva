@@ -304,6 +304,22 @@ rechace la identidad; finalmente revoca la concesión y comprueba recuperación.
 Esta prueba se ejecuta exclusivamente sobre PostgreSQL desechable de CI.
 No constituye autorización para grants positivos ni para montar rutas.
 
+## Inventario positivo candidato del wrapper firmado
+
+La decisión del Hito 1 añade
+`transition_order_line_authorized_candidate(...)` y deja la RPC invoker con
+actor libre revocada. El principal runtime futuro solo necesitaría `USAGE` del
+esquema y `EXECUTE` de ese wrapper; no obtiene tablas, columnas, secuencias,
+keyring, DDL, membresías ni otras funciones. Un owner `NOLOGIN` sellado recibe
+las columnas exactas y queda sometido a RLS forzada.
+
+`preflightOrderTransitionIdentity` modela esa superficie positiva y rechaza
+cualquier permiso extra. El harness PG17 la prueba con login restringido y
+ataques de actor, GUC, `SET ROLE`, firma, replay, revocación y concurrencia. La
+migración no provisiona login, clave o grant runtime: el inventario sirve para
+revisión, no para despliegue. Véase
+`SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
 ## Gate de regresión de activación (hito CI)
 
 `tests/order-operations-activation-gate.test.mjs` añade cuatro verificaciones
