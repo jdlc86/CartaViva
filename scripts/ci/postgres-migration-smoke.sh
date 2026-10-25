@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Disposable, network-isolated PostgreSQL 17. No Supabase or VPS connections.
+# Never run Docker cleanup/startup on a shared VPS or developer machine.
+if [[ "${GITHUB_ACTIONS:-}" != true || -z "${RUNNER_TEMP:-}" || -z "${GITHUB_RUN_ID:-}" ]]; then
+  echo 'Refusing to start: isolated GitHub Actions runner required' >&2
+  exit 1
+fi
 container="sabora-pg-single-ci-${GITHUB_RUN_ID:-local}-$$"
 cleanup() { docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -18,6 +23,9 @@ for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
 done
+# Validate candidate kitchen/waiter operation grants and RLS in disposable PG17.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
+ < scripts/ci/order-operations-grants-smoke.sql
 # Verify administrative reader least-privilege grants and FORCE RLS in isolated PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-grants-smoke.sql
@@ -105,7 +113,8 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>19 then raise exception 'Expected nineteen RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>20 then raise exception 'Expected twenty RLS protected single-restaurant tables, got %',v_count; end if;
+ if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' and c.relname='order_line_transition_requests' and c.relrowsecurity and c.relforcerowsecurity) then raise exception 'order operation attempts RLS protection missing'; end if;
  if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' and c.relname='catalog_items' and c.relrowsecurity and c.relforcerowsecurity) then raise exception 'catalog RLS protection missing'; end if;
  if exists(select 1 from information_schema.columns where table_schema='sabora' and column_name='restaurant_id') then
   raise exception 'Multi-restaurant column remains';
