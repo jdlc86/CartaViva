@@ -108,10 +108,11 @@ async function inspect(pool, expectedRole) {
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !== 0 ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
-        !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
+        !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
-            !Number.isFinite(row.password_valid_until.getTime())))) {
+            !Number.isFinite(row.password_valid_until.getTime()) ||
+            row.password_valid_until.getTime() <= Date.now())))) {
       throw Error('order_operations_sql_identity_rejected');
     }
     return Object.freeze({role: expectedRole});
