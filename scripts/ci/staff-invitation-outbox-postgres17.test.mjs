@@ -12,6 +12,7 @@ import {authorizeStaffInvitationDispatch} from '../../apps/api/src/staff-invitat
 import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-invitation-delivery-outcome-candidate.mjs';
 import {reconcileStaffInvitationJob} from '../../apps/api/src/staff-invitation-reconciliation-candidate.mjs';
 import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-invitation-outbox-repository-candidate.mjs';
+import {createStaffInvitationClaimRecoveryCandidate} from '../../apps/api/src/staff-invitation-claim-recovery-candidate.mjs';
 import {
   createStaffInvitationEnqueueCandidate,
   STAFF_INVITATION_ENQUEUE_SQL,
@@ -773,4 +774,37 @@ test('PG17 revoke wins a concurrent resend and leaves no deliverable job', async
     enrollment_state: 'revoked', invite_version: 1,
     job_state: 'cancelled', deliverable_jobs: 0,
   }]);
+});
+
+test('PG17 expired claimed job receives new fence; stale worker cannot dispatch', async () => {
+  const enrollment = await seedEnrollment();
+  const jobId = await seedJob(enrollment);
+  const first = await claimCurrentStaffInvitation({withTransaction, repository, jobId});
+  assert.equal(first.claimed, true);
+  await admin.query(`UPDATE sabora.staff_invitation_outbox
+    SET claimed_at=clock_timestamp()-interval '2 minutes'
+    WHERE id=$1`, [jobId]);
+  const recovery = createStaffInvitationClaimRecoveryCandidate({withTransaction});
+  const second = await recovery.reclaim({jobId, staleFence:first.fence, leaseSeconds:60});
+  assert.equal(second.reclaimed, true);
+  assert.notEqual(second.fence, first.fence);
+  assert.deepEqual(await recovery.reclaim({jobId,staleFence:first.fence,leaseSeconds:60}),
+    {reclaimed:false});
+  assert.deepEqual(await authorizeStaffInvitationDispatch({
+    withTransaction,repository,jobId,fence:first.fence,
+  }), {authorized:false,reason:'claim_not_found'});
+  assert.deepEqual(await authorizeStaffInvitationDispatch({
+    withTransaction,repository,jobId,fence:second.fence,
+  }), {authorized:true});
+  assert.deepEqual(await recovery.reclaim({jobId,staleFence:second.fence,leaseSeconds:60}),
+    {reclaimed:false});
+});
+
+test('PG17 unexpired claim cannot be reclaimed', async () => {
+  const enrollment=await seedEnrollment();
+  const jobId=await seedJob(enrollment);
+  const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
+  const recovery=createStaffInvitationClaimRecoveryCandidate({withTransaction});
+  assert.deepEqual(await recovery.reclaim({jobId,staleFence:claim.fence,leaseSeconds:60}),
+    {reclaimed:false});
 });
