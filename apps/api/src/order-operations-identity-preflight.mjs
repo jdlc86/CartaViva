@@ -14,7 +14,10 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
   if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
-    if (typeof client?.release === 'function') client.release(Error('invalid_order_operations_sql_client'));
+    if (typeof client?.release === 'function') {
+      try { client.release(Error('invalid_order_operations_sql_client')); }
+      catch { /* Preserve malformed-client failure. */ }
+    }
     throw Error('invalid_order_operations_sql_client');
   }
   let discard = null;
@@ -171,10 +174,11 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !== (allowAuthorizedTransition ? 1 : 0) ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
-        !Number.isSafeInteger(row.connection_limit) || row.connection_limit < -1 ||
+        !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
-            !Number.isFinite(row.password_valid_until.getTime())))) {
+            !Number.isFinite(row.password_valid_until.getTime()) ||
+            row.password_valid_until.getTime() <= Date.now())))) {
       throw Error('order_operations_sql_identity_rejected');
     }
     return Object.freeze({role: expectedRole});
@@ -182,7 +186,14 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
     discard = error;
     throw error;
   } finally {
-    client.release(discard);
+    try { client.release(discard); }
+    catch (releaseError) {
+      if (!discard) throw releaseError;
+      if (discard && typeof discard === 'object') {
+        try { discard.releaseError = releaseError; }
+        catch { /* Preserve immutable SQL errors. */ }
+      }
+    }
   }
 }
 
