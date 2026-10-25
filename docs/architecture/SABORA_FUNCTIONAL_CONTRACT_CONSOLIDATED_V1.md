@@ -8,7 +8,7 @@ Fecha: 2026-10-18. Fase: **documentación y revisión de requisitos**. Sin imple
 - Los permisos operativos se aplican a las personas, roles, visitas y cuentas de la instalación; no se requiere `restaurant_id` en cada entidad operativa de Sabora. El identificador alfanumérico **sí** pertenece al registro central y a la identificación del restaurante en el QR.
 - El QR identifica restaurante y mesa, pero el backend propio de Sabora valida la credencial revocable y la visita. CartaViva no autoriza pedidos.
 - **Dos PWA independientes por instalación:** `apps/client` para comensales y `apps/management` para camareros, cocina y administración, con permisos de servidor por rol. Son aplicaciones instalables distintas, no una PWA universal que cambia entre restaurantes.
-- Se excluye la multitenencia dentro de Sabora, no la posibilidad de desplegar múltiples restaurantes independientes. Ninguna instalación puede interferir con Fleetia ni con otros proyectos.
+- Se excluye la multitenencia dentro de Sabora, no la posibilidad de desplegar múltiples restaurantes independientes. Cada instalación debe permanecer aislada de cualquier infraestructura, servicio, dato o proyecto externo a CartaViva/Sabora. Los despliegues no deben modificar ni interrumpir recursos ajenos.
 
 ## Jerarquía y trazabilidad
 Las decisiones explícitas más recientes prevalecen sobre formulaciones anteriores del mismo asunto. Se preservan como antecedentes `SABORA_CONTRACT_CONSISTENCY_V1.md` y `SABORA_DEEP_RECONCILIATION_AUDIT_V2.md`; no deben interpretarse sus preguntas antiguas como decisiones todavía abiertas si este contrato las resuelve. No inferir implementación del contenido documental.
