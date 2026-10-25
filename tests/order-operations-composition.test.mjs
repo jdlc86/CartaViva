@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+const Fastify = createRequire(new URL('../apps/api/package.json', import.meta.url))('fastify');
 import {registerVerifiedOrderOperationsFromPools, registerVerifiedOrderTransitionsOnlyFromPools} from '../apps/api/src/order-operations-composition.mjs';
 
 const pool = (user, connectionString) => ({
@@ -165,4 +167,67 @@ test('transition-only composition fails closed before SQL or HTTP for invalid is
  await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,base),
   /unexpected_sql/);
  assert.deepEqual(events,['connect']);
+});
+
+test('transition-only composition verifies two independent SQL principals before mounting POST',async t=>{
+ const seen=[];
+ function inspectedPool(role,authorized){
+  return {
+   options:{user:role,connectionString:'postgres://'+role},
+   query(){throw Error('unexpected_staff_query');},
+   async connect(){
+    seen.push('connect:'+role);
+    return {
+     async query(sql){
+      assert.match(sql,/current_user/);
+      seen.push('inspect:'+role);
+      return {rows:[{
+       current_role:role,session_role:role,
+       superuser:false,bypass_rls:false,can_login:true,
+       inherits_roles:false,can_create_role:false,can_create_db:false,
+       can_replicate:false,has_role_memberships:false,
+       connection_limit:-1,password_valid_until:null,
+       schema_usage:true,schema_create:false,database_create:false,
+       candidate_rpc_execute:false,authorized_rpc_execute:authorized,
+       unsafe_actor_rpc_execute:0,accessible_private_tables:0,
+       accessible_private_sequences:0,
+       accessible_private_definer_routines:authorized?1:0,
+       candidate_is_invoker:true,authorized_is_definer:true,
+       authorized_owner:'sabora_order_operations_fn_owner',
+       authorized_search_path_locked:true,authorized_owner_is_sealed:true,
+       authorized_owner_memberships:0,forced_rls_transition_requests:1,
+       forced_rls_signing_keys:1,
+      }]};
+     },
+     release(error){assert.equal(error,null);seen.push('release:'+role);},
+    };
+   },
+  };
+ }
+ const app=Fastify();t.after(()=>app.close());
+ await registerVerifiedOrderTransitionsOnlyFromPools(app,{
+  staffPool:inspectedPool('sabora_staff_reader',false),
+  operationsPool:inspectedPool('sabora_operations',true),
+  staffRole:'sabora_staff_reader',operationsRole:'sabora_operations',
+  issuer:'https://issuer.example.test',
+  getTrustedKeys:async()=>[],
+  issueTransitionCapability:()=>({}),
+ });
+ await app.ready();
+ assert.deepEqual(seen,[
+  'connect:sabora_staff_reader','inspect:sabora_staff_reader','release:sabora_staff_reader',
+  'connect:sabora_operations','inspect:sabora_operations','release:sabora_operations',
+ ]);
+ assert.equal(app.hasRoute({method:'POST',
+  url:'/api/v1/operations/order-lines/:lineId/transitions'}),true);
+ assert.equal(app.hasRoute({method:'GET',url:'/api/v1/operations/order-lines'}),false);
+ assert.equal(app.hasRoute({method:'GET',url:'/api/v1/operations/orders/:orderId/history'}),false);
+ const result=await app.inject({method:'POST',
+  url:'/api/v1/operations/order-lines/30000000-0000-4000-8000-000000000003/transitions',
+  payload:{targetStatus:'preparing',correlationId:'restricted_route_01'}});
+ assert.equal(result.statusCode,401,result.body);
+ assert.deepEqual(seen,[
+  'connect:sabora_staff_reader','inspect:sabora_staff_reader','release:sabora_staff_reader',
+  'connect:sabora_operations','inspect:sabora_operations','release:sabora_operations',
+ ]);
 });
