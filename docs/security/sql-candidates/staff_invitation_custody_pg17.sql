@@ -43,7 +43,7 @@ BEGIN
     FROM sabora.staff_invitation_outbox o
     WHERE o.id=p_job_id AND o.enrollment_id=p_enrollment_id
       AND o.invite_version=p_invite_version
-    FOR UPDATE;
+    FOR SHARE;
   IF NOT coalesce(v_match,false) THEN
     RAISE EXCEPTION 'staff_invitation_custody_outbox_mismatch' USING errcode='23514';
   END IF;
