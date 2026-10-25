@@ -20,7 +20,7 @@ function pool(role, overrides = {}) {
             current_role: role, session_role: role,
             superuser: false, bypass_rls: false, can_login: true,
             inherits_roles: false, can_create_role: false, can_create_db: false,
-            can_replicate: false, has_role_memberships: false,
+            can_replicate: false, has_role_memberships: false, has_role_grantees: false,
             connection_limit: -1, password_valid_until: null,
             schema_usage: true, schema_create: false, database_create: false,
             candidate_rpc_execute: false,
@@ -163,4 +163,18 @@ test('preflight rejects malformed SQL identity results', async () => {
   await assert.rejects(preflightOrderOperationsIdentities({
     staffPool, operationsPool, ...roles,
   }), /order_operations_sql_identity_rejected/);
+});
+
+
+test('preflight rejects SQL role membership in both directions for both principals', async () => {
+  for (const field of ['has_role_memberships', 'has_role_grantees']) {
+    for (const affected of ['staff', 'operations']) {
+      const staffPool = pool(roles.staffRole, affected === 'staff' ? {[field]: true} : {});
+      const operationsPool = pool(roles.operationsRole, affected === 'operations' ? {[field]: true} : {});
+      await assert.rejects(preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}), /order_operations_sql_identity_rejected/);
+      const failing = affected === 'staff' ? staffPool : operationsPool;
+      assert.equal(failing.state.releases.length, 1);
+      assert.ok(failing.state.releases[0] instanceof Error);
+    }
+  }
 });
