@@ -25,7 +25,10 @@ CREATE TABLE sabora.staff_invitation_outbox (
     (state = 'pending' AND fence IS NULL AND claimed_at IS NULL)
     OR (state IN ('claimed', 'dispatching', 'delivered', 'failed') AND fence IS NOT NULL
         AND claimed_at IS NOT NULL)
-    OR (state = 'cancelled')
+    OR (state = 'cancelled' AND (
+      (fence IS NULL AND claimed_at IS NULL)
+      OR (fence IS NOT NULL AND claimed_at IS NOT NULL)
+    ))
   ),
   CONSTRAINT staff_invitation_outbox_dispatch_shape CHECK (
     (state IN ('dispatching', 'delivered', 'failed') AND dispatch_authorized_at IS NOT NULL)
@@ -40,13 +43,20 @@ CREATE TABLE sabora.staff_invitation_outbox (
     (state = 'delivered' AND delivered_at IS NOT NULL)
     OR (state <> 'delivered' AND delivered_at IS NULL)
   ),
+  CONSTRAINT staff_invitation_outbox_attempt_shape CHECK (
+    (state IN ('pending', 'claimed', 'cancelled') AND attempts = 0)
+    OR (state IN ('dispatching', 'delivered', 'failed') AND attempts >= 1)
+  ),
   CONSTRAINT staff_invitation_outbox_timestamp_order CHECK (
     updated_at >= created_at
     AND (claimed_at IS NULL OR claimed_at >= created_at)
+    AND (claimed_at IS NULL OR updated_at >= claimed_at)
     AND (dispatch_authorized_at IS NULL OR
       (claimed_at IS NOT NULL AND dispatch_authorized_at >= claimed_at))
+    AND (dispatch_authorized_at IS NULL OR updated_at >= dispatch_authorized_at)
     AND (delivered_at IS NULL OR
       (dispatch_authorized_at IS NOT NULL AND delivered_at >= dispatch_authorized_at))
+    AND (delivered_at IS NULL OR updated_at >= delivered_at)
   )
 );
 

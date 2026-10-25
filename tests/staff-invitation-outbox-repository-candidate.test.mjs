@@ -27,6 +27,7 @@ test('parameterized locked claim uses same transaction and returns SQL fence', a
   assert.deepEqual(sql.map(s => s.values), [[jobId], [jobId]]);
   assert.match(sql[0].text, /FOR UPDATE OF o, e/);
   assert.match(sql[1].text, /state = 'pending'/);
+  assert.match(sql[1].text, /updated_at = clock_timestamp\(\)/);
 });
 
 test('revoked state never executes UPDATE', async () => {

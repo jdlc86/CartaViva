@@ -178,8 +178,9 @@ export function createStaffInvitationOutboxRepository() {
       const result = await query({
         text: `UPDATE sabora.staff_invitation_outbox
           SET state = 'dispatching', dispatch_authorized_at = clock_timestamp(),
-            updated_at = clock_timestamp()
+            attempts = attempts + 1, updated_at = clock_timestamp()
           WHERE id = $1::uuid AND fence = $2::uuid AND state = 'claimed'
+            AND attempts < 100
           RETURNING id`,
         values: [jobId.toLowerCase(), fence.toLowerCase()],
       });
@@ -196,7 +197,7 @@ export function createStaffInvitationOutboxRepository() {
       const result = await query({
         text: `UPDATE sabora.staff_invitation_outbox
           SET state = 'claimed', fence = gen_random_uuid(),
-            claimed_at = clock_timestamp()
+            claimed_at = clock_timestamp(), updated_at = clock_timestamp()
           WHERE id = $1::uuid AND state = 'pending'
           RETURNING fence::text AS fence`,
         values: [jobId.toLowerCase()],

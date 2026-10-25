@@ -42,3 +42,14 @@ test('failed dispatch preserves authorization timestamp and requires nonnull out
   assert.match(sql, /state = 'failed' AND provider_outcome IS NOT NULL/);
   assert.match(sql, /state = 'delivered' AND provider_outcome IS NOT NULL/);
 });
+
+test('candidate schema couples attempts, cancellation fence and updated timestamps', async () => {
+  const sql = await readFile(file, 'utf8');
+  assert.match(sql, /staff_invitation_outbox_attempt_shape/);
+  assert.match(sql, /state IN \('pending', 'claimed', 'cancelled'\) AND attempts = 0/);
+  assert.match(sql, /state IN \('dispatching', 'delivered', 'failed'\) AND attempts >= 1/);
+  assert.match(sql, /state = 'cancelled'[\s\S]*fence IS NULL AND claimed_at IS NULL[\s\S]*fence IS NOT NULL AND claimed_at IS NOT NULL/);
+  assert.match(sql, /updated_at >= claimed_at/);
+  assert.match(sql, /updated_at >= dispatch_authorized_at/);
+  assert.match(sql, /updated_at >= delivered_at/);
+});

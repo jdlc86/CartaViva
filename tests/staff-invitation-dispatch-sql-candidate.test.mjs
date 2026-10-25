@@ -37,6 +37,8 @@ test('dispatch gate locks enrollment and job, then records fenced transition', a
   assert.match(statements[0].text, /o\.fence = \$2::uuid/);
   assert.match(statements[1].text, /state = 'dispatching'/);
   assert.match(statements[1].text, /state = 'claimed'/);
+  assert.match(statements[1].text, /attempts = attempts \+ 1/);
+  assert.match(statements[1].text, /attempts < 100/);
   assert.deepEqual(statements.map(s => s.values), [[jobId, fence], [jobId, fence]]);
 });
 

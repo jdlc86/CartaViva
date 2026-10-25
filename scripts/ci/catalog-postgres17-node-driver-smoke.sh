@@ -12,6 +12,7 @@ node --check scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --check scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 cleanup() {
@@ -60,3 +61,4 @@ node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
 node --test scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --test scripts/ci/staff-invitation-outbox-postgres17.test.mjs
