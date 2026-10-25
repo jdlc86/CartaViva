@@ -159,7 +159,7 @@ test('PG17 serializes repeated and competing concurrent operations', async () =>
 });
 
 test('PG17 rejects expired capability after waiting for the order-line row lock', async () => {
-  const item = await fixture({suffix: '109'});
+  const item = await fixture({suffix: '110'});
   const shortIssuer = createOrderOperationCapabilityIssuer({
     keyId, secret: signingSecret, databaseRole: 'postgres', ttlMs: 1000,
   });
@@ -172,10 +172,10 @@ test('PG17 rejects expired capability after waiting for the order-line row lock'
       (sql, params) => pool.query(sql, params),
       {
         actorId: kitchenId, role: 'kitchen', lineId: item.lineId,
-        targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_109',
+        targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_110',
         capability: shortIssuer({
           actorId: kitchenId, lineId: item.lineId,
-          targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_109',
+          targetStatus: 'preparing', correlationId: 'pg_expired_line_lock_110',
         }),
       },
     ).then(() => { attempted = true; }, (error) => { attempted = true; throw error; });
