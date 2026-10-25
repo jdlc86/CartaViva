@@ -2,7 +2,7 @@
 // A remote provider call is never made inside this module. In particular,
 // an ambiguous provider outcome MUST NOT be silently retried: a duplicate
 // invitation could otherwise be sent after an unobserved successful call.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OUTCOMES = new Set(['accepted', 'permanent_failure', 'unknown']);
 
 export async function recordStaffInvitationDeliveryOutcome({
