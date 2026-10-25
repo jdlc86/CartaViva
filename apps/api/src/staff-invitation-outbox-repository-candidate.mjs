@@ -3,6 +3,7 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 const STATES = new Set(['invited', 'accepted', 'registered', 'active', 'suspended', 'revoked']);
+const OWN = Object.prototype.hasOwnProperty;
 
 function parseCandidate(jobId, rows) {
   if (!Array.isArray(rows) || rows.length > 1) {
@@ -18,8 +19,19 @@ function parseCandidate(jobId, rows) {
       !HASH.test(row.invite_token_hash_hex) ||
       !HASH.test(row.current_invite_token_hash_hex) ||
       !STATES.has(row.enrollment_state) ||
-      row.job_id?.toLowerCase() !== jobId.toLowerCase()) {
+      typeof row.job_id !== 'string' ||
+      !UUID.test(row.job_id) ||
+      row.job_id.toLowerCase() !== jobId.toLowerCase()) {
     throw Error('invalid_staff_delivery_sql_result');
+  }
+  // SQL driver results must be plain data, not accessor-backed objects.
+  for (const field of ['job_id', 'enrollment_id', 'invite_version',
+    'invite_token_hash_hex', 'current_invite_version',
+    'current_invite_token_hash_hex', 'enrollment_state']) {
+    const descriptor = Object.getOwnPropertyDescriptor(row, field);
+    if (!OWN.call(row, field) || !descriptor || !OWN.call(descriptor, 'value')) {
+      throw Error('invalid_staff_delivery_sql_result');
+    }
   }
   return Object.freeze({
     job: Object.freeze({
