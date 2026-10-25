@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Disposable, network-isolated PostgreSQL 17. No Supabase or VPS connections.
+# Never run Docker cleanup/startup on a shared VPS or developer machine.
+if [[ "${GITHUB_ACTIONS:-}" != true || -z "${RUNNER_TEMP:-}" || -z "${GITHUB_RUN_ID:-}" ]]; then
+  echo 'Refusing to start: isolated GitHub Actions runner required' >&2
+  exit 1
+fi
 container="sabora-pg-single-ci-${GITHUB_RUN_ID:-local}-$$"
 cleanup() { docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
