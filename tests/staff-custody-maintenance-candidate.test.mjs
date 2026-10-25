@@ -4,13 +4,14 @@ import {createStaffCustodyMaintenanceCandidate,STAFF_CUSTODY_PURGE_SQL}
   from '../apps/api/src/staff-custody-maintenance-candidate.mjs';
 const cutoff='2026-10-01T00:00:00Z';
 const now=new Date('2026-10-25T12:00:00Z');
+const approvalAuthority={verifyAndConsume:async authorization=>authorization};
 const approve=(overrides={})=>({
   action:'purge_terminal_staff_custody',cutoff,maxRows:2,maxBatches:3,
   approved:true,...overrides,
 });
 test('dry run is default and never calls destructive SQL',async()=>{
   const maintenance=createStaffCustodyMaintenanceCandidate({
-    query:async()=>{throw Error('must_not_query');},clock:()=>now,
+    query:async()=>{throw Error('must_not_query');},clock:()=>now,approvalAuthority,
   });
   assert.deepEqual(await maintenance.run({cutoff,maxRows:2,maxBatches:3}),
     {executed:false,removed:0,batches:0});
@@ -19,7 +20,7 @@ test('dry run is default and never calls destructive SQL',async()=>{
 });
 test('destructive run requires matching explicit approval and valid bounded cutoff',async()=>{
   const maintenance=createStaffCustodyMaintenanceCandidate({
-    query:async()=>{throw Error('must_not_query');},clock:()=>now,
+    query:async()=>{throw Error('must_not_query');},clock:()=>now,approvalAuthority,
   });
   for(const authorization of [undefined,{},approve({approved:false}),
     approve({cutoff:'2026-09-01T00:00:00Z'}),approve({maxRows:500}),
@@ -49,7 +50,7 @@ test('authorized purge is bounded, stops early and reports exact counts',async()
       assert.equal(sql,STAFF_CUSTODY_PURGE_SQL);
       assert.deepEqual(values,[cutoff,2]);
       return {rows:[{removed:[2,2,1][calls++]}]};
-    },clock:()=>now,
+    },clock:()=>now,approvalAuthority,
   });
   assert.deepEqual(await maintenance.run({
     cutoff,maxRows:2,maxBatches:3,dryRun:false,authorization:approve(),
@@ -59,10 +60,16 @@ test('authorized purge is bounded, stops early and reports exact counts',async()
 test('unexpected SQL result fails closed and does not continue batches',async()=>{
   let calls=0;
   const maintenance=createStaffCustodyMaintenanceCandidate({
-    query:async()=>{calls++;return {rows:[{removed:3}]};},clock:()=>now,
+    query:async()=>{calls++;return {rows:[{removed:3}]};},clock:()=>now,approvalAuthority,
   });
   await assert.rejects(maintenance.run({
     cutoff,maxRows:2,maxBatches:3,dryRun:false,authorization:approve(),
   }),/invalid_staff_custody_maintenance_result/);
   assert.equal(calls,1);
+});
+
+test('unsigned maintenance configuration is rejected before execution',()=>{
+  assert.throws(()=>createStaffCustodyMaintenanceCandidate({
+    query:async()=>({rows:[{removed:0}]}),clock:()=>now,
+  }),/invalid_staff_custody_maintenance_config/);
 });
