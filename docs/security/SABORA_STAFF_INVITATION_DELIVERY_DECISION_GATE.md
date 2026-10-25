@@ -498,3 +498,28 @@ El consumo del nonce y la purga no comparten transacción
 atómica; la semántica actual es de autorización de un solo
 intento, sin reintento destructivo bajo la misma concesión.
 No hay despliegue ni ejecución en Supabase operativo.
+
+## Frontera candidata de emisión con actor autenticado (25-10-2026)
+
+`apps/api/src/staff-custody-authenticated-grant-issuer-candidate.mjs`
+introduce una frontera de emisión independiente: obtiene
+`actorId` únicamente de `resolveAuthenticatedActor(context)`,
+exige evidencia `authenticated:true` y verifica mediante
+`authorizeMaintenance` el permiso específico para la acción,
+cutoff y límites de ejecución antes de invocar al firmante.
+No acepta `actorId`, `role`, `approved` ni firma elegidos
+por los parámetros de solicitud. Las pruebas rechazan
+identidades ausentes, no autenticadas y actores sin permiso;
+también verifican que un actor falso suministrado por el
+llamante no altera el actor firmado.
+
+**Límite normativo:** los resolutores de autenticación y
+autorización son dependencias inyectadas, no una identidad
+operativa aprobada. El módulo no se monta como endpoint ni
+aporta provisión de secretos o control de acceso de
+producción. Antes de activarlo deben conectarse verificadores
+de sesión confiables y permiso real de mantenimiento con
+pruebas de suplantación y revocación; el método de emisión
+de bajo nivel `authority.issue` solo puede residir en
+un componente interno de confianza. Este bloque es
+candidato, sin autorización de despliegue.
