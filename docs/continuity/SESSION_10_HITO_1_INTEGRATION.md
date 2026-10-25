@@ -96,3 +96,8 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - El adaptador de outbox valida el UUID del trabajo y exige propiedades de datos propias antes de acceder a los campos de una fila SQL; rechaza getters de objetos manipulados.
 - Dos regresiones adicionales comprueban que no se evalúan getters y que un identificador de trabajo malformado no se acepta.
 - Son defensas del adaptador candidato; no sustituyen pruebas PostgreSQL 17 ni autorizan envío.
+
+## Preparación de verificación PostgreSQL 17 aislada
+
+- `docs/security/sql-candidates/README_PG17_VERIFICATION.md` detalla precondiciones, privilegios, pruebas con dos conexiones y carreras, criterios de fallo y registro de evidencias.
+- **No se ha ejecutado este plan**; no debe confundirse con las pruebas unitarias ni con una certificación PostgreSQL real. Sin credenciales operativas ni despliegue.
