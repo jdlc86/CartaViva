@@ -73,6 +73,41 @@ export function createStaffInvitationOutboxRepository() {
       });
       return parseCandidate(jobId, result?.rows);
     },
+    async lockClaimedDelivery(query, jobId, fence) {
+      if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence)) {
+        throw Error('invalid_staff_delivery_sql_input');
+      }
+      const result = await query({
+        text: `SELECT o.id AS job_id, o.enrollment_id,
+          o.invite_version, encode(o.invite_token_hash, 'hex') AS invite_token_hash_hex,
+          e.invite_version AS current_invite_version,
+          encode(e.invite_token_hash, 'hex') AS current_invite_token_hash_hex,
+          e.state AS enrollment_state
+          FROM sabora.staff_invitation_outbox o
+          JOIN sabora.staff_enrollments e ON e.id = o.enrollment_id
+          WHERE o.id = $1::uuid AND o.fence = $2::uuid AND o.state = 'claimed'
+          FOR UPDATE OF o, e`,
+        values: [jobId.toLowerCase(), fence.toLowerCase()],
+      });
+      return parseCandidate(jobId, result?.rows);
+    },
+    async authorizeDispatch(query, jobId, fence) {
+      if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence)) {
+        throw Error('invalid_staff_delivery_sql_input');
+      }
+      const result = await query({
+        text: `UPDATE sabora.staff_invitation_outbox
+          SET state = 'dispatching', dispatch_authorized_at = clock_timestamp(),
+            updated_at = clock_timestamp()
+          WHERE id = $1::uuid AND fence = $2::uuid AND state = 'claimed'
+          RETURNING id`,
+        values: [jobId.toLowerCase(), fence.toLowerCase()],
+      });
+      if (!Array.isArray(result?.rows) || result.rows.length > 1) {
+        throw Error('invalid_staff_delivery_sql_result');
+      }
+      return Object.freeze({authorized: result.rows.length === 1});
+    },
     async markDeliveryClaimed(query, jobId) {
       if (typeof query !== 'function' || !UUID.test(jobId)) {
         throw Error('invalid_staff_delivery_sql_input');
