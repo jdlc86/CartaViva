@@ -345,3 +345,12 @@ current_database(), 'CREATE') = false`. Este privilegio es independiente de
 otros esquemas dentro de la base. El harness PostgreSQL 17 efímero concede
 `CREATE` temporalmente al login de operaciones, exige rechazo del preflight,
 revoca el permiso y exige recuperación. No modifica ninguna base operativa.
+
+
+## Reconciliación candidata PR #11: entradas y capacidades (25-10-2026)
+
+En la rama independiente `integration/sabora-pr11-reconciliation` se han integrado las defensas de entrada de la rama base sobre el coordinador que utiliza capacidades de transición firmadas. El contexto `verifiedIdentity`/`verifiedStaff` se lee exclusivamente mediante propiedades propias de datos; se rechazan getters y propiedades heredadas. Los parámetros de tablero, transición e historial se copian antes de la espera asíncrona a un objeto de prototipo nulo, con rechazo de claves `__proto__`, símbolos, accesores y objetos no planos. El actor y rol enviados al repositorio continúan siendo los de la identidad verificada, no los del llamante. La capacidad se emite desde la copia validada.
+
+**Diferencia normativa que NO debe borrarse durante el merge:** la rama base verificaba `verifyMembership` para cada transición, mientras que el candidato actual delega la revocación y membresía de las mutaciones al wrapper SQL que verifica la capacidad firmada y revalida al actor bajo bloqueo. No se ha reintroducido una consulta directa a `staff_members` con el login restringido, porque abriría permisos incompatibles con el preflight. Las lecturas de tablero e historial siguen siendo candidatas sin concesión positiva SQL y no deben activarse.
+
+La incorporación de pruebas de entrada Node no equivale a un merge completo de las ramas, ni acredita autorización SQL de lectura, PG17 conjunto o despliegue. Requiere CI de la rama de reconciliación y revisión posterior de los cambios pendientes de preflight y de los tests de la rama base.
