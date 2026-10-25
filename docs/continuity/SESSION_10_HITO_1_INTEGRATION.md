@@ -155,8 +155,38 @@ No confundir integración del código candidato con disponibilidad funcional en 
   `catalog-postgres17-node-driver-smoke.sh`. Los resultados de CI deben
   atribuirse solo al SHA final que incluya este documento.
 
-Límites conservados: SQL fuera de migraciones operativas, cero grants/login,
-sin secreto recuperable, enqueue transaccional, lease/reclaim, worker,
-proveedor o correo real. Un envío ya en vuelo puede concluir después de una
+Límites conservados en aquella pasada: SQL fuera de migraciones operativas,
+cero grants/login, sin secreto recuperable y sin enqueue transaccional,
+lease/reclaim, worker, proveedor o correo real. Un envío ya en vuelo puede
+concluir después de una
 revocación; la garantía es que la aceptación revalida el estado durable y no
 reactiva el enrollment. No se tocó Fleetia, Supabase operativo ni VPS.
+
+## Cierre de integración HMAC → outbox con mínimo privilegio (25-10-2026)
+
+- `1021380` introduce una única rutina candidata que ejecuta la transición
+  HMAC y el enqueue/cancelación de outbox en la misma sentencia PostgreSQL.
+  No se modificaron contratos normativos ni migraciones operativas.
+- Owner interno sellado: `NOLOGIN`, sin herencia, membresías, `BYPASSRLS` o
+  DDL; únicamente wrapper HMAC interno y columnas/políticas RLS necesarias.
+- Principal de aceptación real: login efímero `NOINHERIT` con solo `USAGE` y
+  `EXECUTE` de la rutina integrada. Se probaron denegaciones de tablas,
+  keyring, secuencias, wrapper interno, DDL y `SET ROLE`.
+- Atomicidad comprobada: una colisión outbox revierte token/versión, cancelación
+  previa, ledger y auditoría; eliminado el conflicto, la misma capacidad puede
+  reintentarse y confirma una única versión.
+- Concurrencia e idempotencia: dos llamadas idénticas producen un enqueue y un
+  replay del mismo job; resend cancela un claim anterior; aceptación cancela
+  entrega pendiente; revocación serializada vence a resend y no deja trabajo
+  entregable.
+- Evidencia local final: PostgreSQL 17 **15/15**, focalizadas **60/60**,
+  regresión **842/842**, build API y `git diff --check` correctos. La primera
+  pasada fue 14/15 únicamente por una expectativa obsoleta de cero políticas;
+  se corrigió para exigir tres políticas internas y cero grants runtime.
+
+Límites: el candidato continúa en `docs/security/sql-candidates`, sin LOGIN,
+clave o grant operativo; el preflight no se monta en `server.mjs`. No almacena
+secreto recuperable, no activa worker/proveedor/correo/endpoints y no define
+lease/reclaim. Un dispatch ya iniciado no es cancelable de forma ACID con una
+revocación externa; la aceptación siempre revalida el estado durable. CI debe
+atribuirse al SHA final posterior al commit documental.

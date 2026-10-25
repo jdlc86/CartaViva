@@ -35,9 +35,10 @@ el proveedor entregue el mensaje después. El correo tardío no confiere acceso.
    resultado incierto, deduplicación, límites de intentos y retención.
 3. **Reclamaciones:** especificar propietario del claim, vencimiento,
    fencing, reintentos después de caída y transición terminal.
-4. **Autorización SQL:** definir identidad de login aislada, owner, RLS,
-   privilegios mínimos y rutinas autorizadas. El esquema candidato actual
-   no concede ningún permiso.
+4. **Autorización SQL:** el candidato define owner sellado, RLS y una única
+   rutina integrada; el login positivo se crea y recibe `EXECUTE` solo en el
+   contenedor de aceptación. El aprovisionamiento operativo continúa sin
+   aprobar y no forma parte del SQL candidato.
 5. **Enlace transaccional:** insertar el evento de outbox en la misma
    transacción que `invite` o `resend`, sin permitir replays que creen
    nuevas entregas o tokens diferentes.
@@ -55,9 +56,9 @@ el proveedor entregue el mensaje después. El correo tardío no confiere acceso.
 `staff-invitation-outbox-repository-candidate.mjs` son candidatos no montados.
 El SQL en `docs/security/sql-candidates/` se ejecuta ahora únicamente desde el
 harness desechable `staff-invitation-outbox-postgres17.test.mjs`; **no pertenece
-a las migraciones operativas**. El harness usa conexiones reales y está
-integrado en los dos workflows, pero no crea una identidad runtime ni concede
-permisos positivos.
+a las migraciones operativas**. El harness usa conexiones reales y crea un
+login efímero positivo para la aceptación, pero el esquema candidato no crea
+ningún LOGIN ni concede `EXECUTE` runtime persistente.
 
 ## Evidencia PostgreSQL 17 y correcciones
 
@@ -75,43 +76,45 @@ y aceptación tardía del proveedor sin reactivación. La regresión general pas
 
 **Gate:** no mover el SQL a `supabase/migrations`, no montar el worker, no
 entregar secretos ni desplegar hasta aprobar explícitamente las decisiones
-anteriores. La validación del esquema no resuelve material cifrado, enqueue
-atómico, proveedor, identidad SQL, lease/reclaim ni retención. Ningún recurso
-de Fleetia ni del VPS compartido forma parte de este trabajo.
+anteriores. La validación ya resuelve como candidato el enqueue atómico y la
+superficie SQL mínima, pero no resuelve material cifrado, aprovisionamiento de
+credenciales, proveedor, lease/reclaim ni retención. Ningún recurso de Fleetia
+ni del VPS compartido forma parte de este trabajo.
 
-## Candidato de encolado transaccional (25-10-2026)
+## Encolado transaccional con principal restringido (25-10-2026)
 
-Se añadió `apps/api/src/staff-invitation-enqueue-candidate.mjs` con
-`transitionAndEnqueue`: recibe un `withTransaction` inyectado, ejecuta la
-transición durable y después inserta una sola intención de entrega en la misma
-transacción. El SQL comprueba `enrollment_id`, estado `invited`, versión y
-hash vigentes; `ON CONFLICT` no puede convertir una colisión en éxito.
-Un replay de la transición no vuelve a insertar. Si falla el INSERT, la
-operación arroja error para forzar rollback de la transacción completa.
-Las pruebas unitarias están en
-`tests/staff-invitation-enqueue-candidate.test.mjs`.
+El commit `1021380` sustituye el prototipo con transición inyectada. La rutina
+`transition_staff_lifecycle_with_outbox_candidate` ejecuta el wrapper HMAC
+existente y la mutación de outbox dentro de **una sola sentencia y transacción
+PostgreSQL**. Una invitación nueva inserta una intención; un reenvío cancela
+trabajos `pending`/`claimed` obsoletos y crea la versión vigente; aceptación o
+revocación cancelan trabajo todavía no despachado. Una colisión al insertar
+revierte también versión/hash, cancelaciones, ledger y auditoría.
 
-**Alcance deliberado:** candidato aislado y sin material recuperable; no se
-ha conectado al coordinador operativo ni al worker. Las pruebas con
-transacciones inyectadas **no demuestran todavía** el encolado en PG17 con
-el principal SQL de mínimo privilegio. El owner actual del wrapper
-`SECURITY DEFINER` no confiere al caller permiso para INSERT directo
-en la tabla outbox. Antes de cualquier promoción será necesaria una
-rutina SQL autorizada y una prueba PG17 de rollback, reenvío y replay
-sobre la misma transacción y con el principal restringido.
-No hay autorización para crear permisos runtime, enviar correo ni desplegar.
+La rutina pertenece a `sabora_staff_invitation_enqueue_fn_owner`, rol
+`NOLOGIN`, `NOINHERIT`, sin `BYPASSRLS`, membresías ni DDL. Solo puede ejecutar
+el wrapper HMAC interno y leer/insertar/actualizar las columnas estrictamente
+necesarias de outbox mediante tres políticas RLS. No puede borrar, truncar,
+despachar ni leer las tablas del ciclo directamente.
 
-## Evidencia adicional de encolado PG17 desechable (25-10-2026)
+El test crea `sabora_ci_staff_invitation_runtime` como login real sin
+privilegios, le concede únicamente `USAGE` del esquema y `EXECUTE` de la rutina
+integrada, y demuestra que no puede acceder directamente a tablas, keyring,
+secuencias, wrapper interno, DDL ni `SET ROLE`. Todas las mutaciones de
+aceptación de este bloque corren con ese login; `postgres` se limita a fixtures
+e inspección.
 
-El commit `a45f1a2` amplía el harness PostgreSQL 17 con tres casos:
-confirmación de versión/hash al encolar, rollback de la rotación ante colisión
-de clave primaria en outbox y denegación de INSERT directo al login no
-privilegiado. Ambos workflows del commit terminaron en SUCCESS.
+La matriz final PostgreSQL 17 pasa 15/15: commit y replay, dos invocaciones
+concurrentes de la misma capacidad, reenvío de un claim, rollback recuperable,
+aceptación, revocación concurrente y la matriz previa de fencing/proveedor. La
+regresión local pasa 842/842, las pruebas focalizadas 60/60 y el build API es
+correcto. La primera ejecución del nuevo bloque pasó 14/15: la única corrección
+fue actualizar una expectativa antigua de cero políticas para reconocer las
+tres políticas internas del owner sellado, manteniendo cero grants del login.
 
-**Límite preciso:** estas pruebas utilizan una transición SQL de prueba
-inyectada en el coordinador de encolado, ejecutada con el principal
-administrador **exclusivamente en el contenedor desechable**. No prueban
-todavía el wrapper HMAC de ciclo de vida y la inserción con un mismo login
-runtime restringido: el esquema de outbox no concede esos permisos.
-No presentar esta evidencia como validación de identidad SQL operativa,
-ni promover a migraciones o activar la entrega hasta resolver el gate.
+**Límite preciso:** esta evidencia valida la arquitectura candidata, no una
+identidad operativa. El SQL sigue fuera de migraciones, el preflight no está
+montado en `server.mjs` y no existen credencial/login/grant de producción.
+Tampoco existe material recuperable para correo, worker, proveedor ni endpoint.
+Un trabajo `dispatching` no se cancela porque el proveedor puede estar en
+vuelo; la aceptación tardía continúa protegida por la revalidación durable.
