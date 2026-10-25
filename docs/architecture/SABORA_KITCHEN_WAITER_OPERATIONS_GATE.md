@@ -435,3 +435,24 @@ proyecciones SQL de lectura ni se declara producción
 lista. Sigue prohibido abrir SELECT generales sobre
 tablas privadas o montar esta ruta en el servidor
 operativo sin completar los gates normativos.
+
+## Bloqueo de verificación CI por conflicto del PR #11 (25-10-2026)
+
+La composición candidata de mutaciones sin lectura tiene
+pruebas negativas adicionales en
+`tests/order-operations-composition.test.mjs`:
+aislamiento de pools, roles SQL distintos, emisor de
+capacidad presente y ausencia de ruta duplicada; los
+rechazos anteriores al preflight no consultan SQL ni
+registran rutas. Las pruebas de HTTP exclusivas permanecen
+en `tests/order-operations-transition-only-http.test.mjs`.
+
+**Estado de aceptación:** no validado por GitHub Actions.
+Al consultar el PR #11, GitHub devuelve
+`mergeable=false`, `mergeable_state=dirty`; el HEAD
+de la rama no tiene workflows asociados. No se debe
+heredar el verde de commits anteriores ni marcar
+este bloque como cerrado. Resolver el conflicto con
+la base exige reconciliar el código y la documentación
+normativa, sin merge a producción, y volver a ejecutar
+ambos workflows sobre el SHA resultante.
