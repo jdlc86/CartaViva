@@ -2,7 +2,6 @@
 // Requires a trusted transactional SQL adapter; NOT mounted in runtime.
 import {sealStaffInvitationToken} from './staff-invitation-envelope-candidate.mjs';
 import {createStaffInvitationEnqueueCandidate} from './staff-invitation-enqueue-candidate.mjs';
-import {STAFF_INVITATION_DELIVERY_TOKEN} from './staff-lifecycle-coordinator.mjs';
 
 export const STAFF_INVITATION_CUSTODY_INSERT_SQL = `SELECT
   sabora.store_staff_invitation_custody_candidate(
