@@ -21,7 +21,7 @@ function pool(role, overrides = {}) {
             connection_limit: -1, password_valid_until: null,
             schema_usage: true, schema_create: false, database_create: false, candidate_rpc_execute: false,
             accessible_private_tables: 0, accessible_private_sequences: 0,
-            accessible_private_definer_routines: 0,
+            accessible_private_definer_routines: 0, accessible_private_invoker_routines: 0,
             candidate_is_invoker: true, forced_rls_transition_requests: 1,
             ...overrides,
           }]};
@@ -75,7 +75,9 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     {accessible_private_tables: 1}, {accessible_private_tables: null},
     {accessible_private_tables: '0'},
     {accessible_private_sequences: 1}, {accessible_private_sequences: null},
-    {accessible_private_definer_routines: 1}, {accessible_private_definer_routines: '0'},
+    {accessible_private_definer_routines: 1},
+    {accessible_private_invoker_routines: 1}, {accessible_private_invoker_routines: null},
+    {accessible_private_invoker_routines: '0'}, {accessible_private_definer_routines: '0'},
     {candidate_is_invoker: false}, {candidate_is_invoker: null},
     {forced_rls_transition_requests: 0}, {forced_rls_transition_requests: null},
   ]) {
