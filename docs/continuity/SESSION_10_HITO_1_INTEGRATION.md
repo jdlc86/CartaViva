@@ -26,3 +26,10 @@
 4. Documentar las decisiones y mantener el PR Draft.
 
 No confundir integración del código candidato con disponibilidad funcional en producción.
+
+## Bloque siguiente — composición de ciclo de personal (25-10-2026)
+
+- `apps/api/src/staff-lifecycle-composition.mjs` incorpora `createVerifiedStaffLifecycleFromPool`, fábrica explícita que exige todas las dependencias de emisión/verificación y ejecuta el preflight SQL antes de exponer el coordinador. Reutiliza el repositorio candidato y `createPostgresTransaction`.
+- `tests/staff-lifecycle-composition.test.mjs` verifica ausencia de conexiones cuando faltan dependencias, rechazo de roles prohibidos antes de abrir conexiones, liberación tras preflight fallido y que `server.mjs` no importa la composición.
+- **No se habilitan rutas ni grants.** El módulo no emite correo, no autentica HTTP ni aprovisiona claves; esas decisiones permanecen pendientes de contrato y autorización.
+- Los commits de este bloque requieren CI del SHA final; la certificación verde de `52f9a374` no los cubre.
