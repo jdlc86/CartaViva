@@ -532,6 +532,15 @@ BEGIN
     RAISE EXCEPTION 'staff_enrollment_revoked' USING errcode = '42501';
   END IF;
 
+  -- Revalidate after any enrollment row-lock wait, before mutations.
+  v_now := clock_timestamp();
+  v_now_ms := floor(extract(epoch FROM v_now) * 1000)::bigint;
+  IF p_issued_at_ms::numeric > v_now_ms::numeric + 5000
+    OR p_expires_at_ms <= v_now_ms OR v_key_expires_at <= v_now
+  THEN
+    RAISE EXCEPTION 'invalid_staff_lifecycle_capability' USING errcode = '42501';
+  END IF;
+
   IF p_action = 'invite' THEN
     IF v_enrollment_found THEN
       RAISE EXCEPTION 'staff_enrollment_id_conflict' USING errcode = '23505';
