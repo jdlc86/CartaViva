@@ -150,6 +150,8 @@ test('transition-only composition fails closed before SQL or HTTP for invalid is
  const base={staffPool,operationsPool,
   staffRole:'sabora_staff_reader',operationsRole:'sabora_operations',
   issueTransitionCapability(){},
+  issuer:'https://issuer.example.test',
+  getTrustedKeys:async()=>[],
  };
  for(const options of [
   {...base,operationsPool:staffPool},
@@ -230,4 +232,36 @@ test('transition-only composition verifies two independent SQL principals before
   'connect:sabora_staff_reader','inspect:sabora_staff_reader','release:sabora_staff_reader',
   'connect:sabora_operations','inspect:sabora_operations','release:sabora_operations',
  ]);
+});
+
+test('transition-only rejects missing or malformed authentication wiring without SQL or routes',async()=>{
+ const seen=[];
+ const mkPool=(user)=>({
+  options:{user,connectionString:'postgres://'+user},
+  query(){seen.push('query');throw Error('unexpected_query');},
+  async connect(){seen.push('connect');throw Error('unexpected_connect');},
+ });
+ const app={
+  hasRoute(){return false;},
+  get(){seen.push('get');},
+  post(){seen.push('post');},
+ };
+ const base={
+  staffPool:mkPool('sabora_staff_reader'),
+  operationsPool:mkPool('sabora_operations'),
+  staffRole:'sabora_staff_reader',operationsRole:'sabora_operations',
+  issueTransitionCapability(){},
+  issuer:'https://issuer.example.test',
+  getTrustedKeys:async()=>[],
+ };
+ for(const change of [
+  {issuer:undefined},{issuer:''},{issuer:7},
+  {getTrustedKeys:null},{getTrustedKeys:'not_a_function'},
+  {verify:'not_a_function'},{observe:'not_a_function'},
+ ]) {
+  await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,{
+   ...base,...change,
+  }),/invalid_order_transition_auth_config/);
+  assert.deepEqual(seen,[]);
+ }
 });
