@@ -529,3 +529,12 @@ con dobles SQL simulados; el workflow incluye sus
 suites PG17 desechables independientes. No autorizan
 lectura de tablero/historial, ni montan operaciones en
 `server.mjs`, ni resuelven el conflicto del PR #11.
+
+
+## Hito de reconciliación de ramas PR #11 / PR #13 (25-10-2026)
+
+La rama candidata `integration/sabora-pr11-merge-reconciliation` conserva el árbol probado de `integration/sabora-pr11-reconciliation` y registra la ascendencia de `integration/sabora-order-management-review` mediante commits de integración. Las diferencias de contrato de actor/rol, snapshots de entrada y preflight SQL se reconciliaron previamente con pruebas de regresión, sin sustituir la autorización por capacidad SQL firmada ni habilitar rutas operativas.
+
+La comparación GitHub de la rama candidata frente a la base confirma `status=ahead`, `behind_by=0`; el PR #13 está en Draft y `mergeable_state=clean`. Commit de integración `1f4e1536711dfdcdf70c3d187b59ba423c98103c`: Sabora CI run `40236383992` SUCCESS y Bootstrap Sabora lockfile run `40236384037` SUCCESS, con verificaciones PostgreSQL 17 desechables y construcción aislada. El PR #11 original sigue siendo un PR distinto y no se ha fusionado ni modificado su rama.
+
+**Límite de aceptación:** este hito cierra la compatibilidad de historia Git y la regresión automatizada de la rama candidata, pero no autoriza el merge, el despliegue, la activación de GET tablero/historial, ni concede permisos SQL de producción. Mantener el aislamiento absoluto del VPS y de Fleetia.
