@@ -11,18 +11,23 @@ CREATE TABLE sabora.staff_invitation_outbox (
   invite_version integer NOT NULL CHECK (invite_version > 0),
   invite_token_hash bytea NOT NULL CHECK (octet_length(invite_token_hash) = 32),
   state text NOT NULL DEFAULT 'pending'
-    CHECK (state IN ('pending', 'claimed', 'delivered', 'cancelled', 'failed')),
+    CHECK (state IN ('pending', 'claimed', 'dispatching', 'delivered', 'cancelled', 'failed')),
   fence uuid,
   claimed_at timestamptz,
+  dispatch_authorized_at timestamptz,
   delivered_at timestamptz,
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0 AND attempts <= 100),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   CONSTRAINT staff_invitation_outbox_claim_shape CHECK (
     (state = 'pending' AND fence IS NULL AND claimed_at IS NULL)
-    OR (state IN ('claimed', 'delivered', 'failed') AND fence IS NOT NULL
+    OR (state IN ('claimed', 'dispatching', 'delivered', 'failed') AND fence IS NOT NULL
         AND claimed_at IS NOT NULL)
     OR (state = 'cancelled')
+  ),
+  CONSTRAINT staff_invitation_outbox_dispatch_shape CHECK (
+    (state IN ('dispatching', 'delivered') AND dispatch_authorized_at IS NOT NULL)
+    OR (state NOT IN ('dispatching', 'delivered') AND dispatch_authorized_at IS NULL)
   ),
   CONSTRAINT staff_invitation_outbox_delivery_shape CHECK (
     (state = 'delivered' AND delivered_at IS NOT NULL)
@@ -31,8 +36,10 @@ CREATE TABLE sabora.staff_invitation_outbox (
   CONSTRAINT staff_invitation_outbox_timestamp_order CHECK (
     updated_at >= created_at
     AND (claimed_at IS NULL OR claimed_at >= created_at)
+    AND (dispatch_authorized_at IS NULL OR
+      (claimed_at IS NOT NULL AND dispatch_authorized_at >= claimed_at))
     AND (delivered_at IS NULL OR
-      (claimed_at IS NOT NULL AND delivered_at >= claimed_at))
+      (dispatch_authorized_at IS NOT NULL AND delivered_at >= dispatch_authorized_at))
   )
 );
 
