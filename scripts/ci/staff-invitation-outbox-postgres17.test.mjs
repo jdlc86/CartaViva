@@ -13,6 +13,7 @@ import {recordStaffInvitationDeliveryOutcome} from '../../apps/api/src/staff-inv
 import {reconcileStaffInvitationJob} from '../../apps/api/src/staff-invitation-reconciliation-candidate.mjs';
 import {createStaffInvitationOutboxRepository} from '../../apps/api/src/staff-invitation-outbox-repository-candidate.mjs';
 import {createStaffInvitationClaimRecoveryCandidate} from '../../apps/api/src/staff-invitation-claim-recovery-candidate.mjs';
+import {createRestrictedStaffClaimRecoveryCandidate} from '../../apps/api/src/staff-invitation-claim-recovery-restricted-candidate.mjs';
 import {
   createStaffInvitationEnqueueCandidate,
   STAFF_INVITATION_ENQUEUE_SQL,
@@ -810,4 +811,63 @@ test('PG17 unexpired claim cannot be reclaimed', async () => {
     withTransaction(query => callback((sql,values) => query({text:sql,values})))});
   assert.deepEqual(await recovery.reclaim({jobId,staleFence:claim.fence,leaseSeconds:60}),
     {reclaimed:false});
+});
+
+test('PG17 restricted recovery login has only EXECUTE and rotates stale fence',async()=>{
+  const overlay=await readFile(new URL(
+    '../../docs/security/sql-candidates/staff_invitation_claim_recovery_pg17.sql',
+    import.meta.url),'utf8');
+  await admin.query(overlay);
+  const role='sabora_ci_staff_claim_recovery';
+  const password='sabora_ci_staff_claim_recovery_ephemeral';
+  await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD '${password}'
+    NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION`);
+  await admin.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  await admin.query(`GRANT EXECUTE ON FUNCTION
+    sabora.reclaim_staff_invitation_claim_candidate(uuid,uuid,integer) TO ${role}`);
+  const pool=new Pool({connectionString:connectionString({role,value:password}),max:2});
+  try {
+    const permissions=await pool.query(`SELECT
+      session_user::text AS login,current_user::text AS effective,
+      has_table_privilege(current_user,'sabora.staff_invitation_outbox','SELECT') AS can_read,
+      has_table_privilege(current_user,'sabora.staff_invitation_outbox','UPDATE') AS can_update,
+      has_function_privilege(current_user,
+        'sabora.reclaim_staff_invitation_claim_candidate(uuid,uuid,integer)','EXECUTE') AS can_recover,
+      has_function_privilege(current_user,
+        'sabora.transition_staff_lifecycle_with_outbox_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text)','EXECUTE') AS can_transition`);
+    assert.deepEqual(permissions.rows,[{
+      login:role,effective:role,can_read:false,can_update:false,
+      can_recover:true,can_transition:false,
+    }]);
+    await assert.rejects(pool.query('SELECT * FROM sabora.staff_invitation_outbox'),
+      error=>error?.code==='42501');
+    const enrollment=await seedEnrollment();
+    const jobId=await seedJob(enrollment);
+    const first=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
+    assert.equal(first.claimed,true);
+    const restricted=createRestrictedStaffClaimRecoveryCandidate({query:(...args)=>pool.query(...args)});
+    assert.deepEqual(await restricted.reclaim({jobId,staleFence:first.fence,leaseSeconds:60}),
+      {reclaimed:false});
+    await admin.query(`UPDATE sabora.staff_invitation_outbox
+      SET created_at=clock_timestamp()-interval '3 minutes',
+          claimed_at=clock_timestamp()-interval '2 minutes'
+      WHERE id=$1`,[jobId]);
+    const next=await restricted.reclaim({jobId,staleFence:first.fence,leaseSeconds:60});
+    assert.equal(next.reclaimed,true);
+    assert.notEqual(next.fence,first.fence);
+    assert.deepEqual(await restricted.reclaim({jobId,staleFence:first.fence,leaseSeconds:60}),
+      {reclaimed:false});
+    assert.deepEqual(await authorizeStaffInvitationDispatch({
+      withTransaction,repository,jobId,fence:first.fence,
+    }),{authorized:false,reason:'claim_not_found'});
+    assert.deepEqual(await authorizeStaffInvitationDispatch({
+      withTransaction,repository,jobId,fence:next.fence,
+    }),{authorized:true});
+    assert.deepEqual(await restricted.reclaim({jobId,staleFence:next.fence,leaseSeconds:60}),
+      {reclaimed:false});
+    await assert.rejects(pool.query(`UPDATE sabora.staff_invitation_outbox
+      SET state='pending' WHERE id=$1`,[jobId]),error=>error?.code==='42501');
+  } finally {
+    await pool.end();
+  }
 });
