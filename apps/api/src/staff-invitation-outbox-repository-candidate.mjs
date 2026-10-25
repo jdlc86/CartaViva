@@ -91,20 +91,22 @@ export function createStaffInvitationOutboxRepository() {
       }
       return result.rows.length === 1;
     },
-    async finishDispatchingDelivery(query, jobId, fence, nextState) {
+    async finishDispatchingDelivery(query, jobId, fence, nextState, outcome) {
       if (typeof query !== 'function' || !UUID.test(jobId) || !UUID.test(fence) ||
-          !['delivered', 'failed'].includes(nextState)) {
+          !['delivered', 'failed'].includes(nextState) ||
+          !['accepted', 'permanent_failure', 'unknown'].includes(outcome) ||
+          (nextState === 'delivered') !== (outcome === 'accepted')) {
         throw Error('invalid_staff_delivery_sql_input');
       }
       const result = await query({
         text: `UPDATE sabora.staff_invitation_outbox
-          SET state = $3::text,
+          SET state = $3::text, provider_outcome = $4::text,
             delivered_at = CASE WHEN $3::text = 'delivered'
               THEN clock_timestamp() ELSE NULL END,
             updated_at = clock_timestamp()
           WHERE id = $1::uuid AND fence = $2::uuid AND state = 'dispatching'
           RETURNING id`,
-        values: [jobId.toLowerCase(), fence.toLowerCase(), nextState],
+        values: [jobId.toLowerCase(), fence.toLowerCase(), nextState, outcome],
       });
       if (!Array.isArray(result?.rows) || result.rows.length > 1 ||
           (result.rows.length === 1 &&
