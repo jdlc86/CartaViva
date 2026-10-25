@@ -326,6 +326,15 @@ BEGIN
     RAISE EXCEPTION 'line_not_found' USING errcode = 'P0002';
   END IF;
 
+  -- A row lock may wait beyond the capability or signing-key deadline.
+  -- Recheck against wall-clock time after acquiring the line lock and
+  -- before any status, notification, event or idempotency mutation.
+  v_now := clock_timestamp();
+  v_now_ms := floor(extract(epoch FROM v_now) * 1000)::bigint;
+  IF p_expires_at_ms <= v_now_ms OR v_key_expires_at <= v_now THEN
+    RAISE EXCEPTION 'invalid_order_operation_capability' USING errcode = '42501';
+  END IF;
+
   IF NOT (
     (v_previous_status = 'confirmed' AND p_next_status = 'preparing') OR
     (v_previous_status = 'preparing' AND p_next_status = 'ready') OR
