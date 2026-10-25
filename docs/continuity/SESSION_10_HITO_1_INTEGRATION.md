@@ -54,3 +54,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - En `5b2a268`, ambos workflows fallaron: 781/786 pruebas raíz, 5 fallos concentrados en `staff-invitation-delivery-policy.test.mjs`.
 - Causa demostrada en logs: el validador UUID de la política tenía cuatro grupos en lugar de cinco y rechazaba inscripciones válidas antes de evaluar su estado.
 - Corregido en `e6d1f99` con patrón UUID 8-4-4-4-12. La corrección requiere nueva verificación CI; no atribuirle éxito hasta observar los workflows.
+
+## Corrección de replay de invitación (25-10-2026)
+
+- Detectada una segunda frontera: el coordinador genera un token nuevo antes de consultar la idempotencia durable; cuando SQL devuelve `repeated=true`, ese token no coincide con el hash del primer intento.
+- Se suprime la exposición del token de entrega en replays. Prueba de regresión añadida en `staff-lifecycle-coordinator.test.mjs`.
+- Una primera entrega fallida seguida de replay **no reenvía** el token original: es una limitación deliberada del flujo candidato. Resolver con outbox duradera y material protegido antes de activar el envío.
