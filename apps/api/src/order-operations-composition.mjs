@@ -2,7 +2,7 @@ import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-po
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
-import {preflightOrderOperationsIdentities} from './order-operations-identity-preflight.mjs';
+import {preflightOrderOperationsIdentities, preflightOrderTransitionIdentity} from './order-operations-identity-preflight.mjs';
 
 function assertIsolatedPools(staffPool, operationsPool) {
   if (!staffPool || !operationsPool || staffPool === operationsPool ||
@@ -55,4 +55,37 @@ export async function registerVerifiedOrderOperationsFromPools(app, options = {}
     staffPool, operationsPool, staffRole, operationsRole,
   });
   return registerOrderOperationsFromPools(app, options);
+}
+
+// Explicit opt-in, mutation-only candidate. This gate NEVER mounts board or
+// history: the operations SQL login is forbidden from reading private tables.
+// Caller supplies independently authenticated staff hooks and both pools;
+// neither server.mjs nor a default bootstrap imports this registration.
+export async function registerVerifiedOrderTransitionsOnlyFromPools(app, options = {}) {
+  const {
+    staffPool, operationsPool, staffRole, operationsRole,
+    issueTransitionCapability,
+  } = options;
+  assertIsolatedPools(staffPool, operationsPool);
+  if (typeof issueTransitionCapability !== 'function') {
+    throw Error('invalid_order_operation_capability_issuer');
+  }
+  if (!app || typeof app.post !== 'function' || typeof app.hasRoute !== 'function' ||
+      app.hasRoute({method: 'POST',
+        url: '/api/v1/operations/order-lines/:lineId/transitions'})) {
+    throw Error('invalid_order_transition_route_registration');
+  }
+  // The mutation principal must pass its own restricted-login gate.\n  await preflightOrderTransitionIdentity({pool: operationsPool, role: operationsRole});
+  const forRoles = createStaffProtectedHooksFromPool({
+    pool: staffPool,
+    issuer: options.issuer,
+    getTrustedKeys: options.getTrustedKeys,
+    verify: options.verify,
+    observe: options.observe,
+  });
+  const operations = createOrderOperationsCoordinator({
+    withTransaction: createPostgresTransaction({pool: operationsPool}),
+    issueTransitionCapability,
+  });
+  registerOrderOperationsHttp(app, {forRoles, operations, transitionOnly: true});
 }
