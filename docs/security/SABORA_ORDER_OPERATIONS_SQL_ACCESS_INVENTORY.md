@@ -366,3 +366,10 @@ Esta aceptación depende de los workflows del SHA de reconciliación; no supone 
 ## Reconciliación de membresía de roles SQL (25-10-2026)
 
 Se añade al preflight de ambos logins técnicos el rechazo de membresías de rol **en las dos direcciones**: cuando el login es miembro de otro rol (`membership.member`) y cuando terceros son miembros del rol de login (`membership.roleid`). Esto evita aceptar un login aparentemente aislado que delega sus privilegios a otro principal. Se mantiene la comprobación separada del propietario sellado de la función autorizada, los grants cero sobre tablas privadas y la única RPC firmada candidata. Pruebas Node comprueban ambos sentidos y ambos logins. No se ha creado ni alterado ningún rol real.
+
+
+## Reconciliación de comprobación de membresía en lecturas (25-10-2026)
+
+Las rutas candidatas de tablero e historial, todavía **no montadas**, solo continúan si `verifyMembership` devuelve un registro explícito con `actorId` UUID coincidente con la identidad autenticada y `role` coincidente con el rol del personal verificado. Se rechazan respuestas ausentes, contradictorias o malformadas antes de ejecutar la lectura operativa. Se conserva la captura previa e inmutable de parámetros. Esta validación Node no concede privilegios de lectura SQL ni satisface por sí sola el gate de lecturas actor-bound pendiente.
+
+Las transiciones no hacen una segunda lectura directa de membresía desde el login restringido; la función SQL de capacidad autorizada realiza la verificación de firma y revalidación bajo bloqueo. Pruebas específicas distinguen ambas rutas para evitar que la reconciliación reintroduzca permisos de tabla sobre el principal de operaciones.
