@@ -76,6 +76,15 @@ export async function registerVerifiedOrderTransitionsOnlyFromPools(app, options
     throw Error('invalid_order_transition_route_registration');
   }
   if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  // Validate authentication wiring before opening either SQL connection.
+  // A misconfigured issuer/JWKS/verification hook must never leave a
+  // partially mounted or apparently operational endpoint.
+  if (typeof options.issuer !== 'string' || options.issuer.length === 0 ||
+      typeof options.getTrustedKeys !== 'function' ||
+      (options.verify !== undefined && typeof options.verify !== 'function') ||
+      (options.observe !== undefined && typeof options.observe !== 'function')) {
+    throw Error('invalid_order_transition_auth_config');
+  }
   await preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole});
   await preflightOrderTransitionIdentity({pool: operationsPool, role: operationsRole});
   const forRoles = createStaffProtectedHooksFromPool({
