@@ -56,3 +56,47 @@ test('startup accepts separate minimally privileged identities with future expir
   assert.deepEqual(staffPool.state.releases, [null]);
   assert.deepEqual(operationsPool.state.releases, [null]);
 });
+
+test('SQL inspection failure remains primary when client release also fails', async () => {
+  const staffPool = pool(roles[0]);
+  const operationsPool = {
+    async connect() {
+      return {
+        async query() { throw Error('sql_inspection_failed'); },
+        release() { throw Error('sql_release_failed'); },
+      };
+    },
+  };
+  await assert.rejects(preflightOrderOperationsIdentities({
+    staffPool, operationsPool, staffRole: roles[0], operationsRole: roles[1],
+  }), error => {
+    assert.equal(error.message, 'sql_inspection_failed');
+    assert.equal(error.releaseError?.message, 'sql_release_failed');
+    return true;
+  });
+});
+
+test('successful SQL inspection cannot hide failed connection release', async () => {
+  const staffPool = pool(roles[0]);
+  const operationsPool = {
+    async connect() {
+      return {
+        async query() { return {rows: [identity(roles[1])]}; },
+        release() { throw Error('sql_release_failed'); },
+      };
+    },
+  };
+  await assert.rejects(preflightOrderOperationsIdentities({
+    staffPool, operationsPool, staffRole: roles[0], operationsRole: roles[1],
+  }), /sql_release_failed/);
+});
+
+test('malformed SQL client release failure preserves malformed-client error', async () => {
+  const staffPool = pool(roles[0]);
+  const operationsPool = {
+    async connect() { return {release() { throw Error('release_failed'); }}; },
+  };
+  await assert.rejects(preflightOrderOperationsIdentities({
+    staffPool, operationsPool, staffRole: roles[0], operationsRole: roles[1],
+  }), /invalid_order_operations_sql_client/);
+});
