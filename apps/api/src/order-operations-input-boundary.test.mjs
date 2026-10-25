@@ -83,3 +83,37 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     assert.equal(observed[0].role, 'kitchen');
   });
 }
+
+for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
+  for (const [label, makeContext] of [
+    ['inherited identity', () => Object.create({verifiedIdentity: context.verifiedIdentity, verifiedStaff: context.verifiedStaff})],
+    ['accessor identity', () => Object.defineProperty({verifiedStaff: context.verifiedStaff}, 'verifiedIdentity', {
+      enumerable: true, get() { throw Error('identity_getter_executed'); },
+    })],
+    ['accessor actor UUID', () => ({
+      verifiedIdentity: Object.defineProperty({}, 'userId', {
+        enumerable: true, get() { throw Error('actor_getter_executed'); },
+      }), verifiedStaff: context.verifiedStaff,
+    })],
+    ['inherited role', () => ({
+      verifiedIdentity: context.verifiedIdentity,
+      verifiedStaff: Object.assign(Object.create({role: 'kitchen'}), {userId: actorId}),
+    })],
+    ['accessor role', () => ({
+      verifiedIdentity: context.verifiedIdentity,
+      verifiedStaff: Object.defineProperty({userId: actorId}, 'role', {
+        enumerable: true, get() { throw Error('role_getter_executed'); },
+      }),
+    })],
+  ]) {
+    test(`${operation} rejects ${label} without executing getters or SQL`, async () => {
+      let transactions = 0;
+      const coordinator = createOrderOperationsCoordinator({
+        withTransaction: async () => { transactions++; },
+        repository: {verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {}},
+      });
+      await assert.rejects(coordinator[operation](makeContext(), {}), /order_operations_forbidden/);
+      assert.equal(transactions, 0);
+    });
+  }
+}
