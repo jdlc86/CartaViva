@@ -156,10 +156,32 @@ test('every privileged SQL identity drift is rejected independently for staff an
   }
 });
 
-test('SQL identity inspection checks every private routine class and both role grant directions', async () => {
-  const staffPool = pool(roles.staffRole);
-  const operationsPool = pool(roles.operationsRole);
-  await preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles});
-  assert.equal(staffPool.state.queries, 1);
-  assert.equal(operationsPool.state.queries, 1);
+test('SQL inspection explicitly checks both routine classes and role grant directions', async () => {
+  const seen = [];
+  const capturingPool = role => ({
+    async connect() {
+      return {
+        async query(sql) {
+          seen.push(sql);
+          const reference = pool(role);
+          const client = await reference.connect();
+          return client.query(sql);
+        },
+        release() {},
+      };
+    },
+  });
+  await preflightOrderOperationsIdentities({
+    staffPool: capturingPool(roles.staffRole),
+    operationsPool: capturingPool(roles.operationsRole),
+    ...roles,
+  });
+  assert.equal(seen.length, 2);
+  for (const sql of seen) {
+    assert.match(sql, /NOT routine\\.prosecdef/);
+    assert.match(sql, /routine\\.prosecdef/);
+    assert.match(sql, /membership\\.member = role\\.oid/);
+    assert.match(sql, /membership\\.roleid = role\\.oid/);
+    assert.match(sql, /has_any_column_privilege/);
+  }
 });
