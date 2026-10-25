@@ -329,3 +329,20 @@ current_database(), 'CREATE') = false`. Este privilegio es independiente de
 otros esquemas dentro de la base. El harness PostgreSQL 17 efímero concede
 `CREATE` temporalmente al login de operaciones, exige rechazo del preflight,
 revoca el permiso y exige recuperación. No modifica ninguna base operativa.
+
+
+## Refuerzo de frontera de membresía en coordinador (25-10-2026)
+
+El coordinador de operaciones comprueba ahora que la respuesta de `verifyMembership`
+contiene exactamente el UUID autenticado y el rol esperado, comparando UUID sin
+distinguir mayúsculas. La comprobación se ejecuta dentro de la misma transacción
+y antes de tablero, transición o historial. La ausencia de respuesta o cualquier
+discrepancia aborta con `order_operations_forbidden`. El test
+`apps/api/src/order-operations-membership-boundary.test.mjs` cubre 15 casos
+de aceptación y rechazo de los tres flujos.
+
+**Límite explícito:** esta defensa valida la interfaz entre componentes Node,
+pero no autentica una sesión SQL directa. La RPC candidata continúa sin
+`EXECUTE` para los logins técnicos y las rutas permanecen sin montar. La
+vinculación no falsificable de actor y el diseño positivo RLS/GRANT requieren
+revisión y pruebas PostgreSQL 17 desechables antes de cualquier activación.
