@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   preflightOrderOperationsIdentities,
   preflightOrderTransitionIdentity,
+  preflightOrderTransitionStaffIdentity,
 } from '../apps/api/src/order-operations-identity-preflight.mjs';
 
 function pool(role, overrides = {}) {
@@ -220,4 +221,26 @@ test('preflight preserves malformed client rejection if discard release fails', 
     preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
     /invalid_order_operations_sql_client/,
   );
+});
+
+
+test('transition staff preflight accepts only exact column-scoped membership reads', async () => {
+  const staff = pool(roles.staffRole, {
+    accessible_private_tables: 1, staff_reader_exact_columns: true,
+  });
+  assert.deepEqual(await preflightOrderTransitionStaffIdentity({
+    pool: staff, role: roles.staffRole,
+  }), {role: roles.staffRole});
+  for (const override of [
+    {accessible_private_tables: 0, staff_reader_exact_columns: true},
+    {accessible_private_tables: 2, staff_reader_exact_columns: true},
+    {accessible_private_tables: 1, staff_reader_exact_columns: false},
+    {accessible_private_tables: 1, staff_reader_exact_columns: null},
+    {accessible_private_tables: 1, staff_reader_exact_columns: true,
+      authorized_rpc_execute: true},
+  ]) {
+    await assert.rejects(preflightOrderTransitionStaffIdentity({
+      pool: pool(roles.staffRole, override), role: roles.staffRole,
+    }), /order_operations_sql_identity_rejected/);
+  }
 });
