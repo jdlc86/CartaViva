@@ -61,7 +61,8 @@ test('verified composition must preflight before mounting routes', async () => {
 test('identity preflight rejects grants on actor RPC and private relations', async () => {
   const preflight = await source('apps/api/src/order-operations-identity-preflight.mjs');
   assert.match(preflight, /candidate_rpc_execute\s*!==\s*false/);
-  assert.match(preflight, /accessible_private_tables\s*!==\s*0/);
+  assert.match(preflight, /accessible_private_tables\s*!==\s*\(allowStaffReader \? 1 : 0\)/);
+  assert.match(preflight, /allowStaffReader && row\.staff_reader_exact_columns !== true/);
   assert.match(preflight, /accessible_private_sequences\s*!==\s*0/);
   assert.match(preflight, /accessible_private_definer_routines\s*!==\s*\(allowAuthorizedTransition \? 1 : 0\)/);
   assert.match(preflight, /candidate_is_invoker\s*!==\s*true/);
