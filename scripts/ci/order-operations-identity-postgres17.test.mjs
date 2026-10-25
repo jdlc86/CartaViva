@@ -541,3 +541,58 @@ test('Fastify transition rejects forged HTTP identity fields and uses the signed
     WHERE order_line_id=$1`, [item.lineId]);
   assert.deepEqual(attribution.rows, [{actor_user_id: kitchenId}]);
 });
+
+test('Fastify + restricted PG17 login: full signed kitchen-to-waiter mutation, replay and denied board',async t=>{
+  const item=await fixture(214);
+  const app=Fastify({logger:false});
+  const forRoles=roles=>[async(request,reply)=>{
+    // Test-only identity injector, never an operational auth implementation.
+    const [scheme,userId,role]=String(request.headers.authorization??'').split(' ');
+    if(scheme!=='Test'||!roles.includes(role))
+      return reply.code(401).send({error:'unauthorized'});
+    request.verifiedIdentity={userId};
+    request.verifiedStaff={userId,role};
+  }];
+  registerOrderOperationsHttp(app,{forRoles,operations});
+  await app.ready();
+  t.after(()=>app.close());
+  const kitchen={authorization:`Test ${kitchenId} kitchen`};
+  const waiter={authorization:`Test ${waiterId} waiter`};
+  const transition=(headers,targetStatus,correlationId)=>app.inject({
+    method:'POST',
+    url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+    headers,payload:{targetStatus,correlationId},
+  });
+  const unauthenticated=await transition({},'preparing','signed_http_unauth_214');
+  assert.equal(unauthenticated.statusCode,401);
+  assert.equal((await transition(waiter,'preparing','signed_http_denied_214')).statusCode,403);
+  const prep=await transition(kitchen,'preparing','signed_http_prepare_214');
+  assert.equal(prep.statusCode,201,prep.body);
+  const prepReplay=await transition(kitchen,'preparing','signed_http_prepare_214');
+  assert.equal(prepReplay.statusCode,200,prepReplay.body);
+  assert.equal(prepReplay.json().eventId,prep.json().eventId);
+  const ready=await transition(kitchen,'ready','signed_http_ready_214');
+  assert.equal(ready.statusCode,201,ready.body);
+  assert.ok(ready.json().notificationId);
+  const pickup=await transition(waiter,'picked_up','signed_http_pickup_214');
+  assert.equal(pickup.statusCode,201,pickup.body);
+  assert.equal(pickup.json().notificationId,ready.json().notificationId);
+  const pickupReplay=await transition(waiter,'picked_up','signed_http_pickup_214');
+  assert.equal(pickupReplay.statusCode,200,pickupReplay.body);
+  assert.equal(pickupReplay.json().eventId,pickup.json().eventId);
+  assert.deepEqual(await state(item.lineId),{
+    status:'picked_up',events:3,requests:3,notifications:1,
+  });
+  // The deliberately unapproved board/history SQL capability must remain closed.
+  const board=await app.inject({method:'GET',
+    url:'/api/v1/operations/order-lines',headers:waiter});
+  assert.equal(board.statusCode,503,board.body);
+  assert.deepEqual(board.json(),{error:'order_operations_unavailable'});
+  const history=await app.inject({method:'GET',
+    url:`/api/v1/operations/orders/${item.orderId}/history`,headers:waiter});
+  assert.equal(history.statusCode,503,history.body);
+  assert.deepEqual(history.json(),{error:'order_operations_unavailable'});
+  // A direct SQL read is still denied even though the signed mutation succeeded.
+  await assert.rejects(operationsPool.query(
+    'SELECT * FROM sabora.order_lines LIMIT 1'),/permission denied/);
+});
