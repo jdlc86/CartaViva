@@ -120,3 +120,46 @@ test('preflight rejects malformed SQL identity results', async () => {
     staffPool, operationsPool, ...roles,
   }), /order_operations_sql_identity_rejected/);
 });
+
+test('every privileged SQL identity drift is rejected independently for staff and operations', async () => {
+  const forbidden = [
+    {superuser: true}, {bypass_rls: true}, {can_login: false},
+    {inherits_roles: true}, {can_create_role: true}, {can_create_db: true},
+    {can_replicate: true}, {has_role_memberships: true}, {has_role_grantees: true},
+    {schema_usage: false}, {schema_create: true}, {database_create: true},
+    {candidate_rpc_execute: true}, {candidate_is_invoker: false},
+    {forced_rls_transition_requests: 0},
+    {accessible_private_tables: 1}, {accessible_private_sequences: 1},
+    {accessible_private_definer_routines: 1}, {accessible_private_invoker_routines: 1},
+    {connection_limit: 0}, {password_valid_until: new Date('2000-01-01T00:00:00Z')},
+  ];
+  for (const drift of forbidden) {
+    for (const affected of ['staff', 'operations']) {
+      const staffPool = pool(roles.staffRole, affected === 'staff' ? drift : {});
+      const operationsPool = pool(roles.operationsRole, affected === 'operations' ? drift : {});
+      await assert.rejects(
+        preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+        /order_operations_sql_identity_rejected/,
+        `${affected} must reject ${Object.keys(drift)[0]}`,
+      );
+      const failed = affected === 'staff' ? staffPool : operationsPool;
+      const skipped = affected === 'staff' ? operationsPool : staffPool;
+      assert.equal(failed.state.queries, 1);
+      assert.equal(failed.state.releases.length, 1);
+      assert.ok(failed.state.releases[0] instanceof Error);
+      if (affected === 'staff') {
+        assert.equal(skipped.state.queries, 0, 'never inspect operations after staff rejection');
+      } else {
+        assert.deepEqual(skipped.state.releases, [null]);
+      }
+    }
+  }
+});
+
+test('SQL identity inspection checks every private routine class and both role grant directions', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = pool(roles.operationsRole);
+  await preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles});
+  assert.equal(staffPool.state.queries, 1);
+  assert.equal(operationsPool.state.queries, 1);
+});
