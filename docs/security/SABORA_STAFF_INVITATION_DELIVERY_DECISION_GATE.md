@@ -229,3 +229,36 @@ y Bootstrap SUCCESS).
 Este subhito de integridad de sobre queda validado. No representa
 aprovisionamiento/rotación de claves ni autorización de lectura
 del material cifrado. El gate operativo continúa abierto.
+
+## Custodia cifrada con principal SQL restringido (25-10-2026)
+
+El candidato `sql-candidates/staff_invitation_custody_restricted_pg17.sql`
+crea un owner `NOLOGIN/NOINHERIT/NOBYPASSRLS` independiente
+del usuario runtime. El owner solo recibe lectura de columnas
+necesarias de outbox, inserción de columnas cifradas de custodia,
+políticas RLS acotadas y EXECUTE de la función de validación
+`SECURITY INVOKER`. La función exterior
+`store_staff_invitation_custody_restricted_candidate` es
+`SECURITY DEFINER`, tiene `search_path` cerrado y no concede
+EXECUTE a PUBLIC. El login efímero de CI recibe solo EXECUTE de
+esta función además de la rutina integrada ya autorizada.
+
+El coordinador candidato puede componer transición HMAC, outbox
+y custodia cifrada bajo el mismo usuario restringido y la misma
+transacción. La prueba PG17 confirma denegación de lectura e
+inserción directas, rollback de inscripción ante hash erróneo,
+commit de outbox y custodia y replay sin duplicación.
+
+Se eliminó el bloqueo explícito de lectura de outbox porque
+requería UPDATE para el owner. La inserción de outbox y la
+verificación de custodia se realizan en **la misma transacción**
+antes de hacer visible el registro; el nuevo owner no recibe
+UPDATE de outbox. Este contrato de atomicidad no autoriza
+almacenamiento de sobres para trabajos existentes fuera de la
+transacción de emisión.
+
+Evidencia: commit `7170acc`, Sabora CI y Bootstrap SUCCESS
+en PostgreSQL 17 desechable. Subhito de custodia restringida
+candidata cerrado; sigue sin existir un principal operativo,
+gestión y rotación de claves, lectura segura para worker,
+política de borrado, proveedor o despliegue autorizado.
