@@ -1,23 +1,25 @@
-// Candidate-only transactional enqueue. Not connected to runtime routes or providers.
-// Caller must use the SAME PostgreSQL transaction for lifecycle and outbox.
-// This draft persists a token hash only: it cannot deliver an invitation.
+// Candidate-only adapter for the single PostgreSQL statement that joins the
+// HMAC lifecycle wrapper and invitation outbox. It is not mounted at runtime.
+import {createStaffLifecycleRepository} from './staff-lifecycle-repository.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 
-export const STAFF_INVITATION_ENQUEUE_SQL = `INSERT INTO sabora.staff_invitation_outbox
-  (id, enrollment_id, invite_version, invite_token_hash)
-  SELECT $1::uuid, e.id, e.invite_version, e.invite_token_hash
-  FROM sabora.staff_enrollments e
-  WHERE e.id = $2::uuid AND e.state = 'invited'
-    AND e.invite_version = $3::integer
-    AND encode(e.invite_token_hash, 'hex') = $4::text
-  ON CONFLICT (enrollment_id, invite_version) DO NOTHING
-  RETURNING id`;
+export const STAFF_INVITATION_ENQUEUE_SQL = `SELECT *
+  FROM sabora.transition_staff_lifecycle_with_outbox_candidate(
+    $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
+    $6::uuid,$7::text,$8::text,$9::text,$10::text,
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text
+  )`;
 
-export function createStaffInvitationEnqueueCandidate({withTransaction, lifecycleRepository, uuid} = {}) {
-  if (typeof withTransaction !== 'function' ||
-      typeof lifecycleRepository?.transition !== 'function' ||
-      typeof uuid !== 'function') throw Error('invalid_staff_enqueue_config');
+export function createStaffInvitationEnqueueCandidate({
+  query,
+  lifecycleRepository = createStaffLifecycleRepository(),
+} = {}) {
+  if (typeof query !== 'function' ||
+      typeof lifecycleRepository?.transition !== 'function') {
+    throw Error('invalid_staff_enqueue_config');
+  }
 
   return Object.freeze({
     async transitionAndEnqueue(capability) {
@@ -26,27 +28,32 @@ export function createStaffInvitationEnqueueCandidate({withTransaction, lifecycl
           !HASH.test(capability.inviteTokenHashHex ?? '')) {
         throw Error('invalid_staff_enqueue_input');
       }
-      return withTransaction(async (query) => {
-        if (typeof query !== 'function') throw Error('invalid_staff_enqueue_transaction');
-        const transition = await lifecycleRepository.transition(query, capability);
-        if (!transition || transition.enrollmentId?.toLowerCase() !== capability.enrollmentId.toLowerCase() ||
-            !Number.isSafeInteger(transition.inviteVersion) || transition.inviteVersion < 1 ||
-            transition.currentState !== 'invited' || typeof transition.repeated !== 'boolean') {
-          throw Error('invalid_staff_enqueue_transition');
+
+      let combinedRow = null;
+      const transition = await lifecycleRepository.transition(async (_sql, parameters) => {
+        const result = await query(STAFF_INVITATION_ENQUEUE_SQL, parameters);
+        if (Array.isArray(result?.rows) && result.rows.length === 1) {
+          combinedRow = result.rows[0];
         }
-        if (transition.repeated) return Object.freeze({transition, enqueued: false, repeated: true});
-        const jobId = uuid();
-        if (!UUID.test(jobId)) throw Error('invalid_staff_enqueue_job_id');
-        const result = await query(STAFF_INVITATION_ENQUEUE_SQL, [
-          jobId.toLowerCase(), transition.enrollmentId.toLowerCase(),
-          transition.inviteVersion, capability.inviteTokenHashHex,
-        ]);
-        if (!Array.isArray(result?.rows) || result.rows.length !== 1 ||
-            result.rows[0]?.id !== jobId.toLowerCase()) {
-          // Failing closed rolls back the lifecycle transition as well.
-          throw Error('staff_enqueue_atomicity_violation');
-        }
-        return Object.freeze({transition, enqueued: true, repeated: false});
+        return result;
+      }, capability);
+
+      const expectedEnqueued = !transition.repeated;
+      if (!combinedRow || !UUID.test(combinedRow.outbox_job_id ?? '') ||
+          combinedRow.outbox_enqueued !== expectedEnqueued ||
+          !Number.isSafeInteger(combinedRow.outbox_cancelled_count) ||
+          combinedRow.outbox_cancelled_count < 0 ||
+          (capability.action === 'invite' && combinedRow.outbox_cancelled_count !== 0) ||
+          (transition.repeated && combinedRow.outbox_cancelled_count !== 0)) {
+        throw Error('invalid_staff_enqueue_sql_result');
+      }
+
+      return Object.freeze({
+        transition,
+        jobId: combinedRow.outbox_job_id,
+        enqueued: combinedRow.outbox_enqueued,
+        repeated: transition.repeated,
+        cancelledCount: combinedRow.outbox_cancelled_count,
       });
     },
   });
