@@ -346,3 +346,23 @@ pero no autentica una sesión SQL directa. La RPC candidata continúa sin
 `EXECUTE` para los logins técnicos y las rutas permanecen sin montar. La
 vinculación no falsificable de actor y el diseño positivo RLS/GRANT requieren
 revisión y pruebas PostgreSQL 17 desechables antes de cualquier activación.
+
+
+## Frontera de entrada inmutable del coordinador (25-10-2026)
+
+Antes de abrir transacciones, las tres operaciones del coordinador copian los
+campos propios enumerables de objetos planos a un snapshot de prototipo nulo,
+con descriptores de solo lectura. Se rechazan accesores, símbolos, objetos
+no planos y la clave propia `__proto__`. El snapshot evita que una mutación
+posterior del objeto original durante la espera asíncrona cambie el alcance
+operativo. Los campos `actorId` y `role` se sobrescriben siempre con la
+identidad previamente verificada, nunca con valores del llamante.
+
+Las pruebas en `apps/api/src/order-operations-input-boundary.test.mjs`
+cubren entradas inválidas, mutaciones entre comprobación de membresía y
+operación, intentos de contaminación de prototipo y suplantación de actor/rol.
+
+Estas defensas son exclusivamente de la capa Node.js. No convierten el UUID
+que recibe la RPC invoker en una identidad SQL autenticada. Se mantiene
+bloqueada la habilitación de EXECUTE, de GRANT positivos y del montaje HTTP
+hasta cerrar las pruebas de autorización SQL directa con PostgreSQL 17.
