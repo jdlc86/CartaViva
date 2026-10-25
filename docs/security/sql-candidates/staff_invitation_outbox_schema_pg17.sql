@@ -15,6 +15,8 @@ CREATE TABLE sabora.staff_invitation_outbox (
   fence uuid,
   claimed_at timestamptz,
   dispatch_authorized_at timestamptz,
+  provider_outcome text CHECK (provider_outcome IN
+    ('accepted', 'permanent_failure', 'unknown')),
   delivered_at timestamptz,
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0 AND attempts <= 100),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -28,6 +30,11 @@ CREATE TABLE sabora.staff_invitation_outbox (
   CONSTRAINT staff_invitation_outbox_dispatch_shape CHECK (
     (state IN ('dispatching', 'delivered') AND dispatch_authorized_at IS NOT NULL)
     OR (state NOT IN ('dispatching', 'delivered') AND dispatch_authorized_at IS NULL)
+  ),
+  CONSTRAINT staff_invitation_outbox_outcome_shape CHECK (
+    (state = 'delivered' AND provider_outcome = 'accepted')
+    OR (state = 'failed' AND provider_outcome IN ('permanent_failure', 'unknown'))
+    OR (state NOT IN ('delivered', 'failed') AND provider_outcome IS NULL)
   ),
   CONSTRAINT staff_invitation_outbox_delivery_shape CHECK (
     (state = 'delivered' AND delivered_at IS NOT NULL)
