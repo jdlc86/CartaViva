@@ -112,7 +112,7 @@ async function inspect(pool, expectedRole) {
         (row.password_valid_until !== null &&
           (!(row.password_valid_until instanceof Date) ||
             !Number.isFinite(row.password_valid_until.getTime()) ||
-            row.password_valid_until.getTime() <= Date.now())))) {
+            row.password_valid_until.getTime() <= Date.now()))) {
       throw Error('order_operations_sql_identity_rejected');
     }
     return Object.freeze({role: expectedRole});
