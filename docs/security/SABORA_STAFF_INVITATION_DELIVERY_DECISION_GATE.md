@@ -434,3 +434,41 @@ anterior de aprobación booleana cuando NO se configura
 segura** y debe eliminarse antes de conectar cualquier
 ejecutor real. No hay scheduler, identidad de producción,
 política de retención aprobada ni permiso de despliegue.
+
+## Consumo duradero de concesiones y cierre de bypass booleano (25-10-2026)
+
+El candidato `sql-candidates/staff_custody_approval_nonce_pg17.sql`
+crea una tabla de nonces con clave primaria, FORCE RLS y
+principal independiente `NOLOGIN/NOINHERIT/NOBYPASSRLS`.
+`consume_staff_custody_approval_nonce_candidate` es una
+función `SECURITY DEFINER` de búsqueda cerrada, que
+inserta atómicamente el nonce una sola vez mediante
+`ON CONFLICT DO NOTHING`, rechaza caducidades pasadas
+o superiores a cinco minutos y no concede EXECUTE público.
+El adaptador Node
+`staff-custody-nonce-consumer-candidate.mjs` llama la
+función restringida y rechaza resultados inesperados.
+
+`staff-custody-maintenance-candidate.mjs` ahora exige
+siempre `approvalAuthority.verifyAndConsume`: **se ha
+eliminado el camino que aceptaba el objeto booleano de
+aprobación sin verificación**. El modo dry-run continúa
+siendo el predeterminado. Las pruebas PG17 realizan 16
+consumos concurrentes desde dos pools: exactamente uno
+es aceptado; se deniega SELECT y DELETE directos, se
+rechazan nonces repetidos y caducados. La primera ejecución
+detectó un permiso insuficiente para `ON CONFLICT` bajo
+FORCE RLS, corregido con SELECT mínimo del campo nonce
+y política SELECT del propietario no login.
+Evidencia: commit `20c3761`, Sabora CI y Bootstrap SUCCESS.
+
+**Alcance y límites:** el registro de nonce es duradero y
+atómico en PostgreSQL 17 desechable; no existe una migración
+operativa, identidad de ejecución de producción ni concesión
+de privilegios operativos. La emisión de concesiones HMAC
+sigue siendo candidata y la autorización humana verificable
+y política de retención están pendientes. Consumir el nonce
+antes de la purga evita el replay pero no asegura una
+transacción atómica entre consumo y purga; un fallo posterior
+requiere una nueva autorización. No se ha ejecutado ninguna
+purga operativa.
