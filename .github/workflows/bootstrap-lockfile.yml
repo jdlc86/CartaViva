@@ -2,6 +2,17 @@ name: Bootstrap Sabora lockfile
 
 on:
   workflow_dispatch:
+  push:
+    branches: [integration/sabora-hito1-identity-staff]
+    paths:
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'apps/**/package.json'
+      - '.github/workflows/bootstrap-lockfile.yml'
+      - 'tests/**'
+      - 'supabase/migrations/**'
+      - 'scripts/ci/**'
+      - 'apps/api/src/**'
   pull_request:
     paths:
       - 'package.json'
