@@ -177,6 +177,12 @@ test('repository validates ordering, cursor and overflow row before returning a 
     [base, {...second, line_id: lineId}],
     [base, {...second, confirmed_at: new Date('2026-10-24T09:59:00.000Z')}],
     [base, {...second, confirmed_at: 'not-a-date'}],
+    [base, {...second, table_number: 0}],
+    [base, {...second, customer_label: ''}],
+    [base, {...second, quantity: 0}],
+    [base, {...second, notification_id: 'not-a-uuid'}],
+    [base, {...second, notification_created_at: null}],
+    [base, {...second, grouping: 'unknown'}],
   ]) {
     await assert.rejects(repository.listBoard(async () => ({rows}), options),
       /invalid_order_operations_sql_result/);
