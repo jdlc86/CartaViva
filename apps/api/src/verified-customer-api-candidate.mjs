@@ -1,6 +1,7 @@
 // Opt-in isolated customer API assembly. No listen(), env, credentials or
 // production server import. Caller owns Fastify and both pool lifecycles.
 import {registerVerifiedIsolatedCustomerRoutes} from './verified-isolated-customer-composition-candidate.mjs';
+import {createIsolatedCustomerReadinessCandidate} from './isolated-customer-readiness-candidate.mjs';
 export async function registerVerifiedCustomerApiCandidate(app,options={}){
  if(!app||typeof app.get!=='function'||typeof app.post!=='function'||
     typeof app.hasRoute!=='function')
@@ -10,6 +11,8 @@ export async function registerVerifiedCustomerApiCandidate(app,options={}){
   ['GET','/api/v1/catalog'],['POST','/api/v1/customer/orders/confirm']]){
   if(app.hasRoute({method,url}))throw Error('verified_customer_api_route_conflict');
  }
+ // Construct the live probe before registering any routes.
+ const checkReady=createIsolatedCustomerReadinessCandidate(options);
  // Preflight must succeed before exposing even health/readiness for this app.
  await registerVerifiedIsolatedCustomerRoutes(app,options);
  app.get('/health',async(_request,reply)=>{
@@ -18,6 +21,8 @@ export async function registerVerifiedCustomerApiCandidate(app,options={}){
  });
  app.get('/ready',async(_request,reply)=>{
   reply.header('Cache-Control','no-store');
+  reply.header('X-Content-Type-Options','nosniff');
+  if(!await checkReady())return reply.code(503).send({status:'unavailable'});
   return {status:'ready',service:'sabora-customer-api-candidate'};
  });
  return Object.freeze({registered:true});
