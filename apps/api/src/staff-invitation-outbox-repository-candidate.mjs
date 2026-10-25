@@ -11,6 +11,18 @@ function parseCandidate(jobId, rows) {
   }
   if (rows.length === 0) return null;
   const row = rows[0];
+  if (!row || typeof row !== 'object' || Array.isArray(row)) {
+    throw Error('invalid_staff_delivery_sql_result');
+  }
+  // SQL driver results must be plain data, not accessor-backed objects.
+  for (const field of ['job_id', 'enrollment_id', 'invite_version',
+    'invite_token_hash_hex', 'current_invite_version',
+    'current_invite_token_hash_hex', 'enrollment_state']) {
+    const descriptor = Object.getOwnPropertyDescriptor(row, field);
+    if (!OWN.call(row, field) || !descriptor || !OWN.call(descriptor, 'value')) {
+      throw Error('invalid_staff_delivery_sql_result');
+    }
+  }
   if (!row || typeof row !== 'object' ||
       !UUID.test(row.enrollment_id) ||
       !Number.isSafeInteger(row.invite_version) || row.invite_version < 1 ||
@@ -23,15 +35,6 @@ function parseCandidate(jobId, rows) {
       !UUID.test(row.job_id) ||
       row.job_id.toLowerCase() !== jobId.toLowerCase()) {
     throw Error('invalid_staff_delivery_sql_result');
-  }
-  // SQL driver results must be plain data, not accessor-backed objects.
-  for (const field of ['job_id', 'enrollment_id', 'invite_version',
-    'invite_token_hash_hex', 'current_invite_version',
-    'current_invite_token_hash_hex', 'enrollment_state']) {
-    const descriptor = Object.getOwnPropertyDescriptor(row, field);
-    if (!OWN.call(row, field) || !descriptor || !OWN.call(descriptor, 'value')) {
-      throw Error('invalid_staff_delivery_sql_result');
-    }
   }
   return Object.freeze({
     job: Object.freeze({
