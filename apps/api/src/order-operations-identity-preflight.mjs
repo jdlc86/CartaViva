@@ -141,6 +141,10 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false} =
               ) AS authorized_owner_memberships,
               EXISTS (
                 SELECT 1 FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.roleid = role.oid
+              ) AS has_role_grantees,
+              EXISTS (
+                SELECT 1 FROM pg_catalog.pg_auth_members membership
                  WHERE membership.member = role.oid
               ) AS has_role_memberships
          FROM pg_catalog.pg_roles role
