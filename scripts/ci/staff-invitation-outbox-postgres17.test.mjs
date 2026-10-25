@@ -1119,9 +1119,14 @@ test('PG17 terminal custody purge is bounded, privileged and idempotent',async()
         SET state='cancelled',updated_at=clock_timestamp()
         WHERE id=$1`,[jobId]);
     }
+    await admin.query(`UPDATE sabora.staff_invitation_custody_candidate
+      SET created_at=clock_timestamp()-interval '2 days' WHERE job_id=$1`,[jobId]);
+    await admin.query(`UPDATE sabora.staff_invitation_outbox
+      SET updated_at=clock_timestamp()-interval '2 days',
+      created_at=clock_timestamp()-interval '3 days' WHERE id=$1`,[jobId]);
     cases.push({jobId,state});
   }
-  const cutoff=new Date(Date.now()+2000).toISOString();
+  const cutoff=new Date().toISOString();
   const purge=async(limit,date=cutoff)=>runtime.query(
     `SELECT sabora.purge_terminal_staff_invitation_custody_candidate(
       $1::timestamptz,$2::integer) AS removed`,[date,limit]);
