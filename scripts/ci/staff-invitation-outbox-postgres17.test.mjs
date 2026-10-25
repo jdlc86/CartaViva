@@ -785,7 +785,8 @@ test('PG17 expired claimed job receives new fence; stale worker cannot dispatch'
     SET created_at=clock_timestamp()-interval '3 minutes',
         claimed_at=clock_timestamp()-interval '2 minutes'
     WHERE id=$1`, [jobId]);
-  const recovery = createStaffInvitationClaimRecoveryCandidate({withTransaction});
+  const recovery = createStaffInvitationClaimRecoveryCandidate({withTransaction: callback =>
+    withTransaction(query => callback((sql,values) => query({text:sql,values})))});
   const second = await recovery.reclaim({jobId, staleFence:first.fence, leaseSeconds:60});
   assert.equal(second.reclaimed, true);
   assert.notEqual(second.fence, first.fence);
@@ -805,7 +806,8 @@ test('PG17 unexpired claim cannot be reclaimed', async () => {
   const enrollment=await seedEnrollment();
   const jobId=await seedJob(enrollment);
   const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
-  const recovery=createStaffInvitationClaimRecoveryCandidate({withTransaction});
+  const recovery=createStaffInvitationClaimRecoveryCandidate({withTransaction: callback =>
+    withTransaction(query => callback((sql,values) => query({text:sql,values})))});
   assert.deepEqual(await recovery.reclaim({jobId,staleFence:claim.fence,leaseSeconds:60}),
     {reclaimed:false});
 });
