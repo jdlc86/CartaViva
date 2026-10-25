@@ -354,3 +354,10 @@ En la rama independiente `integration/sabora-pr11-reconciliation` se han integra
 **Diferencia normativa que NO debe borrarse durante el merge:** la rama base verificaba `verifyMembership` para cada transición, mientras que el candidato actual delega la revocación y membresía de las mutaciones al wrapper SQL que verifica la capacidad firmada y revalida al actor bajo bloqueo. No se ha reintroducido una consulta directa a `staff_members` con el login restringido, porque abriría permisos incompatibles con el preflight. Las lecturas de tablero e historial siguen siendo candidatas sin concesión positiva SQL y no deben activarse.
 
 La incorporación de pruebas de entrada Node no equivale a un merge completo de las ramas, ni acredita autorización SQL de lectura, PG17 conjunto o despliegue. Requiere CI de la rama de reconciliación y revisión posterior de los cambios pendientes de preflight y de los tests de la rama base.
+
+
+## Reconciliación del preflight de credenciales y cierre de conexiones (25-10-2026)
+
+El gate candidato rechaza `rolconnlimit = 0` y credenciales `rolvaliduntil` caducadas, además de límites negativos inválidos y fechas no válidas. Los errores de inspección SQL tienen precedencia sobre errores secundarios de liberación de conexión; si la inspección fue correcta y falla `release`, el preflight también falla cerrado. Los clientes SQL malformados no ocultan su error original por una excepción de liberación. Se incorporan pruebas Node de estos casos al branch de reconciliación, sin alterar la verificación de firma SQL ni autorizar rutas de lectura.
+
+Esta aceptación depende de los workflows del SHA de reconciliación; no supone habilitar logins, grants, SQL operativo, merge o despliegue.
