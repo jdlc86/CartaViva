@@ -108,3 +108,10 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - `tests/staff-invitation-dispatch-guard.test.mjs`: cuatro casos de éxito condicionado, revocación/aceptación/rotación, fence obsoleto y configuración inválida. Ejecución local aislada Node.js: **4/4 PASS**.
 - **Advertencia:** una autorización previa al envío no puede garantizar que un mensaje externo no llegue después de una revocación. El servidor debe validar el estado durable al aceptar el token. No hay proveedor, worker, implementación SQL del dispatch ni garantía de entrega activados. PostgreSQL 17 real sigue pendiente.
 - Base validada: `8f0ac2ba6bd1c01aedb0dc38ce294b503d112f97`, Sabora CI #40182111408 SUCCESS y Bootstrap #40182111403 SUCCESS.
+
+## Hito 2 — bloque integrado claim→dispatch candidato (25-10-2026)
+
+- El esquema SQL aislado incorpora `dispatching` y `dispatch_authorized_at`, con constraints de integridad y orden temporal.
+- `staff-invitation-outbox-repository-candidate.mjs` implementa `lockClaimedDelivery` (bloquea inscripción y trabajo por ID/fence) y `authorizeDispatch` (transición condicional `claimed→dispatching`).
+- `tests/staff-invitation-dispatch-sql-candidate.test.mjs` prueba integración entre guard y adaptador: éxito con fence, revocación, carrera perdida y fence obsoleto. Test de contrato del esquema ampliado.
+- **No equivale a envío efectivo:** la transacción solo autoriza el intento; el correo externo sigue siendo no atómico. El token debe validarse en cada aceptación. La outbox sigue sin guardar secretos recuperables, sin encolado en la transacción de invitación, sin worker ni login operativo, sin validación PG17 real y sin aprobación normativa. No desplegar.
