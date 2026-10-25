@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash, randomBytes} from 'node:crypto';
 import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/src/staff-invitation-envelope-candidate.mjs';
 import {createStaffInvitationCustodyCoordinatorCandidate} from '../../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
+import {createStaffDispatchEnvelopeReaderCandidate} from '../../apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
