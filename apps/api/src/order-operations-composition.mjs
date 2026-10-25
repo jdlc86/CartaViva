@@ -2,7 +2,7 @@ import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-po
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
-import {preflightOrderOperationsIdentities, preflightOrderTransitionIdentity} from './order-operations-identity-preflight.mjs';
+import {preflightOrderOperationsIdentities, preflightOrderTransitionIdentity, preflightOrderTransitionStaffIdentity} from './order-operations-identity-preflight.mjs';
 
 function assertIsolatedPools(staffPool, operationsPool) {
   if (!staffPool || !operationsPool || staffPool === operationsPool ||
