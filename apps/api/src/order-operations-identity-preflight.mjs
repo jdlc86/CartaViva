@@ -192,7 +192,7 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
         row.forced_rls_signing_keys !== 1 ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         row.accessible_private_tables !== (allowStaffReader ? 1 : 0) ||
-        row.staff_reader_exact_columns !== allowStaffReader ||
+        (allowStaffReader && row.staff_reader_exact_columns !== true) ||
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !== (allowAuthorizedTransition ? 1 : 0) ||
