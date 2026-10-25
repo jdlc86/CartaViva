@@ -26,3 +26,12 @@ test('candidate outbox schema has durable identity and replay uniqueness', async
 test('candidate schema is not in the operational migrations directory', () => {
   assert.match(file.pathname, /docs\/security\/sql-candidates\//);
 });
+
+test('candidate dispatch authorization is durable and fenced by schema constraints', async () => {
+  const sql = await readFile(file, 'utf8');
+  assert.match(sql, /'claimed', 'dispatching', 'delivered'/);
+  assert.match(sql, /dispatch_authorized_at timestamptz/);
+  assert.match(sql, /staff_invitation_outbox_dispatch_shape/);
+  assert.match(sql, /state IN \('dispatching', 'delivered'\) AND dispatch_authorized_at IS NOT NULL/);
+  assert.match(sql, /dispatch_authorized_at >= claimed_at/);
+});
