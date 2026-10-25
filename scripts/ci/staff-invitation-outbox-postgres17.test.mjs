@@ -1090,3 +1090,59 @@ test('PG17 fenced dispatch envelope read is restricted and current-version only'
     [enrollment.enrollmentId,digest('superseded-token')]);
   assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
 });
+
+test('PG17 terminal custody purge is bounded, privileged and idempotent',async()=>{
+  const sql=await readFile(new URL(
+    '../../docs/security/sql-candidates/staff_invitation_custody_purge_pg17.sql',
+    import.meta.url),'utf8');
+  await admin.query(sql);
+  await admin.query(`GRANT EXECUTE ON FUNCTION
+    sabora.purge_terminal_staff_invitation_custody_candidate(timestamptz,integer)
+    TO ${runtimeCredentials.role}`);
+  const key=randomBytes(32);
+  const cases=[];
+  for(const state of ['pending','cancelled','cancelled']){
+    const token='P'.repeat(40)+String(cases.length).padStart(8,'0');
+    const tokenHash=digest(token);
+    const enrollment=await seedEnrollment({tokenHash});
+    const jobId=await seedJob(enrollment);
+    const envelope=sealStaffInvitationToken({
+      token,enrollmentId:enrollment.enrollmentId,inviteVersion:enrollment.version,
+      tokenHashHex:tokenHash,key,keyId:'candidate_key_001',
+    });
+    await admin.query(`SELECT sabora.store_staff_invitation_custody_candidate(
+      $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
+      [jobId,enrollment.enrollmentId,enrollment.version,tokenHash,
+        envelope.keyId,envelope.nonce,envelope.ciphertext,envelope.tag]);
+    if(state==='cancelled'){
+      await admin.query(`UPDATE sabora.staff_invitation_outbox
+        SET state='cancelled',updated_at=clock_timestamp()
+        WHERE id=$1`,[jobId]);
+    }
+    cases.push({jobId,state});
+  }
+  const cutoff=new Date(Date.now()+2000).toISOString();
+  const purge=async(limit,date=cutoff)=>runtime.query(
+    `SELECT sabora.purge_terminal_staff_invitation_custody_candidate(
+      $1::timestamptz,$2::integer) AS removed`,[date,limit]);
+  await assert.rejects(purge(0),e=>e?.code==='22023');
+  await assert.rejects(purge(501),e=>e?.code==='22023');
+  await assert.rejects(purge(1,new Date(Date.now()+86400000).toISOString()),
+    e=>e?.code==='22023');
+  await assert.rejects(runtime.query(
+    'DELETE FROM sabora.staff_invitation_custody_candidate'),e=>e?.code==='42501');
+  const first=await purge(1);
+  assert.equal(first.rows[0].removed,1);
+  const second=await purge(1);
+  assert.equal(second.rows[0].removed,1);
+  const third=await purge(1);
+  assert.equal(third.rows[0].removed,0);
+  const rows=await admin.query(`SELECT c.job_id
+    FROM sabora.staff_invitation_custody_candidate c
+    WHERE c.job_id=ANY($1::uuid[])`,[cases.map(x=>x.jobId)]);
+  assert.deepEqual(rows.rows.map(x=>x.job_id),[cases[0].jobId]);
+  const remaining=await admin.query(`SELECT count(*)::integer AS n
+    FROM sabora.staff_invitation_outbox WHERE id=ANY($1::uuid[])`,
+    [cases.map(x=>x.jobId)]);
+  assert.equal(remaining.rows[0].n,3);
+});
