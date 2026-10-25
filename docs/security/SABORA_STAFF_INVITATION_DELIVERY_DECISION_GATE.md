@@ -138,3 +138,27 @@ en la outbox, custodia transaccional de material recuperable, gestión
 de claves/rotación, grants restringidos de recuperación ni pruebas
 PG17 de reinicio del worker. Los módulos no están montados en rutas,
 worker o servidor. Son propuestas de diseño sin aprobación operativa.
+
+## Cierre candidato de recuperación con mínimo privilegio (25-10-2026)
+
+Se añade el SQL de diseño
+`sql-candidates/staff_invitation_claim_recovery_pg17.sql`, un owner
+`NOLOGIN/NOINHERIT` sin `BYPASSRLS`, dos políticas RLS limitadas
+a `claimed` y la rutina `SECURITY DEFINER`
+`reclaim_staff_invitation_claim_candidate`. El login positivo existe
+únicamente en el contenedor PostgreSQL 17 de CI y recibe `USAGE`
+de esquema y `EXECUTE` de la función, sin acceso directo a tablas
+ni ejecución de la transición de identidad.
+
+La prueba PostgreSQL 17 comprueba claim vigente, recuperación caducada,
+fence obsoleto rechazado, dispatch con fence renovado, prohibición de
+recuperar `dispatching` y denegación de lectura/escritura directa.
+El primer intento reveló un UUID regex incompleto en el adaptador
+restringido; se corrigió en `cbe88f1`. Ambos workflows de ese
+SHA finalizaron SUCCESS.
+
+**Cierre acotado:** se valida recuperación pre-dispatch con privilegios
+mínimos en PostgreSQL 17 desechable. No hay login/grant operativo,
+worker real, migración operativa, secreto recuperable, proveedor ni
+reconciliación de `dispatching` ambiguo. El gate general de entrega
+permanece abierto.
