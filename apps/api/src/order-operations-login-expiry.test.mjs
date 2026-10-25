@@ -10,7 +10,7 @@ function identity(role, overrides = {}) {
     password_valid_until: null, schema_usage: true, schema_create: false,
     database_create: false, candidate_rpc_execute: false,
     accessible_private_tables: 0, accessible_private_sequences: 0,
-    accessible_private_definer_routines: 0, candidate_is_invoker: true,
+    accessible_private_definer_routines: 0, accessible_private_invoker_routines: 0, candidate_is_invoker: true,
     forced_rls_transition_requests: 1, has_role_memberships: false, has_role_grantees: false, ...overrides,
   };
 }
