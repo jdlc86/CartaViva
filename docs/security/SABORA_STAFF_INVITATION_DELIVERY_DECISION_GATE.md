@@ -376,3 +376,31 @@ sirve para la validación candidata. La eliminación de filas
 no constituye borrado físico garantizado en WAL, copias
 de seguridad o réplicas, ni elimina los hashes persistentes.
 No debe aplicarse en Supabase operativo.
+
+## Coordinador candidato de mantenimiento de custodia (25-10-2026)
+
+`apps/api/src/staff-custody-maintenance-candidate.mjs` encapsula
+la invocación de la función SQL de purga terminal con **modo
+no destructivo por defecto**. Una ejecución real exige
+`dryRun:false` y un objeto de autorización explícito
+con acción `purge_terminal_staff_custody`, `approved:true`,
+`cutoff`, `maxRows` y `maxBatches` coincidentes.
+Se rechazan fechas inválidas o futuras, lotes fuera de 1–500,
+más de 20 lotes por ejecución y respuestas SQL inconsistentes.
+El coordinador detiene el bucle cuando una operación devuelve
+menos filas que el tamaño máximo del lote. No implementa
+cron, credenciales, duración de retención ni conexión operativa.
+
+Las pruebas unitarias verifican no ejecución por defecto,
+rechazo de autorizaciones ausentes o discordantes, validación
+de fechas y límites, lotes acotados y cierre ante respuestas
+inconsistentes. Evidencia: commit `8579e32`, Sabora CI y
+Bootstrap SUCCESS. Este hito cierra solo la **orquestación
+candidata no desplegada**. El objeto de autorización no es
+una firma ni sustituye la decisión operativa humana ni un
+sistema real de control de acceso.
+
+**Gate abierto:** la política normativa de retención, la
+identidad del ejecutor, el mecanismo de autorización
+verificable, las ventanas de mantenimiento y la operación
+de producción deben aprobarse antes de cualquier uso real.
