@@ -265,3 +265,71 @@ test('transition-only rejects missing or malformed authentication wiring without
   assert.deepEqual(seen,[]);
  }
 });
+
+test('transition-only fails atomically on either SQL principal, never mounting HTTP routes',async()=>{
+ for(const failedRole of ['sabora_staff_reader','sabora_operations']){
+  const seen=[];
+  const makePool=role=>({
+   options:{user:role,connectionString:'postgres://'+role},
+   query(){throw Error('unexpected_query');},
+   async connect(){
+    seen.push('connect:'+role);
+    return {
+     async query(){
+      seen.push('inspect:'+role);
+      throw Error('injected_sql_preflight_failure');
+     },
+     release(error){
+      assert.match(error.message,/injected_sql_preflight_failure/);
+      seen.push('discard:'+role);
+     },
+    };
+   },
+  });
+  const app={
+   hasRoute(){return false;},
+   get(){seen.push('get');},
+   post(){seen.push('post');},
+  };
+  const staffPool=makePool('sabora_staff_reader');
+  const operationsPool=makePool('sabora_operations');
+  // The first failed identity is sufficient to reject registration.
+  // For the operations failure, staff must pass a genuine-shaped inspection.
+  if(failedRole==='sabora_operations'){
+   staffPool.connect=async()=>{
+    seen.push('connect:sabora_staff_reader');
+    return {
+     async query(){
+      seen.push('inspect:sabora_staff_reader');
+      return {rows:[{
+       current_role:'sabora_staff_reader',session_role:'sabora_staff_reader',
+       superuser:false,bypass_rls:false,can_login:true,inherits_roles:false,
+       can_create_role:false,can_create_db:false,can_replicate:false,
+       has_role_memberships:false,connection_limit:-1,password_valid_until:null,
+       schema_usage:true,schema_create:false,database_create:false,
+       candidate_rpc_execute:false,authorized_rpc_execute:false,
+       unsafe_actor_rpc_execute:0,accessible_private_tables:0,
+       accessible_private_sequences:0,accessible_private_definer_routines:0,
+       candidate_is_invoker:true,authorized_is_definer:true,
+       authorized_owner:'sabora_order_operations_fn_owner',
+       authorized_search_path_locked:true,authorized_owner_is_sealed:true,
+       authorized_owner_memberships:0,forced_rls_transition_requests:1,
+       forced_rls_signing_keys:1,
+      }]};
+     },
+     release(error){assert.equal(error,null);seen.push('release:sabora_staff_reader');},
+    };
+   };
+  }
+  await assert.rejects(registerVerifiedOrderTransitionsOnlyFromPools(app,{
+   staffPool,operationsPool,
+   staffRole:'sabora_staff_reader',operationsRole:'sabora_operations',
+   issuer:'https://issuer.example.test',getTrustedKeys:async()=>[],
+   issueTransitionCapability(){},
+  }),/injected_sql_preflight_failure/);
+  assert.equal(seen.includes('post'),false);
+  assert.equal(seen.includes('get'),false);
+  assert.equal(seen.includes('connect:sabora_operations'),failedRole==='sabora_operations');
+  assert.ok(seen.includes('discard:'+failedRole));
+ }
+});
