@@ -457,7 +457,7 @@ BEGIN
     || coalesce(lower(p_subject_user_id::text), '-') || chr(10)
     || coalesce(p_requested_role, '-') || chr(10)
     || coalesce(p_invitee_email_hash_hex, '-') || chr(10)
-    || coalesce(p_invite_token_hash_hex, '-') || chr(10)
+    || CASE WHEN p_action IN ('invite','resend') THEN '-' ELSE coalesce(p_invite_token_hash_hex, '-') END || chr(10)
     || coalesce(p_credential_evidence_hash_hex, '-') || chr(10)
     || v_reason_hash,
     'UTF8'
