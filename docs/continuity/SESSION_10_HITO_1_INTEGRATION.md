@@ -122,3 +122,11 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - El adaptador SQL añade `lockReconciliationCandidate` y `cancelStaleDelivery`: bloqueos `FOR UPDATE OF o,e`, consultas parametrizadas y actualización condicional solo para `pending`/`claimed`. El estado `dispatching` queda excluido deliberadamente: el proveedor externo podría estar enviando el mensaje.
 - `tests/staff-invitation-reconciliation-candidate.test.mjs` cubre revocación, aceptación, rotación de versión/hash, vigencia, ausencia, carrera perdida y configuración inválida.
 - **Límite:** este flujo aún no está conectado a la transición SQL `revoke`/`resend` ni a un worker, por lo que no cancela trabajos en producción. El servidor debe seguir denegando tokens revocados o rotados incluso si un correo llega tarde. Las pruebas son de integración del adaptador simulado, no de PostgreSQL 17 real.
+
+## Hito 2 — cierre de resultado de proveedor (candidato aislado)
+
+- `staff-invitation-delivery-outcome-candidate.mjs` registra el resultado del proveedor dentro de una transacción y exige fence vigente y estado `dispatching`.
+- El repositorio SQL añade `lockDispatchingDelivery` y `finishDispatchingDelivery`; persiste `provider_outcome` con tres valores diferenciados: `accepted`, `permanent_failure` y `unknown`. El esquema candidato exige coherencia entre `delivered`/`failed` y resultado de proveedor.
+- El resultado `unknown` es terminal `failed`, queda identificado de forma durable y **no se reintenta automáticamente**: un proveedor podría haber aceptado la petición aunque se perdiera su respuesta. `accepted` significa aceptación del proveedor, no entrega en buzón ni activación del personal.
+- Siete pruebas de contrato y flujo simulado cubren aceptación, fallo permanente, ambigüedad, fence ausente, carrera perdida y parámetros inválidos.
+- Pendientes antes de operar: aprobación del contrato de proveedor, almacenamiento seguro del secreto de entrega, enqueue transaccional, gestión de expiración de claims y pruebas SQL reales de la outbox en PostgreSQL 17. No se ha montado ningún worker ni endpoint; ninguna entrega real.
