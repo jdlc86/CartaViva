@@ -60,3 +60,9 @@ No confundir integración del código candidato con disponibilidad funcional en 
 - Detectada una segunda frontera: el coordinador genera un token nuevo antes de consultar la idempotencia durable; cuando SQL devuelve `repeated=true`, ese token no coincide con el hash del primer intento.
 - Se suprime la exposición del token de entrega en replays. Prueba de regresión añadida en `staff-lifecycle-coordinator.test.mjs`.
 - Una primera entrega fallida seguida de replay **no reenvía** el token original: es una limitación deliberada del flujo candidato. Resolver con outbox duradera y material protegido antes de activar el envío.
+
+## Hito 2 — contrato candidato de claim transaccional (25-10-2026)
+
+- `staff-invitation-claim-candidate.mjs` añade un orquestador inyectable que exige `withTransaction`, lectura bloqueada de trabajo+inscripción y actualización condicional con fence, aplicando la política de invitación vigente antes de mutar.
+- Pruebas verifican secuencia lock→claim, revocación/reenvío sin claim, rechazo de claim inválido y dependencias obligatorias.
+- **No se ha implementado aún el repositorio SQL, la tabla outbox, el cifrado del token ni el worker.** Este contrato no garantiza atomicidad por sí mismo: dependerá del aislamiento SQL, del bloqueo y del protocolo de confirmación de envío. No activarlo en producción.
