@@ -24,3 +24,29 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     });
   }
 }
+
+for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
+  test(`${operation} snapshots caller input before asynchronous SQL`, async () => {
+    const original = {limit: 10};
+    const observed = [];
+    const repository = {
+      verifyMembership: async (_query, staff) => {
+        original.limit = 200;
+        original.actorId = '22222222-2222-4222-8222-222222222222';
+        original.role = 'admin';
+        return staff;
+      },
+      listBoard: async (_query, input) => { observed.push(input); return 'ok'; },
+      transitionLine: async (_query, input) => { observed.push(input); return 'ok'; },
+      listHistory: async (_query, input) => { observed.push(input); return 'ok'; },
+    };
+    const coordinator = createOrderOperationsCoordinator({
+      repository, withTransaction: async callback => callback(async () => {}),
+    });
+    assert.equal(await coordinator[operation](context, original), 'ok');
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0].limit, 10);
+    assert.equal(observed[0].actorId, actorId);
+    assert.equal(observed[0].role, 'kitchen');
+  });
+}
