@@ -428,7 +428,7 @@ BEGIN
     || coalesce(lower(p_subject_user_id::text), '-') || chr(10)
     || coalesce(p_requested_role, '-') || chr(10)
     || coalesce(p_invitee_email_hash_hex, '-') || chr(10)
-    || coalesce(p_invite_token_hash_hex, '-') || chr(10)
+    || CASE WHEN p_action IN ('invite','resend') THEN '-' ELSE coalesce(p_invite_token_hash_hex, '-') END || chr(10)
     || coalesce(p_credential_evidence_hash_hex, '-') || chr(10)
     || v_reason_hash || chr(10)
     || p_correlation_id || chr(10)
@@ -453,7 +453,7 @@ BEGIN
   END IF;
 
   v_fingerprint := sha256(convert_to(
-    p_action || chr(10) || lower(p_enrollment_id::text) || chr(10)
+    p_action || chr(10) || CASE WHEN p_action = 'invite' THEN '-' ELSE lower(p_enrollment_id::text) END || chr(10)
     || coalesce(lower(p_subject_user_id::text), '-') || chr(10)
     || coalesce(p_requested_role, '-') || chr(10)
     || coalesce(p_invitee_email_hash_hex, '-') || chr(10)
@@ -489,18 +489,6 @@ BEGIN
     v_actor_kind := 'invitee';
   END IF;
 
-  SELECT enrollment.* INTO v_enrollment
-    FROM sabora.staff_enrollments enrollment
-    WHERE enrollment.id = p_enrollment_id
-    FOR UPDATE;
-  v_enrollment_found := FOUND;
-  IF p_action <> 'invite' AND NOT v_enrollment_found THEN
-    RAISE EXCEPTION 'staff_enrollment_not_found' USING errcode = 'P0002';
-  END IF;
-  IF v_enrollment_found AND v_enrollment.state = 'revoked' AND p_action <> 'revoke' THEN
-    RAISE EXCEPTION 'staff_enrollment_revoked' USING errcode = '42501';
-  END IF;
-
   v_now := clock_timestamp();
   v_now_ms := floor(extract(epoch FROM v_now) * 1000)::bigint;
   IF p_issued_at_ms::numeric > v_now_ms::numeric + 5000
@@ -509,6 +497,9 @@ BEGIN
     RAISE EXCEPTION 'invalid_staff_lifecycle_capability' USING errcode = '42501';
   END IF;
 
+  -- Replays must be resolved before locking a newly generated enrollment ID:
+  -- invite retries carry a fresh UUID/token but the same durable intent.
+  -- The actor/ownership locks and capability expiry checks still precede replay.
   SELECT request.request_fingerprint, request.enrollment_id,
          request.subject_user_id, request.requested_role,
          request.previous_state, request.current_state,
@@ -527,6 +518,18 @@ BEGIN
       v_request.current_state, true, v_request.invite_version,
       v_request.event_id;
     RETURN;
+  END IF;
+
+  SELECT enrollment.* INTO v_enrollment
+    FROM sabora.staff_enrollments enrollment
+    WHERE enrollment.id = p_enrollment_id
+    FOR UPDATE;
+  v_enrollment_found := FOUND;
+  IF p_action <> 'invite' AND NOT v_enrollment_found THEN
+    RAISE EXCEPTION 'staff_enrollment_not_found' USING errcode = 'P0002';
+  END IF;
+  IF v_enrollment_found AND v_enrollment.state = 'revoked' AND p_action <> 'revoke' THEN
+    RAISE EXCEPTION 'staff_enrollment_revoked' USING errcode = '42501';
   END IF;
 
   IF p_action = 'invite' THEN
