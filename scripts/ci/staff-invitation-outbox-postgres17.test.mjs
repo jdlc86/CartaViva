@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomBytes} from 'node:crypto';
 import {sealStaffInvitationToken,openStaffInvitationToken} from '../../apps/api/src/staff-invitation-envelope-candidate.mjs';
+import {createStaffInvitationCustodyCoordinatorCandidate} from '../../apps/api/src/staff-invitation-custody-coordinator-candidate.mjs';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -927,4 +928,51 @@ test('PG17 encrypted custody candidate is atomic with outbox transaction and rej
   assert.equal(deniedRead.rows[0].can_read,false);
   await assert.rejects(runtime.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),
     error=>error?.code==='42501');
+});
+
+test('PG17 lifecycle + outbox + encrypted custody commit or rollback as one unit',async()=>{
+  const encryptionKey=randomBytes(32);
+  const coordinator=createStaffInvitationCustodyCoordinatorCandidate({
+    withTransaction,encryptionKey,keyId:'candidate_key_001',
+  });
+  const enrollmentId=uuid('b');
+  const token='B'.repeat(48);
+  const tokenHash=digest(token);
+  const capability=issueLifecycle({
+    actorId:ownerId,action:'invite',enrollmentId,
+    requestedRole:'waiter',
+    inviteeEmailHashHex:digest('custody-atomic@example.invalid'),
+    inviteTokenHashHex:tokenHash,correlationId:'custody_atomic_001',
+  });
+  await assert.rejects(coordinator.transitionAndStore({
+    capability,token:'C'.repeat(48),
+  }),/staff_delivery_token_hash_mismatch/);
+  const absent=await admin.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.staff_enrollments WHERE id=$1) AS enrollment,
+    (SELECT count(*)::integer FROM sabora.staff_invitation_outbox WHERE enrollment_id=$1) AS outbox,
+    (SELECT count(*)::integer FROM sabora.staff_invitation_custody_candidate WHERE enrollment_id=$1) AS custody`,
+  [enrollmentId]);
+  assert.deepEqual(absent.rows,[{enrollment:0,outbox:0,custody:0}]);
+  const committed=await coordinator.transitionAndStore({capability,token});
+  assert.equal(committed.stored,true);
+  assert.equal(committed.enqueued,true);
+  const rows=await admin.query(`SELECT o.id AS job_id,
+    o.invite_version,encode(o.invite_token_hash,'hex') AS token_hash,
+    c.key_id,encode(c.nonce,'base64') AS nonce,
+    encode(c.ciphertext,'base64') AS ciphertext,encode(c.tag,'base64') AS tag
+    FROM sabora.staff_invitation_outbox o
+    JOIN sabora.staff_invitation_custody_candidate c ON c.job_id=o.id
+    WHERE o.enrollment_id=$1`,[enrollmentId]);
+  assert.equal(rows.rows.length,1);
+  assert.equal(rows.rows[0].job_id,committed.jobId);
+  assert.equal(rows.rows[0].token_hash,tokenHash);
+  assert.equal(rows.rows[0].ciphertext.includes(token),false);
+  const repeated=await coordinator.transitionAndStore({capability,token});
+  assert.equal(repeated.repeated,true);
+  assert.equal(repeated.stored,false);
+  assert.equal(repeated.jobId,committed.jobId);
+  const count=await admin.query(`SELECT count(*)::integer AS n
+    FROM sabora.staff_invitation_custody_candidate WHERE enrollment_id=$1`,
+  [enrollmentId]);
+  assert.equal(count.rows[0].n,1);
 });
