@@ -75,7 +75,9 @@ export async function registerVerifiedOrderTransitionsOnlyFromPools(app, options
         url: '/api/v1/operations/order-lines/:lineId/transitions'})) {
     throw Error('invalid_order_transition_route_registration');
   }
-  // The mutation principal must pass its own restricted-login gate.\n  await preflightOrderTransitionIdentity({pool: operationsPool, role: operationsRole});
+  if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  await preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole});
+  await preflightOrderTransitionIdentity({pool: operationsPool, role: operationsRole});
   const forRoles = createStaffProtectedHooksFromPool({
     pool: staffPool,
     issuer: options.issuer,
