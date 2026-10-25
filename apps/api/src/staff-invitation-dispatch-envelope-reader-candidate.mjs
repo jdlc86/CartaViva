@@ -4,8 +4,8 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH=/^[0-9a-f]{64}$/;
 export const STAFF_DISPATCH_ENVELOPE_READ_SQL=`SELECT * FROM
   sabora.read_staff_invitation_dispatch_envelope_candidate($1::uuid,$2::uuid)`;
-export function createStaffDispatchEnvelopeReaderCandidate({query,resolveKey}={}){
-  if(typeof query!=='function'||typeof resolveKey!=='function')
+export function createStaffDispatchEnvelopeReaderCandidate({query,resolveKey,keyring}={}){
+  if(typeof query!=='function'||(keyring ? (typeof keyring.resolveKey!=='function' || resolveKey !== undefined) : typeof resolveKey!=='function'))
     throw Error('invalid_staff_dispatch_envelope_reader_config');
   return Object.freeze({
     async read({jobId,fence}={}){
@@ -21,7 +21,7 @@ export function createStaffDispatchEnvelopeReaderCandidate({query,resolveKey}={}
         !HASH.test(row?.result_token_hash_hex??'')||
         typeof row?.result_key_id!=='string')
         throw Error('invalid_staff_dispatch_envelope_result');
-      const key=await resolveKey(row.result_key_id);
+      const key=await (keyring ? keyring.resolveKey(row.result_key_id) : resolveKey(row.result_key_id));
       const token=openStaffInvitationToken({
         envelope:{version:1,keyId:row.result_key_id,
           nonce:row.result_nonce,ciphertext:row.result_ciphertext,
