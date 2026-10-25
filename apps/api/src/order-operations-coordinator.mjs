@@ -21,6 +21,19 @@ function trustedStaff(context) {
   });
 }
 
+function assertSafeInput(value) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      (Object.getPrototypeOf(value) !== Object.prototype &&
+       Object.getPrototypeOf(value) !== null) ||
+      !Reflect.ownKeys(value).every(key => typeof key === 'string' &&
+        Object.prototype.propertyIsEnumerable.call(value, key) &&
+        Object.hasOwn(Object.getOwnPropertyDescriptor(value, key), 'value'))) {
+    throw Error('invalid_order_operations_input');
+  }
+  return value;
+}
+
 function assertVerifiedMembership(verified, staff) {
   if (!verified || typeof verified !== 'object' || Array.isArray(verified) ||
       typeof verified.actorId !== 'string' || !UUID.test(verified.actorId) ||
@@ -42,28 +55,31 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
   return Object.freeze({
     async listBoard(context, page) {
       const staff = trustedStaff(context);
+      const safeInput = assertSafeInput(page);
       return withTransaction(async (query) => {
         const verified = await repository.verifyMembership(query, staff);
         assertVerifiedMembership(verified, staff);
-        return repository.listBoard(query, {...page, ...staff});
+        return repository.listBoard(query, {...safeInput, ...staff});
       });
     },
 
     async transitionLine(context, input) {
       const staff = trustedStaff(context);
+      const safeInput = assertSafeInput(input);
       return withTransaction(async (query) => {
         const verified = await repository.verifyMembership(query, staff);
         assertVerifiedMembership(verified, staff);
-        return repository.transitionLine(query, {...input, ...staff});
+        return repository.transitionLine(query, {...safeInput, ...staff});
       });
     },
 
     async listHistory(context, input) {
       const staff = trustedStaff(context);
+      const safeInput = assertSafeInput(input);
       return withTransaction(async (query) => {
         const verified = await repository.verifyMembership(query, staff);
         assertVerifiedMembership(verified, staff);
-        return repository.listHistory(query, {...input, ...staff});
+        return repository.listHistory(query, {...safeInput, ...staff});
       });
     },
   });
