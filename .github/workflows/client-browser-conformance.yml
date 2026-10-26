@@ -1,0 +1,42 @@
+name: Sabora client browser conformance
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/client-browser-conformance.yml'
+      - 'apps/client/**'
+      - 'tests/client-*.test.mjs'
+      - 'docs/design/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  client-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated Chromium (bounded)
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=15s 180s pnpm --filter @sabora/client exec playwright install --with-deps chromium
+      - name: Run client interaction and accessibility conformance
+        run: pnpm --filter @sabora/client test:e2e
+      - name: Publish candidate screenshots and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-client-browser-conformance
+          path: |
+            apps/client/test-results/
+            apps/client/playwright-report/
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,98 +1,10 @@
-import React, {useEffect,useState} from 'react';
+import React from 'react';
 import {createRoot} from 'react-dom/client';
+import {SaboraClientApp} from './App';
+import {registerClientServiceWorker} from './pwa';
 import './style.css';
-import {categories,searchPublishedCatalog,formatPrice,type CatalogState,type CategoryFilter} from './catalog';
-import {loadPublishedCatalog} from './catalog-loader';
 
-type Screen = 'welcome' | 'identity' | 'menu';
-type Customer = {alias:string; company:string};
-const storageKey='sabora.customer.display-preferences.v1';
-// This is a local-only UI prototype. No customer credentials, IDs or
-// authentication state are stored in browser storage.
-function App(){
- const [screen,setScreen]=useState<Screen>('welcome');
- const [customer,setCustomer]=useState<Customer>(()=>{
-  try {
-   const raw=localStorage.getItem(storageKey);
-   if(!raw || raw.length>1024)return {alias:'',company:''};
-   const value:unknown=JSON.parse(raw);
-   if(!value || typeof value!=='object')return {alias:'',company:''};
-   const candidate=value as Record<string,unknown>;
-   if(typeof candidate.alias!=='string' || typeof candidate.company!=='string')return {alias:'',company:''};
-   const alias=candidate.alias.trim(),company=candidate.company.trim();
-   if(!alias || [...alias].length>80 || [...company].length>160 ||
-      /[\x00-\x1f\x7f]/u.test(alias+company))return {alias:'',company:''};
-   return {alias,company};
-  }catch{return {alias:'',company:''};}
- });
- const [message,setMessage]=useState('');
- const [category,setCategory]=useState<CategoryFilter>('Todos');
- const [search,setSearch]=useState('');
- const [onlyAvailable,setOnlyAvailable]=useState(false);
- const [catalog,setCatalog]=useState<CatalogState>({status:'loading'});
- const [catalogAttempt,setCatalogAttempt]=useState(0);
- useEffect(()=>{
-  if(screen!=='menu')return;
-  const controller=new AbortController();
-  setCatalog({status:'loading'});
-  void loadPublishedCatalog(fetch,controller.signal).then(state=>{
-   if(!controller.signal.aborted)setCatalog(state);
-  });
-  return ()=>controller.abort();
- },[screen,catalogAttempt]);
- function savePreferences(event:React.FormEvent){
-  event.preventDefault();
-  const alias=customer.alias.trim();
-  const company=customer.company.trim();
-  if(!alias || [...alias].length>80 || [...company].length>160 || /[\x00-\x1f\x7f]/u.test(alias+company)){
-   setMessage('Introduce un alias válido de hasta 80 caracteres.');
-   return;
-  }
-  // Display preference only: backend registration and HttpOnly session cookie
-  // are not wired yet. Do not present this as authenticated registration.
-  try{localStorage.setItem(storageKey,JSON.stringify({alias,company}));}catch{}
-  setCustomer({alias,company});setMessage('Preferencias guardadas en este dispositivo. El registro seguro estará disponible próximamente.');
-  setScreen('menu');
- }
- return <div className="client-shell">
-  <header className="topbar"><span className="wordmark">SABORA<span className="wordmark-dot">.</span></span><span className="topbar-label">Carta digital</span></header>
-  <main className="client-content">
-   {screen==='welcome'&&<section className="welcome">
-    <span className="eyebrow">BIENVENIDO A SABORA</span>
-    <h1>Una buena comida empieza aquí.</h1>
-    <p>Descubre la experiencia de tu restaurante desde el móvil.</p>
-    <div className="welcome-actions"><button className="primary-button" onClick={()=>{setMessage('');setScreen(customer.alias?'menu':'identity');}}>{customer.alias?'Continuar como '+customer.alias:'Empezar'} <span aria-hidden="true">→</span></button></div>
-    <div className="feature-note"><span aria-hidden="true">✦</span><div><strong>Tu mesa, tu experiencia</strong><p>Próximamente podrás consultar los platos y seguir tu pedido sin esperas.</p></div></div>
-   </section>}
-   {screen==='identity'&&<section className="identity-panel">
-    <button className="text-button" onClick={()=>setScreen('welcome')}>← Volver</button>
-    <span className="eyebrow">TU IDENTIDAD EN SABORA</span>
-    <h1>¿Cómo quieres que te llamemos?</h1>
-    <p>Usa un alias. No necesitamos tu número de empleado ni datos corporativos.</p>
-    <form onSubmit={savePreferences}>
-     <label htmlFor="alias">Alias o apodo <span aria-hidden="true">*</span></label>
-     <input id="alias" required maxLength={80} autoComplete="nickname" value={customer.alias} onChange={e=>setCustomer({...customer,alias:e.target.value})} placeholder="Por ejemplo, Ana" />
-     <label htmlFor="company">Empresa <small>(opcional)</small></label>
-     <input id="company" maxLength={160} value={customer.company} onChange={e=>setCustomer({...customer,company:e.target.value})} placeholder="Puedes dejarlo en blanco"/>
-     {message&&<p role="alert" className="form-message">{message}</p>}
-     <button className="primary-button" type="submit">Continuar <span aria-hidden="true">→</span></button>
-    </form>
-    <p className="privacy-note">Por ahora guardaremos solo estas preferencias en este dispositivo. La identidad recuperable con passkey y las sesiones seguras aún están en desarrollo.</p>
-   </section>}
-   {screen==='menu'&&<section className="menu-panel">
-    <span className="eyebrow">EXPERIENCIA SABORA</span>
-    <h1>Hola, {customer.alias}.</h1>
-    <p>Tu alias está listo en este dispositivo. Aún no has creado una cuenta ni iniciado sesión.</p>
-    <nav className="category-nav" aria-label="Categorías de la carta">{categories.map(item=><button key={item} type="button" aria-pressed={category===item} className={category===item?'category-chip active':'category-chip'} onClick={()=>setCategory(item)}>{item}</button>)}</nav>
-    <div className="catalog-controls"><label htmlFor="catalog-search">Buscar en la carta</label><input id="catalog-search" type="search" maxLength={100} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Plato, bebida o alérgeno"/><label><input type="checkbox" checked={onlyAvailable} onChange={e=>setOnlyAvailable(e.target.checked)}/> Solo disponibles</label></div>
-    {catalog.status==='loading'?<p role="status">Cargando carta…</p>:catalog.status==='error'?<p role="alert">No se ha podido cargar la carta. {catalog.message} <button type="button" className="text-button" onClick={()=>setCatalogAttempt(n=>n+1)}>Reintentar</button></p>:searchPublishedCatalog(catalog.items,category,search,onlyAvailable).length===0?
-    <div className="placeholder-card" role="status"><span className="placeholder-icon" aria-hidden="true">◈</span><h2>Sin productos disponibles</h2><p>{category==='Todos'?'No hay productos que coincidan con los filtros seleccionados.':`Todavía no hay productos publicados para la categoría ${category.toLowerCase()}.`}</p><span className="status-tag">Solo consulta · pedidos aún no disponibles</span></div>:
-    <div className="catalog-grid">{searchPublishedCatalog(catalog.items,category,search,onlyAvailable).map(item=><article key={item.id} className="catalog-item"><span className="eyebrow">{item.category}</span><h2>{item.name}</h2><strong>{formatPrice(item.priceCents)}</strong><p>{item.allergens.length?'Alérgenos: '+item.allergens.join(', '):'Consulta al personal si tienes alergias.'}</p><span className="status-tag">{item.available?'Disponible':'Agotado'}</span></article>)}</div>}
-    <section className="placeholder-card" aria-labelledby="orders-not-ready-title"><h2 id="orders-not-ready-title">Pedidos digitales en preparación</h2><p>La carta se puede consultar, pero todavía no existe una sesión de mesa autorizada ni una cesta confirmable en esta aplicación.</p><p>El flujo de confirmación y consentimiento de precios está implementado como módulo aislado; se activará cuando el servidor valide la visita, la mesa y la identidad del comensal.</p><span className="status-tag">Confirmación deshabilitada · sin sesión autenticada</span></section>
-    <button className="text-button" onClick={()=>{setMessage('');setScreen('identity');}}>Editar mis preferencias</button>
-   </section>}
-  </main>
-  <footer className="client-footer">SABORA · Una experiencia CartaViva</footer>
- </div>;
-}
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+const root=document.getElementById('root');
+if(!root)throw Error('missing_client_root');
+createRoot(root).render(<React.StrictMode><SaboraClientApp/></React.StrictMode>);
+registerClientServiceWorker();
