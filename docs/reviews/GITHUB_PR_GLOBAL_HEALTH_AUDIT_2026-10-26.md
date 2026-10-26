@@ -90,3 +90,23 @@ Se consultaron los árboles Git completos (`git/trees?recursive=1`) de HEAD #4, 
 **CI de la rama documental del PR #14:** Sabora CI run `40267068061` terminó SUCCESS. Esta prueba no sustituye el análisis semántico pendiente.
 
 **Decisión:** conservar todas las PR existentes en Draft. Ninguna se cierra o fusiona basándose exclusivamente en esta matriz.
+
+## Bloque B — verificación dirigida de integración de interfaz y controles (2026-10-26)
+
+Se inspeccionó el contenido real de `apps/management/src/main.tsx` en #5 y #13:
+
+- La estructura de navegación, `parseManagementArea`, `toManagementHash`, `tablesGateway`, `catalogGateway`, `CatalogView` y `TablesView` se conservan en #13.
+- #13 incorpora adicionalmente el tipo `OrderOperationsGateway`, la propiedad opcional `operationsGateway` y el paso de esa propiedad a `OrdersView`. El montaje por defecto sigue llamando a `<ManagementApp/>` sin inyectar ningún gateway; por tanto **no acredita activación operativa**.
+- Las vistas `CatalogView.tsx` y `TablesView.tsx` y sus pruebas de modelos de lectura tienen blob idéntico al #5. La hoja `style.css` es distinta, y la regresión visual responsive no queda certificada por una comparación de SHA.
+- En #4 frente a #13, los módulos de transporte y modelo de operaciones son idénticos, mientras que `OrdersView.tsx` y las capas HTTP/SQL se modificaron. El cambio exige prueba de comportamiento, no copia directa del código antiguo.
+- En #8 frente a #13, la implementación de `order-operation-capability.mjs` y su test de capacidad conservan SHA idéntico. El preflight SQL y las composiciones posteriores difieren; el gate normativo de activación sigue cerrado.
+
+### Estado de la evidencia automatizada
+
+- El HEAD documental #14 `33611ec1c6fe447d132153c135fdc66d0901fef3` pasó Sabora CI run `40267579456`.
+- La suite completa PostgreSQL 17 (87/87) y el check raíz (895/895) corresponden al snapshot de código #13 `c1dceba1cb`, según el informe de cierre; no se han vuelto a ejecutar localmente en esta auditoría.
+- **No** se declara equivalencia funcional completa, ni se cierran PR #4, #5 o #8 por estas pruebas documentales.
+
+### Conclusión operativa
+
+La integración de navegación y lectura de #5 está preservada a nivel de código inspeccionado; las interfaces de operaciones de #4 están presentes, pero su comportamiento modificado requiere pruebas. El contrato de capacidad de #8 conserva su módulo base exacto, pero el preflight SQL debe mantenerse sujeto a revisión y pruebas de seguridad. Antes de archivar PR se requiere la matriz final de casos de aceptación y una revisión de diferencias semánticas de los archivos no idénticos.
