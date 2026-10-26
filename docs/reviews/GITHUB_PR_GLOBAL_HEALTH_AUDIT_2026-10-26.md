@@ -327,3 +327,16 @@ Comparación directa de cuatro módulos de API en PR #4 `bd268c67d8c47fb64c33676
 La CI de #14 en `6d510e512af4d5025a5d72dde5e9af6c9841dbe8` completó **SUCCESS**, run `40291716568`.
 
 **Alcance:** este bloque establece preservación de interfaces y guardas principales; no acredita equivalencia de todos los caminos de confirmación ni las pruebas de concurrencia por sí solo. Continúan pendientes los detalles internos y la validación funcional del resto de #4. Ningún despliegue ni merge.
+
+## Bloque R — revisión de diferencias internas de confirmación #4→#13 (2026-10-26)
+
+Se inspeccionó contenido de ambos blobs (no solo firmas) para cuatro módulos:
+
+1. **Coordinator:** #13 importa `issueCatalogRepriceAcceptance`, añade protección de la clave `toJSON` en objetos y snapshot, y comprueba que los métodos de repositorio sean propiedades propias de datos (`ownMethod`) para impedir getters. Conserva `withTransaction` y el conjunto obligatorio de cinco métodos.
+2. **Contexto de visita:** #13 restringe las claves permitidas de `lockContext` a `tableId`, `visitId`, `actorId`, `basketId`, `qrToken` y `customerSessionToken`. Es un endurecimiento de entrada observable.
+3. **HTTP:** #4 devolvía `409 {error:'acceptance_required'}` sin DTO público. #13 devuelve un DTO de `repricing` con totales, revisiones, token firmado y expiración, validando propiedades de datos y un esquema explícito; añade `failureCode` para evitar ejecutar getters en errores. **Este cambio es un contrato de salida material, no equivalencia byte a byte**. La documentación normativa del repricing y sus tests deben ser el gate antes de aprobar la integración.
+4. **Composición:** #13 agrega `assertIsolatedCustomerSqlCapabilities` después de verificar identidades y antes de registrar rutas; continúa opt-in.
+
+**Clasificación:** tres endurecimientos de frontera (entrada/errores/SQL) y una ampliación del contrato público de repricing. No se observa en estos fragmentos una relajación de los requisitos de aislamiento; la comprobación de semántica completa requiere pruebas y cotejo normativo. No se activa ninguna ruta ni se ejecuta una migración.
+
+**CI comprobada:** #14 HEAD `0c1bbb16c74708bd658b5f482d5ea441fda3bc4b` tenía run `40292280366` en progreso al comienzo del bloque; no se registra como éxito.
