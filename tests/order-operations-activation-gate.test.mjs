@@ -64,7 +64,7 @@ test('identity preflight rejects grants on actor RPC and private relations', asy
   assert.match(preflight, /accessible_private_tables\s*!==\s*\(allowStaffReader \? 1 : 0\)/);
   assert.match(preflight, /allowStaffReader && row\.staff_reader_exact_columns !== true/);
   assert.match(preflight, /accessible_private_sequences\s*!==\s*0/);
-  assert.match(preflight, /accessible_private_definer_routines\s*!==\s*\(allowAuthorizedTransition \? 1 : 0\)/);
+  assert.match(preflight, /accessible_private_definer_routines\s*!==[\s\S]*allowAuthorizedTransition[\s\S]*allowAuthorizedReads/);
   assert.match(preflight, /candidate_is_invoker\s*!==\s*true/);
   assert.match(preflight, /forced_rls_transition_requests\s*!==\s*1/);
   assert.match(preflight, /authorized_rpc_execute\s*!==\s*allowAuthorizedTransition/);

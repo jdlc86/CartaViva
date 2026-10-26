@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 const Fastify = createRequire(new URL('../apps/api/package.json', import.meta.url))('fastify');
-import {registerVerifiedOrderOperationsFromPools, registerVerifiedOrderTransitionsOnlyFromPools} from '../apps/api/src/order-operations-composition.mjs';
+import {
+  registerVerifiedOrderOperationsFromPools,
+  registerVerifiedOrderTransitionsOnlyFromPools,
+  registerVerifiedRestrictedOrderOperationsFromPools,
+} from '../apps/api/src/order-operations-composition.mjs';
 
 const pool = (user, connectionString) => ({
   options: {user, connectionString},
@@ -191,6 +195,7 @@ test('transition-only composition verifies two independent SQL principals before
        connection_limit:-1,password_valid_until:null,
        schema_usage:true,schema_create:false,database_create:false,
        candidate_rpc_execute:false,authorized_rpc_execute:authorized,
+       authorized_board_rpc_execute:false,authorized_history_rpc_execute:false,
        unsafe_actor_rpc_execute:0,
        accessible_private_tables:authorized?0:1,
        staff_reader_exact_columns:!authorized,
@@ -199,6 +204,12 @@ test('transition-only composition verifies two independent SQL principals before
        candidate_is_invoker:true,authorized_is_definer:true,
        authorized_owner:'sabora_order_operations_fn_owner',
        authorized_search_path_locked:true,authorized_owner_is_sealed:true,
+       authorized_board_is_definer:true,
+       authorized_board_owner:'sabora_order_operations_fn_owner',
+       authorized_board_search_path_locked:true,
+       authorized_history_is_definer:true,
+       authorized_history_owner:'sabora_order_operations_fn_owner',
+       authorized_history_search_path_locked:true,
        authorized_owner_memberships:0,forced_rls_transition_requests:1,
        forced_rls_signing_keys:1,
       }]};
@@ -234,6 +245,79 @@ test('transition-only composition verifies two independent SQL principals before
   'connect:sabora_staff_reader','inspect:sabora_staff_reader','release:sabora_staff_reader',
   'connect:sabora_operations','inspect:sabora_operations','release:sabora_operations',
  ]);
+});
+
+test('restricted composition mounts board, transition and history after exact three-wrapper preflight', async t => {
+  const seen = [];
+  function inspectedPool(role, kind) {
+    return {
+      options: {user: role, connectionString: `postgres://${role}`},
+      query() { throw Error('unexpected_direct_query'); },
+      async connect() {
+        seen.push(`connect:${role}`);
+        return {
+          async query(sql) {
+            seen.push(`inspect:${role}`);
+            assert.match(sql, /read_order_operations_board_authorized_candidate/);
+            const operations = kind === 'operations';
+            return {rows: [{
+              current_role: role, session_role: role,
+              superuser: false, bypass_rls: false, can_login: true,
+              inherits_roles: false, can_create_role: false, can_create_db: false,
+              can_replicate: false, has_role_memberships: false, has_role_grantees: false,
+              connection_limit: -1, password_valid_until: null,
+              schema_usage: true, schema_create: false, database_create: false,
+              candidate_rpc_execute: false,
+              authorized_rpc_execute: operations,
+              authorized_board_rpc_execute: operations,
+              authorized_history_rpc_execute: operations,
+              unsafe_actor_rpc_execute: 0,
+              accessible_private_tables: operations ? 0 : 1,
+              staff_reader_exact_columns: !operations,
+              accessible_private_sequences: 0,
+              accessible_private_definer_routines: operations ? 3 : 0,
+              candidate_is_invoker: true,
+              authorized_is_definer: true,
+              authorized_owner: 'sabora_order_operations_fn_owner',
+              authorized_search_path_locked: true,
+              authorized_board_is_definer: true,
+              authorized_board_owner: 'sabora_order_operations_fn_owner',
+              authorized_board_search_path_locked: true,
+              authorized_history_is_definer: true,
+              authorized_history_owner: 'sabora_order_operations_fn_owner',
+              authorized_history_search_path_locked: true,
+              authorized_owner_is_sealed: true,
+              authorized_owner_memberships: 0,
+              forced_rls_transition_requests: 1,
+              forced_rls_signing_keys: 1,
+            }]};
+          },
+          release(error) { assert.equal(error, null); seen.push(`release:${role}`); },
+        };
+      },
+    };
+  }
+  const app = Fastify();
+  t.after(() => app.close());
+  await registerVerifiedRestrictedOrderOperationsFromPools(app, {
+    staffPool: inspectedPool('sabora_staff_reader', 'staff'),
+    operationsPool: inspectedPool('sabora_operations', 'operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+    issuer: 'https://issuer.example.test', getTrustedKeys: async () => [],
+    issueTransitionCapability: () => ({}), issueReadCapability: () => ({}),
+  });
+  await app.ready();
+  assert.equal(app.hasRoute({method: 'GET', url: '/api/v1/operations/order-lines'}), true);
+  assert.equal(app.hasRoute({method: 'POST',
+    url: '/api/v1/operations/order-lines/:lineId/transitions'}), true);
+  assert.equal(app.hasRoute({method: 'GET',
+    url: '/api/v1/operations/orders/:orderId/history'}), true);
+  assert.equal((await app.inject({method: 'GET',
+    url: '/api/v1/operations/order-lines'})).statusCode, 401);
+  assert.deepEqual(seen, [
+    'connect:sabora_staff_reader', 'inspect:sabora_staff_reader', 'release:sabora_staff_reader',
+    'connect:sabora_operations', 'inspect:sabora_operations', 'release:sabora_operations',
+  ]);
 });
 
 test('transition-only rejects missing or malformed authentication wiring without SQL or routes',async()=>{
@@ -310,6 +394,7 @@ test('transition-only fails atomically on either SQL principal, never mounting H
        has_role_memberships:false,has_role_grantees:false,connection_limit:-1,password_valid_until:null,
        schema_usage:true,schema_create:false,database_create:false,
        candidate_rpc_execute:false,authorized_rpc_execute:false,
+       authorized_board_rpc_execute:false,authorized_history_rpc_execute:false,
        unsafe_actor_rpc_execute:0,
        accessible_private_tables:1,
        staff_reader_exact_columns:true,
@@ -317,6 +402,12 @@ test('transition-only fails atomically on either SQL principal, never mounting H
        candidate_is_invoker:true,authorized_is_definer:true,
        authorized_owner:'sabora_order_operations_fn_owner',
        authorized_search_path_locked:true,authorized_owner_is_sealed:true,
+       authorized_board_is_definer:true,
+       authorized_board_owner:'sabora_order_operations_fn_owner',
+       authorized_board_search_path_locked:true,
+       authorized_history_is_definer:true,
+       authorized_history_owner:'sabora_order_operations_fn_owner',
+       authorized_history_search_path_locked:true,
        authorized_owner_memberships:0,forced_rls_transition_requests:1,
        forced_rls_signing_keys:1,
       }]};

@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {createOrderOperationsRepository} from '../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../apps/api/src/order-operations-http.mjs';
+import {createOrderOperationReadCapabilityIssuer} from '../apps/api/src/order-operation-read-capability.mjs';
 
 const require = createRequire(new URL('../apps/api/package.json', import.meta.url));
 const Fastify = require('fastify');
@@ -57,6 +58,35 @@ test('coordinator binds a transition capability and leaves membership revalidati
   ]);
   assert.equal(calls[2][1].actorId, actorId);
   assert.equal(calls[2][1].capability.actorId, actorId);
+});
+
+test('restricted coordinator binds board and history scope without direct membership SQL', async () => {
+  const calls = [];
+  const readCapabilities = [];
+  const repository = {
+    async verifyMembership() { throw Error('direct_membership_query_forbidden'); },
+    async listBoard(_query, input) { calls.push(['board', input]); return {items: []}; },
+    async transitionLine() { return {version: 1}; },
+    async listHistory(_query, input) { calls.push(['history', input]); return {events: []}; },
+  };
+  const issueReadCapability = (input) => {
+    readCapabilities.push(input);
+    return Object.freeze({operation: input.operation});
+  };
+  const operations = createOrderOperationsCoordinator({
+    repository,
+    issueTransitionCapability: capability,
+    issueReadCapability,
+    withTransaction: (work) => work(async () => ({rows: []})),
+  });
+  await operations.listBoard(context(), {status: 'ready', limit: 20, cursor: null});
+  await operations.listHistory(context('waiter'), {orderId, limit: 10});
+  assert.deepEqual(readCapabilities, [
+    {actorId, role: 'kitchen', operation: 'board', status: 'ready', limit: 20, cursor: null},
+    {actorId, role: 'waiter', operation: 'history', orderId, limit: 10},
+  ]);
+  assert.equal(calls[0][1].capability.operation, 'board');
+  assert.equal(calls[1][1].capability.operation, 'history');
 });
 
 test('coordinator rejects identity and membership mismatch before opening SQL transaction', async () => {
@@ -128,6 +158,54 @@ test('repository returns a bounded kitchen projection without private identifier
   assert.deepEqual(queries[0].parameters, ['kitchen', 'ready', null, null, null, 11]);
   assert.equal(Object.hasOwn(board.items[0], 'actorUserId'), false);
   assert.equal(Object.hasOwn(board.items[0], 'sessionId'), false);
+});
+
+test('repository uses only actor-bound wrappers when read capabilities are supplied', async () => {
+  const repository = createOrderOperationsRepository();
+  const issue = createOrderOperationReadCapabilityIssuer({
+    keyId: 'test_read_key_01', secret: Buffer.alloc(32, 3),
+    databaseRole: 'sabora_operations', clock: () => 1_800_000_000_000,
+  });
+  const queries = [];
+  const boardCapability = issue({
+    actorId, role: 'kitchen', operation: 'board', status: 'ready', limit: 10, cursor: null,
+  });
+  const board = await repository.listBoard(async (sql, parameters) => {
+    queries.push({sql, parameters});
+    return {rows: [{
+      order_id: orderId, line_id: lineId, table_number: 12,
+      customer_label: 'Mesa Ana', confirmed_at: confirmedAt, grouping: 'first',
+      line_number: 1, category: 'main', name: 'Arroz', quantity: 2, status: 'ready',
+      notification_id: notificationId, notification_created_at: confirmedAt,
+      notification_acknowledged_at: null,
+    }]};
+  }, {actorId, role: 'kitchen', status: 'ready', limit: 10, cursor: null,
+    capability: boardCapability});
+  assert.equal(board.items.length, 1);
+  assert.match(queries[0].sql, /read_order_operations_board_authorized_candidate/);
+  assert.equal(queries[0].parameters[2], actorId);
+  assert.equal(queries[0].parameters[3], 'kitchen');
+  assert.equal(queries[0].parameters[4], 'ready');
+
+  const historyCapability = issue({
+    actorId, role: 'waiter', operation: 'history', orderId, limit: 10,
+  });
+  const history = await repository.listHistory(async (sql, parameters) => {
+    queries.push({sql, parameters});
+    return {rows: [{
+      event_id: eventId, line_id: lineId, line_number: 1, name: 'Arroz',
+      from_status: 'ready', to_status: 'picked_up', occurred_at: confirmedAt,
+      actor_role: 'waiter',
+    }]};
+  }, {actorId, role: 'waiter', orderId, limit: 10, capability: historyCapability});
+  assert.equal(history.events.length, 1);
+  assert.match(queries[1].sql, /read_order_operations_history_authorized_candidate/);
+  assert.deepEqual(queries[1].parameters.slice(2, 6), [actorId, 'waiter', orderId, 10]);
+
+  await assert.rejects(repository.listBoard(async () => ({rows: []}), {
+    actorId, role: 'kitchen', status: 'confirmed', limit: 10, cursor: null,
+    capability: boardCapability,
+  }), /invalid_order_operation_read_capability/);
 });
 
 test('repository rejects SQL board rows outside verified role or requested filter', async () => {

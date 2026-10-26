@@ -1,3 +1,8 @@
+import {
+  orderOperationBoardScope,
+  orderOperationHistoryScope,
+} from './order-operation-read-capability.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
 const CAPABILITY_KEY = /^[A-Za-z0-9_-]{8,64}$/;
@@ -38,6 +43,25 @@ function validCapability(capability, {actorId, lineId, targetStatus, correlation
     return false;
   }
   return true;
+}
+
+function validReadCapability(capability, {actorId, role, operation, scope}) {
+  const keys = [
+    'keyId', 'databaseRole', 'actorId', 'staffRole', 'operation', 'scope',
+    'issuedAtMs', 'expiresAtMs', 'signatureHex',
+  ];
+  return isPlainObject(capability) && Reflect.ownKeys(capability).length === keys.length &&
+    keys.every((key) => Object.hasOwn(capability, key)) &&
+    CAPABILITY_KEY.test(capability.keyId) && ROLE_NAME.test(capability.databaseRole) &&
+    UUID.test(capability.actorId) &&
+    capability.actorId.toLowerCase() === actorId.toLowerCase() &&
+    capability.staffRole === role && capability.operation === operation &&
+    capability.scope === scope &&
+    Number.isSafeInteger(capability.issuedAtMs) && capability.issuedAtMs >= 0 &&
+    Number.isSafeInteger(capability.expiresAtMs) &&
+    capability.expiresAtMs > capability.issuedAtMs &&
+    capability.expiresAtMs - capability.issuedAtMs <= 30_000 &&
+    SHA256_HEX.test(capability.signatureHex);
 }
 
 function assertResult(result) {
@@ -84,7 +108,9 @@ export function createOrderOperationsRepository() {
       return Object.freeze({actorId: rows[0].user_id, role: rows[0].role});
     },
 
-    async listBoard(query, {actorId, role, status = null, limit = 50, cursor = null}) {
+    async listBoard(query, {
+      actorId, role, status = null, limit = 50, cursor = null, capability = null,
+    }) {
       if (typeof query !== 'function' || !UUID.test(actorId) ||
           !Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
           (cursor !== null && (!isPlainObject(cursor) || !UUID.test(cursor.orderId) ||
@@ -95,8 +121,10 @@ export function createOrderOperationsRepository() {
         throw Error('invalid_order_operations_page');
       }
       assertRoleStatus(role, status);
-      const rows = assertResult(await query(
-        `SELECT
+      let result;
+      if (capability === null) {
+        result = await query(
+          `SELECT
            orders.id AS order_id,
            lines.id AS line_id,
            tables.number AS table_number,
@@ -128,10 +156,41 @@ export function createOrderOperationsRepository() {
                 ($3::timestamptz, $4::uuid, $5::integer)
            )
          ORDER BY orders.confirmed_at, orders.id, lines.line_number
-         LIMIT $6::integer`,
-        [role, status, cursor?.confirmedAt ?? null, cursor?.orderId ?? null,
-          cursor?.lineNumber ?? null, limit + 1]
-      ));
+          LIMIT $6::integer`,
+          [role, status, cursor?.confirmedAt ?? null, cursor?.orderId ?? null,
+            cursor?.lineNumber ?? null, limit + 1]
+        );
+      } else {
+        const scope = orderOperationBoardScope({role, status, limit, cursor});
+        if (!validReadCapability(capability, {
+          actorId, role, operation: 'board', scope,
+        })) {
+          throw Error('invalid_order_operation_read_capability');
+        }
+        result = await query(
+          `SELECT *
+             FROM sabora.read_order_operations_board_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`,
+          [
+            capability.keyId,
+            capability.databaseRole,
+            actorId,
+            role,
+            status,
+            cursor === null ? null : Date.parse(cursor.confirmedAt),
+            cursor?.orderId ?? null,
+            cursor?.lineNumber ?? null,
+            limit,
+            capability.issuedAtMs,
+            capability.expiresAtMs,
+            capability.signatureHex,
+          ]
+        );
+      }
+      const rows = assertResult(result);
       if (rows.length > limit + 1 || rows.some(row =>
         (role === 'kitchen' && row?.status === 'picked_up') ||
         (role === 'waiter' && (row?.status === 'confirmed' || row?.status === 'preparing')) ||
@@ -275,13 +334,15 @@ export function createOrderOperationsRepository() {
       });
     },
 
-    async listHistory(query, {actorId, role, orderId, limit = 100}) {
+    async listHistory(query, {actorId, role, orderId, limit = 100, capability = null}) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role) ||
           !UUID.test(orderId) || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
         throw Error('invalid_order_history_request');
       }
-      const rows = assertResult(await query(
-        `SELECT events.id AS event_id,
+      let result;
+      if (capability === null) {
+        result = await query(
+          `SELECT events.id AS event_id,
                 events.order_line_id AS line_id,
                 lines.line_number,
                 lines.name,
@@ -295,8 +356,35 @@ export function createOrderOperationsRepository() {
           WHERE events.order_id = $1::uuid
           ORDER BY events.occurred_at, events.id
           LIMIT $2::integer`,
-        [orderId, limit]
-      ));
+          [orderId, limit]
+        );
+      } else {
+        const scope = orderOperationHistoryScope({role, orderId, limit});
+        if (!validReadCapability(capability, {
+          actorId, role, operation: 'history', scope,
+        })) {
+          throw Error('invalid_order_operation_read_capability');
+        }
+        result = await query(
+          `SELECT *
+             FROM sabora.read_order_operations_history_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
+               $6::integer, $7::bigint, $8::bigint, $9::text
+             )`,
+          [
+            capability.keyId,
+            capability.databaseRole,
+            actorId,
+            role,
+            orderId,
+            limit,
+            capability.issuedAtMs,
+            capability.expiresAtMs,
+            capability.signatureHex,
+          ]
+        );
+      }
+      const rows = assertResult(result);
       if (rows.length > limit) throw Error('invalid_order_operations_sql_result');
       if (rows.some(row =>
         (row?.from_status !== 'confirmed' || row?.to_status !== 'preparing') &&
