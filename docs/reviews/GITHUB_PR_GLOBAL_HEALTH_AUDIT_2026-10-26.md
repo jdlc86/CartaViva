@@ -387,3 +387,29 @@ Contraste directo de los módulos `order-operations-coordinator.mjs`, `order-ope
 **Evaluación:** las rutas de lectura no deben habilitarse usando el login mutador; el modo `transitionOnly` permite montar solo POST bajo preflight de roles/capacidades. El contrato de lectura y la activación real permanecen pendientes de autorización; no hay import de operaciones en `server.mjs` según comprobación anterior. La comparación no es una prueba visual ni una ejecución directa de las ramas antiguas.
 
 **CI:** #14 HEAD anterior `5b695a14bbbde4eca1837d0b74b10e17869aaf84` tenía run `40293126986` en progreso al inicio del bloque; no atribuirle éxito sin verificación.
+
+## Hito V — matriz de disposición global de PR (2026-10-26)
+
+**Inventario vivo:** consulta REST `pulls?state=open&per_page=100`: exactamente 11 PR abiertos, todos **Draft**: #1, #2, #4, #5, #7, #8, #10, #11, #12, #13 y #14. Se registraron sus HEAD y bases en el análisis de la sesión; ninguno se cerró, fusionó ni modificó fuera de #14.
+
+| PR | Dominio | Disposición de auditoría | Riesgo / gate residual |
+| --- | --- | --- | --- |
+| #1 | Contrato funcional normativo | **Base normativa vigente en rama**; conservar | Aprobación y secuencia de integración explícitas |
+| #2 | Bootstrap monorepo | **Base técnica** para #4/#5/#7 | Integración ordenada; no inferir merge desde ancestry |
+| #4 | Cocina/camarero y confirmación | **Reconciliación estructural y semántica revisada en #13** (bloques P/Q/R/S/T/U); no borrar rama | Contratos de lectura y activación; evidencia visual end-to-end |
+| #5 | UI administración, mesas y catálogo | **Reconciliación estructural revisada en #13** (bloque O) | Capturas/responsive en navegador real; gateways no conectados por defecto |
+| #7 | Integración operativa | **Base de #13** | Dependencia de aprobación de seguridad/operación |
+| #8 | SQL actor binding | **Integración endurecida en #13** (bloques K/L/N); PR no sustituye por sí solo el gate | Separación de roles SQL, tests de privilegios y activación |
+| #10 | Identidad de personal | **Ancestral de #13**; candidato a supersesión, sin cierre | Decisión explícita de disposición |
+| #11 | Integración identidad | **Ancestral de #13**; candidato a supersesión, sin cierre | Decisión explícita de disposición |
+| #12 | Reconciliación identidad | **Ancestral de #13**; candidato a supersesión, sin cierre | Decisión explícita de disposición |
+| #13 | Reconciliación integrada | **Candidato central de aceptación**, no activado ni fusionado | Revisión normativa final, lectura operativa, despliegue aislado autorizado |
+| #14 | Auditoría global | **Informe en Draft**, sin cambios de producción | CI verde del HEAD final y resolución de hallazgos abiertos |
+
+**Criterio de cierre:** «reconciliado en #13» significa que se cotejaron contratos/código/pruebas disponibles, **no** que el PR esté fusionado, que su interfaz se haya probado visualmente, que las rutas estén activadas o que exista autorización de despliegue. No se propone cerrar #4/#5/#8/#10/#11/#12 automáticamente: conservar trazabilidad hasta decisión humana de estrategia de integración.
+
+**Cadena verificada previamente:** main→#1→#2→#7→#13, sin divergencia en las comparaciones efectuadas. #14 parte de #13. Los PR laterales no forman por sí mismos esa cadena lineal.
+
+**CI de auditoría:** #14 `8672d8467fb0b86897cdbd5802d049c9118cd3c1`, run `40293240340` estaba en progreso en la consulta; último éxito explícitamente verificado: `40292717579` sobre `1b0fc25e23fc3a6c08f5118619afe32ac680a26d`. No atribuir éxito al HEAD sin comprobarlo.
+
+**Próximo hito verificable:** contrastar el estado CI final y elaborar decisión de integración sin merges; cerrar gates normativos/lectura/visual con evidencias y, si aparecen defectos reproducibles, corregirlos en rama aislada con pruebas.
