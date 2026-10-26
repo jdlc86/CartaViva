@@ -62,7 +62,7 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     typeof line.itemId!=='string'||typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
      !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;

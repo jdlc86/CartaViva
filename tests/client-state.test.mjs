@@ -157,3 +157,30 @@ test('catalog price change remains pending until explicit acceptance, including 
  assert.equal(acceptBasketPrice(old,[{...item,available:false}],id),old);
  assert.equal(acceptBasketPrice(old,[],id),old);
 });
+
+test('basket review remains blocked until all distinct price and availability incidences are resolved',()=>{
+ const second='22222222-2222-4222-8222-222222222222';
+ const third='33333333-3333-4333-8333-333333333333';
+ const lines=[
+  {itemId:id,name:'Precio anterior',priceCents:100,quantity:2},
+  {itemId:second,name:'Agotado',priceCents:500,quantity:1},
+  {itemId:third,name:'Retirado',priceCents:300,quantity:1},
+ ];
+ const published=[item,{...item,id:second,priceCents:500,available:false}];
+ assert.deepEqual(basketIssues(lines,published),[
+  {itemId:id,reason:'price_changed'},
+  {itemId:second,reason:'sold_out'},
+  {itemId:third,reason:'unpublished'},
+ ]);
+ const accepted=acceptBasketPrice(lines,published,id);
+ assert.deepEqual(basketIssues(accepted,published),[
+  {itemId:second,reason:'sold_out'},
+  {itemId:third,reason:'unpublished'},
+ ]);
+ const withoutSoldOut=removeBasketLine(accepted,second);
+ const reviewed=removeBasketLine(withoutSoldOut,third);
+ assert.deepEqual(basketIssues(reviewed,published),[]);
+ assert.equal(basketTotal(reviewed),2580);
+ assert.equal(basketQuantity(reviewed),2);
+ assert.deepEqual(lines[0],{itemId:id,name:'Precio anterior',priceCents:100,quantity:2});
+});
