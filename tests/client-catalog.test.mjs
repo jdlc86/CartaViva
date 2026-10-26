@@ -10,7 +10,7 @@ const source=readFileSync(new URL('../apps/client/src/catalog.ts',import.meta.ur
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports',javascript)(module,module.exports);
-const {parsePublishedCatalog,filterCatalog,formatPrice,categories,searchPublishedCatalog}=module.exports;
+const {parsePublishedCatalog,filterCatalog,formatPrice,categoriesFor,searchPublishedCatalog}=module.exports;
 const valid={id:'00000000-0000-4000-8000-000000000001',name:'Agua',category:'Bebidas',priceCents:150,available:true,allergens:[]};
 test('catalog accepts valid published presentation and filters categories',()=>{
  const items=parsePublishedCatalog([valid,{...valid,id:'00000000-0000-4000-8000-000000000002',category:'Postres',available:false}]);
@@ -18,7 +18,7 @@ test('catalog accepts valid published presentation and filters categories',()=>{
  assert.equal(filterCatalog(items,'Todos').length,2);
  assert.equal(filterCatalog(items,'Bebidas').length,1);
  assert.equal(filterCatalog(items,'Primeros').length,0);
- assert.deepEqual(categories,['Todos','Bebidas','Primeros','Segundos','Postres']);
+ assert.deepEqual(categoriesFor(items),['Todos','Bebidas','Postres']);
  assert.match(formatPrice(150),/1,50/);
 });
 test('catalog rejects malformed envelopes and oversized collections',()=>{
@@ -28,12 +28,26 @@ test('catalog rejects malformed products and duplicate UUIDs',()=>{
  const invalid=[
   {id:'not-uuid'}, {id:'00000000-0000-4000-8000-00000000001z'},
   {name:''},{name:'A'.repeat(161)},{name:'Ana\nB'},
-  {category:'Otros'}, {priceCents:-1},{priceCents:1.5},{priceCents:Infinity},
+  {category:''},{category:'Todos'},{category:'Carta\nprivada'}, {priceCents:-1},{priceCents:1.5},{priceCents:Infinity},
   {available:'yes'}, {allergens:['']},{allergens:['gluten\n']},
   {allergens:Array(33).fill('gluten')}
  ];
  for(const change of invalid)assert.throws(()=>parsePublishedCatalog([{...valid,...change}]),/invalid_catalog/);
  assert.throws(()=>parsePublishedCatalog([valid,{...valid,id:valid.id.toUpperCase()}]),/invalid_catalog/);
+});
+test('catalog categories are derived from published rows and keep sold-out categories',()=>{
+ const items=parsePublishedCatalog([
+  valid,
+  {...valid,id:'00000000-0000-4000-8000-000000000002',category:'Especiales',available:false},
+  {...valid,id:'00000000-0000-4000-8000-000000000003',category:'Bebidas'}
+ ]);
+ assert.deepEqual(categoriesFor(items),['Todos','Bebidas','Especiales']);
+});
+test('catalog rejects unknown public DTO fields instead of retaining private data',()=>{
+ assert.throws(()=>parsePublishedCatalog([{...valid,privateNote:'secret'}]),/invalid_catalog/);
+});
+test('catalog rejects a whitespace-padded virtual category name',()=>{
+ assert.throws(()=>parsePublishedCatalog([{...valid,category:' Todos '}]),/invalid_catalog/);
 });
 test('published catalog input is not mutated',()=>{
  const source=Object.freeze({...valid,allergens:Object.freeze(['gluten'])});
