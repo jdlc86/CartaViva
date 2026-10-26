@@ -158,7 +158,9 @@ del circuito en vez de ser fingidos.
   - ciclo de personal 14/14;
   - invitaciones/outbox/custodia 25/25.
 - `npm run check`: PASS; incluye 920/920 tests raíz y builds API/cliente/gestión.
-- GitHub Actions: pendiente de registrar después del push del SHA final.
+- GitHub Actions del [PR Draft #16](https://github.com/jdlc86/CartaViva/pull/16)
+  sobre `7aa3b53006eb8bc8248d57052020abc4533e4b16`: PASS en los tres jobs
+  publicados (`validate`, `generate-lockfile` y `management-browser-smoke`).
 
 ## Límites operativos y siguiente decisión
 
