@@ -4,7 +4,12 @@ export function createCustomerProtectedHook({verifyCustomerSession}={}){
  if(typeof verifyCustomerSession!=='function')
   throw Error('invalid_customer_auth_verifier');
  return async function customerProtectedHook(request,reply){
+  // Never allow an upstream or reused request property to masquerade as
+  // an authenticated customer when the bearer is missing or rejected.
+  if(request && Object.hasOwn(request,'customerIdentity'))delete request.customerIdentity;
   const header=request?.headers?.authorization;
+  // All authenticated customer responses are private and must not be cached.
+  if(typeof reply?.header==='function')reply.header('Cache-Control','no-store');
   if(typeof header!=='string'||!/^Bearer [A-Za-z0-9_-]{43}$/.test(header)){
    reply.code(401).send({error:'unauthorized'});
    return;
