@@ -342,6 +342,8 @@ DECLARE
   v_actor_kind text;
   v_event_id uuid := gen_random_uuid();
   v_is_repeat boolean := false;
+  v_target_membership_required boolean := false;
+  v_target_membership_found boolean := true;
 BEGIN
   v_reason := CASE WHEN p_reason IS NULL THEN NULL ELSE btrim(p_reason) END;
   v_reason_hash := CASE WHEN v_reason IS NULL THEN '-' ELSE
@@ -549,13 +551,48 @@ BEGIN
     RAISE EXCEPTION 'staff_enrollment_revoked' USING errcode = '42501';
   END IF;
 
-  -- Revalidate after any enrollment row-lock wait, before mutations.
+  -- Suspension and revocation can block on the target membership after the
+  -- enrollment lock. Acquire that row explicitly so the final temporal check
+  -- covers every lock wait before any mutation or durable replay is written.
+  IF p_action = 'suspend'
+    AND v_enrollment.state = 'active'
+    AND v_enrollment.auth_user_id IS NOT NULL
+    AND v_enrollment.auth_user_id IS NOT DISTINCT FROM p_subject_user_id
+    AND v_enrollment.auth_user_id <> v_owner_user_id
+  THEN
+    v_target_membership_required := true;
+    PERFORM 1
+      FROM sabora.staff_members member
+      WHERE member.user_id = v_enrollment.auth_user_id
+        AND member.role = v_enrollment.requested_role
+        AND member.state = 'active'
+      FOR UPDATE;
+    v_target_membership_found := FOUND;
+  ELSIF p_action = 'revoke'
+    AND v_enrollment.state IN ('active','suspended')
+    AND v_enrollment.auth_user_id IS NOT NULL
+    AND v_enrollment.auth_user_id <> v_owner_user_id
+  THEN
+    v_target_membership_required := true;
+    PERFORM 1
+      FROM sabora.staff_members member
+      WHERE member.user_id = v_enrollment.auth_user_id
+        AND member.role = v_enrollment.requested_role
+        AND member.state IN ('active','suspended')
+      FOR UPDATE;
+    v_target_membership_found := FOUND;
+  END IF;
+
+  -- Revalidate after enrollment and target-membership row-lock waits.
   v_now := clock_timestamp();
   v_now_ms := floor(extract(epoch FROM v_now) * 1000)::bigint;
   IF p_issued_at_ms::numeric > v_now_ms::numeric + 5000
     OR p_expires_at_ms <= v_now_ms OR v_key_expires_at <= v_now
   THEN
     RAISE EXCEPTION 'invalid_staff_lifecycle_capability' USING errcode = '42501';
+  END IF;
+  IF v_target_membership_required AND NOT v_target_membership_found THEN
+    RAISE EXCEPTION 'staff_membership_state_mismatch' USING errcode = '40001';
   END IF;
 
   IF p_action = 'invite' THEN

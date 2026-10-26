@@ -4,6 +4,7 @@ import {
   createHash, generateKeyPairSync, randomBytes, randomUUID, sign as signJwt,
 } from 'node:crypto';
 import {createRequire} from 'node:module';
+import {setTimeout as delay} from 'node:timers/promises';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {
   createStaffInviteeEmailHasher,
@@ -229,6 +230,16 @@ async function auditCounts(enrollmentId) {
     (SELECT count(*)::integer FROM sabora.staff_lifecycle_requests WHERE enrollment_id=$1) AS requests`,
   [enrollmentId]);
   return result.rows[0];
+}
+
+async function waitForBackendLock(pid) {
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const result = await admin.query(`SELECT 1 FROM pg_catalog.pg_stat_activity
+      WHERE pid=$1 AND wait_event_type='Lock' AND state='active'`, [pid]);
+    if (result.rowCount > 0) return;
+    await delay(20);
+  }
+  throw Error(`expected_lock_wait_not_observed:${pid}`);
 }
 
 test.before(async () => {
@@ -547,6 +558,111 @@ test('PG17 active and suspended staff lose membership access immediately after r
     state: 'revoked', auth_user_id: suspendedSubject, invite_version: 1,
     accepted: true, registered: true, activated: true, suspended: true, revoked: true,
   });
+});
+
+test('PG17 suspension rejects a capability that expires on the target membership lock', async () => {
+  const invitation = await createInvitation({role: 'waiter'});
+  const subjectId = uuid('b', sequence);
+  await accept(invitation, subjectId);
+  await register(invitation, subjectId);
+  await activate(invitation, subjectId);
+
+  const issueShortLifecycle = createStaffLifecycleCapabilityIssuer({
+    keyId: lifecycleKey, secret: lifecycleSecret,
+    databaseRole: lifecycleRole, ttlMs: 800,
+  });
+  const capability = issueShortLifecycle({
+    actorId: ownerId, action: 'suspend', enrollmentId: invitation.enrollmentId,
+    subjectUserId: subjectId, requestedRole: null,
+    inviteeEmailHashHex: null, inviteTokenHashHex: null,
+    credentialEvidenceHashHex: null, reason: 'Expiración bajo lock',
+    correlationId: `expire_suspend_${String(sequence).padStart(8, '0')}`,
+  });
+  const blocker = await admin.connect();
+  const caller = await lifecyclePool.connect();
+  let pending;
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query(`SELECT user_id FROM sabora.staff_members
+      WHERE user_id=$1 FOR SHARE`, [subjectId]);
+    const pid = (await caller.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    pending = caller.query(lifecycleSql, lifecycleArgs(capability));
+    await waitForBackendLock(pid);
+    await delay(Math.max(0, capability.expiresAtMs - Date.now() + 200));
+    await blocker.query('COMMIT');
+    await assert.rejects(pending,
+      error => error?.code === '42501' && /invalid_staff_lifecycle_capability/.test(error.message));
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    await pending?.catch(() => {});
+    blocker.release();
+    caller.release();
+  }
+
+  assert.equal((await enrollmentState(invitation.enrollmentId)).state, 'active');
+  assert.deepEqual((await admin.query(
+    'SELECT state FROM sabora.staff_members WHERE user_id=$1', [subjectId]
+  )).rows, [{state: 'active'}]);
+  assert.deepEqual(await auditCounts(invitation.enrollmentId), {audit: 4, requests: 4});
+});
+
+test('PG17 revocation rejects a signing key that expires on the target membership lock', async () => {
+  const invitation = await createInvitation({role: 'kitchen'});
+  const subjectId = uuid('b', sequence);
+  await accept(invitation, subjectId);
+  await register(invitation, subjectId);
+  await activate(invitation, subjectId);
+  await runLifecycle(lifecycleCapability({
+    action: 'suspend', enrollmentId: invitation.enrollmentId,
+    subjectUserId: subjectId, reason: 'Preparación de revocación expirada',
+    correlationId: `prepare_revoke_${String(sequence).padStart(8, '0')}`,
+  }));
+
+  const expiringKeyId = `expiry_key_${String(sequence).padStart(8, '0')}`;
+  const expiringSecret = randomBytes(32);
+  const inserted = await admin.query(`INSERT INTO sabora.staff_lifecycle_signing_keys
+      (key_id,hmac_key,not_before,expires_at)
+    VALUES ($1,decode($2,'hex'),clock_timestamp()-interval '1 minute',
+      clock_timestamp()+interval '1200 milliseconds')
+    RETURNING expires_at`, [expiringKeyId, expiringSecret.toString('hex')]);
+  const issueExpiringKeyLifecycle = createStaffLifecycleCapabilityIssuer({
+    keyId: expiringKeyId, secret: expiringSecret,
+    databaseRole: lifecycleRole, ttlMs: 10_000,
+  });
+  const capability = issueExpiringKeyLifecycle({
+    actorId: ownerId, action: 'revoke', enrollmentId: invitation.enrollmentId,
+    subjectUserId: subjectId, requestedRole: null,
+    inviteeEmailHashHex: null, inviteTokenHashHex: null,
+    credentialEvidenceHashHex: null, reason: 'Clave expirada bajo lock',
+    correlationId: `expire_revoke_${String(sequence).padStart(8, '0')}`,
+  });
+  const blocker = await admin.connect();
+  const caller = await lifecyclePool.connect();
+  let pending;
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query(`SELECT user_id FROM sabora.staff_members
+      WHERE user_id=$1 FOR SHARE`, [subjectId]);
+    const pid = (await caller.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    pending = caller.query(lifecycleSql, lifecycleArgs(capability));
+    await waitForBackendLock(pid);
+    const expiresAtMs = new Date(inserted.rows[0].expires_at).getTime();
+    await delay(Math.max(0, expiresAtMs - Date.now() + 200));
+    await blocker.query('COMMIT');
+    await assert.rejects(pending,
+      error => error?.code === '42501' && /invalid_staff_lifecycle_capability/.test(error.message));
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    await pending?.catch(() => {});
+    blocker.release();
+    caller.release();
+  }
+
+  assert.equal((await enrollmentState(invitation.enrollmentId)).state, 'suspended');
+  assert.deepEqual((await admin.query(
+    'SELECT state FROM sabora.staff_members WHERE user_id=$1', [subjectId]
+  )).rows, [{state: 'suspended'}]);
+  assert.deepEqual(await auditCounts(invitation.enrollmentId), {audit: 5, requests: 5});
 });
 
 test('PG17 concurrent activation and revocation always finish revoked without orphan access', async () => {

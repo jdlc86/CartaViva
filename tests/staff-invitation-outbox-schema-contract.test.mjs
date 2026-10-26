@@ -65,6 +65,11 @@ test('integrated wrapper is sealed, HMAC-delegating and atomic with outbox', asy
   assert.match(sql, /REVOKE ALL ON FUNCTION sabora\.transition_staff_lifecycle_with_outbox_candidate\([\s\S]*FROM PUBLIC, anon, authenticated/);
   assert.match(sql, /INSERT INTO sabora\.staff_invitation_outbox\(/);
   assert.match(sql, /staff_invitation_outbox_replay_missing/);
+  const replayLookup = sql.match(/IF repeated THEN[\s\S]*?IF NOT FOUND THEN/i)?.[0];
+  assert.ok(replayLookup);
+  assert.match(replayLookup, /delivery\.enrollment_id = result_enrollment_id/);
+  assert.match(replayLookup, /delivery\.invite_version = result_invite_version/);
+  assert.doesNotMatch(replayLookup, /delivery\.invite_token_hash/);
   assert.match(sql, /state = 'cancelled'[\s\S]*p_action = 'resend'/);
   assert.doesNotMatch(sql,
     /GRANT EXECUTE ON FUNCTION sabora\.transition_staff_lifecycle_with_outbox_candidate/i);

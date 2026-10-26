@@ -221,8 +221,7 @@ BEGIN
       SELECT delivery.id INTO outbox_job_id
         FROM sabora.staff_invitation_outbox delivery
        WHERE delivery.enrollment_id = result_enrollment_id
-         AND delivery.invite_version = result_invite_version
-         AND delivery.invite_token_hash = decode(p_invite_token_hash_hex,'hex');
+         AND delivery.invite_version = result_invite_version;
       IF NOT FOUND THEN
         RAISE EXCEPTION 'staff_invitation_outbox_replay_missing'
           USING errcode = '40001';

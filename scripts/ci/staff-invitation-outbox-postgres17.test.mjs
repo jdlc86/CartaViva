@@ -601,8 +601,18 @@ test('PG17 restricted wrapper atomically commits invitation, ledger, audit and o
     job_hash: invitation.tokenHash, requests: 1, audit: 1,
   }]);
 
-  const replay = await integratedEnqueue().transitionAndEnqueue(invitation.capability);
+  const replayEnrollmentId = uuid('f');
+  const replayTokenHash = digest(`regenerated-${replayEnrollmentId}`);
+  const replayCapability = integratedCapability({
+    action: 'invite', enrollmentId: replayEnrollmentId,
+    requestedRole: invitation.capability.requestedRole,
+    inviteeEmailHashHex: invitation.capability.inviteeEmailHashHex,
+    inviteTokenHashHex: replayTokenHash,
+    correlationId: invitation.capability.correlationId,
+  });
+  const replay = await integratedEnqueue().transitionAndEnqueue(replayCapability);
   assert.equal(replay.jobId, invitation.result.jobId);
+  assert.equal(replay.transition.enrollmentId, invitation.enrollmentId);
   assert.equal(replay.enqueued, false);
   assert.equal(replay.repeated, true);
   assert.equal(replay.cancelledCount, 0);
@@ -614,31 +624,48 @@ test('PG17 restricted wrapper atomically commits invitation, ledger, audit and o
       (SELECT count(*)::integer FROM sabora.staff_lifecycle_audit
         WHERE enrollment_id=$1) AS audit`, [invitation.enrollmentId]);
   assert.deepEqual(counts.rows, [{jobs: 1, requests: 1, audit: 1}]);
+  assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.staff_enrollments WHERE id=$1',
+    [replayEnrollmentId]
+  )).rows[0].n, 0);
 });
 
-test('PG17 concurrent identical invitation calls produce one job and one replay', async () => {
-  const enrollmentId = uuid('f');
-  const tokenHash = digest(`concurrent-integrated-${enrollmentId}`);
-  const capability = integratedCapability({
-    action: 'invite', enrollmentId, requestedRole: 'kitchen',
-    inviteeEmailHashHex: digest(`concurrent-${enrollmentId}@example.invalid`),
-    inviteTokenHashHex: tokenHash,
-    correlationId: `integrated_concurrent_${String(sequence).padStart(8, '0')}`,
+test('PG17 concurrent durable invitation retries with regenerated material produce one job', async () => {
+  const firstEnrollmentId = uuid('f');
+  const secondEnrollmentId = uuid('f');
+  const correlationId = `integrated_concurrent_${String(sequence).padStart(8, '0')}`;
+  const inviteeEmailHashHex = digest(`concurrent-${firstEnrollmentId}@example.invalid`);
+  const firstCapability = integratedCapability({
+    action: 'invite', enrollmentId: firstEnrollmentId, requestedRole: 'kitchen',
+    inviteeEmailHashHex,
+    inviteTokenHashHex: digest(`concurrent-integrated-${firstEnrollmentId}`),
+    correlationId,
+  });
+  const secondCapability = integratedCapability({
+    action: 'invite', enrollmentId: secondEnrollmentId, requestedRole: 'kitchen',
+    inviteeEmailHashHex,
+    inviteTokenHashHex: digest(`concurrent-integrated-${secondEnrollmentId}`),
+    correlationId,
   });
   const [first, second] = await Promise.all([
-    integratedEnqueue(runtime).transitionAndEnqueue(capability),
-    integratedEnqueue(runtimeB).transitionAndEnqueue(capability),
+    integratedEnqueue(runtime).transitionAndEnqueue(firstCapability),
+    integratedEnqueue(runtimeB).transitionAndEnqueue(secondCapability),
   ]);
   assert.deepEqual([first.enqueued, second.enqueued].sort(), [false, true]);
   assert.equal(first.jobId, second.jobId);
+  assert.equal(first.transition.enrollmentId, second.transition.enrollmentId);
+  assert.ok([firstEnrollmentId, secondEnrollmentId].includes(first.transition.enrollmentId));
+  const enrollmentId = first.transition.enrollmentId;
   const counts = await admin.query(`SELECT
-      (SELECT count(*)::integer FROM sabora.staff_enrollments WHERE id=$1) AS enrollments,
+      (SELECT count(*)::integer FROM sabora.staff_enrollments
+        WHERE id=ANY($1::uuid[])) AS enrollments,
       (SELECT count(*)::integer FROM sabora.staff_invitation_outbox
-        WHERE enrollment_id=$1) AS jobs,
+        WHERE enrollment_id=$2) AS jobs,
       (SELECT count(*)::integer FROM sabora.staff_lifecycle_requests
-        WHERE enrollment_id=$1) AS requests,
+        WHERE enrollment_id=$2) AS requests,
       (SELECT count(*)::integer FROM sabora.staff_lifecycle_audit
-        WHERE enrollment_id=$1) AS audit`, [enrollmentId]);
+        WHERE enrollment_id=$2) AS audit`,
+  [[firstEnrollmentId, secondEnrollmentId], enrollmentId]);
   assert.deepEqual(counts.rows, [{enrollments: 1, jobs: 1, requests: 1, audit: 1}]);
 });
 
@@ -659,7 +686,11 @@ test('PG17 restricted resend cancels claimed work and replay keeps one current j
   assert.equal(result.cancelledCount, 1);
   assert.equal(result.transition.inviteVersion, 2);
 
-  const replay = await integratedEnqueue().transitionAndEnqueue(resend);
+  const replay = await integratedEnqueue().transitionAndEnqueue(integratedCapability({
+    action: 'resend', enrollmentId: invitation.enrollmentId,
+    inviteTokenHashHex: digest(`regenerated-resend-${invitation.enrollmentId}`),
+    correlationId: resend.correlationId,
+  }));
   assert.equal(replay.enqueued, false);
   assert.equal(replay.jobId, result.jobId);
   assert.equal(replay.cancelledCount, 0);
@@ -972,7 +1003,17 @@ test('PG17 lifecycle + outbox + encrypted custody commit or rollback as one unit
   assert.equal(rows.rows[0].job_id,committed.jobId);
   assert.equal(rows.rows[0].token_hash,tokenHash);
   assert.equal(rows.rows[0].ciphertext.includes(token),false);
-  const repeated=await coordinator.transitionAndStore({capability,token});
+  const replayToken='D'.repeat(48);
+  const repeated=await coordinator.transitionAndStore({
+    capability:issueLifecycle({
+      actorId:ownerId,action:'invite',enrollmentId:uuid('b'),
+      subjectUserId:null,requestedRole:'waiter',
+      inviteeEmailHashHex:capability.inviteeEmailHashHex,
+      inviteTokenHashHex:digest(replayToken),credentialEvidenceHashHex:null,
+      reason:null,correlationId:capability.correlationId,
+    }),
+    token:replayToken,
+  });
   assert.equal(repeated.repeated,true);
   assert.equal(repeated.stored,false);
   assert.equal(repeated.jobId,committed.jobId);
@@ -1037,7 +1078,16 @@ test('PG17 restricted custody owner commits atomic invite and denies direct acce
   assert.equal(record.rows.length,1);
   assert.equal(record.rows[0].job_id,result.jobId);
   assert.equal(record.rows[0].token_hash,digest(token));
-  const replay=await coordinator.transitionAndStore({capability,token});
+  const replayToken='Y'.repeat(48);
+  const replay=await coordinator.transitionAndStore({
+    capability:integratedCapability({
+      action:'invite',enrollmentId:uuid('d'),requestedRole:'waiter',
+      inviteeEmailHashHex:capability.inviteeEmailHashHex,
+      inviteTokenHashHex:digest(replayToken),
+      correlationId:capability.correlationId,
+    }),
+    token:replayToken,
+  });
   assert.equal(replay.stored,false);
   assert.equal(replay.repeated,true);
   await assert.rejects(runtime.query(`SELECT sabora.store_staff_invitation_custody_candidate(

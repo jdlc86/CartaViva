@@ -39,6 +39,18 @@ test('staff lifecycle SQL boundary is sealed, append-only and dormant', async ()
     /GRANT EXECUTE ON FUNCTION sabora\.transition_staff_lifecycle_authorized_candidate[\s\S]* TO (?!sabora_staff_lifecycle_fn_owner)/i);
 });
 
+test('staff lifecycle locks suspend and revoke target membership before final expiry check', async () => {
+  const sql = await readFile(migrationPath, 'utf8');
+  const boundary = sql.match(/SELECT enrollment\.\* INTO v_enrollment[\s\S]*?IF p_action = 'invite' THEN/i)?.[0];
+  assert.ok(boundary);
+  assert.match(boundary,
+    /IF p_action = 'suspend'[\s\S]*FROM sabora\.staff_members[\s\S]*FOR UPDATE/i);
+  assert.match(boundary,
+    /ELSIF p_action = 'revoke'[\s\S]*FROM sabora\.staff_members[\s\S]*FOR UPDATE/i);
+  assert.match(boundary,
+    /FOR UPDATE;[\s\S]*clock_timestamp\(\)[\s\S]*p_expires_at_ms <= v_now_ms/i);
+});
+
 test('production server does not mount candidate staff lifecycle operations', async () => {
   const server = await readFile(new URL('../apps/api/src/server.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(server, /staff-lifecycle|staff_enrollments|transition_staff_lifecycle/i);
