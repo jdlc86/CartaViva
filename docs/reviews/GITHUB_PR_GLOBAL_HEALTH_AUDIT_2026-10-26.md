@@ -223,3 +223,25 @@ Enlaces de evidencia:
 - https://github.com/jdlc86/CartaViva/actions/runs/40266420041
 - https://github.com/jdlc86/CartaViva/actions/runs/40266420109
 - https://github.com/jdlc86/CartaViva/actions/runs/40290117384
+
+## Bloque I — comparación semántica de siete archivos divergentes (2026-10-26)
+
+Se leyeron ambos contenidos en las ramas originales y en HEAD #13 para los siguientes archivos:
+
+| PR | Archivo | Cambio observado | Clasificación |
+| --- | --- | --- | --- |
+| #4 | `apps/api/src/order-operations-http.mjs` | El registro añade opción `transitionOnly=false`; modo positivo monta únicamente POST | Extensión de aislamiento, requiere regresión |
+| #4 | `apps/api/src/order-operations-coordinator.mjs` | Sustituye preconsulta de membresía en mutaciones por capacidad firmada, verificada dentro del wrapper SQL; valida propiedades propias y respuestas de membresía para lecturas | Cambio deliberado de frontera de seguridad, no equivalencia literal |
+| #4 | `apps/management/src/views/OrdersView.tsx` | Mantiene firma de gateway opcional; 204→224 líneas | Preservación de interfaz pública; detalle visual por verificar |
+| #5 | `apps/management/src/main.tsx` | Conserva exportación `ManagementApp`; gateway de operaciones opcional y lectura administrativa desconectada por defecto | Composición extendida |
+| #5 | `apps/management/src/style.css` | 456→498 líneas; contrato de tokens/breakpoints cubierto por test estático | Diferencia visual no cerrada |
+| #8 | `apps/api/src/order-operations-identity-preflight.mjs` | Añade preflight explícito del lector de personal para modo de transición aislado | Refuerzo de mínimos privilegios |
+| #8 | `apps/api/src/order-operations-repository.mjs` | Mantiene tres exportaciones públicas; 350→353 líneas | API preservada; semántica SQL pendiente de comparación |
+
+**Hallazgo de seguridad clave:** el coordinador #4 llamaba `repository.verifyMembership(query, staff)` antes de `repository.transitionLine`. En #13, la transición genera `issueTransitionCapability` y delega la comprobación de membresía bajo lock al wrapper SQL. Mantener la consulta anterior requeriría permisos de lectura adicionales en el login de mutación, incompatibles con el aislamiento normativo. No se debe restaurar esa llamada por mera equivalencia textual.
+
+**Alcance de evidencia:** inspección estática de interfaces y cambios clave, no una demostración exhaustiva de equivalencia semántica de siete archivos. Quedan diferencias adicionales y pruebas visuales pendientes; ninguna PR se cierra ni se fusiona.
+
+## Bloque J — último estado de GitHub Actions conocido
+
+Al inicio de esta revisión, #14 HEAD `385d80bb95a3977c9327920b9c1d34fe53d55c1b` tenía `Sabora CI` run **40290419763** en estado `in_progress`. No se registra como `success` hasta comprobar su conclusión. Los runs anteriores documentados sí terminaron en `success`.
