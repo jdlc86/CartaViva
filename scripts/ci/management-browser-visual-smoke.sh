@@ -19,7 +19,7 @@ fi
 for width in 360 460 900 1440; do
   for area in resumen comandas; do
     target="$output/${area}-${width}.png"
-    npm exec --yes --package=playwright@1.56.1 -- playwright screenshot \
+    timeout --signal=TERM --kill-after=5s 45s npm exec --yes --package=playwright@1.56.1 -- playwright screenshot \
       --browser chromium --viewport-size "${width},900" --full-page \
       --wait-for-timeout 500 "http://127.0.0.1:4178/#${area}" "$target"
     test -s "$target"
