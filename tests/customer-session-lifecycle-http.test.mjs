@@ -59,7 +59,8 @@ test('unavailable SQL verifier never authenticates and never exposes backend fai
  await app.ready();
  try{
   const res=await app.inject({url:'/api/v1/customer/whoami',headers:{authorization:'Bearer '+sessions[0].token}});
-  assert.equal(res.statusCode,500);
+  assert.equal(res.statusCode,503);
+  assert.deepEqual(res.json(),{error:'authentication_unavailable'});
   assert.equal(res.body.includes('sensitive backend connection detail'),false);
  }finally{await app.close();}
 });
