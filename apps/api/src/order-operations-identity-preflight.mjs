@@ -44,15 +44,18 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
                AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'INSERT')
                AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'UPDATE')
                AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'DELETE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'TRUNCATE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'REFERENCES')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'TRIGGER')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'INSERT')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'UPDATE')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'REFERENCES')
                AND NOT EXISTS (
                  SELECT 1 FROM pg_catalog.pg_attribute attribute
                  WHERE attribute.attrelid = 'sabora.staff_members'::regclass
                    AND attribute.attnum > 0 AND NOT attribute.attisdropped
                    AND attribute.attname NOT IN ('user_id', 'role', 'state')
-                   AND (has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'SELECT')
-                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'INSERT')
-                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'UPDATE')
-                     OR has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'REFERENCES'))
+                   AND has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'SELECT')
                )) AS staff_reader_exact_columns,
 
               has_function_privilege(current_user,

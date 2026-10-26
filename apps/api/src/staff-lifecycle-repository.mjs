@@ -58,8 +58,10 @@ function validEdge(action, previous, current) {
 
 function publicResult(row, capability) {
   const previous = row.previous_state ?? null;
+  const durableInviteReplay = capability.action === 'invite' && row.repeated === true;
   if (!UUID.test(row.result_enrollment_id) ||
-      row.result_enrollment_id.toLowerCase() !== capability.enrollmentId.toLowerCase() ||
+      (!durableInviteReplay &&
+        row.result_enrollment_id.toLowerCase() !== capability.enrollmentId.toLowerCase()) ||
       (row.result_subject_user_id !== null && !UUID.test(row.result_subject_user_id)) ||
       !ROLES.has(row.result_requested_role) || !STATES.has(row.current_state) ||
       (previous !== null && !STATES.has(previous)) ||

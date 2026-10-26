@@ -7,6 +7,7 @@ import {
 
 const actorId = '10000000-0000-4000-8000-000000000001';
 const enrollmentId = '20000000-0000-4000-8000-000000000002';
+const originalEnrollmentId = '20000000-0000-4000-8000-000000000099';
 const subjectId = '30000000-0000-4000-8000-000000000003';
 const eventId = '40000000-0000-4000-8000-000000000004';
 
@@ -63,4 +64,33 @@ test('staff lifecycle repository fails closed on malformed capabilities and SQL 
     await assert.rejects(repository.transition(async () => ({rows: row ? [row] : []}), capability()),
       /invalid_staff_lifecycle_sql_result/);
   }
+});
+
+test('staff lifecycle repository accepts only the durable original enrollment on invite replay', async () => {
+  const repository = createStaffLifecycleRepository();
+  const invite = capability({
+    action: 'invite', enrollmentId, subjectUserId: null, requestedRole: 'waiter',
+    inviteeEmailHashHex: 'b'.repeat(64), inviteTokenHashHex: 'c'.repeat(64),
+    correlationId: 'invite_staff_001',
+  });
+  const durableReplay = {
+    result_enrollment_id: originalEnrollmentId, result_subject_user_id: null,
+    result_requested_role: 'waiter', previous_state: null,
+    current_state: 'invited', repeated: true, result_invite_version: 1,
+    event_id: eventId,
+  };
+  assert.equal(
+    (await repository.transition(async () => ({rows: [durableReplay]}), invite)).enrollmentId,
+    originalEnrollmentId,
+  );
+  await assert.rejects(
+    repository.transition(async () => ({rows: [{...durableReplay, repeated: false}]}), invite),
+    /invalid_staff_lifecycle_sql_result/,
+  );
+  await assert.rejects(
+    repository.transition(async () => ({rows: [{
+      ...durableReplay, previous_state: 'registered', current_state: 'active',
+    }]}), capability({enrollmentId, action: 'activate'})),
+    /invalid_staff_lifecycle_sql_result/,
+  );
 });

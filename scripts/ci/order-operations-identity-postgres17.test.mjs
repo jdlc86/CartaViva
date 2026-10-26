@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {generateKeyPairSync, randomBytes, sign as signJwt} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
@@ -8,9 +8,11 @@ import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operati
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
+import {registerVerifiedOrderTransitionsOnlyFromPools} from '../../apps/api/src/order-operations-composition.mjs';
 import {
   preflightOrderOperationsIdentities,
   preflightOrderTransitionIdentity,
+  preflightOrderTransitionStaffIdentity,
 } from '../../apps/api/src/order-operations-identity-preflight.mjs';
 
 // CI-only guard: this file refuses every non-loopback/non-ephemeral target.
@@ -31,7 +33,7 @@ const require = createRequire(import.meta.url);
 const {Pool} = require(modulePath);
 const Fastify = createRequire(new URL('../../apps/api/package.json', import.meta.url))('fastify');
 const admin = new Pool({connectionString: url, max: 4});
-const staffRole = 'sabora_ci_staff_identity';
+const staffRole = 'sabora_staff_reader';
 const operationsRole = 'sabora_ci_operations_identity';
 const keyId = 'ci_actor_binding_key_001';
 const signingSecret = randomBytes(32);
@@ -40,6 +42,13 @@ const waiterId = 'f1000000-0000-4000-8000-000000000002';
 const adminId = 'f1000000-0000-4000-8000-000000000003';
 const victimAdminId = 'f1000000-0000-4000-8000-000000000004';
 const expiringActorId = 'f1000000-0000-4000-8000-000000000005';
+const authIssuer = 'https://ci.sabora.invalid/auth/v1';
+const authKeyId = 'ci-order-auth-key';
+const {privateKey: authPrivateKey, publicKey: authPublicKey} =
+  generateKeyPairSync('rsa', {modulusLength: 2048});
+const authJwk = Object.freeze({
+  ...authPublicKey.export({format: 'jwk'}), kid: authKeyId, alg: 'RS256', use: 'sig',
+});
 let staffPool;
 let operationsPool;
 let issueCapability;
@@ -62,6 +71,18 @@ function args(capability, overrides = {}) {
 
 function context(userId, role) {
   return {verifiedIdentity: {userId}, verifiedStaff: {userId, role}};
+}
+
+function bearer(userId, overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const header = encode({alg: 'RS256', typ: 'JWT', kid: authKeyId});
+  const payload = encode({
+    iss: authIssuer, aud: 'authenticated', sub: userId,
+    role: 'authenticated', iat: now - 1, exp: now + 300, ...overrides,
+  });
+  return `${header}.${payload}.${signJwt('RSA-SHA256',
+    Buffer.from(`${header}.${payload}`), authPrivateKey).toString('base64url')}`;
 }
 
 async function fixture(suffix) {
@@ -99,13 +120,15 @@ async function state(lineId) {
 }
 
 test.before(async () => {
-  await admin.query(`CREATE ROLE ${staffRole} LOGIN
-    PASSWORD 'sabora_ci_staff_ephemeral' NOSUPERUSER NOBYPASSRLS NOINHERIT
+  await admin.query(`ALTER ROLE ${staffRole} LOGIN
+    PASSWORD 'sabora_ci_staff_reader_ephemeral' NOSUPERUSER NOBYPASSRLS NOINHERIT
     NOCREATEDB NOCREATEROLE NOREPLICATION`);
   await admin.query(`CREATE ROLE ${operationsRole} LOGIN
     PASSWORD 'sabora_ci_operations_ephemeral' NOSUPERUSER NOBYPASSRLS NOINHERIT
     NOCREATEDB NOCREATEROLE NOREPLICATION`);
   await admin.query(`GRANT USAGE ON SCHEMA sabora TO ${staffRole}, ${operationsRole}`);
+  await admin.query(`GRANT SELECT (user_id,role,state)
+    ON sabora.staff_members TO ${staffRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)
     TO ${operationsRole}`);
@@ -125,7 +148,7 @@ test.before(async () => {
     connectionTimeoutMillis: 3000,
     options: '-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000',
   });
-  staffPool = makePool(staffRole, 'sabora_ci_staff_ephemeral', 1);
+  staffPool = makePool(staffRole, 'sabora_ci_staff_reader_ephemeral', 1);
   operationsPool = makePool(operationsRole, 'sabora_ci_operations_ephemeral', 8);
   issueCapability = createOrderOperationCapabilityIssuer({
     keyId, secret: signingSecret, databaseRole: operationsRole,
@@ -237,6 +260,51 @@ test('PG17 positive gate allows only the signed wrapper while route activation r
     ]) routine ORDER BY routine::text`, [operationsRole]);
   assert.equal(unsafeRpcs.rows.length, 4);
   assert.ok(unsafeRpcs.rows.every((row) => row.can_execute === false));
+});
+
+test('PG17 staff reader accepts only the exact SELECT surface and rejects column writes', async () => {
+  const accepted = async () => assert.deepEqual(
+    await preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole}),
+    {role: staffRole},
+  );
+  await accepted();
+  assert.deepEqual((await staffPool.query(
+    'select role, state from sabora.staff_members where user_id = $1', [kitchenId]
+  )).rows, [{role: 'kitchen', state: 'active'}]);
+
+  const drifts = [
+    ['UPDATE (state)', 'UPDATE (state)'],
+    ['INSERT (role)', 'INSERT (role)'],
+    ['REFERENCES (user_id)', 'REFERENCES (user_id)'],
+    ['DELETE', 'DELETE'],
+  ];
+  for (const [grant, revoke] of drifts) {
+    await admin.query(`GRANT ${grant} ON sabora.staff_members TO ${staffRole}`);
+    try {
+      await assert.rejects(
+        preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole}),
+        /order_operations_sql_identity_rejected/,
+      );
+    } finally {
+      await admin.query(`REVOKE ${revoke} ON sabora.staff_members FROM ${staffRole}`);
+    }
+    await accepted();
+  }
+
+  for (const privilege of ['UPDATE (state)', 'INSERT (role)', 'REFERENCES (user_id)']) {
+    await admin.query(`GRANT ${privilege} ON sabora.staff_members TO ${staffRole}`);
+  }
+  try {
+    await assert.rejects(
+      preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole}),
+      /order_operations_sql_identity_rejected/,
+    );
+  } finally {
+    for (const privilege of ['UPDATE (state)', 'INSERT (role)', 'REFERENCES (user_id)']) {
+      await admin.query(`REVOKE ${privilege} ON sabora.staff_members FROM ${staffRole}`);
+    }
+  }
+  await accepted();
 });
 
 test('PG17 signed-transition preflight rejects database CREATE privilege drift', async () => {
@@ -375,6 +443,39 @@ test('PG17 expiration is rechecked after waiting for the membership lock', async
     await blocker.query('BEGIN');
     await blocker.query(`UPDATE sabora.staff_members SET state=state WHERE user_id=$1`,
       [expiringActorId]);
+    let settled = false;
+    const attempt = operationsPool.query(authorizedSql, args(capability))
+      .finally(() => { settled = true; });
+    const rejectedAfterWait = assert.rejects(
+      attempt, /invalid_order_operation_capability/
+    );
+    await new Promise((resolve) => setTimeout(resolve, 275));
+    assert.equal(settled, false);
+    await blocker.query('COMMIT');
+    await rejectedAfterWait;
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    blocker.release();
+  }
+  assert.deepEqual(await state(item.lineId), {
+    status: 'confirmed', events: 0, requests: 0, notifications: 0,
+  });
+});
+
+test('PG17 expiration is rechecked after waiting for the order-line lock', async () => {
+  const item = await fixture(217);
+  const shortIssuer = createOrderOperationCapabilityIssuer({
+    keyId, secret: signingSecret, databaseRole: operationsRole, ttlMs: 150,
+  });
+  const capability = shortIssuer({
+    actorId: kitchenId, lineId: item.lineId, targetStatus: 'preparing',
+    correlationId: 'signed_line_lock_expiry_217',
+  });
+  const blocker = await admin.connect();
+  try {
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM sabora.order_lines WHERE id=$1 FOR UPDATE',
+      [item.lineId]);
     let settled = false;
     const attempt = operationsPool.query(authorizedSql, args(capability))
       .finally(() => { settled = true; });
@@ -645,4 +746,43 @@ test('Fastify + restricted PG17: parallel retries and competing actors stay atom
  assert.deepEqual(await state(other.lineId),{
   status:'preparing',events:1,requests:1,notifications:0,
  });
+});
+
+test('Fastify real JWT + exact reader + restricted mutator performs one authenticated transition', async t => {
+  const item = await fixture(218);
+  const app = Fastify({logger: false});
+  await registerVerifiedOrderTransitionsOnlyFromPools(app, {
+    staffPool, operationsPool, staffRole, operationsRole,
+    issuer: authIssuer,
+    getTrustedKeys: async () => [authJwk],
+    issueTransitionCapability: issueCapability,
+  });
+  await app.ready();
+  t.after(() => app.close());
+
+  const url = `/api/v1/operations/order-lines/${item.lineId}/transitions`;
+  const unauthenticated = await app.inject({
+    method: 'POST', url,
+    payload: {targetStatus: 'preparing', correlationId: 'real_auth_unauth_218'},
+  });
+  assert.equal(unauthenticated.statusCode, 401);
+  const tampered = bearer(kitchenId).split('.');
+  tampered[2] = `${tampered[2][0] === 'A' ? 'B' : 'A'}${tampered[2].slice(1)}`;
+  assert.equal((await app.inject({
+    method: 'POST', url, headers: {authorization: `Bearer ${tampered.join('.')}`},
+    payload: {targetStatus: 'preparing', correlationId: 'real_auth_bad_sig_218'},
+  })).statusCode, 401);
+  const response = await app.inject({
+    method: 'POST', url,
+    headers: {authorization: `Bearer ${bearer(kitchenId)}`},
+    payload: {targetStatus: 'preparing', correlationId: 'real_auth_valid_218'},
+  });
+  assert.equal(response.statusCode, 201, response.body);
+  assert.deepEqual(await state(item.lineId), {
+    status: 'preparing', events: 1, requests: 1, notifications: 0,
+  });
+  const attribution = await admin.query(`SELECT actor_user_id
+    FROM sabora.order_line_events WHERE order_line_id=$1`, [item.lineId]);
+  assert.deepEqual(attribution.rows, [{actor_user_id: kitchenId}]);
+  assert.equal(app.hasRoute({method: 'GET', url: '/api/v1/operations/order-lines'}), false);
 });

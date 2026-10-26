@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash, randomBytes} from 'node:crypto';
+import {
+  createHash, generateKeyPairSync, randomBytes, randomUUID, sign as signJwt,
+} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {createStaffLifecycleCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {
+  createStaffInviteeEmailHasher,
+  createStaffLifecycleCapabilityIssuer,
+} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {createVerifiedStaffLifecycleFromPool} from '../../apps/api/src/staff-lifecycle-composition.mjs';
+import {createStaffLifecycleHttpHandler} from '../../apps/api/src/staff-lifecycle-http-candidate.mjs';
 import {preflightStaffLifecycleIdentity} from '../../apps/api/src/staff-lifecycle-identity-preflight.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 
 const url = process.env.SABORA_CI_PG_URL;
@@ -22,9 +30,11 @@ if (process.env.GITHUB_ACTIONS !== 'true' ||
 
 const require = createRequire(import.meta.url);
 const {Pool} = require(modulePath);
+const Fastify = createRequire(new URL('../../apps/api/package.json', import.meta.url))('fastify');
 const admin = new Pool({connectionString: url, max: 6});
 const lifecycleRole = 'sabora_ci_staff_lifecycle';
 const operationsRole = 'sabora_ci_revoked_operations';
+const readerRole = 'sabora_staff_reader';
 const lifecycleSecret = randomBytes(32);
 const operationsSecret = randomBytes(32);
 const lifecycleKey = 'staff_lifecycle_ci_key_001';
@@ -32,8 +42,16 @@ const operationsKey = 'revoked_ops_ci_key_001';
 const ownerId = '91000000-0000-4000-8000-000000000001';
 const rootId = '91000000-0000-4000-8000-000000000002';
 const waiterActorId = '91000000-0000-4000-8000-000000000003';
+const authIssuer = 'https://ci.sabora.invalid/auth/v1';
+const authKeyId = 'ci-staff-auth-key';
+const {privateKey: authPrivateKey, publicKey: authPublicKey} =
+  generateKeyPairSync('rsa', {modulusLength: 2048});
+const authJwk = Object.freeze({
+  ...authPublicKey.export({format: 'jwk'}), kid: authKeyId, alg: 'RS256', use: 'sig',
+});
 let lifecyclePool;
 let operationsPool;
+let readerPool;
 let issueLifecycle;
 let issueOperation;
 let sequence = 0;
@@ -56,6 +74,18 @@ function uuid(prefix, value) {
 
 function digest(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function bearer(userId, overrides = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const header = encode({alg: 'RS256', typ: 'JWT', kid: authKeyId});
+  const payload = encode({
+    iss: authIssuer, aud: 'authenticated', sub: userId,
+    role: 'authenticated', iat: now - 1, exp: now + 300, ...overrides,
+  });
+  return `${header}.${payload}.${signJwt('RSA-SHA256',
+    Buffer.from(`${header}.${payload}`), authPrivateKey).toString('base64url')}`;
 }
 
 function lifecycleCapability({
@@ -208,7 +238,13 @@ test.before(async () => {
   await admin.query(`CREATE ROLE ${operationsRole} LOGIN
     PASSWORD 'sabora_ci_revoked_ops_ephemeral' NOSUPERUSER NOBYPASSRLS NOINHERIT
     NOCREATEDB NOCREATEROLE NOREPLICATION`);
-  await admin.query(`GRANT USAGE ON SCHEMA sabora TO ${lifecycleRole},${operationsRole}`);
+  await admin.query(`ALTER ROLE ${readerRole} LOGIN
+    PASSWORD 'sabora_ci_staff_reader_ephemeral' NOSUPERUSER NOBYPASSRLS NOINHERIT
+    NOCREATEDB NOCREATEROLE NOREPLICATION`);
+  await admin.query(`GRANT USAGE ON SCHEMA sabora
+    TO ${lifecycleRole},${operationsRole},${readerRole}`);
+  await admin.query(`GRANT SELECT (user_id,role,state)
+    ON sabora.staff_members TO ${readerRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_staff_lifecycle_authorized_candidate(
       text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
@@ -240,6 +276,7 @@ test.before(async () => {
   });
   lifecyclePool = makePool(lifecycleRole, 'sabora_ci_lifecycle_ephemeral');
   operationsPool = makePool(operationsRole, 'sabora_ci_revoked_ops_ephemeral');
+  readerPool = makePool(readerRole, 'sabora_ci_staff_reader_ephemeral', 2);
   issueLifecycle = createStaffLifecycleCapabilityIssuer({
     keyId: lifecycleKey, secret: lifecycleSecret, databaseRole: lifecycleRole,
   });
@@ -251,6 +288,7 @@ test.before(async () => {
 test.after(async () => {
   await lifecyclePool?.end();
   await operationsPool?.end();
+  await readerPool?.end();
   await admin.end();
 });
 
@@ -279,6 +317,119 @@ test('PG17 restricted lifecycle login exposes only the signed wrapper', async ()
     'TRUNCATE sabora.staff_lifecycle_requests',
     'CREATE TABLE sabora.forbidden_staff_lifecycle(id integer)',
   ]) await assert.rejects(lifecyclePool.query(statement), /permission denied/);
+});
+
+test('Fastify real JWT + coordinator + repository + PG17 preserves durable invite replay', async t => {
+  const generatedEnrollmentIds = [];
+  const generatedTokens = [];
+  const deliveries = [];
+  const coordinator = await createVerifiedStaffLifecycleFromPool({
+    pool: lifecyclePool,
+    role: lifecycleRole,
+    issueCapability: issueLifecycle,
+    issueInvitationToken() {
+      const token = randomBytes(32).toString('base64url');
+      generatedTokens.push(token);
+      return token;
+    },
+    hashInviteeEmail: createStaffInviteeEmailHasher({secret: randomBytes(32)}),
+    verifyCredentialRegistration: async () => randomBytes(32),
+    uuid() {
+      const value = randomUUID();
+      generatedEnrollmentIds.push(value);
+      return value;
+    },
+  });
+  const handler = createStaffLifecycleHttpHandler({
+    coordinator,
+    async deliverInvitation(delivery) { deliveries.push(delivery); },
+  });
+  const forRoles = createStaffProtectedHooksFromPool({
+    pool: readerPool,
+    issuer: authIssuer,
+    getTrustedKeys: async () => [authJwk],
+  });
+  const app = Fastify({logger: false});
+  app.post('/api/v1/staff/lifecycle', {
+    preHandler: forRoles(['admin', 'waiter', 'kitchen']),
+  }, handler);
+  await app.ready();
+  t.after(() => app.close());
+
+  const headers = {authorization: `Bearer ${bearer(ownerId)}`};
+  const send = (body, requestHeaders = headers) => app.inject({
+    method: 'POST', url: '/api/v1/staff/lifecycle',
+    headers: requestHeaders, payload: body,
+  });
+  const invite = {
+    action: 'invite', email: 'Replay.Person@example.invalid',
+    requestedRole: 'waiter', correlationId: 'http_invite_replay_001',
+  };
+  const beforeUnauthorized = (await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.staff_enrollments'
+  )).rows[0].n;
+  assert.equal((await send(invite, {})).statusCode, 401);
+  const invalid = bearer(ownerId).split('.');
+  invalid[2] = `${invalid[2][0] === 'A' ? 'B' : 'A'}${invalid[2].slice(1)}`;
+  assert.equal((await send(invite, {
+    authorization: `Bearer ${invalid.join('.')}`,
+  })).statusCode, 401);
+  assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.staff_enrollments'
+  )).rows[0].n, beforeUnauthorized);
+
+  const first = await send(invite);
+  assert.equal(first.statusCode, 201, first.body);
+  const firstBody = first.json();
+  assert.equal(firstBody.enrollmentId, generatedEnrollmentIds[0]);
+  assert.equal(Object.hasOwn(firstBody, 'token'), false);
+  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries[0].enrollmentId, firstBody.enrollmentId);
+  assert.equal(deliveries[0].token, generatedTokens[0]);
+
+  const replay = await send(invite);
+  assert.equal(replay.statusCode, 200, replay.body);
+  assert.equal(replay.json().repeated, true);
+  assert.equal(replay.json().enrollmentId, firstBody.enrollmentId);
+  assert.notEqual(generatedEnrollmentIds[1], firstBody.enrollmentId);
+  assert.notEqual(generatedTokens[1], generatedTokens[0]);
+  assert.equal(deliveries.length, 1, 'a durable replay must not redeliver a fresh token');
+  assert.deepEqual(await auditCounts(firstBody.enrollmentId), {audit: 1, requests: 1});
+  const binding = await admin.query(`SELECT actor_user_id,correlation_id
+    FROM sabora.staff_lifecycle_requests WHERE enrollment_id=$1`,
+  [firstBody.enrollmentId]);
+  assert.deepEqual(binding.rows, [{
+    actor_user_id: ownerId, correlation_id: invite.correlationId,
+  }]);
+
+  const changedIntent = await send({...invite, requestedRole: 'kitchen'});
+  assert.equal(changedIntent.statusCode, 503, changedIntent.body);
+  assert.deepEqual(await auditCounts(firstBody.enrollmentId), {audit: 1, requests: 1});
+
+  const concurrentInvite = {
+    action: 'invite', email: 'Concurrent.Person@example.invalid',
+    requestedRole: 'kitchen', correlationId: 'http_invite_concurrent_001',
+  };
+  const concurrent = await Promise.all([send(concurrentInvite), send(concurrentInvite)]);
+  assert.deepEqual(concurrent.map((response) => response.statusCode).sort(), [200, 201]);
+  assert.equal(concurrent[0].json().enrollmentId, concurrent[1].json().enrollmentId);
+  assert.equal(new Set(concurrent.map((response) => response.json().eventId)).size, 1);
+  assert.equal(deliveries.length, 2);
+  assert.deepEqual(await auditCounts(concurrent[0].json().enrollmentId), {
+    audit: 1, requests: 1,
+  });
+
+  const revoked = await send({
+    action: 'revoke', enrollmentId: firstBody.enrollmentId,
+    subjectUserId: null, reason: 'Revocación posterior al invite',
+    correlationId: 'http_revoke_invite_001',
+  });
+  assert.equal(revoked.statusCode, 201, revoked.body);
+  const replayAfterRevocation = await send(invite);
+  assert.equal(replayAfterRevocation.statusCode, 503, replayAfterRevocation.body);
+  assert.equal(deliveries.length, 2);
+  assert.equal((await enrollmentState(firstBody.enrollmentId)).state, 'revoked');
+  assert.deepEqual(await auditCounts(firstBody.enrollmentId), {audit: 2, requests: 2});
 });
 
 test('PG17 revokes pending invitation and blocks late acceptance, resend and replay mutation', async () => {

@@ -7,13 +7,14 @@ import {
 } from '../apps/api/src/order-operations-identity-preflight.mjs';
 
 function pool(role, overrides = {}) {
-  const state = {queries: 0, releases: []};
+  const state = {queries: 0, releases: [], sql: []};
   return {
     state,
     async connect() {
       return {
         async query(sql) {
           state.queries++;
+          state.sql.push(sql);
           assert.match(sql, /current_user/);
           assert.match(sql, /session_user/);
           assert.match(sql, /rolbypassrls/);
@@ -231,6 +232,16 @@ test('transition staff preflight accepts only exact column-scoped membership rea
   assert.deepEqual(await preflightOrderTransitionStaffIdentity({
     pool: staff, role: roles.staffRole,
   }), {role: roles.staffRole});
+  for (const privilege of ['INSERT', 'UPDATE', 'REFERENCES']) {
+    assert.match(staff.state.sql[0], new RegExp(
+      `NOT has_any_column_privilege\\(current_user, 'sabora\\.staff_members', '${privilege}'\\)`,
+    ));
+  }
+  for (const privilege of ['TRUNCATE', 'REFERENCES', 'TRIGGER']) {
+    assert.match(staff.state.sql[0], new RegExp(
+      `NOT has_table_privilege\\(current_user, 'sabora\\.staff_members', '${privilege}'\\)`,
+    ));
+  }
   for (const override of [
     {accessible_private_tables: 0, staff_reader_exact_columns: true},
     {accessible_private_tables: 2, staff_reader_exact_columns: true},
