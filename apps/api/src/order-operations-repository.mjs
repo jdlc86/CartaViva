@@ -1,5 +1,8 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
+const CAPABILITY_KEY = /^[A-Za-z0-9_-]{8,64}$/;
+const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const STATUSES = new Set(['confirmed', 'preparing', 'ready', 'picked_up']);
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
@@ -13,6 +16,28 @@ function isPlainObject(value) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     return descriptor && Object.hasOwn(descriptor, 'value');
   });
+}
+
+function validCapability(capability, {actorId, lineId, targetStatus, correlationId}) {
+  const keys = [
+    'keyId', 'databaseRole', 'actorId', 'lineId', 'targetStatus',
+    'correlationId', 'issuedAtMs', 'expiresAtMs', 'signatureHex',
+  ];
+  if (!isPlainObject(capability) || Reflect.ownKeys(capability).length !== keys.length ||
+      !keys.every((key) => Object.hasOwn(capability, key)) ||
+      !CAPABILITY_KEY.test(capability.keyId) || !ROLE_NAME.test(capability.databaseRole) ||
+      !UUID.test(capability.actorId) || !UUID.test(capability.lineId) ||
+      capability.actorId.toLowerCase() !== actorId.toLowerCase() ||
+      capability.lineId.toLowerCase() !== lineId.toLowerCase() ||
+      capability.targetStatus !== targetStatus || capability.correlationId !== correlationId ||
+      !Number.isSafeInteger(capability.issuedAtMs) || capability.issuedAtMs < 0 ||
+      !Number.isSafeInteger(capability.expiresAtMs) ||
+      capability.expiresAtMs <= capability.issuedAtMs ||
+      capability.expiresAtMs - capability.issuedAtMs > 30_000 ||
+      !SHA256_HEX.test(capability.signatureHex)) {
+    return false;
+  }
+  return true;
 }
 
 function assertResult(result) {
@@ -137,7 +162,9 @@ export function createOrderOperationsRepository() {
         seenLines.add(lineKey);
         previousKey = key;
       }
-      const page = rows.slice(0, limit).map((row) => {
+      // Validate the overflow row too: it determines whether pagination continues
+      // and must not bypass the same SQL-result contract as visible rows.
+      const validatedRows = rows.map((row) => {
         if (!UUID.test(row?.order_id) || !UUID.test(row?.line_id) ||
             !Number.isSafeInteger(row?.table_number) || row.table_number < 1 ||
             typeof row?.customer_label !== 'string' || row.customer_label.trim().length === 0 ||
@@ -176,6 +203,7 @@ export function createOrderOperationsRepository() {
           notification,
         });
       });
+      const page = validatedRows.slice(0, limit);
       const last = page.at(-1);
       return Object.freeze({
         version: 1,
@@ -189,7 +217,9 @@ export function createOrderOperationsRepository() {
       });
     },
 
-    async transitionLine(query, {actorId, role, lineId, targetStatus, correlationId}) {
+    async transitionLine(query, {
+      actorId, role, lineId, targetStatus, correlationId, capability,
+    }) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role) ||
           !UUID.test(lineId) || !TARGETS.has(targetStatus) || !CORRELATION.test(correlationId)) {
         throw Error('invalid_order_line_transition');
@@ -198,13 +228,27 @@ export function createOrderOperationsRepository() {
           (role === 'waiter' && targetStatus !== 'picked_up')) {
         throw Error('order_operations_forbidden');
       }
+      if (!validCapability(capability, {actorId, lineId, targetStatus, correlationId})) {
+        throw Error('invalid_order_operation_capability');
+      }
       const rows = assertResult(await query(
         `SELECT updated_order_id, updated_line_id, previous_status,
                 current_status, repeated, event_id, notification_id
-           FROM sabora.transition_order_line_idempotent_candidate(
-             $1::uuid, $2::uuid, $3::text, $4::text
+           FROM sabora.transition_order_line_authorized_candidate(
+             $1::text, $2::text, $3::uuid, $4::uuid, $5::text,
+             $6::text, $7::bigint, $8::bigint, $9::text
            )`,
-        [actorId, lineId, targetStatus, correlationId]
+        [
+          capability.keyId,
+          capability.databaseRole,
+          actorId,
+          lineId,
+          targetStatus,
+          correlationId,
+          capability.issuedAtMs,
+          capability.expiresAtMs,
+          capability.signatureHex,
+        ]
       ));
       if (rows.length !== 1) throw Error('invalid_order_operations_sql_result');
       const row = rows[0];

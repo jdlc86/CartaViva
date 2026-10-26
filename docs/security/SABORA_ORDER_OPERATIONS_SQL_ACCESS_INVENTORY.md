@@ -304,6 +304,22 @@ rechace la identidad; finalmente revoca la concesión y comprueba recuperación.
 Esta prueba se ejecuta exclusivamente sobre PostgreSQL desechable de CI.
 No constituye autorización para grants positivos ni para montar rutas.
 
+## Inventario positivo candidato del wrapper firmado
+
+La decisión del Hito 1 añade
+`transition_order_line_authorized_candidate(...)` y deja la RPC invoker con
+actor libre revocada. El principal runtime futuro solo necesitaría `USAGE` del
+esquema y `EXECUTE` de ese wrapper; no obtiene tablas, columnas, secuencias,
+keyring, DDL, membresías ni otras funciones. Un owner `NOLOGIN` sellado recibe
+las columnas exactas y queda sometido a RLS forzada.
+
+`preflightOrderTransitionIdentity` modela esa superficie positiva y rechaza
+cualquier permiso extra. El harness PG17 la prueba con login restringido y
+ataques de actor, GUC, `SET ROLE`, firma, replay, revocación y concurrencia. La
+migración no provisiona login, clave o grant runtime: el inventario sirve para
+revisión, no para despliegue. Véase
+`SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
 ## Gate de regresión de activación (hito CI)
 
 `tests/order-operations-activation-gate.test.mjs` añade cuatro verificaciones
@@ -331,59 +347,81 @@ otros esquemas dentro de la base. El harness PostgreSQL 17 efímero concede
 revoca el permiso y exige recuperación. No modifica ninguna base operativa.
 
 
-## Refuerzo de frontera de membresía en coordinador (25-10-2026)
+## Reconciliación candidata PR #11: entradas y capacidades (25-10-2026)
 
-El coordinador de operaciones comprueba ahora que la respuesta de `verifyMembership`
-contiene exactamente el UUID autenticado y el rol esperado, comparando UUID sin
-distinguir mayúsculas. La comprobación se ejecuta dentro de la misma transacción
-y antes de tablero, transición o historial. La ausencia de respuesta o cualquier
-discrepancia aborta con `order_operations_forbidden`. El test
-`apps/api/src/order-operations-membership-boundary.test.mjs` cubre 15 casos
-de aceptación y rechazo de los tres flujos.
+En la rama independiente `integration/sabora-pr11-reconciliation` se han integrado las defensas de entrada de la rama base sobre el coordinador que utiliza capacidades de transición firmadas. El contexto `verifiedIdentity`/`verifiedStaff` se lee exclusivamente mediante propiedades propias de datos; se rechazan getters y propiedades heredadas. Los parámetros de tablero, transición e historial se copian antes de la espera asíncrona a un objeto de prototipo nulo, con rechazo de claves `__proto__`, símbolos, accesores y objetos no planos. El actor y rol enviados al repositorio continúan siendo los de la identidad verificada, no los del llamante. La capacidad se emite desde la copia validada.
 
-**Límite explícito:** esta defensa valida la interfaz entre componentes Node,
-pero no autentica una sesión SQL directa. La RPC candidata continúa sin
-`EXECUTE` para los logins técnicos y las rutas permanecen sin montar. La
-vinculación no falsificable de actor y el diseño positivo RLS/GRANT requieren
-revisión y pruebas PostgreSQL 17 desechables antes de cualquier activación.
+**Diferencia normativa que NO debe borrarse durante el merge:** la rama base verificaba `verifyMembership` para cada transición, mientras que el candidato actual delega la revocación y membresía de las mutaciones al wrapper SQL que verifica la capacidad firmada y revalida al actor bajo bloqueo. No se ha reintroducido una consulta directa a `staff_members` con el login restringido, porque abriría permisos incompatibles con el preflight. Las lecturas de tablero e historial siguen siendo candidatas sin concesión positiva SQL y no deben activarse.
+
+La incorporación de pruebas de entrada Node no equivale a un merge completo de las ramas, ni acredita autorización SQL de lectura, PG17 conjunto o despliegue. Requiere CI de la rama de reconciliación y revisión posterior de los cambios pendientes de preflight y de los tests de la rama base.
 
 
-## Frontera de entrada inmutable del coordinador (25-10-2026)
+## Reconciliación del preflight de credenciales y cierre de conexiones (25-10-2026)
 
-Antes de abrir transacciones, las tres operaciones del coordinador copian los
-campos propios enumerables de objetos planos a un snapshot de prototipo nulo,
-con descriptores de solo lectura. Se rechazan accesores, símbolos, objetos
-no planos y la clave propia `__proto__`. El snapshot evita que una mutación
-posterior del objeto original durante la espera asíncrona cambie el alcance
-operativo. Los campos `actorId` y `role` se sobrescriben siempre con la
-identidad previamente verificada, nunca con valores del llamante.
+El gate candidato rechaza `rolconnlimit = 0` y credenciales `rolvaliduntil` caducadas, además de límites negativos inválidos y fechas no válidas. Los errores de inspección SQL tienen precedencia sobre errores secundarios de liberación de conexión; si la inspección fue correcta y falla `release`, el preflight también falla cerrado. Los clientes SQL malformados no ocultan su error original por una excepción de liberación. Se incorporan pruebas Node de estos casos al branch de reconciliación, sin alterar la verificación de firma SQL ni autorizar rutas de lectura.
 
-Las pruebas en `apps/api/src/order-operations-input-boundary.test.mjs`
-cubren entradas inválidas, mutaciones entre comprobación de membresía y
-operación, intentos de contaminación de prototipo y suplantación de actor/rol.
-
-Estas defensas son exclusivamente de la capa Node.js. No convierten el UUID
-que recibe la RPC invoker en una identidad SQL autenticada. Se mantiene
-bloqueada la habilitación de EXECUTE, de GRANT positivos y del montaje HTTP
-hasta cerrar las pruebas de autorización SQL directa con PostgreSQL 17.
+Esta aceptación depende de los workflows del SHA de reconciliación; no supone habilitar logins, grants, SQL operativo, merge o despliegue.
 
 
-## Preflight: cierre de EXECUTE implícito y límite de activación
+## Reconciliación de membresía de roles SQL (25-10-2026)
 
-El preflight de identidades ahora contabiliza también las funciones `SECURITY
-INVOKER` accesibles del esquema privado `sabora`, además de las funciones
-`SECURITY DEFINER`. Se exige cero en ambos grupos: un `EXECUTE` heredado
-de `PUBLIC` puede exponer una vía no prevista incluso si la RPC candidata
-está expresamente denegada. La comprobación es de denegación, no concede
-permisos ni cambia la base de datos.
+Se añade al preflight de ambos logins técnicos el rechazo de membresías de rol **en las dos direcciones**: cuando el login es miembro de otro rol (`membership.member`) y cuando terceros son miembros del rol de login (`membership.roleid`). Esto evita aceptar un login aparentemente aislado que delega sus privilegios a otro principal. Se mantiene la comprobación separada del propietario sellado de la función autorizada, los grants cero sobre tablas privadas y la única RPC firmada candidata. Pruebas Node comprueban ambos sentidos y ambos logins. No se ha creado ni alterado ningún rol real.
 
-**Bloqueo de integración que debe resolverse antes de habilitar rutas:**
-el preflight exige cero permisos de lectura/escritura en todas las tablas
-privadas para ambas identidades; sin embargo, el repositorio de operaciones
-consulta `sabora.staff_members` y las tablas de comandas directamente.
-Por tanto, una configuración que supere este preflight negativo no tiene
-todavía los permisos positivos necesarios para operar. No debe interpretarse
-un SUCCESS de CI como prueba de que el flujo esté listo para producción.
-La resolución exige una arquitectura SQL de autorización no falsificable,
-permisos positivos estrictamente delimitados y pruebas reales de PostgreSQL
-17 con suplantación, revocación y concurrencia.
+
+## Reconciliación de comprobación de membresía en lecturas (25-10-2026)
+
+Las rutas candidatas de tablero e historial, todavía **no montadas**, solo continúan si `verifyMembership` devuelve un registro explícito con `actorId` UUID coincidente con la identidad autenticada y `role` coincidente con el rol del personal verificado. Se rechazan respuestas ausentes, contradictorias o malformadas antes de ejecutar la lectura operativa. Se conserva la captura previa e inmutable de parámetros. Esta validación Node no concede privilegios de lectura SQL ni satisface por sí sola el gate de lecturas actor-bound pendiente.
+
+Las transiciones no hacen una segunda lectura directa de membresía desde el login restringido; la función SQL de capacidad autorizada realiza la verificación de firma y revalidación bajo bloqueo. Pruebas específicas distinguen ambas rutas para evitar que la reconciliación reintroduzca permisos de tabla sobre el principal de operaciones.
+
+
+## Verificación de cierre de conexiones en preflight (25-10-2026)
+
+El gate de identidad SQL cuenta ahora con pruebas de regresión que cubren tres salidas anómalas: fallo de liberación tras inspección exitosa (no se autoriza el inicio), fallo de liberación mientras se propaga un error de inspección (se preserva el error primario) y cliente SQL malformado cuyo método `release` falla (se conserva el rechazo por cliente inválido). Estas pruebas no alteran credenciales ni recursos SQL reales. La validación completa de CI debe consultarse sobre el commit final de la rama, no inferirse de una ejecución anterior.
+
+
+## Validación completa de fila de desbordamiento en tablero (25-10-2026)
+
+El repositorio candidato `listBoard` valida ahora **todas** las filas devueltas por SQL, incluida la fila `limit + 1` usada exclusivamente para decidir `nextCursor`. Antes solo se validaban su orden y sus identificadores, mientras que los campos de proyección completos se validaban únicamente en las filas visibles. La fila adicional no puede eludir el contrato de mesa, alias, cantidad, categoría, agrupación y notificación. Pruebas negativas de regresión en `tests/order-operations.test.mjs`; la puerta de lectura SQL y su montaje HTTP permanecen cerrados. El estado de aceptación corresponde al CI del commit que contenga esta documentación.
+
+
+## Auditoría Codex PR #13: transición bloqueada y lector de personal (25-10-2026)
+
+Codex identificó un P1 por caducidad de la capacidad durante la espera del bloqueo `order_lines FOR UPDATE`. La migración candidata vuelve a consultar `clock_timestamp()` y rechaza la capacidad o clave caducadas **después** de adquirir dicho bloqueo y antes de mutar. El harness `scripts/ci/order-operations-postgres17-integration.test.mjs` incorpora una prueba de espera real y ausencia de efectos persistentes.
+
+También se identificó un P2: el login de lectura de personal no podía cumplir simultáneamente el preflight de cero privilegios y la consulta `SELECT role, state FROM sabora.staff_members WHERE user_id=$1`. La puerta candidata de transiciones separa ahora el preflight del lector: exige exclusivamente SELECT de columnas `user_id`, `role`, `state`, sin SELECT de tabla completa ni acceso a otras columnas o relaciones; el mutador conserva cero acceso directo y una única función autorizada. La composición permanece opt-in, sin activación de GET, merge ni despliegue. Este cambio **no provisiona roles ni concede permisos**; su verificación con dos logins reales de PG17 sigue siendo un criterio pendiente de cierre, junto al P2 de idempotencia durable de invitaciones.
+
+
+## Auditoría Codex: reintentos de invitaciones y reenvíos (25-10-2026)
+
+La migración candidata `20261025081318_staff_identity_lifecycle_candidate.sql` calcula la huella durable de `invite` a partir de la intención estable (acción, correo hasheado, rol y restantes campos pertinentes), excluyendo el UUID de inscripción y el hash del token generados de nuevo por el coordinador. Para `resend`, mantiene el UUID de inscripción y excluye el hash del token recién generado. El bloqueo por actor/correlación y la validación de titularidad preceden la consulta de replay, que se resuelve antes del bloqueo de la inscripción nueva. Si cambia la intención, la huella produce conflicto; si coincide, devuelve el resultado original con `repeated=true` sin persistir el token recién generado ni volver a entregarlo. Se revalida la caducidad tras esperar el bloqueo de inscripción antes de mutar. Las pruebas PG17 en `scripts/ci/staff-lifecycle-postgres17.test.mjs` cubren replay de invitación con nuevo UUID/token, rechazo por cambio de rol y replay de reenvío sin incremento adicional de versión. **No implica autorización para despliegue ni cierre hasta CI verde y nueva revisión independiente.**
+
+## Cierre del lector exacto y composición real del PR #13 (26-10-2026)
+
+El preflight positivo de `sabora_staff_reader` exige exclusivamente
+`SELECT(user_id,role,state)` sobre `sabora.staff_members`. Además de negar los
+siete privilegios de tabla, niega `INSERT`, `UPDATE` y `REFERENCES` mediante
+`has_any_column_privilege` sobre **cualquier** columna; las columnas restantes
+tampoco pueden tener `SELECT`. Contar una sola relación accesible no sustituye
+esta comprobación del tipo de privilegio. El principal mutador conserva cero
+privilegios directos de tabla/columna, cero secuencias y una única RPC firmada.
+
+El harness PostgreSQL 17 concede temporalmente al lector real, uno por uno,
+`UPDATE(state)`, `INSERT(role)`, `REFERENCES(user_id)` y `DELETE`, y después la
+combinación de los tres permisos por columna. Cada deriva debe ser rechazada;
+un bloque `finally` revoca el permiso y exige recuperar el preflight positivo.
+También se ejecuta la consulta exacta bajo la política RLS existente. No se usa
+`postgres` como sustituto del lector en esta aceptación.
+
+La composición real registra únicamente el POST de transición después de los
+dos preflights, verifica un JWT RS256, consulta la membresía actual con el pool
+lector y muta mediante el login HMAC restringido. La prueba acredita actor
+durable correcto, denegación sin token y con firma alterada, y ausencia de las
+rutas GET. Una prueba separada bloquea `order_lines FOR UPDATE` hasta que
+caducan capacidad y clave temporal; la revalidación posterior al lock rechaza
+sin evento, correlación, notificación ni cambio de estado.
+
+Evidencia local del commit `06a32fe`: 18/18 casos de identidad de operaciones,
+85/85 casos del harness PostgreSQL 17 conjunto y 891/891 pruebas Node. La
+validación es desechable y aislada; no concede permisos operativos, no activa
+rutas en `server.mjs` y no autoriza merge o despliegue.

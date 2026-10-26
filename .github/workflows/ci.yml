@@ -2,7 +2,7 @@ name: Sabora CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, integration/sabora-hito1-identity-staff]
 permissions:
   contents: read
 jobs:

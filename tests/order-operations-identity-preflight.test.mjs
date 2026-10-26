@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {preflightOrderOperationsIdentities} from '../apps/api/src/order-operations-identity-preflight.mjs';
+import {
+  preflightOrderOperationsIdentities,
+  preflightOrderTransitionIdentity,
+  preflightOrderTransitionStaffIdentity,
+} from '../apps/api/src/order-operations-identity-preflight.mjs';
 
 function pool(role, overrides = {}) {
-  const state = {queries: 0, releases: []};
+  const state = {queries: 0, releases: [], sql: []};
   return {
     state,
     async connect() {
       return {
         async query(sql) {
           state.queries++;
+          state.sql.push(sql);
           assert.match(sql, /current_user/);
           assert.match(sql, /session_user/);
           assert.match(sql, /rolbypassrls/);
@@ -19,10 +24,19 @@ function pool(role, overrides = {}) {
             inherits_roles: false, can_create_role: false, can_create_db: false,
             can_replicate: false, has_role_memberships: false, has_role_grantees: false,
             connection_limit: -1, password_valid_until: null,
-            schema_usage: true, schema_create: false, database_create: false, candidate_rpc_execute: false,
+            schema_usage: true, schema_create: false, database_create: false,
+            candidate_rpc_execute: false,
+            authorized_rpc_execute: false,
+            unsafe_actor_rpc_execute: 0,
             accessible_private_tables: 0, accessible_private_sequences: 0,
-            accessible_private_definer_routines: 0, accessible_private_invoker_routines: 0,
+            accessible_private_definer_routines: 0,
             candidate_is_invoker: true, forced_rls_transition_requests: 1,
+            authorized_is_definer: true,
+            authorized_owner: 'sabora_order_operations_fn_owner',
+            authorized_search_path_locked: true,
+            authorized_owner_is_sealed: true,
+            authorized_owner_memberships: 0,
+            forced_rls_signing_keys: 1,
             ...overrides,
           }]};
         },
@@ -43,6 +57,16 @@ test('preflight accepts only two distinct verified non-privileged SQL logins', a
   assert.equal(operationsPool.state.queries, 1);
   assert.deepEqual(staffPool.state.releases, [null]);
   assert.deepEqual(operationsPool.state.releases, [null]);
+});
+
+test('candidate transition preflight accepts exactly one authorized wrapper', async () => {
+  const operationsPool = pool(roles.operationsRole, {
+    authorized_rpc_execute: true,
+    accessible_private_definer_routines: 1,
+  });
+  assert.deepEqual(await preflightOrderTransitionIdentity({
+    pool: operationsPool, role: roles.operationsRole,
+  }), {role: roles.operationsRole});
 });
 
 test('preflight rejects shared pools, roles and privileged role names before querying', async () => {
@@ -66,20 +90,26 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
   for (const override of [
     {session_role: 'postgres'}, {current_role: 'postgres'},
     {superuser: true}, {bypass_rls: true}, {can_login: false},
-    {inherits_roles: true}, {has_role_grantees: true}, {can_create_role: true}, {can_create_db: true},
+    {inherits_roles: true}, {can_create_role: true}, {can_create_db: true},
     {can_replicate: true}, {has_role_memberships: true},
     {connection_limit: 'invalid'}, {connection_limit: -2},
     {password_valid_until: 'invalid'},
     {schema_usage: false}, {schema_create: true}, {database_create: true}, {database_create: null},
     {candidate_rpc_execute: true}, {candidate_rpc_execute: null},
+    {authorized_rpc_execute: true}, {authorized_rpc_execute: null},
+    {unsafe_actor_rpc_execute: 1}, {unsafe_actor_rpc_execute: null},
     {accessible_private_tables: 1}, {accessible_private_tables: null},
     {accessible_private_tables: '0'},
     {accessible_private_sequences: 1}, {accessible_private_sequences: null},
-    {accessible_private_definer_routines: 1},
-    {accessible_private_invoker_routines: 1}, {accessible_private_invoker_routines: null},
-    {accessible_private_invoker_routines: '0'}, {accessible_private_definer_routines: '0'},
+    {accessible_private_definer_routines: 1}, {accessible_private_definer_routines: '0'},
     {candidate_is_invoker: false}, {candidate_is_invoker: null},
+    {authorized_is_definer: false}, {authorized_is_definer: null},
+    {authorized_owner: 'postgres'}, {authorized_owner: null},
+    {authorized_search_path_locked: false},
+    {authorized_owner_is_sealed: false},
+    {authorized_owner_memberships: 1},
     {forced_rls_transition_requests: 0}, {forced_rls_transition_requests: null},
+    {forced_rls_signing_keys: 0}, {forced_rls_signing_keys: null},
   ]) {
     const staffPool = pool(roles.staffRole);
     const operationsPool = pool(roles.operationsRole, override);
@@ -88,6 +118,22 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     }), /order_operations_sql_identity_rejected/);
     assert.equal(operationsPool.state.releases.length, 1);
     assert.ok(operationsPool.state.releases[0] instanceof Error);
+  }
+});
+
+test('candidate transition preflight fails closed on extra or missing capability surface', async () => {
+  for (const override of [
+    {},
+    {authorized_rpc_execute: true, accessible_private_definer_routines: 2},
+    {authorized_rpc_execute: true, accessible_private_definer_routines: 1,
+      accessible_private_tables: 1},
+    {authorized_rpc_execute: true, accessible_private_definer_routines: 1,
+      candidate_rpc_execute: true},
+  ]) {
+    const operationsPool = pool(roles.operationsRole, override);
+    await assert.rejects(preflightOrderTransitionIdentity({
+      pool: operationsPool, role: roles.operationsRole,
+    }), /order_operations_sql_identity_rejected/);
   }
 });
 
@@ -121,67 +167,91 @@ test('preflight rejects malformed SQL identity results', async () => {
   }), /order_operations_sql_identity_rejected/);
 });
 
-test('every privileged SQL identity drift is rejected independently for staff and operations', async () => {
-  const forbidden = [
-    {superuser: true}, {bypass_rls: true}, {can_login: false},
-    {inherits_roles: true}, {can_create_role: true}, {can_create_db: true},
-    {can_replicate: true}, {has_role_memberships: true}, {has_role_grantees: true},
-    {schema_usage: false}, {schema_create: true}, {database_create: true},
-    {candidate_rpc_execute: true}, {candidate_is_invoker: false},
-    {forced_rls_transition_requests: 0},
-    {accessible_private_tables: 1}, {accessible_private_sequences: 1},
-    {accessible_private_definer_routines: 1}, {accessible_private_invoker_routines: 1},
-    {connection_limit: 0}, {password_valid_until: new Date('2000-01-01T00:00:00Z')},
-  ];
-  for (const drift of forbidden) {
+
+test('preflight rejects SQL role membership in both directions for both principals', async () => {
+  for (const field of ['has_role_memberships', 'has_role_grantees']) {
     for (const affected of ['staff', 'operations']) {
-      const staffPool = pool(roles.staffRole, affected === 'staff' ? drift : {});
-      const operationsPool = pool(roles.operationsRole, affected === 'operations' ? drift : {});
-      await assert.rejects(
-        preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
-        /order_operations_sql_identity_rejected/,
-        `${affected} must reject ${Object.keys(drift)[0]}`,
-      );
-      const failed = affected === 'staff' ? staffPool : operationsPool;
-      const skipped = affected === 'staff' ? operationsPool : staffPool;
-      assert.equal(failed.state.queries, 1);
-      assert.equal(failed.state.releases.length, 1);
-      assert.ok(failed.state.releases[0] instanceof Error);
-      if (affected === 'staff') {
-        assert.equal(skipped.state.queries, 0, 'never inspect operations after staff rejection');
-      } else {
-        assert.deepEqual(skipped.state.releases, [null]);
-      }
+      const staffPool = pool(roles.staffRole, affected === 'staff' ? {[field]: true} : {});
+      const operationsPool = pool(roles.operationsRole, affected === 'operations' ? {[field]: true} : {});
+      await assert.rejects(preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}), /order_operations_sql_identity_rejected/);
+      const failing = affected === 'staff' ? staffPool : operationsPool;
+      assert.equal(failing.state.releases.length, 1);
+      assert.ok(failing.state.releases[0] instanceof Error);
     }
   }
 });
 
-test('SQL inspection explicitly checks both routine classes and role grant directions', async () => {
-  const seen = [];
-  const capturingPool = role => ({
+test('preflight fails closed if a successful SQL inspection cannot release its client', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = pool(roles.operationsRole);
+  const reference = pool(roles.operationsRole);
+  operationsPool.connect = async () => ({
+    async query(sql) { return (await reference.connect()).query(sql); },
+    release() { throw Error('sql_release_failed'); },
+  });
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /sql_release_failed/,
+  );
+});
+
+test('preflight preserves inspection error when releasing a discarded client also fails', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = {
     async connect() {
       return {
-        async query(sql) {
-          seen.push(sql);
-          const reference = pool(role);
-          const client = await reference.connect();
-          return client.query(sql);
-        },
-        release() {},
+        async query() { throw Error('sql_inspection_failed'); },
+        release() { throw Error('sql_release_failed'); },
       };
     },
+  };
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /sql_inspection_failed/,
+  );
+});
+
+test('preflight preserves malformed client rejection if discard release fails', async () => {
+  const staffPool = pool(roles.staffRole);
+  const operationsPool = {
+    async connect() {
+      return {release() { throw Error('sql_release_failed'); }};
+    },
+  };
+  await assert.rejects(
+    preflightOrderOperationsIdentities({staffPool, operationsPool, ...roles}),
+    /invalid_order_operations_sql_client/,
+  );
+});
+
+
+test('transition staff preflight accepts only exact column-scoped membership reads', async () => {
+  const staff = pool(roles.staffRole, {
+    accessible_private_tables: 1, staff_reader_exact_columns: true,
   });
-  await preflightOrderOperationsIdentities({
-    staffPool: capturingPool(roles.staffRole),
-    operationsPool: capturingPool(roles.operationsRole),
-    ...roles,
-  });
-  assert.equal(seen.length, 2);
-  for (const sql of seen) {
-    assert.match(sql, /NOT routine\.prosecdef/);
-    assert.match(sql, /routine\.prosecdef/);
-    assert.match(sql, /membership\.member = role\.oid/);
-    assert.match(sql, /membership\.roleid = role\.oid/);
-    assert.match(sql, /has_any_column_privilege/);
+  assert.deepEqual(await preflightOrderTransitionStaffIdentity({
+    pool: staff, role: roles.staffRole,
+  }), {role: roles.staffRole});
+  for (const privilege of ['INSERT', 'UPDATE', 'REFERENCES']) {
+    assert.match(staff.state.sql[0], new RegExp(
+      `NOT has_any_column_privilege\\(current_user, 'sabora\\.staff_members', '${privilege}'\\)`,
+    ));
+  }
+  for (const privilege of ['TRUNCATE', 'REFERENCES', 'TRIGGER']) {
+    assert.match(staff.state.sql[0], new RegExp(
+      `NOT has_table_privilege\\(current_user, 'sabora\\.staff_members', '${privilege}'\\)`,
+    ));
+  }
+  for (const override of [
+    {accessible_private_tables: 0, staff_reader_exact_columns: true},
+    {accessible_private_tables: 2, staff_reader_exact_columns: true},
+    {accessible_private_tables: 1, staff_reader_exact_columns: false},
+    {accessible_private_tables: 1, staff_reader_exact_columns: null},
+    {accessible_private_tables: 1, staff_reader_exact_columns: true,
+      authorized_rpc_execute: true},
+  ]) {
+    await assert.rejects(preflightOrderTransitionStaffIdentity({
+      pool: pool(roles.staffRole, override), role: roles.staffRole,
+    }), /order_operations_sql_identity_rejected/);
   }
 });

@@ -16,6 +16,7 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     test(`${operation} rejects ${name} input before SQL`, async () => {
       let transactions = 0;
       const coordinator = createOrderOperationsCoordinator({
+      issueTransitionCapability: () => Object.freeze({keyId: 'test'}),
         withTransaction: async () => { transactions++; },
         repository: {verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {}},
       });
@@ -41,6 +42,7 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
       listHistory: async (_query, input) => { observed.push(input); return 'ok'; },
     };
     const coordinator = createOrderOperationsCoordinator({
+      issueTransitionCapability: () => Object.freeze({keyId: 'test'}),
       repository, withTransaction: async callback => callback(async () => {}),
     });
     assert.equal(await coordinator[operation](context, original), 'ok');
@@ -56,6 +58,7 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     let transactions = 0;
     const input = JSON.parse('{"__proto__":{"admin":true},"limit":10}');
     const coordinator = createOrderOperationsCoordinator({
+      issueTransitionCapability: () => Object.freeze({keyId: 'test'}),
       withTransaction: async () => { transactions++; },
       repository: {verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {}},
     });
@@ -73,6 +76,7 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
       listHistory: async (_query, input) => { observed.push(input); return 'ok'; },
     };
     const coordinator = createOrderOperationsCoordinator({
+      issueTransitionCapability: () => Object.freeze({keyId: 'test'}),
       repository, withTransaction: async callback => callback(async () => {}),
     });
     assert.equal(await coordinator[operation](context, {
@@ -109,6 +113,7 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
     test(`${operation} rejects ${label} without executing getters or SQL`, async () => {
       let transactions = 0;
       const coordinator = createOrderOperationsCoordinator({
+      issueTransitionCapability: () => Object.freeze({keyId: 'test'}),
         withTransaction: async () => { transactions++; },
         repository: {verifyMembership() {}, listBoard() {}, transitionLine() {}, listHistory() {}},
       });
@@ -118,32 +123,3 @@ for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
   }
 }
 
-for (const operation of ['listBoard', 'transitionLine', 'listHistory']) {
-  for (const [label, makeMembership] of [
-    ['inherited actor', () => Object.assign(Object.create({actorId}), {role: 'kitchen'})],
-    ['inherited role', () => Object.assign(Object.create({role: 'kitchen'}), {actorId})],
-    ['accessor actor', () => Object.defineProperty({role: 'kitchen'}, 'actorId', {
-      enumerable: true, get() { throw Error('membership_actor_getter_executed'); },
-    })],
-    ['accessor role', () => Object.defineProperty({actorId}, 'role', {
-      enumerable: true, get() { throw Error('membership_role_getter_executed'); },
-    })],
-    ['wrong actor', () => ({actorId: '22222222-2222-4222-8222-222222222222', role: 'kitchen'})],
-    ['wrong role', () => ({actorId, role: 'admin'})],
-  ]) {
-    test(`${operation} rejects ${label} membership before operation SQL`, async () => {
-      let operationCalls = 0;
-      const repository = {
-        verifyMembership: async () => makeMembership(),
-        listBoard: async () => { operationCalls++; },
-        transitionLine: async () => { operationCalls++; },
-        listHistory: async () => { operationCalls++; },
-      };
-      const coordinator = createOrderOperationsCoordinator({
-        repository, withTransaction: async callback => callback(async () => {}),
-      });
-      await assert.rejects(coordinator[operation](context, {}), /order_operations_forbidden/);
-      assert.equal(operationCalls, 0);
-    });
-  }
-}

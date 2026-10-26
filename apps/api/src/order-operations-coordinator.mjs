@@ -64,12 +64,17 @@ function assertVerifiedMembership(verified, staff) {
   }
 }
 
-export function createOrderOperationsCoordinator({withTransaction, repository = createOrderOperationsRepository()} = {}) {
+export function createOrderOperationsCoordinator({
+  withTransaction,
+  repository = createOrderOperationsRepository(),
+  issueTransitionCapability,
+} = {}) {
   if (typeof withTransaction !== 'function' || !repository ||
       typeof repository.verifyMembership !== 'function' ||
       typeof repository.listBoard !== 'function' ||
       typeof repository.transitionLine !== 'function' ||
-      typeof repository.listHistory !== 'function') {
+      typeof repository.listHistory !== 'function' ||
+      typeof issueTransitionCapability !== 'function') {
     throw Error('invalid_order_operations_coordinator');
   }
 
@@ -78,8 +83,7 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(page);
       return withTransaction(async (query) => {
-        const verified = await repository.verifyMembership(query, staff);
-        assertVerifiedMembership(verified, staff);
+        assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listBoard(query, {...safeInput, ...staff});
       });
     },
@@ -87,10 +91,17 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
     async transitionLine(context, input) {
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(input);
+      const capability = issueTransitionCapability({
+        actorId: staff.actorId,
+        lineId: safeInput.lineId,
+        targetStatus: safeInput.targetStatus,
+        correlationId: safeInput.correlationId,
+      });
       return withTransaction(async (query) => {
-        const verified = await repository.verifyMembership(query, staff);
-        assertVerifiedMembership(verified, staff);
-        return repository.transitionLine(query, {...safeInput, ...staff});
+        // The capability-verifying SQL wrapper revalidates active membership
+        // under lock. A separate direct staff query here would require table
+        // privileges on the shared operations login and reopen the SQL bypass.
+        return repository.transitionLine(query, {...safeInput, ...staff, capability});
       });
     },
 
@@ -98,8 +109,7 @@ export function createOrderOperationsCoordinator({withTransaction, repository = 
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(input);
       return withTransaction(async (query) => {
-        const verified = await repository.verifyMembership(query, staff);
-        assertVerifiedMembership(verified, staff);
+        assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listHistory(query, {...safeInput, ...staff});
       });
     },

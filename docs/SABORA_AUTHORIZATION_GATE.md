@@ -32,3 +32,19 @@ Status: **internal proof-of-concept; not approved for production**.
 - La validación de salidas de tablero e historial (rol, filtro, transiciones, continuidad y unicidad de eventos) es defensa adicional; no sustituye autorización transaccional, RLS ni identidad no falsificable.
 - Cualquier futura política positiva de grants requiere diseño aprobado y pruebas reales de denegación, suplantación, concurrencia y revocación en PostgreSQL 17 desechable antes de considerar activación.
 - Mantener `apps/api/src/server.mjs` sin registrar las rutas operativas; ningún cambio de documentación o CI implica autorización de despliegue.
+
+## Resolución candidata de actor y ciclo de personal (2026-10-25)
+
+- La RPC anterior con `p_actor_user_id` libre permanece revocada. La nueva
+  frontera firma `session_user`, actor, operación y efecto en una capacidad HMAC
+  de vida corta que PostgreSQL verifica dentro de la transacción.
+- El alta de personal empieza en `staff_enrollments`, antes de Auth, y admite
+  revocación inmediata. Aceptación, credencial, activación, suspensión y
+  revocación usan el mismo patrón de capacidad, ledger y auditoría.
+- Los owners de las funciones son roles `NOLOGIN` sellados; los futuros logins
+  no tienen membresías, DDL ni acceso directo. Los keyrings están vacíos y no
+  hay `GRANT EXECUTE` runtime.
+- La evidencia positiva existe solo en PostgreSQL 17 desechable. Las rutas y la
+  UI siguen sin activar hasta aprobar claves, logins, invitación/WebAuthn,
+  lecturas y despliegue. Véanse `SABORA_P0_ACTOR_SQL_BINDING_DECISION.md` y
+  `SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md`.

@@ -61,16 +61,16 @@ function requestContext(request) {
   return {verifiedIdentity: request.verifiedIdentity, verifiedStaff: request.verifiedStaff};
 }
 
-export function registerOrderOperationsHttp(app, {forRoles, operations} = {}) {
+export function registerOrderOperationsHttp(app, {forRoles, operations, transitionOnly = false} = {}) {
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
       typeof forRoles !== 'function' || !operations ||
       typeof operations.listBoard !== 'function' || typeof operations.transitionLine !== 'function' ||
-      typeof operations.listHistory !== 'function') {
+      typeof operations.listHistory !== 'function' || typeof transitionOnly !== 'boolean') {
     throw Error('invalid_order_operations_http_config');
   }
   const protectedRoles = forRoles(['admin', 'waiter', 'kitchen']);
 
-  app.get('/api/v1/operations/order-lines', {preHandler: protectedRoles}, async (request, reply) => {
+  if (!transitionOnly) app.get('/api/v1/operations/order-lines', {preHandler: protectedRoles}, async (request, reply) => {
     headers(reply);
     const query = request.query;
     if (!exactPlainObject(query, ['status', 'limit', 'afterConfirmedAt', 'afterOrderId', 'afterLineNumber'])) {
@@ -139,7 +139,7 @@ export function registerOrderOperationsHttp(app, {forRoles, operations} = {}) {
     }
   });
 
-  app.get('/api/v1/operations/orders/:orderId/history', {preHandler: protectedRoles}, async (request, reply) => {
+  if (!transitionOnly) app.get('/api/v1/operations/orders/:orderId/history', {preHandler: protectedRoles}, async (request, reply) => {
     headers(reply);
     const {orderId} = request.params ?? {};
     const query = request.query;

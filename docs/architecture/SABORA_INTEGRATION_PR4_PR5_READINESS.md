@@ -112,3 +112,59 @@ Esta rama es exclusivamente de preparación. No se ha fusionado ningún PR, ejec
 - Se añadió `docs/security/SABORA_ORDER_OPERATIONS_SQL_ACCESS_INVENTORY.md` con los recursos SQL exactos que utiliza la lectura del tablero, el historial y la transición invoker, y una puerta de aprobación que exige pruebas positivas y negativas bajo RLS.
 - La prueba PG17 ejercita ahora `SET ROLE` real, además de membresía SQL real; la suite Node comprueba el descarte de clientes si falla la inspección de identidad.
 - El inventario no concede permisos ni modifica Supabase. El último HEAD debe superar ambos workflows antes de considerarse cerrado.
+
+## Composición HTTP cliente aislada y verificada (25-10-2026)
+
+El módulo candidato `apps/api/src/verified-customer-api-candidate.mjs`
+reúne la lectura pública del catálogo, la confirmación transaccional
+de pedidos y los endpoints `/health` y `/ready` en una sola
+composición opt-in. Requiere dos pools PostgreSQL separados y
+las comprobaciones previas de identidad SQL y capacidades
+mínimas definidas en
+`verified-isolated-customer-composition-candidate.mjs`.
+La composición rechaza conflictos de rutas antes de consultar
+la base de datos y no registra endpoints cuando falla el
+preflight. No importa el servidor de producción, no escucha
+en un puerto, no crea pools ni lee secretos del entorno.
+
+`tests/verified-customer-api-candidate.test.mjs` verifica
+el recorrido HTTP de salud, disponibilidad, catálogo y
+confirmación inválida, además del rechazo sin exposición de
+rutas cuando falla cualquiera de los dos logins, existen
+conflictos de ruta o ambos pools comparten identidad.
+Commit `5a277f0`: Sabora CI y Bootstrap SUCCESS.
+
+**Límites:** las pruebas de composición usan pools simulados
+para preflight y HTTP; las pruebas PostgreSQL 17 del
+escritor transaccional siguen siendo evidencias separadas.
+`/ready` confirma que la composición superó su preflight
+inicial, no que las conexiones permanezcan disponibles
+continuamente. Este candidato no constituye habilitación
+de rutas operativas, ni entrega a cocina ni despliegue.
+Antes de activarlo hay que resolver los gates normativos
+de identidad, permisos y aprovisionamiento de logins,
+y ejecutar aceptación integral sobre infraestructura
+aislada autorizada.
+
+## Disponibilidad dinámica de API de cliente (25-10-2026)
+
+La composición candidata
+`apps/api/src/verified-customer-api-candidate.mjs`
+integra ahora
+`apps/api/src/isolated-customer-readiness-candidate.mjs`.
+Tras superar el preflight inicial y registrar las rutas,
+`GET /ready` comprueba en cada solicitud los logins
+`current_user` y `session_user` de los dos pools
+independientes. Ante desconexión, error de consulta o
+deriva de identidad devuelve `503` y un DTO fijo
+`{status:"unavailable"}`, sin detalles SQL. Libera las
+conexiones sanas y descarta las sospechosas. Las pruebas
+comprueban caída de cada pool, deriva de rol, recuperación
+y ausencia de fuga de secretos. Commit `91f4fc0`:
+Sabora CI y Bootstrap SUCCESS.
+
+**Alcance:** esta ruta de disponibilidad es un candidato
+opt-in, no montado en `server.mjs`. El sondeo no reemplaza
+las verificaciones transaccionales de permisos y contexto
+de cada pedido ni certifica entrega a cocina. No se
+configuran despliegues, cron ni infraestructura operativa.

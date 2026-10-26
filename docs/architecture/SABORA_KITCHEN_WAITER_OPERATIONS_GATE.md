@@ -334,3 +334,229 @@ Se rechaza la respuesta completa si un evento contradice esa matriz. Las
 pruebas incluyen casos válidos e inválidos por rol. La comprobación de salida
 no sustituye la autorización transaccional de la escritura ni resuelve el
 bloqueo de identidad SQL no falsificable.
+
+## Vinculación positiva del actor (Hito 1, no activada)
+
+`870230f` sustituye la futura vía de escritura por
+`transition_order_line_authorized_candidate(...)`. Una capacidad HMAC efímera
+liga el login real (`session_user`), actor verificado, línea, transición,
+correlación y tiempos. PostgreSQL verifica la firma, bloquea clave y membresía,
+revalida caducidad y ejecuta transición, evento, aviso e idempotencia en la
+misma transacción. El harness PG17 demuestra que UUID, GUC, `SET ROLE`, firma
+alterada, rol equivocado, expiración y revocación no elevan autoridad.
+
+La RPC antigua sigue sin `EXECUTE`; el nuevo wrapper tampoco tiene grants ni
+clave runtime. Las lecturas de tablero/historial y la provisión operativa siguen
+pendientes, de modo que las rutas permanecen sin montar. El detalle está en
+`docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
+## Aceptación HTTP de mutación con login PostgreSQL restringido (25-10-2026)
+
+La suite `scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora una prueba Fastify + coordinador + PostgreSQL 17
+**desechable** que usa el login técnico de operaciones
+`NOSUPERUSER NOBYPASSRLS NOINHERIT` y únicamente la RPC
+de transición autorizada por firma. Recorre
+`confirmed → preparing → ready → picked_up`, valida
+notificación durable, reintentos sin duplicados, ausencia
+de actor HTTP y transiciones incompatibles con el rol.
+Comprueba persistencia de tres eventos, tres solicitudes
+de transición y una notificación. Commit `99a8af5`:
+Sabora CI y Bootstrap SUCCESS.
+
+La misma prueba exige `503` con DTO público fijo para
+tablero e historial, porque las capacidades SQL de lectura
+siguen sin aprobarse; el login restringido tampoco puede
+leer directamente `sabora.order_lines`. La identidad
+HTTP se inyecta mediante un mecanismo **solo de test**,
+no representa autenticación de producción.
+
+**Conclusión del gate:** queda validada la mutación
+firmada con login restringido, pero **no** la activación
+integral de operaciones. No se deben conceder SELECT
+generales para hacer pasar tablero/historial. Es necesario
+diseñar y probar proyecciones SQL acotadas por actor y rol
+con permisos mínimos, además de la autenticación real,
+antes de habilitar las rutas. No hay despliegue,
+migración operativa ni merge.
+
+## Aceptación de concurrencia HTTP con identidad SQL restringida (25-10-2026)
+
+La suite PG17 desechable
+`scripts/ci/order-operations-identity-postgres17.test.mjs`
+incorpora el test `Fastify + restricted PG17: parallel retries
+and competing actors stay atomic`. Ejecuta solicitudes
+Fastify simultáneas con el login técnico de operaciones
+restringido y autorización de transición firmada.
+Verifica que dos reintentos concurrentes del mismo actor
+producen un solo evento persistido y respuestas 201/200
+con el mismo `eventId`; dos actores distintos compitiendo
+por el mismo cambio producen 201/409 y un solo evento;
+y una correlación reutilizada con otro destino responde
+409 sin efectos adicionales. Commit `77d7b4f`:
+Sabora CI y Bootstrap SUCCESS.
+
+Esta prueba **no** amplía permisos de lectura del
+tablero/historial, no autentica personas en producción
+(el actor HTTP sigue siendo un inyector de test) y no
+habilita las rutas operativas. Permanece pendiente el
+gate de proyecciones SQL de lectura acotadas por actor
+y rol, la integración PWA y la aceptación del recorrido
+completo desde confirmación del cliente.
+
+## Composición opt-in de mutaciones sin lectura (25-10-2026)
+
+El registro HTTP `registerOrderOperationsHttp` acepta
+`transitionOnly: true`, que monta exclusivamente
+`POST /api/v1/operations/order-lines/:lineId/transitions`;
+no registra tablero ni historial, cuyos privilegios SQL
+siguen expresamente sin aprobar. El comportamiento completo
+anterior permanece como opción predeterminada para
+harness y pruebas, **no** para activación operativa.
+
+`registerVerifiedOrderTransitionsOnlyFromPools` es una
+composición candidata separada. Antes de registrar la ruta
+comprueba aislamiento de pools, diferencia de roles SQL,
+login restringido de personal sin RPC de mutación y
+login restringido de operaciones con la RPC firmada
+autorizada. Inyecta hooks criptográficos de personal
+existentes, transacción PostgreSQL y emisor de capacidad;
+no importa `server.mjs`, no lee secretos de entorno,
+no aprovisiona ni activa conexiones. La suite
+`tests/order-operations-transition-only-http.test.mjs`
+comprueba la ausencia física de las rutas GET, el POST,
+compatibilidad con el registro completo y rechazo de
+configuración ambigua.
+
+**Puerta aún cerrada:** la composición candidata no
+sustituye la verificación de permisos y bootstrap del
+lector de personal en un despliegue real. No se habilitan
+proyecciones SQL de lectura ni se declara producción
+lista. Sigue prohibido abrir SELECT generales sobre
+tablas privadas o montar esta ruta en el servidor
+operativo sin completar los gates normativos.
+
+## Bloqueo de verificación CI por conflicto del PR #11 (25-10-2026)
+
+La composición candidata de mutaciones sin lectura tiene
+pruebas negativas adicionales en
+`tests/order-operations-composition.test.mjs`:
+aislamiento de pools, roles SQL distintos, emisor de
+capacidad presente y ausencia de ruta duplicada; los
+rechazos anteriores al preflight no consultan SQL ni
+registran rutas. Las pruebas de HTTP exclusivas permanecen
+en `tests/order-operations-transition-only-http.test.mjs`.
+
+**Estado de aceptación:** no validado por GitHub Actions.
+Al consultar el PR #11, GitHub devuelve
+`mergeable=false`, `mergeable_state=dirty`; el HEAD
+de la rama no tiene workflows asociados. No se debe
+heredar el verde de commits anteriores ni marcar
+este bloque como cerrado. Resolver el conflicto con
+la base exige reconciliar el código y la documentación
+normativa, sin merge a producción, y volver a ejecutar
+ambos workflows sobre el SHA resultante.
+
+## Recuperación de CI y corrección del gate de mutación (25-10-2026)
+
+Los workflows `Sabora CI` y `Bootstrap Sabora lockfile`
+se ejecutan ahora también mediante `push` sobre la rama
+`integration/sabora-hito1-identity-staff`. Esto permite
+validar el HEAD sin depender de que GitHub genere el merge
+ref del PR #11, que todavía indica `mergeable_state=dirty`.
+El cambio no despliega, fusiona ni activa endpoints.
+
+La primera ejecución real detectó una regresión en la
+prueba de composición: se había dejado una comprobación
+SQL de la mutación accidentalmente dentro de un comentario
+de código. El commit `bbd491f` restaura la ejecución
+obligatoria y secuencial de
+`preflightOrderTransitionStaffIdentity` y
+`preflightOrderTransitionIdentity` antes de crear hooks
+o registrar la ruta. Los dos roles declarados deben ser
+distintos. Ambos workflows sobre `bbd491f` terminaron
+`SUCCESS` (runs `40231185079` y `40231185082`).
+
+**Alcance aceptado:** composición candidata y pruebas
+de mutación aislada; no se consideran autorizados
+tablero/historial ni autenticación o activación operativa.
+El conflicto del PR #11 sigue pendiente de reconciliación
+con la rama base y no debe confundirse con el resultado
+verde del código de la rama de integración.
+
+## Aceptación positiva de la composición de transición aislada (25-10-2026)
+
+La prueba `transition-only composition verifies two independent
+SQL principals before mounting POST` en
+`tests/order-operations-composition.test.mjs` valida
+la secuencia positiva de los dos preflights SQL con
+identidades distintas, liberación de las conexiones y
+registro exclusivo de `POST /api/v1/operations/order-lines/:lineId/transitions`.
+Comprueba ausencia física de las rutas GET de tablero e
+historial y respuesta `401` a una solicitud sin token
+válido. Es una aceptación con pools SQL simulados y
+Fastify real; no sustituye los tests PostgreSQL 17
+desechables del login restringido ni acredita el
+bootstrap de producción.
+
+Commit `b75a56d`: workflows `Sabora CI`
+`40231650770` y `Bootstrap Sabora lockfile`
+`40231650771` ambos `SUCCESS`, incluidas sus
+pruebas PostgreSQL 17 desechables. El PR #11 sigue
+en Draft y mantiene su conflicto de integración;
+ninguna ruta fue montada en el servidor operativo.
+
+## Gate atómico de configuración y dos identidades SQL (25-10-2026)
+
+La composición candidata `registerVerifiedOrderTransitionsOnlyFromPools`
+rechaza `issuer` ausente/vacío, `getTrustedKeys` no invocable
+y hooks opcionales `verify`/`observe` no invocables
+**antes** de abrir conexiones SQL. Después inspecciona
+primero el login de personal y después el login técnico
+de mutaciones; si falla cualquiera de las inspecciones,
+descarta la conexión fallida y no registra ninguna ruta.
+Los tests `transition-only rejects missing or malformed
+authentication wiring without SQL or routes` y
+`transition-only fails atomically on either SQL principal,
+never mounting HTTP routes` ejercitan ambos caminos.
+Commits `8800b1b`, `6f07cdc`, `76b865b`.
+
+Aceptación CI del commit `76b865b`: `Sabora CI`
+run `40232010918` y `Bootstrap Sabora lockfile`
+run `40232010985`, ambos `SUCCESS`. Estas pruebas
+validan configuración y fail-closed de la composición
+con dobles SQL simulados; el workflow incluye sus
+suites PG17 desechables independientes. No autorizan
+lectura de tablero/historial, ni montan operaciones en
+`server.mjs`, ni resuelven el conflicto del PR #11.
+
+
+## Hito de reconciliación de ramas PR #11 / PR #13 (25-10-2026)
+
+La rama candidata `integration/sabora-pr11-merge-reconciliation` conserva el árbol probado de `integration/sabora-pr11-reconciliation` y registra la ascendencia de `integration/sabora-order-management-review` mediante commits de integración. Las diferencias de contrato de actor/rol, snapshots de entrada y preflight SQL se reconciliaron previamente con pruebas de regresión, sin sustituir la autorización por capacidad SQL firmada ni habilitar rutas operativas.
+
+La comparación GitHub de la rama candidata frente a la base confirma `status=ahead`, `behind_by=0`; el PR #13 está en Draft y `mergeable_state=clean`. Commit de integración `1f4e1536711dfdcdf70c3d187b59ba423c98103c`: Sabora CI run `40236383992` SUCCESS y Bootstrap Sabora lockfile run `40236384037` SUCCESS, con verificaciones PostgreSQL 17 desechables y construcción aislada. El PR #11 original sigue siendo un PR distinto y no se ha fusionado ni modificado su rama.
+
+**Límite de aceptación:** este hito cierra la compatibilidad de historia Git y la regresión automatizada de la rama candidata, pero no autoriza el merge, el despliegue, la activación de GET tablero/historial, ni concede permisos SQL de producción. Mantener el aislamiento absoluto del VPS y de Fleetia.
+
+## Aceptación PostgreSQL 17 del lector y POST aislado (26-10-2026)
+
+El gate de transición aislada se ha ejercitado de extremo a extremo con dos
+logins PostgreSQL 17 distintos y no privilegiados. `sabora_staff_reader` posee
+solo `SELECT(user_id,role,state)` y su política RLS; el login mutador no posee
+tablas ni columnas y solo ejecuta el wrapper HMAC autorizado. El preflight
+rechaza grants por columna `UPDATE(state)`, `INSERT(role)` y
+`REFERENCES(user_id)`, aislados y combinados, además de escritura a nivel tabla.
+
+Tras ambos preflights, Fastify valida un JWT RS256, resuelve la membresía actual
+con el lector y ejecuta una transición atribuida al mismo sujeto mediante el
+pool mutador. Sin bearer o con firma alterada no llega a SQL de negocio. La
+composición solo registra `POST /api/v1/operations/order-lines/:lineId/transitions`;
+tablero e historial permanecen físicamente ausentes. También se prueba que una
+capacidad que caduca esperando el lock de la línea no deja efectos.
+
+Esta evidencia cierra la aceptación candidata solicitada para el PR #13, no la
+activación operativa: `server.mjs` sigue sin importar esta composición; no se
+han creado credenciales persistentes, aplicado migraciones remotas, desplegado
+servicios ni tocado Fleetia o el VPS. La revisión independiente posterior al CI
+final continúa siendo un gate humano separado.

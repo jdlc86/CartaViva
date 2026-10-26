@@ -11,6 +11,8 @@ for tool in docker node npm; do command -v "$tool" >/dev/null; done
 node --check scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
+node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --check scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 cleanup() {
@@ -50,7 +52,13 @@ done
 port="$(docker port "$container" 5432/tcp)"
 [[ "$port" =~ ^127\.0\.0\.1:[0-9]+$ ]] || { echo "Unexpected bind: $port" >&2; exit 1; }
 export SABORA_CI_PG_URL="postgresql://postgres:sabora_ci_ephemeral_only@$port/postgres"
-export SABORA_CI_PG_MODULE="$tmp/node_modules/pg"
+module_path="$tmp/node_modules/pg"
+if [[ "${OS:-}" == Windows_NT ]]; then
+ module_path="$(cygpath -w "$module_path")"
+fi
+export SABORA_CI_PG_MODULE="$module_path"
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
+node --test scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --test scripts/ci/staff-invitation-outbox-postgres17.test.mjs
