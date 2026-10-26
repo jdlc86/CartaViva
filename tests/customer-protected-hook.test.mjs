@@ -49,3 +49,23 @@ test('verification failure is not converted into authenticated success',async()=
  assert.deepEqual(response.payload,{error:'authentication_unavailable'});
  assert.throws(()=>createCustomerProtectedHook(),/invalid_customer_auth_verifier/);
 });
+
+test('unverified preexisting customer identity is cleared on every rejected request',async()=>{
+ const hook=createCustomerProtectedHook({verifyCustomerSession:async()=>null});
+ for(const authorization of [undefined,'Bearer '+token]){
+  const request={headers:{authorization},customerIdentity:{customerId:id}};
+  const response=reply();
+  await hook(request,response);
+  assert.equal(response.status,401);
+  assert.equal(Object.hasOwn(request,'customerIdentity'),false);
+ }
+});
+test('customer authentication responses explicitly disable shared HTTP caching',async()=>{
+ const hook=createCustomerProtectedHook({verifyCustomerSession:async()=>({customerId:id})});
+ for(const authorization of [undefined,'Bearer '+token]){
+  const headers={};
+  const response={...reply(),header(name,value){headers[name]=value;return this;}};
+  await hook({headers:{authorization}},response);
+  assert.equal(headers['Cache-Control'],'no-store');
+ }
+});
