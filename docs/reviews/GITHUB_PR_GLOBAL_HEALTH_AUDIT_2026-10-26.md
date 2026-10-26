@@ -340,3 +340,20 @@ Se inspeccionó contenido de ambos blobs (no solo firmas) para cuatro módulos:
 **Clasificación:** tres endurecimientos de frontera (entrada/errores/SQL) y una ampliación del contrato público de repricing. No se observa en estos fragmentos una relajación de los requisitos de aislamiento; la comprobación de semántica completa requiere pruebas y cotejo normativo. No se activa ninguna ruta ni se ejecuta una migración.
 
 **CI comprobada:** #14 HEAD `0c1bbb16c74708bd658b5f482d5ea441fda3bc4b` tenía run `40292280366` en progreso al comienzo del bloque; no se registra como éxito.
+
+## Bloque S — decisión normativa y pruebas del contrato público de repricing (2026-10-26)
+
+**Fuente normativa:** `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`, apartado de precio/descuento (línea 47 en #13): ante un cambio publicado entre cesta y confirmación, el servidor debe recalcular, mostrar precio anterior/nuevo/diferencia y exigir aceptación expresa, incluso si el importe baja. El escenario de aceptación 38 reitera este comportamiento.
+
+**Implementación revisada:**
+- `apps/api/src/customer-order-confirmation-http-candidate.mjs`: el `409 acceptance_required` expone un DTO público allowlisted `repricing` con `schemaVersion:1`, importes anteriores/actuales/diferencia, revisiones publicadas, `acceptanceToken` y `expiresAt`. No serializa el objeto de evidencia ni el snapshot privado.
+- `apps/api/src/catalog-reprice-acceptance.mjs`: `issueCatalogRepriceAcceptance` / `verifyCatalogRepriceAcceptance` firman y verifican el contexto; rechazo tras caducidad o alteración de precio/descuento/disponibilidad.
+- `packages/customer-consent/src/repricing-consent-panel.mjs`: presenta importes y botones explícitos de aceptar/rechazar, sin persistencia ni aceptación automática.
+
+**Evidencia de pruebas declaradas:**
+- `tests/customer-order-confirmation-http-candidate.test.mjs`: DTO acotado y sin filtración, respuesta 409, inconsistencia de token/expiración, getters en decisión, códigos de conflicto.
+- `tests/catalog-reprice-acceptance.test.mjs`: firma contextual y vencimiento, cambios de precio (subida/bajada), descuento y disponibilidad.
+
+**Decisión:** el cambio material de salida HTTP de #4→#13 tiene respaldo normativo y pruebas dedicadas en #13; no debe tratarse como regresión por el mero cambio de respuesta. Sigue pendiente validar ejecución del SHA final y la cobertura extremo a extremo, y no se autoriza activación de rutas.
+
+**CI:** el HEAD previo #14 `dcbd270321dc716a551e231b338e0da0d5409a54` mostraba run `40292586525` en progreso al consultar; no se atribuye éxito.
