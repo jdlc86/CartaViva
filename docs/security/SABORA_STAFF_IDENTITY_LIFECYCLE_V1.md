@@ -137,3 +137,29 @@ dentro del harness conjunto y 85/85 casos PostgreSQL 17 totales; suite raíz
 891/891. La evidencia de GitHub Actions se registra en el informe del PR sobre
 el SHA publicado. Estas pruebas no montan la ruta en `server.mjs`, no activan
 worker ni proveedor de correo y no autorizan aprovisionamiento o despliegue.
+
+## Caducidad después de bloqueos de membresía — tercera auditoría del PR #13
+
+La comprobación temporal final debe cubrir todos los bloqueos que preceden a
+una mutación. Para `suspend` y para `revoke` de un enrollment activo o
+suspendido, el wrapper bloquea ahora de forma explícita la fila exacta de
+`staff_members` mediante `FOR UPDATE` antes de volver a leer
+`clock_timestamp()`. La revalidación posterior exige simultáneamente que la
+capacidad siga vigente y que la clave HMAC capturada al inicio no haya
+caducado. Solo después se permite comprobar el resultado del lock y continuar
+con la transición; el `UPDATE` posterior reutiliza el lock ya adquirido.
+
+La regresión se reprodujo primero contra PostgreSQL 17 real reteniendo la fila
+objetivo desde otra conexión. En el SQL anterior, una suspensión con capacidad
+de 800 ms y una revocación firmada por una clave que caducaba en 1200 ms
+esperaban en el `UPDATE` y luego se confirmaban indebidamente. Con la corrección,
+ambas llamadas esperan en el lock explícito, fallan cerradas con SQLSTATE
+`42501` tras su liberación y conservan sin cambios enrollment, membresía,
+auditoría e idempotencia. Las pruebas cubren suspensión desde `active`,
+revocación desde `suspended`, capacidad expirada y clave expirada; los casos
+normales de suspensión, revocación, doble revocación y carrera
+activación/revocación continúan pasando.
+
+Evidencia local posterior: 14/14 casos de ciclo dentro de 87/87 casos del
+harness PostgreSQL 17 y 892/892 pruebas raíz. El cambio permanece candidato y
+no crea login, clave ni grant operativo.

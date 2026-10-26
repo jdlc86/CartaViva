@@ -123,3 +123,47 @@ GitHub emitió únicamente avisos informativos sobre la migración futura de
 Node.js 20; no hubo errores ni avisos funcionales de la implementación. El
 comentario final del PR registra además el resultado de CI sobre el SHA
 documental definitivo. El PR permanece en Draft.
+
+## Tercera auditoría independiente: reproducción y corrección
+
+Se revisaron expresamente los dos P2 comunicados en
+`discussion_r4373603589` y `discussion_r4373603592`, después de releer las
+fuentes normativas enumeradas al inicio de este informe.
+
+| Hallazgo | Reproducción previa | Corrección y resultado |
+| --- | --- | --- |
+| Replay durable de invitaciones | PostgreSQL 17 devolvía el enrollment durable de la primera llamada, pero el lookup del outbox añadía el hash del token recién regenerado y producía `staff_invitation_outbox_replay_missing` | El replay localiza el job por `(enrollment_id, invite_version)` durable. Un retry con UUID/token distintos devuelve el job original y no crea ninguna segunda fila o entrega |
+| Caducidad durante bloqueo de suspensión/revocación | Una conexión retenía `staff_members`; la capacidad de suspensión y la clave de revocación caducaban mientras el wrapper esperaba en el `UPDATE`, pero ambas operaciones confirmaban | El wrapper toma `FOR UPDATE` sobre la membresía objetivo antes de la revalidación temporal final. Ambas reproducciones fallan cerradas con `42501`, hacen rollback total y mantienen los estados originales |
+
+La línea base ampliada fue deliberadamente roja: las dos nuevas aserciones
+estáticas obtuvieron 10/12 PASS y la ejecución PostgreSQL alcanzó 12/14 casos
+de ciclo; los dos escenarios temporales produjeron `Missing expected
+rejection`. Esto confirma que las regresiones detectan el SQL vulnerable y no
+se limitaron a comprobar la implementación ya corregida.
+
+La ejecución posterior queda así:
+
+| Comando/harness | Resultado |
+| --- | --- |
+| `node --test tests/staff-lifecycle-sql.test.mjs tests/staff-invitation-outbox-schema-contract.test.mjs tests/staff-invitation-enqueue-candidate.test.mjs` | 19/19 PASS |
+| `GITHUB_ACTIONS=true bash scripts/ci/catalog-postgres17-node-driver-smoke.sh` | 87/87 PASS: catálogo 22, operaciones 8, identidad 18, ciclo 14 y outbox 25 |
+| `npm test` | 892/892 PASS |
+| `npm run check` | PASS: 892 pruebas y builds de API, cliente y gestión |
+| `node --check` de ambos harness modificados y `git diff --check` | PASS |
+
+Las pruebas reales incluyen replays de invite, resend y custodia con material
+regenerado; dos callers concurrentes; unicidad de enrollment/job/request/audit;
+revocación que impide replay tardío; suspensión y revocación normales; doble
+revocación; carrera activate/revoke; y expiración de capacidad y clave mientras
+otra conexión posee el lock de membresía. Los accesos se realizan por los
+principales SQL restringidos existentes en el harness, con FORCE RLS y sin
+sustituirlos por el administrador para la llamada bajo aceptación.
+
+La revisión adversarial posterior contrastó llamadas directas, estados de
+replay hermanos, unicidad, orden de locks, RLS, grants y semántica de errores.
+No se encontró un bypass sobreviviente en estos dos límites. El alcance sigue
+siendo candidato opt-in: no se activaron rutas, worker, proveedor, Supabase
+operativo, Fleetia, VPS ni recursos compartidos. La provisión y rotación real
+de identidades/secretos, el envío real y la observabilidad del proveedor siguen
+siendo riesgos operativos pendientes y ajenos a esta corrección. La evidencia
+de GitHub Actions del SHA final se añadirá tras publicar los commits.

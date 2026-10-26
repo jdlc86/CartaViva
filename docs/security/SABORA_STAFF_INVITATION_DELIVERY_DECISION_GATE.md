@@ -523,3 +523,31 @@ pruebas de suplantación y revocación; el método de emisión
 de bajo nivel `authority.issue` solo puede residir en
 un componente interno de confianza. Este bloque es
 candidato, sin autorización de despliegue.
+
+## Replay durable con material regenerado — tercera auditoría del PR #13
+
+La identidad durable de un trabajo de entrega ya creado es el par
+`(enrollment_id, invite_version)`, protegido por la unicidad del outbox y
+obtenido del resultado idempotente del wrapper de ciclo. En un replay de
+`invite`, el UUID de enrollment y el token generados por el nuevo intento son
+material efímero: no se persisten y no pueden usarse para localizar el trabajo
+original. Por ello, la rama `repeated` del wrapper integrado recupera el job
+solo por la identidad durable devuelta y deja de exigir que su
+`invite_token_hash` coincida con el token regenerado. Las inserciones nuevas
+siguen verificando el hash recibido y no se ha ampliado ningún grant.
+
+La reproducción real anterior enviaba la misma intención y correlación con un
+UUID y token nuevos: el ciclo devolvía correctamente el enrollment original,
+pero el outbox terminaba en `staff_invitation_outbox_replay_missing`. La prueba
+PostgreSQL 17 corregida demuestra que el replay devuelve el job original sin
+crear enrollment, request, auditoría, custodia ni entrega adicionales. También
+cubre dos reintentos concurrentes con UUID y tokens distintos (una inserción y
+un replay), replay de `resend` con token regenerado y las dos composiciones de
+custodia, incluida la ejecutada por el principal SQL restringido.
+
+La revocación sigue cercando el replay: una invitación revocada no recupera ni
+reactiva un trabajo entregable. La idempotencia solo tolera el material efímero
+documentado; cambiar actor, acción, email normalizado, rol u otra intención
+durable conserva el conflicto de correlación. Evidencia local posterior:
+25/25 casos de outbox dentro de 87/87 casos PostgreSQL 17. El gate operativo
+continúa abierto: no se activaron worker, proveedor, endpoint ni envío real.
