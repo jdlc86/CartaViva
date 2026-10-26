@@ -22,6 +22,8 @@ const basketKey='sabora.client.selection.v1';
 const MAX_BASKET_LINES=100;
 const MAX_FAVORITES=500;
 const MAX_QUANTITY=99;
+export const CLIENT_PREFERENCES_STORAGE_KEY=preferencesKey;
+export const CLIENT_BASKET_STORAGE_KEY=basketKey;
 const defaults:ClientPreferences=Object.freeze({locale:'es',alias:'',company:'',favorites:Object.freeze([])});
 const plain=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
@@ -62,7 +64,7 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     typeof line.itemId!=='string'||typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
      !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;
@@ -93,7 +95,7 @@ export function saveBasket(storage:StorageLike,lines:readonly BasketLine[]):bool
 
 export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:number):readonly BasketLine[]{
  if(!Number.isInteger(delta)||Math.abs(delta)!==1||!validBasketLines(lines)||
-    !uuid.test(item.id)||!boundedText(item.name,160,true)||
+    typeof item.id!=='string'||!uuid.test(item.id)||!boundedText(item.name,160,true)||
     !Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
  const current=lines.find(line=>line.itemId.toLowerCase()===item.id.toLowerCase());
  if(delta>0&&!item.available)return lines;
@@ -107,7 +109,7 @@ export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:num
 }
 
 export function reconcileBasket(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketLine[]{
- const current=new Map(items.map(item=>[item.id.toLowerCase(),item]));
+ const current=new Map(items.filter(item=>typeof item.id==='string').map(item=>[item.id.toLowerCase(),item]));
  return Object.freeze(lines.map(line=>{
   const item=current.get(line.itemId.toLowerCase());
   return item?Object.freeze({...line,name:item.name}):line;
@@ -119,7 +121,7 @@ export const basketTotal=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=
 
 export type BasketIssue=Readonly<{itemId:string;reason:'unpublished'|'sold_out'|'price_changed'}>;
 export function basketIssues(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketIssue[]{
- const published=new Map(items.map(item=>[item.id.toLowerCase(),item]));
+ const published=new Map(items.filter(item=>typeof item.id==='string').map(item=>[item.id.toLowerCase(),item]));
  return Object.freeze(lines.flatMap(line=>{
   const item=published.get(line.itemId.toLowerCase());
   if(!item)return [Object.freeze({itemId:line.itemId,reason:'unpublished' as const})];
@@ -135,7 +137,7 @@ export function removeBasketLine(lines:readonly BasketLine[],itemId:string):read
 
 export function acceptBasketPrice(lines:readonly BasketLine[],items:readonly MenuItem[],itemId:string):readonly BasketLine[]{
  if(typeof itemId!=='string'||!uuid.test(itemId)||!validBasketLines(lines))return lines;
- const item=items.find(candidate=>candidate.id.toLowerCase()===itemId.toLowerCase());
+ const item=items.find(candidate=>typeof candidate.id==='string'&&candidate.id.toLowerCase()===itemId.toLowerCase());
  if(!item||!item.available||!Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
  return Object.freeze(lines.map(line=>line.itemId.toLowerCase()===itemId.toLowerCase()?
   Object.freeze({...line,name:item.name,priceCents:item.priceCents}):line));
