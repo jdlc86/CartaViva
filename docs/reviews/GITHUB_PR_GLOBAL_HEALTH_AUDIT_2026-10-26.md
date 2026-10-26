@@ -312,3 +312,18 @@ Se contrastaron los contenidos de `apps/management/src/main.tsx`, `views/OrdersV
 Árbol #4 (`bd268c67d8c47fb64c3367663cb85d46d569c2f0`) frente a #13: 40 rutas compartidas con blobs diferentes. Entre ellas: confirmación cliente, repositorios de catálogo/visita, cliente React, primitivas/vistas de administración, API de operaciones y pruebas. Esto excede la mera pantalla cocina/camarero; exige evaluación por dominio antes de decidir disposición del PR #4.
 
 **Estado de CI:** al inicio de este bloque, HEAD #14 `e0127e6c63b5852653c41eb1e4fdca4c3f5dd068` tenía run `40291548926` en progreso; no se registra como éxito hasta verificar conclusión.
+
+## Bloque Q — confirmación cliente y catálogo #4→#13 (2026-10-26)
+
+Comparación directa de cuatro módulos de API en PR #4 `bd268c67d8c47fb64c3367663cb85d46d569c2f0` y #13 `5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`:
+
+| Archivo | Evidencia observada | Disposición |
+| --- | --- | --- |
+| `catalog-confirmation-coordinator.mjs` | Conserva `createCatalogConfirmationCoordinator`, `withTransaction` y las cinco operaciones obligatorias del repositorio: `lockContext`, `lookupIdempotency`, `lockCatalog`, `loadPreviousQuote`, `persist`; 156→170 líneas | Contrato estructural preservado, revisar diferencias internas restantes |
+| `catalog-visit-context-repository.mjs` | Conserva `createCatalogVisitContextRepository`, `lockContext`, comprobaciones de QR/visita/sesión no revocados ni caducados; 71→72 líneas | Contrato estructural preservado |
+| `customer-order-confirmation-http-candidate.mjs` | Conserva `registerCustomerOrderConfirmationRoute`, candidato opt-in no registrado en `server.mjs`, validación de respuesta y HTTP 409 por conflicto de idempotencia; añade `failureCode` y validación de estado; 46→82 líneas | Extensión de validación/errores, verificar correspondencia exacta de códigos |
+| `verified-isolated-customer-composition-candidate.mjs` | Conserva `registerVerifiedIsolatedCustomerRoutes` y el preflight de identidades PostgreSQL; añade `assertIsolatedCustomerSqlCapabilities` antes del montaje; 37→41 líneas | Endurecimiento de privilegios de composición |
+
+La CI de #14 en `6d510e512af4d5025a5d72dde5e9af6c9841dbe8` completó **SUCCESS**, run `40291716568`.
+
+**Alcance:** este bloque establece preservación de interfaces y guardas principales; no acredita equivalencia de todos los caminos de confirmación ni las pruebas de concurrencia por sí solo. Continúan pendientes los detalles internos y la validación funcional del resto de #4. Ningún despliegue ni merge.
