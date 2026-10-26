@@ -583,6 +583,10 @@ test('HTTP rejects duplicated numeric query parameters instead of coercing array
   t.after(() => app.close());
   for (const url of [
     '/api/v1/operations/order-lines?limit=10&limit=20',
+    '/api/v1/operations/order-lines?status=ready&status=preparing',
+    '/api/v1/operations/order-lines?afterConfirmedAt=2026-10-24T10%3A00%3A00.000Z&afterConfirmedAt=2026-10-24T10%3A00%3A00.000Z&afterOrderId=' + orderId + '&afterLineNumber=1',
+    '/api/v1/operations/order-lines?afterConfirmedAt=2026-10-24T10%3A00%3A00.000Z&afterOrderId=' + orderId + '&afterOrderId=' + orderId + '&afterLineNumber=1',
+    '/api/v1/operations/order-lines?afterConfirmedAt=2026-10-24T10%3A00%3A00.000Z&afterOrderId=' + orderId + '&afterLineNumber=1&afterLineNumber=1',
     `/api/v1/operations/orders/${orderId}/history?limit=10&limit=20`,
   ]) {
     const response = await app.inject({
