@@ -169,3 +169,19 @@ Se inspeccionaron los predicados de `apps/api/src/order-operations-identity-pref
 2. Validar que los roles no cambian entre preflight y uso del pool y que no existen permisos concedidos por otras vías.
 3. Confirmar con pruebas de UI la no exposición de acciones sin gateway y la conservación de filtros/historial.
 4. Mantener #4/#5/#8 en Draft hasta completar equivalencia semántica de archivos divergentes.
+
+## Bloque F — trazabilidad de pruebas dinámicas existentes (2026-10-26)
+
+Se inventariaron los nombres y aserciones de los tests de código del HEAD #13, **sin volver a ejecutarlos en esta sesión**:
+
+- `tests/order-operations-composition.test.mjs`: 11 tests declarados; cubren rechazo temprano de pools/roles compartidos, falta de issuer, wiring criptográfico inválido, fallos de preflight de ambos principales y montaje solo después de verificar.
+- `tests/order-operations-transition-only-http.test.mjs`: 3 tests declarados; comprueban que el modo `transitionOnly` monta POST sin GET de tablero/historial y que la opción exige booleano.
+- `tests/order-operations-activation-gate.test.mjs`: 5 tests declarados; verifican ausencia de importación en `server.mjs`, capacidad SQL firmada y denegación de permisos indebidos.
+- `scripts/ci/order-operations-identity-postgres17.test.mjs`: 18 tests declarados de PostgreSQL 17, incluidos suplantación SQL previa, preflight positivo del wrapper, rol de lectura exacto, caducidad tras locks, revocación, concurrencia, denegación de tablas, integración Fastify + login restringido y **denegación de tablero**.
+- `scripts/ci/order-operations-postgres17-integration.test.mjs`: pruebas de ciclo completo, aviso de recogida, idempotencia, concurrencia, rollback y suspensión durante mutación.
+
+**Distinción de evidencia:** existencia y lectura de estos tests es un hecho verificado en GitHub; los resultados `87/87` PG17 y `895/895` raíz son evidencia registrada en el cierre previo del SHA de código `c1dceba1cb`, no una ejecución nueva en esta auditoría. La CI de la rama documental #14 no equivale a repetir PostgreSQL 17 localmente.
+
+### Decisión de saneamiento
+
+La preocupación del bloque D sobre ausencia de pruebas del modo de transición está **parcialmente resuelta por pruebas ya existentes**, con casos de autenticación real y denegación de lectura. Se mantienen abiertos: equivalencia completa de los 37 archivos divergentes, evidencia visual responsive, revisión de cambios futuros respecto a SHA #13 y aprobación del contrato de lectura. Ninguna PR queda autorizada a cerrar por este inventario.
