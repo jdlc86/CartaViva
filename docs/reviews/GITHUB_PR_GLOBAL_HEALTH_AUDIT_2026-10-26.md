@@ -413,3 +413,17 @@ Contraste directo de los módulos `order-operations-coordinator.mjs`, `order-ope
 **CI de auditoría:** #14 `8672d8467fb0b86897cdbd5802d049c9118cd3c1`, run `40293240340` estaba en progreso en la consulta; último éxito explícitamente verificado: `40292717579` sobre `1b0fc25e23fc3a6c08f5118619afe32ac680a26d`. No atribuir éxito al HEAD sin comprobarlo.
 
 **Próximo hito verificable:** contrastar el estado CI final y elaborar decisión de integración sin merges; cerrar gates normativos/lectura/visual con evidencias y, si aparecen defectos reproducibles, corregirlos en rama aislada con pruebas.
+
+## Bloque W — gates normativos de activación y lectura operativa (2026-10-26)
+
+Cotejo directo de `docs/security/SABORA_OPERATIONAL_ACTOR_BINDING_DECISION_GATE.md`, `docs/security/SABORA_ORDER_OPERATIONS_SQL_ACCESS_INVENTORY.md` y `docs/architecture/SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md` en #13:
+
+1. **Actor SQL:** la alternativa B (capacidad HMAC validada dentro de PostgreSQL, ligada a `session_user`, actor, operación y caducidad) es candidata técnica seleccionada. El documento confirma prueba positiva en PG17 desechable, pero keyring runtime vacío, sin login/grants operativos y sin rutas montadas. **No hay aprobación operativa**.
+2. **Lecturas:** la exigencia normativa de que tablero e historial solo muestren proyecciones autorizadas sigue siendo gate separado. El inventario SQL documenta necesidad de RLS/privilegios por columna y denegación de consultas directas; el preflight de identidad por sí solo no autoriza GET.
+3. **Semántica cocina/sala:** solo `confirmed→preparing→ready→picked_up` por los roles definidos. `picked_up` no equivale a entrega al comensal; no introducir `delivered` ni cancelación aislada de consecuencias económicas.
+4. **Bootstrap:** `server.mjs` no registra rutas de operaciones; la PWA no dispone por defecto de transporte autorizado. No se concede activación por la existencia de composición `transitionOnly`.
+5. **Pruebas:** el inventario SQL documenta matriz de privilegios de 7 operaciones × 7 tablas × 2 logins, barrido de tablas/secuencias fuera del inventario y controles FORCE RLS en PG17 desechable. Distinguir la evidencia negativa de una política de lectura positiva aprobada.
+
+**Disposición:** gate de seguridad de mutación = candidato técnico probado, pendiente provisión/autorización; gate de lectura = **bloqueado**, sin suponer permiso por transitividad; entrega/cancelación = **fuera de contrato implementable** hasta decisión normativa. Esta clasificación prevalece sobre cualquier lectura optimista de la matriz V.
+
+**CI:** run `40293438439` para HEAD #14 `2209a357d28c8bc0093193df53804134e6138e7c` figuraba en progreso al inicio de la revisión. No se afirma éxito.
