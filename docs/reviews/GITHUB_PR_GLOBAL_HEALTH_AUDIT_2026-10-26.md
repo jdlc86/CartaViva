@@ -453,3 +453,9 @@ Inspección de `.github/workflows/ci.yml` y `apps/management/package.json` en #1
 **Control documental:** el «snapshot verificado» inicial de este informe reflejaba 10 PR abiertos **antes de crear #14**; el inventario posterior de la matriz V es el snapshot actualizado de 11 PR Draft. No confundir ambos momentos.
 
 **CI actual:** el run `40293972426` para HEAD `ad83476c991dcb7dc0b7fcd503f32d55d3fb9937` permanecía `in_progress` en la consulta; no se da por aprobado ese SHA hasta concluir.
+
+## Hito Z — harness visual aislado incorporado (2026-10-26)
+
+En #14 se añadieron `.github/workflows/management-browser-visual-smoke.yml` y `scripts/ci/management-browser-visual-smoke.sh`. El workflow corre para cambios relevantes del PR, instala Chromium mediante Playwright CLI fijado a `1.56.1`, compila `@sabora/management` con dependencias congeladas, sirve Vite solo en `127.0.0.1:4178` y captura ocho PNG (vistas `resumen` y `comandas` × anchuras 360/460/900/1440). Comprueba que las capturas existen y son PNG; publica artefacto de siete días. No abre red al host ni conecta backend. **No es todavía una aserción de ausencia de desbordamiento ni una aprobación visual humana.**
+
+Ejecuciones observadas para HEAD `82c06c5db740e3fdbc079d91f9c66881505cb4d6`: visual `40294894912`, bootstrap `40294894960`, Sabora CI `40294895006`, todas `in_progress` en la consulta. No afirmar éxito antes de conclusión; si falla, corregir el harness y repetir en #14. El gate visual completo continúa pendiente de revisión de las capturas y ampliación de las aserciones de interacción.
