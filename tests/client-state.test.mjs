@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../apps/client/src/client-state.ts',import.me
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports','require',javascript)(module,module.exports,require);
-const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,basketQuantity,basketTotal}=module.exports;
+const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
 const storage=(initial={})=>{
@@ -51,7 +51,7 @@ test('basket persistence keeps a display snapshot and catalog reconciliation ref
  const stale=[{itemId:id,name:'Nombre anterior',priceCents:100,quantity:2}];
  assert.equal(saveBasket(target,stale),true);
  assert.deepEqual(loadBasket(target),stale);
- assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:item.priceCents,quantity:2}]);
+ assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:100,quantity:2}]);
  assert.deepEqual(reconcileBasket(stale,[]),stale);
 });
 
@@ -90,7 +90,7 @@ test('selection updates enforce maximum distinct dishes and case-insensitive IDs
 test('catalog reconciliation refreshes IDs regardless of UUID casing',()=>{
  const snapshot=[{itemId:id.toUpperCase(),name:'Antiguo',priceCents:1,quantity:2}];
  assert.deepEqual(reconcileBasket(snapshot,[item]),[
-  {itemId:id.toUpperCase(),name:item.name,priceCents:item.priceCents,quantity:2},
+  {itemId:id.toUpperCase(),name:item.name,priceCents:1,quantity:2},
  ]);
 });
 
@@ -140,4 +140,20 @@ test('basket incidences distinguish sold-out and unpublished without deleting se
  assert.deepEqual(removeBasketLine(lines,other),[lines[0]]);
  assert.deepEqual(removeBasketLine(lines,id.toUpperCase()),[lines[1]]);
  assert.equal(removeBasketLine(lines,'not-a-uuid'),lines);
+});
+
+test('catalog price change remains pending until explicit acceptance, including quantity edits',()=>{
+ const old=[{itemId:id.toUpperCase(),name:'Original',priceCents:100,quantity:2}];
+ const updated=reconcileBasket(old,[item]);
+ assert.equal(updated[0].priceCents,100);
+ assert.deepEqual(basketIssues(updated,[item]),[{itemId:id.toUpperCase(),reason:'price_changed'}]);
+ const changedQuantity=changeBasket(updated,item,1);
+ assert.equal(changedQuantity[0].quantity,3);
+ assert.equal(changedQuantity[0].priceCents,100);
+ const accepted=acceptBasketPrice(changedQuantity,[item],id);
+ assert.equal(accepted[0].priceCents,1290);
+ assert.equal(accepted[0].quantity,3);
+ assert.deepEqual(basketIssues(accepted,[item]),[]);
+ assert.equal(acceptBasketPrice(old,[{...item,available:false}],id),old);
+ assert.equal(acceptBasketPrice(old,[],id),old);
 });
