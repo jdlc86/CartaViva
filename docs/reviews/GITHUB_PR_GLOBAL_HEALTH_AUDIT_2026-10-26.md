@@ -207,3 +207,19 @@ Inspección de `apps/management/tests/ui-contract.test.mjs` y `apps/management/t
 | #14 | Auditoría documental sobre #13 | **Mantener Draft**, sin cambios operativos |
 
 No se han realizado cierres ni fusiones, ni se ha accedido a recursos de Fleetia o VPS.
+
+## Bloque H — aceptación CI ejecutada y verificada (2026-10-26)
+
+Se verificaron directamente en GitHub Actions los trabajos de la cabeza de integración #13 (`5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`):
+
+- `Sabora CI` run **40266420041**: `completed/success`. Job `validate`: `success`. Steps `Test`, `Test Sabora migrations in disposable PostgreSQL 17`, `Exercise real Node pg driver against disposable loopback-only PostgreSQL 17`, `Build`, `Build isolated Sabora API image` y `Smoke-test API container without host port or shared network`: todos `success`.
+- `Bootstrap Sabora lockfile` run **40266420109**: `completed/success`.
+- Auditoría #14, commit `239415c36405a9ac9df4b0d44856d85d9be8c944`: `Sabora CI` run **40290117384**: `completed/success`.
+- Auditoría #14, commit `223483f12cb2f33172cf0191b722cf28d5b1aa13`: `Sabora CI` run **40289942999**: `completed/success`.
+
+**Alcance exacto:** son ejecuciones de CI reales y exitosas de GitHub, incluida PostgreSQL 17 desechable en #13. No se ejecutó ninguna migración contra Supabase operativo, ni se probó una activación en producción. Las pruebas de UI declaradas siguen sin equivaler a una inspección visual de navegador. La aprobación del contrato de lectura y la disposición final de PR #4/#5/#8 siguen pendientes.
+
+Enlaces de evidencia:
+- https://github.com/jdlc86/CartaViva/actions/runs/40266420041
+- https://github.com/jdlc86/CartaViva/actions/runs/40266420109
+- https://github.com/jdlc86/CartaViva/actions/runs/40290117384
