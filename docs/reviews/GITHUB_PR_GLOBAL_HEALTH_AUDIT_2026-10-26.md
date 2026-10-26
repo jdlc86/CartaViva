@@ -60,3 +60,33 @@ Comparación `PR origen...HEAD #13`:
 ## Puertas no superadas
 
 No hay autorización para merge, despliegue, activación de endpoints, grants positivos, claves de producción ni cambios en Supabase operativo. Prohibido modificar Fleetia, VPS y recursos de otros proyectos. La revisión Codex de #13 cubrió el SHA de código `c1dceba1cb`, no esta rama documental ni un futuro código reconciliado.
+
+## Bloque A — inventario de blobs verificado (2026-10-26)
+
+Se consultaron los árboles Git completos (`git/trees?recursive=1`) de HEAD #4, #5, #8 y del snapshot de integración #13 `5a24a1136f`, junto con los archivos cambiados por cada PR respecto a su base. **No** se comparó solo el diff de #13: ese diff excluye archivos heredados de su base y produciría falsos «ausentes».
+
+| PR origen | Archivos cambiados en PR | Mismo blob SHA en #13 | Presentes pero modificados en #13 | Ausentes de árbol #13 |
+| --- | ---: | ---: | ---: | ---: |
+| #4 | 23 | 6 | 17 | **0** |
+| #5 | 20 | 17 | 3 | **0** |
+| #8 | 21 | 4 | 17 | **0** |
+
+**Resultado:** los 64 archivos afectados por esas tres PR existen en el árbol de #13. No se ha demostrado equivalencia de comportamiento de los archivos modificados; tampoco se ha identificado pérdida de archivos.
+
+### Evidencia de igualdad exacta
+
+- #4: `order-operations-gateway.{js,d.ts}`, `order-operations-model.{js,d.ts}`, migración `20261023225024_sabora_kitchen_waiter_operations_candidate.sql` y `tests/order-operations-sql.test.mjs` tienen el mismo blob.
+- #5: 17/20 blobs iguales, incluidos modelos de lectura de mesas/catálogo, vistas `CatalogView.tsx` y `TablesView.tsx`, componentes `Icon`/`Primitives` y sus tests. Difieren `main.tsx`, `style.css` y `SABORA_ADMIN_UI_CODEX_HANDOFF.md`.
+- #8: 4/21 blobs iguales, entre ellos `order-operation-capability.mjs` y `tests/order-operation-capability.test.mjs`; 17 archivos de frontera SQL/operaciones cambiaron posteriormente.
+
+### Pendientes que impiden cerrar PR
+
+1. #4: comprobar comportamiento actual de `OrdersView.tsx`, transiciones, permisos y contratos de SQL, y que los cambios respecto al origen son endurecimientos compatibles.
+2. #5: comprobar integración de navegación/estilos en `main.tsx` y `style.css`, incluida experiencia responsive y guardias de lectura.
+3. #8: demostrar que el actor SQL y las capacidades HMAC conservan el contrato, con pruebas de suplantación, caducidad y revocación en PostgreSQL 17.
+4. #10/#11/#12: la ancestralidad ya está verificada; validar regresiones sobre HEAD final antes de cualquier cierre.
+5. #2: auditar la razón de los 1789 commits y la integración a `main` sin reescribir historia ni fusionar.
+
+**CI de la rama documental del PR #14:** Sabora CI run `40267068061` terminó SUCCESS. Esta prueba no sustituye el análisis semántico pendiente.
+
+**Decisión:** conservar todas las PR existentes en Draft. Ninguna se cierra o fusiona basándose exclusivamente en esta matriz.
