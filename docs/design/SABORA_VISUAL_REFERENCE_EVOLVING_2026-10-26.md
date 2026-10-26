@@ -42,3 +42,13 @@ Referencias de inspiración documentadas: `docs/design/FUNCTIONAL_AND_MOTION_RES
 > Sabora debe parecer un restaurante de alta gama que ofrece una experiencia digital excepcional, tanto al comensal como al equipo.
 
 Este principio guía la evolución de la experiencia cliente, cocina y gestión, subordinado a los contratos normativos y sujeto a verificación visual y funcional.
+
+## Punto de partida visual y separación de aplicaciones — 26-10-2026
+
+El usuario decide conservar **las dos últimas propuestas interactivas** como punto de partida para evolución, sin seleccionar aún un patrón definitivo de incorporación a la cesta:
+- **V2:** catálogo editorial premium con botón «Añadir», detalle, cesta y carrusel; vista operativa mostrada solo para revisión conjunta.
+- **Variante de tarjeta de producto:** tras el primer añadido, sustituir botón por selector «− / cantidad / +» y permitir detalle previo; la obligatoriedad de configuración y alérgenos se resolverá según contratos funcionales y datos reales.
+
+**Restricción explícita de arquitectura y UX:** la **PWA cliente NO tiene acceso a cocina**. El selector «Cliente / Cocina» del prototipo fue una herramienta de comparación en la conversación, **no un control permitido en la PWA cliente**. Las pantallas de cocina/camareros/administración pertenecen a la PWA operativa, con rutas, autenticación, permisos y endpoints protegidos según contratos normativos. No basta ocultar el enlace en UI.
+
+Ambas PWA comparten lenguaje visual premium y tokens, con intensidad de movimiento diferente: cliente expresivo y cocina/gestión sobria y operativa. Ninguna de las dos propuestas se declara aprobada como baseline final ni autoriza cambios de producción.
