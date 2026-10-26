@@ -441,3 +441,15 @@ Cotejo directo de `docs/security/SABORA_OPERATIONAL_ACTOR_BINDING_DECISION_GATE.
 **Limitación de evidencia:** los tests anteriores inspeccionan contratos de código y adaptadores; no equivalen a una sesión visual en navegador con capturas a 360/460/900/1440 px, ni a pruebas de interacción con backend real. No se afirma equivalencia visual de #4/#5 frente a #13.
 
 **Decisión:** evidencia estática y CI verde en SHA indicado; **gate visual pendiente**. No conectar gateways ni activar operaciones para simular un resultado visual. Cualquier revisión visual posterior debe usar una ejecución aislada sin acceso a producción ni a Fleetia.
+
+## Bloque Y — verificación del gate visual y alcance real del workflow (2026-10-26)
+
+Inspección de `.github/workflows/ci.yml` y `apps/management/package.json` en #14:
+
+- CI instala dependencias con lockfile congelado, ejecuta `pnpm test`, smoke de migraciones PostgreSQL 17, smoke de driver Node `pg`, `pnpm build`, validación de Compose y contenedor API aislado, incluido healthcheck local. **No existe paso de navegador, Playwright, capturas, pruebas de interacción responsive ni comparación visual.**
+- `@sabora/management` declara `dev` con Vite ligado a `127.0.0.1`, `build` y `test` con `node --test tests/*.test.mjs`; no declara runner E2E de navegador. No atribuir a su suite verificación visual real.
+- No se utilizó navegador gráfico ni se generaron capturas en este bloque. Para cerrar este gate hará falta entorno local aislado con navegador y evidencia reproducible en tamaños 360, 460, 900 y 1440 px; verificar navegación, superposición, foco/teclado, estados vacíos, error y conectividad desconectada. Sin credenciales ni datos de producción.
+
+**Control documental:** el «snapshot verificado» inicial de este informe reflejaba 10 PR abiertos **antes de crear #14**; el inventario posterior de la matriz V es el snapshot actualizado de 11 PR Draft. No confundir ambos momentos.
+
+**CI actual:** el run `40293972426` para HEAD `ad83476c991dcb7dc0b7fcd503f32d55d3fb9937` permanecía `in_progress` en la consulta; no se da por aprobado ese SHA hasta concluir.
