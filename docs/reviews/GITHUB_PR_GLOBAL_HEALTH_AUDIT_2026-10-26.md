@@ -357,3 +357,18 @@ Se inspeccionó contenido de ambos blobs (no solo firmas) para cuatro módulos:
 **Decisión:** el cambio material de salida HTTP de #4→#13 tiene respaldo normativo y pruebas dedicadas en #13; no debe tratarse como regresión por el mero cambio de respuesta. Sigue pendiente validar ejecución del SHA final y la cobertura extremo a extremo, y no se autoriza activación de rutas.
 
 **CI:** el HEAD previo #14 `dcbd270321dc716a551e231b338e0da0d5409a54` mostraba run `40292586525` en progreso al consultar; no se atribuye éxito.
+
+## Bloque T — cadena confirmación→cocina, concurrencia y CI PG17 (2026-10-26)
+
+**CI verificable de #14:** HEAD `1b0fc25e23fc3a6c08f5118619afe32ac680a26d`, run `40292717579`, job `validate` **SUCCESS**. Pasos exitosos: `Test`, `Test Sabora migrations in disposable PostgreSQL 17`, `Exercise real Node pg driver against disposable loopback-only PostgreSQL 17`, `Smoke-test API container without host port or shared network`. Esto es evidencia de ejecución sobre la rama #14, no despliegue.
+
+**Cadena funcional y pruebas inspeccionadas en #13:**
+- `tests/customer-order-confirmation-full-sql-chain.test.mjs` (95 líneas): Fastify→repositorio→transacción SQL→ledger, con confirmación y replay; usa un adaptador SQL simulado, por lo que no equivale por sí solo a PG17 real.
+- `tests/catalog-confirmation-pool-end-to-end.test.mjs` (210 líneas; 10 tests declarados): una transacción para pedido/proyección cocina/ledger, replay sin duplicado, rollback por fallo de ledger, rechazo de visita revocada y catálogo no disponible, aceptación de repricing, fingerprint de idempotencia, ventana de agrupación y cita tardía, cotización alterada y liberación tras replay inválido. El harness simula queries del pool.
+- `tests/customer-confirmation-kitchen-handoff.test.mjs` (231 líneas; 10 tests declarados): HTTP confirm/replay→una sola línea de cocina; conflicto de contenido, rollback tras trigger, visita revocada, revisión publicada cambiada, aceptación firmada, falsificación/caducidad/no transferibilidad de token y DTO público de consentimiento.
+- `scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh` (336 líneas): PostgreSQL 17 desechable, dos sesiones `psql`, bloqueo `pg_advisory_xact_lock`, detección de espera y liberación tras COMMIT y tras ROLLBACK.
+- `scripts/ci/catalog-confirmation-atomicity-smoke.sql` (299 líneas): prueba SQL transaccional con `BEGIN` y `ROLLBACK`.
+
+**Conclusión de alcance:** hay pruebas concretas para idempotencia, atomicidad, autorización de visita, repricing y proyección única de cocina, y CI verde en el SHA indicado. Los tests de Node con SQL simulado no sustituyen los smoke PG17 reales; ambos tipos de evidencia se mantienen separados. La inspección no autoriza activar rutas, fusionar PR ni desplegar.
+
+**Pendiente:** cotejar la superficie de operaciones cocina/camarero de #4→#13, y emitir matriz de cierre por dominio con riesgos residuales.
