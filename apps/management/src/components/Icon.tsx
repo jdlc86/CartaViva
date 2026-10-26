@@ -18,7 +18,8 @@ export type IconName =
   | 'alert'
   | 'zoom'
   | 'close'
-  | 'library';
+  | 'library'
+  | 'refresh';
 
 const paths: Record<IconName, React.ReactNode> = {
   overview: <><path d="M4 13h6V4H4v9Z"/><path d="M14 20h6v-9h-6v9Z"/><path d="M4 20h6v-3H4v3Z"/><path d="M14 7h6V4h-6v3Z"/></>,
@@ -41,6 +42,7 @@ const paths: Record<IconName, React.ReactNode> = {
   zoom: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5M10.5 7.5v6M7.5 10.5h6"/></>,
   close: <path d="m6 6 12 12M18 6 6 18"/>,
   library: <><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 5V3h8v2M8 10h8M8 14h5"/></>,
+  refresh: <><path d="M20 7v5h-5"/><path d="M18.2 16a8 8 0 1 1 .8-8l1 4"/></>,
 };
 
 export function Icon({name, size = 20}: {name: IconName; size?: number}) {

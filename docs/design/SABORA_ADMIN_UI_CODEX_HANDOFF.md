@@ -221,3 +221,239 @@ GitHub Actions del commit de código de Fase 2 `f94fdc8191dfa6ff0731251aed6de579
 - Sin llamadas, SDK, credenciales ni resultados Gemini, Vertex AI o Google APIs.
 - Sin backend, Supabase, almacenamiento remoto, migraciones, endpoints, fixtures operativos ni lockfile nuevo.
 - Sin merge, despliegue, VPS, contenedores o cambios en Fleetia.
+
+---
+
+## Hito posterior — navegación y lectura administrativa de mesas (2026-10-24)
+
+### Referencia y alcance
+
+- Rama aislada: `codex/sabora-management-tables-workspace`.
+- Base verificada: `origin/feat/sabora-pnpm-bootstrap` en `8297a71cbc776574fbb055078c0326af4d46a247`.
+- PR administrativo anterior [#3](https://github.com/jdlc86/CartaViva/pull/3): `MERGED` en la base antes de abrir esta rama. PR #2 permanece Draft y no se modifica directamente.
+- Alcance exclusivo: `apps/management/**` y este handoff. No se incorporan los cambios backend/cocina del PR paralelo #4.
+
+El hito convierte la navegación y el workbench de Mesas en una frontera frontend completa de **solo lectura**, preparada para recibir la proyección administrativa versionada existente sin activar por sí misma ninguna conexión. La aplicación distribuida continúa sin transporte, sesión ni datos por defecto.
+
+### Funcionalidad implementada
+
+1. Navegación profunda mediante `#resumen`, `#catalogo`, `#mesas`, `#comandas` y `#equipo`, compatible con historial atrás/adelante.
+2. Movimiento de foco al área cargada tras navegar, anuncio `aria-live`, `aria-current` y marca accesible que devuelve al Resumen.
+3. Puerto inyectable `AdminTablesGateway`; el entrypoint de producción no lo instancia y no contiene `fetch`, credenciales ni almacenamiento del navegador.
+4. Validación cerrada del contrato `version: 1`: solo admite `id`, `number`, `capacity`, `description` y `orderingState`; rechaza claves extra, accessors, UUID/enteros/estados inválidos, desorden, duplicados y cursores inconsistentes.
+5. Estados de interfaz desconectado, carga, error recuperable, vacío y datos disponibles; un error inicial descarta cualquier respuesta parcial.
+6. Paginación keyset manual, sin reintentos ocultos ni polling. Un fallo al cargar más conserva la página ya validada y ofrece reintento explícito.
+7. Inventario seleccionable, filtro local sobre páginas cargadas y ficha maestro-detalle responsive.
+8. Limpieza de solicitudes mediante `AbortController` al desmontar o sustituir la dependencia.
+9. QR, alta de mesa, cambios de estado y política de pago continúan deshabilitados. La proyección no acepta ni representa hashes, tokens o sesiones QR.
+
+### Conciliación de estados
+
+La primera entrega visual mostraba `EN_PREPARACION`, `LISTA` y `BLOQUEADA`, procedentes del borrador funcional inicial. El contrato consolidado posterior y la proyección administrativa efectiva exponen `open`, `paused` y `closed`. Este hito utiliza esa evidencia más reciente y muestra las etiquetas `ABIERTA`, `PAUSADA` y `CERRADA`, sin crear una traducción ficticia entre dos máquinas de estado distintas. Las transiciones permanecen bloqueadas.
+
+### Archivos del hito
+
+- `apps/management/src/navigation-model.js` y `.d.ts`: rutas permitidas y normalización fail-safe.
+- `apps/management/src/tables-read-model.js` y `.d.ts`: gateway, DTO versionado, validación y unión de páginas.
+- `apps/management/src/main.tsx`: navegación por URL, historial, foco y dependencia de lectura opcional.
+- `apps/management/src/views/TablesView.tsx`: ciclo completo de lectura, paginación, filtro, selección y detalle.
+- `apps/management/src/components/Primitives.tsx`: estados reutilizables de carga y error y aviso con tono de lectura.
+- `apps/management/src/style.css`: lista de mesas, estados, navegación y responsive conforme a tokens aprobados.
+- `apps/management/tests/navigation-model.test.mjs`, `tables-read-model.test.mjs` y `ui-contract.test.mjs`: navegación, contrato hostil, ausencia de reintentos implícitos y bloqueo de mutaciones.
+
+### Validaciones locales
+
+| Comando o comprobación | Resultado |
+| --- | --- |
+| `pnpm --filter @sabora/management test` | PASS, 17/17 |
+| `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS |
+| `node --test tests/management-scaffold.test.mjs` | PASS, 3/3 |
+| `pnpm --filter @sabora/management build` | PASS, 40 módulos; JS 273,46 kB y CSS 39,23 kB antes de gzip |
+| `pnpm test` | PASS, 603/603 |
+| `pnpm build` | PASS, API + PWA cliente + PWA gestión |
+| Navegación local Catálogo → atrás → Mesas | PASS; URL, título y foco del área correctos |
+| Consola del navegador | PASS; 0 errores y 0 avisos observados |
+| Viewports 360/390/430/768/1024/1440 | PASS; sin desbordamiento horizontal |
+| `git diff --check` | PASS |
+
+Las capturas PNG versionadas existentes pertenecen a la entrega anterior y no se sustituyen en este hito. La revisión actual se realizó instrumentalmente sobre la aplicación local; no se añadieron fixtures ni imágenes binarias nuevas al producto.
+
+### Contratos pendientes antes de conectar la lectura
+
+1. Bootstrap de la PWA de gestión que obtenga una identidad de personal verificada y construya el gateway sin aceptar rol o actor desde la interfaz.
+2. Decisión explícita de montar la composición opt-in de `GET /api/v1/admin/tables`; en la base actual `server.mjs` no la registra.
+3. Configuración autorizada de origen, transporte de credencial, expiración/revocación y tratamiento de `401/403/503`; no se inventa en este hito.
+4. Identidad PostgreSQL operativa y preflight de mínimos privilegios aprobados para el entorno real; las pruebas candidatas no autorizan producción.
+5. Contratos independientes para alta/edición de mesa, transiciones, política de pago, emisión/rotación/revocación/impresión QR y auditoría. Ninguna de esas operaciones puede reutilizar el lector.
+6. Contratos de dashboard, catálogo, equipo y restantes proyecciones; no se generaliza el gateway de mesas a recursos no documentados.
+
+### Límites y operaciones no realizadas
+
+- No se implementó backend, endpoint, autenticación, PostgreSQL, migración, RLS o credencial.
+- No se añadió un transporte HTTP por defecto ni se simuló una sesión administrativa.
+- No se incluyeron datos de demostración, polling, WebSocket, almacenamiento local ni QR ficticio.
+- No se modificó Fleetia, VPS, Supabase operativo, Google ni otro servicio externo.
+- No se hizo merge ni despliegue.
+- La evidencia de GitHub Actions de esta rama se añadirá al PR Draft después de publicar el commit; un verde de la base no sustituye el del SHA entregado.
+
+### Siguiente bloque recomendado
+
+Cuando el backend autorice y monte la lectura de mesas, crear la composición runtime mínima que implemente `AdminTablesGateway` y probar `401/403/503`, expiración y revocación sin relajar la validación frontend. Después, aplicar el mismo patrón a una proyección administrativa de catálogo **solo si** aparece su contrato versionado; no activar mutaciones de mesa o QR como parte de esa integración de lectura.
+
+---
+
+## Hito posterior — lectura del catálogo publicado (2026-10-24)
+
+### Referencia y alcance
+
+- Rama aislada: `codex/sabora-management-tables-workspace`; PR Draft #5 con base `feat/sabora-pnpm-bootstrap`.
+- Base remota comprobada antes de editar: `a79a3edf8fd603a8b3694e91fbc6ddac78d50d14`. Su avance desde `8297a71` no introduce diferencia de árbol respecto al punto de bifurcación de esta rama.
+- Commit funcional: `c057550ae14fca392423f3c89c27fc9855ab2831` (`feat(management): add published catalog read workspace`).
+- Alcance exclusivo: `apps/management/**` y este handoff. No se modifican API, cliente, PostgreSQL, migraciones, workflows ni el PR paralelo #4.
+
+El hito utiliza el contrato ya versionado por `createVerifiedAdminCatalogReader`: envelope `version: 1`, `scope: 'published'` y elementos públicos `id`, `name`, `category`, `priceCents`, `available` y `allergens`. No generaliza esta lectura a borradores ni usa la ruta pública no montada como si fuese autenticación administrativa.
+
+### Funcionalidad implementada
+
+1. Puerto inyectable `AdminCatalogGateway`; el entrypoint distribuido no lo instancia y no contiene `fetch`, credenciales ni persistencia del navegador.
+2. Validación cerrada del envelope y de cada plato: objetos de datos planos, allowlist exacta, UUID único, nombre acotado, categorías documentadas por el DTO vigente, céntimos enteros no negativos, disponibilidad booleana y alérgenos acotados.
+3. Rechazo previo a lectura de propiedades accesoras en platos y arrays de alérgenos; las respuestas inválidas no producen una vista parcial.
+4. Estados desconectado, carga, error recuperable, vacío y datos disponibles. La carga ocurre al entrar y el reintento es explícito, sin polling ni reintentos ocultos.
+5. Exploración maestro-detalle del catálogo publicado, selección accesible, búsqueda local por nombre/categoría/alérgeno y filtros locales de categoría.
+6. Precio presentado desde céntimos mediante formato EUR; agotado permanece visible y marcado como no disponible.
+7. Categorías visibles derivadas únicamente de los platos publicados recibidos. `Todos` se conserva como filtro virtual y no se representa como registro persistido.
+8. La ficha identifica que la fotografía no forma parte de la proyección v1. Borrador, creación, retirada y publicación continúan mediante controles deshabilitados.
+9. El estado global sólo anuncia «lectura parcial» si se inyecta una proyección de mesas o catálogo; por defecto la compilación sigue en modo no operativo.
+
+### Archivos del hito
+
+- `apps/management/src/catalog-read-model.js` y `.d.ts`: gateway, DTO versionado, validación cerrada, búsqueda y formato monetario.
+- `apps/management/src/views/CatalogView.tsx`: ciclo de lectura, estados, filtros, selección, detalle publicado y agrupación de categorías.
+- `apps/management/src/main.tsx`: inyección opcional e independiente del gateway de catálogo.
+- `apps/management/src/style.css`: lista, filtros y categorías responsive mediante tokens aprobados.
+- `apps/management/tests/catalog-read-model.test.mjs`: contrato válido, payloads hostiles, una sola solicitud, cancelación, filtros y precios.
+- `apps/management/tests/ui-contract.test.mjs`: guardias de desconexión por defecto, estados y bloqueo de mutaciones.
+
+### Validaciones
+
+| Comando o comprobación | Resultado |
+| --- | --- |
+| `pnpm --filter @sabora/management test` | PASS, 24/24 |
+| `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS |
+| `pnpm --filter @sabora/management build` | PASS fuera del sandbox local; 41 módulos, JS 280,37 kB y CSS 41,90 kB antes de gzip |
+| `pnpm test` | PASS, 603/603 |
+| `pnpm build` | PASS, API + PWA cliente + PWA gestión |
+| Navegador 1440 × 1000 y 390 × 844 | PASS, Catálogo desconectado, controles privilegiados bloqueados y sin overflow de página |
+| Consola del navegador | PASS, 0 errores y 0 avisos |
+| `git diff --check` del bloque funcional | PASS |
+
+El primer intento de build dentro del sandbox de Windows falló porque esbuild no podía leer `vite.config.ts`; la repetición autorizada fuera de ese aislamiento terminó correctamente. No es un fallo de TypeScript ni del bundle.
+
+### Dependencias antes de conectar el gateway
+
+1. Una composición runtime administrativa que obtenga identidad verificada y membresía ADMIN durable en servidor. El navegador no puede aportar rol, actor ni titularidad como autoridad.
+2. Un contrato HTTP autenticado y versionado que entregue exactamente `{version: 1, scope: 'published', items}`. La ruta pública candidata `GET /api/v1/catalog` devuelve un array y permanece sin montar; no implementa este gateway administrativo.
+3. Pool/login de lectura catalogado con mínimos privilegios, preflight de identidad efectivo y activación expresamente autorizada. Las pruebas candidatas no aprovisionan producción.
+4. Tratamiento documentado de `401`, `403`, `503`, revocación y expiración al construir el adaptador HTTP; no se deduce en la vista.
+5. Contratos separados para borradores, edición de categorías, disponibilidad, retirada y publicación, con autorización, control de versión, auditoría e idempotencia. Esta lectura no habilita ninguna mutación.
+6. Extensión explícita del DTO si se desea mostrar una imagen publicada. La interfaz no fabrica URL, asset ni relación con el Estudio de imágenes.
+
+### Límites y operaciones no realizadas
+
+- No se añadió transporte HTTP, autenticación, datos de demostración, polling, caché, almacenamiento local ni imagen ficticia.
+- No se conectaron borradores ni acciones editoriales y no se reutilizó la lectura pública como autorización administrativa.
+- No se modificaron backend, cliente, PostgreSQL, Supabase operativo, VPS, Fleetia, servicios Google ni otros repositorios.
+- No se hizo merge ni despliegue. El PR permanece Draft.
+
+### Siguiente bloque recomendado
+
+Conectar `AdminTablesGateway` y `AdminCatalogGateway` sólo después de que existan montajes runtime autorizados y contratos HTTP coincidentes, con pruebas de `401/403/503` y revocación. Si esos gates continúan cerrados, el siguiente bloque frontend debe limitarse a otra proyección versionada que ya exista; no activar escrituras ni inventar DTOs para Resumen, Equipo o Catálogo editorial.
+
+---
+
+## Hito posterior — actualización explícita y estados resilientes de lectura (2026-10-24)
+
+### Referencia y alcance
+
+- Rama: `codex/sabora-management-tables-workspace`; PR [#5](https://github.com/jdlc86/CartaViva/pull/5) en estado **Draft**, con base `feat/sabora-pnpm-bootstrap`.
+- El PR administrativo anterior [#3](https://github.com/jdlc86/CartaViva/pull/3) está `MERGED`; este trabajo continúa exclusivamente en su PR sucesor y no modifica el PR #2.
+- Base incorporada inicialmente en `8951dfbaaef096e9bba31ed623d17e7f8554c3c7` mediante `b05cf6a`, sincronizada después con `ea01357613894085a221de7a2d4be52fd259b370` mediante `0237610` y cerrada localmente sobre la corrección verde `b947ce101a490062eb9c62f718c29808c57c4336` mediante `c48a990`; ninguno de esos avances modificó `apps/management/**`.
+- Durante la verificación final la base avanzó hasta `5b5c21cb17383643f517d2d20a5611eef80a890a` sólo en `tests/postgres-transaction.test.mjs` y `docs/continuity/SESSION_08_HANDOFF.md`. Ese avance no se incorporó: su propio CI es rojo por una regresión del escritor PostgreSQL, fuera del alcance administrativo autorizado, aunque GitHub sí lo incluye en el merge virtual del PR.
+- Commit funcional: `9d676b82e1eea67abb6a4744b79667157191eece` (`feat(management): harden explicit read refreshes`).
+- Diferencia funcional limitada a `apps/management/**`; la única documentación modificada es este handoff.
+
+### Funcionalidad implementada
+
+1. Mesas y Catálogo ofrecen actualización manual de la proyección conectada, sin temporizadores, reintentos ocultos ni polling.
+2. La actualización conserva visible el último snapshot validado. Si la nueva lectura falla, no borra datos, no aplica respuestas parciales y ofrece un reintento explícito.
+3. Una lectura nueva aborta e invalida la anterior. Esto cubre desmontaje, sustitución de gateway, recarga, actualización y la colisión entre paginación de mesas y actualización completa.
+4. Las respuestas tardías no pueden sobrescribir una lectura posterior. Finalizar una tarea obsoleta tampoco libera ni invalida la tarea vigente.
+5. Una actualización correcta conserva la selección actual si el recurso continúa presente; en caso contrario selecciona el primer elemento válido o deja la selección vacía.
+6. Mesas reinicia de forma coherente su cursor a la primera página al actualizar; un fallo de paginación sigue conservando las páginas ya validadas.
+7. El estado compartido distingue lectura cargada, actualización en curso y fallo recuperable mediante texto visible, `aria-busy`, anuncio `aria-live` y `role="alert"` sin duplicar anuncios.
+8. La barra de estado responde a móvil con objetivo táctil de 44 px, botón a ancho completo y animación compatible con `prefers-reduced-motion`.
+9. El resumen de categorías publicadas se calcula en una sola pasada memoizada sobre el snapshot recibido.
+10. Alta/edición de mesas, QR, borradores, disponibilidad, retirada y publicación continúan deshabilitados. El entrypoint no instancia transportes y la aplicación distribuida permanece desconectada por defecto.
+
+### Archivos del hito
+
+- `apps/management/src/latest-read-task.js` y `.d.ts`: coordinador independiente de la última lectura, cancelación, vigencia y finalización segura.
+- `apps/management/src/views/TablesView.tsx`: actualización conservadora, cancelación de paginación obsoleta, selección y cursor coherentes.
+- `apps/management/src/views/CatalogView.tsx`: actualización conservadora compartida entre Platos y Categorías, selección estable y agrupación memoizada.
+- `apps/management/src/components/Primitives.tsx` e `Icon.tsx`: barra de estado accesible e icono de actualización.
+- `apps/management/src/style.css`: estados visuales, animación y responsive de la barra de lectura.
+- `apps/management/tests/latest-read-task.test.mjs`: sustitución, cancelación, finalización idempotente y aislamiento entre tareas.
+- `apps/management/tests/ui-contract.test.mjs`: actualización explícita, ausencia de `setInterval`, cancelación, conservación ante error y anuncios accesibles.
+
+### Decisiones técnicas
+
+1. El coordinador no almacena datos ni conoce React: sólo entrega `AbortSignal` y una comprobación de vigencia. Los componentes conservan la propiedad de su snapshot validado.
+2. Un refresh no cambia la fase a carga inicial, de modo que la interfaz no confunde indisponibilidad momentánea con ausencia de datos y no oculta información ya verificada.
+3. El refresh de mesas reemplaza las páginas cargadas por una primera página nueva y su cursor. Mezclar páginas de snapshots distintos habría producido una lista temporalmente incoherente.
+4. Se mantiene una única lectura activa por workspace. Esta política evita carreras sin introducir deduplicación, caché o semántica de backend no documentada.
+5. Se aplicó la revisión React del entorno: inicialización estable en `useRef`, efectos con limpieza, actualizaciones funcionales de selección, cálculos derivados memoizados y componentes definidos fuera del render.
+
+### Validaciones locales
+
+| Comando o comprobación | Resultado |
+| --- | --- |
+| `pnpm --filter @sabora/management test` | PASS, 28/28 |
+| `apps/management/node_modules/.bin/tsc.CMD --noEmit -p apps/management/tsconfig.json` | PASS, TypeScript estricto |
+| `node --test tests/management-scaffold.test.mjs` | PASS, 3/3 |
+| `pnpm test` | PASS, 709/709 sobre la última base verde integrada (`b947ce1`) |
+| `pnpm --filter @sabora/management build` | PASS, 42 módulos; JS 282,94 kB y CSS 43,10 kB antes de gzip |
+| `pnpm build` | PASS, API + PWA cliente + PWA gestión |
+| Navegador 1265 px y 390 × 844 | PASS en Mesas y Catálogo desconectados, sin overflow horizontal |
+| Consola del navegador | PASS, 0 errores y 0 avisos |
+| Controles privilegiados | PASS, QR y escrituras de mesas/catálogo permanecen deshabilitados |
+| `git diff --check` | PASS |
+
+La instalación exacta se restauró con `pnpm install --frozen-lockfile --force` sin modificar el lockfile. Los builds Vite se ejecutaron fuera del sandbox local porque esbuild no podía resolver `vite.config.ts` bajo ese aislamiento; ambos terminaron correctamente.
+
+### GitHub Actions
+
+- `Sabora CI` [run 40093626823](https://github.com/jdlc86/CartaViva/actions/runs/40093626823), job `validate` `120871227499`: **SUCCESS** para `9d676b82e1eea67abb6a4744b79667157191eece` en 1m44s.
+- El job completó lockfile, tests, migraciones en PostgreSQL 17 desechable, driver `pg` real, build, Compose, construcción de imagen API y smoke tests aislados.
+- La base posterior `5b5c21c` falla en su propia ejecución `Sabora CI` [run 40095083643](https://github.com/jdlc86/CartaViva/actions/runs/40095083643): 710/711 pruebas pasan y falla `invalid query bindings abort before driver execution and roll back` en `tests/postgres-transaction.test.mjs:584` por `Missing expected rejection`.
+- El merge virtual del HEAD documental reproduce exactamente ese fallo ajeno en [run 40095109030](https://github.com/jdlc86/CartaViva/actions/runs/40095109030), job `120875597107`. No se modifica ni se evita desde este PR porque exigiría intervenir en el escritor transaccional o sus pruebas, ambos pertenecientes al desarrollo backend paralelo.
+- En la ejecución verde del commit funcional GitHub emitió únicamente avisos de plataforma por la transición de actions desde Node 20 y la futura migración de `ubuntu-latest`.
+
+### Riesgos y dependencias pendientes
+
+1. El gate actual del PR queda bloqueado por la regresión preexistente introducida en la base `5b5c21c`; se necesita una corrección en la rama backend antes de poder obtener un CI verde del merge virtual.
+2. La barra de actualización sólo aparece cuando se inyecta un gateway y la primera lectura termina correctamente; el bundle de producción continúa sin composición runtime administrativa.
+3. Siguen pendientes contratos/montajes HTTP coincidentes, sesión verificada, tratamiento de `401/403/503`, expiración y revocación antes de conectar ambos gateways.
+4. Las mutaciones necesitan contratos separados con autorización de servidor, control de versión, idempotencia y auditoría. Una lectura verde no autoriza a reutilizar sus privilegios para escritura.
+5. La proyección de catálogo v1 no contiene imagen, y la proyección de mesas no contiene secretos QR. La interfaz no debe inferirlos ni añadirlos al DTO.
+6. Una actualización de mesas vuelve deliberadamente a la primera página; restaurar una posición profunda exigiría un contrato de snapshot/cursor estable que no existe.
+
+### Operaciones no realizadas
+
+- No se modificaron `apps/api/**`, `apps/client/**`, `packages/customer-consent/**`, migraciones PostgreSQL, escritores transaccionales ni workflows.
+- No se añadió `fetch`, autenticación, endpoint, dato de demostración, almacenamiento del navegador, polling, caché o QR ficticio.
+- No se accedió ni modificó Fleetia, VPS, Supabase operativo, Google ni otro repositorio o servicio.
+- No se hizo merge, despliegue ni cambio del estado Draft del PR.
+
+### Siguiente bloque recomendado
+
+Mantener las escrituras cerradas y conectar el adaptador runtime de lectura sólo cuando el backend publique el contrato HTTP administrativo versionado y las reglas de sesión. La siguiente ampliación frontend independiente puede mejorar Resumen o Equipo únicamente si aparece una proyección documentada; sin ella, debe centrarse en accesibilidad y pruebas de los estados ya contratados, no en inventar datos o acciones.
