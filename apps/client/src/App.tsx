@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent} from 'react';
 import {categoriesFor,formatPrice,searchPublishedCatalog,type CatalogState,type MenuItem} from './catalog';
 import {loadPublishedCatalog} from './catalog-loader';
-import {acceptBasketPrice,basketIssues,basketQuantity,basketTotal,changeBasket,removeBasketLine,loadBasket,loadClientPreferences,reconcileBasket,saveBasket,saveClientPreferences,type BasketLine,type ClientPreferences,type Locale} from './client-state';
+import {CLIENT_BASKET_STORAGE_KEY,acceptBasketPrice,basketIssues,basketQuantity,basketTotal,changeBasket,removeBasketLine,loadBasket,loadClientPreferences,reconcileBasket,saveBasket,saveClientPreferences,type BasketLine,type ClientPreferences,type Locale} from './client-state';
 import {BottomNav,type ClientArea} from './components/BottomNav';
 import {Icon} from './components/Icon';
 import {Modal} from './components/Modal';
@@ -62,6 +62,16 @@ export function SaboraClientApp(){
  useEffect(()=>{if(searchOpen)searchRef.current?.focus();},[searchOpen]);
  useEffect(()=>{saveClientPreferences(localStorage,{locale,alias,company,favorites});},[locale,alias,company,favorites]);
  useEffect(()=>{saveBasket(localStorage,basket);},[basket]);
+ useEffect(()=>{
+  const onStorage=(event:StorageEvent)=>{
+   if(event.storageArea!==localStorage||event.key!==CLIENT_BASKET_STORAGE_KEY)return;
+   const latest=loadBasket(localStorage);
+   setBasket(current=>JSON.stringify(current)===JSON.stringify(latest)?current:latest);
+  };
+  window.addEventListener('storage',onStorage);
+  return()=>window.removeEventListener('storage',onStorage);
+ },[]);
+
  useEffect(()=>{document.documentElement.lang=locale;document.title=locale==='es'?'Sabora · Carta digital':'Sabora · Digital menu';},[locale]);
  useEffect(()=>{if(catalog.status==='ready')setBasket(current=>reconcileBasket(current,catalog.items));},[catalog]);
 
