@@ -104,6 +104,22 @@ significativo; la repetición completa quedó verde.
 
 ## GitHub Actions
 
-Pendiente de completar tras publicar el commit documental. El comentario final
-del PR debe registrar SHA, URLs de runs y conclusiones verificadas, manteniendo
-el PR en Draft.
+El commit `78df0324eba1e5a5904f69c50905544e5b68a1bf`, que contiene la corrección,
+las pruebas PostgreSQL 17 y este informe, obtuvo resultado satisfactorio en los
+dos workflows disparados por el PR:
+
+- [Sabora CI — run 40260595681](https://github.com/jdlc86/CartaViva/actions/runs/40260595681):
+  `success`; incluye 891 pruebas Node, build, migraciones en PostgreSQL 17
+  desechable, harness de integración mediante el driver `pg`, validación de
+  Docker Compose, construcción aislada de la imagen y smoke tests sin red
+  compartida.
+- [Bootstrap Sabora lockfile — run 40260595794](https://github.com/jdlc86/CartaViva/actions/runs/40260595794):
+  `success`; confirma lockfile reproducible y repite satisfactoriamente la
+  migración PostgreSQL 17, el harness con driver real y los smoke tests
+  aislados.
+
+GitHub emitió únicamente avisos informativos sobre la migración futura de
+`ubuntu-latest` y el uso forzado de Node.js 24 por acciones todavía basadas en
+Node.js 20; no hubo errores ni avisos funcionales de la implementación. El
+comentario final del PR registra además el resultado de CI sobre el SHA
+documental definitivo. El PR permanece en Draft.
