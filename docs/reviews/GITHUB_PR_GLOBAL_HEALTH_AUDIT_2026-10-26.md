@@ -185,3 +185,25 @@ Se inventariaron los nombres y aserciones de los tests de código del HEAD #13, 
 ### Decisión de saneamiento
 
 La preocupación del bloque D sobre ausencia de pruebas del modo de transición está **parcialmente resuelta por pruebas ya existentes**, con casos de autenticación real y denegación de lectura. Se mantienen abiertos: equivalencia completa de los 37 archivos divergentes, evidencia visual responsive, revisión de cambios futuros respecto a SHA #13 y aprobación del contrato de lectura. Ninguna PR queda autorizada a cerrar por este inventario.
+
+## Bloque G — equivalencia de interfaz y gates de UI (2026-10-26)
+
+Inspección de `apps/management/tests/ui-contract.test.mjs` y `apps/management/tests/order-operations-behavior.test.mjs` en el HEAD #13:
+
+- El contrato de UI tiene **9 tests declarados** que comprueban las cinco áreas, ausencia de fixtures operativos, red/persistencia/Google no autorizados, lectura explícita y descarte de respuestas obsoletas, navegación profunda, mesas/QR bloqueados, catálogo publicado de solo lectura, acciones privilegiadas deshabilitadas, estudio de imágenes local y tokens visuales con breakpoints `900px`/`460px`, foco y reducción de movimiento.
+- El comportamiento de operaciones tiene **7 tests declarados**: agrupación de líneas y avisos durables, política de transiciones cocina/camarero, POST mínimo, recuperación tras recarga sin persistencia navegador, respuestas inválidas fail-closed, doble clic/cancelación/entrega bloqueados y correlación conservada ante resultado ambiguo.
+- Estos tests comprueban propiedades estructurales y funcionales del código, **no constituyen una captura o inspección visual en navegador real**. No se atribuye una certificación responsive que no se ha realizado.
+- Para #5, `CatalogView.tsx`, `TablesView.tsx`, sus modelos y tests conservan blobs idénticos a #13; `main.tsx` añade el gateway opcional de operaciones sin alterar navegación ni los gateways de lectura. `style.css` difiere y sigue pendiente una comprobación visual de regresión.
+
+### Matriz de disposición segura por PR
+
+| PR | Evidencia acumulada | Disposición recomendada ahora |
+| --- | --- | --- |
+| #4 | 23/23 rutas presentes; 6 blobs idénticos; 17 evolucionados; suite de operaciones disponible | **Mantener Draft** hasta cerrar equivalencia semántica |
+| #5 | 20/20 rutas presentes; 17 blobs idénticos; navegación/gateways inspeccionados; 3 evolucionados | **Mantener Draft** hasta regresión visual y documentación |
+| #8 | 21/21 rutas presentes; 4 blobs idénticos; preflight/SQL evolucionados y suite PG17 existente | **Mantener Draft** hasta contraste completo de seguridad |
+| #10/#11/#12 | HEAD de cada PR ancestro de #13 según comparación GitHub | Candidatos a supersedidos, **no cerrar** sin decisión explícita |
+| #13 | Consolidación de código y gates, CI previa favorable | **Mantener Draft**, sin merge/despliegue |
+| #14 | Auditoría documental sobre #13 | **Mantener Draft**, sin cambios operativos |
+
+No se han realizado cierres ni fusiones, ni se ha accedido a recursos de Fleetia o VPS.
