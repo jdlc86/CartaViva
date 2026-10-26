@@ -279,3 +279,19 @@ Comparación de contenido de `order-operations-composition.mjs` e inspección de
 - El siguiente gate de aceptación debe contrastar la migración `20261024190000_sabora_order_operation_actor_capability_candidate.sql` y las pruebas PG17 de ambos árboles, separando ampliaciones de cobertura de posibles cambios de semántica. CI verde acredita la rama auditada, no una equivalencia exhaustiva con PR #8.
 
 **Decisión:** mantener #8 y #14 Draft; no cerrar, fusionar ni activar operaciones.
+
+## Bloque N — migración SQL de capacidad y regresión PG17 #8→#13 (2026-10-26)
+
+Inspección directa de los blobs de #8 (`8818366c79893a8fd78dee6a089fd990a71a9c52`) y #13 (`5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`):
+
+| Artefacto | #8 | #13 | Hallazgo |
+| --- | ---: | ---: | --- |
+| `supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql` | 400 líneas | 409 líneas | Conserva roles, RLS, políticas, grants y RPC autorizada; añade comprobación de expiración **después de obtener el bloqueo de línea** |
+| `scripts/ci/order-operations-identity-postgres17.test.mjs` | 529 líneas, 12 tests declarados | 789 líneas, 18 tests declarados | Añade casos de lector exacto, drift de CREATE, expiración bajo lock de línea, Fastify con login restringido, concurrencia de actores y JWT real |
+| `scripts/ci/order-operations-postgres17-integration.test.mjs` | 273 líneas, 6 tests declarados | 375 líneas, 8 tests declarados | Añade expiración de capacidad tras espera de lock y ciclo Fastify/PG17 de cocina→camarero con notificación, replay e historial |
+
+**Frontera temporal:** ambas versiones verifican la capacidad antes y después de esperar el lock de clave/membresía. La versión #13 repite `clock_timestamp()` y rechaza `p_expires_at_ms <= v_now_ms` o `v_key_expires_at <= v_now` tras `FOR UPDATE` sobre la línea. Evita ejecutar una transición si la capacidad caducó durante esa última espera.
+
+**Conclusión de esta comparación dirigida:** el cambio SQL identificado es un endurecimiento de seguridad temporal; la cobertura PG17 aumenta de 12→18 y de 6→8 tests declarados en los dos archivos revisados. Las cantidades son recuentos estáticos de declaraciones `test(...)`, no resultados de ejecución de estas ramas. El CI de #14 sobre HEAD previo `e47c1e2218cbbe9dbb272393461ba610708c5687` terminó SUCCESS (run 40291024568).
+
+**Limitación:** no afirmar equivalencia exhaustiva de todos los archivos ni activación aprobada de operaciones. Mantener #8 y #14 Draft.
