@@ -587,6 +587,7 @@ test('PG17 suspension rejects a capability that expires on the target membership
       WHERE user_id=$1 FOR SHARE`, [subjectId]);
     const pid = (await caller.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
     pending = caller.query(lifecycleSql, lifecycleArgs(capability));
+    pending.catch(() => {});
     await waitForBackendLock(pid);
     await delay(Math.max(0, capability.expiresAtMs - Date.now() + 200));
     await blocker.query('COMMIT');
@@ -645,6 +646,7 @@ test('PG17 revocation rejects a signing key that expires on the target membershi
       WHERE user_id=$1 FOR SHARE`, [subjectId]);
     const pid = (await caller.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
     pending = caller.query(lifecycleSql, lifecycleArgs(capability));
+    pending.catch(() => {});
     await waitForBackendLock(pid);
     const expiresAtMs = new Date(inserted.rows[0].expires_at).getTime();
     await delay(Math.max(0, expiresAtMs - Date.now() + 200));

@@ -138,8 +138,20 @@ fuentes normativas enumeradas al inicio de este informe.
 La línea base ampliada fue deliberadamente roja: las dos nuevas aserciones
 estáticas obtuvieron 10/12 PASS y la ejecución PostgreSQL alcanzó 12/14 casos
 de ciclo; los dos escenarios temporales produjeron `Missing expected
-rejection`. Esto confirma que las regresiones detectan el SQL vulnerable y no
-se limitaron a comprobar la implementación ya corregida.
+rejection`. Además, se reintrodujo de forma efímera y no comprometida el
+predicado histórico de token sobre el SQL ya instrumentado: el bloque outbox
+real quedó en 20/25 PASS y cinco escenarios fallaron con
+`staff_invitation_outbox_replay_missing` (invite, retry concurrente, resend y
+las dos composiciones de custodia). Restaurado el lookup durable, el mismo
+harness quedó en 87/87 PASS. Esto confirma que las regresiones detectan ambos
+SQL vulnerables y no se limitaron a comprobar la implementación ya corregida.
+
+La repetición histórica también detectó una carrera del harness: PostgreSQL
+podía entregar el `42501` esperado entre la liberación del lock y la conexión
+posterior de `assert.rejects`, provocando un `unhandledRejection` espurio. Los
+dos promises temporales registran ahora de inmediato un handler no consumidor
+y conservan el mismo rechazo para la aserción. La repetición segura completa
+pasó 87/87 sin alterar la semántica probada.
 
 La ejecución posterior queda así:
 
