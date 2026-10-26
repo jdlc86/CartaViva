@@ -36,3 +36,9 @@ El usuario precisa que **todas las aplicaciones deben percibirse como producto d
 - **Aceptación futura:** comprobar en navegador la coherencia entre pantallas cliente y cocina, incluyendo capturas por viewport/estado, transiciones funcionales, accesibilidad, rendimiento y regresión visual. Los detalles nuevos requieren prototipo y aprobación explícita antes de congelar baselines.
 
 Referencias de inspiración documentadas: `docs/design/FUNCTIONAL_AND_MOTION_RESEARCH.md` (Goiko y Porneat). La presente orientación no reemplaza las decisiones normativas anteriores.
+
+## Principio rector literal — 26-10-2026
+
+> Sabora debe parecer un restaurante de alta gama que ofrece una experiencia digital excepcional, tanto al comensal como al equipo.
+
+Este principio guía la evolución de la experiencia cliente, cocina y gestión, subordinado a los contratos normativos y sujeto a verificación visual y funcional.
