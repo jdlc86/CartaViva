@@ -551,3 +551,46 @@ documentado; cambiar actor, acción, email normalizado, rol u otra intención
 durable conserva el conflicto de correlación. Evidencia local posterior:
 25/25 casos de outbox dentro de 87/87 casos PostgreSQL 17. El gate operativo
 continúa abierto: no se activaron worker, proveedor, endpoint ni envío real.
+
+## Serialización canónica SQL → lector para sobres largos (26-10-2026)
+
+Se reprodujo en PostgreSQL 17 desechable el fallo del lector de dispatch con
+un token de 64 caracteres. El ciphertext ocupaba más de 57 bytes y
+`pg_catalog.encode(bytea, 'base64')` insertaba un salto de línea al superar la
+línea Base64 de 76 caracteres. La conversión posterior a Base64URL sustituía
+el alfabeto y retiraba el padding, pero conservaba el salto; el lector Node,
+correctamente estricto, cerraba el acceso con
+`invalid_staff_delivery_envelope`. En la línea base deliberadamente roja
+pasaron 86/87 escenarios PostgreSQL 17 y falló únicamente la recuperación
+cercada del sobre (24/25 en el bloque outbox).
+
+El candidato `staff_invitation_dispatch_envelope_pg17.sql` elimina `LF` y
+`CR` de la salida de `encode` antes de retirar padding y convertir el alfabeto
+a Base64URL. La corrección se aplica de forma uniforme a nonce, ciphertext y
+tag; no cambia bytes almacenados, AAD, hash, clave, autenticación GCM ni la
+validación canónica del lector. Tampoco cambia ownership, grants, políticas
+RLS, fence ni predicados de enrollment/versión/hash vigentes.
+
+La regresión real sella, almacena como `bytea`, recupera mediante el principal
+SQL restringido y descifra tokens de 32, 48, 57, 58, 64, 128 y 512 caracteres.
+En cada caso exige igualdad exacta con el sobre Base64URL original y ausencia
+de `CR`/`LF`. Conserva los rechazos por fence incorrecto, lectura anterior a
+la autorización, hash supersedido y enrollment revocado; el login de lectura
+continúa sin `SELECT` directo sobre custodia, outbox o enrollments. Una prueba
+Node separada conserva expresamente el rechazo de ciphertext no canónico que
+contenga un salto, por lo que la corrección no relaja la frontera
+criptográfica.
+
+Evidencia local posterior: `npm run check` con 895/895 pruebas y builds
+satisfactorios; harness completo con driver real, principal restringido y
+PostgreSQL 17 desechable con 87/87 escenarios (catálogo 22, operaciones 8,
+identidad 18, ciclo 14 y outbox 25). Ese conjunto vuelve a cubrir atomicidad,
+rollback, replay idempotente, concurrencia, fencing, revocación, resultado
+ambiguo del proveedor, privilegios mínimos, RLS y custodia cifrada.
+
+**Límites inalterados:** esto sigue siendo SQL candidato bajo
+`docs/security/sql-candidates`; no es migración operativa ni autorización de
+activación. No se montó endpoint, worker o proveedor, no se envió correo y no
+se modificaron Supabase operativo, Fleetia, VPS ni recursos compartidos. La
+entrega real, provisión/rotación de claves y observabilidad del proveedor
+siguen pendientes de sus decisiones y autorizaciones propias.

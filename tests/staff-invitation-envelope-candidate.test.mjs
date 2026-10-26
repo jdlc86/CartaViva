@@ -62,3 +62,27 @@ test('malformed or undersized ciphertext fails before decrypt',()=>{
       /invalid_staff_delivery_envelope/);
   }
 });
+
+test('canonical envelopes roundtrip boundary and long token lengths',()=>{
+  for(const length of [32,48,57,58,64,128,512]){
+    const candidateToken=String.fromCharCode(65+(length%26)).repeat(length);
+    const candidateHash=createHash('sha256').update(candidateToken).digest('hex');
+    const candidateArgs={...args,token:candidateToken,tokenHashHex:candidateHash};
+    const envelope=sealStaffInvitationToken(candidateArgs);
+    for(const value of [envelope.nonce,envelope.ciphertext,envelope.tag]){
+      assert.match(value,/^[A-Za-z0-9_-]+$/);
+      assert.doesNotMatch(value,/\r|\n/);
+    }
+    assert.equal(openStaffInvitationToken({
+      envelope,enrollmentId,inviteVersion,tokenHashHex:candidateHash,key,
+    }),candidateToken);
+  }
+});
+
+test('noncanonical wrapped base64url remains rejected',()=>{
+  const envelope=sealStaffInvitationToken(args);
+  const midpoint=Math.floor(envelope.ciphertext.length/2);
+  assert.throws(()=>open({...envelope,
+    ciphertext:`${envelope.ciphertext.slice(0,midpoint)}\n${envelope.ciphertext.slice(midpoint)}`}),
+  /invalid_staff_delivery_envelope/);
+});

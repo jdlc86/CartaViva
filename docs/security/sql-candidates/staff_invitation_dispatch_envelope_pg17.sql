@@ -37,11 +37,13 @@ CREATE FUNCTION sabora.read_staff_invitation_dispatch_envelope_candidate(
 LANGUAGE sql SECURITY DEFINER
 SET search_path=pg_catalog,pg_temp
 AS $fn$
+ -- pg_catalog.encode wraps base64 after 76 characters; strip those separators
+ -- before producing the canonical, unpadded Base64URL envelope.
  SELECT e.id,e.invite_version,encode(o.invite_token_hash,'hex'),
    c.key_id,
-   translate(rtrim(encode(c.nonce,'base64'),'='),'+/','-_'),
-   translate(rtrim(encode(c.ciphertext,'base64'),'='),'+/','-_'),
-   translate(rtrim(encode(c.tag,'base64'),'='),'+/','-_')
+   translate(rtrim(replace(replace(encode(c.nonce,'base64'),E'\n',''),E'\r',''),'='),'+/','-_'),
+   translate(rtrim(replace(replace(encode(c.ciphertext,'base64'),E'\n',''),E'\r',''),'='),'+/','-_'),
+   translate(rtrim(replace(replace(encode(c.tag,'base64'),E'\n',''),E'\r',''),'='),'+/','-_')
  FROM sabora.staff_invitation_outbox o
  JOIN sabora.staff_enrollments e ON e.id=o.enrollment_id
  JOIN sabora.staff_invitation_custody_candidate c ON c.job_id=o.id

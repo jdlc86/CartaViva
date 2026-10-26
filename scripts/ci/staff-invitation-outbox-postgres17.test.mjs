@@ -1096,7 +1096,7 @@ test('PG17 restricted custody owner commits atomic invite and denies direct acce
     'a'.repeat(16),'b'.repeat(48),'c'.repeat(22)]),error=>error?.code==='42501');
 });
 
-test('PG17 fenced dispatch envelope read is restricted and current-version only',async()=>{
+test('PG17 fenced dispatch emits canonical envelopes for boundary and long tokens',async()=>{
   const sql=await readFile(new URL(
     '../../docs/security/sql-candidates/staff_invitation_dispatch_envelope_pg17.sql',
     import.meta.url),'utf8');
@@ -1104,21 +1104,6 @@ test('PG17 fenced dispatch envelope read is restricted and current-version only'
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.read_staff_invitation_dispatch_envelope_candidate(uuid,uuid)
     TO ${runtimeCredentials.role}`);
-  const token='S'.repeat(48),hash=digest(token),key=randomBytes(32);
-  const enrollment=await seedEnrollment({tokenHash:hash});
-  const jobId=await seedJob(enrollment);
-  const envelope=sealStaffInvitationToken({
-    token,enrollmentId:enrollment.enrollmentId,inviteVersion:enrollment.version,
-    tokenHashHex:hash,key,keyId:'candidate_key_001',
-  });
-  await admin.query(`SELECT sabora.store_staff_invitation_custody_candidate(
-    $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
-    [jobId,enrollment.enrollmentId,enrollment.version,hash,envelope.keyId,
-      envelope.nonce,envelope.ciphertext,envelope.tag]);
-  const reader=createStaffDispatchEnvelopeReaderCandidate({
-    query:(...args)=>runtime.query(...args),
-    resolveKey:async id=>id==='candidate_key_001'?key:null,
-  });
   const privileges=await runtime.query(`SELECT
     has_table_privilege(current_user,'sabora.staff_invitation_custody_candidate','SELECT') AS custody,
     has_table_privilege(current_user,'sabora.staff_invitation_outbox','SELECT') AS outbox,
@@ -1126,22 +1111,62 @@ test('PG17 fenced dispatch envelope read is restricted and current-version only'
   assert.deepEqual(privileges.rows,[{custody:false,outbox:false,enrollment:false}]);
   await assert.rejects(runtime.query('SELECT * FROM sabora.staff_invitation_custody_candidate'),
     error=>error?.code==='42501');
-  const wrongFence=uuid('e');
-  assert.deepEqual(await reader.read({jobId,fence:wrongFence}),{authorized:false});
-  const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
-  assert.equal(claim.claimed,true);
-  assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
-  assert.deepEqual(await authorizeStaffInvitationDispatch({
-    withTransaction,repository,jobId,fence:claim.fence}),{authorized:true});
-  assert.deepEqual(await reader.read({jobId,fence:wrongFence}),{authorized:false});
-  const opened=await reader.read({jobId,fence:claim.fence});
-  assert.equal(opened.authorized,true);
-  assert.equal(opened.token,token);
-  assert.equal(opened.inviteVersion,enrollment.version);
-  await admin.query(`UPDATE sabora.staff_enrollments
-    SET invite_token_hash=decode($2,'hex') WHERE id=$1`,
-    [enrollment.enrollmentId,digest('superseded-token')]);
-  assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
+  const key=randomBytes(32);
+  const reader=createStaffDispatchEnvelopeReaderCandidate({
+    query:(...args)=>runtime.query(...args),
+    resolveKey:async id=>id==='candidate_key_001'?key:null,
+  });
+  for(const [index,length] of [32,48,57,58,64,128,512].entries()){
+    const token=String.fromCharCode(65+index).repeat(length);
+    const hash=digest(token);
+    const enrollment=await seedEnrollment({tokenHash:hash});
+    const jobId=await seedJob(enrollment);
+    const envelope=sealStaffInvitationToken({
+      token,enrollmentId:enrollment.enrollmentId,inviteVersion:enrollment.version,
+      tokenHashHex:hash,key,keyId:'candidate_key_001',
+    });
+    await admin.query(`SELECT sabora.store_staff_invitation_custody_candidate(
+      $1::uuid,$2::uuid,$3::integer,$4::text,$5::text,$6::text,$7::text,$8::text)`,
+      [jobId,enrollment.enrollmentId,enrollment.version,hash,envelope.keyId,
+        envelope.nonce,envelope.ciphertext,envelope.tag]);
+    const wrongFence=uuid('e');
+    assert.deepEqual(await reader.read({jobId,fence:wrongFence}),{authorized:false});
+    const claim=await claimCurrentStaffInvitation({withTransaction,repository,jobId});
+    assert.equal(claim.claimed,true);
+    assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
+    assert.deepEqual(await authorizeStaffInvitationDispatch({
+      withTransaction,repository,jobId,fence:claim.fence}),{authorized:true});
+    assert.deepEqual(await reader.read({jobId,fence:wrongFence}),{authorized:false});
+    const serialized=await runtime.query(`SELECT * FROM
+      sabora.read_staff_invitation_dispatch_envelope_candidate($1::uuid,$2::uuid)`,
+    [jobId,claim.fence]);
+    assert.equal(serialized.rows.length,1);
+    assert.equal(serialized.rows[0].result_nonce,envelope.nonce);
+    assert.equal(serialized.rows[0].result_ciphertext,envelope.ciphertext);
+    assert.equal(serialized.rows[0].result_tag,envelope.tag);
+    for(const field of ['result_nonce','result_ciphertext','result_tag']){
+      assert.match(serialized.rows[0][field],/^[A-Za-z0-9_-]+$/);
+      assert.doesNotMatch(serialized.rows[0][field],/\r|\n/);
+    }
+    const opened=await reader.read({jobId,fence:claim.fence});
+    assert.equal(opened.authorized,true);
+    assert.equal(opened.token,token);
+    assert.equal(opened.inviteVersion,enrollment.version);
+    if(length===64){
+      await admin.query(`UPDATE sabora.staff_enrollments
+        SET invite_token_hash=decode($2,'hex') WHERE id=$1`,
+      [enrollment.enrollmentId,digest('superseded-token')]);
+      assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
+    }
+    if(length===128){
+      await admin.query(`UPDATE sabora.staff_enrollments
+        SET state='revoked',invite_token_hash=sha256(invite_token_hash),
+          revoked_at=clock_timestamp(),revocation_reason='dispatch reader regression'
+        WHERE id=$1`,
+      [enrollment.enrollmentId]);
+      assert.deepEqual(await reader.read({jobId,fence:claim.fence}),{authorized:false});
+    }
+  }
 });
 
 test('PG17 terminal custody purge is bounded, privileged and idempotent',async()=>{

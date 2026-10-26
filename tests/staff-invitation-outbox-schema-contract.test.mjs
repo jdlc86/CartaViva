@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
 const file = new URL('../docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql', import.meta.url);
+const dispatchEnvelopeFile = new URL(
+  '../docs/security/sql-candidates/staff_invitation_dispatch_envelope_pg17.sql',
+  import.meta.url);
 
 test('candidate outbox schema exposes no runtime grants and keeps FORCE RLS', async () => {
   const sql = await readFile(file, 'utf8');
@@ -84,4 +87,14 @@ test('enqueue owner receives only internal function and outbox column privileges
   assert.match(sql, /CREATE POLICY staff_invitation_enqueue_owner_insert/);
   assert.match(sql, /CREATE POLICY staff_invitation_enqueue_owner_cancel/);
   assert.doesNotMatch(sql, /GRANT\s+(?:ALL|DELETE|TRUNCATE|TRIGGER|REFERENCES)\b/i);
+});
+
+test('dispatch envelope SQL emits unwrapped canonical base64url fields', async () => {
+  const sql = await readFile(dispatchEnvelopeFile, 'utf8');
+  const normalizedFields = sql.match(
+    /replace\(replace\(encode\(c\.(?:nonce|ciphertext|tag),'base64'\),E'\\n',''\),E'\\r',''\)/g) ?? [];
+  assert.equal(normalizedFields.length, 3);
+  assert.match(sql, /SECURITY DEFINER[\s\S]*SET search_path=pg_catalog,pg_temp/);
+  assert.match(sql, /o\.fence=p_fence AND o\.state='dispatching'/);
+  assert.match(sql, /e\.state='invited'/);
 });

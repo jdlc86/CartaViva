@@ -192,3 +192,39 @@ Los únicos avisos fueron los informativos ya existentes sobre la futura imagen
 de `ubuntu-latest` y acciones Node.js 20 ejecutadas por GitHub con Node.js 24.
 El comentario de cierre del PR conserva la evidencia del SHA documental
 definitivo. El PR permanece en Draft.
+
+## Seguimiento de implementación del último P2 (no es revisión independiente)
+
+Se corrigió el defecto comunicado en `discussion_r4373720935`. PostgreSQL
+envolvía a 76 caracteres la salida de `encode(ciphertext, 'base64')`; la
+conversión SQL a Base64URL preservaba el salto y el lector canónico rechazaba
+el sobre. La reproducción previa con un token de 64 caracteres obtuvo 86/87
+escenarios PostgreSQL 17: el bloque outbox quedó en 24/25 con
+`invalid_staff_delivery_envelope` en el recorrido SQL → lector.
+
+La función candidata retira `LF` y `CR` antes del padding y del cambio de
+alfabeto Base64URL. No se modificó el lector estricto, AES-256-GCM, AAD,
+verificación de hash, estados, fencing, ownership, RLS o grants. La regresión
+PostgreSQL 17 recorre cifrado, almacenamiento, lectura restringida y descifrado
+para longitudes 32, 48, 57, 58, 64, 128 y 512; compara nonce, ciphertext y tag
+canónicos con el sobre original, y comprueba supersesión y revocación después
+de una lectura válida. El principal de aceptación carece de SELECT directo
+sobre las tres tablas protegidas.
+
+Resultados locales:
+
+- pruebas enfocadas de sobre y contrato SQL: 18/18 PASS;
+- harness completo PostgreSQL 17: 87/87 PASS, incluido outbox 25/25;
+- `npm run check`: 895/895 PASS y builds de API, cliente y gestión;
+- `node --check` del harness y `git diff --check`: PASS.
+
+La primera ejecución posterior a la corrección detectó un error del fixture de
+revocación: intentaba cambiar solo `state` y la constraint
+`staff_enrollment_progression` lo rechazó. El fixture se corrigió aportando
+hash rotado, instante y razón de revocación; no se debilitó la constraint.
+
+Este bloque es implementación y validación propia, no una auditoría
+independiente. El PR debe permanecer Draft y pasar a una nueva revisión
+independiente. Persisten únicamente los límites operativos ya documentados:
+ningún worker, proveedor, endpoint, despliegue ni cambio en Supabase operativo,
+Fleetia, VPS o recursos compartidos fue activado.
