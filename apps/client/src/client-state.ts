@@ -97,6 +97,7 @@ export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:num
     !Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
  const current=lines.find(line=>line.itemId.toLowerCase()===item.id.toLowerCase());
  if(delta>0&&!item.available)return lines;
+ if(delta<0&&!current)return lines;
  if(delta>0&&!current&&lines.length>=MAX_BASKET_LINES)return lines;
  const quantity=(current?.quantity??0)+delta;
  if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==item.id.toLowerCase()));
