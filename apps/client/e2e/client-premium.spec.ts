@@ -101,3 +101,46 @@ test('reduced motion removes nonessential transitions and animations',async({pag
  expect(values.transition).toBe('0s');
  expect(values.animation).toBe('none');
 });
+
+test('basket changes propagate between open tabs without API polling',async({page,context})=>{
+ const other=await context.newPage();
+ await other.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
+ await other.goto('/');
+ await expect(other.getByTestId('product-card')).toHaveCount(4);
+ const card=page.getByTestId('product-card').filter({hasText:'Arroz meloso'});
+ await card.getByRole('button',{name:/Añadir$/}).click();
+ await expect(other.getByText('1 platos')).toBeVisible();
+ await other.getByRole('button',{name:/Cesta: 1/}).click();
+ await expect(other.getByRole('dialog',{name:'Tu selección'})).toContainText('Arroz meloso');
+ await other.getByRole('dialog',{name:'Tu selección'}).getByRole('button',{name:/Quitar una unidad de Arroz meloso/}).click();
+ await expect(page.getByText('1 platos')).toHaveCount(0);
+ await other.close();
+});
+
+test('H3 selection review resolves mixed catalog incidents before allowing QR information',async({page})=>{
+ const id='11111111-1111-4111-8111-111111111111';
+ const sold='22222222-2222-4222-8222-222222222222';
+ const removed='33333333-3333-4333-8333-333333333333';
+ await page.evaluate(({id,sold,removed})=>localStorage.setItem('sabora.client.selection.v1',JSON.stringify([
+  {itemId:id,name:'Arroz meloso',priceCents:100,quantity:2},
+  {itemId:sold,name:'Berenjena asada',priceCents:980,quantity:1},
+  {itemId:removed,name:'Tarta de limón',priceCents:650,quantity:1}
+ ])),{id,sold,removed});
+ await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([
+  catalog[0],{...catalog[1],available:false},catalog[3]
+ ])}));
+ await page.reload();
+ await page.getByRole('button',{name:/Cesta: 4/}).click();
+ const dialog=page.getByRole('dialog',{name:'Tu selección'});
+ await expect(dialog).toContainText('3 plato(s) requieren una decisión');
+ await expect(dialog.getByRole('button',{name:'Pedir en mesa'})).toBeDisabled();
+ await dialog.getByRole('button',{name:'Aceptar nuevo precio'}).click();
+ await expect(dialog).toContainText('2 plato(s) requieren una decisión');
+ await dialog.getByRole('button',{name:'Retirar de la cesta'}).first().click();
+ await dialog.getByRole('button',{name:'Retirar de la cesta'}).click();
+ await expect(dialog.getByRole('button',{name:'Pedir en mesa'})).toBeEnabled();
+ await dialog.getByRole('button',{name:'Pedir en mesa'}).click();
+ await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('no habilitará el pedido');
+ const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]'));
+ expect(saved).toEqual([{itemId:id,name:'Arroz meloso',priceCents:1290,quantity:2}]);
+});
