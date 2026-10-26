@@ -93,3 +93,18 @@ test('catalog reconciliation refreshes IDs regardless of UUID casing',()=>{
   {itemId:id.toUpperCase(),name:item.name,priceCents:item.priceCents,quantity:2},
  ]);
 });
+
+test('malformed stored selections and invalid write inputs fail closed without exceptions',()=>{
+ const target=storage();
+ for(const bad of [
+  [{itemId:null,name:'Plato',priceCents:100,quantity:1}],
+  [{itemId:123,name:'Plato',priceCents:100,quantity:1}],
+  [{itemId:id,name:'Plato',priceCents:100,quantity:1}, {itemId:id.toUpperCase(),name:'Otro',priceCents:100,quantity:1}],
+ ]){
+  target.values.set('sabora.client.selection.v1',JSON.stringify(bad));
+  assert.deepEqual(loadBasket(target),[]);
+  const original=target.values.get('sabora.client.selection.v1');
+  assert.equal(saveBasket(target,bad),false);
+  assert.equal(target.values.get('sabora.client.selection.v1'),original);
+ }
+});
