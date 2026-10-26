@@ -270,3 +270,12 @@ Comparación de contenido de `order-operations-composition.mjs` e inspección de
 **Clasificación:** divergencia #8 en estos dos archivos explicada por incorporación de una ruta de transición aislada y un preflight de lector de mínimos privilegios. No hay evidencia estática de regresión de interfaz; la verificación de comportamiento está cubierta por pruebas CI #13 documentadas. El gate de lectura de tablero/historial continúa cerrado por decisión normativa.
 
 **Limitación:** este cierre es de archivos concretos, no certificación integral de todas las diferencias de #8 ni autorización de activación operativa.
+
+## Bloque M — CI de #14 y alcance residual de #8 (2026-10-26)
+
+- GitHub Actions `Sabora CI` run **40291024568**, ejecutado sobre HEAD #14 `e47c1e2218cbbe9dbb272393461ba610708c5687`, finalizó **completed/success**.
+- Inventario reproducible de árboles Git para #8 `8818366c79893a8fd78dee6a089fd990a71a9c52` frente a #13 `5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`: se observaron **27 rutas compartidas con SHA de blob diferente**. Esto no significa 27 regresiones: incluye workflows, documentación normativa, pruebas, migración SQL y código.
+- De las 27 rutas divergentes, seis son módulos API de operaciones (`composition`, `coordinator`, `http`, `identity-preflight`, `repository` y `package.json`); las cinco primeras ya cuentan con comparación dirigida en los bloques I–L. **No se da por cerrada** la equivalencia de las restantes, en particular la migración SQL y las pruebas de identidad y concurrencia.
+- El siguiente gate de aceptación debe contrastar la migración `20261024190000_sabora_order_operation_actor_capability_candidate.sql` y las pruebas PG17 de ambos árboles, separando ampliaciones de cobertura de posibles cambios de semántica. CI verde acredita la rama auditada, no una equivalencia exhaustiva con PR #8.
+
+**Decisión:** mantener #8 y #14 Draft; no cerrar, fusionar ni activar operaciones.
