@@ -459,3 +459,13 @@ Inspección de `.github/workflows/ci.yml` y `apps/management/package.json` en #1
 En #14 se añadieron `.github/workflows/management-browser-visual-smoke.yml` y `scripts/ci/management-browser-visual-smoke.sh`. El workflow corre para cambios relevantes del PR, instala Chromium mediante Playwright CLI fijado a `1.56.1`, compila `@sabora/management` con dependencias congeladas, sirve Vite solo en `127.0.0.1:4178` y captura ocho PNG (vistas `resumen` y `comandas` × anchuras 360/460/900/1440). Comprueba que las capturas existen y son PNG; publica artefacto de siete días. No abre red al host ni conecta backend. **No es todavía una aserción de ausencia de desbordamiento ni una aprobación visual humana.**
 
 Ejecuciones observadas para HEAD `82c06c5db740e3fdbc079d91f9c66881505cb4d6`: visual `40294894912`, bootstrap `40294894960`, Sabora CI `40294895006`, todas `in_progress` en la consulta. No afirmar éxito antes de conclusión; si falla, corregir el harness y repetir en #14. El gate visual completo continúa pendiente de revisión de las capturas y ampliación de las aserciones de interacción.
+
+## Hito AA — inspección de capturas y corrección de navegación móvil (2026-10-26)
+
+**Evidencia de ejecución:** HEAD #14 `10a7fc68ed196af0af5b0461e90d3467b222a9da`: visual `40294946580`, Sabora CI `40294946348` y bootstrap `40294946467`, los tres `completed/success`. El artefacto visual `12637359039` incluye ocho capturas PNG. Se descargó y revisó el mosaico y la captura `comandas-360.png`.
+
+**Hallazgo concreto:** en `comandas-360.png`, el menú superior solo muestra Resumen, Catálogo y Mesas y QR; Comandas y Equipo están desplazados horizontalmente y no son visibles sin descubrir el scroll. El CSS vigente tenía `repeat(5, 104px)` y `overflow-x:auto` bajo 460px. No se identificó desbordamiento de la tarjeta principal en la captura revisada.
+
+**Corrección en #14:** `apps/management/src/style.css` usa tres columnas flexibles `repeat(3,minmax(0,1fr))` en pantallas de hasta 460px, con navegación en dos filas, sin overflow horizontal y sin `min-width:100px` en cada tab. `apps/management/tests/ui-contract.test.mjs` añade aserciones estáticas de esta regla.
+
+**Estado de aceptación:** la corrección requiere un **nuevo run visual y revisión de sus capturas**; los runs exitosos arriba citados corresponden al diseño anterior. La inspección humana fue parcial (mosaico y detalle móvil), no exhaustiva de todos los estados y vistas. No se activó backend, ni se realizaron despliegues.
