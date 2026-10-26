@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Sabora — Carta digital",
+  "short_name": "Sabora",
+  "description": "Carta digital cliente del restaurante Sabora",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F8F7F4",
+  "theme_color": "#146B57",
+  "categories": ["food", "lifestyle"],
+  "icons": [
+    {"src":"/icons/sabora-mark.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
