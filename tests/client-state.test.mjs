@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../apps/client/src/client-state.ts',import.me
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports','require',javascript)(module,module.exports,require);
-const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
+const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
 const storage=(initial={})=>{
@@ -183,4 +183,14 @@ test('basket review remains blocked until all distinct price and availability in
  assert.equal(basketTotal(reviewed),2580);
  assert.equal(basketQuantity(reviewed),2);
  assert.deepEqual(lines[0],{itemId:id,name:'Precio anterior',priceCents:100,quantity:2});
+});
+
+test('device sync uses only local selection and preferences keys and rejects malformed mutations',()=>{
+ assert.equal(CLIENT_BASKET_STORAGE_KEY,'sabora.client.selection.v1');
+ assert.equal(CLIENT_PREFERENCES_STORAGE_KEY,'sabora.client.preferences.v2');
+ const existing=[{itemId:id,name:'Arroz',priceCents:100,quantity:1}];
+ assert.equal(changeBasket(existing,{...item,id:null},1),existing);
+ assert.equal(changeBasket(existing,{...item,id:123},1),existing);
+ assert.equal(saveBasket(storage(),[{...existing[0],itemId:null}]),false);
+ assert.deepEqual(basketIssues(existing,[{...item,id:null}]),[{itemId:id,reason:'unpublished'}]);
 });
