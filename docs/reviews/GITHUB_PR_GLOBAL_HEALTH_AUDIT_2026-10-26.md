@@ -469,3 +469,11 @@ Ejecuciones observadas para HEAD `82c06c5db740e3fdbc079d91f9c66881505cb4d6`: vis
 **Corrección en #14:** `apps/management/src/style.css` usa tres columnas flexibles `repeat(3,minmax(0,1fr))` en pantallas de hasta 460px, con navegación en dos filas, sin overflow horizontal y sin `min-width:100px` en cada tab. `apps/management/tests/ui-contract.test.mjs` añade aserciones estáticas de esta regla.
 
 **Estado de aceptación:** la corrección requiere un **nuevo run visual y revisión de sus capturas**; los runs exitosos arriba citados corresponden al diseño anterior. La inspección humana fue parcial (mosaico y detalle móvil), no exhaustiva de todos los estados y vistas. No se activó backend, ni se realizaron despliegues.
+
+## Hito AB — CI verde y revisión visual móvil de la corrección (2026-10-26)
+
+**HEAD validado:** `2ce061f510dd81443dc393cfba07d4e5b8fdb104`. Runs GitHub Actions: visual `40298986989` SUCCESS; Sabora CI `40298986898` SUCCESS; bootstrap `40298986809` SUCCESS. La instalación Chromium acotada finalizó en 10 s (09:22:13–09:22:23 UTC) y la captura en 16 s (09:22:23–09:22:39 UTC), eliminando el bloqueo observado en la ejecución cancelada `40297553845`.
+
+**Artefacto revisado:** `12639337523`, ocho PNG para Resumen/Comandas a 360/460/900/1440 px. Se abrieron y examinaron específicamente `comandas-360.png` y `comandas-460.png`: las cinco secciones (Resumen, Catálogo, Mesas y QR, Comandas, Equipo) se muestran simultáneamente en dos filas, sin requerir desplazamiento horizontal del menú. Los estados no operativos, la tarjeta de comandas vacía y los controles deshabilitados son visibles y legibles. No se observó recorte lateral de contenido en estas dos capturas.
+
+**Límites:** aprobación visual **del hallazgo concreto de navegación móvil**, no certificación E2E general, accesibilidad integral, interacción teclado, backend conectado ni los restantes seis PNG. El PR continúa Draft; no hay despliegue.
