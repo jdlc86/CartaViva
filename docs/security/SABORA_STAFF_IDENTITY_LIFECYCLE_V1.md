@@ -106,3 +106,34 @@ Quedan fuera de este hito: aplicar la migración en Supabase, provisionar o rota
 secretos, crear el login operativo, enviar correo, registrar credenciales
 WebAuthn, montar rutas/UI, desplegar y migrar datos existentes. Todo ello exige
 contrato y autorización posteriores. Fleetia y VPS están fuera de alcance.
+
+## Corrección de replay durable y aceptación PostgreSQL 17 del PR #13
+
+La validación de respuesta del repositorio conserva la igualdad estricta entre
+el `enrollment_id` solicitado y el devuelto para una invitación nueva y para
+todas las acciones distintas de `invite`. La única excepción es un resultado
+con `action=invite` y `repeated=true`: en ese caso el wrapper devuelve el UUID
+durable de la primera invitación, aunque el coordinador haya regenerado un UUID
+y un token efímeros al procesar el reintento. El resto del contrato de fila
+(sujeto, rol, arista de estado, versión, evento y tipos) sigue validándose sin
+relajación.
+
+El adaptador HTTP responde `200` al replay con el UUID y evento originales. El
+token recién generado no coincide con el hash durable y no se expone por JSON
+ni se entrega de nuevo. Un cambio de intención bajo la misma correlación falla;
+una revocación posterior impide recuperar el replay. No existe una aceptación
+genérica de UUID distintos.
+
+La aceptación real en PostgreSQL 17 desechable recorre JWT RS256 verificado,
+membresía ADMIN leída por `sabora_staff_reader` bajo su política RLS, coordinador,
+emisión HMAC, transacción, repositorio y wrapper SQL. Comprueba primera
+invitación, reintento con UUID/token distintos, una sola entrega candidata, una
+sola fila de idempotencia y auditoría, cambio de rol, dos reintentos concurrentes
+y revocación antes de otro replay. El login de ciclo mantiene como única
+capacidad positiva `EXECUTE` del wrapper y cero acceso directo a tablas.
+
+Evidencia local del commit de código `06a32fe`: 12/12 casos del módulo de ciclo
+dentro del harness conjunto y 85/85 casos PostgreSQL 17 totales; suite raíz
+891/891. La evidencia de GitHub Actions se registra en el informe del PR sobre
+el SHA publicado. Estas pruebas no montan la ruta en `server.mjs`, no activan
+worker ni proveedor de correo y no autorizan aprovisionamiento o despliegue.

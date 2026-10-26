@@ -395,3 +395,33 @@ También se identificó un P2: el login de lectura de personal no podía cumplir
 ## Auditoría Codex: reintentos de invitaciones y reenvíos (25-10-2026)
 
 La migración candidata `20261025081318_staff_identity_lifecycle_candidate.sql` calcula la huella durable de `invite` a partir de la intención estable (acción, correo hasheado, rol y restantes campos pertinentes), excluyendo el UUID de inscripción y el hash del token generados de nuevo por el coordinador. Para `resend`, mantiene el UUID de inscripción y excluye el hash del token recién generado. El bloqueo por actor/correlación y la validación de titularidad preceden la consulta de replay, que se resuelve antes del bloqueo de la inscripción nueva. Si cambia la intención, la huella produce conflicto; si coincide, devuelve el resultado original con `repeated=true` sin persistir el token recién generado ni volver a entregarlo. Se revalida la caducidad tras esperar el bloqueo de inscripción antes de mutar. Las pruebas PG17 en `scripts/ci/staff-lifecycle-postgres17.test.mjs` cubren replay de invitación con nuevo UUID/token, rechazo por cambio de rol y replay de reenvío sin incremento adicional de versión. **No implica autorización para despliegue ni cierre hasta CI verde y nueva revisión independiente.**
+
+## Cierre del lector exacto y composición real del PR #13 (26-10-2026)
+
+El preflight positivo de `sabora_staff_reader` exige exclusivamente
+`SELECT(user_id,role,state)` sobre `sabora.staff_members`. Además de negar los
+siete privilegios de tabla, niega `INSERT`, `UPDATE` y `REFERENCES` mediante
+`has_any_column_privilege` sobre **cualquier** columna; las columnas restantes
+tampoco pueden tener `SELECT`. Contar una sola relación accesible no sustituye
+esta comprobación del tipo de privilegio. El principal mutador conserva cero
+privilegios directos de tabla/columna, cero secuencias y una única RPC firmada.
+
+El harness PostgreSQL 17 concede temporalmente al lector real, uno por uno,
+`UPDATE(state)`, `INSERT(role)`, `REFERENCES(user_id)` y `DELETE`, y después la
+combinación de los tres permisos por columna. Cada deriva debe ser rechazada;
+un bloque `finally` revoca el permiso y exige recuperar el preflight positivo.
+También se ejecuta la consulta exacta bajo la política RLS existente. No se usa
+`postgres` como sustituto del lector en esta aceptación.
+
+La composición real registra únicamente el POST de transición después de los
+dos preflights, verifica un JWT RS256, consulta la membresía actual con el pool
+lector y muta mediante el login HMAC restringido. La prueba acredita actor
+durable correcto, denegación sin token y con firma alterada, y ausencia de las
+rutas GET. Una prueba separada bloquea `order_lines FOR UPDATE` hasta que
+caducan capacidad y clave temporal; la revalidación posterior al lock rechaza
+sin evento, correlación, notificación ni cambio de estado.
+
+Evidencia local del commit `06a32fe`: 18/18 casos de identidad de operaciones,
+85/85 casos del harness PostgreSQL 17 conjunto y 891/891 pruebas Node. La
+validación es desechable y aislada; no concede permisos operativos, no activa
+rutas en `server.mjs` y no autoriza merge o despliegue.

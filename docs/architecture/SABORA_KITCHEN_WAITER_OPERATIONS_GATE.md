@@ -538,3 +538,25 @@ La rama candidata `integration/sabora-pr11-merge-reconciliation` conserva el ár
 La comparación GitHub de la rama candidata frente a la base confirma `status=ahead`, `behind_by=0`; el PR #13 está en Draft y `mergeable_state=clean`. Commit de integración `1f4e1536711dfdcdf70c3d187b59ba423c98103c`: Sabora CI run `40236383992` SUCCESS y Bootstrap Sabora lockfile run `40236384037` SUCCESS, con verificaciones PostgreSQL 17 desechables y construcción aislada. El PR #11 original sigue siendo un PR distinto y no se ha fusionado ni modificado su rama.
 
 **Límite de aceptación:** este hito cierra la compatibilidad de historia Git y la regresión automatizada de la rama candidata, pero no autoriza el merge, el despliegue, la activación de GET tablero/historial, ni concede permisos SQL de producción. Mantener el aislamiento absoluto del VPS y de Fleetia.
+
+## Aceptación PostgreSQL 17 del lector y POST aislado (26-10-2026)
+
+El gate de transición aislada se ha ejercitado de extremo a extremo con dos
+logins PostgreSQL 17 distintos y no privilegiados. `sabora_staff_reader` posee
+solo `SELECT(user_id,role,state)` y su política RLS; el login mutador no posee
+tablas ni columnas y solo ejecuta el wrapper HMAC autorizado. El preflight
+rechaza grants por columna `UPDATE(state)`, `INSERT(role)` y
+`REFERENCES(user_id)`, aislados y combinados, además de escritura a nivel tabla.
+
+Tras ambos preflights, Fastify valida un JWT RS256, resuelve la membresía actual
+con el lector y ejecuta una transición atribuida al mismo sujeto mediante el
+pool mutador. Sin bearer o con firma alterada no llega a SQL de negocio. La
+composición solo registra `POST /api/v1/operations/order-lines/:lineId/transitions`;
+tablero e historial permanecen físicamente ausentes. También se prueba que una
+capacidad que caduca esperando el lock de la línea no deja efectos.
+
+Esta evidencia cierra la aceptación candidata solicitada para el PR #13, no la
+activación operativa: `server.mjs` sigue sin importar esta composición; no se
+han creado credenciales persistentes, aplicado migraciones remotas, desplegado
+servicios ni tocado Fleetia o el VPS. La revisión independiente posterior al CI
+final continúa siendo un gate humano separado.
