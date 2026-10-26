@@ -295,3 +295,20 @@ Inspección directa de los blobs de #8 (`8818366c79893a8fd78dee6a089fd990a71a9c5
 **Conclusión de esta comparación dirigida:** el cambio SQL identificado es un endurecimiento de seguridad temporal; la cobertura PG17 aumenta de 12→18 y de 6→8 tests declarados en los dos archivos revisados. Las cantidades son recuentos estáticos de declaraciones `test(...)`, no resultados de ejecución de estas ramas. El CI de #14 sobre HEAD previo `e47c1e2218cbbe9dbb272393461ba610708c5687` terminó SUCCESS (run 40291024568).
 
 **Limitación:** no afirmar equivalencia exhaustiva de todos los archivos ni activación aprobada de operaciones. Mantener #8 y #14 Draft.
+
+## Bloque O — reconciliación de interfaz administrativa #5→#13 (2026-10-26)
+
+Se contrastaron los contenidos de `apps/management/src/main.tsx`, `views/OrdersView.tsx` y `style.css` entre #5 (`6fbff90597d0e3e8b5b63cc5613b390b3b5029c2`) y #13 (`5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`).
+
+- `ManagementApp` conserva los parámetros `tablesGateway` y `catalogGateway`, la navegación a `CatalogView`/`TablesView` y el indicador de lectura parcial/no operativa. Añade `operationsGateway?: OrderOperationsGateway` y lo pasa a `OrdersView`; el montaje normal continúa `<ManagementApp/>`, sin conectar ninguna operación.
+- `OrdersView` pasa de 75 a 224 líneas: de pantalla desconectada a lectura de tablero, transiciones, historial, recarga y estados de error **condicionados** a un gateway inyectado. En ausencia de gateway, se conserva explícitamente el estado `Canal operativo sin conectar` y no se simulan datos.
+- `style.css` pasa de 456 a 498 líneas y conserva los media queries de 1180, 900, 700 y 460 px, `:focus-visible` y `prefers-reduced-motion: reduce`. Las diferencias visuales exactas no quedan certificadas por la lectura estática.
+- Inventario de árboles: #5 tiene 16 rutas compartidas modificadas frente a #13; entre código de aplicación/pruebas las divergencias se concentran en `apps/api/package.json`, `main.tsx`, `style.css`, `OrdersView.tsx` y `tests/postgres-transaction.test.mjs`. Catálogo y mesas mantienen sus modelos y vistas con SHA idéntico, según el inventario previo.
+
+**Clasificación:** integración funcional del gateway de comandas como ampliación opt-in, sin evidencia de activación implícita. Pendiente regresión visual real (capturas/navegador) y contraste de reglas CSS añadidas; no afirmar equivalencia visual completa.
+
+## Bloque P — inventario residual de #4
+
+Árbol #4 (`bd268c67d8c47fb64c3367663cb85d46d569c2f0`) frente a #13: 40 rutas compartidas con blobs diferentes. Entre ellas: confirmación cliente, repositorios de catálogo/visita, cliente React, primitivas/vistas de administración, API de operaciones y pruebas. Esto excede la mera pantalla cocina/camarero; exige evaluación por dominio antes de decidir disposición del PR #4.
+
+**Estado de CI:** al inicio de este bloque, HEAD #14 `e0127e6c63b5852653c41eb1e4fdca4c3f5dd068` tenía run `40291548926` en progreso; no se registra como éxito hasta verificar conclusión.
