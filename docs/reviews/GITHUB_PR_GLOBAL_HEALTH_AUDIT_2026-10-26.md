@@ -245,3 +245,15 @@ Se leyeron ambos contenidos en las ramas originales y en HEAD #13 para los sigui
 ## Bloque J — último estado de GitHub Actions conocido
 
 Al inicio de esta revisión, #14 HEAD `385d80bb95a3977c9327920b9c1d34fe53d55c1b` tenía `Sabora CI` run **40290419763** en estado `in_progress`. No se registra como `success` hasta comprobar su conclusión. Los runs anteriores documentados sí terminaron en `success`.
+
+## Bloque K — cierre dirigido de divergencia SQL en repositorio de operaciones (2026-10-26)
+
+Comparación textual íntegra de `apps/api/src/order-operations-repository.mjs` entre #8 (`8818366c79893a8fd78dee6a089fd990a71a9c52`) y #13 (`5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`):
+
+- Se mantienen las mismas tres exportaciones: `createOrderOperationsRepository`, `ORDER_OPERATION_STATUSES` y `ORDER_OPERATION_TARGETS`.
+- `verifyMembership` conserva consulta parametrizada a `sabora.staff_members` y bloqueo `FOR SHARE`.
+- `listBoard` conserva consulta SQL parametrizada, joins, orden, filtros por rol, límites y cursor; en #13, la validación de la fila adicional (`LIMIT limit+1`) se extiende a **todos** los campos antes de seleccionar las `limit` filas visibles. En #8 se validaban orden/identificadores de la fila extra, pero el resto de campos únicamente de las filas visibles.
+- `transitionLine` mantiene la invocación a `sabora.transition_order_line_authorized_candidate` con nueve parámetros tipados y capacidad firmada; se mantienen las validaciones de transición y de respuesta.
+- `listHistory` conserva la consulta parametrizada y validaciones de secuencia/eventos.
+
+**Conclusión:** la divergencia de tres líneas en este archivo corresponde a un endurecimiento fail-closed de la fila de desbordamiento, sin indicios de pérdida de API o cambio de contrato SQL. Se considera **cerrada la revisión dirigida de este archivo**, no la auditoría integral de toda #8. No se han modificado SQL ni roles operativos.
