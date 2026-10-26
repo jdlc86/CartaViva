@@ -110,3 +110,25 @@ Se inspeccionó el contenido real de `apps/management/src/main.tsx` en #5 y #13:
 ### Conclusión operativa
 
 La integración de navegación y lectura de #5 está preservada a nivel de código inspeccionado; las interfaces de operaciones de #4 están presentes, pero su comportamiento modificado requiere pruebas. El contrato de capacidad de #8 conserva su módulo base exacto, pero el preflight SQL debe mantenerse sujeto a revisión y pruebas de seguridad. Antes de archivar PR se requiere la matriz final de casos de aceptación y una revisión de diferencias semánticas de los archivos no idénticos.
+
+## Bloque C — genealogía de integración y tamaño de PR #2 (2026-10-26)
+
+Comparaciones de GitHub entre SHA de base y cabeza de la cadena:
+
+| Tramo | `ahead_by` | `behind_by` | Estado |
+| --- | ---: | ---: | --- |
+| `main` -> #1 | 26 | 0 | ahead |
+| #1 -> #2 | 1789 | 0 | ahead |
+| #2 -> #7 | 247 | 0 | ahead |
+| #7 -> #13 | 234 | 0 | ahead |
+
+Los cuatro tramos son linealmente descendientes según el servicio de comparación: **no existe divergencia de ancestros en esta cadena**, aunque esto no garantiza aprobación normativa ni ausencia de conflictos futuros tras cambios en `main`.
+
+El endpoint de commits de PR #2 expuso páginas de 100, 100 y 50 commits, y la cuarta página vacía. Esta enumeración de 250 commits **no concuerda con el contador de 1789** informado por el recurso PR y por la comparación GitHub. No se asume que los 250 sean el historial completo; la discrepancia puede deberse a un límite de enumeración del proveedor y queda registrada como **limitación de evidencia**. Las muestras visibles son commits temáticos de implementación, pruebas y documentación (aislamiento de pools, confirmación de comandas, transporte cliente, regresiones PostgreSQL). No se ha demostrado que los 1789 commits sean ajenos al proyecto ni que deban reescribirse.
+
+### Reglas de integración propuestas
+
+- Conservar la cadena de bases actual hasta completar revisión del contrato normativo, CI y cobertura de equivalencia.
+- No hacer squash, rebase, force-push ni merge de #2 por su tamaño sin decisión explícita y un plan de preservación de trazabilidad.
+- Separar los **bloqueos por conflictos de merge** (#4/#8/#11) de los **bloqueos por gates de producto** (#13), que tienen causas distintas.
+- El saneamiento documental no autoriza cerrar PR redundantes: falta aún evidencia de equivalencia funcional y de seguridad para las 37 rutas con blobs distintos de #4/#5/#8.
