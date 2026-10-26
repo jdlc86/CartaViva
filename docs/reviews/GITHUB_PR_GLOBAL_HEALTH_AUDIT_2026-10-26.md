@@ -148,3 +148,24 @@ Se inspeccionaron las implementaciones actuales de `order-operations-composition
 **Punto de revisión abierto:** `registerVerifiedOrderOperationsFromPools` continúa siendo una exportación pública que puede montar GET/POST completos después de preflight de identidad. El documento normativo exige además grants/RLS y contrato de lectura autorizada antes de habilitar esa composición. **No se afirma que exista un bypass explotable**: se requiere comprobar si la validación de privilegios de lectura y el aislamiento del login son suficientes en todas las rutas y si existe alguna importación de producción. La existencia de la exportación no autoriza su uso.
 
 **Estado:** evidencia estática de controles y fail-closed, no prueba dinámica de equivalencia ni autorización de producción. Se mantienen pendientes pruebas PostgreSQL 17 y revisión de la superficie de lectura.
+
+## Bloque E — resolución del interrogante sobre el gate de lectura/operación (2026-10-26)
+
+Se inspeccionaron los predicados de `apps/api/src/order-operations-identity-preflight.mjs` (líneas 177-209 y 226-254) y el registro de rutas en `order-operations-composition.mjs` y `order-operations-http.mjs`.
+
+**Hallazgo de diseño, verificado estáticamente:**
+
+- `registerVerifiedOrderOperationsFromPools` llama a `preflightOrderOperationsIdentities`, que inspecciona los dos pools con `allowAuthorizedTransition=false` y `allowStaffReader=false` por defecto.
+- En ese preflight se exige `authorized_rpc_execute === false`, `accessible_private_tables === 0` y `accessible_private_definer_routines === 0` para cada principal. Por tanto, esta vía **no puede superar su propio preflight con un login que ya tenga el permiso positivo de transición**. Puede registrar rutas tras un preflight negativo, pero no constituye una vía autorizada de mutación operativa.
+- `registerVerifiedOrderTransitionsOnlyFromPools` usa dos inspecciones explícitas: el lector de personal con `allowStaffReader=true` y el escritor de operaciones con `allowAuthorizedTransition=true`. Después registra únicamente POST con `transitionOnly=true`, sin tablero ni historial.
+- El POST comprueba rol autenticado, forma exacta del cuerpo, línea, destino y correlación; no admite `actorUserId` ni rol del cliente.
+- `server.mjs` no importa estos módulos, comprobación que también figura en `tests/order-operations-activation-gate.test.mjs`.
+
+**Conclusión delimitada:** el riesgo inicial de una ruta completa con permisos positivos de transición queda mitigado por los predicados de preflight y la separación del registro de transición. No se certifica que el preflight negativo sea una frontera de lectura operativa completa ni se autoriza activar rutas. El contrato normativo sigue requiriendo diseño de lectura, grants/RLS, aprobación de claves y ensayos en PostgreSQL 17.
+
+### Próxima aceptación necesaria
+
+1. Ejecutar sobre PostgreSQL 17 desechable pruebas negativas de ambos modos de registro y verificar que la ruta de lectura no obtiene datos con el login de transición.
+2. Validar que los roles no cambian entre preflight y uso del pool y que no existen permisos concedidos por otras vías.
+3. Confirmar con pruebas de UI la no exposición de acciones sin gateway y la conservación de filtros/historial.
+4. Mantener #4/#5/#8 en Draft hasta completar equivalencia semántica de archivos divergentes.
