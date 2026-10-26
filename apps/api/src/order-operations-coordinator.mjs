@@ -68,13 +68,15 @@ export function createOrderOperationsCoordinator({
   withTransaction,
   repository = createOrderOperationsRepository(),
   issueTransitionCapability,
+  issueReadCapability,
 } = {}) {
   if (typeof withTransaction !== 'function' || !repository ||
       typeof repository.verifyMembership !== 'function' ||
       typeof repository.listBoard !== 'function' ||
       typeof repository.transitionLine !== 'function' ||
       typeof repository.listHistory !== 'function' ||
-      typeof issueTransitionCapability !== 'function') {
+      typeof issueTransitionCapability !== 'function' ||
+      (issueReadCapability !== undefined && typeof issueReadCapability !== 'function')) {
     throw Error('invalid_order_operations_coordinator');
   }
 
@@ -82,6 +84,22 @@ export function createOrderOperationsCoordinator({
     async listBoard(context, page) {
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(page);
+      if (issueReadCapability) {
+        const status = safeInput.status ?? null;
+        const limit = safeInput.limit ?? 50;
+        const cursor = safeInput.cursor ?? null;
+        const capability = issueReadCapability({
+          actorId: staff.actorId,
+          role: staff.role,
+          operation: 'board',
+          status,
+          limit,
+          cursor,
+        });
+        return withTransaction((query) => repository.listBoard(query, {
+          ...safeInput, ...staff, status, limit, cursor, capability,
+        }));
+      }
       return withTransaction(async (query) => {
         assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listBoard(query, {...safeInput, ...staff});
@@ -108,6 +126,19 @@ export function createOrderOperationsCoordinator({
     async listHistory(context, input) {
       const staff = trustedStaff(context);
       const safeInput = assertSafeInput(input);
+      if (issueReadCapability) {
+        const limit = safeInput.limit ?? 100;
+        const capability = issueReadCapability({
+          actorId: staff.actorId,
+          role: staff.role,
+          operation: 'history',
+          orderId: safeInput.orderId,
+          limit,
+        });
+        return withTransaction((query) => repository.listHistory(query, {
+          ...safeInput, ...staff, limit, capability,
+        }));
+      }
       return withTransaction(async (query) => {
         assertVerifiedMembership(await repository.verifyMembership(query, staff), staff);
         return repository.listHistory(query, {...safeInput, ...staff});

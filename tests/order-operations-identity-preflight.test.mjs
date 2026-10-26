@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   preflightOrderOperationsIdentities,
+  preflightOrderOperationsRuntimeIdentity,
   preflightOrderTransitionIdentity,
   preflightOrderTransitionStaffIdentity,
 } from '../apps/api/src/order-operations-identity-preflight.mjs';
@@ -27,6 +28,8 @@ function pool(role, overrides = {}) {
             schema_usage: true, schema_create: false, database_create: false,
             candidate_rpc_execute: false,
             authorized_rpc_execute: false,
+            authorized_board_rpc_execute: false,
+            authorized_history_rpc_execute: false,
             unsafe_actor_rpc_execute: 0,
             accessible_private_tables: 0, accessible_private_sequences: 0,
             accessible_private_definer_routines: 0,
@@ -34,6 +37,12 @@ function pool(role, overrides = {}) {
             authorized_is_definer: true,
             authorized_owner: 'sabora_order_operations_fn_owner',
             authorized_search_path_locked: true,
+            authorized_board_is_definer: true,
+            authorized_board_owner: 'sabora_order_operations_fn_owner',
+            authorized_board_search_path_locked: true,
+            authorized_history_is_definer: true,
+            authorized_history_owner: 'sabora_order_operations_fn_owner',
+            authorized_history_search_path_locked: true,
             authorized_owner_is_sealed: true,
             authorized_owner_memberships: 0,
             forced_rls_signing_keys: 1,
@@ -69,6 +78,18 @@ test('candidate transition preflight accepts exactly one authorized wrapper', as
   }), {role: roles.operationsRole});
 });
 
+test('complete operations preflight accepts exactly three actor-bound wrappers', async () => {
+  const operationsPool = pool(roles.operationsRole, {
+    authorized_rpc_execute: true,
+    authorized_board_rpc_execute: true,
+    authorized_history_rpc_execute: true,
+    accessible_private_definer_routines: 3,
+  });
+  assert.deepEqual(await preflightOrderOperationsRuntimeIdentity({
+    pool: operationsPool, role: roles.operationsRole,
+  }), {role: roles.operationsRole});
+});
+
 test('preflight rejects shared pools, roles and privileged role names before querying', async () => {
   const staffPool = pool(roles.staffRole);
   const operationsPool = pool(roles.operationsRole);
@@ -97,6 +118,8 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     {schema_usage: false}, {schema_create: true}, {database_create: true}, {database_create: null},
     {candidate_rpc_execute: true}, {candidate_rpc_execute: null},
     {authorized_rpc_execute: true}, {authorized_rpc_execute: null},
+    {authorized_board_rpc_execute: true}, {authorized_board_rpc_execute: null},
+    {authorized_history_rpc_execute: true}, {authorized_history_rpc_execute: null},
     {unsafe_actor_rpc_execute: 1}, {unsafe_actor_rpc_execute: null},
     {accessible_private_tables: 1}, {accessible_private_tables: null},
     {accessible_private_tables: '0'},
@@ -106,6 +129,10 @@ test('preflight fails closed for SET ROLE, elevated privileges and mismatched id
     {authorized_is_definer: false}, {authorized_is_definer: null},
     {authorized_owner: 'postgres'}, {authorized_owner: null},
     {authorized_search_path_locked: false},
+    {authorized_board_is_definer: false}, {authorized_board_owner: 'postgres'},
+    {authorized_board_search_path_locked: false},
+    {authorized_history_is_definer: false}, {authorized_history_owner: 'postgres'},
+    {authorized_history_search_path_locked: false},
     {authorized_owner_is_sealed: false},
     {authorized_owner_memberships: 1},
     {forced_rls_transition_requests: 0}, {forced_rls_transition_requests: null},
@@ -133,6 +160,26 @@ test('candidate transition preflight fails closed on extra or missing capability
     const operationsPool = pool(roles.operationsRole, override);
     await assert.rejects(preflightOrderTransitionIdentity({
       pool: operationsPool, role: roles.operationsRole,
+    }), /order_operations_sql_identity_rejected/);
+  }
+});
+
+test('complete operations preflight rejects a missing wrapper or any direct relation access', async () => {
+  const valid = {
+    authorized_rpc_execute: true,
+    authorized_board_rpc_execute: true,
+    authorized_history_rpc_execute: true,
+    accessible_private_definer_routines: 3,
+  };
+  for (const override of [
+    {...valid, authorized_board_rpc_execute: false},
+    {...valid, authorized_history_rpc_execute: false},
+    {...valid, accessible_private_definer_routines: 2},
+    {...valid, accessible_private_definer_routines: 4},
+    {...valid, accessible_private_tables: 1},
+  ]) {
+    await assert.rejects(preflightOrderOperationsRuntimeIdentity({
+      pool: pool(roles.operationsRole, override), role: roles.operationsRole,
     }), /order_operations_sql_identity_rejected/);
   }
 });

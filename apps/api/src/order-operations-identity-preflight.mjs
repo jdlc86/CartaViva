@@ -10,7 +10,11 @@ function validateRole(role) {
   return role;
 }
 
-async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, allowStaffReader = false} = {}) {
+async function inspect(pool, expectedRole, {
+  allowAuthorizedTransition = false,
+  allowAuthorizedReads = false,
+  allowStaffReader = false,
+} = {}) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
   if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
@@ -64,6 +68,12 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
               has_function_privilege(current_user,
                 'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
                 'EXECUTE') AS authorized_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
+                'EXECUTE') AS authorized_board_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)',
+                'EXECUTE') AS authorized_history_rpc_execute,
               (SELECT count(*)::integer
                  FROM unnest(ARRAY[
                    'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure,
@@ -125,6 +135,40 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
                 WHERE routine.oid =
                   'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
               ) AS authorized_search_path_locked,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_search_path_locked,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_search_path_locked,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
                  JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
@@ -185,10 +229,18 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
         row.candidate_rpc_execute !== false ||
         row.unsafe_actor_rpc_execute !== 0 ||
         row.authorized_rpc_execute !== allowAuthorizedTransition ||
+        row.authorized_board_rpc_execute !== allowAuthorizedReads ||
+        row.authorized_history_rpc_execute !== allowAuthorizedReads ||
         row.candidate_is_invoker !== true ||
         row.authorized_is_definer !== true ||
         row.authorized_owner !== 'sabora_order_operations_fn_owner' ||
         row.authorized_search_path_locked !== true ||
+        row.authorized_board_is_definer !== true ||
+        row.authorized_board_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_board_search_path_locked !== true ||
+        row.authorized_history_is_definer !== true ||
+        row.authorized_history_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_history_search_path_locked !== true ||
         row.authorized_owner_is_sealed !== true ||
         row.authorized_owner_memberships !== 0 ||
         row.forced_rls_transition_requests !== 1 ||
@@ -198,7 +250,8 @@ async function inspect(pool, expectedRole, {allowAuthorizedTransition = false, a
         (allowStaffReader && row.staff_reader_exact_columns !== true) ||
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
-        row.accessible_private_definer_routines !== (allowAuthorizedTransition ? 1 : 0) ||
+        row.accessible_private_definer_routines !==
+          ((allowAuthorizedTransition ? 1 : 0) + (allowAuthorizedReads ? 2 : 0)) ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
@@ -244,6 +297,17 @@ export async function preflightOrderOperationsIdentities({
 export async function preflightOrderTransitionIdentity({pool, role} = {}) {
   const expectedRole = validateRole(role);
   return inspect(pool, expectedRole, {allowAuthorizedTransition: true});
+}
+
+// Complete candidate gate for the operational principal. The LOGIN may execute
+// only the actor-bound transition, board and history wrappers and still has no
+// direct private relation, column, sequence, keyring or role privileges.
+export async function preflightOrderOperationsRuntimeIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {
+    allowAuthorizedTransition: true,
+    allowAuthorizedReads: true,
+  });
 }
 
 // Staff-only SQL gate for transition-only registration. Does not authorize

@@ -2,7 +2,12 @@ import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-po
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from './order-operations-http.mjs';
-import {preflightOrderOperationsIdentities, preflightOrderTransitionIdentity, preflightOrderTransitionStaffIdentity} from './order-operations-identity-preflight.mjs';
+import {
+  preflightOrderOperationsIdentities,
+  preflightOrderOperationsRuntimeIdentity,
+  preflightOrderTransitionIdentity,
+  preflightOrderTransitionStaffIdentity,
+} from './order-operations-identity-preflight.mjs';
 
 function assertIsolatedPools(staffPool, operationsPool) {
   if (!staffPool || !operationsPool || staffPool === operationsPool ||
@@ -99,4 +104,49 @@ export async function registerVerifiedOrderTransitionsOnlyFromPools(app, options
     issueTransitionCapability,
   });
   registerOrderOperationsHttp(app, {forRoles, operations, transitionOnly: true});
+}
+
+// Explicit opt-in full H4 candidate. All three endpoints are mounted only after
+// cryptographic HTTP authentication wiring and both least-privilege SQL LOGINs
+// have passed their independent preflights. server.mjs never imports this path.
+export async function registerVerifiedRestrictedOrderOperationsFromPools(app, options = {}) {
+  const {
+    staffPool, operationsPool, staffRole, operationsRole,
+    issueTransitionCapability, issueReadCapability,
+  } = options;
+  assertIsolatedPools(staffPool, operationsPool);
+  if (typeof issueTransitionCapability !== 'function' ||
+      typeof issueReadCapability !== 'function') {
+    throw Error('invalid_order_operation_capability_issuer');
+  }
+  if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
+      typeof app.hasRoute !== 'function' || [
+        ['GET', '/api/v1/operations/order-lines'],
+        ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+        ['GET', '/api/v1/operations/orders/:orderId/history'],
+      ].some(([method, url]) => app.hasRoute({method, url}))) {
+    throw Error('invalid_order_operations_route_registration');
+  }
+  if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  if (typeof options.issuer !== 'string' || options.issuer.length === 0 ||
+      typeof options.getTrustedKeys !== 'function' ||
+      (options.verify !== undefined && typeof options.verify !== 'function') ||
+      (options.observe !== undefined && typeof options.observe !== 'function')) {
+    throw Error('invalid_order_operations_auth_config');
+  }
+  await preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole});
+  await preflightOrderOperationsRuntimeIdentity({pool: operationsPool, role: operationsRole});
+  const forRoles = createStaffProtectedHooksFromPool({
+    pool: staffPool,
+    issuer: options.issuer,
+    getTrustedKeys: options.getTrustedKeys,
+    verify: options.verify,
+    observe: options.observe,
+  });
+  const operations = createOrderOperationsCoordinator({
+    withTransaction: createPostgresTransaction({pool: operationsPool}),
+    issueTransitionCapability,
+    issueReadCapability,
+  });
+  registerOrderOperationsHttp(app, {forRoles, operations});
 }
