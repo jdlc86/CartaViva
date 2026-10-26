@@ -372,3 +372,18 @@ Se inspeccionó contenido de ambos blobs (no solo firmas) para cuatro módulos:
 **Conclusión de alcance:** hay pruebas concretas para idempotencia, atomicidad, autorización de visita, repricing y proyección única de cocina, y CI verde en el SHA indicado. Los tests de Node con SQL simulado no sustituyen los smoke PG17 reales; ambos tipos de evidencia se mantienen separados. La inspección no autoriza activar rutas, fusionar PR ni desplegar.
 
 **Pendiente:** cotejar la superficie de operaciones cocina/camarero de #4→#13, y emitir matriz de cierre por dominio con riesgos residuales.
+
+## Bloque U — operaciones cocina/camarero #4→#13 (2026-10-26)
+
+Contraste directo de los módulos `order-operations-coordinator.mjs`, `order-operations-http.mjs`, `order-operations-composition.mjs` y `apps/management/src/views/OrdersView.tsx` en #4 (`bd268c67d8c47fb64c3367663cb85d46d569c2f0`) y #13 (`5a24a1136f8cfefa5bf9344d7eae8b4318e3b17b`):
+
+| Superficie | #4 | #13 | Clasificación |
+| --- | --- | --- | --- |
+| Coordinador | Verifica membresía con `repository.verifyMembership` antes de cada lectura y transición | Mantiene verificación de membresía para tablero e historial; exige `issueTransitionCapability` para mutación y delega autorización final al RPC SQL firmado | Cambio de frontera de confianza intencionado, requiere credenciales SQL restringidas |
+| HTTP | Registra GET tablero, POST transición y GET historial | Añade `transitionOnly=false`; si true, monta solo POST, conservando validaciones de `lineId`, `targetStatus` y `correlationId` | Menor superficie para login mutador |
+| Composición | `registerOrderOperationsFromPools` | Composición verificada con preflight de pools/roles y alternativa `registerVerifiedOrderTransitionsOnlyFromPools` | Endurecimiento de montaje opt-in |
+| UI comandas | 204 líneas; correlación nueva por intento | 224 líneas; `transitionAttempts` retiene correlación por línea/objetivo para reintento ambiguo, y limpia estado cuando falta gateway | Refuerzo de idempotencia cliente, no persistencia de credenciales |
+
+**Evaluación:** las rutas de lectura no deben habilitarse usando el login mutador; el modo `transitionOnly` permite montar solo POST bajo preflight de roles/capacidades. El contrato de lectura y la activación real permanecen pendientes de autorización; no hay import de operaciones en `server.mjs` según comprobación anterior. La comparación no es una prueba visual ni una ejecución directa de las ramas antiguas.
+
+**CI:** #14 HEAD anterior `5b695a14bbbde4eca1837d0b74b10e17869aaf84` tenía run `40293126986` en progreso al inicio del bloque; no atribuirle éxito sin verificación.
