@@ -1,5 +1,10 @@
 name: Sabora management browser visual smoke
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/management-browser-visual-smoke.yml'
+      - 'scripts/ci/management-browser-visual-smoke.sh'
+      - 'apps/management/**'
   workflow_dispatch:
 permissions:
   contents: read
