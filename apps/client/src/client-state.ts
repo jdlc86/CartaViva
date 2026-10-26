@@ -41,16 +41,16 @@ export function loadClientPreferences(storage:StorageLike):ClientPreferences{
     !Array.isArray(value.favorites)||value.favorites.length>MAX_FAVORITES||
     !value.favorites.every(item=>typeof item==='string'&&uuid.test(item)))return defaults;
  return Object.freeze({locale:value.locale as Locale,alias:(value.alias as string).trim(),
-  company:(value.company as string).trim(),favorites:Object.freeze([...new Set(value.favorites as string[])])});
+  company:(value.company as string).trim(),favorites:Object.freeze([...new Map((value.favorites as string[]).map(id=>[id.toLowerCase(),id])).values()])});
 }
 
 export function saveClientPreferences(storage:StorageLike,value:ClientPreferences):boolean{
  if(!['es','en'].includes(value.locale)||!boundedText(value.alias,80)||!boundedText(value.company,160)||
     !Array.isArray(value.favorites)||value.favorites.length>MAX_FAVORITES||
-    !value.favorites.every(item=>uuid.test(item)))return false;
+    !value.favorites.every(item=>typeof item==='string'&&uuid.test(item)))return false;
  try{
   storage.setItem(preferencesKey,JSON.stringify({locale:value.locale,alias:value.alias.trim(),
-   company:value.company.trim(),favorites:[...new Set(value.favorites)]}));
+   company:value.company.trim(),favorites:[...new Map(value.favorites.map(id=>[id.toLowerCase(),id])).values()]}));
   return true;
  }catch{return false;}
 }
@@ -62,7 +62,7 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     typeof line.itemId!=='string'||typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
      !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;
