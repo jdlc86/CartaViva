@@ -116,3 +116,18 @@ export function reconcileBasket(lines:readonly BasketLine[],items:readonly MenuI
 
 export const basketQuantity=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=>sum+line.quantity,0);
 export const basketTotal=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=>sum+line.priceCents*line.quantity,0);
+
+export type BasketIssue=Readonly<{itemId:string;reason:'unpublished'|'sold_out'}>;
+export function basketIssues(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketIssue[]{
+ const published=new Map(items.map(item=>[item.id.toLowerCase(),item]));
+ return Object.freeze(lines.flatMap(line=>{
+  const item=published.get(line.itemId.toLowerCase());
+  if(!item)return [Object.freeze({itemId:line.itemId,reason:'unpublished' as const})];
+  if(!item.available)return [Object.freeze({itemId:line.itemId,reason:'sold_out' as const})];
+  return [];
+ }));
+}
+export function removeBasketLine(lines:readonly BasketLine[],itemId:string):readonly BasketLine[]{
+ if(typeof itemId!=='string'||!uuid.test(itemId))return lines;
+ return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==itemId.toLowerCase()));
+}
