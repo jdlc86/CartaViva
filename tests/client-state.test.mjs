@@ -108,3 +108,17 @@ test('malformed stored selections and invalid write inputs fail closed without e
   assert.equal(target.values.get('sabora.client.selection.v1'),original);
  }
 });
+
+test('favorites persist as a case-insensitive UUID set and reject non-string IDs',()=>{
+ const target=storage();
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[id,id.toUpperCase()]}),true);
+ assert.equal(loadClientPreferences(target).favorites.length,1);
+ const saved=JSON.parse(target.values.get('sabora.client.preferences.v2'));
+ assert.equal(saved.favorites.length,1);
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[null]}),false);
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[123]}),false);
+ target.values.set('sabora.client.preferences.v2',JSON.stringify({
+  locale:'es',alias:'Ana',company:'',favorites:[id,id.toUpperCase()],
+ }));
+ assert.equal(loadClientPreferences(target).favorites.length,1);
+});
