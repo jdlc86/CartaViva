@@ -257,3 +257,16 @@ Comparación textual íntegra de `apps/api/src/order-operations-repository.mjs` 
 - `listHistory` conserva la consulta parametrizada y validaciones de secuencia/eventos.
 
 **Conclusión:** la divergencia de tres líneas en este archivo corresponde a un endurecimiento fail-closed de la fila de desbordamiento, sin indicios de pérdida de API o cambio de contrato SQL. Se considera **cerrada la revisión dirigida de este archivo**, no la auditoría integral de toda #8. No se han modificado SQL ni roles operativos.
+
+## Bloque L — cierre de divergencias del registro operativo #8→#13 (2026-10-26)
+
+Comparación de contenido de `order-operations-composition.mjs` e inspección de `order-operations-identity-preflight.mjs` en ambas ramas:
+
+- La función privada `registerOrderOperationsFromPools` y el export `registerVerifiedOrderOperationsFromPools` permanecen con la misma composición de pools, hooks de autenticación, transacción y preflight negativo. La rama #13 **añade**, sin sustituir la interfaz previa, `registerVerifiedOrderTransitionsOnlyFromPools`.
+- La función añadida comprueba aislamiento de pools y roles, issuer de capacidad, presencia y ausencia de duplicación de ruta POST, y cableado JWT/JWKS antes de abrir conexiones SQL. Después inspecciona el lector de personal y el mutador por separado, construye hooks/coordinador y monta únicamente POST mediante `transitionOnly:true`.
+- El preflight #13 añade el parámetro `allowStaffReader` y la función `preflightOrderTransitionStaffIdentity`. Requiere exactamente el conjunto de columnas de lectura `user_id, role, state` y ausencia de privilegios de escritura/columnas extra sobre `staff_members`; para el mutador conserva el permiso positivo exclusivamente sobre la RPC autorizada.
+- El bootstrap `server.mjs` continúa sin importar estas funciones. La composición de transición sigue siendo opt-in, no desplegada.
+
+**Clasificación:** divergencia #8 en estos dos archivos explicada por incorporación de una ruta de transición aislada y un preflight de lector de mínimos privilegios. No hay evidencia estática de regresión de interfaz; la verificación de comportamiento está cubierta por pruebas CI #13 documentadas. El gate de lectura de tablero/historial continúa cerrado por decisión normativa.
+
+**Limitación:** este cierre es de archivos concretos, no certificación integral de todas las diferencias de #8 ni autorización de activación operativa.
