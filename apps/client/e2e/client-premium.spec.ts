@@ -112,7 +112,7 @@ test('basket changes propagate between open tabs without API polling',async({pag
  await expect(other.getByText('1 platos')).toBeVisible();
  await other.getByRole('button',{name:/Cesta: 1/}).click();
  await expect(other.getByRole('dialog',{name:'Tu selección'})).toContainText('Arroz meloso');
- await other.getByRole('button',{name:/Quitar una unidad de Arroz meloso/}).click();
+ await other.getByRole('dialog',{name:'Tu selección'}).getByRole('button',{name:/Quitar una unidad de Arroz meloso/}).click();
  await expect(page.getByText('1 platos')).toHaveCount(0);
  await other.close();
 });
