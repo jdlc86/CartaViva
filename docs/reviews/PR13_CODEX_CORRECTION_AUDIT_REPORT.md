@@ -166,4 +166,17 @@ siendo candidato opt-in: no se activaron rutas, worker, proveedor, Supabase
 operativo, Fleetia, VPS ni recursos compartidos. La provisión y rotación real
 de identidades/secretos, el envío real y la observabilidad del proveedor siguen
 siendo riesgos operativos pendientes y ajenos a esta corrección. La evidencia
-de GitHub Actions del SHA final se añadirá tras publicar los commits.
+de GitHub Actions sobre el commit `faa1e4fe54294e1856b96419429cbc7fdc7ac203`
+también fue satisfactoria:
+
+- [Sabora CI — run 40262942150](https://github.com/jdlc86/CartaViva/actions/runs/40262942150):
+  `success`; ejecutó tests, migraciones y harness mediante driver real en
+  PostgreSQL 17, build, validación de Compose, imagen aislada y smoke tests.
+- [Bootstrap Sabora lockfile — run 40262942111](https://github.com/jdlc86/CartaViva/actions/runs/40262942111):
+  `success`; confirmó lockfile reproducible y repitió migración, integración
+  PostgreSQL 17, construcción y smoke tests aislados.
+
+Los únicos avisos fueron los informativos ya existentes sobre la futura imagen
+de `ubuntu-latest` y acciones Node.js 20 ejecutadas por GitHub con Node.js 24.
+El comentario de cierre del PR conserva la evidencia del SHA documental
+definitivo. El PR permanece en Draft.
