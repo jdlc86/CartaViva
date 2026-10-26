@@ -573,6 +573,27 @@ test('HTTP rejects role-incompatible transition before calling coordinator', asy
   assert.equal(transitions, 0);
 });
 
+test('HTTP rejects duplicated numeric query parameters instead of coercing arrays', async (t) => {
+  let reads = 0;
+  const app = await httpHarness({operations: {
+    listBoard: async () => { reads++; return {items: []}; },
+    listHistory: async () => { reads++; return {events: []}; },
+    transitionLine: async () => { throw Error('unexpected_transition'); },
+  }});
+  t.after(() => app.close());
+  for (const url of [
+    '/api/v1/operations/order-lines?limit=10&limit=20',
+    `/api/v1/operations/orders/${orderId}/history?limit=10&limit=20`,
+  ]) {
+    const response = await app.inject({
+      method: 'GET', url, headers: {authorization: 'Bearer test'},
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), {error: 'invalid_order_operation'});
+  }
+  assert.equal(reads, 0);
+});
+
 test('HTTP transition exposes created and replayed outcomes without accepting actor or role', async (t) => {
   const received = [];
   const app = await httpHarness({operations: {
