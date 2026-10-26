@@ -25,3 +25,14 @@ El cliente React actual tiene estética oscura y carece de varios elementos apro
 5. Las excepciones visuales requieren decisión documentada y aprobación explícita, nunca aceptación silenciosa.
 
 Esta ficha registra el objetivo y la evidencia, **no afirma que las puertas de CI ya estén implementadas**.
+
+## Orientación de refinamiento solicitada el 26-10-2026 — alta gama y frescura contemporánea
+
+El usuario precisa que **todas las aplicaciones deben percibirse como producto de restaurante de alto standing** y que la inspiración de las referencias Goiko y Porneat se aproveche como frescura visual, no como copia literal. Se registra como orientación para la siguiente iteración y revisión; no se declara aprobación de una captura final, nueva tipografía, librería o efecto específico.
+
+- **Cliente:** experiencia gastronómica editorial, luminosa, sofisticada, moderna y emocional; fotografía real autorizada, jerarquía tipográfica cuidada, espacio en blanco, profundidad sutil, carrusel de anuncios ya contratado, interacciones de tarjetas/fichas/cesta fluidas y navegación móvil impecable.
+- **Cocina y gestión:** identidad de la misma casa de alta gama, con superficies y componentes refinados, contraste, estados claros y microinteracciones discretas; prioridad absoluta a lectura, velocidad, ergonomía y operaciones fiables. No trasladar carruseles decorativos ni animación persistente a comandas.
+- **Común:** usar los tokens y activos aprobados, consistencia entre aplicaciones, accesibilidad y reducción de movimiento. Mantener la intensidad EQUILIBRADA aprobada: «premium» no significa exceso de animaciones.
+- **Aceptación futura:** comprobar en navegador la coherencia entre pantallas cliente y cocina, incluyendo capturas por viewport/estado, transiciones funcionales, accesibilidad, rendimiento y regresión visual. Los detalles nuevos requieren prototipo y aprobación explícita antes de congelar baselines.
+
+Referencias de inspiración documentadas: `docs/design/FUNCTIONAL_AND_MOTION_RESEARCH.md` (Goiko y Porneat). La presente orientación no reemplaza las decisiones normativas anteriores.
