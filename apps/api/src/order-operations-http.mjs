@@ -77,6 +77,10 @@ export function registerOrderOperationsHttp(app, {forRoles, operations, transiti
       return reply.code(400).send({error: 'invalid_order_operation'});
     }
     const status = query.status ?? null;
+    if ((status !== null && typeof status !== 'string') ||
+        (query.limit !== undefined && typeof query.limit !== 'string')) {
+      return reply.code(400).send({error: 'invalid_order_operation'});
+    }
     const limit = query.limit === undefined ? 50 : Number(query.limit);
     const cursorValues = [query.afterConfirmedAt, query.afterOrderId, query.afterLineNumber];
     const hasCursor = cursorValues.some((value) => value !== undefined);
@@ -144,7 +148,8 @@ export function registerOrderOperationsHttp(app, {forRoles, operations, transiti
     const {orderId} = request.params ?? {};
     const query = request.query;
     if (!UUID.test(orderId) || !exactPlainObject(query, ['limit']) ||
-        (query.limit !== undefined && !/^[1-9][0-9]*$/.test(query.limit))) {
+        (query.limit !== undefined &&
+          (typeof query.limit !== 'string' || !/^[1-9][0-9]*$/.test(query.limit)))) {
       return reply.code(400).send({error: 'invalid_order_operation'});
     }
     const limit = query.limit === undefined ? 100 : Number(query.limit);
