@@ -19,6 +19,9 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const control=/[\u0000-\u001f\u007f]/u;
 const preferencesKey='sabora.client.preferences.v2';
 const basketKey='sabora.client.selection.v1';
+const MAX_BASKET_LINES=100;
+const MAX_FAVORITES=500;
+const MAX_QUANTITY=99;
 const defaults:ClientPreferences=Object.freeze({locale:'es',alias:'',company:'',favorites:Object.freeze([])});
 const plain=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
@@ -35,33 +38,33 @@ export function loadClientPreferences(storage:StorageLike):ClientPreferences{
  const value=safeParse(storage,preferencesKey,8192);
  if(!plain(value)||!['es','en'].includes(String(value.locale))||
     !boundedText(value.alias,80)||!boundedText(value.company,160)||
-    !Array.isArray(value.favorites)||value.favorites.length>500||
+    !Array.isArray(value.favorites)||value.favorites.length>MAX_FAVORITES||
     !value.favorites.every(item=>typeof item==='string'&&uuid.test(item)))return defaults;
  return Object.freeze({locale:value.locale as Locale,alias:(value.alias as string).trim(),
-  company:(value.company as string).trim(),favorites:Object.freeze([...new Set(value.favorites as string[])])});
+  company:(value.company as string).trim(),favorites:Object.freeze([...new Map((value.favorites as string[]).map(id=>[id.toLowerCase(),id])).values()])});
 }
 
 export function saveClientPreferences(storage:StorageLike,value:ClientPreferences):boolean{
  if(!['es','en'].includes(value.locale)||!boundedText(value.alias,80)||!boundedText(value.company,160)||
-    !Array.isArray(value.favorites)||value.favorites.length>500||
-    !value.favorites.every(item=>uuid.test(item)))return false;
+    !Array.isArray(value.favorites)||value.favorites.length>MAX_FAVORITES||
+    !value.favorites.every(item=>typeof item==='string'&&uuid.test(item)))return false;
  try{
   storage.setItem(preferencesKey,JSON.stringify({locale:value.locale,alias:value.alias.trim(),
-   company:value.company.trim(),favorites:[...new Set(value.favorites)]}));
+   company:value.company.trim(),favorites:[...new Map(value.favorites.map(id=>[id.toLowerCase(),id])).values()]}));
   return true;
  }catch{return false;}
 }
 
 export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const value=safeParse(storage,basketKey,65536);
- if(!Array.isArray(value)||value.length>100)return Object.freeze([]);
+ if(!Array.isArray(value)||value.length>MAX_BASKET_LINES)return Object.freeze([]);
  const ids=new Set<string>();
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
      typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
-     !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>99)return false;
+     !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;
  });
  if(!valid)return Object.freeze([]);
@@ -69,28 +72,44 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
   priceCents:line.priceCents as number,quantity:line.quantity as number})));
 }
 
+function validBasketLines(lines:readonly BasketLine[]):boolean{
+ if(!Array.isArray(lines)||lines.length>MAX_BASKET_LINES)return false;
+ const ids=new Set<string>();
+ for(const line of lines){
+  if(!plain(line)||Reflect.ownKeys(line).length!==4||
+     !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
+     !uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||line.priceCents<0||
+     !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>MAX_QUANTITY)return false;
+  ids.add(line.itemId.toLowerCase());
+ }
+ return true;
+}
+
 export function saveBasket(storage:StorageLike,lines:readonly BasketLine[]):boolean{
- if(lines.length>100||lines.some(line=>!uuid.test(line.itemId)||!boundedText(line.name,160,true)||
-    !Number.isSafeInteger(line.priceCents)||line.priceCents<0||!Number.isSafeInteger(line.quantity)||
-    line.quantity<1||line.quantity>99))return false;
+ if(!validBasketLines(lines))return false;
  try{storage.setItem(basketKey,JSON.stringify(lines));return true;}catch{return false;}
 }
 
 export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:number):readonly BasketLine[]{
- if(!Number.isInteger(delta)||Math.abs(delta)!==1)return lines;
- const current=lines.find(line=>line.itemId===item.id);
+ if(!Number.isInteger(delta)||Math.abs(delta)!==1||!validBasketLines(lines)||
+    !uuid.test(item.id)||!boundedText(item.name,160,true)||
+    !Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
+ const current=lines.find(line=>line.itemId.toLowerCase()===item.id.toLowerCase());
  if(delta>0&&!item.available)return lines;
+ if(delta<0&&!current)return lines;
+ if(delta>0&&!current&&lines.length>=MAX_BASKET_LINES)return lines;
  const quantity=(current?.quantity??0)+delta;
- if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId!==item.id));
- if(quantity>99)return lines;
- const next:BasketLine=Object.freeze({itemId:item.id,name:item.name,priceCents:item.priceCents,quantity});
- return Object.freeze(current?lines.map(line=>line.itemId===item.id?next:line):[...lines,next]);
+ if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==item.id.toLowerCase()));
+ if(quantity>MAX_QUANTITY)return lines;
+ const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:item.name,priceCents:item.priceCents,quantity});
+ return Object.freeze(current?lines.map(line=>line.itemId.toLowerCase()===item.id.toLowerCase()?next:line):[...lines,next]);
 }
 
 export function reconcileBasket(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketLine[]{
- const current=new Map(items.map(item=>[item.id,item]));
+ const current=new Map(items.map(item=>[item.id.toLowerCase(),item]));
  return Object.freeze(lines.map(line=>{
-  const item=current.get(line.itemId);
+  const item=current.get(line.itemId.toLowerCase());
   return item?Object.freeze({...line,name:item.name,priceCents:item.priceCents}):line;
  }));
 }

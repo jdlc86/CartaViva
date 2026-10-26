@@ -69,12 +69,12 @@ export function SaboraClientApp(){
  const categories=useMemo(()=>categoriesFor(items),[items]);
  useEffect(()=>{if(!categories.includes(category))setCategory('Todos');},[categories,category]);
  const visible=useMemo(()=>searchPublishedCatalog(items,category,query,onlyAvailable),[items,category,query,onlyAvailable]);
- const favoriteItems=useMemo(()=>items.filter(item=>favorites.includes(item.id)),[items,favorites]);
+ const favoriteItems=useMemo(()=>items.filter(item=>favorites.some(id=>id.toLowerCase()===item.id.toLowerCase())),[items,favorites]);
  const quantities=useMemo(()=>new Map(basket.map(line=>[line.itemId,line.quantity])),[basket]);
  const totalQuantity=basketQuantity(basket);
  const total=basketTotal(basket);
 
- const toggleFavorite=useCallback((id:string)=>setFavorites(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]),[]);
+ const toggleFavorite=useCallback((id:string)=>setFavorites(current=>current.some(value=>value.toLowerCase()===id.toLowerCase())?current.filter(value=>value.toLowerCase()!==id.toLowerCase()):[...current,id]),[]);
  const updateQuantity=useCallback((item:MenuItem,delta:number)=>setBasket(current=>changeBasket(current,item,delta)),[]);
  const goHome=useCallback(()=>{setArea('home');setOverlay(null);setNotice('');},[]);
  const closeOverlay=useCallback(()=>{setOverlay(null);if(area==='qr')setArea('home');},[area]);
@@ -97,7 +97,7 @@ export function SaboraClientApp(){
   setNotice(saveClientPreferences(localStorage,preferences)?(locale==='es'?'Preferencias guardadas en este dispositivo.':'Preferences saved on this device.'):(locale==='es'?'No se han podido guardar las preferencias.':'Preferences could not be saved.'));
  }
 
- const productGrid=(products:readonly MenuItem[])=>products.length?<div className="product-grid">{products.map(item=><ProductCard key={item.id} item={item} quantity={quantities.get(item.id)??0} favorite={favorites.includes(item.id)} locale={locale} onFavorite={toggleFavorite} onDetail={openDetail} onChange={updateQuantity}/>)}</div>:<EmptyState>{copy.empty}</EmptyState>;
+ const productGrid=(products:readonly MenuItem[])=>products.length?<div className="product-grid">{products.map(item=><ProductCard key={item.id} item={item} quantity={quantities.get(item.id)??0} favorite={favorites.some(id=>id.toLowerCase()===item.id.toLowerCase())} locale={locale} onFavorite={toggleFavorite} onDetail={openDetail} onChange={updateQuantity}/>)}</div>:<EmptyState>{copy.empty}</EmptyState>;
 
  return <div className="client-app">
   <Header locale={locale} quantity={totalQuantity} searchOpen={searchOpen} onLocale={switchLocale} onSearch={toggleSearch} onCart={openCart} onNotifications={openNotifications} onHome={goHome}/>
