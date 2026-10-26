@@ -62,7 +62,7 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     typeof line.itemId!=='string'||typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
      !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;
@@ -102,7 +102,7 @@ export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:num
  const quantity=(current?.quantity??0)+delta;
  if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==item.id.toLowerCase()));
  if(quantity>MAX_QUANTITY)return lines;
- const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:item.name,priceCents:item.priceCents,quantity});
+ const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:current?.name??item.name,priceCents:current?.priceCents??item.priceCents,quantity});
  return Object.freeze(current?lines.map(line=>line.itemId.toLowerCase()===item.id.toLowerCase()?next:line):[...lines,next]);
 }
 
@@ -110,24 +110,33 @@ export function reconcileBasket(lines:readonly BasketLine[],items:readonly MenuI
  const current=new Map(items.map(item=>[item.id.toLowerCase(),item]));
  return Object.freeze(lines.map(line=>{
   const item=current.get(line.itemId.toLowerCase());
-  return item?Object.freeze({...line,name:item.name,priceCents:item.priceCents}):line;
+  return item?Object.freeze({...line,name:item.name}):line;
  }));
 }
 
 export const basketQuantity=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=>sum+line.quantity,0);
 export const basketTotal=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=>sum+line.priceCents*line.quantity,0);
 
-export type BasketIssue=Readonly<{itemId:string;reason:'unpublished'|'sold_out'}>;
+export type BasketIssue=Readonly<{itemId:string;reason:'unpublished'|'sold_out'|'price_changed'}>;
 export function basketIssues(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketIssue[]{
  const published=new Map(items.map(item=>[item.id.toLowerCase(),item]));
  return Object.freeze(lines.flatMap(line=>{
   const item=published.get(line.itemId.toLowerCase());
   if(!item)return [Object.freeze({itemId:line.itemId,reason:'unpublished' as const})];
   if(!item.available)return [Object.freeze({itemId:line.itemId,reason:'sold_out' as const})];
+  if(item.priceCents!==line.priceCents)return [Object.freeze({itemId:line.itemId,reason:'price_changed' as const})];
   return [];
  }));
 }
 export function removeBasketLine(lines:readonly BasketLine[],itemId:string):readonly BasketLine[]{
  if(typeof itemId!=='string'||!uuid.test(itemId))return lines;
  return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==itemId.toLowerCase()));
+}
+
+export function acceptBasketPrice(lines:readonly BasketLine[],items:readonly MenuItem[],itemId:string):readonly BasketLine[]{
+ if(typeof itemId!=='string'||!uuid.test(itemId)||!validBasketLines(lines))return lines;
+ const item=items.find(candidate=>candidate.id.toLowerCase()===itemId.toLowerCase());
+ if(!item||!item.available||!Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
+ return Object.freeze(lines.map(line=>line.itemId.toLowerCase()===itemId.toLowerCase()?
+  Object.freeze({...line,name:item.name,priceCents:item.priceCents}):line));
 }
