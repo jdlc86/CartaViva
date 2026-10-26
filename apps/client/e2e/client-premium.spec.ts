@@ -101,3 +101,18 @@ test('reduced motion removes nonessential transitions and animations',async({pag
  expect(values.transition).toBe('0s');
  expect(values.animation).toBe('none');
 });
+
+test('basket changes propagate between open tabs without API polling',async({page,context})=>{
+ const other=await context.newPage();
+ await other.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
+ await other.goto('/');
+ await expect(other.getByTestId('product-card')).toHaveCount(4);
+ const card=page.getByTestId('product-card').filter({hasText:'Arroz meloso'});
+ await card.getByRole('button',{name:/Añadir$/}).click();
+ await expect(other.getByText('1 platos')).toBeVisible();
+ await other.getByRole('button',{name:/Cesta: 1/}).click();
+ await expect(other.getByRole('dialog',{name:'Tu selección'})).toContainText('Arroz meloso');
+ await other.getByRole('button',{name:/Quitar una unidad de Arroz meloso/}).click();
+ await expect(page.getByText('1 platos')).toHaveCount(0);
+ await other.close();
+});
