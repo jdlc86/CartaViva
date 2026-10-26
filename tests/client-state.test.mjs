@@ -54,3 +54,42 @@ test('basket persistence keeps a display snapshot and catalog reconciliation ref
  assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:item.priceCents,quantity:2}]);
  assert.deepEqual(reconcileBasket(stale,[]),stale);
 });
+
+test('selection never persists duplicate, forged or oversized lines',()=>{
+ const target=storage();
+ const one={itemId:id,name:item.name,priceCents:1290,quantity:1};
+ const upper={...one,itemId:id.toUpperCase()};
+ for(const invalid of [
+  [one,upper],
+  [{...one,token:'secret'}],
+  [{...one,quantity:100}],
+  [{...one,priceCents:Number.MAX_SAFE_INTEGER+1}],
+  Array.from({length:101},(_,index)=>({...one,itemId:`11111111-1111-4111-8111-${String(index).padStart(12,'0')}`})),
+ ]){
+  assert.equal(saveBasket(target,invalid),false);
+  assert.equal(target.values.size,0);
+ }
+});
+
+test('selection updates enforce maximum distinct dishes and case-insensitive IDs',()=>{
+ const lines=Array.from({length:100},(_,index)=>({
+  itemId:`11111111-1111-4111-8111-${String(index).padStart(12,'0')}`,
+  name:'Plato',priceCents:100,quantity:1,
+ }));
+ const extra={...item,id:'22222222-2222-4222-8222-222222222222'};
+ assert.equal(changeBasket(lines,extra,1),lines);
+ const existing={...item,id:lines[0].itemId.toUpperCase()};
+ const updated=changeBasket(lines,existing,1);
+ assert.equal(updated.length,100);
+ assert.equal(updated[0].quantity,2);
+ assert.equal(updated[0].itemId,lines[0].itemId);
+ assert.equal(changeBasket(updated,existing,-1)[0].quantity,1);
+ assert.equal(changeBasket(lines,extra,-1),lines);
+});
+
+test('catalog reconciliation refreshes IDs regardless of UUID casing',()=>{
+ const snapshot=[{itemId:id.toUpperCase(),name:'Antiguo',priceCents:1,quantity:2}];
+ assert.deepEqual(reconcileBasket(snapshot,[item]),[
+  {itemId:id.toUpperCase(),name:item.name,priceCents:item.priceCents,quantity:2},
+ ]);
+});
