@@ -136,7 +136,7 @@ test('basket incidences distinguish sold-out and unpublished without deleting se
   {itemId:other,reason:'unpublished'},
  ]);
  assert.equal(JSON.stringify(lines),original);
- assert.deepEqual(basketIssues(lines,[item,{...item,id:other}]),[]);
+ assert.deepEqual(basketIssues(lines,[item,{...item,id:other,priceCents:400}]),[]);
  assert.deepEqual(removeBasketLine(lines,other),[lines[0]]);
  assert.deepEqual(removeBasketLine(lines,id.toUpperCase()),[lines[1]]);
  assert.equal(removeBasketLine(lines,'not-a-uuid'),lines);
