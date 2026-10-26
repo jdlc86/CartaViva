@@ -420,8 +420,8 @@ p { line-height: 1.55; }
 }
 
 @media (max-width: 460px) {
-  .management-nav { grid-template-columns: repeat(5, 104px); }
-  .management-tab { display: flex; min-width: 100px; justify-content: center; padding: var(--cv-space-2); text-align: center; }
+  .management-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: visible; }
+  .management-tab { display: flex; min-width: 0; justify-content: center; padding: var(--cv-space-2); text-align: center; }
   .management-tab__icon { display: none; }
   .metric-grid, .order-summary-strip { grid-template-columns: 1fr; }
   .metric-card { min-height: 146px; }
