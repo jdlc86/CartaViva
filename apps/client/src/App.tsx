@@ -69,7 +69,7 @@ export function SaboraClientApp(){
  const categories=useMemo(()=>categoriesFor(items),[items]);
  useEffect(()=>{if(!categories.includes(category))setCategory('Todos');},[categories,category]);
  const visible=useMemo(()=>searchPublishedCatalog(items,category,query,onlyAvailable),[items,category,query,onlyAvailable]);
- const favoriteItems=useMemo(()=>items.filter(item=>favorites.includes(item.id)),[items,favorites]);
+ const favoriteItems=useMemo(()=>items.filter(item=>favorites.some(id=>id.toLowerCase()===item.id.toLowerCase())),[items,favorites]);
  const quantities=useMemo(()=>new Map(basket.map(line=>[line.itemId,line.quantity])),[basket]);
  const totalQuantity=basketQuantity(basket);
  const total=basketTotal(basket);
