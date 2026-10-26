@@ -102,7 +102,7 @@ export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:num
  const quantity=(current?.quantity??0)+delta;
  if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==item.id.toLowerCase()));
  if(quantity>MAX_QUANTITY)return lines;
- const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:item.name,priceCents:item.priceCents,quantity});
+ const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:current?.name??item.name,priceCents:current?.priceCents??item.priceCents,quantity});
  return Object.freeze(current?lines.map(line=>line.itemId.toLowerCase()===item.id.toLowerCase()?next:line):[...lines,next]);
 }
 
