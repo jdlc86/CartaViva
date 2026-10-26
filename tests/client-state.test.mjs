@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../apps/client/src/client-state.ts',import.me
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports','require',javascript)(module,module.exports,require);
-const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketQuantity,basketTotal}=module.exports;
+const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,basketQuantity,basketTotal}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
 const storage=(initial={})=>{
@@ -121,4 +121,23 @@ test('favorites persist as a case-insensitive UUID set and reject non-string IDs
   locale:'es',alias:'Ana',company:'',favorites:[id,id.toUpperCase()],
  }));
  assert.equal(loadClientPreferences(target).favorites.length,1);
+});
+
+test('basket incidences distinguish sold-out and unpublished without deleting selections',()=>{
+ const other='22222222-2222-4222-8222-222222222222';
+ const lines=[
+  {itemId:id,name:'Original',priceCents:1290,quantity:2},
+  {itemId:other,name:'Retirado',priceCents:400,quantity:1},
+ ];
+ const original=JSON.stringify(lines);
+ const issues=basketIssues(lines,[{...item,available:false}]);
+ assert.deepEqual(issues,[
+  {itemId:id,reason:'sold_out'},
+  {itemId:other,reason:'unpublished'},
+ ]);
+ assert.equal(JSON.stringify(lines),original);
+ assert.deepEqual(basketIssues(lines,[item,{...item,id:other}]),[]);
+ assert.deepEqual(removeBasketLine(lines,other),[lines[0]]);
+ assert.deepEqual(removeBasketLine(lines,id.toUpperCase()),[lines[1]]);
+ assert.equal(removeBasketLine(lines,'not-a-uuid'),lines);
 });
