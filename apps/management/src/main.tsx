@@ -32,6 +32,8 @@ export function ManagementApp({
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
   const focusAfterNavigation = useRef(false);
+  const hasReadProjection = Boolean(tablesGateway || catalogGateway);
+  const hasOperationalChannel = Boolean(operationsGateway);
   const activeSection = sections.find((section) => section.id === area) ?? sections[0];
 
   useEffect(() => {
@@ -78,8 +80,10 @@ export function ManagementApp({
         </button>
         <div className="header-status">
           <span className="status-dot" aria-hidden="true"/>
-          <span>{tablesGateway || catalogGateway ? 'Proyecciones en solo lectura' : 'Sin acceso a datos'}</span>
-          <strong>{tablesGateway || catalogGateway ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
+          <span>{hasOperationalChannel ? 'Canal de cocina y sala conectado'
+            : hasReadProjection ? 'Proyecciones en solo lectura' : 'Sin acceso a datos'}</span>
+          <strong>{hasOperationalChannel ? 'OPERACIÓN RESTRINGIDA'
+            : hasReadProjection ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
         </div>
       </header>
 
@@ -110,7 +114,10 @@ export function ManagementApp({
           </nav>
           <div className="sidebar-security">
             <Icon name="lock" size={19}/>
-            <p><strong>Acceso administrativo no habilitado.</strong><span>Las acciones requieren sesión, permisos y contratos backend.</span></p>
+            <p><strong>{hasOperationalChannel ? 'Canal operativo limitado por rol.' : 'Acceso administrativo no habilitado.'}</strong>
+              <span>{hasOperationalChannel
+                ? 'Solo preparación, aviso de recogida e historial autorizados.'
+                : 'Las acciones requieren sesión, permisos y contratos backend.'}</span></p>
           </div>
         </aside>
 
@@ -129,7 +136,9 @@ export function ManagementApp({
 
       <footer className="management-footer">
         <span>SABORA · Una experiencia CartaViva</span>
-        <span>Modo de diseño seguro · Sin operaciones conectadas</span>
+        <span>{hasOperationalChannel
+          ? 'Canal restringido · Entrega y cancelación bloqueadas'
+          : 'Modo de diseño seguro · Sin operaciones conectadas'}</span>
       </footer>
     </div>
   );

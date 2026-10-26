@@ -70,6 +70,9 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(catalog, /No se conserva una respuesta parcial/);
   assert.match(tables, /no existe sondeo automático/i);
   assert.match(catalog, /sólo se reintenta por acción explícita/i);
+  assert.match(main, /hasOperationalChannel = Boolean\(operationsGateway\)/);
+  assert.match(main, /OPERACIÓN RESTRINGIDA/);
+  assert.match(main, /Entrega y cancelación bloqueadas/);
 });
 
 test('tables cover read states while every mutation and QR operation stays locked', () => {
