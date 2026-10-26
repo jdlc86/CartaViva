@@ -43,6 +43,9 @@ test('unknown, expired, revoked or malformed verifier responses fail closed',asy
 });
 test('verification failure is not converted into authenticated success',async()=>{
  const hook=createCustomerProtectedHook({verifyCustomerSession:async()=>{throw Error('database unavailable');}});
- await assert.rejects(hook({headers:{authorization:'Bearer '+token}},reply()),/database unavailable/);
+ const response=reply();
+ await hook({headers:{authorization:'Bearer '+token}},response);
+ assert.equal(response.status,503);
+ assert.deepEqual(response.payload,{error:'authentication_unavailable'});
  assert.throws(()=>createCustomerProtectedHook(),/invalid_customer_auth_verifier/);
 });
