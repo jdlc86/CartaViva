@@ -11,7 +11,7 @@ permissions:
 jobs:
   management-browser-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,9 +25,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build management PWA
         run: pnpm --filter @sabora/management build
-      - name: Install isolated browser tooling
+      - name: Install isolated browser tooling (bounded)
         run: |
-          npm exec --yes --package=playwright@1.56.1 -- playwright install --with-deps chromium
+          set -euo pipefail
+          echo 'Installing Playwright Chromium; installation limited to 180 seconds'
+          timeout --signal=TERM --kill-after=15s 180s npm exec --yes --package=playwright@1.56.1 -- playwright install chromium
+          echo 'Chromium installed successfully'
       - name: Capture disconnected management pages at responsive breakpoints
         run: bash scripts/ci/management-browser-visual-smoke.sh
       - name: Publish visual evidence
