@@ -427,3 +427,17 @@ Cotejo directo de `docs/security/SABORA_OPERATIONAL_ACTOR_BINDING_DECISION_GATE.
 **Disposición:** gate de seguridad de mutación = candidato técnico probado, pendiente provisión/autorización; gate de lectura = **bloqueado**, sin suponer permiso por transitividad; entrega/cancelación = **fuera de contrato implementable** hasta decisión normativa. Esta clasificación prevalece sobre cualquier lectura optimista de la matriz V.
 
 **CI:** run `40293438439` para HEAD #14 `2209a357d28c8bc0093193df53804134e6138e7c` figuraba en progreso al inicio de la revisión. No se afirma éxito.
+
+## Bloque X — CI verificada y cierre de evidencia estática de interfaz (2026-10-26)
+
+**CI #14:** HEAD `56005fd58a20e8554bed9cdc558025d47a2bfd44`, workflow run `40293575865`, `completed/success`. Se verificó el resultado de la ejecución correspondiente a ese SHA, no se extrapola al commit posterior.
+
+**Interfaz administración, pruebas fuente #13:**
+- `apps/management/tests/ui-contract.test.mjs`: nueve casos declarados que comprueban espacios de administración sin fixtures operativos, ausencia de llamadas de red/persistencia/Google, actualización explícita con control de respuestas obsoletas, navegación accesible, gateways de mesas y catálogo inyectados, acciones QR y escritura deshabilitadas, catálogo de lectura, estudio de imágenes local y reglas CSS `900px`, `460px`, `prefers-reduced-motion`.
+- `apps/management/tests/order-operations-behavior.test.mjs`: siete casos declarados para validación de tablero persistente, transiciones por rol, POST mínimo, recuperación de estado tras carga nueva, rechazo fail-closed de respuestas incorrectas, bloqueo de doble clic y reutilización de correlación en reintento ambiguo.
+- `apps/management/src/main.tsx`: `OrdersView` recibe `operationsGateway` opcional; la vista no presupone conectividad.
+- `apps/management/src/views/OrdersView.tsx`: expone estado `Canal operativo sin conectar`, estado de carga accesible y botones de actualización bloqueados cuando no hay gateway.
+
+**Limitación de evidencia:** los tests anteriores inspeccionan contratos de código y adaptadores; no equivalen a una sesión visual en navegador con capturas a 360/460/900/1440 px, ni a pruebas de interacción con backend real. No se afirma equivalencia visual de #4/#5 frente a #13.
+
+**Decisión:** evidencia estática y CI verde en SHA indicado; **gate visual pendiente**. No conectar gateways ni activar operaciones para simular un resultado visual. Cualquier revisión visual posterior debe usar una ejecución aislada sin acceso a producción ni a Fleetia.
