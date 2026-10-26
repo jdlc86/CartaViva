@@ -35,6 +35,7 @@ test('full isolated HTTP session lifecycle: two customers, revocation, expiry, f
   for(let i=0;i<2;i++){
    const response=await request(sessions[i].token);
    assert.equal(response.statusCode,200);
+   assert.equal(response.headers['cache-control'],'no-store');
    assert.deepEqual(response.json(),{id:ids[i]});
    assert.equal(response.body.includes('SB-'),false);
    assert.equal(response.body.includes(sessions[i].token),false);
@@ -42,6 +43,7 @@ test('full isolated HTTP session lifecycle: two customers, revocation, expiry, f
   const before=queries;
   const forged=await app.inject({url:'/api/v1/customer/whoami',headers:{authorization:'Bearer SB-222222222222'}});
   assert.equal(forged.statusCode,401);
+  assert.equal(forged.headers['cache-control'],'no-store');
   assert.equal(queries,before);
   sessions[0].revoked=true;
   assert.equal((await request(sessions[0].token)).statusCode,401);
@@ -60,7 +62,39 @@ test('unavailable SQL verifier never authenticates and never exposes backend fai
  try{
   const res=await app.inject({url:'/api/v1/customer/whoami',headers:{authorization:'Bearer '+sessions[0].token}});
   assert.equal(res.statusCode,503);
+  assert.equal(res.headers['cache-control'],'no-store');
   assert.deepEqual(res.json(),{error:'authentication_unavailable'});
   assert.equal(res.body.includes('sensitive backend connection detail'),false);
+ }finally{await app.close();}
+});
+
+test('concurrent customer requests remain isolated across tokens and authorization failures',async()=>{
+ const verify=createCustomerSessionVerifier({query:async(sql,[hash])=>{
+  assert.equal(sql,SESSION_LOOKUP_SQL);
+  const match=sessions.find(s=>s.tokenHash.equals(hash));
+  await Promise.resolve();
+  return {rows:match?[match.profile]:[]};
+ }});
+ const app=Fastify();
+ await registerVerifiedCustomerRoutes(app,{verifyCustomerSession:verify,registerRoutes:async scope=>{
+  scope.get('/whoami',async request=>{
+   await Promise.resolve();
+   return {id:request.customerIdentity.customerId};
+  });
+ }});
+ await app.ready();
+ try{
+  const requests=Array.from({length:36},(_,i)=>{
+   const token=i%3===2?'B'.repeat(43):sessions[i%2].token;
+   return app.inject({url:'/api/v1/customer/whoami',headers:{authorization:'Bearer '+token}});
+  });
+  const responses=await Promise.all(requests);
+  for(let i=0;i<responses.length;i++){
+   const res=responses[i];
+   assert.equal(res.headers['cache-control'],'no-store');
+   if(i%3===2){assert.equal(res.statusCode,401);continue;}
+   assert.equal(res.statusCode,200);
+   assert.deepEqual(res.json(),{id:ids[i%2]});
+  }
  }finally{await app.close();}
 });
