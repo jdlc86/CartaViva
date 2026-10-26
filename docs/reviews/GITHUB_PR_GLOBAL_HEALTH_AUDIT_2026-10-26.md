@@ -132,3 +132,19 @@ El endpoint de commits de PR #2 expuso páginas de 100, 100 y 50 commits, y la c
 - No hacer squash, rebase, force-push ni merge de #2 por su tamaño sin decisión explícita y un plan de preservación de trazabilidad.
 - Separar los **bloqueos por conflictos de merge** (#4/#8/#11) de los **bloqueos por gates de producto** (#13), que tienen causas distintas.
 - El saneamiento documental no autoriza cerrar PR redundantes: falta aún evidencia de equivalencia funcional y de seguridad para las 37 rutas con blobs distintos de #4/#5/#8.
+
+## Bloque D — inspección de código de las puertas operativas (2026-10-26)
+
+Se inspeccionaron las implementaciones actuales de `order-operations-composition.mjs`, `order-operations-http.mjs` y `OrdersView.tsx` del HEAD #13, contrastándolas con el gate normativo `SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md` y la decisión `SABORA_P0_ACTOR_SQL_BINDING_DECISION.md`.
+
+**Confirmaciones de código:**
+
+1. `registerOrderOperationsFromPools` es función privada del módulo; el registro público `registerVerifiedOrderOperationsFromPools` exige `issueTransitionCapability` y preflight SQL de ambos pools.
+2. Existe además `registerVerifiedOrderTransitionsOnlyFromPools`, que valida aislamiento, autenticación y preflight de personal/operaciones antes de montar exclusivamente la ruta POST de transición. No registra tablero ni historial.
+3. `order-operations-http.mjs` registra GET de tablero/historial solo cuando `transitionOnly=false`. El POST valida UUID, estado destino, correlación, cuerpo exacto de dos campos y rol verificado; usa `verifiedIdentity` y `verifiedStaff`, no un actor enviado por el cliente.
+4. La PWA `OrdersView` acepta gateway opcional; sin gateway no carga datos operativos y muestra canal sin conectar. No hay un montaje automático de gateway en `ManagementApp` por defecto.
+5. La documentación normativa de operaciones conserva el alcance `confirmed -> preparing -> ready -> picked_up`, sin confundir recogida con entrega ni habilitar cancelaciones.
+
+**Punto de revisión abierto:** `registerVerifiedOrderOperationsFromPools` continúa siendo una exportación pública que puede montar GET/POST completos después de preflight de identidad. El documento normativo exige además grants/RLS y contrato de lectura autorizada antes de habilitar esa composición. **No se afirma que exista un bypass explotable**: se requiere comprobar si la validación de privilegios de lectura y el aislamiento del login son suficientes en todas las rutas y si existe alguna importación de producción. La existencia de la exportación no autoriza su uso.
+
+**Estado:** evidencia estática de controles y fail-closed, no prueba dinámica de equivalencia ni autorización de producción. Se mantienen pendientes pruebas PostgreSQL 17 y revisión de la superficie de lectura.
