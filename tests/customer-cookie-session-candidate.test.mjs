@@ -46,7 +46,8 @@ test('HTTP customer session authenticates only private cookie and logout revokes
   assert.equal(spoof.statusCode,401);
   const success=await get({cookie});
   assert.equal(success.statusCode,200);
-  assert.deepEqual(success.json(),{authenticated:true});
+  assert.deepEqual(success.json(),{authenticated:true,publicId:customer.public_id,
+   alias:customer.alias,company:null});
   assert.equal(success.headers['cache-control'],'no-store');
   assert.equal(success.body.includes(session.token),false);
   assert.equal(success.body.includes(customer.customer_id),false);

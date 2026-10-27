@@ -110,9 +110,19 @@ BEGIN
      RAISE EXCEPTION 'economic ledger mutation guard missing or disabled: %',trigger_name;
     END IF;
    END LOOP;
+   -- The sealed H3 function owner may read/insert displayed quotes and obtain
+   -- a row lock through FORCE RLS. The lock policy accompanies UPDATE(id)
+   -- only; append-only triggers still reject actual mutation. No browser,
+   -- legacy runtime or other policy is accepted.
    IF EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname='sabora' AND tablename=table_name
+      AND NOT (
+        table_name='catalog_displayed_quotes'
+        AND policyname IN ('customer_flow_quote_read','customer_flow_quote_insert',
+          'customer_flow_quote_lock')
+        AND roles=ARRAY['sabora_customer_flow_fn_owner']::name[]
+      )
    ) THEN
     RAISE EXCEPTION 'economic ledger unexpectedly has runtime policy: %',table_name;
    END IF;
