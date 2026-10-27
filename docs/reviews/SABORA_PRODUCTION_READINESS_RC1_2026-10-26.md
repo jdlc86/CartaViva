@@ -135,7 +135,7 @@ reciben solo las columnas y políticas RLS necesarias. El runtime conserva
 | `pnpm --filter @sabora/client test:e2e` | PASS, 18/18 en 390 px y 1440 px |
 | `scripts/ci/postgres-migration-smoke.sh` | PASS, PostgreSQL 17 desechable |
 | Driver Node + PostgreSQL 17 | PASS, 93/93: 92 regresiones históricas + H3 restringido |
-| GitHub Actions | Pendiente hasta publicar el PR Draft |
+| GitHub Actions, PR #30 | PASS: `validate` 2m12s, `client-browser` 1m03s, `generate-lockfile` 2m14s |
 
 La aceptación nueva del driver verifica con logins reales y restringidos:
 registro, sesión, visita, dos líneas cotizadas, rollback si falla la segunda
