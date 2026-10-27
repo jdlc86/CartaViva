@@ -1,8 +1,9 @@
 type FetchLike=typeof fetch;
 type Json=Record<string,unknown>;
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PUBLIC_ID=/^SB-[23456789ABCDEFGHJKLMNPQRSTUVWXY]{12}$/;
 const KEY=/^[A-Za-z0-9_-]{16,128}$/;
+const QR_TOKEN=/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const plain=(value:unknown):value is Json=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 
@@ -55,7 +56,7 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    return value.revoked;
   },
   async authorizeVisit(input:{tableId:string;qrToken:string}){
-   if(!UUID.test(input.tableId)||typeof input.qrToken!=='string'||input.qrToken.length<32||input.qrToken.length>512)
+   if(!UUID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken))
     throw Error('invalid_customer_visit_transport');
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/visits','POST',input);
    if(value.tableId!==input.tableId||typeof value.visitId!=='string'||!KEY.test(value.visitId)||

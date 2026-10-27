@@ -20,6 +20,7 @@ Se revisaron antes de implementar:
 - `docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md`;
 - `docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md`;
 - `docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md`;
+- `docs/architecture/SABORA_TABLE_QR_PAYLOAD_CONTRACT_V1.md`;
 - `docs/architecture/CARTAVIVA_PROJECT_BOUNDARY.md`;
 - los contratos visuales y de pantalla de `docs/design/`.
 
@@ -44,15 +45,20 @@ Se incorpora una composición candidata, inyectada y desconectada por defecto:
    operación relevante.
 
 La PWA cliente recupera la sesión al montar, crea identidad desde Ajustes y
-cierra sesión. Nunca recibe ni persiste el token: usa exclusivamente la cookie
-servidora. La navegación premium, la cesta local, los favoritos, el catálogo
+cierra sesión. La cookie sigue siendo la única credencial de identidad. El
+token de mesa solo se recibe al leer el QR y se conserva en memoria durante la
+visita: nunca se escribe en storage, URL de red, DOM, telemetría o service
+worker. La navegación premium, la cesta local, los favoritos, el catálogo
 publicado, ES/EN, accesibilidad y el comportamiento offline se conservan.
 
-La captura visual de QR no se activa todavía. La normativa no fija el formato
-que liga el contenido físico del QR con `tableId` y el secreto revocable. El
-backend y el transporte están listos para esos dos valores verificados, pero
-crear un esquema de QR desde esta implementación sería inventar contrato. La UI
-mantiene el estado honesto y no ofrece un selector o QR de demostración.
+Por instrucción expresa se cerró el contrato que faltaba entre `tableId` y el
+secreto revocable. V1 usa
+`https://<origin>/qr/v1/<restaurantCode>/<tableId>#<token>`, con UUID canónico y
+token CSPRNG de 32 bytes en Base64URL sin relleno. El fragmento se retira con
+`history.replaceState` antes de montar React o iniciar red. La PWA admite enlace
+directo y cámara local como mejora progresiva, detiene las pistas al leer,
+cancelar o fallar, y no ofrece selector manual de mesa. Origen, restaurante,
+versión o forma divergentes se rechazan sin llamar al endpoint de visita.
 
 ### H4–H5 — cocina, sala y circuito vertical
 
@@ -90,6 +96,12 @@ Los wrappers `SECURITY DEFINER` fijan `search_path`, tienen owner sin login y
 reciben solo las columnas y políticas RLS necesarias. El runtime conserva
 únicamente `USAGE` del schema y `EXECUTE` de los wrappers exactos.
 
+La migración `20261027072924_sabora_table_qr_payload_v1.sql` mantiene
+`rotate_table_qr` como `SECURITY INVOKER`, sin grants a browser, y restringe la
+rotación al token V1 canónico. El emisor Node persiste el hash SHA-256 y entrega
+el payload secreto solo al proceso autorizado de render/impresión; esta rama no
+crea ese endpoint ni activa QR operativos.
+
 ## Defectos encontrados y corregidos
 
 1. `grouping` sin delimitar en `RETURNS TABLE` era rechazado por PostgreSQL 17.
@@ -125,24 +137,40 @@ reciben solo las columnas y políticas RLS necesarias. El runtime conserva
     como petición inválida. Ahora solo los dos errores de entrada documentados
     devuelven 400; resultados SQL contradictorios o malformados permanecen
     cerrados como indisponibilidad 503 sin revelar detalles.
+13. El smoke histórico rotaba a una cadena heredada de 64 caracteres. El nuevo
+    contrato la rechazó correctamente; el fixture usa ahora dos tokens V1
+    canónicos distintos y conserva la prueba real de rotación y fencing.
+14. El check general transpila TypeScript con Vite, pero no ejecutaba el
+    comprobador estático. Se integró `tsc --noEmit` en los builds de cliente y
+    gestión, se declararon los tipos de Vite y se corrigieron estrechamientos
+    inseguros de datos de cesta que el typecheck estricto hizo visibles.
 
 ## Evidencia local
 
 | Verificación | Resultado |
 |---|---:|
-| `npm run check` | PASS, 962/962 y builds API/cliente/gestión |
+| `npm run check` | PASS, 967/967, typecheck estricto y builds API/cliente/gestión |
 | `pnpm --filter @sabora/management test` | PASS, 35/35 |
-| `pnpm --filter @sabora/client test:e2e` | PASS, 18/18 en 390 px y 1440 px |
+| `pnpm --filter @sabora/client test:e2e` | PASS, 26/26 en 390 px y 1440 px |
 | `scripts/ci/postgres-migration-smoke.sh` | PASS, PostgreSQL 17 desechable |
 | Driver Node + PostgreSQL 17 | PASS, 93/93: 92 regresiones históricas + H3 restringido |
-| GitHub Actions, PR #30 | PASS: `validate` 2m12s, `client-browser` 1m03s, `generate-lockfile` 2m14s |
+| GitHub Actions, PR #30 | Pendiente de la ejecución del SHA final del bloque QR |
 
 La aceptación nueva del driver verifica con logins reales y restringidos:
 registro, sesión, visita, dos líneas cotizadas, rollback si falla la segunda
 línea, confirmación concurrente `confirmed/replayed`, una sola orden, dos líneas,
 un solo intento, conflicto por reutilización divergente, repricing descendente,
 aceptación HMAC, expiración de visita, revocación de sesión, RLS y ausencia de
-privilegios directos.
+privilegios directos. La misma prueba genera el QR mediante el emisor real,
+parsea su payload, verifica el hash persistido, rechaza formato heredado, rota
+la credencial, bloquea el token anterior y autoriza una visita nueva solo con
+el token V1.
+
+Playwright cubre enlace directo y escaneo de cámara simulado, limpieza de URL
+antes de red, ausencia del secreto en URL/storage, rechazo de otro restaurante,
+una sola autorización de visita, limpieza de contexto al cerrar sesión y parada
+de todas las pistas multimedia. Un resultado tardío del detector tras cancelar
+se ignora y no provoca llamadas de visita.
 
 La matriz histórica ejecutada en la misma instancia desechable permanece verde:
 catálogo/visitas (22), operaciones (8), identidad operativa (18), lectura y
@@ -153,7 +181,8 @@ nuevo añade una aceptación integral y deja el total del driver en 93 pruebas.
 
 La RC queda en **NO-GO** hasta resolver y aprobar:
 
-1. formato normativo del QR físico y adaptador de cámara/accesibilidad;
+1. configurar y auditar el código/origen de restaurante, generar los QR V1 y
+   verificar impresión, cámaras físicas y navegadores objetivo;
 2. transporte dirigido de eventos, cursor, retención y recuperación de backlog;
 3. contratos pendientes de reservas, anuncios publicados y comunicaciones;
 4. entrega, cancelación, incidencias económicas, cobro y cierre del pedido;
@@ -175,4 +204,8 @@ La RC queda en **NO-GO** hasta resolver y aprobar:
    candidatas no autorizan por sí mismas tráfico de producción.
 
 No se modificó `server.mjs`, no se crearon logins operativos, no se desplegó y
-no se tocaron Supabase operativo, Fleetia, VPS ni recursos compartidos.
+no se tocaron Supabase operativo, Fleetia, VPS ni recursos compartidos. La API
+nativa `BarcodeDetector` sigue siendo una mejora progresiva: donde no existe,
+la vía compatible es abrir el enlace QR con la cámara del sistema. La aceptación
+con material impreso y dispositivos físicos queda como requisito de activación,
+no como funcionalidad simulada en esta RC.

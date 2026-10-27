@@ -823,33 +823,33 @@ begin
 end;
 $governance$;
 insert into sabora.dining_tables(number,capacity,qr_token_hash)
-values (1,4,sha256(convert_to(repeat('a',64),'UTF8')));
+values (1,4,sha256(convert_to(repeat('A',43),'UTF8')));
 do $$
 declare v_table uuid; v_order uuid; v_line uuid; v_session uuid; v_deadline timestamptz;
 begin
  select id,session_id into strict v_table,v_session from sabora.dining_tables where number=1;
- select order_id into v_order from sabora.confirm_order(v_table,repeat('a',64),'Acme','100','request_0001',
+ select order_id into v_order from sabora.confirm_order(v_table,repeat('A',43),'Acme','100','request_0001',
   '[{"category":"main","name":"Rice","quantity":1}]'::jsonb);
  if (select count(*) from sabora.order_lines where order_id=v_order)<>1 then raise exception 'missing line'; end if;
- if (select count(*) from sabora.confirm_order(v_table,repeat('a',64),'Acme','100','request_0001',
+ if (select count(*) from sabora.confirm_order(v_table,repeat('A',43),'Acme','100','request_0001',
   '[{"category":"main","name":"Rice","quantity":1}]'::jsonb) where repeated)<>1 then raise exception 'idempotency failure'; end if;
  begin
-  perform * from sabora.confirm_order(v_table,repeat('a',64),'Acme','100','request_0001',
+  perform * from sabora.confirm_order(v_table,repeat('A',43),'Acme','100','request_0001',
    '[{"category":"main","name":"Tea","quantity":1}]'::jsonb);
   raise exception 'conflicting replay accepted';
  exception when unique_violation then null;
  end;
- perform * from sabora.rotate_table_qr(v_table,repeat('b',64));
+ perform * from sabora.rotate_table_qr(v_table,repeat('B',42)||'E');
  if (select session_id from sabora.dining_tables where id=v_table)<>v_session then
   raise exception 'QR rotation changed visit';
  end if;
  begin
-  perform * from sabora.confirm_order(v_table,repeat('a',64),'Acme','101','request_0002',
+  perform * from sabora.confirm_order(v_table,repeat('A',43),'Acme','101','request_0002',
    '[{"category":"drink","name":"Water","quantity":1}]'::jsonb);
   raise exception 'old QR accepted';
  exception when invalid_authorization_specification then null;
  end;
- if (select order_grouping from sabora.confirm_order(v_table,repeat('b',64),'Acme','101','request_0003',
+ if (select order_grouping from sabora.confirm_order(v_table,repeat('B',42)||'E','Acme','101','request_0003',
   '[{"category":"drink","name":"Water","quantity":1}]'::jsonb))<>'grouped' then
   raise exception 'QR rotation restarted grouping';
  end if;

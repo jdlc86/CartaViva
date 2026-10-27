@@ -10,6 +10,8 @@ import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSER
 import {createCustomerSessionScopedQuery} from '../../apps/api/src/customer-session-scoped-query.mjs';
 import {createCustomerSessionRevoker} from '../../apps/api/src/customer-session-revoker.mjs';
 import {assertCustomerProductionSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
+import {createTableQrCredential} from '../../apps/api/src/table-qr-credential.mjs';
+import {parseTableQrPayload} from '../../packages/contracts/src/index.js';
 
 const url=process.env.SABORA_CI_PG_URL;
 const modulePath=process.env.SABORA_CI_PG_MODULE;
@@ -36,7 +38,10 @@ test.after(async()=>{await Promise.allSettled([registrationPool?.end(),sessionPo
 const tableId='ca710000-0000-4000-8000-000000000001';
 const itemA='ca710000-0000-4000-8000-000000000002';
 const itemB='ca710000-0000-4000-8000-000000000003';
-const qrToken='ci_production_qr_token_'.repeat(3);
+const qrCredential=createTableQrCredential({origin:'https://sabora.example',restaurantCode:'SABORA',tableId,
+ randomBytesImpl:()=>Buffer.from(Array.from({length:32},(_,index)=>index+1))});
+const qrToken=parseTableQrPayload(qrCredential.payload,{expectedOrigin:'https://sabora.example',
+ expectedRestaurantCode:'SABORA'}).token;
 const secretKey='ci-customer-basket-acceptance-key-2026-at-least-32';
 const selection={options:{},extras:[]};
 
@@ -80,6 +85,9 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds)
   VALUES ($1,971001,4,sha256(convert_to($2,'UTF8')),'open',300)
   RETURNING session_id`,[tableId,qrToken]);
+ const storedQr=await admin.query(`SELECT qr_token_hash=$2::bytea AS matches
+  FROM sabora.dining_tables WHERE id=$1`,[tableId,qrCredential.tokenHash]);
+ assert.deepEqual(storedQr.rows,[{matches:true}]);
  await admin.query(`INSERT INTO sabora.catalog_items
   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
   VALUES ($1,$2,1,1,$2,clock_timestamp()),($3,$4,1,1,$4,clock_timestamp())`,
@@ -162,10 +170,25 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   SET granted_at=clock_timestamp()-interval '1 minute',
       expires_at=clock_timestamp()+interval '1 hour'
   WHERE table_id=$1 AND visit_key=$2`,[tableId,visit.visitId]);
+ // Rotation accepts only the V1 canonical token, immediately fences the old
+ // credential and permits a new visit only through the newly encoded payload.
+ await assert.rejects(admin.query('SELECT * FROM sabora.rotate_table_qr($1,$2)',
+  [tableId,'legacy-token-that-is-long-enough-but-not-v1']),/invalid_qr_rotation_input/);
+ const rotatedCredential=createTableQrCredential({origin:'https://sabora.example',restaurantCode:'SABORA',tableId,
+  randomBytesImpl:()=>Buffer.from(Array.from({length:32},(_,index)=>255-index))});
+ const rotatedToken=parseTableQrPayload(rotatedCredential.payload,{expectedOrigin:'https://sabora.example',
+  expectedRestaurantCode:'SABORA'}).token;
+ const rotation=await admin.query('SELECT * FROM sabora.rotate_table_qr($1,$2)',[tableId,rotatedToken]);
+ assert.equal(rotation.rows.length,1);
+ await assert.rejects(flow.quote({customerSessionToken:registered.token,tableId,qrToken,
+  visitId:visit.visitId,basketId:visit.basketId,
+  lines:[{itemId:itemA,selection,quantity:1}]}),/invalid_customer_flow_result/);
+ const rotatedVisit=await flow.authorizeVisit({customerSessionToken:registered.token,tableId,qrToken:rotatedToken});
+ assert.equal(rotatedVisit.tableId,tableId);
  const sessionQuery=createCustomerSessionScopedQuery({pool:sessionPool});
  const revoke=createCustomerSessionRevoker({query:sessionQuery});
  assert.equal(await revoke(registered.token),true);
- await assert.rejects(flow.authorizeVisit({customerSessionToken:registered.token,tableId,qrToken}),
+ await assert.rejects(flow.authorizeVisit({customerSessionToken:registered.token,tableId,qrToken:rotatedToken}),
   /customer_session_forbidden/);
 
  const rls=await admin.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,

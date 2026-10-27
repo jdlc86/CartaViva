@@ -15,7 +15,7 @@ const orderId='10000000-0000-4000-8000-000000000005';
 const batchId='10000000-0000-4000-8000-000000000006';
 const visitId='10000000-0000-4000-8000-000000000007';
 const basketId='10000000-0000-4000-8000-000000000008';
-const token='s'.repeat(43),qrToken='q'.repeat(64);
+const token='s'.repeat(43),qrToken='A'.repeat(43);
 const snapshot={name:'Arroz cremoso',category:'Primeros',priceCents:1200,
  allergens:[],options:[],extras:[],discount:null};
 const selection={options:{},extras:[]};

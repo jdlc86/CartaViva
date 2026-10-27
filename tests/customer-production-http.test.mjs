@@ -26,14 +26,14 @@ test('production customer HTTP flow requires cookie and same-origin then exposes
  try{
   const missing=await app.inject({method:'POST',url:'/api/v1/customer/visits',
    headers:{origin:'https://sabora.example','content-type':'application/json'},
-   payload:{tableId:'10000000-0000-4000-8000-000000000001',qrToken:'q'.repeat(64)}});
+   payload:{tableId:'10000000-0000-4000-8000-000000000001',qrToken:'A'.repeat(43)}});
   assert.equal(missing.statusCode,401);
   const cross=await app.inject({method:'POST',url:'/api/v1/customer/visits',
    headers:{cookie,origin:'https://evil.example','content-type':'application/json'},payload:{}});
   assert.equal(cross.statusCode,403);assert.equal(seen.length,0);
   const success=await app.inject({method:'POST',url:'/api/v1/customer/visits',
    headers:{cookie,origin:'https://sabora.example','content-type':'application/json'},
-   payload:{tableId:'10000000-0000-4000-8000-000000000001',qrToken:'q'.repeat(64)}});
+   payload:{tableId:'10000000-0000-4000-8000-000000000001',qrToken:'A'.repeat(43)}});
   assert.equal(success.statusCode,201);
   assert.equal(seen[0].customerSessionToken,'s'.repeat(43));
   assert.equal(success.body.includes('internal'),false);

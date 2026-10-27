@@ -23,7 +23,9 @@ export const PERSIST_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,rep
  )`;
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TABLE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY=/^[A-Za-z0-9_-]{16,128}$/;
+const QR_TOKEN=/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 const revision=value=>{
@@ -47,8 +49,7 @@ function assertScope(input,{request=false}={}){
  if(!strictObject(input,request?
   ['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken']:
   ['tableId','qrToken','visitId','basketId','lines'])||
-    !UUID.test(input.tableId)||typeof input.qrToken!=='string'||
-    input.qrToken.length<32||input.qrToken.length>512||
+    !TABLE_ID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken)||
     !KEY.test(input.visitId)||!KEY.test(input.basketId)||
     (request&&!KEY.test(input.requestKey))||
     !Array.isArray(input.lines)||input.lines.length<1||input.lines.length>50)
@@ -84,8 +85,8 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
 
  const authorizeVisit=async({customerSessionToken,tableId,qrToken}={})=>{
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
-  if(!sessionHash||!UUID.test(tableId??'')||typeof qrToken!=='string'||
-     qrToken.length<32||qrToken.length>512)throw Error('invalid_customer_visit_input');
+  if(!sessionHash||!TABLE_ID.test(tableId??'')||typeof qrToken!=='string'||
+     !QR_TOKEN.test(qrToken))throw Error('invalid_customer_visit_input');
   const visitId=newId(),basketId=newId(),now=clock();
   if(!UUID.test(visitId)||!UUID.test(basketId)||!Number.isSafeInteger(now)||now<0)
    throw Error('invalid_customer_production_flow');

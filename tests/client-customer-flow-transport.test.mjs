@@ -31,3 +31,20 @@ test('customer PWA transport fails closed on malformed and rejected responses',a
  const malformed=createCustomerFlowTransport({fetchImpl:async()=>json(200,{authenticated:true,publicId:'bad'})});
  await assert.rejects(malformed.session(),/customer_flow_unavailable/);
 });
+
+test('customer PWA visit transport accepts only the canonical QR V1 token',async()=>{
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ const token='A'.repeat(43);const calls=[];
+ const transport=createCustomerFlowTransport({fetchImpl:async(path,init)=>{
+  calls.push({path,body:JSON.parse(init.body)});
+  return json(201,{tableId,visitId:'10000000-0000-4000-8000-000000000007',
+   basketId:'10000000-0000-4000-8000-000000000008',expiresAt:'2026-10-27T23:00:00.000Z'});
+ }});
+ assert.equal((await transport.authorizeVisit({tableId,qrToken:token})).tableId,tableId);
+ assert.deepEqual(calls,[{path:'/api/v1/customer/visits',body:{tableId,qrToken:token}}]);
+ for(const qrToken of ['A'.repeat(42),'A'.repeat(44),'A'.repeat(42)+'B','+'.repeat(43)])
+  await assert.rejects(transport.authorizeVisit({tableId,qrToken}),/invalid_customer_visit_transport/);
+ await assert.rejects(transport.authorizeVisit({tableId:tableId.toUpperCase(),qrToken:token}),
+  /invalid_customer_visit_transport/);
+ assert.equal(calls.length,1);
+});

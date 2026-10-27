@@ -42,7 +42,7 @@ test('premium client flow keeps dynamic catalog, favorites and selection without
  await expect(page.getByTestId('product-card')).toHaveCount(1);
 
  await page.getByRole('button',{name:'QR',exact:true}).click();
- await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('no habilitará el pedido');
+ await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  await page.screenshot({path:testInfo.outputPath(`client-qr-${testInfo.project.name}.png`),fullPage:true});
  expect([...new Set(apiRequests)].sort()).toEqual(['/api/v1/catalog','/api/v1/customer/session']);
 });
@@ -65,6 +65,103 @@ test('identity registration uses same-origin HttpOnly session contract without e
  expect(await page.evaluate(()=>Object.keys(localStorage).every(key=>!key.toLowerCase().includes('token')))).toBe(true);
 });
 
+test('QR V1 deep link is scrubbed before one authenticated visit authorization',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ const token='A'.repeat(43);
+ const requests:Array<{url:string;body:unknown}>=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({authenticated:true,
+   publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>{
+  requests.push({url:route.request().url(),body:route.request().postDataJSON()});
+  return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({
+   tableId,visitId:'10000000-0000-4000-8000-000000000007',
+   basketId:'10000000-0000-4000-8000-000000000008',expiresAt:'2026-10-27T23:00:00.000Z'
+  })});
+ });
+ await page.route('**/api/v1/customer/logout',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({revoked:true})}));
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ const dialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(dialog).toContainText('Mesa verificada');
+ expect(new URL(page.url()).pathname).toBe('/');
+ expect(new URL(page.url()).hash).toBe('');
+ expect(requests).toEqual([{url:'http://127.0.0.1:4179/api/v1/customer/visits',
+  body:{tableId,qrToken:token}}]);
+ expect(requests[0].url).not.toContain(token);
+ expect(await page.evaluate(secret=>({local:Object.values(localStorage).some(value=>value.includes(secret)),
+  session:Object.values(sessionStorage).some(value=>value.includes(secret))}),token)).toEqual({local:false,session:false});
+ await dialog.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+ await page.getByRole('button',{name:'Cerrar sesión'}).click();
+ await expect(page.getByRole('status')).toContainText('Sesión cerrada');
+ await page.getByRole('button',{name:'QR',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'QR de mesa'})).not.toContainText('Mesa verificada');
+ expect(requests).toHaveLength(1);
+});
+
+test('QR V1 from another installation is scrubbed and never reaches the visit API',async({page})=>{
+ const calls:string[]=[];
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/v1/customer/visits')calls.push(request.url());});
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ await page.goto(`/qr/v1/OTHER/${tableId}#${'A'.repeat(43)}`);
+ const dialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(dialog.getByRole('alert')).toContainText('otra instalación');
+ expect(new URL(page.url()).pathname).toBe('/');
+ expect(new URL(page.url()).hash).toBe('');
+ expect(calls).toEqual([]);
+});
+
+test('in-app QR camera decodes locally and stops its media tracks after authorization',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ const token='A'.repeat(43);
+ const payload=`http://127.0.0.1:4179/qr/v1/SABORA/${tableId}#${token}`;
+ await page.addInitScript(({payload})=>{
+  const stream=new MediaStream();
+  Object.defineProperty(stream,'getTracks',{value:()=>[{stop:()=>Reflect.set(window,'__qrTrackStopped',true)}]});
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>stream}});
+  Object.defineProperty(HTMLMediaElement.prototype,'readyState',{configurable:true,get:()=>HTMLMediaElement.HAVE_ENOUGH_DATA});
+  Object.defineProperty(HTMLMediaElement.prototype,'play',{configurable:true,value:async()=>{}});
+  Reflect.set(window,'BarcodeDetector',class{async detect(){return [{rawValue:payload}];}});
+ },{payload});
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({authenticated:true,
+   publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,
+  contentType:'application/json',body:JSON.stringify({tableId,
+   visitId:'10000000-0000-4000-8000-000000000007',
+   basketId:'10000000-0000-4000-8000-000000000008',expiresAt:'2026-10-27T23:00:00.000Z'})}));
+ await page.reload();
+ await page.getByRole('button',{name:'QR',exact:true}).click();
+ await page.getByRole('button',{name:'Escanear QR'}).click();
+ await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('Mesa verificada');
+ expect(await page.evaluate(()=>Reflect.get(window,'__qrTrackStopped'))).toBe(true);
+});
+
+test('closing the QR scanner stops media and ignores a late detector result',async({page})=>{
+ const calls:string[]=[];
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/v1/customer/visits')calls.push(request.url());});
+ await page.addInitScript(()=>{
+  const stream=new MediaStream();
+  Object.defineProperty(stream,'getTracks',{value:()=>[{stop:()=>Reflect.set(window,'__qrTrackStopped',true)}]});
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>stream}});
+  Object.defineProperty(HTMLMediaElement.prototype,'readyState',{configurable:true,get:()=>HTMLMediaElement.HAVE_ENOUGH_DATA});
+  Object.defineProperty(HTMLMediaElement.prototype,'play',{configurable:true,value:async()=>{}});
+  Reflect.set(window,'BarcodeDetector',class{async detect(){return new Promise(resolve=>{
+   Reflect.set(window,'__resolveQrDetector',()=>resolve([{rawValue:`${location.origin}/qr/v1/SABORA/ca710000-0000-4000-8000-000000000001#${'A'.repeat(43)}`}]))
+  });}});
+ });
+ await page.reload();
+ await page.getByRole('button',{name:'QR',exact:true}).click();
+ await page.getByRole('button',{name:'Escanear QR'}).click();
+ await expect(page.getByRole('status')).toContainText('Apunta al QR');
+ await page.getByRole('button',{name:'Cerrar'}).click();
+ await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'__qrTrackStopped'))).toBe(true);
+ await page.evaluate(()=>{const resolve=Reflect.get(window,'__resolveQrDetector');if(typeof resolve==='function')resolve();});
+ await page.waitForTimeout(100);
+ expect(calls).toEqual([]);
+});
+
 test('client has no serious accessibility violations in the populated home',async({page},testInfo)=>{
  const result=await new AxeBuilder({page}).analyze();
  await testInfo.attach('axe-report',{body:Buffer.from(JSON.stringify(result,null,2)),contentType:'application/json'});
@@ -75,7 +172,7 @@ test('client has no serious accessibility violations in the populated home',asyn
  const dialog=page.getByRole('dialog',{name:'QR de mesa'});
  await expect(dialog.getByRole('button',{name:'Cerrar'})).toBeFocused();
  await page.keyboard.press('Shift+Tab');
- await expect(dialog.getByRole('button',{name:'Cerrar'})).toBeFocused();
+ await expect(dialog.getByRole('button',{name:'Escanear QR'})).toBeFocused();
  const dialogResult=await new AxeBuilder({page}).include('[role="dialog"]').analyze();
  const dialogViolations=dialogResult.violations.filter(item=>item.impact==='serious'||item.impact==='critical');
  expect(dialogViolations,dialogViolations.map(item=>`${item.id}: ${item.help}`).join('\n')).toEqual([]);
@@ -159,7 +256,7 @@ test('H3 selection review resolves mixed catalog incidents before allowing QR in
  await dialog.getByRole('button',{name:'Retirar de la cesta'}).click();
  await expect(dialog.getByRole('button',{name:'Pedir en mesa'})).toBeEnabled();
  await dialog.getByRole('button',{name:'Pedir en mesa'}).click();
- await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('no habilitará el pedido');
+ await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]'));
  expect(saved).toEqual([{itemId:id,name:'Arroz meloso',priceCents:1290,quantity:2}]);
 });

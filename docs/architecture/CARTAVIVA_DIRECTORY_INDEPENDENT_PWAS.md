@@ -16,6 +16,7 @@ Decisión aprobada el 20 de octubre de 2026: cada restaurante dispone de **dos P
 ## Límites de seguridad
 - `restaurant_code` identifica el restaurante, no concede autorización para una mesa.
 - El QR contiene referencia al restaurante y credencial revocable de mesa; el backend de la instalación valida el token y la visita.
+- La representación canónica aprobada se define en [SABORA_TABLE_QR_PAYLOAD_CONTRACT_V1.md](SABORA_TABLE_QR_PAYLOAD_CONTRACT_V1.md); el `restaurant_code` del payload debe coincidir exactamente con la instalación y no sustituye ninguna autorización.
 - El directorio no almacena pedidos, cuentas, pagos, empleados ni tokens QR.
 - La tabla `installations` tiene RLS FORCE y no concede lectura o escritura a `anon` ni `authenticated`.
 - El resolvedor público, los permisos de registro administrativo, la comprobación de titularidad del dominio y la protección contra abuso requieren diseño y pruebas antes de habilitarse.

@@ -64,9 +64,10 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  const valid=value.every(line=>{
   if(!plain(line)||Reflect.ownKeys(line).length!==4||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     typeof line.itemId!=='string'||typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
-     !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||(line.priceCents as number)<0||
-     !Number.isSafeInteger(line.quantity)||(line.quantity as number)<1||(line.quantity as number)>MAX_QUANTITY)return false;
+     typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
+     !boundedText(line.name,160,true)||typeof line.priceCents!=='number'||
+     !Number.isSafeInteger(line.priceCents)||line.priceCents<0||typeof line.quantity!=='number'||
+     !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>MAX_QUANTITY)return false;
   ids.add(line.itemId.toLowerCase());return true;
  });
  if(!valid)return Object.freeze([]);
@@ -78,12 +79,14 @@ function validBasketLines(lines:readonly BasketLine[]):boolean{
  if(!Array.isArray(lines)||lines.length>MAX_BASKET_LINES)return false;
  const ids=new Set<string>();
  for(const line of lines){
-  if(!plain(line)||Reflect.ownKeys(line).length!==4||
-     !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
-     !uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
-     !boundedText(line.name,160,true)||!Number.isSafeInteger(line.priceCents)||line.priceCents<0||
-     !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>MAX_QUANTITY)return false;
-  ids.add(line.itemId.toLowerCase());
+  const candidate:unknown=line;
+  if(!plain(candidate)||Reflect.ownKeys(candidate).length!==4||
+     !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(candidate,key))||
+     typeof candidate.itemId!=='string'||!uuid.test(candidate.itemId)||ids.has(candidate.itemId.toLowerCase())||
+     !boundedText(candidate.name,160,true)||typeof candidate.priceCents!=='number'||
+     !Number.isSafeInteger(candidate.priceCents)||candidate.priceCents<0||typeof candidate.quantity!=='number'||
+     !Number.isSafeInteger(candidate.quantity)||candidate.quantity<1||candidate.quantity>MAX_QUANTITY)return false;
+  ids.add(candidate.itemId.toLowerCase());
  }
  return true;
 }
@@ -122,7 +125,7 @@ export const basketTotal=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=
 export type BasketIssue=Readonly<{itemId:string;reason:'unpublished'|'sold_out'|'price_changed'}>;
 export function basketIssues(lines:readonly BasketLine[],items:readonly MenuItem[]):readonly BasketIssue[]{
  const published=new Map(items.filter(item=>typeof item.id==='string').map(item=>[item.id.toLowerCase(),item]));
- return Object.freeze(lines.flatMap(line=>{
+ return Object.freeze(lines.flatMap<BasketIssue>(line=>{
   const item=published.get(line.itemId.toLowerCase());
   if(!item)return [Object.freeze({itemId:line.itemId,reason:'unpublished' as const})];
   if(!item.available)return [Object.freeze({itemId:line.itemId,reason:'sold_out' as const})];
