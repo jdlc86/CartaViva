@@ -124,13 +124,49 @@ test('gateway fails closed on private, non-json or contradictory responses witho
     /invalid_order_history/);
 });
 
-test('connected view blocks duplicate clicks and keeps delivery and cancellation unavailable', () => {
+test('connected view blocks duplicate clicks and keeps final delivery unavailable', () => {
   const source = readFileSync(new URL('../src/views/OrdersView.tsx', import.meta.url), 'utf8');
   assert.match(source, /pendingLines\.has\(line\.lineId\)/);
   assert.match(source, /disabled=\{pending\}/);
   assert.match(source, /await load\(\)/);
-  assert.match(source, /Entrega y cancelación siguen bloqueadas/);
+  assert.match(source, /La recogida no acredita entrega al comensal/);
   assert.doesNotMatch(source, /targetStatus:\s*['"]delivered['"]|targetStatus:\s*['"]cancelled['"]/);
+});
+
+test('H6 gateway streams durable events without polling and exposes contracted operations', () => {
+  const gateway = readFileSync(new URL('../src/order-operations-gateway.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/views/OrdersView.tsx', import.meta.url), 'utf8');
+  assert.match(gateway, /text\/event-stream/);
+  assert.match(gateway, /Last-Event-ID/);
+  assert.match(gateway, /acknowledgeDispatch/);
+  assert.match(gateway, /reportIncident/);
+  assert.match(gateway, /resolveIncident/);
+  assert.doesNotMatch(gateway, /setInterval\s*\(/);
+  assert.match(source, /gateway\.subscribeEvents/);
+  assert.match(source, /Confirmar recepción/);
+  assert.match(source, /Incidencias pendientes/);
+});
+
+test('H6 gateway parses a durable SSE frame and preserves restricted mutation bodies', async () => {
+  const calls=[];
+  const stream=`id: 41\nevent: sabora.kitchen.dispatch_requested\ndata: {"eventKey":"50000000-0000-4000-8000-000000000005","payload":{"orderId":"${orderId}","dispatchId":"${notificationId}"},"createdAt":"2026-10-27T12:00:00.000Z"}\n\n`;
+  const gateway=createOrderOperationsGateway({reconnectDelayMs:100,send:async(path,init)=>{
+    calls.push({path,init});
+    if(path==='/api/v1/operations/events')return new Response(stream,{status:200,
+      headers:{'content-type':'text/event-stream; charset=utf-8'}});
+    return new Response(JSON.stringify({dispatchId:notificationId,state:'acknowledged',repeated:false}),
+      {status:200,headers:{'content-type':'application/json'}});
+  }});
+  const received=await new Promise((resolve,reject)=>{
+    const timeout=setTimeout(()=>reject(Error('event timeout')),1000);
+    const stop=gateway.subscribeEvents({onEvent:event=>{clearTimeout(timeout);stop();resolve(event);},
+      onResync:()=>reject(Error('unexpected resync')),onUnavailable:()=>{}});
+  });
+  assert.equal(received.id,41);
+  assert.equal(received.type,'sabora.kitchen.dispatch_requested');
+  await gateway.acknowledgeDispatch({dispatchId:notificationId,correlationId:'ui_ack_test_0001'});
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body),{correlationId:'ui_ack_test_0001'});
+  assert.equal(calls.at(-1).init.credentials,'omit');
 });
 
 test('kitchen UI preserves correlation for an uncertain transition retry and guards stale reads', () => {

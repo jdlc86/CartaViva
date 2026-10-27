@@ -249,14 +249,57 @@ test('H3 selection review resolves mixed catalog incidents before allowing QR in
  await page.getByRole('button',{name:/Cesta: 4/}).click();
  const dialog=page.getByRole('dialog',{name:'Tu selección'});
  await expect(dialog).toContainText('3 plato(s) requieren una decisión');
- await expect(dialog.getByRole('button',{name:'Pedir en mesa'})).toBeDisabled();
+ await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeDisabled();
  await dialog.getByRole('button',{name:'Aceptar nuevo precio'}).click();
  await expect(dialog).toContainText('2 plato(s) requieren una decisión');
  await dialog.getByRole('button',{name:'Retirar de la cesta'}).first().click();
  await dialog.getByRole('button',{name:'Retirar de la cesta'}).click();
- await expect(dialog.getByRole('button',{name:'Pedir en mesa'})).toBeEnabled();
- await dialog.getByRole('button',{name:'Pedir en mesa'}).click();
+ await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeEnabled();
+ await dialog.getByRole('button',{name:'Validar mesa para pedir'}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]'));
  expect(saved).toEqual([{itemId:id,name:'Arroz meloso',priceCents:1290,quantity:2}]);
+});
+
+test('H6 customer completes QR, server quote, pay-at-end confirmation and durable SSE tracking',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
+ const accountId='51000000-0000-4000-8000-000000000001';
+ const roundId='52000000-0000-4000-8000-000000000002';
+ const orderId='53000000-0000-4000-8000-000000000003';
+ const quoteId='54000000-0000-4000-8000-000000000004';
+ const confirmations:unknown[]=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
+   expiresAt:'2026-10-27T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/quotes',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({lines:[{quoteId,itemId:catalog[0].id,totalCents:1290,
+   expiresAt:'2026-10-27T22:00:00.000Z'}]})}));
+ await page.route('**/api/v1/customer/orders/confirm',route=>{
+  confirmations.push(route.request().postDataJSON());
+  return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({status:'confirmed',
+   orderId,grouping:'first',accountId,roundId,amountCents:1290,paymentMode:'pay_at_end',
+   roundState:'grouping',paymentState:null,requiresPaymentAction:false})});
+ });
+ await page.route('**/api/v1/customer/events**',route=>route.fulfill({status:200,
+  headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store'},
+  body:`id: 17\nevent: sabora.round.confirmed\ndata: {"eventKey":"55000000-0000-4000-8000-000000000005","payload":{"orderId":"${orderId}"},"createdAt":"2026-10-27T12:00:00.000Z"}\n\n`}));
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ const qrDialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(qrDialog).toContainText('Mesa verificada');
+ await qrDialog.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByTestId('product-card').filter({hasText:'Arroz meloso'}).getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ const checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await expect(checkout.getByText('Total confirmado por el servidor')).toBeVisible();
+ await checkout.getByLabel('Pagar al terminar').check();
+ await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(checkout).toContainText('Pedido confirmado');
+ expect(confirmations).toHaveLength(1);
+ expect(confirmations[0]).toMatchObject({paymentMode:'pay_at_end',tableId,qrToken:token});
+ await checkout.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByRole('button',{name:'Notificaciones'}).click();
+ await expect(page.getByRole('dialog',{name:'Notificaciones'})).toContainText('round.confirmed');
 });

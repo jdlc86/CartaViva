@@ -9,7 +9,8 @@ const plain=(value:unknown):value is Json=>value!==null&&typeof value==='object'
 
 export class CustomerFlowTransportError extends Error{
  readonly status:number;
- constructor(message:string,status:number){super(message);this.name='CustomerFlowTransportError';this.status=status;}
+ readonly details:Json|null;
+ constructor(message:string,status:number,details:Json|null=null){super(message);this.name='CustomerFlowTransportError';this.status=status;this.details=details;}
 }
 
 async function jsonRequest(fetchImpl:FetchLike,path:string,method:'GET'|'POST',body?:unknown){
@@ -25,7 +26,7 @@ async function jsonRequest(fetchImpl:FetchLike,path:string,method:'GET'|'POST',b
  }catch{throw new CustomerFlowTransportError('customer_flow_unavailable',503);}
  if(!response.ok){
   const error=plain(value)&&typeof value.error==='string'?value.error:'customer_flow_unavailable';
-  throw new CustomerFlowTransportError(error,response.status);
+  throw new CustomerFlowTransportError(error,response.status,plain(value)?value:null);
  }
  if(!plain(value))throw new CustomerFlowTransportError('customer_flow_unavailable',503);
  return value;
@@ -61,12 +62,50 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/visits','POST',input);
    if(value.tableId!==input.tableId||typeof value.visitId!=='string'||!KEY.test(value.visitId)||
       typeof value.basketId!=='string'||!KEY.test(value.basketId)||
-      typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt)))
+      typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt))||
+      (value.paymentPolicy!==undefined&&(!plain(value.paymentPolicy)||
+       typeof value.paymentPolicy.requirePayAsOrdered!=='boolean'||
+       !Number.isSafeInteger(value.paymentPolicy.version)||(value.paymentPolicy.version as number)<1)))
     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
    return Object.freeze({tableId:value.tableId as string,visitId:value.visitId,
-    basketId:value.basketId,expiresAt:value.expiresAt});
+    basketId:value.basketId,expiresAt:value.expiresAt,
+    paymentPolicy:value.paymentPolicy===undefined?null:Object.freeze({
+     requirePayAsOrdered:value.paymentPolicy.requirePayAsOrdered as boolean,
+     version:value.paymentPolicy.version as number})});
   },
-  async quote(input:Json){return jsonRequest(fetchImpl,'/api/v1/customer/quotes','POST',input);},
-  async confirm(input:Json){return jsonRequest(fetchImpl,'/api/v1/customer/orders/confirm','POST',input)}
+  async quote(input:Json){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/quotes','POST',input);
+   if(!Array.isArray(value.lines)||value.lines.length<1||value.lines.length>50||
+      !value.lines.every(line=>plain(line)&&typeof line.quoteId==='string'&&UUID.test(line.quoteId)&&
+       typeof line.itemId==='string'&&UUID.test(line.itemId)&&Number.isSafeInteger(line.totalCents)&&
+       (line.totalCents as number)>=0&&typeof line.expiresAt==='string'&&Number.isFinite(Date.parse(line.expiresAt))))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({lines:Object.freeze(value.lines.map(line=>Object.freeze({
+    quoteId:line.quoteId as string,itemId:line.itemId as string,totalCents:line.totalCents as number,
+    expiresAt:line.expiresAt as string
+   })))});
+  },
+  async confirm(input:Json){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/orders/confirm','POST',input);
+   if(!['confirmed','replayed'].includes(String(value.status))||typeof value.orderId!=='string'||
+      !UUID.test(value.orderId)||typeof value.grouping!=='string'||
+      (value.accountId!==undefined&&(
+       typeof value.accountId!=='string'||!UUID.test(value.accountId)||typeof value.roundId!=='string'||
+       !UUID.test(value.roundId)||!Number.isSafeInteger(value.amountCents)||(value.amountCents as number)<0||
+       !['pay_now','pay_at_end',null].includes(value.paymentMode as never)||typeof value.roundState!=='string'||
+       typeof value.requiresPaymentAction!=='boolean'||
+       (value.clientSecret!==undefined&&typeof value.clientSecret!=='string'))))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({
+    status:value.status as 'confirmed'|'replayed',orderId:value.orderId as string,
+    grouping:value.grouping as string,
+    accountId:value.accountId as string|undefined,roundId:value.roundId as string|undefined,
+    amountCents:value.amountCents as number|undefined,
+    paymentMode:value.paymentMode as 'pay_now'|'pay_at_end'|null|undefined,
+    roundState:value.roundState as string|undefined,paymentState:value.paymentState as string|null|undefined,
+    requiresPaymentAction:value.requiresPaymentAction as boolean|undefined,
+    clientSecret:value.clientSecret as string|undefined
+   });
+  }
  });
 }
