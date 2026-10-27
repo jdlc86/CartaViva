@@ -21,6 +21,16 @@ export const PERSIST_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,rep
  FROM sabora.persist_customer_order_candidate(
  $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean
  )`;
+export const READ_H6_PAYMENT_POLICY_SQL=`SELECT require_pay_as_ordered,payment_policy_version
+ FROM sabora.read_customer_payment_policy_h6_candidate($1::bytea,$2::uuid,$3::text)`;
+export const READ_H6_ROUND_SQL=`SELECT account_id,round_id,amount_cents,effective_payment_mode,
+ round_state,payment_attempt_id,authorization_key
+ FROM sabora.read_customer_round_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid)`;
+export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,repeated,
+ account_id,round_id,amount_cents,effective_payment_mode,round_state,payment_attempt_id,authorization_key
+ FROM sabora.confirm_customer_round_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
+ )`;
 
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TABLE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -45,9 +55,10 @@ const canonical=value=>{
 const digest=value=>createHash('sha256').update(canonical(value)).digest();
 const equal=(a,b)=>canonical(a)===canonical(b);
 
-function assertScope(input,{request=false}={}){
+function assertScope(input,{request=false,h6=false}={}){
  if(!strictObject(input,request?
-  ['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken']:
+  (h6?['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken','paymentMode']:
+   ['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken']):
   ['tableId','qrToken','visitId','basketId','lines'])||
     !TABLE_ID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken)||
     !KEY.test(input.visitId)||!KEY.test(input.basketId)||
@@ -67,6 +78,8 @@ function assertScope(input,{request=false}={}){
  if(request&&input.acceptanceToken!==undefined&&
     (typeof input.acceptanceToken!=='string'||input.acceptanceToken.length>256))
   throw Error('invalid_customer_flow_input');
+ if(request&&h6&&input.paymentMode!==undefined&&input.paymentMode!==null&&
+    !['pay_now','pay_at_end'].includes(input.paymentMode))throw Error('invalid_customer_flow_input');
 }
 
 const one=result=>{
@@ -76,12 +89,15 @@ const one=result=>{
 };
 
 export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
- newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60}={}){
+ newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
+ withH6Transaction=null}={}){
  if(typeof withTransaction!=='function'||typeof secretKey!=='string'||
     Buffer.byteLength(secretKey,'utf8')<32||typeof clock!=='function'||typeof newId!=='function'||
     !Number.isSafeInteger(visitTtlSeconds)||visitTtlSeconds<60||visitTtlSeconds>86400||
-    !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800)
+    !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800||
+    (withH6Transaction!==null&&typeof withH6Transaction!=='function'))
   throw Error('invalid_customer_production_flow');
+ const h6=typeof withH6Transaction==='function';
 
  const authorizeVisit=async({customerSessionToken,tableId,qrToken}={})=>{
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
@@ -96,7 +112,17 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   if(!UUID.test(row.table_id)||row.table_id.toLowerCase()!==tableId.toLowerCase()||
      !UUID.test(row.session_id)||row.visit_key!==visitId||row.basket_id!==basketId)
    throw Error('invalid_customer_flow_result');
-  return Object.freeze({tableId:row.table_id,visitId,basketId,expiresAt:expiresAt.toISOString()});
+  let paymentPolicy=null;
+  if(h6){
+   const policy=await withH6Transaction(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
+    [sessionHash,tableId,visitId])));
+   const version=revision(policy.payment_policy_version);
+   if(typeof policy.require_pay_as_ordered!=='boolean'||version===null)
+    throw Error('invalid_customer_flow_result');
+   paymentPolicy=Object.freeze({requirePayAsOrdered:policy.require_pay_as_ordered,version});
+  }
+  return Object.freeze({tableId:row.table_id,visitId,basketId,expiresAt:expiresAt.toISOString(),
+   ...(paymentPolicy?{paymentPolicy}:null)});
  };
 
  const quote=async({customerSessionToken,...raw}={})=>{
@@ -128,14 +154,16 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
  };
 
  const confirm=async({customerSessionToken,...raw}={})=>{
-  assertScope(raw,{request:true});
+  assertScope(raw,{request:true,h6});
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
   if(!sessionHash)throw Error('invalid_customer_flow_input');
-  const fingerprint=digest({schemaVersion:1,tableId:raw.tableId,visitId:raw.visitId,
-   basketId:raw.basketId,requestKey:raw.requestKey,lines:raw.lines});
+  const paymentMode=h6?(raw.paymentMode??null):undefined;
+  const fingerprint=digest({schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
+   basketId:raw.basketId,requestKey:raw.requestKey,lines:raw.lines,
+   ...(h6?{paymentMode}:null)});
   const now=clock();
   if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
-  return withTransaction(async query=>{
+  const prepared=await withTransaction(async query=>{
    const attempt=one(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
     raw.visitId,raw.basketId,raw.requestKey]));
    if(attempt.order_id!==null&&attempt.order_id!==undefined){
@@ -143,7 +171,9 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
        attempt.request_fingerprint.length!==fingerprint.length||
        !attempt.request_fingerprint.equals(fingerprint))throw Error('customer_order_idempotency_conflict');
     if(!UUID.test(attempt.order_id))throw Error('invalid_customer_flow_result');
-    return Object.freeze({status:'replayed',orderId:attempt.order_id,grouping:attempt.grouping});
+    if(h6)return Object.freeze({kind:'h6_replay',orderId:attempt.order_id,grouping:attempt.grouping});
+    return Object.freeze({kind:'complete',value:Object.freeze({status:'replayed',
+     orderId:attempt.order_id,grouping:attempt.grouping})});
    }
    const current=[];
    let repriced=false;
@@ -172,22 +202,46 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
      currentPublishedRevision:evidence.publishedRevision}));
     current.push(Object.freeze({quoteId:line.quoteId,itemId:line.itemId,evidence}));
    }
-   const acceptanceContext={schemaVersion:1,tableId:raw.tableId,visitId:raw.visitId,
-    basketId:raw.basketId,requestKey:raw.requestKey,lines:current};
+   const acceptanceContext={schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
+    basketId:raw.basketId,requestKey:raw.requestKey,lines:current,
+    ...(h6?{paymentMode}:null)};
    if(repriced&&!verifyCustomerBasketAcceptance({token:raw.acceptanceToken,secretKey,
       context:acceptanceContext,nowMs:now})){
     const acceptance=issueCustomerBasketAcceptance({secretKey,context:acceptanceContext,nowMs:now});
-    return Object.freeze({status:'acceptance_required',changes:Object.freeze(changes),acceptance});
+    return Object.freeze({kind:'complete',value:Object.freeze({status:'acceptance_required',
+     changes:Object.freeze(changes),acceptance})});
    }
    const orderId=newId(),batchId=newId();
    if(!UUID.test(orderId)||!UUID.test(batchId))throw Error('invalid_customer_production_flow');
+   if(h6)return Object.freeze({kind:'h6_persist',orderId,batchId,current,repriced});
    const persisted=one(await query(PERSIST_ORDER_SQL,[sessionHash,raw.tableId,raw.qrToken,
     raw.visitId,raw.basketId,raw.requestKey,fingerprint,batchId,orderId,JSON.stringify(current),repriced]));
    if(!UUID.test(persisted.persisted_order_id)||typeof persisted.repeated!=='boolean')
     throw Error('invalid_customer_flow_result');
-   return Object.freeze({status:persisted.repeated?'replayed':'confirmed',
-    orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping});
+   return Object.freeze({kind:'complete',value:Object.freeze({status:persisted.repeated?'replayed':'confirmed',
+    orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping})});
   });
+  if(prepared.kind==='complete')return prepared.value;
+  const h6Row=await withH6Transaction(async query=>one(await query(
+   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:PERSIST_H6_ORDER_SQL,
+   prepared.kind==='h6_replay'?
+    [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
+    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
+     fingerprint,prepared.batchId,prepared.orderId,JSON.stringify(prepared.current),prepared.repriced,paymentMode]
+  )));
+  const persistedOrderId=prepared.kind==='h6_replay'?prepared.orderId:h6Row.persisted_order_id;
+  const amount=typeof h6Row.amount_cents==='string'&&/^[0-9]+$/.test(h6Row.amount_cents)?
+   Number(h6Row.amount_cents):h6Row.amount_cents;
+  if(!UUID.test(persistedOrderId)||!UUID.test(h6Row.account_id)||!UUID.test(h6Row.round_id)||
+     !Number.isSafeInteger(amount)||amount<0||typeof h6Row.round_state!=='string'||
+     (h6Row.payment_attempt_id!==null&&!UUID.test(h6Row.payment_attempt_id))||
+     (h6Row.authorization_key!==null&&typeof h6Row.authorization_key!=='string'))
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({status:prepared.kind==='h6_replay'||h6Row.repeated?'replayed':'confirmed',
+   orderId:persistedOrderId,grouping:prepared.grouping??h6Row.persisted_grouping,
+   accountId:h6Row.account_id,roundId:h6Row.round_id,amountCents:amount,
+   paymentMode:h6Row.effective_payment_mode,roundState:h6Row.round_state,
+   paymentAttemptId:h6Row.payment_attempt_id,authorizationKey:h6Row.authorization_key});
  };
 
  return Object.freeze({authorizeVisit,quote,confirm});
