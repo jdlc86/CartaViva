@@ -16,6 +16,11 @@ const replyFailure=(reply,error)=>{
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
  if(failure==='customer_order_idempotency_conflict')
   return reply.code(409).send({error:'order_idempotency_conflict'});
+ if(['payment_mode_required','invalid_payment_mode'].includes(failure))
+  return reply.code(400).send({error:'payment_mode_required'});
+ if(['table_requires_pay_now','payment_mode_conflict','payment_policy_conflict',
+     'payment_outcome_unknown'].includes(failure))
+  return reply.code(409).send({error:'payment_policy_conflict'});
  if(['customer_quote_unavailable','customer_quote_context_changed',
      'customer_order_confirmation_conflict','customer_order_quote_invalid',
      'customer_order_evidence_invalid','order_displayed_quote_invalid',
@@ -69,7 +74,12 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
      acceptanceToken:result.acceptance.token,expiresAt:result.acceptance.expiresAt
     });
     return reply.code(result.status==='confirmed'?201:200).send({status:result.status,
-     orderId:result.orderId,grouping:result.grouping});
+     orderId:result.orderId,grouping:result.grouping,
+     ...(result.accountId?{accountId:result.accountId,roundId:result.roundId,
+      amountCents:result.amountCents,paymentMode:result.paymentMode,
+      roundState:result.roundState,paymentState:result.paymentState??null,
+      requiresPaymentAction:typeof result.clientSecret==='string'}:null),
+     ...(result.clientSecret?{clientSecret:result.clientSecret}:null)});
    }catch(error){return replyFailure(reply,error);}
   });
  },{prefix:'/api/v1/customer'});

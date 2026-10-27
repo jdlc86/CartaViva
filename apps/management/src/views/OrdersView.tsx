@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
-import type {OrderOperationsGateway} from '../order-operations-gateway.js';
+import type {H6OperationEvent, OrderOperationsGateway} from '../order-operations-gateway.js';
 import {
   groupOrderBoard,
   nextOrderLineAction,
@@ -43,6 +43,14 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const [pendingLines, setPendingLines] = useState<ReadonlySet<string>>(new Set());
   const [history, setHistory] = useState<OrderHistory | null>(null);
   const [historyOrderId, setHistoryOrderId] = useState<string | null>(null);
+  const [eventState, setEventState] = useState<'disconnected'|'connecting'|'connected'|'unavailable'>(gateway?'connecting':'disconnected');
+  const [operationEvents, setOperationEvents] = useState<ReadonlyArray<H6OperationEvent>>([]);
+  const [pendingOperation, setPendingOperation] = useState<string | null>(null);
+  const [incidentOrderId, setIncidentOrderId] = useState<string | null>(null);
+  const [incidentReason, setIncidentReason] = useState('');
+  const [incidentAmount, setIncidentAmount] = useState('0');
+  const [incidentOrigin, setIncidentOrigin] = useState<'waiter_customer'|'waiter_restaurant'>('waiter_customer');
+  const [resolutionReason, setResolutionReason] = useState('Resolución revisada y confirmada por administración');
   const active = workspaces.find((item) => item.id === workspace) ?? workspaces[0];
 
   const load = useCallback(async () => {
@@ -69,6 +77,20 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     return () => { readEpoch.current += 1; };
   }, [load]);
 
+  useEffect(() => {
+    if (!gateway) { setEventState('disconnected'); return; }
+    setEventState('connecting');
+    return gateway.subscribeEvents({
+      onEvent: (event) => {
+        setEventState('connected');
+        setOperationEvents((current) => [...current.filter((item) => item.id !== event.id), event].slice(-200));
+        void load();
+      },
+      onResync: () => { setOperationEvents([]); void load(); },
+      onUnavailable: () => setEventState('unavailable'),
+    });
+  }, [gateway, load]);
+
   const items = useMemo(() => board?.items.filter((line) => visibleInWorkspace(line, workspace)) ?? [],
     [board, workspace]);
   const orders = useMemo(() => groupOrderBoard(items), [items]);
@@ -77,6 +99,23 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     preparing: board?.items.filter((line) => line.status === 'preparing').length ?? 0,
     ready: board?.items.filter((line) => line.status === 'ready').length ?? 0,
   }), [board]);
+  const h6ByOrder = useMemo(() => {
+    const result = new Map<string, {roundId?: string; dispatchId?: string}>();
+    for (const event of operationEvents) {
+      const orderId=typeof event.payload.orderId==='string'?event.payload.orderId:null;
+      if (!orderId) continue;
+      const value=result.get(orderId)??{};
+      if (typeof event.payload.roundId==='string') value.roundId=event.payload.roundId;
+      if (typeof event.payload.dispatchId==='string') value.dispatchId=event.payload.dispatchId;
+      result.set(orderId,value);
+    }
+    return result;
+  }, [operationEvents]);
+  const pendingArbitrations = useMemo(() => operationEvents.filter((event) =>
+    event.type==='sabora.incident.awaiting_admin'&&typeof event.payload.incidentId==='string'), [operationEvents]);
+  const pendingCashRefunds = useMemo(() => operationEvents.filter((event) =>
+    event.type==='sabora.incident.cash_refund_due'&&typeof event.payload.incidentId==='string'&&
+    Number.isSafeInteger(event.payload.amountCents)), [operationEvents]);
 
   const transition = async (line: OrderLineItem) => {
     if (!gateway || !board || pendingLines.has(line.lineId)) return;
@@ -122,14 +161,57 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     }
   };
 
+  const acknowledgeDispatch = async (dispatchId: string) => {
+    if (!gateway || pendingOperation) return;
+    setPendingOperation(dispatchId);setError(null);
+    try { await gateway.acknowledgeDispatch({dispatchId,correlationId:`ui_ack_${crypto.randomUUID().replaceAll('-','_')}`}); await load(); }
+    catch { setError('No se pudo confirmar la recepción en cocina. El despacho sigue bloqueado hasta recuperar estado.'); await load(); }
+    finally { setPendingOperation(null); }
+  };
+
+  const reportIncident = async (orderId: string) => {
+    if (!gateway || !board || pendingOperation) return;
+    const roundId=h6ByOrder.get(orderId)?.roundId,affectedCents=Number(incidentAmount);
+    if (!roundId || !incidentReason.trim() || !Number.isSafeInteger(affectedCents) || affectedCents<0) {
+      setError('La incidencia necesita motivo, importe válido y contexto durable de la ronda.');return;
+    }
+    setPendingOperation(orderId);setError(null);
+    const origin=board.role==='kitchen'?'kitchen':incidentOrigin;
+    try {
+      await gateway.reportIncident({roundId,lineId:null,origin,reason:incidentReason,
+        affectedCents,correlationId:`ui_incident_${crypto.randomUUID().replaceAll('-','_')}`});
+      setIncidentOrderId(null);setIncidentReason('');setIncidentAmount('0');await load();
+    } catch { setError('La incidencia no quedó confirmada. No se ha inferido ningún ajuste económico.');await load(); }
+    finally { setPendingOperation(null); }
+  };
+
+  const resolveIncident = async (incidentId: string,resolution: 'approve'|'reject') => {
+    if (!gateway || pendingOperation || !resolutionReason.trim()) return;
+    setPendingOperation(incidentId);setError(null);
+    try { await gateway.resolveIncident({incidentId,resolution,reason:resolutionReason,
+      correlationId:`ui_resolution_${crypto.randomUUID().replaceAll('-','_')}`});await load(); }
+    catch { setError('La resolución no quedó confirmada; la incidencia conserva su estado anterior.');await load(); }
+    finally { setPendingOperation(null); }
+  };
+
+  const refundCash = async (incidentId: string) => {
+    if (!gateway || pendingOperation) return;
+    setPendingOperation(incidentId);setError(null);
+    try {
+      await gateway.refundCash({incidentId,correlationId:`ui_cash_refund_${crypto.randomUUID().replaceAll('-','_')}`});
+      setOperationEvents(current=>current.filter(event=>event.payload.incidentId!==incidentId));await load();
+    } catch { setError('La devolución presencial no quedó registrada. No se muestra como completada.');await load(); }
+    finally { setPendingOperation(null); }
+  };
+
   return (
     <div className="view-stack">
       <PageHeader
         eyebrow="Comandas"
         title="Cocina y sala"
         description="Preparación y recogida por línea, con estado persistente e historial confirmado."
-        actions={<StatusBadge tone={gateway ? 'brand' : 'warning'}>
-          {gateway ? 'Canal operativo conectado' : 'Canal operativo sin conectar'}
+        actions={<StatusBadge tone={eventState==='connected' ? 'brand' : 'warning'}>
+          {eventState==='connected'?'Eventos durables conectados':eventState==='unavailable'?'Reconectando eventos':gateway?'Conectando eventos':'Canal operativo sin conectar'}
         </StatusBadge>}
       />
       {!gateway ? (
@@ -179,7 +261,12 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
               <article className="order-card" key={order.orderId}>
                 <header className="order-card__header">
                   <div><span>Mesa {order.tableNumber}</span><strong>{order.customerLabel}</strong></div>
-                  <button className="filter-button" type="button" onClick={() => void showHistory(order.orderId)}>Ver historial</button>
+                  <div className="button-row">
+                    {h6ByOrder.get(order.orderId)?.dispatchId&&order.lines.some(line=>line.status==='confirmed')?
+                      <button className="button button--primary" type="button" disabled={Boolean(pendingOperation)}
+                        onClick={()=>void acknowledgeDispatch(h6ByOrder.get(order.orderId)!.dispatchId!)}>Confirmar recepción</button>:null}
+                    <button className="filter-button" type="button" onClick={() => void showHistory(order.orderId)}>Ver historial</button>
+                  </div>
                 </header>
                 <ul className="order-line-list">
                   {order.lines.map((line) => {
@@ -198,6 +285,14 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                     );
                   })}
                 </ul>
+                {h6ByOrder.get(order.orderId)?.roundId ? <div className="incident-controls">
+                  {incidentOrderId===order.orderId?<>
+                    {board?.role!=='kitchen'?<label>Origen<select value={incidentOrigin} onChange={event=>setIncidentOrigin(event.target.value as typeof incidentOrigin)}><option value="waiter_customer">Solicitud del cliente</option><option value="waiter_restaurant">Causa del restaurante</option></select></label>:<span className="honest-operational-note">Incidencia de cocina: arbitraje administrativo obligatorio.</span>}
+                    <label>Motivo<textarea maxLength={500} value={incidentReason} onChange={event=>setIncidentReason(event.target.value)}/></label>
+                    <label>Importe afectado (céntimos)<input inputMode="numeric" value={incidentAmount} onChange={event=>setIncidentAmount(event.target.value)}/></label>
+                    <div className="button-row"><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void reportIncident(order.orderId)}>Registrar incidencia</button><button type="button" onClick={()=>setIncidentOrderId(null)}>Cancelar</button></div>
+                  </>:<button className="filter-button" type="button" onClick={()=>setIncidentOrderId(order.orderId)}>Registrar incidencia</button>}
+                </div>:null}
               </article>
             ))}
           </div>
@@ -212,10 +307,13 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
           </section>
         ) : null}
 
+        {board?.role==='admin'&&pendingArbitrations.length?<section className="incident-arbitration" aria-label="Arbitraje de incidencias"><div><span className="eyebrow">Administración</span><h3>Incidencias pendientes</h3></div><label>Motivo de resolución<input maxLength={500} value={resolutionReason} onChange={event=>setResolutionReason(event.target.value)}/></label><ul>{pendingArbitrations.map(event=><li key={event.id}><span>Incidencia {String(event.payload.incidentId).slice(0,8)}</span><div className="button-row"><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'approve')}>Aprobar ajuste</button>{event.payload.origin!=='kitchen'?<button type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'reject')}>Rechazar solicitud</button>:null}</div></li>)}</ul></section>:null}
+        {pendingCashRefunds.length?<section className="incident-arbitration" aria-label="Devoluciones presenciales pendientes"><div><span className="eyebrow">Sala</span><h3>Devolución en efectivo pendiente</h3></div><ul>{pendingCashRefunds.map(event=><li key={event.id}><span>{Number(event.payload.amountCents)/100} € · incidencia {String(event.payload.incidentId).slice(0,8)}</span><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void refundCash(String(event.payload.incidentId))}>Registrar devolución entregada</button></li>)}</ul></section>:null}
+
         {!gateway ? (
           <div className="button-row button-row--end"><LockedButton icon="check">Cambiar estado</LockedButton><LockedButton>Registrar incidencia</LockedButton></div>
         ) : (
-          <div className="order-contract-warning"><Icon name="lock" size={18}/><p><strong>Entrega y cancelación siguen bloqueadas.</strong> La recogida no acredita entrega al comensal; las incidencias requieren el contrato de arbitraje y ajuste económico.</p></div>
+          <div className="order-contract-warning"><Icon name="lock" size={18}/><p><strong>La recogida no acredita entrega al comensal.</strong> Las incidencias H6 aplican arbitraje y efecto económico durable; la entrega final y los límites antifraude sin aprobación siguen aislados por falta de contrato normativo cerrado.</p></div>
         )}
       </section>
     </div>

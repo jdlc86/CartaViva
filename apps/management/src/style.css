@@ -480,6 +480,15 @@ p { line-height: 1.55; }
 .order-contract-warning { display: flex; align-items: flex-start; gap: var(--cv-space-3); margin-top: var(--cv-space-5); padding: var(--cv-space-4); border: 1px solid color-mix(in srgb, var(--cv-warning) 30%, var(--cv-border)); border-radius: var(--cv-radius-control); color: var(--cv-warning); background: color-mix(in srgb, var(--cv-warning) 7%, var(--cv-surface)); }
 .order-contract-warning p { margin: 0; color: var(--cv-ink-muted); font-size: .76rem; }
 .order-contract-warning strong { color: var(--cv-ink); }
+.incident-controls { display: grid; gap: var(--cv-space-3); padding: var(--cv-space-4); border-top: 1px solid var(--cv-border); background: color-mix(in srgb, var(--cv-brand) 3%, var(--cv-surface)); }
+.incident-controls label, .incident-arbitration label { display: grid; gap: var(--cv-space-2); color: var(--cv-ink-muted); font-size: .76rem; font-weight: 750; }
+.incident-controls input, .incident-controls select, .incident-controls textarea, .incident-arbitration input { width: 100%; min-height: 44px; padding: var(--cv-space-2) var(--cv-space-3); border: 1px solid var(--cv-border); border-radius: var(--cv-radius-control); background: var(--cv-surface); color: var(--cv-ink); }
+.incident-controls textarea { min-height: 84px; resize: vertical; }
+.honest-operational-note { padding: var(--cv-space-3); border-radius: var(--cv-radius-control); background: color-mix(in srgb, var(--cv-warning) 8%, var(--cv-surface)); color: var(--cv-ink-muted); font-size: .78rem; }
+.incident-arbitration { display: grid; gap: var(--cv-space-4); margin-top: var(--cv-space-5); padding: var(--cv-space-4); border: 1px solid color-mix(in srgb, var(--cv-warning) 35%, var(--cv-border)); border-radius: var(--cv-radius-panel); background: var(--cv-surface); }
+.incident-arbitration h3 { margin: var(--cv-space-1) 0 0; }
+.incident-arbitration ul { display: grid; gap: var(--cv-space-2); margin: 0; padding: 0; list-style: none; }
+.incident-arbitration li { display: flex; align-items: center; justify-content: space-between; gap: var(--cv-space-3); padding: var(--cv-space-3); border: 1px solid var(--cv-border); border-radius: var(--cv-radius-control); }
 
 .governance-card { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(230px, auto); align-items: center; gap: var(--cv-space-5); border-color: color-mix(in srgb, var(--cv-brand) 24%, var(--cv-border)); background: linear-gradient(135deg, var(--cv-surface), var(--cv-brand-soft)); }
 .governance-card__icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; color: var(--cv-surface); background: var(--cv-brand); }
