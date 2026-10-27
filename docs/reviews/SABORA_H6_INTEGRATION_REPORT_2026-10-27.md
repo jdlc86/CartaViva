@@ -1,6 +1,6 @@
 # Informe de integración H6 — 2026-10-27
 
-Estado del cambio: **candidato validado localmente, desconectado y pendiente de revisión independiente/CI**. Rama `integration/sabora-h6-full-20261027`, descendiente del candidato de production-readiness/QR V1. No hubo despliegue, merge, Supabase operativo, VPS, Fleetia, correo ni proveedor real.
+Estado del cambio: **candidato validado localmente y por CI, desconectado y pendiente de revisión independiente**. Rama `integration/sabora-h6-full-20261027`, descendiente del candidato de production-readiness/QR V1. No hubo despliegue, merge, Supabase operativo, VPS, Fleetia, correo ni proveedor real.
 
 ## Resultado por vertical
 
@@ -59,7 +59,14 @@ Resultados definitivos locales verificados en el cierre del bloque:
 - `npm run check`: **exit 0**, con pruebas, typecheck y builds de API, cliente y gestión;
 - `git diff --check`: **exit 0**.
 
-El comentario final del PR recogerá el SHA y las URLs/resultados de GitHub Actions después del push.
+### GitHub Actions sobre el SHA de implementación `a87479d`
+
+- `validate`: **pass**, 2 min 19 s — <https://github.com/jdlc86/CartaViva/actions/runs/40552932237/job/122361212085>;
+- `client-browser`: **pass**, 1 min 20 s — <https://github.com/jdlc86/CartaViva/actions/runs/40552932400/job/122361212152>;
+- `management-browser-smoke`: **pass**, 42 s — <https://github.com/jdlc86/CartaViva/actions/runs/40552932190/job/122361212509>;
+- `generate-lockfile`: **pass**, 2 min 11 s — <https://github.com/jdlc86/CartaViva/actions/runs/40552932238/job/122361213216>.
+
+El PR permanece en Draft. Este registro de CI no sustituye la nueva revisión independiente solicitada.
 
 ## Pendiente real para producción
 
