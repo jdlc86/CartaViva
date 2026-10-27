@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
+import {createRequire} from 'node:module';
 import {createH6StaffCapabilityIssuer} from '../apps/api/src/h6-staff-capability.mjs';
+import {registerH6OperationsHttp} from '../apps/api/src/h6-operations-http.mjs';
 import {createH6StripeAdapter,StripeAmbiguousResultError} from '../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6StripeWebhookHandler,verifyH6StripeWebhook} from '../apps/api/src/h6-stripe-webhook.mjs';
 import {createH6PaymentOrchestrator} from '../apps/api/src/h6-payment-orchestrator.mjs';
@@ -10,6 +12,8 @@ import {createH6CustomerPaymentFlow} from '../apps/api/src/h6-customer-payment-f
 const actorId='a6100000-0000-4000-8000-000000000001';
 const targetId='a6100000-0000-4000-8000-000000000002';
 const orderId='a6100000-0000-4000-8000-000000000003';
+const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
+const Fastify=requireApi('fastify');
 
 test('H6 staff capability binds SQL login, actor, role, action, target and expiry',()=>{
  const secret=Buffer.alloc(32,17),now=Date.UTC(2026,9,27,12,0,0);
@@ -22,6 +26,69 @@ test('H6 staff capability binds SQL login, actor, role, action, target and expir
  assert.equal(capability.signatureHex,createHmac('sha256',secret).update(payload).digest('hex'));
  assert.throws(()=>issue({actorId,staffRole:'waiter',action:'ack_dispatch',targetId,
   correlationId:'short'}),/invalid_h6_capability_input/);
+ const pickup=issue({actorId,staffRole:'waiter',action:'claim_pickup',targetId,
+  expectedVersion:7,correlationId:'pickup_claim_0001'});
+ const pickupPayload=['h6-pickup-v1','sabora_h6_ci',actorId,'waiter','claim_pickup',targetId,
+  '7','pickup_claim_0001',String(now),String(now+20_000)].join('\n');
+ assert.equal(pickup.signatureHex,createHmac('sha256',secret).update(pickupPayload).digest('hex'));
+ assert.throws(()=>issue({actorId,staffRole:'waiter',action:'claim_pickup',targetId,
+  correlationId:'pickup_claim_0002'}),/invalid_h6_capability_input/);
+});
+
+test('pickup HTTP routes preserve version, conflict snapshot and approved role boundaries',async t=>{
+ const calls=[];
+ const app=Fastify({logger:false});
+ t.after(()=>app.close());
+ const forRoles=roles=>async(request,reply)=>{
+  const role=request.headers['x-test-role'];
+  if(!roles.includes(role))return reply.code(403).send({error:'forbidden'});
+  request.verifiedIdentity={sub:actorId};
+  request.verifiedStaff={id:actorId,role};
+ };
+ registerH6OperationsHttp(app,{forRoles,operations:{
+  acknowledgeDispatch:async()=>{throw Error('unused');},
+  reportIncident:async()=>{throw Error('unused');},
+  resolveIncident:async()=>{throw Error('unused');},
+  settleCash:async()=>{throw Error('unused');},
+  refundCash:async()=>{throw Error('unused');},
+  managePickup:async(identity,input)=>{
+   calls.push({identity,input});
+   return {version:1,outcome:input.correlationId.includes('conflict')?'conflict':'applied',
+    reason:input.correlationId.includes('conflict')?'already_claimed':null,lineId:input.lineId,
+    pickupTaskId:targetId,state:'claimed',taskVersion:input.expectedVersion+1,
+    claimedBy:actorId,claimedAt:'2026-10-27T12:00:00.000Z',updatedAt:'2026-10-27T12:00:00.000Z'};
+  },
+ }});
+ await app.ready();
+ const body={expectedVersion:3,correlationId:'pickup_claim_http_001'};
+ const claim=await app.inject({method:'POST',url:`/api/v1/operations/order-lines/${targetId}/pickup-claim`,
+  headers:{'x-test-role':'waiter'},payload:body});
+ assert.equal(claim.statusCode,200);
+ assert.deepEqual(calls.at(-1).input,{lineId:targetId,action:'claim_pickup',...body});
+ const cancel=await app.inject({method:'POST',
+  url:`/api/v1/operations/order-lines/${targetId}/pickup-claim/cancel`,
+  headers:{'x-test-role':'admin'},payload:{...body,correlationId:'pickup_cancel_http_001'}});
+ assert.equal(cancel.statusCode,200);
+ assert.equal(calls.at(-1).input.action,'cancel_pickup');
+ const denied=await app.inject({method:'POST',
+  url:`/api/v1/operations/order-lines/${targetId}/ready-correction`,
+  headers:{'x-test-role':'waiter'},payload:{...body,correlationId:'pickup_correct_http_001'}});
+ assert.equal(denied.statusCode,403);
+ const corrected=await app.inject({method:'POST',
+  url:`/api/v1/operations/order-lines/${targetId}/ready-correction`,
+  headers:{'x-test-role':'kitchen'},payload:{...body,correlationId:'pickup_correct_http_002'}});
+ assert.equal(corrected.statusCode,200);
+ assert.equal(calls.at(-1).input.action,'correct_ready');
+ const conflict=await app.inject({method:'POST',
+  url:`/api/v1/operations/order-lines/${targetId}/pickup-claim`,headers:{'x-test-role':'waiter'},
+  payload:{...body,correlationId:'pickup_conflict_http_001'}});
+ assert.equal(conflict.statusCode,409);
+ assert.equal(conflict.json().error,'pickup_claim_conflict');
+ assert.equal(conflict.json().pickup.claimedBy,actorId);
+ const malformed=await app.inject({method:'POST',
+  url:`/api/v1/operations/order-lines/${targetId}/pickup-claim`,headers:{'x-test-role':'waiter'},
+  payload:{expectedVersion:0,correlationId:'pickup_invalid_http_001'}});
+ assert.equal(malformed.statusCode,400);
 });
 
 test('Stripe adapter fixes manual capture and durable idempotency without live credentials',async()=>{

@@ -6,7 +6,7 @@ const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 const H6_EVENT=/^sabora\.[a-z0-9_.]{1,120}$/;
 
 export class OrderOperationsGatewayError extends Error {
-  constructor(code) { super(code); this.name = 'OrderOperationsGatewayError'; this.code = code; }
+  constructor(code, details = null) { super(code); this.name = 'OrderOperationsGatewayError'; this.code = code; this.details = details; }
 }
 
 async function json(response) {
@@ -19,10 +19,11 @@ async function json(response) {
   if (!response.ok) {
     const known = new Set(['unauthorized', 'forbidden', 'invalid_order_operation',
       'order_operation_not_found', 'order_operation_conflict', 'order_operations_unavailable',
-      'invalid_h6_operation','h6_operation_not_found','h6_operation_conflict','h6_operations_unavailable']);
+      'invalid_h6_operation','h6_operation_not_found','h6_operation_conflict','h6_operations_unavailable',
+      'pickup_claim_conflict']);
     const code = body && typeof body === 'object' && !Array.isArray(body) && known.has(body.error)
       ? body.error : 'invalid_response';
-    throw new OrderOperationsGatewayError(code);
+    throw new OrderOperationsGatewayError(code, code === 'pickup_claim_conflict' ? body.pickup : null);
   }
   return body;
 }
@@ -33,6 +34,13 @@ async function mutation(send,path,body) {
   const value=await json(response);
   if(!value||typeof value!=='object'||Array.isArray(value))throw new OrderOperationsGatewayError('invalid_response');
   return Object.freeze({...value});
+}
+
+function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={}) {
+  if(!UUID.test(lineId)||!Number.isSafeInteger(expectedVersion)||expectedVersion<1||
+     !CORRELATION.test(correlationId))throw Error('invalid_pickup_operation');
+  return mutation(send,`/api/v1/operations/order-lines/${lineId}/${path}`,
+   {expectedVersion,correlationId});
 }
 
 function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnectDelayMs) {
@@ -141,6 +149,9 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
       if(!UUID.test(incidentId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
       return mutation(send,`/api/v1/operations/incidents/${incidentId}/cash-refund`,{correlationId});
     },
+    claimPickup(input){return pickupMutation(send,'pickup-claim',input);},
+    cancelPickup(input){return pickupMutation(send,'pickup-claim/cancel',input);},
+    correctReady(input){return pickupMutation(send,'ready-correction',input);},
     subscribeEvents(input){return createEventSubscription(send,input,reconnectDelayMs);},
   });
 }

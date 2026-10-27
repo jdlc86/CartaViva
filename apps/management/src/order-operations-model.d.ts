@@ -1,14 +1,17 @@
 export type OrderRole = 'admin' | 'waiter' | 'kitchen';
 export type OrderLineStatus = 'confirmed' | 'preparing' | 'ready' | 'picked_up';
 export type OrderLineTarget = 'preparing' | 'ready' | 'picked_up';
+export type PickupTask = Readonly<{taskId: string; state: 'ready'|'claimed'|'corrected'; version: number;
+  claimedBy: string|null; claimedAt: string|null; updatedAt: string}>;
 export type OrderLineItem = Readonly<{
   orderId: string; lineId: string; tableNumber: number; customerLabel: string;
   confirmedAt: string; grouping: 'first' | 'grouped' | 'late'; lineNumber: number;
   category: 'drink' | 'starter' | 'main' | 'dessert'; name: string; quantity: number;
   status: OrderLineStatus;
   notification: null | Readonly<{id: string; createdAt: string; acknowledgedAt: string | null}>;
+  pickup: PickupTask | null;
 }>;
-export type OrderBoard = Readonly<{version: 1; role: OrderRole; items: ReadonlyArray<OrderLineItem>; nextCursor: null | Readonly<{confirmedAt: string; orderId: string; lineNumber: number}>}>;
+export type OrderBoard = Readonly<{version: 1|2; role: OrderRole; items: ReadonlyArray<OrderLineItem>; nextCursor: null | Readonly<{confirmedAt: string; orderId: string; lineNumber: number}>}>;
 export type OrderTransition = Readonly<{version: 1; orderId: string; lineId: string; previousStatus: OrderLineStatus; currentStatus: OrderLineStatus; repeated: boolean; eventId: string; notificationId: string | null}>;
 export type OrderHistory = Readonly<{version: 1; orderId: string; events: ReadonlyArray<Readonly<{eventId: string; lineId: string; lineNumber: number; name: string; fromStatus: OrderLineStatus; toStatus: OrderLineStatus; occurredAt: string; actorRole: OrderRole}>>}>;
 export const ORDER_LINE_STATUSES: ReadonlyArray<OrderLineStatus>;
@@ -17,4 +20,5 @@ export function normalizeOrderBoard(value: unknown): OrderBoard;
 export function normalizeOrderTransition(value: unknown): OrderTransition;
 export function normalizeOrderHistory(value: unknown): OrderHistory;
 export function nextOrderLineAction(role: OrderRole, status: OrderLineStatus): null | Readonly<{targetStatus: OrderLineTarget; label: string}>;
+export function pickupTaskActions(role: OrderRole, status: OrderLineStatus, pickup: PickupTask|null): ReadonlyArray<Readonly<{action: 'claim'|'cancel'|'correct'; label: string}>>;
 export function groupOrderBoard(items: ReadonlyArray<OrderLineItem>): ReadonlyArray<Readonly<{orderId: string; tableNumber: number; customerLabel: string; confirmedAt: string; grouping: 'first' | 'grouped' | 'late'; lines: ReadonlyArray<OrderLineItem>}>>;

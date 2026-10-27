@@ -147,15 +147,18 @@ test('repository returns a bounded kitchen projection without private identifier
       notification_id: notificationId,
       notification_created_at: new Date('2026-10-24T10:05:00.000Z'),
       notification_acknowledged_at: null,
+      pickup_task_id: null, pickup_state: null, pickup_version: null,
+      pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
     }]};
   };
   const board = await repository.listBoard(query, {
     actorId, role: 'kitchen', status: 'ready', limit: 10, cursor: null,
   });
-  assert.equal(board.version, 1);
+  assert.equal(board.version, 2);
   assert.equal(board.items[0].notification.id, notificationId);
   assert.equal(board.items[0].notification.acknowledgedAt, null);
   assert.deepEqual(queries[0].parameters, ['kitchen', 'ready', null, null, null, 11]);
+  assert.doesNotMatch(queries[0].sql, /pickup_tasks/);
   assert.equal(Object.hasOwn(board.items[0], 'actorUserId'), false);
   assert.equal(Object.hasOwn(board.items[0], 'sessionId'), false);
 });
@@ -178,6 +181,8 @@ test('repository uses only actor-bound wrappers when read capabilities are suppl
       line_number: 1, category: 'main', name: 'Arroz', quantity: 2, status: 'ready',
       notification_id: notificationId, notification_created_at: confirmedAt,
       notification_acknowledged_at: null,
+      pickup_task_id: null, pickup_state: null, pickup_version: null,
+      pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
     }]};
   }, {actorId, role: 'kitchen', status: 'ready', limit: 10, cursor: null,
     capability: boardCapability});
@@ -216,6 +221,8 @@ test('repository rejects SQL board rows outside verified role or requested filte
     line_number: 1, category: 'main', name: 'Arroz', quantity: 2,
     status: 'ready', notification_id: notificationId,
     notification_created_at: confirmedAt, notification_acknowledged_at: null,
+    pickup_task_id: null, pickup_state: null, pickup_version: null,
+    pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
   };
   for (const [role, status, returned] of [
     ['kitchen', null, 'picked_up'],
@@ -239,6 +246,8 @@ test('repository validates ordering, cursor and overflow row before returning a 
     line_number: 1, category: 'main', name: 'Arroz', quantity: 2,
     status: 'ready', notification_id: notificationId,
     notification_created_at: confirmedAt, notification_acknowledged_at: null,
+    pickup_task_id: null, pickup_state: null, pickup_version: null,
+    pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
   };
   const second = {
     ...base, line_id: '60000000-0000-4000-8000-000000000006',
@@ -453,6 +462,7 @@ test('repository rejects historical transitions attributed to forbidden staff ro
     {actor_role: 'kitchen', from_status: 'preparing', to_status: 'ready'},
     {actor_role: 'waiter', from_status: 'ready', to_status: 'picked_up'},
     {actor_role: 'admin', from_status: 'confirmed', to_status: 'preparing'},
+    {actor_role: 'kitchen', from_status: 'ready', to_status: 'preparing'},
   ]) {
     const result = await repository.listHistory(async () => ({
       rows: [{...base, ...override}],
@@ -469,7 +479,7 @@ test('repository rejects impossible historical state edges returned by SQL', asy
     occurred_at: confirmedAt, actor_role: 'kitchen',
   };
   for (const [from_status, to_status] of [
-    ['confirmed', 'ready'], ['ready', 'preparing'],
+    ['confirmed', 'ready'],
     ['picked_up', 'ready'], ['ready', 'ready'],
   ]) {
     await assert.rejects(repository.listHistory(async () => ({

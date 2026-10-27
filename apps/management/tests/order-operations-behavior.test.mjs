@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {
   groupOrderBoard,
   nextOrderLineAction,
+  pickupTaskActions,
   normalizeOrderBoard,
   normalizeOrderHistory,
   normalizeOrderTransition,
@@ -17,7 +18,7 @@ const notificationId = '40000000-0000-4000-8000-000000000004';
 
 function board(status = 'ready') {
   return {
-    version: 1,
+    version: 2,
     role: status === 'picked_up' ? 'waiter' : 'kitchen',
     items: [{
       orderId,
@@ -36,6 +37,9 @@ function board(status = 'ready') {
         createdAt: '2026-10-24T10:05:00.000Z',
         acknowledgedAt: status === 'picked_up' ? '2026-10-24T10:06:00.000Z' : null,
       } : null,
+      pickup: status === 'ready' ? {taskId: '50000000-0000-4000-8000-000000000005',
+        state: 'ready', version: 1, claimedBy: null, claimedAt: null,
+        updatedAt: '2026-10-24T10:05:00.000Z'} : null,
     }],
     nextCursor: null,
   };
@@ -58,8 +62,14 @@ test('local action policy mirrors the documented kitchen and waiter transitions'
     {targetStatus: 'preparing', label: 'Iniciar preparación'});
   assert.deepEqual(nextOrderLineAction('kitchen', 'preparing'),
     {targetStatus: 'ready', label: 'Marcar lista'});
-  assert.deepEqual(nextOrderLineAction('waiter', 'ready'),
-    {targetStatus: 'picked_up', label: 'Confirmar recogida'});
+  assert.equal(nextOrderLineAction('waiter', 'ready'), null);
+  assert.deepEqual(pickupTaskActions('waiter','ready',board().items[0].pickup),
+    [{action:'claim',label:'Voy a recoger'}]);
+  assert.deepEqual(pickupTaskActions('kitchen','ready',board().items[0].pickup),
+    [{action:'correct',label:'Corregir: Preparando'}]);
+  assert.deepEqual(pickupTaskActions('waiter','ready',{...board().items[0].pickup,state:'claimed',
+    claimedBy:eventId,claimedAt:'2026-10-24T10:06:00.000Z'}),
+    [{action:'cancel',label:'Cancelo'}]);
   assert.equal(nextOrderLineAction('waiter', 'preparing'), null);
   assert.equal(nextOrderLineAction('kitchen', 'ready'), null);
   assert.equal(nextOrderLineAction('admin', 'picked_up'), null);
@@ -126,10 +136,14 @@ test('gateway fails closed on private, non-json or contradictory responses witho
 
 test('connected view blocks duplicate clicks and keeps final delivery unavailable', () => {
   const source = readFileSync(new URL('../src/views/OrdersView.tsx', import.meta.url), 'utf8');
+  const model = readFileSync(new URL('../src/order-operations-model.js', import.meta.url), 'utf8');
   assert.match(source, /pendingLines\.has\(line\.lineId\)/);
   assert.match(source, /disabled=\{pending\}/);
   assert.match(source, /await load\(\)/);
   assert.match(source, /La recogida no acredita entrega al comensal/);
+  assert.match(model, /Voy a recoger/);
+  assert.match(model, /Cancelo/);
+  assert.doesNotMatch(`${source}\n${model}`, /Confirmar recogida/);
   assert.doesNotMatch(source, /targetStatus:\s*['"]delivered['"]|targetStatus:\s*['"]cancelled['"]/);
 });
 
@@ -167,6 +181,21 @@ test('H6 gateway parses a durable SSE frame and preserves restricted mutation bo
   await gateway.acknowledgeDispatch({dispatchId:notificationId,correlationId:'ui_ack_test_0001'});
   assert.deepEqual(JSON.parse(calls.at(-1).init.body),{correlationId:'ui_ack_test_0001'});
   assert.equal(calls.at(-1).init.credentials,'omit');
+  await gateway.claimPickup({lineId,expectedVersion:3,correlationId:'ui_pickup_claim_001'});
+  assert.equal(calls.at(-1).path,`/api/v1/operations/order-lines/${lineId}/pickup-claim`);
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body),{expectedVersion:3,
+    correlationId:'ui_pickup_claim_001'});
+});
+
+test('pickup conflict preserves the confirmed responsible snapshot',async()=>{
+ const pickup={version:1,outcome:'conflict',reason:'already_claimed',lineId,
+  pickupTaskId:notificationId,state:'claimed',taskVersion:2,claimedBy:eventId,
+  claimedAt:'2026-10-24T10:06:00.000Z',updatedAt:'2026-10-24T10:06:00.000Z'};
+ const gateway=createOrderOperationsGateway({send:async()=>new Response(JSON.stringify({
+  error:'pickup_claim_conflict',pickup}),{status:409,headers:{'content-type':'application/json'}})});
+ await assert.rejects(gateway.claimPickup({lineId,expectedVersion:1,
+  correlationId:'ui_pickup_conflict_001'}),error=>error instanceof OrderOperationsGatewayError&&
+   error.code==='pickup_claim_conflict'&&error.details.claimedBy===eventId);
 });
 
 test('kitchen UI preserves correlation for an uncertain transition retry and guards stale reads', () => {

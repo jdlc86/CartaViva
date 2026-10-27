@@ -10,6 +10,7 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
  if(!repository||typeof repository.acknowledgeDispatch!=='function'||
     typeof repository.reportIncident!=='function'||typeof repository.resolveIncident!=='function'||
     typeof repository.settleCash!=='function'||typeof repository.refundCash!=='function'||
+    typeof repository.managePickup!=='function'||
     typeof issueCapability!=='function')
   throw Error('invalid_h6_operations_coordinator');
  const capability=(verified,action,targetId,correlationId)=>{
@@ -17,6 +18,13 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
   if(!UUID.test(targetId??'')||!CORRELATION.test(correlationId??''))
    throw Error('invalid_h6_operation');
   return {actorId,role,capability:issueCapability({actorId,staffRole:role,action,targetId,correlationId})};
+ };
+ const pickupCapability=(verified,action,lineId,expectedVersion,correlationId)=>{
+  const {actorId,role}=context(verified);
+  if(!UUID.test(lineId??'')||!Number.isSafeInteger(expectedVersion)||expectedVersion<1||
+     !CORRELATION.test(correlationId??''))throw Error('invalid_pickup_operation');
+  return {actorId,role,capability:issueCapability({actorId,staffRole:role,action,targetId:lineId,
+   expectedVersion,correlationId})};
  };
  return Object.freeze({
   acknowledgeDispatch(verified,{dispatchId,correlationId}={}){
@@ -38,6 +46,10 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
   refundCash(verified,{incidentId,correlationId}={}){
    const bound=capability(verified,'refund_cash',incidentId,correlationId);
    return repository.refundCash({incidentId,capability:bound.capability});
+  },
+  managePickup(verified,{lineId,action,expectedVersion,correlationId}={}){
+   const bound=pickupCapability(verified,action,lineId,expectedVersion,correlationId);
+   return repository.managePickup({lineId,action,expectedVersion,capability:bound.capability});
   }
  });
 }

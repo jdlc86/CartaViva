@@ -19,6 +19,9 @@ export const READ_STAFF_EVENTS_H6_SQL=`SELECT sabora.read_staff_event_backlog_h6
  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text,$9::bigint,$10::integer) AS result`;
 export const READ_CUSTOMER_EVENTS_H6_SQL=`SELECT sabora.read_customer_event_backlog_h6_candidate(
  $1::bytea,$2::uuid,$3::text,$4::uuid,$5::bigint,$6::integer) AS result`;
+export const MANAGE_PICKUP_TASK_H6_SQL=`SELECT sabora.manage_pickup_task_h6_candidate(
+ $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::uuid,$7::bigint,$8::text,
+ $9::bigint,$10::bigint,$11::text) AS result`;
 
 const one=async promise=>{
  const value=await promise,row=value?.rows?.[0];
@@ -35,6 +38,16 @@ const capability=(value,action,targetId)=>{
  return [value.keyId,value.databaseRole,value.actorId,value.staffRole];
 };
 const tail=value=>[value.correlationId,value.issuedAtMs,value.expiresAtMs,value.signatureHex];
+const pickupCapability=(value,action,lineId,expectedVersion)=>{
+ if(!value||typeof value!=='object'||Array.isArray(value)||value.action!==action||
+    value.targetId?.toLowerCase()!==lineId.toLowerCase()||value.expectedVersion!==expectedVersion||
+    !UUID.test(value.actorId??'')||!ROLES.has(value.staffRole)||
+    !CORRELATION.test(value.correlationId??'')||!Number.isSafeInteger(value.issuedAtMs)||
+    !Number.isSafeInteger(value.expiresAtMs)||!SIGNATURE.test(value.signatureHex??''))
+  throw Error('invalid_h6_capability');
+ return [value.keyId,value.databaseRole,value.actorId,value.staffRole,action,lineId,expectedVersion,
+  value.correlationId,value.issuedAtMs,value.expiresAtMs,value.signatureHex];
+};
 
 export function createH6OperationsRepository({withTransaction}={}){
  if(typeof withTransaction!=='function')throw Error('invalid_h6_operations_repository');
@@ -71,6 +84,13 @@ export function createH6OperationsRepository({withTransaction}={}){
    if(!UUID.test(incidentId??''))throw Error('invalid_h6_cash_refund');
    const head=capability(cap,'refund_cash',incidentId);
    return withTransaction(query=>one(query(REFUND_CASH_H6_SQL,[...head,incidentId,...tail(cap)])));
+  },
+  managePickup:({lineId,action,expectedVersion,capability:cap}={})=>{
+   if(!UUID.test(lineId??'')||!['claim_pickup','cancel_pickup','correct_ready'].includes(action)||
+      !Number.isSafeInteger(expectedVersion)||expectedVersion<1)
+    throw Error('invalid_pickup_operation');
+   const values=pickupCapability(cap,action,lineId,expectedVersion);
+   return withTransaction(query=>one(query(MANAGE_PICKUP_TASK_H6_SQL,values)));
   },
   readStaffEvents:({afterCursor=0,limit=100,capability:cap}={})=>{
    if(!Number.isSafeInteger(afterCursor)||afterCursor<0||!Number.isSafeInteger(limit)||limit<1||limit>100)

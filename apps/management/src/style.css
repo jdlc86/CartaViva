@@ -471,6 +471,9 @@ p { line-height: 1.55; }
 .order-line__identity small { color: var(--cv-ink-muted); font-size: .68rem; }
 .order-line__action { justify-self: end; min-width: 164px; }
 .order-line__complete { justify-self: end; color: var(--cv-ink-muted); font-size: .72rem; }
+.order-line__status-stack { display: flex; flex-direction: column; align-items: flex-start; gap: var(--cv-space-2); }
+.pickup-assignment { max-width: 220px; color: var(--cv-ink-muted); font-size: .68rem; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.order-line__pickup-actions { justify-self: end; flex-wrap: wrap; justify-content: flex-end; }
 .order-history { margin-top: var(--cv-space-5); padding: var(--cv-space-5); border: 1px solid var(--cv-border); border-radius: var(--cv-radius-card); background: var(--cv-surface-subtle); }
 .order-history h3 { margin: var(--cv-space-1) 0 0; }
 .order-history > p { margin: 0; color: var(--cv-ink-muted); font-size: .8rem; }

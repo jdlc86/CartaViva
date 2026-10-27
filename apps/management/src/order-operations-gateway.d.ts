@@ -10,7 +10,10 @@ export interface OrderOperationsGateway {
   resolveIncident(input: {incidentId: string; resolution: 'approve' | 'reject'; reason: string; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   settleCash(input: {accountId: string; amountCents: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   refundCash(input: {incidentId: string; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
+  claimPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
+  cancelPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
+  correctReady(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   subscribeEvents(input: {onEvent: (event: H6OperationEvent) => void; onResync: () => void; onUnavailable: () => void}): () => void;
 }
-export class OrderOperationsGatewayError extends Error { readonly code: string; }
+export class OrderOperationsGatewayError extends Error { readonly code: string; readonly details: unknown; }
 export function createOrderOperationsGateway(input: {send: OrderOperationsSender; reconnectDelayMs?: number}): OrderOperationsGateway;
