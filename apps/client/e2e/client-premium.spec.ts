@@ -10,6 +10,7 @@ const catalog=[
 
 test.beforeEach(async({page})=>{
  await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'unauthorized'})}));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'Nuestra carta'})).toBeVisible();
  await expect(page.getByTestId('product-card')).toHaveCount(4);
@@ -43,7 +44,25 @@ test('premium client flow keeps dynamic catalog, favorites and selection without
  await page.getByRole('button',{name:'QR',exact:true}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('no habilitará el pedido');
  await page.screenshot({path:testInfo.outputPath(`client-qr-${testInfo.project.name}.png`),fullPage:true});
- expect([...new Set(apiRequests)]).toEqual(['/api/v1/catalog']);
+ expect([...new Set(apiRequests)].sort()).toEqual(['/api/v1/catalog','/api/v1/customer/session']);
+});
+
+test('identity registration uses same-origin HttpOnly session contract without exposing credentials',async({page})=>{
+ const bodies:unknown[]=[];
+ await page.route('**/api/v1/customer/register',async route=>{
+  bodies.push(route.request().postDataJSON());
+  await route.fulfill({status:201,contentType:'application/json',headers:{
+   'Set-Cookie':'__Secure-sabora_customer=server-only; Path=/api/v1/customer; HttpOnly; Secure; SameSite=Strict'
+  },body:JSON.stringify({publicId:'SB-23456789ABCD',alias:'Marina',company:'Sabora QA'})});
+ });
+ await page.getByRole('button',{name:'Ajustes',exact:true}).click();
+ await page.getByLabel('Alias o apodo').fill('Marina');
+ await page.getByLabel('Empresa (opcional)').fill('Sabora QA');
+ await page.getByRole('button',{name:'Crear identidad segura'}).click();
+ await expect(page.getByRole('status')).toContainText('SB-23456789ABCD');
+ await expect(page.getByText(/Sesión segura activa/)).toBeVisible();
+ expect(bodies).toEqual([{alias:'Marina',company:'Sabora QA'}]);
+ expect(await page.evaluate(()=>Object.keys(localStorage).every(key=>!key.toLowerCase().includes('token')))).toBe(true);
 });
 
 test('client has no serious accessibility violations in the populated home',async({page},testInfo)=>{

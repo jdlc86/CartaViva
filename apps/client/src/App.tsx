@@ -6,8 +6,13 @@ import {BottomNav,type ClientArea} from './components/BottomNav';
 import {Icon} from './components/Icon';
 import {Modal} from './components/Modal';
 import {ProductCard} from './components/ProductCard';
+import {createCustomerFlowTransport,CustomerFlowTransportError} from './customer-flow-transport';
 
 type Overlay='cart'|'notifications'|'qr'|null;
+type CustomerIdentityState={status:'checking'|'guest'|'unavailable'}|{
+ status:'authenticated';publicId:string;alias:string;company:string|null;
+};
+const customerTransport=createCustomerFlowTransport();
 const text={
  es:{menu:'Nuestra carta',kicker:'SELECCIÓN GASTRONÓMICA',hero:'El placer está en cada detalle.',intro:'Explora la carta publicada de Sabora. Precios, disponibilidad y alérgenos proceden siempre del restaurante.',search:'Buscar platos o alérgenos',available:'Solo disponibles',empty:'No hay platos que coincidan con esta selección.',retry:'Reintentar',loading:'Preparando la carta…',error:'No se ha podido cargar la carta.',later:'Inténtalo de nuevo más tarde.',selection:'Tu selección',view:'Ver selección',notifications:'Notificaciones',cart:'Cesta',searchButton:'Buscar',closeSearch:'Cerrar búsqueda',all:'Todos',info:'Información',allergens:'Alérgenos',favorites:'Favoritos',settings:'Ajustes'},
  en:{menu:'Our menu',kicker:'GASTRONOMIC SELECTION',hero:'Pleasure lives in every detail.',intro:'Explore Sabora’s published menu. Prices, availability and allergens always come from the restaurant.',search:'Search dishes or allergens',available:'Available only',empty:'No dishes match this selection.',retry:'Try again',loading:'Preparing the menu…',error:'The menu could not be loaded.',later:'Please try again later.',selection:'Your selection',view:'View selection',notifications:'Notifications',cart:'Basket',searchButton:'Search',closeSearch:'Close search',all:'All',info:'Information',allergens:'Allergens',favorites:'Favorites',settings:'Settings'}
@@ -50,6 +55,8 @@ export function SaboraClientApp(){
  const [overlay,setOverlay]=useState<Overlay>(null);
  const [detail,setDetail]=useState<MenuItem|null>(null);
  const [notice,setNotice]=useState('');
+ const [identity,setIdentity]=useState<CustomerIdentityState>({status:'checking'});
+ const [identityBusy,setIdentityBusy]=useState(false);
  const searchRef=useRef<HTMLInputElement>(null);
  const copy=text[locale];
 
@@ -59,6 +66,19 @@ export function SaboraClientApp(){
   void loadPublishedCatalog(fetch,controller.signal).then(state=>{if(!controller.signal.aborted)setCatalog(state);});
   return()=>controller.abort();
  },[catalogAttempt]);
+ useEffect(()=>{
+  let active=true;
+  void customerTransport.session().then(profile=>{
+   if(!active)return;
+   setIdentity({status:'authenticated',...profile});
+   setAlias(profile.alias);setCompany(profile.company??'');
+  }).catch(error=>{
+   if(!active)return;
+   setIdentity(error instanceof CustomerFlowTransportError&&error.status===401?
+    {status:'guest'}:{status:'unavailable'});
+  });
+  return()=>{active=false;};
+ },[]);
  useEffect(()=>{if(searchOpen)searchRef.current?.focus();},[searchOpen]);
  useEffect(()=>{saveClientPreferences(localStorage,{locale,alias,company,favorites});},[locale,alias,company,favorites]);
  useEffect(()=>{saveBasket(localStorage,basket);},[basket]);
@@ -101,15 +121,42 @@ export function SaboraClientApp(){
  const openDetail=useCallback((item:MenuItem)=>setDetail(item),[]);
  const closeDetail=useCallback(()=>setDetail(null),[]);
 
- function saveSettings(event:FormEvent){
+ async function saveSettings(event:FormEvent){
   event.preventDefault();
   const cleanAlias=alias.trim(),cleanCompany=company.trim();
-  if([...cleanAlias].length>80||[...cleanCompany].length>160||/[\u0000-\u001f\u007f]/u.test(cleanAlias+cleanCompany)){
+  if(!cleanAlias||[...cleanAlias].length>80||[...cleanCompany].length>160||/[\u0000-\u001f\u007f]/u.test(cleanAlias+cleanCompany)){
    setNotice(locale==='es'?'Revisa los datos introducidos.':'Check the entered details.');return;
   }
   setAlias(cleanAlias);setCompany(cleanCompany);
   const preferences:ClientPreferences={locale,alias:cleanAlias,company:cleanCompany,favorites};
-  setNotice(saveClientPreferences(localStorage,preferences)?(locale==='es'?'Preferencias guardadas en este dispositivo.':'Preferences saved on this device.'):(locale==='es'?'No se han podido guardar las preferencias.':'Preferences could not be saved.'));
+  const localSaved=saveClientPreferences(localStorage,preferences);
+  if(identity.status==='authenticated'){
+   setNotice(localSaved?(locale==='es'?'Preferencias guardadas en este dispositivo. La identidad autenticada no se modifica.':'Preferences saved on this device. The authenticated identity is unchanged.'):(locale==='es'?'No se han podido guardar las preferencias.':'Preferences could not be saved.'));
+   return;
+  }
+  if(identity.status==='unavailable'){
+   setNotice(locale==='es'?'Preferencias locales guardadas; la identidad segura no está disponible.':'Local preferences saved; secure identity is unavailable.');
+   return;
+  }
+  if(identity.status==='checking'||identityBusy){return;}
+  setIdentityBusy(true);setNotice(locale==='es'?'Creando identidad segura…':'Creating secure identity…');
+  try{
+   const profile=await customerTransport.register({alias:cleanAlias,company:cleanCompany||null});
+   setIdentity({status:'authenticated',...profile});
+   setNotice(locale==='es'?`Identidad creada: ${profile.publicId}`:`Identity created: ${profile.publicId}`);
+  }catch{
+   setNotice(locale==='es'?'No se ha podido crear la identidad. Inténtalo de nuevo.':'The identity could not be created. Try again.');
+   setIdentity({status:'unavailable'});
+  }finally{setIdentityBusy(false);}
+ }
+
+ async function logout(){
+  if(identity.status!=='authenticated'||identityBusy)return;
+  setIdentityBusy(true);
+  try{await customerTransport.logout();setIdentity({status:'guest'});
+   setNotice(locale==='es'?'Sesión cerrada en este dispositivo.':'Session closed on this device.');}
+  catch{setNotice(locale==='es'?'No se ha podido cerrar la sesión con seguridad.':'The session could not be closed securely.');}
+  finally{setIdentityBusy(false);}
  }
 
  const productGrid=(products:readonly MenuItem[])=>products.length?<div className="product-grid">{products.map(item=><ProductCard key={item.id} item={item} quantity={quantities.get(item.id.toLowerCase())??0} favorite={favorites.some(id=>id.toLowerCase()===item.id.toLowerCase())} locale={locale} onFavorite={toggleFavorite} onDetail={openDetail} onChange={updateQuantity}/>)}</div>:<EmptyState>{copy.empty}</EmptyState>;
@@ -130,7 +177,7 @@ export function SaboraClientApp(){
    {area==='favorites'?<section className="secondary-page"><span className="eyebrow">SABORA</span><h1>{copy.favorites}</h1><p>{locale==='es'?'Tus platos guardados en este dispositivo. La disponibilidad se actualiza con la carta publicada.':'Dishes saved on this device. Availability refreshes with the published menu.'}</p>{productGrid(favoriteItems)}</section>:null}
    {area==='information'?<section className="secondary-page"><span className="eyebrow">SABORA</span><h1>{copy.info}</h1><div className="prose-card"><h2>{locale==='es'?'Carta digital del restaurante':'The restaurant’s digital menu'}</h2><p>{locale==='es'?'Consulta platos, precios y disponibilidad publicados. La selección que prepares se conserva solo en este dispositivo y se revalidará en el servidor antes de cualquier confirmación.':'Browse published dishes, prices and availability. Your selection is kept only on this device and will be revalidated by the server before any confirmation.'}</p><p className="honest-status">{locale==='es'?'El registro seguro, las reservas y el contexto de mesa todavía no están activados.':'Secure registration, reservations and table context are not active yet.'}</p></div></section>:null}
    {area==='allergens'?<section className="secondary-page"><span className="eyebrow">SABORA</span><h1>{copy.allergens}</h1><div className="prose-card"><h2>{locale==='es'?'Información antes de elegir':'Information before choosing'}</h2><p>{locale==='es'?'Cada ficha muestra los alérgenos declarados por el restaurante. La ausencia de un alérgeno declarado no garantiza la ausencia de trazas o contaminación cruzada.':'Each card shows allergens declared by the restaurant. No declared allergen does not guarantee absence of traces or cross-contamination.'}</p><p>{locale==='es'?'Si tienes una alergia, habla con el personal antes de confirmar tu selección.':'If you have an allergy, speak to the staff before confirming your selection.'}</p></div></section>:null}
-   {area==='settings'?<section className="secondary-page"><span className="eyebrow">SABORA</span><h1>{copy.settings}</h1><form className="settings-form" onSubmit={saveSettings}><label htmlFor="alias">{locale==='es'?'Alias o apodo':'Alias or nickname'}</label><input id="alias" maxLength={80} autoComplete="nickname" value={alias} onChange={event=>setAlias(event.target.value)}/><label htmlFor="company">{locale==='es'?'Empresa (opcional)':'Company (optional)'}</label><input id="company" maxLength={160} value={company} onChange={event=>setCompany(event.target.value)}/><button className="primary-action" type="submit">{locale==='es'?'Guardar preferencias':'Save preferences'}</button>{notice?<p className="form-notice" role="status">{notice}</p>:null}<p className="privacy-copy">{locale==='es'?'Son preferencias visuales locales; no crean una cuenta, una identidad ni una sesión autenticada.':'These are local display preferences; they do not create an account, identity or authenticated session.'}</p></form></section>:null}
+   {area==='settings'?<section className="secondary-page"><span className="eyebrow">SABORA</span><h1>{copy.settings}</h1><form className="settings-form" onSubmit={saveSettings}><label htmlFor="alias">{locale==='es'?'Alias o apodo':'Alias or nickname'}</label><input id="alias" required maxLength={80} autoComplete="nickname" value={alias} onChange={event=>setAlias(event.target.value)}/><label htmlFor="company">{locale==='es'?'Empresa (opcional)':'Company (optional)'}</label><input id="company" maxLength={160} value={company} onChange={event=>setCompany(event.target.value)}/><button className="primary-action" type="submit" disabled={identityBusy||identity.status==='checking'||identity.status==='unavailable'}>{identity.status==='authenticated'?(locale==='es'?'Guardar preferencias':'Save preferences'):identity.status==='unavailable'?(locale==='es'?'Identidad no disponible':'Identity unavailable'):(locale==='es'?'Crear identidad segura':'Create secure identity')}</button>{identity.status==='authenticated'?<button type="button" disabled={identityBusy} onClick={()=>void logout()}>{locale==='es'?'Cerrar sesión':'Sign out'}</button>:null}{notice?<p className="form-notice" role="status">{notice}</p>:null}<p className="privacy-copy">{identity.status==='authenticated'?(locale==='es'?`Sesión segura activa · ${identity.publicId}. La credencial permanece en una cookie HttpOnly y no se guarda en la PWA.`:`Secure session active · ${identity.publicId}. The credential remains in an HttpOnly cookie and is not stored by the PWA.`):(locale==='es'?'El alias es obligatorio y la empresa opcional. La sesión segura se crea en el servidor; favoritos y preferencias visuales permanecen en este dispositivo.':'Alias is required and company is optional. The secure session is created on the server; favorites and visual preferences stay on this device.')}</p></form></section>:null}
   </main>
   {totalQuantity>0&&overlay!=='cart'?<aside className="cart-summary" aria-label={copy.selection}><div><strong>{totalQuantity} {locale==='es'?'platos':'dishes'}</strong><span>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</span></div><button type="button" onClick={openCart}>{copy.view}<Icon name="arrow"/></button></aside>:null}
   <BottomNav locale={locale} active={area} onSelect={selectArea}/>
