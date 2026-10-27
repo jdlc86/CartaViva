@@ -53,6 +53,8 @@ test('responsive and accessible static gates cover touch targets, mobile grids a
  assert.match(css,/@media\(max-width:560px\)/);
  assert.match(css,/grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
  assert.match(app,/Reserva no disponible/);
- assert.match(app,/Validación de QR todavía no activada/);
+ assert.match(app,/TableQrScanner/);
+ assert.match(app,/El token no se guarda en el historial/);
+ assert.doesNotMatch(app,/type="(?:text|password)"[^>]*(?:tableId|qrToken)/);
  assert.match(app,/role="dialog"|<Modal/);
 });

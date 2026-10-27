@@ -10,7 +10,7 @@ export function registerCustomerRegistrationCandidate(app,{register,allowedOrigi
  app.post('/api/v1/customer/register',{bodyLimit:2048},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   const origin=request.headers.origin;
-  if(origin!==allowedOrigin){
+  if(origin!==allowedOrigin||request.headers['sec-fetch-site']==='cross-site'){
    return reply.code(403).send({error:'origin_not_allowed'});
   }
   const contentType=request.headers['content-type'];

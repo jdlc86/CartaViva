@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../apps/client/src/client-state.ts',import.me
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports','require',javascript)(module,module.exports,require);
-const {loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketQuantity,basketTotal}=module.exports;
+const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
 const storage=(initial={})=>{
@@ -51,6 +51,146 @@ test('basket persistence keeps a display snapshot and catalog reconciliation ref
  const stale=[{itemId:id,name:'Nombre anterior',priceCents:100,quantity:2}];
  assert.equal(saveBasket(target,stale),true);
  assert.deepEqual(loadBasket(target),stale);
- assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:item.priceCents,quantity:2}]);
+ assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:100,quantity:2}]);
  assert.deepEqual(reconcileBasket(stale,[]),stale);
+});
+
+test('selection never persists duplicate, forged or oversized lines',()=>{
+ const target=storage();
+ const one={itemId:id,name:item.name,priceCents:1290,quantity:1};
+ const upper={...one,itemId:id.toUpperCase()};
+ for(const invalid of [
+  [one,upper],
+  [{...one,token:'secret'}],
+  [{...one,quantity:100}],
+  [{...one,priceCents:Number.MAX_SAFE_INTEGER+1}],
+  Array.from({length:101},(_,index)=>({...one,itemId:`11111111-1111-4111-8111-${String(index).padStart(12,'0')}`})),
+ ]){
+  assert.equal(saveBasket(target,invalid),false);
+  assert.equal(target.values.size,0);
+ }
+});
+
+test('selection updates enforce maximum distinct dishes and case-insensitive IDs',()=>{
+ const lines=Array.from({length:100},(_,index)=>({
+  itemId:`11111111-1111-4111-8111-${String(index).padStart(12,'0')}`,
+  name:'Plato',priceCents:100,quantity:1,
+ }));
+ const extra={...item,id:'22222222-2222-4222-8222-222222222222'};
+ assert.equal(changeBasket(lines,extra,1),lines);
+ const existing={...item,id:lines[0].itemId.toUpperCase()};
+ const updated=changeBasket(lines,existing,1);
+ assert.equal(updated.length,100);
+ assert.equal(updated[0].quantity,2);
+ assert.equal(updated[0].itemId,lines[0].itemId);
+ assert.equal(changeBasket(updated,existing,-1)[0].quantity,1);
+ assert.equal(changeBasket(lines,extra,-1),lines);
+});
+
+test('catalog reconciliation refreshes IDs regardless of UUID casing',()=>{
+ const snapshot=[{itemId:id.toUpperCase(),name:'Antiguo',priceCents:1,quantity:2}];
+ assert.deepEqual(reconcileBasket(snapshot,[item]),[
+  {itemId:id.toUpperCase(),name:item.name,priceCents:1,quantity:2},
+ ]);
+});
+
+test('malformed stored selections and invalid write inputs fail closed without exceptions',()=>{
+ const target=storage();
+ for(const bad of [
+  [{itemId:null,name:'Plato',priceCents:100,quantity:1}],
+  [{itemId:123,name:'Plato',priceCents:100,quantity:1}],
+  [{itemId:id,name:'Plato',priceCents:100,quantity:1}, {itemId:id.toUpperCase(),name:'Otro',priceCents:100,quantity:1}],
+ ]){
+  target.values.set('sabora.client.selection.v1',JSON.stringify(bad));
+  assert.deepEqual(loadBasket(target),[]);
+  const original=target.values.get('sabora.client.selection.v1');
+  assert.equal(saveBasket(target,bad),false);
+  assert.equal(target.values.get('sabora.client.selection.v1'),original);
+ }
+});
+
+test('favorites persist as a case-insensitive UUID set and reject non-string IDs',()=>{
+ const target=storage();
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[id,id.toUpperCase()]}),true);
+ assert.equal(loadClientPreferences(target).favorites.length,1);
+ const saved=JSON.parse(target.values.get('sabora.client.preferences.v2'));
+ assert.equal(saved.favorites.length,1);
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[null]}),false);
+ assert.equal(saveClientPreferences(target,{locale:'es',alias:'Ana',company:'',favorites:[123]}),false);
+ target.values.set('sabora.client.preferences.v2',JSON.stringify({
+  locale:'es',alias:'Ana',company:'',favorites:[id,id.toUpperCase()],
+ }));
+ assert.equal(loadClientPreferences(target).favorites.length,1);
+});
+
+test('basket incidences distinguish sold-out and unpublished without deleting selections',()=>{
+ const other='22222222-2222-4222-8222-222222222222';
+ const lines=[
+  {itemId:id,name:'Original',priceCents:1290,quantity:2},
+  {itemId:other,name:'Retirado',priceCents:400,quantity:1},
+ ];
+ const original=JSON.stringify(lines);
+ const issues=basketIssues(lines,[{...item,available:false}]);
+ assert.deepEqual(issues,[
+  {itemId:id,reason:'sold_out'},
+  {itemId:other,reason:'unpublished'},
+ ]);
+ assert.equal(JSON.stringify(lines),original);
+ assert.deepEqual(basketIssues(lines,[item,{...item,id:other,priceCents:400}]),[]);
+ assert.deepEqual(removeBasketLine(lines,other),[lines[0]]);
+ assert.deepEqual(removeBasketLine(lines,id.toUpperCase()),[lines[1]]);
+ assert.equal(removeBasketLine(lines,'not-a-uuid'),lines);
+});
+
+test('catalog price change remains pending until explicit acceptance, including quantity edits',()=>{
+ const old=[{itemId:id.toUpperCase(),name:'Original',priceCents:100,quantity:2}];
+ const updated=reconcileBasket(old,[item]);
+ assert.equal(updated[0].priceCents,100);
+ assert.deepEqual(basketIssues(updated,[item]),[{itemId:id.toUpperCase(),reason:'price_changed'}]);
+ const changedQuantity=changeBasket(updated,item,1);
+ assert.equal(changedQuantity[0].quantity,3);
+ assert.equal(changedQuantity[0].priceCents,100);
+ const accepted=acceptBasketPrice(changedQuantity,[item],id);
+ assert.equal(accepted[0].priceCents,1290);
+ assert.equal(accepted[0].quantity,3);
+ assert.deepEqual(basketIssues(accepted,[item]),[]);
+ assert.equal(acceptBasketPrice(old,[{...item,available:false}],id),old);
+ assert.equal(acceptBasketPrice(old,[],id),old);
+});
+
+test('basket review remains blocked until all distinct price and availability incidences are resolved',()=>{
+ const second='22222222-2222-4222-8222-222222222222';
+ const third='33333333-3333-4333-8333-333333333333';
+ const lines=[
+  {itemId:id,name:'Precio anterior',priceCents:100,quantity:2},
+  {itemId:second,name:'Agotado',priceCents:500,quantity:1},
+  {itemId:third,name:'Retirado',priceCents:300,quantity:1},
+ ];
+ const published=[item,{...item,id:second,priceCents:500,available:false}];
+ assert.deepEqual(basketIssues(lines,published),[
+  {itemId:id,reason:'price_changed'},
+  {itemId:second,reason:'sold_out'},
+  {itemId:third,reason:'unpublished'},
+ ]);
+ const accepted=acceptBasketPrice(lines,published,id);
+ assert.deepEqual(basketIssues(accepted,published),[
+  {itemId:second,reason:'sold_out'},
+  {itemId:third,reason:'unpublished'},
+ ]);
+ const withoutSoldOut=removeBasketLine(accepted,second);
+ const reviewed=removeBasketLine(withoutSoldOut,third);
+ assert.deepEqual(basketIssues(reviewed,published),[]);
+ assert.equal(basketTotal(reviewed),2580);
+ assert.equal(basketQuantity(reviewed),2);
+ assert.deepEqual(lines[0],{itemId:id,name:'Precio anterior',priceCents:100,quantity:2});
+});
+
+test('device sync uses only local selection and preferences keys and rejects malformed mutations',()=>{
+ assert.equal(CLIENT_BASKET_STORAGE_KEY,'sabora.client.selection.v1');
+ assert.equal(CLIENT_PREFERENCES_STORAGE_KEY,'sabora.client.preferences.v2');
+ const existing=[{itemId:id,name:'Arroz',priceCents:100,quantity:1}];
+ assert.equal(changeBasket(existing,{...item,id:null},1),existing);
+ assert.equal(changeBasket(existing,{...item,id:123},1),existing);
+ assert.equal(saveBasket(storage(),[{...existing[0],itemId:null}]),false);
+ assert.deepEqual(basketIssues(existing,[{...item,id:null}]),[{itemId:id,reason:'unpublished'}]);
 });

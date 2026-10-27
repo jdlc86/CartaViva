@@ -1,6 +1,6 @@
 import type {ReactNode,SVGProps} from 'react';
 
-export type IconName='search'|'bag'|'bell'|'info'|'allergens'|'qr'|'heart'|'settings'|'close'|'minus'|'plus'|'leaf'|'arrow';
+export type IconName='search'|'bag'|'bell'|'info'|'allergens'|'qr'|'heart'|'settings'|'close'|'minus'|'plus'|'leaf'|'arrow'|'check';
 const paths:Record<IconName,ReactNode>={
  search:<><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2"/></>,
  bag:<><path d="M5.5 8.5h13l-1 12h-11z"/><path d="M9 9V7a3 3 0 0 1 6 0v2"/></>,
@@ -14,7 +14,8 @@ const paths:Record<IconName,ReactNode>={
  minus:<path d="M5 12h14"/>,
  plus:<path d="M5 12h14M12 5v14"/>,
  leaf:<><path d="M5 19C5 9 11 4 20 4c0 9-5 15-15 15Z"/><path d="M6 18c4-4 7-7 12-11"/></>,
- arrow:<path d="M5 12h14m-5-5 5 5-5 5"/>
+ arrow:<path d="M5 12h14m-5-5 5 5-5 5"/>,
+ check:<path d="m5 12.5 4.2 4.2L19 7"/>
 };
 
 export function Icon({name,...props}:SVGProps<SVGSVGElement>&{name:IconName}){
