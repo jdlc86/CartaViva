@@ -1,11 +1,12 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
-import type {H6OperationEvent, OrderOperationsGateway} from '../order-operations-gateway.js';
+import {OrderOperationsGatewayError, type H6OperationEvent, type OrderOperationsGateway} from '../order-operations-gateway.js';
 import {
   groupOrderBoard,
   nextOrderLineAction,
   ORDER_STATUS_LABELS,
+  pickupTaskActions,
   type OrderBoard,
   type OrderHistory,
   type OrderLineItem,
@@ -36,6 +37,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const readEpoch = useRef(0);
   const historyEpoch = useRef(0);
   const transitionAttempts = useRef(new Map<string, {targetStatus: string; correlationId: string}>());
+  const pickupAttempts = useRef(new Map<string, {action: string; correlationId: string}>());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
@@ -161,6 +163,32 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     }
   };
 
+  const updatePickup = async (line: OrderLineItem, action: 'claim'|'cancel'|'correct') => {
+    if (!gateway || !line.pickup || pendingLines.has(line.lineId)) return;
+    setPendingLines((current) => new Set(current).add(line.lineId));
+    setError(null);
+    const previous = pickupAttempts.current.get(line.lineId);
+    const correlationId = previous?.action === action ? previous.correlationId
+      : `ui_pickup_${crypto.randomUUID().replaceAll('-', '_')}`;
+    pickupAttempts.current.set(line.lineId, {action, correlationId});
+    try {
+      const input = {lineId: line.lineId, expectedVersion: line.pickup.version, correlationId};
+      if (action === 'claim') await gateway.claimPickup(input);
+      else if (action === 'cancel') await gateway.cancelPickup(input);
+      else await gateway.correctReady(input);
+      pickupAttempts.current.delete(line.lineId);
+      await load();
+    } catch (failure) {
+      const conflict = failure instanceof OrderOperationsGatewayError && failure.code === 'pickup_claim_conflict';
+      await load();
+      setError(conflict
+        ? 'La asignación cambió mientras actuabas. Se muestra ahora el responsable confirmado.'
+        : 'La asignación no quedó confirmada. El estado se recargará antes de permitir otro intento.');
+    } finally {
+      setPendingLines((current) => { const next = new Set(current); next.delete(line.lineId); return next; });
+    }
+  };
+
   const acknowledgeDispatch = async (dispatchId: string) => {
     if (!gateway || pendingOperation) return;
     setPendingOperation(dispatchId);setError(null);
@@ -271,16 +299,29 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                 <ul className="order-line-list">
                   {order.lines.map((line) => {
                     const action = board ? nextOrderLineAction(board.role, line.status) : null;
+                    const pickupActions = board ? pickupTaskActions(board.role, line.status, line.pickup) : [];
                     const pending = pendingLines.has(line.lineId);
                     return (
                       <li key={line.lineId}>
                         <div className="order-line__identity"><span>{line.quantity}×</span><div><strong>{line.name}</strong><small>Línea {line.lineNumber} · {line.category}</small></div></div>
-                        <StatusBadge tone={tone(line.status)}>{ORDER_STATUS_LABELS[line.status]}</StatusBadge>
+                        <div className="order-line__status-stack">
+                          <StatusBadge tone={tone(line.status)}>{ORDER_STATUS_LABELS[line.status]}</StatusBadge>
+                          {line.pickup?.state === 'claimed' ? <span className="pickup-assignment">
+                            En recogida · responsable {line.pickup.claimedBy}
+                          </span> : line.pickup?.state === 'ready' ? <span className="pickup-assignment">Aviso activo para sala</span> : null}
+                        </div>
                         {action ? (
                           <button className="button button--primary order-line__action" type="button" disabled={pending} onClick={() => void transition(line)}>
                             {pending ? 'Confirmando…' : action.label}
                           </button>
-                        ) : <span className="order-line__complete">Sin acciones pendientes</span>}
+                        ) : pickupActions.length ? <div className="button-row order-line__pickup-actions">
+                          {pickupActions.map((pickupAction) => <button
+                            className={pickupAction.action === 'correct' ? 'filter-button' : 'button button--primary'}
+                            key={pickupAction.action} type="button" disabled={pending}
+                            onClick={() => void updatePickup(line, pickupAction.action)}>
+                            {pending ? 'Confirmando…' : pickupAction.label}
+                          </button>)}
+                        </div> : <span className="order-line__complete">Sin acciones pendientes</span>}
                       </li>
                     );
                   })}

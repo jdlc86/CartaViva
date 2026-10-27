@@ -138,12 +138,22 @@ export function createOrderOperationsRepository() {
            lines.status,
            notifications.id AS notification_id,
            notifications.created_at AS notification_created_at,
-           notifications.acknowledged_at AS notification_acknowledged_at
+           notifications.acknowledged_at AS notification_acknowledged_at,
+           NULL::uuid AS pickup_task_id,
+           NULL::text AS pickup_state,
+           NULL::bigint AS pickup_version,
+           NULL::uuid AS pickup_claimed_by,
+           NULL::timestamptz AS pickup_claimed_at,
+           NULL::timestamptz AS pickup_updated_at
          FROM sabora.order_lines lines
          JOIN sabora.orders orders ON orders.id = lines.order_id
          JOIN sabora.dining_tables tables ON tables.id = lines.table_id
-         LEFT JOIN sabora.pickup_notifications notifications
-           ON notifications.order_line_id = lines.id
+         LEFT JOIN LATERAL (
+           SELECT notification.id,notification.created_at,notification.acknowledged_at
+             FROM sabora.pickup_notifications notification
+            WHERE notification.order_line_id = lines.id
+            ORDER BY notification.created_at DESC,notification.id DESC LIMIT 1
+         ) notifications ON true
          WHERE (
            $1::text = 'admin'
            OR ($1::text = 'kitchen' AND lines.status IN ('confirmed','preparing','ready'))
@@ -237,7 +247,17 @@ export function createOrderOperationsRepository() {
             (row.status === 'ready' && (!UUID.test(row.notification_id) ||
               row.notification_acknowledged_at !== null)) ||
             (row.status === 'picked_up' && (!UUID.test(row.notification_id) ||
-              row.notification_acknowledged_at === null))) {
+              row.notification_acknowledged_at === null)) ||
+            (row.pickup_task_id !== null && (!UUID.test(row.pickup_task_id) ||
+              !['ready','claimed','corrected'].includes(row.pickup_state) ||
+              !Number.isSafeInteger(Number(row.pickup_version)) || Number(row.pickup_version)<1 ||
+              !(row.pickup_updated_at instanceof Date) ||
+              (row.pickup_state==='claimed' && (!UUID.test(row.pickup_claimed_by) ||
+                !(row.pickup_claimed_at instanceof Date))) ||
+              (row.pickup_state!=='claimed' && (row.pickup_claimed_by!==null ||
+                row.pickup_claimed_at!==null)) ||
+              (row.pickup_state==='corrected' && row.status!=='preparing') ||
+              (row.pickup_state!=='corrected' && row.status!=='ready')))) {
           throw Error('invalid_order_operations_sql_result');
         }
         const confirmedAt = asDate(row.confirmed_at);
@@ -246,6 +266,14 @@ export function createOrderOperationsRepository() {
           createdAt: asDate(row.notification_created_at),
           acknowledgedAt: row.notification_acknowledged_at === null
             ? null : asDate(row.notification_acknowledged_at),
+        });
+        const pickup = row.pickup_task_id === null ? null : Object.freeze({
+          taskId: row.pickup_task_id,
+          state: row.pickup_state,
+          version: Number(row.pickup_version),
+          claimedBy: row.pickup_claimed_by,
+          claimedAt: row.pickup_claimed_at === null ? null : asDate(row.pickup_claimed_at),
+          updatedAt: asDate(row.pickup_updated_at),
         });
         return Object.freeze({
           orderId: row.order_id,
@@ -260,12 +288,13 @@ export function createOrderOperationsRepository() {
           quantity: row.quantity,
           status: row.status,
           notification,
+          pickup,
         });
       });
       const page = validatedRows.slice(0, limit);
       const last = page.at(-1);
       return Object.freeze({
-        version: 1,
+        version: 2,
         role,
         items: Object.freeze(page),
         nextCursor: rows.length > limit && last ? Object.freeze({
@@ -389,7 +418,8 @@ export function createOrderOperationsRepository() {
       if (rows.some(row =>
         (row?.from_status !== 'confirmed' || row?.to_status !== 'preparing') &&
         (row?.from_status !== 'preparing' || row?.to_status !== 'ready') &&
-        (row?.from_status !== 'ready' || row?.to_status !== 'picked_up'))) {
+        (row?.from_status !== 'ready' || row?.to_status !== 'picked_up') &&
+        (row?.from_status !== 'ready' || row?.to_status !== 'preparing'))) {
         throw Error('invalid_order_operations_sql_result');
       }
       const events = rows.map((row) => {
@@ -399,7 +429,9 @@ export function createOrderOperationsRepository() {
             !STATUSES.has(row?.from_status) || !STATUSES.has(row?.to_status) ||
             !ROLES.has(row?.actor_role) ||
             (row.actor_role === 'waiter' && row.to_status !== 'picked_up') ||
-            (row.actor_role === 'kitchen' && row.to_status === 'picked_up')) {
+            (row.actor_role === 'kitchen' && row.to_status === 'picked_up') ||
+            (row.from_status === 'ready' && row.to_status === 'preparing' &&
+              !['kitchen','admin'].includes(row.actor_role))) {
           throw Error('invalid_order_operations_sql_result');
         }
         return Object.freeze({

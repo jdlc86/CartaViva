@@ -15,7 +15,8 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H
  from '../../apps/api/src/h6-provider-repository.mjs';
 import {createH6OperationsRepository,ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,createH6CustomerEventRepository}
+ REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ createH6CustomerEventRepository}
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {assertH6SqlCapabilities} from '../../apps/api/src/h6-sql-preflight.mjs';
@@ -46,6 +47,7 @@ const freeItemId='a6200000-0000-4000-8000-000000000006';
 const kitchenId='a6200000-0000-4000-8000-000000000003';
 const adminId='a6200000-0000-4000-8000-000000000004';
 const waiterId='a6200000-0000-4000-8000-000000000005';
+const secondWaiterId='a6200000-0000-4000-8000-000000000008';
 const keyId='h6_pg17_key_2026',signingSecret=randomBytes(32);
 const qr=createTableQrCredential({origin:'https://sabora.example',restaurantCode:'SABORA',tableId,
  randomBytesImpl:()=>Buffer.alloc(32,23)});
@@ -90,7 +92,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   [itemId,{name:'Menú H6',category:'Primeros',priceCents:2400,allergens:[],options:[],extras:[],discount:null},
    freeItemId,{name:'Detalle de cortesía',category:'Postres',priceCents:0,allergens:[],options:[],extras:[],discount:null}]);
  await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES
-  ($1,'kitchen','active'),($2,'admin','active'),($3,'waiter','active')`,[kitchenId,adminId,waiterId]);
+  ($1,'kitchen','active'),($2,'admin','active'),($3,'waiter','active'),($4,'waiter','active')`,
+  [kitchenId,adminId,waiterId,secondWaiterId]);
  await admin.query(`INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at)
   VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
   [keyId,signingSecret]);
@@ -114,7 +117,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const provider=createH6ProviderRepository({withTransaction:providerTx});
  const operationsTx=createRoleScopedPostgresTransaction({pool:operationsPool,role:'sabora_h6_operations_runtime',
   allowedSql:new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,
-   SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL])});
+   SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL])});
  const operations=createH6OperationsRepository({withTransaction:operationsTx});
  const issueKitchen=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
   databaseRole:'sabora_h6_operations_ci'});
@@ -161,6 +164,128 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  ]);
  assert.deepEqual(acknowledgements.map(value=>value.repeated).sort(),[false,true]);
  await admin.query(`UPDATE sabora.order_lines SET status='preparing' WHERE id=$1`,[line]);
+
+ // Issue #33: a real ready event creates a separate pickup task. Two waiters
+ // race through the least-privilege H6 principal; exactly one acquires it.
+ const seed=await admin.connect();
+ try{
+  await seed.query('BEGIN');
+  await seed.query(`UPDATE sabora.order_lines SET status='ready' WHERE id=$1`,[line]);
+  await seed.query(`INSERT INTO sabora.pickup_notifications(order_id,order_line_id) VALUES($1,$2)`,
+   [order.orderId,line]);
+  await seed.query(`INSERT INTO sabora.order_line_events
+   (order_id,order_line_id,actor_user_id,from_status,to_status,correlation_id)
+   VALUES($1,$2,$3,'preparing','ready','h6_pickup_ready_seed_001')`,
+   [order.orderId,line,kitchenId]);
+  await seed.query('COMMIT');
+ }catch(error){await seed.query('ROLLBACK');throw error;}finally{seed.release();}
+ let pickup=(await admin.query(`SELECT * FROM sabora.pickup_tasks WHERE order_line_id=$1`,[line])).rows[0];
+ assert.equal(pickup.state,'ready');assert.equal(Number(pickup.version),1);
+ const firstClaim=issueKitchen({actorId:waiterId,staffRole:'waiter',action:'claim_pickup',
+  targetId:line,expectedVersion:1,correlationId:'h6_pickup_claim_waiter_001'});
+ const secondClaim=issueKitchen({actorId:secondWaiterId,staffRole:'waiter',action:'claim_pickup',
+  targetId:line,expectedVersion:1,correlationId:'h6_pickup_claim_waiter_002'});
+ const claims=await Promise.all([
+  operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:1,capability:firstClaim}),
+  operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:1,capability:secondClaim})
+ ]);
+ assert.deepEqual(claims.map(value=>value.outcome).sort(),['claimed','conflict']);
+ const winner=claims.find(value=>value.outcome==='claimed');
+ const loser=claims.find(value=>value.outcome==='conflict');
+ assert.ok([waiterId,secondWaiterId].includes(winner.claimedBy));
+ assert.equal(loser.claimedBy,winner.claimedBy);
+ assert.equal(loser.taskVersion,2);
+ const winnerCapability=winner.claimedBy===waiterId?firstClaim:secondClaim;
+ assert.equal((await operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:1,
+  capability:winnerCapability})).repeated,true);
+ assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.pickup_task_events
+  WHERE order_line_id=$1 AND action='claimed'`,[line])).rows[0].n,1);
+
+ // Any equivalent waiter may release only the assignment. The order, round
+ // and payment remain untouched and a fresh waiter notification is emitted.
+ const canceller=winner.claimedBy===waiterId?secondWaiterId:waiterId;
+ const cancelCap=issueKitchen({actorId:canceller,staffRole:'waiter',action:'cancel_pickup',
+  targetId:line,expectedVersion:2,correlationId:'h6_pickup_cancel_waiter_001'});
+ const cancelled=await operations.managePickup({lineId:line,action:'cancel_pickup',
+  expectedVersion:2,capability:cancelCap});
+ assert.equal(cancelled.state,'ready');assert.equal(cancelled.taskVersion,3);
+ const durableAfterCancel=(await admin.query(`SELECT l.status,r.state AS round_state,p.state AS payment_state
+  FROM sabora.order_lines l JOIN sabora.order_rounds r ON r.order_id=l.order_id
+  JOIN sabora.payment_attempts p ON p.round_id=r.id WHERE l.id=$1`,[line])).rows[0];
+ assert.deepEqual(durableAfterCancel,{status:'ready',round_state:'kitchen_acknowledged',payment_state:'captured'});
+
+ // Suspension wins over a previously issued capability. No admin principal is
+ // used as a substitute for this acceptance check.
+ const revokedCap=issueKitchen({actorId:secondWaiterId,staffRole:'waiter',action:'claim_pickup',
+  targetId:line,expectedVersion:3,correlationId:'h6_pickup_revoked_waiter_001'});
+ await admin.query(`UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1`,[secondWaiterId]);
+ await assert.rejects(operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:3,
+  capability:revokedCap}),/invalid_pickup_capability/);
+ await admin.query(`UPDATE sabora.staff_members SET state='active' WHERE user_id=$1`,[secondWaiterId]);
+
+ const claimAgainCap=issueKitchen({actorId:waiterId,staffRole:'waiter',action:'claim_pickup',
+  targetId:line,expectedVersion:3,correlationId:'h6_pickup_claim_again_001'});
+ assert.equal((await operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:3,
+  capability:claimAgainCap})).taskVersion,4);
+ const blockedCorrectionCap=issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'correct_ready',
+  targetId:line,expectedVersion:4,correlationId:'h6_pickup_correct_blocked_001'});
+ const blockedCorrection=await operations.managePickup({lineId:line,action:'correct_ready',
+  expectedVersion:4,capability:blockedCorrectionCap});
+ assert.equal(blockedCorrection.outcome,'conflict');
+ assert.equal(blockedCorrection.reason,'claimed_cannot_correct');
+ const releaseAgainCap=issueKitchen({actorId:secondWaiterId,staffRole:'waiter',action:'cancel_pickup',
+  targetId:line,expectedVersion:4,correlationId:'h6_pickup_cancel_again_001'});
+ await operations.managePickup({lineId:line,action:'cancel_pickup',expectedVersion:4,
+  capability:releaseAgainCap});
+ const correctionCap=issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'correct_ready',
+  targetId:line,expectedVersion:5,correlationId:'h6_pickup_correct_ready_001'});
+ const corrected=await operations.managePickup({lineId:line,action:'correct_ready',
+  expectedVersion:5,capability:correctionCap});
+ assert.equal(corrected.state,'corrected');assert.equal(corrected.taskVersion,6);
+ const correctedState=(await admin.query(`SELECT l.status,n.invalidated_at IS NOT NULL AS invalidated
+  FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id
+  JOIN sabora.pickup_notifications n ON n.id=t.notification_id WHERE l.id=$1`,[line])).rows[0];
+ assert.deepEqual(correctedState,{status:'preparing',invalidated:true});
+
+ // Re-marking Listo creates a new notification generation and re-arms the same
+ // versioned task. It does not synthesize a physical pickup or delivery.
+ const rearm=await admin.connect();
+ try{
+  await rearm.query('BEGIN');
+  await rearm.query(`UPDATE sabora.order_lines SET status='ready' WHERE id=$1`,[line]);
+  await rearm.query(`INSERT INTO sabora.pickup_notifications(order_id,order_line_id) VALUES($1,$2)`,
+   [order.orderId,line]);
+  await rearm.query(`INSERT INTO sabora.order_line_events
+   (order_id,order_line_id,actor_user_id,from_status,to_status,correlation_id)
+   VALUES($1,$2,$3,'preparing','ready','h6_pickup_ready_rearm_001')`,
+   [order.orderId,line,kitchenId]);
+  await rearm.query('COMMIT');
+ }catch(error){await rearm.query('ROLLBACK');throw error;}finally{rearm.release();}
+ pickup=(await admin.query(`SELECT * FROM sabora.pickup_tasks WHERE order_line_id=$1`,[line])).rows[0];
+ assert.equal(pickup.state,'ready');assert.equal(Number(pickup.version),7);
+ assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.pickup_notifications
+  WHERE order_line_id=$1`,[line])).rows[0].n,2);
+ await assert.rejects(admin.query(`UPDATE sabora.pickup_notifications SET acknowledged_at=clock_timestamp(),
+  acknowledged_by=$2 WHERE id=$1`,[pickup.notification_id,waiterId]),/legacy_pickup_transition_retired/);
+
+ const expiredIssuer=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
+  databaseRole:'sabora_h6_operations_ci',ttlMs:1,clock:()=>Date.now()-1000});
+ const expiredCap=expiredIssuer({actorId:waiterId,staffRole:'waiter',action:'claim_pickup',
+  targetId:line,expectedVersion:7,correlationId:'h6_pickup_expired_cap_001'});
+ await assert.rejects(operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:7,
+  capability:expiredCap}),/invalid_pickup_capability|expired_pickup_capability/);
+
+ const waiterEventsOne=await operations.readStaffEvents({afterCursor:0,limit:100,
+  capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'read_events',targetId:waiterId,
+   correlationId:'h6_pickup_events_waiter_001'})});
+ const waiterEventsTwo=await operations.readStaffEvents({afterCursor:0,limit:100,
+  capability:issueKitchen({actorId:secondWaiterId,staffRole:'waiter',action:'read_events',
+   targetId:secondWaiterId,correlationId:'h6_pickup_events_waiter_002'})});
+ for(const backlog of [waiterEventsOne,waiterEventsTwo]){
+  assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.claimed'));
+  assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.claim_cancelled'));
+  assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.ready_corrected'));
+ }
 
  const sessionHash=hashCustomerSessionToken(customer.token);
  const backlog=await events.read({sessionHash,tableId,visitId:visit.visitId,
@@ -385,7 +510,13 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,[[
    'customer_accounts','order_rounds','payment_attempts','kitchen_dispatches','incident_cases',
    'refund_attempts','cash_settlements','stripe_webhook_events','event_outbox','h6_action_requests']]);
- assert.equal(rls.rows.length,10);
+ rls.rows.push(...(await admin.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+  has_table_privilege('sabora_h6_customer_ci',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS customer_direct,
+  has_table_privilege('sabora_h6_operations_ci',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS operations_direct,
+  has_table_privilege('sabora_h6_provider_ci',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS provider_direct
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,[['pickup_tasks','pickup_task_events']])).rows);
+ assert.equal(rls.rows.length,12);
  assert.ok(rls.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity&&
   !row.customer_direct&&!row.operations_direct&&!row.provider_direct));
 });

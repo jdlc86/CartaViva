@@ -7,7 +7,7 @@ import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
 import {registerH6OperationsHttp} from './h6-operations-http.mjs';
 import {createH6CustomerEventRepository,createH6OperationsRepository,ACK_DISPATCH_H6_SQL,
  REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL} from './h6-operations-repository.mjs';
+ REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL} from './h6-operations-repository.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
@@ -20,7 +20,8 @@ const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
- RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL]);
+ RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ MANAGE_PICKUP_TASK_H6_SQL]);
 
 // Explicitly dormant composition: it opens only the injected LISTEN connection,
 // never reads environment variables, creates credentials, starts a worker or

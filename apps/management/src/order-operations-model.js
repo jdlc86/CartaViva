@@ -4,7 +4,7 @@ export const ORDER_STATUS_LABELS = Object.freeze({
   confirmed: 'Pendiente',
   preparing: 'En preparación',
   ready: 'Lista para recoger',
-  picked_up: 'Recogida',
+  picked_up: 'Recogida histórica',
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,8 +40,20 @@ function normalizeNotification(value, status) {
   });
 }
 
+function normalizePickup(value, status) {
+  if (value === null) return null;
+  if (!plain(value) || !UUID.test(value.taskId) ||
+      !['ready', 'claimed', 'corrected'].includes(value.state) ||
+      !Number.isSafeInteger(value.version) || value.version < 1 || !iso(value.updatedAt) ||
+      (value.state === 'claimed' && (!UUID.test(value.claimedBy) || !iso(value.claimedAt))) ||
+      (value.state !== 'claimed' && (value.claimedBy !== null || value.claimedAt !== null)) ||
+      (value.state === 'corrected' && status !== 'preparing') ||
+      (value.state !== 'corrected' && status !== 'ready')) throw Error('invalid_order_board');
+  return Object.freeze({...value});
+}
+
 export function normalizeOrderBoard(value) {
-  if (!plain(value) || value.version !== 1 || !ROLES.has(value.role) || !Array.isArray(value.items) ||
+  if (!plain(value) || ![1, 2].includes(value.version) || !ROLES.has(value.role) || !Array.isArray(value.items) ||
       value.items.length > 100 || (value.nextCursor !== null && !plain(value.nextCursor))) {
     throw Error('invalid_order_board');
   }
@@ -71,6 +83,7 @@ export function normalizeOrderBoard(value) {
       quantity: item.quantity,
       status: item.status,
       notification: normalizeNotification(item.notification, item.status),
+      pickup: value.version === 2 ? normalizePickup(item.pickup, item.status) : null,
     });
   });
   let nextCursor = null;
@@ -81,7 +94,7 @@ export function normalizeOrderBoard(value) {
     }
     nextCursor = Object.freeze({...value.nextCursor});
   }
-  return Object.freeze({version: 1, role: value.role, items: Object.freeze(items), nextCursor});
+  return Object.freeze({version: value.version, role: value.role, items: Object.freeze(items), nextCursor});
 }
 
 export function normalizeOrderTransition(value) {
@@ -117,10 +130,19 @@ export function nextOrderLineAction(role, status) {
   if ((role === 'kitchen' || role === 'admin') && status === 'preparing') {
     return Object.freeze({targetStatus: 'ready', label: 'Marcar lista'});
   }
-  if ((role === 'waiter' || role === 'admin') && status === 'ready') {
-    return Object.freeze({targetStatus: 'picked_up', label: 'Confirmar recogida'});
-  }
   return null;
+}
+
+export function pickupTaskActions(role, status, pickup) {
+  if (!ROLES.has(role) || !STATUSES.has(status) || pickup === null || !plain(pickup)) return Object.freeze([]);
+  const actions = [];
+  if (status === 'ready' && pickup.state === 'ready') {
+    if (role === 'waiter' || role === 'admin') actions.push(Object.freeze({action: 'claim', label: 'Voy a recoger'}));
+    if (role === 'kitchen' || role === 'admin') actions.push(Object.freeze({action: 'correct', label: 'Corregir: Preparando'}));
+  } else if (status === 'ready' && pickup.state === 'claimed' && (role === 'waiter' || role === 'admin')) {
+    actions.push(Object.freeze({action: 'cancel', label: 'Cancelo'}));
+  }
+  return Object.freeze(actions);
 }
 
 export function groupOrderBoard(items) {
