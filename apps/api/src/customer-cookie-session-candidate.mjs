@@ -36,7 +36,8 @@ export function createCustomerCookieAuth({verifyCustomerSession,allowedOrigin,re
   if(!identity||typeof identity.customerId!=='string'||!UUID.test(identity.customerId)){
    reply.code(401).send({error:'unauthorized'});return;
   }
-  request.customerIdentity=Object.freeze({customerId:identity.customerId});
+  request.customerIdentity=Object.freeze({customerId:identity.customerId,
+   publicId:identity.publicId,alias:identity.alias,company:identity.company??null});
  };
  const requireSameOrigin=(request,reply)=>{
   reply.header('Cache-Control','no-store');
@@ -75,7 +76,9 @@ export function registerCustomerCookieSessionCandidate(app,{pool,allowedOrigin}=
    if(request.method==='POST'&&request.url.split('?')[0].endsWith('/logout'))return;
    await cookieAuth.authenticate(request,reply);
   });
-  scope.get('/session',async request=>({authenticated:true}));
+  scope.get('/session',async request=>({authenticated:true,
+   publicId:request.customerIdentity.publicId,alias:request.customerIdentity.alias,
+   company:request.customerIdentity.company}));
   scope.post('/logout',cookieAuth.logout);
  },{prefix:COOKIE_PATH});
 }
