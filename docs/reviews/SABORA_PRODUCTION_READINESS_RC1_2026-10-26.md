@@ -154,7 +154,7 @@ crea ese endpoint ni activa QR operativos.
 | `pnpm --filter @sabora/client test:e2e` | PASS, 26/26 en 390 px y 1440 px |
 | `scripts/ci/postgres-migration-smoke.sh` | PASS, PostgreSQL 17 desechable |
 | Driver Node + PostgreSQL 17 | PASS, 93/93: 92 regresiones históricas + H3 restringido |
-| GitHub Actions, PR #30 | Pendiente de la ejecución del SHA final del bloque QR |
+| GitHub Actions, PR #30, implementación `726527a` | PASS: `validate` 2m09s, `client-browser` 1m07s, `management-browser-smoke` 40s, `generate-lockfile` 2m09s |
 
 La aceptación nueva del driver verifica con logins reales y restringidos:
 registro, sesión, visita, dos líneas cotizadas, rollback si falla la segunda
