@@ -6,7 +6,7 @@ Este documento describe la implementación candidata de H6. No modifica ni susti
 
 ## Límite de activación
 
-- La migración `20261027122858_sabora_h6_events_payments_operations_candidate.sql` solo se ha ejecutado en PostgreSQL 17 desechable.
+- Las migraciones `20261027122858_sabora_h6_events_payments_operations_candidate.sql` y `20261027190334_sabora_pickup_claim_cancel_candidate.sql` solo se han ejecutado en PostgreSQL 17 desechable.
 - `server.mjs` no importa la composición H6. No hay rutas, worker, cron, Stripe, correo ni servicios productivos activados.
 - `registerH6CandidateHttp` exige dependencias inyectadas, tres pools SQL separados y preflight satisfactorio antes de montar rutas. No lee secretos ni variables de entorno.
 - La PWA cliente no contiene vistas ni operaciones de cocina, sala o administración.
@@ -64,7 +64,17 @@ La captura y la solicitud de despacho se persisten en una sola transacción. Coc
 - Cuenta ya cobrada en efectivo: crea `cash_refund_due`; camarero/admin registra la entrega presencial con capacidad HMAC e idempotencia.
 - Pago digital autorizado: libera autorización. Capturado: crea reembolso al cargo original.
 
-`picked_up` continúa significando recogida por sala, no entrega al comensal. H6 no introduce un estado `delivered` sin contrato aprobado.
+## Asignación de recogida de sala (Issue #33)
+
+El contrato aprobado de «Voy a recoger» se implementa como una asignación operativa exclusiva, no como recogida física ni entrega al comensal. La tarea `pickup_tasks` conserva un `version` monotónico y solo puede pasar `ready → claimed → ready` (cancelación de la asignación) o `ready → corrected` (corrección de cocina). La primera capacidad que bloquea la versión esperada gana; las demás reciben `409 pickup_claim_conflict` con la instantánea confirmada y no producen efectos.
+
+- «Cancelo» libera únicamente la asignación y reactiva el aviso para todos los camareros. No cambia pedido, ronda, pago, incidencia ni entrega.
+- Cocina solo puede corregir `ready → preparing` cuando la tarea no está asignada. La corrección invalida el aviso activo, deja auditoría append-only y una nueva transición posterior a `ready` crea un aviso nuevo.
+- Cada cambio emite outbox durable para cocina y sala; todos los clientes autorizados recuperan el mismo estado por SSE, sin polling.
+- Las capacidades HMAC vinculan login SQL, actor, rol, acción, línea, versión, correlación y caducidad. El wrapper vuelve a comprobar clave, membresía, visita y alcance después de adquirir los bloqueos.
+- `picked_up` queda como estado histórico de la implementación anterior. No se genera en el circuito H6 de Issue #33 y no se reinterpreta como asignación, recogida física o entrega.
+
+La proyección expone el UUID completo del responsable porque no existe un contrato aprobado de nombre público de personal. La UI no inventa alias y la auditoría conserva la identidad canónica.
 
 ## Custodia y datos
 
@@ -75,4 +85,5 @@ Los tokens QR siguen únicamente en memoria y en el fragmento de la URL conforme
 - Sin autorización para provisión de logins, secretos, webhook público, scheduler de vencimiento, worker de despacho, Stripe Elements, migración Supabase o despliegue.
 - Los límites antifraude para cancelación de camarero sin aprobación siguen sin decisión normativa; esa variante queda cerrada.
 - Entrega final al comensal, propinas reales, pago por terceros/asignaciones, reservas, comunicaciones y passkeys no se presentan como terminados en este candidato.
+- La identidad de presentación del camarero sigue pendiente de contrato; hasta entonces se muestra el UUID canónico completo para evitar ambigüedad.
 - La poda física del outbox y los runbooks de operación/alertas requieren un bloque de infraestructura autorizado.
