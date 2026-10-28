@@ -710,3 +710,18 @@ El control se prueba fuera de React con sucesión de identidades, cierres
 fuera de orden, cierre global y entradas inválidas. No se infiere el rol
 del cliente: la autorización sigue siendo responsabilidad del backend
 y PostgreSQL.
+
+## Aislamiento de estado visual por identidad
+
+La revocación del transporte no basta para aislar el estado local React:
+la vista de comandas mantiene tablero, historial, eventos, borradores
+de incidencia y operaciones pendientes. Al cambiar la identidad del
+empleado, `main.tsx` revoca el canal anterior, incrementa la clave de
+montaje y reemplaza **sincrónicamente** el árbol de componentes mediante
+`flushSync`. Esto evita que el estado de un empleado permanezca visible
+durante la siguiente sesión o después del logout. Se añadió un test de
+regresión del contrato de montaje y de la vista previa sin gateway.
+Este control es una defensa de UI; la separación de datos efectiva
+permanece en los hooks de autenticación y RLS PostgreSQL. El recorrido
+de navegador con identidades reales sigue pendiente y no se declara
+hito productivo cerrado.
