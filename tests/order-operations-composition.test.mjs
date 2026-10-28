@@ -110,6 +110,7 @@ test('operations remain opt-in and never import into the production server', () 
 test('verified composition refuses route registration before SQL identity preflight', async () => {
   const registrations = [];
   const app = {
+    hasRoute() { return false; },
     get(...args) { registrations.push(['get', ...args]); },
     post(...args) { registrations.push(['post', ...args]); },
   };
@@ -119,7 +120,7 @@ test('verified composition refuses route registration before SQL identity prefli
     staffPool, operationsPool,
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
     issueTransitionCapability() {},
-  }), /invalid_order_operations_route_registration/);
+  }), /invalid_order_operations_auth_config/);
   assert.equal(registrations.length, 0);
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
