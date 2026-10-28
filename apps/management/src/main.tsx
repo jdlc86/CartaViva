@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
@@ -157,6 +158,7 @@ export function ManagementApp({
 let managementRoot: ReturnType<typeof createRoot> | null = null;
 let managementElement: HTMLElement | null = null;
 const managementSessionFence = createManagementSessionFence();
+let managementRenderGeneration = 0;
 
 function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
   if (managementRoot && managementElement !== element) {
@@ -166,9 +168,12 @@ function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway
     managementRoot = createRoot(element);
     managementElement = element;
   }
-  managementRoot.render(
-    <React.StrictMode><ManagementApp operationsGateway={gateway}/></React.StrictMode>,
-  );
+  // Force a new component tree on every identity transition: no previous
+  // employee's board, history, incident draft or SSE state may survive.
+  const key = ++managementRenderGeneration;
+  flushSync(() => managementRoot!.render(
+    <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}/></React.StrictMode>,
+  ));
 }
 
 export function mountAuthenticatedManagementApp({
