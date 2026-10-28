@@ -328,8 +328,12 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const invalid=await h6Http.inject({method:'POST',url:path,
    payload:{...claimBody,unexpected:true}});
   assert.equal(invalid.statusCode,400);
+  assert.equal(invalid.headers['cache-control'],'no-store');
+  assert.equal(invalid.headers['x-content-type-options'],'nosniff');
   const accepted=await h6Http.inject({method:'POST',url:path,payload:claimBody});
   assert.equal(accepted.statusCode,200);
+  assert.equal(accepted.headers['cache-control'],'no-store');
+  assert.equal(accepted.headers['x-content-type-options'],'nosniff');
   assert.equal(accepted.json().outcome,'claimed');
   assert.equal(accepted.json().taskVersion,8);
   const replay=await h6Http.inject({method:'POST',url:path,payload:claimBody});
