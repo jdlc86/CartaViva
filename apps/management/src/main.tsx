@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
+import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
@@ -26,16 +27,18 @@ export function ManagementApp({
   catalogGateway,
   operationsGateway,
   staffGateway,
+  staffDirectoryGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
   catalogGateway?: AdminCatalogGateway;
   operationsGateway?: OrderOperationsGateway;
   staffGateway?: StaffManagementGateway;
+  staffDirectoryGateway?: StaffDirectoryGateway;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
   const focusAfterNavigation = useRef(false);
-  const hasReadProjection = Boolean(tablesGateway || catalogGateway);
+  const hasReadProjection = Boolean(tablesGateway || catalogGateway || staffDirectoryGateway);
   const hasOperationalChannel = Boolean(operationsGateway);
   const activeSection = sections.find((section) => section.id === area) ?? sections[0];
 
@@ -72,7 +75,7 @@ export function ManagementApp({
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
-    : <TeamView gateway={staffGateway}/>;
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
 
   return (
     <div className="management-shell">

@@ -36,7 +36,7 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
               has_schema_privilege(current_user,'sabora','CREATE') AS schema_create,
               has_database_privilege(current_user,current_database(),'CREATE') AS database_create,
               has_function_privilege(current_user,
-                'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)',
+                'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)',
                 'EXECUTE') AS lifecycle_execute,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
@@ -72,31 +72,31 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
               (SELECT routine.prosecdef
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid=
-                  'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)'::regprocedure
+                  'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)'::regprocedure
               ) AS lifecycle_is_definer,
               (SELECT owner.rolname
                  FROM pg_catalog.pg_proc routine
                  JOIN pg_catalog.pg_roles owner ON owner.oid=routine.proowner
                 WHERE routine.oid=
-                  'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)'::regprocedure
+                  'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)'::regprocedure
               ) AS lifecycle_owner,
               (SELECT routine.proconfig = ARRAY['search_path=pg_catalog, pg_temp']::text[]
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid=
-                  'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)'::regprocedure
+                  'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)'::regprocedure
               ) AS lifecycle_search_path_locked,
               (SELECT owner.rolcanlogin=false AND owner.rolinherit=false
                       AND owner.rolsuper=false AND owner.rolbypassrls=false
                       AND owner.rolcreatedb=false AND owner.rolcreaterole=false
                       AND owner.rolreplication=false
                  FROM pg_catalog.pg_roles owner
-                WHERE owner.rolname='sabora_staff_identity_fn_owner'
+                WHERE owner.rolname='sabora_staff_directory_fn_owner'
               ) AS lifecycle_owner_is_sealed,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_auth_members membership
                  JOIN pg_catalog.pg_roles owner
                    ON owner.oid=membership.roleid OR owner.oid=membership.member
-                WHERE owner.rolname='sabora_staff_identity_fn_owner'
+                WHERE owner.rolname='sabora_staff_directory_fn_owner'
               ) AS lifecycle_owner_memberships,
               (SELECT count(*)::integer
                  FROM pg_catalog.pg_class resource
@@ -106,7 +106,8 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
                     'staff_enrollments','staff_lifecycle_requests',
                     'staff_lifecycle_audit','staff_lifecycle_signing_keys',
                     'staff_employee_code_pool','staff_employee_code_events',
-                    'staff_identity_requests','staff_code_maintenance_requests'
+                    'staff_identity_requests','staff_code_maintenance_requests',
+                    'staff_directory_contacts'
                   )
                   AND resource.relkind IN ('r','p')
                   AND resource.relrowsecurity AND resource.relforcerowsecurity
@@ -129,9 +130,9 @@ export async function preflightStaffLifecycleIdentity({pool, role} = {}) {
         row.accessible_private_tables !== 0 || row.accessible_private_sequences !== 0 ||
         row.accessible_private_definer_routines !== 1 ||
         row.lifecycle_is_definer !== true ||
-        row.lifecycle_owner !== 'sabora_staff_identity_fn_owner' ||
+        row.lifecycle_owner !== 'sabora_staff_directory_fn_owner' ||
         row.lifecycle_search_path_locked !== true || row.lifecycle_owner_is_sealed !== true ||
-        row.lifecycle_owner_memberships !== 0 || row.forced_rls_lifecycle_tables !== 8 ||
+        row.lifecycle_owner_memberships !== 0 || row.forced_rls_lifecycle_tables !== 9 ||
         row.has_role_memberships !== false ||
         !Number.isSafeInteger(row.accessible_private_tables) ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||

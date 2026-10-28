@@ -8,18 +8,25 @@ const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const ACTIONS = new Set(['invite', 'accept', 'register', 'activate', 'resend', 'suspend', 'revoke']);
 
 export const STAFF_LIFECYCLE_SQL = `SELECT *
+  FROM sabora.transition_staff_lifecycle_with_directory_candidate(
+    $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
+    $6::uuid,$7::text,$8::text,$9::text,$10::text,
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text,$18::text
+  )`;
+export const STAFF_LIFECYCLE_IDENTITY_SQL = `SELECT *
   FROM sabora.transition_staff_lifecycle_with_identity_candidate(
     $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
     $6::uuid,$7::text,$8::text,$9::text,$10::text,
     $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text
   )`;
 
-function exactCapability(value) {
+function exactCapability(value, directory) {
   const keys = [
     'keyId', 'databaseRole', 'actorId', 'action', 'enrollmentId',
     'subjectUserId', 'requestedRole', 'inviteeEmailHashHex',
     'inviteTokenHashHex', 'credentialEvidenceHashHex', 'reason',
-    'givenName', 'familyName', 'correlationId', 'issuedAtMs', 'expiresAtMs', 'signatureHex',
+    'givenName', 'familyName', ...(directory ? ['inviteeEmail'] : []), 'correlationId', 'issuedAtMs',
+    'expiresAtMs', 'signatureHex',
   ];
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Reflect.ownKeys(value).length !== keys.length) return false;
@@ -29,8 +36,8 @@ function exactCapability(value) {
   });
 }
 
-function validCapability(value) {
-  return exactCapability(value) && KEY_ID.test(value.keyId) &&
+function validCapability(value, directory) {
+  return exactCapability(value, directory) && KEY_ID.test(value.keyId) &&
     ROLE_NAME.test(value.databaseRole) && UUID.test(value.actorId) &&
     ACTIONS.has(value.action) && UUID.test(value.enrollmentId) &&
     (value.subjectUserId === null || UUID.test(value.subjectUserId)) &&
@@ -40,6 +47,8 @@ function validCapability(value) {
     (value.credentialEvidenceHashHex === null || HEX_32.test(value.credentialEvidenceHashHex)) &&
     (value.givenName === null || (typeof value.givenName === 'string' && value.givenName.length >= 1 && value.givenName.length <= 80)) &&
     (value.familyName === null || (typeof value.familyName === 'string' && value.familyName.length >= 1 && value.familyName.length <= 160)) &&
+    (!directory || value.inviteeEmail === null || (typeof value.inviteeEmail === 'string' &&
+      value.inviteeEmail.length >= 3 && value.inviteeEmail.length <= 254)) &&
     (value.reason === null || (typeof value.reason === 'string' &&
       value.reason === value.reason.trim() && value.reason.length >= 1 &&
       value.reason.length <= 500)) && CORRELATION.test(value.correlationId) &&
@@ -101,13 +110,14 @@ function publicResult(row, capability) {
   });
 }
 
-export function createStaffLifecycleRepository() {
+export function createStaffLifecycleRepository({directory = true} = {}) {
+  if (typeof directory !== 'boolean') throw Error('invalid_staff_lifecycle_repository_config');
   return Object.freeze({
     async transition(query, capability) {
-      if (typeof query !== 'function' || !validCapability(capability)) {
+      if (typeof query !== 'function' || !validCapability(capability, directory)) {
         throw Error('invalid_staff_lifecycle_repository_input');
       }
-      const result = await query(STAFF_LIFECYCLE_SQL, [
+      const result = await query(directory ? STAFF_LIFECYCLE_SQL : STAFF_LIFECYCLE_IDENTITY_SQL, [
         capability.keyId,
         capability.databaseRole,
         capability.actorId,
@@ -124,6 +134,7 @@ export function createStaffLifecycleRepository() {
         capability.expiresAtMs,
         capability.givenName,
         capability.familyName,
+        ...(directory ? [capability.inviteeEmail] : []),
         capability.signatureHex,
       ]);
       if (!Array.isArray(result?.rows) || result.rows.length !== 1) {

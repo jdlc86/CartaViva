@@ -17,7 +17,7 @@ function capability(overrides = {}) {
     action: 'activate', enrollmentId, subjectUserId: subjectId,
     requestedRole: null, inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: null,
-    givenName: null, familyName: null,
+    givenName: null, familyName: null, inviteeEmail: null,
     correlationId: 'activate_staff_001', issuedAtMs: 1000, expiresAtMs: 2000,
     signatureHex: 'a'.repeat(64), ...overrides,
   };
@@ -79,7 +79,7 @@ test('staff lifecycle repository accepts only the durable original enrollment on
   const invite = capability({
     action: 'invite', enrollmentId, subjectUserId: null, requestedRole: 'waiter',
     inviteeEmailHashHex: 'b'.repeat(64), inviteTokenHashHex: 'c'.repeat(64),
-    givenName: 'Julia', familyName: 'García López',
+    givenName: 'Julia', familyName: 'García López', inviteeEmail: 'julia@example.invalid',
     correlationId: 'invite_staff_001',
   });
   const durableReplay = {

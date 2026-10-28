@@ -213,8 +213,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.deepEqual(claims.map(value=>value.outcome).sort(),['claimed','conflict']);
  const winner=claims.find(value=>value.outcome==='claimed');
  const loser=claims.find(value=>value.outcome==='conflict');
- assert.ok([waiterId,secondWaiterId].includes(winner.claimedBy));
- assert.equal(loser.claimedBy,winner.claimedBy);
+ assert.equal(Object.hasOwn(winner,'claimedBy'),false);
+ assert.equal(Object.hasOwn(loser,'claimedBy'),false);
  assert.equal(loser.taskVersion,2);
  const claimedIdentity=(await admin.query(`SELECT claimed_display_id FROM sabora.pickup_tasks
   WHERE order_line_id=$1`,[line])).rows[0].claimed_display_id;
@@ -224,7 +224,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    AND aggregate_id=$1 ORDER BY id`,[pickup.id]);
  assert.deepEqual(claimedEvents.rows.map(value=>value.staff_role).sort(),['kitchen','waiter']);
  assert.ok(claimedEvents.rows.every(value=>value.display_id===claimedIdentity));
- const winnerCapability=winner.claimedBy===waiterId?firstClaim:secondClaim;
+ const winnerCapability=claimedIdentity==='MS-903'?firstClaim:secondClaim;
  assert.equal((await operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:1,
   capability:winnerCapability})).repeated,true);
  assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.pickup_task_events
@@ -232,7 +232,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
 
  // Any equivalent waiter may release only the assignment. The order, round
  // and payment remain untouched and a fresh waiter notification is emitted.
- const canceller=winner.claimedBy===waiterId?secondWaiterId:waiterId;
+ const canceller=claimedIdentity==='MS-903'?secondWaiterId:waiterId;
  const cancelCap=issueKitchen({actorId:canceller,staffRole:'waiter',action:'cancel_pickup',
   targetId:line,expectedVersion:2,correlationId:'h6_pickup_cancel_waiter_001'});
  const cancelled=await operations.managePickup({lineId:line,action:'cancel_pickup',

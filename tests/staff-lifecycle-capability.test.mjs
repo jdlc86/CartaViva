@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {createHash, createHmac} from 'node:crypto';
 import {
   createStaffInviteeEmailHasher,
+  createStaffLifecycleDirectoryCapabilityIssuer,
   createStaffLifecycleCapabilityIssuer,
   hashStaffInvitationToken,
   STAFF_LIFECYCLE_CAPABILITY_AUDIENCE,
+  STAFF_LIFECYCLE_DIRECTORY_CAPABILITY_AUDIENCE,
 } from '../apps/api/src/staff-lifecycle-capability.mjs';
 
 const actorId = '10000000-0000-4000-8000-000000000001';
@@ -73,4 +75,19 @@ test('email and invitation token hashes are normalized, deterministic and secret
   assert.notEqual(hashStaffInvitationToken('a'.repeat(48)), hashStaffInvitationToken('b'.repeat(48)));
   assert.throws(() => hashEmail('invalid'), /invalid_staff_invitee_email/);
   assert.throws(() => hashStaffInvitationToken('short'), /invalid_staff_invitation_token/);
+});
+
+test('directory-integrated lifecycle capability binds the retrievable normalized email',()=>{
+ const issue=createStaffLifecycleDirectoryCapabilityIssuer({keyId:'staff_key_037',secret,
+  databaseRole:'staff_directory_ci',ttlMs:10_000,clock:()=>1_700_000_000_000});
+ const capability=issue({...invitation(),inviteeEmail:'person@example.com'});
+ const message=[STAFF_LIFECYCLE_DIRECTORY_CAPABILITY_AUDIENCE,'staff_key_037','staff_directory_ci',
+  actorId,'invite',enrollmentId,'-','waiter','1'.repeat(64),'2'.repeat(64),'-','-',
+  createHash('sha256').update('Julia').digest('hex'),
+  createHash('sha256').update('García López').digest('hex'),
+  createHash('sha256').update('person@example.com').digest('hex'),'invite_staff_001',
+  '1700000000000','1700000010000'].join('\n');
+ assert.equal(capability.signatureHex,createHmac('sha256',secret).update(message).digest('hex'));
+ assert.throws(()=>issue({...invitation(),inviteeEmail:' Person@Example.com '}),
+  /invalid_staff_lifecycle_capability_input/);
 });

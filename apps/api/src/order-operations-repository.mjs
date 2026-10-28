@@ -275,7 +275,6 @@ export function createOrderOperationsRepository() {
           taskId: row.pickup_task_id,
           state: row.pickup_state,
           version: Number(row.pickup_version),
-          claimedBy: row.pickup_claimed_by,
           claimedDisplayId: row.pickup_claimed_display_id,
           claimedAt: row.pickup_claimed_at === null ? null : asDate(row.pickup_claimed_at),
           updatedAt: asDate(row.pickup_updated_at),
