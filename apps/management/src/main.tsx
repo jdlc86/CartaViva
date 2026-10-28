@@ -155,6 +155,7 @@ export function ManagementApp({
 // staff identity. The default preview never reads browser credentials.
 let managementRoot: ReturnType<typeof createRoot> | null = null;
 let managementElement: HTMLElement | null = null;
+let managementSessionGeneration = 0;
 
 function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
   if (managementRoot && managementElement !== element) {
@@ -184,13 +185,17 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl,
   });
+  const generation = ++managementSessionGeneration;
   renderManagement(element, operationsGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
     // Revoke the operational channel immediately without destroying the PWA.
-    if (managementElement === element) renderManagement(element);
+    if (managementElement === element && generation === managementSessionGeneration) {
+      ++managementSessionGeneration;
+      renderManagement(element);
+    }
   };
 }
 
