@@ -38,3 +38,47 @@ test('authenticated gateway supplies a fresh bearer for every request and never 
     assert.equal(options.cache,'no-store');
   }
 });
+
+test('revoking management identity denies new operations without network access', async () => {
+  let calls=0, reads=0;
+  const gateway=createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async()=>{reads++;return token;},
+    fetchImpl: async()=>{calls++;throw Error('unexpected_network');},
+  });
+  gateway.revoke();
+  await assert.rejects(gateway.listBoard(),/order_operations_auth_unavailable/);
+  assert.equal(reads,0);
+  assert.equal(calls,0);
+});
+test('revocation during token acquisition prevents late requests', async () => {
+  let release, calls=0;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const gateway=createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async()=>pending,
+    fetchImpl: async()=>{calls++;throw Error('unexpected_network');},
+  });
+  const request=gateway.listBoard();
+  gateway.revoke();
+  release(token);
+  await assert.rejects(request,/order_operations_auth_unavailable/);
+  assert.equal(calls,0);
+});
+test('revocation aborts active management HTTP requests', async () => {
+  let started;
+  const pending=new Promise(resolve=>{started=resolve;});
+  const gateway=createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async()=>token,
+    fetchImpl: async(_path,options)=>{
+      started(options.signal);
+      return new Promise((_resolve,reject)=>{
+        options.signal.addEventListener('abort',()=>reject(Error('aborted')),{once:true});
+      });
+    },
+  });
+  const request=gateway.listBoard();
+  const signal=await pending;
+  assert.equal(signal.aborted,false);
+  gateway.revoke();
+  assert.equal(signal.aborted,true);
+  await assert.rejects(request,/aborted/);
+});
