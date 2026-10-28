@@ -313,7 +313,9 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const h6Http=Fastify({logger:false});
  const testIdentity={userId:waiterId,role:'waiter'};
  const testForRoles=roles=>async request=>{
-  if(!roles.includes(testIdentity.role))throw Error('test_role_denied');
+  if(!roles.includes(testIdentity.role)){
+   const error=Error('test_role_denied');error.statusCode=403;throw error;
+  }
   request.verifiedIdentity={userId:testIdentity.userId};
   request.verifiedStaff={userId:testIdentity.userId,role:testIdentity.role};
  };
@@ -349,7 +351,22 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const denied=await h6Http.inject({method:'POST',
    url:`/api/v1/operations/order-lines/${line}/ready-correction`,
    payload:{expectedVersion:9,correlationId:'h6_http_kitchen_denied_001'}});
-  assert.notEqual(denied.statusCode,200);
+  assert.equal(denied.statusCode,403);
+  testIdentity.role='kitchen';
+  testIdentity.userId=kitchenId;
+  const kitchenCannotClaim=await h6Http.inject({method:'POST',url:path,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_claim_denied_001'}});
+  assert.equal(kitchenCannotClaim.statusCode,403);
+  const corrected=await h6Http.inject({method:'POST',
+   url:`/api/v1/operations/order-lines/${line}/ready-correction`,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_correct_001'}});
+  assert.equal(corrected.statusCode,200);
+  assert.equal(corrected.json().state,'corrected');
+  assert.equal(corrected.json().taskVersion,10);
+  const afterCorrection=(await admin.query('SELECT state,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+   [line])).rows[0];
+  assert.equal(afterCorrection.state,'corrected');
+  assert.equal(Number(afterCorrection.version),10);
  }finally{await h6Http.close();}
 
  const waiterEventsOne=await operations.readStaffEvents({afterCursor:0,limit:100,
