@@ -20,7 +20,7 @@ Documento de ejecución, subordinado a los contratos normativos.
 Este orden es cronológico y de dependencia **candidata**, no una aprobación para ejecutar migraciones. Comprobar requisitos previos, permisos, dependencias y reversión antes de cualquier aplicación.
 
 ## Riesgos abiertos y comprobaciones obligatorias
-- **Integración PWA #15/#32:** analizar bases comunes, parches de `App.tsx`, `style.css`, pruebas y lockfile; resolver conflictos reales respetando diseño aprobado y flujos normativos. No inferir compatibilidad por CI verde independiente.
+- **Integración PWA #15/#32:** base común confirmada: SHA `516909987e8b479ddaefb4991e44af0f71d25318` del PR #15 es ancestro de H6 y de la rama actual; esta última está 54 commits por delante y 0 detrás. Ejecutar pruebas combinadas del flujo premium/H6, sin asumir compatibilidad funcional solo por ascendencia.
 - **Ramas encadenadas:** #34→#36→#38 parten de la cadena H6; no asumir que el PR #15 está incluido.
 - **Correo histórico:** hashes irreversibles; reconciliación con aportación y verificación autorizada, sin inferir ni recuperar desde hash.
 - **Rutas candidatas:** endpoints de directorio no montados; preparar gates de activación y verificación, no activarlos.
@@ -29,4 +29,7 @@ Este orden es cronológico y de dependencia **candidata**, no una aprobación pa
 - **Evidencia pendiente:** pruebas combinadas en PG17, monorepo y Playwright sobre una rama con código cliente reconciliado; actualmente no ejecutadas para esta integración.
 
 ## Criterio de avance
-No declarar integración completa hasta reconciliar #15 y #32, superar pruebas combinadas y documentar preflight y runbook de reversión. No merge ni despliegue sin autorización.
+No declarar integración completa hasta superar pruebas combinadas de cliente premium/H6 y documentar preflight y runbook de reversión. No merge ni despliegue sin autorización.
+
+## Verificación adicional de ascendencia
+GitHub compare `feat/sabora-client-premium-pwa-hitos-1-3...integration/sabora-h6-full-20261027`: `ahead=39`, `behind=0`, merge-base `516909987e8b479ddaefb4991e44af0f71d25318`. Compare frente a `integration/sabora-activation-readiness-20261028`: `ahead=54`, `behind=0`, mismo merge-base. La suposición inicial de ramas divergentes queda descartada; las pruebas integradas siguen pendientes.
