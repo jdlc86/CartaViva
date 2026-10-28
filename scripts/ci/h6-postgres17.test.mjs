@@ -406,6 +406,9 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const address=sseApp.server.address();
   assert.ok(address&&typeof address==='object'&&address.port>0);
   const sseUrl=`http://127.0.0.1:${address.port}/api/v1/operations/events`;
+  const invalidScope=await fetch(sseUrl+'?unexpected=1');
+  assert.equal(invalidScope.status,400);
+  assert.equal((await invalidScope.json()).error,'invalid_event_scope');
   const response=await fetch(sseUrl,{signal:abortSse.signal,
    headers:{accept:'text/event-stream'}});
   assert.equal(response.status,200);
@@ -425,6 +428,23 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    assert.ok(received.includes('event: sabora.pickup.claimed'));
    assert.ok(received.includes('event: sabora.pickup.ready_corrected'));
    assert.match(received,/id: [0-9]+/);
+   const delivered=[...received.matchAll(/^id: ([0-9]+)$/gm)].map(match=>Number(match[1]));
+   assert.ok(delivered.length>=2);
+   assert.ok(delivered.every((id,index)=>index===0||id>delivered[index-1]));
+   const reconnectAbort=new AbortController();
+   try{
+    const reconnect=await fetch(sseUrl,{signal:reconnectAbort.signal,
+     headers:{accept:'text/event-stream','last-event-id':String(delivered[0])}});
+    assert.equal(reconnect.status,200);
+    const reconnectReader=reconnect.body.getReader();
+    try{
+     const first=await Promise.race([reconnectReader.read(),new Promise((_,reject)=>
+      setTimeout(()=>reject(Error('h6_sse_resume_timeout')),1500))]);
+     const resumed=new TextDecoder().decode(first.value);
+     assert.ok(resumed.includes('id: '+delivered[1]));
+     assert.ok(!resumed.includes('id: '+delivered[0]+'\\n'));
+    }finally{reconnectAbort.abort();await reconnectReader.cancel().catch(()=>{});}
+   }finally{reconnectAbort.abort();}
   }finally{abortSse.abort();await reader.cancel().catch(()=>{});}
  }finally{abortSse.abort();await sseApp.close();}
 
