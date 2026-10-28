@@ -162,3 +162,72 @@ test('isolated candidate starts all three protected endpoints after both SQL ide
     'connect:sabora_operations', 'inspect:sabora_operations', 'release:sabora_operations',
   ]);
 });
+
+test('candidate aborts if second SQL principal fails after successful staff inspection', async () => {
+  const seen = [];
+  function inspectedPool(role, kind) {
+    return {
+      options: {user: role, connectionString: `postgres://${role}`},
+      query() { throw Error('unexpected_direct_query'); },
+      async connect() {
+        seen.push(`connect:${role}`);
+        return {
+          async query(sql) {
+            seen.push(`inspect:${role}`);
+            assert.match(sql, /read_order_operations_board_authorized_candidate/);
+            const operations = kind === 'operations';
+            if (operations) throw Error('operations_identity_denied');
+            return {rows: [{
+              current_role: role, session_role: role,
+              superuser: false, bypass_rls: false, can_login: true,
+              inherits_roles: false, can_create_role: false, can_create_db: false,
+              can_replicate: false, has_role_memberships: false, has_role_grantees: false,
+              connection_limit: -1, password_valid_until: null,
+              schema_usage: true, schema_create: false, database_create: false,
+              candidate_rpc_execute: false,
+              authorized_rpc_execute: operations,
+              authorized_board_rpc_execute: operations,
+              authorized_history_rpc_execute: operations,
+              unsafe_actor_rpc_execute: 0,
+              accessible_private_tables: operations ? 0 : 1,
+              staff_reader_exact_columns: !operations,
+              accessible_private_sequences: 0,
+              accessible_private_definer_routines: operations ? 3 : 0,
+              candidate_is_invoker: true,
+              authorized_is_definer: true,
+              authorized_owner: 'sabora_order_operations_fn_owner',
+              authorized_search_path_locked: true,
+              authorized_board_is_definer: true,
+              authorized_board_owner: 'sabora_order_operations_fn_owner',
+              authorized_board_search_path_locked: true,
+              authorized_history_is_definer: true,
+              authorized_history_owner: 'sabora_order_operations_fn_owner',
+              authorized_history_search_path_locked: true,
+              authorized_owner_is_sealed: true,
+              authorized_owner_memberships: 0,
+              forced_rls_transition_requests: 1,
+              forced_rls_signing_keys: 1,
+            }]};
+          },
+          release(error) {
+            if (kind === 'operations') assert.match(error?.message ?? '', /operations_identity_denied/);
+            else assert.equal(error, null);
+            seen.push((error ? 'discard:' : 'release:') + role);
+          },
+        };
+      },
+    };
+  }
+  await assert.rejects(createVerifiedOrderOperationsCandidate({
+    staffPool: inspectedPool('sabora_staff_reader', 'staff'),
+    operationsPool: inspectedPool('sabora_operations', 'operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+    issuer: 'https://issuer.example.test',
+    getTrustedKeys: async () => [],
+    issueTransitionCapability: () => ({}), issueReadCapability: () => ({}),
+  }), /operations_identity_denied/);
+  assert.deepEqual(seen, [
+    'connect:sabora_staff_reader', 'inspect:sabora_staff_reader', 'release:sabora_staff_reader',
+    'connect:sabora_operations', 'inspect:sabora_operations', 'discard:sabora_operations',
+  ]);
+});
