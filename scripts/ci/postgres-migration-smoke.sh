@@ -26,6 +26,8 @@ done
 # Validate candidate kitchen/waiter operation grants and RLS in disposable PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/order-operations-grants-smoke.sql
+# Authenticate a real restricted LOGIN and exercise negative operations SQL boundaries.
+bash scripts/ci/order-operations-login-denial-smoke.sh "$container"
 # Verify administrative reader least-privilege grants and FORCE RLS in isolated PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/admin-tables-reader-grants-smoke.sql
