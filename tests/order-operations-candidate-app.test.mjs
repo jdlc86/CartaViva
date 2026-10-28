@@ -44,3 +44,39 @@ test('candidate is not imported by default production server', () => {
   assert.doesNotMatch(server, /order-operations-candidate-app/);
   assert.doesNotMatch(factory, /listen\(|process\.env|new Pool\(|DATABASE_URL|SUPABASE_URL/);
 });
+
+test('candidate startup discards a failing SQL inspection and never exposes an HTTP listener', async () => {
+  const seen = [];
+  const makePool = role => ({
+    options: {user: role, connectionString: 'postgres://' + role},
+    query() { throw Error('unexpected_direct_query'); },
+    async connect() {
+      seen.push('connect:' + role);
+      return {
+        async query() {
+          seen.push('inspect:' + role);
+          throw Error('injected_candidate_sql_failure');
+        },
+        release(error) {
+          assert.match(error.message, /injected_candidate_sql_failure/);
+          seen.push('discard:' + role);
+        },
+      };
+    },
+  });
+  await assert.rejects(createVerifiedOrderOperationsCandidate({
+    staffPool: makePool('sabora_staff_reader'),
+    operationsPool: makePool('sabora_operations'),
+    staffRole: 'sabora_staff_reader',
+    operationsRole: 'sabora_operations',
+    issueTransitionCapability() {},
+    issueReadCapability() {},
+    issuer: 'https://issuer.example.test',
+    getTrustedKeys: async () => [],
+  }), /injected_candidate_sql_failure/);
+  assert.deepEqual(seen, [
+    'connect:sabora_staff_reader',
+    'inspect:sabora_staff_reader',
+    'discard:sabora_staff_reader',
+  ]);
+});
