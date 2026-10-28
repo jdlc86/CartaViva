@@ -43,3 +43,9 @@ Se inspeccionó directamente el código de la rama de consolidación; esta revis
 - **P2 replay de invitación**: `staff-lifecycle-coordinator.mjs` sigue generando UUID/token nuevos al invitar/reenviar; esto puede ser correcto si la capa SQL y repositorio conservan la intención durable estable. **No declarado resuelto** sin prueba completa de reintento tras respuesta perdida.
 
 No se ha alterado el estado de los hilos de revisión, ni se han aplicado migraciones o cambios operativos.
+
+## Segunda verificación estática: dos P2 adicionales (2026-10-28)
+- **Preflight lector de membresía**: `preflightOrderTransitionStaffIdentity` pasa explícitamente `{allowStaffReader:true}` a `inspect`. La inspección exige SELECT por columna exclusivamente sobre `user_id,role,state`, ausencia de cualquier permiso INSERT/UPDATE/REFERENCES por columna y exactamente una tabla privada accesible. El código de composición llama este preflight antes de construir los hooks. **La incompatibilidad concreta señalada en PR #13 parece corregida en HEAD**, sin que ello sustituya prueba con login real PG17.
+- **Replay de invitación**: la migración calcula fingerprint estable para `invite` excluyendo el UUID nuevo y para `invite/resend` excluyendo el hash de token regenerado; consulta el ledger por actor/correlación antes de bloquear el enrollment regenerado, comprueba revocación y devuelve el enrollment original con `repeated=true`. El repositorio admite UUID original solo en replay de `invite`, y el coordinador no devuelve el token nuevo al detectar replay. **Mitigación presente en HEAD**; falta ejecutar la prueba de extremo a extremo con la configuración actual.
+
+**Balance de revisión estática:** cuatro hallazgos vigentes del PR #13 tienen correcciones identificables en HEAD. Ningún hilo se marca resuelto sin la evidencia de pruebas requerida.
