@@ -192,6 +192,7 @@ export function mountAuthenticatedManagementApp({
     if (disposed) return;
     disposed = true;
     // Revoke the operational channel immediately without destroying the PWA.
+    operationsGateway.revoke();
     if (managementElement === element && generation === managementSessionGeneration) {
       ++managementSessionGeneration;
       renderManagement(element);
