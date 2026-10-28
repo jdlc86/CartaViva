@@ -40,8 +40,27 @@ export function createAuthenticatedOrderOperationsGateway({
       options.signal?.removeEventListener('abort', abort);
     }
   };
+  const gateway = createOrderOperationsGateway({send, reconnectDelayMs});
+  const subscriptions = new Set();
   return Object.freeze({
-    ...createOrderOperationsGateway({send, reconnectDelayMs}),
-    revoke() { controller.abort(); },
+    ...gateway,
+    subscribeEvents(callbacks) {
+      if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
+      const unsubscribe = gateway.subscribeEvents(callbacks);
+      let closed = false;
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        subscriptions.delete(close);
+        unsubscribe();
+      };
+      subscriptions.add(close);
+      if (controller.signal.aborted) close();
+      return close;
+    },
+    revoke() {
+      controller.abort();
+      for (const close of [...subscriptions]) close();
+    },
   });
 }
