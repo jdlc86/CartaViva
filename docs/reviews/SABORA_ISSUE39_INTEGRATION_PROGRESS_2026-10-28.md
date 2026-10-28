@@ -10,6 +10,9 @@
 Commit `ff4dff48b720763c00d71debf2408347c55c8522`: GitHub Actions `Sabora CI` y `Bootstrap Sabora lockfile` ambos **completed/success**.
 Commits posteriores `a4afb6454c64d36381580bc67bbfede3f72c8f8b` y `0141f39f1ae0a1e211b1af80a07ca03088710a18`: **sin resultados de CI verificados todavía** al redactar este informe. No declarar sus pruebas superadas sin ejecución.
 
+## Actualización de seguridad
+El inventario declara `mode=offline_review_only`, `writesAuthorized=false` y `deliveryAuthorized=false`; su salida está congelada y la prueba comprueba explícitamente que no puede interpretarse como permiso de escritura o entrega. Esto no sustituye una futura verificación autorizada del contacto.
+
 ## Pendientes para cierre integral
 1. Procedimiento de verificación y persistencia de correo aportado por titular, con autorización normativa y ensayos PG17 aislados; el planificador no constituye reconciliación ejecutada.
 2. Preflight de secretos, rutas y privilegios para activación candidata, sin montar endpoints operativos.
