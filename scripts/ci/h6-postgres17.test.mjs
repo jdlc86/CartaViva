@@ -484,6 +484,37 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   }finally{abortSse.abort();await reader.cancel().catch(()=>{});}
  }finally{abortSse.abort();await sseApp.close();}
 
+ // An idle SSE connection must recheck durable staff scope at heartbeat,
+ // even if no PostgreSQL NOTIFY is delivered after a revocation.
+ const idleApp=Fastify({logger:false});
+ let scopeChecks=0;
+ registerH6StaffEventStreamHttp(idleApp,{
+  forRoles:()=>async request=>{
+   request.verifiedIdentity={userId:waiterId};
+   request.verifiedStaff={userId:waiterId,role:'waiter'};
+  },
+  events:{readStaffEvents:async()=>{
+   scopeChecks++;
+   if(scopeChecks>1)throw Error('staff_revoked_in_postgres');
+   return {version:1,events:[],resyncRequired:false};
+  }},
+  issueCapability:issueKitchen,subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+ });
+ try{
+  await idleApp.listen({host:'127.0.0.1',port:0});
+  const idleAddress=idleApp.server.address();
+  const idleResponse=await fetch(`http://127.0.0.1:${idleAddress.port}/api/v1/operations/events`,
+   {signal:AbortSignal.timeout(10000)});
+  assert.equal(idleResponse.status,200);
+  let idleStream='';
+  for await(const chunk of idleResponse.body){
+   idleStream+=new TextDecoder().decode(chunk);
+   if(idleStream.includes('event: access-revoked'))break;
+  }
+  assert.ok(scopeChecks>=2,'heartbeat must recheck authorization');
+  assert.ok(idleStream.includes('event: access-revoked'));
+ }finally{await idleApp.close();}
+
  const sessionHash=hashCustomerSessionToken(customer.token);
  const backlog=await events.read({sessionHash,tableId,visitId:visit.visitId,
   accountId:order.accountId,afterCursor:0,limit:100});
