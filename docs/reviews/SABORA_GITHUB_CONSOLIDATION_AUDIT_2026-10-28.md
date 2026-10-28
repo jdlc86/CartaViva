@@ -68,3 +68,15 @@ Se inspeccionó la función completa `sabora.transition_staff_lifecycle_with_out
 - `Bootstrap Sabora lockfile` run **40698725582**, job `generate-lockfile`: **completed/success**. Pasos completados sin fallo: generación/verificación de lockfile, migración PG17 desechable, Node `pg`, Compose, imagen y smoke aislado.
 
 Estas pruebas respaldan el estado del candidato pero no demuestran por sí solas la reproducción de los ocho casos específicos de revisión; antes de resolver formalmente los hilos, comprobar que cada escenario está cubierto por test focalizado y su resultado. No se han fusionado PR ni aplicado migraciones a Supabase operativo.
+
+## Puertas hacia primera versión de producción (2026-10-28)
+CI de HEAD `e8aa35d7b2453609d9d52a27b0d12003fc3f5489`: Sabora CI `40699195444` y Bootstrap lockfile `40699195633` ambos `completed/success`. Esta evidencia no habilita despliegue.
+
+Pendientes de aceptación, siguiendo runbook y documentación normativa (no sustituye sus requisitos):
+1. Evidencia focalizada de las ocho observaciones PR #13, privilegios mínimos, HMAC, expiraciones, concurrencia, revocación y outbox; resolución formal de hilos tras verificar.
+2. Bootstrap real de identidad, entrega de invitaciones y acceso por roles; distinguir módulos candidatos de rutas montadas y servicios activos.
+3. Prueba integral de dos PWA y circuito QR→pedido→cocina→sala→recogida, pagos/incidencias/cancelaciones conforme a alcance normativo, con errores y reintentos.
+4. Aceptación visual responsive/accesible según diseño aprobado y pruebas reales de instalación/offline/notificaciones.
+5. Inventario y preparación de producción con secretos exclusivos, Supabase, backup/restauración, observabilidad, aislamiento del VPS compartido y rollback. Requiere autorización expresa antes de modificar entorno operativo.
+
+No asignar porcentaje de cierre normativo sin matriz de requisitos con evidencias verificables. No hay empleados reales según confirmación del propietario; no ejecutar reconciliación histórica por defecto ni purgas no inventariadas.
