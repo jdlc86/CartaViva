@@ -69,6 +69,8 @@ export function registerH6OperationsHttp(app,{forRoles,operations}={}){
   return reply.code(200).send(value);
  };
  const pickupRoute=(path,roles,action)=>app.post(path,{preHandler:roles,bodyLimit:2048},async(request,reply)=>{
+  reply.header('Cache-Control','no-store');
+  reply.header('X-Content-Type-Options','nosniff');
   const body=request.body,lineId=request.params?.lineId;
   if(!UUID.test(lineId??'')||!exact(body,['expectedVersion','correlationId'])||
      !Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<1||
