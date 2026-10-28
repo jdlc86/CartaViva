@@ -564,3 +564,96 @@ test('PG17 management gateways complete kitchen-to-waiter pickup with role bound
     [item.orderId]);
   assert.deepEqual(counts.rows[0], {events:3, notices:1});
 });
+
+
+test('Chromium management PWA traverses signed Fastify candidate and disposable PG17 kitchen-to-waiter', {timeout: 120000}, async () => {
+  const {spawn} = await import('node:child_process');
+  const {pathToFileURL} = await import('node:url');
+  const {chromium} = await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  const item = await directFixture(405, 'Mesa navegador real');
+  const port = 4189;
+  const origin = `http://127.0.0.1:${port}`;
+  const vite = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+    cwd: new URL('../../apps/management/', import.meta.url).pathname,
+    stdio: 'ignore',
+  });
+  let browser;
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 60; attempt++) {
+      if (vite.exitCode !== null) throw Error('isolated_vite_exited');
+      try {
+        const response = await fetch(origin, {signal: AbortSignal.timeout(1000)});
+        if (response.ok) { ready = true; break; }
+      } catch { /* server starting */ }
+      await wait(250);
+    }
+    assert.ok(ready, 'isolated Vite server must be ready');
+    browser = await chromium.launch({headless: true});
+    const context = await browser.newContext({viewport: {width: 390, height: 844}});
+    const page = await context.newPage();
+    let actor = kitchenId;
+    const calls = [];
+    await page.route('**/api/v1/operations/**', async route => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname + new URL(request.url()).search;
+      const auth = request.headers().authorization;
+      calls.push({method: request.method(), path, auth});
+      if (path.endsWith('/events')) {
+        await route.fulfill({status: 503, contentType:'application/json',
+          body: JSON.stringify({error:'order_operations_unavailable'})});
+        return;
+      }
+      const response = await app.inject({
+        method: request.method(), url: path,
+        headers: {authorization: auth, accept: request.headers().accept || 'application/json',
+          'content-type': request.headers()['content-type'] || 'application/json'},
+        payload: request.postData() || undefined,
+      });
+      await route.fulfill({status: response.statusCode,
+        contentType: response.headers['content-type'] || 'application/json',
+        body: response.body});
+    });
+    const mount = async () => page.evaluate(async token => {
+      const {mountAuthenticatedManagementApp} = await import('/src/main.tsx');
+      window.__ciDispose = mountAuthenticatedManagementApp({
+        element: document.getElementById('root'),
+        getAccessToken: async () => token,
+      });
+    }, bearer(actor));
+    try {
+      await page.goto(origin + '/#comandas');
+      await mount();
+      await page.getByText('Plato H4').first().waitFor({timeout: 15000});
+      await page.getByRole('button', {name:'Iniciar preparación'}).click();
+      await page.getByRole('button', {name:'Marcar lista'}).waitFor();
+      await page.getByRole('button', {name:'Marcar lista'}).click();
+      await page.getByText('Lista para recoger').first().waitFor();
+      const durable = await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
+      assert.equal(durable.rows[0].status, 'ready');
+      await page.evaluate(() => window.__ciDispose());
+      actor = waiterId;
+      await mount();
+      await page.getByText('Plato H4').first().waitFor();
+      assert.equal(await page.getByRole('button',{name:'Marcar lista'}).count(), 0);
+      assert.equal(await page.getByRole('button',{name:'Iniciar preparación'}).count(), 0);
+      assert.ok(calls.some(call => call.method === 'POST'));
+      assert.ok(calls.every(call => call.auth?.startsWith('Bearer ')));
+      await page.evaluate(() => window.__ciDispose());
+      await page.getByText('Canal operativo sin conectar').first().waitFor();
+      const events = await admin.query(
+        'SELECT count(*)::integer AS count FROM sabora.order_line_events WHERE order_line_id=$1',
+        [item.lineId]);
+      assert.equal(events.rows[0].count, 2);
+    } finally {
+      await context.close();
+    }
+  } finally {
+    await browser?.close();
+    vite.kill('SIGTERM');
+    await new Promise(resolve => {
+      if (vite.exitCode !== null) resolve();
+      else {vite.once('exit',resolve);setTimeout(resolve,2000).unref();}
+    });
+  }
+});
