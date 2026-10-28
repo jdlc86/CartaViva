@@ -156,6 +156,7 @@ export function ManagementApp({
 let managementRoot: ReturnType<typeof createRoot> | null = null;
 let managementElement: HTMLElement | null = null;
 let managementSessionGeneration = 0;
+let activeOperationsGateway: ReturnType<typeof createAuthenticatedOrderOperationsGateway> | null = null;
 
 function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
   if (managementRoot && managementElement !== element) {
@@ -185,6 +186,14 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl,
   });
+  // A new authenticated principal must never share a live transport with
+  // the previous one, even if its host forgot to dispose the old mount.
+  if (managementRoot && managementElement !== element) {
+    operationsGateway.revoke();
+    throw Error('management_root_already_mounted');
+  }
+  activeOperationsGateway?.revoke();
+  activeOperationsGateway = operationsGateway;
   const generation = ++managementSessionGeneration;
   renderManagement(element, operationsGateway);
   let disposed = false;
@@ -194,6 +203,7 @@ export function mountAuthenticatedManagementApp({
     // Revoke the operational channel immediately without destroying the PWA.
     operationsGateway.revoke();
     if (managementElement === element && generation === managementSessionGeneration) {
+      activeOperationsGateway = null;
       ++managementSessionGeneration;
       renderManagement(element);
     }
