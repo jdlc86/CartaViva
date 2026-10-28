@@ -428,3 +428,50 @@ test('transition-only fails atomically on either SQL principal, never mounting H
   assert.ok(seen.includes('discard:'+failedRole));
  }
 });
+
+test('restricted board/history composition rejects malformed authentication and capabilities before SQL', async () => {
+  const seen = [];
+  const mkPool = user => ({
+    options: {user, connectionString: 'postgres://' + user},
+    query() { seen.push('query'); throw Error('unexpected_sql'); },
+    async connect() { seen.push('connect'); throw Error('unexpected_sql'); },
+  });
+  const app = {
+    hasRoute() { return false; },
+    get() { seen.push('get'); },
+    post() { seen.push('post'); },
+  };
+  const base = {
+    staffPool: mkPool('sabora_staff_reader'),
+    operationsPool: mkPool('sabora_operations'),
+    staffRole: 'sabora_staff_reader',
+    operationsRole: 'sabora_operations',
+    issuer: 'https://issuer.example.test',
+    getTrustedKeys: async () => [],
+    issueTransitionCapability() {},
+    issueReadCapability() {},
+  };
+  for (const change of [
+    {issuer: undefined}, {issuer: ''}, {issuer: 7},
+    {getTrustedKeys: null}, {getTrustedKeys: 'invalid'},
+    {verify: 'invalid'}, {observe: 'invalid'},
+  ]) {
+    await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools(app, {
+      ...base, ...change,
+    }), /invalid_order_operations_auth_config/);
+    assert.deepEqual(seen, []);
+  }
+  for (const change of [
+    {issueTransitionCapability: null},
+    {issueReadCapability: null},
+  ]) {
+    await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools(app, {
+      ...base, ...change,
+    }), /invalid_order_operation_capability_issuer/);
+    assert.deepEqual(seen, []);
+  }
+  await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools({
+    ...app, hasRoute() { return true; },
+  }, base), /invalid_order_operations_route_registration/);
+  assert.deepEqual(seen, []);
+});
