@@ -35,3 +35,8 @@ test('activation preflight requires isolation and approval language', () => {
   contents.set('/fake/docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md', 'generic plan');
   assert.match(run(contents).errors.join(' '), /missing isolation or approval/);
 });
+
+test('repository activation artifacts satisfy static preflight', () => {
+  const result = inspectReadiness({ root: new URL('..', import.meta.url).pathname });
+  assert.deepEqual(result.errors, [], result.errors.join('; '));
+});
