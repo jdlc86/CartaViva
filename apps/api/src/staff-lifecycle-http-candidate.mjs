@@ -27,7 +27,7 @@ export function validateStaffLifecycleHttpInput(body) {
       !ACTIONS.has(descriptor.value)) throw Error('invalid_staff_lifecycle_request');
   const action = descriptor.value;
   const fields = action === 'invite'
-    ? ['action', 'email', 'requestedRole', 'correlationId']
+    ? ['action', 'email', 'givenName', 'familyName', 'requestedRole', 'correlationId']
     : action === 'accept'
       ? ['action', 'enrollmentId', 'inviteToken', 'correlationId']
       : action === 'register'
@@ -42,7 +42,9 @@ export function validateStaffLifecycleHttpInput(body) {
       ((action === 'activate' || action === 'suspend' || action === 'revoke') &&
         body.subjectUserId !== null && !UUID.test(body.subjectUserId)) ||
       (action === 'invite' && (!ROLES.has(body.requestedRole) ||
-        typeof body.email !== 'string' || body.email.length > 254)) ||
+        typeof body.email !== 'string' || body.email.length > 254 ||
+        typeof body.givenName !== 'string' || body.givenName.length > 80 ||
+        typeof body.familyName !== 'string' || body.familyName.length > 160)) ||
       (action === 'accept' && (typeof body.inviteToken !== 'string' ||
         body.inviteToken.length < 32 || body.inviteToken.length > 512)) ||
       (action === 'register' && (typeof body.credentialRegistration !== 'string' ||
@@ -95,6 +97,13 @@ export function createStaffLifecycleHttpHandler({coordinator, deliverInvitation}
       }
       if (error?.message === 'invalid_staff_lifecycle_request') {
         return reply.code(400).send({error: 'invalid_staff_lifecycle_request'});
+      }
+      if (error?.message === 'staff_employee_codes_exhausted') {
+        return reply.code(409).send({
+          error: 'staff_employee_codes_exhausted',
+          message: 'No quedan códigos de empleado disponibles. Revisa el mantenimiento global para recuperar códigos de personal dado de baja',
+          solution: {action: 'open_global_staff_code_maintenance', href: '/gestion/equipo/mantenimiento-codigos'},
+        });
       }
       return reply.code(503).send({error: 'staff_lifecycle_unavailable'});
     }

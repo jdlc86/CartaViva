@@ -63,7 +63,7 @@ test('integrated wrapper is sealed, HMAC-delegating and atomic with outbox', asy
   const sql = await readFile(file, 'utf8');
   assert.match(sql, /transition_staff_lifecycle_with_outbox_candidate/);
   assert.match(sql, /SECURITY DEFINER[\s\S]*SET search_path = pg_catalog, pg_temp/);
-  assert.match(sql, /transition_staff_lifecycle_authorized_candidate\(/);
+  assert.match(sql, /transition_staff_lifecycle_with_identity_candidate\(/);
   assert.match(sql, /OWNER TO sabora_staff_invitation_enqueue_fn_owner/);
   assert.match(sql, /REVOKE ALL ON FUNCTION sabora\.transition_staff_lifecycle_with_outbox_candidate\([\s\S]*FROM PUBLIC, anon, authenticated/);
   assert.match(sql, /INSERT INTO sabora\.staff_invitation_outbox\(/);
@@ -82,7 +82,7 @@ test('enqueue owner receives only internal function and outbox column privileges
   const sql = await readFile(file, 'utf8');
   assert.match(sql, /GRANT USAGE ON SCHEMA sabora TO sabora_staff_invitation_enqueue_fn_owner/);
   assert.match(sql, /GRANT SELECT \(id,enrollment_id,invite_version,invite_token_hash,state\),[\s\S]*INSERT \(id,enrollment_id,invite_version,invite_token_hash\),[\s\S]*UPDATE \(state,updated_at\)/);
-  assert.match(sql, /GRANT EXECUTE ON FUNCTION sabora\.transition_staff_lifecycle_authorized_candidate\(/);
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION sabora\.transition_staff_lifecycle_with_identity_candidate\(/);
   assert.match(sql, /CREATE POLICY staff_invitation_enqueue_owner_select/);
   assert.match(sql, /CREATE POLICY staff_invitation_enqueue_owner_insert/);
   assert.match(sql, /CREATE POLICY staff_invitation_enqueue_owner_cancel/);

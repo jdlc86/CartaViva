@@ -38,7 +38,7 @@ function board(status = 'ready') {
         acknowledgedAt: status === 'picked_up' ? '2026-10-24T10:06:00.000Z' : null,
       } : null,
       pickup: status === 'ready' ? {taskId: '50000000-0000-4000-8000-000000000005',
-        state: 'ready', version: 1, claimedBy: null, claimedAt: null,
+        state: 'ready', version: 1, claimedBy: null, claimedDisplayId: null, claimedAt: null,
         updatedAt: '2026-10-24T10:05:00.000Z'} : null,
     }],
     nextCursor: null,
@@ -68,7 +68,7 @@ test('local action policy mirrors the documented kitchen and waiter transitions'
   assert.deepEqual(pickupTaskActions('kitchen','ready',board().items[0].pickup),
     [{action:'correct',label:'Corregir: Preparando'}]);
   assert.deepEqual(pickupTaskActions('waiter','ready',{...board().items[0].pickup,state:'claimed',
-    claimedBy:eventId,claimedAt:'2026-10-24T10:06:00.000Z'}),
+    claimedBy:eventId,claimedDisplayId:'JG-027',claimedAt:'2026-10-24T10:06:00.000Z'}),
     [{action:'cancel',label:'Cancelo'}]);
   assert.equal(nextOrderLineAction('waiter', 'preparing'), null);
   assert.equal(nextOrderLineAction('kitchen', 'ready'), null);

@@ -7,7 +7,7 @@ const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
 const HEX_32 = /^[0-9a-f]{64}$/;
 const ACTIONS = new Set(['invite', 'accept', 'register', 'activate', 'resend', 'suspend', 'revoke']);
 const STAFF_ROLES = new Set(['admin', 'waiter', 'kitchen']);
-const AUDIENCE = 'sabora.staff-lifecycle.v1';
+const AUDIENCE = 'sabora.staff-identity.v1';
 const MAX_TTL_MS = 30_000;
 
 function exactDataRecord(value, keys) {
@@ -37,32 +37,43 @@ function validShape(input) {
     nullable(input.inviteeEmailHashHex, (value) => HEX_32.test(value)) &&
     nullable(input.inviteTokenHashHex, (value) => HEX_32.test(value)) &&
     nullable(input.credentialEvidenceHashHex, (value) => HEX_32.test(value)) &&
+    nullable(input.givenName, (value) => validStaffName(value, 80)) &&
+    nullable(input.familyName, (value) => validStaffName(value, 160)) &&
     nullable(input.reason, (value) => typeof value === 'string' &&
       value === value.trim() && value.length >= 1 && value.length <= 500);
   if (!base) return false;
   if (input.action === 'invite') return input.subjectUserId === null &&
     STAFF_ROLES.has(input.requestedRole) && input.inviteeEmailHashHex !== null &&
     input.inviteTokenHashHex !== null && input.credentialEvidenceHashHex === null &&
-    input.reason === null;
+    input.reason === null && input.givenName !== null && input.familyName !== null;
   if (input.action === 'accept') return input.subjectUserId?.toLowerCase() === input.actorId.toLowerCase() &&
     input.requestedRole === null && input.inviteeEmailHashHex === null &&
     input.inviteTokenHashHex !== null && input.credentialEvidenceHashHex === null &&
-    input.reason === null;
+    input.reason === null && input.givenName === null && input.familyName === null;
   if (input.action === 'register') return input.subjectUserId?.toLowerCase() === input.actorId.toLowerCase() &&
     input.requestedRole === null && input.inviteeEmailHashHex === null &&
     input.inviteTokenHashHex === null && input.credentialEvidenceHashHex !== null &&
-    input.reason === null;
+    input.reason === null && input.givenName === null && input.familyName === null;
   if (input.action === 'activate') return input.subjectUserId !== null &&
     input.requestedRole === null && input.inviteeEmailHashHex === null &&
     input.inviteTokenHashHex === null && input.credentialEvidenceHashHex === null &&
-    input.reason === null;
+    input.reason === null && input.givenName === null && input.familyName === null;
   if (input.action === 'resend') return input.subjectUserId === null &&
     input.requestedRole === null && input.inviteeEmailHashHex === null &&
     input.inviteTokenHashHex !== null && input.credentialEvidenceHashHex === null &&
-    input.reason === null;
+    input.reason === null && input.givenName === null && input.familyName === null;
   return input.requestedRole === null && input.inviteeEmailHashHex === null &&
     input.inviteTokenHashHex === null && input.credentialEvidenceHashHex === null &&
-    input.reason !== null;
+    input.reason !== null && input.givenName === null && input.familyName === null;
+}
+
+function validStaffName(value, maxLength) {
+  return typeof value === 'string' && value === value.trim() &&
+    value.length >= 1 && value.length <= maxLength && !/[\p{Cc}\p{Cf}]/u.test(value);
+}
+
+function fieldHash(value) {
+  return value === null ? '-' : createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
 function reasonHash(reason) {
@@ -83,6 +94,8 @@ function signingInput(input) {
     input.inviteTokenHashHex ?? '-',
     input.credentialEvidenceHashHex ?? '-',
     reasonHash(input.reason),
+    fieldHash(input.givenName),
+    fieldHash(input.familyName),
     input.correlationId,
     String(input.issuedAtMs),
     String(input.expiresAtMs),
@@ -107,7 +120,7 @@ export function createStaffLifecycleCapabilityIssuer({
     const keys = [
       'actorId', 'action', 'enrollmentId', 'subjectUserId', 'requestedRole',
       'inviteeEmailHashHex', 'inviteTokenHashHex', 'credentialEvidenceHashHex',
-      'reason', 'correlationId',
+      'reason', 'givenName', 'familyName', 'correlationId',
     ];
     if (!exactDataRecord(input, keys) || !validShape(input)) {
       throw Error('invalid_staff_lifecycle_capability_input');
@@ -129,6 +142,8 @@ export function createStaffLifecycleCapabilityIssuer({
       inviteTokenHashHex: input.inviteTokenHashHex,
       credentialEvidenceHashHex: input.credentialEvidenceHashHex,
       reason: input.reason,
+      givenName: input.givenName,
+      familyName: input.familyName,
       correlationId: input.correlationId,
       issuedAtMs,
       expiresAtMs: issuedAtMs + ttlMs,
@@ -138,6 +153,13 @@ export function createStaffLifecycleCapabilityIssuer({
       .digest('hex');
     return Object.freeze({...capability, signatureHex});
   };
+}
+
+export function normalizeStaffName(value, maxLength) {
+  if (typeof value !== 'string') throw Error('invalid_staff_name');
+  const normalized = value.normalize('NFC').trim().replace(/\s+/gu, ' ');
+  if (!validStaffName(normalized, maxLength)) throw Error('invalid_staff_name');
+  return normalized;
 }
 
 export function createStaffInviteeEmailHasher({secret} = {}) {

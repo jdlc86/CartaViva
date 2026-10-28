@@ -334,9 +334,14 @@ test('PG17 read authorization rechecks expiry and revocation after lock waits', 
       status: null, limit: 10, cursor: null,
     });
     const pending = boardCall(capability, {status: null, limit: 10});
+    // Install the rejection observer before the deliberate lock wait. On a
+    // heavily loaded runner the capability can expire and reject while the
+    // test is still sleeping, which Node would otherwise report as unhandled.
+    const pendingRejection = assert.rejects(pending,
+      /invalid_order_operation_read_capability/);
     await wait(300);
     await blocker.query('COMMIT');
-    await assert.rejects(pending, /invalid_order_operation_read_capability/);
+    await pendingRejection;
 
     await blocker.query('BEGIN');
     await blocker.query(`UPDATE sabora.order_operation_signing_keys
@@ -346,9 +351,11 @@ test('PG17 read authorization rechecks expiry and revocation after lock waits', 
       status: null, limit: 10, cursor: null,
     });
     const denied = boardCall(revoked, {status: null, limit: 10});
+    const deniedRejection = assert.rejects(denied,
+      /invalid_order_operation_read_capability/);
     await wait(100);
     await blocker.query('COMMIT');
-    await assert.rejects(denied, /invalid_order_operation_read_capability/);
+    await deniedRejection;
     await admin.query(`UPDATE sabora.order_operation_signing_keys
       SET disabled_at=NULL WHERE key_id=$1`, [keyId]);
   } finally {

@@ -42,7 +42,7 @@ test('admin invitation derives actor from verified context and hides delivery se
   const {coordinator, capabilities} = harness();
   const result = await coordinator.transition({
     verifiedIdentity: {userId: adminId}, verifiedStaff: {userId: adminId, role: 'admin'},
-  }, {action: 'invite', email: 'person@example.com', requestedRole: 'waiter',
+  }, {action: 'invite', email: 'person@example.com', givenName: 'Julia', familyName: 'García López', requestedRole: 'waiter',
     correlationId: 'invite_staff_001'});
   assert.equal(capabilities[0].actorId, adminId);
   assert.equal(capabilities[0].enrollmentId, enrollmentId);
@@ -68,6 +68,7 @@ test('forged actor fields, ROOT and unverified admin requests never open a trans
   for (const [context, input] of [
     [{verifiedIdentity: {userId: adminId}, verifiedStaff: {userId: adminId, role: 'root'}},
       {action: 'invite', email: 'person@example.com', requestedRole: 'waiter',
+        givenName: 'Julia', familyName: 'García López',
         correlationId: 'invite_staff_002'}],
     [{verifiedIdentity: {userId: adminId}},
       {action: 'revoke', enrollmentId, subjectUserId: null, reason: 'Baja',
@@ -118,7 +119,7 @@ test('idempotent replay never delivers a newly generated but invalid invitation 
   const result = await coordinator.transition({
     verifiedIdentity: {userId: adminId},
     verifiedStaff: {userId: adminId, role: 'admin'},
-  }, {action: 'invite', email: 'person@example.com', requestedRole: 'waiter',
+  }, {action: 'invite', email: 'person@example.com', givenName: 'Julia', familyName: 'García López', requestedRole: 'waiter',
     correlationId: 'invite_staff_replay_001'});
   assert.equal(tokenGenerations, 1);
   assert.equal(result.repeated, true);

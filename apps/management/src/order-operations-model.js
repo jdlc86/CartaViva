@@ -45,8 +45,11 @@ function normalizePickup(value, status) {
   if (!plain(value) || !UUID.test(value.taskId) ||
       !['ready', 'claimed', 'corrected'].includes(value.state) ||
       !Number.isSafeInteger(value.version) || value.version < 1 || !iso(value.updatedAt) ||
-      (value.state === 'claimed' && (!UUID.test(value.claimedBy) || !iso(value.claimedAt))) ||
-      (value.state !== 'claimed' && (value.claimedBy !== null || value.claimedAt !== null)) ||
+      (value.state === 'claimed' && (!UUID.test(value.claimedBy) ||
+        typeof value.claimedDisplayId !== 'string' ||
+        !/^.{2,4}-[0-9A-Z]{3}$/u.test(value.claimedDisplayId) || !iso(value.claimedAt))) ||
+      (value.state !== 'claimed' && (value.claimedBy !== null ||
+        value.claimedDisplayId !== null || value.claimedAt !== null)) ||
       (value.state === 'corrected' && status !== 'preparing') ||
       (value.state !== 'corrected' && status !== 'ready')) throw Error('invalid_order_board');
   return Object.freeze({...value});

@@ -13,6 +13,7 @@ node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/order-operations-read-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
+node --check scripts/ci/staff-display-id-postgres17.test.mjs
 node --check scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 node --check scripts/ci/customer-production-postgres17.test.mjs
 node --check scripts/ci/h6-postgres17.test.mjs
@@ -64,6 +65,7 @@ node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
 node --test scripts/ci/order-operations-read-postgres17.test.mjs
+node --test scripts/ci/staff-display-id-postgres17.test.mjs
 node --test scripts/ci/staff-lifecycle-postgres17.test.mjs
 node --test scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 node --test scripts/ci/customer-production-postgres17.test.mjs

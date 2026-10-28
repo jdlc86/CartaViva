@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
+import type {StaffManagementGateway} from './staff-management-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
@@ -24,10 +25,12 @@ export function ManagementApp({
   tablesGateway,
   catalogGateway,
   operationsGateway,
+  staffGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
   catalogGateway?: AdminCatalogGateway;
   operationsGateway?: OrderOperationsGateway;
+  staffGateway?: StaffManagementGateway;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
@@ -69,7 +72,7 @@ export function ManagementApp({
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
-    : <TeamView/>;
+    : <TeamView gateway={staffGateway}/>;
 
   return (
     <div className="management-shell">

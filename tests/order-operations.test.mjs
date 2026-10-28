@@ -148,7 +148,7 @@ test('repository returns a bounded kitchen projection without private identifier
       notification_created_at: new Date('2026-10-24T10:05:00.000Z'),
       notification_acknowledged_at: null,
       pickup_task_id: null, pickup_state: null, pickup_version: null,
-      pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
+      pickup_claimed_by: null, pickup_claimed_display_id: null, pickup_claimed_at: null, pickup_updated_at: null,
     }]};
   };
   const board = await repository.listBoard(query, {
@@ -182,7 +182,7 @@ test('repository uses only actor-bound wrappers when read capabilities are suppl
       notification_id: notificationId, notification_created_at: confirmedAt,
       notification_acknowledged_at: null,
       pickup_task_id: null, pickup_state: null, pickup_version: null,
-      pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
+      pickup_claimed_by: null, pickup_claimed_display_id: null, pickup_claimed_at: null, pickup_updated_at: null,
     }]};
   }, {actorId, role: 'kitchen', status: 'ready', limit: 10, cursor: null,
     capability: boardCapability});
@@ -222,7 +222,7 @@ test('repository rejects SQL board rows outside verified role or requested filte
     status: 'ready', notification_id: notificationId,
     notification_created_at: confirmedAt, notification_acknowledged_at: null,
     pickup_task_id: null, pickup_state: null, pickup_version: null,
-    pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
+    pickup_claimed_by: null, pickup_claimed_display_id: null, pickup_claimed_at: null, pickup_updated_at: null,
   };
   for (const [role, status, returned] of [
     ['kitchen', null, 'picked_up'],
@@ -247,7 +247,7 @@ test('repository validates ordering, cursor and overflow row before returning a 
     status: 'ready', notification_id: notificationId,
     notification_created_at: confirmedAt, notification_acknowledged_at: null,
     pickup_task_id: null, pickup_state: null, pickup_version: null,
-    pickup_claimed_by: null, pickup_claimed_at: null, pickup_updated_at: null,
+    pickup_claimed_by: null, pickup_claimed_display_id: null, pickup_claimed_at: null, pickup_updated_at: null,
   };
   const second = {
     ...base, line_id: '60000000-0000-4000-8000-000000000006',

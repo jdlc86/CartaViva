@@ -2,7 +2,7 @@ export type OrderRole = 'admin' | 'waiter' | 'kitchen';
 export type OrderLineStatus = 'confirmed' | 'preparing' | 'ready' | 'picked_up';
 export type OrderLineTarget = 'preparing' | 'ready' | 'picked_up';
 export type PickupTask = Readonly<{taskId: string; state: 'ready'|'claimed'|'corrected'; version: number;
-  claimedBy: string|null; claimedAt: string|null; updatedAt: string}>;
+  claimedBy: string|null; claimedDisplayId: string|null; claimedAt: string|null; updatedAt: string}>;
 export type OrderLineItem = Readonly<{
   orderId: string; lineId: string; tableNumber: number; customerLabel: string;
   confirmedAt: string; grouping: 'first' | 'grouped' | 'late'; lineNumber: number;

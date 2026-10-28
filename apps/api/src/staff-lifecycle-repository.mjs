@@ -8,10 +8,10 @@ const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const ACTIONS = new Set(['invite', 'accept', 'register', 'activate', 'resend', 'suspend', 'revoke']);
 
 export const STAFF_LIFECYCLE_SQL = `SELECT *
-  FROM sabora.transition_staff_lifecycle_authorized_candidate(
+  FROM sabora.transition_staff_lifecycle_with_identity_candidate(
     $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
     $6::uuid,$7::text,$8::text,$9::text,$10::text,
-    $11::text,$12::text,$13::bigint,$14::bigint,$15::text
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text
   )`;
 
 function exactCapability(value) {
@@ -19,7 +19,7 @@ function exactCapability(value) {
     'keyId', 'databaseRole', 'actorId', 'action', 'enrollmentId',
     'subjectUserId', 'requestedRole', 'inviteeEmailHashHex',
     'inviteTokenHashHex', 'credentialEvidenceHashHex', 'reason',
-    'correlationId', 'issuedAtMs', 'expiresAtMs', 'signatureHex',
+    'givenName', 'familyName', 'correlationId', 'issuedAtMs', 'expiresAtMs', 'signatureHex',
   ];
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Reflect.ownKeys(value).length !== keys.length) return false;
@@ -38,6 +38,8 @@ function validCapability(value) {
     (value.inviteeEmailHashHex === null || HEX_32.test(value.inviteeEmailHashHex)) &&
     (value.inviteTokenHashHex === null || HEX_32.test(value.inviteTokenHashHex)) &&
     (value.credentialEvidenceHashHex === null || HEX_32.test(value.credentialEvidenceHashHex)) &&
+    (value.givenName === null || (typeof value.givenName === 'string' && value.givenName.length >= 1 && value.givenName.length <= 80)) &&
+    (value.familyName === null || (typeof value.familyName === 'string' && value.familyName.length >= 1 && value.familyName.length <= 160)) &&
     (value.reason === null || (typeof value.reason === 'string' &&
       value.reason === value.reason.trim() && value.reason.length >= 1 &&
       value.reason.length <= 500)) && CORRELATION.test(value.correlationId) &&
@@ -70,6 +72,11 @@ function publicResult(row, capability) {
       row.result_invite_version < 1 || !UUID.test(row.event_id)) {
     throw Error('invalid_staff_lifecycle_sql_result');
   }
+  if (typeof row.result_given_name !== 'string' || typeof row.result_family_name !== 'string' ||
+      !/^[0-9A-Z]{3}$/.test(row.result_employee_code ?? '') ||
+      typeof row.result_operational_display_id !== 'string') {
+    throw Error('invalid_staff_lifecycle_sql_result');
+  }
   if (capability.subjectUserId !== null &&
       row.result_subject_user_id?.toLowerCase() !== capability.subjectUserId.toLowerCase()) {
     throw Error('invalid_staff_lifecycle_sql_result');
@@ -87,6 +94,10 @@ function publicResult(row, capability) {
     repeated: row.repeated,
     inviteVersion: row.result_invite_version,
     eventId: row.event_id,
+    givenName: row.result_given_name,
+    familyName: row.result_family_name,
+    employeeCode: row.result_employee_code,
+    operationalDisplayId: row.result_operational_display_id,
   });
 }
 
@@ -111,6 +122,8 @@ export function createStaffLifecycleRepository() {
         capability.correlationId,
         capability.issuedAtMs,
         capability.expiresAtMs,
+        capability.givenName,
+        capability.familyName,
         capability.signatureHex,
       ]);
       if (!Array.isArray(result?.rows) || result.rows.length !== 1) {

@@ -179,10 +179,14 @@ test('PG17 rejects expired capability after waiting for the order-line row lock'
         }),
       },
     ).then(() => { attempted = true; }, (error) => { attempted = true; throw error; });
+    // Observe the rejection before releasing the lock. On fast PG17 runners the
+    // rejected promise can otherwise reach Node's unhandled-rejection detector
+    // in the microtask between COMMIT and the later assertion.
+    const rejected = assert.rejects(pending, /invalid_order_operation_capability/);
     await new Promise((resolve) => setTimeout(resolve, 1300));
     assert.equal(attempted, false, 'transition must wait for the line lock');
     await blocker.query('COMMIT');
-    await assert.rejects(pending, /invalid_order_operation_capability/);
+    await rejected;
   } finally {
     await blocker.query('ROLLBACK').catch(() => {});
     blocker.release();

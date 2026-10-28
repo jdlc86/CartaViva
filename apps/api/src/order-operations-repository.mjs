@@ -143,6 +143,7 @@ export function createOrderOperationsRepository() {
            NULL::text AS pickup_state,
            NULL::bigint AS pickup_version,
            NULL::uuid AS pickup_claimed_by,
+           NULL::text AS pickup_claimed_display_id,
            NULL::timestamptz AS pickup_claimed_at,
            NULL::timestamptz AS pickup_updated_at
          FROM sabora.order_lines lines
@@ -253,8 +254,11 @@ export function createOrderOperationsRepository() {
               !Number.isSafeInteger(Number(row.pickup_version)) || Number(row.pickup_version)<1 ||
               !(row.pickup_updated_at instanceof Date) ||
               (row.pickup_state==='claimed' && (!UUID.test(row.pickup_claimed_by) ||
+                typeof row.pickup_claimed_display_id!=='string' ||
+                !/^.{2,4}-[0-9A-Z]{3}$/u.test(row.pickup_claimed_display_id) ||
                 !(row.pickup_claimed_at instanceof Date))) ||
               (row.pickup_state!=='claimed' && (row.pickup_claimed_by!==null ||
+                row.pickup_claimed_display_id!==null ||
                 row.pickup_claimed_at!==null)) ||
               (row.pickup_state==='corrected' && row.status!=='preparing') ||
               (row.pickup_state!=='corrected' && row.status!=='ready')))) {
@@ -272,6 +276,7 @@ export function createOrderOperationsRepository() {
           state: row.pickup_state,
           version: Number(row.pickup_version),
           claimedBy: row.pickup_claimed_by,
+          claimedDisplayId: row.pickup_claimed_display_id,
           claimedAt: row.pickup_claimed_at === null ? null : asDate(row.pickup_claimed_at),
           updatedAt: asDate(row.pickup_updated_at),
         });
