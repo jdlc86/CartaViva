@@ -409,7 +409,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const response=await fetch(sseUrl,{signal:abortSse.signal,
    headers:{accept:'text/event-stream'}});
   assert.equal(response.status,200);
-  assert.match(response.headers.get('content-type')??'',/^text\\/event-stream/);
+  assert.ok((response.headers.get('content-type')??'').startsWith('text/event-stream'));
   assert.equal(response.headers.get('cache-control'),'no-store, no-transform');
   const reader=response.body.getReader();
   let received='';
