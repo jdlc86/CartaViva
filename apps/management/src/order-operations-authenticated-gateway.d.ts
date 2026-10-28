@@ -4,4 +4,4 @@ export declare function createAuthenticatedOrderOperationsGateway(options: {
   getAccessToken: () => Promise<string>;
   fetchImpl?: typeof fetch;
   reconnectDelayMs?: number;
-}): OrderOperationsGateway;
+}): OrderOperationsGateway & {revoke(): void};
