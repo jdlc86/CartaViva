@@ -11,7 +11,7 @@ import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence
 import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/catalog-order-confirmation-candidate.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
-import {registerVerifiedRestrictedOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
+import {createVerifiedOrderOperationsCandidate} from '../../apps/api/src/order-operations-candidate-app.mjs';
 import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 
 const url = process.env.SABORA_CI_PG_URL;
@@ -177,13 +177,19 @@ test.before(async () => {
   issueReadCapability = createOrderOperationReadCapabilityIssuer({
     keyId, secret: signingSecret, databaseRole: operationsRole,
   });
-  app = Fastify({logger: false});
-  await registerVerifiedRestrictedOrderOperationsFromPools(app, {
+  app = await createVerifiedOrderOperationsCandidate({
     staffPool, operationsPool, staffRole, operationsRole,
     issuer: authIssuer, getTrustedKeys: async () => [authJwk],
     issueTransitionCapability, issueReadCapability,
   });
-  await app.ready();
+  for (const [method, url] of [
+    ['GET', '/api/v1/operations/order-lines'],
+    ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+    ['GET', '/api/v1/operations/orders/:orderId/history'],
+  ]) {
+    assert.equal(app.hasRoute({method, url}), true,
+      'candidate must mount all three protected routes after SQL preflight');
+  }
 });
 
 test.after(async () => {
