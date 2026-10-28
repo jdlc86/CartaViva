@@ -125,6 +125,7 @@ test('verified composition refuses route registration before SQL identity prefli
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
     issueTransitionCapability() {},
+    issuer: 'https://issuer.example.test', getTrustedKeys: async () => [],
   }), /invalid_order_operations_sql_identity/);
   assert.equal(registrations.length, 0);
 });
