@@ -422,8 +422,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
     if(received.includes('event: sabora.pickup.claimed')&&
        received.includes('event: sabora.pickup.ready_corrected'))break;
    }
-   assert.match(received,/event: sabora\\.pickup\\.claimed/);
-   assert.match(received,/event: sabora\\.pickup\\.ready_corrected/);
+   assert.ok(received.includes('event: sabora.pickup.claimed'));
+   assert.ok(received.includes('event: sabora.pickup.ready_corrected'));
    assert.match(received,/id: [0-9]+/);
   }finally{abortSse.abort();await reader.cancel().catch(()=>{});}
  }finally{abortSse.abort();await sseApp.close();}
