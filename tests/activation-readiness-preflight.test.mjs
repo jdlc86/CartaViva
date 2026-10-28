@@ -40,3 +40,10 @@ test('repository activation artifacts satisfy static preflight', () => {
   const result = inspectReadiness({ root: new URL('..', import.meta.url).pathname });
   assert.deepEqual(result.errors, [], result.errors.join('; '));
 });
+
+// A missing runbook must never be accepted as an activation-ready candidate.
+test('activation preflight rejects absent runbook', () => {
+  const contents = fixtures();
+  contents.delete('/fake/docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md');
+  assert.equal(run(contents).ok, false);
+});
