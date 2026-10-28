@@ -85,16 +85,18 @@ También pasaron las suites reales de ciclo de vida (14 escenarios), outbox de i
 - `pnpm --filter @sabora/management test`: 41 pruebas superadas, 0 fallos.
 - `pnpm --filter @sabora/management build`: correcto.
 - Playwright visual de gestión: 12 capturas correctas en 360, 460, 900 y 1440 px para resumen, comandas y equipo; comprobación manual sin desbordamientos ni ruptura del diseño aprobado.
+- `postgres-migration-smoke.sh`: correcto sobre PostgreSQL 17 desechable después de actualizar el inventario RLS a 44 tablas protegidas.
 - `git diff --check`: correcto.
 
 ## Defectos encontrados y corregidos
 
-Durante la integración real se detectaron y corrigieron cuatro defectos que no aparecían en pruebas aisladas:
+Durante la integración real se detectaron y corrigieron cinco defectos que no aparecían en pruebas aisladas:
 
 1. el puente HMAC hacia el wrapper anterior omitía los hashes de nombre y apellidos;
 2. una aserción heredada esperaba el nombre de error anterior después de endurecer el borde;
 3. una prueba H6 aún esperaba el UUID `claimedBy`, contrario al contrato de minimización;
 4. una búsqueda de fixture colisionaba por coincidencia parcial del correo.
+5. el smoke global conservaba el inventario anterior de 43 tablas RLS en vez de las 44 resultantes al añadir el almacén protegido de contactos.
 
 Las suites completas se repitieron después de cada corrección.
 

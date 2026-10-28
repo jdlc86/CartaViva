@@ -113,7 +113,7 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>43 then raise exception 'Expected forty-three RLS protected single-restaurant tables, got %',v_count; end if;
+ if v_count<>44 then raise exception 'Expected forty-four RLS protected single-restaurant tables, got %',v_count; end if;
  foreach v_table in array array['customer_order_attempt_batches','customer_order_attempt_lines'] loop
   if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='sabora' and c.relname=v_table and c.relkind='r'
