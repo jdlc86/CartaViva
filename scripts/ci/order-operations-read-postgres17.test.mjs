@@ -653,6 +653,20 @@ test('Chromium management PWA traverses signed Fastify candidate and disposable 
       assert.ok(calls.some(call => call.method === 'POST'));
       assert.ok(calls.every(call => call.auth?.startsWith('Bearer ')));
       assert.ok(calls.some(call => call.path.includes('/history')));
+      // Revocation is enforced by the SQL-backed staff gate, even when a
+      // previously authenticated browser still holds a valid signed JWT.
+      await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1", [waiterId]);
+      try {
+        const revoked = await page.evaluate(async token => {
+          const response = await fetch('/api/v1/operations/order-lines?limit=10', {
+            headers: {authorization: `Bearer ${token}`, accept:'application/json'},
+          });
+          return response.status;
+        }, bearer(waiterId));
+        assert.equal(revoked, 403, 'SQL staff suspension must invalidate browser access');
+      } finally {
+        await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1", [waiterId]);
+      }
       await page.evaluate(() => window.__ciDispose());
       await page.getByText('Canal operativo sin conectar').first().waitFor();
       const events = await admin.query(
