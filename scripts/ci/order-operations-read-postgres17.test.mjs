@@ -514,3 +514,53 @@ test('PG17 management authenticated gateway traverses actual candidate HTTP and 
     'SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
   assert.equal(durable.rows[0].status, 'ready');
 });
+
+test('PG17 management gateways complete kitchen-to-waiter pickup with role boundaries and replay', async () => {
+  const item = await directFixture(404, 'Mesa entrega integrada');
+  const makeGateway = (userId) => createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => bearer(userId),
+    fetchImpl: async (path, options) => {
+      const response = await app.inject({
+        method: options.method,
+        url: path,
+        headers: Object.fromEntries(new Headers(options.headers).entries()),
+        payload: options.body,
+      });
+      return new Response(response.body, {
+        status: response.statusCode,
+        headers: {'content-type': response.headers['content-type'] ?? 'application/json'},
+      });
+    },
+  });
+  const kitchen = makeGateway(kitchenId);
+  const waiter = makeGateway(waiterId);
+  await assert.rejects(
+    waiter.transitionLine({lineId: item.lineId, targetStatus:'preparing',
+      correlationId:'management_forbidden_waiter_404'}),
+    (error) => error.code === 'forbidden');
+  await kitchen.transitionLine({lineId:item.lineId, targetStatus:'preparing',
+    correlationId:'management_prepare_404'});
+  const first = await kitchen.transitionLine({lineId:item.lineId, targetStatus:'ready',
+    correlationId:'management_ready_404'});
+  assert.equal(first.repeated, false);
+  const replay = await kitchen.transitionLine({lineId:item.lineId, targetStatus:'ready',
+    correlationId:'management_ready_404'});
+  assert.equal(replay.repeated, true);
+  const ready = await waiter.listBoard({status:'ready'});
+  assert.ok(ready.items.some(line=>line.lineId===item.lineId));
+  await assert.rejects(
+    kitchen.transitionLine({lineId:item.lineId,targetStatus:'picked_up',
+      correlationId:'management_forbidden_kitchen_404'}),
+    (error) => error.code === 'forbidden');
+  const pickup = await waiter.transitionLine({lineId:item.lineId,
+    targetStatus:'picked_up',correlationId:'management_pickup_404'});
+  assert.equal(pickup.currentStatus, 'picked_up');
+  const history = await waiter.listHistory({orderId:item.orderId});
+  assert.deepEqual(history.events.map(event=>event.toStatus),
+    ['preparing','ready','picked_up']);
+  const counts = await admin.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.order_line_events WHERE order_id=$1) AS events,
+    (SELECT count(*)::integer FROM sabora.pickup_notifications WHERE order_id=$1) AS notices`,
+    [item.orderId]);
+  assert.deepEqual(counts.rows[0], {events:3, notices:1});
+});
