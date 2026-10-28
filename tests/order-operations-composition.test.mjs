@@ -85,7 +85,9 @@ test('all malformed pool configurations fail before connections and route regist
     {staffPool: null},
     {operationsPool: null},
     {staffPool: {options: {}, query: null}},
+    {staffPool: {options: {}, query() {}, connect: null}},
     {operationsPool: {options: {}, connect: null}},
+    {operationsPool: {options: {}, connect() {}, query: null}},
     {operationsPool: makePool('sabora_staff_reader', 'postgres://operations')},
     {operationsPool: makePool('sabora_operations', 'postgres://staff')},
   ]) {
