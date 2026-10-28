@@ -630,3 +630,15 @@ y no se conecta automáticamente desde `main.tsx`.
 real de gestión con este proveedor, el bootstrap aislado del servidor y la
 prueba E2E navegador→API→PG17. Esta entrega no certifica todavía el hito
 funcional completo ni autoriza un despliegue.
+
+## Ensayo vertical PWA de gestión → HTTP candidato → PostgreSQL 17
+
+El harness `scripts/ci/order-operations-read-postgres17.test.mjs` incluye
+un recorrido adicional por el adaptador autenticado de la PWA de gestión:
+`listBoard` → `transitionLine(preparing)` → `transitionLine(ready)` →
+`listHistory`. Las peticiones pasan por Fastify `inject` de la fábrica
+candidata y por dos logins PostgreSQL restringidos. Se verifica el estado
+persistido y la adquisición de un token nuevo en cada operación. No hay
+servidor escuchando ni credenciales productivas. Este ensayo no sustituye
+una prueba de navegador real ni conecta automáticamente `main.tsx`;
+requiere CI verde del commit correspondiente.
