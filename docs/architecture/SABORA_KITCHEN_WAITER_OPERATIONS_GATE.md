@@ -697,3 +697,16 @@ adaptador `fetch` no implementa la cancelación automática del cuerpo tras
 `AbortSignal`. La regresión verifica que el cuerpo abierto recibe
 `cancel()` una sola vez. Esto evita conservar un lector colgado tras
 logout; no habilita nuevas capacidades ni cambia las transiciones SQL.
+
+## Aislamiento de sesiones entre empleados
+
+El montaje de gestión utiliza `management-session-fence.js` para asegurar
+que solo un canal de operaciones conserva la titularidad activa. Cuando
+un host autenticado cambia de empleado sin cerrar antes la sesión anterior,
+la nueva sesión revoca el gateway anterior **antes de renderizar**.
+Un callback de logout antiguo no puede desmontar ni revocar la sesión
+posterior. La revocación se ejecuta como máximo una vez por sesión.
+El control se prueba fuera de React con sucesión de identidades, cierres
+fuera de orden, cierre global y entradas inválidas. No se infiere el rol
+del cliente: la autorización sigue siendo responsabilidad del backend
+y PostgreSQL.
