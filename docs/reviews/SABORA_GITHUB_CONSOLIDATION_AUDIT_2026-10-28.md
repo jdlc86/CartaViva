@@ -33,3 +33,13 @@ Decisión expresa del propietario: no existen empleados reales en Sabora. No imp
 4. Presentar PR Draft consolidado y reporte de aceptación con SHA final. **Solicitar autorización separada** antes de cualquier merge, migración operativa o despliegue.
 
 No se han ejecutado operaciones sobre Supabase operativo, VPS ni Fleetia.
+
+## Revisión estática focalizada de los cuatro hilos vigentes (HEAD integrado)
+Se inspeccionó directamente el código de la rama de consolidación; esta revisión **no sustituye una reproducción PG17**.
+
+- **P1 expiración tras lock de línea**: `20261024190000_sabora_order_operation_actor_capability_candidate.sql` ya contiene `FOR UPDATE` de la línea seguido inmediatamente por `clock_timestamp()` y comprobación de expiración de capacidad y clave antes de mutar. **Mitigación presente en HEAD**; pendiente vincular prueba de bloqueo concurrente y evidencia CI específica.
+- **P2 expiración tras lock de membresía**: `20261025081318_staff_identity_lifecycle_candidate.sql` bloquea la membresía objetivo mediante `FOR UPDATE` y vuelve a comprobar `clock_timestamp()`, expiración de capacidad y clave antes de mutar. **Mitigación presente en HEAD**; pendiente prueba concurrente específica.
+- **P2 compatibilidad de preflight/lector**: `order-operations-composition.mjs` sigue invocando `preflightOrderTransitionStaffIdentity` antes de `createStaffProtectedHooksFromPool`. `order-operations-identity-preflight.mjs` incluye ahora la opción explícita `allowStaffReader` y comprobación de SELECT por columna en `staff_members`; debe verificarse que la ruta de preflight de personal pase la opción correcta y que el login real cumpla el contrato. **No declarado resuelto**.
+- **P2 replay de invitación**: `staff-lifecycle-coordinator.mjs` sigue generando UUID/token nuevos al invitar/reenviar; esto puede ser correcto si la capa SQL y repositorio conservan la intención durable estable. **No declarado resuelto** sin prueba completa de reintento tras respuesta perdida.
+
+No se ha alterado el estado de los hilos de revisión, ni se han aplicado migraciones o cambios operativos.
