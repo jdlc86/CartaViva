@@ -57,3 +57,8 @@ No se ha alterado el estado de los hilos de revisión, ni se han aplicado migrac
 - **Saltos de línea en ciphertext**: `staff_invitation_dispatch_envelope_pg17.sql` elimina CR/LF de la codificación base64 de nonce, ciphertext y tag antes de producir Base64URL. Mitigación visible.
 
 **Estado de auditoría de ocho hilos**: siete con mitigación visible en los fragmentos inspeccionados; uno (outbox replay) pendiente de trazado completo. No se han ejecutado nuevas pruebas PostgreSQL locales en esta sesión; GitHub Actions del commit `1e546239f9e2c2e5eb8d48b77cdbfce8a36ac027` se encontraban en progreso al consultarlas. No se resuelven conversaciones hasta disponer de evidencia suficiente.
+
+## Cierre de trazado estático del outbox (2026-10-28)
+Se inspeccionó la función completa `sabora.transition_staff_lifecycle_with_outbox_candidate` en `docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`, líneas 180–260. Tras la transición durable, usa `result_enrollment_id` y `result_invite_version` retornados por SQL; si `repeated` es verdadero, consulta el job existente por **(enrollment_id, invite_version)** y no compara con el token regenerado. Si falta el job falla cerrado con `staff_invitation_outbox_replay_missing`. Solo inserta un nuevo job si `repeated=false`. Por tanto, el defecto específico del hilo outdated (comparación del token nuevo en replay) **está corregido en el código candidato**. Falta regresión real con PostgreSQL 17 para certificarlo.
+
+**Resultado del análisis estático de los ocho hilos del PR #13:** ocho mitigaciones identificadas en HEAD, cero hilos resueltos administrativamente, cero verificaciones locales nuevas de PostgreSQL 17. Pendiente evidencia de CI y pruebas concurrentes antes de declarar cierre técnico.
