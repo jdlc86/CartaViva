@@ -573,3 +573,13 @@ activa un servicio. Las pruebas de rechazo se encuentran en
 `tests/order-operations-candidate-app.test.mjs`. La integración positiva con
 PostgreSQL 17 desechable y credenciales de mínimos privilegios sigue siendo
 condición pendiente para considerar operativo este candidato.
+
+## Rechazo de principal operativo privilegiado
+
+La prueba de arranque aislado también simula un login operativo con
+`BYPASSRLS` habilitado después de superar el preflight del lector de
+personal. La fábrica debe rechazar la identidad, descartar su conexión y no
+devolver ninguna aplicación preparada. Este ensayo usa un resultado SQL
+simulado y no demuestra el aprovisionamiento real de roles. La prueba positiva
+de PostgreSQL 17 con los grants exactos sigue pendiente y es condición para
+activar las rutas.
