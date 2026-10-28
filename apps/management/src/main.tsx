@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
+import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
@@ -150,6 +151,32 @@ export function ManagementApp({
   );
 }
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><ManagementApp/></React.StrictMode>,
-);
+// Explicit trusted-host bootstrap. Never infer authorization from URL, local
+// storage or build-time flags; a missing identity provider leaves the PWA inert.
+export function mountAuthenticatedManagementApp({
+  element,
+  getAccessToken,
+  fetchImpl,
+}: {
+  element: HTMLElement;
+  getAccessToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+}) {
+  if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
+    throw Error('invalid_management_bootstrap');
+  }
+  const operationsGateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken, fetchImpl,
+  });
+  const root = createRoot(element);
+  root.render(<React.StrictMode><ManagementApp operationsGateway={operationsGateway}/></React.StrictMode>);
+  return () => root.unmount();
+}
+
+// Default preview intentionally has no operational credentials or transport.
+if (typeof document !== 'undefined') {
+  const element = document.getElementById('root');
+  if (element) createRoot(element).render(
+    <React.StrictMode><ManagementApp/></React.StrictMode>,
+  );
+}
