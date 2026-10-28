@@ -119,7 +119,7 @@ test('verified composition refuses route registration before SQL identity prefli
     staffPool, operationsPool,
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
     issueTransitionCapability() {},
-  }), /invalid_order_operations_sql_client/);
+  }), /invalid_order_operations_route_registration/);
   assert.equal(registrations.length, 0);
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
@@ -473,6 +473,42 @@ test('restricted board/history composition rejects malformed authentication and 
     assert.deepEqual(seen, []);
   }
   await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools({
+    ...app, hasRoute() { return true; },
+  }, base), /invalid_order_operations_route_registration/);
+  assert.deepEqual(seen, []);
+});
+
+test('legacy verified operations gate refuses missing auth, duplicate routes and equal SQL roles before SQL', async () => {
+  const seen = [];
+  const makePool = user => ({
+    options: {user, connectionString: 'postgres://' + user},
+    query() { seen.push('query'); throw Error('unexpected_sql'); },
+    async connect() { seen.push('connect'); throw Error('unexpected_sql'); },
+  });
+  const app = {
+    hasRoute() { return false; },
+    get() { seen.push('get'); },
+    post() { seen.push('post'); },
+  };
+  const base = {
+    staffPool: makePool('sabora_staff_reader'),
+    operationsPool: makePool('sabora_operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+    issueTransitionCapability() {},
+    issuer: 'https://issuer.example.test', getTrustedKeys: async () => [],
+  };
+  for (const change of [
+    {issuer: undefined}, {issuer: ''}, {getTrustedKeys: null},
+    {verify: 'invalid'}, {observe: 'invalid'},
+  ]) {
+    await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {...base, ...change}),
+      /invalid_order_operations_auth_config/);
+    assert.deepEqual(seen, []);
+  }
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    ...base, operationsRole: base.staffRole,
+  }), /invalid_order_operations_pool_isolation/);
+  await assert.rejects(registerVerifiedOrderOperationsFromPools({
     ...app, hasRoute() { return true; },
   }, base), /invalid_order_operations_route_registration/);
   assert.deepEqual(seen, []);
