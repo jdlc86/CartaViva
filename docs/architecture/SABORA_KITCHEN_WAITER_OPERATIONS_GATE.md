@@ -725,3 +725,9 @@ Este control es una defensa de UI; la separación de datos efectiva
 permanece en los hooks de autenticación y RLS PostgreSQL. El recorrido
 de navegador con identidades reales sigue pendiente y no se declara
 hito productivo cerrado.
+
+## Evidencia adicional de navegador autenticado — 28-10-2026
+
+El workflow `management-browser-visual-smoke.yml` incorpora `scripts/ci/management-authenticated-browser-smoke.mjs`. En Chromium real se monta la PWA con tokens efímeros inyectados y un transporte HTTP interceptado exclusivamente en el contexto del navegador. Se ejercitan preparación, paso a listo, sustitución por una sesión de camarero, ausencia de acciones de cocina para sala y cierre de sesión. El fixture no usa credenciales ni conexiones operativas.
+
+**Alcance de la evidencia:** es una prueba real de interfaz y frontera de transporte con respuestas HTTP simuladas; **NO** certifica E2E navegador → API Fastify → PostgreSQL 17, identidad de personal aprovisionada ni activación. El harness PG17 existente permanece separado. La integración completa sigue pendiente y las rutas del servidor general siguen sin montarse.
