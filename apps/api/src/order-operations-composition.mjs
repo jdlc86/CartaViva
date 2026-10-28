@@ -57,6 +57,21 @@ export async function registerVerifiedOrderOperationsFromPools(app, options = {}
   if (typeof issueTransitionCapability !== 'function') {
     throw Error('invalid_order_operation_capability_issuer');
   }
+  if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
+      typeof app.hasRoute !== 'function' || [
+        ['GET', '/api/v1/operations/order-lines'],
+        ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+        ['GET', '/api/v1/operations/orders/:orderId/history'],
+      ].some(([method, url]) => app.hasRoute({method, url}))) {
+    throw Error('invalid_order_operations_route_registration');
+  }
+  if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  if (typeof options.issuer !== 'string' || options.issuer.length === 0 ||
+      typeof options.getTrustedKeys !== 'function' ||
+      (options.verify !== undefined && typeof options.verify !== 'function') ||
+      (options.observe !== undefined && typeof options.observe !== 'function')) {
+    throw Error('invalid_order_operations_auth_config');
+  }
   await preflightOrderOperationsIdentities({
     staffPool, operationsPool, staffRole, operationsRole,
   });
