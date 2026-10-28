@@ -642,3 +642,15 @@ persistido y la adquisición de un token nuevo en cada operación. No hay
 servidor escuchando ni credenciales productivas. Este ensayo no sustituye
 una prueba de navegador real ni conecta automáticamente `main.tsx`;
 requiere CI verde del commit correspondiente.
+
+## Punto de montaje explícito de gestión
+
+`apps/management/src/main.tsx` expone
+`mountAuthenticatedManagementApp({element,getAccessToken,fetchImpl})`
+para un host que ya haya autenticado al empleado y suministre la función
+de adquisición de token. El montaje reutiliza el root React existente
+cuando coincide con el root de vista previa, evitando dos roots sobre el
+mismo elemento. La vista previa predeterminada permanece sin gateway.
+No se proporciona todavía ese host autenticado ni se importa la fábrica
+SQL candidata desde el servidor general. Este punto de montaje es
+infraestructura de integración, **no activación productiva**.
