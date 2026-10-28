@@ -14,7 +14,7 @@ GRANT USAGE ON SCHEMA sabora TO sabora_operations_denied_ci;
 SQL
 run_login() {
   docker exec -i -e PGPASSWORD=ci-disposable-operations-denial "$container" \
-    psql -X -v ON_ERROR_STOP=1 -h 127.0.0.1 \
+    psql -X -Atq -v ON_ERROR_STOP=1 -h 127.0.0.1 \
     -U sabora_operations_denied_ci -d postgres "$@"
 }
 # The real authenticated login cannot access either ledger.
