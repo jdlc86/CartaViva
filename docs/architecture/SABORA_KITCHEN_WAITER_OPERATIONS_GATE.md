@@ -688,3 +688,12 @@ rechaza una nueva apertura después de revocación y el cierre idempotente
 impide reconexiones de una sesión antigua. Hay regresión automatizada
 para cierre SSE y rechazo de resuscripción. El canal no se activa en
 la vista previa ni sustituye el control SQL de revocación del personal.
+
+## Liberación del lector SSE
+
+El cliente de eventos libera explícitamente el `ReadableStreamDefaultReader`
+cuando se revoca la sesión o se cancela una suscripción, incluso cuando un
+adaptador `fetch` no implementa la cancelación automática del cuerpo tras
+`AbortSignal`. La regresión verifica que el cuerpo abierto recibe
+`cancel()` una sola vez. Esto evita conservar un lector colgado tras
+logout; no habilita nuevas capacidades ni cambia las transiciones SQL.
