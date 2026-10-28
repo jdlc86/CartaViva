@@ -307,7 +307,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                         <div className="order-line__status-stack">
                           <StatusBadge tone={tone(line.status)}>{ORDER_STATUS_LABELS[line.status]}</StatusBadge>
                           {line.pickup?.state === 'claimed' ? <span className="pickup-assignment">
-                            En recogida · responsable {line.pickup.claimedBy}
+                            En recogida · responsable {line.pickup.claimedDisplayId}
                           </span> : line.pickup?.state === 'ready' ? <span className="pickup-assignment">Aviso activo para sala</span> : null}
                         </div>
                         {action ? (
