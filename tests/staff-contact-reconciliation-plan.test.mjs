@@ -29,3 +29,13 @@ test('rejects personal contact fields and arbitrary payloads',()=>{
 test('empty inventory has no actions',()=>{
  assert.deepEqual(planHistoricalContactReconciliation([]).pending,[]);
 });
+
+test('inventory is explicitly non-executable and cannot authorize delivery',()=>{
+ const result=planHistoricalContactReconciliation([row(a,'active',false)]);
+ assert.equal(result.mode,'offline_review_only');
+ assert.equal(result.writesAuthorized,false);
+ assert.equal(result.deliveryAuthorized,false);
+ assert.equal(Object.isFrozen(result),true);
+ assert.equal(Object.isFrozen(result.pending),true);
+ assert.equal(Object.isFrozen(result.pending[0]),true);
+});
