@@ -560,3 +560,16 @@ activación operativa: `server.mjs` sigue sin importar esta composición; no se
 han creado credenciales persistentes, aplicado migraciones remotas, desplegado
 servicios ni tocado Fleetia o el VPS. La revisión independiente posterior al CI
 final continúa siendo un gate humano separado.
+
+## Aplicación candidata aislada (2026-10-28)
+
+`apps/api/src/order-operations-candidate-app.mjs` incorpora una fábrica opt-in
+`createVerifiedOrderOperationsCandidate(options)`. Construye una instancia Fastify
+sin listener, exige el gate de los tres endpoints con identidades SQL separadas,
+autenticación criptográfica inyectada y preflight de privilegios, y cierra la
+instancia si falla el arranque. El servidor general no importa esta fábrica.
+La fábrica no provisiona logins, no concede grants, no configura secretos ni
+activa un servicio. Las pruebas de rechazo se encuentran en
+`tests/order-operations-candidate-app.test.mjs`. La integración positiva con
+PostgreSQL 17 desechable y credenciales de mínimos privilegios sigue siendo
+condición pendiente para considerar operativo este candidato.
