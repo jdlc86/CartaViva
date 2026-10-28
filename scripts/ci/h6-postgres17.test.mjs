@@ -450,12 +450,17 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.equal(response.status,200);
   assert.ok((response.headers.get('content-type')??'').startsWith('text/event-stream'));
   assert.equal(response.headers.get('cache-control'),'no-store, no-transform');
+  const diagnosticBacklog=await operations.readStaffEvents({afterCursor:0,limit:100,
+   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'read_events',
+    targetId:waiterId,correlationId:'h6_sse_diagnostic_001'})});
+  assert.ok(diagnosticBacklog.events.some(event=>event.type==='sabora.pickup.claimed'),
+   'SSE diagnostic: pickup event must be visible to SQL reader');
   const reader=response.body.getReader();
   let received='';
   try{
    for(let attempt=0;attempt<30;attempt++){
     const next=await Promise.race([reader.read(),new Promise((_,reject)=>
-     setTimeout(()=>reject(Error('h6_sse_backlog_timeout')),6000))]);
+     setTimeout(()=>reject(Error('h6_sse_backlog_timeout; received='+JSON.stringify(received.slice(-700))+'; sqlEvents='+diagnosticBacklog.events.length)),6000))]);
     if(next.done)break;
     received+=new TextDecoder().decode(next.value);
     if(received.includes('event: sabora.pickup.claimed')&&
