@@ -583,3 +583,17 @@ devolver ninguna aplicación preparada. Este ensayo usa un resultado SQL
 simulado y no demuestra el aprovisionamiento real de roles. La prueba positiva
 de PostgreSQL 17 con los grants exactos sigue pendiente y es condición para
 activar las rutas.
+
+## Evidencia de login PostgreSQL real sin permisos (CI aislado)
+
+El script `scripts/ci/order-operations-login-denial-smoke.sh`, ejecutado por
+`postgres-migration-smoke.sh` tras aplicar todas las migraciones en PostgreSQL
+17 desechable, autentica un login independiente por TCP local dentro del
+contenedor. Comprueba cinco denegaciones efectivas mediante SQLSTATE
+`insufficient_privilege`: SELECT sobre ambos registros y EXECUTE de los tres
+wrappers autorizados. No acepta errores genéricos como evidencia de permisos
+correctos. El login de prueba no se conserva ni se provisiona fuera del runner.
+
+Esta prueba es **negativa**: no demuestra que los dos logins operativos con sus
+grants exactos puedan arrancar la aplicación candidata y servir tablero,
+transición e historial. Esa prueba positiva continúa bloqueando la activación.
