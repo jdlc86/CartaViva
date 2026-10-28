@@ -22,5 +22,5 @@ export function planHistoricalContactReconciliation(rows){
   summary.pendingVerification++;
   pending.push(Object.freeze({enrollmentId:id,action:'authorized_verification_required'}));
  }
- return Object.freeze({summary:Object.freeze(summary),pending:Object.freeze(pending)});
+ return Object.freeze({mode:'offline_review_only',writesAuthorized:false,deliveryAuthorized:false,summary:Object.freeze(summary),pending:Object.freeze(pending)});
 }
