@@ -11,7 +11,8 @@ import {
 
 function assertIsolatedPools(staffPool, operationsPool) {
   if (!staffPool || !operationsPool || staffPool === operationsPool ||
-      typeof staffPool.query !== 'function' || typeof operationsPool.connect !== 'function' ||
+      typeof staffPool.query !== 'function' || typeof staffPool.connect !== 'function' ||
+      typeof operationsPool.query !== 'function' || typeof operationsPool.connect !== 'function' ||
       (staffPool.options?.user && staffPool.options.user === operationsPool.options?.user) ||
       (staffPool.options?.connectionString &&
         staffPool.options.connectionString === operationsPool.options?.connectionString)) {
