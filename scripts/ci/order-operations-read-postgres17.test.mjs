@@ -629,8 +629,17 @@ test('Chromium management PWA traverses signed Fastify candidate and disposable 
       await page.locator('.order-card').filter({hasText:'Mesa navegador real'}).getByRole('button', {name:'Marcar lista'}).waitFor();
       await page.locator('.order-card').filter({hasText:'Mesa navegador real'}).getByRole('button', {name:'Marcar lista'}).click();
       await page.getByText('Lista para recoger').first().waitFor();
-      const durable = await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
-      assert.equal(durable.rows[0].status, 'ready');
+      // The UI may render a previous optimistic/stale board frame before the
+      // async POST transaction commits. Assert the durable transition with a
+      // bounded database wait, not a one-shot race against Chromium rendering.
+      let durableStatus = null;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const durable = await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
+        durableStatus = durable.rows[0]?.status;
+        if (durableStatus === 'ready') break;
+        await wait(100);
+      }
+      assert.equal(durableStatus, 'ready');
       await page.evaluate(() => window.__ciDispose());
       actor = waiterId;
       await mount();
