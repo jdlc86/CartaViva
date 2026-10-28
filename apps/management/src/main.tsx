@@ -151,10 +151,23 @@ export function ManagementApp({
   );
 }
 
-// Explicit trusted-host bootstrap. Never infer authorization from URL, local
-// storage or build-time flags; a missing identity provider leaves the PWA inert.
-let previewRoot: ReturnType<typeof createRoot> | null = null;
-let previewElement: HTMLElement | null = null;
+// An authenticated host must explicitly mount this application after verifying
+// staff identity. The default preview never reads browser credentials.
+let managementRoot: ReturnType<typeof createRoot> | null = null;
+let managementElement: HTMLElement | null = null;
+
+function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
+  if (managementRoot && managementElement !== element) {
+    throw Error('management_root_already_mounted');
+  }
+  if (!managementRoot) {
+    managementRoot = createRoot(element);
+    managementElement = element;
+  }
+  managementRoot.render(
+    <React.StrictMode><ManagementApp operationsGateway={gateway}/></React.StrictMode>,
+  );
+}
 
 export function mountAuthenticatedManagementApp({
   element,
@@ -171,17 +184,17 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl,
   });
-  const root = previewRoot && previewElement === element ? previewRoot : createRoot(element);
-  root.render(<React.StrictMode><ManagementApp operationsGateway={operationsGateway}/></React.StrictMode>);
-  return () => root.unmount();
+  renderManagement(element, operationsGateway);
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    // Revoke the operational channel immediately without destroying the PWA.
+    if (managementElement === element) renderManagement(element);
+  };
 }
 
-// Default preview intentionally has no operational credentials or transport.
 if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
-  if (element) {
-    previewElement = element;
-    previewRoot = createRoot(element);
-    previewRoot.render(<React.StrictMode><ManagementApp/></React.StrictMode>);
-  }
+  if (element) renderManagement(element);
 }
