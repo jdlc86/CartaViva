@@ -597,3 +597,20 @@ correctos. El login de prueba no se conserva ni se provisiona fuera del runner.
 Esta prueba es **negativa**: no demuestra que los dos logins operativos con sus
 grants exactos puedan arrancar la aplicación candidata y servir tablero,
 transición e historial. Esa prueba positiva continúa bloqueando la activación.
+
+## Integración positiva de la fábrica candidata en PostgreSQL 17
+
+`scripts/ci/order-operations-read-postgres17.test.mjs` utiliza ahora
+`createVerifiedOrderOperationsCandidate` (la fábrica candidata real) en
+lugar de registrar manualmente sus rutas. Crea dos logins SQL distintos
+de mínimos privilegios en PostgreSQL 17 desechable, configura grants
+exactos, supera los preflights y exige que se registren las tres rutas.
+Ejecuta con JWT firmado el flujo de cocina y sala, incluido tablero,
+transiciones, reintentos, historial y persistencia. Las pruebas adicionales
+del mismo archivo cubren permisos, capacidades firmadas, caducidad y
+revocación. La CI es la evidencia de ejecución; hasta obtener resultados
+SUCCESS del SHA correspondiente, este cambio permanece sin validar.
+
+Esta fábrica no se importa desde `server.mjs`, no abre listener y no
+habilita rutas en producción. La aprobación de activación operativa,
+credenciales y despliegue siguen siendo hitos independientes.
