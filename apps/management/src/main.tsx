@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
+import {createManagementSessionFence} from './management-session-fence.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
@@ -155,8 +156,7 @@ export function ManagementApp({
 // staff identity. The default preview never reads browser credentials.
 let managementRoot: ReturnType<typeof createRoot> | null = null;
 let managementElement: HTMLElement | null = null;
-let managementSessionGeneration = 0;
-let activeOperationsGateway: ReturnType<typeof createAuthenticatedOrderOperationsGateway> | null = null;
+const managementSessionFence = createManagementSessionFence();
 
 function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
   if (managementRoot && managementElement !== element) {
@@ -186,27 +186,19 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl,
   });
-  // A new authenticated principal must never share a live transport with
-  // the previous one, even if its host forgot to dispose the old mount.
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     throw Error('management_root_already_mounted');
   }
-  activeOperationsGateway?.revoke();
-  activeOperationsGateway = operationsGateway;
-  const generation = ++managementSessionGeneration;
+  const disposeSession = managementSessionFence.replace(operationsGateway);
   renderManagement(element, operationsGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
-    // Revoke the operational channel immediately without destroying the PWA.
-    operationsGateway.revoke();
-    if (managementElement === element && generation === managementSessionGeneration) {
-      activeOperationsGateway = null;
-      ++managementSessionGeneration;
-      renderManagement(element);
-    }
+    const current = managementSessionFence.isCurrent(operationsGateway);
+    disposeSession();
+    if (current && managementElement === element) renderManagement(element);
   };
 }
 
