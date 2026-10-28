@@ -82,3 +82,33 @@ test('revocation aborts active management HTTP requests', async () => {
   assert.equal(signal.aborted,true);
   await assert.rejects(request,/aborted/);
 });
+
+test('management logout closes event stream and forbids resubscription', async () => {
+  let started;
+  const observed=new Promise(resolve=>{started=resolve;});
+  let aborted=false;
+  const gateway=createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async()=>token,
+    fetchImpl: async(_path,options)=>{
+      if(_path==='/api/v1/operations/events') {
+        options.signal.addEventListener('abort',()=>{aborted=true;},{once:true});
+        started();
+        return new Response(new ReadableStream({
+          start() {},
+          cancel() {},
+        }),{headers:{'Content-Type':'text/event-stream'}});
+      }
+      throw Error('unexpected_request');
+    },
+  });
+  const unsubscribe=gateway.subscribeEvents({
+    onEvent(){},onResync(){},onUnavailable(){},
+  });
+  await observed;
+  gateway.revoke();
+  assert.equal(aborted,true);
+  assert.doesNotThrow(unsubscribe);
+  assert.throws(()=>gateway.subscribeEvents({
+    onEvent(){},onResync(){},onUnavailable(){},
+  }),/order_operations_auth_unavailable/);
+});
