@@ -62,3 +62,9 @@ No se ha alterado el estado de los hilos de revisión, ni se han aplicado migrac
 Se inspeccionó la función completa `sabora.transition_staff_lifecycle_with_outbox_candidate` en `docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql`, líneas 180–260. Tras la transición durable, usa `result_enrollment_id` y `result_invite_version` retornados por SQL; si `repeated` es verdadero, consulta el job existente por **(enrollment_id, invite_version)** y no compara con el token regenerado. Si falta el job falla cerrado con `staff_invitation_outbox_replay_missing`. Solo inserta un nuevo job si `repeated=false`. Por tanto, el defecto específico del hilo outdated (comparación del token nuevo en replay) **está corregido en el código candidato**. Falta regresión real con PostgreSQL 17 para certificarlo.
 
 **Resultado del análisis estático de los ocho hilos del PR #13:** ocho mitigaciones identificadas en HEAD, cero hilos resueltos administrativamente, cero verificaciones locales nuevas de PostgreSQL 17. Pendiente evidencia de CI y pruebas concurrentes antes de declarar cierre técnico.
+
+## CI completado para HEAD f72ee68 (2026-10-28)
+- `Sabora CI` run **40698725568**, job `validate`: **completed/success**. Pasos completados sin fallo: tests, migraciones PostgreSQL 17 desechable, controlador Node `pg` real, build, Compose, construcción de imagen API y smoke de contenedor aislado.
+- `Bootstrap Sabora lockfile` run **40698725582**, job `generate-lockfile`: **completed/success**. Pasos completados sin fallo: generación/verificación de lockfile, migración PG17 desechable, Node `pg`, Compose, imagen y smoke aislado.
+
+Estas pruebas respaldan el estado del candidato pero no demuestran por sí solas la reproducción de los ocho casos específicos de revisión; antes de resolver formalmente los hilos, comprobar que cada escenario está cubierto por test focalizado y su resultado. No se han fusionado PR ni aplicado migraciones a Supabase operativo.
