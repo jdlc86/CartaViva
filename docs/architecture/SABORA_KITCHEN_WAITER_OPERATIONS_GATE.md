@@ -665,3 +665,17 @@ denegación de recogida por cocina, recogida por camarero, historial de tres
 eventos y una sola notificación durable. Las credenciales y la base de datos
 son exclusivamente efímeras de CI. La conformidad depende de CI verde;
 la prueba de navegador con identidad real sigue siendo puerta pendiente.
+
+## Ciclo de sesión y cierre seguro del canal de gestión
+
+El montaje explícito conserva un único React root por elemento y protege
+contra cierres tardíos de sesiones anteriores mediante una generación de
+montaje. El desmontaje lógico vuelve a la vista previa sin gateway y
+revoca el transporte de esa sesión. `revoke()` impide peticiones nuevas,
+descarta credenciales recibidas tardíamente y aborta las peticiones HTTP
+en curso; el gateway no guarda tokens en almacenamiento del navegador.
+Las pruebas cubren ausencia de identidad, token fresco, revocación
+antes de la petición, durante la adquisición de token y durante HTTP.
+No se conecta automáticamente un proveedor de identidad ni se
+habilitan las rutas en el servidor general. La revocación de UI no
+sustituye la revocación durable de personal en PostgreSQL.
