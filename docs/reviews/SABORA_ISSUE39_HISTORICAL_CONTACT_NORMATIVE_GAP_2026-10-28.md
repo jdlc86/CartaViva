@@ -17,3 +17,8 @@ No se implementará por inferencia un `INSERT` directo, `SECURITY DEFINER` nuevo
 Aprobar expresamente el actor facultado para registrar/verificar contacto histórico, la evidencia de verificación, los estados elegibles, la semántica de unicidad y conflictos, la idempotencia/auditoría y las consecuencias de revocación. Una vez documentado en normativa, implementar wrapper SQL de mínimo privilegio, prueba PG17 aislada de carreras/replay/revocación y API candidata. Hasta entonces, este subbloque está **bloqueado por contrato**, no por limitación técnica.
 
 No se modifica Supabase operativo, VPS ni Fleetia.
+
+## Resolución de alcance acordada con el propietario (28-10-2026)
+El propietario confirma que **no existen empleados reales registrados en Sabora**; cualquier registro existente es de pruebas y puede descartarse tras identificarlo y comprobar sus dependencias. En consecuencia, **no se requiere una migración de contactos históricos** ni se aprueba un mecanismo de escritura retroactiva. Este bloqueo queda cerrado por **ausencia de datos históricos a conservar**, no por ampliación de permisos.
+
+El flujo candidato para **altas nuevas** deberá preservar conjuntamente identidad, correo normalizado, unicidad, autorización, revocación e idempotencia según los contratos normativos vigentes. El inventario offline queda como herramienta de diagnóstico, no como requisito de activación. Antes de cualquier borrado operativo se verificará el ámbito exclusivo de Sabora, las referencias y la posibilidad de revertir; la autorización para descartar fixtures no autoriza tocar Fleetia ni otros recursos. **No se ha ejecutado ningún borrado ni consulta de datos reales.**
