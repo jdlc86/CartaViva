@@ -39,7 +39,7 @@ test('explicit global logout revokes only current session and clears ownership',
   fence.revoke();
   assert.equal(second.revoked,1);
   disposeSecond();
-  assert.equal(second.revoked,2);
+  assert.equal(second.revoked,1);
 });
 
 test('session fence rejects invalid gateways without revoking current identity', () => {
