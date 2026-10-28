@@ -15,6 +15,7 @@ const capability = Object.freeze({
   action: 'invite', enrollmentId, subjectUserId: null, requestedRole: 'waiter',
   inviteeEmailHashHex: 'b'.repeat(64), inviteTokenHashHex: hash,
   credentialEvidenceHashHex: null, reason: null,
+  givenName: 'Julia', familyName: 'García López',
   correlationId: 'enqueue_00000001', issuedAtMs: 1000, expiresAtMs: 16000,
   signatureHex: 'c'.repeat(64),
 });
@@ -25,6 +26,8 @@ function row(overrides = {}) {
     result_requested_role: 'waiter', previous_state: null,
     current_state: 'invited', repeated: false, result_invite_version: 1,
     event_id: eventId, outbox_job_id: jobId, outbox_enqueued: true,
+    result_given_name: 'Julia', result_family_name: 'García López',
+    result_employee_code: '027', result_operational_display_id: 'JG-027',
     outbox_cancelled_count: 0, ...overrides,
   };
 }
@@ -48,7 +51,8 @@ test('fresh invitation uses one integrated SQL statement and exposes its durable
     transition: {
       enrollmentId, subjectUserId: null, requestedRole: 'waiter',
       previousState: null, currentState: 'invited', repeated: false,
-      inviteVersion: 1, eventId,
+      inviteVersion: 1, eventId, givenName: 'Julia', familyName: 'García López',
+      employeeCode: '027', operationalDisplayId: 'JG-027',
     },
     jobId, enqueued: true, repeated: false, cancelledCount: 0,
   });
@@ -57,7 +61,7 @@ test('fresh invitation uses one integrated SQL statement and exposes its durable
   assert.deepEqual(candidate.calls[0].parameters, [
     capability.keyId, capability.databaseRole, actorId, 'invite', enrollmentId,
     null, 'waiter', capability.inviteeEmailHashHex, hash, null, null,
-    capability.correlationId, 1000, 16000, capability.signatureHex,
+    capability.correlationId, 1000, 16000, 'Julia', 'García López', capability.signatureHex,
   ]);
 });
 
@@ -73,7 +77,8 @@ test('replay returns the original job and cannot claim a new enqueue', async () 
 
 test('resend accepts an atomic stale-job cancellation count', async () => {
   const resend = {...capability, action: 'resend', requestedRole: null,
-    inviteeEmailHashHex: null, correlationId: 'resend_00000001'};
+    inviteeEmailHashHex: null, givenName: null, familyName: null,
+    correlationId: 'resend_00000001'};
   const candidate = harness({resultRow: row({
     previous_state: 'invited', result_invite_version: 2,
     outbox_cancelled_count: 1,

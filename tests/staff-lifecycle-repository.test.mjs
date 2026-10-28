@@ -17,6 +17,7 @@ function capability(overrides = {}) {
     action: 'activate', enrollmentId, subjectUserId: subjectId,
     requestedRole: null, inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: null,
+    givenName: null, familyName: null,
     correlationId: 'activate_staff_001', issuedAtMs: 1000, expiresAtMs: 2000,
     signatureHex: 'a'.repeat(64), ...overrides,
   };
@@ -32,6 +33,8 @@ test('staff lifecycle repository calls only the pinned authorized wrapper', asyn
       result_requested_role: 'waiter', previous_state: 'registered',
       current_state: 'active', repeated: false, result_invite_version: 1,
       event_id: eventId,
+      result_given_name: 'Julia', result_family_name: 'García López',
+      result_employee_code: '027', result_operational_display_id: 'JG-027',
     }]};
   }, capability());
   assert.equal(calls[0].sql, STAFF_LIFECYCLE_SQL);
@@ -41,7 +44,8 @@ test('staff lifecycle repository calls only the pinned authorized wrapper', asyn
   assert.deepEqual(result, {
     enrollmentId, subjectUserId: subjectId, requestedRole: 'waiter',
     previousState: 'registered', currentState: 'active', repeated: false,
-    inviteVersion: 1, eventId,
+    inviteVersion: 1, eventId, givenName: 'Julia', familyName: 'García López',
+    employeeCode: '027', operationalDisplayId: 'JG-027',
   });
 });
 test('staff lifecycle repository fails closed on malformed capabilities and SQL rows', async () => {
@@ -56,10 +60,14 @@ test('staff lifecycle repository fails closed on malformed capabilities and SQL 
     null,
     {result_enrollment_id: enrollmentId, result_subject_user_id: subjectId,
       result_requested_role: 'waiter', previous_state: 'active', current_state: 'active',
-      repeated: false, result_invite_version: 1, event_id: eventId},
+      repeated: false, result_invite_version: 1, event_id: eventId,
+      result_given_name: 'Julia', result_family_name: 'García López',
+      result_employee_code: '027', result_operational_display_id: 'JG-027'},
     {result_enrollment_id: enrollmentId, result_subject_user_id: actorId,
       result_requested_role: 'waiter', previous_state: 'registered', current_state: 'active',
-      repeated: false, result_invite_version: 1, event_id: eventId},
+      repeated: false, result_invite_version: 1, event_id: eventId,
+      result_given_name: 'Julia', result_family_name: 'García López',
+      result_employee_code: '027', result_operational_display_id: 'JG-027'},
   ]) {
     await assert.rejects(repository.transition(async () => ({rows: row ? [row] : []}), capability()),
       /invalid_staff_lifecycle_sql_result/);
@@ -71,6 +79,7 @@ test('staff lifecycle repository accepts only the durable original enrollment on
   const invite = capability({
     action: 'invite', enrollmentId, subjectUserId: null, requestedRole: 'waiter',
     inviteeEmailHashHex: 'b'.repeat(64), inviteTokenHashHex: 'c'.repeat(64),
+    givenName: 'Julia', familyName: 'García López',
     correlationId: 'invite_staff_001',
   });
   const durableReplay = {
@@ -78,6 +87,8 @@ test('staff lifecycle repository accepts only the durable original enrollment on
     result_requested_role: 'waiter', previous_state: null,
     current_state: 'invited', repeated: true, result_invite_version: 1,
     event_id: eventId,
+    result_given_name: 'Julia', result_family_name: 'García López',
+    result_employee_code: '027', result_operational_display_id: 'JG-027',
   };
   assert.equal(
     (await repository.transition(async () => ({rows: [durableReplay]}), invite)).enrollmentId,

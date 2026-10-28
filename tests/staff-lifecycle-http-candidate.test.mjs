@@ -13,6 +13,7 @@ function reply() {
     send(value) {this.payload = value; return value;}};
 }
 function invite() {return {action: 'invite', email: 'test@example.com',
+  givenName: 'Julia', familyName: 'García López',
   requestedRole: 'waiter', correlationId: 'correlation_001'};}
 
 test('rejects forged actor, unknown fields and malformed correlation before coordinator', async () => {

@@ -70,13 +70,19 @@ const repository = createStaffInvitationOutboxRepository();
 const ownerId = 'a2000000-0000-4000-8000-000000000001';
 const lifecycleKeyId = 'outbox_ci_key_001';
 const lifecycleSecret = randomBytes(32);
-const issueLifecycle = createStaffLifecycleCapabilityIssuer({
+const issueLifecycleRaw = createStaffLifecycleCapabilityIssuer({
   keyId: lifecycleKeyId, secret: lifecycleSecret, databaseRole: 'postgres',
 });
-const issueIntegratedLifecycle = createStaffLifecycleCapabilityIssuer({
+const issueIntegratedLifecycleRaw = createStaffLifecycleCapabilityIssuer({
   keyId: lifecycleKeyId, secret: lifecycleSecret,
   databaseRole: runtimeCredentials.role,
 });
+const withIdentityNames=(issuer,input)=>issuer({...input,
+  givenName:input.action==='invite'?(input.givenName??'Persona'):null,
+  familyName:input.action==='invite'?(input.familyName??`Prueba ${input.correlationId}`):null,
+});
+const issueLifecycle=input=>withIdentityNames(issueLifecycleRaw,input);
+const issueIntegratedLifecycle=input=>withIdentityNames(issueIntegratedLifecycleRaw,input);
 let sequence = 0;
 
 function uuid(prefix = 'b') {
@@ -159,8 +165,12 @@ function lifecycleArgs(capability) {
     capability.requestedRole, capability.inviteeEmailHashHex,
     capability.inviteTokenHashHex, capability.credentialEvidenceHashHex,
     capability.reason, capability.correlationId, capability.issuedAtMs,
-    capability.expiresAtMs, capability.signatureHex,
+    capability.expiresAtMs, capability.givenName, capability.familyName,
+    capability.signatureHex,
   ];
+}
+function legacyLifecycleArgs(capability) {
+  return lifecycleArgs(capability).filter((_,index)=>index!==14&&index!==15);
 }
 
 function integratedCapability({
@@ -210,7 +220,7 @@ test.before(async () => {
     TO ${deniedCredentials.role},${runtimeCredentials.role}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_staff_lifecycle_with_outbox_candidate(
-      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
     ) TO ${runtimeCredentials.role}`);
   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
     VALUES ($1,'admin','active')`, [ownerId]);
@@ -430,10 +440,10 @@ test('PG17 revocation racing a claim fences dispatch and late acceptance', async
       correlationId: `late_accept_${String(sequence).padStart(8, '0')}`,
     });
     await assert.rejects(admin.query(`SELECT * FROM
-      sabora.transition_staff_lifecycle_authorized_candidate(
+      sabora.transition_staff_lifecycle_with_identity_candidate(
         $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::uuid,$7::text,
         $8::text,$9::text,$10::text,$11::text,$12::text,$13::bigint,
-        $14::bigint,$15::text
+        $14::bigint,$15::text,$16::text,$17::text
       )`, lifecycleArgs(capability)),
     error => error?.code === '42501' && /staff_enrollment_revoked/.test(error.message));
   } catch (error) {
@@ -871,7 +881,7 @@ test('PG17 restricted recovery login has only EXECUTE and rotates stale fence',a
       has_function_privilege(current_user,
         'sabora.reclaim_staff_invitation_claim_candidate(uuid,uuid,integer)','EXECUTE') AS can_recover,
       has_function_privilege(current_user,
-        'sabora.transition_staff_lifecycle_with_outbox_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text)','EXECUTE') AS can_transition`);
+        'sabora.transition_staff_lifecycle_with_outbox_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)','EXECUTE') AS can_transition`);
     assert.deepEqual(permissions.rows,[{
       login:role,effective:role,can_read:false,can_update:false,
       can_recover:true,can_transition:false,

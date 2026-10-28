@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHmac} from 'node:crypto';
+import {createHash, createHmac} from 'node:crypto';
 import {
   createStaffInviteeEmailHasher,
   createStaffLifecycleCapabilityIssuer,
@@ -23,6 +23,8 @@ function invitation(overrides = {}) {
     inviteTokenHashHex: '2'.repeat(64),
     credentialEvidenceHashHex: null,
     reason: null,
+    givenName: 'Julia',
+    familyName: 'García López',
     correlationId: 'invite_staff_001',
     ...overrides,
   };
@@ -37,7 +39,9 @@ test('staff lifecycle issuer signs every authority and target field canonically'
   const message = [
     STAFF_LIFECYCLE_CAPABILITY_AUDIENCE, 'staff_key_001',
     'sabora_staff_lifecycle_ci', actorId, 'invite', enrollmentId, '-', 'waiter',
-    '1'.repeat(64), '2'.repeat(64), '-', '-', 'invite_staff_001',
+    '1'.repeat(64), '2'.repeat(64), '-', '-',
+    createHash('sha256').update('Julia').digest('hex'),
+    createHash('sha256').update('García López').digest('hex'), 'invite_staff_001',
     '1700000000000', '1700000010000',
   ].join('\n');
   assert.equal(capability.signatureHex,

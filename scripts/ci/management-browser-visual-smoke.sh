@@ -17,7 +17,7 @@ if [[ "$ready" != 1 ]]; then
   exit 1
 fi
 for width in 360 460 900 1440; do
-  for area in resumen comandas; do
+  for area in resumen comandas equipo; do
     target="$output/${area}-${width}.png"
     timeout --signal=TERM --kill-after=5s 45s npm exec --yes --package=playwright@1.56.1 -- playwright screenshot \
       --browser chromium --viewport-size "${width},900" --full-page \

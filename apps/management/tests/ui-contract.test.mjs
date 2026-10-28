@@ -151,5 +151,8 @@ test('approved visual tokens, responsive gates and accessibility motion rule rem
   assert.match(css, /@media \(max-width: 460px\)/);
   assert.match(css, /\.management-nav \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); overflow-x: visible; \}/);
   assert.match(css, /\.management-tab \{ display: flex; min-width: 0;/);
+  assert.equal(css.match(/\.role-grid \{ display: grid;/g)?.length, 1,
+    'a late duplicate base rule must not override the mobile one-column role grid');
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.role-grid \{ grid-template-columns: 1fr; \}/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });

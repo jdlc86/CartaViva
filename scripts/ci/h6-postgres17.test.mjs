@@ -94,6 +94,27 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES
   ($1,'kitchen','active'),($2,'admin','active'),($3,'waiter','active'),($4,'waiter','active')`,
   [kitchenId,adminId,waiterId,secondWaiterId]);
+ await admin.query(`INSERT INTO sabora.staff_enrollments(
+  id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
+  credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
+  credential_registered_at,activated_at,updated_at,given_name,family_name,
+  employee_code,operational_display_id)
+ SELECT gen_random_uuid(),sha256(convert_to(source.email,'UTF8')),source.role,'active',
+  source.user_id,sha256(convert_to(source.token,'UTF8')),sha256(convert_to(source.credential,'UTF8')),
+  $2,statement_timestamp(),statement_timestamp(),statement_timestamp(),
+  statement_timestamp(),statement_timestamp(),statement_timestamp(),source.given_name,
+  source.family_name,source.code,source.display_id
+ FROM (VALUES
+  ($1::uuid,'kitchen','kitchen-h6@example.invalid','token-kitchen-h6','credential-kitchen-h6','Karla','Cocina','901','KC-901'),
+  ($2::uuid,'admin','admin-h6@example.invalid','token-admin-h6','credential-admin-h6','Alba','Dirección','902','AD-902'),
+  ($3::uuid,'waiter','waiter-h6@example.invalid','token-waiter-h6','credential-waiter-h6','Mario','Sala','903','MS-903'),
+  ($4::uuid,'waiter','waiter2-h6@example.invalid','token-waiter2-h6','credential-waiter2-h6','Lucía','Sala','904','LS-904')
+ ) source(user_id,role,email,token,credential,given_name,family_name,code,display_id)`,
+ [kitchenId,adminId,waiterId,secondWaiterId]);
+ await admin.query(`UPDATE sabora.staff_employee_code_pool pool SET
+  enrollment_id=enrollment.id,reserved_at=clock_timestamp()
+ FROM sabora.staff_enrollments enrollment WHERE enrollment.employee_code=pool.code
+  AND enrollment.auth_user_id=ANY($1::uuid[])`,[[kitchenId,adminId,waiterId,secondWaiterId]]);
  await admin.query(`INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at)
   VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
   [keyId,signingSecret]);
@@ -195,6 +216,14 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.ok([waiterId,secondWaiterId].includes(winner.claimedBy));
  assert.equal(loser.claimedBy,winner.claimedBy);
  assert.equal(loser.taskVersion,2);
+ const claimedIdentity=(await admin.query(`SELECT claimed_display_id FROM sabora.pickup_tasks
+  WHERE order_line_id=$1`,[line])).rows[0].claimed_display_id;
+ assert.ok(['MS-903','LS-904'].includes(claimedIdentity));
+ const claimedEvents=await admin.query(`SELECT staff_role,payload->>'claimedDisplayId' AS display_id
+  FROM sabora.event_outbox WHERE event_type='sabora.pickup.claimed'
+   AND aggregate_id=$1 ORDER BY id`,[pickup.id]);
+ assert.deepEqual(claimedEvents.rows.map(value=>value.staff_role).sort(),['kitchen','waiter']);
+ assert.ok(claimedEvents.rows.every(value=>value.display_id===claimedIdentity));
  const winnerCapability=winner.claimedBy===waiterId?firstClaim:secondClaim;
  assert.equal((await operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:1,
   capability:winnerCapability})).repeated,true);

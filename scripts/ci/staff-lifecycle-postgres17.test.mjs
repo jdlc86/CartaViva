@@ -58,10 +58,10 @@ let issueOperation;
 let sequence = 0;
 
 const lifecycleSql = `SELECT *
-  FROM sabora.transition_staff_lifecycle_authorized_candidate(
+  FROM sabora.transition_staff_lifecycle_with_identity_candidate(
     $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
     $6::uuid,$7::text,$8::text,$9::text,$10::text,
-    $11::text,$12::text,$13::bigint,$14::bigint,$15::text
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text
   )`;
 const operationSql = `SELECT *
   FROM sabora.transition_order_line_authorized_candidate(
@@ -100,11 +100,13 @@ function lifecycleCapability({
   credentialEvidenceHashHex = null,
   reason = null,
   correlationId,
+  givenName = action === 'invite' ? 'Persona' : null,
+  familyName = action === 'invite' ? `Prueba ${correlationId}` : null,
 }) {
   return issueLifecycle({
     actorId, action, enrollmentId, subjectUserId, requestedRole,
     inviteeEmailHashHex, inviteTokenHashHex, credentialEvidenceHashHex,
-    reason, correlationId,
+    reason, givenName, familyName, correlationId,
   });
 }
 
@@ -116,7 +118,8 @@ function lifecycleArgs(value, overrides = {}) {
     capability.requestedRole, capability.inviteeEmailHashHex,
     capability.inviteTokenHashHex, capability.credentialEvidenceHashHex,
     capability.reason, capability.correlationId, capability.issuedAtMs,
-    capability.expiresAtMs, capability.signatureHex,
+    capability.expiresAtMs, capability.givenName, capability.familyName,
+    capability.signatureHex,
   ];
 }
 
@@ -257,8 +260,8 @@ test.before(async () => {
   await admin.query(`GRANT SELECT (user_id,role,state)
     ON sabora.staff_members TO ${readerRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
-    sabora.transition_staff_lifecycle_authorized_candidate(
-      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+    sabora.transition_staff_lifecycle_with_identity_candidate(
+      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
     ) TO ${lifecycleRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_order_line_authorized_candidate(
@@ -309,7 +312,7 @@ test('PG17 restricted lifecycle login exposes only the signed wrapper', async ()
   }), {role: lifecycleRole});
   const privileges = await admin.query(`SELECT
     has_function_privilege($1,
-      'sabora.transition_staff_lifecycle_authorized_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text)',
+      'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)',
       'EXECUTE') AS wrapper,
     has_table_privilege($1,'sabora.staff_enrollments','SELECT') AS enrollment_read,
     has_table_privilege($1,'sabora.staff_members','UPDATE') AS staff_update,
@@ -374,6 +377,7 @@ test('Fastify real JWT + coordinator + repository + PG17 preserves durable invit
   });
   const invite = {
     action: 'invite', email: 'Replay.Person@example.invalid',
+    givenName: 'Julia', familyName: 'García López',
     requestedRole: 'waiter', correlationId: 'http_invite_replay_001',
   };
   const beforeUnauthorized = (await admin.query(
@@ -419,6 +423,7 @@ test('Fastify real JWT + coordinator + repository + PG17 preserves durable invit
 
   const concurrentInvite = {
     action: 'invite', email: 'Concurrent.Person@example.invalid',
+    givenName: 'Mario', familyName: 'Sala Norte',
     requestedRole: 'kitchen', correlationId: 'http_invite_concurrent_001',
   };
   const concurrent = await Promise.all([send(concurrentInvite), send(concurrentInvite)]);
@@ -576,6 +581,7 @@ test('PG17 suspension rejects a capability that expires on the target membership
     subjectUserId: subjectId, requestedRole: null,
     inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: 'Expiración bajo lock',
+    givenName: null, familyName: null,
     correlationId: `expire_suspend_${String(sequence).padStart(8, '0')}`,
   });
   const blocker = await admin.connect();
@@ -635,6 +641,7 @@ test('PG17 revocation rejects a signing key that expires on the target membershi
     subjectUserId: subjectId, requestedRole: null,
     inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: 'Clave expirada bajo lock',
+    givenName: null, familyName: null,
     correlationId: `expire_revoke_${String(sequence).padStart(8, '0')}`,
   });
   const blocker = await admin.connect();
@@ -722,7 +729,7 @@ test('PG17 SQL impersonation, wrong role, GUC and SET ROLE cannot create authori
     [JSON.stringify({sub: ownerId, role: 'admin'})]);
   await assert.rejects(lifecyclePool.query(lifecycleSql, lifecycleArgs(forged, {
     actorId: rootId,
-  })), /invalid_staff_lifecycle_capability/);
+  })), /invalid_staff_identity_capability/);
   const rootCapability = lifecycleCapability({
     actorId: rootId, action: 'revoke', enrollmentId: invitation.enrollmentId,
     subjectUserId: null, reason: 'ROOT no ordinario',
