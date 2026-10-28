@@ -1,8 +1,8 @@
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 const INTEGRATED_ROUTINE =
-  'sabora.transition_staff_lifecycle_with_outbox_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text)';
+  'sabora.transition_staff_lifecycle_with_outbox_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)';
 const LIFECYCLE_ROUTINE =
-  'sabora.transition_staff_lifecycle_authorized_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text)';
+  'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)';
 
 function validRole(role) {
   if (typeof role !== 'string' || !ROLE_NAME.test(role) ||

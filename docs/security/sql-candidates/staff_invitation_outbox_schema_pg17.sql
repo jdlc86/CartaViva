@@ -119,8 +119,8 @@ GRANT SELECT (id,enrollment_id,invite_version,invite_token_hash,state),
       UPDATE (state,updated_at)
   ON sabora.staff_invitation_outbox
   TO sabora_staff_invitation_enqueue_fn_owner;
-GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_authorized_candidate(
-  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_identity_candidate(
+  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) TO sabora_staff_invitation_enqueue_fn_owner;
 
 CREATE POLICY staff_invitation_enqueue_owner_select
@@ -158,6 +158,8 @@ CREATE FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
   p_correlation_id text,
   p_issued_at_ms bigint,
   p_expires_at_ms bigint,
+  p_given_name text,
+  p_family_name text,
   p_signature_hex text
 )
 RETURNS TABLE (
@@ -169,6 +171,10 @@ RETURNS TABLE (
   repeated boolean,
   result_invite_version integer,
   event_id uuid,
+  result_given_name text,
+  result_family_name text,
+  result_employee_code text,
+  result_operational_display_id text,
   outbox_job_id uuid,
   outbox_enqueued boolean,
   outbox_cancelled_count integer
@@ -181,11 +187,12 @@ DECLARE
   v_transition record;
 BEGIN
   SELECT transition.* INTO STRICT v_transition
-    FROM sabora.transition_staff_lifecycle_authorized_candidate(
+    FROM sabora.transition_staff_lifecycle_with_identity_candidate(
       p_key_id,p_database_role,p_actor_user_id,p_action,p_enrollment_id,
       p_subject_user_id,p_requested_role,p_invitee_email_hash_hex,
       p_invite_token_hash_hex,p_credential_evidence_hash_hex,p_reason,
-      p_correlation_id,p_issued_at_ms,p_expires_at_ms,p_signature_hex
+      p_correlation_id,p_issued_at_ms,p_expires_at_ms,p_given_name,p_family_name,
+      p_signature_hex
     ) transition;
 
   result_enrollment_id := v_transition.result_enrollment_id;
@@ -196,6 +203,10 @@ BEGIN
   repeated := v_transition.repeated;
   result_invite_version := v_transition.result_invite_version;
   event_id := v_transition.event_id;
+  result_given_name := v_transition.result_given_name;
+  result_family_name := v_transition.result_family_name;
+  result_employee_code := v_transition.result_employee_code;
+  result_operational_display_id := v_transition.result_operational_display_id;
   outbox_job_id := NULL;
   outbox_enqueued := false;
   outbox_cancelled_count := 0;
@@ -242,15 +253,15 @@ END;
 $staff_lifecycle_outbox$;
 
 ALTER FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
-  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) OWNER TO sabora_staff_invitation_enqueue_fn_owner;
 REVOKE ALL ON FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
-  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) FROM PUBLIC, anon, authenticated, sabora_staff_reader, sabora_admin_writer,
   sabora_staff_lifecycle_fn_owner;
 
 COMMENT ON FUNCTION sabora.transition_staff_lifecycle_with_outbox_candidate(
-  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
+  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) IS 'Candidate atomic HMAC lifecycle transition and invitation outbox boundary; no runtime EXECUTE grant is provisioned.';
 
 COMMIT;

@@ -9,7 +9,7 @@ export const STAFF_INVITATION_ENQUEUE_SQL = `SELECT *
   FROM sabora.transition_staff_lifecycle_with_outbox_candidate(
     $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
     $6::uuid,$7::text,$8::text,$9::text,$10::text,
-    $11::text,$12::text,$13::bigint,$14::bigint,$15::text
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text
   )`;
 
 export function createStaffInvitationEnqueueCandidate({

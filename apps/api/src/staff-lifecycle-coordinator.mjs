@@ -1,4 +1,4 @@
-import {hashStaffInvitationToken} from './staff-lifecycle-capability.mjs';
+import {hashStaffInvitationToken, normalizeStaffName} from './staff-lifecycle-capability.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
@@ -100,11 +100,13 @@ export function createStaffLifecycleCoordinator({
       let inviteTokenHashHex = null;
       let credentialEvidenceHashHex = null;
       let normalizedReason = null;
+      let givenName = null;
+      let familyName = null;
       let deliveryToken = null;
       let correlationId;
 
       if (action === 'invite') {
-        if (!exactDataRecord(input, ['action', 'email', 'requestedRole', 'correlationId']) ||
+        if (!exactDataRecord(input, ['action', 'email', 'givenName', 'familyName', 'requestedRole', 'correlationId']) ||
             !ROLES.has(input.requestedRole)) throw Error('invalid_staff_lifecycle_request');
         enrollmentId = uuid();
         if (!UUID.test(enrollmentId)) throw Error('invalid_staff_lifecycle_uuid');
@@ -112,6 +114,12 @@ export function createStaffLifecycleCoordinator({
         deliveryToken = issueInvitationToken();
         inviteTokenHashHex = hashStaffInvitationToken(deliveryToken);
         requestedRole = input.requestedRole;
+        try {
+          givenName = normalizeStaffName(input.givenName, 80);
+          familyName = normalizeStaffName(input.familyName, 160);
+        } catch {
+          throw Error('invalid_staff_lifecycle_request');
+        }
         correlationId = input.correlationId;
       } else if (action === 'accept') {
         if (!exactDataRecord(input, ['action', 'enrollmentId', 'inviteToken', 'correlationId'])) {
@@ -180,6 +188,8 @@ export function createStaffLifecycleCoordinator({
         inviteTokenHashHex,
         credentialEvidenceHashHex,
         reason: normalizedReason,
+        givenName,
+        familyName,
         correlationId,
       });
       const result = await withTransaction(async (query) =>
