@@ -634,11 +634,25 @@ test('Chromium management PWA traverses signed Fastify candidate and disposable 
       await page.evaluate(() => window.__ciDispose());
       actor = waiterId;
       await mount();
-      await page.getByText('Plato H4').first().waitFor();
+      const waiterCard = page.locator('.order-card').filter({hasText:'Mesa navegador real'});
+      await waiterCard.getByText('Lista para recoger').waitFor({timeout: 15000});
       assert.equal(await page.getByRole('button',{name:'Marcar lista'}).count(), 0);
       assert.equal(await page.getByRole('button',{name:'Iniciar preparación'}).count(), 0);
+      // An absent button is not an authorization boundary: prove that the
+      // actual candidate rejects a forged waiter transition at HTTP level.
+      const forbidden = await page.evaluate(async ({lineId, token}) => {
+        const response = await fetch(`/api/v1/operations/order-lines/${lineId}/transitions`, {
+          method:'POST', headers:{authorization:`Bearer ${token}`, 'content-type':'application/json'},
+          body:JSON.stringify({targetStatus:'preparing',correlationId:'browser_waiter_denied_405'}),
+        });
+        return response.status;
+      }, {lineId:item.lineId, token:bearer(waiterId)});
+      assert.equal(forbidden, 403);
+      await waiterCard.getByRole('button',{name:'Ver historial'}).click();
+      await page.getByText('En preparación').first().waitFor();
       assert.ok(calls.some(call => call.method === 'POST'));
       assert.ok(calls.every(call => call.auth?.startsWith('Bearer ')));
+      assert.ok(calls.some(call => call.path.includes('/history')));
       await page.evaluate(() => window.__ciDispose());
       await page.getByText('Canal operativo sin conectar').first().waitFor();
       const events = await admin.query(
