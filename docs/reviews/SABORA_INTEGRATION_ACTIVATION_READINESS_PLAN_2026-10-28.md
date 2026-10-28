@@ -7,11 +7,11 @@
 - PR #34: recogida exclusiva; base PR #32; SHA `64b4cf7a5c119ae0d14fa10a25a69c0f60d9a1a5`.
 - PR #36: identidad y códigos de personal; base PR #34; SHA `1b8bb7e39e4a612f0cc4dffcff767378f11f42fc`.
 - PR #38: directorio seguro; base PR #36; SHA `b7f5c3b50add327c318229db34eb497543f85b3c`.
-- PR #15: PWA cliente premium; base independiente `audit/github-pr-global-consolidation-20261026`, SHA `516909987e8b479ddaefb4991e44af0f71d25318`. **No asumir integración de #15 por la cadena #32–#38**.
+- PR #15: PWA cliente premium; base original `audit/github-pr-global-consolidation-20261026`, SHA `516909987e8b479ddaefb4991e44af0f71d25318`. **GitHub compare confirma que #15 es ancestro de #32 y de la rama de integración** (merge-base igual al SHA #15, 0 commits detrás). Sigue pendiente la validación funcional conjunta.
 - Rama de preparación basada en #38: `integration/sabora-activation-readiness-20261028`. Sin merge ni despliegue.
 
 ## Puertas del hito (todas obligatorias)
-1. **Inventario de dependencias**: verificar historia común y compatibilidad de #15 con la cadena H6–personal; revisar otros PR Draft normativos/operativos que puedan ser prerrequisitos. No rebase/merge sin autorización.
+1. **Inventario de dependencias**: historia común de #15 con H6–personal ya verificada; comprobar compatibilidad funcional; revisar otros PR Draft normativos/operativos que puedan ser prerrequisitos. No rebase/merge sin autorización.
 2. **Contratos**: comprobar coherencia entre identidad, directorio, cocina/sala, H6, PWA cliente, RLS y eventos; registrar conflictos reales con referencia normativa y resolverlos en código candidato, sin reinterpretar requisitos.
 3. **Correos históricos**: solo existen hashes en identidades anteriores al directorio; son irreversibles. Diseñar reconciliación mediante entrada autorizada y verificada de dirección actual, prueba de pertenencia, validación de unicidad, idempotencia, auditoría, consentimiento/aviso pertinente y no filtración. Ningún correo se reconstruye, inventa, infiere o rellena por defecto. Registrar casos sin contacto y plan de bloqueo/continuación según contrato normativo. No operar sobre datos reales en esta fase.
 4. **Configuración y secretos**: inventariar principales SQL, permisos mínimos, claves HMAC por audiencia, rutas, workers y dependencias. Definir preflight fail-closed, rotación y reversión sin incorporar secretos al repositorio.
