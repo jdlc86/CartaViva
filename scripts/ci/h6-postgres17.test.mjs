@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
+import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createRestrictedCustomerRegistration,REGISTER_CUSTOMER_SQL} from '../../apps/api/src/customer-production-registration.mjs';
@@ -303,6 +305,52 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   targetId:line,expectedVersion:7,correlationId:'h6_pickup_expired_cap_001'});
  await assert.rejects(operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:7,
   capability:expiredCap}),/invalid_pickup_capability|expired_pickup_capability/);
+
+ // Exercise the actual H6 HTTP router and SQL capability coordinator together.
+ // This test-only preHandler supplies a fixed, trusted waiter identity; it is
+ // NOT a substitute for the signed JWT preHandler in the H4 browser gate.
+ const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+ const h6Http=Fastify({logger:false});
+ const testIdentity={userId:waiterId,role:'waiter'};
+ const testForRoles=roles=>async request=>{
+  if(!roles.includes(testIdentity.role))throw Error('test_role_denied');
+  request.verifiedIdentity={userId:testIdentity.userId};
+  request.verifiedStaff={userId:testIdentity.userId,role:testIdentity.role};
+ };
+ registerH6OperationsHttp(h6Http,{forRoles:testForRoles,
+  operations:createH6OperationsCoordinator({repository:operations,issueCapability:issueKitchen})});
+ await h6Http.ready();
+ try{
+  const path=`/api/v1/operations/order-lines/${line}/pickup-claim`;
+  const claimBody={expectedVersion:7,correlationId:'h6_http_pickup_claim_001'};
+  const invalid=await h6Http.inject({method:'POST',url:path,
+   payload:{...claimBody,unexpected:true}});
+  assert.equal(invalid.statusCode,400);
+  const accepted=await h6Http.inject({method:'POST',url:path,payload:claimBody});
+  assert.equal(accepted.statusCode,200);
+  assert.equal(accepted.json().outcome,'claimed');
+  assert.equal(accepted.json().taskVersion,8);
+  const replay=await h6Http.inject({method:'POST',url:path,payload:claimBody});
+  assert.equal(replay.statusCode,200);
+  assert.equal(replay.json().repeated,true);
+  const conflict=await h6Http.inject({method:'POST',url:path,
+   payload:{expectedVersion:7,correlationId:'h6_http_pickup_conflict_001'}});
+  assert.equal(conflict.statusCode,409);
+  assert.equal(conflict.json().error,'pickup_claim_conflict');
+  const cancelled=await h6Http.inject({method:'POST',url:`${path}/cancel`,
+   payload:{expectedVersion:8,correlationId:'h6_http_pickup_cancel_001'}});
+  assert.equal(cancelled.statusCode,200);
+  assert.equal(cancelled.json().state,'ready');
+  assert.equal(cancelled.json().taskVersion,9);
+  const durable=(await admin.query('SELECT state,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+   [line])).rows[0];
+  assert.equal(durable.state,'ready');
+  assert.equal(Number(durable.version),9);
+  const denied=await h6Http.inject({method:'POST',
+   url:`/api/v1/operations/order-lines/${line}/ready-correction`,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_denied_001'}});
+  assert.notEqual(denied.statusCode,200);
+ }finally{await h6Http.close();}
 
  const waiterEventsOne=await operations.readStaffEvents({afterCursor:0,limit:100,
   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'read_events',targetId:waiterId,
