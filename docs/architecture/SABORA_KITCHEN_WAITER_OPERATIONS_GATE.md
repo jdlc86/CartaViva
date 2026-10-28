@@ -765,3 +765,7 @@ El test `scripts/ci/h6-postgres17.test.mjs` abre un listener Fastify efímero ex
 ### Regresión de cursores SSE inválidos (29-10-2026)
 
 El test de transporte SSE H6 sobre PostgreSQL 17 desechable verifica ahora, además de reanudación monotónica con `Last-Event-ID`, el cierre del stream con evento `stream-error` cuando el cursor es negativo, decimal, no numérico o excede el rango admitido. Se prueba por `fetch` HTTP contra Fastify efímero en loopback, sin identidad JWT real ni navegador integrado H4/H6. Commit `263ff05700b77093e619a81fe018a0c23b95f46c`: Sabora CI `40785033621`, Bootstrap `40785033864` y visual smoke `40785033821`, todos SUCCESS. La integración conjunta Chromium H4/H6 con recogida y SSE autenticados permanece abierta y no se declara completada.
+
+### Gate de NOTIFY como aviso no confiable (29-10-2026)
+
+La regresión PostgreSQL 17 `scripts/ci/h6-postgres17.test.mjs` comprueba el `LISTEN` real con un pool SQL restringido y entrega de dos `pg_notify` desde el fixture aislado. Tras ambas notificaciones, el lector autorizado de outbox conserva exactamente los mismos eventos durables; los payloads arbitrarios `test-only-hint` y `fake-new-event` no generan datos operativos. El notifier libera la suscripción y conexión al terminar. Commit `d08ce93bfcf03cc391c9a0917f2357abca20bd76`: Sabora CI `40785713571`, Bootstrap `40785713517` y visual smoke `40785713374` SUCCESS. Esta prueba no sustituye el pendiente E2E único H4/H6 con JWT, recogida desde Chromium y SSE autenticado.
