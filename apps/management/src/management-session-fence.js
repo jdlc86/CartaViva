@@ -3,19 +3,24 @@
 export function createManagementSessionFence() {
   let active = null;
   let generation = 0;
+  const revokeOnce = (entry) => {
+    if (entry.revoked) return;
+    entry.revoked = true;
+    entry.gateway.revoke();
+  };
   return Object.freeze({
     replace(gateway) {
       if (!gateway || typeof gateway.revoke !== 'function') {
         throw Error('invalid_management_session_gateway');
       }
-      active?.gateway.revoke();
-      const entry = {gateway, generation: ++generation};
+      if (active) revokeOnce(active);
+      const entry = {gateway, generation: ++generation, revoked: false};
       active = entry;
       let disposed = false;
       return () => {
         if (disposed) return;
         disposed = true;
-        gateway.revoke();
+        revokeOnce(entry);
         if (active === entry) {
           active = null;
           generation++;
@@ -30,7 +35,7 @@ export function createManagementSessionFence() {
       const entry = active;
       active = null;
       generation++;
-      entry.gateway.revoke();
+      revokeOnce(entry);
     },
   });
 }
