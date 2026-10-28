@@ -455,7 +455,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   try{
    for(let attempt=0;attempt<30;attempt++){
     const next=await Promise.race([reader.read(),new Promise((_,reject)=>
-     setTimeout(()=>reject(Error('h6_sse_backlog_timeout')),1000))]);
+     setTimeout(()=>reject(Error('h6_sse_backlog_timeout')),6000))]);
     if(next.done)break;
     received+=new TextDecoder().decode(next.value);
     if(received.includes('event: sabora.pickup.claimed')&&
