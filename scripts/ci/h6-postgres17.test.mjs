@@ -409,6 +409,15 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const invalidScope=await fetch(sseUrl+'?unexpected=1');
   assert.equal(invalidScope.status,400);
   assert.equal((await invalidScope.json()).error,'invalid_event_scope');
+  for(const invalidCursor of ['-1','1.5','9999999999999999999999','abc']){
+   const invalidResponse=await fetch(sseUrl,{
+    headers:{accept:'text/event-stream','last-event-id':invalidCursor},
+    signal:AbortSignal.timeout(3000),
+   });
+   assert.equal(invalidResponse.status,200);
+   assert.ok((await invalidResponse.text()).includes('event: stream-error'));
+   assert.ok(invalidResponse.headers.get('content-type')?.startsWith('text/event-stream'));
+  }
   const response=await fetch(sseUrl,{signal:abortSse.signal,
    headers:{accept:'text/event-stream'}});
   assert.equal(response.status,200);
