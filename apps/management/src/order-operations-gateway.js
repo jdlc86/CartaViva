@@ -60,7 +60,7 @@ async function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={
 function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnectDelayMs) {
   if(typeof onEvent!=='function'||typeof onResync!=='function'||typeof onUnavailable!=='function')
     throw Error('invalid_order_event_subscription');
-  const abort=new AbortController();let cursor=0,timer=null;
+  const abort=new AbortController();let cursor=0,timer=null,activeReader=null;
   const run=async()=>{
     try{
       const response=await send('/api/v1/operations/events',{method:'GET',cache:'no-store',redirect:'error',
@@ -68,6 +68,8 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
       if(!response.ok||!String(response.headers.get('content-type')??'').toLowerCase().startsWith('text/event-stream')||!response.body)
        throw Error('invalid_event_stream');
       const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+      activeReader=reader;
+      if(abort.signal.aborted){void reader.cancel().catch(()=>{});return;}
       while(!abort.signal.aborted){
        const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});
        let boundary;
@@ -93,10 +95,16 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
       if(!abort.signal.aborted)throw Error('event_stream_ended');
     }catch{
       if(abort.signal.aborted)return;onUnavailable();timer=setTimeout(run,reconnectDelayMs);
+    }finally{
+      if(activeReader){const reader=activeReader;activeReader=null;
+        void reader.cancel().catch(()=>{});}
     }
   };
   void run();
-  return()=>{abort.abort();if(timer!==null)clearTimeout(timer);};
+  return()=>{abort.abort();if(timer!==null)clearTimeout(timer);
+    if(activeReader){const reader=activeReader;activeReader=null;
+      void reader.cancel().catch(()=>{});}
+  };
 }
 
 export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) {
