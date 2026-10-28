@@ -112,3 +112,27 @@ test('management logout closes event stream and forbids resubscription', async (
     onEvent(){},onResync(){},onUnavailable(){},
   }),/order_operations_auth_unavailable/);
 });
+
+test('revocation cancels an already-open SSE body reader even without fetch abort support', async () => {
+  let notifyStarted;
+  const started = new Promise(resolve => { notifyStarted = resolve; });
+  let canceled = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    fetchImpl: async (path) => {
+      assert.equal(path, '/api/v1/operations/events');
+      return new Response(new ReadableStream({
+        start() { notifyStarted(); },
+        cancel() { canceled++; },
+      }), {headers: {'Content-Type':'text/event-stream'}});
+    },
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent(){}, onResync(){}, onUnavailable(){},
+  });
+  await started;
+  gateway.revoke();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(canceled, 1);
+  unsubscribe();
+});
