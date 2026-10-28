@@ -42,17 +42,18 @@ function normalizeNotification(value, status) {
 
 function normalizePickup(value, status) {
   if (value === null) return null;
-  if (!plain(value) || !UUID.test(value.taskId) ||
+  const keys=['taskId','state','version','claimedDisplayId','claimedAt','updatedAt'];
+  if (!plain(value) || Reflect.ownKeys(value).length!==keys.length ||
+      !keys.every(key=>Object.hasOwn(value,key)) || !UUID.test(value.taskId) ||
       !['ready', 'claimed', 'corrected'].includes(value.state) ||
       !Number.isSafeInteger(value.version) || value.version < 1 || !iso(value.updatedAt) ||
-      (value.state === 'claimed' && (!UUID.test(value.claimedBy) ||
-        typeof value.claimedDisplayId !== 'string' ||
+      (value.state === 'claimed' && (typeof value.claimedDisplayId !== 'string' ||
         !/^.{2,4}-[0-9A-Z]{3}$/u.test(value.claimedDisplayId) || !iso(value.claimedAt))) ||
-      (value.state !== 'claimed' && (value.claimedBy !== null ||
-        value.claimedDisplayId !== null || value.claimedAt !== null)) ||
+      (value.state !== 'claimed' && (value.claimedDisplayId !== null || value.claimedAt !== null)) ||
       (value.state === 'corrected' && status !== 'preparing') ||
       (value.state !== 'corrected' && status !== 'ready')) throw Error('invalid_order_board');
-  return Object.freeze({...value});
+  return Object.freeze({taskId:value.taskId,state:value.state,version:value.version,
+    claimedDisplayId:value.claimedDisplayId,claimedAt:value.claimedAt,updatedAt:value.updatedAt});
 }
 
 export function normalizeOrderBoard(value) {

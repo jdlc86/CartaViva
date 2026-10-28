@@ -7,7 +7,7 @@ function pool(overrides = {}) {
   return {state, async connect() { return {
     async query(sql) {
       assert.match(sql, /session_user/);
-      assert.match(sql, /transition_staff_lifecycle_with_identity_candidate/);
+      assert.match(sql, /transition_staff_lifecycle_with_directory_candidate/);
       return {rows: [{
         current_role: 'staff_lifecycle_ci', session_role: 'staff_lifecycle_ci',
         superuser: false, bypass_rls: false, can_login: true, inherits_roles: false,
@@ -15,9 +15,9 @@ function pool(overrides = {}) {
         schema_usage: true, schema_create: false, database_create: false,
         lifecycle_execute: true, accessible_private_tables: 0,
         accessible_private_sequences: 0, accessible_private_definer_routines: 1,
-        lifecycle_is_definer: true, lifecycle_owner: 'sabora_staff_identity_fn_owner',
+        lifecycle_is_definer: true, lifecycle_owner: 'sabora_staff_directory_fn_owner',
         lifecycle_search_path_locked: true, lifecycle_owner_is_sealed: true,
-        lifecycle_owner_memberships: 0, forced_rls_lifecycle_tables: 8,
+        lifecycle_owner_memberships: 0, forced_rls_lifecycle_tables: 9,
         has_role_memberships: false, ...overrides,
       }]};
     }, release(error) { state.released.push(error); },

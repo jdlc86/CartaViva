@@ -29,6 +29,37 @@ const one=async promise=>{
     row.result===null||Array.isArray(row.result))throw Error('invalid_h6_sql_result');
  return Object.freeze(row.result);
 };
+const forbiddenIdentityKeys=new Set(['actorId','actorUserId','claimedBy','staffUserId','email',
+ 'givenName','familyName','fullName']);
+function publicPayload(value){
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid_h6_sql_result');
+ const result={};for(const [key,item] of Object.entries(value)){
+  if(!forbiddenIdentityKeys.has(key))result[key]=item;
+ }
+ return Object.freeze(result);
+}
+function publicEventBacklog(value){
+ if(!value||value.version!==1||!ROLES.has(value.role)||typeof value.resyncRequired!=='boolean'||
+    !Array.isArray(value.events))throw Error('invalid_h6_sql_result');
+ const events=value.events.map(event=>{
+  if(!event||typeof event!=='object'||Array.isArray(event)||!Number.isSafeInteger(Number(event.id))||
+     typeof event.type!=='string')throw Error('invalid_h6_sql_result');
+  return Object.freeze({id:Number(event.id),eventKey:event.eventKey,aggregateId:event.aggregateId,
+   aggregateVersion:event.aggregateVersion,type:event.type,payload:publicPayload(event.payload),
+   createdAt:event.createdAt});
+ });
+ return Object.freeze({version:1,role:value.role,resyncRequired:value.resyncRequired,
+  nextCursor:Number(value.nextCursor),minAvailableCursor:value.minAvailableCursor===null?null:Number(value.minAvailableCursor),
+  maxAvailableCursor:value.maxAvailableCursor===null?null:Number(value.maxAvailableCursor),events:Object.freeze(events)});
+}
+function publicPickup(value){
+ if(!value||value.version!==1||typeof value.outcome!=='string')throw Error('invalid_h6_sql_result');
+ const output={version:1,outcome:value.outcome};
+ for(const key of ['reason','orderId','lineId','pickupTaskId','state','taskVersion','claimedDisplayId',
+  'claimedAt','updatedAt','repeated'])
+  if(Object.hasOwn(value,key))output[key]=value[key];
+ return Object.freeze(output);
+}
 const capability=(value,action,targetId)=>{
  if(!value||typeof value!=='object'||Array.isArray(value)||value.action!==action||
     value.targetId?.toLowerCase()!==targetId.toLowerCase()||!UUID.test(value.actorId??'')||
@@ -90,13 +121,14 @@ export function createH6OperationsRepository({withTransaction}={}){
       !Number.isSafeInteger(expectedVersion)||expectedVersion<1)
     throw Error('invalid_pickup_operation');
    const values=pickupCapability(cap,action,lineId,expectedVersion);
-   return withTransaction(query=>one(query(MANAGE_PICKUP_TASK_H6_SQL,values)));
+   return withTransaction(async query=>publicPickup(await one(query(MANAGE_PICKUP_TASK_H6_SQL,values))));
   },
   readStaffEvents:({afterCursor=0,limit=100,capability:cap}={})=>{
    if(!Number.isSafeInteger(afterCursor)||afterCursor<0||!Number.isSafeInteger(limit)||limit<1||limit>100)
     throw Error('invalid_h6_event_cursor');
    const head=capability(cap,'read_events',cap.actorId);
-   return withTransaction(query=>one(query(READ_STAFF_EVENTS_H6_SQL,[...head,...tail(cap),afterCursor,limit])));
+   return withTransaction(async query=>publicEventBacklog(await one(query(READ_STAFF_EVENTS_H6_SQL,
+    [...head,...tail(cap),afterCursor,limit]))));
   }
  });
 }

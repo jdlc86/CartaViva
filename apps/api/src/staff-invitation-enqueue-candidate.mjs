@@ -14,7 +14,7 @@ export const STAFF_INVITATION_ENQUEUE_SQL = `SELECT *
 
 export function createStaffInvitationEnqueueCandidate({
   query,
-  lifecycleRepository = createStaffLifecycleRepository(),
+  lifecycleRepository = createStaffLifecycleRepository({directory: false}),
 } = {}) {
   if (typeof query !== 'function' ||
       typeof lifecycleRepository?.transition !== 'function') {

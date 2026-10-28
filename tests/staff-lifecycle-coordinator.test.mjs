@@ -47,6 +47,7 @@ test('admin invitation derives actor from verified context and hides delivery se
   assert.equal(capabilities[0].actorId, adminId);
   assert.equal(capabilities[0].enrollmentId, enrollmentId);
   assert.equal(capabilities[0].inviteeEmailHashHex, 'b'.repeat(64));
+  assert.equal(capabilities[0].inviteeEmail, 'person@example.com');
   assert.equal(result[STAFF_INVITATION_DELIVERY_TOKEN], token);
   assert.equal(JSON.stringify(result).includes(token), false);
   assert.deepEqual(Object.keys(result).includes('invitationToken'), false);

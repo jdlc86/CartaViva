@@ -56,7 +56,8 @@ test('pickup HTTP routes preserve version, conflict snapshot and approved role b
    return {version:1,outcome:input.correlationId.includes('conflict')?'conflict':'applied',
     reason:input.correlationId.includes('conflict')?'already_claimed':null,lineId:input.lineId,
     pickupTaskId:targetId,state:'claimed',taskVersion:input.expectedVersion+1,
-    claimedBy:actorId,claimedAt:'2026-10-27T12:00:00.000Z',updatedAt:'2026-10-27T12:00:00.000Z'};
+    claimedBy:actorId,claimedDisplayId:'JG-027',claimedAt:'2026-10-27T12:00:00.000Z',
+    updatedAt:'2026-10-27T12:00:00.000Z'};
   },
  }});
  await app.ready();
@@ -84,7 +85,8 @@ test('pickup HTTP routes preserve version, conflict snapshot and approved role b
   payload:{...body,correlationId:'pickup_conflict_http_001'}});
  assert.equal(conflict.statusCode,409);
  assert.equal(conflict.json().error,'pickup_claim_conflict');
- assert.equal(conflict.json().pickup.claimedBy,actorId);
+ assert.equal(conflict.json().pickup.claimedDisplayId,'JG-027');
+ assert.equal(Object.hasOwn(conflict.json().pickup,'claimedBy'),false);
  const malformed=await app.inject({method:'POST',
   url:`/api/v1/operations/order-lines/${targetId}/pickup-claim`,headers:{'x-test-role':'waiter'},
   payload:{expectedVersion:0,correlationId:'pickup_invalid_http_001'}});

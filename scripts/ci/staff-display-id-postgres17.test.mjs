@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash,createHmac,randomBytes,randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {createStaffLifecycleCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
+import {createStaffLifecycleDirectoryCapabilityIssuer} from '../../apps/api/src/staff-lifecycle-capability.mjs';
 import {createStaffCodeMaintenanceCapabilityIssuer} from '../../apps/api/src/staff-code-maintenance-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
@@ -24,17 +24,18 @@ const keyId='staff_display_id_key_035',secret=randomBytes(32);
 let lifecyclePool,maintenancePool,issueLifecycle,issueMaintenance,sequence=0;
 const digest=value=>createHash('sha256').update(value,'utf8').digest('hex');
 const identitySigningInput=value=>[
- 'sabora.staff-identity.v1',value.keyId,value.databaseRole,value.actorId,value.action,
+ 'sabora.staff-identity-directory.v1',value.keyId,value.databaseRole,value.actorId,value.action,
  value.enrollmentId,value.subjectUserId??'-',value.requestedRole??'-',
  value.inviteeEmailHashHex??'-',value.inviteTokenHashHex??'-',
  value.credentialEvidenceHashHex??'-',value.reason===null?'-':digest(value.reason),
  value.givenName===null?'-':digest(value.givenName),
- value.familyName===null?'-':digest(value.familyName),value.correlationId,
+ value.familyName===null?'-':digest(value.familyName),
+ value.inviteeEmail===null?'-':digest(value.inviteeEmail),value.correlationId,
  String(value.issuedAtMs),String(value.expiresAtMs),
 ].join('\n');
-const lifecycleSql=`SELECT * FROM sabora.transition_staff_lifecycle_with_identity_candidate(
+const lifecycleSql=`SELECT * FROM sabora.transition_staff_lifecycle_with_directory_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::uuid,$7::text,$8::text,$9::text,
- $10::text,$11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text)`;
+ $10::text,$11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text,$18::text)`;
 const maintenanceSql=`SELECT sabora.maintain_staff_employee_codes_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::boolean,$6::text,$7::text,$8::bigint,
  $9::bigint,$10::text) AS result`;
@@ -42,13 +43,15 @@ const maintenanceSql=`SELECT sabora.maintain_staff_employee_codes_authorized_can
 function lifecycleArgs(value){return [value.keyId,value.databaseRole,value.actorId,value.action,
  value.enrollmentId,value.subjectUserId,value.requestedRole,value.inviteeEmailHashHex,
  value.inviteTokenHashHex,value.credentialEvidenceHashHex,value.reason,value.correlationId,
- value.issuedAtMs,value.expiresAtMs,value.givenName,value.familyName,value.signatureHex];}
+ value.issuedAtMs,value.expiresAtMs,value.givenName,value.familyName,value.inviteeEmail,
+ value.signatureHex];}
 function lifecycleInput(value){return {actorId:value.actorId,action:value.action,
  enrollmentId:value.enrollmentId,subjectUserId:value.subjectUserId,
  requestedRole:value.requestedRole,inviteeEmailHashHex:value.inviteeEmailHashHex,
  inviteTokenHashHex:value.inviteTokenHashHex,
  credentialEvidenceHashHex:value.credentialEvidenceHashHex,reason:value.reason,
- givenName:value.givenName,familyName:value.familyName,correlationId:value.correlationId};}
+ givenName:value.givenName,familyName:value.familyName,inviteeEmail:value.inviteeEmail,
+ correlationId:value.correlationId};}
 function maintenanceArgs(value){return [value.keyId,value.databaseRole,value.actorId,value.action,
  value.confirmed,value.reason,value.correlationId,value.issuedAtMs,value.expiresAtMs,value.signatureHex];}
 function maintenanceSigningInput(value){return [
@@ -58,10 +61,11 @@ function maintenanceSigningInput(value){return [
 ].join('\n');}
 async function invite({givenName='Julia',familyName='García López',correlationId=null}={}){
  sequence++;const enrollmentId=randomUUID();const correlation=correlationId??`staff35_invite_${String(sequence).padStart(6,'0')}`;
+ const email=`staff35-${sequence}@example.invalid`;
  const capability=issueLifecycle({actorId:ownerId,action:'invite',enrollmentId,
   subjectUserId:null,requestedRole:'waiter',inviteeEmailHashHex:digest(`staff35-${sequence}@example.invalid`),
   inviteTokenHashHex:digest(`staff35-token-${sequence}`),credentialEvidenceHashHex:null,
-  reason:null,givenName,familyName,correlationId:correlation});
+  reason:null,givenName,familyName,inviteeEmail:email,correlationId:correlation});
  const parity=await admin.query(`SELECT encode(extensions.hmac(convert_to($1,'UTF8'),
   hmac_key,'sha256'),'hex') AS signature FROM sabora.staff_lifecycle_signing_keys
   WHERE key_id=$2`,[identitySigningInput(capability),keyId]);
@@ -81,8 +85,8 @@ test.before(async()=>{
   CREATE ROLE ${maintenanceRole} LOGIN PASSWORD '${maintenancePassword}'
   NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
   GRANT USAGE ON SCHEMA sabora TO ${lifecycleRole},${maintenanceRole};
-  GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_identity_candidate(
-   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
+  GRANT EXECUTE ON FUNCTION sabora.transition_staff_lifecycle_with_directory_candidate(
+   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text
   ) TO ${lifecycleRole};
   GRANT EXECUTE ON FUNCTION sabora.maintain_staff_employee_codes_authorized_candidate(
    text,text,uuid,text,boolean,text,text,bigint,bigint,text
@@ -96,7 +100,7 @@ test.before(async()=>{
   clock_timestamp()+interval '1 hour')`,[keyId,secret]);
  lifecyclePool=new Pool({connectionString:login(lifecycleRole,lifecyclePassword),max:5});
  maintenancePool=new Pool({connectionString:login(maintenanceRole,maintenancePassword),max:3});
- issueLifecycle=createStaffLifecycleCapabilityIssuer({keyId,secret,databaseRole:lifecycleRole});
+ issueLifecycle=createStaffLifecycleDirectoryCapabilityIssuer({keyId,secret,databaseRole:lifecycleRole});
  issueMaintenance=createStaffCodeMaintenanceCapabilityIssuer({keyId,secret,databaseRole:maintenanceRole});
 });
 test.after(async()=>{await Promise.allSettled([lifecyclePool?.end(),maintenancePool?.end()]);await admin.end();});
@@ -165,6 +169,7 @@ test('PG17 global maintenance is idempotent, audited and has no individual relea
  const revoke=issueLifecycle({actorId:ownerId,action:'revoke',enrollmentId:target.id,
   subjectUserId:null,requestedRole:null,inviteeEmailHashHex:null,inviteTokenHashHex:null,
   credentialEvidenceHashHex:null,reason:'Baja antes de activación',givenName:null,familyName:null,
+  inviteeEmail:null,
   correlationId:'staff35_revoke_001'});
  await lifecyclePool.query(lifecycleSql,lifecycleArgs(revoke));
  const preview=await maintain('preview','staff35_preview_001');
@@ -209,7 +214,8 @@ test('PG17 total exhaustion rejects the whole enrollment transaction without par
   enrollmentId:failedId,subjectUserId:null,requestedRole:'waiter',
   inviteeEmailHashHex:digest('staff35-exhausted@example.invalid'),
   inviteTokenHashHex:digest('staff35-exhausted-token'),credentialEvidenceHashHex:null,
-  reason:null,givenName:'Eva',familyName:'Sin Código',correlationId:'staff35_exhausted_001'});
+  reason:null,givenName:'Eva',familyName:'Sin Código',inviteeEmail:'exhausted@example.invalid',
+  correlationId:'staff35_exhausted_001'});
  await assert.rejects(lifecyclePool.query(lifecycleSql,lifecycleArgs(capability)),
   /staff_employee_codes_exhausted/);
  const after=(await admin.query(`SELECT

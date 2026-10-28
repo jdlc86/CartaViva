@@ -8,7 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {
   createStaffInviteeEmailHasher,
-  createStaffLifecycleCapabilityIssuer,
+  createStaffLifecycleDirectoryCapabilityIssuer,
 } from '../../apps/api/src/staff-lifecycle-capability.mjs';
 import {createVerifiedStaffLifecycleFromPool} from '../../apps/api/src/staff-lifecycle-composition.mjs';
 import {createStaffLifecycleHttpHandler} from '../../apps/api/src/staff-lifecycle-http-candidate.mjs';
@@ -58,10 +58,10 @@ let issueOperation;
 let sequence = 0;
 
 const lifecycleSql = `SELECT *
-  FROM sabora.transition_staff_lifecycle_with_identity_candidate(
+  FROM sabora.transition_staff_lifecycle_with_directory_candidate(
     $1::text,$2::text,$3::uuid,$4::text,$5::uuid,
     $6::uuid,$7::text,$8::text,$9::text,$10::text,
-    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text
+    $11::text,$12::text,$13::bigint,$14::bigint,$15::text,$16::text,$17::text,$18::text
   )`;
 const operationSql = `SELECT *
   FROM sabora.transition_order_line_authorized_candidate(
@@ -102,11 +102,12 @@ function lifecycleCapability({
   correlationId,
   givenName = action === 'invite' ? 'Persona' : null,
   familyName = action === 'invite' ? `Prueba ${correlationId}` : null,
+  inviteeEmail = action === 'invite' ? `${correlationId.toLowerCase()}@example.invalid` : null,
 }) {
   return issueLifecycle({
     actorId, action, enrollmentId, subjectUserId, requestedRole,
     inviteeEmailHashHex, inviteTokenHashHex, credentialEvidenceHashHex,
-    reason, givenName, familyName, correlationId,
+    reason, givenName, familyName, inviteeEmail, correlationId,
   });
 }
 
@@ -119,6 +120,7 @@ function lifecycleArgs(value, overrides = {}) {
     capability.inviteTokenHashHex, capability.credentialEvidenceHashHex,
     capability.reason, capability.correlationId, capability.issuedAtMs,
     capability.expiresAtMs, capability.givenName, capability.familyName,
+    capability.inviteeEmail,
     capability.signatureHex,
   ];
 }
@@ -260,8 +262,8 @@ test.before(async () => {
   await admin.query(`GRANT SELECT (user_id,role,state)
     ON sabora.staff_members TO ${readerRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
-    sabora.transition_staff_lifecycle_with_identity_candidate(
-      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
+    sabora.transition_staff_lifecycle_with_directory_candidate(
+      text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text
     ) TO ${lifecycleRole}`);
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_order_line_authorized_candidate(
@@ -291,7 +293,7 @@ test.before(async () => {
   lifecyclePool = makePool(lifecycleRole, 'sabora_ci_lifecycle_ephemeral');
   operationsPool = makePool(operationsRole, 'sabora_ci_revoked_ops_ephemeral');
   readerPool = makePool(readerRole, 'sabora_ci_staff_reader_ephemeral', 2);
-  issueLifecycle = createStaffLifecycleCapabilityIssuer({
+  issueLifecycle = createStaffLifecycleDirectoryCapabilityIssuer({
     keyId: lifecycleKey, secret: lifecycleSecret, databaseRole: lifecycleRole,
   });
   issueOperation = createOrderOperationCapabilityIssuer({
@@ -312,7 +314,7 @@ test('PG17 restricted lifecycle login exposes only the signed wrapper', async ()
   }), {role: lifecycleRole});
   const privileges = await admin.query(`SELECT
     has_function_privilege($1,
-      'sabora.transition_staff_lifecycle_with_identity_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text)',
+      'sabora.transition_staff_lifecycle_with_directory_candidate(text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text)',
       'EXECUTE') AS wrapper,
     has_table_privilege($1,'sabora.staff_enrollments','SELECT') AS enrollment_read,
     has_table_privilege($1,'sabora.staff_members','UPDATE') AS staff_update,
@@ -572,7 +574,7 @@ test('PG17 suspension rejects a capability that expires on the target membership
   await register(invitation, subjectId);
   await activate(invitation, subjectId);
 
-  const issueShortLifecycle = createStaffLifecycleCapabilityIssuer({
+  const issueShortLifecycle = createStaffLifecycleDirectoryCapabilityIssuer({
     keyId: lifecycleKey, secret: lifecycleSecret,
     databaseRole: lifecycleRole, ttlMs: 800,
   });
@@ -581,7 +583,7 @@ test('PG17 suspension rejects a capability that expires on the target membership
     subjectUserId: subjectId, requestedRole: null,
     inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: 'Expiración bajo lock',
-    givenName: null, familyName: null,
+    givenName: null, familyName: null, inviteeEmail: null,
     correlationId: `expire_suspend_${String(sequence).padStart(8, '0')}`,
   });
   const blocker = await admin.connect();
@@ -632,7 +634,7 @@ test('PG17 revocation rejects a signing key that expires on the target membershi
     VALUES ($1,decode($2,'hex'),clock_timestamp()-interval '1 minute',
       clock_timestamp()+interval '1200 milliseconds')
     RETURNING expires_at`, [expiringKeyId, expiringSecret.toString('hex')]);
-  const issueExpiringKeyLifecycle = createStaffLifecycleCapabilityIssuer({
+  const issueExpiringKeyLifecycle = createStaffLifecycleDirectoryCapabilityIssuer({
     keyId: expiringKeyId, secret: expiringSecret,
     databaseRole: lifecycleRole, ttlMs: 10_000,
   });
@@ -641,7 +643,7 @@ test('PG17 revocation rejects a signing key that expires on the target membershi
     subjectUserId: subjectId, requestedRole: null,
     inviteeEmailHashHex: null, inviteTokenHashHex: null,
     credentialEvidenceHashHex: null, reason: 'Clave expirada bajo lock',
-    givenName: null, familyName: null,
+    givenName: null, familyName: null, inviteeEmail: null,
     correlationId: `expire_revoke_${String(sequence).padStart(8, '0')}`,
   });
   const blocker = await admin.connect();
@@ -729,7 +731,7 @@ test('PG17 SQL impersonation, wrong role, GUC and SET ROLE cannot create authori
     [JSON.stringify({sub: ownerId, role: 'admin'})]);
   await assert.rejects(lifecyclePool.query(lifecycleSql, lifecycleArgs(forged, {
     actorId: rootId,
-  })), /invalid_staff_identity_capability/);
+  })), /invalid_staff_directory_write_capability/);
   const rootCapability = lifecycleCapability({
     actorId: rootId, action: 'revoke', enrollmentId: invitation.enrollmentId,
     subjectUserId: null, reason: 'ROOT no ordinario',

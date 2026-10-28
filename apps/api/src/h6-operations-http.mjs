@@ -4,6 +4,14 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.length&&
  keys.every(key=>Object.hasOwn(value,key));
+const publicPickup=result=>{
+ if(!plain(result)||result.version!==1||typeof result.outcome!=='string')
+  throw Error('invalid_h6_sql_result');
+ const value={version:1,outcome:result.outcome};
+ for(const key of ['reason','orderId','lineId','pickupTaskId','state','taskVersion','claimedDisplayId',
+  'claimedAt','updatedAt','repeated'])if(Object.hasOwn(result,key))value[key]=result[key];
+ return Object.freeze(value);
+};
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
 const FORBIDDEN=new Set(['h6_operations_forbidden','invalid_h6_staff_capability','h6_staff_action_forbidden',
  'incident_line_scope_forbidden','expired_h6_staff_capability','cash_refund_forbidden',
@@ -56,8 +64,9 @@ export function registerH6OperationsHttp(app,{forRoles,operations}={}){
  });
  const floor=forRoles(['admin','root','waiter']);
  const pickupReply=(reply,result)=>{
-  if(result?.outcome==='conflict')return reply.code(409).send({error:'pickup_claim_conflict',pickup:result});
-  return reply.code(200).send(result);
+  const value=publicPickup(result);
+  if(value.outcome==='conflict')return reply.code(409).send({error:'pickup_claim_conflict',pickup:value});
+  return reply.code(200).send(value);
  };
  const pickupRoute=(path,roles,action)=>app.post(path,{preHandler:roles,bodyLimit:2048},async(request,reply)=>{
   const body=request.body,lineId=request.params?.lineId;

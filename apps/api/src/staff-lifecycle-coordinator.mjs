@@ -1,4 +1,8 @@
-import {hashStaffInvitationToken, normalizeStaffName} from './staff-lifecycle-capability.mjs';
+import {
+  hashStaffInvitationToken,
+  normalizeStaffInviteeEmail,
+  normalizeStaffName,
+} from './staff-lifecycle-capability.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
@@ -102,6 +106,7 @@ export function createStaffLifecycleCoordinator({
       let normalizedReason = null;
       let givenName = null;
       let familyName = null;
+      let inviteeEmail = null;
       let deliveryToken = null;
       let correlationId;
 
@@ -110,7 +115,9 @@ export function createStaffLifecycleCoordinator({
             !ROLES.has(input.requestedRole)) throw Error('invalid_staff_lifecycle_request');
         enrollmentId = uuid();
         if (!UUID.test(enrollmentId)) throw Error('invalid_staff_lifecycle_uuid');
-        inviteeEmailHashHex = hashInviteeEmail(input.email);
+        try { inviteeEmail = normalizeStaffInviteeEmail(input.email); }
+        catch { throw Error('invalid_staff_lifecycle_request'); }
+        inviteeEmailHashHex = hashInviteeEmail(inviteeEmail);
         deliveryToken = issueInvitationToken();
         inviteTokenHashHex = hashStaffInvitationToken(deliveryToken);
         requestedRole = input.requestedRole;
@@ -190,6 +197,7 @@ export function createStaffLifecycleCoordinator({
         reason: normalizedReason,
         givenName,
         familyName,
+        inviteeEmail,
         correlationId,
       });
       const result = await withTransaction(async (query) =>

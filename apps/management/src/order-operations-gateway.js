@@ -4,9 +4,22 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION = /^[A-Za-z0-9_-]{8,128}$/;
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 const H6_EVENT=/^sabora\.[a-z0-9_.]{1,120}$/;
+const PICKUP_DISPLAY=/^.{2,4}-[0-9A-Z]{3}$/u;
+const PICKUP_KEYS=new Set(['version','outcome','reason','orderId','lineId','pickupTaskId','state',
+  'taskVersion','claimedDisplayId','claimedAt','updatedAt','repeated']);
 
 export class OrderOperationsGatewayError extends Error {
   constructor(code, details = null) { super(code); this.name = 'OrderOperationsGatewayError'; this.code = code; this.details = details; }
+}
+
+function normalizePickupMutation(value) {
+  if(!value||typeof value!=='object'||Array.isArray(value)||value.version!==1||
+     typeof value.outcome!=='string'||Reflect.ownKeys(value).some(key=>
+       typeof key!=='string'||!PICKUP_KEYS.has(key))||
+     (Object.hasOwn(value,'claimedDisplayId')&&value.claimedDisplayId!==null&&
+       !PICKUP_DISPLAY.test(value.claimedDisplayId)))throw new OrderOperationsGatewayError('invalid_response');
+  const result={};for(const key of PICKUP_KEYS)if(Object.hasOwn(value,key))result[key]=value[key];
+  return Object.freeze(result);
 }
 
 async function json(response) {
@@ -23,7 +36,8 @@ async function json(response) {
       'pickup_claim_conflict']);
     const code = body && typeof body === 'object' && !Array.isArray(body) && known.has(body.error)
       ? body.error : 'invalid_response';
-    throw new OrderOperationsGatewayError(code, code === 'pickup_claim_conflict' ? body.pickup : null);
+    throw new OrderOperationsGatewayError(code, code === 'pickup_claim_conflict'
+      ? normalizePickupMutation(body.pickup) : null);
   }
   return body;
 }
@@ -36,11 +50,11 @@ async function mutation(send,path,body) {
   return Object.freeze({...value});
 }
 
-function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={}) {
+async function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={}) {
   if(!UUID.test(lineId)||!Number.isSafeInteger(expectedVersion)||expectedVersion<1||
      !CORRELATION.test(correlationId))throw Error('invalid_pickup_operation');
-  return mutation(send,`/api/v1/operations/order-lines/${lineId}/${path}`,
-   {expectedVersion,correlationId});
+  return normalizePickupMutation(await mutation(send,
+   `/api/v1/operations/order-lines/${lineId}/${path}`,{expectedVersion,correlationId}));
 }
 
 function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnectDelayMs) {

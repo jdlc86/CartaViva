@@ -38,7 +38,7 @@ function board(status = 'ready') {
         acknowledgedAt: status === 'picked_up' ? '2026-10-24T10:06:00.000Z' : null,
       } : null,
       pickup: status === 'ready' ? {taskId: '50000000-0000-4000-8000-000000000005',
-        state: 'ready', version: 1, claimedBy: null, claimedDisplayId: null, claimedAt: null,
+        state: 'ready', version: 1, claimedDisplayId: null, claimedAt: null,
         updatedAt: '2026-10-24T10:05:00.000Z'} : null,
     }],
     nextCursor: null,
@@ -68,7 +68,7 @@ test('local action policy mirrors the documented kitchen and waiter transitions'
   assert.deepEqual(pickupTaskActions('kitchen','ready',board().items[0].pickup),
     [{action:'correct',label:'Corregir: Preparando'}]);
   assert.deepEqual(pickupTaskActions('waiter','ready',{...board().items[0].pickup,state:'claimed',
-    claimedBy:eventId,claimedDisplayId:'JG-027',claimedAt:'2026-10-24T10:06:00.000Z'}),
+    claimedDisplayId:'JG-027',claimedAt:'2026-10-24T10:06:00.000Z'}),
     [{action:'cancel',label:'Cancelo'}]);
   assert.equal(nextOrderLineAction('waiter', 'preparing'), null);
   assert.equal(nextOrderLineAction('kitchen', 'ready'), null);
@@ -168,6 +168,10 @@ test('H6 gateway parses a durable SSE frame and preserves restricted mutation bo
     calls.push({path,init});
     if(path==='/api/v1/operations/events')return new Response(stream,{status:200,
       headers:{'content-type':'text/event-stream; charset=utf-8'}});
+    if(path.endsWith('/pickup-claim'))return new Response(JSON.stringify({version:1,outcome:'claimed',
+      lineId,pickupTaskId:notificationId,state:'claimed',taskVersion:4,claimedDisplayId:'JG-027',
+      claimedAt:'2026-10-27T12:00:00.000Z',updatedAt:'2026-10-27T12:00:00.000Z',repeated:false}),
+      {status:200,headers:{'content-type':'application/json'}});
     return new Response(JSON.stringify({dispatchId:notificationId,state:'acknowledged',repeated:false}),
       {status:200,headers:{'content-type':'application/json'}});
   }});
@@ -189,13 +193,14 @@ test('H6 gateway parses a durable SSE frame and preserves restricted mutation bo
 
 test('pickup conflict preserves the confirmed responsible snapshot',async()=>{
  const pickup={version:1,outcome:'conflict',reason:'already_claimed',lineId,
-  pickupTaskId:notificationId,state:'claimed',taskVersion:2,claimedBy:eventId,
+  pickupTaskId:notificationId,state:'claimed',taskVersion:2,claimedDisplayId:'JG-027',
   claimedAt:'2026-10-24T10:06:00.000Z',updatedAt:'2026-10-24T10:06:00.000Z'};
  const gateway=createOrderOperationsGateway({send:async()=>new Response(JSON.stringify({
   error:'pickup_claim_conflict',pickup}),{status:409,headers:{'content-type':'application/json'}})});
  await assert.rejects(gateway.claimPickup({lineId,expectedVersion:1,
   correlationId:'ui_pickup_conflict_001'}),error=>error instanceof OrderOperationsGatewayError&&
-   error.code==='pickup_claim_conflict'&&error.details.claimedBy===eventId);
+   error.code==='pickup_claim_conflict'&&error.details.claimedDisplayId==='JG-027'&&
+   !Object.hasOwn(error.details,'claimedBy'));
 });
 
 test('kitchen UI preserves correlation for an uncertain transition retry and guards stale reads', () => {
