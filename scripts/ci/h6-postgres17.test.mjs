@@ -416,6 +416,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  // Real loopback HTTP SSE: the staff route streams the authorized durable
  // PG17 outbox backlog, not a fabricated browser fixture or mocked payload.
  const sseApp=Fastify({logger:false});
+ let sseLoadCalls=0;
+ const sseLoadResults=[];
  registerH6StaffEventStreamHttp(sseApp,{
   forRoles:roles=>async request=>{
    if(!roles.includes('waiter')){
@@ -424,7 +426,14 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    request.verifiedIdentity={userId:waiterId};
    request.verifiedStaff={userId:waiterId,role:'waiter'};
   },
-  events:operations,issueCapability:issueKitchen,
+  events:{readStaffEvents:async args=>{
+   sseLoadCalls++;
+   try{
+    const backlog=await operations.readStaffEvents(args);
+    sseLoadResults.push({count:backlog.events?.length,resync:backlog.resyncRequired});
+    return backlog;
+   }catch(error){sseLoadResults.push({error:String(error)});throw error;}
+  }},issueCapability:issueKitchen,
   subscribeCommitted:()=>()=>{},heartbeatMs:5000,
  });
  const abortSse=new AbortController();
@@ -460,7 +469,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   try{
    for(let attempt=0;attempt<30;attempt++){
     const next=await Promise.race([reader.read(),new Promise((_,reject)=>
-     setTimeout(()=>reject(Error('h6_sse_backlog_timeout; received='+JSON.stringify(received.slice(-700))+'; sqlEvents='+diagnosticBacklog.events.length)),6000))]);
+     setTimeout(()=>reject(Error('h6_sse_backlog_timeout; received='+JSON.stringify(received.slice(-700))+'; sqlEvents='+diagnosticBacklog.events.length+'; loads='+sseLoadCalls+'; results='+JSON.stringify(sseLoadResults))),6000))]);
     if(next.done)break;
     received+=new TextDecoder().decode(next.value);
     if(received.includes('event: sabora.pickup.claimed')&&
