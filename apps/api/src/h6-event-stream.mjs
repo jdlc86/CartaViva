@@ -54,7 +54,11 @@ function openStream(request,reply,{load,subscribeCommitted,heartbeatMs}){
   }finally{running=false;}
  };
  const unsubscribe=subscribeCommitted(()=>{void refresh();});
- // Recheck durable authorization even when no NOTIFY arrives: staff can be\n // revoked while the SSE connection is otherwise idle.\n const heartbeat=setInterval(()=>{\n  if(!closed){response.write(': keepalive\n\n');void refresh();}\n },heartbeatMs);
+ // Recheck durable authorization even when no NOTIFY arrives: staff can be
+ // revoked while the SSE connection is otherwise idle.
+ const heartbeat=setInterval(()=>{
+  if(!closed){response.write(': keepalive\\n\\n');void refresh();}
+ },heartbeatMs);
  heartbeat.unref?.();
  // Incoming request 'close' can fire after its headers/body finish, while
  // the hijacked SSE response remains active. Track the outgoing stream instead.
