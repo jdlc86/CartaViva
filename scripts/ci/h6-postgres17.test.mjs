@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {registerH6StaffEventStreamHttp} from '../../apps/api/src/h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
@@ -384,6 +385,48 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.claim_cancelled'));
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.ready_corrected'));
  }
+
+ // Real loopback HTTP SSE: the staff route streams the authorized durable
+ // PG17 outbox backlog, not a fabricated browser fixture or mocked payload.
+ const sseApp=Fastify({logger:false});
+ registerH6StaffEventStreamHttp(sseApp,{
+  forRoles:roles=>async request=>{
+   if(!roles.includes('waiter')){
+    const error=Error('test_role_denied');error.statusCode=403;throw error;
+   }
+   request.verifiedIdentity={userId:waiterId};
+   request.verifiedStaff={userId:waiterId,role:'waiter'};
+  },
+  events:operations,issueCapability:issueKitchen,
+  subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+ });
+ const abortSse=new AbortController();
+ try{
+  await sseApp.listen({host:'127.0.0.1',port:0});
+  const address=sseApp.server.address();
+  assert.ok(address&&typeof address==='object'&&address.port>0);
+  const sseUrl=`http://127.0.0.1:${address.port}/api/v1/operations/events`;
+  const response=await fetch(sseUrl,{signal:abortSse.signal,
+   headers:{accept:'text/event-stream'}});
+  assert.equal(response.status,200);
+  assert.match(response.headers.get('content-type')??'',/^text\\/event-stream/);
+  assert.equal(response.headers.get('cache-control'),'no-store, no-transform');
+  const reader=response.body.getReader();
+  let received='';
+  try{
+   for(let attempt=0;attempt<30;attempt++){
+    const next=await Promise.race([reader.read(),new Promise((_,reject)=>
+     setTimeout(()=>reject(Error('h6_sse_backlog_timeout')),1000))]);
+    if(next.done)break;
+    received+=new TextDecoder().decode(next.value);
+    if(received.includes('event: sabora.pickup.claimed')&&
+       received.includes('event: sabora.pickup.ready_corrected'))break;
+   }
+   assert.match(received,/event: sabora\\.pickup\\.claimed/);
+   assert.match(received,/event: sabora\\.pickup\\.ready_corrected/);
+   assert.match(received,/id: [0-9]+/);
+  }finally{abortSse.abort();await reader.cancel().catch(()=>{});}
+ }finally{abortSse.abort();await sseApp.close();}
 
  const sessionHash=hashCustomerSessionToken(customer.token);
  const backlog=await events.read({sessionHash,tableId,visitId:visit.visitId,
