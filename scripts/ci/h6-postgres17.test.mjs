@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
-import {registerH6StaffEventStreamHttp} from '../../apps/api/src/h6-event-stream.mjs';
+import {registerH6StaffEventStreamHttp,createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
@@ -385,6 +385,33 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.claim_cancelled'));
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.ready_corrected'));
  }
+
+ // Verify PostgreSQL LISTEN/NOTIFY is a wake-up hint only: notification
+ // delivery cannot manufacture a durable event or bypass SQL authorization.
+ const notifier=createPostgresH6OutboxNotifier({pool:operationsPool});
+ const actualNotifier=await notifier;
+ try{
+  let hints=0;
+  const unsubscribe=actualNotifier.subscribe(()=>{hints++;});
+  try{
+   await admin.query("SELECT pg_notify('sabora_h6_event_committed','test-only-hint')");
+   for(let attempt=0;attempt<50&&hints===0;attempt++)
+    await new Promise(resolve=>setTimeout(resolve,50));
+   assert.ok(hints>0,'PG17 LISTEN must deliver committed notification');
+   const before=await operations.readStaffEvents({afterCursor:0,limit:100,
+    capability:issueKitchen({actorId:waiterId,staffRole:'waiter',
+     action:'read_events',targetId:waiterId,correlationId:'h6_notify_read_001'})});
+   await admin.query("SELECT pg_notify('sabora_h6_event_committed','fake-new-event')");
+   for(let attempt=0;attempt<50&&hints<2;attempt++)
+    await new Promise(resolve=>setTimeout(resolve,50));
+   assert.ok(hints>=2);
+   const after=await operations.readStaffEvents({afterCursor:0,limit:100,
+    capability:issueKitchen({actorId:waiterId,staffRole:'waiter',
+     action:'read_events',targetId:waiterId,correlationId:'h6_notify_read_002'})});
+   assert.deepEqual(after.events,before.events,
+    'untrusted NOTIFY payload must not create or alter outbox events');
+  }finally{unsubscribe();}
+ }finally{await actualNotifier.close();}
 
  // Real loopback HTTP SSE: the staff route streams the authorized durable
  // PG17 outbox backlog, not a fabricated browser fixture or mocked payload.
