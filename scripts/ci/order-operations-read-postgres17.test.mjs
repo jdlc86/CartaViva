@@ -13,6 +13,7 @@ import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-ope
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
 import {createVerifiedOrderOperationsCandidate} from '../../apps/api/src/order-operations-candidate-app.mjs';
 import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 
 const url = process.env.SABORA_CI_PG_URL;
 const modulePath = process.env.SABORA_CI_PG_MODULE;
@@ -470,4 +471,46 @@ test('PG17 canonical customer confirmation reaches restricted kitchen and waiter
   assert.deepEqual(counts.rows[0], {
     orders: 1, attempts: 1, lines: 1, events: 3, notices: 1,
   });
+});
+
+test('PG17 management authenticated gateway traverses actual candidate HTTP and durable SQL', async () => {
+  const item = await directFixture(403);
+  let tokenReads = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => {
+      tokenReads++;
+      return bearer(kitchenId);
+    },
+    fetchImpl: async (path, options) => {
+      const headers = Object.fromEntries(new Headers(options.headers).entries());
+      const response = await app.inject({
+        method: options.method,
+        url: path,
+        headers,
+        payload: options.body,
+      });
+      return new Response(response.body, {
+        status: response.statusCode,
+        headers: {'content-type': response.headers['content-type'] ?? 'application/json'},
+      });
+    },
+  });
+  const board = await gateway.listBoard({status: 'confirmed', limit: 100});
+  assert.ok(board.items.some((line) => line.lineId === item.lineId));
+  const preparing = await gateway.transitionLine({
+    lineId: item.lineId, targetStatus: 'preparing',
+    correlationId: 'management_gateway_prepare_403',
+  });
+  assert.equal(preparing.currentStatus, 'preparing');
+  const ready = await gateway.transitionLine({
+    lineId: item.lineId, targetStatus: 'ready',
+    correlationId: 'management_gateway_ready_403',
+  });
+  assert.equal(ready.currentStatus, 'ready');
+  const history = await gateway.listHistory({orderId: item.orderId, limit: 100});
+  assert.deepEqual(history.events.map((event) => event.toStatus), ['preparing', 'ready']);
+  assert.equal(tokenReads, 4, 'every management operation requires a fresh access token');
+  const durable = await admin.query(
+    'SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
+  assert.equal(durable.rows[0].status, 'ready');
 });
