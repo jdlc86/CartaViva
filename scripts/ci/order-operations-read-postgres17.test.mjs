@@ -625,9 +625,9 @@ test('Chromium management PWA traverses signed Fastify candidate and disposable 
       await page.goto(origin + '/#comandas');
       await mount();
       await page.getByText('Plato H4').first().waitFor({timeout: 15000});
-      await page.getByRole('button', {name:'Iniciar preparación'}).click();
-      await page.getByRole('button', {name:'Marcar lista'}).waitFor();
-      await page.getByRole('button', {name:'Marcar lista'}).click();
+      await page.locator('.order-card').filter({hasText:'Mesa navegador real'}).getByRole('button', {name:'Iniciar preparación'}).click();
+      await page.locator('.order-card').filter({hasText:'Mesa navegador real'}).getByRole('button', {name:'Marcar lista'}).waitFor();
+      await page.locator('.order-card').filter({hasText:'Mesa navegador real'}).getByRole('button', {name:'Marcar lista'}).click();
       await page.getByText('Lista para recoger').first().waitFor();
       const durable = await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
       assert.equal(durable.rows[0].status, 'ready');
