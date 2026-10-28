@@ -679,3 +679,12 @@ antes de la petición, durante la adquisición de token y durante HTTP.
 No se conecta automáticamente un proveedor de identidad ni se
 habilitan las rutas en el servidor general. La revocación de UI no
 sustituye la revocación durable de personal en PostgreSQL.
+
+## Revocación del canal de eventos
+
+El gateway autenticado registra las suscripciones SSE activas y
+`revoke()` cierra cada una además de abortar HTTP. La suscripción
+rechaza una nueva apertura después de revocación y el cierre idempotente
+impide reconexiones de una sesión antigua. Hay regresión automatizada
+para cierre SSE y rechazo de resuscripción. El canal no se activa en
+la vista previa ni sustituye el control SQL de revocación del personal.
