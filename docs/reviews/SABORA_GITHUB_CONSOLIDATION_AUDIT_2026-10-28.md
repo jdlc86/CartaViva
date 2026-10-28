@@ -49,3 +49,11 @@ No se ha alterado el estado de los hilos de revisión, ni se han aplicado migrac
 - **Replay de invitación**: la migración calcula fingerprint estable para `invite` excluyendo el UUID nuevo y para `invite/resend` excluyendo el hash de token regenerado; consulta el ledger por actor/correlación antes de bloquear el enrollment regenerado, comprueba revocación y devuelve el enrollment original con `repeated=true`. El repositorio admite UUID original solo en replay de `invite`, y el coordinador no devuelve el token nuevo al detectar replay. **Mitigación presente en HEAD**; falta ejecutar la prueba de extremo a extremo con la configuración actual.
 
 **Balance de revisión estática:** cuatro hallazgos vigentes del PR #13 tienen correcciones identificables en HEAD. Ningún hilo se marca resuelto sin la evidencia de pruebas requerida.
+
+## Revisión de los cuatro hilos desactualizados del PR #13
+- **UUID original de invitación en replay**: `staff-lifecycle-repository.mjs` define `durableInviteReplay` y exceptúa únicamente `invite && repeated` de la igualdad con UUID regenerado. Mitigación visible.
+- **Escalada de escritura por columna**: `order-operations-identity-preflight.mjs` exige `NOT has_any_column_privilege(...,'INSERT'/'UPDATE'/'REFERENCES')` y valida que el lector solo tenga SELECT en tres columnas. Mitigación visible.
+- **Outbox de invitación en replay**: el SQL del ciclo devuelve enrollment durable, pero el fichero `staff_invitation_outbox_schema_pg17.sql` requiere revisar la función `transitionAndEnqueue` y la selección del job original. **Pendiente de prueba focalizada; no declarar cerrado**.
+- **Saltos de línea en ciphertext**: `staff_invitation_dispatch_envelope_pg17.sql` elimina CR/LF de la codificación base64 de nonce, ciphertext y tag antes de producir Base64URL. Mitigación visible.
+
+**Estado de auditoría de ocho hilos**: siete con mitigación visible en los fragmentos inspeccionados; uno (outbox replay) pendiente de trazado completo. No se han ejecutado nuevas pruebas PostgreSQL locales en esta sesión; GitHub Actions del commit `1e546239f9e2c2e5eb8d48b77cdbfce8a36ac027` se encontraban en progreso al consultarlas. No se resuelven conversaciones hasta disponer de evidencia suficiente.
