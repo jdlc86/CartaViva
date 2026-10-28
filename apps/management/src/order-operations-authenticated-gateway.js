@@ -8,7 +8,9 @@ export function createAuthenticatedOrderOperationsGateway({
   if (typeof getAccessToken !== 'function' || typeof fetchImpl !== 'function') {
     throw Error('invalid_order_operations_auth_transport');
   }
+  const controller = new AbortController();
   const send = async (path, options = {}) => {
+    if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
     if (typeof path !== 'string' || !path.startsWith('/api/v1/operations/') ||
         path.startsWith('//') || path.includes('\\') ||
         /[\r\n]/.test(path)) {
@@ -19,12 +21,27 @@ export function createAuthenticatedOrderOperationsGateway({
         token.length > 16384 || /[^A-Za-z0-9._~-]/.test(token)) {
       throw Error('order_operations_auth_unavailable');
     }
+    if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
     const headers = new Headers(options.headers);
     headers.set('Authorization', `Bearer ${token}`);
-    return fetchImpl(path, {
-      ...options, credentials: 'omit', redirect: 'error',
-      cache: 'no-store', headers,
-    });
+    const requestController = new AbortController();
+    const abort = () => requestController.abort();
+    controller.signal.addEventListener('abort', abort, {once: true});
+    options.signal?.addEventListener('abort', abort, {once: true});
+    if (controller.signal.aborted || options.signal?.aborted) abort();
+    try {
+      if (requestController.signal.aborted) throw Error('order_operations_auth_unavailable');
+      return await fetchImpl(path, {
+        ...options, credentials: 'omit', redirect: 'error',
+        cache: 'no-store', headers, signal: requestController.signal,
+      });
+    } finally {
+      controller.signal.removeEventListener('abort', abort);
+      options.signal?.removeEventListener('abort', abort);
+    }
   };
-  return createOrderOperationsGateway({send, reconnectDelayMs});
+  return Object.freeze({
+    ...createOrderOperationsGateway({send, reconnectDelayMs}),
+    revoke() { controller.abort(); },
+  });
 }
