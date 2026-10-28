@@ -649,7 +649,7 @@ test('Chromium management PWA traverses signed Fastify candidate and disposable 
       }, {lineId:item.lineId, token:bearer(waiterId)});
       assert.equal(forbidden, 403);
       await waiterCard.getByRole('button',{name:'Ver historial'}).click();
-      await page.getByText('En preparación').first().waitFor();
+      await page.getByRole('region',{name:'Historial de comanda'}).getByText('Pendiente → En preparación · kitchen').waitFor();
       assert.ok(calls.some(call => call.method === 'POST'));
       assert.ok(calls.every(call => call.auth?.startsWith('Bearer ')));
       assert.ok(calls.some(call => call.path.includes('/history')));
