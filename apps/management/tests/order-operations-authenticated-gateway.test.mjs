@@ -94,7 +94,7 @@ test('management logout closes event stream and forbids resubscription', async (
         options.signal.addEventListener('abort',()=>{aborted=true;},{once:true});
         started();
         return new Response(new ReadableStream({
-          start() {},
+          start(controller) { controller.close(); },
           cancel() {},
         }),{headers:{'Content-Type':'text/event-stream'}});
       }
