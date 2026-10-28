@@ -654,3 +654,14 @@ mismo elemento. La vista previa predeterminada permanece sin gateway.
 No se proporciona todavía ese host autenticado ni se importa la fábrica
 SQL candidata desde el servidor general. Este punto de montaje es
 infraestructura de integración, **no activación productiva**.
+
+## Cobertura vertical de roles y recogida
+
+El harness PG17 comprueba además dos gateways autenticados separados,
+cocina y camarero, con JWT reales sobre el candidato Fastify. Verifica
+denegación de preparar por camarero, preparación y aviso durable por cocina,
+repetición idempotente sin doble efecto, lectura de listo por sala,
+denegación de recogida por cocina, recogida por camarero, historial de tres
+eventos y una sola notificación durable. Las credenciales y la base de datos
+son exclusivamente efímeras de CI. La conformidad depende de CI verde;
+la prueba de navegador con identidad real sigue siendo puerta pendiente.
