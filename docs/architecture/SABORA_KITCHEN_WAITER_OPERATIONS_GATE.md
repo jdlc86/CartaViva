@@ -614,3 +614,19 @@ SUCCESS del SHA correspondiente, este cambio permanece sin validar.
 Esta fábrica no se importa desde `server.mjs`, no abre listener y no
 habilita rutas en producción. La aprobación de activación operativa,
 credenciales y despliegue siguen siendo hitos independientes.
+
+## Transporte autenticado opt-in de la PWA de gestión
+
+`apps/management/src/order-operations-authenticated-gateway.js` incorpora
+un adaptador de transporte que exige un proveedor de token de acceso confiable,
+obtiene una credencial nueva para cada petición, evita cookies, redirecciones
+y caché, y rechaza la petición antes de hacer red cuando falta identidad.
+La suite `apps/management/tests/order-operations-authenticated-gateway.test.mjs`
+verifica el rechazo sin credenciales y el encabezado Bearer. El adaptador
+no lee localStorage ni sessionStorage, no incluye credenciales en el bundle
+y no se conecta automáticamente desde `main.tsx`.
+
+**No se ha habilitado el canal operativo:** falta la integración de sesión
+real de gestión con este proveedor, el bootstrap aislado del servidor y la
+prueba E2E navegador→API→PG17. Esta entrega no certifica todavía el hito
+funcional completo ni autoriza un despliegue.
