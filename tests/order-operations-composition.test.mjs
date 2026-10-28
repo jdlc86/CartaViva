@@ -56,6 +56,7 @@ test('verified composition rejects equal declared SQL roles before querying', as
     async connect() { events.push('connect'); throw Error('unexpected_connection'); },
   });
   await assert.rejects(registerVerifiedOrderOperationsFromPools({
+    hasRoute() { return false; },
     get() { events.push('get'); }, post() { events.push('post'); },
   }, {
     staffPool: makePool('sabora_staff_reader', 'postgres://staff'),
