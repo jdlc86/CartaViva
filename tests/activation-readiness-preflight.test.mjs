@@ -47,3 +47,22 @@ test('activation preflight rejects absent runbook', () => {
   contents.delete('/fake/docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md');
   assert.equal(run(contents).ok, false);
 });
+
+test('activation preflight rejects path traversal and absolute artifact paths', () => {
+  for (const invalid of ['../fleetia/secrets.env', '/etc/passwd']) {
+    const result = inspectReadiness({
+      root: '/fake', files: [invalid],
+      exists: () => true, read: () => 'Fleetia autorización',
+    });
+    assert.match(result.errors.join(' '), /Invalid artifact path/);
+  }
+});
+test('activation preflight rejects all unsafe runbook command families', () => {
+  for (const command of ['docker compose down', 'docker volume prune',
+    'systemctl restart docker', 'supabase db push', 'supabase migration up']) {
+    const contents = fixtures();
+    contents.set('/fake/docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md',
+      `Fleetia autorización\n\`\`\`bash\n${command}\n\`\`\``);
+    assert.match(run(contents).errors.join(' '), /Unsafe executable example/, command);
+  }
+});
