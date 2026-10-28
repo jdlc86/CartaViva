@@ -45,6 +45,31 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Both the idempotency ledger and the event ledger must retain FORCE RLS.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('order_line_transition_requests'),
+      ('order_line_events')
+    ) AS expected(relation_name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pg_class relation
+      JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'sabora'
+        AND relation.relname = expected.relation_name
+        AND relation.relrowsecurity
+        AND relation.relforcerowsecurity
+    )
+  ) THEN
+    RAISE EXCEPTION 'order operations ledger FORCE RLS missing';
+  END IF;
+
+  FOREACH v_role IN ARRAY ARRAY['public','anon','authenticated'] LOOP
+    IF has_table_privilege(v_role,
+      'sabora.order_line_events','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+      RAISE EXCEPTION 'unexpected order operation event privilege for %', v_role;
+    END IF;
+  END LOOP;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conrelid = 'sabora.order_line_transition_requests'::regclass
