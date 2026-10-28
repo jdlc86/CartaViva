@@ -153,6 +153,9 @@ export function ManagementApp({
 
 // Explicit trusted-host bootstrap. Never infer authorization from URL, local
 // storage or build-time flags; a missing identity provider leaves the PWA inert.
+let previewRoot: ReturnType<typeof createRoot> | null = null;
+let previewElement: HTMLElement | null = null;
+
 export function mountAuthenticatedManagementApp({
   element,
   getAccessToken,
@@ -168,7 +171,7 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl,
   });
-  const root = createRoot(element);
+  const root = previewRoot && previewElement === element ? previewRoot : createRoot(element);
   root.render(<React.StrictMode><ManagementApp operationsGateway={operationsGateway}/></React.StrictMode>);
   return () => root.unmount();
 }
@@ -176,7 +179,9 @@ export function mountAuthenticatedManagementApp({
 // Default preview intentionally has no operational credentials or transport.
 if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
-  if (element) createRoot(element).render(
-    <React.StrictMode><ManagementApp/></React.StrictMode>,
-  );
+  if (element) {
+    previewElement = element;
+    previewRoot = createRoot(element);
+    previewRoot.render(<React.StrictMode><ManagementApp/></React.StrictMode>);
+  }
 }
