@@ -26,7 +26,9 @@ function fixture(){
     (role==='waiter'&&['ready','picked_up'].includes(state.status));
    return {version:1,role,items:visible&&(!status||status===state.status)?
     [{orderId:order,lineId:line,status:state.status,
-      notification:state.notification}]:[],nextCursor:null};
+      notification:state.notification,tableNumber:1,customerLabel:'Comensal QA',
+       confirmedAt:'2026-10-29T12:00:00.000Z',grouping:'first',lineNumber:1,
+       category:'main',name:'Plato QA',quantity:1}]:[],nextCursor:null};
   },
   async transitionLine(_query,{role,lineId,targetStatus,correlationId,capability}){
    if(lineId!==line||capability.actorId!==actor||
@@ -46,8 +48,10 @@ function fixture(){
     throw Error('invalid_line_transition');
    const previousStatus=state.status;
    state.status=targetStatus;
-   if(targetStatus==='ready')state.notification={id:notif,acknowledgedAt:null};
-   if(targetStatus==='picked_up')state.notification={id:notif,acknowledgedAt:'2026-10-25T12:00:00.000Z'};
+   if(targetStatus==='ready')state.notification={id:notif,
+    createdAt:'2026-10-29T12:01:00.000Z',acknowledgedAt:null};
+   if(targetStatus==='picked_up')state.notification={id:notif,
+    createdAt:'2026-10-29T12:01:00.000Z',acknowledgedAt:'2026-10-29T12:02:00.000Z'};
    state.transitions++;
    const result={version:1,orderId:order,lineId:line,previousStatus,
     currentStatus:targetStatus,repeated:false,
@@ -57,8 +61,10 @@ function fixture(){
    return result;
   },
   async listHistory(_query,{role}){
-   return {version:1,role,events:state.events.map(e=>({
-    fromStatus:e.result.previousStatus,toStatus:e.targetStatus
+   return {version:1,role,orderId:order,events:state.events.map((e,i)=>({
+    eventId:e.result.eventId,lineId:line,lineNumber:1,name:'Plato QA',
+    fromStatus:e.result.previousStatus,toStatus:e.targetStatus,
+    occurredAt:'2026-10-29T12:02:00.000Z',actorRole:e.targetStatus==='picked_up'?'waiter':'kitchen'
    }))};
   }
  };
