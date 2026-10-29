@@ -40,7 +40,7 @@ docker exec "$container" createdb -U postgres sabora_schema_recovery_ci
 docker exec "$container" pg_restore -U postgres -d sabora_schema_recovery_ci --exit-on-error /tmp/sabora-schema-only-recovery.dump
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d sabora_schema_recovery_ci -Atqc "select case when count(*)=1 and min(payload)='committed' then 'ok' else 'bad' end from sabora.p2_recovery_fixture" | grep -Fx ok
 # Verify exact schema object inventory and forced-RLS table inventory.
-for db in postgres sabora_recovery_ci; do
+for db in postgres sabora_recovery_ci sabora_schema_recovery_ci; do
  docker exec "$container" psql -X -U postgres -d "$db" -Atqc "
   select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relkind in ('r','p','v','m','S');"
@@ -49,13 +49,13 @@ for db in postgres sabora_recovery_ci; do
   where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;"
 done > /tmp/sabora-recovery-counts-${GITHUB_RUN_ID}-$$
 mapfile -t counts < /tmp/sabora-recovery-counts-${GITHUB_RUN_ID}-$$
-[[ "${#counts[@]}" -eq 4 && "${counts[0]}" = "${counts[2]}" && "${counts[1]}" = "${counts[3]}" && "${counts[1]}" -gt 0 ]] || {
+[[ "${#counts[@]}" -eq 6 && "${counts[0]}" = "${counts[2]}" && "${counts[0]}" = "${counts[4]}" && "${counts[1]}" = "${counts[3]}" && "${counts[1]}" = "${counts[5]}" && "${counts[1]}" -gt 0 ]] || {
  echo 'recovery_schema_or_rls_mismatch' >&2; exit 1;
 }
 rm -f /tmp/sabora-recovery-counts-${GITHUB_RUN_ID}-$$
 # Verify owners, ACLs, RLS policy definitions and grants, not only counts.
 # Roles are cluster-wide in this isolated container and therefore present for both DBs.
-for db in postgres sabora_recovery_ci; do
+for db in postgres sabora_recovery_ci sabora_schema_recovery_ci; do
  docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -Atqc "
   select md5(coalesce(string_agg(
     n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' ||
@@ -88,18 +88,20 @@ for db in postgres sabora_recovery_ci; do
   from pg_policies where schemaname='sabora';"
 done > "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 mapfile -t security < "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
-[[ "${#security[@]}" -eq 4 && "${security[0]}" = "${security[2]}" && "${security[1]}" = "${security[3]}" ]] || {
+[[ "${#security[@]}" -eq 6 && "${security[0]}" = "${security[2]}" && "${security[0]}" = "${security[4]}" && "${security[1]}" = "${security[3]}" && "${security[1]}" = "${security[5]}" ]] || {
  printf 'recovery_security_fingerprints: %s\\n' "${security[*]}" >&2
- for db in postgres sabora_recovery_ci; do
+ for db in postgres sabora_recovery_ci sabora_schema_recovery_ci; do
   docker exec "$container" psql -X -U postgres -d "$db" -Atqc "select c.relname || ':' || c.relkind::text || ':' || pg_get_userbyid(c.relowner) || ':' || coalesce(c.relacl::text,'NULL') from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' order by c.relname,c.relkind" > "${RUNNER_TEMP}/sabora-objects-${db}-${GITHUB_RUN_ID}-$"
  done
- diff -u "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_recovery_ci-${GITHUB_RUN_ID}-$" >&2 || true
- rm -f "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_recovery_ci-${GITHUB_RUN_ID}-$"
+ for restored_db in sabora_recovery_ci sabora_schema_recovery_ci; do
+  diff -u "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-${restored_db}-${GITHUB_RUN_ID}-$" >&2 || true
+ done
+ rm -f "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_recovery_ci-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_schema_recovery_ci-${GITHUB_RUN_ID}-$"
  echo 'recovery_owner_acl_or_policy_mismatch' >&2; exit 1;
 }
 rm -f "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 # Check committed fixture, failed write absence and preserved uniqueness.
-for db in postgres sabora_recovery_ci; do
+for db in postgres sabora_recovery_ci sabora_schema_recovery_ci; do
  docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -Atqc "select case when count(*)=1 and min(id)=1 and min(payload)='committed' then 'ok' else 'bad' end from sabora.p2_recovery_fixture" | grep -Fx ok
  docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" <<'SQL'
 do $do$
