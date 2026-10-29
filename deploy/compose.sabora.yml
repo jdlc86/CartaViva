@@ -5,11 +5,13 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
-    restart: unless-stopped
+    # Candidate is never auto-started or auto-restarted. Activation remains manual.
+    restart: "no"
     environment:
-      HOST: 0.0.0.0
-      PORT: 4100
       NODE_ENV: production
+      SABORA_API_HOST: 0.0.0.0
+      SABORA_API_PORT: 4100
+      SABORA_API_MODE: health-only
     ports:
       - '127.0.0.1:4100:4100'
     networks: [sabora_private]
@@ -35,3 +37,4 @@ services:
 networks:
   sabora_private:
     driver: bridge
+    internal: true

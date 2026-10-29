@@ -34,6 +34,8 @@ jobs:
         run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
       - name: Build
         run: pnpm build
+      - name: Gate production configuration, isolation and frontend artifacts
+        run: node scripts/ci/production-config-secrets-gate.mjs
       - name: Validate Docker Compose
         run: docker compose -f deploy/compose.sabora.yml config --quiet
       - name: Build isolated Sabora API image
@@ -44,7 +46,8 @@ jobs:
           docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
       - name: Exercise live API health inside isolated container
         run: |
-          id=$(docker run -d --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges sabora-api:ci)
+          id=$(docker run -d --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+            -e SABORA_API_HOST=127.0.0.1 -e SABORA_API_PORT=4100 -e SABORA_API_MODE=health-only sabora-api:ci)
           trap 'docker rm -f "$id" >/dev/null 2>&1 || true' EXIT
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             if docker exec "$id" node -e "fetch('http://127.0.0.1:4100/health').then(async r => { const body=await r.json(); process.exit(r.ok && body.service==='sabora-api' ? 0 : 1) }).catch(()=>process.exit(1))"; then

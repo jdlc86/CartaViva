@@ -5,9 +5,12 @@ export type InitialTableQr=Readonly<{status:'valid';credential:TableQrCredential
  Readonly<{status:'invalid'}>|null;
 
 const pathIsQr=(pathname:string)=>pathname.startsWith('/qr/');
+const RESTAURANT_CODE=/^[A-Z0-9][A-Z0-9_-]{2,31}$/;
 
 export function configuredRestaurantCode():string{
- return String(import.meta.env.VITE_SABORA_RESTAURANT_CODE??'');
+ const value=import.meta.env.VITE_SABORA_RESTAURANT_CODE;
+ if(typeof value!=='string'||!RESTAURANT_CODE.test(value))throw Error('invalid_client_public_config');
+ return value;
 }
 
 export function parseScannedTableQr(payload:string):TableQrCredential{
