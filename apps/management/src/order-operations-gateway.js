@@ -72,6 +72,9 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
       if(abort.signal.aborted){void reader.cancel().catch(()=>{});return;}
       while(!abort.signal.aborted){
        const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});
+       // EventSource permits CRLF framing; normalize after each chunk so a CRLF
+       // split across transport reads is also recognized as an SSE delimiter.
+       buffer=buffer.replaceAll('\r\n','\n');
        let boundary;
        while((boundary=buffer.indexOf('\n\n'))>=0){
         const block=buffer.slice(0,boundary).replaceAll('\r','');buffer=buffer.slice(boundary+2);
