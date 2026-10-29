@@ -184,6 +184,34 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [pwaConfirmed.orderId])).rows[0].n,1);
+  // Revocation must fence the exact same PWA session immediately, even if a
+  // previously confirmed request key, QR and displayed quote are replayed.
+  const revokedCookie=browserCookie;
+  assert.equal(await pwa.logout(),true);
+  assert.equal(typeof revokedCookie,'string');
+  const afterLogout=await pwa.session().then(()=>null,error=>error);
+  assert.ok(afterLogout);
+  assert.ok([401,403].includes(afterLogout.status),
+   'revoked PWA cookie must not authorize a new session');
+  const afterLogoutVisit=await pwa.authorizeVisit({tableId,qrToken})
+   .then(()=>null,error=>error);
+  assert.ok(afterLogoutVisit);
+  assert.ok([401,403].includes(afterLogoutVisit.status));
+  const afterLogoutReplay=await pwa.confirm(pwaOrder).then(()=>null,error=>error);
+  assert.ok(afterLogoutReplay);
+  assert.ok([401,403].includes(afterLogoutReplay.status),
+   'replay cannot bypass revoked session authentication');
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [pwaConfirmed.orderId])).rows[0].n,1,
+   'revocation does not delete a committed order or duplicate its lines');
+  // An old cookie remains invalid even when a new customer registers.
+  const replacement=await pwa.register({alias:'PWA replacement',company:null});
+  assert.notEqual(replacement.publicId,profile.publicId);
+  assert.equal((await pwa.session()).publicId,replacement.publicId);
+  const staleCookie=await customerHttp.inject({method:'GET',
+   url:'/api/v1/customer/session',headers:{cookie:revokedCookie}});
+  assert.ok([401,403].includes(staleCookie.statusCode));
   const crossOrigin=await customerHttp.inject({method:'POST',
    url:'/api/v1/customer/orders/confirm',
    headers:{...headers,origin:'https://attacker.example'},payload:httpOrder});
