@@ -103,3 +103,15 @@ Los cuatro workflows del HEAD ensayado terminaron SUCCESS:
 - Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40857318829
 
 **Alcance y límites:** el ensayo usa una migración sintética con transacciones explícitas; no es un motor de migraciones productivo, no registra automáticamente los checksums de las migraciones reales, no demuestra reanudación de SQL con operaciones no transaccionales ni autoriza repetir migraciones reales ya confirmadas. La restauración actual es una copia de la base desechable completa, no exclusivamente del esquema Sabora. Sigue pendiente inventario normativo por migración, análisis de dependencias, riesgos de bloqueo y reversibilidad, y recuperación selectiva segura con cobertura completa de permisos. **P2 abierto; sin autorización operativa.**
+
+## Restauración selectiva del esquema Sabora — SHA 5ff74bd84c533c51f0bdfc1d0bef308c1a6ae200
+
+Se agregó un segundo ensayo a `scripts/ci/postgres-recovery-smoke.sh`: `pg_dump -Fc --schema=sabora` desde la base desechable, creación de otra base desechable en el mismo contenedor PostgreSQL 17 y `pg_restore --exit-on-error`, comprobando el dato confirmado del fixture. Se mantiene en paralelo la restauración completa anterior, con sus verificaciones de propietarios, permisos efectivos de los roles enumerados, RLS, políticas e integridad.
+
+**Evidencia:** cuatro workflows SUCCESS del SHA:
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40858749692
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40858749681
+- Gestión visual: https://github.com/jdlc86/CartaViva/actions/runs/40858750042
+- Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40858749732
+
+**Límite:** este ensayo selectivo solo verifica la restauración y una fila del fixture; todavía no compara exhaustivamente los permisos, políticas, funciones, extensiones y dependencias externas en la base selectiva. Los roles globales son los mismos en ambas bases del contenedor. No debe extrapolarse a recuperación de un clúster distinto ni a PITR. **P2 permanece abierto.**
