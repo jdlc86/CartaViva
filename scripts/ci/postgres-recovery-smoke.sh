@@ -223,7 +223,7 @@ select 'triggers:'||md5(coalesce(string_agg(
  c.relname||':'||t.tgname||':'||t.tgenabled::text||':'||pg_get_triggerdef(t.oid,true),E'\n' order by c.relname,t.tgname),''))
 from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
 where n.nspname='sabora' and not t.tgisinternal;
-create temporary table p2_counts(name text primary key,row_count bigint not null) on commit drop;
+create temporary table p2_counts(name text primary key,row_count bigint not null);
 do $do$ declare item record; total bigint; begin
  for item in select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
              where n.nspname='sabora' and c.relkind in ('r','p') order by c.relname loop
