@@ -123,3 +123,11 @@ Commit `ed7f9fbdd7edca16d23fce8a5fb370bd4c4137ef`: ampliada la aceptación sobre
 **4/4 workflows SUCCESS:** Sabora CI `40911835833`, bootstrap `40911835919`, cliente `40911835938`, gestión `40911835836`.
 
 El transporte H4 autenticado contra el mismo pedido ya está validado con fixture de personal en la evidencia previa; **falta la verificación conjunta del JWT real con principals SQL H4 restringidos y navegación Playwright de ambas PWA**. No hay GO operativo ni despliegue; Bloque 1/5 permanece abierto.
+
+## Factoría H3+H4 conjunta: prueba de arranque positivo (29-oct)
+
+Commits `8612fd38f6c92d228664a817e5b85901b91d815e` y corrección de aserción `af8d9ff2baaca605df466515602b1565e9351e40`: ampliado `apps/api/src/restaurant-flow-candidate-app.test.mjs` para **ejercitar el camino exitoso** de `createVerifiedRestaurantFlowCandidate`, no solamente fallos de preflight. Se simulan respuestas de inspección SQL de los cinco principals diferenciados y se comprueba el montaje conjunto de 10 rutas (health, ready, cinco endpoints cliente y tres de operaciones), readiness 200, protección de operaciones anónimas, rechazo de confirmación sin cookie y abortar ante error de identidad H4 después de inspeccionar H3. No se alteró la factoría de producción.
+
+El primer CI falló por comparar número de consultas SQL con número de releases de conexión: el preflight cliente ejecuta varias consultas por conexión. Corregida la aserción para verificar que las conexiones se liberan sin exigir igualdad con el número de consultas. **4/4 SUCCESS en SHA `af8d9ff2`**: CI `40913164566`, bootstrap `40913164582`, cliente `40913164554`, gestión `40913164615`.
+
+**Límite:** esta prueba positiva utiliza resultados de inspección SQL simulados; los tests PostgreSQL 17 desechables de H3/H4 se ejecutan por separado. Falta un arranque de factoría conjunta con cinco principals PG17 reales y la certificación browser de ambas PWA. Bloque 1/5 abierto; no GO/despliegue.
