@@ -57,7 +57,7 @@ function openStream(request,reply,{load,subscribeCommitted,heartbeatMs}){
  // Recheck durable authorization even when no NOTIFY arrives: staff can be
  // revoked while the SSE connection is otherwise idle.
  const heartbeat=setInterval(()=>{
-  if(!closed){response.write(': keepalive\\n\\n');void refresh();}
+  if(!closed){response.write(': keepalive\n\n');void refresh();}
  },heartbeatMs);
  heartbeat.unref?.();
  // Incoming request 'close' can fire after its headers/body finish, while
