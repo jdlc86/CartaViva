@@ -52,9 +52,9 @@ rm -f /tmp/sabora-recovery-counts-${GITHUB_RUN_ID}-$$
 for db in postgres sabora_recovery_ci; do
  docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -Atqc "
   select md5(coalesce(string_agg(
-    n.nspname || '.' || c.relname || ':' || c.relkind || ':' ||
+    n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' ||
     pg_get_userbyid(c.relowner) || ':' || coalesce(c.relacl::text,'NULL') ||
-    ':' || c.relrowsecurity || ':' || c.relforcerowsecurity,
+    ':' || c.relrowsecurity::text || ':' || c.relforcerowsecurity::text,
     E'\\n' order by n.nspname,c.relname,c.relkind),'')) 
   from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora';"
