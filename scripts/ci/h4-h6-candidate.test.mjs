@@ -77,3 +77,12 @@ test('integrated H4/H6 never registers H6 when H4 cryptographic configuration is
   /invalid_auth_config/);
  assert.equal(opened,0,'invalid H4 issuer must abort before any SQL preflight or H6 notifier');
 });
+
+test('integrated H4/H6 refuses H6 shadow authentication before SQL',async()=>{
+ for(const key of ['issuer','getTrustedKeys','verify','staffPool','staffRole','observe']){
+  const a=h4(),b=h6();
+  b[key]=key==='staffPool'?pool():()=>true;
+  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+   /invalid_h4_h6_staff_auth_override/);
+ }
+});
