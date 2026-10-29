@@ -30,9 +30,10 @@ const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
 export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerFlow,stripe,
  customerPool,providerPool,operationsPool,notifierPool=operationsPool,
  expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin,issueStaffCapability,
- clock}={}){
+ clock,eventHeartbeatMs=15_000}={}){
  if(!app||!cookieAuth||typeof forRoles!=='function'||!customerFlow||!stripe||
-    typeof issueStaffCapability!=='function'||!notifierPool||typeof notifierPool.connect!=='function')
+    typeof issueStaffCapability!=='function'||!notifierPool||typeof notifierPool.connect!=='function'||
+    !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
   throw Error('invalid_h6_candidate_composition');
  await assertH6SqlCapabilities({customerPool,providerPool,operationsPool,
   expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin});
@@ -54,9 +55,11 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  try{
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
   registerH6OperationsHttp(app,{forRoles,operations});
-  registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscribeCommitted:notifier.subscribe});
+  registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscribeCommitted:notifier.subscribe,
+   heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles,events:operationsRepository,
-   issueCapability:issueStaffCapability,subscribeCommitted:notifier.subscribe});
+   issueCapability:issueStaffCapability,subscribeCommitted:notifier.subscribe,
+   heartbeatMs:eventHeartbeatMs});
  }catch(error){await notifier.close();throw error;}
  return Object.freeze({provider,payments,operations,close:()=>notifier.close()});
 }
