@@ -26,6 +26,12 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
   throw Error('invalid_h4_h6_candidate_isolation');
  const app=Fastify({logger:false,trustProxy:false});
  let h6Registration;
+ let h6Closed=false;
+ const closeH6=async()=>{
+  if(h6Closed||!h6Registration)return;
+  h6Closed=true;
+  await h6Registration.close();
+ };
  try {
   // H6 is deliberately given the same cryptographic staff configuration
   // as H4. A caller cannot inject a permissive test-only H6 role hook.
@@ -35,12 +41,12 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
   });
   await registerVerifiedRestrictedOrderOperationsFromPools(app,h4);
   h6Registration=await registerH6CandidateHttp(app,{...h6,forRoles});
-  app.addHook('onClose',async()=>{await h6Registration.close();});
+  app.addHook('onClose',closeH6);
   await app.ready();
   return app;
  }catch(error){
-  try{await h6Registration?.close();}catch{}
   try{await app.close();}catch{}
+  try{await closeH6();}catch{}
   throw error;
  }
 }
