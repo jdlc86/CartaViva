@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {randomBytes} from 'node:crypto';
+import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
+import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createRestrictedCustomerRegistration,REGISTER_CUSTOMER_SQL} from '../../apps/api/src/customer-production-registration.mjs';
@@ -134,6 +138,57 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   (SELECT count(*)::integer FROM sabora.customer_order_attempt_batches b WHERE b.order_id=o.id) AS attempts
   FROM sabora.orders o WHERE o.id=$1`,[concurrent[0].orderId]);
  assert.deepEqual(persisted.rows,[{grouping:'first',lines:2,attempts:1}]);
+ // Cross-domain PG17 acceptance: H3-confirmed lines must be actionable by
+ // H4 kitchen and sala without re-seeding or synthesizing another order.
+ const signingKeyId='ci_h3_h4_shared_order_key_971001';
+ const signingSecret=randomBytes(32);
+ const kitchenId='ca710000-0000-4000-8000-000000000011';
+ const waiterId='ca710000-0000-4000-8000-000000000012';
+ await admin.query(`INSERT INTO sabora.order_operation_signing_keys
+   (key_id,hmac_key,not_before,expires_at)
+   VALUES ($1,decode($2,'hex'),clock_timestamp()-interval '1 minute',
+    clock_timestamp()+interval '1 hour')`,[signingKeyId,signingSecret.toString('hex')]);
+ await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+   VALUES ($1,'kitchen','active'),($2,'waiter','active')`,[kitchenId,waiterId]);
+ const operations=createOrderOperationsCoordinator({
+   withTransaction:createPostgresTransaction({pool:admin}),
+   issueTransitionCapability:createOrderOperationCapabilityIssuer({
+     keyId:signingKeyId,secret:signingSecret,databaseRole:'postgres'
+   })
+ });
+ const kitchen={verifiedIdentity:{userId:kitchenId},
+   verifiedStaff:{userId:kitchenId,role:'kitchen'}};
+ const waiter={verifiedIdentity:{userId:waiterId},
+   verifiedStaff:{userId:waiterId,role:'waiter'}};
+ const confirmedLines=await admin.query(
+   'SELECT id FROM sabora.order_lines WHERE order_id=$1 ORDER BY line_number',
+   [concurrent[0].orderId]);
+ assert.equal(confirmedLines.rows.length,2);
+ const lineId=confirmedLines.rows[0].id;
+ const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
+ assert.ok(kitchenBoard.items.some(item=>item.lineId===lineId),
+   'H3-confirmed order must be visible to H4 kitchen');
+ const preparing=await operations.transitionLine(kitchen,{
+   lineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
+ assert.equal(preparing.repeated,false);
+ const ready=await operations.transitionLine(kitchen,{
+   lineId,targetStatus:'ready',correlationId:'h3_h4_ready_971001'});
+ assert.equal(ready.repeated,false);
+ assert.ok(ready.notificationId);
+ const salaBoard=await operations.listBoard(waiter,{status:'ready',limit:100,cursor:null});
+ assert.ok(salaBoard.items.some(item=>item.lineId===lineId),
+   'H4 sala must see the same H3-confirmed line');
+ const pickup=await operations.transitionLine(waiter,{
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+ assert.equal(pickup.notificationId,ready.notificationId);
+ const replay=await operations.transitionLine(waiter,{
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+ assert.equal(replay.repeated,true);
+ const finalLine=await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]);
+ assert.equal(finalLine.rows[0].status,'picked_up');
+ const history=await operations.listHistory(waiter,{orderId:concurrent[0].orderId,limit:100});
+ assert.ok(history);
+
 
  // Same idempotency key with different content is not a replay.
  await assert.rejects(flow.confirm({...request,lines:[request.lines[0]]}),
