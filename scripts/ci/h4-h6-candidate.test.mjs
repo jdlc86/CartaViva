@@ -74,6 +74,6 @@ test('integrated H4/H6 never registers H6 when H4 cryptographic configuration is
  const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),
   cookieAuth:{},customerFlow:{},stripe:{},issueStaffCapability:()=>({})};
  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
-  /invalid_order_operations_auth_config/);
+  /invalid_auth_config/);
  assert.equal(opened,0,'invalid H4 issuer must abort before any SQL preflight or H6 notifier');
 });
