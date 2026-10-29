@@ -53,7 +53,22 @@ for db in postgres sabora_recovery_ci; do
  docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -Atqc "
   select md5(coalesce(string_agg(
     n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' ||
-    pg_get_userbyid(c.relowner) || ':' || coalesce((select string_agg(pg_get_userbyid(a.grantor)||'>'||pg_get_userbyid(a.grantee)||':'||a.privilege_type||':'||a.is_grantable::text,',' order by a.grantor,a.grantee,a.privilege_type,a.is_grantable) from aclexplode(case when c.relkind in ('r','p','v','m','S','f') then coalesce(c.relacl,acldefault(case when c.relkind='p' then 'r'::\"char\" when c.relkind='m' then 'r'::\"char\" else c.relkind end,c.relowner)) else null::aclitem[] end) a),'NONE') ||
+    pg_get_userbyid(c.relowner) || ':' || coalesce((select string_agg(
+      rol.rolname || ':' ||
+      case when c.relkind='S' then
+        has_sequence_privilege(rol.oid,c.oid,'USAGE')::text || ':' ||
+        has_sequence_privilege(rol.oid,c.oid,'SELECT')::text || ':' ||
+        has_sequence_privilege(rol.oid,c.oid,'UPDATE')::text
+      else
+        has_table_privilege(rol.oid,c.oid,'SELECT')::text || ':' ||
+        has_table_privilege(rol.oid,c.oid,'INSERT')::text || ':' ||
+        has_table_privilege(rol.oid,c.oid,'UPDATE')::text || ':' ||
+        has_table_privilege(rol.oid,c.oid,'DELETE')::text || ':' ||
+        has_table_privilege(rol.oid,c.oid,'REFERENCES')::text || ':' ||
+        has_table_privilege(rol.oid,c.oid,'TRIGGER')::text
+      end,',' order by rol.rolname)
+      from pg_roles rol where c.relkind in ('r','p','v','m','S','f')
+      and rol.rolname in ('postgres','anon','authenticated','sabora_h6_fn_owner')),'NONE') ||
     ':' || c.relrowsecurity::text || ':' || c.relforcerowsecurity::text,
     E'\\n' order by n.nspname,c.relname,c.relkind),'')) 
   from pg_class c join pg_namespace n on n.oid=c.relnamespace
