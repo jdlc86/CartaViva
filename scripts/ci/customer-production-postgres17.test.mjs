@@ -241,6 +241,17 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   const staleCookie=await customerHttp.inject({method:'GET',
    url:'/api/v1/customer/session',headers:{cookie:revokedCookie}});
   assert.ok([401,403].includes(staleCookie.statusCode));
+  // A stolen pre-logout cookie cannot mutate a persisted order even after
+  // another customer obtains a fresh authenticated session.
+  const staleOrder=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',
+   headers:{...originHeaders,cookie:revokedCookie},
+   payload:{...pwaOrder,requestKey:'stale_cookie_confirm_971001'}});
+  assert.ok([401,403].includes(staleOrder.statusCode),staleOrder.body);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [pwaConfirmed.orderId])).rows[0].n,1);
+
   const crossOrigin=await customerHttp.inject({method:'POST',
    url:'/api/v1/customer/orders/confirm',
    headers:{...headers,origin:'https://attacker.example'},payload:httpOrder});
