@@ -145,3 +145,11 @@ SHA `75f0c4534ab8e22cfd951debeb75a51c7a1827c8`: **4/4 SUCCESS** tras esperas she
 ### Aceptación de confirmaciones simultáneas desde el transporte PWA cliente
 
 En `538637a43b55a28664487111a9bd1746a420ed85` se añadieron tres confirmaciones concurrentes mediante `createCustomerFlowTransport().confirm()` contra Fastify y PG17 desechable, verificando un único pedido, un `confirmed`, dos `replayed`, una sola línea persistida y 409 ante reutilización incompatible de la clave sin mutación adicional. El árbol integrado corregido `75f0c453` superó **4/4 workflows** (IDs consignados arriba). Este hito valida concurrencia/idempotencia HTTP/PG17, no navegador real ni JWT staff conjunto. Bloque 1/5 abierto.
+
+## H3/H4 PG17: aislamiento de credenciales entre PWA (29-oct, tarde)
+
+La aceptación integrada `scripts/ci/customer-production-postgres17.test.mjs` ejecuta ambos transportes reales (cliente y gestión) contra Fastify y el mismo pedido PostgreSQL 17 desechable. Se amplió con pruebas negativas que exigen HTTP 403 al intentar modificar una línea confirmada con una cookie de cliente falsificada, un bearer de personal falsificado o un bearer de camarero acompañado de una cabecera que pretende suplantar a cocina. Verifica que la línea permanece en estado `confirmed`; añade una comprobación de reutilización incompatible de la correlación de recogida sin alterar `picked_up`.
+
+La primera CI de `aa04eb56a3daa92f8dec05486917fd767df98088` detectó un error de ámbito de la variable de prueba `revokedCookie`. Se sustituyó por un valor de cookie adversarial autónomo y se relanzaron todas las comprobaciones. **SHA validado `d913f324beedf62df18d725fbf893f355e7c543a`: 4/4 SUCCESS** (CI `40916777198`, bootstrap `40916777254`, cliente `40916777291`, gestión `40916777229`).
+
+La identidad del personal en este test HTTP es un **fixture aislado**, no verificación JWT real; esta última y los principals SQL restringidos tienen pruebas separadas. No declarar el piloto cerrado hasta probar la composición conjunta con autenticación criptográfica real, navegadores de ambas PWA y arranque operativo seguro. Sin despliegue, merge ni contacto con Fleetia, VPS o Supabase operativo.
