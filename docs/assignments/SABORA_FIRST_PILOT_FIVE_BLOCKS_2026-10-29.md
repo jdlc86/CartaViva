@@ -115,3 +115,11 @@ SHA `a7040d4a2368bf9ab41e3d8bc601e291838c4e6d`: se amplió `scripts/ci/customer-
 SHA `53e2ec3d08fa4d54d384b9e443a06e14a228d265`: se corrigió la brecha de la prueba de integración. Antes, la PWA cliente confirmaba un pedido y el transporte de gestión H4 procesaba una línea de otro pedido confirmado por el harness. Ahora `scripts/ci/customer-production-postgres17.test.mjs` captura el `orderId` emitido por el **transporte real** `apps/client/src/customer-flow-transport.ts` y el **transporte real** `apps/management/src/order-operations-authenticated-gateway.js` usa la línea SQL de ese mismo `orderId` para cocina (preparing, ready) y sala (picked_up, replay, historial). Se valida el recorrido con Fastify.inject, PostgreSQL 17 desechable y notificación H4. El token de personal del HTTP H4 es fixture de pruebas; la validación criptográfica real de staff JWT se cubre en suites independientes, por lo que **no** se certifica una sesión navegador real de las dos PWA ni un bootstrap operativo.
 
 **4/4 SUCCESS**: Sabora CI `40910631899`, bootstrap `40910631980`, cliente `40910631911`, gestión `40910631920`. Bloque 1/5 permanece abierto por activación segura y certificación completa de la interfaz; Bloque 2/5 tiene demostrada la continuidad del pedido en ambos transportes y PG17, no la totalidad de sus flujos.
+
+## Cierre de sesión y revocación sobre el recorrido PWA cliente → H3 → PG17 (29-oct, 17:26 CET)
+
+Commit `ed7f9fbdd7edca16d23fce8a5fb370bd4c4137ef`: ampliada la aceptación sobre PostgreSQL 17 desechable y Fastify real. El transporte PWA confirma y reenvía una orden; luego cierra sesión y comprueba que la cookie revocada no permite recuperar sesión, autorizar visita ni reenviar confirmación, sin borrar ni duplicar la línea persistida. Una nueva alta de comensal obtiene identidad distinta y no rehabilita la cookie antigua. No se modificó el contrato de producción.
+
+**4/4 workflows SUCCESS:** Sabora CI `40911835833`, bootstrap `40911835919`, cliente `40911835938`, gestión `40911835836`.
+
+El transporte H4 autenticado contra el mismo pedido ya está validado con fixture de personal en la evidencia previa; **falta la verificación conjunta del JWT real con principals SQL H4 restringidos y navegación Playwright de ambas PWA**. No hay GO operativo ni despliegue; Bloque 1/5 permanece abierto.
