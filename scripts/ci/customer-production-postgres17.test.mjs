@@ -100,7 +100,7 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
 
  // HTTP acceptance on the same restricted PG17 principals: real registration
  // sets an HttpOnly cookie, then the client visits a QR, quotes and confirms.
- const Fastify=require('../../apps/api/node_modules/fastify');
+ const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
  const customerHttp=Fastify({logger:false,trustProxy:false});
  try {
   await registerVerifiedCustomerProductionApp(customerHttp,{
