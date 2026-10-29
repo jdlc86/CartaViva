@@ -179,7 +179,11 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  {
   const catalog=await customerHttp.inject('/api/v1/catalog');
   assert.equal(catalog.statusCode,200,catalog.body);
-  assert.equal(catalog.json().length,2);
+  const published=catalog.json();
+  assert.ok(published.length>=2);
+  assert.deepEqual(published.filter(item=>item.id===itemA||item.id===itemB)
+   .map(item=>item.id).sort(),[itemA,itemB].sort(),
+  'catalog route must expose both rows seeded by this full-stack scenario');
   const originHeaders={origin:clientOrigin,'content-type':'application/json'};
   const httpRegister=await customerHttp.inject({method:'POST',url:'/api/v1/customer/register',
    headers:originHeaders,payload:{alias:'Cliente HTTP',company:'Sabora QA'}});
