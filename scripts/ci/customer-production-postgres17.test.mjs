@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
+import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
@@ -96,6 +97,57 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
   VALUES ($1,$2,1,1,$2,clock_timestamp()),($3,$4,1,1,$4,clock_timestamp())`,
   [itemA,snapshotA,itemB,snapshotB]);
+
+ // HTTP acceptance on the same restricted PG17 principals: real registration
+ // sets an HttpOnly cookie, then the client visits a QR, quotes and confirms.
+ const Fastify=require('../../apps/api/node_modules/fastify');
+ const customerHttp=Fastify({logger:false,trustProxy:false});
+ try {
+  await registerVerifiedCustomerProductionApp(customerHttp,{
+   registrationPool,sessionPool,flowPool,allowedOrigin:'https://sabora.example',secretKey,
+   expectedRegistrationLogin:'sabora_customer_registration_ci',
+   expectedSessionLogin:'sabora_customer_session_ci',
+   expectedFlowLogin:'sabora_customer_flow_ci'
+  });
+  const originHeaders={origin:'https://sabora.example','content-type':'application/json'};
+  const httpRegister=await customerHttp.inject({method:'POST',url:'/api/v1/customer/register',
+   headers:originHeaders,payload:{alias:'Cliente HTTP',company:'Sabora QA'}});
+  assert.equal(httpRegister.statusCode,201,httpRegister.body);
+  assert.equal(httpRegister.body.includes('token'),false,'session token must remain HttpOnly');
+  const cookie=httpRegister.headers['set-cookie'].split(';')[0];
+  assert.match(cookie,/^__Secure-sabora_customer=/);
+  const headers={...originHeaders,cookie};
+  const session=await customerHttp.inject({method:'GET',url:'/api/v1/customer/session',
+   headers:{cookie}});
+  assert.equal(session.statusCode,200,session.body);
+  const httpVisit=await customerHttp.inject({method:'POST',url:'/api/v1/customer/visits',
+   headers,payload:{tableId,qrToken}});
+  assert.equal(httpVisit.statusCode,201,httpVisit.body);
+  const visitBody=httpVisit.json();
+  const httpQuote=await customerHttp.inject({method:'POST',url:'/api/v1/customer/quotes',
+   headers,payload:{tableId,qrToken,visitId:visitBody.visitId,basketId:visitBody.basketId,
+    lines:[{itemId:itemA,selection,quantity:1}]}});
+  assert.equal(httpQuote.statusCode,201,httpQuote.body);
+  const quoteBody=httpQuote.json();
+  const httpOrder={tableId,qrToken,visitId:visitBody.visitId,basketId:visitBody.basketId,
+   requestKey:'http_customer_request_971001',
+   lines:[{quoteId:quoteBody.lines[0].quoteId,itemId:itemA,selection,quantity:1}]};
+  const httpConfirmed=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',headers,payload:httpOrder});
+  assert.equal(httpConfirmed.statusCode,201,httpConfirmed.body);
+  const httpReplay=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',headers,payload:httpOrder});
+  assert.equal(httpReplay.statusCode,200,httpReplay.body);
+  assert.equal(httpReplay.json().orderId,httpConfirmed.json().orderId);
+  const httpPersisted=await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [httpConfirmed.json().orderId]);
+  assert.equal(httpPersisted.rows[0].n,1);
+  const crossOrigin=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',
+   headers:{...headers,origin:'https://attacker.example'},payload:httpOrder});
+  assert.equal(crossOrigin.statusCode,403);
+ } finally {await customerHttp.close();}
 
  const registrationTransaction=createRoleScopedPostgresTransaction({pool:registrationPool,
   role:'sabora_customer_registration_runtime',allowedSql:new Set([REGISTER_CUSTOMER_SQL])});
