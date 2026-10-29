@@ -772,7 +772,7 @@ test('management SSE gateway accepts fragmented CRLF event frames', {timeout: 50
  const {createOrderOperationsGateway}=await import('../../apps/management/src/order-operations-gateway.js');
  const event={eventKey:'test-pickup',aggregateId:'a1000000-0000-4000-8000-000000000001',
   aggregateVersion:1,payload:{state:'claimed'},createdAt:'2026-10-29T00:00:00.000Z'};
- const frame='id: 1\\r\\nevent: sabora.pickup.claimed\\r\\ndata: '+JSON.stringify(event)+'\\r\\n\\r\\n';
+ const frame='id: 1\r\nevent: sabora.pickup.claimed\r\ndata: '+JSON.stringify(event)+'\r\n\r\n';
  const pieces=[frame.slice(0,8),frame.slice(8,13),frame.slice(13,-3),frame.slice(-3)];
  const body=new ReadableStream({start(controller){
   for(const piece of pieces)controller.enqueue(new TextEncoder().encode(piece));
