@@ -12,7 +12,7 @@ La tabla se actualiza después de cada bloque. `PASS` acredita únicamente códi
 | --- | --- | --- | --- | --- | --- |
 | 1. Aislamiento | PASS | `8f9f4aacd5134de09ce5e0ba42dec768f31609f2` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40874075723), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40874075712), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40874075862), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40874075711) | 1.047 tests; Compose, imagen, health y gates aislados | Inspección material y capacidad del VPS no autorizadas |
 | 2. Seguridad operativa | PASS | `f3fdeb70c0e46036283b1b586f763d583af8d363` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40875878228), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40875878834), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40875878219), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40875878879) | 1.050 tests; inventario, fail-closed, principales separados, lifecycle y artefactos sin credenciales | Secret manager y provisión operativa no autorizados |
-| 3. Recuperación y continuidad | IN_PROGRESS | Pendiente de publicación | Pendiente | Carga/locks PG17, fallo de archivo/restore, métricas y contrato Storage/PITR | RTO/RPO y restore gestionado requieren entorno autorizado |
+| 3. Recuperación y continuidad | PASS | `0bd5e3e6775b5b30e81000d81adb7f3c8e0098ed` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40877722171), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40877722095), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40877721933), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40877722197) | 10.000 filas; locks, corrupción, restore interrumpido y segundo clúster PG17 PASS dos veces | RTO/RPO y restore gestionado requieren entorno autorizado |
 | 4. Validación funcional integral | NOT_STARTED | — | — | — | — |
 | 5. Auditoría y cierre | NOT_STARTED | — | — | — | — |
 
@@ -32,8 +32,17 @@ Validación local: `npm run check` PASS con 1.050 pruebas, builds de API, client
 
 **Siguiente bloque:** recuperación y continuidad Sabora-only, cargas/locks representativos, medición reproducible y límites explícitos de Storage/PITR.
 
-## Bloque 3 — alcance implementado antes de CI
+## Bloque 3 — cierre validado
 
 El ensayo P2 se amplía con 10.000 filas deterministas, contención real y recuperación posterior, rechazo de archivo truncado, descarte y recreación de un destino parcialmente restaurado, fingerprints de contenido en cuatro restores y un segundo clúster PG17 sin red. El gate mantiene `productionRto`/`productionRpo` sin afirmar y bloquea nuevas dependencias Storage no inventariadas. Las métricas CI son evidencia del fixture, no extrapolación productiva.
+
+Validación local: `npm run check` PASS con 1.054 pruebas y builds de API, cliente y gestión. Validación remota: cuatro workflows PASS. Las dos ejecuciones independientes del ensayo PostgreSQL 17 produjeron:
+
+- CI principal: 10.000 filas, lock observado en 561ms, dump 624ms, restores locales 4.183ms, restore en clúster limpio 911ms y total 13.364ms.
+- Bootstrap: 10.000 filas, lock observado en 542ms, dump 397ms, restores locales 3.185ms, restore en clúster limpio 681ms y total 10.832ms.
+
+Ambas quedaron por debajo del presupuesto CI de 180.000ms. Estos tiempos solo caracterizan el fixture desechable; no establecen RTO/RPO operativo.
+
+**Siguiente bloque:** validación funcional integral de los flujos aprobados cliente/gestión, estados adversos, offline y revocaciones sin activar rutas.
 
 Retomar desde el último SHA remoto y el primer bloque que no figure `PASS`.
