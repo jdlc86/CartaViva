@@ -69,3 +69,11 @@ Commit `c79c6e8fdf2407669042fdf140f0cce7a188b064`: ampliado `scripts/ci/customer
 ## PG17 H3→H4: pruebas de permisos cruzados y replay (2026-10-29)
 
 SHA `897e8fe11de3fe9c17fe99bb8d998bd958ac47c9`: se refuerza la prueba de integración PostgreSQL 17 desechable `scripts/ci/customer-production-postgres17.test.mjs` con rechazo de transición `preparing` por camarero, rechazo de `picked_up` por cocina, conservación del estado persistido después de ambos rechazos, replay idempotente de recogida que conserva `eventId`, y verificación de eventos duraderos de línea. **4/4 GitHub Actions SUCCESS**: CI `40897206548`, bootstrap `40897206803`, cliente `40897206513`, gestión `40897207038`. La composición H3/H4 continúa opt-in, el servidor estándar health-only y el flujo browser/API de ambas PWA sin demostrar. No se considera cerrado el Bloque 1/5 ni autorizado el despliegue.
+
+## H3 HTTP real → PostgreSQL 17 + continuidad H4 (29-oct)
+
+En `scripts/ci/customer-production-postgres17.test.mjs` se amplió la aceptación real con Fastify y los tres principals SQL restringidos: registro HTTP que devuelve cookie HttpOnly sin token en JSON, sesión, visita QR, cotización, confirmación de pedido, replay idempotente 200 y rechazo 403 de origen cruzado. Se comprueba que el pedido HTTP genera exactamente una línea persistida. La prueba continúa con un segundo comensal y la misma mesa, y verifica `grouped` en la ventana normativa de 300 segundos; posteriormente H4 procesa el pedido confirmado en cocina y sala con control de roles, notificación, recogida e idempotencia.
+
+Primer CI detectó expectativa obsoleta `first` tras haber añadido la orden HTTP previa; se corrigió para exigir `grouped` (comportamiento de negocio correcto), sin alterar lógica de producción. SHA validado `ed24c6457d0f4bbfc81b15d96fc68c1a1dffe2cd`. **4/4 workflows SUCCESS:** CI `40902171746`, bootstrap `40902171775`, cliente `40902171762`, gestión `40902171759`.
+
+**No confundir** con navegador PWA cliente real → H4 HTTP autenticado → PWA gestión en una misma sesión. La factoría conjunta permanece opt-in y el servidor por defecto health-only. **Bloque 1/5 aún abierto**, sin GO ni despliegue.
