@@ -141,3 +141,7 @@ Commits `e42a0c6fb4147052a028616b42452e6330c0469c` y `444d404d66e4b86d81fd7f9bc0
 ### Verificación final de CI integrada — readiness H3/H4
 
 SHA `75f0c4534ab8e22cfd951debeb75a51c7a1827c8`: **4/4 SUCCESS** tras esperas shell: Sabora CI `40914864245`, bootstrap `40914864109`, cliente `40914864096`, gestión `40914864569`. El error sintáctico concurrente citado en el apartado anterior ya no está presente en el árbol validado. Queda demostrada la regresión positiva/negativa del readiness conjunto, pero el Bloque 1 sigue abierto por la activación y aceptación browser real.
+
+### Aceptación de confirmaciones simultáneas desde el transporte PWA cliente
+
+En `538637a43b55a28664487111a9bd1746a420ed85` se añadieron tres confirmaciones concurrentes mediante `createCustomerFlowTransport().confirm()` contra Fastify y PG17 desechable, verificando un único pedido, un `confirmed`, dos `replayed`, una sola línea persistida y 409 ante reutilización incompatible de la clave sin mutación adicional. El árbol integrado corregido `75f0c453` superó **4/4 workflows** (IDs consignados arriba). Este hito valida concurrencia/idempotencia HTTP/PG17, no navegador real ni JWT staff conjunto. Bloque 1/5 abierto.
