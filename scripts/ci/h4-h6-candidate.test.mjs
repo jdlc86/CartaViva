@@ -48,3 +48,18 @@ test('integrated H4/H6 rejects malformed dependencies before any SQL connection'
  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),/invalid_h4_h6_candidate_isolation/);
  assert.equal(connects,0);
 });
+
+test('integrated candidate rejects SQL identity aliasing even with separate pool objects',async()=>{
+ for(const credential of ['user','connectionString']){
+  const a=h4(),b=h6();
+  a.staffPool.options={[credential]:'same-login'};
+  b.operationsPool.options={[credential]:'same-login'};
+  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+   /invalid_h4_h6_candidate_isolation/);
+  const c=h4(),d=h6();
+  d.customerPool.options={[credential]:'same-login'};
+  d.providerPool.options={[credential]:'same-login'};
+  await assert.rejects(createH4H6IntegratedCandidate({h4:c,h6:d}),
+   /invalid_h4_h6_candidate_isolation/);
+ }
+});
