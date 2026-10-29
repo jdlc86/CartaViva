@@ -4,12 +4,23 @@ import {createVerifiedRestaurantFlowCandidate} from './restaurant-flow-candidate
 import {CUSTOMER_PRODUCTION_PREFLIGHT_SQL,CUSTOMER_PRODUCTION_FUNCTION_PREFLIGHT_SQL,
  CUSTOMER_PRODUCTION_EXACT_FUNCTIONS_SQL} from './customer-production-sql-preflight.mjs';
 
-const logins={registration:'sabora_ci_registration',session:'sabora_ci_session',
+const logins={catalog:'sabora_ci_catalog',registration:'sabora_ci_registration',session:'sabora_ci_session',
  flow:'sabora_ci_flow',staff:'sabora_ci_staff',operations:'sabora_ci_operations'};
 function customerPool(kind){
  const role=logins[kind];
  return {options:{user:role},query:async()=>({rows:[]}),connect:async()=>({
   query:async sql=>{
+   if(sql.includes('SELECT current_user AS role_name, session_user AS login_name'))
+    return {rows:[{role_name:role,login_name:role}]};
+   if(sql.includes('scoped_catalog_execute'))return {rows:[{
+    effective_role:role,login_role:role,can_login:true,bypass_rls:false,superuser:false,
+    create_db:false,create_role:false,replication:false,inherit_role:false,
+    can_set_catalog_reader:true,direct_catalog_execute:false,scoped_catalog_execute:true
+   }]};
+   if(kind==='flow'&&sql.includes("pg_has_role(current_user, 'sabora_catalog_reader', 'SET')"))
+    return {rows:[{effective_role:role,login_role:role,can_login:true,bypass_rls:false,
+     superuser:false,create_db:false,create_role:false,replication:false,inherit_role:false,
+     can_set_catalog_reader:false,direct_catalog_execute:false}]};
    if(sql===CUSTOMER_PRODUCTION_PREFLIGHT_SQL)return {rows:[{
     effective_role:role,login_role:role,can_login:true,inherit_role:false,
     superuser:false,bypass_rls:false,create_db:false,create_role:false,
@@ -48,10 +59,11 @@ function operationsPool(kind){
   }]}),release(){}
  })};
 }
-test('H3/H4 verified opt-in factory mounts both route families only after all five SQL identities pass',async t=>{
+test('H3/H4 verified opt-in factory mounts catalog and both route families after six SQL identities pass',async t=>{
  const app=await createVerifiedRestaurantFlowCandidate({
-  customer:{registrationPool:customerPool('registration'),
+  customer:{catalogReaderPool:customerPool('catalog'),registrationPool:customerPool('registration'),
    sessionPool:customerPool('session'),flowPool:customerPool('flow'),
+   expectedCatalogLogin:logins.catalog,
    expectedRegistrationLogin:logins.registration,
    expectedSessionLogin:logins.session,expectedFlowLogin:logins.flow,
    allowedOrigin:'https://sabora.example',
@@ -64,6 +76,7 @@ test('H3/H4 verified opt-in factory mounts both route families only after all fi
  t.after(()=>app.close());
  await app.ready();
  for(const [method,url] of [
+  ['GET','/api/v1/catalog'],
   ['POST','/api/v1/customer/register'],['GET','/api/v1/customer/session'],
   ['POST','/api/v1/customer/visits'],['POST','/api/v1/customer/quotes'],
   ['POST','/api/v1/customer/orders/confirm'],

@@ -4,9 +4,9 @@ import type {Locale} from '../client-state';
 export type PaymentMode='pay_now'|'pay_at_end';
 export type CheckoutPhase='quoting'|'ready'|'confirming'|'confirmed'|'payment_action'|'error';
 
-export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsOrdered,message,
+export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsOrdered,paymentsEnabled=true,message,
  onPaymentMode,onConfirm,onRetry}:{locale:Locale;totalCents:number;phase:CheckoutPhase;
- paymentMode:PaymentMode;requirePayAsOrdered:boolean;message:string|null;
+ paymentMode:PaymentMode;requirePayAsOrdered:boolean;paymentsEnabled?:boolean;message:string|null;
  onPaymentMode:(mode:PaymentMode)=>void;onConfirm:()=>void;onRetry:()=>void}){
  const es=locale==='es',free=totalCents===0,busy=phase==='quoting'||phase==='confirming';
  if(phase==='quoting')return <div className="checkout-status" role="status"><span/>
@@ -23,7 +23,7 @@ export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsO
  return <div className="checkout-panel">
   <div className="checkout-total"><span>{es?'Total confirmado por el servidor':'Server-confirmed total'}</span>
    <strong>{formatPrice(totalCents,es?'es-ES':'en-IE')}</strong></div>
-  {free?<p className="honest-status">{es?'Esta ronda es gratuita y no fija modalidad de pago.':'This round is free and does not select a payment mode.'}</p>:
+  {!paymentsEnabled?<p className="honest-status">{es?'Este candidato aislado valida pedido, cocina y sala; no activa pagos.':'This isolated candidate validates ordering, kitchen and floor operations; it does not enable payments.'}</p>:free?<p className="honest-status">{es?'Esta ronda es gratuita y no fija modalidad de pago.':'This round is free and does not select a payment mode.'}</p>:
    <fieldset className="payment-choice"><legend>{es?'¿Cómo quieres pagar?':'How would you like to pay?'}</legend>
     <label><input type="radio" name="payment-mode" checked={paymentMode==='pay_now'}
      onChange={()=>onPaymentMode('pay_now')}/><span><strong>{es?'Pagar ahora':'Pay now'}</strong>
@@ -37,6 +37,6 @@ export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsO
   {message?<p className="honest-status" role="status">{message}</p>:null}
   <button className="primary-action" type="button" disabled={busy} onClick={onConfirm}>
    {phase==='confirming'?(es?'Confirmando…':'Confirming…'):(es?'Confirmar pedido':'Confirm order')}</button>
-  <p className="privacy-copy">{es?'El importe, la política de mesa y la disponibilidad se vuelven a comprobar al confirmar.':'Amount, table policy and availability are checked again on confirmation.'}</p>
+  <p className="privacy-copy">{paymentsEnabled?(es?'El importe, la política de mesa y la disponibilidad se vuelven a comprobar al confirmar.':'Amount, table policy and availability are checked again on confirmation.'):(es?'La identidad, el QR, el importe y la disponibilidad se vuelven a comprobar al confirmar.':'Identity, QR, amount and availability are checked again on confirmation.')}</p>
  </div>;
 }

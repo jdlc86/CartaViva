@@ -1,6 +1,7 @@
 import {createCustomerSessionVerifier} from './customer-session-verifier.mjs';
 import {createCustomerSessionQueryBoundary} from './customer-session-query-boundary.mjs';
 import {createCustomerSessionRevoker} from './customer-session-revoker.mjs';
+import {isAllowedCustomerOrigin} from './customer-origin.mjs';
 
 const COOKIE_NAME='__Secure-sabora_customer';
 const COOKIE_PATH='/api/v1/customer';
@@ -19,7 +20,7 @@ export function clearCustomerCookie(reply){
 }
 export function createCustomerCookieAuth({verifyCustomerSession,allowedOrigin,revokeCustomerSession}={}){
  if(typeof verifyCustomerSession!=='function'||typeof revokeCustomerSession!=='function'||
-    typeof allowedOrigin!=='string'||!/^https:\/\/[^/]+$/.test(allowedOrigin))
+    !isAllowedCustomerOrigin(allowedOrigin))
   throw Error('invalid_customer_cookie_auth_configuration');
  const authenticate=async(request,reply)=>{
   reply.header('Cache-Control','no-store');

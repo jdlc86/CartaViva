@@ -8,8 +8,9 @@ import {CUSTOMER_PRODUCTION_PREFLIGHT_SQL,CUSTOMER_PRODUCTION_FUNCTION_PREFLIGHT
 const pool=name=>({options:{user:name},connect:async()=>{throw Error('test_sql_unavailable');}});
 const options=()=>({
  customer:{
-  registrationPool:pool('customer_register'),sessionPool:pool('customer_session'),
+  catalogReaderPool:pool('customer_catalog'),registrationPool:pool('customer_register'),sessionPool:pool('customer_session'),
   flowPool:pool('customer_flow'),
+  expectedCatalogLogin:'customer_catalog',
   expectedRegistrationLogin:'customer_register',expectedSessionLogin:'customer_session',
   expectedFlowLogin:'customer_flow',allowedOrigin:'https://sabora.example',
   secretKey:'test-only-not-for-production-'.repeat(2)
@@ -26,7 +27,7 @@ test('restaurant H3/H4 app rejects absent dependencies before any listener',asyn
 });
 test('restaurant app rejects shared pool before any SQL checkout',async()=>{
  const opts=options();let connections=0;
- for(const p of [opts.customer.registrationPool,opts.customer.sessionPool,opts.customer.flowPool,
+ for(const p of [opts.customer.catalogReaderPool,opts.customer.registrationPool,opts.customer.sessionPool,opts.customer.flowPool,
   opts.operations.staffPool,opts.operations.operationsPool])p.connect=async()=>{connections++;throw Error('unexpected_sql');};
  opts.operations.staffPool=opts.customer.sessionPool;
  await assert.rejects(createVerifiedRestaurantFlowCandidate(opts),/restaurant_flow_pool_isolation_required/);
@@ -34,7 +35,7 @@ test('restaurant app rejects shared pool before any SQL checkout',async()=>{
 });
 test('restaurant app rejects shared SQL role before any SQL checkout',async()=>{
  const opts=options();let connections=0;
- for(const p of [opts.customer.registrationPool,opts.customer.sessionPool,opts.customer.flowPool,
+ for(const p of [opts.customer.catalogReaderPool,opts.customer.registrationPool,opts.customer.sessionPool,opts.customer.flowPool,
   opts.operations.staffPool,opts.operations.operationsPool])p.connect=async()=>{connections++;throw Error('unexpected_sql');};
  opts.operations.staffRole=opts.customer.expectedSessionLogin;
  await assert.rejects(createVerifiedRestaurantFlowCandidate(opts),/restaurant_flow_role_isolation_required/);
@@ -57,6 +58,17 @@ function acceptedPool(role,kind){
  return {options:{user:role},state,query:async()=>({rows:[]}),
   connect:async()=>({release:()=>{state.releases++;},query:async sql=>{
    state.checks++;
+   if(sql.includes('SELECT current_user AS role_name, session_user AS login_name'))
+    return {rows:[{role_name:role,login_name:role}]};
+   if(sql.includes('scoped_catalog_execute'))return {rows:[{
+    effective_role:role,login_role:role,can_login:true,bypass_rls:false,superuser:false,
+    create_db:false,create_role:false,replication:false,inherit_role:false,
+    can_set_catalog_reader:true,direct_catalog_execute:false,scoped_catalog_execute:true
+   }]};
+   if(kind==='customer_flow'&&sql.includes("pg_has_role(current_user, 'sabora_catalog_reader', 'SET')"))
+    return {rows:[{effective_role:role,login_role:role,can_login:true,bypass_rls:false,
+     superuser:false,create_db:false,create_role:false,replication:false,inherit_role:false,
+     can_set_catalog_reader:false,direct_catalog_execute:false}]};
    if(kind.startsWith('customer')){
     if(sql===CUSTOMER_PRODUCTION_PREFLIGHT_SQL)return {rows:[{
      effective_role:role,login_role:role,can_login:true,inherit_role:false,
@@ -96,12 +108,14 @@ function acceptedPool(role,kind){
   }})};
 }
 function acceptedOptions(){
+ const catalogReaderPool=acceptedPool('sabora_catalog_reader_ci','customer_catalog');
  const registrationPool=acceptedPool('sabora_customer_registration_ci','customer_registration');
  const sessionPool=acceptedPool('sabora_customer_session_ci','customer_session');
  const flowPool=acceptedPool('sabora_customer_flow_ci','customer_flow');
  const staffPool=acceptedPool('sabora_staff_reader_ci','staff');
  const operationsPool=acceptedPool('sabora_operations_ci','operations');
- return {customer:{registrationPool,sessionPool,flowPool,
+ return {customer:{catalogReaderPool,registrationPool,sessionPool,flowPool,
+  expectedCatalogLogin:catalogReaderPool.options.user,
   expectedRegistrationLogin:registrationPool.options.user,
   expectedSessionLogin:sessionPool.options.user,
   expectedFlowLogin:flowPool.options.user,
@@ -112,12 +126,13 @@ function acceptedOptions(){
   getTrustedKeys:async()=>[],issueTransitionCapability:()=>({}),
   issueReadCapability:()=>({})}};
 }
-test('combined H3/H4 candidate mounts all customer and staff routes only after five successful preflights',async t=>{
+test('combined H3/H4 candidate mounts all customer and staff routes only after six successful preflights',async t=>{
  const opts=acceptedOptions();
  const app=await createVerifiedRestaurantFlowCandidate(opts);
  t.after(()=>app.close());
  for(const [method,url] of [
   ['GET','/health'],['GET','/ready'],
+  ['GET','/api/v1/catalog'],
   ['POST','/api/v1/customer/register'],['GET','/api/v1/customer/session'],
   ['POST','/api/v1/customer/visits'],['POST','/api/v1/customer/quotes'],
   ['POST','/api/v1/customer/orders/confirm'],
@@ -133,7 +148,7 @@ test('combined H3/H4 candidate mounts all customer and staff routes only after f
   headers:{origin:'https://sabora.example','content-type':'application/json'},
   payload:{tableId:'not-authorized'}});
  assert.equal(noCookie.statusCode,401);
- for(const pool of [opts.customer.registrationPool,opts.customer.sessionPool,
+ for(const pool of [opts.customer.catalogReaderPool,opts.customer.registrationPool,opts.customer.sessionPool,
   opts.customer.flowPool,opts.operations.staffPool,opts.operations.operationsPool]){
   assert.ok(pool.state.checks>=2);
   assert.ok(pool.state.releases>0);
@@ -167,6 +182,7 @@ test('combined H3/H4 candidate rejects H4 identity drift without returning parti
  opts.operations.operationsPool.connect=async()=>{throw Error('private_operations_db_secret');};
  await assert.rejects(createVerifiedRestaurantFlowCandidate(opts),/private_operations_db_secret/);
  assert.ok(opts.customer.registrationPool.state.releases>0);
+ assert.ok(opts.customer.catalogReaderPool.state.releases>0);
  assert.ok(opts.customer.sessionPool.state.releases>0);
  assert.ok(opts.customer.flowPool.state.releases>0);
 });

@@ -32,6 +32,14 @@ jobs:
         run: bash scripts/ci/postgres-migration-smoke.sh
       - name: Exercise real Node pg driver against disposable loopback-only PostgreSQL 17
         run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
+      - name: Publish Block 1 full-stack browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-block-01-full-stack-browser
+          path: ${{ runner.temp }}/sabora-block-01-browser/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build
         run: pnpm build
       - name: Gate production configuration, isolation and frontend artifacts

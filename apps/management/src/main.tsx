@@ -180,16 +180,18 @@ export function mountAuthenticatedManagementApp({
   element,
   getAccessToken,
   fetchImpl,
+  reconnectDelayMs,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
   fetchImpl?: typeof fetch;
+  reconnectDelayMs?: number;
 }) {
   if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
     throw Error('invalid_management_bootstrap');
   }
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
-    getAccessToken, fetchImpl,
+    getAccessToken, fetchImpl, reconnectDelayMs,
   });
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();

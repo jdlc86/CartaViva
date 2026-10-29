@@ -10,6 +10,10 @@ import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,
  from './customer-production-flow.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
 import {assertCustomerProductionSqlCapabilities} from './customer-production-sql-preflight.mjs';
+import {assertIsolatedCustomerPoolIdentities} from './isolated-pool-identity-preflight.mjs';
+import {assertIsolatedCustomerSqlCapabilities} from './isolated-customer-sql-capabilities-preflight.mjs';
+import {createCatalogScopedQuery} from './catalog-scoped-query.mjs';
+import {registerCatalogHttpRoute} from './catalog-http-route.mjs';
 
 const registrationSql=new Set([REGISTER_CUSTOMER_SQL]);
 const flowSql=new Set([AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
@@ -18,14 +22,18 @@ const flowSql=new Set([AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
 // Dormant production composition. Pools, origin and HMAC custody are supplied
 // by a separately approved bootstrap; this module never reads env or connects.
 export async function registerCustomerProductionCandidate(app,{
- registrationPool,sessionPool,flowPool,allowedOrigin,secretKey,clock,newId,
- expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin
+ catalogReaderPool,registrationPool,sessionPool,flowPool,allowedOrigin,secretKey,clock,newId,
+ expectedCatalogLogin,expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin
 }={}){
- if(!app||!registrationPool||!sessionPool||!flowPool||
-    registrationPool===sessionPool||registrationPool===flowPool||sessionPool===flowPool)
+ const pools=[catalogReaderPool,registrationPool,sessionPool,flowPool];
+ if(!app||pools.some(pool=>!pool)||new Set(pools).size!==pools.length)
   throw Error('invalid_customer_production_composition');
  await assertCustomerProductionSqlCapabilities({registrationPool,sessionPool,flowPool,
   expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin});
+ await assertIsolatedCustomerPoolIdentities({catalogReaderPool,orderWriterPool:flowPool,
+  expectedCatalogLogin,expectedOrderLogin:expectedFlowLogin});
+ await assertIsolatedCustomerSqlCapabilities({catalogReaderPool,orderWriterPool:flowPool,
+  expectedCatalogLogin,expectedOrderLogin:expectedFlowLogin});
  const registrationTransaction=createRoleScopedPostgresTransaction({
   pool:registrationPool,role:'sabora_customer_registration_runtime',allowedSql:registrationSql
  });
@@ -40,6 +48,7 @@ export async function registerCustomerProductionCandidate(app,{
  const registration=createRestrictedCustomerRegistration({withTransaction:registrationTransaction});
  const flow=createCustomerProductionFlow({withTransaction:flowTransaction,secretKey,
   ...(clock===undefined?{}:{clock}),...(newId===undefined?{}:{newId})});
+ registerCatalogHttpRoute(app,{query:createCatalogScopedQuery({pool:catalogReaderPool})});
  registerCustomerRegistrationCandidate(app,{register:registration,allowedOrigin});
  return registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
 }

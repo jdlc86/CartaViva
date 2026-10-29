@@ -5,7 +5,7 @@ import {registerVerifiedCustomerProductionApp} from './customer-production-app.m
 import {CUSTOMER_PRODUCTION_PREFLIGHT_SQL,CUSTOMER_PRODUCTION_FUNCTION_PREFLIGHT_SQL,
  CUSTOMER_PRODUCTION_EXACT_FUNCTIONS_SQL} from './customer-production-sql-preflight.mjs';
 
-const login={registration:'sabora_customer_registration_login',
+const login={catalog:'sabora_catalog_login',registration:'sabora_customer_registration_login',
  session:'sabora_customer_session_login',flow:'sabora_customer_flow_login'};
 function pool(kind,{broken=false}={}){
  const events=[];
@@ -13,6 +13,18 @@ function pool(kind,{broken=false}={}){
   query:async(sql)=>{
    events.push(sql);
    if(broken)throw Error('private_secret_not_for_clients');
+   if(sql.includes('SELECT current_user AS role_name, session_user AS login_name'))
+    return {rows:[{role_name:login[kind],login_name:login[kind]}]};
+   if(sql.includes('scoped_catalog_execute'))return {rows:[{
+    effective_role:login[kind],login_role:login[kind],can_login:true,bypass_rls:false,
+    superuser:false,create_db:false,create_role:false,replication:false,inherit_role:false,
+    can_set_catalog_reader:true,direct_catalog_execute:false,scoped_catalog_execute:true
+   }]};
+   if(sql.includes("pg_has_role(current_user, 'sabora_catalog_reader', 'SET')"))return {rows:[{
+    effective_role:login[kind],login_role:login[kind],can_login:true,bypass_rls:false,
+    superuser:false,create_db:false,create_role:false,replication:false,inherit_role:false,
+    can_set_catalog_reader:false,direct_catalog_execute:false
+   }]};
    if(sql===CUSTOMER_PRODUCTION_PREFLIGHT_SQL)return {rows:[{
     effective_role:login[kind],login_role:login[kind],can_login:true,inherit_role:false,
     superuser:false,bypass_rls:false,create_db:false,create_role:false,
@@ -29,9 +41,10 @@ function pool(kind,{broken=false}={}){
  })};
 }
 function options(){
- return {registrationPool:pool('registration'),sessionPool:pool('session'),
+ return {catalogReaderPool:pool('catalog'),registrationPool:pool('registration'),sessionPool:pool('session'),
   flowPool:pool('flow'),allowedOrigin:'https://sabora.example',
   secretKey:'test-only-secret-not-production-'.repeat(2),
+  expectedCatalogLogin:login.catalog,
   expectedRegistrationLogin:login.registration,
   expectedSessionLogin:login.session,expectedFlowLogin:login.flow};
 }
@@ -42,6 +55,7 @@ test('H3 opt-in app mounts registration, visits, quotes and orders after exact S
   {registered:true,mode:'opt-in-customer-production-candidate'});
  await app.ready();
  for(const [method,url] of [['POST','/api/v1/customer/register'],
+  ['GET','/api/v1/catalog'],
   ['GET','/api/v1/customer/session'],['POST','/api/v1/customer/visits'],
   ['POST','/api/v1/customer/quotes'],['POST','/api/v1/customer/orders/confirm']])
   assert.equal(app.hasRoute({method,url}),true,url);
