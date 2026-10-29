@@ -126,3 +126,7 @@ Se amplió `scripts/ci/postgres-recovery-smoke.sh` para comparar **tres bases de
 - Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40859384327
 
 **Alcance:** paridad comprobada únicamente en PostgreSQL 17 desechable con roles globales preexistentes en el mismo clúster. No prueba reconstrucción de roles en clúster limpio, PITR, dependencias externas, privilegios de esquemas/funciones ni recuperación real de Supabase. Quedan pendientes inventario individual de migraciones, riesgos de locks y reversibilidad, procedimientos con criterios de parada y autorizaciones. **P2 sigue abierto; no habilita despliegue.**
+
+## Inventario automatizado preliminar — SHA fa3f0afe7da17491e0f30f192e76c7562423acc4
+
+El comando offline `node scripts/ci/migration-risk-inventory.mjs` produce un JSON ordenado por migración, basado en el manifiesto de SHA-256, con señales heurísticas de extensiones, roles/grants, SECURITY DEFINER, RLS/políticas, SQL destructivo, mutaciones de datos, DDL potencialmente bloqueante y funciones/triggers. Cada entrada exige revisión manual; reversibilidad, impacto de locks y dependencias externas aparecen como `unverified`. Los patrones no interpretan SQL completamente ni distinguen comentarios/cadenas: no constituyen certificación de seguridad ni sustituyen la clasificación normativa individual. Pendiente ejecutar y revisar el inventario, probarlo y documentar hallazgos y criterios de parada. No se autoriza producción.
