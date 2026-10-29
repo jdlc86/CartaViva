@@ -153,3 +153,11 @@ La aceptación integrada `scripts/ci/customer-production-postgres17.test.mjs` ej
 La primera CI de `aa04eb56a3daa92f8dec05486917fd767df98088` detectó un error de ámbito de la variable de prueba `revokedCookie`. Se sustituyó por un valor de cookie adversarial autónomo y se relanzaron todas las comprobaciones. **SHA validado `d913f324beedf62df18d725fbf893f355e7c543a`: 4/4 SUCCESS** (CI `40916777198`, bootstrap `40916777254`, cliente `40916777291`, gestión `40916777229`).
 
 La identidad del personal en este test HTTP es un **fixture aislado**, no verificación JWT real; esta última y los principals SQL restringidos tienen pruebas separadas. No declarar el piloto cerrado hasta probar la composición conjunta con autenticación criptográfica real, navegadores de ambas PWA y arranque operativo seguro. Sin despliegue, merge ni contacto con Fleetia, VPS o Supabase operativo.
+
+## H4 HTTP y transporte de gestión sobre pedido H3 real (29-oct)
+
+Commit de prueba `74b1983058dd323d6d53f8e46e983ee511a5102d`, corregido `2a93244159395459e8a85602612e08259c868f47`: en `scripts/ci/customer-production-postgres17.test.mjs` se ejecuta el **gateway real** `apps/management/src/order-operations-gateway.js` sobre los endpoints reales `registerOrderOperationsHttp` y el coordinador H4 con PostgreSQL 17 desechable. El gateway de cocina lee la orden persistida por H3, ejecuta `preparing` y `ready`; el gateway de sala lee `ready`, marca `picked_up`, repite idempotentemente y consulta historial. El test utiliza inyección de identidades por cabecera **solo dentro del harness CI**, no pretende certificar la verificación JWT/JWKS de producción, que tiene sus pruebas independientes.
+
+Primer CI falló por importaciones duplicadas en el test; corregidas sin modificar el runtime. **4/4 workflows SUCCESS** en `2a932441`: Sabora CI `40918427107`, bootstrap `40918426944`, cliente `40918426969`, gestión `40918426878`.
+
+**Bloque 1/5 todavía abierto:** falta integración de las dos interfaces de navegador y composición conjunta con autenticación real H4 en el mismo servidor, además de activación operativa autorizada. No hay GO, merge ni despliegue.
