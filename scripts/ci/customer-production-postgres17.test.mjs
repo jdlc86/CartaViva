@@ -414,7 +414,7 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   // The customer cookie, a forged staff bearer, or an untrusted role header
   // cannot authorize any H4 operation against this real confirmed order.
   for(const headers of [
-   {cookie:revokedCookie,'x-test-role':'kitchen'},
+   {cookie:'__Secure-sabora_customer=forged_customer_cookie','x-test-role':'kitchen'},
    {authorization:'Bearer forged_management_token_971001','x-test-role':'kitchen'},
    {authorization:'Bearer '+bearerByRole.waiter,'x-test-role':'kitchen'}
   ]){
