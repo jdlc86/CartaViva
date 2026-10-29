@@ -130,3 +130,11 @@ Se amplió `scripts/ci/postgres-recovery-smoke.sh` para comparar **tres bases de
 ## Inventario automatizado preliminar — SHA fa3f0afe7da17491e0f30f192e76c7562423acc4
 
 El comando offline `node scripts/ci/migration-risk-inventory.mjs` produce un JSON ordenado por migración, basado en el manifiesto de SHA-256, con señales heurísticas de extensiones, roles/grants, SECURITY DEFINER, RLS/políticas, SQL destructivo, mutaciones de datos, DDL potencialmente bloqueante y funciones/triggers. Cada entrada exige revisión manual; reversibilidad, impacto de locks y dependencias externas aparecen como `unverified`. Los patrones no interpretan SQL completamente ni distinguen comentarios/cadenas: no constituyen certificación de seguridad ni sustituyen la clasificación normativa individual. Pendiente ejecutar y revisar el inventario, probarlo y documentar hallazgos y criterios de parada. No se autoriza producción.
+
+## Cierre integral del alcance P2 — 2026-10-29
+
+El trabajo posterior sustituye los pendientes anteriores como estado vigente, sin borrar su trazabilidad. La auditoría individual está en `docs/security/SABORA_MIGRATION_AUDIT_P2_2026-10-29.md`; el procedimiento final en `docs/runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md`; y el detalle de defectos, commits, matriz y evidencia en `docs/reviews/SABORA_P2_MIGRATION_RECOVERY_CLOSURE_2026-10-29.md`.
+
+En el HEAD de implementación `b4b1678560f6bb1000c9b47bf9daa3d1ae146bf3`, Sabora CI y Bootstrap aplicaron las 42 migraciones reales en PG17, interrumpieron/reanudaron por ledger/checksum, probaron un fallo dentro de transacción y restauraron solo el esquema Sabora en un segundo clúster sin roles compartidos. Compararon roles, ACL, RLS, policies, funciones, extensión, constraints, índices, triggers y datos, y ejercieron un LOGIN restringido real. Los cuatro workflows concluyeron SUCCESS.
+
+**Decisión:** P2 se cierra en su alcance de preparación técnica y prueba desechable. Sigue prohibida cualquier ejecución operativa. Volumen/locks reales, PITR/Storage, secretos y aislamiento material son puertas de producción posteriores, no evidencias inferidas de este cierre.

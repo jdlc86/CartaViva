@@ -99,3 +99,11 @@ Conservar SHA final, manifiesto/auditoría, logs sanitizados, duración, checks 
 ## 9. Límites que no invalida P2 pero bloquean producción
 
 El ensayo no prueba duración con el volumen operativo, PITR de un proyecto contratado, recuperación de Storage, reset de credenciales, integración real con proveedores ni aislamiento material del VPS. Tampoco autoriza migrar Supabase. Esas evidencias pertenecen a activación/producción y siguen siendo NO-GO hasta aprobación y ensayo propios.
+
+## 10. Referencias externas verificadas
+
+- [PostgreSQL 15.19 / 17.11: acciones para `ltree`, `pgcrypto`, `btree_gist` y operadores](https://supabase.com/changelog/postgres-15-19-17-11-breaking-changes).
+- [Backup y restauración mediante Supabase CLI](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore).
+- [Backups de base de datos y límites de contraseñas/Storage](https://supabase.com/docs/guides/platform/backups).
+
+Estas referencias se consultan para compatibilidad y preparación; no constituyen autorización para conectar ni ejecutar comandos en Supabase operativo.
