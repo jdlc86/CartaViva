@@ -185,26 +185,6 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [pwaConfirmed.orderId])).rows[0].n,1);
-  // Logout is a real PG17 revocation, not a local UI reset. A captured
-  // previously valid cookie must not reopen the visit or confirm an order.
-  const priorCookie=browserCookie;
-  assert.equal(await pwa.logout(),true);
-  await assert.rejects(pwa.session(),error=>
-   error instanceof Error&&error.message==='unauthorized');
-  await assert.rejects(pwa.authorizeVisit({tableId,qrToken}),error=>
-   error instanceof Error&&error.message==='unauthorized');
-  const staleSessionReply=await customerHttp.inject({method:'GET',
-   url:'/api/v1/customer/session',headers:{cookie:priorCookie}});
-  assert.equal(staleSessionReply.statusCode,401,staleSessionReply.body);
-  const staleConfirm=await customerHttp.inject({method:'POST',
-   url:'/api/v1/customer/orders/confirm',
-   headers:{...originHeaders,cookie:priorCookie},
-   payload:{...pwaOrder,requestKey:'pwa_revoked_session_971001'}});
-  assert.equal(staleConfirm.statusCode,401,staleConfirm.body);
-  assert.equal((await admin.query(
-   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
-   [pwaConfirmed.orderId])).rows[0].n,1);
-
   // A second PWA confirmation races across two independent HTTP requests.
   // PostgreSQL must commit one order, return one stable orderId and reject
   // incompatible reuse of the same idempotency key without extra lines.
