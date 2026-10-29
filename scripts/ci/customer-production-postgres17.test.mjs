@@ -185,6 +185,34 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [pwaConfirmed.orderId])).rows[0].n,1);
+  // A second PWA confirmation races across two independent HTTP requests.
+  // PostgreSQL must commit one order, return one stable orderId and reject
+  // incompatible reuse of the same idempotency key without extra lines.
+  const concurrentQuote=await pwa.quote({tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,lines:[{itemId:itemB,selection,quantity:1}]});
+  const concurrentRequest={tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,requestKey:'pwa_concurrent_confirmation_971001',
+   lines:[{quoteId:concurrentQuote.lines[0].quoteId,itemId:itemB,selection,quantity:1}]};
+  const simultaneous=await Promise.all([
+   pwa.confirm(concurrentRequest),pwa.confirm(concurrentRequest),
+   pwa.confirm(concurrentRequest)
+  ]);
+  assert.equal(new Set(simultaneous.map(value=>value.orderId)).size,1);
+  assert.deepEqual(simultaneous.map(value=>value.status).sort(),
+   ['confirmed','replayed','replayed']);
+  const simultaneousOrderId=simultaneous[0].orderId;
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [simultaneousOrderId])).rows[0].n,1);
+  const incompatible=await pwa.confirm({...concurrentRequest,
+   lines:[{...concurrentRequest.lines[0],quantity:2}]})
+   .then(()=>null,error=>error);
+  assert.ok(incompatible);
+  assert.equal(incompatible.status,409);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [simultaneousOrderId])).rows[0].n,1,
+   'conflicting idempotency reuse must not create another line');
   // Revocation must fence the exact same PWA session immediately, even if a
   // previously confirmed request key, QR and displayed quote are replayed.
   const revokedCookie=browserCookie;
