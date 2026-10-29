@@ -140,6 +140,28 @@ test('combined H3/H4 candidate mounts all customer and staff routes only after f
   assert.ok(pool.state.releases<=pool.state.checks);
  }
 });
+test('combined readiness detects post-start H4 role drift and never leaks SQL details',async t=>{
+ const opts=acceptedOptions();
+ const app=await createVerifiedRestaurantFlowCandidate(opts);
+ t.after(()=>app.close());
+ assert.equal((await app.inject('/ready')).statusCode,200);
+ const operationsConnect=opts.operations.operationsPool.connect;
+ opts.operations.operationsPool.connect=async()=>{throw Error('private_postgres_credentials_971001');};
+ const denied=await app.inject('/ready');
+ assert.equal(denied.statusCode,503);
+ assert.deepEqual(denied.json(),{status:'unavailable'});
+ assert.doesNotMatch(denied.body,/private_postgres_credentials/);
+ assert.equal((await app.inject('/health')).statusCode,200);
+ opts.operations.operationsPool.connect=operationsConnect;
+ assert.equal((await app.inject('/ready')).statusCode,200);
+ const staffConnect=opts.operations.staffPool.connect;
+ opts.operations.staffPool.connect=async()=>{throw Error('private_staff_role_971001');};
+ const staffDenied=await app.inject('/ready');
+ assert.equal(staffDenied.statusCode,503);
+ assert.deepEqual(staffDenied.json(),{status:'unavailable'});
+ opts.operations.staffPool.connect=staffConnect;
+ assert.equal((await app.inject('/ready')).statusCode,200);
+});
 test('combined H3/H4 candidate rejects H4 identity drift without returning partially mounted H3 app',async()=>{
  const opts=acceptedOptions();
  opts.operations.operationsPool.connect=async()=>{throw Error('private_operations_db_secret');};
