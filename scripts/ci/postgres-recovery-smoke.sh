@@ -196,7 +196,7 @@ select 'schema:'||md5(coalesce(string_agg(
 from pg_namespace n cross join pg_roles r
 where n.nspname='sabora' and (r.rolname='postgres' or r.rolname in ('anon','authenticated') or r.rolname like 'sabora\_%' escape '\');
 select 'relations:'||md5(coalesce(string_agg(
- c.relname||':'||c.relkind||':'||pg_get_userbyid(c.relowner)||':'||c.relrowsecurity||':'||c.relforcerowsecurity||':'||r.rolname||':'||
+ c.relname||':'||c.relkind::text||':'||pg_get_userbyid(c.relowner)||':'||c.relrowsecurity||':'||c.relforcerowsecurity||':'||r.rolname||':'||
  case when c.relkind='S' then has_sequence_privilege(r.oid,c.oid,'USAGE,SELECT,UPDATE')::text
  else has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,REFERENCES,TRIGGER')::text end,
  E'\n' order by c.relname,c.relkind,r.rolname),''))
@@ -207,20 +207,20 @@ select 'policies:'||md5(coalesce(string_agg(
  tablename||':'||policyname||':'||permissive||':'||roles::text||':'||cmd||':'||coalesce(qual,'NULL')||':'||coalesce(with_check,'NULL'),
  E'\n' order by tablename,policyname),'')) from pg_policies where schemaname='sabora';
 select 'functions:'||md5(coalesce(string_agg(
- p.proname||':'||pg_get_function_identity_arguments(p.oid)||':'||pg_get_userbyid(p.proowner)||':'||p.prosecdef||':'||p.provolatile||':'||
+ p.proname||':'||pg_get_function_identity_arguments(p.oid)||':'||pg_get_userbyid(p.proowner)||':'||p.prosecdef||':'||p.provolatile::text||':'||
  coalesce(array_to_string(p.proconfig,','),'NULL')||':'||md5(pg_get_functiondef(p.oid))||':'||r.rolname||':'||has_function_privilege(r.oid,p.oid,'EXECUTE'),
  E'\n' order by p.proname,pg_get_function_identity_arguments(p.oid),r.rolname),''))
 from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join pg_roles r
 where n.nspname='sabora'
  and (r.rolname='postgres' or r.rolname in ('anon','authenticated') or r.rolname like 'sabora\_%' escape '\');
 select 'constraints:'||md5(coalesce(string_agg(
- c.conname||':'||c.contype||':'||c.convalidated||':'||pg_get_constraintdef(c.oid,true),
+ c.conname||':'||c.contype::text||':'||c.convalidated||':'||pg_get_constraintdef(c.oid,true),
  E'\n' order by c.conname),''))
 from pg_constraint c join pg_namespace n on n.oid=c.connamespace where n.nspname='sabora';
 select 'indexes:'||md5(coalesce(string_agg(indexname||':'||indexdef,E'\n' order by indexname),''))
 from pg_indexes where schemaname='sabora';
 select 'triggers:'||md5(coalesce(string_agg(
- c.relname||':'||t.tgname||':'||t.tgenabled||':'||pg_get_triggerdef(t.oid,true),E'\n' order by c.relname,t.tgname),''))
+ c.relname||':'||t.tgname||':'||t.tgenabled::text||':'||pg_get_triggerdef(t.oid,true),E'\n' order by c.relname,t.tgname),''))
 from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace
 where n.nspname='sabora' and not t.tgisinternal;
 create temporary table p2_counts(name text primary key,row_count bigint not null) on commit drop;
