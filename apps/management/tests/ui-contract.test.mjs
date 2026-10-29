@@ -29,8 +29,16 @@ test('all contracted management workspaces are represented without operational f
   assert.match(combined, /no se simulan comandas ni tiempos/i);
 });
 
-test('management source has no network, browser persistence or Google runtime integration', () => {
-  assert.doesNotMatch(combined, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
+test('management keeps network access inside the injected authenticated operations boundary', () => {
+  const transport = readFileSync(new URL('../src/order-operations-authenticated-gateway.js', import.meta.url), 'utf8');
+  const defaultPreview = sources.filter(({path}) => !path.endsWith('order-operations-authenticated-gateway.js') &&
+    !path.endsWith('order-operations-gateway.js') && !path.endsWith('main.tsx'))
+    .map(({source}) => source).join('\n');
+  assert.doesNotMatch(defaultPreview, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
+  assert.match(transport, /getAccessToken/);
+  assert.match(transport, /fetchImpl/);
+  assert.match(transport, /credentials:\s*'omit'/);
+  assert.match(transport, /revoke/);
   assert.doesNotMatch(combined, /\blocalStorage\b|\bsessionStorage\b|document\.cookie/);
   assert.doesNotMatch(combined, /googleapis\.com|generativelanguage|aiplatform|AIza[0-9A-Za-z_-]+/i);
   assert.doesNotMatch(combined, /qrcode|qr-code|data:image\/[^;]+;base64/i);
@@ -62,8 +70,9 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
   assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /<ManagementApp\/>/);
-  assert.doesNotMatch(main, /<ManagementApp tablesGateway=/);
+  assert.match(main, /if \(element\) renderManagement\(element\)/);
+  assert.match(main, /mountAuthenticatedManagementApp/);
+  assert.match(main, /renderManagement\(element, operationsGateway\)/);
   assert.match(tables, /gateway\?: AdminTablesGateway/);
   assert.match(catalog, /gateway\?: AdminCatalogGateway/);
   assert.match(tables, /No se conserva una respuesta parcial/);

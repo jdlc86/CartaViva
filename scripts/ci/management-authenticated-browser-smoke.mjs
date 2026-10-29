@@ -14,14 +14,23 @@ const lineId = 'a4000000-0000-4000-8000-000000000001';
 const timestamp = '2026-10-28T10:00:00.000Z';
 let status = 'confirmed';
 let role = 'kitchen';
+let pickupState = 'ready';
+let pickupVersion = 1;
+let pickupDisplayId = null;
+let failNextBoard = false;
 const calls = [];
-const board = () => ({version: 1, role, nextCursor: null, items: [{
+const board = () => ({version: 2, role, nextCursor: null, items: [{
   orderId, lineId, tableNumber: 7, customerLabel: 'Mesa E2E',
   confirmedAt: timestamp, grouping: 'first', lineNumber: 1,
   category: 'main', name: 'Plato E2E', quantity: 1, status,
   notification: status === 'ready' ? {
     id: 'a5000000-0000-4000-8000-000000000001',
     createdAt: timestamp, acknowledgedAt: null,
+  } : null,
+  pickup: status === 'ready' ? {
+    taskId: 'a7000000-0000-4000-8000-000000000001', state: pickupState,
+    version: pickupVersion, claimedDisplayId: pickupDisplayId,
+    claimedAt: pickupState === 'claimed' ? timestamp : null, updatedAt: timestamp,
   } : null,
 }]});
 const context = await browser.newContext({viewport: {width: 390, height: 844}});
@@ -40,7 +49,41 @@ try {
       return route.fulfill({status: 403, headers, body: JSON.stringify({error:'forbidden'})});
     }
     if (request.method() === 'GET' && request.url().includes('/order-lines?')) {
+      if (failNextBoard) {
+        failNextBoard = false;
+        return route.fulfill({status: 503, headers, body: JSON.stringify({error:'order_operations_unavailable'})});
+      }
       return route.fulfill({status: 200, headers, body: JSON.stringify(board())});
+    }
+    if (request.method() === 'POST' && request.url().endsWith(`/order-lines/${lineId}/pickup-claim`)) {
+      const {expectedVersion} = request.postDataJSON();
+      if (role !== 'waiter' || pickupState !== 'ready' || expectedVersion !== pickupVersion) {
+        return route.fulfill({status: 409, headers, body: JSON.stringify({error:'pickup_claim_conflict'})});
+      }
+      pickupState = 'claimed';
+      pickupDisplayId = 'MS-903';
+      pickupVersion += 1;
+      return route.fulfill({status: 200, headers, body: JSON.stringify({
+        version:1, outcome:'claimed', lineId,
+        pickupTaskId:'a7000000-0000-4000-8000-000000000001', state:pickupState,
+        taskVersion:pickupVersion, claimedDisplayId:pickupDisplayId, claimedAt:timestamp,
+        updatedAt:timestamp, repeated:false,
+      })});
+    }
+    if (request.method() === 'POST' && request.url().endsWith(`/order-lines/${lineId}/pickup-claim/cancel`)) {
+      const {expectedVersion} = request.postDataJSON();
+      if (role !== 'waiter' || pickupState !== 'claimed' || expectedVersion !== pickupVersion) {
+        return route.fulfill({status: 409, headers, body: JSON.stringify({error:'pickup_claim_conflict'})});
+      }
+      pickupState = 'ready';
+      pickupDisplayId = null;
+      pickupVersion += 1;
+      return route.fulfill({status: 200, headers, body: JSON.stringify({
+        version:1, outcome:'cancelled', lineId,
+        pickupTaskId:'a7000000-0000-4000-8000-000000000001', state:pickupState,
+        taskVersion:pickupVersion, claimedDisplayId:null, claimedAt:null,
+        updatedAt:timestamp, repeated:false,
+      })});
     }
     if (request.method() === 'POST' && request.url().includes('/transitions')) {
       const {targetStatus} = request.postDataJSON();
@@ -86,11 +129,24 @@ try {
   await page.getByText('Plato E2E').first().waitFor();
   assert.equal(await page.getByRole('button',{name:'Iniciar preparación'}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Marcar lista'}).count(),0);
+  await page.getByRole('button',{name:'Voy a recoger'}).click();
+  await page.getByText('En recogida · responsable MS-903').waitFor();
+  assert.equal(pickupState,'claimed');
+  assert.equal(pickupVersion,2);
+  await page.getByRole('button',{name:'Cancelo'}).click();
+  await page.getByText('Aviso activo para sala').waitFor();
+  assert.equal(pickupState,'ready');
+  assert.equal(pickupVersion,3);
+  failNextBoard = true;
+  await page.getByRole('button',{name:'Actualizar estado'}).click();
+  await page.getByText('Estado no disponible').waitFor();
+  await page.getByRole('button',{name:'Actualizar estado'}).click();
+  await page.getByRole('button',{name:'Voy a recoger'}).waitFor();
   await page.evaluate(() => window.__saboraCiDispose());
   await page.getByText('Canal operativo sin conectar').first().waitFor();
   assert.ok(calls.some(call => call.method === 'POST'));
   assert.ok(calls.every(call => call.auth?.startsWith('Bearer sabora_ci_browser_token_')));
-  console.log('PASS: Chromium kitchen transitions, waiter isolation and logout (stubbed HTTP, not PG17 E2E)');
+  console.log('PASS: Chromium kitchen, waiter claim/cancel, recoverable error, role isolation and logout (isolated HTTP fixture; PG17 is exercised separately)');
 } finally {
   await context.close();
   await browser.close();

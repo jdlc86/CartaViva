@@ -13,7 +13,7 @@ La tabla se actualiza después de cada bloque. `PASS` acredita únicamente códi
 | 1. Aislamiento | PASS | `8f9f4aacd5134de09ce5e0ba42dec768f31609f2` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40874075723), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40874075712), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40874075862), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40874075711) | 1.047 tests; Compose, imagen, health y gates aislados | Inspección material y capacidad del VPS no autorizadas |
 | 2. Seguridad operativa | PASS | `f3fdeb70c0e46036283b1b586f763d583af8d363` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40875878228), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40875878834), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40875878219), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40875878879) | 1.050 tests; inventario, fail-closed, principales separados, lifecycle y artefactos sin credenciales | Secret manager y provisión operativa no autorizados |
 | 3. Recuperación y continuidad | PASS | `0bd5e3e6775b5b30e81000d81adb7f3c8e0098ed` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40877722171), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40877722095), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40877721933), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40877722197) | 10.000 filas; locks, corrupción, restore interrumpido y segundo clúster PG17 PASS dos veces | RTO/RPO y restore gestionado requieren entorno autorizado |
-| 4. Validación funcional integral | NOT_STARTED | — | — | — | — |
+| 4. Validación funcional integral | IN_PROGRESS | pendiente de commit | pendiente | 1.057 tests; 32 Playwright cliente; Chromium gestión; matriz de 11 capacidades | Falta acreditar PostgreSQL 17 y workflows del SHA publicado |
 | 5. Auditoría y cierre | NOT_STARTED | — | — | — | — |
 
 ## Bloque 1 — cierre validado
@@ -44,5 +44,11 @@ Validación local: `npm run check` PASS con 1.054 pruebas y builds de API, clien
 Ambas quedaron por debajo del presupuesto CI de 180.000ms. Estos tiempos solo caracterizan el fixture desechable; no establecen RTO/RPO operativo.
 
 **Siguiente bloque:** validación funcional integral de los flujos aprobados cliente/gestión, estados adversos, offline y revocaciones sin activar rutas.
+
+## Bloque 4 — implementación local completada, CI pendiente
+
+La matriz ejecutable enlaza QR, visita, catálogo, pedido, agrupación, cocina, sala, notificaciones, errores, offline y revocaciones con evidencia Node, Chromium y PostgreSQL 17 según corresponda. Se corrigió el smoke de gestión que todavía consumía la proyección v1 y ahora recorre «Voy a recoger»/«Cancelo», identidad operativa y recuperación de error. El cliente demuestra en navegador que una revocación no habilita pedidos y que un resultado ambiguo no fabrica éxito ni provoca reenvío automático.
+
+Validación local: `npm run check` PASS con 1.057 pruebas y tres builds; gestión 54/54; Playwright cliente 32/32 en móvil/escritorio; smoke Chromium de gestión PASS. El bloque permanece `IN_PROGRESS` hasta que el SHA funcional ejecute satisfactoriamente PostgreSQL 17 y los cuatro workflows remotos.
 
 Retomar desde el último SHA remoto y el primer bloque que no figure `PASS`.
