@@ -106,7 +106,7 @@ test('production gate detects global cleanup and frontend secret regressions',t=
  writeFileSync(join(fixture,'deploy/compose.sabora.yml'),readFileSync(join(root,'deploy/compose.sabora.yml')));
  writeFileSync(join(fixture,'deploy/Dockerfile.api'),readFileSync(join(root,'deploy/Dockerfile.api')));
  writeFileSync(join(fixture,'.github/workflows/ci.yml'),'permissions:\n  contents: read\n');
- writeFileSync(join(fixture,'.env.example'),'SABORA_API_MODE=health-only\nSABORA_DB_PASSWORD=__INJECT_SECRET_AT_RUNTIME__\n');
+ writeFileSync(join(fixture,'.env.example'),readFileSync(join(root,'.env.example')));
  writeFileSync(join(fixture,'apps/api/src/server.mjs'),'export const mode="health-only";\n');
  writeFileSync(join(fixture,'scripts/cleanup.sh'),'echo safe\n');
  writeFileSync(join(fixture,'apps/client/src/config.js'),'export const publicCode="SABORA";\n');

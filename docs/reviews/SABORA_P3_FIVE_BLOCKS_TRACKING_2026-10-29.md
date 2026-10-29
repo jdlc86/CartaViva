@@ -11,7 +11,7 @@ La tabla se actualiza después de cada bloque. `PASS` acredita únicamente códi
 | Bloque | Estado | Commit remoto | CI | Evidencia | Riesgos pendientes |
 | --- | --- | --- | --- | --- | --- |
 | 1. Aislamiento | PASS | `8f9f4aacd5134de09ce5e0ba42dec768f31609f2` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40874075723), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40874075712), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40874075862), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40874075711) | 1.047 tests; Compose, imagen, health y gates aislados | Inspección material y capacidad del VPS no autorizadas |
-| 2. Seguridad operativa | NOT_STARTED | — | — | — | — |
+| 2. Seguridad operativa | IN_PROGRESS | Pendiente de publicación | Pendiente | Inventario machine-readable, lifecycle y gate de artefactos | Secret manager y provisión operativa no autorizados |
 | 3. Recuperación y continuidad | NOT_STARTED | — | — | — | — |
 | 4. Validación funcional integral | NOT_STARTED | — | — | — | — |
 | 5. Auditoría y cierre | NOT_STARTED | — | — | — | — |
@@ -23,5 +23,9 @@ Se conserva el API `health-only`. Se añaden guardas para proyecto, servicio, re
 Validación local: `npm run check` PASS con 1.047 pruebas y builds de API, cliente y gestión; gate de aislamiento/configuración y `docker compose ... config --quiet` PASS. Los cuatro workflows del commit remoto concluyeron `SUCCESS`; el principal construyó la imagen, la ejecutó sin red ni puerto de host y comprobó `/health`. Permanecen dos avisos no bloqueantes de infraestructura de GitHub: migración de `ubuntu-latest` y acciones v4 ejecutadas sobre Node 24.
 
 **Siguiente bloque:** inventario y controles reproducibles de seguridad operativa, sin provisionar secretos ni activar composiciones funcionales.
+
+## Bloque 2 — alcance implementado antes de CI
+
+Se inventaría la superficie completa de entorno y dependencias sensibles dormidas sin valores. Los gates exigen separación de los tres principales SQL conocidos, lifecycle de cada secreto/material de confianza, correspondencia exacta con `.env.example`, ausencia de entradas dormidas en Compose y cero credenciales materiales en artefactos productivos. La API sigue `health-only` y falla antes del listener ante cualquier entrada sensible.
 
 Retomar desde el último SHA remoto y el primer bloque que no figure `PASS`.
