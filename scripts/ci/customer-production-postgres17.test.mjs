@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
@@ -143,6 +144,42 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [httpConfirmed.json().orderId]);
   assert.equal(httpPersisted.rows[0].n,1);
+  // Execute the actual PWA transport against this same HTTP server and PG17,
+  // with a browser-equivalent same-origin cookie jar. No mocked business flow.
+  const requireClient=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+  const ts=requireClient('typescript');
+  const clientSource=readFileSync(new URL('../../apps/client/src/customer-flow-transport.ts',import.meta.url),'utf8');
+  const clientJs=ts.transpileModule(clientSource,{compilerOptions:{
+   module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+  const {createCustomerFlowTransport}=await import('data:text/javascript;base64,'+
+   Buffer.from(clientJs).toString('base64'));
+  let browserCookie='';
+  const browserFetch=async(path,init={})=>{
+   assert.equal(init.credentials,'same-origin');
+   const requestHeaders={...init.headers,origin:'https://sabora.example',
+    ...(browserCookie?{cookie:browserCookie}:{})};
+   const reply=await customerHttp.inject({method:init.method||'GET',url:path,
+    headers:requestHeaders,...(init.body===undefined?{}:{payload:init.body})});
+   if(reply.headers['set-cookie'])browserCookie=reply.headers['set-cookie'].split(';')[0];
+   return new Response(reply.body,{status:reply.statusCode,headers:{
+    'content-type':reply.headers['content-type']||'application/json'}});
+  };
+  const pwa=createCustomerFlowTransport({fetchImpl:browserFetch});
+  const profile=await pwa.register({alias:'PWA HTTP',company:null});
+  assert.match(profile.publicId,/^SB-/);
+  assert.equal((await pwa.session()).publicId,profile.publicId);
+  const pwaVisit=await pwa.authorizeVisit({tableId,qrToken});
+  const pwaQuote=await pwa.quote({tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,lines:[{itemId:itemA,selection,quantity:1}]});
+  const pwaOrder={tableId,qrToken,visitId:pwaVisit.visitId,basketId:pwaVisit.basketId,
+   requestKey:'pwa_customer_request_971001',
+   lines:[{quoteId:pwaQuote.lines[0].quoteId,itemId:itemA,selection,quantity:1}]};
+  const pwaConfirmed=await pwa.confirm(pwaOrder);
+  assert.equal(pwaConfirmed.status,'confirmed');
+  assert.equal((await pwa.confirm(pwaOrder)).orderId,pwaConfirmed.orderId);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [pwaConfirmed.orderId])).rows[0].n,1);
   const crossOrigin=await customerHttp.inject({method:'POST',
    url:'/api/v1/customer/orders/confirm',
    headers:{...headers,origin:'https://attacker.example'},payload:httpOrder});
