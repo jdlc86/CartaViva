@@ -101,3 +101,11 @@ Prueba nueva `apps/api/src/restaurant-flow-candidate-app.success.test.mjs` incor
 **4/4 workflows SUCCESS:** CI `40906854892`, bootstrap `40906854222`, cliente `40906854342`, gestión `40906854970`.
 
 **Siguiente cierre obligatorio:** usar la factoría conjunta en una aceptación PG17 aislada con autenticación real de personal y transporte PWA gestión; conectar ambas interfaces y certificar flujo browser completo. Sin activación automática, merge ni despliegue. Bloque 1/5 abierto.
+
+## Integración H4: transporte real de PWA gestión → HTTP → PostgreSQL 17 (29-oct)
+
+SHA `a7040d4a2368bf9ab41e3d8bc601e291838c4e6d`: se amplió `scripts/ci/customer-production-postgres17.test.mjs` para registrar rutas H4 Fastify y ejecutar el módulo real `apps/management/src/order-operations-authenticated-gateway.js` contra la misma base PG17 desechable y el mismo pedido H3 confirmado. Cocina lista línea confirmada y la transiciona a `preparing` y `ready`; sala lee `ready`, ejecuta `picked_up`, verifica notificación, replay idempotente e historial. Se comprueba que el camarero no puede preparar la línea y que la denegación no altera la base. Los gateways se revocan al finalizar.
+
+**Límite explícito de evidencia:** la autenticación de los endpoints H4 se inyecta mediante un fixture de roles y bearer de prueba; **no** acredita verificación JWT real, identidad SQL H4 restringida en esta ruta de aceptación, ni navegación UI real. Las pruebas independientes de seguridad/SQL siguen siendo necesarias. Tampoco activa el servidor health-only ni despliega.
+
+**4/4 workflows SUCCESS**: CI `40908095935`, bootstrap `40908095830`, PWA cliente `40908095409`, gestión `40908096154`. Bloque 1/5 sigue abierto hasta integración HTTP conjunta con autenticación real, navegación PWA y certificación del piloto.
