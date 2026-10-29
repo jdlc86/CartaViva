@@ -69,6 +69,11 @@ done > "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 mapfile -t security < "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 [[ "${#security[@]}" -eq 4 && "${security[0]}" = "${security[2]}" && "${security[1]}" = "${security[3]}" ]] || {
  printf 'recovery_security_fingerprints: %s\\n' "${security[*]}" >&2
+ for db in postgres sabora_recovery_ci; do
+  docker exec "$container" psql -X -U postgres -d "$db" -Atqc "select c.relname || ':' || c.relkind::text || ':' || pg_get_userbyid(c.relowner) || ':' || coalesce(c.relacl::text,'NULL') from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='sabora' order by c.relname,c.relkind" > "${RUNNER_TEMP}/sabora-objects-${db}-${GITHUB_RUN_ID}-$"
+ done
+ diff -u "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_recovery_ci-${GITHUB_RUN_ID}-$" >&2 || true
+ rm -f "${RUNNER_TEMP}/sabora-objects-postgres-${GITHUB_RUN_ID}-$" "${RUNNER_TEMP}/sabora-objects-sabora_recovery_ci-${GITHUB_RUN_ID}-$"
  echo 'recovery_owner_acl_or_policy_mismatch' >&2; exit 1;
 }
 rm -f "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
