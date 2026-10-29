@@ -25,6 +25,21 @@ export async function createVerifiedRestaurantFlowCandidate({customer,operations
   await assertCustomerProductionSqlCapabilities(customer);
   await preflightOrderTransitionStaffIdentity({pool:operations.staffPool,role:operations.staffRole});
   await preflightOrderOperationsRuntimeIdentity({pool:operations.operationsPool,role:operations.operationsRole});
+  // Readiness must cover H4 as well as H3 after startup. H3's own /ready
+  // checks the customer principals; this hook additionally fences the staff
+  // and operations principals if privileges drift after registration.
+  app.addHook('onRequest',async(request,reply)=>{
+   if(request.method!=='GET'||request.url.split('?')[0]!=='/ready')return;
+   reply.header('Cache-Control','no-store');
+   try {
+    await preflightOrderTransitionStaffIdentity({
+     pool:operations.staffPool,role:operations.staffRole});
+    await preflightOrderOperationsRuntimeIdentity({
+     pool:operations.operationsPool,role:operations.operationsRole});
+   }catch{
+    return reply.code(503).send({status:'unavailable'});
+   }
+  });
   await registerVerifiedCustomerProductionApp(app,customer);
   await registerVerifiedRestrictedOrderOperationsFromPools(app,operations);
   await app.ready();
