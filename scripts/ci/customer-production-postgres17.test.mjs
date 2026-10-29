@@ -168,6 +168,12 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
  assert.ok(kitchenBoard.items.some(item=>item.lineId===lineId),
    'H3-confirmed order must be visible to H4 kitchen');
+ // A waiter cannot prepare a customer-confirmed line; no mutation occurs.
+ await assert.rejects(operations.transitionLine(waiter,{
+   lineId,targetStatus:'preparing',correlationId:'h3_h4_forbidden_waiter_prepare'}),
+   /order_operations_forbidden/);
+ assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]))
+   .rows[0].status,'confirmed');
  const preparing=await operations.transitionLine(kitchen,{
    lineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
  assert.equal(preparing.repeated,false);
@@ -178,12 +184,25 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
  const salaBoard=await operations.listBoard(waiter,{status:'ready',limit:100,cursor:null});
  assert.ok(salaBoard.items.some(item=>item.lineId===lineId),
    'H4 sala must see the same H3-confirmed line');
+ // Kitchen cannot perform sala pickup, and the ready notification survives.
+ await assert.rejects(operations.transitionLine(kitchen,{
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_forbidden_kitchen_pickup'}),
+   /order_operations_forbidden/);
+ assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]))
+   .rows[0].status,'ready');
  const pickup=await operations.transitionLine(waiter,{
    lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(pickup.notificationId,ready.notificationId);
  const replay=await operations.transitionLine(waiter,{
    lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(replay.repeated,true);
+ assert.equal(replay.eventId,pickup.eventId,
+   'idempotent sala replay must reference the original event');
+ const events=await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_line_events WHERE order_line_id=$1',
+   [lineId]);
+ assert.ok(events.rows[0].n>=3);
+
  const finalLine=await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]);
  assert.equal(finalLine.rows[0].status,'picked_up');
  const history=await operations.listHistory(waiter,{orderId:concurrent[0].orderId,limit:100});
