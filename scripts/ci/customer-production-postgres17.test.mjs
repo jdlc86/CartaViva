@@ -104,6 +104,7 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
  // HTTP acceptance on the same restricted PG17 principals: real registration
  // sets an HttpOnly cookie, then the client visits a QR, quotes and confirms.
  const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+ let clientPwaConfirmedOrderId=null;
  const customerHttp=Fastify({logger:false,trustProxy:false});
  try {
   await registerVerifiedCustomerProductionApp(customerHttp,{
@@ -178,6 +179,7 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
    lines:[{quoteId:pwaQuote.lines[0].quoteId,itemId:itemA,selection,quantity:1}]};
   const pwaConfirmed=await pwa.confirm(pwaOrder);
   assert.equal(pwaConfirmed.status,'confirmed');
+  clientPwaConfirmedOrderId=pwaConfirmed.orderId;
   assert.equal((await pwa.confirm(pwaOrder)).orderId,pwaConfirmed.orderId);
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
@@ -336,7 +338,14 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
  });
  const kitchenPwa=gateway('kitchen'),salaPwa=gateway('waiter');
  try{
-  const pwaLineId=confirmedLines.rows[1].id;
+  // Same persisted order created through the *actual client PWA transport*.
+  // H4 management PWA must process it, not an unrelated seeded order.
+  assert.ok(clientPwaConfirmedOrderId);
+  const pwaLines=await admin.query(
+   'SELECT id FROM sabora.order_lines WHERE order_id=$1',
+   [clientPwaConfirmedOrderId]);
+  assert.equal(pwaLines.rows.length,1);
+  const pwaLineId=pwaLines.rows[0].id;
   assert.ok((await kitchenPwa.listBoard({status:'confirmed'})).items
    .some(item=>item.lineId===pwaLineId));
   const denied=await salaPwa.transitionLine({lineId:pwaLineId,
@@ -361,7 +370,7 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   const repeatedPwa=await salaPwa.transitionLine({lineId:pwaLineId,
    targetStatus:'picked_up',correlationId:'pwa_pg17_pickup_971001'});
   assert.equal(repeatedPwa.repeated,true);
-  assert.ok((await salaPwa.listHistory({orderId:concurrent[0].orderId})).events
+  assert.ok((await salaPwa.listHistory({orderId:clientPwaConfirmedOrderId})).events
    .some(event=>event.lineId===pwaLineId&&event.toStatus==='picked_up'));
   assert.ok(managementRequests.length>=8);
   kitchenPwa.revoke();salaPwa.revoke();
