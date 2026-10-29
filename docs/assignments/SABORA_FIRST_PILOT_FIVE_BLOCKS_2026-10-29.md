@@ -77,3 +77,11 @@ En `scripts/ci/customer-production-postgres17.test.mjs` se amplió la aceptació
 Primer CI detectó expectativa obsoleta `first` tras haber añadido la orden HTTP previa; se corrigió para exigir `grouped` (comportamiento de negocio correcto), sin alterar lógica de producción. SHA validado `ed24c6457d0f4bbfc81b15d96fc68c1a1dffe2cd`. **4/4 workflows SUCCESS:** CI `40902171746`, bootstrap `40902171775`, cliente `40902171762`, gestión `40902171759`.
 
 **No confundir** con navegador PWA cliente real → H4 HTTP autenticado → PWA gestión en una misma sesión. La factoría conjunta permanece opt-in y el servidor por defecto health-only. **Bloque 1/5 aún abierto**, sin GO ni despliegue.
+
+## Integración PWA cliente real (transporte) → H3 HTTP → PG17 (29-oct)
+
+SHA `35b89c44a25989e12bf490f462f5011c53f3bede`: el test PostgreSQL 17 desechable ahora transpila e importa **el módulo real** `apps/client/src/customer-flow-transport.ts` y lo ejecuta contra la instancia Fastify H3 con una emulación de cookie jar del navegador. Valida que el cliente utilice `credentials:'same-origin'`, y ejecuta registro, sesión, autorización QR, cotización, confirmación y replay sobre SQL real. La persistencia de una sola línea se comprueba en PostgreSQL. No hay servidor externo ni credenciales de producción.
+
+**4/4 workflows SUCCESS**: CI `40903767420`, bootstrap `40903767511`, cliente `40903767524`, gestión `40903767427`.
+
+**Alcance exacto:** transporte de PWA real bajo Fastify.inject, **no** prueba de interfaz Playwright con navegador real ni integración del transporte autenticado H4 de gestión en la misma instancia. Tampoco hay servidor activado ni despliegue. Bloque 1/5 continúa abierto.
