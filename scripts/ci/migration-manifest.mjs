@@ -6,9 +6,9 @@ import {fileURLToPath} from 'node:url';
 export function buildMigrationManifest(root){
  const dir=resolve(root,'supabase','migrations');
  const names=readdirSync(dir).filter(name=>/^\d{14}_[a-zA-Z0-9_-]+\.sql$/.test(name)).sort();
- if(names.length===0)throw Error('migration_manifest_empty');
  const all=readdirSync(dir).filter(name=>name.endsWith('.sql'));
  if(all.length!==names.length)throw Error('migration_manifest_invalid_filename');
+ if(names.length===0)throw Error('migration_manifest_empty');
  const versions=new Set();
  return names.map(name=>{
   const version=name.slice(0,14);
