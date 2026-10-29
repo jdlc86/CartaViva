@@ -8,7 +8,7 @@ export function createProtectedRouteHooks({ issuer, getTrustedKeys, lookupStaff,
   const authorize = createStaffAuthorization({ lookupStaff });
   return function forRoles(allowedRoles) {
     if (!Array.isArray(allowedRoles) || allowedRoles.length === 0 ||
-        allowedRoles.some(role => !['admin', 'waiter', 'kitchen'].includes(role))) {
+        allowedRoles.some(role => !['root', 'admin', 'waiter', 'kitchen'].includes(role))) {
       throw new Error('invalid_route_roles');
     }
     return [
