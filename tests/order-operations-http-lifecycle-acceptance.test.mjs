@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createOrderOperationsCoordinator} from '../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../apps/api/src/order-operations-http.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../apps/management/src/order-operations-authenticated-gateway.js';
 const requireApi=createRequire(new URL('../apps/api/package.json',import.meta.url));
 const Fastify=requireApi('fastify');
 const actor='10000000-0000-4000-8000-000000000001';
@@ -122,4 +123,54 @@ test('HTTP rejects unauthorized transitions and correlation conflicts without st
  assert.equal(f.state.status,'preparing');
  assert.equal(f.state.transitions,1);
  assert.equal(f.state.notification,null);
+});
+
+// Integration of the actual management PWA transport with H4 HTTP routes.
+// Identity is injected by this in-memory harness only; SQL identity and PG17
+// are separately exercised in the restricted PostgreSQL integration suites.
+test('management PWA transport drives H4 kitchen-to-sala HTTP lifecycle',async t=>{
+ const f=fixture();t.after(()=>f.app.close());
+ const requests=[];
+ function gateway(role){
+  return createAuthenticatedOrderOperationsGateway({
+   getAccessToken:async()=>`ci_valid_management_bearer_${role}_971001`,
+   fetchImpl:async(path,options)=>{
+    requests.push({role,path,credentials:options.credentials,
+     bearer:options.headers.get('authorization')});
+    const response=await f.app.inject({method:options.method,url:path,
+     headers:{'x-test-role':role,'accept':'application/json',
+      ...(options.body?{'content-type':'application/json'}:{})},
+     ...(options.body?{payload:options.body}:{})});
+    return new Response(response.body,{status:response.statusCode,headers:{
+     'content-type':response.headers['content-type']||'application/json'}});
+   }
+  });
+ }
+ const kitchen=gateway('kitchen'),sala=gateway('waiter');
+ assert.equal((await kitchen.listBoard()).items[0].status,'confirmed');
+ assert.deepEqual((await sala.listBoard()).items,[]);
+ const prep=await kitchen.transitionLine({lineId:line,targetStatus:'preparing',
+  correlationId:'pwa_kitchen_prepare_971001'});
+ assert.equal(prep.currentStatus,'preparing');
+ const ready=await kitchen.transitionLine({lineId:line,targetStatus:'ready',
+  correlationId:'pwa_kitchen_ready_971001'});
+ assert.equal(ready.notificationId,notif);
+ assert.equal((await sala.listBoard()).items[0].status,'ready');
+ const pickup=await sala.transitionLine({lineId:line,targetStatus:'picked_up',
+  correlationId:'pwa_sala_pickup_971001'});
+ assert.equal(pickup.currentStatus,'picked_up');
+ const repeated=await sala.transitionLine({lineId:line,targetStatus:'picked_up',
+  correlationId:'pwa_sala_pickup_971001'});
+ assert.equal(repeated.repeated,true);
+ assert.equal(f.state.transitions,3);
+ assert.equal((await sala.listHistory({orderId:order})).events.length,3);
+ assert.ok(requests.length>=8);
+ for(const request of requests){
+  assert.equal(request.credentials,'omit');
+  assert.match(request.bearer,/^Bearer ci_valid_management_bearer_/);
+  assert.match(request.path,/^\/api\/v1\/operations\//);
+ }
+ kitchen.revoke();sala.revoke();
+ await assert.rejects(kitchen.listBoard(),/order_operations_auth_unavailable/);
+ await assert.rejects(sala.listBoard(),/order_operations_auth_unavailable/);
 });
