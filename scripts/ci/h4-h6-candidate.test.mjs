@@ -63,3 +63,17 @@ test('integrated candidate rejects SQL identity aliasing even with separate pool
    /invalid_h4_h6_candidate_isolation/);
  }
 });
+
+test('integrated H4/H6 never registers H6 when H4 cryptographic configuration is invalid',async()=>{
+ let opened=0;
+ const tracked=()=>({connect:async()=>{opened++;throw Error('unexpected_connection');},
+  query:async()=>{opened++;throw Error('unexpected_query');}});
+ const a={staffPool:tracked(),operationsPool:tracked(),
+  staffRole:'sabora_staff_reader_runtime',operationsRole:'sabora_order_operations_runtime',
+  issueTransitionCapability:()=>({})};
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),
+  cookieAuth:{},customerFlow:{},stripe:{},issueStaffCapability:()=>({})};
+ await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+  /invalid_order_operations_auth_config/);
+ assert.equal(opened,0,'invalid H4 issuer must abort before any SQL preflight or H6 notifier');
+});
