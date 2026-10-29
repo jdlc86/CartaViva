@@ -68,6 +68,7 @@ for db in postgres sabora_recovery_ci; do
 done > "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 mapfile -t security < "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
 [[ "${#security[@]}" -eq 4 && "${security[0]}" = "${security[2]}" && "${security[1]}" = "${security[3]}" ]] || {
+ printf 'recovery_security_fingerprints: %s\\n' "${security[*]}" >&2
  echo 'recovery_owner_acl_or_policy_mismatch' >&2; exit 1;
 }
 rm -f "${RUNNER_TEMP}/sabora-recovery-security-${GITHUB_RUN_ID}-$"
