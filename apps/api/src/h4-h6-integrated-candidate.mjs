@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import {registerVerifiedRestrictedOrderOperationsFromPools} from './order-operations-composition.mjs';
+import {registerVerifiedOrderOperationsFromPools} from './order-operations-composition.mjs';
 import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-pool.mjs';
 import {registerH6CandidateHttp} from './h6-candidate-composition.mjs';
 
@@ -39,7 +39,7 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
    pool:h4.staffPool,issuer:h4.issuer,getTrustedKeys:h4.getTrustedKeys,
    verify:h4.verify,observe:h4.observe,
   });
-  await registerVerifiedRestrictedOrderOperationsFromPools(app,h4);
+  await registerVerifiedOrderOperationsFromPools(app,h4);
   h6Registration=await registerH6CandidateHttp(app,{...h6,forRoles});
   app.addHook('onClose',closeH6);
   await app.ready();
