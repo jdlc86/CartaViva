@@ -75,3 +75,18 @@ Workflows del SHA:
 4. Runbook final de parada, copia, restauración y validación de seguridad; las decisiones de producción siguen requiriendo autorización expresa.
 
 **Decisión:** P2 parcialmente implementado y verificado en CI; **no cerrado** y **no autorizado para producción**. Mantener Draft.
+
+## Actualización de verificación — 2026-10-29, SHA 8b88cb477b95205d5a1400173ed2f2589341cca0
+
+Los cuatro workflows de este SHA finalizaron SUCCESS:
+
+- Sabora CI (incluye PostgreSQL 17 desechable y ensayo de restauración): https://github.com/jdlc86/CartaViva/actions/runs/40855885436
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40855885650
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40855885518
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40855885515
+
+**Hallazgo corregido:** una ACL explícita del propietario en la base origen puede restaurarse como ACL nula con privilegios implícitos equivalentes. El ensayo ahora compara propietarios, permisos efectivos de los roles enumerados en el script, flags de RLS y definiciones de políticas; conserva comprobaciones de filas, unicidad y transacciones fallidas. No se ha eliminado la puerta de fallo por divergencia de permisos.
+
+**Límites que siguen abiertos:** la copia actual usa `pg_dump` de la base desechable completa, no una copia/restauración selectiva exclusivamente de Sabora; la comparación de permisos no cubre todos los roles ni todos los tipos de objetos SQL (por ejemplo, funciones y esquemas); los roles globales se comparten entre las dos bases del mismo contenedor. Tampoco hay ensayo de fallo entre migraciones con reanudación segura basada en historial y checksum, clasificación individual de dependencias/bloqueos/reversibilidad, ni recuperación PITR. Estos requisitos no deben marcarse PASS por inferencia.
+
+**Decisión:** P2 continúa **abierto**, aunque el ensayo de restauración actualmente implementado ya está verde. No hay autorización para merge, despliegue ni uso de bases operativas.
