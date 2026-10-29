@@ -24,7 +24,11 @@ test('offline capability gate validates independent least-privilege logins',asyn
  assert.deepEqual(await assertIsolatedCustomerSqlCapabilities(options(undefined,undefined,events)),
   {validated:true});
  assert.equal(events.filter(e=>e==='release').length,2);
- assert.equal(events.filter(e=>typeof e==='string'&&e.includes('pg_roles')).length,2);
+ const sql=events.filter(e=>typeof e==='string'&&e.includes('pg_roles'));
+ assert.equal(sql.length,2);
+ assert.ok(sql.every(value=>value.includes('has_function_privilege(current_user, p.oid')));
+ assert.ok(sql.every(value=>!value.includes("'sabora.read_published_catalog()'")),
+  'least-privilege login must not need schema USAGE merely to run preflight');
 });
 test('capability gate rejects dangerous catalog and writer privileges',async()=>{
  const cases=[

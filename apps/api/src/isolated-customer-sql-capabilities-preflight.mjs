@@ -15,9 +15,12 @@ SELECT current_user AS effective_role,
        rolreplication AS replication,
        rolinherit AS inherit_role,
        pg_has_role(current_user, 'sabora_catalog_reader', 'SET') AS can_set_catalog_reader,
-       has_function_privilege(current_user, 'sabora.read_published_catalog()', 'EXECUTE') AS direct_catalog_execute,
-       has_function_privilege('sabora_catalog_reader', 'sabora.read_published_catalog()', 'EXECUTE') AS scoped_catalog_execute
-FROM pg_roles WHERE rolname = current_user`;
+       has_function_privilege(current_user, p.oid, 'EXECUTE') AS direct_catalog_execute,
+       has_function_privilege('sabora_catalog_reader', p.oid, 'EXECUTE') AS scoped_catalog_execute
+FROM pg_roles r
+JOIN pg_proc p ON p.proname = 'read_published_catalog' AND p.pronargs = 0
+JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'sabora'
+WHERE r.rolname = current_user`;
 const SQL_WRITER = `
 SELECT current_user AS effective_role,
        session_user AS login_role,
@@ -29,8 +32,11 @@ SELECT current_user AS effective_role,
        rolreplication AS replication,
        rolinherit AS inherit_role,
        pg_has_role(current_user, 'sabora_catalog_reader', 'SET') AS can_set_catalog_reader,
-       has_function_privilege(current_user, 'sabora.read_published_catalog()', 'EXECUTE') AS direct_catalog_execute
-FROM pg_roles WHERE rolname = current_user`;
+       has_function_privilege(current_user, p.oid, 'EXECUTE') AS direct_catalog_execute
+FROM pg_roles r
+JOIN pg_proc p ON p.proname = 'read_published_catalog' AND p.pronargs = 0
+JOIN pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'sabora'
+WHERE r.rolname = current_user`;
 
 async function inspect(pool, sql) {
  let client;
