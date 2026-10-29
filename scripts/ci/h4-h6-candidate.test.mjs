@@ -25,10 +25,26 @@ test('integrated H4/H6 candidate rejects missing and aliased SQL identities befo
   ({a,b})=>{b.notifierPool=b.providerPool;},
   ({a,b})=>{delete b.customerPool;},
   ({a,b})=>{delete b.providerPool;},
+  ({a,b})=>{delete a.staffPool;},
+  ({a,b})=>{delete a.operationsPool;},
+  ({a,b})=>{a.staffPool={};},
+  ({a,b})=>{b.operationsPool={};},
+  ({a,b})=>{b.notifierPool={};},
  ];
  for(const change of cases){
   const a=h4(),b=h6();change({a,b});
   await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
    /invalid_h4_h6_candidate_isolation/);
  }
+});
+
+// A failed preflight must not start Fastify, register H6, or open the notifier.
+test('integrated H4/H6 rejects malformed dependencies before any SQL connection',async()=>{
+ let connects=0;
+ const tracked=()=>({connect:async()=>{connects++;throw Error('unexpected_sql_connection');},query:async()=>{throw Error('unexpected_sql_query');}});
+ const a={staffPool:tracked(),operationsPool:tracked()};
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked()};
+ b.notifierPool=a.operationsPool;
+ await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),/invalid_h4_h6_candidate_isolation/);
+ assert.equal(connects,0);
 });
