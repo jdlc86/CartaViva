@@ -51,3 +51,7 @@ Solo jdlc86/CartaViva. Sin merge, despliegue, reinicio, eliminación o cambio de
 Mantener una tabla de cinco filas: bloque, estado NOT_STARTED/IN_PROGRESS/PASS/BLOCKED, commit remoto, CI y enlace, evidencia, riesgos pendientes. Cada comentario de avance debe indicar "Bloque N de 5" y nunca afirmar validación antes de concluir CI. En caso de interrupción, dejar una instrucción breve para retomar desde el último SHA remoto y el primer bloque pendiente.
 
 Codex debe trabajar autónomamente hasta donde lo permitan los recursos y autorizaciones. El usuario continuará enviando "continúa"; no necesita intervenir en las pruebas normales.
+
+## Seguimiento de ejecución
+
+El estado persistente, SHA, CI, evidencias y riesgos de cada bloque se mantienen en `docs/reviews/SABORA_P3_FIVE_BLOCKS_TRACKING_2026-10-29.md`.

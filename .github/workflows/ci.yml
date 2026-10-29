@@ -35,9 +35,11 @@ jobs:
       - name: Build
         run: pnpm build
       - name: Gate production configuration, isolation and frontend artifacts
-        run: node scripts/ci/production-config-secrets-gate.mjs
+        run: |
+          node scripts/ci/deployment-isolation-contract.mjs
+          node scripts/ci/production-config-secrets-gate.mjs
       - name: Validate Docker Compose
-        run: docker compose -f deploy/compose.sabora.yml config --quiet
+        run: docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
       - name: Build isolated Sabora API image
         run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
       - name: Smoke-test API container without host port or shared network

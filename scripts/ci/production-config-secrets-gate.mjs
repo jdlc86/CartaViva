@@ -1,6 +1,7 @@
 import {existsSync,readdirSync,readFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,join,relative,resolve} from 'node:path';
+import {inspectDeploymentIsolation} from './deployment-isolation-contract.mjs';
 
 const SENSITIVE_NAME = /SABORA_[A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|PRIVATE|KEY|CA_PEM)/;
 const CREDENTIAL = /(?:sk|rk)_(?:live|test)_[A-Za-z0-9_]{16,}|whsec_[A-Za-z0-9_]{16,}|postgres(?:ql)?:\/\/[^\s:/]+:[^\s@]+@/i;
@@ -59,6 +60,7 @@ export function inspectProductionConfig(rootPath){
   requireMatch(example,/__INJECT_SECRET_AT_RUNTIME__/,'example_missing_injection_marker');
   forbidMatch(example,CREDENTIAL,'example_contains_credential');
   forbidMatch(server,/h6-candidate-composition|h4-h6-integrated-candidate|staff-lifecycle-composition|customer-production-composition/,'server_mounts_dormant_candidate');
+  violations.push(...inspectDeploymentIsolation(root));
   return Object.freeze([...new Set(violations)]);
 }
 
