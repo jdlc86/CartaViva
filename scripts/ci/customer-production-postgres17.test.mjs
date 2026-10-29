@@ -230,7 +230,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
   let browserCookie='';
   const browserFetch=async(path,init={})=>{
    assert.equal(init.credentials,'same-origin');
-   const requestHeaders={...init.headers,origin:'https://sabora.example',
+   const requestHeaders={...init.headers,origin:clientOrigin,
     ...(browserCookie?{cookie:browserCookie}:{})};
    const reply=await customerHttp.inject({method:init.method||'GET',url:path,
     headers:requestHeaders,...(init.body===undefined?{}:{payload:init.body})});
