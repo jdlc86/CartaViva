@@ -19,6 +19,7 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
+node scripts/ci/migration-manifest.mjs > "${RUNNER_TEMP}/sabora-migration-manifest-${GITHUB_RUN_ID}-$.json"
 for migration in supabase/migrations/*.sql; do
  test -f "$migration"
  docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
