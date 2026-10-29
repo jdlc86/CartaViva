@@ -4,7 +4,7 @@ import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated
 
 const pool=()=>({connect:async()=>{},query:async()=>{}});
 const h4=()=>({staffPool:pool(),operationsPool:pool()});
-const h6=()=>({customerPool:pool(),providerPool:pool(),operationsPool:pool()});
+const h6=()=>({customerPool:pool(),providerPool:pool(),operationsPool:pool(),notifierPool:pool()});
 
 test('integrated H4/H6 candidate rejects missing and aliased SQL identities before startup',async()=>{
  await assert.rejects(createH4H6IntegratedCandidate(),/invalid_h4_h6_candidate_isolation/);
@@ -25,6 +25,7 @@ test('integrated H4/H6 candidate rejects missing and aliased SQL identities befo
   ({a,b})=>{b.notifierPool=b.providerPool;},
   ({a,b})=>{delete b.customerPool;},
   ({a,b})=>{delete b.providerPool;},
+  ({a,b})=>{delete b.notifierPool;},
   ({a,b})=>{delete a.staffPool;},
   ({a,b})=>{delete a.operationsPool;},
   ({a,b})=>{a.staffPool={};},
@@ -43,7 +44,7 @@ test('integrated H4/H6 rejects malformed dependencies before any SQL connection'
  let connects=0;
  const tracked=()=>({connect:async()=>{connects++;throw Error('unexpected_sql_connection');},query:async()=>{throw Error('unexpected_sql_query');}});
  const a={staffPool:tracked(),operationsPool:tracked()};
- const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked()};
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),notifierPool:tracked()};
  b.notifierPool=a.operationsPool;
  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),/invalid_h4_h6_candidate_isolation/);
  assert.equal(connects,0);
@@ -71,7 +72,7 @@ test('integrated H4/H6 never registers H6 when H4 cryptographic configuration is
  const a={staffPool:tracked(),operationsPool:tracked(),
   staffRole:'sabora_staff_reader_runtime',operationsRole:'sabora_order_operations_runtime',
   issueTransitionCapability:()=>({})};
- const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),notifierPool:tracked(),
   cookieAuth:{},customerFlow:{},stripe:{},issueStaffCapability:()=>({})};
  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
   /invalid_auth_config/);
