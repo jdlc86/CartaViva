@@ -4,8 +4,6 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
-import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
-import {createOrderOperationsGateway} from '../../apps/management/src/order-operations-gateway.js';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {createOrderOperationsGateway} from '../../apps/management/src/order-operations-gateway.js';
