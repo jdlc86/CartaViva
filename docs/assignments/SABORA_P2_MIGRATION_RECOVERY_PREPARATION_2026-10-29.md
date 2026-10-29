@@ -45,3 +45,33 @@ Integrar pruebas en el CI existente, con timeouts, limpieza y reportes sanitizad
 ## Criterio de salida de esta preparación
 
 Este documento **no declara P2 cerrado**. La fase siguiente debe implementar y verificar las pruebas reales de migración/recuperación y actualizar la documentación normativa únicamente cuando exista un hito material, sin reinterpretar requisitos aprobados.
+
+## Evidencias de ejecución — 2026-10-29
+
+**SHA validado:** `550c20c881f7f2fcf248f2cdfaf986f7743d0788` (PR Draft #40).
+
+| Comprobación | Implementación | Evidencia | Estado |
+| --- | --- | --- | --- |
+| Inventario offline ordenado con SHA-256, detección de versión duplicada y nombre SQL inválido | `scripts/ci/migration-manifest.mjs`, `scripts/ci/migration-manifest.test.mjs` | Sabora CI, test raíz | PASS |
+| Preflight de migraciones dentro de runner desechable | `scripts/ci/postgres-migration-smoke.sh` | Sabora CI | PASS |
+| Copia y restauración en PostgreSQL 17 aislado | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Escritura confirmada, fallo de subtransacción y ausencia de escritura parcial | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Integridad de datos de fixture, unicidad y comparación de RLS forzado tras restauración | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Regresión de interfaz cliente y gestión | workflows de conformidad y visual | Actions | PASS |
+
+Workflows del SHA:
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40852559401
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40852559437
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40852559389
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40852559393
+
+**Alcance exacto:** el ensayo usa un fixture nuevo y temporal y restaura en otra base del mismo contenedor de CI. No demuestra recuperación de una base operativa, restauración de todos los privilegios de roles globales, recuperación PITR, ni reanudación después de un fallo real de una migración confirmada. `pg_restore --no-owner --no-acl` deliberadamente no reproduce propietarios y ACL; no debe usarse como evidencia de recuperación completa de permisos. El inventario automatizado todavía no clasifica dependencias, bloqueos o reversibilidad por migración.
+
+### Pendientes para cierre integral de P2
+
+1. Inventario de dependencias y compatibilidad de cada migración conforme a normativa, con evidencia de extensiones y permisos.
+2. Ensayo determinista de fallo entre migraciones y reanudación, con detección de migraciones ya aplicadas y checksums; evitar reejecutar SQL no idempotente.
+3. Ensayo de recuperación de roles, propietarios y ACL en un entorno PostgreSQL 17 completamente aislado, o documentar explícitamente la alternativa autorizada.
+4. Runbook final de parada, copia, restauración y validación de seguridad; las decisiones de producción siguen requiriendo autorización expresa.
+
+**Decisión:** P2 parcialmente implementado y verificado en CI; **no cerrado** y **no autorizado para producción**. Mantener Draft.
