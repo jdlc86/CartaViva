@@ -785,3 +785,15 @@ El constructor `createProtectedRouteHooks` acepta ahora los cuatro roles durable
 ### Evidencia de regresión H4/H6 de identidades SQL (29-10-2026)
 
 La composición optativa H4/H6 comprueba también aliasing de identidad por `pool.options.user` y `pool.options.connectionString`, aunque se inyecten objetos pool diferentes. La regresión de `scripts/ci/h4-h6-candidate.test.mjs` cubre ausencia de dependencias, aliasing de pools, identidad SQL compartida y rechazo previo a abrir conexiones. El commit `b402fed11403131b59582d0754c2cf4c30bedc9c` terminó con Sabora CI `40795713462`, Bootstrap lockfile `40795713570` y visual smoke `40795713473` en SUCCESS. **Estos controles no acreditan** todavía la prueba conjunta Chromium con H4/H6 reales, JWT, recogida y SSE autenticado; ese requisito normativo continúa pendiente.
+
+### Cierre candidato integrado H4/H6 con JWT, Chromium y SSE real (29-10-2026)
+
+`scripts/ci/order-operations-read-postgres17.test.mjs` sustituye el puente `page.route`/`app.inject` del ensayo anterior por un único listener loopback de `createH4H6IntegratedCandidate`, PostgreSQL 17 desechable y un proxy Vite local hacia el mismo proceso Fastify. La PWA de gestión usa JWT RS256 firmados y los hooks reales de personal; no se inyectan identidades verificadas ni un `forRoles` permisivo. El fixture contiene visita, cuenta, ronda y despacho H6 válidos.
+
+El recorrido cubre cocina `confirmed → preparing → ready`, emisión outbox, actualización de sala por SSE sin polling, claim externo, cancelación por teclado, reasignación, persistencia tras recarga y carrera de dos camareros con replay idempotente y conflictos sin efectos. La aceptación mantiene la línea en `ready`: aceptar la tarea de recogida no se presenta como entrega al cliente ni crea un estado `delivered`.
+
+El stream se interrumpe de forma controlada después de recibir datos reales y el gateway reconecta con `Last-Event-ID`; también se fuerza un cursor anterior a la ventana disponible y se exige `resync-required`. Una suspensión en PostgreSQL invalida una conexión SSE ya abierta mediante revalidación de heartbeat, aun sin `NOTIFY`. El cierre de Fastify ejecuta `UNLISTEN`, libera el cliente y deja `pg_listening_channels()` vacío.
+
+Durante la integración se corrigió el compositor común para usar `registerVerifiedRestrictedOrderOperationsFromPools`, el mismo registro H4 completo que ya separa el lector de personal del principal de operaciones. H6 acepta un `eventHeartbeatMs` explícito entre 5 y 60 segundos, conservando 15 segundos por defecto, para que la caducidad de autorización del stream sea verificable y acotada.
+
+La matriz y los límites completos se registran en `docs/reviews/SABORA_DESKTOP_H4_H6_INTEGRATION_REPORT_2026-10-29.md`. Esta evidencia cierra el candidato funcional aislado cuando el SHA final tenga CI verde; **no** monta el candidato en `server.mjs`, no activa producción y no autoriza merge, despliegue ni cambios en Supabase operativo/VPS.
