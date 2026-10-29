@@ -17,7 +17,7 @@ docker exec "$container" psql -X -U postgres -d postgres -Atqc "select 1 from pg
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
 create table sabora.p2_recovery_fixture (id integer primary key, payload text not null unique);
 insert into sabora.p2_recovery_fixture values (1,'committed');
-do $
+do $do$
 begin
  begin
   insert into sabora.p2_recovery_fixture values (2,'rolled_back');
@@ -27,7 +27,7 @@ begin
  if exists(select 1 from sabora.p2_recovery_fixture where id=2) then
   raise exception 'partial_write_survived';
  end if;
-end $;
+end $do$;
 SQL
 # A consistent snapshot of the disposable database, including catalog and data.
 docker exec "$container" pg_dump -U postgres -d postgres -Fc -f /tmp/sabora-recovery.dump
@@ -51,14 +51,14 @@ rm -f /tmp/sabora-recovery-counts-${GITHUB_RUN_ID}-$$
 for db in postgres sabora_recovery_ci; do
  docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" -Atqc "select case when count(*)=1 and min(id)=1 and min(payload)='committed' then 'ok' else 'bad' end from sabora.p2_recovery_fixture" | grep -Fx ok
  docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db" <<'SQL'
-do $
+do $do$
 begin
  begin
   insert into sabora.p2_recovery_fixture values (1,'duplicate_probe');
   raise exception 'unique_constraint_missing';
  exception when unique_violation then null;
  end;
-end $;
+end $do$;
 SQL
 done
 # No destructive rollback. The restored DB exists only in the disposable container.
