@@ -37,3 +37,7 @@ La indicación del propietario de usar producción como escenario de pruebas def
 ## Avance persistido — control de activación seguro
 
 Implementado `apps/api/src/pilot-activation-gate.mjs` y pruebas `apps/api/src/pilot-activation-gate.test.mjs`; la suite raíz incluye el test. Esta es una **subtarea transversal de seguridad**, NO el cierre del Bloque 1 de 5 ni prueba de despliegue. El gate no está conectado al arranque productivo; es una función de evaluación explícita que rechaza evidencias ausentes o distintas de `true`. Pendiente CI del SHA, integración de composiciones operativas, configuración de secretos y validación de aislamiento material. No se han tocado VPS, Supabase operativo ni Fleetia.
+
+## Subhito cerrado en código — frontera de activación del piloto
+
+`pilot-activation-gate.mjs` valida explícitamente las evidencias exigidas; las pruebas unitarias comprueban el rechazo fail-closed. `pilot-activation-runtime.test.mjs` prueba mediante Fastify real que incluso si todas las evidencias se marcan true, no aparecen rutas operativas implícitamente y `/ready` continúa `health-only`; también rechaza modos de producción no autorizados. Se incorpora a la regresión monorepo. **No se considera Bloque 1 de 5 cerrado**: falta la composición real autenticada con PostgreSQL y las rutas normativas. No usar esta evidencia como autorización para desplegar.
