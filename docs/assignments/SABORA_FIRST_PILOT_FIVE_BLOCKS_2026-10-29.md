@@ -131,3 +131,9 @@ Commits `8612fd38f6c92d228664a817e5b85901b91d815e` y corrección de aserción `a
 El primer CI falló por comparar número de consultas SQL con número de releases de conexión: el preflight cliente ejecuta varias consultas por conexión. Corregida la aserción para verificar que las conexiones se liberan sin exigir igualdad con el número de consultas. **4/4 SUCCESS en SHA `af8d9ff2`**: CI `40913164566`, bootstrap `40913164582`, cliente `40913164554`, gestión `40913164615`.
 
 **Límite:** esta prueba positiva utiliza resultados de inspección SQL simulados; los tests PostgreSQL 17 desechables de H3/H4 se ejecutan por separado. Falta un arranque de factoría conjunta con cinco principals PG17 reales y la certificación browser de ambas PWA. Bloque 1/5 abierto; no GO/despliegue.
+
+## Readiness de factoría conjunta H3/H4: comprobación de deriva de privilegios (29-oct)
+
+Commits `e42a0c6fb4147052a028616b42452e6330c0469c` y `444d404d66e4b86d81fd7f9bc0138f37b13e0f90`: se detectó que la ruta `/ready` de la factoría conjunta únicamente revalidaba las tres identidades H3 tras el arranque. Se incorporó un hook de readiness que revalida los principals SQL H4 (staff y operaciones) **en cada consulta GET /ready**; ante pérdida de privilegios o fallo de conexión responde 503 genérico sin filtrar detalles internos. La prueba cubre arranque sano, deriva de cada rol, respuesta cerrada y recuperación sin reinicio. No se modifica el servidor health-only ni se habilita producción.
+
+**Estado de CI al documentar:** la primera ejecución del SHA `444d404d` tuvo fallos en CI/bootstrap por un error sintáctico de declaración duplicada `kitchenPwa` en `scripts/ci/customer-production-postgres17.test.mjs` (archivo modificado concurrentemente en la misma rama). La versión actual consultada del archivo contiene una única declaración; se requiere nueva ejecución completa de CI para confirmar el estado integrado. No declarar verde hasta verificarla.
