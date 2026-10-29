@@ -646,7 +646,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
     window.__block01Dispose=mountAuthenticatedManagementApp({
      element:document.getElementById('root'),getAccessToken:async()=>token,
-     fetchImpl:window.fetch.bind(window),reconnectDelayMs:60_000
+     fetchImpl:window.fetch.bind(window),reconnectDelayMs:30_000
     });
    },bearer(actor));
    await mountManagement(kitchenId);
@@ -660,7 +660,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     [browserLine.id])).rows[0].status,'ready');
 
    const salaBrowserGateway=createAuthenticatedOrderOperationsGateway({
-    getAccessToken:async()=>bearer(waiterId),reconnectDelayMs:60_000,
+    getAccessToken:async()=>bearer(waiterId),reconnectDelayMs:30_000,
     fetchImpl:(path,options)=>fetch(apiOrigin+path,options)
    });
    const salaBoard=await salaBrowserGateway.listBoard({status:'ready'});
