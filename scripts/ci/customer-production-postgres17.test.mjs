@@ -6,6 +6,8 @@ import {randomBytes} from 'node:crypto';
 import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
@@ -297,6 +299,77 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
  assert.equal(finalLine.rows[0].status,'picked_up');
  const history=await operations.listHistory(waiter,{orderId:concurrent[0].orderId,limit:100});
  assert.ok(history);
+
+ // Execute the actual management PWA gateway through H4 HTTP against the same
+ // PG17-confirmed order. Authentication is a test-only role fixture here;
+ // cryptographic staff JWT and restricted SQL principals have separate suites.
+ const managementHttp=Fastify({logger:false});
+ const bearerByRole={
+  kitchen:'ci_kitchen_bearer_token_971001',
+  waiter:'ci_waiter_bearer_token_971001'
+ };
+ registerOrderOperationsHttp(managementHttp,{
+  forRoles:allowed=>async(request,reply)=>{
+   const token=request.headers.authorization?.replace(/^Bearer /,'');
+   const role=Object.entries(bearerByRole).find(([,value])=>value===token)?.[0];
+   if(!role||!allowed.includes(role))return reply.code(403).send({error:'forbidden'});
+   const identity=role==='kitchen'?kitchen:waiter;
+   request.verifiedIdentity=identity.verifiedIdentity;
+   request.verifiedStaff=identity.verifiedStaff;
+  },operations
+ });
+ const managementRequests=[];
+ const gateway=(role)=>createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=>bearerByRole[role],
+  fetchImpl:async(path,options)=>{
+   assert.equal(options.credentials,'omit');
+   assert.equal(options.redirect,'error');
+   assert.equal(options.cache,'no-store');
+   assert.equal(options.headers.get('authorization'),`Bearer ${bearerByRole[role]}`);
+   managementRequests.push({role,path});
+   const reply=await managementHttp.inject({method:options.method,url:path,
+    headers:Object.fromEntries(options.headers.entries()),
+    ...(options.body===undefined?{}:{payload:options.body})});
+   return new Response(reply.body,{status:reply.statusCode,headers:{
+    'content-type':reply.headers['content-type']||'application/json'}});
+  }
+ });
+ const kitchenPwa=gateway('kitchen'),salaPwa=gateway('waiter');
+ try{
+  const pwaLineId=confirmedLines.rows[1].id;
+  assert.ok((await kitchenPwa.listBoard({status:'confirmed'})).items
+   .some(item=>item.lineId===pwaLineId));
+  const denied=await salaPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'preparing',correlationId:'pwa_pg17_forbidden_971001'})
+   .then(()=>null,error=>error);
+  assert.equal(denied?.code,'forbidden');
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [pwaLineId])).rows[0].status,'confirmed');
+  const prepared=await kitchenPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'preparing',correlationId:'pwa_pg17_prepare_971001'});
+  assert.equal(prepared.currentStatus,'preparing');
+  const readyPwa=await kitchenPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'ready',correlationId:'pwa_pg17_ready_971001'});
+  assert.equal(readyPwa.currentStatus,'ready');
+  assert.ok(readyPwa.notificationId);
+  assert.ok((await salaPwa.listBoard({status:'ready'})).items
+   .some(item=>item.lineId===pwaLineId));
+  const picked=await salaPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'picked_up',correlationId:'pwa_pg17_pickup_971001'});
+  assert.equal(picked.currentStatus,'picked_up');
+  assert.equal(picked.notificationId,readyPwa.notificationId);
+  const repeatedPwa=await salaPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'picked_up',correlationId:'pwa_pg17_pickup_971001'});
+  assert.equal(repeatedPwa.repeated,true);
+  assert.ok((await salaPwa.listHistory({orderId:concurrent[0].orderId})).events
+   .some(event=>event.lineId===pwaLineId&&event.toStatus==='picked_up'));
+  assert.ok(managementRequests.length>=8);
+  kitchenPwa.revoke();salaPwa.revoke();
+  await assert.rejects(kitchenPwa.listBoard(),/order_operations_auth_unavailable/);
+  await assert.rejects(salaPwa.listBoard(),/order_operations_auth_unavailable/);
+ }finally{
+  kitchenPwa.revoke();salaPwa.revoke();await managementHttp.close();
+ }
 
 
  // Same idempotency key with different content is not a replay.
