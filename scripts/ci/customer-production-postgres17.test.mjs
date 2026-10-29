@@ -655,7 +655,10 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await kitchenCard.getByRole('button',{name:'Iniciar preparación'}).click();
    await kitchenCard.getByRole('button',{name:'Marcar lista'}).waitFor({timeout:15_000});
    await kitchenCard.getByRole('button',{name:'Marcar lista'}).click();
-   await managementPage.getByText('Aviso activo para sala').waitFor({timeout:15_000});
+   // The H3/H4 acceptance contract is the durable line transition itself.
+   // A pickup-task label belongs to the later H6 claim workflow and must not
+   // be used as a proxy for this PWA proving that it rendered the ready state.
+   await kitchenCard.getByText('Lista para recoger',{exact:true}).waitFor({timeout:15_000});
    assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
     [browserLine.id])).rows[0].status,'ready');
 
