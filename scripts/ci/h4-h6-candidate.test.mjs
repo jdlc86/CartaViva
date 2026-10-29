@@ -19,6 +19,10 @@ test('integrated H4/H6 candidate rejects missing and aliased SQL identities befo
   ({a,b})=>{b.customerPool=a.operationsPool;},
   ({a,b})=>{b.providerPool=a.operationsPool;},
   ({a,b})=>{b.forRoles=()=>[];},
+  ({a,b})=>{b.notifierPool=a.staffPool;},
+  ({a,b})=>{b.notifierPool=a.operationsPool;},
+  ({a,b})=>{b.notifierPool=b.customerPool;},
+  ({a,b})=>{b.notifierPool=b.providerPool;},
   ({a,b})=>{delete b.customerPool;},
   ({a,b})=>{delete b.providerPool;},
  ];
