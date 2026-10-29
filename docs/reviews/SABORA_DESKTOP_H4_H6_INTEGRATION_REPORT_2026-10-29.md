@@ -67,7 +67,13 @@ Resultados de la pasada final local:
 - smoke visual: 12/12 PNG válidos de `resumen`, `comandas` y `equipo` a 360, 460, 900 y 1440 px;
 - inspección visual representativa: estados vacíos/no operativos coherentes, sin datos simulados, navegación adaptativa y sin desbordamiento horizontal.
 
-GitHub Actions debe ejecutarse todavía sobre el SHA documental final. Sus URLs y conclusión se publicarán en el PR; un resultado de un SHA anterior no acredita esta entrega.
+GitHub Actions sobre `eb1285b967c97375d4c7bf5b77fb2eb8b43616d5`, que contiene la implementación y este informe antes de incorporar las propias URLs, terminó íntegramente en `SUCCESS`:
+
+- Sabora CI / `validate`: [run 40829340225](https://github.com/jdlc86/CartaViva/actions/runs/40829340225), 2 min 53 s;
+- Management browser visual smoke / `management-browser-smoke`: [run 40829340236](https://github.com/jdlc86/CartaViva/actions/runs/40829340236), 50 s;
+- Bootstrap lockfile / `generate-lockfile`: [run 40829340291](https://github.com/jdlc86/CartaViva/actions/runs/40829340291), 2 min 55 s.
+
+El PR registra además los checks del SHA documental final. Un resultado de un SHA anterior al bloque de implementación no acredita esta entrega.
 
 ## Límites conservados
 
