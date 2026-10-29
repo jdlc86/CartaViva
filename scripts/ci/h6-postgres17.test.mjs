@@ -525,6 +525,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    idleStream+=new TextDecoder().decode(chunk);
    if(idleStream.includes('event: access-revoked'))break;
   }
+  assert.ok(idleStream.includes(': keepalive\n\n'),
+   'heartbeat must use actual SSE newline delimiters, not escaped text');
   assert.ok(scopeChecks>=2,'heartbeat must recheck authorization');
   assert.ok(idleStream.includes('event: access-revoked'));
  }finally{await idleApp.close();}
