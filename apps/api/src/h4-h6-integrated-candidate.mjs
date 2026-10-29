@@ -17,6 +17,10 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
     h4.staffPool===h6.customerPool||h4.staffPool===h6.providerPool||
     h4.operationsPool===h6.customerPool||h4.operationsPool===h6.providerPool||
     !h6.customerPool||!h6.providerPool||
+    (h6.notifierPool!==undefined&&
+      (h6.notifierPool===h4.staffPool||h6.notifierPool===h4.operationsPool||
+       h6.notifierPool===h6.customerPool||h6.notifierPool===h6.providerPool||
+       typeof h6.notifierPool?.connect!=='function'))||
     [h4.staffPool,h4.operationsPool,h6.customerPool,h6.providerPool,h6.operationsPool]
       .some(pool=>!pool||typeof pool.connect!=='function'))
   throw Error('invalid_h4_h6_candidate_isolation');
