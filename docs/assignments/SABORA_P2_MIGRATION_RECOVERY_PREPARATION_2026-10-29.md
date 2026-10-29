@@ -90,3 +90,16 @@ Los cuatro workflows de este SHA finalizaron SUCCESS:
 **Límites que siguen abiertos:** la copia actual usa `pg_dump` de la base desechable completa, no una copia/restauración selectiva exclusivamente de Sabora; la comparación de permisos no cubre todos los roles ni todos los tipos de objetos SQL (por ejemplo, funciones y esquemas); los roles globales se comparten entre las dos bases del mismo contenedor. Tampoco hay ensayo de fallo entre migraciones con reanudación segura basada en historial y checksum, clasificación individual de dependencias/bloqueos/reversibilidad, ni recuperación PITR. Estos requisitos no deben marcarse PASS por inferencia.
 
 **Decisión:** P2 continúa **abierto**, aunque el ensayo de restauración actualmente implementado ya está verde. No hay autorización para merge, despliegue ni uso de bases operativas.
+
+## Ensayo de fallo transaccional y reanudación — SHA f23deab06577b77a06adba277ae8c9c0104d8375
+
+Se añadió `scripts/ci/postgres-migration-failure-smoke.sh`, invocado por `scripts/ci/postgres-migration-smoke.sh` dentro del mismo contenedor PG17 de GitHub Actions. Crea un esquema de fixture independiente, confirma atómicamente la primera versión con su ledger, inyecta una excepción durante la segunda transacción, verifica que no persisten escrituras parciales, reanuda con una nueva transacción y rechaza una versión duplicada con checksum distinto. El esquema del fixture se elimina dentro del contenedor desechable.
+
+Los cuatro workflows del HEAD ensayado terminaron SUCCESS:
+
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40857318715
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40857318678
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40857318648
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40857318829
+
+**Alcance y límites:** el ensayo usa una migración sintética con transacciones explícitas; no es un motor de migraciones productivo, no registra automáticamente los checksums de las migraciones reales, no demuestra reanudación de SQL con operaciones no transaccionales ni autoriza repetir migraciones reales ya confirmadas. La restauración actual es una copia de la base desechable completa, no exclusivamente del esquema Sabora. Sigue pendiente inventario normativo por migración, análisis de dependencias, riesgos de bloqueo y reversibilidad, y recuperación selectiva segura con cobertura completa de permisos. **P2 abierto; sin autorización operativa.**
