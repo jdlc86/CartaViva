@@ -4,6 +4,8 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
+import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
+import {createOrderOperationsGateway} from '../../apps/management/src/order-operations-gateway.js';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {createOrderOperationsGateway} from '../../apps/management/src/order-operations-gateway.js';
@@ -316,45 +318,93 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
    [concurrent[0].orderId]);
  assert.equal(confirmedLines.rows.length,2);
  const lineId=confirmedLines.rows[0].id;
+ // Exercise the real management PWA gateway and H4 HTTP routes on the same
+ // persisted H3 order. Test-only role injection: JWT/JWKS is separately tested.
+ const operationsHttp=Fastify({logger:false});
+ const identities=new Map([['ci-kitchen',kitchen],['ci-waiter',waiter]]);
+ operationsHttp.addHook('onRequest',async request=>{
+  const identity=identities.get(request.headers.authorization?.replace(/^Bearer /,''));
+  if(identity){request.verifiedIdentity=identity.verifiedIdentity;
+   request.verifiedStaff=identity.verifiedStaff;}
+ });
+ registerOrderOperationsHttp(operationsHttp,{forRoles:roles=>async(request,reply)=>{
+  if(!request.verifiedStaff||!roles.includes(request.verifiedStaff.role))
+   return reply.code(403).send({error:'forbidden'});
+ },operations});
+ await operationsHttp.ready();
+ const managementFetch=role=>async(path,options={})=>{
+  const reply=await operationsHttp.inject({method:options.method||'GET',url:path,
+   headers:{...options.headers,authorization:'Bearer ci-'+role},
+   ...(options.body===undefined?{}:{payload:options.body})});
+  return new Response(reply.body,{status:reply.statusCode,
+   headers:{'content-type':reply.headers['content-type']||'application/json'}});
+ };
+ const kitchenGateway=createOrderOperationsGateway({send:managementFetch('kitchen')});
+ const waiterGateway=createOrderOperationsGateway({send:managementFetch('waiter')});
+ try {
+  const fromKitchen=await kitchenGateway.listBoard({status:'confirmed'});
+  assert.ok(fromKitchen.items.some(item=>item.lineId===lineId),
+   'management gateway must read the H3 order via H4 HTTP');
+  const viaHttpPreparing=await kitchenGateway.transitionLine({
+   lineId,targetStatus:'preparing',correlationId:'h3_h4_http_prepare_971001'});
+  assert.equal(viaHttpPreparing.repeated,false);
+  const viaHttpReady=await kitchenGateway.transitionLine({
+   lineId,targetStatus:'ready',correlationId:'h3_h4_http_ready_971001'});
+  assert.equal(viaHttpReady.repeated,false);
+  const fromSala=await waiterGateway.listBoard({status:'ready'});
+  assert.ok(fromSala.items.some(item=>item.lineId===lineId));
+  const viaHttpPickup=await waiterGateway.transitionLine({
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_http_pickup_971001'});
+  assert.equal(viaHttpPickup.repeated,false);
+  const viaHttpReplay=await waiterGateway.transitionLine({
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_http_pickup_971001'});
+  assert.equal(viaHttpReplay.repeated,true);
+  assert.ok(await waiterGateway.listHistory({orderId:concurrent[0].orderId}));
+  await assert.rejects(kitchenGateway.transitionLine({
+   lineId,targetStatus:'picked_up',correlationId:'h3_h4_http_forbidden_971001'}),
+   /forbidden|order_operation_conflict/);
+ } finally {await operationsHttp.close();}
+ // Continue the coordinator regression on the other H3-confirmed line.
+ const secondLineId=confirmedLines.rows[1].id;
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
- assert.ok(kitchenBoard.items.some(item=>item.lineId===lineId),
+ assert.ok(kitchenBoard.items.some(item=>item.lineId===secondLineId),
    'H3-confirmed order must be visible to H4 kitchen');
  // A waiter cannot prepare a customer-confirmed line; no mutation occurs.
  await assert.rejects(operations.transitionLine(waiter,{
-   lineId,targetStatus:'preparing',correlationId:'h3_h4_forbidden_waiter_prepare'}),
+   lineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_forbidden_waiter_prepare'}),
    /order_operations_forbidden/);
- assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]))
+ assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[secondLineId]))
    .rows[0].status,'confirmed');
  const preparing=await operations.transitionLine(kitchen,{
-   lineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
+   lineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
  assert.equal(preparing.repeated,false);
  const ready=await operations.transitionLine(kitchen,{
-   lineId,targetStatus:'ready',correlationId:'h3_h4_ready_971001'});
+   lineId:secondLineId,targetStatus:'ready',correlationId:'h3_h4_ready_971001'});
  assert.equal(ready.repeated,false);
  assert.ok(ready.notificationId);
  const salaBoard=await operations.listBoard(waiter,{status:'ready',limit:100,cursor:null});
- assert.ok(salaBoard.items.some(item=>item.lineId===lineId),
+ assert.ok(salaBoard.items.some(item=>item.lineId===secondLineId),
    'H4 sala must see the same H3-confirmed line');
  // Kitchen cannot perform sala pickup, and the ready notification survives.
  await assert.rejects(operations.transitionLine(kitchen,{
-   lineId,targetStatus:'picked_up',correlationId:'h3_h4_forbidden_kitchen_pickup'}),
+   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_forbidden_kitchen_pickup'}),
    /order_operations_forbidden/);
- assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]))
+ assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[secondLineId]))
    .rows[0].status,'ready');
  const pickup=await operations.transitionLine(waiter,{
-   lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(pickup.notificationId,ready.notificationId);
  const replay=await operations.transitionLine(waiter,{
-   lineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(replay.repeated,true);
  assert.equal(replay.eventId,pickup.eventId,
    'idempotent sala replay must reference the original event');
  const events=await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_line_events WHERE order_line_id=$1',
-   [lineId]);
+   [secondLineId]);
  assert.ok(events.rows[0].n>=3);
 
- const finalLine=await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[lineId]);
+ const finalLine=await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[secondLineId]);
  assert.equal(finalLine.rows[0].status,'picked_up');
  const history=await operations.listHistory(waiter,{orderId:concurrent[0].orderId,limit:100});
  assert.ok(history);
