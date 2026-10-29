@@ -93,3 +93,11 @@ Commits `5bdef7f263dda5145edd98d0d8a7e70491e70f07` y `d54cecd61c1f3cb26d2cca28de
 Primer CI falló porque el fixture HTTP histórico omitía campos normativos exigidos por el normalizador de la PWA (`tableNumber`, `customerLabel`, fecha, categoría, notificación e historial). Se completó el fixture, **sin debilitar el normalizador ni la producción**, y se repitió CI. **4/4 SUCCESS:** CI `40905242720`, bootstrap `40905242771`, cliente `40905242899`, gestión `40905242820`.
 
 **Falta para cerrar Bloque 1:** demostrar ambos transportes juntos sobre la factoría HTTP H3+H4 y PostgreSQL 17 con autenticación JWT/SQL real; integración de interfaces de navegador y bootstrap autorizado. No afirmar E2E completo ni GO.
+
+## Factoría conjunta H3/H4 — caso positivo verificado (29-oct)
+
+Prueba nueva `apps/api/src/restaurant-flow-candidate-app.success.test.mjs` incorporada a la suite raíz en SHA `289d432f6c5afc37bf2ed7f2b4badc8ded604dd5`. Cinco identidades SQL simuladas con respuestas de preflight exactas (tres customer y dos operations) validan el montaje opt-in de la factoría conjunta. Se comprueba que Fastify registra los cinco endpoints principales de cliente y los tres endpoints H4, que readiness responde 200 y que cliente y personal sin sesión son rechazados. Complementa los tests negativos preexistentes y los tests PG17 reales, pero **el preflight de esta prueba es simulado** y no certifica la factoría conjunta contra PG17 real.
+
+**4/4 workflows SUCCESS:** CI `40906854892`, bootstrap `40906854222`, cliente `40906854342`, gestión `40906854970`.
+
+**Siguiente cierre obligatorio:** usar la factoría conjunta en una aceptación PG17 aislada con autenticación real de personal y transporte PWA gestión; conectar ambas interfaces y certificar flujo browser completo. Sin activación automática, merge ni despliegue. Bloque 1/5 abierto.
