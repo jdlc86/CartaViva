@@ -36,6 +36,11 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
       h6.operationsPool,...(h6.notifierPool?[h6.notifierPool]:[])];
       return pools.some((pool,i)=>pools.slice(i+1).some(other=>sameSqlIdentity(pool,other)));})())
   throw Error('invalid_h4_h6_candidate_isolation');
+ // H4 and H6 must share the same verified staff gate, not just the same keys.
+ // Reject conflicting H6 authentication overrides rather than silently ignore them.
+ if(h6.issuer!==undefined||h6.getTrustedKeys!==undefined||h6.verify!==undefined||
+    h6.staffPool!==undefined||h6.staffRole!==undefined||h6.observe!==undefined)
+  throw Error('invalid_h4_h6_staff_auth_override');
  const app=Fastify({logger:false,trustProxy:false});
  let h6Registration;
  let h6Closed=false;
