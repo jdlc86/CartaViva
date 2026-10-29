@@ -41,3 +41,7 @@ El propietario ha indicado que no hay usuarios reales y acepta utilizar el futur
 
 ## Criterio de trabajo
 Priorizar bloques completos y persistir cada bloque en GitHub (commit, pruebas, CI, documentación y comentario PR). No presentar una interfaz visual como backend operativo. No merge ni despliegue sin autorización.
+
+## Aclaración del propietario — Estudio de Imágenes (2026-10-29)
+
+El proveedor previsto es **Google Gemini**. El uso, alcance funcional, comportamiento y experiencia visual del Estudio de Imágenes están gobernados exclusivamente por los **documentos normativos aprobados** del repositorio; este inventario no puede ampliarlos, reinterpretarlos ni sustituirlos. Antes de implementar el adaptador Gemini, identificar documentos normativos exactos y construir una matriz requisito→código→prueba. Mantener los flujos aprobados de selección, configuración, revisión, aprobación y publicación cuando estén prescritos normativamente; no inferir habilitación de publicación ni integración efectiva de la mera presencia de interfaz. Los documentos de continuidad son solo contexto. La elección de Gemini no autoriza claves reales, servicios facturables ni despliegues.
