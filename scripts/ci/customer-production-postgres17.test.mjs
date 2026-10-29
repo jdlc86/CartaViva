@@ -411,6 +411,21 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   assert.equal(denied?.code,'forbidden');
   assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
    [pwaLineId])).rows[0].status,'confirmed');
+  // The customer cookie, a forged staff bearer, or an untrusted role header
+  // cannot authorize any H4 operation against this real confirmed order.
+  for(const headers of [
+   {cookie:revokedCookie,'x-test-role':'kitchen'},
+   {authorization:'Bearer forged_management_token_971001','x-test-role':'kitchen'},
+   {authorization:'Bearer '+bearerByRole.waiter,'x-test-role':'kitchen'}
+  ]){
+   const forbidden=await managementHttp.inject({method:'POST',
+    url:'/api/v1/operations/order-lines/'+pwaLineId+'/transitions',
+    headers,payload:{targetStatus:'preparing',
+     correlationId:'forged_staff_transition_971001'}});
+   assert.equal(forbidden.statusCode,403,forbidden.body);
+  }
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [pwaLineId])).rows[0].status,'confirmed');
   const prepared=await kitchenPwa.transitionLine({lineId:pwaLineId,
    targetStatus:'preparing',correlationId:'pwa_pg17_prepare_971001'});
   assert.equal(prepared.currentStatus,'preparing');
@@ -427,6 +442,13 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   const repeatedPwa=await salaPwa.transitionLine({lineId:pwaLineId,
    targetStatus:'picked_up',correlationId:'pwa_pg17_pickup_971001'});
   assert.equal(repeatedPwa.repeated,true);
+  const mismatchedReplay=await salaPwa.transitionLine({lineId:pwaLineId,
+   targetStatus:'ready',correlationId:'pwa_pg17_pickup_971001'})
+   .then(()=>null,error=>error);
+  assert.ok(mismatchedReplay,
+   'same idempotency key with another transition must not be accepted');
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [pwaLineId])).rows[0].status,'picked_up');
   assert.ok((await salaPwa.listHistory({orderId:clientPwaConfirmedOrderId})).events
    .some(event=>event.lineId===pwaLineId&&event.toStatus==='picked_up'));
   assert.ok(managementRequests.length>=8);
