@@ -951,6 +951,9 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await page.setViewportSize({width: 390, height: 844});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.deepEqual(browserErrors, [],
+      'the complete authorized journey must not emit browser console or page errors');
+    browserErrors.length = 0;
 
     // Suspension invalidates ordinary HTTP immediately and an already-open,
     // otherwise idle SSE stream on its next bounded authorization heartbeat.
@@ -968,7 +971,9 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
     assert.ok(browserRequests.some(call => call.method === 'POST'));
     assert.ok(browserRequests.some(call => new URL(call.url).pathname.endsWith('/events')));
     assert.ok(browserRequests.every(call => call.authorization?.startsWith('Bearer ')));
-    assert.deepEqual(browserErrors, []);
+    assert.ok(browserErrors.every(error =>
+      error === 'console:Failed to load resource: the server responded with a status of 403 (Forbidden)'),
+    `revocation may emit only its expected denied-resource diagnostic: ${browserErrors.join('; ')}`);
     await context.close();context = null;
     await browser.close();browser = null;
     await vite.close();vite = null;

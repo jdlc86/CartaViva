@@ -13,6 +13,7 @@ El resultado permanece como candidato opt-in. No se importa desde `server.mjs`, 
 3. El anterior ensayo de Chromium puenteaba peticiones mediante `page.route` hacia `app.inject`, declaraba SSE indisponible y usaba una orden H4 sin ronda H6. Se sustituyó por un listener Fastify real en loopback, proxy local de Vite, visita/cuenta/ronda/despacho H6 válidos, JWT RS256 firmado y PostgreSQL 17 desechable.
 4. El preflight de activación usaba rutas POSIX literales en sus fixtures y `URL.pathname` para localizar el repositorio. La suite completa fallaba en Windows aunque los artefactos existieran. Los fixtures usan ahora `node:path.resolve` y la raíz real se convierte con `fileURLToPath`; la misma política queda cubierta de forma portable.
 5. La limpieza del ensayo de agotamiento intentaba borrar 46.655 altas sintéticas y forzaba comprobaciones repetidas de varias claves foráneas `ON DELETE RESTRICT`. El ensayo conserva esas filas únicamente hasta destruir el contenedor desechable y libera el pool que comparten las pruebas posteriores. El escenario completo pasó de horas a 7,9 segundos sin cambiar el esquema ni el resultado contractual.
+6. En Linux Chromium puede registrar en consola el 403 de recurso que produce deliberadamente la suspensión, mientras que en la pasada local no lo hizo. La regresión exige ahora cero errores durante todo el recorrido autorizado y, después de suspender, permite únicamente el diagnóstico literal de red 403 esperado. Cualquier otro error de consola o página sigue fallando el gate.
 
 ## Matriz de aceptación
 
@@ -66,6 +67,8 @@ Resultados de la pasada final local:
 - agotamiento del espacio de 46.655 códigos: 1/1, rechazo atómico sin alta parcial y limpieza del pool en 7,9 s;
 - smoke visual: 12/12 PNG válidos de `resumen`, `comandas` y `equipo` a 360, 460, 900 y 1440 px;
 - inspección visual representativa: estados vacíos/no operativos coherentes, sin datos simulados, navegación adaptativa y sin desbordamiento horizontal.
+
+Tras detectar en Actions la diferencia de diagnóstico de consola del 403 de suspensión, se repitió íntegramente el mismo harness local: 105/105, incluido el E2E Chromium corregido. No se reejecutó solo el caso focal.
 
 GitHub Actions sobre `eb1285b967c97375d4c7bf5b77fb2eb8b43616d5`, que contiene la implementación y este informe antes de incorporar las propias URLs, terminó íntegramente en `SUCCESS`:
 
