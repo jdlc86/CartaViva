@@ -45,3 +45,13 @@ Priorizar bloques completos y persistir cada bloque en GitHub (commit, pruebas, 
 ## Aclaración del propietario — Estudio de Imágenes (2026-10-29)
 
 El proveedor previsto es **Google Gemini**. El uso, alcance funcional, comportamiento y experiencia visual del Estudio de Imágenes están gobernados exclusivamente por los **documentos normativos aprobados** del repositorio; este inventario no puede ampliarlos, reinterpretarlos ni sustituirlos. Antes de implementar el adaptador Gemini, identificar documentos normativos exactos y construir una matriz requisito→código→prueba. Mantener los flujos aprobados de selección, configuración, revisión, aprobación y publicación cuando estén prescritos normativamente; no inferir habilitación de publicación ni integración efectiva de la mera presencia de interfaz. Los documentos de continuidad son solo contexto. La elección de Gemini no autoriza claves reales, servicios facturables ni despliegues.
+
+## Comprobación de implementación (2026-10-29)
+
+Se ha leído el contrato normativo `docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md` y código `apps/api/src/server.mjs`, `apps/api/src/api-runtime-config.mjs`, `apps/management/src/views/ImageStudio.tsx`.
+
+**Bloqueador de primer piloto:** `server.mjs` solo publica `/health` y `/ready`; `/ready` informa `health-only`. La configuración de producción rechaza modos distintos de `health-only` y secretos operativos. No se debe levantar un piloto funcional simplemente cambiando variables de entorno: hay que implementar y verificar composición segura, credenciales, rutas y pruebas de integración según normativa.
+
+**Imágenes:** el contrato exige Gemini/Google, original conservado, derivadas privadas, aprobación humana, publicación explícita y límites de coste. La vista actual declara «Google · Integración futura» y «Sólo preparación local», sin subida ni persistencia. No declarar integración Gemini completada.
+
+**Estado de cierre:** NO CERRADO; requiere implementación de código y verificación. La aprobación para desplegar no sustituye los requisitos de aislamiento material del VPS ni autorización específica para intervenir recursos operativos.
