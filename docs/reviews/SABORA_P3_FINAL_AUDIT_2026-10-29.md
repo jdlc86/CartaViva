@@ -15,7 +15,7 @@ Los bloques 1 a 4 están publicados y disponen de cuatro workflows SUCCESS por S
 | 2. Seguridad operativa | scripts/ci/operational-security-inventory.mjs, scripts/ci/production-config-secrets-gate.mjs, docs/security/SABORA_P3_OPERATIONAL_SECURITY_INVENTORY_2026-10-29.md | SHA 61b947f8d69d0bd728394b4da09c19be949cefb1; CI 40876445805 y tres workflows compañeros SUCCESS | PASS aislado |
 | 3. Recuperación | scripts/ci/postgres-recovery-smoke.sh, scripts/ci/recovery-continuity-contract.mjs, docs/runbooks/SABORA_P3_RECOVERY_CONTINUITY_RUNBOOK_2026-10-29.md | SHA 472bd4b32b1d1e0e9fb595426b4d8ea190f79c74; CI 40878389678 y tres workflows compañeros SUCCESS | PASS aislado |
 | 4. Flujos funcionales | scripts/ci/functional-validation-contract.mjs, scripts/ci/management-authenticated-browser-smoke.mjs, docs/reviews/SABORA_P3_FUNCTIONAL_VALIDATION_2026-10-29.md | SHA 5b407d172a6350365b04abf74d45017f738b5194; CI 40881153717, bootstrap 40881153767, cliente 40881153829, gestión 40881153669, todos SUCCESS | PASS aislado |
-| 5. Auditoría final | Este informe y docs/reviews/SABORA_P3_FIVE_BLOCKS_TRACKING_2026-10-29.md | Revisión documental de evidencias de los bloques 1-4; CI de SHA documental final pendiente hasta que GitHub Actions termine | PENDIENTE gate final |
+| 5. Auditoría final | Este informe y docs/reviews/SABORA_P3_FIVE_BLOCKS_TRACKING_2026-10-29.md | SHA 681f706d2e08fb692fd4e6a8ae4e01e5b13e5126; CI 40884058578, bootstrap 40884058539, cliente 40884058727 y gestión 40884058507, todos SUCCESS | PASS aislado |
 
 ## Límites y bloqueos operativos
 
@@ -28,7 +28,7 @@ Los bloques 1 a 4 están publicados y disponen de cuatro workflows SUCCESS por S
 
 ## Criterio de cierre
 
-P3 podrá declararse **CERRADO en su alcance técnico aislado** cuando el SHA final que incluye este informe y seguimiento tenga cuatro workflows SUCCESS. Hasta entonces, **P3 bloque 5 pendiente de CI final**. Aunque se cierre, la activación operativa sigue NO-GO hasta resolver las puertas anteriores mediante autorización separada.
+El SHA documental `681f706d2e08fb692fd4e6a8ae4e01e5b13e5126` completó cuatro workflows SUCCESS. Por tanto, **P3 está CERRADO en su alcance técnico aislado**. Esta decisión se apoya en las ejecuciones verificadas del SHA citado; los commits posteriores que registran el cierre son documentales. La activación operativa sigue NO-GO hasta resolver las puertas anteriores mediante autorización separada.
 
 ## Recuperación tras interrupción
 
