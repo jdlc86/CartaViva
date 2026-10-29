@@ -161,3 +161,11 @@ Commit de prueba `74b1983058dd323d6d53f8e46e983ee511a5102d`, corregido `2a932441
 Primer CI falló por importaciones duplicadas en el test; corregidas sin modificar el runtime. **4/4 workflows SUCCESS** en `2a932441`: Sabora CI `40918427107`, bootstrap `40918426944`, cliente `40918426969`, gestión `40918426878`.
 
 **Bloque 1/5 todavía abierto:** falta integración de las dos interfaces de navegador y composición conjunta con autenticación real H4 en el mismo servidor, además de activación operativa autorizada. No hay GO, merge ni despliegue.
+
+## Regresión de revocación de sesión cliente y continuidad H3/H4 (29-oct)
+
+Se amplió `scripts/ci/customer-production-postgres17.test.mjs` para comprobar que una cookie de cliente capturada **antes** de cerrar sesión no puede confirmar un pedido nuevo **después** de la revocación SQL, incluso si otro cliente se registra y obtiene una sesión válida. Se conserva el pedido histórico y no se duplica ninguna línea. El test existente ya incluía la confirmación concurrente con idempotencia, operaciones de cocina/sala con el gateway real de gestión y revocación posterior.
+
+Un intento inicial de insertar la revocación antes de las pruebas concurrentes provocó fallo de CI por secuencia de prueba incorrecta. Se reordenó conservando la concurrencia y la revocación al final; el SHA final validado `f26f85140080305041436bf345c0e537a9c77e86` obtuvo **4/4 SUCCESS**: CI `40927146927`, bootstrap `40927146724`, cliente `40927147342`, gestión `40927147004`.
+
+Esta evidencia valida revocación y resistencia a reuso de cookie en PG17 aislado; **no** constituye certificación de las dos interfaces en navegador contra una única instancia H3/H4 real ni GO de producción. El Bloque 1/5 continúa abierto.
