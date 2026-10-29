@@ -33,3 +33,7 @@ Tras CADA bloque: implementar, corregir, repetir pruebas, commit, push, actualiz
 
 ## Autorizaciones reservadas
 La indicación del propietario de usar producción como escenario de pruebas define la estrategia de entorno, pero NO autoriza desplegar ni intervenir VPS, Supabase operativo, contratar consumo Gemini o tocar Fleetia. Antes de ejecutar cualquiera de esas acciones, pedir autorización específica y verificar aislamiento material completo. El piloto usa exclusivamente datos ficticios.
+
+## Avance persistido — control de activación seguro
+
+Implementado `apps/api/src/pilot-activation-gate.mjs` y pruebas `apps/api/src/pilot-activation-gate.test.mjs`; la suite raíz incluye el test. Esta es una **subtarea transversal de seguridad**, NO el cierre del Bloque 1 de 5 ni prueba de despliegue. El gate no está conectado al arranque productivo; es una función de evaluación explícita que rechaza evidencias ausentes o distintas de `true`. Pendiente CI del SHA, integración de composiciones operativas, configuración de secretos y validación de aislamiento material. No se han tocado VPS, Supabase operativo ni Fleetia.
