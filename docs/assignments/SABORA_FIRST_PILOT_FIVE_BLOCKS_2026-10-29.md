@@ -85,3 +85,11 @@ SHA `35b89c44a25989e12bf490f462f5011c53f3bede`: el test PostgreSQL 17 desechable
 **4/4 workflows SUCCESS**: CI `40903767420`, bootstrap `40903767511`, cliente `40903767524`, gestión `40903767427`.
 
 **Alcance exacto:** transporte de PWA real bajo Fastify.inject, **no** prueba de interfaz Playwright con navegador real ni integración del transporte autenticado H4 de gestión en la misma instancia. Tampoco hay servidor activado ni despliegue. Bloque 1/5 continúa abierto.
+
+## PWA gestión (gateway autenticado real) → H4 HTTP (29-oct)
+
+Commits `5bdef7f263dda5145edd98d0d8a7e70491e70f07` y `d54cecd61c1f3cb26d2cca28de5f311e869d6db4`: la prueba `tests/order-operations-http-lifecycle-acceptance.test.mjs` usa el gateway **real** `apps/management/src/order-operations-authenticated-gateway.js` con fetch dirigido a Fastify.inject. Verifica tablero cocina, transición `confirmed → preparing → ready`, notificación, tablero sala, `picked_up`, replay idempotente, historial y revocación de ambos gateways. Comprueba Bearer por solicitud y `credentials:'omit'`. El harness de este test usa repositorio **en memoria** e identidad de personal simulada; el aislamiento SQL y PG17 se prueban en suites separadas.
+
+Primer CI falló porque el fixture HTTP histórico omitía campos normativos exigidos por el normalizador de la PWA (`tableNumber`, `customerLabel`, fecha, categoría, notificación e historial). Se completó el fixture, **sin debilitar el normalizador ni la producción**, y se repitió CI. **4/4 SUCCESS:** CI `40905242720`, bootstrap `40905242771`, cliente `40905242899`, gestión `40905242820`.
+
+**Falta para cerrar Bloque 1:** demostrar ambos transportes juntos sobre la factoría HTTP H3+H4 y PostgreSQL 17 con autenticación JWT/SQL real; integración de interfaces de navegador y bootstrap autorizado. No afirmar E2E completo ni GO.
