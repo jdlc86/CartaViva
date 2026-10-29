@@ -189,7 +189,8 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
   (SELECT count(*)::integer FROM sabora.order_lines l WHERE l.order_id=o.id) AS lines,
   (SELECT count(*)::integer FROM sabora.customer_order_attempt_batches b WHERE b.order_id=o.id) AS attempts
   FROM sabora.orders o WHERE o.id=$1`,[concurrent[0].orderId]);
- assert.deepEqual(persisted.rows,[{grouping:'first',lines:2,attempts:1}]);
+ assert.deepEqual(persisted.rows,[{grouping:'grouped',lines:2,attempts:1}],
+  'second customer order within the configured five-minute window must group');
  // Cross-domain PG17 acceptance: H3-confirmed lines must be actionable by
  // H4 kitchen and sala without re-seeding or synthesizing another order.
  const signingKeyId='ci_h3_h4_shared_order_key_971001';
