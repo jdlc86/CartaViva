@@ -33,6 +33,12 @@ SQL
 docker exec "$container" pg_dump -U postgres -d postgres -Fc -f /tmp/sabora-recovery.dump
 docker exec "$container" createdb -U postgres sabora_recovery_ci
 docker exec "$container" pg_restore -U postgres -d sabora_recovery_ci --exit-on-error /tmp/sabora-recovery.dump
+# Separately exercise a Sabora-only archive in a second disposable database.
+# This is an additive check; the full-db restore above remains the reference baseline.
+docker exec "$container" pg_dump -U postgres -d postgres -Fc --schema=sabora -f /tmp/sabora-schema-only-recovery.dump
+docker exec "$container" createdb -U postgres sabora_schema_recovery_ci
+docker exec "$container" pg_restore -U postgres -d sabora_schema_recovery_ci --exit-on-error /tmp/sabora-schema-only-recovery.dump
+docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d sabora_schema_recovery_ci -Atqc "select case when count(*)=1 and min(payload)='committed' then 'ok' else 'bad' end from sabora.p2_recovery_fixture" | grep -Fx ok
 # Verify exact schema object inventory and forced-RLS table inventory.
 for db in postgres sabora_recovery_ci; do
  docker exec "$container" psql -X -U postgres -d "$db" -Atqc "
