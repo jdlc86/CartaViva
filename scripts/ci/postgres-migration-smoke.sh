@@ -7,6 +7,9 @@ if [[ "${GITHUB_ACTIONS:-}" != true || -z "${RUNNER_TEMP:-}" || -z "${GITHUB_RUN
   exit 1
 fi
 container="sabora-pg-single-ci-${GITHUB_RUN_ID:-local}-$$"
+# This offline guard runs before Docker startup or any database connection.
+node scripts/ci/migration-preflight.mjs --container "$container" \
+ > "${RUNNER_TEMP}/sabora-migration-preflight-${GITHUB_RUN_ID}-$.json"
 cleanup() { docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 docker run -d --name "$container" --network none -e POSTGRES_PASSWORD=ci_only_not_a_secret postgres:17-alpine >/dev/null
@@ -19,11 +22,9 @@ docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'S
 create role anon nologin;
 create role authenticated nologin;
 SQL
-node scripts/ci/migration-manifest.mjs > "${RUNNER_TEMP}/sabora-migration-manifest-${GITHUB_RUN_ID}-$.json"
-for migration in supabase/migrations/*.sql; do
- test -f "$migration"
- docker exec -i "$container" psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration"
-done
+# Apply the real chain with an exact checksum ledger, interrupt after one
+# confirmed migration, and resume without re-executing confirmed SQL.
+bash scripts/ci/postgres-migration-chain-smoke.sh "$container"
 # Validate candidate kitchen/waiter operation grants and RLS in disposable PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/order-operations-grants-smoke.sql
@@ -952,5 +953,8 @@ bash scripts/ci/customer-session-login-smoke.sh "$container"
 # Restricted RPC negative edge cases, rolled back in disposable PostgreSQL 17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-rpc-edge-smoke.sql
 
-# Exercise deterministic migration interruption and atomic fixture resume in the same isolated PG17.\nbash scripts/ci/postgres-migration-failure-smoke.sh "$container"\n\n# Prove recoverability of the complete disposable database without any external target.
+# Exercise a deterministic in-transaction failure and atomic fixture resume.
+bash scripts/ci/postgres-migration-failure-smoke.sh "$container"
+
+# Prove recoverability of Sabora in disposable PostgreSQL 17 without any external target.
 bash scripts/ci/postgres-recovery-smoke.sh "$container"
