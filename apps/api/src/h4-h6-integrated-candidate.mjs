@@ -11,7 +11,14 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
     !h4.staffPool||!h4.operationsPool||!h6.operationsPool||
     h4.operationsPool===h6.operationsPool||
     h4.staffPool===h6.operationsPool||
-    h6.forRoles!==undefined)
+    h6.forRoles!==undefined||
+    h6.customerPool===h6.providerPool||h6.customerPool===h6.operationsPool||
+    h6.providerPool===h6.operationsPool||
+    h4.staffPool===h6.customerPool||h4.staffPool===h6.providerPool||
+    h4.operationsPool===h6.customerPool||h4.operationsPool===h6.providerPool||
+    !h6.customerPool||!h6.providerPool||
+    [h4.staffPool,h4.operationsPool,h6.customerPool,h6.providerPool,h6.operationsPool]
+      .some(pool=>!pool||typeof pool.connect!=='function'))
   throw Error('invalid_h4_h6_candidate_isolation');
  const app=Fastify({logger:false,trustProxy:false});
  let h6Registration;
