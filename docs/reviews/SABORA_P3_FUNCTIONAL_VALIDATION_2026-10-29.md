@@ -4,7 +4,7 @@
 
 **PR:** #40 Draft
 
-**Estado:** implementación y validación local completas; PostgreSQL 17 y CI remotos pendientes del SHA funcional
+**Estado:** bloque 4 PASS en alcance aislado; cuatro workflows remotos SUCCESS para SHA funcional `5b407d172a6350365b04abf74d45017f738b5194`
 
 ## Alcance y fuente de verdad
 
@@ -53,3 +53,14 @@ PostgreSQL 17 no se suplanta localmente: los harnesses rechazan expresamente má
 - Los fixtures HTTP de Playwright no sustituyen PostgreSQL; la aceptación de atomicidad, concurrencia, RLS, outbox y revocación se acredita en los harnesses PG17 del mismo SHA.
 - No se ha probado infraestructura, secretos, Stripe, correo, Storage o latencia productivos.
 - La validación técnica no activa las composiciones candidatas ni autoriza producción.
+
+## Evidencia remota posterior a la interrupción
+
+Se comprobó en GitHub que el SHA funcional `5b407d172a6350365b04abf74d45017f738b5194` tiene cuatro workflows completados con resultado SUCCESS:
+
+- CI principal (PG17): https://github.com/jdlc86/CartaViva/actions/runs/40881153717
+- Bootstrap PG17: https://github.com/jdlc86/CartaViva/actions/runs/40881153767
+- Playwright cliente: https://github.com/jdlc86/CartaViva/actions/runs/40881153829
+- Playwright gestión: https://github.com/jdlc86/CartaViva/actions/runs/40881153669
+
+**Decisión:** bloque 4 cerrado técnicamente en entorno aislado; no habilita producción. El bloque 5 debe efectuar auditoría normativa y matriz final sin extrapolar estos resultados a infraestructura real.
