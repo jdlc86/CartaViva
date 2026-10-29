@@ -764,3 +764,30 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.ok(rls.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity&&
   !row.customer_direct&&!row.operations_direct&&!row.provider_direct));
 });
+
+// Browser transport contract: CRLF-delimited SSE can arrive split across
+// arbitrary fetch stream chunks. This test exercises the actual management
+// gateway rather than duplicating its parser.
+test('management SSE gateway accepts fragmented CRLF event frames', {timeout: 5000}, async () => {
+ const {createOrderOperationsGateway}=await import('../../apps/management/src/order-operations-gateway.js');
+ const event={eventKey:'test-pickup',aggregateId:'a1000000-0000-4000-8000-000000000001',
+  aggregateVersion:1,payload:{state:'claimed'},createdAt:'2026-10-29T00:00:00.000Z'};
+ const frame='id: 1\\r\\nevent: sabora.pickup.claimed\\r\\ndata: '+JSON.stringify(event)+'\\r\\n\\r\\n';
+ const pieces=[frame.slice(0,8),frame.slice(8,13),frame.slice(13,-3),frame.slice(-3)];
+ const body=new ReadableStream({start(controller){
+  for(const piece of pieces)controller.enqueue(new TextEncoder().encode(piece));
+  controller.close();
+ }});
+ let resolveEvent;
+ const received=new Promise(resolve=>{resolveEvent=resolve;});
+ const gateway=createOrderOperationsGateway({send:async()=>new Response(body,{
+  status:200,headers:{'content-type':'text/event-stream'}}),reconnectDelayMs:30000});
+ const unsubscribe=gateway.subscribeEvents({onEvent:resolveEvent,onResync:()=>{},onUnavailable:()=>{}});
+ try{
+  const result=await Promise.race([received,new Promise((_,reject)=>
+   setTimeout(()=>reject(Error('fragmented_crlf_sse_timeout')),2000))]);
+  assert.equal(result.id,1);
+  assert.equal(result.type,'sabora.pickup.claimed');
+  assert.deepEqual(result.payload,{state:'claimed'});
+ }finally{unsubscribe();}
+});
