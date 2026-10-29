@@ -78,9 +78,10 @@ const tableId='ca710000-0000-4000-8000-000000000001';
 const itemA='ca710000-0000-4000-8000-000000000002';
 const itemB='ca710000-0000-4000-8000-000000000003';
 const qrCredential=createTableQrCredential({origin:clientOrigin,restaurantCode:'SABORA',tableId,
+ allowInsecureLoopback:true,
  randomBytesImpl:()=>Buffer.from(Array.from({length:32},(_,index)=>index+1))});
 const qrToken=parseTableQrPayload(qrCredential.payload,{expectedOrigin:clientOrigin,
- expectedRestaurantCode:'SABORA'}).token;
+ expectedRestaurantCode:'SABORA',allowInsecureLoopback:true}).token;
 const secretKey='ci-customer-basket-acceptance-key-2026-at-least-32';
 const selection={options:{},extras:[]};
 
@@ -742,9 +743,10 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  await assert.rejects(admin.query('SELECT * FROM sabora.rotate_table_qr($1,$2)',
   [tableId,'legacy-token-that-is-long-enough-but-not-v1']),/invalid_qr_rotation_input/);
  const rotatedCredential=createTableQrCredential({origin:clientOrigin,restaurantCode:'SABORA',tableId,
+  allowInsecureLoopback:true,
   randomBytesImpl:()=>Buffer.from(Array.from({length:32},(_,index)=>255-index))});
  const rotatedToken=parseTableQrPayload(rotatedCredential.payload,{expectedOrigin:clientOrigin,
-  expectedRestaurantCode:'SABORA'}).token;
+  expectedRestaurantCode:'SABORA',allowInsecureLoopback:true}).token;
  const rotation=await admin.query('SELECT * FROM sabora.rotate_table_qr($1,$2)',[tableId,rotatedToken]);
  assert.equal(rotation.rows.length,1);
  await assert.rejects(flow.quote({customerSessionToken:registered.token,tableId,qrToken,

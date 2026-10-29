@@ -52,6 +52,14 @@ test('HTTP is accepted only for exact loopback test origins',()=>{
   expectedRestaurantCode:restaurantCode,allowInsecureLoopback:true}).token,token);
  assert.throws(()=>buildTableQrPayload({origin:'http://192.168.1.10',restaurantCode,
   tableId,token,allowInsecureLoopback:true}),/invalid_table_qr_origin/);
+ const issued=createTableQrCredential({origin:local,restaurantCode,tableId,
+  allowInsecureLoopback:true,randomBytesImpl:()=>Buffer.alloc(32,0xa5)});
+ assert.equal(issued.payload,payload);
+ assert.throws(()=>createTableQrCredential({origin:local,restaurantCode,tableId,
+  randomBytesImpl:()=>Buffer.alloc(32,0xa5)}),/invalid_table_qr_credential_input/);
+ assert.throws(()=>createTableQrCredential({origin:'http://192.168.1.10',restaurantCode,tableId,
+  allowInsecureLoopback:true,randomBytesImpl:()=>Buffer.alloc(32,0xa5)}),
+ /invalid_table_qr_credential_input/);
 });
 
 test('server issuer uses exactly 32 bytes, returns matching hash and fails closed on entropy drift',()=>{
