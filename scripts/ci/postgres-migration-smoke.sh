@@ -952,5 +952,5 @@ bash scripts/ci/customer-session-login-smoke.sh "$container"
 # Restricted RPC negative edge cases, rolled back in disposable PostgreSQL 17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < scripts/ci/customer-session-rpc-edge-smoke.sql
 
-# Prove recoverability of the complete disposable database without any external target.
+# Exercise deterministic migration interruption and atomic fixture resume in the same isolated PG17.\nbash scripts/ci/postgres-migration-failure-smoke.sh "$container"\n\n# Prove recoverability of the complete disposable database without any external target.
 bash scripts/ci/postgres-recovery-smoke.sh "$container"
