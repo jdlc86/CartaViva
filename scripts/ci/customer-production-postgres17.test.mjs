@@ -6,6 +6,7 @@ import {randomBytes} from 'node:crypto';
 import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {createOrderOperationsGateway} from '../../apps/management/src/order-operations-gateway.js';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
@@ -287,6 +288,47 @@ test('real PG17 restricted principals complete H3 atomically and fail closed',as
    [concurrent[0].orderId]);
  assert.equal(confirmedLines.rows.length,2);
  const lineId=confirmedLines.rows[0].id;
+ // Exercise the actual management PWA gateway's contract over the PG17-backed
+ // H4 coordinator. HTTP authentication is verified in independent JWT tests.
+ const sendFor=context=>async(path,request)=>{
+  const parsed=new URL(path,'https://sabora.example');
+  let value,status=200;
+  if(parsed.pathname==='/api/v1/operations/order-lines'){
+   value=await operations.listBoard(context,{
+    status:parsed.searchParams.get('status'),
+    limit:Number(parsed.searchParams.get('limit')),cursor:null});
+  }else if(parsed.pathname.endsWith('/transitions')){
+   const lineId=parsed.pathname.split('/')[5];
+   value=await operations.transitionLine(context,{lineId,...JSON.parse(request.body)});
+   status=value.repeated?200:201;
+  }else if(parsed.pathname.endsWith('/history')){
+   const orderId=parsed.pathname.split('/')[5];
+   value=await operations.listHistory(context,{
+    orderId,limit:Number(parsed.searchParams.get('limit'))});
+  }else throw Error('unexpected_management_route');
+  return new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
+ };
+ const kitchenPwa=createOrderOperationsGateway({send:sendFor(kitchen)});
+ const salaPwa=createOrderOperationsGateway({send:sendFor(waiter)});
+ const pwaLineId=confirmedLines.rows[1].id;
+ assert.ok((await kitchenPwa.listBoard({status:'confirmed'})).items.some(
+  item=>item.lineId===pwaLineId));
+ const pwaPreparing=await kitchenPwa.transitionLine({
+  lineId:pwaLineId,targetStatus:'preparing',correlationId:'pwa_kitchen_prepare_971001'});
+ assert.equal(pwaPreparing.currentStatus,'preparing');
+ const pwaReady=await kitchenPwa.transitionLine({
+  lineId:pwaLineId,targetStatus:'ready',correlationId:'pwa_kitchen_ready_971001'});
+ assert.equal(pwaReady.currentStatus,'ready');
+ assert.ok((await salaPwa.listBoard({status:'ready'})).items.some(
+  item=>item.lineId===pwaLineId));
+ const pwaPickup=await salaPwa.transitionLine({
+  lineId:pwaLineId,targetStatus:'picked_up',correlationId:'pwa_sala_pickup_971001'});
+ assert.equal(pwaPickup.currentStatus,'picked_up');
+ assert.equal((await salaPwa.transitionLine({
+  lineId:pwaLineId,targetStatus:'picked_up',correlationId:'pwa_sala_pickup_971001'})).repeated,true);
+ assert.ok((await salaPwa.listHistory({orderId:concurrent[0].orderId})).events.some(
+  event=>event.lineId===pwaLineId&&event.toStatus==='picked_up'));
+
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
  assert.ok(kitchenBoard.items.some(item=>item.lineId===lineId),
    'H3-confirmed order must be visible to H4 kitchen');
