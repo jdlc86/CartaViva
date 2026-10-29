@@ -115,3 +115,14 @@ Se agregó un segundo ensayo a `scripts/ci/postgres-recovery-smoke.sh`: `pg_dump
 - Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40858749732
 
 **Límite:** este ensayo selectivo solo verifica la restauración y una fila del fixture; todavía no compara exhaustivamente los permisos, políticas, funciones, extensiones y dependencias externas en la base selectiva. Los roles globales son los mismos en ambas bases del contenedor. No debe extrapolarse a recuperación de un clúster distinto ni a PITR. **P2 permanece abierto.**
+
+## Paridad de seguridad en restauración selectiva — SHA 22552535281b3349210d413374f5f93c11e60f74
+
+Se amplió `scripts/ci/postgres-recovery-smoke.sh` para comparar **tres bases del mismo contenedor desechable PG17**: origen, restauración completa y restauración selectiva del esquema `sabora`. El gate ahora exige paridad de inventario de relaciones/secuencias y tablas con RLS forzado, huellas de propietarios y privilegios efectivos sobre relaciones para los roles enumerados, huellas de políticas RLS, integridad del fixture y rechazo de duplicados. Los cuatro workflows del SHA concluyeron SUCCESS:
+
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40859384280
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40859384267
+- Gestión visual: https://github.com/jdlc86/CartaViva/actions/runs/40859384433
+- Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40859384327
+
+**Alcance:** paridad comprobada únicamente en PostgreSQL 17 desechable con roles globales preexistentes en el mismo clúster. No prueba reconstrucción de roles en clúster limpio, PITR, dependencias externas, privilegios de esquemas/funciones ni recuperación real de Supabase. Quedan pendientes inventario individual de migraciones, riesgos de locks y reversibilidad, procedimientos con criterios de parada y autorizaciones. **P2 sigue abierto; no habilita despliegue.**
