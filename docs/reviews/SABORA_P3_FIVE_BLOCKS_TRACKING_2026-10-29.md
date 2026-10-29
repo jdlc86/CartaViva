@@ -14,7 +14,7 @@ La tabla se actualiza después de cada bloque. `PASS` acredita únicamente códi
 | 2. Seguridad operativa | PASS | `f3fdeb70c0e46036283b1b586f763d583af8d363` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40875878228), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40875878834), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40875878219), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40875878879) | 1.050 tests; inventario, fail-closed, principales separados, lifecycle y artefactos sin credenciales | Secret manager y provisión operativa no autorizados |
 | 3. Recuperación y continuidad | PASS | `0bd5e3e6775b5b30e81000d81adb7f3c8e0098ed` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40877722171), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40877722095), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40877721933), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40877722197) | 10.000 filas; locks, corrupción, restore interrumpido y segundo clúster PG17 PASS dos veces | RTO/RPO y restore gestionado requieren entorno autorizado |
 | 4. Validación funcional integral | PASS | `5b407d172a6350365b04abf74d45017f738b5194` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40881153717), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40881153767), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40881153829), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40881153669) | 1.057 tests locales; 32 Playwright cliente; Chromium gestión; 11 capacidades; 4 workflows SUCCESS | No acredita activación ni infraestructura operativa |
-| 5. Auditoría y cierre | NOT_STARTED | — | — | — | — |
+| 5. Auditoría y cierre | IN_PROGRESS | `ffb1807480bd79008e761b0dde3b614d2f89307c` | CI final pendiente | `docs/reviews/SABORA_P3_FINAL_AUDIT_2026-10-29.md`: matriz 5 bloques y NO-GO producción | Requiere 4 workflows SUCCESS del SHA final; puertas operativas siguen bloqueadas |
 
 ## Bloque 1 — cierre validado
 
@@ -56,3 +56,7 @@ Retomar desde el último SHA remoto y el primer bloque que no figure `PASS`.
 ## Recuperación de continuidad tras interrupción de Codex
 
 El bloque 4 quedó publicado en GitHub antes de interrumpirse la sesión. Se verificó el HEAD remoto y sus cuatro workflows SUCCESS, y se actualizó su estado de IN_PROGRESS a PASS. **Siguiente: bloque 5 de 5 — auditoría final y cierre**, sin despliegue ni merge. Las limitaciones operativas siguen abiertas y deben quedar explícitas en la matriz final.
+
+## Bloque 5 — auditoría documental y puerta CI
+
+Se publicó `docs/reviews/SABORA_P3_FINAL_AUDIT_2026-10-29.md`, con trazabilidad de los cuatro bloques, evidencias de los SHA anteriores y límites de activación. No se afirma que los ensayos aislados acrediten infraestructura real. El cierre técnico del bloque 5 queda condicionado a cuatro workflows SUCCESS del SHA documental final; producción sigue NO-GO.
