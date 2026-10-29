@@ -21,6 +21,7 @@ export async function createH4H6IntegratedCandidate({h4,h6}={}) {
     h4.operationsPool===h6.operationsPool||
     h4.staffPool===h6.operationsPool||
     h6.forRoles!==undefined||
+    h6.notifierPool===undefined||
     h6.customerPool===h6.providerPool||h6.customerPool===h6.operationsPool||
     h6.providerPool===h6.operationsPool||
     h4.staffPool===h6.customerPool||h4.staffPool===h6.providerPool||
