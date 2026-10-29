@@ -38,6 +38,7 @@ jobs:
         run: |
           node scripts/ci/deployment-isolation-contract.mjs
           node scripts/ci/operational-security-inventory.mjs
+          node scripts/ci/recovery-continuity-contract.mjs
           node scripts/ci/production-config-secrets-gate.mjs
       - name: Validate Docker Compose
         run: docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet

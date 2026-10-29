@@ -32,3 +32,15 @@ test('recovery uses a second offline PG17 cluster and a genuine restricted LOGIN
  assert.match(recovery,/clean_cluster_restore_set_role_escalation/);
  assert.doesNotMatch(recovery,/--no-owner|--no-acl|DATABASE_URL|SUPABASE/);
 });
+
+test('recovery exercises representative load, lock timeout, corrupt input and target recreation',()=>{
+ assert.match(recovery,/P3_RECOVERY_ROWS=10000/);
+ assert.match(recovery,/P3_LOCK_TIMEOUT_MS=500/);
+ assert.match(recovery,/p3_recovery_load_fixture/);
+ assert.match(recovery,/AccessExclusiveLock/);
+ assert.match(recovery,/sabora-corrupt-recovery\.dump/);
+ assert.match(recovery,/--section=pre-data/);
+ assert.match(recovery,/interrupted_old_oid/);
+ assert.match(recovery,/interrupted_new_oid/);
+ assert.match(recovery,/sabora_p3_recovery_metrics/);
+});

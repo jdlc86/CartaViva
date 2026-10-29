@@ -12,7 +12,7 @@ La tabla se actualiza después de cada bloque. `PASS` acredita únicamente códi
 | --- | --- | --- | --- | --- | --- |
 | 1. Aislamiento | PASS | `8f9f4aacd5134de09ce5e0ba42dec768f31609f2` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40874075723), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40874075712), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40874075862), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40874075711) | 1.047 tests; Compose, imagen, health y gates aislados | Inspección material y capacidad del VPS no autorizadas |
 | 2. Seguridad operativa | PASS | `f3fdeb70c0e46036283b1b586f763d583af8d363` | [CI](https://github.com/jdlc86/CartaViva/actions/runs/40875878228), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/40875878834), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/40875878219), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/40875878879) | 1.050 tests; inventario, fail-closed, principales separados, lifecycle y artefactos sin credenciales | Secret manager y provisión operativa no autorizados |
-| 3. Recuperación y continuidad | NOT_STARTED | — | — | — | — |
+| 3. Recuperación y continuidad | IN_PROGRESS | Pendiente de publicación | Pendiente | Carga/locks PG17, fallo de archivo/restore, métricas y contrato Storage/PITR | RTO/RPO y restore gestionado requieren entorno autorizado |
 | 4. Validación funcional integral | NOT_STARTED | — | — | — | — |
 | 5. Auditoría y cierre | NOT_STARTED | — | — | — | — |
 
@@ -31,5 +31,9 @@ Se inventaría la superficie completa de entorno y dependencias sensibles dormid
 Validación local: `npm run check` PASS con 1.050 pruebas, builds de API, cliente y gestión, y puerta de configuración segura. Validación remota del SHA funcional: cuatro workflows PASS; CI principal y bootstrap ejecutaron PostgreSQL 17 desechable, driver real, build de imagen y health aislado, y las suites cliente/gestión ejecutaron Chromium. Los avisos de GitHub sobre Node 20 forzado a Node 24 y la futura migración de `ubuntu-latest` no fueron fallos del código.
 
 **Siguiente bloque:** recuperación y continuidad Sabora-only, cargas/locks representativos, medición reproducible y límites explícitos de Storage/PITR.
+
+## Bloque 3 — alcance implementado antes de CI
+
+El ensayo P2 se amplía con 10.000 filas deterministas, contención real y recuperación posterior, rechazo de archivo truncado, descarte y recreación de un destino parcialmente restaurado, fingerprints de contenido en cuatro restores y un segundo clúster PG17 sin red. El gate mantiene `productionRto`/`productionRpo` sin afirmar y bloquea nuevas dependencias Storage no inventariadas. Las métricas CI son evidencia del fixture, no extrapolación productiva.
 
 Retomar desde el último SHA remoto y el primer bloque que no figure `PASS`.
