@@ -34,4 +34,4 @@ No marcar el bloque como terminado hasta disponer de implementación completa, m
 
 - Reglas puras de solicitud, plazo y consumo único añadidas a `apps/api/src/table-change-policy.mjs`.
 - Pruebas unitarias añadidas y registradas en el comando `test`.
-- Pendiente: migración PostgreSQL 17, API autenticada, integración atómica H6 y pruebas de navegador.
+- Migración candidata `20261030124000_sabora_table_change_candidate.sql` incorporada: tabla de solicitudes, configuración de ventana, índices, aprobación única y RLS sin grants de ejecución. **No aplicada ni verificada en PostgreSQL 17**; no representa cierre de persistencia.\n- Pendiente: funciones SQL autenticadas y permisos mínimos, bloqueo y auditoría transaccionales, conexión efectiva de rutas HTTP, integración atómica H6, pruebas PG17 y navegador.
