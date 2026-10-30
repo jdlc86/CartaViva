@@ -120,3 +120,11 @@ would permit a mismatched order to act as proof of transfer. The PG17 catalog
 test asserts this ownership predicate. This is a security correction to the
 candidate primitive, **not** an end-to-end transfer cutover. GitHub Actions
 must pass before the candidate can be accepted.
+
+## Session revocation hardening
+
+The sealed B2 transfer primitive now requires its approved grant to belong to
+the same still-active customer session that originally requested the change.
+A grant from a revoked, expired or different session cannot be consumed. PG17
+catalog assertions were extended. This is an isolated security increment;
+confirmation integration and end-to-end tests remain mandatory before GO.
