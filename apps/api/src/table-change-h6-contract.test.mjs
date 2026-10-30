@@ -26,3 +26,7 @@ test('table transfer H6 readiness: candidate grant records destination and consu
  assert.match(candidate,/destination_table_id/);
  assert.match(candidate,/consumed_order_id/);
 });
+
+test('table transfer schema rejects approval at or beyond response deadline',()=>{
+ assert.match(candidate,/status NOT IN \('approved','rejected','consumed'\) OR decided_at < expires_at/);
+});
