@@ -1350,11 +1350,11 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   const itemId='b0a00000-0000-4000-8000-000000000030';
   const quoteId='b0a00000-0000-4000-8000-000000000031';
   const batchId='b0a00000-0000-4000-8000-000000000032';
-  await insertIdentityAndTables(client,{publicId});
+  await insertIdentityAndTables(fixture,{publicId});
   await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
    [qrDigest,[ids.sourceTable,ids.destinationTable]]);
-  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
-  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await insertVisit(fixture,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(fixture,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
   await fixture.query(`INSERT INTO sabora.customer_accounts
    (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
    VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),1200)`,
