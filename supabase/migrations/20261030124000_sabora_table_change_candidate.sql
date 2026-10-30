@@ -26,6 +26,8 @@ CREATE TABLE sabora.customer_table_change_requests (
  CHECK (destination_table_id IS NULL OR destination_table_id <> source_table_id),
  CHECK ((status='consumed') = (destination_table_id IS NOT NULL AND consumed_order_id IS NOT NULL AND consumed_at IS NOT NULL)),
  CHECK ((status IN ('approved','rejected','consumed')) = (decided_at IS NOT NULL AND decided_by IS NOT NULL)),
+ CHECK (status <> 'approved' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
+ CHECK (status <> 'rejected' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
  CHECK (status <> 'pending' OR (decided_at IS NULL AND decided_by IS NULL AND revoked_at IS NULL)),
  CHECK (status <> 'revoked' OR revoked_at IS NOT NULL)
 );
