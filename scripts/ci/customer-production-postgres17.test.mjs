@@ -283,6 +283,15 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [committedAmbiguousId])).rows[0].n,1);
+  const resolvedWithoutResubmission=await pwa.lookupConfirmation({
+   tableId,qrToken,visitId:pwaVisit.visitId,basketId:pwaVisit.basketId,
+   requestKey:ambiguousRequest.requestKey});
+  assert.equal(resolvedWithoutResubmission.status,'confirmed');
+  assert.equal(resolvedWithoutResubmission.orderId,committedAmbiguousId);
+  const unresolved=await pwa.lookupConfirmation({tableId,qrToken,
+   visitId:pwaVisit.visitId,basketId:pwaVisit.basketId,
+   requestKey:'never_submitted_confirmation_971001'});
+  assert.equal(unresolved.status,'not_found');
   const reconciled=await pwa.confirm(ambiguousRequest);
   assert.equal(reconciled.status,'replayed');
   assert.equal(reconciled.orderId,committedAmbiguousId);
