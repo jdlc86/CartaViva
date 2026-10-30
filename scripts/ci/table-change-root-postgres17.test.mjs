@@ -1050,3 +1050,68 @@ test('PG17 B2 chained A-to-B-to-C requires a fresh approval and preserves the or
   assert.equal(result.round_count,2);
  });
 });
+
+test('PG17 B2 approved grant survives integrated checkout rejection and remains consumable afterward',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABQ'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),800)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const approval=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+   account_id,customer_id,visit_key,source_table_id,status,
+   requesting_session_hash,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
+   clock_timestamp(),$2) RETURNING id`,
+   [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
+  await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,'invalid-qr',destinationVisit,
+    'recovery-basket','recovery-request',Buffer.alloc(32,207),
+    ids.round,ids.order,JSON.stringify([]),false,'pay_at_end']),/./);
+  const afterFailure=(await client.query(`SELECT q.status,q.consumed_order_id,
+   b.table_id,b.binding_version,a.outstanding_cents
+   FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   JOIN sabora.customer_accounts a ON a.id=q.account_id
+   WHERE q.id=$1`,[approval.id])).rows[0];
+  assert.equal(afterFailure.status,'approved');
+  assert.equal(afterFailure.consumed_order_id,null);
+  assert.equal(afterFailure.table_id,ids.sourceTable);
+  assert.equal(afterFailure.binding_version,'1');
+  assert.equal(afterFailure.outstanding_cents,'800');
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+   customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+   confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'Auditoría recuperación',$4,$5,
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+   '[{"category":"main","name":"Plato recuperación","quantity":1}]'::jsonb)`,
+   [ids.order,ids.destinationTable,ids.destinationSession,'SB-BABABABABABQ',destinationVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds(id,order_id,account_id,amount_cents,
+   payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,$3,800,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [ids.round,ids.order,ids.sourceAccount]);
+  const result=(await client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+    $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS id`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.order])).rows[0];
+  assert.equal(result.id,approval.id);
+  const final=(await client.query(`SELECT q.status,b.table_id,b.binding_version,
+   a.outstanding_cents FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+   [approval.id])).rows[0];
+  assert.equal(final.status,'consumed');
+  assert.equal(final.table_id,ids.destinationTable);
+  assert.equal(final.binding_version,'2');
+  assert.equal(final.outstanding_cents,'800');
+ });
+});
