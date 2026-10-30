@@ -17,7 +17,8 @@ export async function registerVerifiedCustomerProductionApp(app,options={}){
   ['GET','/api/v1/catalog'],
   ['POST','/api/v1/customer/register'],['GET','/api/v1/customer/session'],
   ['POST','/api/v1/customer/logout'],['POST','/api/v1/customer/visits'],
-  ['POST','/api/v1/customer/quotes'],['POST','/api/v1/customer/orders/confirm']];
+  ['POST','/api/v1/customer/quotes'],['POST','/api/v1/customer/orders/lookup'],
+  ['POST','/api/v1/customer/orders/confirm']];
  if(routes.some(([method,url])=>app.hasRoute({method,url})))
   throw Error('customer_production_app_route_conflict');
  if(!isAllowedCustomerOrigin(allowedOrigin)||
