@@ -463,8 +463,8 @@ test('PG17 waiter decision takes customer advisory lock before account/request r
  assert.equal(prosecdef,true);
  assert.equal(exposed,false);
  const lock=source.indexOf('pg_advisory_xact_lock');
- const accountLock=source.indexOf("a.state = 'open' FOR UPDATE");
- const requestLock=source.indexOf('q.account_id = v_account_id FOR UPDATE');
+ const accountLock=source.search(/a\.state\s*=\s*'open'\s+FOR UPDATE/i);
+ const requestLock=source.search(/q\.account_id\s*=\s*v_account_id\s+FOR UPDATE/i);
  assert.ok(lock>=0 && accountLock>lock && requestLock>accountLock,
   'decision must acquire customer advisory lock before account and request locks');
  assert.match(source,/v_request.status = 'pending' AND v_now >= v_request.expires_at/);
