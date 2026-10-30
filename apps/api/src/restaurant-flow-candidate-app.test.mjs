@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createAuthenticatedOrderOperationsGateway} from '../../management/src/order-operations-authenticated-gateway.js';
 import {createVerifiedRestaurantFlowCandidate} from './restaurant-flow-candidate-app.mjs';
 import {CUSTOMER_PRODUCTION_PREFLIGHT_SQL,CUSTOMER_PRODUCTION_FUNCTION_PREFLIGHT_SQL,
  CUSTOMER_PRODUCTION_EXACT_FUNCTIONS_SQL} from './customer-production-sql-preflight.mjs';
@@ -185,4 +186,35 @@ test('combined H3/H4 candidate rejects H4 identity drift without returning parti
  assert.ok(opts.customer.catalogReaderPool.state.releases>0);
  assert.ok(opts.customer.sessionPool.state.releases>0);
  assert.ok(opts.customer.flowPool.state.releases>0);
+});
+
+test('real management PWA gateway cannot read H4 board without valid staff identity',async t=>{
+ const opts=acceptedOptions();
+ const app=await createVerifiedRestaurantFlowCandidate(opts);
+ t.after(()=>app.close());
+ const sent=[];
+ const gateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'untrusted-test-bearer-token-971001',
+  fetchImpl:async(path,init)=>{
+   sent.push({path,init});
+   const response=await app.inject({method:init.method||'GET',url:path,
+    headers:Object.fromEntries(new Headers(init.headers)),
+    ...(init.body===undefined?{}:{payload:init.body})});
+   return new Response(response.body,{status:response.statusCode,
+    headers:{'content-type':response.headers['content-type']||'application/json'}});
+  }
+ });
+ t.after(()=>gateway.revoke());
+ await assert.rejects(gateway.listBoard({status:'ready',limit:10}),error=>
+  error?.code==='unauthorized'||error?.code==='forbidden');
+ assert.equal(sent.length,1);
+ assert.equal(sent[0].path,'/api/v1/operations/order-lines?status=ready&limit=10');
+ assert.equal(sent[0].init.credentials,'omit');
+ assert.equal(sent[0].init.redirect,'error');
+ assert.equal(sent[0].init.cache,'no-store');
+ assert.match(sent[0].init.headers.get('Authorization'),/^Bearer /);
+ assert.equal(sent[0].init.headers.get('Cookie'),null);
+ gateway.revoke();
+ await assert.rejects(gateway.listBoard(),/order_operations_auth_unavailable/);
+ assert.equal(sent.length,1,'revoked gateway must not make further network requests');
 });
