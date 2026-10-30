@@ -93,6 +93,21 @@ BEGIN
  FROM sabora.order_lines l
  WHERE d.order_line_id=l.id AND d.account_id=p_account_id
   AND l.status<>'picked_up' AND d.order_id<>p_confirmed_order_id;
+ -- A round-level destination is safe to redirect only if no line in that
+ -- round was already picked up. Mixed rounds keep their historical summary;
+ -- the per-line projection is authoritative for pending deliveries.
+ UPDATE sabora.order_round_delivery_destinations d
+ SET table_id=p_destination_table_id,session_id=p_destination_session_id,
+  visit_key=p_destination_visit_key,destination_version=d.destination_version+1,
+  changed_at=clock_timestamp()
+ WHERE d.account_id=p_account_id AND d.round_id IN (
+  SELECT r.id FROM sabora.order_rounds r
+  WHERE r.account_id=p_account_id AND r.order_id<>p_confirmed_order_id
+   AND NOT EXISTS (
+    SELECT 1 FROM sabora.order_lines l
+    WHERE l.order_id=r.order_id AND l.status='picked_up'
+   )
+ );
  RETURN v_grant.id;
 END;
 $consume$;
