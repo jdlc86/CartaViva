@@ -256,6 +256,40 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [pwaConfirmed.orderId])).rows[0].n,1);
+  // An ambiguous network response: the server commits, but the client loses
+  // the response. Retrying with the identical idempotency key must reconcile
+  // to the persisted order, never create a second order.
+  const ambiguousQuote=await pwa.quote({tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,lines:[{itemId:itemB,selection,quantity:1}]});
+  const ambiguousRequest={tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,requestKey:'pwa_ambiguous_confirmation_971001',
+   lines:[{quoteId:ambiguousQuote.lines[0].quoteId,itemId:itemB,selection,quantity:1}]};
+  let committedAmbiguousId=null;
+  const ambiguousFetch=async(path,init={})=>{
+   if(path==='/api/v1/customer/orders/confirm'){
+    const reply=await customerHttp.inject({method:'POST',url:path,
+     headers:{...init.headers,origin:clientOrigin,cookie:browserCookie},
+     payload:init.body});
+    assert.equal(reply.statusCode,201,reply.body);
+    committedAmbiguousId=reply.json().orderId;
+    throw Error('simulated_response_lost_after_commit');
+   }
+   return browserFetch(path,init);
+  };
+  const ambiguousTransport=createCustomerFlowTransport({fetchImpl:ambiguousFetch});
+  await assert.rejects(ambiguousTransport.confirm(ambiguousRequest),
+   error=>error?.status===503&&error?.message==='customer_flow_unavailable');
+  assert.ok(committedAmbiguousId);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [committedAmbiguousId])).rows[0].n,1);
+  const reconciled=await pwa.confirm(ambiguousRequest);
+  assert.equal(reconciled.status,'replayed');
+  assert.equal(reconciled.orderId,committedAmbiguousId);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [committedAmbiguousId])).rows[0].n,1);
+
   // A second PWA confirmation races across two independent HTTP requests.
   // PostgreSQL must commit one order, return one stable orderId and reject
   // incompatible reuse of the same idempotency key without extra lines.
