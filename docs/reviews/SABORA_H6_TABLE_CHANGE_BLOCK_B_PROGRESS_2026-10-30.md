@@ -33,3 +33,12 @@ La función `confirm_customer_round_h6_candidate` continúa bajo el guard provis
 - Commit de corrección `364a61a750a524d6a8e6ad86439e26f4df4b4c2a`: **Sabora CI SUCCESS, conformidad visual SUCCESS y Bootstrap SUCCESS**. La primera ejecución con el defecto fue FAIL y no se oculta. Los diagnósticos temporales se retiraron después en `ae4a8ed`, cuya CI se verifica por separado.
 
 **No confundir este avance con el cierre de B:** todavía no se implementa la transferencia entre mesas ni el consumo de permiso, y la matriz F01–F28/R01–R10 sigue sin cerrar. Estado global NO-GO.
+
+## Integridad de la proyección de entrega — puerta adicional B1
+
+- Migración forward-only `20261030200000_sabora_h6_delivery_account_integrity_candidate.sql`: impone `UNIQUE(order_rounds.id,order_rounds.account_id)` y una FK compuesta desde `order_round_delivery_destinations(round_id,account_id)`. El destino no puede declarar una cuenta diferente de la ronda histórica.
+- La migración valida las filas existentes bajo la misma transacción de DDL. No altera balances, pagos, pedidos históricos, roles ni políticas RLS. **Impacto de bloqueo:** validación y locks DDL sobre rondas y destinos; solo se ha destinado a PostgreSQL 17 desechable.
+- `scripts/ci/table-change-root-postgres17.test.mjs`: prueba negativa de cuenta cruzada (SQLSTATE 23503) y positiva de proyección coherente, con rollback del fixture.
+- Auditoría de migraciones y recuento actualizados. Commits de implementación hasta `f96e927`.
+- **CI del commit pendiente de resultado al redactar este apartado**; no se declara PASS antes de verificar Actions.
+- Este refuerzo es una **condición necesaria, no suficiente**: todavía falta consumo atómico del permiso y traslado real, consumidores sala/cocina/SSE y aceptación F01–F28/R01–R10. El guard provisional permanece. **NO-GO**.
