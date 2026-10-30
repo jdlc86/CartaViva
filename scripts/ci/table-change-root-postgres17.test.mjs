@@ -678,3 +678,63 @@ test('PG17 B2 transfer rejects absent approval with live account and destination
    [ids.sourceAccount])).rows[0].n,0);
  });
 });
+
+test('PG17 B2 consumes a real approval once and preserves economic account and order history',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABK'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,
+    outstanding_cents) VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+   customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+   confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'Auditoría transferencia',$4,$5,
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+   '[{"category":"main","name":"Plato transferencia","quantity":1}]'::jsonb)`,
+   [ids.order,ids.destinationTable,ids.destinationSession,'SB-BABABABABABK',destinationVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds(id,order_id,account_id,amount_cents,
+   payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,$3,1000,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [ids.round,ids.order,ids.sourceAccount]);
+  const request=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+   account_id,customer_id,visit_key,source_table_id,status,
+   requesting_session_hash,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
+   clock_timestamp(),$2) RETURNING id`,
+   [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
+  const call=()=>client.query(`SELECT sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS approval`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.order]);
+  const first=(await call()).rows[0];
+  assert.equal(first.approval,request.id);
+  const state=(await client.query(`SELECT a.table_id AS historical,a.outstanding_cents,
+   b.table_id AS current,b.binding_version,q.status,q.consumed_order_id,
+   o.table_id AS order_table,r.account_id
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+   JOIN sabora.order_rounds r ON r.account_id=a.id
+   JOIN sabora.orders o ON o.id=r.order_id
+   WHERE a.id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(state.historical,ids.sourceTable);
+  assert.equal(state.current,ids.destinationTable);
+  assert.equal(state.binding_version,'2');
+  assert.equal(state.outstanding_cents,'2400');
+  assert.equal(state.status,'consumed');
+  assert.equal(state.consumed_order_id,ids.order);
+  assert.equal(state.order_table,ids.destinationTable);
+  assert.equal(state.account_id,ids.sourceAccount);
+  const replay=await expectSqlError(client,call,/table_change_same_table/);
+  assert.equal(replay.code,'23514');
+  assert.equal((await client.query(`SELECT binding_version FROM
+   sabora.customer_account_operational_bindings WHERE account_id=$1`,
+   [ids.sourceAccount])).rows[0].binding_version,'2');
+ });
+});
