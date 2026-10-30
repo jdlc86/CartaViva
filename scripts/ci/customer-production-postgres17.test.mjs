@@ -845,6 +845,12 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     (await fetch('/api/v1/operations/order-lines?status=ready',
      {cache:'no-store'})).status);
    assert.equal(anonymousBoard,401);
+   // The waiter browser must not expose kitchen-only transitions while
+   // rendering the same ready line from the live operational API.
+   assert.equal(await readyWaiterCard.getByRole('button',
+    {name:'Iniciar preparación'}).count(),0);
+   assert.equal(await readyWaiterCard.getByRole('button',
+    {name:'Marcar lista'}).count(),0);
    const pickup=await salaBrowserGateway.transitionLine({lineId:browserLine.id,
     targetStatus:'picked_up',correlationId:'browser_h3_h4_pickup_971001'});
    assert.equal(pickup.currentStatus,'picked_up');
