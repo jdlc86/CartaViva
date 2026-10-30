@@ -174,6 +174,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    assert.equal(init.credentials,'same-origin');
    const response=await customerHttp.inject({method:init.method||'GET',url:path,
     headers:{...init.headers,...headers},payload:init.body});
+   if(response.statusCode>=400) console.error('H6 PG17 HTTP diagnostic',response.statusCode,
+    String(response.json()?.error?.code??response.json()?.error??'unknown'));
    return new Response(response.body,{status:response.statusCode,headers:{
     'content-type':response.headers['content-type']||'application/json'}});
   };
