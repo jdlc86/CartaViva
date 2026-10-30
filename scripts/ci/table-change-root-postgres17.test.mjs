@@ -524,3 +524,33 @@ test('PG17 request lifecycle enforces cooldown, expiry and no premature table tr
    FROM sabora.orders WHERE table_id=$1`,[ids.destinationTable])).rows[0].n,0);
  });
 });
+
+test('PG17 line destinations are account-scoped, sealed, and exclude completed pickups',async()=>{
+ const columns=(await admin.query(`SELECT column_name FROM information_schema.columns
+  WHERE table_schema='sabora' AND table_name='order_line_delivery_destinations'`))
+  .rows.map(row=>row.column_name);
+ for(const name of ['order_line_id','round_id','account_id','order_id','table_id',
+  'session_id','visit_key','destination_version','changed_at'])
+  assert.ok(columns.includes(name),name);
+ const constraints=(await admin.query(`SELECT pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint
+  WHERE conrelid='sabora.order_line_delivery_destinations'::regclass
+    AND contype='f'`)).rows.map(row=>row.definition).join('\n');
+ assert.match(constraints,/FOREIGN KEY \\(round_id, account_id\\) REFERENCES sabora\\.order_rounds\\(id, account_id\\)/);
+ assert.match(constraints,/FOREIGN KEY \\(order_id, order_line_id\\) REFERENCES sabora\\.order_lines\\(order_id, id\\)/);
+ const security=(await admin.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,
+  has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
+  FROM pg_class c WHERE c.oid='sabora.order_line_delivery_destinations'::regclass`)).rows[0];
+ assert.equal(security.relrowsecurity,true);
+ assert.equal(security.relforcerowsecurity,true);
+ assert.equal(security.direct,false);
+ const source=(await admin.query(`SELECT pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname='confirm_customer_round_h6_candidate'`)).rows[0].definition;
+ assert.match(source,/table_change_transfer_not_integrated/);
+ const pending=(await admin.query(`SELECT count(*)::int AS n
+  FROM sabora.order_line_delivery_destinations d
+  JOIN sabora.order_lines l ON l.id=d.order_line_id
+  WHERE l.status='picked_up'`)).rows[0].n;
+ assert.equal(pending,0);
+});
