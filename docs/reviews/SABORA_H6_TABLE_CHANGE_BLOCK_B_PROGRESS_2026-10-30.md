@@ -83,3 +83,11 @@ previous migration. This closes the **candidate projection lifecycle**
 readers. The source-order invariant is asserted against PG17 function catalog;
 actual CI execution remains required for acceptance. Migration audit now
 covers 53 files. The cross-table guard is intentionally preserved.
+
+## PostgreSQL FK preflight correction
+
+The per-line projection's composite FK `(order_id,order_line_id)` needs an explicit
+unique referenced key `order_lines(order_id,id)`, not merely the single-column
+primary key. Added this key in the same candidate migration and a PG17 catalog
+assertion. The change is additive and does not modify historical order identity.
+The CI execution is required before the migration can be accepted.
