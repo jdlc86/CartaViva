@@ -712,6 +712,33 @@ test('PG17 B2 consumes a real approval once and preserves economic account and o
    $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS approval`,
    [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
     ids.destinationSession,destinationVisit,ids.order]);
+  // The same approved grant must not authorize an unrelated destination,
+  // another session, or a destination order that is not tied to this account.
+  const wrongDestination=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid)`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.sourceTable,
+    ids.sourceSession,sourceVisit,ids.order]),/table_change_same_table/);
+  assert.equal(wrongDestination.code,'23514');
+  const wrongSession=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid)`,
+   [ids.sourceAccount,ids.customer,Buffer.alloc(32,203),ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.order]),/table_change_session_forbidden/);
+  assert.equal(wrongSession.code,'42501');
+  const wrongOrder=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid)`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.destinationAccount]),/table_change_order_scope_forbidden/);
+  assert.equal(wrongOrder.code,'42501');
+  const before=(await client.query(`SELECT b.table_id,b.binding_version,q.status
+   FROM sabora.customer_account_operational_bindings b
+   JOIN sabora.customer_table_change_requests q ON q.account_id=b.account_id
+   WHERE b.account_id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(before.table_id,ids.sourceTable);
+  assert.equal(before.binding_version,'1');
+  assert.equal(before.status,'approved');
   const first=(await call()).rows[0];
   assert.equal(first.approval,request.id);
   const state=(await client.query(`SELECT a.table_id AS historical,a.outstanding_cents,
