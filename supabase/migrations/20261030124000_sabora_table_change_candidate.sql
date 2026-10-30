@@ -29,8 +29,19 @@ CREATE TABLE sabora.customer_table_change_requests (
  CHECK (status <> 'approved' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
  CHECK (status <> 'rejected' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
  CHECK (status <> 'pending' OR (decided_at IS NULL AND decided_by IS NULL AND revoked_at IS NULL)),
- CHECK (status <> 'revoked' OR revoked_at IS NOT NULL)
+ CHECK (status <> 'revoked' OR revoked_at IS NOT NULL),
+ CHECK (status <> 'expired' OR (decided_at IS NULL AND decided_by IS NULL)),
+ CHECK (status <> 'consumed' OR consumed_at >= decided_at),
+ CHECK (status <> 'revoked' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
+ CHECK (decided_at IS NULL OR decided_at >= created_at),
+ CHECK (consumed_at IS NULL OR consumed_at >= created_at)
 );
+
+-- Prevent simultaneous pending requests and simultaneously active approvals.
+-- The 90-second cooldown still requires a serialized account lock in the request function.
+CREATE UNIQUE INDEX customer_table_change_one_pending
+ ON sabora.customer_table_change_requests(account_id)
+ WHERE status='pending';
 
 -- Only one live approval per account; the cooldown is separately enforced
 -- against the latest request while holding the account row lock.
