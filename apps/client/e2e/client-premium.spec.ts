@@ -392,7 +392,7 @@ test('ambiguous confirmation is recovered by lookup without repeating the write'
  await page.route('**/api/v1/customer/orders/lookup',route=>route.fulfill({status:200,
   contentType:'application/json',body:JSON.stringify({status:'confirmed',orderId:'54000000-0000-4000-8000-000000000099',grouping:'new'})}));
  await checkout.getByRole('button',{name:'Consultar resultado del pedido'}).click();
- await expect(checkout.getByRole('alert')).toContainText('Pedido confirmado');
+ await expect(checkout.getByRole('status')).toContainText('Pedido confirmado');
  expect(confirmations).toHaveLength(1);
  await page.waitForTimeout(250);
  expect(confirmations).toHaveLength(1);
