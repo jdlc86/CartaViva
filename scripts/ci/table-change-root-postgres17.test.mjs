@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
@@ -1113,5 +1114,94 @@ test('PG17 B2 approved grant survives integrated checkout rejection and remains 
   assert.equal(final.table_id,ids.destinationTable);
   assert.equal(final.binding_version,'2');
   assert.equal(final.outstanding_cents,'800');
+ });
+});
+
+test('PG17 B2 positive integrated A-to-B confirmation consumes approval with real catalog quote and economic round',async()=>{
+ await transaction(async client=>{
+  const publicId='SB-BABABABABABR';
+  const qrToken='h6-positive-qr-token-2026';
+  const qrDigest=createHash('sha256').update(qrToken).digest();
+  const basket='h6_positive_basket_0001',requestKey='h6_positive_request_0001';
+  const itemId='b0a00000-0000-4000-8000-000000000030';
+  const quoteId='b0a00000-0000-4000-8000-000000000031';
+  const batchId='b0a00000-0000-4000-8000-000000000032';
+  await insertIdentityAndTables(client,{publicId});
+  await client.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
+   [qrDigest,[ids.sourceTable,ids.destinationTable]]);
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),1200)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+   account_id,customer_id,visit_key,source_table_id,status,
+   requesting_session_hash,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
+   clock_timestamp(),$2) RETURNING id`,
+   [ids.sourceAccount,ids.customer,sourceVisit,tokenHash])).rows[0];
+  const draft={name:'Plato de integración',category:'Primeros',priceCents:700,
+   allergens:[],options:[],extras:[],discount:null};
+  await client.query(`INSERT INTO sabora.catalog_items
+   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
+   VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,draft]);
+  const evidence={schemaVersion:'1',itemId,publishedRevision:1,quantity:1,
+   itemName:'Plato de integración',category:'Primeros',
+   subtotalCents:'700',discountCents:'0',totalCents:'700'};
+  await client.query(`INSERT INTO sabora.catalog_displayed_quotes
+   (id,table_id,session_id,visit_id,basket_id,actor_id,item_id,
+    published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,1,700,0,700,$8,clock_timestamp()+interval '15 minutes')`,
+   [quoteId,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
+    ids.customer,itemId,evidence]);
+  const lines=[{quoteId,itemId,evidence}];
+  const result=(await client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
+    Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end'])).rows[0];
+  assert.equal(result.persisted_order_id,ids.order);
+  assert.equal(result.account_id,ids.sourceAccount);
+  assert.equal(result.amount_cents,'700');
+  assert.equal(result.effective_payment_mode,'pay_at_end');
+  assert.equal(result.repeated,false);
+  const state=(await client.query(`SELECT a.table_id AS historical_table,
+   a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
+   q.status,q.consumed_order_id,o.table_id AS new_order_table,
+   r.account_id AS round_account,d.table_id AS delivery_table,
+   (SELECT count(*)::int FROM sabora.kitchen_dispatches k WHERE k.order_id=o.id) AS dispatches
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+   JOIN sabora.orders o ON o.id=$2
+   JOIN sabora.order_rounds r ON r.order_id=o.id
+   JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+   WHERE a.id=$1`,[ids.sourceAccount,ids.order])).rows[0];
+  assert.equal(state.historical_table,ids.sourceTable);
+  assert.equal(state.outstanding_cents,'1900');
+  assert.equal(state.operational_table,ids.destinationTable);
+  assert.equal(state.binding_version,'2');
+  assert.equal(state.status,'consumed');
+  assert.equal(state.consumed_order_id,ids.order);
+  assert.equal(state.new_order_table,ids.destinationTable);
+  assert.equal(state.round_account,ids.sourceAccount);
+  assert.equal(state.delivery_table,ids.destinationTable);
+  assert.equal(state.dispatches,1);
+  const replay=(await client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
+    Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end'])).rows[0];
+  assert.equal(replay.repeated,true);
+  assert.equal(replay.account_id,ids.sourceAccount);
+  assert.equal(replay.round_id,result.round_id);
+  assert.equal((await client.query(`SELECT outstanding_cents FROM sabora.customer_accounts
+   WHERE id=$1`,[ids.sourceAccount])).rows[0].outstanding_cents,'1900');
  });
 });
