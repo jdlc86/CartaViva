@@ -426,7 +426,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
   assert.ok(httpKitchenBoard,'management kitchen gateway must read real PG17 board');
   await assert.rejects(waiterGateway.listBoard({status:'confirmed'}),/forbidden/);
   const deniedPickup=await staffHttp.inject({
-   method:'POST',url:`/api/v1/operations/order-lines/${lineId}/transitions`,
+   method:'POST',url:`/api/v1/operations/order-lines/${secondLineId}/transitions`,
    headers:{authorization:'Bearer ci-kitchen-staff-auth-token-971001'},
    payload:{targetStatus:'picked_up',correlationId:'ci_forbidden_pickup_971001'}});
   assert.equal(deniedPickup.statusCode,403);
