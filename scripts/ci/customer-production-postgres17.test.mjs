@@ -292,6 +292,25 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    visitId:pwaVisit.visitId,basketId:pwaVisit.basketId,
    requestKey:'never_submitted_confirmation_971001'});
   assert.equal(unresolved.status,'not_found');
+  // Read-only reconciliation must not leak an order to a different authenticated customer.
+  let outsiderCookie='';
+  const outsiderFetch=async(path,init={})=>{
+   const reply=await customerHttp.inject({method:init.method||'GET',url:path,
+    headers:{...init.headers,origin:clientOrigin,cookie:outsiderCookie},
+    payload:init.body});
+   if(reply.headers['set-cookie'])outsiderCookie=reply.headers['set-cookie'].split(';')[0];
+   return new Response(reply.body,{status:reply.statusCode,headers:{
+    'content-type':reply.headers['content-type']||'application/json'}});
+  };
+  const outsider=createCustomerFlowTransport({fetchImpl:outsiderFetch});
+  await outsider.register({alias:'Other customer',company:null});
+  await assert.rejects(outsider.lookupConfirmation({tableId,qrToken,
+   visitId:pwaVisit.visitId,basketId:pwaVisit.basketId,
+   requestKey:ambiguousRequest.requestKey}),
+   error=>error instanceof Error);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [committedAmbiguousId])).rows[0].n,1);
   const reconciled=await pwa.confirm(ambiguousRequest);
   assert.equal(reconciled.status,'replayed');
   assert.equal(reconciled.orderId,committedAmbiguousId);
