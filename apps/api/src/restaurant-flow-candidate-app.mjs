@@ -15,13 +15,15 @@ export async function createVerifiedRestaurantFlowCandidate({customer,operations
  try {
   if(!customer||!operations)throw Error('invalid_restaurant_flow_configuration');
   const pools=[customer.catalogReaderPool,customer.registrationPool,customer.sessionPool,customer.flowPool,
+   ...(customer.h6CustomerPool?[customer.h6CustomerPool]:[]),
    operations.staffPool,operations.operationsPool];
   if(pools.some(pool=>!pool||typeof pool.connect!=='function')||
-     new Set(pools).size!==6)throw Error('restaurant_flow_pool_isolation_required');
+     new Set(pools).size!==pools.length)throw Error('restaurant_flow_pool_isolation_required');
   const names=[customer.expectedCatalogLogin,customer.expectedRegistrationLogin,customer.expectedSessionLogin,
-   customer.expectedFlowLogin,operations.staffRole,operations.operationsRole];
+   customer.expectedFlowLogin,operations.staffRole,operations.operationsRole,
+   ...(customer.h6CustomerPool?[customer.expectedH6CustomerLogin]:[])];
   if(names.some(name=>typeof name!=='string'||!name)||
-     new Set(names).size!==6)throw Error('restaurant_flow_role_isolation_required');
+     new Set(names).size!==names.length)throw Error('restaurant_flow_role_isolation_required');
   // Verify all six identities before registering any customer or staff route.
   // This prevents an H4 failure from leaving an H3-only partial app.
   await assertCustomerProductionSqlCapabilities(customer);
