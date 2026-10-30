@@ -110,3 +110,13 @@ before persisting an order on B, preserve idempotent replay, invoke consumption
 within the same transaction, synchronize round/line destination readers and
 SSE, and pass real PG17/E2E concurrency/payment tests. Do not treat this
 primitive as a working end-to-end table transfer.
+
+## B2 grant-consumption ownership hardening
+
+The sealed primitive now requires the destination order to have an H6 round
+whose immutable `account_id` matches the original economic account before it
+may consume the one-use approval. Matching only customer and destination table
+would permit a mismatched order to act as proof of transfer. The PG17 catalog
+test asserts this ownership predicate. This is a security correction to the
+candidate primitive, **not** an end-to-end transfer cutover. GitHub Actions
+must pass before the candidate can be accepted.
