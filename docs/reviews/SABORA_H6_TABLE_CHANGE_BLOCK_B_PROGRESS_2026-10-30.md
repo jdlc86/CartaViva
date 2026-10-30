@@ -42,3 +42,10 @@ La función `confirm_customer_round_h6_candidate` continúa bajo el guard provis
 - Auditoría de migraciones y recuento actualizados. Commits de implementación hasta `f96e927`.
 - **CI del commit pendiente de resultado al redactar este apartado**; no se declara PASS antes de verificar Actions.
 - Este refuerzo es una **condición necesaria, no suficiente**: todavía falta consumo atómico del permiso y traslado real, consumidores sala/cocina/SSE y aceptación F01–F28/R01–R10. El guard provisional permanece. **NO-GO**.
+
+## B2 — orden de bloqueos en la decisión del camarero
+
+- `20261030210000_sabora_h6_table_change_decision_lock_order_candidate.sql`: la decisión ahora resuelve identidad sin bloquear filas, toma primero el advisory lock del cliente compartido con la confirmación H6, y solo después bloquea cuenta y solicitud; revalida estado de cuenta, rol activo y vencimiento en el punto de decisión. Evita la inversión anterior `account FOR UPDATE → advisory` frente a `advisory → account FOR UPDATE`, que podía causar deadlock.
+- La función sigue **sin permisos EXECUTE de roles runtime** hasta disponer de una frontera de autenticación del actor; no se activa el traslado.
+- Prueba de catálogo PG17 añadida para propietario, aislamiento y orden de bloqueos. Las pruebas de carreras funcionales y consumo único siguen pendientes.
+- Estado de este bloque: candidato sujeto a GitHub Actions; **NO-GO** para despliegue.
