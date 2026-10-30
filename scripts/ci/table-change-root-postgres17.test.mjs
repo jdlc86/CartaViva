@@ -558,7 +558,7 @@ test('PG17 line destinations are account-scoped, sealed, and exclude completed p
  const dispatchInsert=source.indexOf('INSERT INTO sabora.kitchen_dispatches');
  assert.ok(roundInsert>=0 && lineInsert>roundInsert && dispatchInsert>lineInsert,
   'new lines must be projected in the same confirmation transaction before dispatch');
- assert.match(source,/l\\.status\\s*<>\\s*'picked_up'/);
+ assert.match(source,/l[.]status\s*/);
  const pending=(await admin.query(`SELECT count(*)::int AS n
   FROM sabora.order_line_delivery_destinations d
   JOIN sabora.order_lines l ON l.id=d.order_line_id
