@@ -185,3 +185,9 @@ the sealed consumer rejects invalid input without changing grant/binding/
 delivery row counts. Positive transaction, idempotency, concurrent request,
 mixed pickup and payment integration tests remain mandatory. Do not
 enable runtime EXECUTE or promote the candidate until they pass.
+
+## PG17 positive approval-consumption milestone — 2026-10-30
+
+Commit `99b5ff23349f512a2b2de5192f4680273d536429` passed all three GitHub Actions workflows (Sabora CI, bootstrap lockfile, client browser conformance). The real PostgreSQL 17 B2 test now executes a one-use approved A→B transfer and checks the original economic account, historical order table, destination binding, unchanged balance, consumed grant and replay rejection. The sealed primitive's ownership check was corrected to use the actual `orders.customer_identifier` and `customer_profiles.public_id` schema, with column-scoped owner privileges and a dedicated owner RLS read policy. No customer/staff runtime EXECUTE grant was introduced.
+
+**Acceptance boundary:** this proves the isolated grant-consumption path in PG17, not end-to-end H6 confirmation, kitchen/sala readers, SSE, mixed picked-up lines, payment modes or concurrency. B2 remains **NO-GO** until these are covered with executable integration/E2E evidence. No merge, production migration or VPS deployment is authorized by this result.
