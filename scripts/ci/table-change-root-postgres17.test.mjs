@@ -1188,6 +1188,36 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    [quoteId,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
     ids.customer.toString(),itemId,evidence]);
   const lines=[{quoteId,itemId,evidence}];
+  // A conflicting payment-mode switch at B must rollback the persisted
+  // order, round, grant consumption and every pending delivery redirect.
+  await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
+    Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_now']),
+   /payment_mode_conflict/);
+  const before=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT status FROM sabora.customer_table_change_requests WHERE id=$2) AS grant,
+   (SELECT table_id FROM sabora.customer_account_operational_bindings
+    WHERE account_id=$3) AS binding,
+   (SELECT outstanding_cents FROM sabora.customer_accounts
+    WHERE id=$3) AS outstanding`,
+   [ids.order,grant.id,ids.sourceAccount])).rows[0];
+  assert.equal(before.orders,0);
+  assert.equal(before.rounds,0);
+  assert.equal(before.grant,'approved');
+  assert.equal(before.binding,ids.sourceTable);
+  assert.equal(before.outstanding,'1200');
+  assert.equal((await client.query(`SELECT table_id FROM
+   sabora.order_round_delivery_destinations WHERE round_id=$1`,
+   [priorRound])).rows[0].table_id,ids.sourceTable);
+  assert.equal((await client.query(`SELECT count(*)::int AS n
+   FROM sabora.order_line_delivery_destinations
+   WHERE order_id=$1 AND table_id=$2`,
+   [priorOrder,ids.destinationTable])).rows[0].n,0);
   const result=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
