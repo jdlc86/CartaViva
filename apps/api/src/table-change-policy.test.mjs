@@ -17,6 +17,8 @@ test('rejection preserves original cooldown, approval enables one deferred trans
  assert.equal(tableChangeRequestView(approved,999_999).canTransfer,true);
  const moved=consumeTableChange(approved,{sourceTableId:'table-1',destinationTableId:'table-3',nowMs:999_999});
  assert.equal(moved.destinationTableId,'table-3');
+ assert.equal(tableChangeRequestView(moved,999_999).canRequestAgain,true);
+ assert.equal(tableChangeRequestView(approved,999_999).canRequestAgain,false);
  assert.throws(()=>consumeTableChange(moved,{sourceTableId:'table-1',destinationTableId:'table-4',nowMs:1_000_000}),/forbidden/);
  assert.throws(()=>consumeTableChange(approved,{sourceTableId:'table-1',destinationTableId:'table-1',nowMs:2000}),/forbidden/);
  assert.throws(()=>consumeTableChange(approved,{sourceTableId:'table-2',destinationTableId:'table-3',nowMs:2000}),/origin_conflict/);
