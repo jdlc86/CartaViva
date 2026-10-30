@@ -839,6 +839,12 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    });
    const salaBoard=await salaBrowserGateway.listBoard({status:'ready'});
    assert.ok(salaBoard.items.some(item=>item.lineId===browserLine.id));
+   // An unauthenticated browser must never see the same order through the
+   // operational board, even after it has become visible to the waiter.
+   const anonymousBoard=await managementPage.evaluate(async()=>
+    (await fetch('/api/v1/operations/order-lines?status=ready',
+     {cache:'no-store'})).status);
+   assert.equal(anonymousBoard,401);
    const pickup=await salaBrowserGateway.transitionLine({lineId:browserLine.id,
     targetStatus:'picked_up',correlationId:'browser_h3_h4_pickup_971001'});
    assert.equal(pickup.currentStatus,'picked_up');
