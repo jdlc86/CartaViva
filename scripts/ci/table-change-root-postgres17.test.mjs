@@ -1270,3 +1270,38 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    WHERE id=$1`,[ids.sourceAccount])).rows[0].outstanding_cents,'1900');
  });
 });
+
+test('PG17 B2 two-session customer advisory gate serializes transfer writers without cross-customer blocking',async()=>{
+ const first=await admin.connect(),second=await admin.connect();
+ const customer=ids.customer,otherCustomer='b0a00000-0000-4000-8000-000000000099';
+ try{
+  await first.query('BEGIN');
+  await second.query('BEGIN');
+  const held=(await first.query(`SELECT pg_advisory_xact_lock(
+   hashtextextended($1::text,140630))`,[customer]));
+  assert.equal(held.rowCount,1);
+  const same=(await second.query(`SELECT pg_try_advisory_xact_lock(
+   hashtextextended($1::text,140630)) AS acquired`,[customer])).rows[0];
+  assert.equal(same.acquired,false,'a concurrent transfer for the same customer must wait');
+  const independent=(await second.query(`SELECT pg_try_advisory_xact_lock(
+   hashtextextended($1::text,140630)) AS acquired`,[otherCustomer])).rows[0];
+  assert.equal(independent.acquired,true,'an unrelated customer must not be serialized');
+  await first.query('ROLLBACK');
+  const released=(await second.query(`SELECT pg_try_advisory_xact_lock(
+   hashtextextended($1::text,140630)) AS acquired`,[customer])).rows[0];
+  assert.equal(released.acquired,true,'rollback releases the transactional customer lock');
+ }finally{
+  await first.query('ROLLBACK').catch(()=>{});
+  await second.query('ROLLBACK').catch(()=>{});
+  first.release();second.release();
+ }
+ const functions=(await admin.query(`SELECT proname,pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname IN
+   ('confirm_customer_round_h6_transfer_integration_candidate',
+    'consume_customer_table_change_h6_candidate')`)).rows;
+ assert.equal(functions.length,2);
+ for(const fn of functions)
+  assert.match(fn.definition,/hashtextextended\([^;]*140630/s,
+   fn.proname+' must take the same customer transaction advisory lock');
+});
