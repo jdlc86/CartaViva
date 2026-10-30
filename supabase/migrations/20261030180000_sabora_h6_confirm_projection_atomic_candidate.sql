@@ -104,7 +104,7 @@ BEGIN
   INSERT INTO sabora.customer_account_operational_bindings
     (account_id,table_id,session_id,visit_key)
   VALUES(v_account.id,p_table_id,v_table.session_id,p_visit_key)
-  ON CONFLICT(account_id) DO NOTHING;
+  ON CONFLICT ON CONSTRAINT customer_account_operational_bindings_pkey DO NOTHING;
   PERFORM 1 FROM sabora.customer_account_operational_bindings b
    WHERE b.account_id=v_account.id AND b.table_id=p_table_id
      AND b.session_id=v_table.session_id AND b.visit_key=p_visit_key FOR UPDATE;
