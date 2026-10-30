@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {pathToFileURL,fileURLToPath} from 'node:url';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {registerH6StaffEventStreamHttp,createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
