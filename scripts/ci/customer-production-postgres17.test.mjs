@@ -7,6 +7,8 @@ import {generateKeyPairSync,randomBytes,sign as signJwt} from 'node:crypto';
 import {createVerifiedRestaurantFlowCandidate} from '../../apps/api/src/restaurant-flow-candidate-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
@@ -388,6 +390,53 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  assert.equal(confirmedLines.rows.length,2);
  // Continue the coordinator regression on the other H3-confirmed line.
  const secondLineId=confirmedLines.rows[1].id;
+ // Exercise the real management PWA gateway and H4 HTTP routes against the
+ // same PG17 order. Test-only preHandler injects known staff principals;
+ // production JWT verification is covered separately by auth suites.
+ const staffHttp=Fastify({logger:false});
+ const testStaffTokens=new Map([
+  ['ci-kitchen-staff-auth-token-971001',kitchen],
+  ['ci-waiter-staff-auth-token-971001',waiter]
+ ]);
+ registerOrderOperationsHttp(staffHttp,{
+  forRoles:allowedRoles=>async(request,reply)=>{
+   const bearer=request.headers.authorization;
+   const actor=typeof bearer==='string'&&bearer.startsWith('Bearer ')
+    ?testStaffTokens.get(bearer.slice(7)):null;
+   if(!actor)return reply.code(401).send({error:'unauthorized'});
+   if(!allowedRoles.includes(actor.verifiedStaff.role))
+    return reply.code(403).send({error:'forbidden'});
+   request.verifiedIdentity=actor.verifiedIdentity;
+   request.verifiedStaff=actor.verifiedStaff;
+  },
+  operations
+ });
+ const staffFetch=async(path,options)=>{
+  const response=await staffHttp.inject({url:path,method:options.method||'GET',
+   headers:Object.fromEntries(options.headers.entries()),
+   ...(options.body===undefined?{}:{payload:options.body})});
+  return new Response(response.body,{status:response.statusCode,
+   headers:{'content-type':response.headers['content-type']||'application/json'}});
+ };
+ const kitchenGateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'ci-kitchen-staff-auth-token-971001',fetchImpl:staffFetch});
+ const waiterGateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'ci-waiter-staff-auth-token-971001',fetchImpl:staffFetch});
+ try{
+  const httpKitchenBoard=await kitchenGateway.listBoard({status:'confirmed'});
+  assert.ok(httpKitchenBoard,'management kitchen gateway must read real PG17 board');
+  await assert.rejects(waiterGateway.listBoard({status:'confirmed'}),/forbidden/);
+  const deniedPickup=await staffHttp.inject({
+   method:'POST',url:`/api/v1/operations/order-lines/${lineId}/transitions`,
+   headers:{authorization:'Bearer ci-kitchen-staff-auth-token-971001'},
+   payload:{targetStatus:'picked_up',correlationId:'ci_forbidden_pickup_971001'}});
+  assert.equal(deniedPickup.statusCode,403);
+  const missingAuth=await staffHttp.inject({
+   method:'GET',url:'/api/v1/operations/order-lines?limit=10'});
+  assert.equal(missingAuth.statusCode,401);
+ }finally{
+  kitchenGateway.revoke();waiterGateway.revoke();await staffHttp.close();
+ }
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
  assert.ok(kitchenBoard.items.some(item=>item.lineId===secondLineId),
    'H3-confirmed order must be visible to H4 kitchen');
