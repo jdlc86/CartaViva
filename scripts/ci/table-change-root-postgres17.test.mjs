@@ -1143,7 +1143,7 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    requesting_session_hash,expires_at,decided_at,decided_by)
    VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
    clock_timestamp(),$2) RETURNING id`,
-   [ids.sourceAccount,ids.customer,sourceVisit,tokenHash])).rows[0];
+   [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
   const draft={name:'Plato de integración',category:'Primeros',priceCents:700,
    allergens:[],options:[],extras:[],discount:null};
   await client.query(`INSERT INTO sabora.catalog_items
