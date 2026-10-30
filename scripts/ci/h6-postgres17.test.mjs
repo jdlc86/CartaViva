@@ -185,6 +185,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   // The PWA transport confirmation is the order continued by payment and kitchen.
   const orderHttp=pwaConfirmed;
   httpConfirmedOrder=orderHttp;
+  // Distinguish an order-id / round-id argument mismatch without relaxing scope.
+  const directRound=await h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
+   [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.roundId]));
+  assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
   // Regression probe: replay must resolve the persisted H6 round, not 503.
   // Surface the internal failure only inside disposable CI, never in HTTP.
   let replayResult;
