@@ -42,3 +42,6 @@ Estos hallazgos refuerzan la necesidad de una refactorización conjunta de **con
 - La protección es **deliberadamente restrictiva**: también bloquea cambios legítimos aprobados y puede bloquear una nueva visita en otra mesa mientras una cuenta anterior permanezca abierta. No equivale a transferencia ni resuelve visitas/sesiones múltiples.
 - Se incorpora test estructural `apps/api/src/table-change-h6-cross-table-guard.test.mjs` a `npm test`. **No hay ejecución PostgreSQL 17 ni prueba E2E acreditada.**
 - Próximo hito: sustituir el rechazo por consumo atómico del permiso, revalidación de QR/mesa, conservación de cuenta, proyección de entregas y consulta histórica segura. Mantener NO-GO.
+
+## Corrección de alcance — 2026-10-30
+La comprobación de la migración provisional `20261030143000` ya no filtra por `customer_accounts.session_id`: las sesiones operativas pueden diferir entre mesas y ese filtro permitiría dividir la cuenta económica. Se mantiene el rechazo de cualquier otra cuenta abierta del cliente hasta resolver continuidad y ámbito de visita de forma normativa. La restricción puede bloquear visitas posteriores con cuentas antiguas abiertas. Prueba estructural actualizada; **PG17 y E2E no ejecutados**. No aprobar despliegue.
