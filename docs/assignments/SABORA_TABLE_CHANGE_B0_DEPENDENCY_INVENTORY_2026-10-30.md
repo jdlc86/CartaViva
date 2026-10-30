@@ -28,3 +28,10 @@ Fuente: `supabase/migrations/20261027122858_sabora_h6_events_payments_operations
 
 ## Evidencia y límites
 Inspección estática de la migración H6 y del código candidato; **no se han ejecutado pruebas PG17 ni E2E** para este inventario. No hay autorización para merge, despliegue, Supabase operativo o recursos del VPS. Fleetia queda excluido.
+
+## Hallazgo adicional — consultas de reintento y pagos H6 (bloqueante)
+Inspección de `sabora.read_customer_round_h6_candidate` en la misma migración: enlaza `customer_accounts a` mediante `a.table_id=t.id AND a.session_id=t.session_id AND a.visit_key=v.visit_key` y exige simultáneamente `orders o` en `o.table_id=t.id AND o.session_id=t.session_id AND o.customer_visit_key=v.visit_key`, además de `order_rounds r` con `r.account_id=a.id`. Tras un cambio de mesa, un pedido histórico conserva mesa A mientras la cuenta operativa puede apuntar a B; esta consulta dejaría de poder recuperar la ronda histórica si se actualiza simplemente `a.table_id`. **Es obligatorio rediseñar el acceso a rondas históricas por identidad económica estable, validando la titularidad de sesión, no por coincidencia de mesa actual y mesa histórica.** Probar reintento de confirmación, consulta de estado y pagos iniciados antes del traslado.
+
+En `confirm_customer_round_h6_candidate`, la rama de reintento `IF FOUND` de `order_rounds` devuelve `v_account.id` de la cuenta buscada por la mesa solicitada, no necesariamente `v_round.account_id` del pedido ya persistido. Eso exige una aserción de identidad al reintentar, para evitar devolver una cuenta distinta. No se debe corregir mediante actualización retroactiva de `orders.table_id`.
+
+Estos hallazgos refuerzan la necesidad de una refactorización conjunta de **confirmación + consulta de ronda + proyección de entrega + SSE**, no una actualización aislada de cuenta.
