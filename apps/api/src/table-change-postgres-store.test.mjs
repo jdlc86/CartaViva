@@ -82,5 +82,7 @@ test('decision update enforces server deadline at write time',async()=>{
  }));
  assert.match(updateSql,/expires_at>clock_timestamp\(\)/);
  assert.match(updateSql,/decided_at=clock_timestamp\(\)/);
+ assert.match(updateSql,/a\.state='open'/);
+ assert.match(updateSql,/a\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
  assert.doesNotMatch(updateSql,/to_timestamp\(/);
 });
