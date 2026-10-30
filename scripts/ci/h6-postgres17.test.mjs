@@ -1,5 +1,5 @@
 import test from 'node:test';
-import Fastify from 'fastify';
+import CustomerFastify from 'fastify';
 import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-production-http.mjs';
 import assert from 'node:assert/strict';
@@ -140,18 +140,18 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
  let httpConfirmedOrder=null;
- const h6Http=Fastify({logger:false});
+ const customerHttp=CustomerFastify({logger:false});
  const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
   verifyCustomerSession:async token=>token===customer.token?{
    customerId:customer.profile.id,publicId:customer.profile.public_id,
    alias:'Cliente H6',company:null}:null,
   revokeCustomerSession:async()=>false});
- await registerCustomerProductionFlowHttp(h6Http,{cookieAuth:h6CookieAuth,flow});
- await h6Http.ready();
+ await registerCustomerProductionFlowHttp(customerHttp,{cookieAuth:h6CookieAuth,flow});
+ await customerHttp.ready();
  try{
   const headers={origin:'https://sabora.example','content-type':'application/json',
    cookie:`__Secure-sabora_customer=${customer.token}`};
-  const post=(path,payload)=>h6Http.inject({method:'POST',
+  const post=(path,payload)=>customerHttp.inject({method:'POST',
    url:`/api/v1/customer/${path}`,headers,payload});
   const visitResponse=await post('visits',{tableId,qrToken});
   assert.equal(visitResponse.statusCode,201,visitResponse.body);
@@ -173,7 +173,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    Buffer.from(transportJs).toString('base64'));
   const browserFetch=async(path,init={})=>{
    assert.equal(init.credentials,'same-origin');
-   const response=await h6Http.inject({method:init.method||'GET',url:path,
+   const response=await customerHttp.inject({method:init.method||'GET',url:path,
     headers:{...init.headers,...headers},payload:init.body});
    return new Response(response.body,{status:response.statusCode,headers:{
     'content-type':response.headers['content-type']||'application/json'}});
@@ -201,7 +201,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    FROM sabora.order_rounds WHERE order_id=$1 AND id=$2`,
    [orderHttp.orderId,orderHttp.roundId]);
   assert.deepEqual(proof.rows,[{rounds:1,dispatches:1}]);
- }finally{await h6Http.close();}
+ }finally{await customerHttp.close();}
  const events=createH6CustomerEventRepository({withTransaction:h6CustomerTx});
  const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,role:'sabora_h6_provider_runtime',
   allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
