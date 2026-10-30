@@ -450,3 +450,22 @@ test('PG17 composite FK rejects delivery projection for another economic account
    WHERE round_id=$1`,[ids.round])).rows[0].account_id,ids.sourceAccount);
  });
 });
+
+test('PG17 waiter decision takes customer advisory lock before account/request row locks',async()=>{
+ const result=await admin.query(`SELECT pg_get_functiondef(p.oid) AS source,
+  pg_get_userbyid(p.proowner) AS owner,p.prosecdef,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS exposed
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND p.proname='decide_customer_table_change_h6_candidate'`);
+ assert.equal(result.rows.length,1);
+ const {source,owner,prosecdef,exposed}=result.rows[0];
+ assert.equal(owner,'sabora_h6_fn_owner');
+ assert.equal(prosecdef,true);
+ assert.equal(exposed,false);
+ const lock=source.indexOf('pg_advisory_xact_lock');
+ const accountLock=source.indexOf("a.state = 'open' FOR UPDATE");
+ const requestLock=source.indexOf('q.account_id = v_account_id FOR UPDATE');
+ assert.ok(lock>=0 && accountLock>lock && requestLock>accountLock,
+  'decision must acquire customer advisory lock before account and request locks');
+ assert.match(source,/v_request.status = 'pending' AND v_now >= v_request.expires_at/);
+});
