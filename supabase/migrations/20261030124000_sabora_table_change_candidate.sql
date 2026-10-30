@@ -51,6 +51,10 @@ CREATE UNIQUE INDEX customer_table_change_one_pending
 CREATE UNIQUE INDEX customer_table_change_one_approval
  ON sabora.customer_table_change_requests(account_id)
  WHERE status='approved';
+-- One confirmed order may consume at most one table-change grant.
+CREATE UNIQUE INDEX customer_table_change_one_grant_per_order
+ ON sabora.customer_table_change_requests(consumed_order_id)
+ WHERE consumed_order_id IS NOT NULL;
 CREATE INDEX customer_table_change_account_history
  ON sabora.customer_table_change_requests(account_id,created_at DESC,id DESC);
 CREATE INDEX customer_table_change_pending_deadline
