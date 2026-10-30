@@ -86,3 +86,30 @@ test('decision update enforces server deadline at write time',async()=>{
  assert.match(updateSql,/a\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
  assert.doesNotMatch(updateSql,/to_timestamp\(/);
 });
+
+test('request race returns a domain conflict when INSERT yields no row',async()=>{
+ const store=createTableChangePostgresStore({
+  withTransaction:async handler=>handler(async()=>({rows:[]})),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await assert.rejects(
+  ()=>store.transaction('request',tx=>tx.insertRequest({
+   accountId:'a1',customerId:'c1',visitId:'visit_1234567890123456',
+   sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000
+  })),
+  /table_change_request_locked/
+ );
+});
+
+test('decision race returns not-pending when deadline or account guard rejects UPDATE',async()=>{
+ const store=createTableChangePostgresStore({
+  withTransaction:async handler=>handler(async()=>({rows:[]})),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await assert.rejects(
+  ()=>store.transaction('decide',tx=>tx.recordDecision({
+   request:{id:'r1',status:'approved'},staffId:'w1'
+  })),
+  /table_change_request_not_pending/
+ );
+});
