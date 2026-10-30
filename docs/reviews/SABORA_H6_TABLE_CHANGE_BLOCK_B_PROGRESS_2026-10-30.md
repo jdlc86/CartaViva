@@ -91,3 +91,22 @@ unique referenced key `order_lines(order_id,id)`, not merely the single-column
 primary key. Added this key in the same candidate migration and a PG17 catalog
 assertion. The change is additive and does not modify historical order identity.
 The CI execution is required before the migration can be accepted.
+
+## B2 sealed grant-consumption primitive (candidate)
+
+Migration `20261031000000_sabora_h6_atomic_grant_consume_candidate.sql`
+adds an owner-only SECURITY DEFINER primitive for **one-use approved grant
+consumption**. It serializes by customer advisory lock, revalidates the active
+session, open account, operational binding, approved request, destination
+visit/QR version and persisted destination order; in one transaction it marks
+the approval consumed, moves the operational account binding and redirects
+only lines not in `picked_up` status. Original orders, account balances,
+payment attempts and dispatch records are not rewritten. No direct runtime
+EXECUTE is granted; PG17 catalog assertions check its sealed boundary.
+
+**Integration gate remains open:** the H6 confirmation function does not yet
+call this primitive. A proper B2 cutover must resolve the original account
+before persisting an order on B, preserve idempotent replay, invoke consumption
+within the same transaction, synchronize round/line destination readers and
+SSE, and pass real PG17/E2E concurrency/payment tests. Do not treat this
+primitive as a working end-to-end table transfer.
