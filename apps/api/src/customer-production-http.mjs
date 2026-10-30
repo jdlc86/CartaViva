@@ -32,7 +32,7 @@ const replyFailure=(reply,error)=>{
 
 // Explicit opt-in adapter. Cookie authentication and same-origin enforcement
 // are injected and apply before any QR, quote or order capability runs.
-export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
+export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
@@ -56,6 +56,22 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
+  if(tableChange&&typeof tableChange.request==='function'){
+   scope.post('/table-change/requests',{bodyLimit:1024},async(request,reply)=>{
+    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
+    if(!request.body||typeof request.body!=='object'||Array.isArray(request.body)||
+       Object.keys(request.body).length!==0)return reply.code(400).send({error:'invalid_customer_request'});
+    try{
+     const result=await tableChange.request({customerSessionToken:readCustomerCookie(request.headers.cookie)});
+     return reply.header('Cache-Control','no-store').code(201).send(result);
+    }catch(error){
+     if(error?.message==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});
+     if(['table_change_unauthorized','table_change_account_forbidden'].includes(error?.message))
+      return reply.code(403).send({error:'customer_context_forbidden'});
+     return reply.code(503).send({error:'customer_flow_unavailable'});
+    }
+   });
+  }
   scope.post('/quotes',{bodyLimit:65536},async(request,reply)=>{
    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
    try{
