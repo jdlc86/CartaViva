@@ -1,5 +1,4 @@
 import test from 'node:test';
-import CustomerFastify from 'fastify';
 import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-production-http.mjs';
 import assert from 'node:assert/strict';
@@ -140,7 +139,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
  let httpConfirmedOrder=null;
- const customerHttp=CustomerFastify({logger:false});
+ const customerHttp=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify')({logger:false});
  const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
   verifyCustomerSession:async token=>token===customer.token?{
    customerId:customer.profile.id,publicId:customer.profile.public_id,
