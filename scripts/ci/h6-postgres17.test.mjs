@@ -5,6 +5,8 @@ import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-pr
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {pathToFileURL,fileURLToPath} from 'node:url';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {registerH6StaffEventStreamHttp,createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
@@ -162,9 +164,31 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const request={tableId,qrToken,visitId:hv.visitId,basketId:hv.basketId,
    requestKey:'h6_http_round_0001',paymentMode:'pay_now',
    lines:[{quoteId:quoteResponse.json().lines[0].quoteId,itemId,selection,quantity:1}]};
+  // Use the actual customer PWA transport over the same H6 HTTP adapter.
+  const requireClient=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+  const ts=requireClient('typescript');
+  const transportSource=readFileSync(new URL('../../apps/client/src/customer-flow-transport.ts',import.meta.url),'utf8');
+  const transportJs=ts.transpileModule(transportSource,{compilerOptions:{
+   module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+  const {createCustomerFlowTransport}=await import('data:text/javascript;base64,'+
+   Buffer.from(transportJs).toString('base64'));
+  const browserFetch=async(path,init={})=>{
+   assert.equal(init.credentials,'same-origin');
+   const response=await h6Http.inject({method:init.method||'GET',url:path,
+    headers:{...init.headers,...headers},payload:init.body});
+   return new Response(response.body,{status:response.statusCode,headers:{
+    'content-type':response.headers['content-type']||'application/json'}});
+  };
+  const pwaTransport=createCustomerFlowTransport({fetchImpl:browserFetch});
+  const pwaConfirmed=await pwaTransport.confirm(request);
+  assert.equal(pwaConfirmed.status,'confirmed');
+  assert.equal(pwaConfirmed.paymentMode,'pay_now');
+  assert.ok(pwaConfirmed.roundId);
   const confirmed=await post('orders/confirm',request);
-  assert.equal(confirmed.statusCode,201,confirmed.body);
+  assert.equal(confirmed.statusCode,200,confirmed.body);
   const orderHttp=confirmed.json();
+  assert.equal(orderHttp.orderId,pwaConfirmed.orderId);
+  assert.equal(orderHttp.roundId,pwaConfirmed.roundId);
   httpConfirmedOrder=orderHttp;
   assert.equal(orderHttp.paymentMode,'pay_now');
   assert.ok(orderHttp.roundId);
