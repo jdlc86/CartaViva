@@ -33,7 +33,8 @@ export function createTableChangeService({store}={}){
    });
   },
   async consumeInOrderTransaction(tx,{accountId,sourceTableId,destinationTableId,orderId}={}){
-   if(!tx||!accountId||!orderId)throw Error('invalid_table_change_context');
+   if(!tx||!accountId||!orderId||!sourceTableId||!destinationTableId)
+    throw Error('invalid_table_change_context');
    const nowMs=await tx.serverNowMs();
    const request=await tx.lockApprovedRequest(accountId);
    if(!request)throw Error('table_change_transfer_forbidden');
