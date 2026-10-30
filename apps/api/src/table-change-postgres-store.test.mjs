@@ -70,4 +70,6 @@ test('decision update enforces server deadline at write time',async()=>{
   request:{id:'r1',status:'approved',decidedAtMs:1793361689000},staffId:'w1'
  }));
  assert.match(updateSql,/expires_at>clock_timestamp\(\)/);
+ assert.match(updateSql,/decided_at=clock_timestamp\(\)/);
+ assert.doesNotMatch(updateSql,/to_timestamp\(/);
 });
