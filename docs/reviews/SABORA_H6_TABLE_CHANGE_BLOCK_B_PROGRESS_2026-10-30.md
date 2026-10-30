@@ -222,3 +222,25 @@ verified against the normative contract. The candidate still has no customer
 runtime EXECUTE permission. Do not equate a green SQL test with production
 readiness; no merge, VPS operation, operational Supabase migration or
 deployment is authorized.
+
+## PG17 two-transaction integrated confirmation race — 2026-10-30
+
+Commit `d6257af7829f31f4cc272ef371db51fee74c99ca` passed Sabora CI,
+bootstrap lockfile and client browser conformance. A disposable PostgreSQL 17
+test commits a realistic account, approved A→B request, mixed historical
+delivery round and catalog quote, then opens two independent transactions
+and runs the **complete** candidate checkout SQL twice against the same
+authenticated customer and idempotency key. The second call begins while
+the first transaction is uncommitted and waits on the customer lock; after
+the first commits it returns an idempotent replay. The test verifies exactly
+one new order, round, kitchen dispatch and consumed grant, the unchanged
+economic account, a single 700-cent balance increment and exactly one
+binding version increment. This is not merely an isolated advisory-lock test.
+
+**Limits:** the race exercises duplicate submissions of the **same**
+idempotency key, not two distinct competing valid baskets or destination
+tables. Payment authorization/capture races, mixed payment attempts,
+kitchen/sala readers, SSE and authenticated API/PWA end-to-end remain
+unverified. The candidate is still sealed from runtime EXECUTE. B2
+continues **NO-GO**; no merge, deployment, operational Supabase or VPS
+change is authorized.
