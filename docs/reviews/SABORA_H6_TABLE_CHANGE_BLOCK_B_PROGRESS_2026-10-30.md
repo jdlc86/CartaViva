@@ -159,3 +159,12 @@ persistence function's cross-table assumptions, multiple-account ambiguity,
 mixed picked-up deliveries, grouping, pay-now/pay-later and SSE kitchen/sala
 readers. Only after all acceptance gates pass should the approved entrypoint
 be switched; no runtime EXECUTE grant was introduced here.
+
+## Economic account ambiguity gate
+
+The isolated transfer confirmation now rejects a customer with multiple open
+accounts instead of arbitrarily selecting the first. This prevents combining
+unrelated debts or payments in legacy/exceptional states. A PG17 catalog test
+asserts the fail-closed predicate. A deterministic reconciliation process is
+still required before such a customer may transfer; no production data is
+changed by this gate.
