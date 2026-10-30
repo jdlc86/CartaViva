@@ -27,7 +27,7 @@ export function tableChangeRequestView(request,nowMs){
  return Object.freeze({
   status:expired?'expired':request.status,
   remainingSeconds:Math.ceil(remainingMs/1000),
-  canRequestAgain:remainingMs===0&&!['approved','consumed'].includes(request.status),
+  canRequestAgain:request.status==='consumed'||(remainingMs===0&&request.status!=='approved'),
   canDecide:request.status==='pending'&&remainingMs>0,
   canTransfer:request.status==='approved'
  });
