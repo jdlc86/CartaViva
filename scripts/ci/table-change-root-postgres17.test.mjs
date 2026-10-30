@@ -576,6 +576,7 @@ test('PG17 atomic grant consumer is sealed and updates only non-picked-up delive
  assert.match(body,/status='approved'/);
  assert.match(body,/status='consumed'/);
  assert.match(body,/consumed_order_id=p_confirmed_order_id/);
+ assert.match(body,/r.order_id=o.id AND r.account_id=p_account_id/);
  assert.match(body,/l.status<>'picked_up'/);
  assert.match(body,/UPDATE sabora.order_line_delivery_destinations/);
  assert.match(body,/UPDATE sabora.customer_account_operational_bindings/);
