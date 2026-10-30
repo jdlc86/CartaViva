@@ -31,3 +31,17 @@ test('server-side creation validates configurable timeout and clock',()=>{
  assert.throws(()=>createTableChangeRequest({sourceTableId:'table-1',nowMs:1000,windowMs:0}),/invalid_table_change_request/);
  assert.throws(()=>createTableChangeRequest({sourceTableId:'',nowMs:1000}),/invalid_table_change_request/);
 });
+
+test('one request per window applies after consumption and staff revocation',()=>{
+ const approved=decideTableChange(request,'approved',2000);
+ const consumed=consumeTableChange(approved,{
+  sourceTableId:'table-1',destinationTableId:'table-2',nowMs:3000
+ });
+ const revoked={...approved,status:'revoked'};
+ for(const prior of [consumed,revoked]){
+  assert.equal(tableChangeRequestView(prior,3000).canRequestAgain,false);
+  assert.equal(tableChangeRequestView(prior,90_999).canRequestAgain,false);
+  assert.equal(tableChangeRequestView(prior,91_000).canRequestAgain,true);
+ }
+ assert.equal(tableChangeRequestView(approved,91_000).canRequestAgain,false);
+});
