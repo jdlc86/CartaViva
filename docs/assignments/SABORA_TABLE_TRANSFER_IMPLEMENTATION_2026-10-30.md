@@ -35,3 +35,36 @@ No marcar el bloque como terminado hasta disponer de implementación completa, m
 - Reglas puras de solicitud, plazo y consumo único añadidas a `apps/api/src/table-change-policy.mjs`.
 - Pruebas unitarias añadidas y registradas en el comando `test`.
 - Migración candidata `20261030124000_sabora_table_change_candidate.sql` incorporada: tabla de solicitudes, configuración de ventana, índices, aprobación única y RLS sin grants de ejecución. **No aplicada ni verificada en PostgreSQL 17**; no representa cierre de persistencia.\n- Pendiente: funciones SQL autenticadas y permisos mínimos, bloqueo y auditoría transaccionales, conexión efectiva de rutas HTTP, integración atómica H6, pruebas PG17 y navegador.
+
+
+## Auditoría de integración H6 — 30 de octubre
+
+La función existente `sabora.confirm_customer_round_h6_candidate` llama a
+`sabora.persist_customer_order_candidate` **antes** de localizar la cuenta H6.
+A continuación inserta `customer_accounts(table_id,session_id,visit_key,customer_id)`
+con `ON CONFLICT DO NOTHING` y busca esa misma combinación con `FOR UPDATE`.
+Por tanto, añadir `applyTransfer` después de esta función **no es seguro**:
+el pedido de destino podría quedar asociado a otra cuenta, y cambiar únicamente
+`customer_accounts.table_id` no repara los vínculos ni los destinos de entrega.
+
+La migración candidata de cambio de mesa crea `consumed_order_id` y un índice
+de aprobación única, pero **no** redefine el procedimiento H6 de confirmación
+ni establece el recorrido seguro para transferir una cuenta con consumición.
+
+### Requisitos de la siguiente implementación indivisible
+
+1. Reestructurar la confirmación SQL de forma que la cuenta de origen y la
+   autorización aprobada se bloqueen antes de persistir el primer pedido de
+   destino; validar QR, sesión, visita y mesa de destino en la misma transacción.
+2. Garantizar que `order_rounds.account_id` se vincule a la cuenta original,
+   sin crear una cuenta económica nueva en destino; conservar deuda, intentos de
+   pago y claves de idempotencia.
+3. Consumir el permiso y actualizar los destinos operativos pendientes sin
+   modificar `orders.table_id` históricos ni relanzar comandas.
+4. Resolver las dependencias de unicidad de `customer_accounts` y de
+   `customer_table_visits` antes de introducir un `UPDATE table_id`.
+5. Verificar las rutas de lectura, SSE, autorizaciones y políticas RLS en ambos
+   lados del traslado. Exigir PG17 real y E2E antes de declarar cierre.
+
+**Estado:** el adaptador JS es un candidato parcial, no está integrado en el
+procedimiento SQL H6 y no debe habilitarse como traslado operativo.
