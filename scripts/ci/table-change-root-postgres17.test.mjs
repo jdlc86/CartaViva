@@ -1351,47 +1351,47 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   const quoteId='b0a00000-0000-4000-8000-000000000031';
   const batchId='b0a00000-0000-4000-8000-000000000032';
   await insertIdentityAndTables(client,{publicId});
-  await client.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
+  await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
    [qrDigest,[ids.sourceTable,ids.destinationTable]]);
   await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
   await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
-  await client.query(`INSERT INTO sabora.customer_accounts
+  await fixture.query(`INSERT INTO sabora.customer_accounts
    (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
    VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),1200)`,
    [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
-  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+  await fixture.query(`INSERT INTO sabora.customer_account_operational_bindings
    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
    [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
   // Existing A order and pending delivery must move with the integrated B checkout.
   const priorOrder='b0a00000-0000-4000-8000-000000000040';
   const priorRound='b0a00000-0000-4000-8000-000000000041';
-  await client.query(`INSERT INTO sabora.orders
+  await fixture.query(`INSERT INTO sabora.orders
    (id,table_id,session_id,company,employee_number,customer_alias,customer_identifier,
     customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
    VALUES($1,$2,$3,NULL,NULL,'Histórico A',$4,$5,'{"schemaVersion":"1"}'::jsonb,
     clock_timestamp(),'first','[{"category":"main","name":"Recogido","quantity":1},{"category":"main","name":"Pendiente","quantity":1}]'::jsonb)`,
    [priorOrder,ids.sourceTable,ids.sourceSession,publicId,sourceVisit]);
-  await client.query(`INSERT INTO sabora.order_rounds
+  await fixture.query(`INSERT INTO sabora.order_rounds
    (id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
     grouping_deadline,state)
    VALUES($1,$2,$3,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
    [priorRound,priorOrder,ids.sourceAccount]);
   // The mixed historical round has one completed pickup and one pending line.
-  await client.query(`UPDATE sabora.order_lines SET status='picked_up'
+  await fixture.query(`UPDATE sabora.order_lines SET status='picked_up'
    WHERE order_id=$1 AND line_number=1`,[priorOrder]);
-  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+  await fixture.query(`INSERT INTO sabora.order_round_delivery_destinations
    (round_id,account_id,table_id,session_id,visit_key)
    VALUES($1,$2,$3,$4,$5)`,
    [priorRound,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
-  const oldLines=(await client.query(`SELECT id,line_number,status
+  const oldLines=(await fixture.query(`SELECT id,line_number,status
    FROM sabora.order_lines WHERE order_id=$1 ORDER BY line_number`,[priorOrder])).rows;
   assert.equal(oldLines.length,2);
-  await client.query(`INSERT INTO sabora.order_line_delivery_destinations
+  await fixture.query(`INSERT INTO sabora.order_line_delivery_destinations
    (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
    VALUES($1,$2,$3,$4,$5,$6,$7),($8,$2,$3,$4,$5,$6,$7)`,
    [oldLines[0].id,priorRound,ids.sourceAccount,priorOrder,ids.sourceTable,
     ids.sourceSession,sourceVisit,oldLines[1].id]);
-  const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+  const grant=(await fixture.query(`INSERT INTO sabora.customer_table_change_requests(
    account_id,customer_id,visit_key,source_table_id,status,
    requesting_session_hash,expires_at,decided_at,decided_by)
    VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
@@ -1399,13 +1399,13 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
    [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
   const draft={name:'Plato de integración',category:'Primeros',priceCents:700,
    allergens:[],options:[],extras:[],discount:null};
-  await client.query(`INSERT INTO sabora.catalog_items
+  await fixture.query(`INSERT INTO sabora.catalog_items
    (id,draft,draft_revision,published_revision,published_snapshot,published_at)
    VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,draft]);
   const evidence={schemaVersion:'1',itemId,publishedRevision:1,quantity:1,
    itemName:'Plato de integración',category:'Primeros',
    subtotalCents:'700',discountCents:'0',totalCents:'700'};
-  await client.query(`INSERT INTO sabora.catalog_displayed_quotes
+  await fixture.query(`INSERT INTO sabora.catalog_displayed_quotes
    (id,table_id,session_id,visit_id,basket_id,actor_id,item_id,
     published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
    VALUES($1,$2,$3,$4,$5,$6,$7,1,700,0,700,$8,clock_timestamp()+interval '15 minutes')`,
