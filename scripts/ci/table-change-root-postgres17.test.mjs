@@ -855,3 +855,45 @@ test('PG17 integrated B2 rejects unauthorized destination and unapproved transfe
   assert.equal(state.binding_version,'1');
  });
 });
+
+test('PG17 integrated B2 preserves approved grant if destination order cannot be persisted',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABM'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp())`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const approval=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+   account_id,customer_id,visit_key,source_table_id,status,
+   requesting_session_hash,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
+   clock_timestamp(),$2) RETURNING id`,
+   [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
+  const failure=await expectSqlError(client,()=>client.query(`SELECT *
+   FROM sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,'definitely-invalid-qr',destinationVisit,
+    'approved-basket','approved-request',Buffer.alloc(32,205),ids.round,
+    ids.order,JSON.stringify([]),false,'pay_at_end']),/./);
+  assert.ok(failure.code);
+  const state=(await client.query(`SELECT q.status,q.consumed_order_id,
+   b.table_id,b.binding_version,
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$2) AS orders,
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$2) AS rounds
+   FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   WHERE q.id=$1`,[approval.id,ids.order])).rows[0];
+  assert.equal(state.status,'approved');
+  assert.equal(state.consumed_order_id,null);
+  assert.equal(state.table_id,ids.sourceTable);
+  assert.equal(state.binding_version,'1');
+  assert.equal(state.orders,0);
+  assert.equal(state.rounds,0);
+ });
+});
