@@ -185,6 +185,14 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   // The PWA transport confirmation is the order continued by payment and kitchen.
   const orderHttp=pwaConfirmed;
   httpConfirmedOrder=orderHttp;
+  // Regression probe: replay must resolve the persisted H6 round, not 503.
+  // Surface the internal failure only inside disposable CI, never in HTTP.
+  let replayResult;
+  try{replayResult=await flow.confirm({...request,customerSessionToken:customer.token});}
+  catch(error){assert.fail(`H6 replay internal failure: ${error?.message||String(error)}`);}
+  assert.equal(replayResult.status,'replayed');
+  assert.equal(replayResult.orderId,orderHttp.orderId);
+  assert.equal(replayResult.roundId,orderHttp.roundId);
   const proof=await admin.query(`SELECT count(*)::integer AS rounds,
    (SELECT count(*)::integer FROM sabora.kitchen_dispatches
     WHERE order_id=$1 AND round_id=$2) AS dispatches
