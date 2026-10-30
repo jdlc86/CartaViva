@@ -7,7 +7,7 @@ test('request adapter delegates account ownership and transaction to injected H6
  const store=createTableChangePostgresStore({
   withTransaction:async handler=>handler(async(sql,args)=>{
    calls.push({sql,args});
-   if(sql.includes('clock_timestamp'))return {rows:[{now:'2026-10-30T12:00:00.000Z'}]};
+   if(sql==='SELECT clock_timestamp() AS now')return {rows:[{now:'2026-10-30T12:00:00.000Z'}]};
    if(sql.includes('table_change_response_seconds'))return {rows:[{table_change_response_seconds:90}]};
    if(sql.includes('INSERT INTO'))return {rows:[{
     id:'r1',status:'pending',source_table_id:'t1',
