@@ -26,20 +26,29 @@ BEGIN
     RAISE EXCEPTION 'invalid_payment_mode' USING errcode='22023';
   END IF;
 
-  -- Fail closed before any order is persisted: the current H6 account lookup
-  -- is table-scoped and would otherwise open a second economic account.
-  -- This is NOT a transfer implementation. It preserves the invariant until
-  -- the atomic transfer/round lookup/delivery refactor is certified.
+  -- Serialize all confirmations for this customer before the first write.
+  -- Advisory lock must be taken by every H6 confirmation path using this
+  -- function, including the first order on a table.
   SELECT s.customer_id INTO v_session FROM sabora.customer_sessions s
    WHERE s.token_hash=p_session_hash AND s.revoked_at IS NULL
      AND s.expires_at>clock_timestamp() FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'customer_session_forbidden' USING errcode='42501'; END IF;
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_session.customer_id::text, 140630));
+
+  -- Scope the guard to the *same active restaurant visit/session*.
+  -- An old, still-open account from a prior dining session must not
+  -- prevent a new visit at another table.
+  SELECT v.session_id INTO v_visit
+    FROM sabora.customer_table_visits v
+   WHERE v.customer_id=v_session.customer_id AND v.table_id=p_table_id
+     AND v.visit_key=p_visit_key AND v.revoked_at IS NULL
+     AND v.expires_at>clock_timestamp() FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'customer_visit_forbidden' USING errcode='42501'; END IF;
   IF EXISTS (
     SELECT 1 FROM sabora.customer_accounts a
-    WHERE a.customer_id=v_session.customer_id AND a.state='open'
-      AND a.table_id<>p_table_id
+    WHERE a.customer_id=v_session.customer_id AND a.session_id=v_visit.session_id
+      AND a.state='open' AND a.table_id<>p_table_id
   ) THEN
     RAISE EXCEPTION 'table_change_transfer_not_integrated' USING errcode='23514';
   END IF;
