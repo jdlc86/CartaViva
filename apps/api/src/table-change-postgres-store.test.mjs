@@ -137,3 +137,24 @@ test('adapter never exposes transfer as an independent transaction operation',as
  await assert.rejects(()=>store.transaction('transfer',async()=>{}),/invalid_table_change_operation/);
  assert.equal(called,false);
 });
+
+test('known PostgreSQL partial unique races become domain conflicts without hiding unrelated errors',async()=>{
+ const attempt=async(error)=>{
+  const store=createTableChangePostgresStore({
+   withTransaction:async handler=>handler(async()=>{throw error;}),
+   resolveAccount:async()=>({}),verifyStaff:async()=>({})
+  });
+  return store.transaction('request',tx=>tx.insertRequest({
+   accountId:'a1',customerId:'c1',visitId:'visit_1234567890123456',
+   sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000
+  }));
+ };
+ for(const constraint of ['customer_table_change_one_pending','customer_table_change_one_approval']){
+  const error=Object.assign(new Error('unique_violation'),{code:'23505',constraint});
+  await assert.rejects(attempt(error),e=>e.message==='table_change_request_locked'&&e.cause===error);
+ }
+ for(const error of [
+  Object.assign(new Error('other_unique'),{code:'23505',constraint:'other_constraint'}),
+  Object.assign(new Error('foreign_key'),{code:'23503',constraint:'customer_table_change_one_pending'})
+ ])await assert.rejects(attempt(error),e=>e===error);
+});
