@@ -132,7 +132,7 @@ test('PG17 schema reproduces two open economic accounts for one customer across 
  });
 });
 
-test('PG17 historical H6 round becomes unreadable after mutating account location',async()=>{
+test('PG17 historical H6 round stays readable from original visit after account location changes',async()=>{
  await transaction(async client=>{
   await insertIdentityAndTables(client,{publicId:'SB-BABABABABABC'});
   await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
@@ -166,11 +166,10 @@ test('PG17 historical H6 round becomes unreadable after mutating account locatio
     visit_key=$4,updated_at=clock_timestamp() WHERE id=$1`,
    [ids.sourceAccount,ids.destinationTable,ids.destinationSession,destinationVisit]);
   await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
-  const sourceFailure=await expectSqlError(client,()=>read(ids.sourceTable,sourceVisit),
-   /customer_round_scope_forbidden/);
+  assert.deepEqual((await read(ids.sourceTable,sourceVisit)).rows,
+   [{account_id:ids.sourceAccount,round_id:ids.round}]);
   const destinationFailure=await expectSqlError(client,()=>read(ids.destinationTable,destinationVisit),
    /customer_round_scope_forbidden/);
-  assert.equal(sourceFailure.code,'42501');
   assert.equal(destinationFailure.code,'42501');
   await client.query('RESET ROLE');
   const history=await client.query(`SELECT o.table_id AS historical_table,
