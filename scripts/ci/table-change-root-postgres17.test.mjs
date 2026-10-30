@@ -469,3 +469,56 @@ test('PG17 waiter decision takes customer advisory lock before account/request r
   'decision must acquire customer advisory lock before account and request locks');
  assert.match(source,/v_request\.status\s*=\s*'pending'\s+AND\s+v_now\s*>=\s*v_request\.expires_at/);
 });
+
+test('PG17 request lifecycle enforces cooldown, expiry and no premature table transfer',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABH'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,
+    outstanding_cents) VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer
+  ]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit
+  ]);
+  const call=()=>client.query(`SELECT * FROM sabora.request_customer_table_change_h6_candidate(
+   $1::bytea,$2::uuid)`,[tokenHash,ids.sourceAccount]);
+  const first=(await call()).rows[0];
+  assert.equal(first.request_status,'pending');
+  assert.equal(first.expires_at instanceof Date,true);
+  const saved=(await client.query(`SELECT status,source_table_id,destination_table_id,
+   consumed_order_id,requesting_session_hash,expires_at,created_at
+   FROM sabora.customer_table_change_requests WHERE id=$1`,[first.request_id])).rows[0];
+  assert.equal(saved.source_table_id,ids.sourceTable);
+  assert.equal(saved.destination_table_id,null);
+  assert.equal(saved.consumed_order_id,null);
+  assert.deepEqual(saved.requesting_session_hash,tokenHash);
+  assert.ok(saved.expires_at.getTime()>saved.created_at.getTime());
+  const cooldown=await expectSqlError(client,call,/table_change_cooldown/);
+  assert.equal(cooldown.code,'23514');
+  await client.query(`UPDATE sabora.customer_table_change_requests
+   SET created_at=clock_timestamp()-interval '200 seconds',
+   expires_at=clock_timestamp()-interval '110 seconds'
+   WHERE id=$1`,[first.request_id]);
+  const next=(await call()).rows[0];
+  assert.notEqual(next.request_id,first.request_id);
+  assert.equal(next.request_status,'pending');
+  const expired=(await client.query(`SELECT status FROM sabora.customer_table_change_requests
+   WHERE id=$1`,[first.request_id])).rows[0];
+  assert.equal(expired.status,'expired');
+  const scope=(await client.query(`SELECT a.table_id AS historical,b.table_id AS operational,
+   a.outstanding_cents,b.binding_version
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   WHERE a.id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(scope.historical,ids.sourceTable);
+  assert.equal(scope.operational,ids.sourceTable);
+  assert.equal(scope.outstanding_cents,'2400');
+  assert.equal(scope.binding_version,'1');
+  assert.equal((await client.query(`SELECT count(*)::int AS n
+   FROM sabora.orders WHERE table_id=$1`,[ids.destinationTable])).rows[0].n,0);
+ });
+});
