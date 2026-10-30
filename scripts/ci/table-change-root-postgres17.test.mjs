@@ -548,6 +548,12 @@ test('PG17 line destinations are account-scoped, sealed, and exclude completed p
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='sabora' AND p.proname='confirm_customer_round_h6_candidate'`)).rows[0].definition;
  assert.match(source,/table_change_transfer_not_integrated/);
+ const roundInsert=source.indexOf('INSERT INTO sabora.order_round_delivery_destinations');
+ const lineInsert=source.indexOf('INSERT INTO sabora.order_line_delivery_destinations');
+ const dispatchInsert=source.indexOf('INSERT INTO sabora.kitchen_dispatches');
+ assert.ok(roundInsert>=0 && lineInsert>roundInsert && dispatchInsert>lineInsert,
+  'new lines must be projected in the same confirmation transaction before dispatch');
+ assert.match(source,/l\\.status\\s*<>\\s*'picked_up'/);
  const pending=(await admin.query(`SELECT count(*)::int AS n
   FROM sabora.order_line_delivery_destinations d
   JOIN sabora.order_lines l ON l.id=d.order_line_id
