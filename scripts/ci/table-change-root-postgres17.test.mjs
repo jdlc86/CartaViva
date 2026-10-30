@@ -208,3 +208,52 @@ test('PG17 provisional guard blocks a legitimate new visit when an old account s
    WHERE customer_id=$1`,[ids.customer])).rows[0].n,1);
  });
 });
+
+
+test('PG17 B foundation enforces isolated operational binding and delivery projection without mutating history',async()=>{
+ const names=['customer_account_operational_bindings','order_round_delivery_destinations'];
+ const catalog=await admin.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+   has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,[names]);
+ assert.equal(catalog.rows.length,2);
+ assert.ok(catalog.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity&&!row.direct));
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABE'});
+  await client.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+    (account_id,table_id,session_id,visit_key)
+    VALUES($1,$2,$3,$4)`,[ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const initial=(await client.query(`SELECT a.id,a.outstanding_cents,b.binding_version,b.table_id
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   WHERE a.id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(initial.outstanding_cents,'2400');
+  assert.equal(initial.table_id,ids.sourceTable);
+  await client.query(`UPDATE sabora.customer_account_operational_bindings
+   SET table_id=$2,session_id=$3,visit_key=$4,binding_version=binding_version+1,
+   changed_at=clock_timestamp() WHERE account_id=$1`,
+   [ids.sourceAccount,ids.destinationTable,ids.destinationSession,destinationVisit]);
+  const moved=(await client.query(`SELECT a.table_id AS historic,b.table_id AS operational,
+   b.binding_version,a.outstanding_cents FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   WHERE a.id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(moved.historic,ids.sourceTable);
+  assert.equal(moved.operational,ids.destinationTable);
+  assert.equal(moved.binding_version,'2');
+  assert.equal(moved.outstanding_cents,'2400');
+  await expectSqlError(client,()=>client.query(`INSERT INTO
+   sabora.customer_account_operational_bindings(account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4)`,[ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]),
+   /duplicate key/);
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  const denied=await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.customer_account_operational_bindings WHERE account_id=$1`,[ids.sourceAccount]),
+   /permission denied/);
+  assert.equal(denied.code,'42501');
+  await client.query('RESET ROLE');
+ });
+});
