@@ -12,6 +12,9 @@ export function createTableChangeService({store}={}){
     const state=await tx.lockCustomerAccount(customerSessionToken);
     if(!state||!state.accountId||!state.tableId||state.closed)throw Error('table_change_account_forbidden');
     const nowMs=await tx.serverNowMs();
+    // The partial unique index on pending requests requires a durable expiry
+    // transition before another request can be inserted. Account row is locked.
+    await tx.expirePendingRequests(state.accountId,nowMs);
     // An unused approval survives its response window and blocks new grants.
     // Do not rely only on latestRequest: newer rejected/expired rows may exist.
     if(await tx.lockApprovedRequest(state.accountId))
