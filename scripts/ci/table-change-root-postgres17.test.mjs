@@ -897,3 +897,78 @@ test('PG17 integrated B2 preserves approved grant if destination order cannot be
   assert.equal(state.rounds,0);
  });
 });
+
+test('PG17 B2 atomic transfer redirects pending earlier round but preserves historical order and economic account',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABN'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const previousOrder='b0a00000-0000-4000-8000-000000000010';
+  const previousRound='b0a00000-0000-4000-8000-000000000011';
+  for(const [orderId,tableId,sessionId,visitKey] of [
+   [previousOrder,ids.sourceTable,ids.sourceSession,sourceVisit],
+   [ids.order,ids.destinationTable,ids.destinationSession,destinationVisit]
+  ]){
+   await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+    customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+    confirmed_at,grouping,items)
+    VALUES($1,$2,$3,NULL,NULL,'Auditoría transferencia',$4,$5,
+    '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+    '[{"category":"main","name":"Plato transferencia","quantity":1}]'::jsonb)`,
+    [orderId,tableId,sessionId,'SB-BABABABABABN',visitKey]);
+  }
+  for(const [roundId,orderId] of [[previousRound,previousOrder],[ids.round,ids.order]]){
+   await client.query(`INSERT INTO sabora.order_rounds(id,order_id,account_id,amount_cents,
+    payment_mode,payment_policy_version,grouping_deadline,state)
+    VALUES($1,$2,$3,1000,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+    [roundId,orderId,ids.sourceAccount]);
+  }
+  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5)`,
+   [previousRound,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
+   account_id,customer_id,visit_key,source_table_id,status,
+   requesting_session_hash,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,'approved',$5,clock_timestamp()+interval '90 seconds',
+   clock_timestamp(),$2) RETURNING id`,
+   [ids.sourceAccount,ids.customer,sourceVisit,ids.sourceTable,tokenHash])).rows[0];
+  const consumed=(await client.query(`SELECT sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS id`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.order])).rows[0];
+  assert.equal(consumed.id,grant.id);
+  const state=(await client.query(`SELECT a.table_id AS account_table,a.outstanding_cents,
+   b.table_id AS operational_table,b.binding_version,
+   d.table_id AS delivery_table,d.session_id AS delivery_session,
+   d.visit_key AS delivery_visit,d.destination_version,
+   o.table_id AS original_order_table,r.account_id AS round_account,
+   q.status,q.consumed_order_id
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   JOIN sabora.order_rounds r ON r.account_id=a.id AND r.id=$2
+   JOIN sabora.orders o ON o.id=r.order_id
+   JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+   JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+   WHERE a.id=$1`,[ids.sourceAccount,previousRound])).rows[0];
+  assert.equal(state.account_table,ids.sourceTable);
+  assert.equal(state.outstanding_cents,'2400');
+  assert.equal(state.operational_table,ids.destinationTable);
+  assert.equal(state.binding_version,'2');
+  assert.equal(state.delivery_table,ids.destinationTable);
+  assert.equal(state.delivery_session,ids.destinationSession);
+  assert.equal(state.delivery_visit,destinationVisit);
+  assert.equal(state.destination_version,'2');
+  assert.equal(state.original_order_table,ids.sourceTable);
+  assert.equal(state.round_account,ids.sourceAccount);
+  assert.equal(state.status,'consumed');
+  assert.equal(state.consumed_order_id,ids.order);
+ });
+});
