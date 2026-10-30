@@ -219,6 +219,36 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal((await admin.query('SELECT state FROM sabora.kitchen_dispatches WHERE id=$1',
   [httpCapture.dispatch_id])).rows[0].state,'acknowledged');
 
+ // Same HTTP-created line is now eligible for kitchen preparation and
+ // produces the waiter pickup task on ready, after the H6 dispatch ACK.
+ const httpLine=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
+  [httpConfirmedOrder.orderId])).rows[0].id;
+ await admin.query(`UPDATE sabora.order_lines SET status='preparing' WHERE id=$1`,[httpLine]);
+ const httpReady=await admin.connect();
+ try{
+  await httpReady.query('BEGIN');
+  await httpReady.query(`UPDATE sabora.order_lines SET status='ready' WHERE id=$1`,[httpLine]);
+  await httpReady.query(`INSERT INTO sabora.pickup_notifications(order_id,order_line_id)
+   VALUES($1,$2)`,[httpConfirmedOrder.orderId,httpLine]);
+  await httpReady.query(`INSERT INTO sabora.order_line_events
+   (order_id,order_line_id,actor_user_id,from_status,to_status,correlation_id)
+   VALUES($1,$2,$3,'preparing','ready','h6_http_kitchen_ready_001')`,
+   [httpConfirmedOrder.orderId,httpLine,kitchenId]);
+  await httpReady.query('COMMIT');
+ }catch(error){await httpReady.query('ROLLBACK');throw error;}finally{httpReady.release();}
+ const httpPickup=(await admin.query(`SELECT state,version FROM sabora.pickup_tasks
+  WHERE order_line_id=$1`,[httpLine])).rows;
+ assert.equal(httpPickup.length,1);
+ assert.equal(httpPickup[0].state,'ready');
+ const httpClaim=await operations.managePickup({lineId:httpLine,action:'claim_pickup',
+  expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
+   actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
+   expectedVersion:Number(httpPickup[0].version),correlationId:'h6_http_waiter_claim_001'})});
+ assert.equal(httpClaim.outcome,'claimed');
+ assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.kitchen_dispatches
+  WHERE order_id=$1 AND round_id=$2`,
+  [httpConfirmedOrder.orderId,httpConfirmedOrder.roundId])).rows[0].n,1);
+
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
  const quote=await flow.quote({customerSessionToken:customer.token,tableId,qrToken,
