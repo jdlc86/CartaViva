@@ -67,3 +67,13 @@ test('decision rejects an identity without an authorized staff role',async()=>{
  }),/table_change_unauthorized/);
  assert.equal(read,false);
 });
+
+test('approved but unused grant prevents another request after deadline',async()=>{
+ let writes=0;
+ const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>200000,
+  lockApprovedRequest:async()=>({status:'approved',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000}),
+  latestRequest:async()=>null,insertRequest:async()=>{writes++;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ await assert.rejects(()=>service.request({customerSessionToken:'secret'}),/request_locked/);
+ assert.equal(writes,0);
+});
