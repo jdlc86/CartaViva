@@ -51,3 +51,23 @@ test('transfer fails closed until account and pending deliveries can move atomic
  })),/table_change_transfer_not_integrated/);
  assert.equal(calls.length,0);
 });
+
+test('decision update enforces server deadline at write time',async()=>{
+ let updateSql='';
+ const store=createTableChangePostgresStore({
+  withTransaction:async callback=>callback(async(sql,args)=>{
+   if(sql.startsWith('UPDATE sabora.customer_table_change_requests SET status=$2')){
+    updateSql=sql;
+    return {rows:[{id:'r1',status:'approved',source_table_id:'t1',
+     created_at:'2026-10-30T12:00:00Z',expires_at:'2026-10-30T12:01:30Z',
+     decided_at:'2026-10-30T12:01:29Z'}]};
+   }
+   return {rows:[]};
+  }),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({id:'w1',role:'waiter'})
+ });
+ await store.transaction('decide',tx=>tx.recordDecision({
+  request:{id:'r1',status:'approved',decidedAtMs:1793361689000},staffId:'w1'
+ }));
+ assert.match(updateSql,/expires_at>clock_timestamp\(\)/);
+});
