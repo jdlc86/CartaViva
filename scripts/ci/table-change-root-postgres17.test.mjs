@@ -739,6 +739,7 @@ test('PG17 B2 consumes a real approval once and preserves economic account and o
   assert.equal(before.table_id,ids.sourceTable);
   assert.equal(before.binding_version,'1');
   assert.equal(before.status,'approved');
+  await client.query('SAVEPOINT before_valid_transfer');
   const first=(await call()).rows[0];
   assert.equal(first.approval,request.id);
   const state=(await client.query(`SELECT a.table_id AS historical,a.outstanding_cents,
@@ -763,5 +764,22 @@ test('PG17 B2 consumes a real approval once and preserves economic account and o
   assert.equal((await client.query(`SELECT binding_version FROM
    sabora.customer_account_operational_bindings WHERE account_id=$1`,
    [ids.sourceAccount])).rows[0].binding_version,'2');
+  // A transaction rollback must restore both grant and operational location.
+  await client.query('ROLLBACK TO SAVEPOINT before_valid_transfer');
+  const restored=(await client.query(`SELECT b.table_id,b.binding_version,q.status,
+    q.consumed_order_id,q.consumed_at
+   FROM sabora.customer_account_operational_bindings b
+   JOIN sabora.customer_table_change_requests q ON q.account_id=b.account_id
+   WHERE b.account_id=$1`,[ids.sourceAccount])).rows[0];
+  assert.equal(restored.table_id,ids.sourceTable);
+  assert.equal(restored.binding_version,'1');
+  assert.equal(restored.status,'approved');
+  assert.equal(restored.consumed_order_id,null);
+  assert.equal(restored.consumed_at,null);
+  // The same grant remains usable after a rolled-back confirmation.
+  const retry=(await call()).rows[0];
+  assert.equal(retry.approval,request.id);
+  assert.equal((await client.query(`SELECT status FROM sabora.customer_table_change_requests
+    WHERE id=$1`,[request.id])).rows[0].status,'consumed');
  });
 });
