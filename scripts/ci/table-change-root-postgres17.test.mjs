@@ -649,3 +649,32 @@ test('PG17 waiter decision obtains customer advisory lock before locking economi
  assert.match(body,/table_change_account_closed/);
  assert.match(body,/table_change_request_missing/);
 });
+
+test('PG17 B2 transfer rejects absent approval with live account and destination visit',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABJ'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp())`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const denied=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid)`,
+   [ids.sourceAccount,ids.customer,tokenHash,ids.destinationTable,
+    ids.destinationSession,destinationVisit,ids.order]),/table_change_approval_required/);
+  assert.equal(denied.code,'23514');
+  const binding=(await client.query(`SELECT table_id,binding_version FROM
+   sabora.customer_account_operational_bindings WHERE account_id=$1`,
+   [ids.sourceAccount])).rows[0];
+  assert.equal(binding.table_id,ids.sourceTable);
+  assert.equal(binding.binding_version,'1');
+  assert.equal((await client.query(`SELECT count(*)::int AS n FROM
+   sabora.customer_table_change_requests WHERE account_id=$1`,
+   [ids.sourceAccount])).rows[0].n,0);
+ });
+});
