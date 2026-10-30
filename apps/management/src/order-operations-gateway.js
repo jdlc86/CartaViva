@@ -75,6 +75,9 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
        // EventSource permits CRLF framing; normalize after each chunk so a CRLF
        // split across transport reads is also recognized as an SSE delimiter.
        buffer=buffer.replaceAll('\r\n','\n');
+       // A stalled or malicious stream must not grow browser memory without bound.
+       // Treat oversized frames as a transport failure and resynchronize on reconnect.
+       if(buffer.length>65536)throw Error('order_event_frame_too_large');
        let boundary;
        while((boundary=buffer.indexOf('\n\n'))>=0){
         const block=buffer.slice(0,boundary).replaceAll('\r','');buffer=buffer.slice(boundary+2);
