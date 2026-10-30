@@ -68,3 +68,8 @@ ni establece el recorrido seguro para transferir una cuenta con consumición.
 
 **Estado:** el adaptador JS es un candidato parcial, no está integrado en el
 procedimiento SQL H6 y no debe habilitarse como traslado operativo.
+
+
+## Auditoría de la composición H6 y privilegios — 2026-10-30
+
+`apps/api/src/customer-production-composition.mjs` monta el flujo H6 mediante `createRoleScopedPostgresTransaction`, con el rol `sabora_h6_customer_runtime` y una allowlist exacta de tres sentencias SQL (`READ_H6_PAYMENT_POLICY_SQL`, `READ_H6_ROUND_SQL`, `PERSIST_H6_ORDER_SQL`). `apps/api/src/role-scoped-postgres.mjs` rechaza cualquier SQL distinto con `role_scoped_sql_not_allowed`. Por tanto, el adaptador de cambio de mesa, que actualmente emite consultas SQL directas, no puede conectarse sin cambios a esa composición. `apps/api/src/h6-sql-preflight.mjs` también exige una superficie exacta de funciones ejecutables por rol. No se deben eludir estas barreras ni conceder acceso directo a las tablas. El bloque integral debe introducir funciones SQL restringidas, sus autorizaciones mínimas, la composición allowlisted, preflight actualizado, transacción de confirmación con cuenta original y redirección de entregas; después PG17 real y E2E. El traslado continúa deshabilitado.
