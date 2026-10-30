@@ -187,3 +187,9 @@ Se detectaron y corrigieron dos errores del harness al integrar cambios concurre
 ## Bloque 2 — endurecimiento de notificaciones SSE (2026-10-30)
 
 En la rama Draft PR #40, commits `3e36d2a` y `5653dfb`, se acotó a 65.536 caracteres el búfer de tramas SSE pendientes en la PWA de gestión, con tratamiento de desbordamiento como indisponibilidad de transporte y reconexión por el mecanismo existente. Se añadió prueba automatizada que inyecta una trama excesiva y comprueba que no se entregan eventos parciales y que se informa de indisponibilidad. **Evidencia CI de estos commits: pendiente de verificar.** Este avance no cierra el Bloque 2: siguen pendientes el recorrido funcional completo, adversarios de red/reintentos y la certificación PG17/navegador. No se ha activado servidor productivo, desplegado ni intervenido en recursos compartidos.
+
+## Bloque 2 — correcciones de transporte y evidencia CI (30-oct, continuación)
+
+Se ampliaron las defensas de la suscripción SSE de gestión para tramas completas excesivas, CRLF dividido entre lecturas y lotes de eventos válidos que superan conjuntamente 65.536 caracteres. Las pruebas añadidas ejercitan una trama completa excesiva, lectura byte a byte y 800 eventos válidos en una sola lectura. Los commits relevantes son `1d0c339`, `4c5b2da`, `2df071f`, `ec4dd34`, `af33797` y `6415862`.
+
+La versión `ec4dd34ab3e8d45acf6663e6ca0e74aba05ed77f` superó **4/4 GitHub Actions** (Sabora CI, bootstrap, navegador cliente y navegador gestión). La validación del último cambio `64158626e6f7c5c49322de25797e5c4fc967903a` seguía en curso al consultar: los dos navegadores SUCCESS y CI/bootstrap pendientes. **No se declara cierre del Bloque 2** ni GO: faltan el expediente de aceptación integral y la evidencia completa del último SHA. Se mantiene el aislamiento de Fleetia, VPS y Supabase operativo.
