@@ -20,11 +20,11 @@ export function createTableChangeService({store}={}){
     return tx.insertRequest({accountId:state.accountId,customerId:state.customerId,visitId:state.visitId,...request});
    });
   },
-  async decide({staffSessionToken,requestId,decision}={}){
-   if(typeof staffSessionToken!=='string'||!staffSessionToken||typeof requestId!=='string'||!requestId)
+  async decide({verifiedIdentity,verifiedStaff,requestId,decision}={}){
+   if(!verifiedIdentity||!verifiedStaff||typeof requestId!=='string'||!requestId)
     throw Error('table_change_unauthorized');
    return within('decide',async tx=>{
-    const staff=await tx.requireWaiter(staffSessionToken);
+    const staff=await tx.requireWaiter({verifiedIdentity,verifiedStaff});
     const request=await tx.lockRequest(requestId);
     if(!request)throw Error('table_change_request_not_found');
     const nowMs=await tx.serverNowMs();
