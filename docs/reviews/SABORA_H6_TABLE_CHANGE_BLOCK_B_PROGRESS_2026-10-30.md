@@ -140,3 +140,22 @@ added to verify the conservative round-level guard.
 
 Still **NO-GO**: the primitive remains isolated from confirmation, and
 operational readers/SSE must use the line-level projection for mixed rounds.
+
+## B2 atomic confirmation integration candidate
+
+Migration `20261031010000_sabora_h6_transfer_confirmation_integration_candidate.sql`
+introduces a **separate, ungranted** confirmation function. It resolves the
+existing open economic account and validates a same-session approved request
+before order persistence. It creates the destination order and round against
+the original account, then invokes the one-use grant consumer inside the same
+transaction, so rollback also rolls back the order, grant, account binding and
+delivery redirection. Replays are checked against the existing round before
+consumption. The active `confirm_customer_round_h6_candidate` remains
+unchanged and fail-closed; PG17 catalog tests enforce that separation.
+
+**Not production-ready:** this candidate has not passed real PG17 execution
+or browser E2E tests. Before cutover, test SQL privileges, the underlying
+persistence function's cross-table assumptions, multiple-account ambiguity,
+mixed picked-up deliveries, grouping, pay-now/pay-later and SSE kitchen/sala
+readers. Only after all acceptance gates pass should the approved entrypoint
+be switched; no runtime EXECUTE grant was introduced here.
