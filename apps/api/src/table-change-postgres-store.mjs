@@ -28,7 +28,7 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    configuredWindowMs:async()=>1000*(await single(query,
     'SELECT table_change_response_seconds FROM sabora.restaurant_settings WHERE singleton=true',[])).table_change_response_seconds,
    insertRequest:async v=>map(await single(query,
-    "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) SELECT $1,$2,$3,$4,clock_timestamp(),clock_timestamp()+make_interval(secs=>$5::integer) WHERE NOT EXISTS (SELECT 1 FROM sabora.customer_table_change_requests WHERE account_id=$1 AND (status='approved' OR (status='pending' AND expires_at>clock_timestamp()) OR (status IN ('rejected','expired','consumed','revoked') AND expires_at>clock_timestamp()))) RETURNING *",
+    "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) SELECT $1,$2,$3,$4,clock_timestamp(),clock_timestamp()+make_interval(secs=>$5::integer) WHERE EXISTS (SELECT 1 FROM sabora.customer_accounts a WHERE a.id=$1 AND a.customer_id=$2 AND a.visit_key=$3 AND a.table_id=$4 AND a.state='open') AND NOT EXISTS (SELECT 1 FROM sabora.customer_table_change_requests WHERE account_id=$1 AND (status='approved' OR (status='pending' AND expires_at>clock_timestamp()) OR (status IN ('rejected','expired','consumed','revoked') AND expires_at>clock_timestamp()))) RETURNING *",
     [v.accountId,v.customerId,v.visitId,v.sourceTableId,Math.round((v.expiresAtMs-v.createdAtMs)/1000)])),
    // Transfer is intentionally disabled until H6 account/visit binding and
    // pending-delivery rerouting are implemented atomically in PostgreSQL.
