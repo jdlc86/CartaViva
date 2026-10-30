@@ -29,3 +29,9 @@
 ## Criterio de cierre
 
 No marcar el bloque como terminado hasta disponer de implementación completa, migración comprobada en PG17 aislado, pruebas E2E y CI verificadas. 
+
+## Seguimiento
+
+- Reglas puras de solicitud, plazo y consumo único añadidas a `apps/api/src/table-change-policy.mjs`.
+- Pruebas unitarias añadidas y registradas en el comando `test`.
+- Pendiente: migración PostgreSQL 17, API autenticada, integración atómica H6 y pruebas de navegador.
