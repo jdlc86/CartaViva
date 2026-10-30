@@ -56,6 +56,19 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    if(typeof value.revoked!=='boolean')throw new CustomerFlowTransportError('customer_flow_unavailable',503);
    return value.revoked;
   },
+  async requestTableChange(){
+   // The destination must never be part of the request payload.
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/requests','POST',{});
+   if(typeof value.accountId!=='string'||!value.accountId||
+      typeof value.sourceTableId!=='string'||!value.sourceTableId||
+      value.status!=='pending'||
+      !Number.isSafeInteger(value.createdAtMs)||!Number.isSafeInteger(value.expiresAtMs)||
+      (value.expiresAtMs as number)<=(value.createdAtMs as number))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({accountId:value.accountId,sourceTableId:value.sourceTableId,
+    status:'pending' as const,createdAtMs:value.createdAtMs as number,
+    expiresAtMs:value.expiresAtMs as number});
+  },
   async authorizeVisit(input:{tableId:string;qrToken:string}){
    if(!UUID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken))
     throw Error('invalid_customer_visit_transport');
