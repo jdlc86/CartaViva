@@ -80,6 +80,7 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
        if(buffer.length>65536)throw Error('order_event_frame_too_large');
        let boundary;
        while((boundary=buffer.indexOf('\n\n'))>=0){
+        if(boundary>65536)throw Error('order_event_frame_too_large');
         const block=buffer.slice(0,boundary).replaceAll('\r','');buffer=buffer.slice(boundary+2);
         if(!block||block.startsWith(':'))continue;
         let eventType='message',eventId='',data='';
