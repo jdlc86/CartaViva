@@ -37,7 +37,7 @@ test('transfer requires approved authorization and delegates atomic application'
 test('decision after server deadline is rejected even if waiter acts late',async()=>{
  const pending={status:'pending',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
  let written=false;
- const tx={requireWaiter:async()=>({id:'w1'}),lockRequest:async()=>pending,
+ const tx={requireWaiter:async()=>({id:'w1',role:'waiter'}),lockRequest:async()=>pending,
   serverNowMs:async()=>91000,recordDecision:async()=>{written=true;}};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await assert.rejects(()=>service.decide({verifiedIdentity:{id:'w1'},verifiedStaff:{role:'waiter'},requestId:'r1',decision:'approved'}),
@@ -47,7 +47,7 @@ test('decision after server deadline is rejected even if waiter acts late',async
 test('an approved grant never transfers on approval alone',async()=>{
  const pending={status:'pending',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
  let transferCalled=false;
- const tx={requireWaiter:async()=>({id:'w1'}),lockRequest:async()=>pending,
+ const tx={requireWaiter:async()=>({id:'w1',role:'waiter'}),lockRequest:async()=>pending,
   serverNowMs:async()=>5000,recordDecision:async value=>value,
   applyTransfer:async()=>{transferCalled=true;}};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
