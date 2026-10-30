@@ -823,6 +823,16 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
     [browserLine.id])).rows[0].status,'ready');
 
+   // Verify that the actual waiter PWA renders this exact persisted ready
+   // order before the pickup is executed, not only after historical pickup.
+   await mountManagement(waiterId);
+   const readyWaiterCard=managementPage.locator('.order-card')
+    .filter({hasText:'Cliente navegador'});
+   await readyWaiterCard.getByText('Lista para recoger',{exact:true})
+    .waitFor({timeout:15_000});
+   assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+    [browserLine.id])).rows[0].status,'ready');
+
    const salaBrowserGateway=createAuthenticatedOrderOperationsGateway({
     getAccessToken:async()=>bearer(waiterId),reconnectDelayMs:30_000,
     fetchImpl:(path,options)=>fetch(apiOrigin+path,options)
