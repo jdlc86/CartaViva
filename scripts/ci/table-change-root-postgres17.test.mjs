@@ -1,0 +1,210 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+
+const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
+if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
+ throw Error('disposable_pg17_harness_required');
+const parsed=new URL(url);
+if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||parsed.pathname!=='/postgres'||
+ parsed.password!=='sabora_ci_ephemeral_only'||parsed.search||parsed.hash||!parsed.port)
+ throw Error('unsafe_pg17_harness_target');
+const require=createRequire(import.meta.url),{Pool}=require(modulePath);
+const admin=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,idleTimeoutMillis:1000,
+ options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'});
+test.after(async()=>admin.end());
+
+const qrHash=Buffer.alloc(32,201),tokenHash=Buffer.alloc(32,202);
+const ids=Object.freeze({
+ customer:'b0a00000-0000-4000-8000-000000000001',
+ sourceTable:'b0a00000-0000-4000-8000-000000000002',
+ destinationTable:'b0a00000-0000-4000-8000-000000000003',
+ sourceSession:'b0a00000-0000-4000-8000-000000000004',
+ destinationSession:'b0a00000-0000-4000-8000-000000000005',
+ sourceAccount:'b0a00000-0000-4000-8000-000000000006',
+ destinationAccount:'b0a00000-0000-4000-8000-000000000007',
+ order:'b0a00000-0000-4000-8000-000000000008',
+ round:'b0a00000-0000-4000-8000-000000000009'
+});
+const sourceVisit='b0_source_visit_0001',destinationVisit='b0_destination_visit_0001';
+
+async function transaction(handler){
+ const client=await admin.connect();
+ try{await client.query('BEGIN');return await handler(client);}
+ finally{await client.query('ROLLBACK').catch(()=>{});client.release();}
+}
+
+async function expectSqlError(client,callback,pattern){
+ await client.query('SAVEPOINT expected_failure');
+ let failure;
+ try{await callback();}catch(error){failure=error;}
+ await client.query('ROLLBACK TO SAVEPOINT expected_failure');
+ assert.ok(failure,'expected PostgreSQL statement to fail');
+ assert.match(failure.message,pattern);
+ return failure;
+}
+
+async function insertIdentityAndTables(client,{publicId='SB-BABABABABABA'}={}){
+ await client.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+  VALUES($1,$2,'Auditoría cambio mesa')`,[ids.customer,publicId]);
+ await client.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+  VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[ids.customer,tokenHash]);
+ await client.query(`INSERT INTO sabora.dining_tables(
+   id,number,capacity,qr_token_hash,session_id,ordering_state)
+  VALUES($1,981001,4,$3,$4,'open'),($2,981002,4,$3,$5,'open')`,
+  [ids.sourceTable,ids.destinationTable,qrHash,ids.sourceSession,ids.destinationSession]);
+}
+
+async function insertVisit(client,{tableId,sessionId,visitKey}){
+ await client.query(`INSERT INTO sabora.customer_table_visits(
+   table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+  VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+  [tableId,sessionId,ids.customer,visitKey]);
+}
+
+test('PG17 catalog proves the economic, delivery and event dependency graph before refactor',async()=>{
+ const constraints=(await admin.query(`SELECT c.conrelid::regclass::text AS child,
+   pg_get_constraintdef(c.oid) AS definition
+  FROM pg_constraint c
+  WHERE c.contype='f' AND c.confrelid=ANY(ARRAY[
+   'sabora.customer_accounts'::regclass,'sabora.order_rounds'::regclass,
+   'sabora.orders'::regclass,'sabora.dining_tables'::regclass])
+  ORDER BY child,definition`)).rows.map(row=>`${row.child} ${row.definition}`).join('\n');
+ for(const relation of [
+  /order_rounds FOREIGN KEY \(account_id\) REFERENCES sabora\.customer_accounts\(id\)/,
+  /payment_attempts FOREIGN KEY \(account_id\) REFERENCES sabora\.customer_accounts\(id\)/,
+  /cash_settlements FOREIGN KEY \(account_id\) REFERENCES sabora\.customer_accounts\(id\)/,
+  /event_outbox FOREIGN KEY \(account_id\) REFERENCES sabora\.customer_accounts\(id\)/,
+  /customer_table_change_requests FOREIGN KEY \(account_id\) REFERENCES sabora\.customer_accounts\(id\)/,
+  /kitchen_dispatches FOREIGN KEY \(round_id\) REFERENCES sabora\.order_rounds\(id\)/,
+  /kitchen_dispatches FOREIGN KEY \(order_id\) REFERENCES sabora\.orders\(id\)/
+ ])assert.match(constraints,relation);
+
+ const columnRows=(await admin.query(`SELECT table_name,column_name
+  FROM information_schema.columns WHERE table_schema='sabora'
+   AND table_name=ANY($1::text[]) ORDER BY table_name,ordinal_position`,[[
+    'customer_accounts','kitchen_dispatches','pickup_tasks','event_outbox'
+   ]])).rows;
+ const columns=new Map();
+ for(const {table_name:tableName,column_name:columnName} of columnRows){
+  if(!columns.has(tableName))columns.set(tableName,[]);
+  columns.get(tableName).push(columnName);
+ }
+ assert.deepEqual(columns.get('customer_accounts').filter(name=>
+  ['id','table_id','session_id','visit_key','customer_id'].includes(name)),
+ ['id','table_id','session_id','visit_key','customer_id']);
+ assert.equal(columns.get('kitchen_dispatches').some(name=>/destination|delivery_table/.test(name)),false);
+ assert.equal(columns.get('pickup_tasks').some(name=>/destination|delivery_table/.test(name)),false);
+ for(const name of ['table_id','session_id','visit_key','customer_id','account_id'])
+  assert.ok(columns.get('event_outbox').includes(name));
+
+ const functionBody=(await admin.query(`SELECT pg_get_functiondef(p.oid) AS source
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname='confirm_customer_round_h6_candidate'`)).rows[0].source;
+ assert.match(functionBody,/table_change_transfer_not_integrated/);
+ assert.ok(functionBody.indexOf('persist_customer_order_candidate')<
+  functionBody.indexOf('INSERT INTO sabora.customer_accounts'));
+
+ const guardedTables=['customer_accounts','customer_table_change_requests','event_outbox','pickup_tasks'];
+ const security=await admin.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+   has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,[guardedTables]);
+ assert.equal(security.rows.length,guardedTables.length);
+ assert.ok(security.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity&&!row.direct));
+});
+
+test('PG17 schema reproduces two open economic accounts for one customer across table sessions',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client);
+  await client.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400),
+         ($6,$7,$8,$9,$5,'pay_at_end',clock_timestamp(),1800)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer,
+    ids.destinationAccount,ids.destinationTable,ids.destinationSession,destinationVisit]);
+  const duplicated=await client.query(`SELECT count(*)::integer AS accounts,
+    count(DISTINCT table_id)::integer AS tables,count(DISTINCT session_id)::integer AS sessions,
+    sum(outstanding_cents)::integer AS outstanding
+   FROM sabora.customer_accounts WHERE customer_id=$1 AND state='open'`,[ids.customer]);
+  assert.deepEqual(duplicated.rows,[{accounts:2,tables:2,sessions:2,outstanding:4200}]);
+ });
+});
+
+test('PG17 historical H6 round becomes unreadable after mutating account location',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABC'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,
+   visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+    customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+    confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'Auditoría cambio mesa',$4,$5,
+    '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+    '[{"category":"main","name":"Plato auditoría","quantity":1}]'::jsonb)`,
+   [ids.order,ids.sourceTable,ids.sourceSession,'SB-BABABABABABC',sourceVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds(id,order_id,account_id,amount_cents,
+    payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,$3,2400,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [ids.round,ids.order,ids.sourceAccount]);
+
+  const read=async(tableId,visitKey)=>client.query(`SELECT account_id,round_id
+   FROM sabora.read_customer_round_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid)`,
+   [tokenHash,tableId,visitKey,ids.order]);
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  assert.deepEqual((await read(ids.sourceTable,sourceVisit)).rows,
+   [{account_id:ids.sourceAccount,round_id:ids.round}]);
+  await client.query('RESET ROLE');
+
+  await client.query(`UPDATE sabora.customer_accounts SET table_id=$2,session_id=$3,
+    visit_key=$4,updated_at=clock_timestamp() WHERE id=$1`,
+   [ids.sourceAccount,ids.destinationTable,ids.destinationSession,destinationVisit]);
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  const sourceFailure=await expectSqlError(client,()=>read(ids.sourceTable,sourceVisit),
+   /customer_round_scope_forbidden/);
+  const destinationFailure=await expectSqlError(client,()=>read(ids.destinationTable,destinationVisit),
+   /customer_round_scope_forbidden/);
+  assert.equal(sourceFailure.code,'42501');
+  assert.equal(destinationFailure.code,'42501');
+  await client.query('RESET ROLE');
+  const history=await client.query(`SELECT o.table_id AS historical_table,
+    a.table_id AS mutated_account_table,r.account_id
+   FROM sabora.orders o JOIN sabora.order_rounds r ON r.order_id=o.id
+   JOIN sabora.customer_accounts a ON a.id=r.account_id WHERE o.id=$1`,[ids.order]);
+  assert.deepEqual(history.rows,[{historical_table:ids.sourceTable,
+   mutated_account_table:ids.destinationTable,account_id:ids.sourceAccount}]);
+ });
+});
+
+test('PG17 provisional guard blocks a legitimate new visit when an old account stays open',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABD'});
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,
+   visitKey:destinationVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  const failure=await expectSqlError(client,()=>client.query(`SELECT *
+   FROM sabora.confirm_customer_round_h6_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,[
+   tokenHash,ids.destinationTable,'A'.repeat(43),destinationVisit,
+   'b0_destination_basket_0001','b0_destination_request_0001',Buffer.alloc(32,43),
+   'b0a00000-0000-4000-8000-000000000010','b0a00000-0000-4000-8000-000000000011',
+   [],false,'pay_at_end']),/table_change_transfer_not_integrated/);
+  assert.equal(failure.code,'23514');
+  await client.query('RESET ROLE');
+  assert.equal((await client.query(`SELECT count(*)::integer AS n FROM sabora.orders
+   WHERE table_id=$1`,[ids.destinationTable])).rows[0].n,0);
+  assert.equal((await client.query(`SELECT count(*)::integer AS n FROM sabora.customer_accounts
+   WHERE customer_id=$1`,[ids.customer])).rows[0].n,1);
+ });
+});

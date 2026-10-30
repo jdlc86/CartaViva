@@ -18,6 +18,7 @@ node --check scripts/ci/staff-directory-postgres17.test.mjs
 node --check scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 node --check scripts/ci/customer-production-postgres17.test.mjs
 node --check scripts/ci/h6-postgres17.test.mjs
+node --check scripts/ci/table-change-root-postgres17.test.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 cleanup() {
@@ -77,3 +78,4 @@ node --test scripts/ci/staff-lifecycle-postgres17.test.mjs
 node --test scripts/ci/staff-invitation-outbox-postgres17.test.mjs
 node --test scripts/ci/customer-production-postgres17.test.mjs
 node --test scripts/ci/h6-postgres17.test.mjs
+node --test scripts/ci/table-change-root-postgres17.test.mjs

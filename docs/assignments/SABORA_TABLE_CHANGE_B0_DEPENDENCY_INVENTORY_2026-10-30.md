@@ -1,6 +1,6 @@
 # B0 — Inventario verificable de dependencias del cambio de mesa (2026-10-30)
 
-**Estado:** inventario parcial de código, NO-GO; no sustituye la normativa de `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`. Guía de aceptación: `docs/assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md`.
+**Estado:** inventario histórico, superado por la auditoría ejecutable del Bloque A en `docs/reviews/SABORA_H6_TABLE_CHANGE_ROOT_BLOCK_A_2026-10-30.md`; el hito global continúa NO-GO. No sustituye la normativa de `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`. Guía de aceptación: `docs/assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md`.
 
 ## Relaciones inspeccionadas en migración H6
 Fuente: `supabase/migrations/20261027122858_sabora_h6_events_payments_operations_candidate.sql`.
