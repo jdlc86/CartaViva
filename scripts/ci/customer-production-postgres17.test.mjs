@@ -326,6 +326,22 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    payload:lookupPayload});
   assert.ok([401,403].includes(foreignOriginLookup.statusCode),
    'lookup must reject foreign origins');
+  // A malformed lookup must fail closed and must not change the persisted order.
+  const invalidLookup=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/lookup',
+   headers:{origin:clientOrigin,'content-type':'application/json',cookie:browserCookie},
+   payload:{...lookupPayload,unexpected:'not_allowed'}});
+  assert.equal(invalidLookup.statusCode,400,
+   'lookup rejects unknown body fields');
+  const malformedKeyLookup=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/lookup',
+   headers:{origin:clientOrigin,'content-type':'application/json',cookie:browserCookie},
+   payload:{...lookupPayload,requestKey:''}});
+  assert.equal(malformedKeyLookup.statusCode,400,
+   'lookup rejects empty idempotency keys');
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+   [committedAmbiguousId])).rows[0].n,1);
   const reconciled=await pwa.confirm(ambiguousRequest);
   assert.equal(reconciled.status,'replayed');
   assert.equal(reconciled.orderId,committedAmbiguousId);
