@@ -1,4 +1,7 @@
 import test from 'node:test';
+import Fastify from 'fastify';
+import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
+import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-production-http.mjs';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
@@ -133,6 +136,47 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
    READ_CUSTOMER_EVENTS_H6_SQL])});
  const flow=createCustomerProductionFlow({withTransaction:flowTx,withH6Transaction:h6CustomerTx,secretKey});
+ // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
+ // This harness supplies identity; the full customer-session verifier is tested separately.
+ const h6Http=Fastify({logger:false});
+ const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
+  verifyCustomerSession:async token=>token===customer.token?{
+   customerId:customer.profile.id,publicId:customer.profile.public_id,
+   alias:'Cliente H6',company:null}:null,
+  revokeCustomerSession:async()=>false});
+ await registerCustomerProductionFlowHttp(h6Http,{cookieAuth:h6CookieAuth,flow});
+ await h6Http.ready();
+ try{
+  const headers={origin:'https://sabora.example','content-type':'application/json',
+   cookie:`__Secure-sabora_customer=${customer.token}`};
+  const post=(path,payload)=>h6Http.inject({method:'POST',
+   url:`/api/v1/customer/${path}`,headers,payload});
+  const visitResponse=await post('visits',{tableId,qrToken});
+  assert.equal(visitResponse.statusCode,201,visitResponse.body);
+  const hv=visitResponse.json();
+  assert.deepEqual(hv.paymentPolicy,{requirePayAsOrdered:false,version:1});
+  const quoteResponse=await post('quotes',{tableId,qrToken,visitId:hv.visitId,
+   basketId:hv.basketId,lines:[{itemId,selection,quantity:1}]});
+  assert.equal(quoteResponse.statusCode,201,quoteResponse.body);
+  const request={tableId,qrToken,visitId:hv.visitId,basketId:hv.basketId,
+   requestKey:'h6_http_round_0001',paymentMode:'pay_now',
+   lines:[{quoteId:quoteResponse.json().lines[0].quoteId,itemId,selection,quantity:1}]};
+  const confirmed=await post('orders/confirm',request);
+  assert.equal(confirmed.statusCode,201,confirmed.body);
+  const orderHttp=confirmed.json();
+  assert.equal(orderHttp.paymentMode,'pay_now');
+  assert.ok(orderHttp.roundId);
+  const replay=await post('orders/confirm',request);
+  assert.equal(replay.statusCode,200,replay.body);
+  assert.equal(replay.json().orderId,orderHttp.orderId);
+  assert.equal(replay.json().roundId,orderHttp.roundId);
+  const proof=await admin.query(`SELECT count(*)::integer AS rounds,
+   (SELECT count(*)::integer FROM sabora.kitchen_dispatches
+    WHERE order_id=$1 AND round_id=$2) AS dispatches
+   FROM sabora.order_rounds WHERE order_id=$1 AND id=$2`,
+   [orderHttp.orderId,orderHttp.roundId]);
+  assert.deepEqual(proof.rows,[{rounds:1,dispatches:1}]);
+ }finally{await h6Http.close();}
  const events=createH6CustomerEventRepository({withTransaction:h6CustomerTx});
  const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,role:'sabora_h6_provider_runtime',
   allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
