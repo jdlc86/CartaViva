@@ -138,6 +138,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const flow=createCustomerProductionFlow({withTransaction:flowTx,withH6Transaction:h6CustomerTx,secretKey});
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
+ let httpConfirmedOrder=null;
  const h6Http=Fastify({logger:false});
  const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
   verifyCustomerSession:async token=>token===customer.token?{
@@ -164,6 +165,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const confirmed=await post('orders/confirm',request);
   assert.equal(confirmed.statusCode,201,confirmed.body);
   const orderHttp=confirmed.json();
+  httpConfirmedOrder=orderHttp;
   assert.equal(orderHttp.paymentMode,'pay_now');
   assert.ok(orderHttp.roundId);
   const replay=await post('orders/confirm',request);
@@ -189,6 +191,33 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const operations=createH6OperationsRepository({withTransaction:operationsTx});
  const issueKitchen=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
   databaseRole:'sabora_h6_operations_ci'});
+
+ // Continue the SAME HTTP-confirmed round through payment capture and
+ // automatic kitchen dispatch acknowledgement, not a separate direct order.
+ assert.ok(httpConfirmedOrder?.orderId);
+ const httpAuthorization=await provider.recordAuthorization({
+  orderId:httpConfirmedOrder.orderId,outcome:'authorized',
+  providerIntentId:'pi_H6HttpRound01',captureBefore:new Date(Date.now()+86400000)});
+ assert.equal(httpAuthorization.payment_state,'authorized');
+ const httpCaptureRequest=await provider.requestCapture({
+  orderId:httpConfirmedOrder.orderId,now:new Date(Date.now()+360000)});
+ assert.equal(httpCaptureRequest.action,'capture');
+ const httpCapture=await provider.recordCapture({orderId:httpConfirmedOrder.orderId,
+  outcome:'captured',providerChargeId:'ch_H6HttpRound01'});
+ assert.equal(httpCapture.dispatch_state,'requested');
+ const httpDispatch=(await admin.query(`SELECT d.id,d.round_id,d.state,p.state AS payment_state
+  FROM sabora.kitchen_dispatches d JOIN sabora.payment_attempts p ON p.round_id=d.round_id
+  WHERE d.order_id=$1`,[httpConfirmedOrder.orderId])).rows;
+ assert.equal(httpDispatch.length,1);
+ assert.equal(httpDispatch[0].id,httpCapture.dispatch_id);
+ assert.equal(httpDispatch[0].round_id,httpConfirmedOrder.roundId);
+ assert.equal(httpDispatch[0].payment_state,'captured');
+ const httpAck=await operations.acknowledgeDispatch({dispatchId:httpCapture.dispatch_id,
+  capability:issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'ack_dispatch',
+   targetId:httpCapture.dispatch_id,correlationId:'h6_http_ack_0001'})});
+ assert.equal(httpAck.repeated,false);
+ assert.equal((await admin.query('SELECT state FROM sabora.kitchen_dispatches WHERE id=$1',
+  [httpCapture.dispatch_id])).rows[0].state,'acknowledged');
 
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
