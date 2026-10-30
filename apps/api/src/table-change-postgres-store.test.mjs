@@ -35,9 +35,10 @@ test('request adapter delegates account ownership and transaction to injected H6
  assert.ok(calls.some(x=>x.sql.includes("status='expired'")));
  assert.ok(calls.some(x=>x.sql.includes('INSERT INTO')));
  const insertion=calls.find(x=>x.sql.includes('INSERT INTO'));
- assert.match(insertion.sql,/clock_timestamp\(\)\+make_interval/);
+ assert.match(insertion.sql,/WITH request_clock AS \(SELECT clock_timestamp\(\) AS at\)/);
+ assert.match(insertion.sql,/e\.at\+make_interval/);
  assert.match(insertion.sql,/WHERE NOT EXISTS/);
- assert.match(insertion.sql,/FROM sabora.customer_accounts a/);
+ assert.match(insertion.sql,/JOIN sabora.customer_accounts a/);
  assert.match(insertion.sql,/a\.state='open'/);
  assert.match(insertion.sql,/a\.table_id=\$4/);
  assert.match(insertion.sql,/status='approved'/);
