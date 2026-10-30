@@ -362,3 +362,29 @@ test('PG17 table-change lifecycle is sealed and has no unauthenticated runtime e
  assert.ok(requests[0].relrowsecurity&&requests[0].relforcerowsecurity&&
   requests[0].owner_access&&!requests[0].customer_access);
 });
+
+test('PG17 table-change entrypoints deny PUBLIC, anon, authenticated and unrelated principals',async()=>{
+ const principals=['PUBLIC','anon','authenticated','sabora_admin_writer',
+  'sabora_h6_provider_runtime','sabora_h6_customer_runtime','sabora_h6_operations_runtime'];
+ const rows=(await admin.query(`SELECT p.proname,role_name,
+  has_function_privilege(role_name,p.oid,'EXECUTE') AS executable
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ CROSS JOIN unnest($1::text[]) AS role_name
+ WHERE n.nspname='sabora' AND p.proname=ANY($2::text[])`,[
+  principals,['request_customer_table_change_h6_candidate','decide_customer_table_change_h6_candidate']
+ ])).rows;
+ assert.equal(rows.length,principals.length*2);
+ assert.ok(rows.every(row=>!row.executable),
+  'unwired lifecycle entrypoints must remain inaccessible to all runtime and public principals');
+ const tables=(await admin.query(`SELECT c.relname,role_name,
+  has_table_privilege(role_name,c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ CROSS JOIN unnest($1::text[]) AS role_name
+ WHERE n.nspname='sabora' AND c.relname=ANY($2::text[])`,[
+  principals,['customer_table_change_requests','customer_account_operational_bindings',
+   'order_round_delivery_destinations']
+ ])).rows;
+ assert.equal(tables.length,principals.length*3);
+ assert.ok(tables.every(row=>!row.direct),
+  'public and runtime principals must not access transfer persistence directly');
+});
