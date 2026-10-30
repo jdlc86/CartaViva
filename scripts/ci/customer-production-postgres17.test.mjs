@@ -311,6 +311,21 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
   assert.equal((await admin.query(
    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
    [committedAmbiguousId])).rows[0].n,1);
+  // Reject lookups without a customer cookie and with an untrusted origin.
+  const lookupPayload={tableId,qrToken,visitId:pwaVisit.visitId,
+   basketId:pwaVisit.basketId,requestKey:ambiguousRequest.requestKey};
+  const anonymousLookup=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/lookup',
+   headers:{origin:clientOrigin,'content-type':'application/json'},
+   payload:lookupPayload});
+  assert.ok([401,403].includes(anonymousLookup.statusCode),
+   'lookup must require a live customer session');
+  const foreignOriginLookup=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/lookup',
+   headers:{origin:'https://untrusted.example','content-type':'application/json',cookie:browserCookie},
+   payload:lookupPayload});
+  assert.ok([401,403].includes(foreignOriginLookup.statusCode),
+   'lookup must reject foreign origins');
   const reconciled=await pwa.confirm(ambiguousRequest);
   assert.equal(reconciled.status,'replayed');
   assert.equal(reconciled.orderId,committedAmbiguousId);
