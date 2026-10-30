@@ -2,7 +2,7 @@ import {formatPrice} from '../catalog';
 import type {Locale} from '../client-state';
 
 export type PaymentMode='pay_now'|'pay_at_end';
-export type CheckoutPhase='quoting'|'ready'|'confirming'|'confirmed'|'payment_action'|'error';
+export type CheckoutPhase='quoting'|'ready'|'confirming'|'confirmed'|'payment_action'|'uncertain'|'error';
 
 export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsOrdered,paymentsEnabled=true,message,
  onPaymentMode,onConfirm,onRetry}:{locale:Locale;totalCents:number;phase:CheckoutPhase;
@@ -17,6 +17,9 @@ export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsO
  if(phase==='payment_action')return <div className="checkout-result" role="alert">
   <strong>{es?'Pago pendiente de completar':'Payment action required'}</strong>
   <p>{message}</p><button type="button" onClick={onRetry}>{es?'Reintentar de forma segura':'Retry safely'}</button></div>;
+ if(phase==='uncertain')return <div className="checkout-result" role="alert">
+  <strong>{es?'Confirmación pendiente de verificar':'Confirmation needs verification'}</strong>
+  <p>{message}</p><button type="button" onClick={onRetry}>{es?'Consultar resultado del pedido':'Check order result'}</button></div>;
  if(phase==='error')return <div className="checkout-result" role="alert">
   <strong>{es?'No se confirmó el pedido':'The order was not confirmed'}</strong>
   <p>{message}</p><button type="button" onClick={onRetry}>{es?'Revisar y reintentar':'Review and retry'}</button></div>;
