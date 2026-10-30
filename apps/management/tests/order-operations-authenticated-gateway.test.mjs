@@ -207,3 +207,33 @@ test('oversized complete SSE event frames cannot bypass the buffer cap', async (
     gateway.revoke();
   }
 });
+
+test('SSE CRLF framing split across reads still delivers a single event', async () => {
+  let received;
+  const event = new Promise(resolve => { received = resolve; });
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 30000,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        const frame = 'event: sabora.order.ready\\r\\nid: 1\\r\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\r\\n\\r\\n';
+        const bytes = new TextEncoder().encode(frame);
+        for (let i = 0; i < bytes.length; i++) controller.enqueue(bytes.slice(i, i + 1));
+      },
+    }), {headers: {'Content-Type':'text/event-stream'}}),
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent(value) { received(value); },
+    onResync() {},
+    onUnavailable() {},
+  });
+  try {
+    const value = await event;
+    assert.equal(value.id, 1);
+    assert.equal(value.type, 'sabora.order.ready');
+    assert.equal(value.payload.lineId, 'test');
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
