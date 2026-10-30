@@ -9,7 +9,6 @@ import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
-import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
