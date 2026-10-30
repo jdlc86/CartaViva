@@ -39,3 +39,36 @@ test('request adapter delegates account ownership and transaction to injected H6
 test('adapter rejects missing transaction, account resolver or staff verifier',()=>{
  assert.throws(()=>createTableChangePostgresStore({withTransaction:async()=>{}}),/invalid_table_change_store/);
 });
+
+test('transfer consumes approval and changes binding only in a shared transaction',async()=>{
+ const statements=[];
+ const store=createTableChangePostgresStore({
+  withTransaction:async run=>run(async(sql,args)=>{
+   statements.push({sql,args});
+   if(sql.startsWith('SELECT id,table_id,state FROM sabora.customer_accounts'))
+    return {rows:[{id:'a1',table_id:'t1',state:'open'}]};
+   if(sql.includes("status='consumed'"))return {rows:[{id:'r1'}]};
+   return {rows:[]};
+  }),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await store.transaction('request',tx=>tx.applyTransfer({
+  accountId:'a1',orderId:'o1',request:{id:'r1',sourceTableId:'t1',destinationTableId:'t2'}
+ }));
+ assert.deepEqual(statements.map(x=>x.sql.split(' ')[0]),['SELECT','UPDATE','UPDATE']);
+ assert.equal(statements[1].args[4],'t1');
+});
+test('transfer refuses an origin mismatch before consuming the approval',async()=>{
+ const statements=[];
+ const store=createTableChangePostgresStore({
+  withTransaction:async run=>run(async(sql,args)=>{
+   statements.push(sql);
+   return {rows:[{id:'a1',table_id:'different',state:'open'}]};
+  }),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await assert.rejects(()=>store.transaction('request',tx=>tx.applyTransfer({
+  accountId:'a1',orderId:'o1',request:{id:'r1',sourceTableId:'t1',destinationTableId:'t2'}
+ })),/table_change_origin_conflict/);
+ assert.equal(statements.length,1);
+});
