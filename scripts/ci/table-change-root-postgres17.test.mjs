@@ -1220,6 +1220,17 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(previous.delivery_table,ids.destinationTable);
   assert.equal(previous.session_id,ids.destinationSession);
   assert.equal(previous.visit_key,destinationVisit);
+  const lineProjection=(await client.query(`SELECT l.id,l.status,d.account_id,
+   d.table_id,d.session_id,d.visit_key,d.destination_version
+   FROM sabora.order_lines l
+   LEFT JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+   WHERE l.order_id=$1`,[ids.order])).rows;
+  assert.equal(lineProjection.length,1);
+  assert.equal(lineProjection[0].account_id,ids.sourceAccount);
+  assert.equal(lineProjection[0].table_id,ids.destinationTable);
+  assert.equal(lineProjection[0].session_id,ids.destinationSession);
+  assert.equal(lineProjection[0].visit_key,destinationVisit);
+  assert.equal(lineProjection[0].destination_version,'1');
   const replay=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
@@ -1229,6 +1240,10 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,result.round_id);
+  assert.equal((await client.query(`SELECT count(*)::int AS n
+   FROM sabora.order_line_delivery_destinations d
+   JOIN sabora.order_lines l ON l.id=d.order_line_id
+   WHERE l.order_id=$1`,[ids.order])).rows[0].n,1);
   assert.equal((await client.query(`SELECT outstanding_cents FROM sabora.customer_accounts
    WHERE id=$1`,[ids.sourceAccount])).rows[0].outstanding_cents,'1900');
  });
