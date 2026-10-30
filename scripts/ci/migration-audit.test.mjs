@@ -5,7 +5,7 @@ import {buildMigrationAudit,REVIEWED_MIGRATION_AUDIT,validateMigrationAudit} fro
 
 test('reviewed audit covers every real migration with no unverified acceptance field',()=>{
  const audit=buildMigrationAudit(resolve('.'));
- assert.equal(audit.migrations.length,49);
+ assert.equal(audit.migrations.length,50);
  assert.match(audit.manifestSha256,/^[a-f0-9]{64}$/);
  for(const migration of audit.migrations){
   assert.equal(migration.reviewed,true);
