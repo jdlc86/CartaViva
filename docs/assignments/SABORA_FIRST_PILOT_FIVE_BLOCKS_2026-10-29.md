@@ -215,3 +215,12 @@ Permanecen por certificar íntegramente despacho automático y agrupación tempo
 **Evidencia CI:** SHA `0f50b1a3aa8815b49ac888c18d35b0459695c4a1` con **4/4 workflows SUCCESS** (Sabora CI `41016922257`, Bootstrap `41016922488`, navegador cliente `41016922258`, navegador gestión `41016922256`). Esta evidencia precede a la presente actualización documental y no certifica el SHA de documentación.
 
 **Pendientes del Bloque 2:** completar y acreditar la matriz normativa de extremo a extremo para agrupación y despachos automáticos, pedidos tardíos, notificaciones de cocina/sala con reconexión y cursor, concurrencia entre sesiones, revocación activa y revalidación de cesta offline; revisar la recuperación en modalidad de pago H6 antes de afirmar ausencia de doble cobro. Mantener PR #40 Draft y estado general NO-GO, sin merge, despliegue ni intervención de entornos operativos.
+
+
+## Bloque 2 — cierre de batería adversa de recuperación autenticada (30-oct)
+
+Se amplió la aceptación PostgreSQL 17 real de la consulta de confirmación con: aislamiento entre dos clientes autenticados; rechazo de petición anónima; rechazo de origen ajeno; rechazo de campos inesperados y de clave idempotente vacía; y conservación del número de líneas persistidas después de los rechazos. Estos casos complementan la recuperación de respuesta perdida, sin reenvío automático, y la aceptación Chromium de resultado confirmado o no encontrado.
+
+**SHA verificado:** `39a8fb9eef3570cad397a257050c2241c9895f28`. **4/4 GitHub Actions SUCCESS**: Sabora CI `41021977568`, Bootstrap `41021977599`, navegador cliente `41021977593`, navegador gestión `41021977560`. Las pruebas corren en PostgreSQL 17 desechable y no implican intervención en producción.
+
+**Alcance:** batería adversa de recuperación PASS; **Bloque 2 NO CERRADO**. Sigue faltando la aceptación integrada de ambos navegadores sobre el mismo recorrido QR→visita→catálogo→pedido→agrupación/despacho→cocina→sala→notificaciones, con pedidos tardíos, revocación, reconexión, offline y modalidad de pago H6. La matriz de evidencias por criterio debe distinguir lo probado en tests separados de un E2E completo. Sin merge, despliegue ni acceso a VPS, Fleetia o Supabase operativo.
