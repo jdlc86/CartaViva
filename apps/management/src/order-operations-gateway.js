@@ -67,14 +67,17 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
        credentials:'omit',signal:abort.signal,headers:{Accept:'text/event-stream',...(cursor?{'Last-Event-ID':String(cursor)}:{})}});
       if(!response.ok||!String(response.headers.get('content-type')??'').toLowerCase().startsWith('text/event-stream')||!response.body)
        throw Error('invalid_event_stream');
-      const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+      const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',pendingCR=false;
       activeReader=reader;
       if(abort.signal.aborted){void reader.cancel().catch(()=>{});return;}
       while(!abort.signal.aborted){
-       const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});
-       // EventSource permits CRLF framing; normalize after each chunk so a CRLF
-       // split across transport reads is also recognized as an SSE delimiter.
-       buffer=buffer.replaceAll('\r\n','\n');
+       const part=await reader.read();if(part.done)break;const chunk=decoder.decode(part.value,{stream:true});
+       // Normalize CRLF even when the CR and LF arrive in separate chunks.
+       // Preserve the pending CR until the next read rather than retaining it
+       // as a stray line terminator in the frame.
+       const normalized=(pendingCR?'\r':'')+chunk;
+       pendingCR=normalized.endsWith('\r');
+       buffer+=normalized.slice(0,pendingCR?-1:undefined).replaceAll('\r\n','\n');
        // A stalled or malicious stream must not grow browser memory without bound.
        // Treat oversized frames as a transport failure and resynchronize on reconnect.
        if(buffer.length>65536)throw Error('order_event_frame_too_large');
