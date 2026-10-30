@@ -31,6 +31,8 @@ CREATE TABLE sabora.customer_table_change_requests (
  CHECK (status <> 'pending' OR (decided_at IS NULL AND decided_by IS NULL AND revoked_at IS NULL)),
  CHECK (status <> 'revoked' OR revoked_at IS NOT NULL),
  CHECK (status <> 'expired' OR (decided_at IS NULL AND decided_by IS NULL)),
+ -- A request cannot be approved/rejected after its response deadline.
+ CHECK (status NOT IN ('approved','rejected','consumed') OR decided_at < expires_at),
  CHECK (status <> 'consumed' OR consumed_at >= decided_at),
  CHECK (status <> 'revoked' OR (destination_table_id IS NULL AND consumed_order_id IS NULL)),
  CHECK (decided_at IS NULL OR decided_at >= created_at),
