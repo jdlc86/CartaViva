@@ -6,7 +6,7 @@ const base={accountId:'a1',customerId:'c1',visitId:'v1',tableId:'t1',closed:fals
 test('request uses locked account, server time and configured window without destination',async()=>{
  let inserted;
  const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>1000,
-  lockApprovedRequest:async()=>null,latestRequest:async()=>null,configuredWindowMs:async()=>90000,
+  expirePendingRequests:async()=>{},lockApprovedRequest:async()=>null,latestRequest:async()=>null,configuredWindowMs:async()=>90000,
   insertRequest:async value=>(inserted=value)};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await service.request({customerSessionToken:'secret'});
@@ -17,7 +17,7 @@ test('request uses locked account, server time and configured window without des
 test('rejecting within 90 seconds does not allow immediate repeat',async()=>{
  const previous={status:'rejected',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
  const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>2000,
-  lockApprovedRequest:async()=>null,latestRequest:async()=>previous};
+  expirePendingRequests:async()=>{},lockApprovedRequest:async()=>null,latestRequest:async()=>previous};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await assert.rejects(()=>service.request({customerSessionToken:'secret'}),/request_locked/);
 });
@@ -71,9 +71,24 @@ test('decision rejects an identity without an authorized staff role',async()=>{
 test('approved but unused grant prevents another request after deadline',async()=>{
  let writes=0;
  const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>200000,
-  lockApprovedRequest:async()=>({status:'approved',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000}),
+  expirePendingRequests:async()=>{},lockApprovedRequest:async()=>({status:'approved',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000}),
   latestRequest:async()=>null,insertRequest:async()=>{writes++;}};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await assert.rejects(()=>service.request({customerSessionToken:'secret'}),/request_locked/);
  assert.equal(writes,0);
+});
+
+test('request persists expired pending state before inserting replacement',async()=>{
+ const calls=[];
+ const old={status:'expired',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
+ const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>92000,
+  expirePendingRequests:async(id,now)=>{calls.push(['expire',id,now]);},
+  lockApprovedRequest:async()=>null,
+  latestRequest:async()=>old,
+  configuredWindowMs:async()=>90000,
+  insertRequest:async value=>{calls.push(['insert',value.accountId]);return value;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ await service.request({customerSessionToken:'secret'});
+ assert.deepEqual(calls.map(entry=>entry[0]),['expire','insert']);
+ assert.deepEqual(calls[0],['expire','a1',92000]);
 });
