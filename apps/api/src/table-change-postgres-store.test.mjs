@@ -113,3 +113,27 @@ test('decision race returns not-pending when deadline or account guard rejects U
   /table_change_request_not_pending/
  );
 });
+
+test('request and decision reject ambiguous multi-row SQL results',async()=>{
+ const store=createTableChangePostgresStore({
+  withTransaction:async handler=>handler(async()=>({rows:[{id:'first'},{id:'second'}]})),
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await assert.rejects(()=>store.transaction('request',tx=>tx.insertRequest({
+  accountId:'a1',customerId:'c1',visitId:'visit_1234567890123456',
+  sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000
+ })),/invalid_table_change_sql_result/);
+ await assert.rejects(()=>store.transaction('decide',tx=>tx.recordDecision({
+  request:{id:'r1',status:'rejected'},staffId:'w1'
+ })),/invalid_table_change_sql_result/);
+});
+
+test('adapter never exposes transfer as an independent transaction operation',async()=>{
+ let called=false;
+ const store=createTableChangePostgresStore({
+  withTransaction:async()=>{called=true;},
+  resolveAccount:async()=>({}),verifyStaff:async()=>({})
+ });
+ await assert.rejects(()=>store.transaction('transfer',async()=>{}),/invalid_table_change_operation/);
+ assert.equal(called,false);
+});
