@@ -36,9 +36,8 @@ BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_session.customer_id::text, 140630));
 
-  -- Scope the guard to the *same active restaurant visit/session*.
-  -- An old, still-open account from a prior dining session must not
-  -- prevent a new visit at another table.
+  -- Table sessions may differ across tables. Reject any other open account
+  -- until transfer continuity is implemented; old open accounts may also block.
   SELECT v.session_id INTO v_visit
     FROM sabora.customer_table_visits v
    WHERE v.customer_id=v_session.customer_id AND v.table_id=p_table_id
@@ -47,8 +46,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'customer_visit_forbidden' USING errcode='42501'; END IF;
   IF EXISTS (
     SELECT 1 FROM sabora.customer_accounts a
-    WHERE a.customer_id=v_session.customer_id AND a.session_id=v_visit.session_id
-      AND a.state='open' AND a.table_id<>p_table_id
+    WHERE a.customer_id=v_session.customer_id AND a.state='open' AND a.table_id<>p_table_id
   ) THEN
     RAISE EXCEPTION 'table_change_transfer_not_integrated' USING errcode='23514';
   END IF;
