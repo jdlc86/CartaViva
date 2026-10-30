@@ -65,8 +65,9 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
      const result=await tableChange.request({customerSessionToken:readCustomerCookie(request.headers.cookie)});
      return reply.header('Cache-Control','no-store').code(201).send(result);
     }catch(error){
-     if(error?.message==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});
-     if(['table_change_unauthorized','table_change_account_forbidden'].includes(error?.message))
+     const failure=code(error);
+     if(failure==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});
+     if(['table_change_unauthorized','table_change_account_forbidden'].includes(failure))
       return reply.code(403).send({error:'customer_context_forbidden'});
      return reply.code(503).send({error:'customer_flow_unavailable'});
     }
