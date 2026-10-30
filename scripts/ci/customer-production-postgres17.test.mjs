@@ -392,7 +392,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  // Exercise the real management PWA gateway and H4 HTTP routes against the
  // same PG17 order. Test-only preHandler injects known staff principals;
  // production JWT verification is covered separately by auth suites.
- const staffHttp=Fastify({logger:false});
+ const staffHttp=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify')({logger:false});
  const testStaffTokens=new Map([
   ['ci-kitchen-staff-auth-token-971001',kitchen],
   ['ci-waiter-staff-auth-token-971001',waiter]
