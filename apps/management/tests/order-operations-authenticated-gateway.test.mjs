@@ -178,3 +178,32 @@ test('oversized SSE frames fail closed, report unavailability and do not emit ev
     gateway.revoke();
   }
 });
+
+test('oversized complete SSE event frames cannot bypass the buffer cap', async () => {
+  let notifyUnavailable;
+  const unavailable = new Promise(resolve => { notifyUnavailable = resolve; });
+  let delivered = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 30000,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(
+          'event: sabora.order.ready\\nid: 1\\ndata: ' + 'x'.repeat(65537) + '\\n\\n'
+        ));
+      },
+    }), {headers: {'Content-Type':'text/event-stream'}}),
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent() { delivered++; },
+    onResync() { delivered++; },
+    onUnavailable() { notifyUnavailable(); },
+  });
+  try {
+    await unavailable;
+    assert.equal(delivered, 0);
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
