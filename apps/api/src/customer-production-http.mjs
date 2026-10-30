@@ -36,7 +36,7 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
-    typeof flow.quote!=='function'||typeof flow.confirm!=='function'||typeof flow.lookupConfirmation!=='function')
+    typeof flow.quote!=='function'||typeof flow.confirm!=='function')
   throw Error('invalid_customer_production_http_configuration');
  return app.register(async scope=>{
   scope.addHook('preHandler',async(request,reply)=>{
@@ -64,7 +64,7 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
-  scope.post('/orders/lookup',{bodyLimit:4096},async(request,reply)=>{
+  if(typeof flow.lookupConfirmation==='function')scope.post('/orders/lookup',{bodyLimit:4096},async(request,reply)=>{
    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
    try{
     const result=await flow.lookupConfirmation({...request.body,
