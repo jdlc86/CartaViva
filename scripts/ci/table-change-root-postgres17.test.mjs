@@ -585,6 +585,6 @@ test('PG17 atomic grant consumer is sealed and updates only non-picked-up delive
  const grants=(await admin.query(`SELECT
  has_function_privilege('sabora_h6_customer_runtime',$1::oid,'EXECUTE') AS customer,
  has_function_privilege('sabora_h6_operations_runtime',$1::oid,'EXECUTE') AS staff,
- has_function_privilege('PUBLIC',$1::oid,'EXECUTE') AS public`,[fn[0].oid])).rows[0];
- assert.deepEqual(grants,{customer:false,staff:false,public:false});
+ has_function_privilege('anon',$1::oid,'EXECUTE') AS anonymous`,[fn[0].oid])).rows[0];
+ assert.deepEqual(grants,{customer:false,staff:false,anonymous:false});
 });
