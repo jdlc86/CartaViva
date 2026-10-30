@@ -364,7 +364,7 @@ test('PG17 table-change lifecycle is sealed and has no unauthenticated runtime e
 });
 
 test('PG17 table-change entrypoints deny PUBLIC, anon, authenticated and unrelated principals',async()=>{
- const principals=['PUBLIC','anon','authenticated','sabora_admin_writer',
+ const principals=['anon','authenticated','sabora_admin_writer',
   'sabora_h6_provider_runtime','sabora_h6_customer_runtime','sabora_h6_operations_runtime'];
  const rows=(await admin.query(`SELECT p.proname,role_name,
   has_function_privilege(role_name,p.oid,'EXECUTE') AS executable
@@ -375,7 +375,15 @@ test('PG17 table-change entrypoints deny PUBLIC, anon, authenticated and unrelat
  ])).rows;
  assert.equal(rows.length,principals.length*2);
  assert.ok(rows.every(row=>!row.executable),
-  'unwired lifecycle entrypoints must remain inaccessible to all runtime and public principals');
+  'unwired lifecycle entrypoints must remain inaccessible to runtime principals');
+ const publicExec=(await admin.query(`SELECT p.proname,
+  EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+   WHERE a.grantee=0 AND a.privilege_type='EXECUTE') AS public_execute
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname=ANY($1::text[])`,
+  [['request_customer_table_change_h6_candidate','decide_customer_table_change_h6_candidate']])).rows;
+ assert.equal(publicExec.length,2);
+ assert.ok(publicExec.every(row=>!row.public_execute),'PUBLIC must have no EXECUTE grant');
  const tables=(await admin.query(`SELECT c.relname,role_name,
   has_table_privilege(role_name,c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -386,5 +394,14 @@ test('PG17 table-change entrypoints deny PUBLIC, anon, authenticated and unrelat
  ])).rows;
  assert.equal(tables.length,principals.length*3);
  assert.ok(tables.every(row=>!row.direct),
-  'public and runtime principals must not access transfer persistence directly');
+  'runtime principals must not access transfer persistence directly');
+ const publicDml=(await admin.query(`SELECT c.relname,
+  EXISTS(SELECT 1 FROM aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) a
+   WHERE a.grantee=0 AND a.privilege_type=ANY(ARRAY['SELECT','INSERT','UPDATE','DELETE'])) AS public_dml
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,
+  [['customer_table_change_requests','customer_account_operational_bindings',
+    'order_round_delivery_destinations']])).rows;
+ assert.equal(publicDml.length,3);
+ assert.ok(publicDml.every(row=>!row.public_dml),'PUBLIC must have no projection DML grants');
 });
