@@ -565,3 +565,26 @@ test('PG17 line destinations are account-scoped, sealed, and exclude completed p
   WHERE l.status='picked_up'`)).rows[0].n;
  assert.equal(pending,0);
 });
+
+test('PG17 atomic grant consumer is sealed and updates only non-picked-up delivery projections',async()=>{
+ const fn=(await admin.query(`SELECT p.oid,pg_get_functiondef(p.oid) AS definition
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND p.proname='consume_customer_table_change_h6_candidate'`)).rows;
+ assert.equal(fn.length,1);
+ const body=fn[0].definition;
+ assert.match(body,/pg_advisory_xact_lock/);
+ assert.match(body,/status='approved'/);
+ assert.match(body,/status='consumed'/);
+ assert.match(body,/consumed_order_id=p_confirmed_order_id/);
+ assert.match(body,/l.status<>'picked_up'/);
+ assert.match(body,/UPDATE sabora.order_line_delivery_destinations/);
+ assert.match(body,/UPDATE sabora.customer_account_operational_bindings/);
+ assert.doesNotMatch(body,/UPDATE sabora.customer_accounts/);
+ assert.doesNotMatch(body,/UPDATE sabora.orders/);
+ assert.doesNotMatch(body,/UPDATE sabora.payment_attempts/);
+ const grants=(await admin.query(`SELECT
+ has_function_privilege('sabora_h6_customer_runtime',$1::oid,'EXECUTE') AS customer,
+ has_function_privilege('sabora_h6_operations_runtime',$1::oid,'EXECUTE') AS staff,
+ has_function_privilege('PUBLIC',$1::oid,'EXECUTE') AS public`,[fn[0].oid])).rows[0];
+ assert.deepEqual(grants,{customer:false,staff:false,public:false});
+});
