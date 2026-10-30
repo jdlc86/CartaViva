@@ -49,3 +49,24 @@ La función `confirm_customer_round_h6_candidate` continúa bajo el guard provis
 - La función sigue **sin permisos EXECUTE de roles runtime** hasta disponer de una frontera de autenticación del actor; no se activa el traslado.
 - Prueba de catálogo PG17 añadida para propietario, aislamiento y orden de bloqueos. Las pruebas de carreras funcionales y consumo único siguen pendientes.
 - Estado de este bloque: candidato sujeto a GitHub Actions; **NO-GO** para despliegue.
+
+
+## B1 extension — per-line delivery scope (2026-10-30)
+
+Candidate migration `20261030220000_sabora_h6_line_delivery_destination_foundation_candidate.sql`
+introduces an account-scoped destination for each **non-picked-up order line**.
+The earlier round-level destination is insufficient for a round containing
+both a picked-up line and an outstanding line: moving the entire round would
+rewrite the completed item's operational delivery scope. The new table
+separates line identity, original order and stable account from mutable
+delivery table/session/visit, with composite foreign keys, FORCE RLS and
+owner-only scoped DML. The backfill excludes completed pickups and checks its
+cardinality. A real PG17 catalog test verifies the new FKs and privilege
+boundary; migration audit tracks the change.
+
+**No transfer is enabled** by this migration. Confirmation remains guarded,
+and the next complete B2 step must atomically consume the approved grant,
+rebind the stable account, redirect only pending line destinations and
+persist the new order in the same transaction. It must update staff delivery
+readers and SSE before acceptance. This is a B1 foundation, not B2 closure.
+CI results for the new migration must be checked before claiming validation.
