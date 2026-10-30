@@ -146,3 +146,35 @@ test('revocation cancels an already-open SSE body reader even without fetch abor
   assert.equal(canceled, 1);
   unsubscribe();
 });
+
+test('oversized SSE frames fail closed, report unavailability and do not emit events', async () => {
+  let notifyUnavailable;
+  const unavailable = new Promise(resolve => { notifyUnavailable = resolve; });
+  let connections = 0, delivered = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 30000,
+    fetchImpl: async (path) => {
+      assert.equal(path, '/api/v1/operations/events');
+      connections++;
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data: ' + 'x'.repeat(65537)));
+        },
+      }), {headers: {'Content-Type':'text/event-stream'}});
+    },
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent() { delivered++; },
+    onResync() { delivered++; },
+    onUnavailable() { notifyUnavailable(); },
+  });
+  try {
+    await unavailable;
+    assert.equal(connections, 1);
+    assert.equal(delivered, 0);
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
