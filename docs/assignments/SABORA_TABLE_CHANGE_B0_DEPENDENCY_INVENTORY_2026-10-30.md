@@ -35,3 +35,10 @@ Inspección de `sabora.read_customer_round_h6_candidate` en la misma migración:
 En `confirm_customer_round_h6_candidate`, la rama de reintento `IF FOUND` de `order_rounds` devuelve `v_account.id` de la cuenta buscada por la mesa solicitada, no necesariamente `v_round.account_id` del pedido ya persistido. Eso exige una aserción de identidad al reintentar, para evitar devolver una cuenta distinta. No se debe corregir mediante actualización retroactiva de `orders.table_id`.
 
 Estos hallazgos refuerzan la necesidad de una refactorización conjunta de **confirmación + consulta de ronda + proyección de entrega + SSE**, no una actualización aislada de cuenta.
+
+## Protección candidata previa al traslado — 2026-10-30
+- Migración nueva: `supabase/migrations/20261030143000_sabora_h6_cross_table_account_guard_candidate.sql`.
+- La confirmación H6 se rechaza **antes de persistir** si el mismo cliente tiene una cuenta abierta en otra mesa; bloqueo transaccional por cliente mediante advisory lock. Evita que el flujo H6 actual abra inadvertidamente una segunda cuenta económica en una mesa diferente.
+- La protección es **deliberadamente restrictiva**: también bloquea cambios legítimos aprobados y puede bloquear una nueva visita en otra mesa mientras una cuenta anterior permanezca abierta. No equivale a transferencia ni resuelve visitas/sesiones múltiples.
+- Se incorpora test estructural `apps/api/src/table-change-h6-cross-table-guard.test.mjs` a `npm test`. **No hay ejecución PostgreSQL 17 ni prueba E2E acreditada.**
+- Próximo hito: sustituir el rechazo por consumo atómico del permiso, revalidación de QR/mesa, conservación de cuenta, proyección de entregas y consulta histórica segura. Mantener NO-GO.
