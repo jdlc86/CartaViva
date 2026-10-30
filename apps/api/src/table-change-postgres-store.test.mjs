@@ -34,6 +34,13 @@ test('request adapter delegates account ownership and transaction to injected H6
  assert.equal(result.id,'r1');
  assert.ok(calls.some(x=>x.sql.includes("status='expired'")));
  assert.ok(calls.some(x=>x.sql.includes('INSERT INTO')));
+ const insertion=calls.find(x=>x.sql.includes('INSERT INTO'));
+ assert.match(insertion.sql,/clock_timestamp\(\)\+make_interval/);
+ assert.match(insertion.sql,/WHERE NOT EXISTS/);
+ assert.match(insertion.sql,/status='approved'/);
+ assert.equal(insertion.args[4],90);
+ const expiry=calls.find(x=>x.sql.includes("status='expired'"));
+ assert.match(expiry.sql,/expires_at<=clock_timestamp\(\)/);
 });
 
 test('adapter rejects missing transaction, account resolver or staff verifier',()=>{
