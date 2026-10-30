@@ -813,3 +813,45 @@ test('PG17 B2 integrated confirmation rejects missing session before any economi
   assert.deepEqual(after,before);
  });
 });
+
+test('PG17 integrated B2 rejects unauthorized destination and unapproved transfer without persisting an order',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABL'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp())`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const confirm=()=>client.query(`SELECT *
+   FROM sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,'invalid-qr',destinationVisit,
+    'transfer-basket','transfer-request',Buffer.alloc(32,204),ids.round,
+    ids.order,JSON.stringify([]),false,'pay_at_end']);
+  const invalidVisit=await expectSqlError(client,confirm,/customer_visit_forbidden/);
+  assert.equal(invalidVisit.code,'42501');
+  await insertVisit(client,{tableId:ids.destinationTable,sessionId:ids.destinationSession,visitKey:destinationVisit});
+  const missingApproval=await expectSqlError(client,confirm,/table_change_approval_required/);
+  assert.equal(missingApproval.code,'23514');
+  const state=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests WHERE account_id=$2) AS grants,
+   (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$2) AS payments,
+   (SELECT count(*)::int FROM sabora.order_line_delivery_destinations WHERE account_id=$2) AS deliveries,
+   b.table_id,b.binding_version
+   FROM sabora.customer_account_operational_bindings b WHERE b.account_id=$2`,
+   [ids.order,ids.sourceAccount])).rows[0];
+  assert.equal(state.orders,0);
+  assert.equal(state.rounds,0);
+  assert.equal(state.grants,0);
+  assert.equal(state.payments,0);
+  assert.equal(state.deliveries,0);
+  assert.equal(state.table_id,ids.sourceTable);
+  assert.equal(state.binding_version,'1');
+ });
+});
