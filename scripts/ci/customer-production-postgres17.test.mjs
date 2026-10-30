@@ -7,6 +7,7 @@ import {generateKeyPairSync,randomBytes,sign as signJwt} from 'node:crypto';
 import {createVerifiedRestaurantFlowCandidate} from '../../apps/api/src/restaurant-flow-candidate-app.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
