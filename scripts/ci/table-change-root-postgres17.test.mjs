@@ -314,3 +314,29 @@ test('PG17 delivery projection preserves historical order, account, grouping and
   await client.query('RESET ROLE');
  });
 });
+
+
+test('PG17 H6 confirmation integrates account binding and delivery projection within root transaction',async()=>{
+ const source=(await admin.query(`SELECT pg_get_functiondef(p.oid) AS source
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname='confirm_customer_round_h6_candidate'`)).rows[0].source;
+ const lock=source.indexOf('FOR UPDATE');
+ const persist=source.indexOf('persist_customer_order_candidate');
+ const account=source.indexOf('INSERT INTO sabora.customer_account_operational_bindings');
+ const round=source.indexOf('INSERT INTO sabora.order_rounds');
+ const delivery=source.indexOf('INSERT INTO sabora.order_round_delivery_destinations');
+ assert.ok(lock>=0&&lock<persist&&persist<account&&account<round&&round<delivery);
+ assert.match(source,/h6_replay_account_scope_conflict/);
+ assert.match(source,/v_round\.account_id,v_round\.id/);
+ assert.match(source,/table_change_transfer_not_integrated/);
+ const roles=(await admin.query(`SELECT c.relname,
+  has_table_privilege('sabora_h6_fn_owner',c.oid,'SELECT,INSERT,UPDATE') AS owner_access,
+  has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS customer_access,
+  c.relrowsecurity,c.relforcerowsecurity
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relname=ANY($1::text[])`,
+ [['customer_account_operational_bindings','order_round_delivery_destinations']])).rows;
+ assert.equal(roles.length,2);
+ assert.ok(roles.every(row=>row.owner_access&&!row.customer_access&&
+  row.relrowsecurity&&row.relforcerowsecurity));
+});
