@@ -42,6 +42,9 @@ CREATE TABLE sabora.customer_table_change_requests (
 CREATE UNIQUE INDEX customer_table_change_one_pending
  ON sabora.customer_table_change_requests(account_id)
  WHERE status='pending';
+-- Expiration is a persisted transition, not merely a read-time display state.
+-- The request transaction must lock the account, expire old pending rows and
+-- check cooldown before inserting a replacement.
 
 -- Only one live approval per account; the cooldown is separately enforced
 -- against the latest request while holding the account row lock.
@@ -54,6 +57,8 @@ CREATE INDEX customer_table_change_pending_deadline
  ON sabora.customer_table_change_requests(expires_at)
  WHERE status='pending';
 
+-- Audit columns are immutable to runtime callers except via narrowly scoped
+-- transaction functions; no generic UPDATE grant is provided.
 ALTER TABLE sabora.customer_table_change_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sabora.customer_table_change_requests FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON sabora.customer_table_change_requests FROM PUBLIC,anon,authenticated;
