@@ -55,3 +55,15 @@ test('an approved grant never transfers on approval alone',async()=>{
  assert.equal(outcome.request.status,'approved');
  assert.equal(transferCalled,false);
 });
+
+test('decision rejects an identity without an authorized staff role',async()=>{
+ let read=false;
+ const tx={requireWaiter:async()=>({id:'w1',role:'kitchen'}),
+  lockRequest:async()=>{read=true;return null;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ await assert.rejects(()=>service.decide({
+  verifiedIdentity:{id:'w1'},verifiedStaff:{role:'waiter'},
+  requestId:'r1',decision:'approved'
+ }),/table_change_unauthorized/);
+ assert.equal(read,false);
+});
