@@ -2,6 +2,10 @@
 -- A round may contain both picked-up and pending lines. Round-only destination
 -- cannot safely redirect pending items without rewriting completed delivery scope.
 BEGIN;
+-- PostgreSQL requires an explicit unique referenced key for the composite FK.
+-- This preserves the existing primary key and immutable order ownership.
+ALTER TABLE sabora.order_lines
+ ADD CONSTRAINT order_lines_order_id_id_unique UNIQUE(order_id,id);
 CREATE TABLE sabora.order_line_delivery_destinations (
  order_line_id uuid PRIMARY KEY REFERENCES sabora.order_lines(id),
  round_id uuid NOT NULL,
