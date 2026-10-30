@@ -11,8 +11,20 @@ import {buildCatalogLineEvidence} from '../../apps/api/src/catalog-line-evidence
 import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/catalog-order-confirmation-candidate.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
-import {registerVerifiedRestrictedOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
+import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated-candidate.mjs';
 import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
+import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
+import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
+  INSERT_QUOTE_SQL, LOOKUP_ATTEMPT_SQL, PREPARE_CONFIRMATION_SQL,
+  READ_H6_PAYMENT_POLICY_SQL, READ_H6_ROUND_SQL, PERSIST_H6_ORDER_SQL}
+  from '../../apps/api/src/customer-production-flow.mjs';
+import {createCustomerSessionQueryBoundary} from '../../apps/api/src/customer-session-query-boundary.mjs';
+import {createCustomerSessionVerifier} from '../../apps/api/src/customer-session-verifier.mjs';
+import {createCustomerSessionRevoker} from '../../apps/api/src/customer-session-revoker.mjs';
+import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
+import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 
 const url = process.env.SABORA_CI_PG_URL;
 const modulePath = process.env.SABORA_CI_PG_MODULE;
@@ -40,12 +52,27 @@ const staffRole = 'sabora_ci_h4_staff_reader';
 const operationsRole = 'sabora_ci_h4_operations';
 const staffPassword = 'sabora_ci_h4_staff_ephemeral';
 const operationsPassword = 'sabora_ci_h4_operations_ephemeral';
+const h6CustomerRole = 'sabora_ci_integrated_h6_customer';
+const h6ProviderRole = 'sabora_ci_integrated_h6_provider';
+const h6OperationsRole = 'sabora_ci_integrated_h6_operations';
+const h6NotifierRole = 'sabora_ci_integrated_h6_notifier';
+const customerFlowRole = 'sabora_ci_integrated_customer_flow';
+const customerSessionRole = 'sabora_ci_integrated_customer_session';
+const integrationPasswords = Object.freeze({
+  customer: 'sabora_ci_integrated_customer_1',
+  provider: 'sabora_ci_integrated_provider_2',
+  operations: 'sabora_ci_integrated_operations_3',
+  notifier: 'sabora_ci_integrated_notifier_4',
+  flow: 'sabora_ci_integrated_flow_5',
+  session: 'sabora_ci_integrated_session_6',
+});
 const keyId = 'ci_h4_read_binding_key_001';
 const signingSecret = randomBytes(32);
 const kitchenId = 'a1000000-0000-4000-8000-000000000001';
 const waiterId = 'a1000000-0000-4000-8000-000000000002';
 const adminId = 'a1000000-0000-4000-8000-000000000003';
 const expiringId = 'a1000000-0000-4000-8000-000000000004';
+const secondWaiterId = 'a1000000-0000-4000-8000-000000000005';
 const customerId = 'a1000000-0000-4000-8000-000000000099';
 const authIssuer = 'https://ci.h4.sabora.invalid/auth/v1';
 const authKeyId = 'ci-h4-auth-key';
@@ -56,6 +83,12 @@ const authJwk = Object.freeze({
 });
 let staffPool;
 let operationsPool;
+let h6CustomerPool;
+let h6ProviderPool;
+let h6OperationsPool;
+let h6NotifierPool;
+let customerFlowPool;
+let customerSessionPool;
 let app;
 let issueTransitionCapability;
 let issueReadCapability;
@@ -103,7 +136,42 @@ async function directFixture(suffix, customerLabel = 'Mesa de integración') {
   const line = await admin.query(
     'SELECT id FROM sabora.order_lines WHERE order_id=$1', [orderId]);
   assert.equal(line.rows.length, 1);
-  return {tableId, orderId, lineId: line.rows[0].id};
+  return {tableId, orderId, lineId: line.rows[0].id, sessionId: table.rows[0].session_id};
+}
+
+async function integratedFixture(suffix, customerLabel) {
+  const fixture = await directFixture(suffix, customerLabel);
+  const padded = String(suffix).padStart(12, '0');
+  const customerProfileId = `b2000000-0000-4000-8000-${padded}`;
+  const accountId = `c2000000-0000-4000-8000-${padded}`;
+  const roundId = `d2000000-0000-4000-8000-${padded}`;
+  const dispatchId = `e2000000-0000-4000-8000-${padded}`;
+  const publicSuffix = String((Number(suffix) % 8) + 2);
+  const visitKey = `integrated_visit_${suffix}`;
+  await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+    VALUES($1,$2,$3)`, [customerProfileId, `SB-ABCDEFGHJKL${publicSuffix}`, customerLabel]);
+  await admin.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,state)
+    VALUES($1,$2,$3,$4,$5,'open')`,
+  [accountId, fixture.tableId, fixture.sessionId, visitKey, customerProfileId]);
+  await admin.query(`INSERT INTO sabora.customer_table_visits(
+    table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+    VALUES($1,$2,$3,$4,$5,1,clock_timestamp()+interval '1 hour')`,
+  [fixture.tableId, fixture.sessionId, customerProfileId, visitKey, `integrated_actor_${suffix}`]);
+  await admin.query(`UPDATE sabora.orders SET company=NULL,employee_number=NULL,
+    customer_alias=$2,customer_identifier=$3,customer_visit_key=$4,
+    economic_snapshot='{"schemaVersion":"1"}'::jsonb WHERE id=$1`,
+  [fixture.orderId, customerLabel, `SB-ABCDEFGHJKL${publicSuffix}`, visitKey]);
+  await admin.query(`INSERT INTO sabora.order_rounds(
+    id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
+    grouping_deadline,state)
+    VALUES($1,$2,$3,0,NULL,1,clock_timestamp()+interval '5 minutes','kitchen_acknowledged')`,
+  [roundId, fixture.orderId, accountId]);
+  await admin.query(`INSERT INTO sabora.kitchen_dispatches(
+    id,round_id,order_id,revision_number,dispatch_key,state,requested_at,acknowledged_at)
+    VALUES($1,$2,$3,1,$4,'acknowledged',clock_timestamp(),clock_timestamp())`,
+  [dispatchId, roundId, fixture.orderId, `h6_dispatch_integrated_${suffix}_candidate`]);
+  return {...fixture, customerProfileId, accountId, roundId, dispatchId};
 }
 
 function boardCall(capability, {
@@ -149,6 +217,25 @@ test.before(async () => {
     NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION`);
   await admin.query(`CREATE ROLE ${operationsRole} LOGIN PASSWORD '${operationsPassword}'
     NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION`);
+  await admin.query(`
+    CREATE ROLE ${h6CustomerRole} LOGIN PASSWORD '${integrationPasswords.customer}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    CREATE ROLE ${h6ProviderRole} LOGIN PASSWORD '${integrationPasswords.provider}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    CREATE ROLE ${h6OperationsRole} LOGIN PASSWORD '${integrationPasswords.operations}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    CREATE ROLE ${h6NotifierRole} LOGIN PASSWORD '${integrationPasswords.notifier}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    CREATE ROLE ${customerFlowRole} LOGIN PASSWORD '${integrationPasswords.flow}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    CREATE ROLE ${customerSessionRole} LOGIN PASSWORD '${integrationPasswords.session}'
+      NOSUPERUSER NOBYPASSRLS NOINHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    GRANT sabora_h6_customer_runtime TO ${h6CustomerRole};
+    GRANT sabora_h6_provider_runtime TO ${h6ProviderRole};
+    GRANT sabora_h6_operations_runtime TO ${h6OperationsRole};
+    GRANT sabora_customer_flow_runtime TO ${customerFlowRole};
+    GRANT sabora_customer_session_runtime TO ${customerSessionRole};
+  `);
   await admin.query(`GRANT USAGE ON SCHEMA sabora TO ${staffRole}, ${operationsRole}`);
   await admin.query(`GRANT SELECT (user_id,role,state)
     ON sabora.staff_members TO ${staffRole}`);
@@ -166,30 +253,104 @@ test.before(async () => {
   [keyId, signingSecret.toString('hex')]);
   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES
     ($1,'kitchen','active'),($2,'waiter','active'),
-    ($3,'admin','active'),($4,'kitchen','active')`,
-  [kitchenId, waiterId, adminId, expiringId]);
+    ($3,'admin','active'),($4,'kitchen','active'),($5,'waiter','active')`,
+  [kitchenId, waiterId, adminId, expiringId, secondWaiterId]);
+  await admin.query(`INSERT INTO sabora.staff_enrollments(
+    id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
+    credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
+    credential_registered_at,activated_at,updated_at,given_name,family_name,
+    employee_code,operational_display_id)
+   SELECT gen_random_uuid(),sha256(convert_to(source.email,'UTF8')),source.role,'active',
+    source.user_id,sha256(convert_to(source.token,'UTF8')),sha256(convert_to(source.credential,'UTF8')),
+    $3,statement_timestamp(),statement_timestamp(),statement_timestamp(),statement_timestamp(),
+    statement_timestamp(),statement_timestamp(),source.given_name,source.family_name,source.code,source.display_id
+   FROM (VALUES
+    ($1::uuid,'kitchen','kitchen-integrated@example.invalid','token-kitchen-integrated','credential-kitchen-integrated','Karla','Cocina','811','KC-811'),
+    ($2::uuid,'waiter','waiter-integrated@example.invalid','token-waiter-integrated','credential-waiter-integrated','Mario','Sala','812','MS-812'),
+    ($3::uuid,'admin','admin-integrated@example.invalid','token-admin-integrated','credential-admin-integrated','Alba','Dirección','813','AD-813'),
+    ($4::uuid,'kitchen','expiring-integrated@example.invalid','token-expiring-integrated','credential-expiring-integrated','Eva','Cocina','814','EC-814'),
+    ($5::uuid,'waiter','waiter2-integrated@example.invalid','token-waiter2-integrated','credential-waiter2-integrated','Lucía','Sala','815','LS-815')
+   ) source(user_id,role,email,token,credential,given_name,family_name,code,display_id)`,
+  [kitchenId, waiterId, adminId, expiringId, secondWaiterId]);
+  await admin.query(`UPDATE sabora.staff_employee_code_pool pool SET
+    enrollment_id=enrollment.id,reserved_at=clock_timestamp()
+   FROM sabora.staff_enrollments enrollment WHERE enrollment.employee_code=pool.code
+    AND enrollment.auth_user_id=ANY($1::uuid[])`,
+  [[kitchenId, waiterId, adminId, expiringId, secondWaiterId]]);
 
   staffPool = poolFor(staffRole, staffPassword, 2);
   operationsPool = poolFor(operationsRole, operationsPassword, 8);
+  h6CustomerPool = poolFor(h6CustomerRole, integrationPasswords.customer, 4);
+  h6ProviderPool = poolFor(h6ProviderRole, integrationPasswords.provider, 4);
+  h6OperationsPool = poolFor(h6OperationsRole, integrationPasswords.operations, 8);
+  h6NotifierPool = poolFor(h6NotifierRole, integrationPasswords.notifier, 2);
+  customerFlowPool = poolFor(customerFlowRole, integrationPasswords.flow, 4);
+  customerSessionPool = poolFor(customerSessionRole, integrationPasswords.session, 2);
   issueTransitionCapability = createOrderOperationCapabilityIssuer({
     keyId, secret: signingSecret, databaseRole: operationsRole,
   });
   issueReadCapability = createOrderOperationReadCapabilityIssuer({
     keyId, secret: signingSecret, databaseRole: operationsRole,
   });
-  app = Fastify({logger: false});
-  await registerVerifiedRestrictedOrderOperationsFromPools(app, {
-    staffPool, operationsPool, staffRole, operationsRole,
-    issuer: authIssuer, getTrustedKeys: async () => [authJwk],
-    issueTransitionCapability, issueReadCapability,
+  const flowTx = createRoleScopedPostgresTransaction({pool: customerFlowPool,
+    role: 'sabora_customer_flow_runtime', allowedSql: new Set([
+      AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL, INSERT_QUOTE_SQL,
+      LOOKUP_ATTEMPT_SQL, PREPARE_CONFIRMATION_SQL,
+    ])});
+  const h6CustomerTx = createRoleScopedPostgresTransaction({pool: h6CustomerPool,
+    role: 'sabora_h6_customer_runtime', allowedSql: new Set([
+      READ_H6_PAYMENT_POLICY_SQL, READ_H6_ROUND_SQL, PERSIST_H6_ORDER_SQL,
+    ])});
+  const customerFlow = createCustomerProductionFlow({withTransaction: flowTx,
+    withH6Transaction: h6CustomerTx,
+    secretKey: 'h4-h6-integrated-customer-basket-key-at-least-32-bytes'});
+  const sessionQuery = createCustomerSessionQueryBoundary({pool: customerSessionPool});
+  const cookieAuth = createCustomerCookieAuth({allowedOrigin: 'https://ci.h4-h6.sabora.invalid',
+    verifyCustomerSession: createCustomerSessionVerifier({query: sessionQuery}),
+    revokeCustomerSession: createCustomerSessionRevoker({query: sessionQuery})});
+  const stripe = createH6StripeAdapter({
+    credential: 'sk_test_h4h6_integrated_candidate',
+    request: async () => { throw Error('unexpected_integrated_stripe_call'); },
   });
-  await app.ready();
+  const issueStaffCapability = createH6StaffCapabilityIssuer({
+    keyId, secret: signingSecret, databaseRole: h6OperationsRole,
+  });
+  app = await createH4H6IntegratedCandidate({
+    h4: {staffPool, operationsPool, staffRole, operationsRole,
+      issuer: authIssuer, getTrustedKeys: async () => [authJwk],
+      issueTransitionCapability, issueReadCapability},
+    h6: {cookieAuth, customerFlow, stripe,
+      customerPool: h6CustomerPool, providerPool: h6ProviderPool,
+      operationsPool: h6OperationsPool, notifierPool: h6NotifierPool,
+      expectedCustomerLogin: h6CustomerRole, expectedProviderLogin: h6ProviderRole,
+      expectedOperationsLogin: h6OperationsRole, issueStaffCapability,
+      eventHeartbeatMs: 5000},
+  });
+  for (const [method, url] of [
+    ['GET', '/api/v1/operations/order-lines'],
+    ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+    ['GET', '/api/v1/operations/orders/:orderId/history'],
+    ['POST', '/api/v1/operations/order-lines/:lineId/pickup-claim'],
+    ['POST', '/api/v1/operations/order-lines/:lineId/pickup-claim/cancel'],
+    ['POST', '/api/v1/operations/order-lines/:lineId/ready-correction'],
+    ['GET', '/api/v1/operations/events'],
+  ]) {
+    assert.equal(app.hasRoute({method, url}), true,
+      'candidate must mount all three protected routes after SQL preflight');
+  }
 });
 
 test.after(async () => {
   await app?.close();
-  await staffPool?.end();
-  await operationsPool?.end();
+  await admin.query(`UPDATE sabora.staff_employee_code_pool SET enrollment_id=NULL,reserved_at=NULL
+    WHERE enrollment_id IN (SELECT id FROM sabora.staff_enrollments
+      WHERE auth_user_id=ANY($1::uuid[]))`,
+  [[kitchenId, waiterId, adminId, expiringId, secondWaiterId]]);
+  await admin.query('DELETE FROM sabora.staff_enrollments WHERE auth_user_id=ANY($1::uuid[])',
+    [[kitchenId, waiterId, adminId, expiringId, secondWaiterId]]);
+  await Promise.allSettled([staffPool?.end(), operationsPool?.end(), h6CustomerPool?.end(),
+    h6ProviderPool?.end(), h6OperationsPool?.end(), h6NotifierPool?.end(),
+    customerFlowPool?.end(), customerSessionPool?.end()]);
   await admin.end();
 });
 
@@ -464,4 +625,368 @@ test('PG17 canonical customer confirmation reaches restricted kitchen and waiter
   assert.deepEqual(counts.rows[0], {
     orders: 1, attempts: 1, lines: 1, events: 3, notices: 1,
   });
+});
+
+test('PG17 management authenticated gateway traverses actual candidate HTTP and durable SQL', async () => {
+  const item = await directFixture(403);
+  let tokenReads = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => {
+      tokenReads++;
+      return bearer(kitchenId);
+    },
+    fetchImpl: async (path, options) => {
+      const headers = Object.fromEntries(new Headers(options.headers).entries());
+      const response = await app.inject({
+        method: options.method,
+        url: path,
+        headers,
+        payload: options.body,
+      });
+      return new Response(response.body, {
+        status: response.statusCode,
+        headers: {'content-type': response.headers['content-type'] ?? 'application/json'},
+      });
+    },
+  });
+  const board = await gateway.listBoard({status: 'confirmed', limit: 100});
+  assert.ok(board.items.some((line) => line.lineId === item.lineId));
+  const preparing = await gateway.transitionLine({
+    lineId: item.lineId, targetStatus: 'preparing',
+    correlationId: 'management_gateway_prepare_403',
+  });
+  assert.equal(preparing.currentStatus, 'preparing');
+  const ready = await gateway.transitionLine({
+    lineId: item.lineId, targetStatus: 'ready',
+    correlationId: 'management_gateway_ready_403',
+  });
+  assert.equal(ready.currentStatus, 'ready');
+  const history = await gateway.listHistory({orderId: item.orderId, limit: 100});
+  assert.deepEqual(history.events.map((event) => event.toStatus), ['preparing', 'ready']);
+  assert.equal(tokenReads, 4, 'every management operation requires a fresh access token');
+  const durable = await admin.query(
+    'SELECT status FROM sabora.order_lines WHERE id=$1', [item.lineId]);
+  assert.equal(durable.rows[0].status, 'ready');
+});
+
+test('PG17 management gateways complete kitchen-to-waiter pickup with role boundaries and replay', async () => {
+  const item = await directFixture(404, 'Mesa entrega integrada');
+  const makeGateway = (userId) => createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => bearer(userId),
+    fetchImpl: async (path, options) => {
+      const response = await app.inject({
+        method: options.method,
+        url: path,
+        headers: Object.fromEntries(new Headers(options.headers).entries()),
+        payload: options.body,
+      });
+      return new Response(response.body, {
+        status: response.statusCode,
+        headers: {'content-type': response.headers['content-type'] ?? 'application/json'},
+      });
+    },
+  });
+  const kitchen = makeGateway(kitchenId);
+  const waiter = makeGateway(waiterId);
+  await assert.rejects(
+    waiter.transitionLine({lineId: item.lineId, targetStatus:'preparing',
+      correlationId:'management_forbidden_waiter_404'}),
+    (error) => error.code === 'forbidden');
+  await kitchen.transitionLine({lineId:item.lineId, targetStatus:'preparing',
+    correlationId:'management_prepare_404'});
+  const first = await kitchen.transitionLine({lineId:item.lineId, targetStatus:'ready',
+    correlationId:'management_ready_404'});
+  assert.equal(first.repeated, false);
+  const replay = await kitchen.transitionLine({lineId:item.lineId, targetStatus:'ready',
+    correlationId:'management_ready_404'});
+  assert.equal(replay.repeated, true);
+  const ready = await waiter.listBoard({status:'ready'});
+  assert.ok(ready.items.some(line=>line.lineId===item.lineId));
+  await assert.rejects(
+    kitchen.transitionLine({lineId:item.lineId,targetStatus:'picked_up',
+      correlationId:'management_forbidden_kitchen_404'}),
+    (error) => error.code === 'forbidden');
+  const pickup = await waiter.transitionLine({lineId:item.lineId,
+    targetStatus:'picked_up',correlationId:'management_pickup_404'});
+  assert.equal(pickup.currentStatus, 'picked_up');
+  const history = await waiter.listHistory({orderId:item.orderId});
+  assert.deepEqual(history.events.map(event=>event.toStatus),
+    ['preparing','ready','picked_up']);
+  const counts = await admin.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.order_line_events WHERE order_id=$1) AS events,
+    (SELECT count(*)::integer FROM sabora.pickup_notifications WHERE order_id=$1) AS notices`,
+    [item.orderId]);
+  assert.deepEqual(counts.rows[0], {events:3, notices:1});
+});
+
+
+test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and durable SSE',
+  {timeout: 180000}, async () => {
+  const {pathToFileURL, fileURLToPath} = await import('node:url');
+  const {chromium} = await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  const managementRequire = createRequire(new URL('../../apps/management/package.json', import.meta.url));
+  const viteEntry = managementRequire.resolve('vite');
+  const {createServer} = await import(pathToFileURL(viteEntry).href);
+  const item = await integratedFixture(405, 'Mesa navegador H4 H6');
+  const concurrentItem = await integratedFixture(406, 'Mesa concurrencia H4 H6');
+  let vite;
+  let browser;
+  let context;
+  let apiClosed = false;
+  const browserErrors = [];
+  const browserRequests = [];
+  try {
+    await app.listen({host: '127.0.0.1', port: 0});
+    const apiAddress = app.server.address();
+    assert.ok(apiAddress && typeof apiAddress === 'object' && apiAddress.port > 0);
+    const apiOrigin = `http://127.0.0.1:${apiAddress.port}`;
+    vite = await createServer({
+      root: fileURLToPath(new URL('../../apps/management/', import.meta.url)),
+      logLevel: 'error',
+      server: {host: '127.0.0.1', port: 0, strictPort: false,
+        proxy: {'/api': {target: apiOrigin, changeOrigin: false}}},
+    });
+    await vite.listen();
+    const uiAddress = vite.httpServer?.address();
+    assert.ok(uiAddress && typeof uiAddress === 'object' && uiAddress.port > 0);
+    const origin = `http://127.0.0.1:${uiAddress.port}`;
+
+    const api = async (path, {token, body, method = body ? 'POST' : 'GET', headers: extra = {}} = {}) => {
+      const response = await fetch(apiOrigin + path, {method, headers: {
+        accept: 'application/json', ...(body ? {'content-type': 'application/json'} : {}),
+        ...(token ? {authorization: `Bearer ${token}`} : {}), ...extra,
+      }, ...(body ? {body: JSON.stringify(body)} : {})});
+      let payload = null;
+      if (String(response.headers.get('content-type') ?? '').startsWith('application/json')) {
+        payload = await response.json();
+      }
+      return {status: response.status, body: payload, headers: response.headers};
+    };
+
+    // The same listener enforces signed JWTs and roles before any H6 pickup SQL.
+    const pickupPath = `/api/v1/operations/order-lines/${concurrentItem.lineId}/pickup-claim`;
+    assert.equal((await api(pickupPath, {body: {expectedVersion: 1,
+      correlationId: 'integrated_missing_jwt_406'}})).status, 401);
+    assert.equal((await api(pickupPath, {token: 'invalid.jwt.value', body: {expectedVersion: 1,
+      correlationId: 'integrated_invalid_jwt_406'}})).status, 401);
+    assert.equal((await api(pickupPath, {token: bearer(waiterId, {iat: 1, exp: 2}),
+      body: {expectedVersion: 1, correlationId: 'integrated_expired_jwt_406'}})).status, 401);
+    assert.equal((await api(pickupPath, {token: bearer(customerId), body: {expectedVersion: 1,
+      correlationId: 'integrated_nonstaff_jwt_406'}})).status, 403);
+    assert.equal((await api(pickupPath, {token: bearer(kitchenId), body: {expectedVersion: 1,
+      correlationId: 'integrated_wrong_role_406'}})).status, 403);
+
+    browser = await chromium.launch({headless: true});
+    context = await browser.newContext({viewport: {width: 1440, height: 1000},
+      reducedMotion: 'reduce'});
+    const page = await context.newPage();
+    page.on('pageerror', error => browserErrors.push(`pageerror:${error.message}`));
+    page.on('console', message => {
+      if (message.type() === 'error') browserErrors.push(`console:${message.text()}`);
+    });
+    page.on('request', request => {
+      if (new URL(request.url()).pathname.startsWith('/api/v1/operations/')) {
+        browserRequests.push({method: request.method(), url: request.url(),
+          authorization: request.headers().authorization});
+      }
+    });
+    await page.goto(origin + '/#comandas');
+
+    const mount = async (actor, {dropFirstSse = false} = {}) => page.evaluate(async ({token, drop}) => {
+      if (typeof window.__ciDispose === 'function') window.__ciDispose();
+      window.__ciSseRequests ??= [];
+      const fetchImpl = async (input, init = {}) => {
+        const raw = input instanceof Request ? input.url : String(input);
+        const target = new URL(raw, window.location.origin);
+        const isSse = target.pathname === '/api/v1/operations/events';
+        if (isSse) {
+          const requestHeaders = new Headers(init.headers);
+          window.__ciSseRequests.push({lastEventId: requestHeaders.get('last-event-id')});
+        }
+        const response = await fetch(input, init);
+        if (!isSse || !drop || window.__ciDroppedSse || !response.ok || !response.body) return response;
+        window.__ciDroppedSse = true;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let observed = '';
+        const stream = new ReadableStream({
+          async pull(controller) {
+            const part = await reader.read();
+            if (part.done) { controller.close(); return; }
+            controller.enqueue(part.value);
+            observed += decoder.decode(part.value, {stream: true});
+            if (observed.replaceAll('\r\n', '\n').includes('\n\n')) {
+              controller.close();
+              await reader.cancel().catch(() => {});
+            }
+          },
+          cancel() { return reader.cancel().catch(() => {}); },
+        });
+        return new Response(stream, {status: response.status, statusText: response.statusText,
+          headers: response.headers});
+      };
+      const {mountAuthenticatedManagementApp} = await import('/src/main.tsx');
+      window.__ciDispose = mountAuthenticatedManagementApp({
+        element: document.getElementById('root'), getAccessToken: async () => token, fetchImpl,
+      });
+    }, {token: bearer(actor), drop: dropFirstSse});
+
+    await mount(kitchenId, {dropFirstSse: true});
+    const kitchenCard = page.locator('.order-card').filter({hasText: 'Mesa navegador H4 H6'});
+    await kitchenCard.getByText('Plato H4').waitFor({timeout: 15000});
+    await kitchenCard.getByRole('button', {name: 'Iniciar preparación'}).click();
+    await kitchenCard.getByRole('button', {name: 'Marcar lista'}).waitFor();
+    await kitchenCard.getByRole('button', {name: 'Marcar lista'}).click();
+    await kitchenCard.getByRole('button', {name: 'Corregir: Preparando'}).waitFor({timeout: 15000});
+    const ready = (await admin.query(`SELECT l.status,t.state,t.version
+      FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id
+      WHERE l.id=$1`, [item.lineId])).rows[0];
+    assert.deepEqual(ready, {status: 'ready', state: 'ready', version: '1'});
+    await page.waitForFunction(() => window.__ciSseRequests?.some(value => value.lastEventId !== null),
+      null, {timeout: 15000});
+    const sseRequests = await page.evaluate(() => window.__ciSseRequests);
+    assert.equal(sseRequests[0].lastEventId, null);
+    assert.ok(sseRequests.some(value => /^[1-9][0-9]*$/.test(value.lastEventId ?? '')),
+      'gateway reconnect must resume with Last-Event-ID after a real SSE transport interruption');
+
+    await mount(waiterId);
+    const waiterCard = page.locator('.order-card').filter({hasText: 'Mesa navegador H4 H6'});
+    await waiterCard.getByRole('button', {name: 'Voy a recoger'}).waitFor({timeout: 15000});
+    assert.equal(await page.getByRole('button', {name: 'Marcar lista'}).count(), 0);
+    assert.equal((await api(`/api/v1/operations/order-lines/${item.lineId}/ready-correction`, {
+      token: bearer(waiterId), body: {expectedVersion: 1,
+        correlationId: 'integrated_waiter_cannot_correct_405'}})).status, 403);
+
+    // An external waiter claims through the same HTTP listener. Chromium must
+    // update from the durable SSE event without a manual refresh or polling.
+    const externalClaim = await api(`/api/v1/operations/order-lines/${item.lineId}/pickup-claim`, {
+      token: bearer(secondWaiterId), body: {expectedVersion: 1,
+        correlationId: 'integrated_external_claim_405'}});
+    assert.equal(externalClaim.status, 200);
+    assert.equal(Object.hasOwn(externalClaim.body, 'claimedBy'), false,
+      'pickup mutation response must not expose an auth UUID');
+    assert.equal((await admin.query(`SELECT claimed_display_id FROM sabora.pickup_tasks
+      WHERE order_line_id=$1`, [item.lineId])).rows[0].claimed_display_id, 'LS-815');
+    await waiterCard.getByText('En recogida · responsable LS-815').waitFor({timeout: 15000});
+    const cancelButton = waiterCard.getByRole('button', {name: 'Cancelo'});
+    await cancelButton.focus();
+    assert.equal(await cancelButton.evaluate(element => element === document.activeElement), true);
+    await cancelButton.press('Enter');
+    await waiterCard.getByRole('button', {name: 'Voy a recoger'}).waitFor({timeout: 15000});
+    const claimButton = waiterCard.getByRole('button', {name: 'Voy a recoger'});
+    const claimBox = await claimButton.boundingBox();
+    assert.ok(claimBox && claimBox.height >= 44 && claimBox.width >= 44);
+    await claimButton.click();
+    await waiterCard.getByText('En recogida · responsable MS-812').waitFor({timeout: 15000});
+    const reassigned = (await admin.query(`SELECT state,version,claimed_by,claimed_display_id
+      FROM sabora.pickup_tasks WHERE order_line_id=$1`, [item.lineId])).rows[0];
+    assert.deepEqual(reassigned, {state: 'claimed', version: '4',
+      claimed_by: waiterId, claimed_display_id: 'MS-812'});
+    assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.pickup_task_events
+      WHERE order_line_id=$1`, [item.lineId])).rows[0].n, 4);
+    assert.equal((await admin.query(`SELECT status FROM sabora.order_lines WHERE id=$1`,
+      [item.lineId])).rows[0].status, 'ready',
+    'pickup task acceptance must not synthesize picked_up or delivered');
+
+    // A second complete H4→H6 line proves atomic exclusivity and replay over
+    // the actual JWT-protected HTTP composition, not an injected repository.
+    const transitionPath = `/api/v1/operations/order-lines/${concurrentItem.lineId}/transitions`;
+    assert.equal((await api(transitionPath, {token: bearer(kitchenId),
+      body: {targetStatus: 'preparing', correlationId: 'integrated_prepare_406'}})).status, 201);
+    assert.equal((await api(transitionPath, {token: bearer(kitchenId),
+      body: {targetStatus: 'ready', correlationId: 'integrated_ready_406'}})).status, 201);
+    const first = {token: bearer(waiterId), body: {expectedVersion: 1,
+      correlationId: 'integrated_claim_waiter_one_406'}};
+    const second = {token: bearer(secondWaiterId), body: {expectedVersion: 1,
+      correlationId: 'integrated_claim_waiter_two_406'}};
+    const claims = await Promise.all([api(pickupPath, first), api(pickupPath, second)]);
+    assert.deepEqual(claims.map(value => value.status).sort(), [200, 409]);
+    const winnerIndex = claims.findIndex(value => value.status === 200);
+    const winner = winnerIndex === 0 ? first : second;
+    const replay = await api(pickupPath, winner);
+    assert.equal(replay.status, 200);
+    assert.equal(replay.body.repeated, true);
+    const beforeConflict = (await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+      WHERE order_line_id=$1`, [concurrentItem.lineId])).rows[0];
+    const idempotencyConflict = await api(pickupPath, {token: winner.token,
+      body: {expectedVersion: 2, correlationId: winner.body.correlationId}});
+    assert.equal(idempotencyConflict.status, 409);
+    assert.equal(idempotencyConflict.body.error, 'h6_operation_conflict');
+    const stale = await api(pickupPath, {token: bearer(winnerIndex === 0 ? secondWaiterId : waiterId),
+      body: {expectedVersion: 1, correlationId: 'integrated_stale_claim_406'}});
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.pickup.taskVersion, 2);
+    assert.deepEqual((await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+      WHERE order_line_id=$1`, [concurrentItem.lineId])).rows[0], beforeConflict);
+    assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.pickup_task_events
+      WHERE order_line_id=$1 AND action='claimed'`, [concurrentItem.lineId])).rows[0].n, 1);
+
+    // Exercise the real gateway resync callback against a retained-cursor gap.
+    const kitchenMinimum = Number((await admin.query(`SELECT min(id)::bigint AS id
+      FROM sabora.event_outbox WHERE staff_role='kitchen' AND expires_at>clock_timestamp()`)).rows[0].id);
+    assert.ok(kitchenMinimum > 1, 'waiter-first dual emission must leave a real stale kitchen cursor');
+    const resynced = await page.evaluate(async ({token, staleCursor}) => {
+      const {createAuthenticatedOrderOperationsGateway} =
+        await import('/src/order-operations-authenticated-gateway.js');
+      const gateway = createAuthenticatedOrderOperationsGateway({getAccessToken: async () => token,
+        fetchImpl: (input, init = {}) => {
+          const headers = new Headers(init.headers);headers.set('Last-Event-ID', String(staleCursor));
+          return fetch(input, {...init, headers});
+        }});
+      return new Promise((resolve, reject) => {
+        let unsubscribe = () => {};
+        const timeout = setTimeout(() => {unsubscribe();reject(Error('integrated_resync_timeout'));}, 10000);
+        unsubscribe = gateway.subscribeEvents({onEvent: () => {}, onUnavailable: () => {},
+          onResync: () => {clearTimeout(timeout);unsubscribe();resolve(true);}});
+      });
+    }, {token: bearer(kitchenId), staleCursor: kitchenMinimum - 1});
+    assert.equal(resynced, true);
+
+    // Durable state survives a browser reload and the approved desktop/mobile
+    // shell remains keyboard reachable without horizontal overflow.
+    await page.reload();
+    await mount(waiterId);
+    await page.locator('.order-card').filter({hasText: 'Mesa navegador H4 H6'})
+      .getByText('En recogida · responsable MS-812').waitFor({timeout: 15000});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    await page.setViewportSize({width: 390, height: 844});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    assert.deepEqual(browserErrors, [],
+      'the complete authorized journey must not emit browser console or page errors');
+    browserErrors.length = 0;
+
+    // Suspension invalidates ordinary HTTP immediately and an already-open,
+    // otherwise idle SSE stream on its next bounded authorization heartbeat.
+    await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1", [waiterId]);
+    try {
+      assert.equal((await api('/api/v1/operations/order-lines?limit=10',
+        {token: bearer(waiterId)})).status, 403);
+      await page.getByText('Reconectando eventos').first().waitFor({timeout: 12000});
+    } finally {
+      await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1", [waiterId]);
+    }
+    await page.evaluate(() => window.__ciDispose());
+    await page.getByText('Canal operativo sin conectar').first().waitFor({timeout: 10000});
+
+    assert.ok(browserRequests.some(call => call.method === 'POST'));
+    assert.ok(browserRequests.some(call => new URL(call.url).pathname.endsWith('/events')));
+    assert.ok(browserRequests.every(call => call.authorization?.startsWith('Bearer ')));
+    assert.ok(browserErrors.every(error =>
+      error === 'console:Failed to load resource: the server responded with a status of 403 (Forbidden)'),
+    `revocation may emit only its expected denied-resource diagnostic: ${browserErrors.join('; ')}`);
+    await context.close();context = null;
+    await browser.close();browser = null;
+    await vite.close();vite = null;
+    await app.close();apiClosed = true;
+    const notifierClient = await h6NotifierPool.connect();
+    try {
+      const channels = await notifierClient.query('SELECT * FROM pg_listening_channels()');
+      assert.deepEqual(channels.rows, [], 'Fastify close must UNLISTEN before releasing notifier');
+    } finally { notifierClient.release(); }
+  } finally {
+    await context?.close().catch(() => {});
+    await browser?.close().catch(() => {});
+    await vite?.close().catch(() => {});
+    if (!apiClosed) await app.close().catch(() => {});
+  }
 });

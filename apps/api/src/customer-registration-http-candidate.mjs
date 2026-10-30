@@ -1,11 +1,12 @@
 import {normalizeCustomerRegistration} from './customer-profile.mjs';
+import {isAllowedCustomerOrigin} from './customer-origin.mjs';
 
 // Explicitly opt-in HTTP adapter. It is not imported by server.mjs.
 // A same-origin HTTPS deployment and the cookie/session verification contract
 // must be reviewed before enabling this candidate.
 export function registerCustomerRegistrationCandidate(app,{register,allowedOrigin}={}){
  if(!app||typeof app.post!=='function'||typeof register!=='function'||
-    typeof allowedOrigin!=='string'||!/^https:\/\/[^/]+$/.test(allowedOrigin))
+    !isAllowedCustomerOrigin(allowedOrigin))
   throw Error('invalid_customer_registration_http_configuration');
  app.post('/api/v1/customer/register',{bodyLimit:2048},async(request,reply)=>{
   reply.header('Cache-Control','no-store');

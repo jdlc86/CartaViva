@@ -64,6 +64,14 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow}={}){
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
+  if(typeof flow.lookupConfirmation==='function')scope.post('/orders/lookup',{bodyLimit:4096},async(request,reply)=>{
+   if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
+   try{
+    const result=await flow.lookupConfirmation({...request.body,
+     customerSessionToken:readCustomerCookie(request.headers.cookie)});
+    return reply.header('Cache-Control','no-store').send(result);
+   }catch(error){return replyFailure(reply,error);}
+  });
   scope.post('/orders/confirm',{bodyLimit:65536},async(request,reply)=>{
    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
    try{

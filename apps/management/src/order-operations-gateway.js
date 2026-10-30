@@ -60,18 +60,29 @@ async function pickupMutation(send,path,{lineId,expectedVersion,correlationId}={
 function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnectDelayMs) {
   if(typeof onEvent!=='function'||typeof onResync!=='function'||typeof onUnavailable!=='function')
     throw Error('invalid_order_event_subscription');
-  const abort=new AbortController();let cursor=0,timer=null;
+  const abort=new AbortController();let cursor=0,timer=null,activeReader=null;
   const run=async()=>{
     try{
       const response=await send('/api/v1/operations/events',{method:'GET',cache:'no-store',redirect:'error',
        credentials:'omit',signal:abort.signal,headers:{Accept:'text/event-stream',...(cursor?{'Last-Event-ID':String(cursor)}:{})}});
       if(!response.ok||!String(response.headers.get('content-type')??'').toLowerCase().startsWith('text/event-stream')||!response.body)
        throw Error('invalid_event_stream');
-      const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+      const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='',pendingCR=false;
+      activeReader=reader;
+      if(abort.signal.aborted){void reader.cancel().catch(()=>{});return;}
       while(!abort.signal.aborted){
-       const part=await reader.read();if(part.done)break;buffer+=decoder.decode(part.value,{stream:true});
+       const part=await reader.read();if(part.done)break;const chunk=decoder.decode(part.value,{stream:true});
+       // Normalize CRLF even when the CR and LF arrive in separate chunks.
+       // Preserve the pending CR until the next read rather than retaining it
+       // as a stray line terminator in the frame.
+       const normalized=(pendingCR?'\r':'')+chunk;
+       pendingCR=normalized.endsWith('\r');
+       buffer+=normalized.slice(0,pendingCR?-1:undefined).replaceAll('\r\n','\n');
+       // A stalled or malicious stream must not grow browser memory without bound.
+       // Treat oversized frames as a transport failure and resynchronize on reconnect.
        let boundary;
        while((boundary=buffer.indexOf('\n\n'))>=0){
+        if(boundary>65536)throw Error('order_event_frame_too_large');
         const block=buffer.slice(0,boundary).replaceAll('\r','');buffer=buffer.slice(boundary+2);
         if(!block||block.startsWith(':'))continue;
         let eventType='message',eventId='',data='';
@@ -89,14 +100,23 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
            Array.isArray(value.payload)||typeof value.createdAt!=='string'||!Number.isFinite(Date.parse(value.createdAt)))continue;
         cursor=id;onEvent(Object.freeze({id,type:eventType,payload:Object.freeze({...value.payload}),createdAt:value.createdAt}));
        }
+       // Enforce the limit on the unframed remainder, not on a batch of
+       // individually valid events delivered in a single network read.
+       if(buffer.length>65536)throw Error('order_event_frame_too_large');
       }
       if(!abort.signal.aborted)throw Error('event_stream_ended');
     }catch{
       if(abort.signal.aborted)return;onUnavailable();timer=setTimeout(run,reconnectDelayMs);
+    }finally{
+      if(activeReader){const reader=activeReader;activeReader=null;
+        void reader.cancel().catch(()=>{});}
     }
   };
   void run();
-  return()=>{abort.abort();if(timer!==null)clearTimeout(timer);};
+  return()=>{abort.abort();if(timer!==null)clearTimeout(timer);
+    if(activeReader){const reader=activeReader;activeReader=null;
+      void reader.cancel().catch(()=>{});}
+  };
 }
 
 export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) {

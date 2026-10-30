@@ -1,3 +1,5 @@
+import {hasUnsafeProductionDatabaseEndpoint,isUnsafeProductionSecret} from './production-secret-policy.mjs';
+
 // Pure configuration validator; never creates credentials or connects on import.
 // This login must be provisioned and audited separately, not by the API.
 export function readCustomerSessionPoolConfig(env = {}) {
@@ -12,7 +14,9 @@ export function readCustomerSessionPoolConfig(env = {}) {
       /[\s/@:]/.test(host) || /[\s/@:]/.test(user) ||
       user !== 'sabora_customer_session_login' ||
       !ca.includes('-----BEGIN CERTIFICATE-----') ||
-      !ca.includes('-----END CERTIFICATE-----')) {
+      !ca.includes('-----END CERTIFICATE-----') ||
+      (env.NODE_ENV === 'production' &&
+        (isUnsafeProductionSecret(password) || hasUnsafeProductionDatabaseEndpoint({host,database,ca})))) {
     throw Error('invalid_customer_session_pool_config');
   }
   return Object.freeze({

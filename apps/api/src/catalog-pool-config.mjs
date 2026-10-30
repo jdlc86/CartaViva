@@ -1,3 +1,5 @@
+import {hasUnsafeProductionDatabaseEndpoint,isUnsafeProductionSecret} from './production-secret-policy.mjs';
+
 // Catalog reader uses a dedicated NOINHERIT login, provisioned outside the API.
 // This function validates configuration without opening connections.
 export function readCatalogPoolConfig(env={}){
@@ -12,7 +14,10 @@ export function readCatalogPoolConfig(env={}){
     /[\s/@:]/.test(host)||/[\s/@:]/.test(user)||
     user!=='sabora_catalog_login'||
     !ca.includes('-----BEGIN CERTIFICATE-----')||
-    !ca.includes('-----END CERTIFICATE-----'))throw Error('invalid_catalog_pool_config');
+    !ca.includes('-----END CERTIFICATE-----')||
+    (env.NODE_ENV==='production'&&
+      (isUnsafeProductionSecret(password)||hasUnsafeProductionDatabaseEndpoint({host,database,ca}))))
+   throw Error('invalid_catalog_pool_config');
  return Object.freeze({host,port,database,user,password,
   ssl:Object.freeze({ca,rejectUnauthorized:true}),
   max:3,idleTimeoutMillis:10000,connectionTimeoutMillis:5000,allowExitOnIdle:false});

@@ -85,6 +85,15 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     expiresAt:line.expiresAt as string
    })))});
   },
+  async lookupConfirmation(input:{tableId:string;qrToken:string;visitId:string;
+   basketId:string;requestKey:string}){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/orders/lookup','POST',input);
+   if(value.status==='not_found')return Object.freeze({status:'not_found' as const});
+   if(value.status!=='confirmed'||typeof value.orderId!=='string'||!UUID.test(value.orderId)||
+      typeof value.grouping!=='string')
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({status:'confirmed' as const,orderId:value.orderId,grouping:value.grouping});
+  },
   async confirm(input:Json){
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/orders/confirm','POST',input);
    if(!['confirmed','replayed'].includes(String(value.status))||typeof value.orderId!=='string'||

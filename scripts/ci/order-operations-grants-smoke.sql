@@ -30,6 +30,46 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- Privileged definer functions must not be callable by public roles.
+  FOREACH v_role IN ARRAY ARRAY['public','anon','authenticated'] LOOP
+    IF has_function_privilege(v_role,
+      'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
+      'EXECUTE') OR
+       has_function_privilege(v_role,
+      'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
+      'EXECUTE') OR
+       has_function_privilege(v_role,
+      'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)',
+      'EXECUTE') THEN
+      RAISE EXCEPTION 'unexpected authorized operations RPC privilege for %', v_role;
+    END IF;
+  END LOOP;
+
+  -- Both the idempotency ledger and the event ledger must retain FORCE RLS.
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('order_line_transition_requests'),
+      ('order_line_events')
+    ) AS expected(relation_name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pg_class relation
+      JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+      WHERE namespace.nspname = 'sabora'
+        AND relation.relname = expected.relation_name
+        AND relation.relrowsecurity
+        AND relation.relforcerowsecurity
+    )
+  ) THEN
+    RAISE EXCEPTION 'order operations ledger FORCE RLS missing';
+  END IF;
+
+  FOREACH v_role IN ARRAY ARRAY['public','anon','authenticated'] LOOP
+    IF has_table_privilege(v_role,
+      'sabora.order_line_events','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+      RAISE EXCEPTION 'unexpected order operation event privilege for %', v_role;
+    END IF;
+  END LOOP;
+
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint
      WHERE conrelid = 'sabora.order_line_transition_requests'::regclass

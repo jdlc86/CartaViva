@@ -5,6 +5,7 @@ on:
       - '.github/workflows/client-browser-conformance.yml'
       - 'apps/client/**'
       - 'tests/client-*.test.mjs'
+      - 'scripts/ci/functional-validation-contract.mjs'
       - 'docs/design/**'
   workflow_dispatch:
 permissions:

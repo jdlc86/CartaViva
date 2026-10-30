@@ -1,7 +1,13 @@
 import test from 'node:test';
+import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
+import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-production-http.mjs';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {registerH6StaffEventStreamHttp,createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
+import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createRestrictedCustomerRegistration,REGISTER_CUSTOMER_SQL} from '../../apps/api/src/customer-production-registration.mjs';
@@ -130,6 +136,74 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
    READ_CUSTOMER_EVENTS_H6_SQL])});
  const flow=createCustomerProductionFlow({withTransaction:flowTx,withH6Transaction:h6CustomerTx,secretKey});
+ // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
+ // This harness supplies identity; the full customer-session verifier is tested separately.
+ let httpConfirmedOrder=null;
+ const customerHttp=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify')({logger:false});
+ const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
+  verifyCustomerSession:async token=>token===customer.token?{
+   customerId:customer.profile.id,publicId:customer.profile.public_id,
+   alias:'Cliente H6',company:null}:null,
+  revokeCustomerSession:async()=>false});
+ await registerCustomerProductionFlowHttp(customerHttp,{cookieAuth:h6CookieAuth,flow});
+ await customerHttp.ready();
+ try{
+  const headers={origin:'https://sabora.example','content-type':'application/json',
+   cookie:`__Secure-sabora_customer=${customer.token}`};
+  const post=(path,payload)=>customerHttp.inject({method:'POST',
+   url:`/api/v1/customer/${path}`,headers,payload});
+  const visitResponse=await post('visits',{tableId,qrToken});
+  assert.equal(visitResponse.statusCode,201,visitResponse.body);
+  const hv=visitResponse.json();
+  assert.deepEqual(hv.paymentPolicy,{requirePayAsOrdered:false,version:1});
+  const quoteResponse=await post('quotes',{tableId,qrToken,visitId:hv.visitId,
+   basketId:hv.basketId,lines:[{itemId,selection,quantity:1}]});
+  assert.equal(quoteResponse.statusCode,201,quoteResponse.body);
+  const request={tableId,qrToken,visitId:hv.visitId,basketId:hv.basketId,
+   requestKey:'h6_http_round_0001',paymentMode:'pay_now',
+   lines:[{quoteId:quoteResponse.json().lines[0].quoteId,itemId,selection,quantity:1}]};
+  // Use the actual customer PWA transport over the same H6 HTTP adapter.
+  const requireClient=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+  const ts=requireClient('typescript');
+  const transportSource=readFileSync(new URL('../../apps/client/src/customer-flow-transport.ts',import.meta.url),'utf8');
+  const transportJs=ts.transpileModule(transportSource,{compilerOptions:{
+   module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+  const {createCustomerFlowTransport}=await import('data:text/javascript;base64,'+
+   Buffer.from(transportJs).toString('base64'));
+  const browserFetch=async(path,init={})=>{
+   assert.equal(init.credentials,'same-origin');
+   const response=await customerHttp.inject({method:init.method||'GET',url:path,
+    headers:{...init.headers,...headers},payload:init.body});
+   return new Response(response.body,{status:response.statusCode,headers:{
+    'content-type':response.headers['content-type']||'application/json'}});
+  };
+  const pwaTransport=createCustomerFlowTransport({fetchImpl:browserFetch});
+  const pwaConfirmed=await pwaTransport.confirm(request);
+  assert.equal(pwaConfirmed.status,'confirmed');
+  assert.equal(pwaConfirmed.paymentMode,'pay_now');
+  assert.ok(pwaConfirmed.roundId);
+  // The PWA transport confirmation is the order continued by payment and kitchen.
+  const orderHttp=pwaConfirmed;
+  httpConfirmedOrder=orderHttp;
+  // Distinguish an order-id / round-id argument mismatch without relaxing scope.
+  const directRound=await h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
+   [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.roundId]));
+  assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
+  // Regression probe: replay must resolve the persisted H6 round, not 503.
+  // Surface the internal failure only inside disposable CI, never in HTTP.
+  let replayResult;
+  try{replayResult=await flow.confirm({...request,customerSessionToken:customer.token});}
+  catch(error){assert.fail(`H6 replay internal failure: ${error?.message||String(error)}`);}
+  assert.equal(replayResult.status,'replayed');
+  assert.equal(replayResult.orderId,orderHttp.orderId);
+  assert.equal(replayResult.roundId,orderHttp.roundId);
+  const proof=await admin.query(`SELECT count(*)::integer AS rounds,
+   (SELECT count(*)::integer FROM sabora.kitchen_dispatches
+    WHERE order_id=$1 AND round_id=$2) AS dispatches
+   FROM sabora.order_rounds WHERE order_id=$1 AND id=$2`,
+   [orderHttp.orderId,orderHttp.roundId]);
+  assert.deepEqual(proof.rows,[{rounds:1,dispatches:1}]);
+ }finally{await customerHttp.close();}
  const events=createH6CustomerEventRepository({withTransaction:h6CustomerTx});
  const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,role:'sabora_h6_provider_runtime',
   allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
@@ -142,6 +216,63 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const operations=createH6OperationsRepository({withTransaction:operationsTx});
  const issueKitchen=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
   databaseRole:'sabora_h6_operations_ci'});
+
+ // Continue the SAME HTTP-confirmed round through payment capture and
+ // automatic kitchen dispatch acknowledgement, not a separate direct order.
+ assert.ok(httpConfirmedOrder?.orderId);
+ const httpAuthorization=await provider.recordAuthorization({
+  orderId:httpConfirmedOrder.orderId,outcome:'authorized',
+  providerIntentId:'pi_H6HttpRound01',captureBefore:new Date(Date.now()+86400000)});
+ assert.equal(httpAuthorization.payment_state,'authorized');
+ const httpCaptureRequest=await provider.requestCapture({
+  orderId:httpConfirmedOrder.orderId,now:new Date(Date.now()+360000)});
+ assert.equal(httpCaptureRequest.action,'capture');
+ const httpCapture=await provider.recordCapture({orderId:httpConfirmedOrder.orderId,
+  outcome:'captured',providerChargeId:'ch_H6HttpRound01'});
+ assert.equal(httpCapture.dispatch_state,'requested');
+ const httpDispatch=(await admin.query(`SELECT d.id,d.round_id,d.state,p.state AS payment_state
+  FROM sabora.kitchen_dispatches d JOIN sabora.payment_attempts p ON p.round_id=d.round_id
+  WHERE d.order_id=$1`,[httpConfirmedOrder.orderId])).rows;
+ assert.equal(httpDispatch.length,1);
+ assert.equal(httpDispatch[0].id,httpCapture.dispatch_id);
+ assert.equal(httpDispatch[0].round_id,httpConfirmedOrder.roundId);
+ assert.equal(httpDispatch[0].payment_state,'captured');
+ const httpAck=await operations.acknowledgeDispatch({dispatchId:httpCapture.dispatch_id,
+  capability:issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'ack_dispatch',
+   targetId:httpCapture.dispatch_id,correlationId:'h6_http_ack_0001'})});
+ assert.equal(httpAck.repeated,false);
+ assert.equal((await admin.query('SELECT state FROM sabora.kitchen_dispatches WHERE id=$1',
+  [httpCapture.dispatch_id])).rows[0].state,'acknowledged');
+
+ // Same HTTP-created line is now eligible for kitchen preparation and
+ // produces the waiter pickup task on ready, after the H6 dispatch ACK.
+ const httpLine=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
+  [httpConfirmedOrder.orderId])).rows[0].id;
+ await admin.query(`UPDATE sabora.order_lines SET status='preparing' WHERE id=$1`,[httpLine]);
+ const httpReady=await admin.connect();
+ try{
+  await httpReady.query('BEGIN');
+  await httpReady.query(`UPDATE sabora.order_lines SET status='ready' WHERE id=$1`,[httpLine]);
+  await httpReady.query(`INSERT INTO sabora.pickup_notifications(order_id,order_line_id)
+   VALUES($1,$2)`,[httpConfirmedOrder.orderId,httpLine]);
+  await httpReady.query(`INSERT INTO sabora.order_line_events
+   (order_id,order_line_id,actor_user_id,from_status,to_status,correlation_id)
+   VALUES($1,$2,$3,'preparing','ready','h6_http_kitchen_ready_001')`,
+   [httpConfirmedOrder.orderId,httpLine,kitchenId]);
+  await httpReady.query('COMMIT');
+ }catch(error){await httpReady.query('ROLLBACK');throw error;}finally{httpReady.release();}
+ const httpPickup=(await admin.query(`SELECT state,version FROM sabora.pickup_tasks
+  WHERE order_line_id=$1`,[httpLine])).rows;
+ assert.equal(httpPickup.length,1);
+ assert.equal(httpPickup[0].state,'ready');
+ const httpClaim=await operations.managePickup({lineId:httpLine,action:'claim_pickup',
+  expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
+   actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
+   expectedVersion:Number(httpPickup[0].version),correlationId:'h6_http_waiter_claim_001'})});
+ assert.equal(httpClaim.outcome,'claimed');
+ assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.kitchen_dispatches
+  WHERE order_id=$1 AND round_id=$2`,
+  [httpConfirmedOrder.orderId,httpConfirmedOrder.roundId])).rows[0].n,1);
 
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
@@ -172,6 +303,22 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const captured=await provider.recordCapture({orderId:order.orderId,outcome:'captured',
   providerChargeId:'ch_H6Pg17Charge01'});
  assert.equal(captured.dispatch_state,'requested');
+
+ // The automatic dispatch belongs to this exact confirmed order and round:
+ // no second dispatch is created by concurrent confirmation or capture.
+ const dispatchProof=(await admin.query(`SELECT d.id,d.order_id,d.round_id,d.state,
+  r.order_id AS round_order_id,p.state AS payment_state
+  FROM sabora.kitchen_dispatches d
+  JOIN sabora.order_rounds r ON r.id=d.round_id
+  JOIN sabora.payment_attempts p ON p.round_id=r.id
+  WHERE d.order_id=$1`,[order.orderId])).rows;
+ assert.equal(dispatchProof.length,1,'one automatic kitchen dispatch per confirmed round');
+ assert.equal(dispatchProof[0].id,captured.dispatch_id);
+ assert.equal(dispatchProof[0].order_id,order.orderId);
+ assert.equal(dispatchProof[0].round_id,roundId);
+ assert.equal(dispatchProof[0].round_order_id,order.orderId);
+ assert.equal(dispatchProof[0].state,'requested');
+ assert.equal(dispatchProof[0].payment_state,'captured');
 
  const dispatchId=captured.dispatch_id;
  const line=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',[order.orderId])).rows[0].id;
@@ -304,6 +451,73 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await assert.rejects(operations.managePickup({lineId:line,action:'claim_pickup',expectedVersion:7,
   capability:expiredCap}),/invalid_pickup_capability|expired_pickup_capability/);
 
+ // Exercise the actual H6 HTTP router and SQL capability coordinator together.
+ // This test-only preHandler supplies a fixed, trusted waiter identity; it is
+ // NOT a substitute for the signed JWT preHandler in the H4 browser gate.
+ const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+ const h6Http=Fastify({logger:false});
+ const testIdentity={userId:waiterId,role:'waiter'};
+ const testForRoles=roles=>async request=>{
+  if(!roles.includes(testIdentity.role)){
+   const error=Error('test_role_denied');error.statusCode=403;throw error;
+  }
+  request.verifiedIdentity={userId:testIdentity.userId};
+  request.verifiedStaff={userId:testIdentity.userId,role:testIdentity.role};
+ };
+ registerH6OperationsHttp(h6Http,{forRoles:testForRoles,
+  operations:createH6OperationsCoordinator({repository:operations,issueCapability:issueKitchen})});
+ await h6Http.ready();
+ try{
+  const path=`/api/v1/operations/order-lines/${line}/pickup-claim`;
+  const claimBody={expectedVersion:7,correlationId:'h6_http_pickup_claim_001'};
+  const invalid=await h6Http.inject({method:'POST',url:path,
+   payload:{...claimBody,unexpected:true}});
+  assert.equal(invalid.statusCode,400);
+  assert.equal(invalid.headers['cache-control'],'no-store');
+  assert.equal(invalid.headers['x-content-type-options'],'nosniff');
+  const accepted=await h6Http.inject({method:'POST',url:path,payload:claimBody});
+  assert.equal(accepted.statusCode,200);
+  assert.equal(accepted.headers['cache-control'],'no-store');
+  assert.equal(accepted.headers['x-content-type-options'],'nosniff');
+  assert.equal(accepted.json().outcome,'claimed');
+  assert.equal(accepted.json().taskVersion,8);
+  const replay=await h6Http.inject({method:'POST',url:path,payload:claimBody});
+  assert.equal(replay.statusCode,200);
+  assert.equal(replay.json().repeated,true);
+  const conflict=await h6Http.inject({method:'POST',url:path,
+   payload:{expectedVersion:7,correlationId:'h6_http_pickup_conflict_001'}});
+  assert.equal(conflict.statusCode,409);
+  assert.equal(conflict.json().error,'pickup_claim_conflict');
+  const cancelled=await h6Http.inject({method:'POST',url:`${path}/cancel`,
+   payload:{expectedVersion:8,correlationId:'h6_http_pickup_cancel_001'}});
+  assert.equal(cancelled.statusCode,200);
+  assert.equal(cancelled.json().state,'ready');
+  assert.equal(cancelled.json().taskVersion,9);
+  const durable=(await admin.query('SELECT state,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+   [line])).rows[0];
+  assert.equal(durable.state,'ready');
+  assert.equal(Number(durable.version),9);
+  const denied=await h6Http.inject({method:'POST',
+   url:`/api/v1/operations/order-lines/${line}/ready-correction`,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_denied_001'}});
+  assert.equal(denied.statusCode,403);
+  testIdentity.role='kitchen';
+  testIdentity.userId=kitchenId;
+  const kitchenCannotClaim=await h6Http.inject({method:'POST',url:path,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_claim_denied_001'}});
+  assert.equal(kitchenCannotClaim.statusCode,403);
+  const corrected=await h6Http.inject({method:'POST',
+   url:`/api/v1/operations/order-lines/${line}/ready-correction`,
+   payload:{expectedVersion:9,correlationId:'h6_http_kitchen_correct_001'}});
+  assert.equal(corrected.statusCode,200);
+  assert.equal(corrected.json().state,'corrected');
+  assert.equal(corrected.json().taskVersion,10);
+  const afterCorrection=(await admin.query('SELECT state,version FROM sabora.pickup_tasks WHERE order_line_id=$1',
+   [line])).rows[0];
+  assert.equal(afterCorrection.state,'corrected');
+  assert.equal(Number(afterCorrection.version),10);
+ }finally{await h6Http.close();}
+
  const waiterEventsOne=await operations.readStaffEvents({afterCursor:0,limit:100,
   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'read_events',targetId:waiterId,
    correlationId:'h6_pickup_events_waiter_001'})});
@@ -315,6 +529,151 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.claim_cancelled'));
   assert.ok(backlog.events.some(event=>event.type==='sabora.pickup.ready_corrected'));
  }
+
+ // Verify PostgreSQL LISTEN/NOTIFY is a wake-up hint only: notification
+ // delivery cannot manufacture a durable event or bypass SQL authorization.
+ const notifier=createPostgresH6OutboxNotifier({pool:operationsPool});
+ const actualNotifier=await notifier;
+ try{
+  let hints=0;
+  const unsubscribe=actualNotifier.subscribe(()=>{hints++;});
+  try{
+   await admin.query("SELECT pg_notify('sabora_h6_event_committed','test-only-hint')");
+   for(let attempt=0;attempt<50&&hints===0;attempt++)
+    await new Promise(resolve=>setTimeout(resolve,50));
+   assert.ok(hints>0,'PG17 LISTEN must deliver committed notification');
+   const before=await operations.readStaffEvents({afterCursor:0,limit:100,
+    capability:issueKitchen({actorId:waiterId,staffRole:'waiter',
+     action:'read_events',targetId:waiterId,correlationId:'h6_notify_read_001'})});
+   await admin.query("SELECT pg_notify('sabora_h6_event_committed','fake-new-event')");
+   for(let attempt=0;attempt<50&&hints<2;attempt++)
+    await new Promise(resolve=>setTimeout(resolve,50));
+   assert.ok(hints>=2);
+   const after=await operations.readStaffEvents({afterCursor:0,limit:100,
+    capability:issueKitchen({actorId:waiterId,staffRole:'waiter',
+     action:'read_events',targetId:waiterId,correlationId:'h6_notify_read_002'})});
+   assert.deepEqual(after.events,before.events,
+    'untrusted NOTIFY payload must not create or alter outbox events');
+  }finally{unsubscribe();}
+ }finally{await actualNotifier.close();}
+
+ // Real loopback HTTP SSE: the staff route streams the authorized durable
+ // PG17 outbox backlog, not a fabricated browser fixture or mocked payload.
+ const sseApp=Fastify({logger:false});
+ let sseLoadCalls=0;
+ const sseLoadResults=[];
+ registerH6StaffEventStreamHttp(sseApp,{
+  forRoles:roles=>async request=>{
+   if(!roles.includes('waiter')){
+    const error=Error('test_role_denied');error.statusCode=403;throw error;
+   }
+   request.verifiedIdentity={userId:waiterId};
+   request.verifiedStaff={userId:waiterId,role:'waiter'};
+  },
+  events:{readStaffEvents:async args=>{
+   sseLoadCalls++;
+   try{
+    const backlog=await operations.readStaffEvents(args);
+    sseLoadResults.push({count:backlog.events?.length,resync:backlog.resyncRequired});
+    return backlog;
+   }catch(error){sseLoadResults.push({error:String(error)});throw error;}
+  }},issueCapability:issueKitchen,
+  subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+ });
+ const abortSse=new AbortController();
+ try{
+  await sseApp.listen({host:'127.0.0.1',port:0});
+  const address=sseApp.server.address();
+  assert.ok(address&&typeof address==='object'&&address.port>0);
+  const sseUrl=`http://127.0.0.1:${address.port}/api/v1/operations/events`;
+  const invalidScope=await fetch(sseUrl+'?unexpected=1');
+  assert.equal(invalidScope.status,400);
+  assert.equal((await invalidScope.json()).error,'invalid_event_scope');
+  for(const invalidCursor of ['-1','1.5','9999999999999999999999','abc']){
+   const invalidResponse=await fetch(sseUrl,{
+    headers:{accept:'text/event-stream','last-event-id':invalidCursor},
+    signal:AbortSignal.timeout(3000),
+   });
+   assert.equal(invalidResponse.status,200);
+   assert.ok((await invalidResponse.text()).includes('event: stream-error'));
+   assert.ok(invalidResponse.headers.get('content-type')?.startsWith('text/event-stream'));
+  }
+  const response=await fetch(sseUrl,{signal:abortSse.signal,
+   headers:{accept:'text/event-stream'}});
+  assert.equal(response.status,200);
+  assert.ok((response.headers.get('content-type')??'').startsWith('text/event-stream'));
+  assert.equal(response.headers.get('cache-control'),'no-store, no-transform');
+  const diagnosticBacklog=await operations.readStaffEvents({afterCursor:0,limit:100,
+   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'read_events',
+    targetId:waiterId,correlationId:'h6_sse_diagnostic_001'})});
+  assert.ok(diagnosticBacklog.events.some(event=>event.type==='sabora.pickup.claimed'),
+   'SSE diagnostic: pickup event must be visible to SQL reader');
+  const reader=response.body.getReader();
+  let received='';
+  try{
+   for(let attempt=0;attempt<30;attempt++){
+    const next=await Promise.race([reader.read(),new Promise((_,reject)=>
+     setTimeout(()=>reject(Error('h6_sse_backlog_timeout; received='+JSON.stringify(received.slice(-700))+'; sqlEvents='+diagnosticBacklog.events.length+'; loads='+sseLoadCalls+'; results='+JSON.stringify(sseLoadResults))),6000))]);
+    if(next.done)break;
+    received+=new TextDecoder().decode(next.value);
+    if(received.includes('event: sabora.pickup.claimed')&&
+       received.includes('event: sabora.pickup.ready_corrected'))break;
+   }
+   assert.ok(received.includes('event: sabora.pickup.claimed'));
+   assert.ok(received.includes('event: sabora.pickup.ready_corrected'));
+   assert.match(received,/id: [0-9]+/);
+   const delivered=[...received.matchAll(/^id: ([0-9]+)$/gm)].map(match=>Number(match[1]));
+   assert.ok(delivered.length>=2);
+   assert.ok(delivered.every((id,index)=>index===0||id>delivered[index-1]));
+   const reconnectAbort=new AbortController();
+   try{
+    const reconnect=await fetch(sseUrl,{signal:reconnectAbort.signal,
+     headers:{accept:'text/event-stream','last-event-id':String(delivered[0])}});
+    assert.equal(reconnect.status,200);
+    const reconnectReader=reconnect.body.getReader();
+    try{
+     const first=await Promise.race([reconnectReader.read(),new Promise((_,reject)=>
+      setTimeout(()=>reject(Error('h6_sse_resume_timeout')),1500))]);
+     const resumed=new TextDecoder().decode(first.value);
+     assert.ok(resumed.includes('id: '+delivered[1]));
+     assert.ok(!resumed.includes('id: '+delivered[0]+'\\n'));
+    }finally{reconnectAbort.abort();await reconnectReader.cancel().catch(()=>{});}
+   }finally{reconnectAbort.abort();}
+  }finally{abortSse.abort();await reader.cancel().catch(()=>{});}
+ }finally{abortSse.abort();await sseApp.close();}
+
+ // An idle SSE connection must recheck durable staff scope at heartbeat,
+ // even if no PostgreSQL NOTIFY is delivered after a revocation.
+ const idleApp=Fastify({logger:false});
+ let scopeChecks=0;
+ registerH6StaffEventStreamHttp(idleApp,{
+  forRoles:()=>async request=>{
+   request.verifiedIdentity={userId:waiterId};
+   request.verifiedStaff={userId:waiterId,role:'waiter'};
+  },
+  events:{readStaffEvents:async()=>{
+   scopeChecks++;
+   if(scopeChecks>1)throw Error('staff_revoked_in_postgres');
+   return {version:1,events:[],resyncRequired:false};
+  }},
+  issueCapability:issueKitchen,subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+ });
+ try{
+  await idleApp.listen({host:'127.0.0.1',port:0});
+  const idleAddress=idleApp.server.address();
+  const idleResponse=await fetch(`http://127.0.0.1:${idleAddress.port}/api/v1/operations/events`,
+   {signal:AbortSignal.timeout(10000)});
+  assert.equal(idleResponse.status,200);
+  let idleStream='';
+  for await(const chunk of idleResponse.body){
+   idleStream+=new TextDecoder().decode(chunk);
+   if(idleStream.includes('event: access-revoked'))break;
+  }
+  assert.ok(idleStream.includes(': keepalive\n\n'),
+   'heartbeat must use actual SSE newline delimiters, not escaped text');
+  assert.ok(scopeChecks>=2,'heartbeat must recheck authorization');
+  assert.ok(idleStream.includes('event: access-revoked'));
+ }finally{await idleApp.close();}
 
  const sessionHash=hashCustomerSessionToken(customer.token);
  const backlog=await events.read({sessionHash,tableId,visitId:visit.visitId,
@@ -548,4 +907,31 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal(rls.rows.length,12);
  assert.ok(rls.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity&&
   !row.customer_direct&&!row.operations_direct&&!row.provider_direct));
+});
+
+// Browser transport contract: CRLF-delimited SSE can arrive split across
+// arbitrary fetch stream chunks. This test exercises the actual management
+// gateway rather than duplicating its parser.
+test('management SSE gateway accepts fragmented CRLF event frames', {timeout: 5000}, async () => {
+ const {createOrderOperationsGateway}=await import('../../apps/management/src/order-operations-gateway.js');
+ const event={eventKey:'test-pickup',aggregateId:'a1000000-0000-4000-8000-000000000001',
+  aggregateVersion:1,payload:{state:'claimed'},createdAt:'2026-10-29T00:00:00.000Z'};
+ const frame='id: 1\r\nevent: sabora.pickup.claimed\r\ndata: '+JSON.stringify(event)+'\r\n\r\n';
+ const pieces=[frame.slice(0,8),frame.slice(8,13),frame.slice(13,-3),frame.slice(-3)];
+ const body=new ReadableStream({start(controller){
+  for(const piece of pieces)controller.enqueue(new TextEncoder().encode(piece));
+  controller.close();
+ }});
+ let resolveEvent;
+ const received=new Promise(resolve=>{resolveEvent=resolve;});
+ const gateway=createOrderOperationsGateway({send:async()=>new Response(body,{
+  status:200,headers:{'content-type':'text/event-stream'}}),reconnectDelayMs:30000});
+ const unsubscribe=gateway.subscribeEvents({onEvent:resolveEvent,onResync:()=>{},onUnavailable:()=>{}});
+ try{
+  const result=await Promise.race([received,new Promise((_,reject)=>
+   setTimeout(()=>reject(Error('fragmented_crlf_sse_timeout')),2000))]);
+  assert.equal(result.id,1);
+  assert.equal(result.type,'sabora.pickup.claimed');
+  assert.deepEqual(result.payload,{state:'claimed'});
+ }finally{unsubscribe();}
 });

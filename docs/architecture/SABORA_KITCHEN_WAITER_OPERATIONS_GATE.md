@@ -560,3 +560,240 @@ activación operativa: `server.mjs` sigue sin importar esta composición; no se
 han creado credenciales persistentes, aplicado migraciones remotas, desplegado
 servicios ni tocado Fleetia o el VPS. La revisión independiente posterior al CI
 final continúa siendo un gate humano separado.
+
+## Aplicación candidata aislada (2026-10-28)
+
+`apps/api/src/order-operations-candidate-app.mjs` incorpora una fábrica opt-in
+`createVerifiedOrderOperationsCandidate(options)`. Construye una instancia Fastify
+sin listener, exige el gate de los tres endpoints con identidades SQL separadas,
+autenticación criptográfica inyectada y preflight de privilegios, y cierra la
+instancia si falla el arranque. El servidor general no importa esta fábrica.
+La fábrica no provisiona logins, no concede grants, no configura secretos ni
+activa un servicio. Las pruebas de rechazo se encuentran en
+`tests/order-operations-candidate-app.test.mjs`. La integración positiva con
+PostgreSQL 17 desechable y credenciales de mínimos privilegios sigue siendo
+condición pendiente para considerar operativo este candidato.
+
+## Rechazo de principal operativo privilegiado
+
+La prueba de arranque aislado también simula un login operativo con
+`BYPASSRLS` habilitado después de superar el preflight del lector de
+personal. La fábrica debe rechazar la identidad, descartar su conexión y no
+devolver ninguna aplicación preparada. Este ensayo usa un resultado SQL
+simulado y no demuestra el aprovisionamiento real de roles. La prueba positiva
+de PostgreSQL 17 con los grants exactos sigue pendiente y es condición para
+activar las rutas.
+
+## Evidencia de login PostgreSQL real sin permisos (CI aislado)
+
+El script `scripts/ci/order-operations-login-denial-smoke.sh`, ejecutado por
+`postgres-migration-smoke.sh` tras aplicar todas las migraciones en PostgreSQL
+17 desechable, autentica un login independiente por TCP local dentro del
+contenedor. Comprueba cinco denegaciones efectivas mediante SQLSTATE
+`insufficient_privilege`: SELECT sobre ambos registros y EXECUTE de los tres
+wrappers autorizados. No acepta errores genéricos como evidencia de permisos
+correctos. El login de prueba no se conserva ni se provisiona fuera del runner.
+
+Esta prueba es **negativa**: no demuestra que los dos logins operativos con sus
+grants exactos puedan arrancar la aplicación candidata y servir tablero,
+transición e historial. Esa prueba positiva continúa bloqueando la activación.
+
+## Integración positiva de la fábrica candidata en PostgreSQL 17
+
+`scripts/ci/order-operations-read-postgres17.test.mjs` utiliza ahora
+`createVerifiedOrderOperationsCandidate` (la fábrica candidata real) en
+lugar de registrar manualmente sus rutas. Crea dos logins SQL distintos
+de mínimos privilegios en PostgreSQL 17 desechable, configura grants
+exactos, supera los preflights y exige que se registren las tres rutas.
+Ejecuta con JWT firmado el flujo de cocina y sala, incluido tablero,
+transiciones, reintentos, historial y persistencia. Las pruebas adicionales
+del mismo archivo cubren permisos, capacidades firmadas, caducidad y
+revocación. La CI es la evidencia de ejecución; hasta obtener resultados
+SUCCESS del SHA correspondiente, este cambio permanece sin validar.
+
+Esta fábrica no se importa desde `server.mjs`, no abre listener y no
+habilita rutas en producción. La aprobación de activación operativa,
+credenciales y despliegue siguen siendo hitos independientes.
+
+## Transporte autenticado opt-in de la PWA de gestión
+
+`apps/management/src/order-operations-authenticated-gateway.js` incorpora
+un adaptador de transporte que exige un proveedor de token de acceso confiable,
+obtiene una credencial nueva para cada petición, evita cookies, redirecciones
+y caché, y rechaza la petición antes de hacer red cuando falta identidad.
+La suite `apps/management/tests/order-operations-authenticated-gateway.test.mjs`
+verifica el rechazo sin credenciales y el encabezado Bearer. El adaptador
+no lee localStorage ni sessionStorage, no incluye credenciales en el bundle
+y no se conecta automáticamente desde `main.tsx`.
+
+**No se ha habilitado el canal operativo:** falta la integración de sesión
+real de gestión con este proveedor, el bootstrap aislado del servidor y la
+prueba E2E navegador→API→PG17. Esta entrega no certifica todavía el hito
+funcional completo ni autoriza un despliegue.
+
+## Ensayo vertical PWA de gestión → HTTP candidato → PostgreSQL 17
+
+El harness `scripts/ci/order-operations-read-postgres17.test.mjs` incluye
+un recorrido adicional por el adaptador autenticado de la PWA de gestión:
+`listBoard` → `transitionLine(preparing)` → `transitionLine(ready)` →
+`listHistory`. Las peticiones pasan por Fastify `inject` de la fábrica
+candidata y por dos logins PostgreSQL restringidos. Se verifica el estado
+persistido y la adquisición de un token nuevo en cada operación. No hay
+servidor escuchando ni credenciales productivas. Este ensayo no sustituye
+una prueba de navegador real ni conecta automáticamente `main.tsx`;
+requiere CI verde del commit correspondiente.
+
+## Punto de montaje explícito de gestión
+
+`apps/management/src/main.tsx` expone
+`mountAuthenticatedManagementApp({element,getAccessToken,fetchImpl})`
+para un host que ya haya autenticado al empleado y suministre la función
+de adquisición de token. El montaje reutiliza el root React existente
+cuando coincide con el root de vista previa, evitando dos roots sobre el
+mismo elemento. La vista previa predeterminada permanece sin gateway.
+No se proporciona todavía ese host autenticado ni se importa la fábrica
+SQL candidata desde el servidor general. Este punto de montaje es
+infraestructura de integración, **no activación productiva**.
+
+## Cobertura vertical de roles y recogida
+
+El harness PG17 comprueba además dos gateways autenticados separados,
+cocina y camarero, con JWT reales sobre el candidato Fastify. Verifica
+denegación de preparar por camarero, preparación y aviso durable por cocina,
+repetición idempotente sin doble efecto, lectura de listo por sala,
+denegación de recogida por cocina, recogida por camarero, historial de tres
+eventos y una sola notificación durable. Las credenciales y la base de datos
+son exclusivamente efímeras de CI. La conformidad depende de CI verde;
+la prueba de navegador con identidad real sigue siendo puerta pendiente.
+
+## Ciclo de sesión y cierre seguro del canal de gestión
+
+El montaje explícito conserva un único React root por elemento y protege
+contra cierres tardíos de sesiones anteriores mediante una generación de
+montaje. El desmontaje lógico vuelve a la vista previa sin gateway y
+revoca el transporte de esa sesión. `revoke()` impide peticiones nuevas,
+descarta credenciales recibidas tardíamente y aborta las peticiones HTTP
+en curso; el gateway no guarda tokens en almacenamiento del navegador.
+Las pruebas cubren ausencia de identidad, token fresco, revocación
+antes de la petición, durante la adquisición de token y durante HTTP.
+No se conecta automáticamente un proveedor de identidad ni se
+habilitan las rutas en el servidor general. La revocación de UI no
+sustituye la revocación durable de personal en PostgreSQL.
+
+## Revocación del canal de eventos
+
+El gateway autenticado registra las suscripciones SSE activas y
+`revoke()` cierra cada una además de abortar HTTP. La suscripción
+rechaza una nueva apertura después de revocación y el cierre idempotente
+impide reconexiones de una sesión antigua. Hay regresión automatizada
+para cierre SSE y rechazo de resuscripción. El canal no se activa en
+la vista previa ni sustituye el control SQL de revocación del personal.
+
+## Liberación del lector SSE
+
+El cliente de eventos libera explícitamente el `ReadableStreamDefaultReader`
+cuando se revoca la sesión o se cancela una suscripción, incluso cuando un
+adaptador `fetch` no implementa la cancelación automática del cuerpo tras
+`AbortSignal`. La regresión verifica que el cuerpo abierto recibe
+`cancel()` una sola vez. Esto evita conservar un lector colgado tras
+logout; no habilita nuevas capacidades ni cambia las transiciones SQL.
+
+## Aislamiento de sesiones entre empleados
+
+El montaje de gestión utiliza `management-session-fence.js` para asegurar
+que solo un canal de operaciones conserva la titularidad activa. Cuando
+un host autenticado cambia de empleado sin cerrar antes la sesión anterior,
+la nueva sesión revoca el gateway anterior **antes de renderizar**.
+Un callback de logout antiguo no puede desmontar ni revocar la sesión
+posterior. La revocación se ejecuta como máximo una vez por sesión.
+El control se prueba fuera de React con sucesión de identidades, cierres
+fuera de orden, cierre global y entradas inválidas. No se infiere el rol
+del cliente: la autorización sigue siendo responsabilidad del backend
+y PostgreSQL.
+
+## Aislamiento de estado visual por identidad
+
+La revocación del transporte no basta para aislar el estado local React:
+la vista de comandas mantiene tablero, historial, eventos, borradores
+de incidencia y operaciones pendientes. Al cambiar la identidad del
+empleado, `main.tsx` revoca el canal anterior, incrementa la clave de
+montaje y reemplaza **sincrónicamente** el árbol de componentes mediante
+`flushSync`. Esto evita que el estado de un empleado permanezca visible
+durante la siguiente sesión o después del logout. Se añadió un test de
+regresión del contrato de montaje y de la vista previa sin gateway.
+Este control es una defensa de UI; la separación de datos efectiva
+permanece en los hooks de autenticación y RLS PostgreSQL. El recorrido
+de navegador con identidades reales sigue pendiente y no se declara
+hito productivo cerrado.
+
+## Evidencia adicional de navegador autenticado — 28-10-2026
+
+El workflow `management-browser-visual-smoke.yml` incorpora `scripts/ci/management-authenticated-browser-smoke.mjs`. En Chromium real se monta la PWA con tokens efímeros inyectados y un transporte HTTP interceptado exclusivamente en el contexto del navegador. Se ejercitan preparación, paso a listo, sustitución por una sesión de camarero, ausencia de acciones de cocina para sala y cierre de sesión. El fixture no usa credenciales ni conexiones operativas.
+
+**Alcance de la evidencia:** es una prueba real de interfaz y frontera de transporte con respuestas HTTP simuladas; **NO** certifica E2E navegador → API Fastify → PostgreSQL 17, identidad de personal aprovisionada ni activación. El harness PG17 existente permanece separado. La integración completa sigue pendiente y las rutas del servidor general siguen sin montarse.
+
+## Candidato E2E vertical Chromium → Fastify → PostgreSQL 17 (28-10-2026)
+
+El test `Chromium management PWA traverses signed Fastify candidate and disposable PG17 kitchen-to-waiter` en `scripts/ci/order-operations-read-postgres17.test.mjs` utiliza Chromium real, Vite local efímero, JWT RS256 de personal de prueba, la factoría Fastify candidata con pools SQL restringidos y PostgreSQL 17 desechable del runner. Las peticiones del navegador se puentean mediante Playwright `page.route` hacia `app.inject` para evitar exponer un listener de API o montar el candidato en `server.mjs`; la autorización y la escritura SQL las ejecuta el backend real, no un fixture. Comprueba preparar → listo, persistencia SQL, cambio de identidad cocina/camarero, ausencia de acciones de cocina para sala y cierre de sesión. La conexión SSE se simula como indisponible: esta prueba **no** acredita el transporte SSE de extremo a extremo, recogida en navegador, ni activación productiva. El flujo de recogida e idempotencia SQL ya tiene pruebas de integración separadas.
+
+El harness instala Playwright/Chromium solo en GitHub Actions y usa exclusivamente el contenedor PostgreSQL 17 creado y eliminado por `catalog-postgres17-node-driver-smoke.sh`. **Evidencia CI pendiente de verificar tras los commits `e8cf02f` y `11823f7`; no declarar PASS antes de su conclusión.**
+
+### Evidencia de cierre del E2E vertical (28-10-2026)
+
+El commit `102509ff944204c2ad071f7712e407cee14a5e72` ha superado los tres workflows del PR Draft #40: `Sabora CI` (run 40763993839), `Bootstrap Sabora lockfile` (run 40763993675) y `Sabora management browser visual smoke` (run 40763993641). En el test de navegador se comprueba la transición de una línea identificada por mesa de prueba, la persistencia PostgreSQL 17, la sustitución de sesión de cocina por camarero, la denegación real HTTP 403 de una transición prohibida para camarero y la lectura del historial SQL en la PWA. El navegador usa un puente de transporte de Playwright hacia `app.inject` de Fastify, **no** una API desplegada ni una conexión HTTP remota de producción. El E2E no acredita SSE real, claim/cancel de recogida desde Chromium, ni despliegue; estas capacidades requieren validación específica antes de cualquier activación. PR permanece Draft, sin merge ni despliegue.
+
+### Extensión de seguridad del E2E: revocación activa
+
+El commit `651b322` incorpora una prueba de navegador que conserva un JWT RS256 vigente, suspende el registro de personal en PostgreSQL 17 y exige rechazo HTTP 403 del backend real. La prueba restaura el estado del actor en `finally` para aislar la regresión. **Validado** por los workflows del commit documental `b6ad0cc`: Sabora CI `40764758104`, Bootstrap `40764758071` y visual smoke `40764758043`, todos SUCCESS. Esta cobertura no equivale a implementar el transporte SSE ni las operaciones de recogida, que siguen siendo gates separados.
+
+### Integración H4/H6: fuente de verdad técnica y gate pendiente
+
+La inspección de código confirma que **los endpoints de recogida y SSE ya están implementados en el candidato H6**, no faltan del repositorio: `apps/api/src/h6-operations-http.mjs` registra `pickup-claim`, `pickup-claim/cancel` y `ready-correction`; `apps/api/src/h6-candidate-composition.mjs` registra `registerH6StaffEventStreamHttp` y el notificador de outbox. Lo que falta es **montar y verificar conjuntamente** los candidatos H4 y H6 en un único proceso Fastify aislado y ejercitar Chromium contra esas rutas con PostgreSQL 17 desechable. No duplicar rutas, coordinadores ni funciones SQL de H6 dentro de H4. La composición H6 requiere pools diferenciados y preflight de identidades, autenticación de cliente, flujo de pagos y proveedor; no sustituirlos por dobles en un supuesto E2E. La activación del bootstrap de producción permanece prohibida sin autorización expresa.
+
+### Gate HTTP H6 de recogidas validado (28-10-2026)
+
+Commit `b4ea03fd262f135534f09b4a7a549cdc8c03e75a`: prueba del router `registerH6OperationsHttp` con el coordinador H6 y principal PostgreSQL 17 restringido, dentro del harness desechable `scripts/ci/h6-postgres17.test.mjs`. Verifica payload inválido (400), claim, repetición idempotente, conflicto por versión (409), cancelación, versión durable y prohibición de corrección de cocina por actor de sala. El preHandler de este test inyecta una identidad fija **solo de prueba**; no certifica JWT, que se valida en el gate H4 independiente. Workflows SUCCESS: Sabora CI `40765709976`, Bootstrap `40765709591`, visual smoke `40765709871`. Pendiente: un único E2E Chromium con identidad real, H4+H6, recogida y SSE. No se activó el bootstrap productivo.
+
+### Robustez HTTP y regresión de persistencia (28-10-2026)
+
+Los endpoints H6 de recogida incluyen `Cache-Control: no-store` y `X-Content-Type-Options: nosniff` tanto en respuestas exitosas como en errores de validación. La prueba PostgreSQL 17 lo exige expresamente. En el E2E Chromium H4 se corrigió una condición de carrera de la propia prueba: tras la transición de cocina, la lectura SQL se realiza mediante espera acotada hasta confirmar el estado durable `ready`, sin aceptar únicamente la representación visual. Commit validado `35899113d587e58236db9d66898d5744cb61cb48`: Sabora CI `40767316203`, Bootstrap `40767316210`, visual smoke `40767316166`, los tres SUCCESS. El primer intento `66910c2` detectó el fallo transitorio y no se considera evidencia de cierre. Sigue pendiente la integración conjunta H4/H6 con SSE y recogida desde Chromium.
+
+### Gate de transporte SSE real H6 (28-10-2026)
+
+El test `scripts/ci/h6-postgres17.test.mjs` abre un listener Fastify efímero exclusivamente en `127.0.0.1` y consulta `/api/v1/operations/events` con `fetch` real. El stream usa el repositorio H6 con principal SQL restringido, capacidad de personal firmada y eventos durables de PostgreSQL 17; verifica respuesta HTTP 200, tipo `text/event-stream`, `Cache-Control: no-store, no-transform`, cursor `id:` y recepción de `sabora.pickup.claimed` y `sabora.pickup.ready_corrected`. El preHandler de identidad es un fixture local del test: **no** certifica JWT ni integración Chromium/H4. El primer intento falló por sintaxis de una expresión regular del test y se corrigió; el commit `120157a94f72a9d67fd298f072eb955912f2aef5` terminó con Sabora CI `40772851788`, Bootstrap `40772851626` y visual smoke `40772851601` todos SUCCESS. Sin listener productivo, merge ni despliegue. Pendiente el E2E único de Chromium con autenticación real H4/H6 y recogida por UI.
+
+### Regresión de cursores SSE inválidos (29-10-2026)
+
+El test de transporte SSE H6 sobre PostgreSQL 17 desechable verifica ahora, además de reanudación monotónica con `Last-Event-ID`, el cierre del stream con evento `stream-error` cuando el cursor es negativo, decimal, no numérico o excede el rango admitido. Se prueba por `fetch` HTTP contra Fastify efímero en loopback, sin identidad JWT real ni navegador integrado H4/H6. Commit `263ff05700b77093e619a81fe018a0c23b95f46c`: Sabora CI `40785033621`, Bootstrap `40785033864` y visual smoke `40785033821`, todos SUCCESS. La integración conjunta Chromium H4/H6 con recogida y SSE autenticados permanece abierta y no se declara completada.
+
+### Gate de NOTIFY como aviso no confiable (29-10-2026)
+
+La regresión PostgreSQL 17 `scripts/ci/h6-postgres17.test.mjs` comprueba el `LISTEN` real con un pool SQL restringido y entrega de dos `pg_notify` desde el fixture aislado. Tras ambas notificaciones, el lector autorizado de outbox conserva exactamente los mismos eventos durables; los payloads arbitrarios `test-only-hint` y `fake-new-event` no generan datos operativos. El notifier libera la suscripción y conexión al terminar. Commit `d08ce93bfcf03cc391c9a0917f2357abca20bd76`: Sabora CI `40785713571`, Bootstrap `40785713517` y visual smoke `40785713374` SUCCESS. Esta prueba no sustituye el pendiente E2E único H4/H6 con JWT, recogida desde Chromium y SSE autenticado.
+
+### Revocación SSE en reposo y ciclo de vida HTTP (29-10-2026)
+
+El stream de personal H6 vuelve a verificar su autorización durable al emitir cada heartbeat, incluso si no llega ningún `NOTIFY` tras una revocación. La conexión secuestrada mediante `reply.hijack()` se limpia al cerrarse la **respuesta** HTTP, no al finalizar la petición de entrada. La regresión `scripts/ci/h6-postgres17.test.mjs` comprueba el backlog SSE real sobre PostgreSQL 17 desechable, reanudación de cursores y revocación de una conexión inactiva mediante el evento `access-revoked`. Durante la implementación se detectó un error de sintaxis del heartbeat, que impedía llegar a la lectura de eventos (`loads=0`); quedó corregido en `247207ccf2ca900bbcf0457605029b6bbe957fe5`. Workflows del commit: Sabora CI `40788849948`, Bootstrap `40788849996` y visual smoke `40788849796`, todos SUCCESS. La identidad del test SSE sigue siendo un fixture local, no un JWT autenticado de Chromium. **Permanece pendiente** el E2E conjunto H4/H6 con JWT, recogida desde la UI y SSE autenticado. No hubo merge, despliegue ni intervención en VPS/Supabase operativo.
+
+### Compatibilidad de roles y tramas SSE (29-10-2026)
+
+El constructor `createProtectedRouteHooks` acepta ahora los cuatro roles durables (`root`, `admin`, `waiter`, `kitchen`) al configurar listas explícitas; la autorización efectiva sigue exigiendo JWT verificado y consulta de membresía activa, sin derivar permisos de claims de rol. Las rutas H4 mantienen su propia lista de roles y no conceden acceso a `root` por este cambio. El heartbeat de H6 emite el delimitador real `: keepalive\n\n`, no barras invertidas literales. La regresión PostgreSQL 17 comprueba explícitamente el formato de la trama y la revocación SSE en reposo. Commits `8faba1d2bfd2456ad1b9822dfbbb4df13b741332`, `72399196aa37c3cc33fc270cfae5e4502b488b18` y `cf68a54da1ff7576e74d1ddeeece61007faed6ca`; para el último, Sabora CI `40791548256`, Bootstrap `40791548356` y Chromium visual smoke `40791548249` terminaron SUCCESS. Esto **no cierra** el E2E conjunto H4/H6 con JWT real, recogida desde Chromium y SSE autenticado. No hay autorización para merge ni despliegue.
+
+### Candidato integrado H4/H6 optativo y cobertura de aislamiento (29-10-2026)
+
+`apps/api/src/h4-h6-integrated-candidate.mjs` registra los candidatos H4 y H6 en un único Fastify **solo por invocación explícita**, reutilizando la autenticación JWT y consulta durable de personal de H4 para las rutas H6. Exige pools SQL diferenciados entre identidades H4/H6, impide que el llamador inyecte un `forRoles` permisivo y rechaza el aliasing del pool opcional de notificaciones con las identidades operativas. El cierre del notificador es idempotente ante fallos de arranque y cierre de Fastify. La regresión `scripts/ci/h4-h6-candidate.test.mjs` cubre rechazo previo al arranque de configuraciones inválidas y se incorpora a `pnpm test` mediante `package.json` desde `e57bc2b1fe15ee437e6178bedb1e91315e68b40d`. **La ejecución CI de ese commit aún debe confirmarse; no atribuirle SUCCESS anticipadamente.** El módulo no habilita producción ni demuestra por sí solo el E2E Chromium con PostgreSQL 17, JWT, recogida y SSE. Ese gate permanece abierto. No se autoriza merge, despliegue ni intervención en recursos compartidos.
+
+### Evidencia de regresión H4/H6 de identidades SQL (29-10-2026)
+
+La composición optativa H4/H6 comprueba también aliasing de identidad por `pool.options.user` y `pool.options.connectionString`, aunque se inyecten objetos pool diferentes. La regresión de `scripts/ci/h4-h6-candidate.test.mjs` cubre ausencia de dependencias, aliasing de pools, identidad SQL compartida y rechazo previo a abrir conexiones. El commit `b402fed11403131b59582d0754c2cf4c30bedc9c` terminó con Sabora CI `40795713462`, Bootstrap lockfile `40795713570` y visual smoke `40795713473` en SUCCESS. **Estos controles no acreditan** todavía la prueba conjunta Chromium con H4/H6 reales, JWT, recogida y SSE autenticado; ese requisito normativo continúa pendiente.
+
+### Cierre candidato integrado H4/H6 con JWT, Chromium y SSE real (29-10-2026)
+
+`scripts/ci/order-operations-read-postgres17.test.mjs` sustituye el puente `page.route`/`app.inject` del ensayo anterior por un único listener loopback de `createH4H6IntegratedCandidate`, PostgreSQL 17 desechable y un proxy Vite local hacia el mismo proceso Fastify. La PWA de gestión usa JWT RS256 firmados y los hooks reales de personal; no se inyectan identidades verificadas ni un `forRoles` permisivo. El fixture contiene visita, cuenta, ronda y despacho H6 válidos.
+
+El recorrido cubre cocina `confirmed → preparing → ready`, emisión outbox, actualización de sala por SSE sin polling, claim externo, cancelación por teclado, reasignación, persistencia tras recarga y carrera de dos camareros con replay idempotente y conflictos sin efectos. La aceptación mantiene la línea en `ready`: aceptar la tarea de recogida no se presenta como entrega al cliente ni crea un estado `delivered`.
+
+El stream se interrumpe de forma controlada después de recibir datos reales y el gateway reconecta con `Last-Event-ID`; también se fuerza un cursor anterior a la ventana disponible y se exige `resync-required`. Una suspensión en PostgreSQL invalida una conexión SSE ya abierta mediante revalidación de heartbeat, aun sin `NOTIFY`. El cierre de Fastify ejecuta `UNLISTEN`, libera el cliente y deja `pg_listening_channels()` vacío.
+
+Durante la integración se corrigió el compositor común para usar `registerVerifiedRestrictedOrderOperationsFromPools`, el mismo registro H4 completo que ya separa el lector de personal del principal de operaciones. H6 acepta un `eventHeartbeatMs` explícito entre 5 y 60 segundos, conservando 15 segundos por defecto, para que la caducidad de autorización del stream sea verificable y acotada.
+
+La matriz y los límites completos se registran en `docs/reviews/SABORA_DESKTOP_H4_H6_INTEGRATION_REPORT_2026-10-29.md`. Esta evidencia cierra el candidato funcional aislado cuando el SHA final tenga CI verde; **no** monta el candidato en `server.mjs`, no activa producción y no autoriza merge, despliegue ni cambios en Supabase operativo/VPS.

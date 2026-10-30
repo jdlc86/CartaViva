@@ -56,6 +56,7 @@ test('verified composition rejects equal declared SQL roles before querying', as
     async connect() { events.push('connect'); throw Error('unexpected_connection'); },
   });
   await assert.rejects(registerVerifiedOrderOperationsFromPools({
+    hasRoute() { return false; },
     get() { events.push('get'); }, post() { events.push('post'); },
   }, {
     staffPool: makePool('sabora_staff_reader', 'postgres://staff'),
@@ -85,7 +86,9 @@ test('all malformed pool configurations fail before connections and route regist
     {staffPool: null},
     {operationsPool: null},
     {staffPool: {options: {}, query: null}},
+    {staffPool: {options: {}, query() {}, connect: null}},
     {operationsPool: {options: {}, connect: null}},
+    {operationsPool: {options: {}, connect() {}, query: null}},
     {operationsPool: makePool('sabora_staff_reader', 'postgres://operations')},
     {operationsPool: makePool('sabora_operations', 'postgres://staff')},
   ]) {
@@ -108,6 +111,7 @@ test('operations remain opt-in and never import into the production server', () 
 test('verified composition refuses route registration before SQL identity preflight', async () => {
   const registrations = [];
   const app = {
+    hasRoute() { return false; },
     get(...args) { registrations.push(['get', ...args]); },
     post(...args) { registrations.push(['post', ...args]); },
   };
@@ -117,11 +121,12 @@ test('verified composition refuses route registration before SQL identity prefli
     staffPool, operationsPool,
     staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
     issueTransitionCapability() {},
-  }), /invalid_order_operations_sql_client/);
+  }), /invalid_order_operations_auth_config/);
   assert.equal(registrations.length, 0);
   await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
     staffPool, operationsPool, staffRole: 'postgres', operationsRole: 'sabora_operations',
     issueTransitionCapability() {},
+    issuer: 'https://issuer.example.test', getTrustedKeys: async () => [],
   }), /invalid_order_operations_sql_identity/);
   assert.equal(registrations.length, 0);
 });
@@ -427,4 +432,87 @@ test('transition-only fails atomically on either SQL principal, never mounting H
   assert.equal(seen.includes('connect:sabora_operations'),failedRole==='sabora_operations');
   assert.ok(seen.includes('discard:'+failedRole));
  }
+});
+
+test('restricted board/history composition rejects malformed authentication and capabilities before SQL', async () => {
+  const seen = [];
+  const mkPool = user => ({
+    options: {user, connectionString: 'postgres://' + user},
+    query() { seen.push('query'); throw Error('unexpected_sql'); },
+    async connect() { seen.push('connect'); throw Error('unexpected_sql'); },
+  });
+  const app = {
+    hasRoute() { return false; },
+    get() { seen.push('get'); },
+    post() { seen.push('post'); },
+  };
+  const base = {
+    staffPool: mkPool('sabora_staff_reader'),
+    operationsPool: mkPool('sabora_operations'),
+    staffRole: 'sabora_staff_reader',
+    operationsRole: 'sabora_operations',
+    issuer: 'https://issuer.example.test',
+    getTrustedKeys: async () => [],
+    issueTransitionCapability() {},
+    issueReadCapability() {},
+  };
+  for (const change of [
+    {issuer: undefined}, {issuer: ''}, {issuer: 7},
+    {getTrustedKeys: null}, {getTrustedKeys: 'invalid'},
+    {verify: 'invalid'}, {observe: 'invalid'},
+  ]) {
+    await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools(app, {
+      ...base, ...change,
+    }), /invalid_order_operations_auth_config/);
+    assert.deepEqual(seen, []);
+  }
+  for (const change of [
+    {issueTransitionCapability: null},
+    {issueReadCapability: null},
+  ]) {
+    await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools(app, {
+      ...base, ...change,
+    }), /invalid_order_operation_capability_issuer/);
+    assert.deepEqual(seen, []);
+  }
+  await assert.rejects(registerVerifiedRestrictedOrderOperationsFromPools({
+    ...app, hasRoute() { return true; },
+  }, base), /invalid_order_operations_route_registration/);
+  assert.deepEqual(seen, []);
+});
+
+test('legacy verified operations gate refuses missing auth, duplicate routes and equal SQL roles before SQL', async () => {
+  const seen = [];
+  const makePool = user => ({
+    options: {user, connectionString: 'postgres://' + user},
+    query() { seen.push('query'); throw Error('unexpected_sql'); },
+    async connect() { seen.push('connect'); throw Error('unexpected_sql'); },
+  });
+  const app = {
+    hasRoute() { return false; },
+    get() { seen.push('get'); },
+    post() { seen.push('post'); },
+  };
+  const base = {
+    staffPool: makePool('sabora_staff_reader'),
+    operationsPool: makePool('sabora_operations'),
+    staffRole: 'sabora_staff_reader', operationsRole: 'sabora_operations',
+    issueTransitionCapability() {},
+    issuer: 'https://issuer.example.test', getTrustedKeys: async () => [],
+  };
+  for (const change of [
+    {issuer: undefined}, {issuer: ''}, {getTrustedKeys: null},
+    {verify: 'invalid'}, {observe: 'invalid'},
+  ]) {
+    await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {...base, ...change}),
+      /invalid_order_operations_auth_config/);
+    assert.deepEqual(seen, []);
+  }
+  await assert.rejects(registerVerifiedOrderOperationsFromPools(app, {
+    ...base, operationsRole: base.staffRole,
+  }), /invalid_order_operations_pool_isolation/);
+  await assert.rejects(registerVerifiedOrderOperationsFromPools({
+    ...app, hasRoute() { return true; },
+  }, base), /invalid_order_operations_route_registration/);
+  assert.deepEqual(seen, []);
 });

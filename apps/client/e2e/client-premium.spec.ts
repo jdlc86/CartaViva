@@ -112,6 +112,26 @@ test('QR V1 from another installation is scrubbed and never reaches the visit AP
  expect(calls).toEqual([]);
 });
 
+test('revoked QR or visit fails closed and never enables ordering',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ const token='A'.repeat(43);
+ let visits=0;
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({authenticated:true,
+   publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>{
+  visits+=1;
+  return route.fulfill({status:403,contentType:'application/json',
+   body:JSON.stringify({error:'visit_or_qr_revoked'})});
+ });
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ const dialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(dialog.getByRole('alert')).toContainText('ya no están autorizados');
+ await expect(dialog.getByRole('button',{name:'Continuar con el pedido'})).toHaveCount(0);
+ expect(visits).toBe(1);
+ expect(new URL(page.url()).hash).toBe('');
+});
+
 test('in-app QR camera decodes locally and stops its media tracks after authorization',async({page})=>{
  const tableId='ca710000-0000-4000-8000-000000000001';
  const token='A'.repeat(43);
@@ -302,4 +322,80 @@ test('H6 customer completes QR, server quote, pay-at-end confirmation and durabl
  await checkout.getByRole('button',{name:'Cerrar'}).click();
  await page.getByRole('button',{name:'Notificaciones'}).click();
  await expect(page.getByRole('dialog',{name:'Notificaciones'})).toContainText('round.confirmed');
+});
+
+test('ambiguous order failure stays unconfirmed and is never retried without a user action',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
+ const quoteId='54000000-0000-4000-8000-000000000004';
+ const confirmations:unknown[]=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
+   expiresAt:'2026-10-27T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/quotes',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({lines:[{quoteId,itemId:catalog[0].id,totalCents:1290,
+   expiresAt:'2026-10-27T22:00:00.000Z'}]})}));
+ await page.route('**/api/v1/customer/orders/confirm',route=>{
+  confirmations.push(route.request().postDataJSON());
+  return route.fulfill({status:503,contentType:'application/json',
+   body:JSON.stringify({error:'customer_flow_unavailable'})});
+ });
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ const qrDialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(qrDialog).toContainText('Mesa verificada');
+ await qrDialog.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByTestId('product-card').filter({hasText:'Arroz meloso'}).getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ const checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(checkout.getByRole('alert')).toContainText('Confirmación pendiente de verificar');
+ await page.route('**/api/v1/customer/orders/lookup',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({status:'not_found'})}));
+ await checkout.getByRole('button',{name:'Consultar resultado del pedido'}).click();
+ await expect(checkout.getByRole('alert')).toContainText('No consta una confirmación');
+ expect(confirmations).toHaveLength(1);
+ await page.waitForTimeout(250);
+ expect(confirmations).toHaveLength(1);
+ await checkout.getByRole('button',{name:'Cerrar'}).click();
+ await expect(page.getByRole('button',{name:/Cesta: 1/})).toBeVisible();
+});
+
+test('ambiguous confirmation is recovered by lookup without repeating the write',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
+ const quoteId='54000000-0000-4000-8000-000000000004';
+ const confirmations:unknown[]=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
+   expiresAt:'2026-10-27T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/quotes',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({lines:[{quoteId,itemId:catalog[0].id,totalCents:1290,
+   expiresAt:'2026-10-27T22:00:00.000Z'}]})}));
+ await page.route('**/api/v1/customer/orders/confirm',route=>{
+  confirmations.push(route.request().postDataJSON());
+  return route.fulfill({status:503,contentType:'application/json',
+   body:JSON.stringify({error:'customer_flow_unavailable'})});
+ });
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ const qrDialog=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(qrDialog).toContainText('Mesa verificada');
+ await qrDialog.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByTestId('product-card').filter({hasText:'Arroz meloso'}).getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ const checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(checkout.getByRole('alert')).toContainText('Confirmación pendiente de verificar');
+ await page.route('**/api/v1/customer/orders/lookup',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({status:'confirmed',orderId:'54000000-0000-4000-8000-000000000099',grouping:'new'})}));
+ await checkout.getByRole('button',{name:'Consultar resultado del pedido'}).click();
+ await expect(checkout.getByRole('status')).toContainText('Pedido confirmado');
+ expect(confirmations).toHaveLength(1);
+ await page.waitForTimeout(250);
+ expect(confirmations).toHaveLength(1);
+ await checkout.getByRole('button',{name:'Cerrar'}).click();
+ await expect(page.getByRole('button',{name:/Cesta: 0/})).toBeVisible();
 });

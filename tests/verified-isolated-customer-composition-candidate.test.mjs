@@ -13,7 +13,7 @@ function pool(login,events,{broken=false}={}){
    if(broken)throw Error('private_connection_secret');
    if(sql==='SELECT current_user AS role_name, session_user AS login_name')
     return {rows:[{role_name:login,login_name:login}]};
-   if(sql.includes('FROM pg_roles WHERE rolname = current_user'))return {rows:[{
+   if(sql.includes('FROM pg_roles'))return {rows:[{
     effective_role:login,login_role:login,can_login:true,
     bypass_rls:false,superuser:false,
  create_db:false,create_role:false,replication:false,inherit_role:false,can_set_catalog_reader:login===reader,

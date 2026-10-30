@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
-    "build": "node --check src/server.mjs && node --check src/customer-production-flow.mjs && node --check src/customer-production-http.mjs && node --check src/h6-candidate-composition.mjs && node --check src/h6-customer-payment-flow.mjs && node --check src/h6-event-stream.mjs && node --check src/h6-operations-coordinator.mjs && node --check src/h6-operations-http.mjs && node --check src/h6-operations-repository.mjs && node --check src/h6-payment-orchestrator.mjs && node --check src/h6-provider-repository.mjs && node --check src/h6-sql-preflight.mjs && node --check src/h6-staff-capability.mjs && node --check src/h6-stripe-adapter.mjs && node --check src/h6-stripe-webhook.mjs"
+    "build": "node --check src/server.mjs && node --check src/api-runtime-config.mjs && node --check src/production-secret-policy.mjs && node --check src/customer-production-flow.mjs && node --check src/customer-production-http.mjs && node --check src/h6-candidate-composition.mjs && node --check src/h6-customer-payment-flow.mjs && node --check src/h6-event-stream.mjs && node --check src/h6-operations-coordinator.mjs && node --check src/h6-operations-http.mjs && node --check src/h6-operations-repository.mjs && node --check src/h6-payment-orchestrator.mjs && node --check src/h6-provider-repository.mjs && node --check src/h6-sql-preflight.mjs && node --check src/h6-staff-capability.mjs && node --check src/h6-stripe-adapter.mjs && node --check src/h6-stripe-webhook.mjs"
   },
   "dependencies": {
     "fastify": "^5.0.0"

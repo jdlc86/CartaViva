@@ -224,11 +224,13 @@ test('PG17 total exhaustion rejects the whole enrollment transaction without par
   (SELECT count(*)::integer FROM sabora.staff_employee_code_events) AS code_events,
   (SELECT count(*)::integer FROM sabora.staff_enrollments WHERE id=$1) AS failed_rows`,[failedId])).rows[0];
  assert.deepEqual(after,{...before,failed_rows:0});
- await admin.query(`UPDATE sabora.staff_employee_code_pool SET enrollment_id=NULL,reserved_at=NULL
-  WHERE enrollment_id IN(SELECT id FROM sabora.staff_enrollments
-   WHERE given_name IS NULL AND invitee_email_hash IN(
-    SELECT sha256(convert_to('staff35-exhaust-email-'||code,'UTF8')) FROM sabora.staff_employee_code_pool));
-  DELETE FROM sabora.staff_enrollments enrollment WHERE enrollment.given_name IS NULL
-   AND EXISTS(SELECT 1 FROM sabora.staff_employee_code_pool pool
-    WHERE enrollment.invitee_email_hash=sha256(convert_to('staff35-exhaust-email-'||pool.code,'UTF8')))`);
+ await admin.query(`UPDATE sabora.staff_employee_code_pool pool
+  SET enrollment_id=NULL,reserved_at=NULL FROM sabora.staff_enrollments enrollment
+  WHERE pool.enrollment_id=enrollment.id AND enrollment.given_name IS NULL
+   AND enrollment.employee_code IS NULL`);
+ // The 46,655 exhaustion enrollments are fixture-only rows in this disposable
+ // database. Deleting each one here makes PostgreSQL recheck several unrelated
+ // ON DELETE RESTRICT foreign keys row by row; the container teardown removes
+ // them safely after the remaining suites. Releasing the pool is the only
+ // shared-state cleanup those suites require.
 });

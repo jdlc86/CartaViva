@@ -1,3 +1,5 @@
+import {hasUnsafeProductionDatabaseEndpoint,isUnsafeProductionSecret} from './production-secret-policy.mjs';
+
 // Strict configuration validator only. It does not open network connections,
 // log secrets, create credentials, or register operational HTTP routes.
 // The backend must provision a dedicated staff reader identity separately.
@@ -14,6 +16,10 @@ export function readStaffPoolConfig(env = {}) {
       /[\s/@:]/.test(host) || /[\s/@:]/.test(user) ||
       user !== 'sabora_staff_reader_login' ||
       !ca.includes('-----BEGIN CERTIFICATE-----') || !ca.includes('-----END CERTIFICATE-----')) {
+    throw new Error('invalid_staff_pool_config');
+  }
+  if (env.NODE_ENV === 'production' &&
+      (isUnsafeProductionSecret(password) || hasUnsafeProductionDatabaseEndpoint({host,database,ca}))) {
     throw new Error('invalid_staff_pool_config');
   }
   return Object.freeze({

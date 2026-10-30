@@ -1,7 +1,10 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
 import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
+import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
+import {createManagementSessionFence} from './management-session-fence.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
@@ -150,6 +153,63 @@ export function ManagementApp({
   );
 }
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><ManagementApp/></React.StrictMode>,
-);
+// An authenticated host must explicitly mount this application after verifying
+// staff identity. The default preview never reads browser credentials.
+let managementRoot: ReturnType<typeof createRoot> | null = null;
+let managementElement: HTMLElement | null = null;
+const managementSessionFence = createManagementSessionFence();
+let managementRenderGeneration = 0;
+
+function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
+  if (managementRoot && managementElement !== element) {
+    throw Error('management_root_already_mounted');
+  }
+  if (!managementRoot) {
+    managementRoot = createRoot(element);
+    managementElement = element;
+  }
+  // Force a new component tree on every identity transition: no previous
+  // employee's board, history, incident draft or SSE state may survive.
+  const key = ++managementRenderGeneration;
+  flushSync(() => managementRoot!.render(
+    <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}/></React.StrictMode>,
+  ));
+}
+
+export function mountAuthenticatedManagementApp({
+  element,
+  getAccessToken,
+  fetchImpl,
+  reconnectDelayMs,
+}: {
+  element: HTMLElement;
+  getAccessToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+  reconnectDelayMs?: number;
+}) {
+  if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
+    throw Error('invalid_management_bootstrap');
+  }
+  const operationsGateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken, fetchImpl, reconnectDelayMs,
+  });
+  if (managementRoot && managementElement !== element) {
+    operationsGateway.revoke();
+    throw Error('management_root_already_mounted');
+  }
+  const disposeSession = managementSessionFence.replace(operationsGateway);
+  renderManagement(element, operationsGateway);
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    const current = managementSessionFence.isCurrent(operationsGateway);
+    disposeSession();
+    if (current && managementElement === element) renderManagement(element);
+  };
+}
+
+if (typeof document !== 'undefined') {
+  const element = document.getElementById('root');
+  if (element) renderManagement(element);
+}

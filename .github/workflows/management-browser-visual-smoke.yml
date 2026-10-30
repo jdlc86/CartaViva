@@ -4,6 +4,8 @@ on:
     paths:
       - '.github/workflows/management-browser-visual-smoke.yml'
       - 'scripts/ci/management-browser-visual-smoke.sh'
+      - 'scripts/ci/management-authenticated-browser-smoke.mjs'
+      - 'scripts/ci/functional-validation-contract.mjs'
       - 'apps/management/**'
   workflow_dispatch:
 permissions:
@@ -33,6 +35,23 @@ jobs:
           echo 'Chromium installed successfully'
       - name: Capture disconnected management pages at responsive breakpoints
         run: bash scripts/ci/management-browser-visual-smoke.sh
+      - name: Exercise authenticated management in Chromium (isolated HTTP fixture)
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          pnpm --filter @sabora/management exec vite --host 127.0.0.1 --port 4179 --strictPort >"$tmp/vite.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:4179/; then ready=1; break; fi
+            sleep 1
+          done
+          if [[ "$ready" != 1 ]]; then cat "$tmp/vite.log"; exit 1; fi
+          npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false playwright@1.56.1
+          SABORA_CI_MANAGEMENT_URL=http://127.0.0.1:4179 \
+          SABORA_CI_PLAYWRIGHT_MODULE="$tmp/node_modules/playwright/index.mjs" \
+            timeout --signal=TERM --kill-after=10s 90s node scripts/ci/management-authenticated-browser-smoke.mjs
       - name: Publish visual evidence
         if: always()
         uses: actions/upload-artifact@v4

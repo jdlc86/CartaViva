@@ -11,7 +11,8 @@ import {
 
 function assertIsolatedPools(staffPool, operationsPool) {
   if (!staffPool || !operationsPool || staffPool === operationsPool ||
-      typeof staffPool.query !== 'function' || typeof operationsPool.connect !== 'function' ||
+      typeof staffPool.query !== 'function' || typeof staffPool.connect !== 'function' ||
+      typeof operationsPool.query !== 'function' || typeof operationsPool.connect !== 'function' ||
       (staffPool.options?.user && staffPool.options.user === operationsPool.options?.user) ||
       (staffPool.options?.connectionString &&
         staffPool.options.connectionString === operationsPool.options?.connectionString)) {
@@ -55,6 +56,21 @@ export async function registerVerifiedOrderOperationsFromPools(app, options = {}
   assertIsolatedPools(staffPool, operationsPool);
   if (typeof issueTransitionCapability !== 'function') {
     throw Error('invalid_order_operation_capability_issuer');
+  }
+  if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
+      typeof app.hasRoute !== 'function' || [
+        ['GET', '/api/v1/operations/order-lines'],
+        ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+        ['GET', '/api/v1/operations/orders/:orderId/history'],
+      ].some(([method, url]) => app.hasRoute({method, url}))) {
+    throw Error('invalid_order_operations_route_registration');
+  }
+  if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  if (typeof options.issuer !== 'string' || options.issuer.length === 0 ||
+      typeof options.getTrustedKeys !== 'function' ||
+      (options.verify !== undefined && typeof options.verify !== 'function') ||
+      (options.observe !== undefined && typeof options.observe !== 'function')) {
+    throw Error('invalid_order_operations_auth_config');
   }
   await preflightOrderOperationsIdentities({
     staffPool, operationsPool, staffRole, operationsRole,

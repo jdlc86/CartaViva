@@ -1,0 +1,140 @@
+# P2 — auditoría y preparación de migraciones y recuperación (sin ejecución operativa)
+
+Fecha: 2026-10-29. Repositorio: `jdlc86/CartaViva`. Referencia inicial: PR Draft #40, SHA `b0f072f9dd3f65e4cab0ba5a40981f038b8cd37a`.
+
+**Estado:** preparación técnica, no implementación completa ni aprobación de despliegue. Los documentos normativos vigentes del repositorio prevalecen sobre este documento.
+
+## Evidencia inspeccionada
+
+- `docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md`: exige cadena completa en PG17 desechable, grants/RLS negativos, identidades separadas, backup/restauración específica de Sabora, punto de retorno y parada ante pérdida de datos o acceso cruzado. Establece que para SQL no reversible se prefiere desactivar rutas de Sabora y corregir hacia delante; prohíbe rollback destructivo no probado y aprobado.
+- `scripts/ci/h6-postgres17.test.mjs`: guardas de prueba que exigen `SABORA_CI_PG_URL`, módulo PostgreSQL desechable y `GITHUB_ACTIONS=true`; restringe el destino a `127.0.0.1`, usuario `postgres`, base `postgres` y contraseña de fixture. Esta guarda es específica del harness y **no** es autorización para usar credenciales operativas.
+- `package.json`: `pnpm check` encadena tests, build y `production-config-secrets-gate.mjs`.
+- `scripts/ci/production-config-secrets-gate.mjs`: comprueba aislamiento del Compose candidato, ausencia de secretos y comandos globales peligrosos. Es una barrera estática, **no** sustituye pruebas de recuperación ni inspección autorizada de un entorno real.
+- P1 reportado en PR #40 y cuatro workflows SUCCESS verificados en el SHA de referencia. Esto no prueba todavía un procedimiento P2.
+
+## Puertas y entregables del hito P2
+
+### A. Inventario y clasificación de migraciones
+
+Localizar todas las migraciones SQL existentes y su orden exacto desde la fuente normativa y el repositorio. Para cada una registrar: dependencias, extensiones, objetos creados/alterados, requisitos de versión PG17/pgcrypto, idempotencia, permisos, reversibilidad, riesgos de bloqueo y datos afectados. **No asumir** que una migración es reversible por existir una sentencia inversa.
+
+### B. Preflight y prohibición de destino operativo
+
+Construir un comando offline que muestre SHA, orden y checksums de migraciones y rechace rutas/URL no desechables antes de conectar. No aceptar `--force` genérico ni variables que salten la guarda. El script de ensayo debe exigir una instancia PG17 de prueba creada por el harness, no aceptar el endpoint Supabase operativo ni permitir que el runner resuelva conexiones externas. Reutilizar validaciones existentes, sin duplicar contratos.
+
+### C. Ensayo de aplicación, fallos y recuperación
+
+En PG17 desechable, aplicar la cadena completa; comprobar grants, RLS, funciones, extensiones, restricciones e identidades. Inyectar fallos deterministas (antes de empezar, durante una transacción y después de una migración ya confirmada) y comprobar limpieza, no duplicación, capacidad de reanudar y consistencia de datos. Ensayar backup y restauración **solo** de los objetos/datos Sabora del fixture, y verificar restauración, integridad y permisos. Si una migración no admite reversión segura, documentar recuperación hacia delante; no inventar SQL destructivo.
+
+### D. Runbook y decisión de activación
+
+Documentar preparación, inventario, checksums, copias, verificación, límites de tiempo, condiciones de parada, recuperación, evidencia, responsables y autorizaciones separadas. El procedimiento futuro de producción requerirá aprobación expresa y aislamiento respecto de Fleetia. La prueba de recuperación local no constituye autorización de ejecución operativa.
+
+### E. CI y aceptación
+
+Integrar pruebas en el CI existente, con timeouts, limpieza y reportes sanitizados. Ejecutar focalizadas, PG17 real desechable, suites y builds. Registrar SHA y enlaces a workflows **del HEAD final**. Entregar matriz requisito → código → prueba → resultado y listar cualquier bloqueo normativo.
+
+## Restricciones innegociables
+
+- Único repositorio permitido: `jdlc86/CartaViva`.
+- No merge, despliegue, reinicio de VPS, cambio de Fleetia ni Supabase operativo.
+- No provisionar recursos facturables ni secretos reales.
+- No utilizar la existencia de CI verde de P1 como evidencia de cierre P2.
+- No proceder con rollback destructivo sin procedimiento específico probado y autorización expresa.
+
+## Criterio de salida de esta preparación
+
+Este documento **no declara P2 cerrado**. La fase siguiente debe implementar y verificar las pruebas reales de migración/recuperación y actualizar la documentación normativa únicamente cuando exista un hito material, sin reinterpretar requisitos aprobados.
+
+## Evidencias de ejecución — 2026-10-29
+
+**SHA validado:** `550c20c881f7f2fcf248f2cdfaf986f7743d0788` (PR Draft #40).
+
+| Comprobación | Implementación | Evidencia | Estado |
+| --- | --- | --- | --- |
+| Inventario offline ordenado con SHA-256, detección de versión duplicada y nombre SQL inválido | `scripts/ci/migration-manifest.mjs`, `scripts/ci/migration-manifest.test.mjs` | Sabora CI, test raíz | PASS |
+| Preflight de migraciones dentro de runner desechable | `scripts/ci/postgres-migration-smoke.sh` | Sabora CI | PASS |
+| Copia y restauración en PostgreSQL 17 aislado | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Escritura confirmada, fallo de subtransacción y ausencia de escritura parcial | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Integridad de datos de fixture, unicidad y comparación de RLS forzado tras restauración | `scripts/ci/postgres-recovery-smoke.sh` | Sabora CI | PASS |
+| Regresión de interfaz cliente y gestión | workflows de conformidad y visual | Actions | PASS |
+
+Workflows del SHA:
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40852559401
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40852559437
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40852559389
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40852559393
+
+**Alcance exacto:** el ensayo usa un fixture nuevo y temporal y restaura en otra base del mismo contenedor de CI. No demuestra recuperación de una base operativa, restauración de todos los privilegios de roles globales, recuperación PITR, ni reanudación después de un fallo real de una migración confirmada. `pg_restore --no-owner --no-acl` deliberadamente no reproduce propietarios y ACL; no debe usarse como evidencia de recuperación completa de permisos. El inventario automatizado todavía no clasifica dependencias, bloqueos o reversibilidad por migración.
+
+### Pendientes para cierre integral de P2
+
+1. Inventario de dependencias y compatibilidad de cada migración conforme a normativa, con evidencia de extensiones y permisos.
+2. Ensayo determinista de fallo entre migraciones y reanudación, con detección de migraciones ya aplicadas y checksums; evitar reejecutar SQL no idempotente.
+3. Ensayo de recuperación de roles, propietarios y ACL en un entorno PostgreSQL 17 completamente aislado, o documentar explícitamente la alternativa autorizada.
+4. Runbook final de parada, copia, restauración y validación de seguridad; las decisiones de producción siguen requiriendo autorización expresa.
+
+**Decisión:** P2 parcialmente implementado y verificado en CI; **no cerrado** y **no autorizado para producción**. Mantener Draft.
+
+## Actualización de verificación — 2026-10-29, SHA 8b88cb477b95205d5a1400173ed2f2589341cca0
+
+Los cuatro workflows de este SHA finalizaron SUCCESS:
+
+- Sabora CI (incluye PostgreSQL 17 desechable y ensayo de restauración): https://github.com/jdlc86/CartaViva/actions/runs/40855885436
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40855885650
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40855885518
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40855885515
+
+**Hallazgo corregido:** una ACL explícita del propietario en la base origen puede restaurarse como ACL nula con privilegios implícitos equivalentes. El ensayo ahora compara propietarios, permisos efectivos de los roles enumerados en el script, flags de RLS y definiciones de políticas; conserva comprobaciones de filas, unicidad y transacciones fallidas. No se ha eliminado la puerta de fallo por divergencia de permisos.
+
+**Límites que siguen abiertos:** la copia actual usa `pg_dump` de la base desechable completa, no una copia/restauración selectiva exclusivamente de Sabora; la comparación de permisos no cubre todos los roles ni todos los tipos de objetos SQL (por ejemplo, funciones y esquemas); los roles globales se comparten entre las dos bases del mismo contenedor. Tampoco hay ensayo de fallo entre migraciones con reanudación segura basada en historial y checksum, clasificación individual de dependencias/bloqueos/reversibilidad, ni recuperación PITR. Estos requisitos no deben marcarse PASS por inferencia.
+
+**Decisión:** P2 continúa **abierto**, aunque el ensayo de restauración actualmente implementado ya está verde. No hay autorización para merge, despliegue ni uso de bases operativas.
+
+## Ensayo de fallo transaccional y reanudación — SHA f23deab06577b77a06adba277ae8c9c0104d8375
+
+Se añadió `scripts/ci/postgres-migration-failure-smoke.sh`, invocado por `scripts/ci/postgres-migration-smoke.sh` dentro del mismo contenedor PG17 de GitHub Actions. Crea un esquema de fixture independiente, confirma atómicamente la primera versión con su ledger, inyecta una excepción durante la segunda transacción, verifica que no persisten escrituras parciales, reanuda con una nueva transacción y rechaza una versión duplicada con checksum distinto. El esquema del fixture se elimina dentro del contenedor desechable.
+
+Los cuatro workflows del HEAD ensayado terminaron SUCCESS:
+
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40857318715
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40857318678
+- Sabora management browser visual smoke: https://github.com/jdlc86/CartaViva/actions/runs/40857318648
+- Sabora client browser conformance: https://github.com/jdlc86/CartaViva/actions/runs/40857318829
+
+**Alcance y límites:** el ensayo usa una migración sintética con transacciones explícitas; no es un motor de migraciones productivo, no registra automáticamente los checksums de las migraciones reales, no demuestra reanudación de SQL con operaciones no transaccionales ni autoriza repetir migraciones reales ya confirmadas. La restauración actual es una copia de la base desechable completa, no exclusivamente del esquema Sabora. Sigue pendiente inventario normativo por migración, análisis de dependencias, riesgos de bloqueo y reversibilidad, y recuperación selectiva segura con cobertura completa de permisos. **P2 abierto; sin autorización operativa.**
+
+## Restauración selectiva del esquema Sabora — SHA 5ff74bd84c533c51f0bdfc1d0bef308c1a6ae200
+
+Se agregó un segundo ensayo a `scripts/ci/postgres-recovery-smoke.sh`: `pg_dump -Fc --schema=sabora` desde la base desechable, creación de otra base desechable en el mismo contenedor PostgreSQL 17 y `pg_restore --exit-on-error`, comprobando el dato confirmado del fixture. Se mantiene en paralelo la restauración completa anterior, con sus verificaciones de propietarios, permisos efectivos de los roles enumerados, RLS, políticas e integridad.
+
+**Evidencia:** cuatro workflows SUCCESS del SHA:
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40858749692
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40858749681
+- Gestión visual: https://github.com/jdlc86/CartaViva/actions/runs/40858750042
+- Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40858749732
+
+**Límite:** este ensayo selectivo solo verifica la restauración y una fila del fixture; todavía no compara exhaustivamente los permisos, políticas, funciones, extensiones y dependencias externas en la base selectiva. Los roles globales son los mismos en ambas bases del contenedor. No debe extrapolarse a recuperación de un clúster distinto ni a PITR. **P2 permanece abierto.**
+
+## Paridad de seguridad en restauración selectiva — SHA 22552535281b3349210d413374f5f93c11e60f74
+
+Se amplió `scripts/ci/postgres-recovery-smoke.sh` para comparar **tres bases del mismo contenedor desechable PG17**: origen, restauración completa y restauración selectiva del esquema `sabora`. El gate ahora exige paridad de inventario de relaciones/secuencias y tablas con RLS forzado, huellas de propietarios y privilegios efectivos sobre relaciones para los roles enumerados, huellas de políticas RLS, integridad del fixture y rechazo de duplicados. Los cuatro workflows del SHA concluyeron SUCCESS:
+
+- Sabora CI: https://github.com/jdlc86/CartaViva/actions/runs/40859384280
+- Bootstrap lockfile: https://github.com/jdlc86/CartaViva/actions/runs/40859384267
+- Gestión visual: https://github.com/jdlc86/CartaViva/actions/runs/40859384433
+- Cliente visual: https://github.com/jdlc86/CartaViva/actions/runs/40859384327
+
+**Alcance:** paridad comprobada únicamente en PostgreSQL 17 desechable con roles globales preexistentes en el mismo clúster. No prueba reconstrucción de roles en clúster limpio, PITR, dependencias externas, privilegios de esquemas/funciones ni recuperación real de Supabase. Quedan pendientes inventario individual de migraciones, riesgos de locks y reversibilidad, procedimientos con criterios de parada y autorizaciones. **P2 sigue abierto; no habilita despliegue.**
+
+## Inventario automatizado preliminar — SHA fa3f0afe7da17491e0f30f192e76c7562423acc4
+
+El comando offline `node scripts/ci/migration-risk-inventory.mjs` produce un JSON ordenado por migración, basado en el manifiesto de SHA-256, con señales heurísticas de extensiones, roles/grants, SECURITY DEFINER, RLS/políticas, SQL destructivo, mutaciones de datos, DDL potencialmente bloqueante y funciones/triggers. Cada entrada exige revisión manual; reversibilidad, impacto de locks y dependencias externas aparecen como `unverified`. Los patrones no interpretan SQL completamente ni distinguen comentarios/cadenas: no constituyen certificación de seguridad ni sustituyen la clasificación normativa individual. Pendiente ejecutar y revisar el inventario, probarlo y documentar hallazgos y criterios de parada. No se autoriza producción.
+
+## Cierre integral del alcance P2 — 2026-10-29
+
+El trabajo posterior sustituye los pendientes anteriores como estado vigente, sin borrar su trazabilidad. La auditoría individual está en `docs/security/SABORA_MIGRATION_AUDIT_P2_2026-10-29.md`; el procedimiento final en `docs/runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md`; y el detalle de defectos, commits, matriz y evidencia en `docs/reviews/SABORA_P2_MIGRATION_RECOVERY_CLOSURE_2026-10-29.md`.
+
+En el HEAD de implementación `b4b1678560f6bb1000c9b47bf9daa3d1ae146bf3`, Sabora CI y Bootstrap aplicaron las 42 migraciones reales en PG17, interrumpieron/reanudaron por ledger/checksum, probaron un fallo dentro de transacción y restauraron solo el esquema Sabora en un segundo clúster sin roles compartidos. Compararon roles, ACL, RLS, policies, funciones, extensión, constraints, índices, triggers y datos, y ejercieron un LOGIN restringido real. Los cuatro workflows concluyeron SUCCESS.
+
+**Decisión:** P2 se cierra en su alcance de preparación técnica y prueba desechable. Sigue prohibida cualquier ejecución operativa. Volumen/locks reales, PITR/Storage, secretos y aislamiento material son puertas de producción posteriores, no evidencias inferidas de este cierre.
