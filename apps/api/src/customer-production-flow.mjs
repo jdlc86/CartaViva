@@ -244,5 +244,21 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    paymentAttemptId:h6Row.payment_attempt_id,authorizationKey:h6Row.authorization_key});
  };
 
- return Object.freeze({authorizeVisit,quote,confirm});
+ const lookupConfirmation=async({customerSessionToken,...raw}={})=>{
+  if(!strictObject(raw,['tableId','qrToken','visitId','basketId','requestKey'])||
+   !TABLE_ID.test(raw.tableId)||typeof raw.qrToken!=='string'||!QR_TOKEN.test(raw.qrToken)||
+   !KEY.test(raw.visitId)||!KEY.test(raw.basketId)||!KEY.test(raw.requestKey))
+   throw Error('invalid_customer_flow_input');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const attempt=await withTransaction(async query=>one(await query(LOOKUP_ATTEMPT_SQL,
+   [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey])));
+  if(attempt.order_id===null||attempt.order_id===undefined)
+   return Object.freeze({status:'not_found'});
+  if(!UUID.test(attempt.order_id)||typeof attempt.grouping!=='string')
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({status:'confirmed',orderId:attempt.order_id,grouping:attempt.grouping});
+ };
+
+ return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation});
 }
