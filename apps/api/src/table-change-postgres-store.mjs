@@ -9,7 +9,10 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
   return result.rows[0];
  };
  const map=r=>r&&({id:r.id,status:r.status,sourceTableId:r.source_table_id,
-  createdAtMs:+new Date(r.created_at),expiresAtMs:+new Date(r.expires_at)});
+  createdAtMs:+new Date(r.created_at),expiresAtMs:+new Date(r.expires_at),
+  decidedAtMs:r.decided_at==null?null:+new Date(r.decided_at),
+  destinationTableId:r.destination_table_id??null,
+  consumedOrderId:r.consumed_order_id??null});
  return Object.freeze({transaction:async(operation,handler)=>{
   if(!['request','decide'].includes(operation))throw Error('invalid_table_change_operation');
   return withTransaction(async query=>handler({
