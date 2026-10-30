@@ -12,6 +12,13 @@ function assertRequest(request){
   !finiteTime(request.createdAtMs)||!finiteTime(request.expiresAtMs)||
   request.expiresAtMs<=request.createdAtMs)throw Error('invalid_table_change_request');
 }
+export function createTableChangeRequest({sourceTableId,nowMs,windowMs=TABLE_CHANGE_REQUEST_WINDOW_MS}) {
+ if(typeof sourceTableId!=='string'||!sourceTableId||!finiteTime(nowMs)||
+ !Number.isSafeInteger(windowMs)||windowMs<1000||windowMs>600000||
+ !Number.isSafeInteger(nowMs+windowMs))throw Error('invalid_table_change_request');
+ return Object.freeze({status:'pending',sourceTableId,createdAtMs:nowMs,expiresAtMs:nowMs+windowMs});
+}
+
 export function tableChangeRequestView(request,nowMs){
  assertRequest(request);
  if(!finiteTime(nowMs))throw Error('invalid_table_change_clock');
