@@ -117,7 +117,19 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- if v_count<>44 then raise exception 'Expected forty-four RLS protected single-restaurant tables, got %',v_count; end if;
+ -- The table-change candidate adds one FORCE RLS table to the 44-table baseline.
+ -- Assert both the exact count and the identity/privileges of that extra table.
+ if v_count<>45 then raise exception 'Expected 45 FORCE RLS Sabora tables (including table-change requests), got %',v_count; end if;
+ if not exists (
+  select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='sabora' and c.relname='customer_table_change_requests'
+    and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity
+ ) then raise exception 'table-change requests FORCE RLS protection missing'; end if;
+ if exists (
+  select 1 from information_schema.role_table_grants g
+  where g.table_schema='sabora' and g.table_name='customer_table_change_requests'
+    and g.grantee in ('PUBLIC','anon','authenticated')
+ ) then raise exception 'table-change requests have unexpected browser/public grants'; end if;
  foreach v_table in array array['customer_order_attempt_batches','customer_order_attempt_lines'] loop
   if not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='sabora' and c.relname=v_table and c.relkind='r'
