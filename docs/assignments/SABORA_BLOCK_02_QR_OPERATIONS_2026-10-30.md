@@ -27,3 +27,9 @@ Sin merge, despliegue, consumo facturable, acceso a Supabase operativo ni interv
 ## Estado de partida verificado
 
 Bloque 1: PASS aislado, SHA `e3d17db469cfcec76280be49268dd0c3d0f38bab`, CI 4/4 SUCCESS. Ya existen PWA cliente y gestión reales en Chromium, Fastify H3/H4 y PG17 aislado; el Bloque 2 amplía la cobertura a escenarios normativos completos y resiliencia, sin duplicar el trabajo certificado.
+
+## Evidencia incorporada — agrupación tardía PostgreSQL 17 (30-oct)
+
+SHA `6fab504e82f98d3b3fb50e541eaf74883235f8a6`: ampliada `scripts/ci/customer-production-postgres17.test.mjs` para probar `late` con el **mismo flujo H3 real**, sin simular resultado ni cambiar el reloj global. Se envejece exclusivamente `sabora.dining_tables.first_confirmed_at` de la mesa de prueba a 301 segundos antes de la confirmación de una cotización que requiere aceptación explícita por cambio de precio. Se verifica que el nuevo pedido persistido tiene `grouping='late'`; su repetición idempotente conserva el mismo `orderId` y no altera la clasificación. Se complementan los casos `first` y `grouped` ya ejercitados por el test.
+
+**4/4 workflows SUCCESS:** CI `41008652051`, bootstrap `41008652054`, cliente `41008652175`, gestión `41008652191`. Esta evidencia cierra el subcaso de agrupación tardía, **no el Bloque 2 completo**: quedan por certificar reconexión SSE, offline, notificaciones y resto de casos de aceptación exigidos arriba. No hay GO ni despliegue.
