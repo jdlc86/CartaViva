@@ -18,7 +18,7 @@ BEGIN
  v_body:=v_new;
  v_new:=replace(v_body,
    '  IF FOUND AND v_binding.table_id<>p_table_id THEN',
-   '  v_binding_id:=v_binding.id;\n  IF v_binding_id IS NOT NULL AND v_binding.table_id<>p_table_id THEN');
+   '  v_binding_id:=v_binding.id;' || chr(10) || '  IF v_binding_id IS NOT NULL AND v_binding.table_id<>p_table_id THEN');
  IF v_new=v_body THEN RAISE EXCEPTION 'h6_binding_lookup_drift'; END IF;
  v_body:=v_new;
  v_new:=replace(v_body,
