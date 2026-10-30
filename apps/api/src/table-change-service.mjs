@@ -25,6 +25,8 @@ export function createTableChangeService({store}={}){
     throw Error('table_change_unauthorized');
    return within('decide',async tx=>{
     const staff=await tx.requireWaiter({verifiedIdentity,verifiedStaff});
+    if(!staff||typeof staff.id!=='string'||!staff.id)
+     throw Error('table_change_unauthorized');
     const request=await tx.lockRequest(requestId);
     if(!request)throw Error('table_change_request_not_found');
     const nowMs=await tx.serverNowMs();
