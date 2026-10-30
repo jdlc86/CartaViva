@@ -185,24 +185,62 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   // The PWA transport confirmation is the order continued by payment and kitchen.
   const orderHttp=pwaConfirmed;
   httpConfirmedOrder=orderHttp;
-  // Distinguish an order-id / round-id argument mismatch without relaxing scope.
+  // The restricted round reader is intentionally scoped by the durable order
+  // identity. A round UUID must never be accepted as an interchangeable key.
   const directRound=await h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
-   [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.roundId]));
+   [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.orderId]));
   assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
-  // Regression probe: replay must resolve the persisted H6 round, not 503.
-  // Surface the internal failure only inside disposable CI, never in HTTP.
-  let replayResult;
-  try{replayResult=await flow.confirm({...request,customerSessionToken:customer.token});}
-  catch(error){assert.fail(`H6 replay internal failure: ${error?.message||String(error)}`);}
+  await assert.rejects(h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
+   [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.roundId])),
+  /customer_round_scope_forbidden/);
+  await assert.rejects(h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
+   [hashCustomerSessionToken(customer.token),tableId,'foreign_visit_scope_0001',orderHttp.orderId])),
+  /customer_round_scope_forbidden/);
+  await assert.rejects(h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
+   [randomBytes(32),tableId,hv.visitId,orderHttp.orderId])),/customer_round_scope_forbidden/);
+
+  // Regression: the same HTTP request must resolve the persisted H6 round as
+  // 200, without exposing the internal SQL denial or creating another effect.
+  const replayResponse=await post('orders/confirm',request);
+  assert.equal(replayResponse.statusCode,200,replayResponse.body);
+  assert.equal(replayResponse.body.includes('customer_round_scope_forbidden'),false);
+  const replayResult=replayResponse.json();
   assert.equal(replayResult.status,'replayed');
   assert.equal(replayResult.orderId,orderHttp.orderId);
   assert.equal(replayResult.roundId,orderHttp.roundId);
+  const parallelReplays=await Promise.all([
+   post('orders/confirm',request),post('orders/confirm',request)
+  ]);
+  assert.deepEqual(parallelReplays.map(response=>response.statusCode),[200,200]);
+  for(const response of parallelReplays){
+   const body=response.json();
+   assert.equal(body.status,'replayed');
+   assert.equal(body.orderId,orderHttp.orderId);
+   assert.equal(body.roundId,orderHttp.roundId);
+  }
+  const tamperedResponse=await post('orders/confirm',{
+   ...request,lines:[{...request.lines[0],quantity:2}]
+  });
+  assert.equal(tamperedResponse.statusCode,409,tamperedResponse.body);
+  assert.deepEqual(tamperedResponse.json(),{error:'order_idempotency_conflict'});
+  assert.equal(tamperedResponse.body.includes('customer_round_scope_forbidden'),false);
+  const foreignResponse=await customerHttp.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',headers:{...headers,
+    cookie:'__Secure-sabora_customer=foreign_customer_session_token_0001'},payload:request});
+  assert.equal(foreignResponse.statusCode,401,foreignResponse.body);
+  assert.equal(foreignResponse.body.includes('customer_round_scope_forbidden'),false);
+
   const proof=await admin.query(`SELECT count(*)::integer AS rounds,
+   (SELECT count(*)::integer FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT count(*)::integer FROM sabora.customer_order_attempt_batches
+    WHERE order_id=$1) AS attempts,
+   (SELECT count(*)::integer FROM sabora.payment_attempts
+    WHERE round_id=$2) AS payments,
    (SELECT count(*)::integer FROM sabora.kitchen_dispatches
     WHERE order_id=$1 AND round_id=$2) AS dispatches
    FROM sabora.order_rounds WHERE order_id=$1 AND id=$2`,
    [orderHttp.orderId,orderHttp.roundId]);
-  assert.deepEqual(proof.rows,[{rounds:1,dispatches:1}]);
+  assert.deepEqual(proof.rows,[{rounds:1,orders:1,attempts:1,payments:1,dispatches:1}]);
  }finally{await customerHttp.close();}
  const events=createH6CustomerEventRepository({withTransaction:h6CustomerTx});
  const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,role:'sabora_h6_provider_runtime',
