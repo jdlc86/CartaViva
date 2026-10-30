@@ -45,3 +45,6 @@ Estos hallazgos refuerzan la necesidad de una refactorización conjunta de **con
 
 ## Corrección de alcance — 2026-10-30
 La comprobación de la migración provisional `20261030143000` ya no filtra por `customer_accounts.session_id`: las sesiones operativas pueden diferir entre mesas y ese filtro permitiría dividir la cuenta económica. Se mantiene el rechazo de cualquier otra cuenta abierta del cliente hasta resolver continuidad y ámbito de visita de forma normativa. La restricción puede bloquear visitas posteriores con cuentas antiguas abiertas. Prueba estructural actualizada; **PG17 y E2E no ejecutados**. No aprobar despliegue.
+
+### Corrección de alcance del bloqueo preventivo (2026-10-30)
+La hipótesis de que las mesas comparten `session_id` **no está garantizada**. Se retiró del predicado de bloqueo el filtro `a.session_id=v_visit.session_id` (commit `6290a388`), porque permitía abrir una segunda cuenta en otra mesa con sesión diferente. El test estructural ahora exige la ausencia de ese filtro (commit `781bc3dd`). La consulta continúa restringida a cuentas abiertas del mismo cliente y mesa distinta. **Riesgo residual conocido:** una cuenta antigua abierta puede bloquear una nueva visita legítima; no se puede resolver correctamente sin introducir identidad de visita económica y transferencia transaccional. Sin PG17 real ni E2E acreditados; NO-GO.
