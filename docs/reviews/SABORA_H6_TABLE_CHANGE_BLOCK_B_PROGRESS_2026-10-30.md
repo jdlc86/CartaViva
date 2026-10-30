@@ -168,3 +168,20 @@ unrelated debts or payments in legacy/exceptional states. A PG17 catalog test
 asserts the fail-closed predicate. A deterministic reconciliation process is
 still required before such a customer may transfer; no production data is
 changed by this gate.
+
+## CI baseline recovered — 2026-10-30
+
+Commit `95f7cc5664f456fc2268956ebae1b5fc58d2a822` passed all three
+GitHub workflows: Sabora CI, bootstrap lockfile, and client browser
+conformance. The preceding PostgreSQL run reached 14/15 table-change
+tests; the remaining assertion was an overescaped regular expression,
+corrected before this green baseline. The 48-table FORCE RLS inventory
+explicitly includes the per-line destination projection.
+
+**Scope limitation:** these green checks establish migration/catalog and
+existing regression conformance, **not** a successful A→B transfer in a
+real customer checkout. A new PG17 negative execution test verifies that
+the sealed consumer rejects invalid input without changing grant/binding/
+delivery row counts. Positive transaction, idempotency, concurrent request,
+mixed pickup and payment integration tests remain mandatory. Do not
+enable runtime EXECUTE or promote the candidate until they pass.
