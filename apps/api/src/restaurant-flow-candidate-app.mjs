@@ -18,7 +18,8 @@ export async function createVerifiedRestaurantFlowCandidate({customer,operations
    ...(customer.h6CustomerPool?[customer.h6CustomerPool]:[]),
    operations.staffPool,operations.operationsPool];
   if(pools.some(pool=>!pool||typeof pool.connect!=='function')||
-     new Set(pools).size!==pools.length)throw Error('restaurant_flow_pool_isolation_required');
+     new Set(pools).size!==pools.length||
+     (customer.h6CustomerPool&&!customer.expectedH6CustomerLogin))throw Error('restaurant_flow_pool_isolation_required');
   const names=[customer.expectedCatalogLogin,customer.expectedRegistrationLogin,customer.expectedSessionLogin,
    customer.expectedFlowLogin,operations.staffRole,operations.operationsRole,
    ...(customer.h6CustomerPool?[customer.expectedH6CustomerLogin]:[])];
