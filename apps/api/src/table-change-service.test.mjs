@@ -6,7 +6,7 @@ const base={accountId:'a1',customerId:'c1',visitId:'v1',tableId:'t1',closed:fals
 test('request uses locked account, server time and configured window without destination',async()=>{
  let inserted;
  const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>1000,
-  latestRequest:async()=>null,configuredWindowMs:async()=>90000,
+  lockApprovedRequest:async()=>null,latestRequest:async()=>null,configuredWindowMs:async()=>90000,
   insertRequest:async value=>(inserted=value)};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await service.request({customerSessionToken:'secret'});
@@ -17,7 +17,7 @@ test('request uses locked account, server time and configured window without des
 test('rejecting within 90 seconds does not allow immediate repeat',async()=>{
  const previous={status:'rejected',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
  const tx={lockCustomerAccount:async()=>base,serverNowMs:async()=>2000,
-  latestRequest:async()=>previous};
+  lockApprovedRequest:async()=>null,latestRequest:async()=>previous};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
  await assert.rejects(()=>service.request({customerSessionToken:'secret'}),/request_locked/);
 });
