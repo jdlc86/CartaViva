@@ -242,3 +242,15 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 56. Dashboard: ranking de platos por unidades netas, tendencia mensual, ticket medio por cuenta y comparativas con «—» cuando no existe periodo comparable.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
+
+## Cambio de mesa con consumición activa — decisión funcional 2026-10-30
+
+- Escanear cualquier QR de mesa está permitido; el escaneo por sí solo no traslada una visita, cuenta, pedidos ni deuda.
+- La primera confirmación de pedido vincula al cliente a la mesa de origen desde ese instante, incluso durante la ventana de agrupación y antes del despacho a cocina. Sin pedido confirmado, la selección de mesa no requiere autorización de traslado.
+- Si el cliente vinculado escanea el QR de otra mesa, la PWA mantiene intacta su visita y presenta advertencia con «Solicitar cambio de mesa» y «Cancelar». Cancelar no altera nada.
+- La solicitud identifica cliente, visita, mesa de origen y mesa de destino escaneada; se notifica al personal de sala. Solo un camarero autenticado y autorizado puede aprobarla o rechazarla. Una solicitud pendiente no habilita pedidos desde la mesa de destino.
+- El rechazo conserva mesa, cuenta, pedidos, pagos y despachos originales. La aprobación cambia atómicamente la mesa operativa de la consumición del cliente, sus pedidos pendientes, el destino de cocina/sala y la continuidad de su cuenta y obligaciones económicas; el cliente debe poder validar el QR de destino para continuar pidiendo.
+- La aprobación produce el efecto funcional de haber consumido desde la nueva mesa, pero nunca reescribe ni elimina la procedencia histórica, pagos, auditoría ni identidad de quien pidió. Debe conservarse un registro auditable de origen, destino, solicitante, aprobador, fecha y resultado.
+- Evitar traslados parciales, doble aprobación, autorizaciones cruzadas, carreras con nuevas confirmaciones, doble cobro, despacho duplicado y mezcla de eventos entre visitas. Revalidar el estado al aprobar y resolver de forma segura las operaciones concurrentes.
+- Las mesas con cuentas de otras personas no transfieren automáticamente las deudas de esos terceros. El cambio corresponde a la consumición individual del solicitante.
+- Criterio de aceptación: pruebas reales PostgreSQL 17 y navegador para QR libre sin pedido, pedido en ventana, pedido despachado, aceptación/rechazo/cancelación, QR de destino, permisos de camarero, concurrencia, estados de cocina/sala, saldo y trazabilidad.
