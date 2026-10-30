@@ -155,6 +155,8 @@ test('approved visual tokens, responsive gates and accessibility motion rule rem
     assert.match(css, new RegExp(token, 'i'));
   }
   assert.match(css, /button \{ min-height: 44px; \}/);
+  assert.match(css, /\.badge--warning \{[^}]*var\(--cv-warning\) 5%, var\(--cv-surface\)/,
+    'small warning badges must keep WCAG AA contrast over their tinted surface');
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(max-width: 900px\)/);
   assert.match(css, /@media \(max-width: 460px\)/);
