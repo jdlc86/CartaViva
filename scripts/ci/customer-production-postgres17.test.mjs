@@ -483,7 +483,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  assert.ok(managementHistory.events.some(event=>event.lineId===lineId));
  kitchenGateway.revoke();waiterGateway.revoke();await staffHttp.close();
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
- assert.ok(kitchenBoard.items.some(item=>item.domainLineId===secondLineId),
+ assert.ok(kitchenBoard.items.some(item=>item.lineId===secondLineId),
    'H3-confirmed order must be visible to H4 kitchen');
  // A waiter cannot prepare a customer-confirmed line; no mutation occurs.
  await assert.rejects(operations.transitionLine(waiter,{
@@ -499,7 +499,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  assert.equal(ready.repeated,false);
  assert.ok(ready.notificationId);
  const salaBoard=await operations.listBoard(waiter,{status:'ready',limit:100,cursor:null});
- assert.ok(salaBoard.items.some(item=>item.domainLineId===secondLineId),
+ assert.ok(salaBoard.items.some(item=>item.lineId===secondLineId),
    'H4 sala must see the same H3-confirmed line');
  // Kitchen cannot perform sala pickup, and the ready notification survives.
  await assert.rejects(operations.transitionLine(kitchen,{
