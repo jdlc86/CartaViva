@@ -288,8 +288,8 @@ test('SSE reconnect resumes after last accepted id and ignores replayed events',
       assert.equal(path, '/api/v1/operations/events');
       cursors.push(options.headers['Last-Event-ID'] ?? null);
       connections++;
-      const frame = (id) => 'event: sabora.order.ready\\nid: ' + id +
-        '\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n';
+      const frame = (id) => 'event: sabora.order.ready\nid: ' + id +
+        '\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\n\n';
       const body = connections === 1 ? frame(1) : frame(1) + frame(2);
       return new Response(new ReadableStream({
         start(controller) {
@@ -330,8 +330,8 @@ test('SSE access-revoked event stops delivery and does not reconnect', async () 
       return new Response(new ReadableStream({
         start(controller) {
           controller.enqueue(new TextEncoder().encode(
-            'event: access-revoked\\ndata: {}\\n\\n' +
-            'event: sabora.order.ready\\nid: 1\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n'
+            'event: access-revoked\ndata: {}\n\n' +
+            'event: sabora.order.ready\nid: 1\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\n\n'
           ));
           controller.close();
         },
