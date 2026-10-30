@@ -30,8 +30,11 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    insertRequest:async v=>map(await single(query,
     "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) VALUES($1,$2,$3,$4,to_timestamp($5::double precision/1000),to_timestamp($6::double precision/1000)) RETURNING *",
     [v.accountId,v.customerId,v.visitId,v.sourceTableId,v.createdAtMs,v.expiresAtMs])),
-   // Called only inside the same H6 order-confirmation transaction.
-   // Locks the account first to serialize against requests and decisions.
+   // Transfer is intentionally disabled until H6 account/visit binding and
+   // pending-delivery rerouting are implemented atomically in PostgreSQL.
+   // Updating customer_accounts.table_id alone would split financial identity.
+   applyTransfer:async()=>{throw Error('table_change_transfer_not_integrated');},
+   /* Legacy prototype retained below for review only; never reachable.
    applyTransfer:async({accountId,orderId,request})=>{
     if(!accountId||!orderId||!request?.id||!request?.sourceTableId||
       !request?.destinationTableId||request.sourceTableId===request.destinationTableId)
@@ -48,6 +51,7 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
      [accountId,request.destinationTableId]);
     return result.rows[0];
    },
+   */
    requireWaiter:identity=>verifyStaff({query,...identity}),
    lockRequest:async id=>map((await query(
     'SELECT * FROM sabora.customer_table_change_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]),
