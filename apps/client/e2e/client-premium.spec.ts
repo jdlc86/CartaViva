@@ -350,7 +350,11 @@ test('ambiguous order failure stays unconfirmed and is never retried without a u
  await page.getByRole('button',{name:'Revalidar y continuar'}).click();
  const checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
  await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
- await expect(checkout.getByRole('alert')).toContainText('No se confirmó el pedido');
+ await expect(checkout.getByRole('alert')).toContainText('Confirmación pendiente de verificar');
+ await page.route('**/api/v1/customer/orders/lookup',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({status:'not_found'})}));
+ await checkout.getByRole('button',{name:'Consultar resultado del pedido'}).click();
+ await expect(checkout.getByRole('alert')).toContainText('No consta una confirmación');
  expect(confirmations).toHaveLength(1);
  await page.waitForTimeout(250);
  expect(confirmations).toHaveLength(1);
