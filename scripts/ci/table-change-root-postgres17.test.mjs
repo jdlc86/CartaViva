@@ -783,3 +783,33 @@ test('PG17 B2 consumes a real approval once and preserves economic account and o
     WHERE id=$1`,[request.id])).rows[0].status,'consumed');
  });
 });
+
+test('PG17 B2 integrated confirmation rejects missing session before any economic or delivery writes',async()=>{
+ await transaction(async client=>{
+  const before=(await client.query(`SELECT
+   (SELECT count(*)::bigint FROM sabora.orders) AS orders,
+   (SELECT count(*)::bigint FROM sabora.customer_accounts) AS accounts,
+   (SELECT count(*)::bigint FROM sabora.order_rounds) AS rounds,
+   (SELECT count(*)::bigint FROM sabora.customer_table_change_requests) AS approvals,
+   (SELECT count(*)::bigint FROM sabora.customer_account_operational_bindings) AS bindings,
+   (SELECT count(*)::bigint FROM sabora.order_line_delivery_destinations) AS deliveries,
+   (SELECT count(*)::bigint FROM sabora.payment_attempts) AS payments`)).rows[0];
+  const failure=await expectSqlError(client,()=>client.query(`SELECT *
+   FROM sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [Buffer.alloc(32,244),ids.destinationTable,'invalid-qr',destinationVisit,
+    'invalid-basket','invalid-request',Buffer.alloc(32,245),ids.round,
+    ids.order,JSON.stringify([]),false,'pay_at_end']),/customer_session_forbidden/);
+  assert.equal(failure.code,'42501');
+  const after=(await client.query(`SELECT
+   (SELECT count(*)::bigint FROM sabora.orders) AS orders,
+   (SELECT count(*)::bigint FROM sabora.customer_accounts) AS accounts,
+   (SELECT count(*)::bigint FROM sabora.order_rounds) AS rounds,
+   (SELECT count(*)::bigint FROM sabora.customer_table_change_requests) AS approvals,
+   (SELECT count(*)::bigint FROM sabora.customer_account_operational_bindings) AS bindings,
+   (SELECT count(*)::bigint FROM sabora.order_line_delivery_destinations) AS deliveries,
+   (SELECT count(*)::bigint FROM sabora.payment_attempts) AS payments`)).rows[0];
+  assert.deepEqual(after,before);
+ });
+});
