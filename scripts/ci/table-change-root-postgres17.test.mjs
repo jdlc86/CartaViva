@@ -594,3 +594,25 @@ test('PG17 atomic grant consumer is sealed and updates only non-picked-up delive
  has_function_privilege('anon',$1::oid,'EXECUTE') AS anonymous`,[fn[0].oid])).rows[0];
  assert.deepEqual(grants,{customer:false,staff:false,anonymous:false});
 });
+
+test('PG17 isolated B2 confirmation retains production guard and seals transfer integration',async()=>{
+ const functions=(await admin.query(`SELECT p.proname,p.oid,pg_get_functiondef(p.oid) AS body
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND p.proname IN
+ ('confirm_customer_round_h6_candidate','confirm_customer_round_h6_transfer_integration_candidate')`)).rows;
+ assert.equal(functions.length,2);
+ const active=functions.find(x=>x.proname==='confirm_customer_round_h6_candidate');
+ const isolated=functions.find(x=>x.proname==='confirm_customer_round_h6_transfer_integration_candidate');
+ assert.match(active.body,/table_change_transfer_not_integrated/);
+ assert.doesNotMatch(active.body,/consume_customer_table_change_h6_candidate/);
+ assert.match(isolated.body,/v_transfer:=true/);
+ assert.match(isolated.body,/v_round.order_id/);
+ assert.match(isolated.body,/consume_customer_table_change_h6_candidate/);
+ assert.match(isolated.body,/v_round.account_id<>v_account.id/);
+ assert.match(isolated.body,/persist_customer_order_candidate/);
+ const grants=(await admin.query(`SELECT
+ has_function_privilege('sabora_h6_customer_runtime',$1::oid,'EXECUTE') AS customer,
+ has_function_privilege('anon',$1::oid,'EXECUTE') AS anonymous,
+ has_function_privilege('sabora_h6_operations_runtime',$1::oid,'EXECUTE') AS operations`,[isolated.oid])).rows[0];
+ assert.deepEqual(grants,{customer:false,anonymous:false,operations:false});
+});
