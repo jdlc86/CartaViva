@@ -423,7 +423,8 @@ test('PG17 composite FK rejects delivery projection for another economic account
    customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
    confirmed_at,grouping,items)
    VALUES($1,$2,$3,'Auditoría entrega','SB-BABABABABABG',$4,
-   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first','[]'::jsonb)`,[
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+   '[{"category":"main","name":"Plato auditoría","quantity":1}]'::jsonb)`,[
    ids.order,ids.sourceTable,ids.sourceSession,sourceVisit
   ]);
   await client.query(`INSERT INTO sabora.order_rounds
