@@ -538,6 +538,11 @@ test('PG17 line destinations are account-scoped, sealed, and exclude completed p
     AND contype='f'`)).rows.map(row=>row.definition).join('\n');
  assert.match(constraints,/FOREIGN KEY \(round_id, account_id\) REFERENCES sabora\.order_rounds\(id, account_id\)/);
  assert.match(constraints,/FOREIGN KEY \(order_id, order_line_id\) REFERENCES sabora\.order_lines\(order_id, id\)/);
+ const lineKey=(await admin.query(`SELECT conname,pg_get_constraintdef(oid) AS definition
+  FROM pg_constraint WHERE conrelid='sabora.order_lines'::regclass
+  AND conname='order_lines_order_id_id_unique'`)).rows;
+ assert.equal(lineKey.length,1,'line/order composite FK requires explicit referenced unique key');
+ assert.match(lineKey[0].definition,/UNIQUE \(order_id, id\)/);
  const security=(await admin.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,
   has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS direct
   FROM pg_class c WHERE c.oid='sabora.order_line_delivery_destinations'::regclass`)).rows[0];
