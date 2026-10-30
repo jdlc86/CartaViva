@@ -183,3 +183,7 @@ Commit validado `e52ff5a339e094b9bd19673ac151880f68cccc31`. Se amplió la acepta
 Se detectaron y corrigieron dos errores del harness al integrar cambios concurrentes: import duplicado de gateway y referencia a variable fuera de alcance. También se corrigió la resolución del Fastify de gestión. **4/4 workflows SUCCESS** en SHA citado: Sabora CI `41006419381`, bootstrap `41006419329`, cliente `41006419461`, gestión `41006419340`.
 
 **Límite:** esto valida el transporte real H4 y SQL real en test, pero no constituye aún certificación del recorrido de ambas interfaces en navegador con autenticación de personal JWT real. Bloque 1/5 permanece abierto hasta el cierre normativo y operativo.
+
+## Bloque 2 — endurecimiento de notificaciones SSE (2026-10-30)
+
+En la rama Draft PR #40, commits `3e36d2a` y `5653dfb`, se acotó a 65.536 caracteres el búfer de tramas SSE pendientes en la PWA de gestión, con tratamiento de desbordamiento como indisponibilidad de transporte y reconexión por el mecanismo existente. Se añadió prueba automatizada que inyecta una trama excesiva y comprueba que no se entregan eventos parciales y que se informa de indisponibilidad. **Evidencia CI de estos commits: pendiente de verificar.** Este avance no cierra el Bloque 2: siguen pendientes el recorrido funcional completo, adversarios de red/reintentos y la certificación PG17/navegador. No se ha activado servidor productivo, desplegado ni intervenido en recursos compartidos.
