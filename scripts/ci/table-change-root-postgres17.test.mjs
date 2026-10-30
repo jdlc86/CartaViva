@@ -606,6 +606,7 @@ test('PG17 isolated B2 confirmation retains production guard and seals transfer 
  assert.match(active.body,/table_change_transfer_not_integrated/);
  assert.doesNotMatch(active.body,/consume_customer_table_change_h6_candidate/);
  assert.match(isolated.body,/v_transfer:=true/);
+ assert.match(isolated.body,/h6_multiple_open_accounts_ambiguous/);
  assert.match(isolated.body,/v_round.order_id/);
  assert.match(isolated.body,/consume_customer_table_change_h6_candidate/);
  assert.match(isolated.body,/v_round.account_id<>v_account.id/);
