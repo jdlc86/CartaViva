@@ -106,6 +106,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   try{credential=parseScannedTableQr(payload);}
   catch{setTableVisit(null);setQrState('invalid');return;}
   qrCredentialRef.current=credential;setTableVisit(null);
+  // A new QR must never inherit the previous table's payment/dispatch stream.
+  setEventScope(null);setCustomerEvents([]);
   if(identity.status==='authenticated')void authorizeTable(credential);
   else setQrState(identity.status==='checking'?'pending':identity.status==='guest'?'identity_required':'unavailable');
  },[authorizeTable,identity.status]);
