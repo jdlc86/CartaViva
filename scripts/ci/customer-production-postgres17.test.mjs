@@ -683,6 +683,26 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     (await fetch('/api/v1/operations/order-lines',{cache:'no-store'})).status);
    assert.equal(customerCannotManage,401);
 
+   // Network loss after an acknowledged confirmation must never trigger a
+   // second order submission. The customer retains the confirmed state while
+   // disconnected, then reconnects without duplicating persisted consumption.
+   const confirmedCountBeforeOffline=(await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.orders WHERE customer_alias=$1',
+    ['Cliente navegador'])).rows[0].n;
+   await context.setOffline(true);
+   try {
+    await clientPage.getByText('Pedido confirmado').waitFor({timeout:5000});
+    assert.equal((await admin.query(
+     'SELECT count(*)::integer AS n FROM sabora.orders WHERE customer_alias=$1',
+     ['Cliente navegador'])).rows[0].n,confirmedCountBeforeOffline);
+   }finally{
+    await context.setOffline(false);
+   }
+   assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.orders WHERE customer_alias=$1',
+    ['Cliente navegador'])).rows[0].n,confirmedCountBeforeOffline,
+    'reconnection must not automatically duplicate an acknowledged order');
+
    const managementPage=await context.newPage();
    managementPage.on('request',request=>{
     const pathname=new URL(request.url()).pathname;
