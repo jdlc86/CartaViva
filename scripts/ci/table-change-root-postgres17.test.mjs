@@ -1138,6 +1138,24 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   await client.query(`INSERT INTO sabora.customer_account_operational_bindings
    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
    [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  // Existing A order and pending delivery must move with the integrated B checkout.
+  const priorOrder='b0a00000-0000-4000-8000-000000000040';
+  const priorRound='b0a00000-0000-4000-8000-000000000041';
+  await client.query(`INSERT INTO sabora.orders
+   (id,table_id,session_id,company,employee_number,customer_alias,customer_identifier,
+    customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'Histórico A',$4,$5,'{"schemaVersion":"1"}'::jsonb,
+    clock_timestamp(),'first','[{"category":"main","name":"Anterior","quantity":1}]'::jsonb)`,
+   [priorOrder,ids.sourceTable,ids.sourceSession,publicId,sourceVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds
+   (id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
+    grouping_deadline,state)
+   VALUES($1,$2,$3,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [priorRound,priorOrder,ids.sourceAccount]);
+  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5)`,
+   [priorRound,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
   const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
    account_id,customer_id,visit_key,source_table_id,status,
    requesting_session_hash,expires_at,decided_at,decided_by)
@@ -1192,6 +1210,16 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(state.round_account,ids.sourceAccount);
   assert.equal(state.delivery_table,ids.destinationTable);
   assert.equal(state.dispatches,1);
+  const previous=(await client.query(`SELECT o.table_id AS historical_table,
+   r.account_id,d.table_id AS delivery_table,d.session_id,d.visit_key
+   FROM sabora.orders o JOIN sabora.order_rounds r ON r.order_id=o.id
+   JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+   WHERE o.id=$1`,[priorOrder])).rows[0];
+  assert.equal(previous.historical_table,ids.sourceTable);
+  assert.equal(previous.account_id,ids.sourceAccount);
+  assert.equal(previous.delivery_table,ids.destinationTable);
+  assert.equal(previous.session_id,ids.destinationSession);
+  assert.equal(previous.visit_key,destinationVisit);
   const replay=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
