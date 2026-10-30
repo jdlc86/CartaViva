@@ -436,36 +436,82 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  }finally{
   kitchenGateway.revoke();waiterGateway.revoke();await staffHttp.close();
  }
+ // Exercise the actual management PWA gateway through real H4 HTTP handlers
+ // against the same persisted H3 order. Authentication is a test-only role
+ // adapter; production JWT/JWKS and restricted pools remain separately gated.
+ const staffHttp=Fastify({logger:false});
+ const actors=new Map([['kitchen-ci-token-971001',kitchen],
+   ['waiter-ci-token-971001',waiter]]);
+ registerOrderOperationsHttp(staffHttp,{
+  forRoles:roles=>async request=>{
+   const actor=actors.get(String(request.headers.authorization||'').replace(/^Bearer /,''));
+   if(!actor){const error=Error('unauthorized');error.statusCode=401;throw error;}
+   if(!roles.includes(actor.verifiedStaff.role)){
+    const error=Error('forbidden');error.statusCode=403;throw error;
+   }
+   request.verifiedIdentity=actor.verifiedIdentity;
+   request.verifiedStaff=actor.verifiedStaff;
+  },operations
+ });
+ const staffFetch=async(path,options)=>{
+  const reply=await staffHttp.inject({method:options.method||'GET',url:path,
+   headers:Object.fromEntries(new Headers(options.headers)),
+   ...(options.body===undefined?{}:{payload:options.body})});
+  return new Response(reply.body,{status:reply.statusCode,
+   headers:{'content-type':reply.headers['content-type']||'application/json'}});
+ };
+ const kitchenGateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'kitchen-ci-token-971001',fetchImpl:staffFetch});
+ const waiterGateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'waiter-ci-token-971001',fetchImpl:staffFetch});
+ const managementBoard=await kitchenGateway.listBoard({status:'confirmed'});
+ assert.ok(managementBoard.items.some(item=>item.lineId===lineId),
+  'management PWA must see the same H3 order through H4 HTTP');
+ const httpPreparing=await kitchenGateway.transitionLine({
+  lineId,targetStatus:'preparing',correlationId:'pwa_h4_prepare_971001'});
+ assert.equal(httpPreparing.currentStatus,'preparing');
+ const httpReady=await kitchenGateway.transitionLine({
+  lineId,targetStatus:'ready',correlationId:'pwa_h4_ready_971001'});
+ assert.equal(httpReady.currentStatus,'ready');
+ const waiterBoard=await waiterGateway.listBoard({status:'ready'});
+ assert.ok(waiterBoard.items.some(item=>item.lineId===lineId),
+  'waiter PWA must see the H3 line prepared by kitchen PWA');
+ const httpPickup=await waiterGateway.transitionLine({
+  lineId,targetStatus:'picked_up',correlationId:'pwa_h4_pickup_971001'});
+ assert.equal(httpPickup.currentStatus,'picked_up');
+ const managementHistory=await waiterGateway.listHistory({orderId:concurrent[0].orderId});
+ assert.ok(managementHistory.events.some(event=>event.lineId===lineId));
+ kitchenGateway.revoke();waiterGateway.revoke();await staffHttp.close();
  const kitchenBoard=await operations.listBoard(kitchen,{status:'confirmed',limit:100,cursor:null});
- assert.ok(kitchenBoard.items.some(item=>item.lineId===secondLineId),
+ assert.ok(kitchenBoard.items.some(item=>item.domainLineId===secondLineId),
    'H3-confirmed order must be visible to H4 kitchen');
  // A waiter cannot prepare a customer-confirmed line; no mutation occurs.
  await assert.rejects(operations.transitionLine(waiter,{
-   lineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_forbidden_waiter_prepare'}),
+   domainLineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_forbidden_waiter_prepare'}),
    /order_operations_forbidden/);
  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[secondLineId]))
    .rows[0].status,'confirmed');
  const preparing=await operations.transitionLine(kitchen,{
-   lineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
+   domainLineId:secondLineId,targetStatus:'preparing',correlationId:'h3_h4_prepare_971001'});
  assert.equal(preparing.repeated,false);
  const ready=await operations.transitionLine(kitchen,{
-   lineId:secondLineId,targetStatus:'ready',correlationId:'h3_h4_ready_971001'});
+   domainLineId:secondLineId,targetStatus:'ready',correlationId:'h3_h4_ready_971001'});
  assert.equal(ready.repeated,false);
  assert.ok(ready.notificationId);
  const salaBoard=await operations.listBoard(waiter,{status:'ready',limit:100,cursor:null});
- assert.ok(salaBoard.items.some(item=>item.lineId===secondLineId),
+ assert.ok(salaBoard.items.some(item=>item.domainLineId===secondLineId),
    'H4 sala must see the same H3-confirmed line');
  // Kitchen cannot perform sala pickup, and the ready notification survives.
  await assert.rejects(operations.transitionLine(kitchen,{
-   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_forbidden_kitchen_pickup'}),
+   domainLineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_forbidden_kitchen_pickup'}),
    /order_operations_forbidden/);
  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',[secondLineId]))
    .rows[0].status,'ready');
  const pickup=await operations.transitionLine(waiter,{
-   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+   domainLineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(pickup.notificationId,ready.notificationId);
  const replay=await operations.transitionLine(waiter,{
-   lineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
+   domainLineId:secondLineId,targetStatus:'picked_up',correlationId:'h3_h4_pickup_971001'});
  assert.equal(replay.repeated,true);
  assert.equal(replay.eventId,pickup.eventId,
    'idempotent sala replay must reference the original event');
