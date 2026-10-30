@@ -38,7 +38,7 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    lockRequest:async id=>map((await query(
     'SELECT * FROM sabora.customer_table_change_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]),
    recordDecision:async({request,staffId})=>({request:map(await single(query,
-    "UPDATE sabora.customer_table_change_requests SET status=$2,decided_at=to_timestamp($3::double precision/1000),decided_by=$4 WHERE id=$1 AND status='pending' RETURNING *",
+    "UPDATE sabora.customer_table_change_requests SET status=$2,decided_at=to_timestamp($3::double precision/1000),decided_by=$4 WHERE id=$1 AND status='pending' AND expires_at>clock_timestamp() RETURNING *",
     [request.id,request.status,request.decidedAtMs,staffId]))})
   }));
  }});
