@@ -132,17 +132,9 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const flowTx=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_customer_flow_runtime',
   allowedSql:new Set([AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
    LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL])});
- const h6CustomerTxRaw=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_h6_customer_runtime',
+ const h6CustomerTx=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_h6_customer_runtime',
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
    READ_CUSTOMER_EVENTS_H6_SQL])});
- const h6CustomerTx=async handler=>h6CustomerTxRaw(async query=>handler(async(sql,params)=>{
-  try{return await query(sql,params);}
-  catch(error){
-   console.error('H6 PG17 SQL diagnostic',String(error.code??'unknown'),
-    String(error.constraint??'none'),String(error.routine??'none'));
-   throw error;
-  }
- }));
  const flow=createCustomerProductionFlow({withTransaction:flowTx,withH6Transaction:h6CustomerTx,secretKey});
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
@@ -182,8 +174,6 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    assert.equal(init.credentials,'same-origin');
    const response=await customerHttp.inject({method:init.method||'GET',url:path,
     headers:{...init.headers,...headers},payload:init.body});
-   if(response.statusCode>=400) console.error('H6 PG17 HTTP diagnostic',response.statusCode,
-    String(response.json()?.error?.code??response.json()?.error??'unknown'));
    return new Response(response.body,{status:response.statusCode,headers:{
     'content-type':response.headers['content-type']||'application/json'}});
   };
