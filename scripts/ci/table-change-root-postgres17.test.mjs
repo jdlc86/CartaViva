@@ -340,3 +340,25 @@ test('PG17 H6 confirmation integrates account binding and delivery projection wi
  assert.ok(roles.every(row=>row.owner_access&&!row.customer_access&&
   row.relrowsecurity&&row.relforcerowsecurity));
 });
+
+
+test('PG17 table-change lifecycle is sealed and has no unauthenticated runtime entry',async()=>{
+ const funcs=(await admin.query(`SELECT p.proname,p.prosecdef,
+  pg_get_userbyid(p.proowner) AS owner,
+  has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE') AS customer_execute,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS operations_execute
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND p.proname=ANY($1::text[])`,
+ [['request_customer_table_change_h6_candidate','decide_customer_table_change_h6_candidate']])).rows;
+ assert.equal(funcs.length,2);
+ assert.ok(funcs.every(f=>f.prosecdef&&f.owner==='sabora_h6_fn_owner'&&
+  !f.customer_execute&&!f.operations_execute));
+ const requests=(await admin.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,
+ has_table_privilege('sabora_h6_fn_owner',c.oid,'SELECT,INSERT,UPDATE') AS owner_access,
+ has_table_privilege('sabora_h6_customer_runtime',c.oid,'SELECT,INSERT,UPDATE,DELETE') AS customer_access
+ FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+ WHERE n.nspname='sabora' AND c.relname='customer_table_change_requests'`)).rows;
+ assert.equal(requests.length,1);
+ assert.ok(requests[0].relrowsecurity&&requests[0].relforcerowsecurity&&
+  requests[0].owner_access&&!requests[0].customer_access);
+});
