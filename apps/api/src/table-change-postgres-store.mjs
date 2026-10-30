@@ -30,6 +30,21 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    insertRequest:async v=>map(await single(query,
     "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) VALUES($1,$2,$3,$4,to_timestamp($5::double precision/1000),to_timestamp($6::double precision/1000)) RETURNING *",
     [v.accountId,v.customerId,v.visitId,v.sourceTableId,v.createdAtMs,v.expiresAtMs])),
+   // Called only inside the same H6 order-confirmation transaction.
+   // Locks the account first to serialize against requests and decisions.
+   applyTransfer:async({accountId,orderId,request})=>{
+    const account=await single(query,
+     "SELECT id,table_id,state FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE",[accountId]);
+    if(account.state!=='open'||account.table_id!==request.sourceTableId)
+     throw Error('table_change_origin_conflict');
+    const result=await query(
+     "UPDATE sabora.customer_table_change_requests SET status='consumed',destination_table_id=$2,consumed_order_id=$3,consumed_at=clock_timestamp() WHERE id=$1 AND account_id=$4 AND status='approved' RETURNING id",
+     [request.id,request.destinationTableId,orderId,accountId]);
+    if(result.rows.length!==1)throw Error('table_change_transfer_forbidden');
+    await query("UPDATE sabora.customer_accounts SET table_id=$2,updated_at=clock_timestamp() WHERE id=$1",
+     [accountId,request.destinationTableId]);
+    return result.rows[0];
+   },
    requireWaiter:identity=>verifyStaff({query,...identity}),
    lockRequest:async id=>map((await query(
     'SELECT * FROM sabora.customer_table_change_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]),
