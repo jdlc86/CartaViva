@@ -2,6 +2,7 @@ import {registerCustomerProductionCandidate} from './customer-production-composi
 import {assertCustomerProductionSqlCapabilities} from './customer-production-sql-preflight.mjs';
 import {assertIsolatedCustomerPoolIdentities} from './isolated-pool-identity-preflight.mjs';
 import {assertIsolatedCustomerSqlCapabilities} from './isolated-customer-sql-capabilities-preflight.mjs';
+import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {isAllowedCustomerOrigin} from './customer-origin.mjs';
 
 // Opt-in H3 customer API assembly for a separately authorized bootstrap.
@@ -12,7 +13,8 @@ export async function registerVerifiedCustomerProductionApp(app,options={}){
     typeof app.register!=='function'||typeof options!=='object'||options===null)
   throw Error('invalid_customer_production_app');
  const {catalogReaderPool,registrationPool,sessionPool,flowPool,allowedOrigin,secretKey,
-  expectedCatalogLogin,expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin}=options;
+  expectedCatalogLogin,expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin,
+  h6CustomerPool=null,expectedH6CustomerLogin=null}=options;
  const routes=[['GET','/health'],['GET','/ready'],
   ['GET','/api/v1/catalog'],
   ['POST','/api/v1/customer/register'],['GET','/api/v1/customer/session'],
@@ -24,7 +26,12 @@ export async function registerVerifiedCustomerProductionApp(app,options={}){
  if(!isAllowedCustomerOrigin(allowedOrigin)||
     typeof secretKey!=='string'||Buffer.byteLength(secretKey,'utf8')<32)
   throw Error('invalid_customer_production_app');
+ if(Boolean(h6CustomerPool)!==Boolean(expectedH6CustomerLogin)||
+    (h6CustomerPool&&new Set([catalogReaderPool,registrationPool,sessionPool,flowPool,h6CustomerPool]).size!==5))
+  throw Error('invalid_h6_customer_composition');
  const preflight=async()=>{
+  if(h6CustomerPool)await assertH6RuntimeIdentity({pool:h6CustomerPool,
+   expectedLogin:expectedH6CustomerLogin,capability:'sabora_h6_customer_runtime'});
   await assertCustomerProductionSqlCapabilities({registrationPool,sessionPool,flowPool,
    expectedRegistrationLogin,expectedSessionLogin,expectedFlowLogin});
   await assertIsolatedCustomerPoolIdentities({catalogReaderPool,orderWriterPool:flowPool,
