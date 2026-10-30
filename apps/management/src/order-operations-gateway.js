@@ -80,7 +80,6 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
        buffer+=normalized.slice(0,pendingCR?-1:undefined).replaceAll('\r\n','\n');
        // A stalled or malicious stream must not grow browser memory without bound.
        // Treat oversized frames as a transport failure and resynchronize on reconnect.
-       if(buffer.length>65536)throw Error('order_event_frame_too_large');
        let boundary;
        while((boundary=buffer.indexOf('\n\n'))>=0){
         if(boundary>65536)throw Error('order_event_frame_too_large');
@@ -101,6 +100,9 @@ function createEventSubscription(send,{onEvent,onResync,onUnavailable},reconnect
            Array.isArray(value.payload)||typeof value.createdAt!=='string'||!Number.isFinite(Date.parse(value.createdAt)))continue;
         cursor=id;onEvent(Object.freeze({id,type:eventType,payload:Object.freeze({...value.payload}),createdAt:value.createdAt}));
        }
+       // Enforce the limit on the unframed remainder, not on a batch of
+       // individually valid events delivered in a single network read.
+       if(buffer.length>65536)throw Error('order_event_frame_too_large');
       }
       if(!abort.signal.aborted)throw Error('event_stream_ended');
     }catch{
