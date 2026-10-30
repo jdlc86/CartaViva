@@ -40,7 +40,7 @@ test('decision after server deadline is rejected even if waiter acts late',async
  const tx={requireWaiter:async()=>({id:'w1'}),lockRequest:async()=>pending,
   serverNowMs:async()=>91000,recordDecision:async()=>{written=true;}};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
- await assert.rejects(()=>service.decide({staffSessionToken:'staff',requestId:'r1',decision:'approved'}),
+ await assert.rejects(()=>service.decide({verifiedIdentity:{id:'w1'},verifiedStaff:{role:'waiter'},requestId:'r1',decision:'approved'}),
   /table_change_request_not_pending/);
  assert.equal(written,false);
 });
@@ -51,7 +51,7 @@ test('an approved grant never transfers on approval alone',async()=>{
   serverNowMs:async()=>5000,recordDecision:async value=>value,
   applyTransfer:async()=>{transferCalled=true;}};
  const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
- const outcome=await service.decide({staffSessionToken:'staff',requestId:'r1',decision:'approved'});
+ const outcome=await service.decide({verifiedIdentity:{id:'w1'},verifiedStaff:{role:'waiter'},requestId:'r1',decision:'approved'});
  assert.equal(outcome.request.status,'approved');
  assert.equal(transferCalled,false);
 });
