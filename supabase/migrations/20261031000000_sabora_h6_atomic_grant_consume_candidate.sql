@@ -55,7 +55,11 @@ BEGIN
  -- by the caller, before consuming the grant. A failed transaction rolls back all.
  PERFORM 1 FROM sabora.orders o
  WHERE o.id=p_confirmed_order_id AND o.customer_id=p_customer_id
-  AND o.table_id=p_destination_table_id;
+  AND o.table_id=p_destination_table_id
+  AND EXISTS (
+   SELECT 1 FROM sabora.order_rounds r
+   WHERE r.order_id=o.id AND r.account_id=p_account_id
+  );
  IF NOT FOUND THEN RAISE EXCEPTION 'table_change_order_scope_forbidden' USING errcode='42501'; END IF;
  UPDATE sabora.customer_table_change_requests
  SET status='consumed',destination_table_id=p_destination_table_id,
