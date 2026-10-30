@@ -1145,17 +1145,28 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    (id,table_id,session_id,company,employee_number,customer_alias,customer_identifier,
     customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
    VALUES($1,$2,$3,NULL,NULL,'Histórico A',$4,$5,'{"schemaVersion":"1"}'::jsonb,
-    clock_timestamp(),'first','[{"category":"main","name":"Anterior","quantity":1}]'::jsonb)`,
+    clock_timestamp(),'first','[{"category":"main","name":"Recogido","quantity":1},{"category":"main","name":"Pendiente","quantity":1}]'::jsonb)`,
    [priorOrder,ids.sourceTable,ids.sourceSession,publicId,sourceVisit]);
   await client.query(`INSERT INTO sabora.order_rounds
    (id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
     grouping_deadline,state)
    VALUES($1,$2,$3,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
    [priorRound,priorOrder,ids.sourceAccount]);
+  // The mixed historical round has one completed pickup and one pending line.
+  await client.query(`UPDATE sabora.order_lines SET status='picked_up'
+   WHERE order_id=$1 AND line_number=1`,[priorOrder]);
   await client.query(`INSERT INTO sabora.order_round_delivery_destinations
    (round_id,account_id,table_id,session_id,visit_key)
    VALUES($1,$2,$3,$4,$5)`,
    [priorRound,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const oldLines=(await client.query(`SELECT id,line_number,status
+   FROM sabora.order_lines WHERE order_id=$1 ORDER BY line_number`,[priorOrder])).rows;
+  assert.equal(oldLines.length,2);
+  await client.query(`INSERT INTO sabora.order_line_delivery_destinations
+   (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5,$6,$7),($8,$2,$3,$4,$5,$6,$7)`,
+   [oldLines[0].id,priorRound,ids.sourceAccount,priorOrder,ids.sourceTable,
+    ids.sourceSession,sourceVisit,oldLines[1].id]);
   const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests(
    account_id,customer_id,visit_key,source_table_id,status,
    requesting_session_hash,expires_at,decided_at,decided_by)
@@ -1217,9 +1228,20 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    WHERE o.id=$1`,[priorOrder])).rows[0];
   assert.equal(previous.historical_table,ids.sourceTable);
   assert.equal(previous.account_id,ids.sourceAccount);
-  assert.equal(previous.delivery_table,ids.destinationTable);
-  assert.equal(previous.session_id,ids.destinationSession);
-  assert.equal(previous.visit_key,destinationVisit);
+  // Mixed pickup keeps the round summary historical; pending line is authoritative.
+  assert.equal(previous.delivery_table,ids.sourceTable);
+  const priorLines=(await client.query(`SELECT l.line_number,l.status,d.table_id,
+   d.destination_version FROM sabora.order_lines l
+   JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+   WHERE l.order_id=$1 ORDER BY l.line_number`,[priorOrder])).rows;
+  assert.equal(priorLines.length,2);
+  assert.equal(priorLines[0].status,'picked_up');
+  assert.equal(priorLines[0].table_id,ids.sourceTable);
+  assert.equal(priorLines[0].destination_version,'1');
+  assert.equal(priorLines[1].table_id,ids.destinationTable);
+  assert.equal(priorLines[1].destination_version,'2');
+  assert.equal(previous.session_id,ids.sourceSession);
+  assert.equal(previous.visit_key,sourceVisit);
   const lineProjection=(await client.query(`SELECT l.id,l.status,d.account_id,
    d.table_id,d.session_id,d.visit_key,d.destination_version
    FROM sabora.order_lines l
