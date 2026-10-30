@@ -484,8 +484,8 @@ test('PG17 request lifecycle enforces cooldown, expiry and no premature table tr
    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,[
    ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit
   ]);
-  await client.query(`INSERT INTO sabora.restaurant_settings(singleton)
-   VALUES(true) ON CONFLICT(singleton) DO NOTHING`);
+  await client.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
+   VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
   const call=()=>client.query(`SELECT * FROM sabora.request_customer_table_change_h6_candidate(
    $1::bytea,$2::uuid)`,[tokenHash,ids.sourceAccount]);
   const first=(await call()).rows[0];
