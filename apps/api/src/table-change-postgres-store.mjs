@@ -19,8 +19,8 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    serverNowMs:async()=>+new Date((await single(query,'SELECT clock_timestamp() AS now',[])).now),
    lockCustomerAccount:token=>resolveAccount({query,customerSessionToken:token,lock:true}),
    expirePendingRequests:async(accountId,nowMs)=>query(
-    "UPDATE sabora.customer_table_change_requests SET status='expired' WHERE account_id=$1 AND status='pending' AND expires_at<=to_timestamp($2::double precision/1000)",
-    [accountId,nowMs]),
+    "UPDATE sabora.customer_table_change_requests SET status='expired' WHERE account_id=$1 AND status='pending' AND expires_at<=clock_timestamp()",
+    [accountId]),
    lockApprovedRequest:async accountId=>map((await query(
     "SELECT * FROM sabora.customer_table_change_requests WHERE account_id=$1 AND status='approved' FOR UPDATE",[accountId])).rows[0]),
    latestRequest:async accountId=>map((await query(
@@ -28,8 +28,8 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    configuredWindowMs:async()=>1000*(await single(query,
     'SELECT table_change_response_seconds FROM sabora.restaurant_settings WHERE singleton=true',[])).table_change_response_seconds,
    insertRequest:async v=>map(await single(query,
-    "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) VALUES($1,$2,$3,$4,to_timestamp($5::double precision/1000),to_timestamp($6::double precision/1000)) RETURNING *",
-    [v.accountId,v.customerId,v.visitId,v.sourceTableId,v.createdAtMs,v.expiresAtMs])),
+    "INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) SELECT $1,$2,$3,$4,clock_timestamp(),clock_timestamp()+make_interval(secs=>$5::integer) WHERE NOT EXISTS (SELECT 1 FROM sabora.customer_table_change_requests WHERE account_id=$1 AND (status='approved' OR (status='pending' AND expires_at>clock_timestamp()) OR (status IN ('rejected','expired','consumed','revoked') AND expires_at>clock_timestamp()))) RETURNING *",
+    [v.accountId,v.customerId,v.visitId,v.sourceTableId,Math.round((v.expiresAtMs-v.createdAtMs)/1000)])),
    // Transfer is intentionally disabled until H6 account/visit binding and
    // pending-delivery rerouting are implemented atomically in PostgreSQL.
    // Updating customer_accounts.table_id alone would split financial identity.
