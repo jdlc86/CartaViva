@@ -43,6 +43,14 @@ BEGIN
      AND v.visit_key=p_visit_key AND v.revoked_at IS NULL
      AND v.expires_at>clock_timestamp() FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'customer_visit_forbidden' USING errcode='42501'; END IF;
+  -- Never choose an arbitrary account when legacy data contains multiple
+  -- open accounts for one customer. The transfer must not mix balances.
+  PERFORM 1 FROM sabora.customer_accounts a
+   WHERE a.customer_id=v_session.customer_id AND a.state='open'
+   OFFSET 1 LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'h6_multiple_open_accounts_ambiguous' USING errcode='23514';
+  END IF;
   -- Resolve the one open economic account before writing the destination order.
   -- An approved grant permits a new destination; no grant means fail closed.
   SELECT a.id,b.table_id,b.session_id,b.visit_key
