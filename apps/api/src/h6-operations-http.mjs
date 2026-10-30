@@ -33,7 +33,7 @@ const failure=(reply,error)=>{
  if(INPUT.has(code))return reply.code(400).send({error:'invalid_h6_operation'});
  return reply.code(503).send({error:'h6_operations_unavailable'});
 };
-export function registerH6OperationsHttp(app,{forRoles,operations}={}){
+export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=null}={}){
  if(!app||typeof app.post!=='function'||typeof forRoles!=='function'||!operations)
   throw Error('invalid_h6_operations_http');
  const any=forRoles(['admin','root','waiter','kitchen']);
@@ -63,6 +63,27 @@ export function registerH6OperationsHttp(app,{forRoles,operations}={}){
    incidentId:request.params.incidentId,...body}));}catch(error){return failure(reply,error);}
  });
  const floor=forRoles(['admin','root','waiter']);
+ if(tableChange&&typeof tableChange.decide==='function'){
+  app.post('/api/v1/operations/table-change/requests/:requestId/decision',
+   {preHandler:floor,bodyLimit:1024},async(request,reply)=>{
+    reply.header('Cache-Control','no-store');
+    const requestId=request.params?.requestId;
+    if(!UUID.test(requestId??'')||!exact(request.body,['decision'])||
+       !['approved','rejected'].includes(request.body.decision))
+     return reply.code(400).send({error:'invalid_table_change_decision'});
+    try{
+     return reply.code(200).send(await tableChange.decide({
+      verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
+      requestId,decision:request.body.decision}));
+    }catch(error){
+     const code=typeof error?.message==='string'?error.message:'';
+     if(code==='table_change_request_not_found')return reply.code(404).send({error:'table_change_request_not_found'});
+     if(code==='table_change_request_not_pending')return reply.code(409).send({error:'table_change_request_not_pending'});
+     if(code==='table_change_unauthorized')return reply.code(403).send({error:'forbidden'});
+     return reply.code(503).send({error:'h6_operations_unavailable'});
+    }
+   });
+ }
  const pickupReply=(reply,result)=>{
   const value=publicPickup(result);
   if(value.outcome==='conflict')return reply.code(409).send({error:'pickup_claim_conflict',pickup:value});
