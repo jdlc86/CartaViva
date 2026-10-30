@@ -189,7 +189,7 @@ test('oversized complete SSE event frames cannot bypass the buffer cap', async (
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode(
-          'event: sabora.order.ready\\nid: 1\\ndata: ' + 'x'.repeat(65537) + '\\n\\n'
+          'event: sabora.order.ready\nid: 1\ndata: ' + 'x'.repeat(65537) + '\n\n'
         ));
       },
     }), {headers: {'Content-Type':'text/event-stream'}}),
@@ -216,7 +216,7 @@ test('SSE CRLF framing split across reads still delivers a single event', async 
     reconnectDelayMs: 30000,
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
-        const frame = 'event: sabora.order.ready\\r\\nid: 1\\r\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\r\\n\\r\\n';
+        const frame = 'event: sabora.order.ready\r\nid: 1\r\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\r\n\r\n';
         const bytes = new TextEncoder().encode(frame);
         for (let i = 0; i < bytes.length; i++) controller.enqueue(bytes.slice(i, i + 1));
       },
@@ -248,9 +248,9 @@ test('multiple valid SSE frames in one large read are delivered without false ov
     fetchImpl: async () => new Response(new ReadableStream({
       start(controller) {
         const events = Array.from({length: 800}, (_, i) =>
-          'event: sabora.order.ready\\nid: ' + (i + 1) +
-          '\\ndata: {"payload":{"lineId":"test","padding":"' + 'x'.repeat(80) +
-          '"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n'
+          'event: sabora.order.ready\nid: ' + (i + 1) +
+          '\ndata: {"payload":{"lineId":"test","padding":"' + 'x'.repeat(80) +
+          '"},"createdAt":"2026-10-30T00:00:00.000Z"}\n\n'
         ).join('');
         assert.ok(events.length > 65536);
         controller.enqueue(new TextEncoder().encode(events));
