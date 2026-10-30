@@ -274,3 +274,83 @@ test('multiple valid SSE frames in one large read are delivered without false ov
     gateway.revoke();
   }
 });
+
+test('SSE reconnect resumes after last accepted id and ignores replayed events', async () => {
+  const observed = [];
+  const cursors = [];
+  let resolveDone;
+  const done = new Promise(resolve => { resolveDone = resolve; });
+  let connections = 0;
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 100,
+    fetchImpl: async (path, options) => {
+      assert.equal(path, '/api/v1/operations/events');
+      cursors.push(options.headers['Last-Event-ID'] ?? null);
+      connections++;
+      const frame = (id) => 'event: sabora.order.ready\\nid: ' + id +
+        '\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n';
+      const body = connections === 1 ? frame(1) : frame(1) + frame(2);
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }), {headers: {'Content-Type': 'text/event-stream'}});
+    },
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent(value) {
+      observed.push(value.id);
+      if (observed.length === 2) resolveDone();
+    },
+    onResync() {},
+    onUnavailable() {},
+  });
+  try {
+    await Promise.race([done, new Promise((_, reject) =>
+      setTimeout(() => reject(Error('sse_reconnect_timeout')), 4000))]);
+    assert.deepEqual(observed, [1, 2]);
+    assert.deepEqual(cursors.slice(0, 2), [null, '1']);
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
+
+test('SSE access-revoked event stops delivery and does not reconnect', async () => {
+  let unavailable = 0, delivered = 0, connections = 0;
+  let notify;
+  const stopped = new Promise(resolve => { notify = resolve; });
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 100,
+    fetchImpl: async () => {
+      connections++;
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(
+            'event: access-revoked\\ndata: {}\\n\\n' +
+            'event: sabora.order.ready\\nid: 1\\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n'
+          ));
+          controller.close();
+        },
+      }), {headers: {'Content-Type': 'text/event-stream'}});
+    },
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent() { delivered++; },
+    onResync() {},
+    onUnavailable() { unavailable++; notify(); },
+  });
+  try {
+    await stopped;
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(unavailable, 1);
+    assert.equal(delivered, 0);
+    assert.equal(connections, 1);
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
