@@ -405,3 +405,47 @@ test('PG17 table-change entrypoints deny PUBLIC, anon, authenticated and unrelat
  assert.equal(publicDml.length,3);
  assert.ok(publicDml.every(row=>!row.public_dml),'PUBLIC must have no projection DML grants');
 });
+
+test('PG17 composite FK rejects delivery projection for another economic account',async()=>{
+ const constraints=(await admin.query(`SELECT conname,convalidated
+ FROM pg_constraint WHERE conrelid='sabora.order_round_delivery_destinations'::regclass
+ AND conname='order_round_delivery_round_account_fk'`)).rows;
+ assert.deepEqual(constraints,[{conname:'order_round_delivery_round_account_fk',convalidated:true}]);
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABG'});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id)
+   VALUES($1,$2,$3,$4,$5),($6,$7,$8,$9,$5)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer,
+   ids.destinationAccount,ids.destinationTable,ids.destinationSession,destinationVisit
+  ]);
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,
+   customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+   confirmed_at,grouping,items)
+   VALUES($1,$2,$3,'Auditoría entrega','SB-BABABABABABG',$4,
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first','[]'::jsonb)`,[
+   ids.order,ids.sourceTable,ids.sourceSession,sourceVisit
+  ]);
+  await client.query(`INSERT INTO sabora.order_rounds
+   (id,order_id,account_id,amount_cents,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,$3,0,1,clock_timestamp()+interval '5 minutes','free_grouping')`,[
+   ids.round,ids.order,ids.sourceAccount
+  ]);
+  const error=await expectSqlError(client,()=>client.query(`INSERT INTO
+   sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5)`,[
+   ids.round,ids.destinationAccount,ids.destinationTable,ids.destinationSession,destinationVisit
+  ]),/foreign key constraint/);
+  assert.equal(error.code,'23503');
+  assert.equal((await client.query(`SELECT count(*)::int AS n
+   FROM sabora.order_round_delivery_destinations WHERE round_id=$1`,[ids.round])).rows[0].n,0);
+  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5)`,[
+   ids.round,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit
+  ]);
+  assert.equal((await client.query(`SELECT account_id FROM sabora.order_round_delivery_destinations
+   WHERE round_id=$1`,[ids.round])).rows[0].account_id,ids.sourceAccount);
+ });
+});
