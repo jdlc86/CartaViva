@@ -70,3 +70,16 @@ rebind the stable account, redirect only pending line destinations and
 persist the new order in the same transaction. It must update staff delivery
 readers and SSE before acceptance. This is a B1 foundation, not B2 closure.
 CI results for the new migration must be checked before claiming validation.
+
+
+## B1 line-destination lifecycle (candidate)
+
+Migration `20261030230000_sabora_h6_line_delivery_confirm_lifecycle_candidate.sql`
+replaces the sealed H6 confirmation so **newly confirmed rounds** insert one
+destination per non-picked-up line, in the same database transaction, after
+the round and before kitchen dispatch. Existing lines are backfilled by the
+previous migration. This closes the **candidate projection lifecycle**
+(backfill plus new writes) but does not implement transfer or staff delivery
+readers. The source-order invariant is asserted against PG17 function catalog;
+actual CI execution remains required for acceptance. Migration audit now
+covers 53 files. The cross-table guard is intentionally preserved.
