@@ -176,6 +176,22 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   providerChargeId:'ch_H6Pg17Charge01'});
  assert.equal(captured.dispatch_state,'requested');
 
+ // The automatic dispatch belongs to this exact confirmed order and round:
+ // no second dispatch is created by concurrent confirmation or capture.
+ const dispatchProof=(await admin.query(`SELECT d.id,d.order_id,d.round_id,d.state,
+  r.order_id AS round_order_id,p.state AS payment_state
+  FROM sabora.kitchen_dispatches d
+  JOIN sabora.order_rounds r ON r.id=d.round_id
+  JOIN sabora.payment_attempts p ON p.round_id=r.id
+  WHERE d.order_id=$1`,[order.orderId])).rows;
+ assert.equal(dispatchProof.length,1,'one automatic kitchen dispatch per confirmed round');
+ assert.equal(dispatchProof[0].id,captured.dispatch_id);
+ assert.equal(dispatchProof[0].order_id,order.orderId);
+ assert.equal(dispatchProof[0].round_id,roundId);
+ assert.equal(dispatchProof[0].round_order_id,order.orderId);
+ assert.equal(dispatchProof[0].state,'requested');
+ assert.equal(dispatchProof[0].payment_state,'captured');
+
  const dispatchId=captured.dispatch_id;
  const line=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',[order.orderId])).rows[0].id;
  await assert.rejects(admin.query(`UPDATE sabora.order_lines SET status='preparing' WHERE id=$1`,[line]),
