@@ -257,3 +257,61 @@ test('PG17 B foundation enforces isolated operational binding and delivery proje
   await client.query('RESET ROLE');
  });
 });
+
+
+test('PG17 delivery projection preserves historical order, account, grouping and economic balances',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABF'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts(
+    id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4)`,[ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+    customer_alias,customer_identifier,customer_visit_key,economic_snapshot,
+    confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'Auditoría entrega',$4,$5,
+    '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+    '[{"category":"main","name":"Plato auditoría","quantity":1}]'::jsonb)`,
+   [ids.order,ids.sourceTable,ids.sourceSession,'SB-BABABABABABF',sourceVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds(id,order_id,account_id,amount_cents,
+    payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,$3,2400,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [ids.round,ids.order,ids.sourceAccount]);
+  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key)
+   VALUES($1,$2,$3,$4,$5)`,
+   [ids.round,ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+  const before=(await client.query(`SELECT r.account_id,r.grouping_deadline,
+   a.outstanding_cents,o.table_id AS historical_table,d.table_id AS delivery_table
+   FROM sabora.order_rounds r JOIN sabora.customer_accounts a ON a.id=r.account_id
+   JOIN sabora.orders o ON o.id=r.order_id
+   JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+   WHERE r.id=$1`,[ids.round])).rows[0];
+  await client.query(`UPDATE sabora.order_round_delivery_destinations
+   SET table_id=$2,session_id=$3,visit_key=$4,destination_version=destination_version+1
+   WHERE round_id=$1`,[ids.round,ids.destinationTable,ids.destinationSession,destinationVisit]);
+  const after=(await client.query(`SELECT r.account_id,r.grouping_deadline,
+   a.outstanding_cents,o.table_id AS historical_table,d.table_id AS delivery_table,
+   d.destination_version
+   FROM sabora.order_rounds r JOIN sabora.customer_accounts a ON a.id=r.account_id
+   JOIN sabora.orders o ON o.id=r.order_id
+   JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+   WHERE r.id=$1`,[ids.round])).rows[0];
+  assert.equal(after.account_id,before.account_id);
+  assert.equal(after.grouping_deadline.getTime(),before.grouping_deadline.getTime());
+  assert.equal(after.outstanding_cents,before.outstanding_cents);
+  assert.equal(after.historical_table,ids.sourceTable);
+  assert.equal(after.delivery_table,ids.destinationTable);
+  assert.equal(after.destination_version,'2');
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  const denied=await expectSqlError(client,()=>client.query(`UPDATE
+   sabora.order_round_delivery_destinations SET destination_version=3 WHERE round_id=$1`,
+   [ids.round]),/permission denied/);
+  assert.equal(denied.code,'42501');
+  await client.query('RESET ROLE');
+ });
+});
