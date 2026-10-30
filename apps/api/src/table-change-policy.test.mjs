@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {TABLE_CHANGE_REQUEST_WINDOW_MS,tableChangeRequestView,decideTableChange,consumeTableChange} from './table-change-policy.mjs';
+import {TABLE_CHANGE_REQUEST_WINDOW_MS,createTableChangeRequest,tableChangeRequestView,decideTableChange,consumeTableChange} from './table-change-policy.mjs';
 const request={status:'pending',sourceTableId:'table-1',createdAtMs:1000,expiresAtMs:1000+TABLE_CHANGE_REQUEST_WINDOW_MS};
 test('90-second pending window blocks repeated requests and decisions at deadline',()=>{
  assert.equal(tableChangeRequestView(request,1000).remainingSeconds,90);
@@ -20,4 +20,12 @@ test('rejection preserves original cooldown, approval enables one deferred trans
  assert.throws(()=>consumeTableChange(moved,{sourceTableId:'table-1',destinationTableId:'table-4',nowMs:1_000_000}),/forbidden/);
  assert.throws(()=>consumeTableChange(approved,{sourceTableId:'table-1',destinationTableId:'table-1',nowMs:2000}),/forbidden/);
  assert.throws(()=>consumeTableChange(approved,{sourceTableId:'table-2',destinationTableId:'table-3',nowMs:2000}),/origin_conflict/);
+});
+
+test('server-side creation validates configurable timeout and clock',()=>{
+ const created=createTableChangeRequest({sourceTableId:'table-1',nowMs:1000});
+ assert.deepEqual(created,request);
+ assert.equal(createTableChangeRequest({sourceTableId:'table-1',nowMs:1000,windowMs:120000}).expiresAtMs,121000);
+ assert.throws(()=>createTableChangeRequest({sourceTableId:'table-1',nowMs:1000,windowMs:0}),/invalid_table_change_request/);
+ assert.throws(()=>createTableChangeRequest({sourceTableId:'',nowMs:1000}),/invalid_table_change_request/);
 });
