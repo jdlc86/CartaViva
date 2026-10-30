@@ -885,8 +885,8 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    assert.ok(customerBusiness.some(value=>value.pathname.endsWith('/orders/confirm')));
    assert.ok(requests.some(value=>value.surface==='management'&&value.method==='POST'&&
     value.pathname.includes('/transitions')));
-   assert.ok(requests.filter(value=>value.pathname==='/api/v1/operations/events').length<=2,
-    'H4 candidate may attempt SSE once per mounted staff session but must not poll business state');
+   assert.ok(requests.filter(value=>value.pathname==='/api/v1/operations/events').length<=3,
+    'H4 candidate may attempt SSE once per each of three mounted staff sessions but must not poll business state');
    await managementPage.evaluate(()=>window.__block01Dispose?.());
   }finally{
    await context?.close().catch(()=>{});
