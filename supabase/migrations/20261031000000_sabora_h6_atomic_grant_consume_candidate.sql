@@ -51,6 +51,19 @@ BEGIN
   AND q.visit_key=v_binding.visit_key
  ORDER BY q.created_at DESC,q.id DESC LIMIT 1 FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'table_change_approval_required' USING errcode='23514'; END IF;
+ -- A grant is bound to the original authenticated session. Revocation of
+ -- that session invalidates its use even when a different session survives.
+ IF v_grant.requesting_session_hash IS NULL
+  OR v_grant.requesting_session_hash<>p_session_hash THEN
+  RAISE EXCEPTION 'table_change_approval_session_mismatch' USING errcode='42501';
+ END IF;
+ PERFORM 1 FROM sabora.customer_sessions s
+ WHERE s.token_hash=v_grant.requesting_session_hash
+  AND s.customer_id=p_customer_id AND s.revoked_at IS NULL
+  AND s.expires_at>clock_timestamp();
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'table_change_approval_session_revoked' USING errcode='42501';
+ END IF;
  -- The order must have been persisted and tied to this customer and new table
  -- by the caller, before consuming the grant. A failed transaction rolls back all.
  PERFORM 1 FROM sabora.orders o
