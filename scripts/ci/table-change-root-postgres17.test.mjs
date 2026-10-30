@@ -1120,7 +1120,7 @@ test('PG17 B2 approved grant survives integrated checkout rejection and remains 
 test('PG17 B2 positive integrated A-to-B confirmation consumes approval with real catalog quote and economic round',async()=>{
  await transaction(async client=>{
   const publicId='SB-BABABABABABR';
-  const qrToken='h6-positive-qr-token-2026';
+  const qrToken='h6-positive-qr-token-2026-32-characters';
   const qrDigest=createHash('sha256').update(qrToken).digest();
   const basket='h6_positive_basket_0001',requestKey='h6_positive_request_0001';
   const itemId='b0a00000-0000-4000-8000-000000000030';
@@ -1157,7 +1157,7 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
     published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
    VALUES($1,$2,$3,$4,$5,$6,$7,1,700,0,700,$8,clock_timestamp()+interval '15 minutes')`,
    [quoteId,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
-    ids.customer,itemId,evidence]);
+    ids.customer.toString(),itemId,evidence]);
   const lines=[{quoteId,itemId,evidence}];
   const result=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
