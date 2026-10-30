@@ -782,8 +782,23 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  const challenge=await flow.confirm(repriceRequest);
  assert.equal(challenge.status,'acceptance_required');
  assert.equal(challenge.changes[0].currentTotalCents,2600);
+ // Advance only the isolated table's persisted grouping anchor, never the
+ // process clock: the next confirmed order must be late, not grouped.
+ await admin.query(`UPDATE sabora.dining_tables
+  SET first_confirmed_at=clock_timestamp()-interval '301 seconds'
+  WHERE id=$1`,[tableId]);
  const accepted=await flow.confirm({...repriceRequest,acceptanceToken:challenge.acceptance.token});
  assert.equal(accepted.status,'confirmed');
+ const lateOrder=await admin.query(
+  'SELECT grouping FROM sabora.orders WHERE id=$1',[accepted.orderId]);
+ assert.deepEqual(lateOrder.rows,[{grouping:'late'}],
+  'order beyond the five-minute window must be a new late dispatch');
+ const lateReplay=await flow.confirm({...repriceRequest,acceptanceToken:challenge.acceptance.token});
+ assert.equal(lateReplay.status,'replayed');
+ assert.equal(lateReplay.orderId,accepted.orderId);
+ assert.deepEqual((await admin.query(
+  'SELECT grouping FROM sabora.orders WHERE id=$1',[accepted.orderId])).rows,
+  [{grouping:'late'}],'idempotent replay cannot change late grouping');
 
  // Visit expiry and session revocation are checked again on every operation.
  await admin.query(`UPDATE sabora.customer_table_visits
