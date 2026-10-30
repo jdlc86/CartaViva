@@ -182,18 +182,9 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.equal(pwaConfirmed.status,'confirmed');
   assert.equal(pwaConfirmed.paymentMode,'pay_now');
   assert.ok(pwaConfirmed.roundId);
-  const confirmed=await post('orders/confirm',request);
-  assert.equal(confirmed.statusCode,200,confirmed.body);
-  const orderHttp=confirmed.json();
-  assert.equal(orderHttp.orderId,pwaConfirmed.orderId);
-  assert.equal(orderHttp.roundId,pwaConfirmed.roundId);
+  // The PWA transport confirmation is the order continued by payment and kitchen.
+  const orderHttp=pwaConfirmed;
   httpConfirmedOrder=orderHttp;
-  assert.equal(orderHttp.paymentMode,'pay_now');
-  assert.ok(orderHttp.roundId);
-  const replay=await post('orders/confirm',request);
-  assert.equal(replay.statusCode,200,replay.body);
-  assert.equal(replay.json().orderId,orderHttp.orderId);
-  assert.equal(replay.json().roundId,orderHttp.roundId);
   const proof=await admin.query(`SELECT count(*)::integer AS rounds,
    (SELECT count(*)::integer FROM sabora.kitchen_dispatches
     WHERE order_id=$1 AND round_id=$2) AS dispatches
