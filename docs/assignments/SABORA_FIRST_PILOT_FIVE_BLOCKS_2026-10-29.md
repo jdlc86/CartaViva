@@ -244,3 +244,12 @@ Se amplió la aceptación PostgreSQL 17 real de la consulta de confirmación con
 **Evidencia validada:** commit `b6ba968755efe0b25c12dcdd107d66a10f3c4a75`; **4/4 workflows SUCCESS**: Sabora CI `41023344182`, Bootstrap `41023344135`, navegador cliente `41023344217`, navegador gestión `41023344136`. El fallo anterior de presupuesto SSE se corrigió para los tres montajes reales de sesión de personal, manteniendo el límite sin polling de negocio. La prueba conjunta se ejecuta en la etapa de PostgreSQL 17 desechable de CI; no utiliza recursos operativos.
 
 **Límites del resultado:** esta evidencia sustituye la brecha anterior sobre la *ausencia total* de un recorrido conjunto de ambos navegadores y el mismo pedido; no demuestra todavía que el Bloque 2 esté completo. Faltan aceptación conjunta de agrupación y despacho temporal H6, pedido tardío, notificaciones durables con reconexión/cursor, recogida/cancelación H6, pago sin doble cargo, revalidación de cesta offline y revocaciones activas en ambos navegadores. No se autorizan merge ni despliegue; producción sigue NO-GO.
+
+
+## Bloque 2 — agrupación persistida del pedido Chromium (30-oct)
+
+**PASS técnico focalizado:** el commit `a4ae3bbc863da6ed2b69a6cba77efd4015ff65de` incorpora en `scripts/ci/customer-production-postgres17.test.mjs` una aserción SQL sobre **el mismo pedido** que el cliente confirmó en Chromium: `sabora.orders.grouping = 'grouped'` antes de las transiciones de cocina. Se ejecuta contra PostgreSQL 17 desechable, API Fastify candidata y ambas PWA reales.
+
+**Evidencia GitHub Actions del SHA exacto:** **4/4 SUCCESS**: Sabora CI `41023903344`, Bootstrap `41023903455`, navegador cliente `41023903382`, navegador gestión `41023903359`.
+
+**Alcance:** acredita la clasificación agrupada persistida del pedido de navegador, **no** por sí sola el vencimiento de ventana ni el despacho automático H6 de esa misma línea. Las pruebas H6 de despacho y eventos permanecen separadas; sigue pendiente unirlas en aceptación conjunta, así como pago, reconexión, revocación y demás escenarios normativos. **Bloque 2 abierto; NO-GO de producción**. Sin merge, despliegue ni uso de recursos operativos.
