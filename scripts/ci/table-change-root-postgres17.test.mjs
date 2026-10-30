@@ -617,3 +617,20 @@ test('PG17 isolated B2 confirmation retains production guard and seals transfer 
  has_function_privilege('sabora_h6_operations_runtime',$1::oid,'EXECUTE') AS operations`,[isolated.oid])).rows[0];
  assert.deepEqual(grants,{customer:false,anonymous:false,operations:false});
 });
+
+test('PG17 B2 primitive refuses invalid consumption without mutating approvals or bindings',async()=>{
+ const before=(await admin.query(`SELECT
+  (SELECT count(*)::bigint FROM sabora.customer_table_change_requests) AS requests,
+  (SELECT count(*)::bigint FROM sabora.customer_account_operational_bindings) AS bindings,
+  (SELECT count(*)::bigint FROM sabora.order_line_delivery_destinations) AS destinations`)).rows[0];
+ await assert.rejects(
+  admin.query(`SELECT sabora.consume_customer_table_change_h6_candidate(
+   NULL::uuid,NULL::uuid,NULL::bytea,NULL::uuid,NULL::uuid,NULL::text,NULL::uuid)`),
+  err=>err.code==='22023' && /invalid_table_change_consumption/.test(err.message)
+ );
+ const after=(await admin.query(`SELECT
+  (SELECT count(*)::bigint FROM sabora.customer_table_change_requests) AS requests,
+  (SELECT count(*)::bigint FROM sabora.customer_account_operational_bindings) AS bindings,
+  (SELECT count(*)::bigint FROM sabora.order_line_delivery_destinations) AS destinations`)).rows[0];
+ assert.deepEqual(after,before);
+});
