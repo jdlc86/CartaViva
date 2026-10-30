@@ -237,3 +237,40 @@ test('SSE CRLF framing split across reads still delivers a single event', async 
     gateway.revoke();
   }
 });
+
+test('multiple valid SSE frames in one large read are delivered without false overflow', async () => {
+  const received = [];
+  let resolveBatch;
+  const batch = new Promise(resolve => { resolveBatch = resolve; });
+  const gateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken: async () => token,
+    reconnectDelayMs: 30000,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        const events = Array.from({length: 800}, (_, i) =>
+          'event: sabora.order.ready\\nid: ' + (i + 1) +
+          '\\ndata: {"payload":{"lineId":"test","padding":"' + 'x'.repeat(80) +
+          '"},"createdAt":"2026-10-30T00:00:00.000Z"}\\n\\n'
+        ).join('');
+        assert.ok(events.length > 65536);
+        controller.enqueue(new TextEncoder().encode(events));
+      },
+    }), {headers: {'Content-Type':'text/event-stream'}}),
+  });
+  const unsubscribe = gateway.subscribeEvents({
+    onEvent(value) {
+      received.push(value);
+      if(received.length === 800) resolveBatch();
+    },
+    onResync() {},
+    onUnavailable() {},
+  });
+  try {
+    await batch;
+    assert.equal(received[0].id, 1);
+    assert.equal(received[799].id, 800);
+  } finally {
+    unsubscribe();
+    gateway.revoke();
+  }
+});
