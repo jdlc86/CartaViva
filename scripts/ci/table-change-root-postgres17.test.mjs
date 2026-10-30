@@ -634,3 +634,18 @@ test('PG17 B2 primitive refuses invalid consumption without mutating approvals o
   (SELECT count(*)::bigint FROM sabora.order_line_delivery_destinations) AS destinations`)).rows[0];
  assert.deepEqual(after,before);
 });
+
+test('PG17 waiter decision obtains customer advisory lock before locking economic account',async()=>{
+ const fn=(await admin.query(`SELECT pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND p.proname='decide_customer_table_change_h6_candidate'`)).rows;
+ assert.equal(fn.length,1);
+ const body=fn[0].definition;
+ const advisory=body.indexOf('pg_advisory_xact_lock');
+ const accountLock=body.indexOf("a.state='open' FOR UPDATE");
+ const requestLock=body.indexOf('q.customer_id=v_customer FOR UPDATE');
+ assert.ok(advisory>=0 && accountLock>advisory && requestLock>accountLock,
+  'decision must serialize by customer before locking account and request');
+ assert.match(body,/table_change_account_closed/);
+ assert.match(body,/table_change_request_missing/);
+});
