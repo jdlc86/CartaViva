@@ -684,8 +684,12 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     .getByText(/Lista para recoger → Recogida histórica/).waitFor({timeout:15_000});
    await managementPage.screenshot({path:join(evidenceDir,'management-history-390.png'),fullPage:true});
    const managementAxe=await new AxeBuilder({page:managementPage}).analyze();
-   assert.deepEqual(managementAxe.violations.filter(item=>
-    item.impact==='serious'||item.impact==='critical').map(item=>item.id),[]);
+   const seriousManagementViolations=managementAxe.violations.filter(item=>
+    item.impact==='serious'||item.impact==='critical');
+   assert.deepEqual(seriousManagementViolations.map(item=>item.id),[],
+    JSON.stringify(seriousManagementViolations.map(item=>({id:item.id,nodes:item.nodes.map(node=>({
+     target:node.target,html:node.html,failureSummary:node.failureSummary,data:node.any.map(check=>check.data)
+    }))}))));
    assert.equal(await managementPage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
    await managementPage.setViewportSize({width:1440,height:1000});
    assert.equal(await managementPage.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);

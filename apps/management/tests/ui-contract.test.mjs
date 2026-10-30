@@ -157,6 +157,8 @@ test('approved visual tokens, responsive gates and accessibility motion rule rem
   assert.match(css, /button \{ min-height: 44px; \}/);
   assert.match(css, /\.badge--warning \{[^}]*var\(--cv-warning\) 5%, var\(--cv-surface\)/,
     'small warning badges must keep WCAG AA contrast over their tinted surface');
+  assert.match(css, /\.header-status \{[^}]*var\(--cv-warning\) 5%, var\(--cv-surface\)/,
+    'the compact restricted-operation label must keep WCAG AA contrast');
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(max-width: 900px\)/);
   assert.match(css, /@media \(max-width: 460px\)/);
@@ -165,5 +167,7 @@ test('approved visual tokens, responsive gates and accessibility motion rule rem
   assert.equal(css.match(/\.role-grid \{ display: grid;/g)?.length, 1,
     'a late duplicate base rule must not override the mobile one-column role grid');
   assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.role-grid \{ grid-template-columns: 1fr; \}/);
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.order-history li \{ grid-template-columns: minmax\(0, 1fr\)/,
+    'operational history must collapse its fixed desktop columns on mobile');
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });

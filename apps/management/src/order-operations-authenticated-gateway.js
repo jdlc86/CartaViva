@@ -1,4 +1,4 @@
-import {createOrderOperationsGateway} from './order-operations-gateway.js';
+import {createOrderOperationsGateway, OrderOperationsGatewayError} from './order-operations-gateway.js';
 
 // Explicit opt-in transport. The host authentication layer owns token
 // acquisition and renewal; never persist credentials in browser storage.
@@ -35,6 +35,14 @@ export function createAuthenticatedOrderOperationsGateway({
         ...options, credentials: 'omit', redirect: 'error',
         cache: 'no-store', headers, signal: requestController.signal,
       });
+    } catch (error) {
+      // Logout and caller cancellation retain their original abort semantics;
+      // an unrelated transport failure is normalized without exposing host or
+      // driver details to the view.
+      if (controller.signal.aborted || options.signal?.aborted || requestController.signal.aborted) {
+        throw error;
+      }
+      throw new OrderOperationsGatewayError('network_error');
     } finally {
       controller.signal.removeEventListener('abort', abort);
       options.signal?.removeEventListener('abort', abort);

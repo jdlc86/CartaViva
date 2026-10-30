@@ -64,7 +64,7 @@ p { line-height: 1.55; }
 .brand-lockup__copy { display: flex; flex-direction: column; gap: 2px; padding-left: var(--cv-space-4); border-left: 1px solid var(--cv-border); }
 .brand-lockup span { color: var(--cv-brand); font-weight: 700; }
 .brand-lockup small { color: var(--cv-ink-muted); font-size: .75rem; }
-.header-status { display: flex; align-items: center; gap: var(--cv-space-2); min-height: 38px; padding: var(--cv-space-2) var(--cv-space-3); border: 1px solid color-mix(in srgb, var(--cv-warning) 30%, var(--cv-border)); border-radius: 999px; color: var(--cv-warning); background: color-mix(in srgb, var(--cv-warning) 8%, var(--cv-surface)); font-size: .78rem; }
+.header-status { display: flex; align-items: center; gap: var(--cv-space-2); min-height: 38px; padding: var(--cv-space-2) var(--cv-space-3); border: 1px solid color-mix(in srgb, var(--cv-warning) 30%, var(--cv-border)); border-radius: 999px; color: var(--cv-warning); background: color-mix(in srgb, var(--cv-warning) 5%, var(--cv-surface)); font-size: .78rem; }
 .header-status strong { padding-left: var(--cv-space-2); border-left: 1px solid currentColor; font-size: .68rem; letter-spacing: .08em; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 
@@ -549,4 +549,14 @@ p { line-height: 1.55; }
 .incident-arbitration h3 { margin: var(--cv-space-1) 0 0; }
 .incident-arbitration ul { display: grid; gap: var(--cv-space-2); margin: 0; padding: 0; list-style: none; }
 .incident-arbitration li { display: flex; align-items: center; justify-content: space-between; gap: var(--cv-space-3); padding: var(--cv-space-3); border: 1px solid var(--cv-border); border-radius: var(--cv-radius-control); }
+
+@media (max-width: 700px) {
+  .order-card__header { align-items: flex-start; flex-direction: column; }
+  .order-card__header .button-row { width: 100%; }
+  .order-line-list > li { grid-template-columns: minmax(0, 1fr); }
+  .order-line__action, .order-line__complete, .order-line__pickup-actions { width: 100%; min-width: 0; justify-self: stretch; }
+  .order-line__pickup-actions { justify-content: flex-start; }
+  .order-history, .order-history ol, .order-history li { min-width: 0; }
+  .order-history li { grid-template-columns: minmax(0, 1fr); gap: var(--cv-space-1); }
+}
 

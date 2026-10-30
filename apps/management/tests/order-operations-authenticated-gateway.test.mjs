@@ -83,6 +83,16 @@ test('revocation aborts active management HTTP requests', async () => {
   await assert.rejects(request,/aborted/);
 });
 
+test('authenticated gateway normalizes network failures without exposing transport details', async () => {
+  const gateway=createAuthenticatedOrderOperationsGateway({
+    getAccessToken:async()=>token,
+    fetchImpl:async()=>{throw Error('private_host_connection_refused');},
+  });
+  await assert.rejects(gateway.listBoard(),error=>
+    error?.name==='OrderOperationsGatewayError'&&error?.code==='network_error'&&
+    !String(error).includes('private_host'));
+});
+
 test('management logout closes event stream and forbids resubscription', async () => {
   let started;
   const observed=new Promise(resolve=>{started=resolve;});
