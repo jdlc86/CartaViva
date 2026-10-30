@@ -128,3 +128,15 @@ the same still-active customer session that originally requested the change.
 A grant from a revoked, expired or different session cannot be consumed. PG17
 catalog assertions were extended. This is an isolated security increment;
 confirmation integration and end-to-end tests remain mandatory before GO.
+
+## B2 delivery projection consistency (2026-10-30)
+
+The one-use grant consumer now updates both per-line pending destinations and
+round-level destinations **only for rounds with no picked-up line**. A mixed
+round with a completed pickup retains its round-level historical destination;
+its remaining uncollected lines are individually redirected. This avoids
+falsely reporting a completed pickup at the new table. PG17 assertions were
+added to verify the conservative round-level guard.
+
+Still **NO-GO**: the primitive remains isolated from confirmation, and
+operational readers/SSE must use the line-level projection for mixed rounds.
