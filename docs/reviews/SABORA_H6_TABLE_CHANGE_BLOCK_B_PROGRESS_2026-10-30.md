@@ -197,3 +197,28 @@ Commit `99b5ff23349f512a2b2de5192f4680273d536429` passed all three GitHub Action
 Commit `1dde277ea63545345de3a805c6ffe4ed726d2543` passed all three GitHub Actions workflows. The real PostgreSQL 17 test exercises a one-use approved A→B grant with an **earlier pending round** and verifies that the operational binding and pending round destination move to B while the original order remains historically on A, the economic account stays unchanged and its outstanding balance remains intact. This is stronger than the prior isolated grant test because it verifies the redirection of already-existing pending work.
 
 **Unclosed B2 acceptance:** the test still calls the sealed grant consumer directly; it does not establish that `confirm_customer_round_h6_transfer_integration_candidate` can persist a valid quoted order, payment state and delivery projections in the same transaction. A positive integrated PG17 checkout, idempotent replay, rollback, concurrency, mixed picked-up lines, and kitchen/sala/SSE E2E remain required. No runtime permission, merge, production migration or deployment is approved. Status: **NO-GO**.
+
+## PG17 integrated A→B checkout with pending delivery — 2026-10-30
+
+Commit `2e0fe52c201d9dffd073f58bf25ee3337de95bb8` passed all three
+GitHub Actions workflows (Sabora CI, bootstrap lockfile, browser conformance).
+The disposable PostgreSQL 17 test now executes the sealed
+`confirm_customer_round_h6_transfer_integration_candidate` with a
+real server-side catalog quote and accepted economic evidence. It verifies
+atomic persistence of the B order and round under the existing A economic
+account, consumption of the approved grant, the operational A→B binding,
+redirection of an earlier pending A round to B, creation of the new line-level
+delivery destination, preserved immutable historical A order, outstanding
+balance and dispatch, plus idempotent replay without duplicate charge or line
+projection. Prior rejected attempts and rollback tests remain in the same
+PG17 suite. This is an **integrated candidate SQL test**, not an active
+customer API/PWA end-to-end test.
+
+**Unclosed acceptance / NO-GO:** concurrent distinct transactions and lock
+ordering, mixed picked-up and pending lines in the same round, Stripe/payment
+attempts in flight, operational kitchen/sala pickup readers and SSE, runtime
+least-privilege composition, browser flows and F01–F28/R01–R10 remain to be
+verified against the normative contract. The candidate still has no customer
+runtime EXECUTE permission. Do not equate a green SQL test with production
+readiness; no merge, VPS operation, operational Supabase migration or
+deployment is authorized.
