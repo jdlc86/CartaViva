@@ -769,6 +769,11 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    const browserOrder=(await admin.query(`SELECT id FROM sabora.orders
     WHERE customer_alias='Cliente navegador' ORDER BY confirmed_at DESC LIMIT 1`)).rows[0];
    assert.ok(browserOrder?.id);
+   // The same Chromium-confirmed order must be durably assigned to the
+   // configured five-minute grouping window before any kitchen action.
+   const browserGrouping=(await admin.query(
+    'SELECT grouping FROM sabora.orders WHERE id=$1',[browserOrder.id])).rows[0];
+   assert.deepEqual(browserGrouping,{grouping:'grouped'});
    const browserLine=(await admin.query('SELECT id,status FROM sabora.order_lines WHERE order_id=$1',
     [browserOrder.id])).rows[0];
    assert.equal(browserLine.status,'confirmed');
