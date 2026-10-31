@@ -59,13 +59,13 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
   async requestTableChange(){
    // The destination must never be part of the request payload.
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/requests','POST',{});
-   if(typeof value.accountId!=='string'||!value.accountId||
-      typeof value.sourceTableId!=='string'||!value.sourceTableId||
+   if(typeof value.id!=='string'||!UUID.test(value.id)||
+      typeof value.sourceTableId!=='string'||!UUID.test(value.sourceTableId)||
       value.status!=='pending'||
       !Number.isSafeInteger(value.createdAtMs)||!Number.isSafeInteger(value.expiresAtMs)||
       (value.expiresAtMs as number)<=(value.createdAtMs as number))
     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
-   return Object.freeze({accountId:value.accountId,sourceTableId:value.sourceTableId,
+   return Object.freeze({requestId:value.id,sourceTableId:value.sourceTableId,
     status:'pending' as const,createdAtMs:value.createdAtMs as number,
     expiresAtMs:value.expiresAtMs as number});
   },
