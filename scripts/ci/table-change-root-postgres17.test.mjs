@@ -1715,3 +1715,40 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
  }
 });
 
+
+test('PG17 H6/B2 pickup-compatible delivery board remains sealed and has a complete result contract',async()=>{
+ const signature='sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)';
+ const result=await admin.query(`SELECT p.prosecdef,p.proowner::regrole::text AS owner,
+ pg_get_functiondef(p.oid) AS definition,
+ has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+ has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated_execute,
+ has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS runtime_execute
+ FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(result.rows.length,1);
+ const row=result.rows[0];
+ assert.equal(row.prosecdef,true);
+ assert.equal(row.owner,'sabora_order_operations_fn_owner');
+ assert.equal(row.anon_execute,false);
+ assert.equal(row.authenticated_execute,false);
+ assert.equal(row.runtime_execute,false);
+ for(const field of ['pickup_task_id','pickup_state','pickup_version',
+  'pickup_claimed_by','pickup_claimed_display_id','pickup_claimed_at',
+  'pickup_updated_at','delivery_table_id','delivery_session_id',
+  'delivery_visit_key','delivery_version'])
+  assert.match(row.definition,new RegExp('\\b'+field+'\\b'));
+ assert.match(row.definition,/authorize_order_operation_read_candidate/);
+ assert.match(row.definition,/order_line_delivery_destinations/);
+ assert.match(row.definition,/pt\.claimed_display_id/);
+ assert.match(row.definition,/dest\.order_line_id IS NOT NULL OR l\.status='picked_up'/);
+ await transaction(async client=>{
+  const now=Date.now();
+  const error=await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+    $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+    $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`,[
+    'forged_key_2026','postgres',ids.customer,'waiter',null,
+    null,null,null,50,now,now+15000,'0'.repeat(64)
+   ]),/invalid_order_operation_read_capability/);
+  assert.equal(error.code,'42501');
+ });
+});
