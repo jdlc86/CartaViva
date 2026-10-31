@@ -1,8 +1,8 @@
 // F12 candidate-only SQL identity gate. No role creation, grants or live calls.
 // A successful check is necessary but not sufficient for an authorized cutover.
 const ROLES=Object.freeze({
- sabora_f12_customer_runtime:'request_customer_table_change_h6_resolved_candidate',
- sabora_f12_operations_runtime:'decide_customer_table_change_h6_candidate'
+ sabora_f12_customer_runtime:'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+ sabora_f12_operations_runtime:'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'
 });
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
 export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_user AS login_role,
@@ -21,14 +21,13 @@ export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_use
   WHERE n.nspname='sabora' AND c.relkind='S' AND
   has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
  FROM pg_roles r WHERE r.rolname=current_user`;
-export const F12_FUNCTION_SQL=`SELECT coalesce(array_agg(p.proname::text ORDER BY p.proname::text)
- FILTER(WHERE p.proname IS NOT NULL),'{}'::text[]) AS names
- FROM pg_roles role LEFT JOIN LATERAL (
- SELECT DISTINCT proc.proname FROM pg_proc proc
- JOIN pg_namespace n ON n.oid=proc.pronamespace
- CROSS JOIN LATERAL aclexplode(COALESCE(proc.proacl,acldefault('f',proc.proowner))) acl
- WHERE n.nspname='sabora' AND acl.grantee=role.oid AND acl.privilege_type='EXECUTE'
- ) p ON true WHERE role.rolname=$1`;
+// Effective privileges include PUBLIC and inherited grants; direct ACL inspection
+// alone would silently miss either. Regprocedure also distinguishes overloads.
+export const F12_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text
+ ORDER BY p.oid::regprocedure::text),'{}'::text[]) AS names
+ FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND
+ has_function_privilege($1::name,p.oid,'EXECUTE')`;
 const fail=stage=>Object.assign(Error('invalid_f12_sql_capabilities:'+stage),
  {code:'F12_SQL_CAPABILITIES_REJECTED',stage});
 export async function assertF12SqlIdentity({pool,expectedLogin,capability}={}){
