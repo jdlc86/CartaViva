@@ -116,3 +116,7 @@ Commit `e2c3eac2c605c2af72def35510dd183c7a37a09e` incorpora `apps/api/src/table-
 ## 18. Errores SQLSTATE del adaptador F12 (2026-10-31)
 
 Commits `a209810116447f0335317918d418837a53aee200`, `4f27374354db46ced7c50223402ab5d64f4f5901`, `b58cbbb2dd770e8633242e571fdf83f0bc950b39`: adaptación exacta SQLSTATE+mensaje de `table_change_cooldown`/`table_change_approval_active` a conflicto de solicitud; `table_change_already_decided` a conflicto de decisión; denegaciones verificadas a forbidden/not found. Pruebas unitarias y HTTP cross-role actualizadas. **No activar** sin comprobar formato real de errores PostgreSQL en PG17 aislado, grants mínimos, bootstrap, E2E y resultados CI. B3 NO-GO.
+
+## 19. Identidad SQL del camarero en RPC F12 (2026-10-31)
+
+La firma de `sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)` usa `p_staff_id` como `sabora.staff_members.user_id`, **no** como identificador de fila del empleado. Se corrigió el adaptador para requerir `verifyStaff(...).userId` UUID validado y enlazar ese valor en la RPC, en vez de `.id`. Commits `b3c495c431cf38d05d670da11d1e6b5b49772b75`, `6055b028c7f7e3cf671ffcf84c1569a4f474cd2d`, `79945fc31c1e13a6ebf189f58120e652f3cb0e51`. Verificar fixtures, CI y PG17; no hay grants de runtime ni bootstrap. B3 NO-GO.
