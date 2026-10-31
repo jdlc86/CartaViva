@@ -1839,7 +1839,7 @@ async function insertF12Visit(client,scenario){
 async function insertF12IsolatedIdentity(client,scenario){
  await client.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
  VALUES($1,$2,'F12 PG17 isolated')`,[
- scenario.customer,scenario===scenarioA?'SB-F12TEST0001':'SB-F12TEST0002']);
+ scenario.customer,scenario===scenarioA?'SB-BABABABABABJ':'SB-BABABABABABK']);
  await client.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
  VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[scenario.customer,tokenHash]);
  await client.query(`INSERT INTO sabora.dining_tables
