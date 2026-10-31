@@ -1909,3 +1909,24 @@ test('PG17 F12 resolved request denies ambiguous open accounts without creating 
   assert.equal(count,0);
  });
 });
+
+// The candidate RPC may pass root-only tests without being safe to expose to
+// a runtime login. Keep its exact execution surface sealed until B3 cutover.
+test('PG17 F12 resolved request is not executable by any existing runtime login or browser role',async()=>{
+ const result=await admin.query(`SELECT p.prosecdef AS security_definer,
+  p.proowner::regrole::text AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anon,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
+  has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE') AS customer,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS operations,
+  has_function_privilege('sabora_h6_provider_runtime',p.oid,'EXECUTE') AS provider,
+  has_function_privilege('sabora_admin_writer',p.oid,'EXECUTE') AS admin_writer
+  FROM pg_proc p WHERE p.oid=to_regprocedure(
+   'sabora.request_customer_table_change_h6_resolved_candidate(bytea)')`);
+ assert.equal(result.rows.length,1);
+ const row=result.rows[0];
+ assert.equal(row.security_definer,true);
+ assert.equal(row.owner,'sabora_h6_fn_owner');
+ for(const role of ['anon','authenticated','customer','operations','provider','admin_writer'])
+  assert.equal(row[role],false,`unexpected F12 EXECUTE for ${role}`);
+});
