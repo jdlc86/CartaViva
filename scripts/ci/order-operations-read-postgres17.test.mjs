@@ -1229,6 +1229,60 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   assert.deepEqual(legacyPickup.json(),{error:'order_operation_conflict'});
   assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
    [item.lineId])).rows[0].status,'ready');
+  // Use the real H4+H6 candidate for the approved task acceptance flow.
+  // The H4 legacy picked_up transition is deliberately not used here.
+  const claimPath=`/api/v1/operations/order-lines/${item.lineId}/pickup-claim`;
+  const pickup=async(userId,route,expectedVersion,correlationId)=>app.inject({
+   method:'POST',url:route,headers:{...headers(userId),'content-type':'application/json'},
+   payload:{expectedVersion,correlationId},
+  });
+  const initialTask=(await admin.query(`SELECT state,version FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(initialTask.state,'ready');
+  assert.equal(Number(initialTask.version),1);
+  const [firstClaim,secondClaim]=await Promise.all([
+   pickup(waiterId,claimPath,1,'h6_delivery_claim_first_979'),
+   pickup(secondWaiterId,claimPath,1,'h6_delivery_claim_second_979'),
+  ]);
+  assert.deepEqual([firstClaim.statusCode,secondClaim.statusCode].sort(),[200,409]);
+  const winner=firstClaim.statusCode===200?waiterId:secondWaiterId;
+  const loser=winner===waiterId?secondWaiterId:waiterId;
+  const winnerCorrelation=winner===waiterId?'h6_delivery_claim_first_979':'h6_delivery_claim_second_979';
+  const replayClaim=await pickup(winner,claimPath,1,winnerCorrelation);
+  assert.equal(replayClaim.statusCode,200);
+  assert.equal(replayClaim.json().repeated,true);
+  const claimed=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(claimed.state,'claimed');
+  assert.equal(Number(claimed.version),2);
+  assert.equal(claimed.claimed_by,winner);
+  const staleClaim=await pickup(loser,claimPath,1,'h6_delivery_claim_stale_979');
+  assert.equal(staleClaim.statusCode,409);
+  const cancelPath=claimPath+'/cancel';
+  const cancel=await pickup(winner,cancelPath,2,'h6_delivery_cancel_979');
+  assert.equal(cancel.statusCode,200,`cancel ${cancel.body}`);
+  const replayCancel=await pickup(winner,cancelPath,2,'h6_delivery_cancel_979');
+  assert.equal(replayCancel.statusCode,200);
+  assert.equal(replayCancel.json().repeated,true);
+  const released=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(released.state,'ready');
+  assert.equal(Number(released.version),3);
+  assert.equal(released.claimed_by,null);
+  const reassigned=await pickup(loser,claimPath,3,'h6_delivery_reclaim_979');
+  assert.equal(reassigned.statusCode,200);
+  const finalTask=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(finalTask.state,'claimed');
+  assert.equal(Number(finalTask.version),4);
+  assert.equal(finalTask.claimed_by,loser);
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [item.lineId])).rows[0].status,'ready');
+  const finalDestination=(await admin.query(`SELECT table_id,destination_version
+   FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
+   [item.lineId])).rows[0];
+  assert.equal(finalDestination.table_id,targetId);
+  assert.equal(Number(finalDestination.destination_version),2);
   const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
    authorization:'Bearer invalid.token.value'}});
   assert.equal(unauthorized.statusCode,401);
