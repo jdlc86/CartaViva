@@ -1213,6 +1213,22 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   } catch(error) {
    assert.fail(`H6 transfer transition SQL diagnostic: ${error.code} ${error.message}`);
   }
+  const transition=async(userId,targetStatus,correlationId)=>h6App.inject({
+   method:'POST',url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+   headers:{...headers(userId),'content-type':'application/json'},
+   payload:{targetStatus,correlationId},
+  });
+  const ready=await transition(kitchenId,'ready','h6_delivery_ready_979');
+  assert.equal(ready.statusCode,201,`ready response ${JSON.stringify(ready.json())}`);
+  const readyBoard=await request(waiterId,
+   '/api/v1/operations/order-lines?status=ready&limit=100');
+  assert.equal(readyBoard.statusCode,200);
+  assert.equal(readyBoard.json().items.find(line=>line.lineId===item.lineId)?.tableNumber,970980);
+  const picked=await transition(waiterId,'picked_up','h6_delivery_pickup_979');
+  assert.equal(picked.statusCode,201,`pickup response ${JSON.stringify(picked.json())}`);
+  const replay=await transition(waiterId,'picked_up','h6_delivery_pickup_979');
+  assert.equal(replay.statusCode,200);
+  assert.equal(replay.json().repeated,true);
   const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
    authorization:'Bearer invalid.token.value'}});
   assert.equal(unauthorized.statusCode,401);
