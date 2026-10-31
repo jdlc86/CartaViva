@@ -134,6 +134,7 @@ test('F12 request HTTP enforces authenticated same-origin empty-body contract an
   assert.equal(ok.statusCode,201);
   assert.equal(ok.headers['cache-control'],'no-store');
   assert.equal(Object.hasOwn(ok.json(),'accountId'),false);
+  assert.deepEqual(ok.json(),{id:'request-1',status:'pending',sourceTableId:'table-A',createdAtMs:1000,expiresAtMs:91000});
   assert.deepEqual(seen,[{customerSessionToken:'s'.repeat(43)}]);
   denied=true;
   const cooldown=await call(validHeaders,{});
