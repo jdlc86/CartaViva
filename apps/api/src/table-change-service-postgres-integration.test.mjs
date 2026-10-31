@@ -60,3 +60,17 @@ test('service and PostgreSQL adapter: ineligible account cannot create a request
  await assert.rejects(()=>service.request({customerSessionToken:'valid-session'}),
   /table_change_request_locked/);
 });
+
+test('F12 SQL request and waiter decision use current operational binding rather than historical table',async()=>{
+ const {service,statements}=harness();
+ await service.request({customerSessionToken:'valid-session'});
+ await service.decide({verifiedIdentity:{id:'waiter-1'},verifiedStaff:{role:'waiter'},
+  requestId:'request-1',decision:'approved'});
+ const insertion=statements.find(x=>x.sql.includes('INSERT INTO sabora.customer_table_change_requests'));
+ const decision=statements.find(x=>x.sql.startsWith('UPDATE sabora.customer_table_change_requests SET status=$2'));
+ assert.ok(insertion&&decision);
+ assert.match(insertion.sql,/JOIN sabora\.customer_account_operational_bindings b ON b\.account_id=a\.id AND b\.visit_key=\$3 AND b\.table_id=\$4/);
+ assert.doesNotMatch(insertion.sql,/a\.table_id=\$4/);
+ assert.match(decision.sql,/EXISTS \(SELECT 1 FROM sabora\.customer_account_operational_bindings b WHERE b\.account_id=a\.id AND b\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
+ assert.doesNotMatch(decision.sql,/a\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
+});

@@ -87,7 +87,8 @@ function assertRoleStatus(role, status) {
   }
 }
 
-export function createOrderOperationsRepository() {
+export function createOrderOperationsRepository({deliveryBoardCandidate = false} = {}) {
+  if (typeof deliveryBoardCandidate !== 'boolean') throw Error('invalid_order_operations_repository_config');
   return Object.freeze({
     async verifyMembership(query, {actorId, role}) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role)) {
@@ -180,7 +181,7 @@ export function createOrderOperationsRepository() {
         }
         result = await query(
           `SELECT *
-             FROM sabora.read_order_operations_board_authorized_candidate(
+             FROM sabora.${deliveryBoardCandidate ? 'read_order_operations_delivery_pickup_board_h6_candidate' : 'read_order_operations_board_authorized_candidate'}(
                $1::text, $2::text, $3::uuid, $4::text, $5::text,
                $6::bigint, $7::uuid, $8::integer, $9::integer,
                $10::bigint, $11::bigint, $12::text
@@ -264,6 +265,15 @@ export function createOrderOperationsRepository() {
               (row.pickup_state!=='corrected' && row.status!=='ready')))) {
           throw Error('invalid_order_operations_sql_result');
         }
+        if (deliveryBoardCandidate && capability !== null && (
+          !UUID.test(row.delivery_table_id) ||
+          !UUID.test(row.delivery_session_id) ||
+          !Number.isSafeInteger(Number(row.delivery_version)) ||
+          Number(row.delivery_version) < 1 ||
+          (row.delivery_visit_key !== null &&
+            (typeof row.delivery_visit_key !== 'string' ||
+             row.delivery_visit_key.length === 0 || row.delivery_visit_key.length > 256))
+        )) throw Error('invalid_order_operations_sql_result');
         const confirmedAt = asDate(row.confirmed_at);
         const notification = row.notification_id === null ? null : Object.freeze({
           id: row.notification_id,
@@ -293,6 +303,14 @@ export function createOrderOperationsRepository() {
           status: row.status,
           notification,
           pickup,
+          ...(deliveryBoardCandidate && capability !== null ? {
+            delivery: Object.freeze({
+              tableId: row.delivery_table_id,
+              sessionId: row.delivery_session_id,
+              visitKey: row.delivery_visit_key,
+              version: Number(row.delivery_version),
+            }),
+          } : {}),
         });
       });
       const page = validatedRows.slice(0, limit);

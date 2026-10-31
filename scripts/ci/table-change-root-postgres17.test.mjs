@@ -1321,6 +1321,15 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(lineProjection[0].session_id,ids.destinationSession);
   assert.equal(lineProjection[0].visit_key,destinationVisit);
   assert.equal(lineProjection[0].destination_version,'1');
+  const beforeReplay=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
+   (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$2) AS payments,
+   (SELECT binding_version FROM sabora.customer_account_operational_bindings
+    WHERE account_id=$2) AS binding_version,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests
+    WHERE account_id=$2 AND status='consumed') AS consumed_grants`,
+   [ids.order,ids.sourceAccount])).rows[0];
   const replay=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
@@ -1330,6 +1339,18 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,result.round_id);
+  const afterReplay=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
+   (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$2) AS payments,
+   (SELECT binding_version FROM sabora.customer_account_operational_bindings
+    WHERE account_id=$2) AS binding_version,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests
+    WHERE account_id=$2 AND status='consumed') AS consumed_grants`,
+   [ids.order,ids.sourceAccount])).rows[0];
+  assert.deepEqual(afterReplay,beforeReplay,
+   'F12 replay must not create economic rounds, dispatches, payments or grant consumption');
+
   assert.equal((await client.query(`SELECT count(*)::int AS n
    FROM sabora.order_line_delivery_destinations d
    JOIN sabora.order_lines l ON l.id=d.order_line_id
@@ -1715,3 +1736,40 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
  }
 });
 
+
+test('PG17 H6/B2 pickup-compatible delivery board remains sealed and has a complete result contract',async()=>{
+ const signature='sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)';
+ const result=await admin.query(`SELECT p.prosecdef,p.proowner::regrole::text AS owner,
+ pg_get_functiondef(p.oid) AS definition,
+ has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+ has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated_execute,
+ has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS runtime_execute
+ FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(result.rows.length,1);
+ const row=result.rows[0];
+ assert.equal(row.prosecdef,true);
+ assert.equal(row.owner,'sabora_order_operations_fn_owner');
+ assert.equal(row.anon_execute,false);
+ assert.equal(row.authenticated_execute,false);
+ assert.equal(row.runtime_execute,false);
+ for(const field of ['pickup_task_id','pickup_state','pickup_version',
+  'pickup_claimed_by','pickup_claimed_display_id','pickup_claimed_at',
+  'pickup_updated_at','delivery_table_id','delivery_session_id',
+  'delivery_visit_key','delivery_version'])
+  assert.match(row.definition,new RegExp('\\b'+field+'\\b'));
+ assert.match(row.definition,/authorize_order_operation_read_candidate/);
+ assert.match(row.definition,/order_line_delivery_destinations/);
+ assert.match(row.definition,/pt\.claimed_display_id/);
+ assert.match(row.definition,/dest\.order_line_id IS NOT NULL OR l\.status='picked_up'/);
+ await transaction(async client=>{
+  const now=Date.now();
+  const error=await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+    $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+    $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`,[
+    'forged_key_2026','postgres',ids.customer,'waiter',null,
+    null,null,null,50,now,now+15000,'0'.repeat(64)
+   ]),/invalid_order_operation_read_capability/);
+  assert.equal(error.code,'42501');
+ });
+});

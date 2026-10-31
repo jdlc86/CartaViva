@@ -26,12 +26,19 @@ jobs:
         run: corepack enable
       - name: Install exact dependencies
         run: pnpm install --frozen-lockfile
-      - name: Test
-        run: pnpm test
-      - name: Test Sabora migrations in disposable PostgreSQL 17
-        run: bash scripts/ci/postgres-migration-smoke.sh
-      - name: Exercise real Node pg driver against disposable loopback-only PostgreSQL 17
-        run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
+      # Consolidated entrypoint executes pnpm test and
+      # catalog-postgres17-node-driver-smoke.sh; the downstream functional
+      # validation command is executed separately in the production gate.
+      - name: H6 consolidated acceptance (contracts + disposable PG17 + Chromium)
+        run: bash scripts/ci/h6-acceptance-gate.sh
+      - name: Publish consolidated H6 acceptance logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-h6-acceptance-logs
+          path: ${{ runner.temp }}/sabora-h6-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Publish Block 1 full-stack browser evidence
         if: always()
         uses: actions/upload-artifact@v4

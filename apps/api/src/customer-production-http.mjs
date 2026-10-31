@@ -14,6 +14,9 @@ const replyFailure=(reply,error)=>{
   return reply.code(400).send({error:'invalid_customer_request'});
  if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden']
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
+ if(['table_change_approval_required','h6_account_binding_scope_conflict',
+     'h6_multiple_open_accounts_ambiguous','h6_replay_account_scope_conflict'].includes(failure))
+  return reply.code(409).send({error:'table_change_confirmation_conflict'});
  if(failure==='customer_order_idempotency_conflict')
   return reply.code(409).send({error:'order_idempotency_conflict'});
  if(['payment_mode_required','invalid_payment_mode'].includes(failure))
@@ -63,7 +66,18 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
        Object.keys(request.body).length!==0)return reply.code(400).send({error:'invalid_customer_request'});
     try{
      const result=await tableChange.request({customerSessionToken:readCustomerCookie(request.headers.cookie)});
-     return reply.header('Cache-Control','no-store').code(201).send(result);
+     // Expose only the request receipt; never return account, customer,
+     // session, visit, audit or internal store fields to the browser.
+     if(!result||typeof result.id!=='string'||result.status!=='pending'||
+        typeof result.sourceTableId!=='string'||
+        !Number.isSafeInteger(result.createdAtMs)||
+        !Number.isSafeInteger(result.expiresAtMs)||
+        result.expiresAtMs<=result.createdAtMs)
+      throw Error('invalid_table_change_request_result');
+     return reply.header('Cache-Control','no-store').code(201).send({
+      id:result.id,status:'pending',sourceTableId:result.sourceTableId,
+      createdAtMs:result.createdAtMs,expiresAtMs:result.expiresAtMs
+     });
     }catch(error){
      const failure=code(error);
      if(failure==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});

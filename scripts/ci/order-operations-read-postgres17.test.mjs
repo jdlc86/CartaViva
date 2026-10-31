@@ -12,9 +12,18 @@ import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/ca
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
 import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated-candidate.mjs';
-import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
+import {preflightOrderOperationsRuntimeIdentity,
+  preflightOrderOperationsH6DeliveryIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
+import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
+import {registerVerifiedH6DeliveryOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
+import {createH6OperationsRepository,MANAGE_PICKUP_TASK_H6_SQL,READ_STAFF_EVENTS_H6_SQL}
+ from '../../apps/api/src/h6-operations-repository.mjs';
+import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {registerH6StaffEventStreamHttp} from '../../apps/api/src/h6-event-stream.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
   INSERT_QUOTE_SQL, LOOKUP_ATTEMPT_SQL, PREPARE_CONFIRMATION_SQL,
@@ -158,6 +167,9 @@ async function integratedFixture(suffix, customerLabel) {
     table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
     VALUES($1,$2,$3,$4,$5,1,clock_timestamp()+interval '1 hour')`,
   [fixture.tableId, fixture.sessionId, customerProfileId, visitKey, `integrated_actor_${suffix}`]);
+  await admin.query(`INSERT INTO sabora.customer_account_operational_bindings
+    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+  [accountId,fixture.tableId,fixture.sessionId,visitKey]);
   await admin.query(`UPDATE sabora.orders SET company=NULL,employee_number=NULL,
     customer_alias=$2,customer_identifier=$3,customer_visit_key=$4,
     economic_snapshot='{"schemaVersion":"1"}'::jsonb WHERE id=$1`,
@@ -989,4 +1001,528 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
     await vite?.close().catch(() => {});
     if (!apiClosed) await app.close().catch(() => {});
   }
+});
+
+test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated pending lines hidden',async()=>{
+ await admin.query(`GRANT EXECUTE ON FUNCTION sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text) TO ${operationsRole}`);
+ const item=await directFixture(972);
+ const capability=issueReadCapability({
+  actorId:kitchenId,role:'kitchen',operation:'board',
+  status:'confirmed',limit:25,cursor:null,
+ });
+ const sql=`SELECT * FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+  $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+ const args=[capability.keyId,capability.databaseRole,kitchenId,'kitchen',
+  'confirmed',null,null,null,25,capability.issuedAtMs,
+  capability.expiresAtMs,capability.signatureHex];
+ const valid=await operationsPool.query(sql,args);
+ assert.equal(valid.rows.some(row=>row.line_id===item.lineId),false,
+  'a legacy pending line without a destination must not appear in H6 delivery board');
+ for(const name of ['pickup_task_id','pickup_state','pickup_version',
+  'pickup_claimed_display_id','delivery_table_id','delivery_session_id',
+  'delivery_visit_key','delivery_version'])
+  assert.ok(valid.fields.some(field=>field.name===name),name);
+ await assert.rejects(operationsPool.query(sql,[...args.slice(0,3),'waiter','ready',...args.slice(5)]),
+  /invalid_order_operation_read_capability/);
+});
+
+test('PG17 H6/B2 delivery projection follows A-to-B destination without changing historical order or account',async()=>{
+ const item=await integratedFixture(975,'Cliente cambio de mesa H6');
+ const destinationTable='a2000000-0000-4000-8000-000000000976';
+ await admin.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,ordering_state)
+  VALUES($1,970976,4,decode(repeat('a2',32),'hex'),'open')`,[destinationTable]);
+ const destSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',
+  [destinationTable])).rows[0].session_id;
+ const visit='delivery_visit_975_abcdefgh';
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+  VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_975_source'
+ ]);
+ const cap=issueReadCapability({actorId:kitchenId,role:'kitchen',
+  operation:'board',status:'confirmed',limit:100,cursor:null});
+ const sql=`SELECT * FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+  $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+ const args=[cap.keyId,cap.databaseRole,kitchenId,'kitchen','confirmed',
+  null,null,null,100,cap.issuedAtMs,cap.expiresAtMs,cap.signatureHex];
+ const before=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
+ assert.ok(before);
+ assert.equal(before.table_number,970975);
+ assert.equal(before.delivery_table_id,item.tableId);
+ assert.equal(before.delivery_version,'1');
+ await admin.query(`UPDATE sabora.order_line_delivery_destinations
+  SET table_id=$2,session_id=$3,visit_key=$4,destination_version=2,
+  changed_at=clock_timestamp() WHERE order_line_id=$1`,[
+  item.lineId,destinationTable,destSession,visit
+ ]);
+ const after=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
+ assert.ok(after);
+ assert.equal(after.table_number,970976);
+ assert.equal(after.delivery_table_id,destinationTable);
+ assert.equal(after.delivery_session_id,destSession);
+ assert.equal(after.delivery_visit_key,visit);
+ assert.equal(after.delivery_version,'2');
+ assert.equal(after.pickup_task_id,null);
+ const historic=(await admin.query(`SELECT o.table_id,o.session_id,a.table_id AS account_table,
+  a.session_id AS account_session FROM sabora.orders o
+  JOIN sabora.order_rounds r ON r.order_id=o.id
+  JOIN sabora.customer_accounts a ON a.id=r.account_id WHERE o.id=$1`,[item.orderId])).rows[0];
+ assert.equal(historic.table_id,item.tableId);
+ assert.equal(historic.session_id,item.sessionId);
+ assert.equal(historic.account_table,item.tableId);
+ assert.equal(historic.account_session,item.sessionId);
+});
+
+test('PG17 H6/B2 repository opt-in maps signed A-to-B destination and rejects malformed delivery',async()=>{
+ const item=await integratedFixture(977,'Cliente lector H6 B2');
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+  VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_977_source'
+ ]);
+ const capability=issueReadCapability({actorId:kitchenId,role:'kitchen',
+  operation:'board',status:'confirmed',limit:100,cursor:null});
+ const args={actorId:kitchenId,role:'kitchen',status:'confirmed',
+  limit:100,cursor:null,capability};
+ const repo=createOrderOperationsRepository({deliveryBoardCandidate:true});
+ const query=(sql,params)=>operationsPool.query(sql,params);
+ const original=await repo.listBoard(query,args);
+ const line=original.items.find(value=>value.lineId===item.lineId);
+ assert.ok(line);
+ assert.equal(line.tableNumber,970977);
+ assert.deepEqual(line.delivery,{
+  tableId:item.tableId,sessionId:item.sessionId,
+  visitKey:'delivery_visit_977_source',version:1
+ });
+ assert.equal(line.pickup,null);
+ const target='a2000000-0000-4000-8000-000000000978';
+ await admin.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,ordering_state)
+  VALUES($1,970978,4,decode(repeat('a2',32),'hex'),'open')`,[target]);
+ const targetSession=(await admin.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[target])).rows[0].session_id;
+ await admin.query(`UPDATE sabora.order_line_delivery_destinations
+  SET table_id=$2,session_id=$3,visit_key='delivery_visit_977_target',
+  destination_version=2,changed_at=clock_timestamp()
+  WHERE order_line_id=$1`,[item.lineId,target,targetSession]);
+ const moved=(await repo.listBoard(query,args)).items.find(value=>value.lineId===item.lineId);
+ assert.equal(moved.tableNumber,970978);
+ assert.deepEqual(moved.delivery,{
+  tableId:target,sessionId:targetSession,
+  visitKey:'delivery_visit_977_target',version:2
+ });
+ assert.equal((await admin.query('SELECT table_id FROM sabora.orders WHERE id=$1',
+  [item.orderId])).rows[0].table_id,item.tableId);
+ const corrupt=async(sql,params)=>{
+  const result=await query(sql,params);
+  return {...result,rows:result.rows.map(row=>row.line_id===item.lineId
+   ? {...row,delivery_version:'0'} : row)};
+ };
+ await assert.rejects(repo.listBoard(corrupt,args),/invalid_order_operations_sql_result/);
+ assert.throws(()=>createOrderOperationsRepository({deliveryBoardCandidate:'true'}),
+  /invalid_order_operations_repository_config/);
+});
+
+test('PG17 H6/B2 runtime preflight rejects ungranted board and accepts only exact candidate privilege',async()=>{
+ const routine=`sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+ text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)`;
+ // The earlier positive SQL tests grant this permission in the disposable
+ // database. The legacy H4 gate must now reject the additional function.
+ await assert.rejects(
+  preflightOrderOperationsRuntimeIdentity({pool:operationsPool,role:operationsRole}),
+  /order_operations_sql_identity_rejected/
+ );
+ const verified=await preflightOrderOperationsH6DeliveryIdentity({
+  pool:operationsPool,role:operationsRole});
+ assert.equal(verified.role,operationsRole);
+ await admin.query(`REVOKE EXECUTE ON FUNCTION ${routine} FROM ${operationsRole}`);
+ try {
+  await assert.rejects(preflightOrderOperationsH6DeliveryIdentity({
+   pool:operationsPool,role:operationsRole}),/order_operations_sql_identity_rejected/);
+  const legacy=await preflightOrderOperationsRuntimeIdentity({
+   pool:operationsPool,role:operationsRole});
+  assert.equal(legacy.role,operationsRole);
+ } finally {
+  await admin.query(`GRANT EXECUTE ON FUNCTION ${routine} TO ${operationsRole}`);
+ }
+});
+
+test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT and role isolation',async()=>{
+ const item=await integratedFixture(979,'Mesa HTTP H6 B2');
+ const targetId='a2000000-0000-4000-8000-000000000980';
+ await admin.query(`INSERT INTO sabora.dining_tables
+ (id,number,capacity,qr_token_hash,ordering_state)
+ VALUES($1,970980,4,decode(repeat('a2',32),'hex'),'open')`,[targetId]);
+ const targetSession=(await admin.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[targetId])).rows[0].session_id;
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+ (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+ VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_979_source'
+ ]);
+ const h6App=Fastify({logger:false});
+ const config={
+  staffPool,operationsPool,staffRole,operationsRole,
+  issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+  issueTransitionCapability,issueReadCapability,
+ };
+ try {
+  await registerVerifiedH6DeliveryOrderOperationsFromPools(h6App,config);
+  const h6PickupTx=createRoleScopedPostgresTransaction({pool:h6OperationsPool,
+   role:'sabora_h6_operations_runtime',allowedSql:new Set([MANAGE_PICKUP_TASK_H6_SQL,READ_STAFF_EVENTS_H6_SQL])});
+  const h6PickupRepository=createH6OperationsRepository({withTransaction:h6PickupTx});
+  const h6PickupOperations=createH6OperationsCoordinator({
+   repository:h6PickupRepository,
+   issueCapability:createH6StaffCapabilityIssuer({
+    keyId,secret:signingSecret,databaseRole:h6OperationsRole,
+   }),
+  });
+  registerH6OperationsHttp(h6App,{
+   forRoles:createStaffProtectedHooksFromPool({
+    pool:staffPool,issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+   }),
+   operations:h6PickupOperations,
+  });
+  await h6App.ready();
+  const path='/api/v1/operations/order-lines?status=confirmed&limit=100';
+  const request=async(userId,route=path)=>h6App.inject({
+   method:'GET',url:route,headers:userId?headers(userId):{},
+  });
+  const anonymous=await request(null);
+  assert.equal(anonymous.statusCode,401);
+  const forbidden=await request(waiterId);
+  assert.equal(forbidden.statusCode,403);
+  const before=await request(kitchenId);
+  assert.equal(before.statusCode,200);
+  const original=before.json().items.find(line=>line.lineId===item.lineId);
+  assert.ok(original);
+  assert.equal(original.tableNumber,970979);
+  assert.equal(original.delivery.tableId,item.tableId);
+  assert.equal(original.delivery.version,1);
+  await admin.query(`UPDATE sabora.order_line_delivery_destinations
+   SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target',
+   destination_version=2,changed_at=clock_timestamp()
+   WHERE order_line_id=$1`,[item.lineId,targetId,targetSession]);
+  // Simulate the completed atomic transfer projection with a live B visit.
+  // The order's historical A identity remains unchanged.
+  await admin.query(`INSERT INTO sabora.customer_table_visits
+    (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+    VALUES($1,$2,$3,'delivery_visit_979_target','delivery_actor_979_target',1,
+      clock_timestamp()+interval '1 hour')`,
+    [targetId,targetSession,item.customerProfileId]);
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target',
+      binding_version=binding_version+1,changed_at=clock_timestamp()
+    WHERE account_id=$1`,[item.accountId,targetId,targetSession]);
+  const after=await request(kitchenId);
+  assert.equal(after.statusCode,200);
+  const moved=after.json().items.find(line=>line.lineId===item.lineId);
+  assert.ok(moved);
+  assert.equal(moved.tableNumber,970980);
+  assert.deepEqual(moved.delivery,{
+   tableId:targetId,sessionId:targetSession,
+   visitKey:'delivery_visit_979_target',version:2,
+  });
+  const historic=(await admin.query(`SELECT table_id,session_id FROM sabora.orders
+   WHERE id=$1`,[item.orderId])).rows[0];
+  assert.equal(historic.table_id,item.tableId);
+  assert.equal(historic.session_id,item.sessionId);
+  // Diagnose the existing H4 transition against the transferred H6 fixture.
+  const transitionCapability=issueTransitionCapability({
+   actorId:kitchenId,lineId:item.lineId,targetStatus:'preparing',
+   correlationId:'h6_delivery_diagnostic_979',
+  });
+  try {
+   await operationsPool.query(`SELECT * FROM sabora.transition_order_line_authorized_candidate(
+    $1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::bigint,$8::bigint,$9::text)`,[
+    transitionCapability.keyId,transitionCapability.databaseRole,kitchenId,item.lineId,
+    'preparing','h6_delivery_diagnostic_979',transitionCapability.issuedAtMs,
+    transitionCapability.expiresAtMs,transitionCapability.signatureHex,
+   ]);
+  } catch(error) {
+   assert.fail(`H6 transfer transition SQL diagnostic: ${error.code} ${error.message}`);
+  }
+  const transition=async(userId,targetStatus,correlationId)=>h6App.inject({
+   method:'POST',url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+   headers:{...headers(userId),'content-type':'application/json'},
+   payload:{targetStatus,correlationId},
+  });
+  const ready=await transition(kitchenId,'ready','h6_delivery_ready_979');
+  assert.equal(ready.statusCode,201,`ready response ${JSON.stringify(ready.json())}`);
+  const readyBoard=await request(waiterId,
+   '/api/v1/operations/order-lines?status=ready&limit=100');
+  assert.equal(readyBoard.statusCode,200);
+  assert.equal(readyBoard.json().items.find(line=>line.lineId===item.lineId)?.tableNumber,970980);
+  const legacyPickup=await transition(waiterId,'picked_up','h6_legacy_pickup_979');
+  assert.equal(legacyPickup.statusCode,409);
+  assert.deepEqual(legacyPickup.json(),{error:'order_operation_conflict'});
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [item.lineId])).rows[0].status,'ready');
+  // Use the real H4+H6 candidate for the approved task acceptance flow.
+  // The H4 legacy picked_up transition is deliberately not used here.
+  const claimPath=`/api/v1/operations/order-lines/${item.lineId}/pickup-claim`;
+  const pickup=async(userId,route,expectedVersion,correlationId)=>h6App.inject({
+   method:'POST',url:route,headers:{...headers(userId),'content-type':'application/json'},
+   payload:{expectedVersion,correlationId},
+  });
+  const initialTask=(await admin.query(`SELECT state,version FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(initialTask.state,'ready');
+  assert.equal(Number(initialTask.version),1);
+  const [firstClaim,secondClaim]=await Promise.all([
+   pickup(waiterId,claimPath,1,'h6_delivery_claim_first_979'),
+   pickup(secondWaiterId,claimPath,1,'h6_delivery_claim_second_979'),
+  ]);
+  assert.deepEqual([firstClaim.statusCode,secondClaim.statusCode].sort(),[200,409]);
+  const winner=firstClaim.statusCode===200?waiterId:secondWaiterId;
+  const loser=winner===waiterId?secondWaiterId:waiterId;
+  const winnerCorrelation=winner===waiterId?'h6_delivery_claim_first_979':'h6_delivery_claim_second_979';
+  const replayClaim=await pickup(winner,claimPath,1,winnerCorrelation);
+  assert.equal(replayClaim.statusCode,200);
+  assert.equal(replayClaim.json().repeated,true);
+  const claimed=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(claimed.state,'claimed');
+  assert.equal(Number(claimed.version),2);
+  assert.equal(claimed.claimed_by,winner);
+  const staleClaim=await pickup(loser,claimPath,1,'h6_delivery_claim_stale_979');
+  assert.equal(staleClaim.statusCode,409);
+  const cancelPath=claimPath+'/cancel';
+  const cancel=await pickup(winner,cancelPath,2,'h6_delivery_cancel_979');
+  assert.equal(cancel.statusCode,200,`cancel ${cancel.body}`);
+  const replayCancel=await pickup(winner,cancelPath,2,'h6_delivery_cancel_979');
+  assert.equal(replayCancel.statusCode,200);
+  assert.equal(replayCancel.json().repeated,true);
+  const released=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(released.state,'ready');
+  assert.equal(Number(released.version),3);
+  assert.equal(released.claimed_by,null);
+  const reassigned=await pickup(loser,claimPath,3,'h6_delivery_reclaim_979');
+  assert.equal(reassigned.statusCode,200);
+  const finalTask=(await admin.query(`SELECT state,version,claimed_by FROM sabora.pickup_tasks
+   WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(finalTask.state,'claimed');
+  assert.equal(Number(finalTask.version),4);
+  assert.equal(finalTask.claimed_by,loser);
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [item.lineId])).rows[0].status,'ready');
+  // Outbox must point at the transferred destination B, not the historical A.
+  // One event per audience/version; idempotent retries must not re-emit.
+  const outbox=(await admin.query(`SELECT id,table_id,session_id,staff_role,event_type,
+   aggregate_version,payload FROM sabora.event_outbox
+   WHERE aggregate_id=$1 AND event_type LIKE 'sabora.pickup.%'
+   ORDER BY id`,[reassigned.json().pickupTaskId])).rows;
+  assert.equal(outbox.length,8);
+  assert.deepEqual(outbox.map(event=>event.event_type),[
+   'sabora.pickup.ready','sabora.pickup.ready',
+   'sabora.pickup.claimed','sabora.pickup.claimed',
+   'sabora.pickup.claim_cancelled','sabora.pickup.claim_cancelled',
+   'sabora.pickup.claimed','sabora.pickup.claimed',
+  ]);
+  for(const event of outbox){
+   assert.equal(event.table_id,targetId);
+   assert.equal(event.session_id,targetSession);
+   assert.equal(event.payload.deliveryTableId,targetId);
+   assert.equal(Number(event.payload.deliveryVersion),2);
+   assert.equal(Number(event.aggregate_version),Number(event.payload.version));
+  }
+  assert.deepEqual(outbox.map(event=>event.staff_role),[
+   'waiter','kitchen','waiter','kitchen',
+   'waiter','kitchen','waiter','kitchen',
+  ]);
+  assert.deepEqual(outbox.map(event=>Number(event.aggregate_version)),
+   [1,1,2,2,3,3,4,4]);
+  // Exercise the real Fastify SSE transport and durable PostgreSQL reader
+  // with a cursor scoped immediately before this transferred pickup task.
+  const sseApp=Fastify({logger:false});
+  registerH6StaffEventStreamHttp(sseApp,{
+   forRoles:roles=>createStaffProtectedHooksFromPool({
+    pool:staffPool,issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+   })(roles),
+   events:{readStaffEvents:args=>h6PickupRepository.readStaffEvents(args)},
+   issueCapability:createH6StaffCapabilityIssuer({
+    keyId,secret:signingSecret,databaseRole:h6OperationsRole,
+   }),
+   subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+  });
+  const readFrames=async(response,expected)=>{
+   const reader=response.body.getReader();
+   let body='';
+   try{
+    for(let attempt=0;attempt<8;attempt++){
+     const chunk=await Promise.race([reader.read(),new Promise((_,reject)=>
+      setTimeout(()=>reject(Error('h6_transfer_sse_timeout:'+JSON.stringify(body.slice(-900)))),2500))]);
+     if(chunk.done)break;
+     body+=new TextDecoder().decode(chunk.value);
+     if(body.includes('event: access-revoked')||body.includes('event: resync-required'))
+      throw Error('h6_transfer_sse_rejected:'+body.slice(-900));
+     if(expected.every(id=>body.includes('id: '+id+String.fromCharCode(10))))break;
+    }
+    return body;
+   }finally{await reader.cancel().catch(()=>{});}
+  };
+  try{
+   await sseApp.listen({host:'127.0.0.1',port:0});
+   const addr=sseApp.server.address();
+   const sseUrl=`http://127.0.0.1:${addr.port}/api/v1/operations/events`;
+   const firstCursor=Number(outbox[0].id)-1;
+   const stream=await fetch(sseUrl,{
+    headers:{authorization:'Bearer '+bearer(waiterId),
+     'last-event-id':String(firstCursor)},signal:AbortSignal.timeout(10000),
+   });
+   assert.equal(stream.status,200);
+   const allIds=outbox.filter(e=>e.staff_role==='waiter').map(e=>Number(e.id));
+   const firstFrames=await readFrames(stream,allIds);
+   for(const id of allIds)assert.ok(firstFrames.includes('id: '+id+String.fromCharCode(10)));
+   assert.ok(firstFrames.includes('event: sabora.pickup.claim_cancelled'));
+   assert.ok(firstFrames.includes('deliveryTableId'));
+   assert.ok(firstFrames.includes(targetId));
+   const replay=await fetch(sseUrl,{
+    headers:{authorization:'Bearer '+bearer(waiterId),
+     'last-event-id':String(allIds[1])},signal:AbortSignal.timeout(10000),
+   });
+   assert.equal(replay.status,200);
+   const replayFrames=await readFrames(replay,allIds.slice(2));
+   assert.ok(!replayFrames.includes('id: '+allIds[1]+String.fromCharCode(10)));
+   for(const id of allIds.slice(2))
+    assert.ok(replayFrames.includes('id: '+id+String.fromCharCode(10)));
+  }finally{await sseApp.close();}
+
+  // The historical A visit may end without blocking a still-valid delivery in B.
+  // Revocation of B, by contrast, must deny all further mutations.
+  const beforeClosure=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  await admin.query(`UPDATE sabora.customer_table_visits
+   SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
+   [item.tableId,item.sessionId,item.customerProfileId]);
+  const afterSourceRevocation=await pickup(loser,claimPath+'/cancel',4,
+   'h6_delivery_closed_origin_cancel_979');
+  assert.equal(afterSourceRevocation.statusCode,200,
+   'the valid B destination must survive revocation of historical A');
+  const afterOriginCancel=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(afterOriginCancel.state,'ready');
+  assert.equal(Number(afterOriginCancel.version),5);
+  // A stale or mismatched operational account binding must not authorize
+  // pickup even if the line destination and B's QR visit are still valid.
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='integrated_visit_979'
+    WHERE account_id=$1`,[item.accountId,item.tableId,item.sessionId]);
+  const deniedMismatchedBinding=await pickup(winner,claimPath,5,
+    'h6_delivery_mismatched_binding_claim_979');
+  assert.equal(deniedMismatchedBinding.statusCode,403);
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  assert.equal((await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_mismatched_binding_claim_979'])).rows[0].total,0);
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target'
+    WHERE account_id=$1`,[item.accountId,targetId,targetSession]);
+  // QR revocation is independently enforced even while B's visit and
+  // session remain active; reset only inside this isolated test fixture.
+  await admin.query(`UPDATE sabora.dining_tables
+    SET qr_version=qr_version+1 WHERE id=$1`,[targetId]);
+  const deniedAfterQrRotation=await pickup(winner,claimPath,5,
+   'h6_delivery_rotated_qr_claim_979');
+  assert.equal(deniedAfterQrRotation.statusCode,403,
+   'rotating the B QR invalidates the old visit before any reoccupation');
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  assert.equal((await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_rotated_qr_claim_979'])).rows[0].total,0);
+  await admin.query(`UPDATE sabora.dining_tables
+    SET qr_version=qr_version-1 WHERE id=$1`,[targetId]);
+  await admin.query(`UPDATE sabora.customer_table_visits
+   SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
+   [targetId,targetSession,item.customerProfileId]);
+  const deniedAfterBRevocation=await pickup(winner,claimPath,5,
+   'h6_delivery_closed_destination_claim_979');
+  assert.equal(deniedAfterBRevocation.statusCode,403);
+  const afterClosure=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.deepEqual(afterClosure,afterOriginCancel,
+   'rejected pickup must not change assignment or version');
+  // A denied action must not persist an idempotency result or emit another
+  // staff notification; neither should it rewrite the economic identity.
+  const afterDeniedOutbox=(await admin.query(`SELECT count(*)::int AS total
+   FROM sabora.event_outbox WHERE aggregate_id=$1
+   AND event_type LIKE 'sabora.pickup.%'`,
+   [reassigned.json().pickupTaskId])).rows[0];
+  assert.equal(afterDeniedOutbox.total,10);
+  const deniedRequest=(await admin.query(`SELECT count(*)::int AS total
+   FROM sabora.h6_action_requests
+   WHERE actor_user_id=$1 AND correlation_id=$2`,
+   [winner,'h6_delivery_closed_destination_claim_979'])).rows[0];
+  assert.equal(deniedRequest.total,0);
+  const historicalIdentity=(await admin.query(`SELECT o.table_id,o.session_id,
+   r.account_id FROM sabora.orders o JOIN sabora.order_rounds r
+   ON r.order_id=o.id WHERE o.id=$1`,[item.orderId])).rows[0];
+  assert.equal(historicalIdentity.table_id,item.tableId);
+  assert.equal(historicalIdentity.session_id,item.sessionId);
+  assert.equal(historicalIdentity.account_id,item.accountId);
+  const deniedRetry=await pickup(winner,claimPath,5,
+   'h6_delivery_closed_destination_claim_979');
+  assert.equal(deniedRetry.statusCode,403);
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+   afterOriginCancel);
+  // Reoccupying B with a fresh table session and QR cannot resurrect a
+  // pending pickup tied to the former customer's visit and binding.
+  const freshSession='b2000000-0000-4000-8000-000000009981';
+  await admin.query(`UPDATE sabora.dining_tables SET session_id=$2,
+    qr_version=qr_version+1 WHERE id=$1`,[targetId,freshSession]);
+  // Real second occupant: a different customer obtains a valid visit under
+  // B's new session and QR version. The previous customer's task remains
+  // inaccessible even though B is once again legitimately occupied.
+  const nextCustomer='b2000000-0000-4000-8000-000000009982';
+  await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+    VALUES($1,'SB-PQRSTUVWXYAB','Ocupante B nuevo')`,[nextCustomer]);
+  await admin.query(`INSERT INTO sabora.customer_table_visits(
+    table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+    VALUES($1,$2,$3,'delivery_visit_979_new_occupant',
+      'delivery_actor_979_new_occupant',2,clock_timestamp()+interval '1 hour')`,
+    [targetId,freshSession,nextCustomer]);
+  const afterReoccupation=await pickup(winner,claimPath,5,
+   'h6_delivery_reoccupied_destination_claim_979');
+  assert.equal(afterReoccupation.statusCode,403,
+   'a new table occupation must not inherit the old pickup scope');
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  const deniedReoccupationWrites=(await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_reoccupied_destination_claim_979'])).rows[0];
+  assert.equal(deniedReoccupationWrites.total,0);
+  const outboxAfterReoccupation=(await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.event_outbox WHERE aggregate_id=$1
+      AND event_type LIKE 'sabora.pickup.%'`,
+    [reassigned.json().pickupTaskId])).rows[0];
+  assert.equal(outboxAfterReoccupation.total,10);
+  const finalDestination=(await admin.query(`SELECT table_id,destination_version
+   FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
+   [item.lineId])).rows[0];
+  assert.equal(finalDestination.table_id,targetId);
+  assert.equal(Number(finalDestination.destination_version),2);
+  const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
+   authorization:'Bearer invalid.token.value'}});
+  assert.equal(unauthorized.statusCode,401);
+  const invalidQuery=await request(kitchenId,
+   '/api/v1/operations/order-lines?status=confirmed&limit=101');
+  assert.equal(invalidQuery.statusCode,400);
+ } finally {
+  await h6App.close();
+ }
 });

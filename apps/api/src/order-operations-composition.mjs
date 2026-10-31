@@ -1,3 +1,4 @@
+import {createOrderOperationsRepository} from './order-operations-repository.mjs';
 import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-pool.mjs';
 import {createPostgresTransaction} from './postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from './order-operations-coordinator.mjs';
@@ -5,6 +6,7 @@ import {registerOrderOperationsHttp} from './order-operations-http.mjs';
 import {
   preflightOrderOperationsIdentities,
   preflightOrderOperationsRuntimeIdentity,
+  preflightOrderOperationsH6DeliveryIdentity,
   preflightOrderTransitionIdentity,
   preflightOrderTransitionStaffIdentity,
 } from './order-operations-identity-preflight.mjs';
@@ -165,4 +167,46 @@ export async function registerVerifiedRestrictedOrderOperationsFromPools(app, op
     issueReadCapability,
   });
   registerOrderOperationsHttp(app, {forRoles, operations});
+}
+
+// H6/B2 destination-aware staff board: explicit, isolated candidate.
+// Not imported or mounted by the default server. Requires the extra
+// function EXECUTE privilege and all three H4 wrappers, with no table access.
+export async function registerVerifiedH6DeliveryOrderOperationsFromPools(app, options = {}) {
+  const {
+    staffPool, operationsPool, staffRole, operationsRole,
+    issueTransitionCapability, issueReadCapability,
+  } = options;
+  assertIsolatedPools(staffPool, operationsPool);
+  if (typeof issueTransitionCapability !== 'function' ||
+      typeof issueReadCapability !== 'function') {
+    throw Error('invalid_order_operation_capability_issuer');
+  }
+  if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
+      typeof app.hasRoute !== 'function' || [
+        ['GET', '/api/v1/operations/order-lines'],
+        ['POST', '/api/v1/operations/order-lines/:lineId/transitions'],
+        ['GET', '/api/v1/operations/orders/:orderId/history'],
+      ].some(([method, url]) => app.hasRoute({method, url}))) {
+    throw Error('invalid_order_operations_route_registration');
+  }
+  if (staffRole === operationsRole) throw Error('invalid_order_operations_pool_isolation');
+  if (typeof options.issuer !== 'string' || options.issuer.length === 0 ||
+      typeof options.getTrustedKeys !== 'function' ||
+      (options.verify !== undefined && typeof options.verify !== 'function') ||
+      (options.observe !== undefined && typeof options.observe !== 'function')) {
+    throw Error('invalid_order_operations_auth_config');
+  }
+  await preflightOrderTransitionStaffIdentity({pool: staffPool, role: staffRole});
+  await preflightOrderOperationsH6DeliveryIdentity({pool: operationsPool, role: operationsRole});
+  const forRoles = createStaffProtectedHooksFromPool({
+    pool: staffPool, issuer: options.issuer, getTrustedKeys: options.getTrustedKeys,
+    verify: options.verify, observe: options.observe,
+  });
+  const operations = createOrderOperationsCoordinator({
+    withTransaction: createPostgresTransaction({pool: operationsPool}),
+    repository: createOrderOperationsRepository({deliveryBoardCandidate: true}),
+    issueTransitionCapability, issueReadCapability,
+  });
+  registerOrderOperationsHttp(app, {forRoles, operations, legacyPickupDisabled: true});
 }
