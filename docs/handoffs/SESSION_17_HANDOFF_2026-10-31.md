@@ -156,3 +156,7 @@ Commit e2c40dc1: browser SUCCESS, CI y bootstrap FAILURE. Block 2B PG17: 33/35 t
 ## 28. Aislamiento adicional de hash de sesion en PG17
 
 CI de be30ebf2: navegador SUCCESS, Sabora CI y bootstrap FAILURE; PG17 Block 2B 33/35 por violacion de customer_sessions_token_hash_key (23505) en los dos escenarios nuevos. Los identificadores de cliente/mesa ya estaban aislados, pero ambos fixtures reutilizaban el hash global de sesion. Commit 0bd69048 asigna token hash distinto por escenario y lo utiliza al invocar la funcion; nueva CI pendiente. B3 NO-GO.
+
+## 29. PG17 validacion de formato de visit_key
+
+CI de 0bd69048: browser SUCCESS, CI/bootstrap FAILURE; los dos escenarios F12 alcanzaron INSERT de customer_accounts y fallaron por customer_accounts_visit_key_check (23514), antes de invocar RPC. Commit 0c20190e adapta los visit_key de fixtures al formato de longitud canonico, sin cambiar restricciones de base de datos. CI pendiente. B3 NO-GO.
