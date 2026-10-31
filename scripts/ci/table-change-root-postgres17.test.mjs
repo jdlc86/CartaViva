@@ -1321,6 +1321,15 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(lineProjection[0].session_id,ids.destinationSession);
   assert.equal(lineProjection[0].visit_key,destinationVisit);
   assert.equal(lineProjection[0].destination_version,'1');
+  const beforeReplay=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
+   (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$2) AS payments,
+   (SELECT binding_version FROM sabora.customer_account_operational_bindings
+    WHERE account_id=$2) AS binding_version,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests
+    WHERE account_id=$2 AND status='consumed') AS consumed_grants`,
+   [ids.order,ids.sourceAccount])).rows[0];
   const replay=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
@@ -1330,6 +1339,18 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,result.round_id);
+  const afterReplay=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
+   (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
+   (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$2) AS payments,
+   (SELECT binding_version FROM sabora.customer_account_operational_bindings
+    WHERE account_id=$2) AS binding_version,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests
+    WHERE account_id=$2 AND status='consumed') AS consumed_grants`,
+   [ids.order,ids.sourceAccount])).rows[0];
+  assert.deepEqual(afterReplay,beforeReplay,
+   'F12 replay must not create economic rounds, dispatches, payments or grant consumption');
+
   assert.equal((await client.query(`SELECT count(*)::int AS n
    FROM sabora.order_line_delivery_destinations d
    JOIN sabora.order_lines l ON l.id=d.order_line_id
