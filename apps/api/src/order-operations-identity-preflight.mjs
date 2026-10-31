@@ -75,9 +75,9 @@ async function inspect(pool, expectedRole, {
               has_function_privilege(current_user,
                 'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)',
                 'EXECUTE') AS authorized_history_rpc_execute,
-              has_function_privilege(current_user,
-                'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
-                'EXECUTE') AS h6_delivery_board_rpc_execute,
+              COALESCE(has_function_privilege(current_user,
+                to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'),
+                'EXECUTE'),false) AS h6_delivery_board_rpc_execute,
               (SELECT routine.prosecdef
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid =
