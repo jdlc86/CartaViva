@@ -12,7 +12,8 @@ import {createCatalogOrderConfirmationPoolCandidate} from '../../apps/api/src/ca
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
 import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated-candidate.mjs';
-import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
+import {preflightOrderOperationsRuntimeIdentity,
+  preflightOrderOperationsH6DeliveryIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
@@ -1115,4 +1116,28 @@ test('PG17 H6/B2 repository opt-in maps signed A-to-B destination and rejects ma
  await assert.rejects(repo.listBoard(corrupt,args),/invalid_order_operations_sql_result/);
  assert.throws(()=>createOrderOperationsRepository({deliveryBoardCandidate:'true'}),
   /invalid_order_operations_repository_config/);
+});
+
+test('PG17 H6/B2 runtime preflight rejects ungranted board and accepts only exact candidate privilege',async()=>{
+ const routine=`sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+ text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)`;
+ // The earlier positive SQL tests grant this permission in the disposable
+ // database. The legacy H4 gate must now reject the additional function.
+ await assert.rejects(
+  preflightOrderOperationsRuntimeIdentity({pool:operationsPool,role:operationsRole}),
+  /order_operations_sql_identity_rejected/
+ );
+ const verified=await preflightOrderOperationsH6DeliveryIdentity({
+  pool:operationsPool,role:operationsRole});
+ assert.equal(verified.role,operationsRole);
+ await admin.query(`REVOKE EXECUTE ON FUNCTION ${routine} FROM ${operationsRole}`);
+ try {
+  await assert.rejects(preflightOrderOperationsH6DeliveryIdentity({
+   pool:operationsPool,role:operationsRole}),/order_operations_sql_identity_rejected/);
+  const legacy=await preflightOrderOperationsRuntimeIdentity({
+   pool:operationsPool,role:operationsRole});
+  assert.equal(legacy.role,operationsRole);
+ } finally {
+  await admin.query(`GRANT EXECUTE ON FUNCTION ${routine} TO ${operationsRole}`);
+ }
 });
