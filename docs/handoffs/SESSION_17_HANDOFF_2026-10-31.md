@@ -168,3 +168,7 @@ Revision de los dos escenarios PG17 tras corregir visit_key detecto dos referenc
 ## 31. PG17 descubre fallo real min(uuid) y migracion correctiva
 
 CI de 1e4679b9: browser SUCCESS, CI/bootstrap FAILURE, PG17 33/35; los dos escenarios F12 llegan a la funcion SQL y fallan con 42883 function min(uuid) does not exist. Esto es un defecto real del RPC candidato, no de las fixtures. Commit f6adef4a crea migracion incremental 20261031200000_sabora_h6_resolved_request_uuid_aggregate_fix_candidate.sql con CREATE OR REPLACE, cambia min(a.id) a min(a.id::text)::uuid, conserva SECURITY DEFINER, owner y REVOKE sin tocar migracion previa. Commit 96a55d9b agrega revision individual al inventario de migraciones; e671b854 actualiza total auditado a 67. CI correctiva pendiente. B3 NO-GO, sin cutover ni grants.
+
+## 32. Correccion sintactica del inventario de migraciones
+
+CI e671b854: navegador SUCCESS, CI y bootstrap FAILURE antes de PG17; Block 1 Node 1122/1123 por SyntaxError en scripts/ci/migration-audit.mjs. La nueva entrada de auditoria quedo separada por doble coma. Commit 025c6815 corrige la sintaxis. No se debe inferir que la migracion PG17 esta validada hasta completar el nuevo pipeline. B3 NO-GO.
