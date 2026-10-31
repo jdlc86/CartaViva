@@ -1773,3 +1773,38 @@ test('PG17 H6/B2 pickup-compatible delivery board remains sealed and has a compl
   assert.equal(error.code,'42501');
  });
 });
+
+test('PG17 F12 resolved request is sealed and rejects forged session without writes',async()=>{
+ const signature='sabora.request_customer_table_change_h6_resolved_candidate(bytea)';
+ const result=await admin.query(`SELECT p.prosecdef,
+  pg_get_userbyid(p.proowner) AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated_execute,
+  has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE') AS customer_execute,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS operations_execute,
+  pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(result.rows.length,1);
+ const row=result.rows[0];
+ assert.equal(row.prosecdef,true);
+ assert.equal(row.owner,'sabora_h6_fn_owner');
+ assert.equal(row.anon_execute,false);
+ assert.equal(row.authenticated_execute,false);
+ assert.equal(row.customer_execute,false);
+ assert.equal(row.operations_execute,false);
+ assert.match(row.definition,/pg_advisory_xact_lock/);
+ assert.match(row.definition,/v_open_count<>1/);
+ await transaction(async client=>{
+  const before=(await client.query('SELECT count(*)::int AS total FROM sabora.customer_table_change_requests')).rows[0].total;
+  const invalid=await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
+   [Buffer.alloc(32,87)]),/customer_session_forbidden/);
+  assert.equal(invalid.code,'42501');
+  const malformed=await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
+   [Buffer.alloc(4,87)]),/invalid_table_change_request/);
+  assert.equal(malformed.code,'22023');
+  const after=(await client.query('SELECT count(*)::int AS total FROM sabora.customer_table_change_requests')).rows[0].total;
+  assert.equal(after,before);
+ });
+});
