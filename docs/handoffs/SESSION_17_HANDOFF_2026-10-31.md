@@ -184,3 +184,7 @@ Commit c82011cd actualiza prueba Fastify HTTP cliente/camarero para ejecutar REQ
 ## 35. HTTP F12 verde y control real PG17 de superficie EXECUTE
 
 Los workflows de c82011cd terminaron SUCCESS: Sabora CI 41239753803, Bootstrap 41239753797 y navegador 41239753942. Commit 2bc57a1a agrega prueba PostgreSQL 17 de catalogo para la funcion resolved request: SECURITY DEFINER, owner sabora_h6_fn_owner y EXECUTE denegado a anon, authenticated, sabora_h6_customer_runtime, operations_runtime, provider_runtime y sabora_admin_writer. Esta prueba no crea roles, grants ni hace cutover; el nuevo pipeline debe comprobarse. B3 NO-GO.
+
+## 36. Reconciliacion de puerta B2/B3 con normativa
+
+Releidos docs/assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md y docs/reviews/SABORA_TABLE_TRANSFER_B0_ATOMICITY_DEPENDENCIES_2026-10-31.md. La puerta funcional no se cierra por aprobar solicitud/decision ni por PG17 aislado del RPC: F12 exige primera confirmacion de pedido en B, misma cuenta economica y consumo unico de aprobacion, redireccion solo de pendientes, preservacion de pagos/historia, carreras y rollback. B2 requiere pruebas transaccionales de confirmacion/transferencia y B3 navegador real cliente/sala/cocina, no solo HTTP SQL simulado. Los tres workflows de 2bc57a1a seguian in_progress durante esta revision. No se han habilitado grants ni cutover; B3 NO-GO.
