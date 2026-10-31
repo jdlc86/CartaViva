@@ -2,6 +2,8 @@
 // Not mounted in production: both RPCs deliberately have no runtime EXECUTE grant.
 export const REQUEST_TABLE_CHANGE_H6_SQL=
  'SELECT request_id,request_status,expires_at FROM sabora.request_customer_table_change_h6_candidate($1::bytea,$2::uuid)';
+export const REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL=
+ 'SELECT request_id,request_status,expires_at FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)';
 export const DECIDE_TABLE_CHANGE_H6_SQL=
  'SELECT sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean) AS status';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,8 +38,9 @@ const one=async(query,sql,params)=>{
 export function createSealedTableChangeRpcCandidate({
  withCustomerTransaction,withStaffTransaction,hashSession,resolveAccount,verifyStaff
 }={}){
- if([withCustomerTransaction,withStaffTransaction,hashSession,resolveAccount,verifyStaff]
-  .some(fn=>typeof fn!=='function'))
+ if([withCustomerTransaction,withStaffTransaction,hashSession,verifyStaff]
+  .some(fn=>typeof fn!=='function')||
+  (resolveAccount!==undefined&&typeof resolveAccount!=='function'))
   throw Error('invalid_table_change_rpc_configuration');
  return Object.freeze({
   async request({customerSessionToken}={}){
@@ -47,11 +50,20 @@ export function createSealedTableChangeRpcCandidate({
     const hash=await hashSession(customerSessionToken);
     if(!Buffer.isBuffer(hash)||hash.length!==32)
      throw Error('invalid_table_change_session_hash');
-    const account=await resolveAccount({query,customerSessionToken,lock:true});
-    if(!account||!UUID.test(account.accountId??'')||account.closed)
-     throw Error('table_change_account_forbidden');
+    // Preferred path: the SECURITY DEFINER RPC resolves the unique open
+    // account; the API login needs EXECUTE only, never direct table SELECT.
+    let sql=REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL;
+    let params=[hash];
+    if(resolveAccount){
+     // Compatibility candidate; not suitable for least-privilege cutover.
+     const account=await resolveAccount({query,customerSessionToken,lock:true});
+     if(!account||!UUID.test(account.accountId??'')||account.closed)
+      throw Error('table_change_account_forbidden');
+     sql=REQUEST_TABLE_CHANGE_H6_SQL;
+     params=[hash,account.accountId];
+    }
     let row;
-    try{row=await one(query,REQUEST_TABLE_CHANGE_H6_SQL,[hash,account.accountId]);}
+    try{row=await one(query,sql,params);}
     catch(error){throw rpcFailure(error,'request');}
     const expiry=Date.parse(row.expires_at);
     if(!UUID.test(row.request_id??'')||row.request_status!=='pending'||
