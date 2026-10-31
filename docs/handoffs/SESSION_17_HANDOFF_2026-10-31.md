@@ -74,3 +74,9 @@ Revisar además migraciones posteriores y composición API reales. Migraciones a
 ## 8. Prompt corto para la sesión 17
 
 > Continúa autónomamente CartaViva/Sabora en `jdlc86/CartaViva`. Lee primero normativa vigente y luego `docs/handoffs/SESSION_17_HANDOFF_2026-10-31.md`; comprueba HEAD, PR Draft #43 y CI. Prioriza **cerrar B3/F12 verticalmente**: solicitud cliente, aprobación camarero sin traslado inmediato, QR B, primera confirmación transaccional con cuenta única, consumo único, pagos y entrega/recogida segura. Implementa SQL mínimo privilegiado, composición HTTP/PWA y PG17 + Playwright E2E; corrige fallos y actualiza PR y este handoff tras hitos. Sin merges, despliegues, Supabase operativo, VPS ni tocar Fleetia. Mantén NO-GO hasta aceptación verificable.
+
+## 9. Inspección directa de código en sesión 16 (2026-10-31)
+
+Lectura directa en la rama del PR #43 de `docs/REQUISITOS_FUNCIONALES.md`, `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`, `apps/api/src/table-change-postgres-store.mjs`, `apps/api/src/table-change-service.mjs` y `apps/api/src/table-change-http-candidate.mjs`.
+
+**Bloqueos concretos comprobados:** `createTableChangePostgresStore` requiere `withTransaction`, `resolveAccount` y `verifyStaff` externos; su `applyTransfer` lanza `table_change_transfer_not_integrated`. El servicio de dominio reserva el consumo para `consumeInOrderTransaction`, que requiere `applyTransfer` dentro de la transacción del pedido. La superficie HTTP de decisión es candidata y exige `forRoles`, identidad y staff verificados. Por tanto, no retirar el guard ni publicar la ruta sin componer las dependencias de seguridad y el corte transaccional completo. Esta inspección es análisis, **no implementación ni prueba nueva**. Siguiente acción: revisar las migraciones candidatas y el bootstrap API real, diseñar la composición de privilegios mínimos y ejecutar pruebas PG17 aisladas antes de habilitar F12.
