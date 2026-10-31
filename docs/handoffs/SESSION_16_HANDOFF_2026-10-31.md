@@ -84,6 +84,12 @@ Se añadió la migración aditiva `20261031110000_sabora_h6_pickup_effective_des
 
 **IMPORTANTE: CÓDIGO CANDIDATO NO CERTIFICADO.** Faltan resultados de CI/PG17 y una regresión **positiva** que demuestre recogida en B tras revocar A, además de negativos ante revocar/reocupar B, QR cambiado y binding desalineado. No habilitar F12 ni declarar GO solo por esta migración. Revisar los locks y privilegios reales en PostgreSQL antes de aceptar. El documento se actualiza mientras seguimos en sesión 15.
 
+### Pruebas PG17 del nuevo alcance de recogida — en validación
+
+Los primeros CI de la migración `20261031110000` mostraron una **regresión real**, no un cierre: el fixture integrado `integratedFixture` no creaba `customer_account_operational_bindings` y el escenario B2 simulaba mover el destino de línea a B sin crear visita B ni actualizar binding. Con la nueva autorización, esas acciones reciben HTTP 403. Se corrigió el fixture base para incluir binding (`ae857528`) y se amplió el escenario Fastify/PG17 para crear ocupación B, verificar **cancelación positiva en B después de revocar A**, y **rechazo en B después de revocar B** sin efectos parciales (`e86ba57e`). La expectativa de outbox pasa a 10 tras la cancelación positiva.
+
+**Evidencia de fallo:** Sabora CI `41189585019` y `41189613226` fallaron en el bloque PG17/Chromium (HTTP 403 en lugar de 200; dos reclamaciones 403 en vez de 200/409). **No son pruebas superadas**. Los commits de corrección requieren nuevo CI sobre HEAD y revisión de cualquier fallo de privilegios, bloqueo o fixtures; verificar antes de continuar. No desactivar controles de seguridad para hacer pasar tests.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
@@ -92,7 +98,7 @@ Se añadió la migración aditiva `20261031110000_sabora_h6_pickup_effective_des
 | 31-10-2026 | Revocación A rechazada sin efectos parciales | `b1ef28a`, `16888b9` | Regresión negativa; **NO-GO** recogida positiva en B |
 | 31-10-2026 | Preflight H4 compatible con RPC H6 opcional | `7af20b5`; CI `41188630375`, Bootstrap `41188630379` | PASS focalizado |
 | 31-10-2026 | Inventario F12 y puertas de cierre | `65b34ec` | Documentado; implementación pendiente |
-| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Autorización de recogida por destino efectivo B: migración y auditoría (CI/PG17 pendiente) | `d034d9b`, `7c5115a`, `51f54f4` | Implementado candidato; **NO-GO** hasta pruebas |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
+| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Fixtures PG17 para vinculación operativa A y visita/binding B; pruebas de revocación A/B | `ae857528`, `e86ba57e` | En validación CI, no certificado |\n| 31-10-2026 | Autorización de recogida por destino efectivo B: migración y auditoría (CI/PG17 pendiente) | `d034d9b`, `7c5115a`, `51f54f4` | Implementado candidato; **NO-GO** hasta pruebas |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
 
 ## 8. Prompt corto para iniciar la sesión 16
 
