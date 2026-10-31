@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_SQL,
- DECIDE_TABLE_CHANGE_H6_SQL} from './table-change-sealed-rpc-candidate.mjs';
+ DECIDE_TABLE_CHANGE_H6_SQL,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL} from './table-change-sealed-rpc-candidate.mjs';
 
 const account='11111111-1111-4111-8111-111111111111';
 const requestId='22222222-2222-4222-8222-222222222222';
@@ -97,5 +97,36 @@ test('F12 SQL errors map only when SQLSTATE and message both match',async()=>{
    ()=>rpc.decide({verifiedIdentity:{},verifiedStaff:{},requestId,decision:'approved'});
   await assert.rejects(action,error=>error.message===expected,
    operation+': '+code+' '+message);
+ }
+});
+
+test('F12 resolved request uses one-argument SQL without a direct account resolver',async()=>{
+ const calls=[];
+ const rpc=createSealedTableChangeRpcCandidate({
+  withCustomerTransaction:fn=>fn(async(sql,args)=>{
+   calls.push({sql,args});
+   return {rows:[{request_id:requestId,request_status:'pending',
+    expires_at:'2026-11-01T00:00:00Z'}]};
+  }),
+  withStaffTransaction:async()=>{throw Error('unexpected_staff_query');},
+  hashSession:async()=>hash,
+  verifyStaff:async()=>{throw Error('unexpected_staff_lookup');}
+ });
+ const result=await rpc.request({customerSessionToken:'secret'});
+ assert.equal(result.id,requestId);
+ assert.deepEqual(calls,[{sql:REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,args:[hash]}]);
+ assert.doesNotMatch(calls[0].sql,/customer_accounts|customer_sessions|INSERT|UPDATE|DELETE/i);
+});
+test('F12 resolved request fails closed on ambiguous or revoked account errors',async()=>{
+ for(const message of ['table_change_account_forbidden','customer_session_forbidden']){
+  const rpc=createSealedTableChangeRpcCandidate({
+   withCustomerTransaction:fn=>fn(async()=>{
+    throw Object.assign(Error(message),{code:'42501'});
+   }),
+   withStaffTransaction:async()=>{},hashSession:async()=>hash,
+   verifyStaff:async()=>{}
+  });
+  await assert.rejects(()=>rpc.request({customerSessionToken:'secret'}),
+   /table_change_account_forbidden/);
  }
 });
