@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
+import {F12_FUNCTION_SQL} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -1929,4 +1930,35 @@ test('PG17 F12 resolved request is not executable by any existing runtime login 
  assert.equal(row.owner,'sabora_h6_fn_owner');
  for(const role of ['anon','authenticated','customer','operations','provider','admin_writer'])
   assert.equal(row[role],false,`unexpected F12 EXECUTE for ${role}`);
+});
+
+// A real catalog exercise is essential: a mock cannot prove PostgreSQL's
+// effective EXECUTE semantics for PUBLIC, role membership or overloads.
+test('PG17 F12 effective RPC surface detects PUBLIC grants and denies unrelated function grants',async()=>{
+ await transaction(async client=>{
+  await client.query('CREATE ROLE sabora_f12_probe_runtime NOLOGIN NOINHERIT');
+  const signature='sabora.request_customer_table_change_h6_resolved_candidate(bytea)';
+  const read=async()=>{
+   const result=await client.query(F12_FUNCTION_SQL,['sabora_f12_probe_runtime']);
+   return result.rows[0].names;
+  };
+  assert.deepEqual(await read(),[]);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO sabora_f12_probe_runtime`);
+  assert.deepEqual(await read(),[signature]);
+  await client.query(`GRANT EXECUTE ON FUNCTION
+   sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
+   TO sabora_f12_probe_runtime`);
+  assert.deepEqual(await read(),[
+   'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)',signature
+  ]);
+  await client.query(`REVOKE EXECUTE ON FUNCTION
+   sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
+   FROM sabora_f12_probe_runtime`);
+  assert.deepEqual(await read(),[signature]);
+  await client.query(`GRANT EXECUTE ON FUNCTION
+   sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean) TO PUBLIC`);
+  const leaked=await read();
+  assert.ok(leaked.includes('sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'),
+   'PUBLIC EXECUTE must be visible in effective F12 surface');
+ });
 });
