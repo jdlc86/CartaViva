@@ -1446,6 +1446,27 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
    afterOriginCancel);
+  // Reoccupying B with a fresh table session and QR cannot resurrect a
+  // pending pickup tied to the former customer's visit and binding.
+  const freshSession='b2000000-0000-4000-8000-000000009981';
+  await admin.query(`UPDATE sabora.dining_tables SET session_id=$2,
+    qr_version=qr_version+1 WHERE id=$1`,[targetId,freshSession]);
+  const afterReoccupation=await pickup(winner,claimPath,5,
+   'h6_delivery_reoccupied_destination_claim_979');
+  assert.equal(afterReoccupation.statusCode,403,
+   'a new table occupation must not inherit the old pickup scope');
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  const deniedReoccupationWrites=(await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_reoccupied_destination_claim_979'])).rows[0];
+  assert.equal(deniedReoccupationWrites.total,0);
+  const outboxAfterReoccupation=(await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.event_outbox WHERE aggregate_id=$1
+      AND event_type LIKE 'sabora.pickup.%'`,
+    [reassigned.json().pickupTaskId])).rows[0];
+  assert.equal(outboxAfterReoccupation.total,10);
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
