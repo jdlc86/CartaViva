@@ -1224,22 +1224,11 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    '/api/v1/operations/order-lines?status=ready&limit=100');
   assert.equal(readyBoard.statusCode,200);
   assert.equal(readyBoard.json().items.find(line=>line.lineId===item.lineId)?.tableNumber,970980);
-  const pickupCapability=issueTransitionCapability({
-   actorId:waiterId,lineId:item.lineId,targetStatus:'picked_up',
-   correlationId:'h6_delivery_sql_pickup_979',
-  });
-  try {
-   const pickupSql=await operationsPool.query(`SELECT * FROM
-    sabora.transition_order_line_authorized_candidate(
-    $1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::bigint,$8::bigint,$9::text)`,[
-    pickupCapability.keyId,pickupCapability.databaseRole,waiterId,item.lineId,
-    'picked_up','h6_delivery_sql_pickup_979',pickupCapability.issuedAtMs,
-    pickupCapability.expiresAtMs,pickupCapability.signatureHex,
-   ]);
-   assert.equal(pickupSql.rows.length,1);
-  } catch(error) {
-   assert.fail(`H6 transferred pickup SQL diagnostic: ${error.code} ${error.message}`);
-  }
+  const legacyPickup=await transition(waiterId,'picked_up','h6_legacy_pickup_979');
+  assert.equal(legacyPickup.statusCode,409);
+  assert.deepEqual(legacyPickup.json(),{error:'order_operation_conflict'});
+  assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+   [item.lineId])).rows[0].status,'ready');
   const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
    authorization:'Bearer invalid.token.value'}});
   assert.equal(unauthorized.statusCode,401);
