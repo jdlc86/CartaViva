@@ -208,5 +208,5 @@ export async function registerVerifiedH6DeliveryOrderOperationsFromPools(app, op
     repository: createOrderOperationsRepository({deliveryBoardCandidate: true}),
     issueTransitionCapability, issueReadCapability,
   });
-  registerOrderOperationsHttp(app, {forRoles, operations});
+  registerOrderOperationsHttp(app, {forRoles, operations, legacyPickupDisabled: true});
 }
