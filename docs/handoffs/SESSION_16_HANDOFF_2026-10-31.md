@@ -114,6 +114,12 @@ La evidencia sigue siendo del tablero/recogida con proyección A→B de fixture.
 
 **Binding económico-operativo desalineado con B, aun con QR B válido:** commit `e98452d`, nueva regresión PG17/Fastify que mueve temporalmente el binding de la cuenta a A mientras el destino por línea sigue en B, exige 403 sin cambiar tarea ni crear idempotencia y restablece binding B dentro del fixture aislado. **Nuevo CI pendiente**. Esto separa el control de binding del control QR y de la revocación de visita; no se habilita todavía la confirmación F12 real.
 
+### Reocupación real de B por un segundo cliente (31-10-2026)
+
+La prueba inicial de reocupación rotaba sesión/QR, pero **no creaba una visita activa del segundo ocupante**. Esa diferencia importa: una mesa vacía tras el cierre no equivale a una mesa realmente reocupada. El commit `03b2d61` completa el fixture con **otro perfil de cliente**, visita válida bajo la **nueva sesión B** y `authorized_qr_version=2`, y vuelve a exigir que la tarea del ocupante anterior sea 403 sin mutaciones, idempotencia ni eventos. **Este nuevo escenario todavía requiere CI propio**; los PASS previos cubren la versión más débil. Además, `e98452d` cubre el binding desalineado pendiente de su CI.
+
+**Siguiente hito funcional prioritario:** dejar de multiplicar negativas aisladas y cerrar integración de `confirm_customer_round_h6_transfer_integration_candidate` con la entrada runtime bajo autorización y pruebas de flujo completo (solicitud, decisión, QR B, primera confirmación, cuenta/pagos y entrega), sin dar GRANT a producción ni modificar Supabase operativo. Revisar específicamente replay del pedido A tras transferencia y carreras con cierre de cuenta.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
