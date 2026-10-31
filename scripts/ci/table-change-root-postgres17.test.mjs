@@ -82,10 +82,10 @@ test('PG17 H6 delivery board is sealed and retains picked-up fallback in its SQL
  assert.equal(row.h6_operations_execute,false);
  assert.match(row.definition,/authorize_order_operation_read_candidate/);
  assert.match(row.definition,/LEFT JOIN sabora.order_line_delivery_destinations/);
- assert.match(row.definition,/coalesce\(d\.table_id, l\.table_id\)/i);
- assert.match(row.definition,/d\.order_line_id IS NOT NULL OR l\.status = 'picked_up'/i);
- assert.match(row.definition,/p_staff_role = 'kitchen'/);
- assert.match(row.definition,/p_staff_role = 'waiter'/);
+ assert.match(row.definition,/coalesce\(d\.table_id,\s*l\.table_id\)/i);
+ assert.match(row.definition,/d\.order_line_id\s+IS\s+NOT\s+NULL\s+OR\s+l\.status\s*=\s*'picked_up'/i);
+ assert.match(row.definition,/p_staff_role\s*=\s*'kitchen'/);
+ assert.match(row.definition,/p_staff_role\s*=\s*'waiter'/);
 });
 
 test('PG17 catalog proves the economic, delivery and event dependency graph before refactor',async()=>{
