@@ -1388,7 +1388,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   await admin.query(`UPDATE sabora.customer_table_visits
    SET revoked_at=clock_timestamp()
    WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
-   [item.tableId,item.sessionId,item.customerId]);
+   [item.tableId,item.sessionId,item.customerProfileId]);
   const afterSourceRevocation=await pickup(winner,claimPath+'/cancel',4,
    'h6_delivery_closed_origin_cancel_979');
   assert.equal(afterSourceRevocation.statusCode,403,
