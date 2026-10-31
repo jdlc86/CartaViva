@@ -1422,6 +1422,41 @@ test('PG17 B2 Stripe authorization pending survives A-to-B transfer with distinc
    [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
     Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_now'])).rows[0];
   assert.equal(confirmed.account_id,ids.sourceAccount);
+  // Exercise the actual delivery projection that kitchen and sala must read:
+  // order origin is historical, but pending line destination is operational.
+  const delivery=(await client.query(`SELECT l.line_number,l.status,
+   o.table_id AS historical_table_id,d.table_id AS delivery_table_id,
+   d.session_id AS delivery_session_id,d.visit_key AS delivery_visit_key,
+   d.destination_version,r.account_id
+   FROM sabora.order_lines l
+   JOIN sabora.orders o ON o.id=l.order_id
+   JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+   JOIN sabora.order_rounds r ON r.id=d.round_id AND r.account_id=d.account_id
+   WHERE l.order_id=$1 ORDER BY l.line_number`,[priorOrder])).rows;
+  assert.equal(delivery.length,2);
+  assert.equal(delivery[0].status,'picked_up');
+  assert.equal(delivery[0].historical_table_id,ids.sourceTable);
+  assert.equal(delivery[0].delivery_table_id,ids.sourceTable);
+  assert.equal(delivery[0].destination_version,'1');
+  assert.equal(delivery[1].status,'confirmed');
+  assert.equal(delivery[1].historical_table_id,ids.sourceTable);
+  assert.equal(delivery[1].delivery_table_id,ids.destinationTable);
+  assert.equal(delivery[1].delivery_session_id,ids.destinationSession);
+  assert.equal(delivery[1].delivery_visit_key,destinationVisit);
+  assert.equal(delivery[1].destination_version,'2');
+  assert.equal(delivery[1].account_id,ids.sourceAccount);
+  const pendingAtA=(await client.query(`SELECT count(*)::int AS n
+   FROM sabora.order_line_delivery_destinations d
+   JOIN sabora.order_lines l ON l.id=d.order_line_id
+   WHERE d.account_id=$1 AND d.table_id=$2 AND l.status<>'picked_up'`,
+   [ids.sourceAccount,ids.sourceTable])).rows[0].n;
+  assert.equal(pendingAtA,0,'no pending delivery may remain routed to A');
+  const pendingAtB=(await client.query(`SELECT count(*)::int AS n
+   FROM sabora.order_line_delivery_destinations d
+   JOIN sabora.order_lines l ON l.id=d.order_line_id
+   WHERE d.account_id=$1 AND d.table_id=$2 AND l.status<>'picked_up'`,
+   [ids.sourceAccount,ids.destinationTable])).rows[0].n;
+  assert.equal(pendingAtB,2,'pending historical line and new B line both route to B');
   assert.equal(confirmed.effective_payment_mode,'pay_now');
   assert.equal(confirmed.round_state,'awaiting_authorization');
   assert.ok(confirmed.payment_attempt_id);
