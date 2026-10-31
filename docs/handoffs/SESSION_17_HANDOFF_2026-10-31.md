@@ -164,3 +164,7 @@ CI de 0bd69048: browser SUCCESS, CI/bootstrap FAILURE; los dos escenarios F12 al
 ## 30. Auditoria de uso de token en escenarios F12
 
 Revision de los dos escenarios PG17 tras corregir visit_key detecto dos referencias residuales al tokenHash global: comparacion de requesting_session_hash y llamada de cuenta ambigua. Commit 1e4679b9 sustituye ambas por scenarioA.token y scenarioB.token. Los workflows de 0c20190e seguian en ejecucion en el momento de la revision; CI del nuevo commit pendiente. B3 NO-GO.
+
+## 31. PG17 descubre fallo real min(uuid) y migracion correctiva
+
+CI de 1e4679b9: browser SUCCESS, CI/bootstrap FAILURE, PG17 33/35; los dos escenarios F12 llegan a la funcion SQL y fallan con 42883 function min(uuid) does not exist. Esto es un defecto real del RPC candidato, no de las fixtures. Commit f6adef4a crea migracion incremental 20261031200000_sabora_h6_resolved_request_uuid_aggregate_fix_candidate.sql con CREATE OR REPLACE, cambia min(a.id) a min(a.id::text)::uuid, conserva SECURITY DEFINER, owner y REVOKE sin tocar migracion previa. Commit 96a55d9b agrega revision individual al inventario de migraciones; e671b854 actualiza total auditado a 67. CI correctiva pendiente. B3 NO-GO, sin cutover ni grants.
