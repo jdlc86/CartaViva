@@ -90,6 +90,12 @@ Los primeros CI de la migración `20261031110000` mostraron una **regresión rea
 
 **Evidencia de fallo:** Sabora CI `41189585019` y `41189613226` fallaron en el bloque PG17/Chromium (HTTP 403 en lugar de 200; dos reclamaciones 403 en vez de 200/409). **No son pruebas superadas**. Los commits de corrección requieren nuevo CI sobre HEAD y revisión de cualquier fallo de privilegios, bloqueo o fixtures; verificar antes de continuar. No desactivar controles de seguridad para hacer pasar tests.
 
+### Hito técnico validado: autorización de recogida B tras cierre de A
+
+**Evidencia nueva:** SHA `e86ba57e0461390a78c14c21ab0cfc358c0342ab`, **Sabora CI SUCCESS** (run `41189844286`) y **Bootstrap SUCCESS** (run `41189844344`). El escenario integrado PG17/Fastify confirma destino B, concurrencia de camareros, idempotencia, eventos por destino, SSE, recogida/cancelación positiva tras revocar A y denegación sin efectos tras revocar B. También se ejecutan los bloques de regresión incluidos en el workflow. Los fallos anteriores de fixtures quedaron superados en este SHA. El commit documental posterior `6dd4d85` estaba en ejecución al realizar esta comprobación; **consultar su estado y el HEAD vigente**.
+
+**Límites del PASS:** es un escenario integrado con destino A→B configurado por fixture, **no** el cutover runtime de la función de confirmación de transferencia F12 ni un recorrido completo de PWA de solicitud/aprobación/QR/primer pedido. Mantener **NO-GO producción** y continuar con pruebas de reocupación de B, carrera entre traslado y recogida, roles/RLS, integración F12 y aceptación visual.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
@@ -98,7 +104,7 @@ Los primeros CI de la migración `20261031110000` mostraron una **regresión rea
 | 31-10-2026 | Revocación A rechazada sin efectos parciales | `b1ef28a`, `16888b9` | Regresión negativa; **NO-GO** recogida positiva en B |
 | 31-10-2026 | Preflight H4 compatible con RPC H6 opcional | `7af20b5`; CI `41188630375`, Bootstrap `41188630379` | PASS focalizado |
 | 31-10-2026 | Inventario F12 y puertas de cierre | `65b34ec` | Documentado; implementación pendiente |
-| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Fixtures PG17 para vinculación operativa A y visita/binding B; pruebas de revocación A/B | `ae857528`, `e86ba57e` | En validación CI, no certificado |\n| 31-10-2026 | Autorización de recogida por destino efectivo B: migración y auditoría (CI/PG17 pendiente) | `d034d9b`, `7c5115a`, `51f54f4` | Implementado candidato; **NO-GO** hasta pruebas |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
+| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Recogida B válida tras revocar A y bloqueada tras revocar B, Fastify/PG17/SSE | `e86ba57e`; CI `41189844286` SUCCESS; Bootstrap `41189844344` SUCCESS | **PASS técnico aislado**, NO-GO F12 runtime |\n| 31-10-2026 | Autorización de recogida por destino efectivo B: migración y auditoría (CI/PG17 pendiente) | `d034d9b`, `7c5115a`, `51f54f4` | Implementado candidato; **NO-GO** hasta pruebas |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
 
 ## 8. Prompt corto para iniciar la sesión 16
 
