@@ -112,7 +112,7 @@ test('F12 request HTTP enforces authenticated same-origin empty-body contract an
  let denied=false;
  const tableChange={request:async value=>{seen.push(value);if(denied)throw Error('table_change_request_locked');
   return {id:'request-1',status:'pending',sourceTableId:'table-A',
-   createdAtMs:1000,expiresAtMs:91000};}};
+   createdAtMs:1000,expiresAtMs:91000,accountId:'private-account'};}};
  const flow={authorizeVisit:async()=>{},quote:async()=>{},confirm:async()=>{}};
  const app=Fastify({logger:false});
  registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange});
@@ -133,6 +133,7 @@ test('F12 request HTTP enforces authenticated same-origin empty-body contract an
   const ok=await call(validHeaders,{});
   assert.equal(ok.statusCode,201);
   assert.equal(ok.headers['cache-control'],'no-store');
+  assert.equal(Object.hasOwn(ok.json(),'accountId'),false);
   assert.deepEqual(seen,[{customerSessionToken:'s'.repeat(43)}]);
   denied=true;
   const cooldown=await call(validHeaders,{});
