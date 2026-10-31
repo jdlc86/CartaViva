@@ -64,3 +64,12 @@ El escenario PostgreSQL 17 desechable ahora utiliza un único servidor Fastify a
 **Evidencia:** commit `434d65ca92ed40bb007d27787e865bfb2f6be124`; Sabora CI run `41185324345` SUCCESS y Bootstrap run `41185324276` SUCCESS.
 
 **Límite de aceptación:** la prueba integrada no equivale a autorización de producción. Permanecen pendientes el cierre normativo completo, las pruebas de eventos SSE/outbox y su replay en el escenario de cambio de mesa, las pruebas E2E de interfaz específica A→B y la revisión independiente de activación. Estado global **NO-GO**; sin despliegues, merges ni acceso a Supabase operativo/VPS.
+
+## Destino de los eventos durables de recogida tras traslado (31-10-2026)
+Se detectó que `emit_pickup_task_staff_events_candidate` utilizaba la mesa/sesión histórica de `orders` incluso cuando la línea tenía un destino vigente distinto. La migración candidata aditiva `20261031100000_sabora_h6_delivery_pickup_event_destination_candidate.sql` corrige únicamente la emisión futura de eventos de recogida: resuelve `order_line_delivery_destinations` con fallback histórico, incluye `deliveryTableId` y `deliveryVersion` en el payload y conserva `claimedDisplayId` y `actorDisplayId` de la normativa de identidad compacta. No reescribe eventos anteriores ni modifica la cuenta/visita históricas. Migración incluida en auditoría individual obligatoria.
+
+La prueba PG17 aislada de traslado A→B, `ready`, dos reclamaciones concurrentes, replay, cancelación y nueva asignación comprueba ahora **ocho** eventos `event_outbox` exactamente, por rol `waiter`/`kitchen`, con destino B, sesión B, versión de destino 2 y versiones de tarea 1–4 sin duplicados por replay.
+
+**Evidencia:** commit `c61c1928a939e9192d5670cfeea7f402d103f617`; Sabora CI `41186188670` SUCCESS; Bootstrap `41186188695` SUCCESS.
+
+**Límites:** el contrato de eventos durables se ha probado en base de datos, pero la reproducción del SSE real sobre el escenario A→B y la aceptación visual integral aún requieren cierre específico. También debe revisarse el alcance de autorización de la recogida frente a mesa/visita de origen y destino para casos de cierre de la mesa original. **NO-GO** para producción, merges y despliegues.
