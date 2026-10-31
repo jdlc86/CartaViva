@@ -44,6 +44,8 @@ test('F12 resolved request is sealed, checks unique account and delegates owners
  assert.match(source,/s\.token_hash=p_session_hash AND s\.revoked_at IS NULL/);
  assert.match(source,/WHERE a\.customer_id=v_customer AND a\.state='open'/);
  assert.match(source,/IF v_open_count<>1 THEN/);
+ assert.ok(source.indexOf('pg_advisory_xact_lock')<source.indexOf('SELECT count(*)'),
+  'account uniqueness must be checked after the customer advisory lock');
  assert.match(source,/sabora\.request_customer_table_change_h6_candidate\(\s*p_session_hash,v_account_id\)/);
  assert.match(source,/REVOKE ALL ON FUNCTION sabora\.request_customer_table_change_h6_resolved_candidate\(bytea\)/);
  assert.doesNotMatch(source,/GRANT EXECUTE ON FUNCTION/);
