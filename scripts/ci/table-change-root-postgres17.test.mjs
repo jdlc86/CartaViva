@@ -1880,7 +1880,7 @@ test('PG17 F12 resolved request creates exactly one pending grant for a unique o
   assert.equal(saved.source_table_id,scenarioA.sourceTable);
   assert.equal(saved.current_table,scenarioA.sourceTable);
   assert.equal(saved.destination_table_id,null);
-  assert.deepEqual(saved.requesting_session_hash,tokenHash);
+  assert.deepEqual(saved.requesting_session_hash,scenarioA.token);
   const cooldown=await expectSqlError(client,call,/table_change_cooldown/);
   assert.equal(cooldown.code,'23514');
   const count=(await client.query(`SELECT count(*)::int AS total
@@ -1902,7 +1902,7 @@ test('PG17 F12 resolved request denies ambiguous open accounts without creating 
   ]);
   const error=await expectSqlError(client,()=>client.query(
    'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
-   [tokenHash]),/table_change_account_forbidden/);
+   [scenarioB.token]),/table_change_account_forbidden/);
   assert.equal(error.code,'42501');
   const count=(await client.query(`SELECT count(*)::int AS total
    FROM sabora.customer_table_change_requests WHERE customer_id=$1`,[scenarioB.customer])).rows[0].total;
