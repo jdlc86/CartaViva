@@ -244,3 +244,23 @@ kitchen/sala readers, SSE and authenticated API/PWA end-to-end remain
 unverified. The candidate is still sealed from runtime EXECUTE. B2
 continues **NO-GO**; no merge, deployment, operational Supabase or VPS
 change is authorized.
+
+## PG17 competing distinct checkout after transfer — 2026-10-31
+
+Commit `c808f051513331003002655873bd4be9ea8dacfa` passed all three
+GitHub Actions workflows. The disposable PG17 integrated checkout race
+now uses **three independent transactions**: an approved A→B confirmation,
+an idempotent replay of that confirmation, and a different order/request
+attempted at A while the first transaction is still uncommitted. The
+third transaction waits on the customer lock, then fails closed with
+`table_change_approval_required` once the A→B transfer is committed.
+Assertions preserve exactly one confirmed new order, economic round,
+kitchen dispatch, consumed approval and balance increment; no rejected
+order persists. An initial test-harness lock timeout was corrected by
+committing the replay transaction before awaiting the competing checkout.
+
+**Acceptance boundary:** this verifies a competing *stale-origin* order,
+not two independently valid destination baskets or payment capture
+concurrency. Runtime customer composition, kitchen/sala delivery readers,
+SSE and browser E2E remain unclosed. Status remains **NO-GO**; no
+operational database, VPS, Fleetia, merge or deployment was touched.
