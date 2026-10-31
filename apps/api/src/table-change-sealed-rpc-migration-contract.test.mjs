@@ -51,3 +51,14 @@ test('F12 resolved request is sealed, checks unique account and delegates owners
  assert.doesNotMatch(source,/GRANT EXECUTE ON FUNCTION/);
  assert.match(REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,/resolved_candidate\(\$1::bytea\)/);
 });
+
+test('F12 PostgreSQL 17 compatibility correction keeps resolved RPC sealed and avoids min(uuid)',()=>{
+ const source=migration('20261031200000_sabora_h6_resolved_request_uuid_aggregate_fix_candidate.sql');
+ assert.match(source,/CREATE OR REPLACE FUNCTION sabora\.request_customer_table_change_h6_resolved_candidate\(/);
+ assert.match(source,/SELECT count\(\*\),min\(a\.id::text\)::uuid INTO v_open_count,v_account_id/);
+ assert.doesNotMatch(source,/min\(a\.id\)/);
+ assert.match(source,/SECURITY DEFINER SET search_path=pg_catalog,pg_temp/);
+ assert.match(source,/OWNER TO sabora_h6_fn_owner/);
+ assert.match(source,/REVOKE ALL ON FUNCTION sabora\.request_customer_table_change_h6_resolved_candidate\(bytea\)/);
+ assert.doesNotMatch(source,/GRANT EXECUTE/);
+});
