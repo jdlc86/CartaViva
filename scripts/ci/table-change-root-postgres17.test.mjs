@@ -1412,6 +1412,14 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
    [quoteId,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
     ids.customer.toString(),itemId,evidence]);
   const lines=[{quoteId,itemId,evidence}];
+  const rivalQuote='b0a00000-0000-4000-8000-000000000053';
+  await fixture.query(`INSERT INTO sabora.catalog_displayed_quotes
+   (id,table_id,session_id,visit_id,basket_id,actor_id,item_id,
+    published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,1,700,0,700,$8,clock_timestamp()+interval '15 minutes')`,
+   [rivalQuote,ids.destinationTable,ids.destinationSession,destinationVisit,
+    'h6_rival_basket_0001',ids.customer.toString(),itemId,evidence]);
+  const rivalLines=[{quoteId:rivalQuote,itemId,evidence}];
 
   await fixture.query('COMMIT');
   first=await admin.connect();
@@ -1431,16 +1439,14 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   // Start the second *full* checkout before the first transaction commits.
   // It must wait for the customer advisory lock, not independently persist.
   const competing=second.query(sql,args);
-  // A distinct concurrent checkout attempts to return to A without a new
-  // approval. It must wait for the same customer lock and then fail closed.
-  const rivalArgs=[tokenHash,ids.sourceTable,qrToken,sourceVisit,
+  // A distinct valid B basket races the first confirmation and shares the account.
+  const rivalArgs=[tokenHash,ids.destinationTable,qrToken,destinationVisit,
    'h6_rival_basket_0001','h6_rival_request_0001',Buffer.alloc(32,212),
    'b0a00000-0000-4000-8000-000000000051',
-   'b0a00000-0000-4000-8000-000000000052',JSON.stringify(lines),false,'pay_at_end'];
-  const rejected=expectSqlError(rival,()=>rival.query(sql,rivalArgs),
-   /table_change_approval_required/);
+   'b0a00000-0000-4000-8000-000000000052',JSON.stringify(rivalLines),false,'pay_at_end'];
+  const rivalCheckout=rival.query(sql,rivalArgs);
   let rivalSettled=false;
-  rejected.then(()=>{rivalSettled=true;},()=>{rivalSettled=true;});
+  rivalCheckout.then(()=>{rivalSettled=true;},()=>{rivalSettled=true;});
   let settled=false;
   competing.then(()=>{settled=true;},()=>{settled=true;});
   await new Promise(resolve=>setTimeout(resolve,120));
@@ -1452,13 +1458,24 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,winner.round_id);
   await second.query('COMMIT');
-  await rejected;
+  const rivalResult=(await rivalCheckout).rows[0];
+  assert.equal(rivalResult.repeated,false);
+  assert.equal(rivalResult.account_id,ids.sourceAccount);
+  assert.notEqual(rivalResult.round_id,winner.round_id);
   await rival.query('COMMIT');
+  await rival.query('BEGIN');
+  await expectSqlError(rival,()=>rival.query(sql,[tokenHash,ids.sourceTable,
+   qrToken,sourceVisit,'h6_stale_basket_0001','h6_stale_request_0001',
+   Buffer.alloc(32,213),'b0a00000-0000-4000-8000-000000000054',
+   'b0a00000-0000-4000-8000-000000000055',JSON.stringify(lines),false,
+   'pay_at_end']),/table_change_approval_required/);
+  await rival.query('ROLLBACK');
   const state=(await fixture.query(`SELECT
    (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
-   (SELECT count(*)::int FROM sabora.orders WHERE id=$3) AS rejected_orders,
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$3) AS rival_orders,
    (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
    (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
+   (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$3) AS rival_rounds,
    (SELECT count(*)::int FROM sabora.customer_table_change_requests
     WHERE account_id=$2 AND status='consumed') AS grants,
    (SELECT outstanding_cents FROM sabora.customer_accounts WHERE id=$2) AS balance,
@@ -1466,11 +1483,12 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
     WHERE account_id=$2) AS binding_version`,
    [ids.order,ids.sourceAccount,rivalArgs[8]])).rows[0];
   assert.equal(state.orders,1);
-  assert.equal(state.rejected_orders,0);
+  assert.equal(state.rival_orders,1);
   assert.equal(state.rounds,1);
+  assert.equal(state.rival_rounds,1);
   assert.equal(state.dispatches,1);
   assert.equal(state.grants,1);
-  assert.equal(state.balance,'1900');
+  assert.equal(state.balance,'2600');
   assert.equal(state.binding_version,'2');
  }finally{
   if(first){await first.query('ROLLBACK').catch(()=>{});first.release();}
