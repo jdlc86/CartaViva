@@ -18,6 +18,11 @@ import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/s
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {registerVerifiedH6DeliveryOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
+import {createH6OperationsRepository,MANAGE_PICKUP_TASK_H6_SQL}
+ from '../../apps/api/src/h6-operations-repository.mjs';
+import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
   INSERT_QUOTE_SQL, LOOKUP_ATTEMPT_SQL, PREPARE_CONFIRMATION_SQL,
@@ -1165,6 +1170,21 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
  };
  try {
   await registerVerifiedH6DeliveryOrderOperationsFromPools(h6App,config);
+  const h6PickupTx=createRoleScopedPostgresTransaction({pool:h6OperationsPool,
+   role:'sabora_h6_operations_runtime',allowedSql:new Set([MANAGE_PICKUP_TASK_H6_SQL])});
+  const h6PickupRepository=createH6OperationsRepository({withTransaction:h6PickupTx});
+  const h6PickupOperations=createH6OperationsCoordinator({
+   repository:h6PickupRepository,
+   issueCapability:createH6StaffCapabilityIssuer({
+    keyId,secret:signingSecret,databaseRole:h6OperationsRole,
+   }),
+  });
+  registerH6OperationsHttp(h6App,{
+   forRoles:createStaffProtectedHooksFromPool({
+    pool:staffPool,issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+   }),
+   operations:h6PickupOperations,
+  });
   await h6App.ready();
   const path='/api/v1/operations/order-lines?status=confirmed&limit=100';
   const request=async(userId,route=path)=>h6App.inject({
@@ -1232,7 +1252,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   // Use the real H4+H6 candidate for the approved task acceptance flow.
   // The H4 legacy picked_up transition is deliberately not used here.
   const claimPath=`/api/v1/operations/order-lines/${item.lineId}/pickup-claim`;
-  const pickup=async(userId,route,expectedVersion,correlationId)=>app.inject({
+  const pickup=async(userId,route,expectedVersion,correlationId)=>h6App.inject({
    method:'POST',url:route,headers:{...headers(userId),'content-type':'application/json'},
    payload:{expectedVersion,correlationId},
   });
