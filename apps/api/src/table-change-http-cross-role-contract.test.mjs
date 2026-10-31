@@ -24,7 +24,7 @@ test('F12 customer-to-waiter HTTP lifecycle shares one service and approval neve
   },
   serverNowMs:async()=>nowMs,
   expirePendingRequests:async()=>{},
-  lockApprovedRequest:async()=>null,
+  lockApprovedRequest:async()=>current?.status==='approved'?current:null,
   latestRequest:async()=>current,
   configuredWindowMs:async()=>90000,
   insertRequest:async input=>{
@@ -41,6 +41,7 @@ test('F12 customer-to-waiter HTTP lifecycle shares one service and approval neve
   },
   lockRequest:async id=>id===requestId?current:null,
   recordDecision:async({request,staffId})=>{
+   if(current?.status!=='pending')throw Error('table_change_request_not_pending');
    calls.push({operation:'decide',staffId});
    current={...request,accountId:'internal-account',customerId:'internal-customer'};
    return {request:current};
@@ -95,6 +96,13 @@ test('F12 customer-to-waiter HTTP lifecycle shares one service and approval neve
   assert.deepEqual(approved.json(),{requestId,status:'approved'});
   assert.equal(current.status,'approved');
   assert.equal(current.destinationTableId,undefined);
+  const afterApproval=await app.inject({method:'POST',url:'/api/v1/customer/table-change/requests',
+   headers:customerHeaders,payload:{}});
+  assert.equal(afterApproval.statusCode,409,'unused approval blocks new requests');
+  const replayDecision=await app.inject({method:'POST',url:'/api/v1/operations/table-change/decisions',
+   headers:{'content-type':'application/json','x-test-role':'waiter'},
+   payload:{requestId,decision:'approved'}});
+  assert.equal(replayDecision.statusCode,409,'decision is one-time and must not be replayed');
   assert.deepEqual(calls.map(call=>call.operation),['request','decide']);
   assert.equal(request.body.includes('internal-account'),false);
   assert.equal(approved.body.includes('internal-customer'),false);
