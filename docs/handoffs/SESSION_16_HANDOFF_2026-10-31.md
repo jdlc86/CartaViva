@@ -305,6 +305,13 @@ El commit `ee54c216` y el documental `9473253d` terminaron con ambos workflows *
 - **Estado para la siguiente sesión:** PR Draft #43, rama `integration/sabora-h6-b2-delivery-board-contract-20261031`, B3 aún abierto y **NO-GO** de activación. Retomar desde la normativa vigente, composición SQL de mínimos privilegios y E2E real, sin confundir CI verde con cierre F12.
 - No realizar merge, despliegue, ni operaciones sobre infraestructura compartida sin autorización expresa.
 
+### Puerta de corte B3 protegida y validada — 31-10-2026
+
+- Commit `85b6610365349e75412a5dd082a0a9c8780cc1bd`: contrato automatizado en `apps/api/src/table-change-h6-contract.test.mjs` que impide confundir adaptadores HTTP candidatos con un corte transaccional completo. Comprueba composición de cliente/sala, lista permitida de SQL H6, preflight de privilegios y permanencia de la función H6 activa hasta una integración coordinada.
+- **Evidencia:** Sabora CI `41213843572` **SUCCESS**; Bootstrap `41213843564` **SUCCESS**; browser conformance `41213843576` **SUCCESS**.
+- **Análisis técnico del siguiente hito:** `createTableChangePostgresStore` sigue dependiendo de callbacks `resolveAccount` y `verifyStaff` que no están compuestos con un runtime mínimo autorizado. `registerCustomerProductionCandidate` no conecta el servicio de solicitud, `registerTableChangeStaffHttp` permanece sin montar y `confirm_customer_round_h6_transfer_integration_candidate` sigue sin EXECUTE para el rol runtime. Una ruta aislada no resuelve el circuito. No eliminar estas puertas de seguridad para acelerar B3.
+- **Próximo bloque integral:** implementar funciones SQL `SECURITY DEFINER` para solicitud/decisión con sesión y personal verificados, transacciones de mínimo privilegio y composición operativa; realizar corte H6 atómico con grants/preflight/allowlist exactos, SSE y PWA cliente/sala/cocina; PG17 y Playwright. Mantener **NO-GO** hasta aceptación completa.
+
 ## 8. Prompt corto para iniciar la sesión 16
 
 > Continúa autónomamente CartaViva/Sabora en **`jdlc86/CartaViva`**. Lee primero la **normativa GitHub** y luego **`docs/handoffs/SESSION_16_HANDOFF_2026-10-31.md`**; verifica HEAD, PR Draft #43 y CI actuales. Prioriza cerrar **F12: traslado A→B transaccional con cuenta económica única, concesión consumida una vez, entrega pendiente y recogida segura**, seguido de E2E visual. Implementa bloques completos, PG17 aislado, pruebas/CI con esperas y correcciones autónomas; actualiza documentación, PR y **este mismo handoff** al lograr hitos. **Sin merges, despliegues, Supabase operativo, VPS ni tocar Fleetia**. No declares GO sin evidencias.
