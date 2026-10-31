@@ -216,3 +216,7 @@ Commits e19fc840 y db2216c7 agregan al arnes PG17 disposable un rol NOLOGIN tran
 ## 43. Preflight F12: distincion login NOINHERIT y capacidad SET ROLE
 
 Revision de seguridad: un login NOINHERIT puede recibir EXECUTE directamente o via PUBLIC; verificar solo la superficie de su rol F12 no basta. Commits 154aed98, 03f6f5af, 9379022c y correccion final aeb4b69e, 5643d07c: el preflight comprueba separadamente rol F12 (exactamente una RPC) y login previo a SET LOCAL ROLE (cero RPC ejecutables en esquema sabora), ademas de membresia SET unica, permisos de tabla/secuencia y ausencia de atributos elevados. Pruebas de mocks cubren concesiones directas/PUBLIC simuladas; PG17 agrega login NOINHERIT y grants transaccionales para comprobar la diferencia real. La politica de cero funciones en login puede requerir revocacion de grants PUBLIC heredados en un entorno aislado antes de pasar: no relajar el control por comodidad. CI aun pendiente. B3 NO-GO.
+
+## 44. CI F12 verde y prueba PG17 de SET ROLE explicito
+
+Commit 5643d07c: tres workflows SUCCESS (Sabora CI 41243201287, Bootstrap PG17 41243201426, browser 41243201280). Se agrega commit 0c854a4b: prueba PG17 transaccional en base desechable que crea rol de capacidad NOLOGIN y login NOINHERIT, concede membresia SET TRUE/INHERIT FALSE, verifica ausencia de EXECUTE antes de SET ROLE y disponibilidad al asumir rol explicitamente. Su CI esta pendiente; no confundir prueba de rol con validacion de login remoto/pools productivos. No se crea ni concede rol F12 operativo. B3 NO-GO.
