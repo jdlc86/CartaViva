@@ -30,3 +30,32 @@ test('table transfer H6 readiness: candidate grant records destination and consu
 test('table transfer schema rejects approval at or beyond response deadline',()=>{
  assert.match(candidate,/status NOT IN \('approved','rejected','consumed'\) OR decided_at < expires_at/);
 });
+
+const transferSql=readFileSync(new URL('../../../supabase/migrations/20261031010000_sabora_h6_transfer_confirmation_integration_candidate.sql',import.meta.url),'utf8');
+const transferStart=transferSql.indexOf('FUNCTION sabora.confirm_customer_round_h6_transfer_integration_candidate(');
+const transferEnd=transferSql.indexOf('$confirm_h6$;',transferStart);
+assert.ok(transferStart>=0&&transferEnd>transferStart,'missing isolated F12 confirmation candidate');
+const transferConfirmation=transferSql.slice(transferStart,transferEnd);
+
+test('F12 candidate resolves the economic account and approval before order persistence',()=>{
+ const account=transferConfirmation.indexOf('FROM sabora.customer_accounts a');
+ const approval=transferConfirmation.indexOf('FROM sabora.customer_table_change_requests q');
+ const persist=transferConfirmation.indexOf('FROM sabora.persist_customer_order_candidate(');
+ assert.ok(account>=0&&approval>account&&persist>approval,
+  'account and destination-independent approval must be checked before persisting a new order');
+});
+
+test('F12 candidate consumes grant after round and delivery projection within one transaction',()=>{
+ const round=transferConfirmation.indexOf('INSERT INTO sabora.order_rounds(');
+ const destination=transferConfirmation.indexOf('INSERT INTO sabora.order_line_delivery_destinations');
+ const consume=transferConfirmation.indexOf('sabora.consume_customer_table_change_h6_candidate(');
+ assert.ok(round>=0&&destination>round&&consume>destination,
+  'grant must be consumed atomically after the economic round and pending delivery projection');
+});
+
+test('F12 candidate stays isolated from customer runtime until B3 acceptance',()=>{
+ assert.match(transferSql,/REVOKE ALL ON FUNCTION sabora\.confirm_customer_round_h6_transfer_integration_candidate\([\s\S]*?FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_provider_runtime,sabora_h6_customer_runtime,sabora_h6_operations_runtime;/);
+ const flow=readFileSync(new URL('./customer-production-flow.mjs',import.meta.url),'utf8');
+ assert.match(flow,/FROM sabora\.confirm_customer_round_h6_candidate\(/);
+ assert.doesNotMatch(flow,/FROM sabora\.confirm_customer_round_h6_transfer_integration_candidate\(/);
+});
