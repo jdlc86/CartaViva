@@ -18,6 +18,8 @@ run_block() {
   printf '[H6] START %s\n' "$label"
   local code=0
   "$@" > "$log" 2>&1 || code=$?
+  node scripts/ci/h6-failure-diagnostics.mjs "$log" "$report_dir/${name}.json" \
+    "$GITHUB_RUN_ID" "${GITHUB_SHA:-unknown}" "$name" "$code"
   if [[ "$code" -eq 0 ]]; then
     printf -- '- PASS (exit 0)\n\n' >> "$summary"
     printf '[H6] PASS %s\n' "$label"
