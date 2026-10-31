@@ -204,3 +204,7 @@ Commits cbfac5a1 y 74c3768b: nuevo preflight candidato de identidad y superficie
 ## 40. Correccion de superficie efectiva de privilegios F12
 
 En revision de seguridad del preflight se detecto que inspeccionar solo ACL directas de la capacidad no prueba la superficie ejecutable real: puede omitir concesiones PUBLIC/heredadas y confundir sobrecargas. Commits eaa4814e y f3cd10c0 sustituyen la consulta por has_function_privilege(role,oid,'EXECUTE') sobre todas las funciones del esquema sabora y comparan firmas regprocedure completas. Pruebas actualizadas para las firmas exactas y superficie ampliada. No hay roles F12 ni grants ni despliegue; falta PG17 real y CI posterior. El anterior CI Bootstrap tuvo fallo 44px en Chromium; commit 1a526722 mantiene umbral y espera layout; verificar sus workflows antes de cierre. B3 NO-GO.
+
+## 41. Cierre de brecha SET ROLE transversal en preflight F12
+
+Commits 5be02c30 y f2c9cc3e: preflight no se limita ya a verificar SET sobre las dos capacidades F12 conocidas; enumera todos los roles que el login puede asumir via pg_has_role(...,'SET') y exige exactamente el suyo. Nuevas pruebas negativas para roles adicionales y ausencia de rol. Evita aprobar un login que pueda asumir un tercer rol privilegiado. Esta puerta sigue siendo candidata, no hay grants ni activacion; validar CI y PostgreSQL 17 con roles reales. B3 NO-GO.
