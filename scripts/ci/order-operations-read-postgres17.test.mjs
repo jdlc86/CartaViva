@@ -1344,9 +1344,11 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    try{
     for(let attempt=0;attempt<8;attempt++){
      const chunk=await Promise.race([reader.read(),new Promise((_,reject)=>
-      setTimeout(()=>reject(Error('h6_transfer_sse_timeout')),2500))]);
+      setTimeout(()=>reject(Error('h6_transfer_sse_timeout:'+JSON.stringify(body.slice(-900)))),2500))]);
      if(chunk.done)break;
      body+=new TextDecoder().decode(chunk.value);
+     if(body.includes('event: access-revoked')||body.includes('event: resync-required'))
+      throw Error('h6_transfer_sse_rejected:'+body.slice(-900));
      if(expected.every(id=>body.includes('id: '+id+'\\n')))break;
     }
     return body;
