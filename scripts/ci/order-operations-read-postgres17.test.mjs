@@ -1489,7 +1489,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   // inaccessible even though B is once again legitimately occupied.
   const nextCustomer='b2000000-0000-4000-8000-000000009982';
   await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
-    VALUES($1,'SB-ZYXWVUTSRQPO','Ocupante B nuevo')`,[nextCustomer]);
+    VALUES($1,'SB-PQRSTUVWXYAB','Ocupante B nuevo')`,[nextCustomer]);
   await admin.query(`INSERT INTO sabora.customer_table_visits(
     table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
     VALUES($1,$2,$3,'delivery_visit_979_new_occupant',
