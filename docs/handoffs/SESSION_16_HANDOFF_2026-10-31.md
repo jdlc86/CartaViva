@@ -272,6 +272,12 @@ El commit `ee54c216` y el documental `9473253d` terminaron con ambos workflows *
 
 **Límite:** esta evidencia certifica el test de tablero/recogida H6/B2, no la integración HTTP de F12. El runtime continúa invocando `confirm_customer_round_h6_candidate` y la función `confirm_customer_round_h6_transfer_integration_candidate` carece deliberadamente de EXECUTE para `sabora_h6_customer_runtime`. No habilitar el corte sin B3 API/PWA, preflight de capacidades, PG17 y E2E. Dictamen global **NO-GO**.
 
+### F12 B2: idempotencia económica y puerta contractual verificadas (31-10-2026)
+
+- Commit `58e89b7e0438fbe3067c16cfd4a0790964e73121`: tres contratos automatizados sobre la candidata F12: cuenta y aprobación antes de persistencia, consumo después de ronda y proyecciones dentro de la transacción, y función sin EXECUTE runtime antes del corte B3. **Sabora CI `41193827368` SUCCESS; Bootstrap `41193827364` SUCCESS.**
+- Commit `5393df53c320b7c0e497ddff0fab02ad29d8f64a`: prueba PG17 real de replay de A→B que compara antes/después número de rondas, despachos, intentos de pago, versión de binding y concesiones consumidas. **Sabora CI `41194979186` SUCCESS; Bootstrap `41194979210` SUCCESS.**
+- **Alcance:** F12/F24 parcialmente verificados a nivel de función candidata aislada; NO certificar F12/F24 en API/PWA. La matriz F01–F28 y R01–R10 sigue sin acta final. B3 debe implementar el circuito HTTP/PWA cliente/sala/cocina y el corte SQL seguro con grants mínimos, allowlist y preflight exacto; después B4 E2E y regresión global. **NO-GO**, sin merge ni despliegue.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
