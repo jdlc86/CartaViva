@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {assertF12SqlIdentity,assertF12SqlCapabilities,F12_IDENTITY_SQL,F12_FUNCTION_SQL}
  from './table-change-isolated-sql-preflight-candidate.mjs';
 const roles=['sabora_f12_customer_runtime','sabora_f12_operations_runtime'];
-function mock(capability,{override={},names,queryError=false}={}){
+function mock(capability,{override={},names,loginNames=[],queryError=false}={}){
  const calls=[];let released;
  const login=capability==='sabora_f12_customer_runtime'?'f12_customer_login':'f12_operations_login';
  const row={effective_role:login,login_role:login,can_login:true,inherit_role:false,
@@ -13,6 +13,7 @@ function mock(capability,{override={},names,queryError=false}={}){
  return {login,calls,get released(){return released;},async connect(){return {
   async query(sql,args){calls.push({sql,args});if(queryError)throw Error('connection');
    if(sql===F12_IDENTITY_SQL)return {rows:[row]};
+   if(sql===F12_FUNCTION_SQL&&args?.[0]===login)return {rows:[{names:loginNames}]};
    if(sql===F12_FUNCTION_SQL)return {rows:[{names:names??[
     capability==='sabora_f12_customer_runtime'?
      'sabora.request_customer_table_change_h6_resolved_candidate(bytea)':
@@ -29,8 +30,9 @@ test('F12 preflight accepts only exact isolated login, SET membership and one RP
  assert.equal(customer.released,false);assert.equal(operations.released,false);
  assert.deepEqual(customer.calls.map(x=>x.sql),[F12_IDENTITY_SQL,F12_FUNCTION_SQL]);
  assert.deepEqual(customer.calls[0].args,roles);
- assert.deepEqual(operations.calls[1].args,[operations.login]);
- assert.deepEqual(customer.calls[1].args,[customer.login]);
+ assert.deepEqual(operations.calls[1].args,[roles[1]]);
+ assert.deepEqual(customer.calls[1].args,[roles[0]]);
+ assert.deepEqual(customer.calls[2].args,[customer.login]);
 });
 test('F12 preflight rejects elevated logins, wrong membership and broader RPC grants',async()=>{
  const cases=[
@@ -45,6 +47,8 @@ test('F12 preflight rejects elevated logins, wrong membership and broader RPC gr
   {override:{all_set_roles:[]}},
   {names:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)','sabora.extra_rpc()']},
   {names:['decide_customer_table_change_h6_candidate']},
+  {loginNames:['sabora.extra_rpc()']},
+  {loginNames:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)']},
   {queryError:true}
  ];
  for(const config of cases){const candidate=mock(roles[0],config);
