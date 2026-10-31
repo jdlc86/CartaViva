@@ -59,3 +59,21 @@ test('F12 candidate stays isolated from customer runtime until B3 acceptance',()
  assert.match(flow,/FROM sabora\.confirm_customer_round_h6_candidate\(/);
  assert.doesNotMatch(flow,/FROM sabora\.confirm_customer_round_h6_transfer_integration_candidate\(/);
 });
+
+test('F12 cutover gate keeps runtime composition, SQL allowlist and preflight disconnected until B3 is complete',()=>{
+ const composition=readFileSync(new URL('./customer-production-composition.mjs',import.meta.url),'utf8');
+ const preflight=readFileSync(new URL('./h6-sql-preflight.mjs',import.meta.url),'utf8');
+ const flow=readFileSync(new URL('./customer-production-flow.mjs',import.meta.url),'utf8');
+ const h6Sql=composition.match(/const h6FlowSql=new Set\(\[([^\]]+)\]\)/);
+ assert.ok(h6Sql,'H6 SQL allowlist must remain explicit');
+ assert.doesNotMatch(h6Sql[1],/TRANSFER|TABLE_CHANGE/i,
+  'F12 transfer SQL must not enter customer runtime allowlist without full B3 cutover');
+ assert.doesNotMatch(composition,/registerTableChangeStaffHttp\s*\(/,
+  'staff decisions must not be mounted without authenticated operational composition');
+ assert.doesNotMatch(composition,/tableChange\s*:\s*createTableChangeService/,
+  'customer requests must not be mounted without an authorized PostgreSQL adapter');
+ assert.doesNotMatch(preflight,/confirm_customer_round_h6_transfer_integration_candidate/,
+  'preflight must be updated with exact grants as part of a coordinated cutover');
+ assert.match(flow,/FROM sabora\.confirm_customer_round_h6_candidate\(/,
+  'active H6 confirmation remains the existing function');
+});
