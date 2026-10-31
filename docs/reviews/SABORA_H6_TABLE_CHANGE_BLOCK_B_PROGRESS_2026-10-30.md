@@ -264,3 +264,24 @@ not two independently valid destination baskets or payment capture
 concurrency. Runtime customer composition, kitchen/sala delivery readers,
 SSE and browser E2E remain unclosed. Status remains **NO-GO**; no
 operational database, VPS, Fleetia, merge or deployment was touched.
+
+## PG17 competing valid B baskets — 2026-10-31
+
+Commit `5bb1bb6fd420a95f5e0ce0a2aaeefcda4c24a019` passed all three
+GitHub Actions workflows, including disposable PostgreSQL 17. The
+integrated B2 race now submits three independent transactions: the
+first confirmed order consumes the approved A→B transfer; one competing
+transaction replays its idempotency key; a second competing transaction
+confirms a **different valid B basket and quote**. The two waiters are
+resolved in whichever order PostgreSQL grants their advisory lock; the
+test does not assume fairness or fixed lock acquisition order. Both
+valid orders persist as distinct economic rounds against the same
+original account, with a single consumed transfer and a balance
+increment per accepted order. A subsequent new A checkout remains
+blocked without another approval.
+
+This closes the tested distinct-valid-basket concurrency scenario,
+not payment-provider authorization/capture concurrency, payment
+settlement, or authenticated API/PWA kitchen/sala delivery-reader
+acceptance. Candidate SQL remains inaccessible to runtime roles;
+**NO-GO** for activation and deployment.
