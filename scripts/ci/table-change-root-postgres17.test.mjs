@@ -1340,7 +1340,7 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
  // This test commits fixtures ONLY inside the strictly disposable PG17 CI harness.
  // The two checkout transactions use separate connections and overlap in time.
  const fixture=await admin.connect();
- let first,second;
+ let first,second,rival;
  try{
   await fixture.query('BEGIN');
   const publicId='SB-BABABABABABR';
@@ -1416,8 +1416,10 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   await fixture.query('COMMIT');
   first=await admin.connect();
   second=await admin.connect();
+  rival=await admin.connect();
   await first.query('BEGIN');
   await second.query('BEGIN');
+  await rival.query('BEGIN');
   const args=[tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
    Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end'];
   const sql=`SELECT * FROM sabora.confirm_customer_round_h6_transfer_integration_candidate(
@@ -1429,18 +1431,32 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   // Start the second *full* checkout before the first transaction commits.
   // It must wait for the customer advisory lock, not independently persist.
   const competing=second.query(sql,args);
+  // A distinct concurrent checkout attempts to return to A without a new
+  // approval. It must wait for the same customer lock and then fail closed.
+  const rivalArgs=[tokenHash,ids.sourceTable,qrToken,sourceVisit,
+   'h6_rival_basket_0001','h6_rival_request_0001',Buffer.alloc(32,212),
+   'b0a00000-0000-4000-8000-000000000051',
+   'b0a00000-0000-4000-8000-000000000052',JSON.stringify(lines),false,'pay_at_end'];
+  const rejected=expectSqlError(rival,()=>rival.query(sql,rivalArgs),
+   /table_change_approval_required/);
+  let rivalSettled=false;
+  rejected.then(()=>{rivalSettled=true;},()=>{rivalSettled=true;});
   let settled=false;
   competing.then(()=>{settled=true;},()=>{settled=true;});
   await new Promise(resolve=>setTimeout(resolve,120));
   assert.equal(settled,false,'competing confirmation must wait for first commit');
+  assert.equal(rivalSettled,false,'distinct A checkout must also wait for first commit');
   await first.query('COMMIT');
+  await rejected;
   const replay=(await competing).rows[0];
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,winner.round_id);
   await second.query('COMMIT');
+  await rival.query('COMMIT');
   const state=(await fixture.query(`SELECT
    (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$3) AS rejected_orders,
    (SELECT count(*)::int FROM sabora.order_rounds WHERE order_id=$1) AS rounds,
    (SELECT count(*)::int FROM sabora.kitchen_dispatches WHERE order_id=$1) AS dispatches,
    (SELECT count(*)::int FROM sabora.customer_table_change_requests
@@ -1448,8 +1464,9 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
    (SELECT outstanding_cents FROM sabora.customer_accounts WHERE id=$2) AS balance,
    (SELECT binding_version FROM sabora.customer_account_operational_bindings
     WHERE account_id=$2) AS binding_version`,
-   [ids.order,ids.sourceAccount])).rows[0];
+   [ids.order,ids.sourceAccount,rivalArgs[8]])).rows[0];
   assert.equal(state.orders,1);
+  assert.equal(state.rejected_orders,0);
   assert.equal(state.rounds,1);
   assert.equal(state.dispatches,1);
   assert.equal(state.grants,1);
@@ -1458,6 +1475,7 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
  }finally{
   if(first){await first.query('ROLLBACK').catch(()=>{});first.release();}
   if(second){await second.query('ROLLBACK').catch(()=>{});second.release();}
+  if(rival){await rival.query('ROLLBACK').catch(()=>{});rival.release();}
   await fixture.query('ROLLBACK').catch(()=>{});
   fixture.release();
  }
