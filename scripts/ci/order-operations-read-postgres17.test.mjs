@@ -244,6 +244,7 @@ test.before(async () => {
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text),
     sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text),
+    sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text),
     sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)
     TO ${operationsRole}`);
   await admin.query(`INSERT INTO sabora.order_operation_signing_keys
@@ -989,4 +990,27 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
     await vite?.close().catch(() => {});
     if (!apiClosed) await app.close().catch(() => {});
   }
+});
+
+test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated pending lines hidden',async()=>{
+ const item=await directFixture(972);
+ const capability=issueReadCapability({
+  actorId:kitchenId,role:'kitchen',operation:'board',
+  status:'confirmed',limit:25,cursor:null,
+ });
+ const sql=`SELECT * FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+  $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+ const args=[capability.keyId,capability.databaseRole,kitchenId,'kitchen',
+  'confirmed',null,null,null,25,capability.issuedAtMs,
+  capability.expiresAtMs,capability.signatureHex];
+ const valid=await operationsPool.query(sql,args);
+ assert.equal(valid.rows.some(row=>row.line_id===item.lineId),false,
+  'a legacy pending line without a destination must not appear in H6 delivery board');
+ for(const name of ['pickup_task_id','pickup_state','pickup_version',
+  'pickup_claimed_display_id','delivery_table_id','delivery_session_id',
+  'delivery_visit_key','delivery_version'])
+  assert.ok(valid.fields.some(field=>field.name===name),name);
+ await assert.rejects(operationsPool.query(sql,[...args.slice(0,3),'waiter',...args.slice(4)]),
+  /invalid_order_operation_read_capability/);
 });
