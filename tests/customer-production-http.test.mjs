@@ -143,3 +143,47 @@ test('F12 request HTTP enforces authenticated same-origin empty-body contract an
   assert.equal(cooldown.body.includes('table-A'),false);
  }finally{await app.close();}
 });
+
+test('F12 sealed receipt exposes only request ID, status and server expiry',async()=>{
+ const cookieAuth={requireSameOrigin:()=>true,
+  authenticate:async request=>{request.customerIdentity={publicId:'SB-23456789ABCD',alias:'Ana'};},
+  logout:async()=>{}};
+ const flow={authorizeVisit:async()=>{},quote:async()=>{},confirm:async()=>{}};
+ const app=Fastify({logger:false});
+ registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange:{
+  request:async()=>({id:'22222222-2222-4222-8222-222222222222',
+   status:'pending',expiresAtMs:1793491200000,accountId:'secret'})
+ }});
+ await app.ready();
+ try{
+  const response=await app.inject({method:'POST',url:'/api/v1/customer/table-change/requests',
+   headers:{'content-type':'application/json',origin:'https://sabora.example',cookie},payload:{}});
+  assert.equal(response.statusCode,201);
+  assert.deepEqual(response.json(),{id:'22222222-2222-4222-8222-222222222222',
+   status:'pending',expiresAtMs:1793491200000});
+  assert.equal(response.headers['cache-control'],'no-store');
+ }finally{await app.close();}
+});
+
+test('F12 rejects malformed sealed receipts rather than fabricating a countdown',async()=>{
+ const cookieAuth={requireSameOrigin:()=>true,
+  authenticate:async request=>{request.customerIdentity={publicId:'SB-23456789ABCD'};},
+  logout:async()=>{}};
+ const flow={authorizeVisit:async()=>{},quote:async()=>{},confirm:async()=>{}};
+ for(const receipt of [
+  {id:'x',status:'pending',expiresAtMs:NaN},
+  {id:'x',status:'pending',expiresAtMs:100,createdAtMs:100},
+  {id:'x',status:'approved',expiresAtMs:1000},
+  {id:'x',status:'pending',expiresAtMs:1000,sourceTableId:42}
+ ]){
+  const app=Fastify({logger:false});
+  registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange:{request:async()=>receipt}});
+  await app.ready();
+  try{
+   const response=await app.inject({method:'POST',url:'/api/v1/customer/table-change/requests',
+    headers:{'content-type':'application/json',origin:'https://sabora.example',cookie},payload:{}});
+   assert.equal(response.statusCode,503);
+   assert.deepEqual(response.json(),{error:'customer_flow_unavailable'});
+  }finally{await app.close();}
+ }
+});
