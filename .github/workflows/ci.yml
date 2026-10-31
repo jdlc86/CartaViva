@@ -1,6 +1,5 @@
 name: Sabora CI
 on:
-  workflow_dispatch:
   pull_request:
   push:
     branches: [main, integration/sabora-hito1-identity-staff]
@@ -27,6 +26,9 @@ jobs:
         run: corepack enable
       - name: Install exact dependencies
         run: pnpm install --frozen-lockfile
+      # Consolidated entrypoint executes pnpm test and
+      # catalog-postgres17-node-driver-smoke.sh; the downstream gate
+      # functional-validation-contract.mjs remains part of pnpm test.
       - name: H6 consolidated acceptance (contracts + disposable PG17 + Chromium)
         run: bash scripts/ci/h6-acceptance-gate.sh
       - name: Publish consolidated H6 acceptance logs
