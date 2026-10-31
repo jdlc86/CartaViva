@@ -1830,6 +1830,12 @@ const scenarioB=Object.freeze({
  destinationAccount:'b0a00000-0000-4000-8000-000000000207',
  sourceVisit:'f12_source_201',destinationVisit:'f12_destination_201'
 });
+async function insertF12Visit(client,scenario){
+ await client.query(`INSERT INTO sabora.customer_table_visits(
+ table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+ VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+ [scenario.sourceTable,scenario.sourceSession,scenario.customer,scenario.sourceVisit]);
+}
 async function insertF12IsolatedIdentity(client,scenario){
  await client.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
  VALUES($1,$2,'F12 PG17 isolated')`,[
@@ -1846,7 +1852,7 @@ async function insertF12IsolatedIdentity(client,scenario){
 test('PG17 F12 resolved request creates exactly one pending grant for a unique open account',async()=>{
  await transaction(async client=>{
   await insertF12IsolatedIdentity(client,scenarioA);
-  await insertVisit(client,{tableId:scenarioA.sourceTable,sessionId:scenarioA.sourceSession,visitKey:scenarioA.scenarioA.sourceVisit});
+  await insertF12Visit(client,scenarioA);
   await client.query(`INSERT INTO sabora.customer_accounts
    (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,
     outstanding_cents) VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,[
