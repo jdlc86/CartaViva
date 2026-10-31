@@ -1937,6 +1937,8 @@ test('PG17 F12 resolved request is not executable by any existing runtime login 
 test('PG17 F12 effective RPC surface detects PUBLIC grants and denies unrelated function grants',async()=>{
  await transaction(async client=>{
   await client.query('CREATE ROLE sabora_f12_probe_runtime NOLOGIN NOINHERIT');
+  await client.query('CREATE ROLE sabora_f12_probe_login LOGIN NOINHERIT');
+  await client.query('GRANT sabora_f12_probe_runtime TO sabora_f12_probe_login WITH SET TRUE, INHERIT FALSE');
   const signature='sabora.request_customer_table_change_h6_resolved_candidate(bytea)';
   const read=async()=>{
    const result=await client.query(F12_FUNCTION_SQL,['sabora_f12_probe_runtime']);
@@ -1946,6 +1948,15 @@ test('PG17 F12 effective RPC surface detects PUBLIC grants and denies unrelated 
   assert.equal(baseline.includes(signature),false);
   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO sabora_f12_probe_runtime`);
   assert.deepEqual(await read(),[...baseline,signature].sort());
+  const loginRead=async()=>{
+   const result=await client.query(F12_FUNCTION_SQL,['sabora_f12_probe_login']);
+   return result.rows[0].names;
+  };
+  const loginBaseline=await loginRead();
+  assert.equal(loginBaseline.includes(signature),false,
+   'NOINHERIT login must not silently acquire the capability EXECUTE');
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO sabora_f12_probe_login`);
+  assert.deepEqual(await loginRead(),[...loginBaseline,signature].sort());
   await client.query(`GRANT EXECUTE ON FUNCTION
    sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
    TO sabora_f12_probe_runtime`);
