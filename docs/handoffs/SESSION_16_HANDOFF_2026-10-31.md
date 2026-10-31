@@ -120,6 +120,10 @@ La prueba inicial de reocupación rotaba sesión/QR, pero **no creaba una visita
 
 **Siguiente hito funcional prioritario:** dejar de multiplicar negativas aisladas y cerrar integración de `confirm_customer_round_h6_transfer_integration_candidate` con la entrada runtime bajo autorización y pruebas de flujo completo (solicitud, decisión, QR B, primera confirmación, cuenta/pagos y entrega), sin dar GRANT a producción ni modificar Supabase operativo. Revisar específicamente replay del pedido A tras transferencia y carreras con cierre de cuenta.
 
+### Corrección de fallo CI reocupación segundo cliente (31-10-2026)
+
+GitHub Actions `41190914108` (Sabora CI) y `41190914066` (Bootstrap) **FAIL** en `03b2d61`; también `41190948929`/`41190948969` en el commit documental `ecb3f48`. El log de Sabora CI identifica **SQLSTATE 23505** por duplicación de `customer_profiles_public_id_key` en el fixture de segundo ocupante, no un rechazo funcional del pickup. Se sustituyó el identificador público por uno específico del escenario en `0723723d`; **CI nuevo pendiente de concluir**. El commit previo `e98452d` (binding desalineado) sí tiene Sabora CI `41190824919` y Bootstrap `41190824974` **SUCCESS**. No marcar reocupación de segundo cliente PASS hasta validar el nuevo SHA.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
