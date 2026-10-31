@@ -136,3 +136,7 @@ Commits 0546b273 y 6fed2489: la RPC F12 resuelta adquiere el advisory lock por c
 ## 23. CI tras nueva migracion F12
 
 Commit 6fed2489: navegador SUCCESS; Sabora CI y bootstrap FAILURE. Log de CI: 1123/1124 pruebas pasan, falla auditoria obligatoria por migracion 20261031190000 sin entrada individual. Commit 199199ab registra revision de dependencias, ACL, bloqueo y efecto de datos en scripts/ci/migration-audit.mjs. Pendiente nueva confirmacion CI, PG17 real, grants y cutover. B3 NO-GO.
+
+## 24. Segundo fallo de auditoria de migraciones
+
+El workflow de 199199ab fallo en CI y bootstrap: la cobertura del registro ya era correcta, pero scripts/ci/migration-audit.test.mjs conservaba la asercion 65 migraciones frente a 66 reales. Corregido a 66 en e676fcc3. Navegador SUCCESS; CI y bootstrap previos FAILURE. Pendiente verificar workflows nuevos, PG17 real y runtime F12. B3 NO-GO.
