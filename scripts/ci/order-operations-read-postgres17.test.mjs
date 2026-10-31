@@ -167,6 +167,9 @@ async function integratedFixture(suffix, customerLabel) {
     table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
     VALUES($1,$2,$3,$4,$5,1,clock_timestamp()+interval '1 hour')`,
   [fixture.tableId, fixture.sessionId, customerProfileId, visitKey, `integrated_actor_${suffix}`]);
+  await admin.query(`INSERT INTO sabora.customer_account_operational_bindings
+    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+  [accountId,fixture.tableId,fixture.sessionId,visitKey]);
   await admin.query(`UPDATE sabora.orders SET company=NULL,employee_number=NULL,
     customer_alias=$2,customer_identifier=$3,customer_visit_key=$4,
     economic_snapshot='{"schemaVersion":"1"}'::jsonb WHERE id=$1`,
