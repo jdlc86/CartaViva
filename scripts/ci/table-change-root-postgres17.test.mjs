@@ -64,6 +64,30 @@ async function insertVisit(client,{tableId,sessionId,visitKey}){
   [tableId,sessionId,ids.customer,visitKey]);
 }
 
+test('PG17 H6 delivery board is sealed and retains picked-up fallback in its SQL contract',async()=>{
+ const signature='sabora.read_order_operations_delivery_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)';
+ const result=await admin.query(`SELECT p.oid::regprocedure::text AS signature,
+  pg_get_functiondef(p.oid) AS definition,p.prosecdef AS security_definer,
+  p.proowner::regrole::text AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated_execute,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS h6_operations_execute
+  FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(result.rows.length,1);
+ const row=result.rows[0];
+ assert.equal(row.security_definer,true);
+ assert.equal(row.owner,'sabora_order_operations_fn_owner');
+ assert.equal(row.anon_execute,false);
+ assert.equal(row.authenticated_execute,false);
+ assert.equal(row.h6_operations_execute,false);
+ assert.match(row.definition,/authorize_order_operation_read_candidate/);
+ assert.match(row.definition,/LEFT JOIN sabora.order_line_delivery_destinations/);
+ assert.match(row.definition,/coalesce\(d\.table_id, l\.table_id\)/i);
+ assert.match(row.definition,/d\.order_line_id IS NOT NULL OR l\.status = 'picked_up'/i);
+ assert.match(row.definition,/p_staff_role = 'kitchen'/);
+ assert.match(row.definition,/p_staff_role = 'waiter'/);
+});
+
 test('PG17 catalog proves the economic, delivery and event dependency graph before refactor',async()=>{
  const constraints=(await admin.query(`SELECT c.conrelid::regclass::text AS child,
    pg_get_constraintdef(c.oid) AS definition
