@@ -1397,6 +1397,30 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
   assert.deepEqual(afterClosure,beforeClosure,
    'rejected pickup must not change assignment or version');
+  // A denied action must not persist an idempotency result or emit another
+  // staff notification; neither should it rewrite the economic identity.
+  const afterDeniedOutbox=(await admin.query(`SELECT count(*)::int AS total
+   FROM sabora.event_outbox WHERE aggregate_id=$1
+   AND event_type LIKE 'sabora.pickup.%'`,
+   [reassigned.json().pickupTaskId])).rows[0];
+  assert.equal(afterDeniedOutbox.total,8);
+  const deniedRequest=(await admin.query(`SELECT count(*)::int AS total
+   FROM sabora.h6_action_requests
+   WHERE actor_user_id=$1 AND correlation_id=$2`,
+   [winner,'h6_delivery_closed_origin_cancel_979'])).rows[0];
+  assert.equal(deniedRequest.total,0);
+  const historicalIdentity=(await admin.query(`SELECT o.table_id,o.session_id,
+   r.account_id FROM sabora.orders o JOIN sabora.order_rounds r
+   ON r.order_id=o.id WHERE o.id=$1`,[item.orderId])).rows[0];
+  assert.equal(historicalIdentity.table_id,item.tableId);
+  assert.equal(historicalIdentity.session_id,item.sessionId);
+  assert.equal(historicalIdentity.account_id,item.accountId);
+  const deniedRetry=await pickup(winner,claimPath+'/cancel',4,
+   'h6_delivery_closed_origin_cancel_979');
+  assert.equal(deniedRetry.statusCode,403);
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+   beforeClosure);
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
