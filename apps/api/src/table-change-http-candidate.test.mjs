@@ -32,6 +32,7 @@ test('F12 staff decision requires waiter/admin and rejects kitchen',async()=>{
   try{
    const response=await post(app,{requestId:id,decision:'approved'});
    assert.equal(response.statusCode,role==='kitchen'?403:200);
+   if(role!=='kitchen')assert.deepEqual(response.json(),{requestId:id,status:'approved'});
    assert.equal(calls.length,role==='kitchen'?0:1);
    if(calls.length)assert.deepEqual(calls[0],{
     verifiedIdentity:{id:'staff-1'},verifiedStaff:{id:'staff-1',role},
@@ -75,4 +76,38 @@ test('F12 decision maps expiry, missing request and staff revocation without lea
    assert.equal(response.body.includes('secret_internal_sql_error'),false);
   }finally{await app.close();}
  }
+});
+
+test('F12 decision response never exposes private store metadata',async()=>{
+ const app=Fastify({logger:false});
+ registerTableChangeStaffHttp(app,{
+  forRoles:()=>async request=>{request.verifiedIdentity={id:'staff-1'};
+   request.verifiedStaff={id:'staff-1',role:'waiter'};},
+  service:{decide:async input=>({request:{
+   id:input.requestId,status:input.decision,customerId:'private-customer',
+   accountId:'private-account',sourceTableId:'private-table',
+   visitKey:'private-visit',decidedBy:'private-staff'},
+   secret:'private-secret'})}
+ });
+ await app.ready();
+ try{
+  const response=await post(app,{requestId:id,decision:'approved'});
+  assert.equal(response.statusCode,200);
+  assert.deepEqual(response.json(),{requestId:id,status:'approved'});
+  assert.equal(response.body.includes('private-'),false);
+ }finally{await app.close();}
+});
+test('F12 decision fails closed on inconsistent persisted result',async()=>{
+ const app=Fastify({logger:false});
+ registerTableChangeStaffHttp(app,{
+  forRoles:()=>async request=>{request.verifiedIdentity={id:'staff-1'};
+   request.verifiedStaff={id:'staff-1',role:'waiter'};},
+  service:{decide:async()=>({request:{id, status:'pending'}})}
+ });
+ await app.ready();
+ try{
+  const response=await post(app,{requestId:id,decision:'approved'});
+  assert.equal(response.statusCode,503);
+  assert.deepEqual(response.json(),{error:'table_change_unavailable'});
+ }finally{await app.close();}
 });
