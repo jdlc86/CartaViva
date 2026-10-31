@@ -25,8 +25,8 @@ export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_use
   WHERE n.nspname='sabora' AND c.relkind='S' AND
   has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
  FROM pg_roles r WHERE r.rolname=current_user`;
-// Effective privileges include PUBLIC and inherited grants; direct ACL inspection
-// alone would silently miss either. Regprocedure also distinguishes overloads.
+// Inspect the LOGIN's effective privileges, not just its F12 role: direct
+// login grants, PUBLIC and inherited grants must all be included.
 export const F12_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text
  ORDER BY p.oid::regprocedure::text),'{}'::text[]) AS names
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
@@ -52,7 +52,7 @@ export async function assertF12SqlIdentity({pool,expectedLogin,capability}={}){
    row.role_set.some((value,index)=>value!==expectedSets[index])||
    !Array.isArray(row.all_set_roles)||row.all_set_roles.length!==1||
    row.all_set_roles[0]!==capability)throw fail('identity-policy');
-  const surface=await client.query(F12_FUNCTION_SQL,[capability]);
+  const surface=await client.query(F12_FUNCTION_SQL,[expectedLogin]);
   const actual=surface?.rows?.length===1?surface.rows[0].names:null;
   if(!Array.isArray(actual)||actual.length!==1||actual[0]!==ROLES[capability])
    throw fail('function-surface');
