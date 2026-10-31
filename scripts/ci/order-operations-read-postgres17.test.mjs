@@ -1484,6 +1484,17 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   const freshSession='b2000000-0000-4000-8000-000000009981';
   await admin.query(`UPDATE sabora.dining_tables SET session_id=$2,
     qr_version=qr_version+1 WHERE id=$1`,[targetId,freshSession]);
+  // Real second occupant: a different customer obtains a valid visit under
+  // B's new session and QR version. The previous customer's task remains
+  // inaccessible even though B is once again legitimately occupied.
+  const nextCustomer='b2000000-0000-4000-8000-000000009982';
+  await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+    VALUES($1,'SB-ABCDEFGHJKL9','Ocupante B nuevo')`,[nextCustomer]);
+  await admin.query(`INSERT INTO sabora.customer_table_visits(
+    table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+    VALUES($1,$2,$3,'delivery_visit_979_new_occupant',
+      'delivery_actor_979_new_occupant',2,clock_timestamp()+interval '1 hour')`,
+    [targetId,freshSession,nextCustomer]);
   const afterReoccupation=await pickup(winner,claimPath,5,
    'h6_delivery_reoccupied_destination_claim_979');
   assert.equal(afterReoccupation.statusCode,403,
