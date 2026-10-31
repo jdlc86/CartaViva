@@ -1411,6 +1411,23 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
   assert.equal(afterOriginCancel.state,'ready');
   assert.equal(Number(afterOriginCancel.version),5);
+  // A stale or mismatched operational account binding must not authorize
+  // pickup even if the line destination and B's QR visit are still valid.
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='integrated_visit_979'
+    WHERE account_id=$1`,[item.accountId,item.tableId,item.sessionId]);
+  const deniedMismatchedBinding=await pickup(winner,claimPath,5,
+    'h6_delivery_mismatched_binding_claim_979');
+  assert.equal(deniedMismatchedBinding.statusCode,403);
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  assert.equal((await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_mismatched_binding_claim_979'])).rows[0].total,0);
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target'
+    WHERE account_id=$1`,[item.accountId,targetId,targetSession]);
   // QR revocation is independently enforced even while B's visit and
   // session remain active; reset only inside this isolated test fixture.
   await admin.query(`UPDATE sabora.dining_tables
