@@ -5,6 +5,27 @@ export const REQUEST_TABLE_CHANGE_H6_SQL=
 export const DECIDE_TABLE_CHANGE_H6_SQL=
  'SELECT sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean) AS status';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Translate only known SQLSTATE + exact database errors. Never trust a bare
+// message: unrelated SQL failures must remain unavailable, not user conflicts.
+const rpcFailure=(error,operation)=>{
+ const code=error?.code;
+ const message=error?.message;
+ if(operation==='request'&&code==='23514'&&
+  ['table_change_approval_active','table_change_cooldown'].includes(message))
+  return Error('table_change_request_locked',{cause:error});
+ if(operation==='request'&&code==='42501'&&
+  ['customer_session_forbidden','table_change_account_forbidden',
+   'table_change_visit_forbidden'].includes(message))
+  return Error('table_change_account_forbidden',{cause:error});
+ if(operation==='decide'&&code==='23514'&&message==='table_change_already_decided')
+  return Error('table_change_request_not_pending',{cause:error});
+ if(operation==='decide'&&code==='42501'&&message==='table_change_request_missing')
+  return Error('table_change_request_not_found',{cause:error});
+ if(operation==='decide'&&code==='42501'&&
+  ['table_change_staff_forbidden','table_change_account_closed'].includes(message))
+  return Error('table_change_unauthorized',{cause:error});
+ return error;
+};
 const one=async(query,sql,params)=>{
  const result=await query(sql,params);
  if(!result||!Array.isArray(result.rows)||result.rows.length!==1)
@@ -28,7 +49,9 @@ export function createSealedTableChangeRpcCandidate({
     const account=await resolveAccount({query,customerSessionToken,lock:true});
     if(!account||!UUID.test(account.accountId??'')||account.closed)
      throw Error('table_change_account_forbidden');
-    const row=await one(query,REQUEST_TABLE_CHANGE_H6_SQL,[hash,account.accountId]);
+    let row;
+    try{row=await one(query,REQUEST_TABLE_CHANGE_H6_SQL,[hash,account.accountId]);}
+    catch(error){throw rpcFailure(error,'request');}
     const expiry=Date.parse(row.expires_at);
     if(!UUID.test(row.request_id??'')||row.request_status!=='pending'||
      !Number.isFinite(expiry))throw Error('invalid_table_change_rpc_result');
@@ -43,8 +66,10 @@ export function createSealedTableChangeRpcCandidate({
     const staff=await verifyStaff({query,verifiedIdentity,verifiedStaff});
     if(!staff||!UUID.test(staff.id??'')||!['admin','waiter'].includes(staff.role))
      throw Error('table_change_unauthorized');
-    const row=await one(query,DECIDE_TABLE_CHANGE_H6_SQL,
-     [staff.id,requestId,decision==='approved']);
+    let row;
+    try{row=await one(query,DECIDE_TABLE_CHANGE_H6_SQL,
+     [staff.id,requestId,decision==='approved']);}
+    catch(error){throw rpcFailure(error,'decide');}
     if(row.status!==decision)throw Error('table_change_request_not_pending');
     return Object.freeze({request:Object.freeze({id:requestId,status:decision})});
    });
