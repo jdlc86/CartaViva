@@ -66,7 +66,18 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
        Object.keys(request.body).length!==0)return reply.code(400).send({error:'invalid_customer_request'});
     try{
      const result=await tableChange.request({customerSessionToken:readCustomerCookie(request.headers.cookie)});
-     return reply.header('Cache-Control','no-store').code(201).send(result);
+     // Expose only the request receipt; never return account, customer,
+     // session, visit, audit or internal store fields to the browser.
+     if(!result||typeof result.id!=='string'||result.status!=='pending'||
+        typeof result.sourceTableId!=='string'||
+        !Number.isSafeInteger(result.createdAtMs)||
+        !Number.isSafeInteger(result.expiresAtMs)||
+        result.expiresAtMs<=result.createdAtMs)
+      throw Error('invalid_table_change_request_result');
+     return reply.header('Cache-Control','no-store').code(201).send({
+      id:result.id,status:'pending',sourceTableId:result.sourceTableId,
+      createdAtMs:result.createdAtMs,expiresAtMs:result.expiresAtMs
+     });
     }catch(error){
      const failure=code(error);
      if(failure==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});
