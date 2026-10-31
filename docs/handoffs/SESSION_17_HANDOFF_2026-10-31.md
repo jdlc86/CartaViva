@@ -208,3 +208,7 @@ En revision de seguridad del preflight se detecto que inspeccionar solo ACL dire
 ## 41. Cierre de brecha SET ROLE transversal en preflight F12
 
 Commits 5be02c30 y f2c9cc3e: preflight no se limita ya a verificar SET sobre las dos capacidades F12 conocidas; enumera todos los roles que el login puede asumir via pg_has_role(...,'SET') y exige exactamente el suyo. Nuevas pruebas negativas para roles adicionales y ausencia de rol. Evita aprobar un login que pueda asumir un tercer rol privilegiado. Esta puerta sigue siendo candidata, no hay grants ni activacion; validar CI y PostgreSQL 17 con roles reales. B3 NO-GO.
+
+## 42. Prueba real PG17 de ACL efectiva F12
+
+Commits e19fc840 y db2216c7 agregan al arnes PG17 disposable un rol NOLOGIN transaccional de prueba, con concesion y revocacion de EXECUTE sobre RPC F12, comprobacion de firmas y de fuga por GRANT TO PUBLIC. Compara contra la superficie base del esquema (no presupone ausencia de otras funciones PUBLIC) y revierte toda la transaccion. Es evidencia de consulta ACL real, no aun prueba de conexiones con logins F12 separados ni autorizacion para crear roles/grants permanentes. CI pendiente; no habilitar composicion activa. B3 NO-GO.
