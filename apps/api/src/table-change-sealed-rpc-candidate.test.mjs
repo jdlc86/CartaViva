@@ -72,3 +72,30 @@ test('sealed RPC validates constructor and rejects non-UUID request IDs',async()
   requestId:'bad',decision:'approved'}),/invalid_table_change_decision/);
  assert.equal(calls.length,0);
 });
+
+test('F12 SQL errors map only when SQLSTATE and message both match',async()=>{
+ const cases=[
+  ['request','23514','table_change_cooldown','table_change_request_locked'],
+  ['request','23514','table_change_approval_active','table_change_request_locked'],
+  ['request','42501','customer_session_forbidden','table_change_account_forbidden'],
+  ['decide','23514','table_change_already_decided','table_change_request_not_pending'],
+  ['decide','42501','table_change_request_missing','table_change_request_not_found'],
+  ['decide','42501','table_change_staff_forbidden','table_change_unauthorized'],
+  ['request','XX000','table_change_cooldown','table_change_cooldown'],
+  ['decide','XX000','table_change_already_decided','table_change_already_decided'],
+  ['request','23514','internal_unique_constraint','internal_unique_constraint']
+ ];
+ for(const [operation,code,message,expected] of cases){
+  const query=async()=>{throw Object.assign(Error(message),{code});};
+  const rpc=createSealedTableChangeRpcCandidate({
+   withCustomerTransaction:fn=>fn(query),withStaffTransaction:fn=>fn(query),
+   hashSession:async()=>Buffer.alloc(32),resolveAccount:async()=>({accountId:account}),
+   verifyStaff:async()=>({id:staffId,role:'waiter'})
+  });
+  const action=operation==='request'?
+   ()=>rpc.request({customerSessionToken:'token'}):
+   ()=>rpc.decide({verifiedIdentity:{},verifiedStaff:{},requestId,decision:'approved'});
+  await assert.rejects(action,error=>error.message===expected,
+   operation+': '+code+' '+message);
+ }
+});
