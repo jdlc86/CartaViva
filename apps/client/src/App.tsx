@@ -106,6 +106,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   try{credential=parseScannedTableQr(payload);}
   catch{setTableVisit(null);setQrState('invalid');return;}
   qrCredentialRef.current=credential;setTableVisit(null);
+  // A new QR must never inherit the previous table's payment/dispatch stream.
+  setEventScope(null);setCustomerEvents([]);
   if(identity.status==='authenticated')void authorizeTable(credential);
   else setQrState(identity.status==='checking'?'pending':identity.status==='guest'?'identity_required':'unavailable');
  },[authorizeTable,identity.status]);
@@ -235,8 +237,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
    if(result.status==='confirmed'){
     setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
     setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
-     'Pedido recuperado y confirmado sin volver a enviarlo.':
-     'Order recovered and confirmed without resubmitting.');
+     'Pedido recuperado sin duplicarlo. La confirmación del pedido no acredita el pago ni el despacho a cocina; consulta su estado con el personal si está pendiente.':
+     'Order recovered without duplication. Order confirmation does not prove payment or kitchen dispatch; ask staff for its status if pending.');
    }else{
     setCheckoutPhase('uncertain');setCheckoutMessage(locale==='es'?
      'No consta una confirmación. Conservamos la cesta: no se reenviará automáticamente. Consulta de nuevo o solicita ayuda al personal.':

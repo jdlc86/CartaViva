@@ -242,3 +242,31 @@ Esta matriz registra **resolución documental**, no certifica código, tests ni 
 56. Dashboard: ranking de platos por unidades netas, tendencia mensual, ticket medio por cuenta y comparativas con «—» cuando no existe periodo comparable.
 
 **Estado:** contrato documental; no constituye evidencia de implementación, ejecución de pruebas, aprobación de PR ni despliegue.
+
+## Cambio de mesa con consumición activa — decisión funcional 2026-10-30
+
+### Vinculación y solicitud
+- El cliente puede escanear cualquier QR de mesa cuantas veces quiera. El escaneo no vincula ni desvincula, no traslada consumo, cuenta, deuda ni pedidos. La autorización técnica provisional para explorar la carta no equivale a vinculación de consumo.
+- La **primera confirmación/envío de pedido** establece la vinculación operativa a la mesa de origen, incluso si la ronda permanece dentro de la ventana configurable de agrupación antes del despacho. Hasta entonces no se exige permiso para elegir mesa.
+- Un cliente ya vinculado puede solicitar permiso **para abandonar su mesa actual**, sin identificar mesa de destino. El QR de otra mesa puede mostrar el aviso «Solicitar cambio de mesa» / «Cancelar», pero no implica solicitar traslado a esa mesa concreta. Cancelar el aviso no altera nada.
+- La solicitud registra cuenta/cliente/visita y mesa de origen, no mesa de destino; se notifica a sala. El camarero autenticado solo puede **Aprobar** o **Rechazar**; no existe campo de motivo, comentario o justificación ni obligación de escribirlos. La cancelación voluntaria por el cliente, si está disponible, se distingue del rechazo del camarero.
+
+### Ventana de respuesta y notificaciones
+- Cada solicitud tiene **90 segundos de vigencia desde su creación en el servidor**, parámetro configurable desde administración. Mientras esa ventana siga vigente, el cliente no puede emitir otra solicitud, aunque el camarero ya la haya rechazado. Un intento muestra un aviso discreto con cuenta atrás calculada a partir del vencimiento del servidor: «Espera unos segundos. Tu solicitud está pendiente de respuesta del personal» cuando proceda; si ya se rechazó, el mensaje no debe afirmar falsamente que sigue pendiente. «Podrás realizar una nueva solicitud en X segundos».
+- Si no se responde dentro del plazo, caduca automáticamente: no concede autorización, no desvincula, no cambia mesa, pedidos, deuda, pagos ni agrupación; deja de ser accionable para sala y vuelve a habilitarse la solicitud al vencer. La aprobación/rechazo tardíos son rechazados por el servidor, incluso con pestañas desactualizadas. Impedir duplicados por toques, reintentos y carreras.
+- Respuesta aprobada: notificación automática «Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos». Respuesta rechazada: «Cambio de mesa no autorizado. Tu solicitud de cambio de mesa no ha sido aprobada. Si necesitas más información, consulta al personal del restaurante». Nunca exponer motivos redactados por camareros.
+- El cliente puede seguir pidiendo, pagando y consumiendo normalmente en la mesa de origen mientras la solicitud esté pendiente, rechazada, caducada o aprobada pero sin utilizar.
+
+### Autorización y traslado diferido
+- **Aprobar no traslada inmediatamente**. Concede autorización de **un solo uso**, sin mesa de destino predeterminada y sin caducidad adicional por tiempo. Permanece hasta consumirse, cerrar la cuenta, revocar la sesión o revocarla expresamente el personal.
+- Con autorización, el cliente puede escanear libremente varias mesas sin nuevos avisos de permiso. Solo al **confirmar el primer pedido desde una mesa operativa distinta** se consume la autorización y se traslada atómicamente la vinculación y el destino operativo de su consumición a esa mesa. Escanear sin pedir no ejecuta traslado. Si nunca vuelve a pedir, permanece vinculado a la mesa original hasta el cierre o una intervención administrativa explícita.
+- Tras el traslado efectivo, cualquier cambio posterior requiere una nueva autorización. Una aprobación no es permiso indefinido para múltiples traslados.
+- Se conservan cuenta individual, deuda, pagos parciales/Stripe, pedidos previos, estados, ventana de agrupación e historial/auditoría; no recobrar, re-preparar ni re-despachar. Los pedidos pendientes de entrega pasan a señalar la nueva mesa como destino operativo, preservando la mesa de origen en el histórico. No mezclar consumos de otras personas sentadas en la mesa anterior ni en la nueva.
+- Se admite mesa de destino operativa aunque ya haya otros comensales, con cuentas separadas; se impide traslado a mesa bloqueada, fuera de servicio o no apta conforme al contrato vigente. Revalidar QR, permisos y estado al confirmar, no solo al escanear.
+- Registrar de forma auditable solicitante, mesa origen, decisión, camarero, marcas temporales, eventual mesa destino y pedido que consumió autorización, sin motivo textual. Proteger contra carreras, doble aprobación/consumo, reintentos idempotentes, pedidos simultáneos, cierre/revocación, pagos pendientes, eventos SSE cruzados y cambios de mesa en cocina/sala.
+
+### Pruebas obligatorias para certificar
+- PostgreSQL 17 real y E2E navegador: escaneos libres antes del primer pedido; primera vinculación durante agrupación; solicitud sin destino; bloqueo 90 s con contador y reintentos; aprobación/rechazo/caducidad y carrera exacta en vencimiento; respuesta tardía; notificaciones automáticas; ausencia de campo de motivo.
+- Aprobación sin traslado; escaneo de varias mesas; traslado único al primer pedido de destino; permanencia en origen sin nuevo pedido; segundo traslado exige nuevo permiso; rechazo no desbloquea antes del vencimiento; cancelación de aviso; cierre y revocación.
+- Pedidos preparando/listos/recogidos, destino de entrega, pagos parciales y Stripe pendiente, saldo, agrupación sin reinicio, otras cuentas en ambas mesas, QR revocado/mesa bloqueada, reintentos y concurrencia, trazabilidad y aislamiento de eventos.
+- **Estado de esta sección: decisión normativa documentada, no implementación ni pruebas acreditadas.**
