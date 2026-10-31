@@ -84,3 +84,7 @@ Lectura directa en la rama del PR #43 de `docs/REQUISITOS_FUNCIONALES.md`, `docs
 ## 10. Continuación: invariantes HTTP adicionales (2026-10-31)
 
 Commit funcional `db4f6852ae59139cdc0be389952ae4ecd1c40689` en `apps/api/src/table-change-http-cross-role-contract.test.mjs`: el store simulado de la prueba ahora conserva el bloqueo de una autorización aprobada no consumida y rechaza el replay de una decisión ya resuelta. Se añaden aserciones HTTP 409 para una nueva solicitud tras aprobación y para la segunda aprobación. **Alcance:** prueba de contrato HTTP simulada; no es todavía integración PostgreSQL 17 ni PWA E2E. Consultar los workflows de este SHA antes de certificar PASS. B3 sigue abierto y NO-GO. Siguiente paso: composición transaccional SQL/HTTP/PWA con privilegios mínimos y verificación real aislada.
+
+## 11. Verificación CI del refuerzo HTTP (2026-10-31)
+
+GitHub Actions del **SHA funcional** `db4f6852ae59139cdc0be389952ae4ecd1c40689` comprobados como **3/3 SUCCESS**: Sabora CI `41222762292`, Bootstrap Sabora lockfile `41222762287` y Sabora client browser conformance `41222762341`. Esta verificación certifica exclusivamente las suites ejecutadas para ese commit, no integración PG17 transaccional ni E2E F12. B3 permanece **NO-GO**.
