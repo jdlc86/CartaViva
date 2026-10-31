@@ -108,6 +108,12 @@ Se añadió en `c4f5bfc67f928f59dedfde37f6fe55ac307c16e4` una **prueba separada*
 
 La evidencia sigue siendo del tablero/recogida con proyección A→B de fixture. No valida la activación de confirmación transaccional F12 desde PWA. Mantener NO-GO.
 
+### Cobertura negativa independiente: QR y binding (31-10-2026)
+
+**Rotación QR B con visita aún activa:** commit `c4f5bfc`, Sabora CI `41190462513` **SUCCESS**, Bootstrap `41190462507` **SUCCESS**. Verifica denegación 403 por QR rotado sin cambiar la sesión ni revocar la visita.
+
+**Binding económico-operativo desalineado con B, aun con QR B válido:** commit `e98452d`, nueva regresión PG17/Fastify que mueve temporalmente el binding de la cuenta a A mientras el destino por línea sigue en B, exige 403 sin cambiar tarea ni crear idempotencia y restablece binding B dentro del fixture aislado. **Nuevo CI pendiente**. Esto separa el control de binding del control QR y de la revocación de visita; no se habilita todavía la confirmación F12 real.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
