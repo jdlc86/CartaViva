@@ -14,6 +14,7 @@ import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order
 import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated-candidate.mjs';
 import {preflightOrderOperationsRuntimeIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
+import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
@@ -1063,4 +1064,55 @@ test('PG17 H6/B2 delivery projection follows A-to-B destination without changing
  assert.equal(historic.session_id,item.sessionId);
  assert.equal(historic.account_table,item.tableId);
  assert.equal(historic.account_session,item.sessionId);
+});
+
+test('PG17 H6/B2 repository opt-in maps signed A-to-B destination and rejects malformed delivery',async()=>{
+ const item=await integratedFixture(977,'Cliente lector H6 B2');
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+  VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_977_source'
+ ]);
+ const capability=issueReadCapability({actorId:kitchenId,role:'kitchen',
+  operation:'board',status:'confirmed',limit:100,cursor:null});
+ const args={actorId:kitchenId,role:'kitchen',status:'confirmed',
+  limit:100,cursor:null,capability};
+ const repo=createOrderOperationsRepository({deliveryBoardCandidate:true});
+ const query=(sql,params)=>operationsPool.query(sql,params);
+ const original=await repo.listBoard(query,args);
+ const line=original.items.find(value=>value.lineId===item.lineId);
+ assert.ok(line);
+ assert.equal(line.tableNumber,970977);
+ assert.deepEqual(line.delivery,{
+  tableId:item.tableId,sessionId:item.sessionId,
+  visitKey:'delivery_visit_977_source',version:1
+ });
+ assert.equal(line.pickup,null);
+ const target='a2000000-0000-4000-8000-000000000978';
+ await admin.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,ordering_state)
+  VALUES($1,970978,4,decode(repeat('a2',32),'hex'),'open')`,[target]);
+ const targetSession=(await admin.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[target])).rows[0].session_id;
+ await admin.query(`UPDATE sabora.order_line_delivery_destinations
+  SET table_id=$2,session_id=$3,visit_key='delivery_visit_977_target',
+  destination_version=2,changed_at=clock_timestamp()
+  WHERE order_line_id=$1`,[item.lineId,target,targetSession]);
+ const moved=(await repo.listBoard(query,args)).items.find(value=>value.lineId===item.lineId);
+ assert.equal(moved.tableNumber,970978);
+ assert.deepEqual(moved.delivery,{
+  tableId:target,sessionId:targetSession,
+  visitKey:'delivery_visit_977_target',version:2
+ });
+ assert.equal((await admin.query('SELECT table_id FROM sabora.orders WHERE id=$1',
+  [item.orderId])).rows[0].table_id,item.tableId);
+ const corrupt=async(sql,params)=>{
+  const result=await query(sql,params);
+  return {...result,rows:result.rows.map(row=>row.line_id===item.lineId
+   ? {...row,delivery_version:'0'} : row)};
+ };
+ await assert.rejects(repo.listBoard(corrupt,args),/invalid_order_operations_sql_result/);
+ assert.throws(()=>createOrderOperationsRepository({deliveryBoardCandidate:'true'}),
+  /invalid_order_operations_repository_config/);
 });
