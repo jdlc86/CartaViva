@@ -100,6 +100,14 @@ Los primeros CI de la migración `20261031110000` mostraron una **regresión rea
 
 Commit `67c9ad3`: extensión del escenario real Fastify + PG17 `PG17 H6/B2 authenticated Fastify board reflects A-to-B...` para rotar `session_id` y `qr_version` de la mesa B **después de cerrar su visita** y comprobar que el intento de pickup devuelve 403, sin alterar la tarea, insertar solicitud idempotente ni emitir eventos. Se mantiene la cuenta histórica y el destino de la línea sin reescribir. **Resultado del nuevo commit pendiente de CI; no confundir con el PASS anterior `e86ba57e`.** También constan PASS Sabora CI `41189890385` y Bootstrap `41189890332` sobre `6dd4d85`.
 
+### Evidencia de reocupación B y rotación QR (31-10-2026)
+
+El test PG17/Fastify de **reocupación B** en `67c9ad3be9059d5760da92e23ee7ec711cc5876e` está **validado**: Sabora CI `41190272680` SUCCESS y Bootstrap `41190272726` SUCCESS. El commit documental `5f7347e` también tiene Sabora CI `41190303881` SUCCESS y Bootstrap `41190303883` SUCCESS.
+
+Se añadió en `c4f5bfc67f928f59dedfde37f6fe55ac307c16e4` una **prueba separada** de rotación del QR B mientras la visita y sesión siguen activas; debe responder 403 sin mutar tarea ni crear idempotencia. La prueba restaura la versión QR **solo dentro del fixture aislado** antes de ejecutar las comprobaciones de revocación y reocupación posteriores. **CI de `c4f5bfc` en curso al registrar este hito; no atribuirle PASS todavía.**
+
+La evidencia sigue siendo del tablero/recogida con proyección A→B de fixture. No valida la activación de confirmación transaccional F12 desde PWA. Mantener NO-GO.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
