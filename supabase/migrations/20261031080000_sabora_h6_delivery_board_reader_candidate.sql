@@ -49,16 +49,18 @@ BEGIN
  END IF;
  RETURN QUERY SELECT o.id,l.id,t.number,coalesce(o.customer_alias,o.company),
  o.confirmed_at,o.grouping,l.line_number,l.category,l.name,l.quantity,l.status,
- n.id,n.created_at,n.acknowledged_at,d.table_id,d.session_id,d.visit_key,d.destination_version
+ n.id,n.created_at,n.acknowledged_at,coalesce(d.table_id,l.table_id),
+ coalesce(d.session_id,l.session_id),d.visit_key,coalesce(d.destination_version,1::bigint)
  FROM sabora.order_lines l
  JOIN sabora.orders o ON o.id=l.order_id
- JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
- JOIN sabora.dining_tables t ON t.id=d.table_id
+ LEFT JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+ JOIN sabora.dining_tables t ON t.id=coalesce(d.table_id,l.table_id)
  LEFT JOIN LATERAL (
  SELECT pn.id,pn.created_at,pn.acknowledged_at FROM sabora.pickup_notifications pn
  WHERE pn.order_line_id=l.id ORDER BY pn.created_at DESC,pn.id DESC LIMIT 1
  ) n ON true
- WHERE (p_staff_role='admin' OR
+ WHERE (d.order_line_id IS NOT NULL OR l.status='picked_up')
+ AND (p_staff_role='admin' OR
  (p_staff_role='kitchen' AND l.status IN ('confirmed','preparing','ready')) OR
  (p_staff_role='waiter' AND l.status IN ('ready','picked_up')))
  AND (p_status IS NULL OR l.status=p_status)
