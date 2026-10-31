@@ -33,3 +33,8 @@ válidas, transferencia A→B con tareas de recogida, ni E2E cliente/cocina/sala
 Esos pasos requieren pruebas conductuales y preflight de privilegios antes
 de considerar una activación. Sin merge ni despliegue; no tocar Supabase
 operativo, VPS ni Fleetia.
+
+## Integración de repositorio opt-in (31-10-2026)
+El repositorio API `createOrderOperationsRepository({deliveryBoardCandidate:true})` selecciona exclusivamente para lecturas firmadas el lector H6 de destino/recogida, valida la identidad de destino, sesión y versión, y añade un objeto `delivery` a cada DTO. El comportamiento predeterminado continúa usando el lector H4 sin cambio de contrato. Se incorpora regresión PostgreSQL 17 con HMAC auténtico para A→B, preservación de identidad histórica y rechazo de versión SQL inválida.
+
+**Límite de activación:** todavía no se conecta esta opción al compositor HTTP, no se cambia `server.mjs`, no se concede EXECUTE de runtime y no se modifica la PWA. La lectura firmada en la prueba usa un permiso temporal dentro de PostgreSQL desechable. El preflight de mínimo privilegio y los E2E completos siguen pendientes. Estado NO-GO.
