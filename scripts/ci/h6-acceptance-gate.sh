@@ -24,7 +24,11 @@ run_block() {
   else
     printf -- '- FAIL (exit %s). See artifact %s.log\n\n' "$code" "$name" >> "$summary"
     printf '[H6] FAIL %s (exit %s)\n' "$label" "$code" >&2
-    tail -n 90 "$log" >&2 || true
+    # Node TAP may report failures far before the final summary.
+    if grep -q '^not ok ' "$log"; then
+      grep -n -A 25 -B 3 '^not ok ' "$log" >&2 || true
+    fi
+    tail -n 35 "$log" >&2 || true
     overall=1
   fi
 }
