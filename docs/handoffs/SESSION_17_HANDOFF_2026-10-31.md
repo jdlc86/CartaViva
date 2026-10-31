@@ -148,3 +148,7 @@ Commit e676fcc3: los tres workflows terminaron SUCCESS: Sabora CI 41233543221, b
 ## 26. F12 pruebas PostgreSQL 17 de solicitud positiva y ambiguedad
 
 Commit 13479832 obtuvo los tres workflows SUCCESS: CI 41234873106, bootstrap 41234873137, navegador 41234873203. Commit e2c40dc1 agrega al arnes PG17 dos escenarios transaccionales reales: sesion valida con una unica cuenta abierta y visita QR crea solicitud pendiente sin cambiar la vinculacion, rechaza duplicado en cooldown; dos cuentas abiertas del mismo cliente provocan 42501 y cero solicitudes. Pendiente verificar CI del nuevo commit. La seleccion de cuenta unica es una decision candidata y debe contrastarse con la normativa de cuentas antes del cutover; no hay grants ni rutas productivas. B3 NO-GO.
+
+## 27. Fallo de aislamiento en dos escenarios PG17 F12 y correccion
+
+Commit e2c40dc1: browser SUCCESS, CI y bootstrap FAILURE. Block 2B PG17: 33/35 tests, dos nuevos escenarios chocan con customer_profiles_pkey (23505), no fallo funcional del RPC demostrado. Commits 119c5a2b, ecc52df5, be30ebf2: fixtures dedicadas por escenario con customer, cuentas, mesas, sesiones y visita aisladas, preservando formato de identificador publico. Pendiente certificar nuevo CI. B3 NO-GO, sin grants ni cutover.
