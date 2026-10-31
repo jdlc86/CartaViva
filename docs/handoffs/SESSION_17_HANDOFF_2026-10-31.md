@@ -92,3 +92,7 @@ GitHub Actions del **SHA funcional** `db4f6852ae59139cdc0be389952ae4ecd1c40689` 
 ## 12. Protección fail-closed en servicio F12 (2026-10-31)
 
 Commit `bd1c0082345aa3ee06fa5cedf0b3e01917d0060b`: tres pruebas nuevas en `apps/api/src/table-change-service.test.mjs` para ausencia de aprobación, origen erróneo/destino igual y propagación de error de persistencia sin declarar éxito. **No implica** que el runtime transaccional esté integrado; B3 permanece abierto, NO-GO. Comprobar CI del commit antes de certificar resultados.
+
+## 13. Revisión estructural del SQL candidato F12 (2026-10-31)
+
+Commit `56f1bc746517f78a0a039caafe5557dfeaf4daa8` amplía `apps/api/src/table-change-h6-contract.test.mjs` con pruebas de contrato estático para sesión/visita revocadas, autorización aprobada y vinculada a sesión de origen, bloqueo por cliente, cuentas abiertas ambiguas y replay sin segundo consumo. No se cambió la migración ni se concedió `EXECUTE`. **Pendiente:** CI de este SHA, integración PostgreSQL 17 y E2E. El commit anterior `bd1c0082345aa3ee06fa5cedf0b3e01917d0060b` seguía con workflows en progreso en la última consulta. B3 permanece NO-GO.
