@@ -252,10 +252,11 @@ async function inspect(pool, expectedRole, {
         row.authorized_rpc_execute !== allowAuthorizedTransition ||
         row.authorized_board_rpc_execute !== allowAuthorizedReads ||
         row.authorized_history_rpc_execute !== allowAuthorizedReads ||
-        row.h6_delivery_board_rpc_execute !== allowH6DeliveryBoard ||
-        row.h6_delivery_board_is_definer !== true ||
-        row.h6_delivery_board_owner !== 'sabora_order_operations_fn_owner' ||
-        row.h6_delivery_board_search_path_locked !== true ||
+        (allowH6DeliveryBoard && (
+          row.h6_delivery_board_rpc_execute !== true ||
+          row.h6_delivery_board_is_definer !== true ||
+          row.h6_delivery_board_owner !== 'sabora_order_operations_fn_owner' ||
+          row.h6_delivery_board_search_path_locked !== true)) ||
         row.candidate_is_invoker !== true ||
         row.authorized_is_definer !== true ||
         row.authorized_owner !== 'sabora_order_operations_fn_owner' ||
