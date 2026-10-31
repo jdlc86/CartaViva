@@ -15,8 +15,8 @@ function mock(capability,{override={},names,queryError=false}={}){
    if(sql===F12_IDENTITY_SQL)return {rows:[row]};
    if(sql===F12_FUNCTION_SQL)return {rows:[{names:names??[
     capability==='sabora_f12_customer_runtime'?
-     'request_customer_table_change_h6_resolved_candidate':
-     'decide_customer_table_change_h6_candidate']}]};
+     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)':
+     'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
    throw Error('unexpected');
   },release(discard){released=discard;}
  };}};
@@ -40,7 +40,7 @@ test('F12 preflight rejects elevated logins, wrong membership and broader RPC gr
   {override:{direct_sequences:true}},
   {override:{role_set:[true,true]}},
   {override:{role_set:[true]}},
-  {names:['request_customer_table_change_h6_resolved_candidate','extra_rpc']},
+  {names:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)','sabora.extra_rpc()']},
   {names:['decide_customer_table_change_h6_candidate']},
   {queryError:true}
  ];
