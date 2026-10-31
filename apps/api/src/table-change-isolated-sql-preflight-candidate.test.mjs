@@ -29,7 +29,8 @@ test('F12 preflight accepts only exact isolated login, SET membership and one RP
  assert.equal(customer.released,false);assert.equal(operations.released,false);
  assert.deepEqual(customer.calls.map(x=>x.sql),[F12_IDENTITY_SQL,F12_FUNCTION_SQL]);
  assert.deepEqual(customer.calls[0].args,roles);
- assert.deepEqual(operations.calls[1].args,[roles[1]]);
+ assert.deepEqual(operations.calls[1].args,[operations.login]);
+ assert.deepEqual(customer.calls[1].args,[customer.login]);
 });
 test('F12 preflight rejects elevated logins, wrong membership and broader RPC grants',async()=>{
  const cases=[
