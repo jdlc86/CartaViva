@@ -1973,3 +1973,33 @@ test('PG17 F12 effective RPC surface detects PUBLIC grants and denies unrelated 
    'PUBLIC EXECUTE must be visible in effective F12 surface');
  });
 });
+
+// PostgreSQL must prove the NOINHERIT boundary before any F12 cutover.
+test('PG17 F12 SET ROLE boundary denies direct execution but permits explicitly assumed capability',async()=>{
+ await transaction(async client=>{
+  const role='sabora_f12_set_probe_role',login='sabora_f12_set_probe_login';
+  const signature='sabora.request_customer_table_change_h6_resolved_candidate(bytea)';
+  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+  await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+  await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  const probe=async()=>{
+   const result=await client.query(`SELECT current_user AS who,
+    pg_has_role(current_user,$1::name,'SET') AS may_set,
+    has_function_privilege(current_user,$2::text,'EXECUTE') AS can_execute`,
+    [role,signature]);
+   return result.rows[0];
+  };
+  await client.query(`SET LOCAL ROLE ${login}`);
+  const before=await probe();
+  assert.equal(before.who,login);
+  assert.equal(before.may_set,true);
+  assert.equal(before.can_execute,false,'NOINHERIT login must not execute capability RPC');
+  await client.query(`SET LOCAL ROLE ${role}`);
+  const assumed=await probe();
+  assert.equal(assumed.who,role);
+  assert.equal(assumed.can_execute,true,'explicit capability role must execute only after SET ROLE');
+  await client.query('RESET ROLE');
+ });
+});
