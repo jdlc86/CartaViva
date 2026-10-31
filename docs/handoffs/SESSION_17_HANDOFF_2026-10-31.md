@@ -200,3 +200,7 @@ Para commit 25f7533a: Sabora CI SUCCESS 41242098673; browser SUCCESS 41242098527
 ## 39. F12 preflight SQL aislado y negativo de privilegios
 
 Commits cbfac5a1 y 74c3768b: nuevo preflight candidato de identidad y superficie de funciones SQL para pools cliente/operaciones independientes, login sin herencia ni privilegios elevados, membresia SET solo en su rol, cero privilegios directos de tablas/secuencias y exactamente una RPC por rol. Pruebas negativas de SUPERUSER, BYPASSRLS, INHERIT, membresia cruzada, grants adicionales, SQL incorrecto, errores de consulta y pools compartidos. Aun no hay migracion que cree los roles ni grants y este preflight no se conecta a la composicion H6 activa; las pruebas actuales son con mocks. Pendiente CI y validacion real PG17 con login aislado. B3 NO-GO.
+
+## 40. Correccion de superficie efectiva de privilegios F12
+
+En revision de seguridad del preflight se detecto que inspeccionar solo ACL directas de la capacidad no prueba la superficie ejecutable real: puede omitir concesiones PUBLIC/heredadas y confundir sobrecargas. Commits eaa4814e y f3cd10c0 sustituyen la consulta por has_function_privilege(role,oid,'EXECUTE') sobre todas las funciones del esquema sabora y comparan firmas regprocedure completas. Pruebas actualizadas para las firmas exactas y superficie ampliada. No hay roles F12 ni grants ni despliegue; falta PG17 real y CI posterior. El anterior CI Bootstrap tuvo fallo 44px en Chromium; commit 1a526722 mantiene umbral y espera layout; verificar sus workflows antes de cierre. B3 NO-GO.
