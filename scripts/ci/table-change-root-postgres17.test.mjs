@@ -1453,16 +1453,31 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   assert.equal(settled,false,'competing confirmation must wait for first commit');
   assert.equal(rivalSettled,false,'distinct A checkout must also wait for first commit');
   await first.query('COMMIT');
-  const replay=(await competing).rows[0];
+  // Both waiters contend for the same advisory lock; PostgreSQL does not
+  // guarantee which waiter wins. Commit whichever finishes first before
+  // awaiting the other, otherwise the test itself creates a lock timeout.
+  const firstFinished=await Promise.race([
+   competing.then(row=>({kind:'replay',row:row.rows[0]})),
+   rivalCheckout.then(row=>({kind:'rival',row:row.rows[0]}))
+  ]);
+  let replay,rivalResult;
+  if(firstFinished.kind==='replay'){
+   replay=firstFinished.row;
+   await second.query('COMMIT');
+   rivalResult=(await rivalCheckout).rows[0];
+   await rival.query('COMMIT');
+  }else{
+   rivalResult=firstFinished.row;
+   await rival.query('COMMIT');
+   replay=(await competing).rows[0];
+   await second.query('COMMIT');
+  }
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,winner.round_id);
-  await second.query('COMMIT');
-  const rivalResult=(await rivalCheckout).rows[0];
   assert.equal(rivalResult.repeated,false);
   assert.equal(rivalResult.account_id,ids.sourceAccount);
   assert.notEqual(rivalResult.round_id,winner.round_id);
-  await rival.query('COMMIT');
   await rival.query('BEGIN');
   await expectSqlError(rival,()=>rival.query(sql,[tokenHash,ids.sourceTable,
    qrToken,sourceVisit,'h6_stale_basket_0001','h6_stale_request_0001',
