@@ -1984,11 +1984,14 @@ test('PG17 F12 SET ROLE boundary denies direct execution but permits explicitly 
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  const functionOid=(await client.query('SELECT to_regprocedure($1)::oid AS oid',
+   [signature])).rows[0].oid;
+  assert.ok(functionOid,'candidate RPC must exist in disposable PG17');
   const probe=async()=>{
    const result=await client.query(`SELECT current_user AS who,
     pg_has_role(current_user,$1::name,'SET') AS may_set,
-    has_function_privilege(current_user,$2::text,'EXECUTE') AS can_execute`,
-    [role,signature]);
+    has_function_privilege(current_user,$2::oid,'EXECUTE') AS can_execute`,
+    [role,functionOid]);
    return result.rows[0];
   };
   await client.query(`SET LOCAL ROLE ${login}`);
