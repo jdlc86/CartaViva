@@ -1198,6 +1198,39 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    WHERE id=$1`,[item.orderId])).rows[0];
   assert.equal(historic.table_id,item.tableId);
   assert.equal(historic.session_id,item.sessionId);
+  const transition=async(userId,targetStatus,correlationId)=>h6App.inject({
+   method:'POST',
+   url:`/api/v1/operations/order-lines/${item.lineId}/transitions`,
+   headers:{...headers(userId),'content-type':'application/json'},
+   payload:{targetStatus,correlationId},
+  });
+  const waiterDenied=await transition(waiterId,'preparing','h6_delivery_forbidden_979');
+  assert.equal(waiterDenied.statusCode,403);
+  const preparing=await transition(kitchenId,'preparing','h6_delivery_prepare_979');
+  assert.equal(preparing.statusCode,201);
+  const ready=await transition(kitchenId,'ready','h6_delivery_ready_979');
+  assert.equal(ready.statusCode,201);
+  const waiterBoard=await request(waiterId,
+   '/api/v1/operations/order-lines?status=ready&limit=100');
+  assert.equal(waiterBoard.statusCode,200);
+  const readyLine=waiterBoard.json().items.find(line=>line.lineId===item.lineId);
+  assert.ok(readyLine);
+  assert.equal(readyLine.tableNumber,970980);
+  assert.equal(readyLine.delivery.tableId,targetId);
+  const kitchenDenied=await transition(kitchenId,'picked_up','h6_delivery_forbidden_980');
+  assert.equal(kitchenDenied.statusCode,403);
+  const picked=await transition(waiterId,'picked_up','h6_delivery_picked_979');
+  assert.equal(picked.statusCode,201);
+  const replay=await transition(waiterId,'picked_up','h6_delivery_picked_979');
+  assert.equal(replay.statusCode,200);
+  assert.equal(replay.json().repeated,true);
+  const history=await h6App.inject({
+   method:'GET',url:`/api/v1/operations/orders/${item.orderId}/history`,
+   headers:headers(waiterId),
+  });
+  assert.equal(history.statusCode,200);
+  assert.deepEqual(history.json().events.map(event=>event.toStatus),
+   ['preparing','ready','picked_up']);
   const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
    authorization:'Bearer invalid.token.value'}});
   assert.equal(unauthorized.statusCode,401);
