@@ -886,6 +886,15 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
     await cancelButton.press('Enter');
     await waiterCard.getByRole('button', {name: 'Voy a recoger'}).waitFor({timeout: 15000});
     const claimButton = waiterCard.getByRole('button', {name: 'Voy a recoger'});
+    // SSE can reveal the action before the browser finishes the layout pass.
+    // Wait for the real accessible hit target; never lower the 44px requirement.
+    await page.waitForFunction(() => {
+      const button = [...document.querySelectorAll('.order-card button')]
+        .find(element => element.textContent?.trim() === 'Voy a recoger');
+      if (!button) return false;
+      const box = button.getBoundingClientRect();
+      return box.width >= 44 && box.height >= 44;
+    }, null, {timeout: 10000});
     const claimBox = await claimButton.boundingBox();
     assert.ok(claimBox && claimBox.height >= 44 && claimBox.width >= 44);
     await claimButton.click();
