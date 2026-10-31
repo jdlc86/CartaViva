@@ -152,3 +152,7 @@ Commit 13479832 obtuvo los tres workflows SUCCESS: CI 41234873106, bootstrap 412
 ## 27. Fallo de aislamiento en dos escenarios PG17 F12 y correccion
 
 Commit e2c40dc1: browser SUCCESS, CI y bootstrap FAILURE. Block 2B PG17: 33/35 tests, dos nuevos escenarios chocan con customer_profiles_pkey (23505), no fallo funcional del RPC demostrado. Commits 119c5a2b, ecc52df5, be30ebf2: fixtures dedicadas por escenario con customer, cuentas, mesas, sesiones y visita aisladas, preservando formato de identificador publico. Pendiente certificar nuevo CI. B3 NO-GO, sin grants ni cutover.
+
+## 28. Aislamiento adicional de hash de sesion en PG17
+
+CI de be30ebf2: navegador SUCCESS, Sabora CI y bootstrap FAILURE; PG17 Block 2B 33/35 por violacion de customer_sessions_token_hash_key (23505) en los dos escenarios nuevos. Los identificadores de cliente/mesa ya estaban aislados, pero ambos fixtures reutilizaban el hash global de sesion. Commit 0bd69048 asigna token hash distinto por escenario y lo utiliza al invocar la funcion; nueva CI pendiente. B3 NO-GO.
