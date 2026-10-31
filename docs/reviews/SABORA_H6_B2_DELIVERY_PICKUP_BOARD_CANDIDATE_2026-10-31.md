@@ -50,3 +50,10 @@ Las pruebas unitarias del preflight y las de PostgreSQL 17 del repositorio se in
 Se incorporó una prueba de Fastify real con JWT firmado y PostgreSQL 17 desechable: deniega anónimos, JWT inválidos, camarero intentando consultar `confirmed` y paginación inválida; verifica que cocina ve el cambio A→B en `tableNumber` y `delivery`, mientras `orders.table_id` y `orders.session_id` conservan su identidad histórica.
 
 Se ensayó ampliar el mismo fixture al ciclo `preparing → ready → picked_up`, pero la primera transición devolvió HTTP 503 en CI. **No se declara ese ciclo aceptado**: se retiró esa ampliación de la prueba para conservar el alcance verificable y se deja pendiente diagnosticar la incompatibilidad entre la transición H4 y el fixture H6/B2. El circuito H6 de recogida independiente ya tiene pruebas en otros escenarios, pero no sustituye esta aceptación conjunta. Estado **NO-GO** hasta corregir y demostrar el circuito completo.
+
+## Diagnóstico del 503 y aislamiento de la recogida obsoleta (31-10-2026)
+La prueba PG17 aisló el fallo: al intentar `picked_up` mediante el wrapper de transición heredado H4, PostgreSQL devuelve **SQLSTATE 23514: `legacy_pickup_transition_retired`**. No es correcto rehabilitar esa transición: la recogida vigente de H6 usa `pickup-claim` y `pickup-claim/cancel` con sus contratos propios.
+
+Se introdujo `legacyPickupDisabled` en el registro HTTP, habilitado exclusivamente en `registerVerifiedH6DeliveryOrderOperationsFromPools`. Esta composición devuelve **409 `order_operation_conflict`** antes de tocar SQL cuando se solicita el `picked_up` heredado. La composición H4 predeterminada no cambia. En PostgreSQL 17 desechable se valida la transición a `preparing` con HMAC real, `ready` mediante HTTP autenticado y el rechazo explícito de la recogida obsoleta tras A→B. **Sabora CI y Bootstrap SUCCESS** en `e1d1ad9`.
+
+**Pendiente para cerrar el hito:** integrar en un mismo escenario el contrato H6 de `pickup-claim`/`cancel`, conflictos concurrentes, eventos de sala/cocina y E2E navegador. El flujo de recogida no se declara terminado; **NO-GO**. Sin permisos de producción ni activación en el bootstrap.
