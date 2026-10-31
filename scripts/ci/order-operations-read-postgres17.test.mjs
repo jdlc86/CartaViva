@@ -1014,3 +1014,53 @@ test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated p
  await assert.rejects(operationsPool.query(sql,[...args.slice(0,3),'waiter','ready',...args.slice(5)]),
   /invalid_order_operation_read_capability/);
 });
+
+test('PG17 H6/B2 delivery projection follows A-to-B destination without changing historical order or account',async()=>{
+ const item=await integratedFixture(973,'Cliente cambio de mesa H6');
+ const destinationTable='a2000000-0000-4000-8000-000000000974';
+ await admin.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,ordering_state)
+  VALUES($1,970974,4,decode(repeat('a2',32),'hex'),'open')`,[destinationTable]);
+ const destSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',
+  [destinationTable])).rows[0].session_id;
+ const visit='delivery_visit_973_abcdefgh';
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+  VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_973_source'
+ ]);
+ const cap=issueReadCapability({actorId:kitchenId,role:'kitchen',
+  operation:'board',status:'confirmed',limit:100,cursor:null});
+ const sql=`SELECT * FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+  $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+ const args=[cap.keyId,cap.databaseRole,kitchenId,'kitchen','confirmed',
+  null,null,null,100,cap.issuedAtMs,cap.expiresAtMs,cap.signatureHex];
+ const before=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
+ assert.ok(before);
+ assert.equal(before.table_number,970973);
+ assert.equal(before.delivery_table_id,item.tableId);
+ assert.equal(before.delivery_version,'1');
+ await admin.query(`UPDATE sabora.order_line_delivery_destinations
+  SET table_id=$2,session_id=$3,visit_key=$4,destination_version=2,
+  changed_at=clock_timestamp() WHERE order_line_id=$1`,[
+  item.lineId,destinationTable,destSession,visit
+ ]);
+ const after=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
+ assert.ok(after);
+ assert.equal(after.table_number,970974);
+ assert.equal(after.delivery_table_id,destinationTable);
+ assert.equal(after.delivery_session_id,destSession);
+ assert.equal(after.delivery_visit_key,visit);
+ assert.equal(after.delivery_version,'2');
+ assert.equal(after.pickup_task_id,null);
+ const historic=(await admin.query(`SELECT o.table_id,o.session_id,a.table_id AS account_table,
+  a.session_id AS account_session FROM sabora.orders o
+  JOIN sabora.order_rounds r ON r.order_id=o.id
+  JOIN sabora.customer_accounts a ON a.id=r.account_id WHERE o.id=$1`,[item.orderId])).rows[0];
+ assert.equal(historic.table_id,item.tableId);
+ assert.equal(historic.session_id,item.sessionId);
+ assert.equal(historic.account_table,item.tableId);
+ assert.equal(historic.account_session,item.sessionId);
+});
