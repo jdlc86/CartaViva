@@ -314,3 +314,32 @@ line-level destinations, plus kitchen/sala PWA browser acceptance and
 provider-side Stripe capture/settlement races. Candidate transfer remains
 sealed, with no runtime EXECUTE. No merge, deployment, VPS, Fleetia or
 operational Supabase changes are authorized. **NO-GO** remains in force.
+
+
+## B2 sealed staff delivery board — 2026-10-31
+
+The new reviewed migration `20261031080000_sabora_h6_delivery_board_reader_candidate.sql`
+(62nd reviewed migration) introduces an owner-only, HMAC-scoped staff board
+query using per-line mutable destinations. Kitchen/waiter visibility, pagination,
+membership revalidation and the historical order identity remain separate.
+Picked-up lines without a mutable destination retain their original table
+through a restricted fallback; pending lines without a destination are
+**not** silently presented against an invented table.
+
+The SQL function is deliberately **not executable by any runtime login**.
+The PG17 contract test verifies its sealed privileges and the fallback
+definition. Commits `e725cf0`, `16e7fcc`, `664036b`, `938745a`,
+`eb8e873`, and `85f0944` collectively add the function, migration
+audit, historical fallback and tests. For `85f0944`, Sabora CI,
+bootstrap and client browser conformance all completed successfully.
+
+**Critical activation gap:** the existing order-operations API uses a
+different authorized SQL wrapper and response contract, including pickup-task
+fields. Substituting this candidate directly would break the API and/or
+weaken least-privilege guarantees. Before activation, integrate the
+delivery projection into the actual authenticated board wrapper and
+pickup-task contract, verify exact runtime function-surface preflight,
+run PG17 behavior tests with real HMAC staff capability and mixed A/B
+deliveries, and complete customer/waiter/kitchen browser E2E.
+No runtime grants, merge, deployment or operational Supabase changes
+were made. **NO-GO**.
