@@ -112,3 +112,7 @@ Commits `50cd5e0c01f2e35a0db387da8b9b07a17ed2c26f` y `a71ccd75c37a267d4a64d03f67
 ## 17. Prueba integrada HTTP + RPC sellada (2026-10-31)
 
 Commit `e2c3eac2c605c2af72def35510dd183c7a37a09e` incorpora `apps/api/src/table-change-sealed-rpc-http-integration.test.mjs`: Fastify real con cookie/same-origin, rechazo de entrada destino/rol cocina, solicitud mínima, aprobación autenticada por camarero, redacción de IDs privados y replay/cooldown fallando cerrado. Query PostgreSQL **simulada** y RPC SQL todavía sin EXECUTE; la prueba no acredita permisos PG17 ni traslado real. Verificar Actions y consolidar integración PG17 + bootstrap + E2E antes de activar. B3 NO-GO.
+
+## 18. Errores SQLSTATE del adaptador F12 (2026-10-31)
+
+Commits `a209810116447f0335317918d418837a53aee200`, `4f27374354db46ced7c50223402ab5d64f4f5901`, `b58cbbb2dd770e8633242e571fdf83f0bc950b39`: adaptación exacta SQLSTATE+mensaje de `table_change_cooldown`/`table_change_approval_active` a conflicto de solicitud; `table_change_already_decided` a conflicto de decisión; denegaciones verificadas a forbidden/not found. Pruebas unitarias y HTTP cross-role actualizadas. **No activar** sin comprobar formato real de errores PostgreSQL en PG17 aislado, grants mínimos, bootstrap, E2E y resultados CI. B3 NO-GO.
