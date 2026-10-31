@@ -1818,7 +1818,7 @@ const scenarioA=Object.freeze({
  destinationSession:'b0a00000-0000-4000-8000-000000000105',
  sourceAccount:'b0a00000-0000-4000-8000-000000000106',
  destinationAccount:'b0a00000-0000-4000-8000-000000000107',
- token:Buffer.alloc(32,211),sourceVisit:'f12_source_101',destinationVisit:'f12_destination_101'
+ token:Buffer.alloc(32,211),sourceVisit:'f12_source_visit_0101',destinationVisit:'f12_destination_visit_0101'
 });
 const scenarioB=Object.freeze({
  customer:'b0a00000-0000-4000-8000-000000000201',
@@ -1828,7 +1828,7 @@ const scenarioB=Object.freeze({
  destinationSession:'b0a00000-0000-4000-8000-000000000205',
  sourceAccount:'b0a00000-0000-4000-8000-000000000206',
  destinationAccount:'b0a00000-0000-4000-8000-000000000207',
- token:Buffer.alloc(32,212),sourceVisit:'f12_source_201',destinationVisit:'f12_destination_201'
+ token:Buffer.alloc(32,212),sourceVisit:'f12_source_visit_0201',destinationVisit:'f12_destination_visit_0201'
 });
 async function insertF12Visit(client,scenario){
  await client.query(`INSERT INTO sabora.customer_table_visits(
