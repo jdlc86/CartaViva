@@ -1209,6 +1209,17 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target',
    destination_version=2,changed_at=clock_timestamp()
    WHERE order_line_id=$1`,[item.lineId,targetId,targetSession]);
+  // Simulate the completed atomic transfer projection with a live B visit.
+  // The order's historical A identity remains unchanged.
+  await admin.query(`INSERT INTO sabora.customer_table_visits
+    (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+    VALUES($1,$2,$3,'delivery_visit_979_target','delivery_actor_979_target',1,
+      clock_timestamp()+interval '1 hour')`,
+    [targetId,targetSession,item.customerProfileId]);
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+    SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target',
+      binding_version=binding_version+1,changed_at=clock_timestamp()
+    WHERE account_id=$1`,[item.accountId,targetId,targetSession]);
   const after=await request(kitchenId);
   assert.equal(after.statusCode,200);
   const moved=after.json().items.find(line=>line.lineId===item.lineId);
@@ -1384,21 +1395,32 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
     assert.ok(replayFrames.includes('id: '+id+String.fromCharCode(10)));
   }finally{await sseApp.close();}
 
-  // Fail-closed regression: current H6 pickup RPC still requires the historical
-  // A visit. This is a documented NO-GO gap, not an accepted transfer flow.
+  // The historical A visit may end without blocking a still-valid delivery in B.
+  // Revocation of B, by contrast, must deny all further mutations.
   const beforeClosure=(await admin.query(`SELECT state,version,claimed_by
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
   await admin.query(`UPDATE sabora.customer_table_visits
    SET revoked_at=clock_timestamp()
    WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
    [item.tableId,item.sessionId,item.customerProfileId]);
-  const afterSourceRevocation=await pickup(winner,claimPath+'/cancel',4,
+  const afterSourceRevocation=await pickup(loser,claimPath+'/cancel',4,
    'h6_delivery_closed_origin_cancel_979');
-  assert.equal(afterSourceRevocation.statusCode,403,
-   'unresolved H6/B2 origin-visit dependency must fail closed');
+  assert.equal(afterSourceRevocation.statusCode,200,
+   'the valid B destination must survive revocation of historical A');
+  const afterOriginCancel=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.equal(afterOriginCancel.state,'ready');
+  assert.equal(Number(afterOriginCancel.version),5);
+  await admin.query(`UPDATE sabora.customer_table_visits
+   SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
+   [targetId,targetSession,item.customerProfileId]);
+  const deniedAfterBRevocation=await pickup(winner,claimPath,5,
+   'h6_delivery_closed_destination_claim_979');
+  assert.equal(deniedAfterBRevocation.statusCode,403);
   const afterClosure=(await admin.query(`SELECT state,version,claimed_by
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
-  assert.deepEqual(afterClosure,beforeClosure,
+  assert.deepEqual(afterClosure,afterOriginCancel,
    'rejected pickup must not change assignment or version');
   // A denied action must not persist an idempotency result or emit another
   // staff notification; neither should it rewrite the economic identity.
@@ -1406,11 +1428,11 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    FROM sabora.event_outbox WHERE aggregate_id=$1
    AND event_type LIKE 'sabora.pickup.%'`,
    [reassigned.json().pickupTaskId])).rows[0];
-  assert.equal(afterDeniedOutbox.total,8);
+  assert.equal(afterDeniedOutbox.total,10);
   const deniedRequest=(await admin.query(`SELECT count(*)::int AS total
    FROM sabora.h6_action_requests
    WHERE actor_user_id=$1 AND correlation_id=$2`,
-   [winner,'h6_delivery_closed_origin_cancel_979'])).rows[0];
+   [winner,'h6_delivery_closed_destination_claim_979'])).rows[0];
   assert.equal(deniedRequest.total,0);
   const historicalIdentity=(await admin.query(`SELECT o.table_id,o.session_id,
    r.account_id FROM sabora.orders o JOIN sabora.order_rounds r
@@ -1418,12 +1440,12 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   assert.equal(historicalIdentity.table_id,item.tableId);
   assert.equal(historicalIdentity.session_id,item.sessionId);
   assert.equal(historicalIdentity.account_id,item.accountId);
-  const deniedRetry=await pickup(winner,claimPath+'/cancel',4,
-   'h6_delivery_closed_origin_cancel_979');
+  const deniedRetry=await pickup(winner,claimPath,5,
+   'h6_delivery_closed_destination_claim_979');
   assert.equal(deniedRetry.statusCode,403);
   assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
-   beforeClosure);
+   afterOriginCancel);
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
