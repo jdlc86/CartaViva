@@ -57,6 +57,14 @@ Continúa el desarrollo de **CartaViva / Sabora** directamente mediante herramie
 
 **Pruebas obligatorias:** concurrencia de dos confirmaciones, replay, rollback tras fallos, QR revocado, cierre/reocupación de A y B, revocación de sesión/visita, permisos de rol, RLS y aislamiento entre cuentas/comensales, cobro `pay_now`/`pay_at_end`, cocina/sala/SSE con destino correcto, navegador real Playwright/axe/responsive según identidad visual aprobada. Cumplir la matriz normativa F01–F28/R01–R10, o declarar explícitamente cada caso pendiente. No presentar tests unitarios o SQL fixtures como E2E visual.
 
+## 5 bis. Auditoría concreta de la candidata F12 (sesión 15, 31-10-2026)
+
+Lectura directa de `20261031010000_sabora_h6_transfer_confirmation_integration_candidate.sql`: la función aislada **sí** resuelve cuenta abierta y binding, exige aprobación antes de persistir, invoca la persistencia existente, conserva `v_account.id`, crea ronda y destino de líneas, y **consume la concesión dentro de la misma transacción** mediante `consume_customer_table_change_h6_candidate`. Los cobros se generan después de ese consumo, dentro de la misma transacción PostgreSQL, de modo que una excepción posterior debería revertir el conjunto; esta propiedad requiere las pruebas PG17 ya existentes y casos adicionales de fallo. La función está expresamente **sin GRANT EXECUTE para los runtimes** y no sustituye la entrada H6 sellada actual.
+
+**Riesgo preciso a revisar antes de cutover:** el código comprueba la existencia de una aprobación antes de persistir, pero la validación autoritativa y consumo real se hace después de crear pedido y ronda, dentro de la transacción. Verificar que la función consumidora vuelve a comprobar identidad, origen, estado de mesa/QR y unicidad bajo locks; si falla, toda la confirmación debe revertirse. Confirmar además que los replays devuelven ronda histórica sin consumir otra concesión y que no hay conflictos de locks con personal/cierre. La autorización de recogida sigue consultando A en `manage_pickup_task_h6_candidate`; **no** activar F12 hasta resolverla y probar B activa/reocupada.
+
+Esta auditoría no ejecuta PostgreSQL ni acredita un nuevo PASS; es lectura de código y ajuste del punto de partida. El objetivo siguiente sigue siendo **un bloque vertical** de autorización de recogida por destino operativo con pruebas positivas/negativas PG17 y, después, cutover F12 y aceptación E2E, sin multiplicar parches.
+
 ## 6. Secuencia recomendada de trabajo
 
 1. Reconciliar normativa, HEAD y PR #43; revisar CI y cambios concurrentes. No duplicar trabajo ya realizado.
