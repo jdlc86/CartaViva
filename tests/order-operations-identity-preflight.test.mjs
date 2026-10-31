@@ -73,6 +73,20 @@ test('preflight accepts only two distinct verified non-privileged SQL logins', a
   assert.deepEqual(operationsPool.state.releases, [null]);
 });
 
+test('legacy H4 preflight treats the H6 delivery board RPC as optional without regprocedure resolution errors', async () => {
+  const operationsPool = pool(roles.operationsRole);
+  await preflightOrderOperationsIdentities({
+    staffPool: pool(roles.staffRole), operationsPool, ...roles,
+  });
+  assert.equal(operationsPool.state.queries, 1);
+  const sql = operationsPool.state.sql[0];
+  const signature = 'sabora.read_order_operations_delivery_pickup_board_h6_candidate';
+  assert.match(sql, /to_regprocedure\('sabora\.read_order_operations_delivery_pickup_board_h6_candidate/);
+  assert.doesNotMatch(sql, /read_order_operations_delivery_pickup_board_h6_candidate[^']*'::regprocedure/);
+  assert.match(sql, /COALESCE\(has_function_privilege\(current_user,\s*to_regprocedure/);
+  assert.ok(sql.includes(signature));
+});
+
 test('candidate transition preflight accepts exactly one authorized wrapper', async () => {
   const operationsPool = pool(roles.operationsRole, {
     authorized_rpc_execute: true,
