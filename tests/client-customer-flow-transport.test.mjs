@@ -48,3 +48,31 @@ test('customer PWA visit transport accepts only the canonical QR V1 token',async
   /invalid_customer_visit_transport/);
  assert.equal(calls.length,1);
 });
+
+test('F12 PWA table-change request uses empty payload and never requires economic account ID',async()=>{
+ const id='10000000-0000-4000-8000-000000000001';
+ const table='10000000-0000-4000-8000-000000000002';
+ const calls=[];
+ const transport=createCustomerFlowTransport({fetchImpl:async(path,init)=>{
+  calls.push({path,init});
+  return json(201,{id,status:'pending',sourceTableId:table,
+   createdAtMs:1000,expiresAtMs:91000,accountId:'private-account'});
+ }});
+ const result=await transport.requestTableChange();
+ assert.deepEqual(result,{requestId:id,sourceTableId:table,status:'pending',
+  createdAtMs:1000,expiresAtMs:91000});
+ assert.deepEqual(calls.map(c=>[c.path,JSON.parse(c.init.body)]),
+  [['/api/v1/customer/table-change/requests',{}]]);
+ assert.equal(calls[0].init.credentials,'same-origin');
+ assert.equal(Object.hasOwn(result,'accountId'),false);
+});
+test('F12 PWA rejects malformed table-change responses and propagates cooldown conflict',async()=>{
+ const table='10000000-0000-4000-8000-000000000002';
+ const bad=createCustomerFlowTransport({fetchImpl:async()=>json(201,{
+  id:'invalid',status:'pending',sourceTableId:table,createdAtMs:1000,expiresAtMs:91000})});
+ await assert.rejects(bad.requestTableChange(),/customer_flow_unavailable/);
+ const locked=createCustomerFlowTransport({fetchImpl:async()=>json(409,{error:'table_change_request_locked'})});
+ await assert.rejects(locked.requestTableChange(),error=>
+  error instanceof CustomerFlowTransportError&&error.status===409&&
+  error.message==='table_change_request_locked');
+});
