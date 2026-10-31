@@ -120,3 +120,7 @@ Commits `a209810116447f0335317918d418837a53aee200`, `4f27374354db46ced7c50223402
 ## 19. Identidad SQL del camarero en RPC F12 (2026-10-31)
 
 La firma de `sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)` usa `p_staff_id` como `sabora.staff_members.user_id`, **no** como identificador de fila del empleado. Se corrigió el adaptador para requerir `verifyStaff(...).userId` UUID validado y enlazar ese valor en la RPC, en vez de `.id`. Commits `b3c495c431cf38d05d670da11d1e6b5b49772b75`, `6055b028c7f7e3cf671ffcf84c1569a4f474cd2d`, `79945fc31c1e13a6ebf189f58120e652f3cb0e51`. Verificar fixtures, CI y PG17; no hay grants de runtime ni bootstrap. B3 NO-GO.
+
+## 20. Contratos RPC y migraciones
+
+Commits afed9404 y dcdcd10f: traduccion de cuenta ausente y cuatro pruebas de contrato entre RPC, identidad de camarero, bloqueos y ausencia de grants. No se ha habilitado runtime ni probado este bloque en PG17 real. B3 NO-GO.
