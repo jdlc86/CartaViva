@@ -1,7 +1,7 @@
 # H6 — aceptación automatizada de dos bloques (31-10-2026)
 
 ## Objetivo
-Reducir la intervención humana a la revisión del PR Draft y de los resultados. El workflow `Sabora CI` se activa con cada push/PR y admite `workflow_dispatch`; ejecuta `scripts/ci/h6-acceptance-gate.sh` como entrada única.
+Reducir la intervención humana a la revisión del PR Draft y de los resultados. El workflow `Sabora CI` se activa en los eventos PR y en las ramas de push autorizadas por la normativa del repositorio; ejecuta `scripts/ci/h6-acceptance-gate.sh` como entrada única.
 
 ## Bloques
 1. **Contratos y servicios**: `pnpm test` (incluye normas, contratos de API, política, regresiones y esquema).
