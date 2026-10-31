@@ -1,0 +1,74 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_SQL,
+ DECIDE_TABLE_CHANGE_H6_SQL} from './table-change-sealed-rpc-candidate.mjs';
+
+const account='11111111-1111-4111-8111-111111111111';
+const requestId='22222222-2222-4222-8222-222222222222';
+const staffId='33333333-3333-4333-8333-333333333333';
+const hash=Buffer.alloc(32,42);
+function setup({role='waiter',requestRows,decisionRows}={}){
+ const calls=[];
+ const query=async(sql,args)=>{
+  calls.push({sql,args});
+  if(sql===REQUEST_TABLE_CHANGE_H6_SQL)return {rows:requestRows??[{
+   request_id:requestId,request_status:'pending',expires_at:'2026-11-01T00:00:00Z'
+  }]};
+  if(sql===DECIDE_TABLE_CHANGE_H6_SQL)return {rows:decisionRows??[{status:'approved'}]};
+  throw Error('unapproved_sql');
+ };
+ const rpc=createSealedTableChangeRpcCandidate({
+  withCustomerTransaction:async fn=>fn(query),
+  withStaffTransaction:async fn=>fn(query),
+  hashSession:async()=>hash,
+  resolveAccount:async()=>({accountId:account,closed:false}),
+  verifyStaff:async()=>({id:staffId,role})
+ });
+ return {rpc,calls};
+}
+test('sealed customer request uses only the authorized RPC and binds hash/account',async()=>{
+ const {rpc,calls}=setup();
+ const result=await rpc.request({customerSessionToken:'secret'});
+ assert.deepEqual(result,{id:requestId,status:'pending',expiresAtMs:Date.parse('2026-11-01T00:00:00Z')});
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].sql,REQUEST_TABLE_CHANGE_H6_SQL);
+ assert.deepEqual(calls[0].args,[hash,account]);
+ assert.doesNotMatch(calls[0].sql,/INSERT|UPDATE|DELETE/i);
+});
+test('sealed waiter approval binds trusted staff identity, never caller-provided staff ID',async()=>{
+ const {rpc,calls}=setup();
+ const result=await rpc.decide({verifiedIdentity:{id:'caller'},verifiedStaff:{role:'waiter'},
+  requestId,decision:'approved'});
+ assert.deepEqual(result,{request:{id:requestId,status:'approved'}});
+ assert.deepEqual(calls[0].args,[staffId,requestId,true]);
+});
+test('sealed RPC refuses kitchen and root roles without calling SQL',async()=>{
+ for(const role of ['kitchen','root']){
+  const {rpc,calls}=setup({role});
+  await assert.rejects(()=>rpc.decide({verifiedIdentity:{id:'caller'},
+   verifiedStaff:{role},requestId,decision:'approved'}),/table_change_unauthorized/);
+  assert.equal(calls.length,0);
+ }
+});
+test('sealed RPC rejects malformed request, forged status and multiple SQL rows',async()=>{
+ const {rpc,calls}=setup({requestRows:[{request_id:requestId,request_status:'approved',
+  expires_at:'2026-11-01T00:00:00Z'}]});
+ await assert.rejects(()=>rpc.request({customerSessionToken:'secret'}),/invalid_table_change_rpc_result/);
+ await assert.rejects(()=>rpc.request({customerSessionToken:''}),/table_change_unauthorized/);
+ assert.equal(calls.length,1);
+ const other=setup({decisionRows:[{status:'approved'},{status:'approved'}]});
+ await assert.rejects(()=>other.rpc.decide({verifiedIdentity:{},verifiedStaff:{},
+  requestId,decision:'approved'}),/invalid_table_change_rpc_result/);
+});
+test('sealed RPC refuses unexpected expired decision instead of returning approval',async()=>{
+ const {rpc}=setup({decisionRows:[{status:'expired'}]});
+ await assert.rejects(()=>rpc.decide({verifiedIdentity:{},verifiedStaff:{},
+  requestId,decision:'approved'}),/table_change_request_not_pending/);
+});
+test('sealed RPC validates constructor and rejects non-UUID request IDs',async()=>{
+ assert.throws(()=>createSealedTableChangeRpcCandidate(),/invalid_table_change_rpc_configuration/);
+ const {rpc,calls}=setup();
+ await assert.rejects(()=>rpc.decide({verifiedIdentity:{},verifiedStaff:{},
+  requestId:'bad',decision:'approved'}),/invalid_table_change_decision/);
+ assert.equal(calls.length,0);
+});
