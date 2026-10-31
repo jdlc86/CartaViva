@@ -16,6 +16,7 @@ import {preflightOrderOperationsRuntimeIdentity,
   preflightOrderOperationsH6DeliveryIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createOrderOperationsRepository} from '../../apps/api/src/order-operations-repository.mjs';
+import {registerVerifiedH6DeliveryOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
@@ -1139,5 +1140,71 @@ test('PG17 H6/B2 runtime preflight rejects ungranted board and accepts only exac
   assert.equal(legacy.role,operationsRole);
  } finally {
   await admin.query(`GRANT EXECUTE ON FUNCTION ${routine} TO ${operationsRole}`);
+ }
+});
+
+test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT and role isolation',async()=>{
+ const item=await integratedFixture(979,'Mesa HTTP H6 B2');
+ const targetId='a2000000-0000-4000-8000-000000000980';
+ await admin.query(`INSERT INTO sabora.dining_tables
+ (id,number,capacity,qr_token_hash,ordering_state)
+ VALUES($1,970980,4,decode(repeat('a2',32),'hex'),'open')`,[targetId]);
+ const targetSession=(await admin.query(
+  'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[targetId])).rows[0].session_id;
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+ (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+ VALUES($1,$2,$3,$4,$5,$6,$7)`,[
+  item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
+  'delivery_visit_979_source'
+ ]);
+ const h6App=Fastify({logger:false});
+ const config={
+  staffPool,operationsPool,staffRole,operationsRole,
+  issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+  issueTransitionCapability,issueReadCapability,
+ };
+ try {
+  await registerVerifiedH6DeliveryOrderOperationsFromPools(h6App,config);
+  await h6App.ready();
+  const path='/api/v1/operations/order-lines?status=confirmed&limit=100';
+  const request=async(userId,route=path)=>h6App.inject({
+   method:'GET',url:route,headers:userId?headers(userId):{},
+  });
+  const anonymous=await request(null);
+  assert.equal(anonymous.statusCode,401);
+  const forbidden=await request(waiterId);
+  assert.equal(forbidden.statusCode,403);
+  const before=await request(kitchenId);
+  assert.equal(before.statusCode,200);
+  const original=before.json().items.find(line=>line.lineId===item.lineId);
+  assert.ok(original);
+  assert.equal(original.tableNumber,970979);
+  assert.equal(original.delivery.tableId,item.tableId);
+  assert.equal(original.delivery.version,1);
+  await admin.query(`UPDATE sabora.order_line_delivery_destinations
+   SET table_id=$2,session_id=$3,visit_key='delivery_visit_979_target',
+   destination_version=2,changed_at=clock_timestamp()
+   WHERE order_line_id=$1`,[item.lineId,targetId,targetSession]);
+  const after=await request(kitchenId);
+  assert.equal(after.statusCode,200);
+  const moved=after.json().items.find(line=>line.lineId===item.lineId);
+  assert.ok(moved);
+  assert.equal(moved.tableNumber,970980);
+  assert.deepEqual(moved.delivery,{
+   tableId:targetId,sessionId:targetSession,
+   visitKey:'delivery_visit_979_target',version:2,
+  });
+  const historic=(await admin.query(`SELECT table_id,session_id FROM sabora.orders
+   WHERE id=$1`,[item.orderId])).rows[0];
+  assert.equal(historic.table_id,item.tableId);
+  assert.equal(historic.session_id,item.sessionId);
+  const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
+   authorization:'Bearer invalid.token.value'}});
+  assert.equal(unauthorized.statusCode,401);
+  const invalidQuery=await request(kitchenId,
+   '/api/v1/operations/order-lines?status=confirmed&limit=101');
+  assert.equal(invalidQuery.statusCode,400);
+ } finally {
+  await h6App.close();
  }
 });
