@@ -1447,12 +1447,12 @@ test('PG17 B2 concurrent complete checkouts consume one approval and create one 
   assert.equal(settled,false,'competing confirmation must wait for first commit');
   assert.equal(rivalSettled,false,'distinct A checkout must also wait for first commit');
   await first.query('COMMIT');
-  await rejected;
   const replay=(await competing).rows[0];
   assert.equal(replay.repeated,true);
   assert.equal(replay.account_id,ids.sourceAccount);
   assert.equal(replay.round_id,winner.round_id);
   await second.query('COMMIT');
+  await rejected;
   await rival.query('COMMIT');
   const state=(await fixture.query(`SELECT
    (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
