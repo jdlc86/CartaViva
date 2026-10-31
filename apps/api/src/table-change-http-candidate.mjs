@@ -35,7 +35,14 @@ export function registerTableChangeStaffHttp(app,{forRoles,service}={}){
      verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff,
      requestId:request.body.requestId,decision:request.body.decision
     });
-    return reply.code(200).send(result);
+    // Explicit public projection: never serialize a store result verbatim.
+    // The request source, customer/account IDs and audit internals stay private.
+    if(!result||!result.request||result.request.id!==request.body.requestId||
+     result.request.status!==request.body.decision)
+     throw Error('invalid_table_change_decision_result');
+    return reply.code(200).send({
+     requestId:result.request.id,status:result.request.status
+    });
    }catch(error){
     if(error?.message==='table_change_unauthorized')
      return reply.code(403).send({error:'forbidden'});
