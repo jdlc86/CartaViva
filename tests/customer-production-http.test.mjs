@@ -98,3 +98,46 @@ test('F12 confirmation rejects missing grant or conflicting economic binding wit
   }finally{await app.close();}
  }
 });
+
+test('F12 request HTTP enforces authenticated same-origin empty-body contract and redacted cooldown',async()=>{
+ const seen=[];
+ const cookieAuth={
+  requireSameOrigin(request,reply){if(request.headers.origin!=='https://sabora.example'){
+   reply.code(403).send({error:'origin_not_allowed'});return false;}return true;},
+  async authenticate(request,reply){if(request.headers.cookie!==cookie){
+   reply.code(401).send({error:'unauthorized'});return;}
+   request.customerIdentity={customerId:'internal',publicId:'SB-23456789ABCD',alias:'Ana',company:null};},
+  logout:async()=>{}
+ };
+ let denied=false;
+ const tableChange={request:async value=>{seen.push(value);if(denied)throw Error('table_change_request_locked');
+  return {id:'request-1',status:'pending',sourceTableId:'table-A',
+   createdAtMs:1000,expiresAtMs:91000};}};
+ const flow={authorizeVisit:async()=>{},quote:async()=>{},confirm:async()=>{}};
+ const app=Fastify({logger:false});
+ registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange});
+ await app.ready();
+ const call=(headers,payload)=>app.inject({method:'POST',url:'/api/v1/customer/table-change/requests',
+  headers,payload});
+ const validHeaders={cookie,origin:'https://sabora.example','content-type':'application/json'};
+ try{
+  assert.equal((await call({origin:'https://sabora.example','content-type':'application/json'},{})).statusCode,401);
+  assert.equal((await call({...validHeaders,origin:'https://evil.example'},{})).statusCode,403);
+  assert.equal((await call({...validHeaders,'content-type':'text/plain'},'{}')).statusCode,415);
+  for(const payload of [{destinationTableId:'table-B'},{reason:'moving'},{accountId:'forged'},[]]){
+   const result=await call(validHeaders,payload);
+   assert.equal(result.statusCode,400);
+   assert.deepEqual(result.json(),{error:'invalid_customer_request'});
+  }
+  assert.equal(seen.length,0,'invalid requests must never invoke the store');
+  const ok=await call(validHeaders,{});
+  assert.equal(ok.statusCode,201);
+  assert.equal(ok.headers['cache-control'],'no-store');
+  assert.deepEqual(seen,[{customerSessionToken:'s'.repeat(43)}]);
+  denied=true;
+  const cooldown=await call(validHeaders,{});
+  assert.equal(cooldown.statusCode,409);
+  assert.deepEqual(cooldown.json(),{error:'table_change_request_locked'});
+  assert.equal(cooldown.body.includes('table-A'),false);
+ }finally{await app.close();}
+});
