@@ -88,6 +88,20 @@ test('PG17 H6 delivery board is sealed and retains picked-up fallback in its SQL
  assert.match(row.definition,/p_staff_role\s*=\s*'waiter'/);
 });
 
+test('PG17 H6 sealed delivery board rejects forged staff read capability before returning rows',async()=>{
+ await transaction(async client=>{
+  const sql=`SELECT * FROM sabora.read_order_operations_delivery_board_h6_candidate(
+   $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::uuid,
+   $8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+  const now=Date.now();
+  const args=['forged_key_2026','postgres',ids.customer,'waiter',null,
+   null,null,null,50,now,now+15000,'0'.repeat(64)];
+  const error=await expectSqlError(client,()=>client.query(sql,args),
+   /invalid_order_operation_read_capability/);
+  assert.equal(error.code,'42501');
+ });
+});
+
 test('PG17 catalog proves the economic, delivery and event dependency graph before refactor',async()=>{
  const constraints=(await admin.query(`SELECT c.conrelid::regclass::text AS child,
    pg_get_constraintdef(c.oid) AS definition
