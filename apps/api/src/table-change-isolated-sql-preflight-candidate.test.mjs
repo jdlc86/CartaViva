@@ -9,7 +9,7 @@ function mock(capability,{override={},names,queryError=false}={}){
  const row={effective_role:login,login_role:login,can_login:true,inherit_role:false,
   superuser:false,bypass_rls:false,create_db:false,create_role:false,replication:false,
   database_create:false,schema_create:false,direct_relations:false,direct_sequences:false,
-  role_set:roles.map(role=>role===capability),...override};
+  role_set:roles.map(role=>role===capability),all_set_roles:[capability],...override};
  return {login,calls,get released(){return released;},async connect(){return {
   async query(sql,args){calls.push({sql,args});if(queryError)throw Error('connection');
    if(sql===F12_IDENTITY_SQL)return {rows:[row]};
@@ -40,6 +40,8 @@ test('F12 preflight rejects elevated logins, wrong membership and broader RPC gr
   {override:{direct_sequences:true}},
   {override:{role_set:[true,true]}},
   {override:{role_set:[true]}},
+  {override:{all_set_roles:[roles[0],roles[1]]}},
+  {override:{all_set_roles:[]}},
   {names:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)','sabora.extra_rpc()']},
   {names:['decide_customer_table_change_h6_candidate']},
   {queryError:true}
