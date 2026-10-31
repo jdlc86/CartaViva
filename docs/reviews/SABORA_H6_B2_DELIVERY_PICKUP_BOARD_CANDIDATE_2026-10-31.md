@@ -45,3 +45,8 @@ Se añade `registerVerifiedH6DeliveryOrderOperationsFromPools`, composición **o
 Las pruebas unitarias del preflight y las de PostgreSQL 17 del repositorio se integran en el CI existente. Se corrigió un fallo de compatibilidad en los mocks del preflight; **commit `d156f8e`: Sabora CI SUCCESS y Bootstrap SUCCESS**.
 
 **Frontera pendiente:** la composición es exportada, pero `server.mjs` no la importa ni la activa. La migración no otorga EXECUTE al runtime; el positivo PG17 usa un permiso temporal exclusivamente en la base desechable. Faltan activación deliberada en un entorno aislado, E2E HTTP específico H6 A→B con pickup/cancelación/SSE y aceptación funcional completa. **NO-GO**.
+
+## HTTP A→B: aceptación aislada y límite detectado
+Se incorporó una prueba de Fastify real con JWT firmado y PostgreSQL 17 desechable: deniega anónimos, JWT inválidos, camarero intentando consultar `confirmed` y paginación inválida; verifica que cocina ve el cambio A→B en `tableNumber` y `delivery`, mientras `orders.table_id` y `orders.session_id` conservan su identidad histórica.
+
+Se ensayó ampliar el mismo fixture al ciclo `preparing → ready → picked_up`, pero la primera transición devolvió HTTP 503 en CI. **No se declara ese ciclo aceptado**: se retiró esa ampliación de la prueba para conservar el alcance verificable y se deja pendiente diagnosticar la incompatibilidad entre la transición H4 y el fixture H6/B2. El circuito H6 de recogida independiente ya tiene pruebas en otros escenarios, pero no sustituye esta aceptación conjunta. Estado **NO-GO** hasta corregir y demostrar el circuito completo.
