@@ -88,3 +88,7 @@ Commit funcional `db4f6852ae59139cdc0be389952ae4ecd1c40689` en `apps/api/src/tab
 ## 11. Verificación CI del refuerzo HTTP (2026-10-31)
 
 GitHub Actions del **SHA funcional** `db4f6852ae59139cdc0be389952ae4ecd1c40689` comprobados como **3/3 SUCCESS**: Sabora CI `41222762292`, Bootstrap Sabora lockfile `41222762287` y Sabora client browser conformance `41222762341`. Esta verificación certifica exclusivamente las suites ejecutadas para ese commit, no integración PG17 transaccional ni E2E F12. B3 permanece **NO-GO**.
+
+## 12. Protección fail-closed en servicio F12 (2026-10-31)
+
+Commit `bd1c0082345aa3ee06fa5cedf0b3e01917d0060b`: tres pruebas nuevas en `apps/api/src/table-change-service.test.mjs` para ausencia de aprobación, origen erróneo/destino igual y propagación de error de persistencia sin declarar éxito. **No implica** que el runtime transaccional esté integrado; B3 permanece abierto, NO-GO. Comprobar CI del commit antes de certificar resultados.
