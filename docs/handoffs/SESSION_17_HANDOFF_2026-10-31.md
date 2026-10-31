@@ -176,3 +176,7 @@ CI e671b854: navegador SUCCESS, CI y bootstrap FAILURE antes de PG17; Block 1 No
 ## 33. CI verde y proteccion de regresion PG17 F12
 
 Los tres workflows de 025c6815 finalizaron SUCCESS: Sabora CI 41238638765, Bootstrap lockfile 41238638918, navegador 41238638788. La migracion incremental para PostgreSQL 17 y los dos escenarios de F12 superaron la aceptacion consolidada. Commit b80a8652 agrega prueba contractual de regresion que exige min(a.id::text)::uuid, SECURITY DEFINER, propietario minimo y ausencia de GRANT EXECUTE en el reemplazo. La CI de este nuevo commit debe comprobarse por separado. B3 sigue NO-GO: no hay cutover, ni grants runtime, ni montaje de rutas operativas.
+
+## 34. F12 HTTP integrado ejercita ruta SQL de un argumento
+
+Commit c82011cd actualiza prueba Fastify HTTP cliente/camarero para ejecutar REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL, sin resolveAccount ni SELECT directo en login de API; comprueba exactamente un argumento hash de 32 bytes, bloqueo duplicado, autorizacion de camarero, rechazo cocina, privacidad y que aprobacion no mueve la cuenta. Esta prueba sigue usando SQL simulado, no reemplaza PG17. En la revision, el navegador de b80a8652 estaba SUCCESS, CI y bootstrap aun en ejecucion. B3 NO-GO, sin permisos ni montaje runtime.
