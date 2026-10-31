@@ -124,3 +124,7 @@ La firma de `sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
 ## 20. Contratos RPC y migraciones
 
 Commits afed9404 y dcdcd10f: traduccion de cuenta ausente y cuatro pruebas de contrato entre RPC, identidad de camarero, bloqueos y ausencia de grants. No se ha habilitado runtime ni probado este bloque en PG17 real. B3 NO-GO.
+
+## 21. Solicitud F12 sin SELECT directo de cuenta en API
+
+Los workflows del commit dcdcd10f finalizaron SUCCESS (CI, bootstrap y navegador). Nueva migracion candidata 20261031190000: RPC de un parametro (hash de sesion), resuelve una unica cuenta abierta dentro de SECURITY DEFINER, rechaza sesiones revocadas y cuentas ambiguas y delega la validacion final a la RPC existente. Sin grants ni activacion. Adaptador usa esta RPC por defecto sin resolveAccount; conserva compatibilidad de dos parametros como candidato no apto para cutover. Commits 7620b68f, 88af9d80, 20db8c2a, 003b3534. Pruebas unitarias y de contrato; falta validar PG17 real, autorizaciones SQL minimas, transacciones, API y PWA integradas. B3 NO-GO.
