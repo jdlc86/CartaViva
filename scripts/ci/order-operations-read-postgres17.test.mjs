@@ -1198,6 +1198,21 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    WHERE id=$1`,[item.orderId])).rows[0];
   assert.equal(historic.table_id,item.tableId);
   assert.equal(historic.session_id,item.sessionId);
+  // Diagnose the existing H4 transition against the transferred H6 fixture.
+  const transitionCapability=issueTransitionCapability({
+   actorId:kitchenId,lineId:item.lineId,targetStatus:'preparing',
+   correlationId:'h6_delivery_diagnostic_979',
+  });
+  try {
+   await operationsPool.query(`SELECT * FROM sabora.transition_order_line_authorized_candidate(
+    $1::text,$2::text,$3::uuid,$4::uuid,$5::text,$6::text,$7::bigint,$8::bigint,$9::text)`,[
+    transitionCapability.keyId,transitionCapability.databaseRole,kitchenId,item.lineId,
+    'preparing','h6_delivery_diagnostic_979',transitionCapability.issuedAtMs,
+    transitionCapability.expiresAtMs,transitionCapability.signatureHex,
+   ]);
+  } catch(error) {
+   assert.fail(`H6 transfer transition SQL diagnostic: ${error.code} ${error.message}`);
+  }
   const unauthorized=await h6App.inject({method:'GET',url:path,headers:{
    authorization:'Bearer invalid.token.value'}});
   assert.equal(unauthorized.statusCode,401);
