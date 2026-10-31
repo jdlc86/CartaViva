@@ -1,6 +1,8 @@
 -- H6/B2: sealed destination-aware board preserving the H4/H6 pickup contract.
 -- This is an independent candidate: no runtime grants or endpoint activation.
 BEGIN;
+-- The H4 reader has column-scoped access; H6 requires only this extra fallback column.
+GRANT SELECT(session_id) ON sabora.order_lines TO sabora_order_operations_fn_owner;
 CREATE FUNCTION sabora.read_order_operations_delivery_pickup_board_h6_candidate(
  p_key_id text,p_database_role text,p_actor_user_id uuid,p_staff_role text,
  p_status text,p_after_confirmed_at_ms bigint,p_after_order_id uuid,
