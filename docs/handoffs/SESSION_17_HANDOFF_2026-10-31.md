@@ -212,3 +212,7 @@ Commits 5be02c30 y f2c9cc3e: preflight no se limita ya a verificar SET sobre las
 ## 42. Prueba real PG17 de ACL efectiva F12
 
 Commits e19fc840 y db2216c7 agregan al arnes PG17 disposable un rol NOLOGIN transaccional de prueba, con concesion y revocacion de EXECUTE sobre RPC F12, comprobacion de firmas y de fuga por GRANT TO PUBLIC. Compara contra la superficie base del esquema (no presupone ausencia de otras funciones PUBLIC) y revierte toda la transaccion. Es evidencia de consulta ACL real, no aun prueba de conexiones con logins F12 separados ni autorizacion para crear roles/grants permanentes. CI pendiente; no habilitar composicion activa. B3 NO-GO.
+
+## 43. Preflight F12: distincion login NOINHERIT y capacidad SET ROLE
+
+Revision de seguridad: un login NOINHERIT puede recibir EXECUTE directamente o via PUBLIC; verificar solo la superficie de su rol F12 no basta. Commits 154aed98, 03f6f5af, 9379022c y correccion final aeb4b69e, 5643d07c: el preflight comprueba separadamente rol F12 (exactamente una RPC) y login previo a SET LOCAL ROLE (cero RPC ejecutables en esquema sabora), ademas de membresia SET unica, permisos de tabla/secuencia y ausencia de atributos elevados. Pruebas de mocks cubren concesiones directas/PUBLIC simuladas; PG17 agrega login NOINHERIT y grants transaccionales para comprobar la diferencia real. La politica de cero funciones en login puede requerir revocacion de grants PUBLIC heredados en un entorno aislado antes de pasar: no relajar el control por comodidad. CI aun pendiente. B3 NO-GO.
