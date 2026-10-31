@@ -81,19 +81,19 @@ async function inspect(pool, expectedRole, {
               (SELECT routine.prosecdef
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid =
-                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
               ) AS h6_delivery_board_is_definer,
               (SELECT owner.rolname
                  FROM pg_catalog.pg_proc routine
                  JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
                 WHERE routine.oid =
-                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
               ) AS h6_delivery_board_owner,
               (SELECT routine.proconfig =
                     ARRAY['search_path=pg_catalog, pg_temp']::text[]
                  FROM pg_catalog.pg_proc routine
                 WHERE routine.oid =
-                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
               ) AS h6_delivery_board_search_path_locked,
               (SELECT count(*)::integer
                  FROM unnest(ARRAY[
