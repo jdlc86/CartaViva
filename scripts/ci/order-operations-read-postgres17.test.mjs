@@ -1298,6 +1298,32 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   assert.equal(finalTask.claimed_by,loser);
   assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
    [item.lineId])).rows[0].status,'ready');
+  // Outbox must point at the transferred destination B, not the historical A.
+  // One event per audience/version; idempotent retries must not re-emit.
+  const outbox=(await admin.query(`SELECT id,table_id,session_id,staff_role,event_type,
+   aggregate_version,payload FROM sabora.event_outbox
+   WHERE aggregate_id=$1 AND event_type LIKE 'sabora.pickup.%'
+   ORDER BY id`,[reassigned.json().pickupTaskId])).rows;
+  assert.equal(outbox.length,8);
+  assert.deepEqual(outbox.map(event=>event.event_type),[
+   'sabora.pickup.ready','sabora.pickup.ready',
+   'sabora.pickup.claimed','sabora.pickup.claimed',
+   'sabora.pickup.claim_cancelled','sabora.pickup.claim_cancelled',
+   'sabora.pickup.claimed','sabora.pickup.claimed',
+  ]);
+  for(const event of outbox){
+   assert.equal(event.table_id,targetId);
+   assert.equal(event.session_id,targetSession);
+   assert.equal(event.payload.deliveryTableId,targetId);
+   assert.equal(Number(event.payload.deliveryVersion),2);
+   assert.equal(Number(event.aggregate_version),Number(event.payload.version));
+  }
+  assert.deepEqual(outbox.map(event=>event.staff_role),[
+   'waiter','kitchen','waiter','kitchen',
+   'waiter','kitchen','waiter','kitchen',
+  ]);
+  assert.deepEqual(outbox.map(event=>Number(event.aggregate_version)),
+   [1,1,2,2,3,3,4,4]);
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
