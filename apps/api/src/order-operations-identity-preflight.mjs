@@ -14,6 +14,7 @@ async function inspect(pool, expectedRole, {
   allowAuthorizedTransition = false,
   allowAuthorizedReads = false,
   allowStaffReader = false,
+  allowH6DeliveryBoard = false,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
   const client = await pool.connect();
@@ -74,6 +75,26 @@ async function inspect(pool, expectedRole, {
               has_function_privilege(current_user,
                 'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)',
                 'EXECUTE') AS authorized_history_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
+                'EXECUTE') AS h6_delivery_board_rpc_execute,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS h6_delivery_board_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS h6_delivery_board_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS h6_delivery_board_search_path_locked,
               (SELECT count(*)::integer
                  FROM unnest(ARRAY[
                    'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure,
@@ -231,6 +252,10 @@ async function inspect(pool, expectedRole, {
         row.authorized_rpc_execute !== allowAuthorizedTransition ||
         row.authorized_board_rpc_execute !== allowAuthorizedReads ||
         row.authorized_history_rpc_execute !== allowAuthorizedReads ||
+        row.h6_delivery_board_rpc_execute !== allowH6DeliveryBoard ||
+        row.h6_delivery_board_is_definer !== true ||
+        row.h6_delivery_board_owner !== 'sabora_order_operations_fn_owner' ||
+        row.h6_delivery_board_search_path_locked !== true ||
         row.candidate_is_invoker !== true ||
         row.authorized_is_definer !== true ||
         row.authorized_owner !== 'sabora_order_operations_fn_owner' ||
@@ -251,7 +276,8 @@ async function inspect(pool, expectedRole, {
         row.accessible_private_sequences !== 0 ||
         !Number.isSafeInteger(row.accessible_private_sequences) ||
         row.accessible_private_definer_routines !==
-          ((allowAuthorizedTransition ? 1 : 0) + (allowAuthorizedReads ? 2 : 0)) ||
+          ((allowAuthorizedTransition ? 1 : 0) + (allowAuthorizedReads ? 2 : 0) +
+           (allowH6DeliveryBoard ? 1 : 0)) ||
         !Number.isSafeInteger(row.accessible_private_definer_routines) ||
         !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
         (row.password_valid_until !== null &&
@@ -315,4 +341,16 @@ export async function preflightOrderOperationsRuntimeIdentity({pool, role} = {})
 export async function preflightOrderTransitionStaffIdentity({pool, role} = {}) {
   const expectedRole = validateRole(role);
   return inspect(pool, expectedRole, {allowStaffReader: true});
+}
+
+// H6/B2 candidate is intentionally separate from the H4 gate. Runtime
+// registration must fail closed if the H6 function is missing, unsealed,
+// executable by an unexpected role or if any private table becomes readable.
+export async function preflightOrderOperationsH6DeliveryIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {
+    allowAuthorizedTransition: true,
+    allowAuthorizedReads: true,
+    allowH6DeliveryBoard: true,
+  });
 }
