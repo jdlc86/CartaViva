@@ -27,8 +27,8 @@ jobs:
       - name: Install exact dependencies
         run: pnpm install --frozen-lockfile
       # Consolidated entrypoint executes pnpm test and
-      # catalog-postgres17-node-driver-smoke.sh; the downstream gate
-      # functional-validation-contract.mjs remains part of pnpm test.
+      # catalog-postgres17-node-driver-smoke.sh; the downstream functional
+      # validation command is executed separately in the production gate.
       - name: H6 consolidated acceptance (contracts + disposable PG17 + Chromium)
         run: bash scripts/ci/h6-acceptance-gate.sh
       - name: Publish consolidated H6 acceptance logs
