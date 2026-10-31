@@ -78,6 +78,12 @@ Esta auditoría no ejecuta PostgreSQL ni acredita un nuevo PASS; es lectura de c
 
 **Este archivo es el punto estable para la sesión 16**. Al completar un hito importante, **editar este mismo archivo** en GitHub, no generar una nueva versión dispersa ni sustituir normativa. Actualizar: fecha, rama/PR/HEAD observado, bloque cerrado, archivos relevantes, evidencia de PG17/Playwright/CI del SHA exacto, restricciones, riesgos y **siguiente acción concreta**. Preservar la historia relevante; marcar superseded cuando cambie una conclusión. Cada commit documental cambia HEAD: verificar sus checks o dejar explícito «pendiente». No confundir «PR abierto», «código implementado», «CI verde» y «GO producción».
 
+### Cambio de código pendiente de aceptación — autorización de recogida por B (31-10-2026)
+
+Se añadió la migración aditiva `20261031110000_sabora_h6_pickup_effective_destination_authorization_candidate.sql` (commit `d034d9b`) que sustituye la comprobación de visita **histórica A** de `manage_pickup_task_h6_candidate` por la combinación de destino efectivo por línea, `customer_account_operational_bindings` vigente, mesa/sesión activa, `ordering_state='open'`, visita actual no revocada y versión QR. Conserva el orden de bloqueo binding → mesa → visita → línea → tarea, la firma HMAC y el resto de la lógica de idempotencia, transición y eventos. Se registró en la auditoría de migraciones (commit `7c5115a`) y se incrementó el total esperado a 65 (commit `51f54f4`).
+
+**IMPORTANTE: CÓDIGO CANDIDATO NO CERTIFICADO.** Faltan resultados de CI/PG17 y una regresión **positiva** que demuestre recogida en B tras revocar A, además de negativos ante revocar/reocupar B, QR cambiado y binding desalineado. No habilitar F12 ni declarar GO solo por esta migración. Revisar los locks y privilegios reales en PostgreSQL antes de aceptar. El documento se actualiza mientras seguimos en sesión 15.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
@@ -86,7 +92,7 @@ Esta auditoría no ejecuta PostgreSQL ni acredita un nuevo PASS; es lectura de c
 | 31-10-2026 | Revocación A rechazada sin efectos parciales | `b1ef28a`, `16888b9` | Regresión negativa; **NO-GO** recogida positiva en B |
 | 31-10-2026 | Preflight H4 compatible con RPC H6 opcional | `7af20b5`; CI `41188630375`, Bootstrap `41188630379` | PASS focalizado |
 | 31-10-2026 | Inventario F12 y puertas de cierre | `65b34ec` | Documentado; implementación pendiente |
-| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
+| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Autorización de recogida por destino efectivo B: migración y auditoría (CI/PG17 pendiente) | `d034d9b`, `7c5115a`, `51f54f4` | Implementado candidato; **NO-GO** hasta pruebas |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
 
 ## 8. Prompt corto para iniciar la sesión 16
 
