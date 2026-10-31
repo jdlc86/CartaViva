@@ -172,3 +172,7 @@ CI de 1e4679b9: browser SUCCESS, CI/bootstrap FAILURE, PG17 33/35; los dos escen
 ## 32. Correccion sintactica del inventario de migraciones
 
 CI e671b854: navegador SUCCESS, CI y bootstrap FAILURE antes de PG17; Block 1 Node 1122/1123 por SyntaxError en scripts/ci/migration-audit.mjs. La nueva entrada de auditoria quedo separada por doble coma. Commit 025c6815 corrige la sintaxis. No se debe inferir que la migracion PG17 esta validada hasta completar el nuevo pipeline. B3 NO-GO.
+
+## 33. CI verde y proteccion de regresion PG17 F12
+
+Los tres workflows de 025c6815 finalizaron SUCCESS: Sabora CI 41238638765, Bootstrap lockfile 41238638918, navegador 41238638788. La migracion incremental para PostgreSQL 17 y los dos escenarios de F12 superaron la aceptacion consolidada. Commit b80a8652 agrega prueba contractual de regresion que exige min(a.id::text)::uuid, SECURITY DEFINER, propietario minimo y ausencia de GRANT EXECUTE en el reemplazo. La CI de este nuevo commit debe comprobarse por separado. B3 sigue NO-GO: no hay cutover, ni grants runtime, ni montaje de rutas operativas.
