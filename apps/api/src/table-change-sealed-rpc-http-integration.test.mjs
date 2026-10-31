@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_SQL,
+import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,
  DECIDE_TABLE_CHANGE_H6_SQL} from './table-change-sealed-rpc-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
 import {registerTableChangeStaffHttp} from './table-change-http-candidate.mjs';
@@ -22,7 +22,8 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
  let state='none';
  const query=async(sql,args)=>{
   sqlCalls.push({sql,args});
-  if(sql===REQUEST_TABLE_CHANGE_H6_SQL){
+  if(sql===REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL){
+   assert.deepEqual(args,[Buffer.alloc(32,17)],'resolved request must bind only the session hash');
    if(state!=='none')throw Object.assign(Error('table_change_cooldown'),{code:'23514'});
    state='pending';
    return {rows:[{request_id:requestId,request_status:state,expires_at:expiry}]};
@@ -40,7 +41,6 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
    assert.equal(token,'s'.repeat(43));
    return Buffer.alloc(32,17);
   },
-  resolveAccount:async()=>({accountId,closed:false}),
   verifyStaff:async({verifiedIdentity,verifiedStaff})=>{
    assert.equal(verifiedIdentity.id,'staff-authenticated');
    assert.equal(verifiedStaff.role,'waiter');
@@ -106,8 +106,8 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
   assert.equal(duplicate.statusCode,409,'known cooldown maps to 409');
   assert.equal(state,'approved','approval must not move the economic account');
   assert.deepEqual(sqlCalls.map(x=>x.sql),[
-   REQUEST_TABLE_CHANGE_H6_SQL,DECIDE_TABLE_CHANGE_H6_SQL,
-   DECIDE_TABLE_CHANGE_H6_SQL,REQUEST_TABLE_CHANGE_H6_SQL
+   REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL,
+   DECIDE_TABLE_CHANGE_H6_SQL,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL
   ]);
   assert.deepEqual(sqlCalls[1].args,[staffId,requestId,true]);
  }finally{await app.close();}
