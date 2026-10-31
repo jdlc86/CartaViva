@@ -22,7 +22,8 @@ const rpcFailure=(error,operation)=>{
  if(operation==='decide'&&code==='42501'&&message==='table_change_request_missing')
   return Error('table_change_request_not_found',{cause:error});
  if(operation==='decide'&&code==='42501'&&
-  ['table_change_staff_forbidden','table_change_account_closed'].includes(message))
+  ['table_change_staff_forbidden','table_change_account_closed',
+   'table_change_account_missing'].includes(message))
   return Error('table_change_unauthorized',{cause:error});
  return error;
 };
