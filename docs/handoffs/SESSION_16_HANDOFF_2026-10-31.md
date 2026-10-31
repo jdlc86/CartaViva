@@ -294,9 +294,16 @@ El commit `ee54c216` y el documental `9473253d` terminaron con ambos workflows *
 - Adaptador HTTP candidato de decisión camarero/admin, no montado en runtime: `45dcb513`; pruebas de autorización, carga exacta, expiración y errores `4c5f74c9`. Ambos workflows de `4c5f74c9` **SUCCESS**.
 - Respuesta HTTP de decisión restringida a `requestId,status` y prueba de privacidad: `4081fc25`, `87632f71`. Ambos workflows de `87632f71` **SUCCESS**.
 - Transporte PWA de solicitud alineado con el recibo del servidor, sin `accountId`: `ee41f95d`, `fdd22b8b`. Sabora CI, Bootstrap y browser conformance de `fdd22b8b`: **SUCCESS**.
-- Recibo HTTP del cliente limitado a `id,status,sourceTableId,createdAtMs,expiresAtMs`: `aa4bb5cc`; pruebas de privacidad `c68640ff`. Los tres workflows de `c68640ff`: **SUCCESS**. Test de proyección exacta adicional: `ef4668ff`, **CI pendiente**.
+- Recibo HTTP del cliente limitado a `id,status,sourceTableId,createdAtMs,expiresAtMs`: `aa4bb5cc`; pruebas de privacidad `c68640ff`. Los tres workflows de `c68640ff`: **SUCCESS**. Test de proyección exacta adicional: `ef4668ff`, **Sabora CI `41209358131`, Bootstrap `41209358138` y conformidad del navegador `41209358129`: SUCCESS**.
 - **Límite crítico:** estos avances son candidatos aislados. `tableChange` es opcional en HTTP, el servicio no está compuesto con funciones SECURITY DEFINER mínimas, la función de confirmación con transferencia no tiene EXECUTE runtime, y no hay recorrido PWA/sala/cocina completo. **B3 abierto; F01–F28/R01–R10 sin cierre; NO-GO.**
 - Prioridad siguiente: **integración grande** de autorización transaccional SQL (cliente y camarero) con identidad verificada, corte H6 por allowlist/preflight/grants mínimos, SSE durables y PWA aprobada, seguida de PG17 y Playwright E2E. No declarar cierre por tests de adaptadores ni habilitar funciones con permisos directos sobre tablas.
+
+### Verificación final del último bloque candidato — 31-10-2026
+
+- HEAD previo `e7a23155` (actualización de continuidad): **Sabora CI `41209386638` SUCCESS**, **Bootstrap `41209386655` SUCCESS** y **conformidad navegador `41209386632` SUCCESS**.
+- `ef4668ff` certifica únicamente el contrato de proyección HTTP del recibo; no demuestra integración transaccional ni recorrido visual completo.
+- **Estado para la siguiente sesión:** PR Draft #43, rama `integration/sabora-h6-b2-delivery-board-contract-20261031`, B3 aún abierto y **NO-GO** de activación. Retomar desde la normativa vigente, composición SQL de mínimos privilegios y E2E real, sin confundir CI verde con cierre F12.
+- No realizar merge, despliegue, ni operaciones sobre infraestructura compartida sin autorización expresa.
 
 ## 8. Prompt corto para iniciar la sesión 16
 
