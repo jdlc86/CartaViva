@@ -23,12 +23,12 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
  const query=async(sql,args)=>{
   sqlCalls.push({sql,args});
   if(sql===REQUEST_TABLE_CHANGE_H6_SQL){
-   if(state!=='none')throw Error('table_change_cooldown');
+   if(state!=='none')throw Object.assign(Error('table_change_cooldown'),{code:'23514'});
    state='pending';
    return {rows:[{request_id:requestId,request_status:state,expires_at:expiry}]};
   }
   if(sql===DECIDE_TABLE_CHANGE_H6_SQL){
-   if(state!=='pending')throw Error('table_change_already_decided');
+   if(state!=='pending')throw Object.assign(Error('table_change_already_decided'),{code:'23514'});
    state=args[2]?'approved':'rejected';
    return {rows:[{status:state}]};
   }
@@ -100,10 +100,10 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
   assert.equal(approved.body.includes(staffId),false);
   const replay=await app.inject({method:'POST',url:decisionPath,
    headers:decisionHeaders,payload:{requestId,decision:'approved'}});
-  assert.equal(replay.statusCode,503,'unmapped database decision must fail closed');
+  assert.equal(replay.statusCode,409,'known decided conflict maps to 409');
   const duplicate=await app.inject({method:'POST',url:requestPath,
    headers:customerHeaders,payload:{}});
-  assert.equal(duplicate.statusCode,503,'unmapped database cooldown must fail closed');
+  assert.equal(duplicate.statusCode,409,'known cooldown maps to 409');
   assert.equal(state,'approved','approval must not move the economic account');
   assert.deepEqual(sqlCalls.map(x=>x.sql),[
    REQUEST_TABLE_CHANGE_H6_SQL,DECIDE_TABLE_CHANGE_H6_SQL,
