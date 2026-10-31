@@ -22,7 +22,7 @@ function setup({role='waiter',requestRows,decisionRows}={}){
   withStaffTransaction:async fn=>fn(query),
   hashSession:async()=>hash,
   resolveAccount:async()=>({accountId:account,closed:false}),
-  verifyStaff:async()=>({id:staffId,role})
+  verifyStaff:async()=>({userId:staffId,role})
  });
  return {rpc,calls};
 }
@@ -90,7 +90,7 @@ test('F12 SQL errors map only when SQLSTATE and message both match',async()=>{
   const rpc=createSealedTableChangeRpcCandidate({
    withCustomerTransaction:fn=>fn(query),withStaffTransaction:fn=>fn(query),
    hashSession:async()=>Buffer.alloc(32),resolveAccount:async()=>({accountId:account}),
-   verifyStaff:async()=>({id:staffId,role:'waiter'})
+   verifyStaff:async()=>({userId:staffId,role:'waiter'})
   });
   const action=operation==='request'?
    ()=>rpc.request({customerSessionToken:'token'}):
