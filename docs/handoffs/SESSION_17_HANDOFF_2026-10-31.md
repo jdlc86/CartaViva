@@ -144,3 +144,7 @@ El workflow de 199199ab fallo en CI y bootstrap: la cobertura del registro ya er
 ## 25. CI verde y nueva prueba PG17 F12
 
 Commit e676fcc3: los tres workflows terminaron SUCCESS: Sabora CI 41233543221, bootstrap lockfile 41233543269 y browser 41233543216. Commit 13479832 agrega a scripts/ci/table-change-root-postgres17.test.mjs una prueba contra PG17 descartable: verifica SECURITY DEFINER y owner, ausencia de EXECUTE para anon/authenticated/H6 runtime, rechazo de hash de sesion falsificado y malformado con SQLSTATE 42501/22023, sin crear solicitudes. Resultado del nuevo commit aun pendiente de CI. La prueba negativa no certifica flujo positivo ni grant operativo; B3 NO-GO.
+
+## 26. F12 pruebas PostgreSQL 17 de solicitud positiva y ambiguedad
+
+Commit 13479832 obtuvo los tres workflows SUCCESS: CI 41234873106, bootstrap 41234873137, navegador 41234873203. Commit e2c40dc1 agrega al arnes PG17 dos escenarios transaccionales reales: sesion valida con una unica cuenta abierta y visita QR crea solicitud pendiente sin cambiar la vinculacion, rechaza duplicado en cooldown; dos cuentas abiertas del mismo cliente provocan 42501 y cero solicitudes. Pendiente verificar CI del nuevo commit. La seleccion de cuenta unica es una decision candidata y debe contrastarse con la normativa de cuentas antes del cutover; no hay grants ni rutas productivas. B3 NO-GO.
