@@ -16,3 +16,6 @@ No se permite acceso a Supabase operativo, VPS, Fleetia ni despliegue. No se con
 
 ## Criterio de cierre
 El PASS del workflow es necesario, pero no suficiente: siguen pendientes la integración opt-in de la API, el preflight estricto de la nueva función y el E2E completo con tareas de recogida A→B y concurrencia. **NO-GO** hasta evidencias y revisión.
+
+## Decisión posterior: cierre de la exploración del agente (31-10-2026)
+La automatización de corrección autónoma queda **aparcada**. La propuesta se conserva en `docs/ideas-candidatas/README.md`. No se añadirá GitHub App, worker, credenciales ni bucle de autocorrección. Se mantiene el mecanismo tradicional de desarrollo y las comprobaciones CI ya existentes, priorizando cerrar los hitos funcionales. Esta nota no cambia el estado NO-GO de H6/B2.
