@@ -1808,3 +1808,64 @@ test('PG17 F12 resolved request is sealed and rejects forged session without wri
   assert.equal(after,before);
  });
 });
+
+test('PG17 F12 resolved request creates exactly one pending grant for a unique open account',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABJ'});
+  await insertVisit(client,{tableId:ids.sourceTable,sessionId:ids.sourceSession,visitKey:sourceVisit});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,
+    outstanding_cents) VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer
+  ]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit
+  ]);
+  await client.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
+   VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
+  const call=()=>client.query(
+   'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
+   [tokenHash]);
+  const first=(await call()).rows[0];
+  assert.equal(first.request_status,'pending');
+  assert.equal(first.expires_at instanceof Date,true);
+  const saved=(await client.query(`SELECT q.account_id,q.status,q.source_table_id,
+   q.destination_table_id,q.requesting_session_hash,b.table_id AS current_table
+   FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   WHERE q.id=$1`,[first.request_id])).rows[0];
+  assert.equal(saved.account_id,ids.sourceAccount);
+  assert.equal(saved.status,'pending');
+  assert.equal(saved.source_table_id,ids.sourceTable);
+  assert.equal(saved.current_table,ids.sourceTable);
+  assert.equal(saved.destination_table_id,null);
+  assert.deepEqual(saved.requesting_session_hash,tokenHash);
+  const cooldown=await expectSqlError(client,call,/table_change_cooldown/);
+  assert.equal(cooldown.code,'23514');
+  const count=(await client.query(`SELECT count(*)::int AS total
+   FROM sabora.customer_table_change_requests WHERE customer_id=$1`,[ids.customer])).rows[0].total;
+  assert.equal(count,1);
+ });
+});
+
+test('PG17 F12 resolved request denies ambiguous open accounts without creating a grant',async()=>{
+ await transaction(async client=>{
+  await insertIdentityAndTables(client,{publicId:'SB-BABABABABABK'});
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,
+    outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400),
+         ($6,$7,$8,$9,$5,'pay_at_end',clock_timestamp(),1800)`,[
+   ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer,
+   ids.destinationAccount,ids.destinationTable,ids.destinationSession,destinationVisit
+  ]);
+  const error=await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
+   [tokenHash]),/table_change_account_forbidden/);
+  assert.equal(error.code,'42501');
+  const count=(await client.query(`SELECT count(*)::int AS total
+   FROM sabora.customer_table_change_requests WHERE customer_id=$1`,[ids.customer])).rows[0].total;
+  assert.equal(count,0);
+ });
+});
