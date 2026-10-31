@@ -244,7 +244,6 @@ test.before(async () => {
   await admin.query(`GRANT EXECUTE ON FUNCTION
     sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text),
     sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text),
-    sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text),
     sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)
     TO ${operationsRole}`);
   await admin.query(`INSERT INTO sabora.order_operation_signing_keys
@@ -993,6 +992,7 @@ test('Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and 
 });
 
 test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated pending lines hidden',async()=>{
+ await admin.query(`GRANT EXECUTE ON FUNCTION sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text) TO ${operationsRole}`);
  const item=await directFixture(972);
  const capability=issueReadCapability({
   actorId:kitchenId,role:'kitchen',operation:'board',
