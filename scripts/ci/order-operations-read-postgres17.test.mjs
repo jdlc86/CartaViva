@@ -1011,6 +1011,6 @@ test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated p
   'pickup_claimed_display_id','delivery_table_id','delivery_session_id',
   'delivery_visit_key','delivery_version'])
   assert.ok(valid.fields.some(field=>field.name===name),name);
- await assert.rejects(operationsPool.query(sql,[...args.slice(0,3),'waiter',...args.slice(4)]),
+ await assert.rejects(operationsPool.query(sql,[...args.slice(0,3),'waiter','ready',...args.slice(5)]),
   /invalid_order_operation_read_capability/);
 });
