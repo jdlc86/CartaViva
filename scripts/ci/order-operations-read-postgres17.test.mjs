@@ -1381,6 +1381,22 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
     assert.ok(replayFrames.includes('id: '+id+String.fromCharCode(10)));
   }finally{await sseApp.close();}
 
+  // Fail-closed regression: current H6 pickup RPC still requires the historical
+  // A visit. This is a documented NO-GO gap, not an accepted transfer flow.
+  const beforeClosure=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  await admin.query(`UPDATE sabora.customer_table_visits
+   SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
+   [item.tableId,item.sessionId,item.customerId]);
+  const afterSourceRevocation=await pickup(winner,claimPath+'/cancel',4,
+   'h6_delivery_closed_origin_cancel_979');
+  assert.equal(afterSourceRevocation.statusCode,403,
+   'unresolved H6/B2 origin-visit dependency must fail closed');
+  const afterClosure=(await admin.query(`SELECT state,version,claimed_by
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
+  assert.deepEqual(afterClosure,beforeClosure,
+   'rejected pickup must not change assignment or version');
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
