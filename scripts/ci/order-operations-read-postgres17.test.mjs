@@ -1349,7 +1349,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
      body+=new TextDecoder().decode(chunk.value);
      if(body.includes('event: access-revoked')||body.includes('event: resync-required'))
       throw Error('h6_transfer_sse_rejected:'+body.slice(-900));
-     if(expected.every(id=>body.includes('id: '+id+'\\n')))break;
+     if(expected.every(id=>body.includes('id: '+id+String.fromCharCode(10))))break;
     }
     return body;
    }finally{await reader.cancel().catch(()=>{});}
@@ -1366,7 +1366,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    assert.equal(stream.status,200);
    const allIds=outbox.filter(e=>e.staff_role==='waiter').map(e=>Number(e.id));
    const firstFrames=await readFrames(stream,allIds);
-   for(const id of allIds)assert.ok(firstFrames.includes('id: '+id+'\\n'));
+   for(const id of allIds)assert.ok(firstFrames.includes('id: '+id+String.fromCharCode(10)));
    assert.ok(firstFrames.includes('event: sabora.pickup.claim_cancelled'));
    assert.ok(firstFrames.includes('deliveryTableId'));
    assert.ok(firstFrames.includes(targetId));
@@ -1376,9 +1376,9 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    });
    assert.equal(replay.status,200);
    const replayFrames=await readFrames(replay,allIds.slice(2));
-   assert.ok(!replayFrames.includes('id: '+allIds[1]+'\\n'));
+   assert.ok(!replayFrames.includes('id: '+allIds[1]+String.fromCharCode(10)));
    for(const id of allIds.slice(2))
-    assert.ok(replayFrames.includes('id: '+id+'\\n'));
+    assert.ok(replayFrames.includes('id: '+id+String.fromCharCode(10)));
   }finally{await sseApp.close();}
 
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
