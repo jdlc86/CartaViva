@@ -1818,7 +1818,7 @@ const scenarioA=Object.freeze({
  destinationSession:'b0a00000-0000-4000-8000-000000000105',
  sourceAccount:'b0a00000-0000-4000-8000-000000000106',
  destinationAccount:'b0a00000-0000-4000-8000-000000000107',
- sourceVisit:'f12_source_101',destinationVisit:'f12_destination_101'
+ token:Buffer.alloc(32,211),sourceVisit:'f12_source_101',destinationVisit:'f12_destination_101'
 });
 const scenarioB=Object.freeze({
  customer:'b0a00000-0000-4000-8000-000000000201',
@@ -1828,7 +1828,7 @@ const scenarioB=Object.freeze({
  destinationSession:'b0a00000-0000-4000-8000-000000000205',
  sourceAccount:'b0a00000-0000-4000-8000-000000000206',
  destinationAccount:'b0a00000-0000-4000-8000-000000000207',
- sourceVisit:'f12_source_201',destinationVisit:'f12_destination_201'
+ token:Buffer.alloc(32,212),sourceVisit:'f12_source_201',destinationVisit:'f12_destination_201'
 });
 async function insertF12Visit(client,scenario){
  await client.query(`INSERT INTO sabora.customer_table_visits(
@@ -1841,7 +1841,7 @@ async function insertF12IsolatedIdentity(client,scenario){
  VALUES($1,$2,'F12 PG17 isolated')`,[
  scenario.customer,scenario===scenarioA?'SB-BABABABABABJ':'SB-BABABABABABK']);
  await client.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
- VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[scenario.customer,tokenHash]);
+ VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[scenario.customer,scenario.token]);
  await client.query(`INSERT INTO sabora.dining_tables
  (id,number,capacity,qr_token_hash,session_id,ordering_state)
  VALUES($1,$2,4,$5,$6,'open'),($3,$4,4,$5,$7,'open')`,[
@@ -1866,7 +1866,7 @@ test('PG17 F12 resolved request creates exactly one pending grant for a unique o
    VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
   const call=()=>client.query(
    'SELECT * FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)',
-   [tokenHash]);
+   [scenarioA.token]);
   const first=(await call()).rows[0];
   assert.equal(first.request_status,'pending');
   assert.equal(first.expires_at instanceof Date,true);
