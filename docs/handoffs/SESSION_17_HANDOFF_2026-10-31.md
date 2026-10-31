@@ -140,3 +140,7 @@ Commit 6fed2489: navegador SUCCESS; Sabora CI y bootstrap FAILURE. Log de CI: 11
 ## 24. Segundo fallo de auditoria de migraciones
 
 El workflow de 199199ab fallo en CI y bootstrap: la cobertura del registro ya era correcta, pero scripts/ci/migration-audit.test.mjs conservaba la asercion 65 migraciones frente a 66 reales. Corregido a 66 en e676fcc3. Navegador SUCCESS; CI y bootstrap previos FAILURE. Pendiente verificar workflows nuevos, PG17 real y runtime F12. B3 NO-GO.
+
+## 25. CI verde y nueva prueba PG17 F12
+
+Commit e676fcc3: los tres workflows terminaron SUCCESS: Sabora CI 41233543221, bootstrap lockfile 41233543269 y browser 41233543216. Commit 13479832 agrega a scripts/ci/table-change-root-postgres17.test.mjs una prueba contra PG17 descartable: verifica SECURITY DEFINER y owner, ausencia de EXECUTE para anon/authenticated/H6 runtime, rechazo de hash de sesion falsificado y malformado con SQLSTATE 42501/22023, sin crear solicitudes. Resultado del nuevo commit aun pendiente de CI. La prueba negativa no certifica flujo positivo ni grant operativo; B3 NO-GO.
