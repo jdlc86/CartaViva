@@ -69,14 +69,18 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
      // Expose only the request receipt; never return account, customer,
      // session, visit, audit or internal store fields to the browser.
      if(!result||typeof result.id!=='string'||result.status!=='pending'||
-        typeof result.sourceTableId!=='string'||
-        !Number.isSafeInteger(result.createdAtMs)||
-        !Number.isSafeInteger(result.expiresAtMs)||
-        result.expiresAtMs<=result.createdAtMs)
+        !Number.isSafeInteger(result.expiresAtMs)||result.expiresAtMs<=0||
+        (result.sourceTableId!==undefined&&typeof result.sourceTableId!=='string')||
+        (result.createdAtMs!==undefined&&
+         (!Number.isSafeInteger(result.createdAtMs)||result.createdAtMs<0||
+          result.expiresAtMs<=result.createdAtMs)))
       throw Error('invalid_table_change_request_result');
+     // The sealed RPC returns only ID, state and deadline. Do not synthesize
+     // a creation timestamp or disclose operational table/account bindings.
      return reply.header('Cache-Control','no-store').code(201).send({
-      id:result.id,status:'pending',sourceTableId:result.sourceTableId,
-      createdAtMs:result.createdAtMs,expiresAtMs:result.expiresAtMs
+      id:result.id,status:'pending',expiresAtMs:result.expiresAtMs,
+      ...(result.sourceTableId===undefined?{}:{sourceTableId:result.sourceTableId}),
+      ...(result.createdAtMs===undefined?{}:{createdAtMs:result.createdAtMs})
      });
     }catch(error){
      const failure=code(error);
