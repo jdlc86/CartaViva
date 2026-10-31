@@ -64,11 +64,11 @@ export function createSealedTableChangeRpcCandidate({
     throw Error('invalid_table_change_decision');
    return withStaffTransaction(async query=>{
     const staff=await verifyStaff({query,verifiedIdentity,verifiedStaff});
-    if(!staff||!UUID.test(staff.id??'')||!['admin','waiter'].includes(staff.role))
+    if(!staff||!UUID.test(staff.userId??'')||!['admin','waiter'].includes(staff.role))
      throw Error('table_change_unauthorized');
     let row;
     try{row=await one(query,DECIDE_TABLE_CHANGE_H6_SQL,
-     [staff.id,requestId,decision==='approved']);}
+     [staff.userId,requestId,decision==='approved']);}
     catch(error){throw rpcFailure(error,'decide');}
     if(row.status!==decision)throw Error('table_change_request_not_pending');
     return Object.freeze({request:Object.freeze({id:requestId,status:decision})});
