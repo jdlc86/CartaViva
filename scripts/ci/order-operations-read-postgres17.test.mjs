@@ -1411,6 +1411,22 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0];
   assert.equal(afterOriginCancel.state,'ready');
   assert.equal(Number(afterOriginCancel.version),5);
+  // QR revocation is independently enforced even while B's visit and
+  // session remain active; reset only inside this isolated test fixture.
+  await admin.query(`UPDATE sabora.dining_tables
+    SET qr_version=qr_version+1 WHERE id=$1`,[targetId]);
+  const deniedAfterQrRotation=await pickup(winner,claimPath,5,
+   'h6_delivery_rotated_qr_claim_979');
+  assert.equal(deniedAfterQrRotation.statusCode,403,
+   'rotating the B QR invalidates the old visit before any reoccupation');
+  assert.deepEqual((await admin.query(`SELECT state,version,claimed_by
+    FROM sabora.pickup_tasks WHERE order_line_id=$1`,[item.lineId])).rows[0],
+    afterOriginCancel);
+  assert.equal((await admin.query(`SELECT count(*)::int AS total
+    FROM sabora.h6_action_requests WHERE actor_user_id=$1 AND correlation_id=$2`,
+    [winner,'h6_delivery_rotated_qr_claim_979'])).rows[0].total,0);
+  await admin.query(`UPDATE sabora.dining_tables
+    SET qr_version=qr_version-1 WHERE id=$1`,[targetId]);
   await admin.query(`UPDATE sabora.customer_table_visits
    SET revoked_at=clock_timestamp()
    WHERE table_id=$1 AND session_id=$2 AND customer_id=$3`,
