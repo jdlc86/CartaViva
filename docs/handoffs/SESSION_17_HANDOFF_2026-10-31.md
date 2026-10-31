@@ -160,3 +160,7 @@ CI de be30ebf2: navegador SUCCESS, Sabora CI y bootstrap FAILURE; PG17 Block 2B 
 ## 29. PG17 validacion de formato de visit_key
 
 CI de 0bd69048: browser SUCCESS, CI/bootstrap FAILURE; los dos escenarios F12 alcanzaron INSERT de customer_accounts y fallaron por customer_accounts_visit_key_check (23514), antes de invocar RPC. Commit 0c20190e adapta los visit_key de fixtures al formato de longitud canonico, sin cambiar restricciones de base de datos. CI pendiente. B3 NO-GO.
+
+## 30. Auditoria de uso de token en escenarios F12
+
+Revision de los dos escenarios PG17 tras corregir visit_key detecto dos referencias residuales al tokenHash global: comparacion de requesting_session_hash y llamada de cuenta ambigua. Commit 1e4679b9 sustituye ambas por scenarioA.token y scenarioB.token. Los workflows de 0c20190e seguian en ejecucion en el momento de la revision; CI del nuevo commit pendiente. B3 NO-GO.
