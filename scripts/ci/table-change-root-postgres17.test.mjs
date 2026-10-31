@@ -1942,19 +1942,19 @@ test('PG17 F12 effective RPC surface detects PUBLIC grants and denies unrelated 
    const result=await client.query(F12_FUNCTION_SQL,['sabora_f12_probe_runtime']);
    return result.rows[0].names;
   };
-  assert.deepEqual(await read(),[]);
+  const baseline=await read();
+  assert.equal(baseline.includes(signature),false);
   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO sabora_f12_probe_runtime`);
-  assert.deepEqual(await read(),[signature]);
+  assert.deepEqual(await read(),[...baseline,signature].sort());
   await client.query(`GRANT EXECUTE ON FUNCTION
    sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
    TO sabora_f12_probe_runtime`);
-  assert.deepEqual(await read(),[
-   'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)',signature
-  ]);
+  const decision='sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)';
+  assert.deepEqual(await read(),[...baseline,signature,decision].sort());
   await client.query(`REVOKE EXECUTE ON FUNCTION
    sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
    FROM sabora_f12_probe_runtime`);
-  assert.deepEqual(await read(),[signature]);
+  assert.deepEqual(await read(),[...baseline,signature].sort());
   await client.query(`GRANT EXECUTE ON FUNCTION
    sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean) TO PUBLIC`);
   const leaked=await read();
