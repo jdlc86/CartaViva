@@ -128,6 +128,10 @@ GitHub Actions `41190914108` (Sabora CI) y `41190914066` (Bootstrap) **FAIL** en
 
 La primera corrección `0723723d` no resolvió el CI: Sabora `41191271924` y Bootstrap `41191271944` FAIL. El log identifica **23514 customer_profiles_public_id_check**: el ID alternativo no cumple el contrato de formato de perfil. La variante documental `c456805` también FAIL. La corrección `ee54c216` utiliza `SB-ABCDEFGHJKL8`, compatible con los identificadores usados por el fixture y sin colisión con su sufijo anterior. **No hay PASS de este commit hasta concluir Sabora CI `41191578136` y Bootstrap `41191578215`.** No atribuir el error a la autorización F12: ambas caídas ocurren en el INSERT del nuevo cliente antes de ejecutar la comprobación de pickup.
 
+### Colisión de sufijos generados: tercer ajuste del fixture (31-10-2026)
+
+El commit `ee54c216` y el documental `9473253d` terminaron con ambos workflows **FAIL** (Sabora `41191578136`, `41191611702`; Bootstrap `41191578215`, `41191611758`). El log revela de nuevo `23505 customer_profiles_public_id_key`. Inspección del fixture: `integratedFixture` genera IDs `SB-ABCDEFGHJKL2` a `SB-ABCDEFGHJKL9`; por ello el `...8` elegido colisiona con otro cliente del mismo test. Commit `571df900` cambia el segundo ocupante a `SB-ZYXWVUTSRQPO` (12 letras, prefijo distinto), evitando ese generador. **CI pendiente:** Sabora `41191953441`, Bootstrap `41191953457`. La corrección anterior se documentó erróneamente como «sin colisión»; esta anotación la rectifica expresamente.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
