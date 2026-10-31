@@ -180,3 +180,7 @@ Los tres workflows de 025c6815 finalizaron SUCCESS: Sabora CI 41238638765, Boots
 ## 34. F12 HTTP integrado ejercita ruta SQL de un argumento
 
 Commit c82011cd actualiza prueba Fastify HTTP cliente/camarero para ejecutar REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL, sin resolveAccount ni SELECT directo en login de API; comprueba exactamente un argumento hash de 32 bytes, bloqueo duplicado, autorizacion de camarero, rechazo cocina, privacidad y que aprobacion no mueve la cuenta. Esta prueba sigue usando SQL simulado, no reemplaza PG17. En la revision, el navegador de b80a8652 estaba SUCCESS, CI y bootstrap aun en ejecucion. B3 NO-GO, sin permisos ni montaje runtime.
+
+## 35. HTTP F12 verde y control real PG17 de superficie EXECUTE
+
+Los workflows de c82011cd terminaron SUCCESS: Sabora CI 41239753803, Bootstrap 41239753797 y navegador 41239753942. Commit 2bc57a1a agrega prueba PostgreSQL 17 de catalogo para la funcion resolved request: SECURITY DEFINER, owner sabora_h6_fn_owner y EXECUTE denegado a anon, authenticated, sabora_h6_customer_runtime, operations_runtime, provider_runtime y sabora_admin_writer. Esta prueba no crea roles, grants ni hace cutover; el nuevo pipeline debe comprobarse. B3 NO-GO.
