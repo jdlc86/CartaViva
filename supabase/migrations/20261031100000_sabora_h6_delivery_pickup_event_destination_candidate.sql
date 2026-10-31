@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION sabora.emit_pickup_task_staff_events_candidate(
 )
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,pg_temp AS $pickup_events$
-DECLARE v_destination record;v_payload jsonb;
+DECLARE v_destination record;v_payload jsonb;v_claimed_display text;v_actor_display text;
 BEGIN
   IF p_order_id IS NULL OR p_line_id IS NULL OR p_task_id IS NULL
     OR p_task_state NOT IN ('ready','claimed','corrected') OR p_task_version<1
@@ -25,9 +25,14 @@ BEGIN
   LEFT JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
   WHERE o.id=p_order_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'order_not_found' USING errcode='P0002'; END IF;
+  SELECT task.claimed_display_id INTO v_claimed_display FROM sabora.pickup_tasks task
+   WHERE task.id=p_task_id;
+  SELECT enrollment.operational_display_id INTO v_actor_display
+   FROM sabora.staff_enrollments enrollment WHERE enrollment.auth_user_id=p_actor_user_id;
   v_payload:=jsonb_build_object('orderId',p_order_id,'lineId',p_line_id,
     'pickupTaskId',p_task_id,'state',p_task_state,'version',p_task_version,
-    'claimedBy',p_claimed_by,'actorId',p_actor_user_id,'actorRole',p_actor_role,
+    'claimedBy',p_claimed_by,'claimedDisplayId',v_claimed_display,
+    'actorId',p_actor_user_id,'actorDisplayId',v_actor_display,'actorRole',p_actor_role,
     'deliveryTableId',v_destination.table_id,
     'deliveryVersion',v_destination.destination_version);
   PERFORM sabora.emit_h6_event_candidate(v_destination.table_id,v_destination.session_id,
