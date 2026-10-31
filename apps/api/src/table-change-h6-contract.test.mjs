@@ -77,3 +77,31 @@ test('F12 cutover gate keeps runtime composition, SQL allowlist and preflight di
  assert.match(flow,/FROM sabora\.confirm_customer_round_h6_candidate\(/,
   'active H6 confirmation remains the existing function');
 });
+
+test('F12 candidate fails closed on revoked session, invalid destination visit and missing approval',()=>{
+ assert.match(transferConfirmation,/s\.revoked_at IS NULL[\s\S]*?s\.expires_at>clock_timestamp\(\) FOR UPDATE/);
+ assert.match(transferConfirmation,/v\.table_id=p_table_id[\s\S]*?v\.revoked_at IS NULL[\s\S]*?v\.expires_at>clock_timestamp\(\) FOR UPDATE/);
+ assert.match(transferConfirmation,/q\.status='approved' AND q\.source_table_id=v_binding\.table_id/);
+ assert.match(transferConfirmation,/q\.requesting_session_hash=p_session_hash/);
+ assert.match(transferConfirmation,/table_change_approval_required/);
+});
+
+test('F12 candidate serializes customer confirmations and rejects ambiguous open accounts',()=>{
+ assert.match(transferConfirmation,/pg_advisory_xact_lock/);
+ assert.match(transferConfirmation,/hashtextextended\(v_session\.customer_id::text/);
+ assert.match(transferConfirmation,/h6_multiple_open_accounts_ambiguous/);
+ const lock=transferConfirmation.indexOf('pg_advisory_xact_lock');
+ const persist=transferConfirmation.indexOf('FROM sabora.persist_customer_order_candidate(');
+ assert.ok(lock>=0&&lock<persist);
+});
+
+test('F12 candidate preserves the economic account on replay without re-consuming approval',()=>{
+ const replay=transferConfirmation.indexOf('IF FOUND THEN\n    -- Idempotency is anchored');
+ const consume=transferConfirmation.indexOf('sabora.consume_customer_table_change_h6_candidate(');
+ assert.ok(replay>=0&&consume>replay);
+ const replayBlock=transferConfirmation.slice(replay,consume);
+ assert.match(replayBlock,/v_round\.account_id<>v_account\.id/);
+ assert.match(replayBlock,/h6_replay_account_scope_conflict/);
+ assert.match(replayBlock,/RETURN QUERY SELECT v_persist\.persisted_order_id/);
+ assert.match(replayBlock,/RETURN;/);
+});
