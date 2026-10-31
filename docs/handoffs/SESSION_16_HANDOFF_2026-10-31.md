@@ -37,9 +37,11 @@ Continúa el desarrollo de **CartaViva / Sabora** directamente mediante herramie
 - Compatibilidad H4/H6: preflight de función opcional H6 mediante `to_regprocedure` y `COALESCE(...,false)`, con test. SHA `7af20b5` con CI verde.
 - Inventario de dependencias y puertas de aceptación: `docs/reviews/SABORA_TABLE_TRANSFER_B0_ATOMICITY_DEPENDENCIES_2026-10-31.md`. Es diseño pendiente de comprobar, no implementación.
 
-**Límites importantes:** las pruebas A→B anteriores actualizan la proyección SQL de destino de forma controlada; **no** demuestran la solicitud → aprobación → QR B → primera confirmación → consumo de concesión desde PWA. Tampoco hay GO de producción ni activación del servidor por defecto.
+**Límites importantes:** el escenario H6/B2 de tablero actualiza la proyección SQL de destino de forma controlada; **por separado**, existen pruebas PG17 de confirmación integrada A→B en la función candidata aislada. Ninguna de esas dos evidencias acredita todavía el recorrido solicitud → aprobación → QR B → primera confirmación → consumo de concesión **desde PWA con runtime habilitado**. Tampoco hay GO de producción ni activación del servidor por defecto.
 
 ## 5. Bloqueo central que debe resolver la sesión 16: F12, traslado real y atómico
+
+**Precisión crítica verificada en la sesión 15 (31-10-2026):** ya existe una **función de confirmación de transferencia candidata y aislada**: `sabora.confirm_customer_round_h6_transfer_integration_candidate`, migración `supabase/migrations/20261031010000_sabora_h6_transfer_confirmation_integration_candidate.sql`. **No tiene permiso EXECUTE para el runtime**; la función H6 de producción candidata sigue rechazando el traslado. Por tanto, el trabajo pendiente **no consiste en implementar F12 desde cero**: consiste en auditar y completar la candidata existente, corregir autorización de recogida, demostrar aislamiento y aceptación visual, y solo plantear el cutover cuando todos los contratos estén validados. El fichero `scripts/ci/table-change-root-postgres17.test.mjs` ya incluye pruebas PG17 de confirmación positiva A→B, consumo único, concurrencia, pagos, cadena A→B→C, guardas negativas y rollback. **No repetir ni ignorar esos tests.** Sus nombres no equivalen a habilitación productiva ni a E2E de navegador. Esta precisión sustituye cualquier afirmación anterior de este handoff que sugiera ausencia total de implementación SQL F12.
 
 **Código fuente concreto a inspeccionar antes de modificar:**
 - `supabase/migrations/20261030230000_sabora_h6_line_delivery_confirm_lifecycle_candidate.sql`: `sabora.confirm_customer_round_h6_candidate` tiene el guard `table_change_transfer_not_integrated` y después invoca `persist_customer_order_candidate`, selecciona/crea `customer_accounts` por mesa y crea ronda/pago. **No quitar solo el guard:** sin refactor puede generar una **segunda cuenta** y fragmentar cobros.
@@ -76,7 +78,7 @@ Continúa el desarrollo de **CartaViva / Sabora** directamente mediante herramie
 | 31-10-2026 | Revocación A rechazada sin efectos parciales | `b1ef28a`, `16888b9` | Regresión negativa; **NO-GO** recogida positiva en B |
 | 31-10-2026 | Preflight H4 compatible con RPC H6 opcional | `7af20b5`; CI `41188630375`, Bootstrap `41188630379` | PASS focalizado |
 | 31-10-2026 | Inventario F12 y puertas de cierre | `65b34ec` | Documentado; implementación pendiente |
-| 31-10-2026 | Creación de handoff vivo sesión 16 | SHA de creación: consultar GitHub | Documento de continuidad, no normativa |
+| 31-10-2026 | Creación de handoff vivo sesión 16 | `14a48f845ad0d816f79a92eda157e58ab36c1dca` | Documento de continuidad, no normativa |\n| 31-10-2026 | Reconciliación: F12 ya dispone de RPC aislada y pruebas PG17, sin grant runtime | `20261031010000`, `table-change-root-postgres17.test.mjs` | Implementación candidata parcial; NO-GO cutover |
 
 ## 8. Prompt corto para iniciar la sesión 16
 
