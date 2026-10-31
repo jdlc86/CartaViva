@@ -18,8 +18,11 @@ BEGIN
  IF NOT FOUND THEN
   RAISE EXCEPTION 'customer_session_forbidden' USING errcode='42501';
  END IF;
- -- Lock order is delegated to the existing request RPC, which revalidates
- -- session, account and visit under its own transaction/advisory lock.
+ -- Serialize the uniqueness decision with H6 confirmation and staff decisions.
+ -- This is a transaction-scoped advisory lock; the delegated RPC reacquires
+ -- the same lock reentrantly and revalidates session, account and visit.
+ PERFORM pg_catalog.pg_advisory_xact_lock(
+  pg_catalog.hashtextextended(v_customer::text,140630));
  SELECT count(*),min(a.id) INTO v_open_count,v_account_id
  FROM sabora.customer_accounts a
  WHERE a.customer_id=v_customer AND a.state='open';
