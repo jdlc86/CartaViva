@@ -1016,19 +1016,19 @@ test('PG17 H6/B2 candidate accepts real scoped staff HMAC and keeps unmigrated p
 });
 
 test('PG17 H6/B2 delivery projection follows A-to-B destination without changing historical order or account',async()=>{
- const item=await integratedFixture(973,'Cliente cambio de mesa H6');
- const destinationTable='a2000000-0000-4000-8000-000000000974';
+ const item=await integratedFixture(975,'Cliente cambio de mesa H6');
+ const destinationTable='a2000000-0000-4000-8000-000000000976';
  await admin.query(`INSERT INTO sabora.dining_tables
   (id,number,capacity,qr_token_hash,ordering_state)
-  VALUES($1,970974,4,decode(repeat('a2',32),'hex'),'open')`,[destinationTable]);
+  VALUES($1,970976,4,decode(repeat('a2',32),'hex'),'open')`,[destinationTable]);
  const destSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',
   [destinationTable])).rows[0].session_id;
- const visit='delivery_visit_973_abcdefgh';
+ const visit='delivery_visit_975_abcdefgh';
  await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
   (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
   VALUES($1,$2,$3,$4,$5,$6,$7)`,[
   item.lineId,item.roundId,item.accountId,item.orderId,item.tableId,item.sessionId,
-  'delivery_visit_973_source'
+  'delivery_visit_975_source'
  ]);
  const cap=issueReadCapability({actorId:kitchenId,role:'kitchen',
   operation:'board',status:'confirmed',limit:100,cursor:null});
@@ -1039,7 +1039,7 @@ test('PG17 H6/B2 delivery projection follows A-to-B destination without changing
   null,null,null,100,cap.issuedAtMs,cap.expiresAtMs,cap.signatureHex];
  const before=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
  assert.ok(before);
- assert.equal(before.table_number,970973);
+ assert.equal(before.table_number,970975);
  assert.equal(before.delivery_table_id,item.tableId);
  assert.equal(before.delivery_version,'1');
  await admin.query(`UPDATE sabora.order_line_delivery_destinations
@@ -1049,7 +1049,7 @@ test('PG17 H6/B2 delivery projection follows A-to-B destination without changing
  ]);
  const after=(await operationsPool.query(sql,args)).rows.find(row=>row.line_id===item.lineId);
  assert.ok(after);
- assert.equal(after.table_number,970974);
+ assert.equal(after.table_number,970976);
  assert.equal(after.delivery_table_id,destinationTable);
  assert.equal(after.delivery_session_id,destSession);
  assert.equal(after.delivery_visit_key,visit);
