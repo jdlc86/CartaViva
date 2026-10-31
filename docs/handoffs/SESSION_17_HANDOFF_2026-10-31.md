@@ -132,3 +132,7 @@ Los workflows del commit dcdcd10f finalizaron SUCCESS (CI, bootstrap y navegador
 ## 22. Bloqueo atomico en resolucion de cuenta
 
 Commits 0546b273 y 6fed2489: la RPC F12 resuelta adquiere el advisory lock por cliente antes de comprobar unicidad de cuenta, igual que confirmacion y decision. Test de orden de bloqueo. Sigue siendo candidata sin grants; falta PG17 aislado y E2E. B3 NO-GO.
+
+## 23. CI tras nueva migracion F12
+
+Commit 6fed2489: navegador SUCCESS; Sabora CI y bootstrap FAILURE. Log de CI: 1123/1124 pruebas pasan, falla auditoria obligatoria por migracion 20261031190000 sin entrada individual. Commit 199199ab registra revision de dependencias, ACL, bloqueo y efecto de datos en scripts/ci/migration-audit.mjs. Pendiente nueva confirmacion CI, PG17 real, grants y cutover. B3 NO-GO.
