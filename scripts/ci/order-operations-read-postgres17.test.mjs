@@ -20,9 +20,10 @@ import {registerVerifiedH6DeliveryOrderOperationsFromPools} from '../../apps/api
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
-import {createH6OperationsRepository,MANAGE_PICKUP_TASK_H6_SQL}
+import {createH6OperationsRepository,MANAGE_PICKUP_TASK_H6_SQL,READ_STAFF_EVENTS_H6_SQL}
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {registerH6StaffEventStreamHttp} from '../../apps/api/src/h6-event-stream.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createCustomerProductionFlow, AUTHORIZE_VISIT_SQL, PREPARE_QUOTE_SQL,
   INSERT_QUOTE_SQL, LOOKUP_ATTEMPT_SQL, PREPARE_CONFIRMATION_SQL,
@@ -1171,7 +1172,7 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
  try {
   await registerVerifiedH6DeliveryOrderOperationsFromPools(h6App,config);
   const h6PickupTx=createRoleScopedPostgresTransaction({pool:h6OperationsPool,
-   role:'sabora_h6_operations_runtime',allowedSql:new Set([MANAGE_PICKUP_TASK_H6_SQL])});
+   role:'sabora_h6_operations_runtime',allowedSql:new Set([MANAGE_PICKUP_TASK_H6_SQL,READ_STAFF_EVENTS_H6_SQL])});
   const h6PickupRepository=createH6OperationsRepository({withTransaction:h6PickupTx});
   const h6PickupOperations=createH6OperationsCoordinator({
    repository:h6PickupRepository,
@@ -1324,6 +1325,60 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
   ]);
   assert.deepEqual(outbox.map(event=>Number(event.aggregate_version)),
    [1,1,2,2,3,3,4,4]);
+  // Exercise the real Fastify SSE transport and durable PostgreSQL reader
+  // with a cursor scoped immediately before this transferred pickup task.
+  const sseApp=Fastify({logger:false});
+  registerH6StaffEventStreamHttp(sseApp,{
+   forRoles:roles=>createStaffProtectedHooksFromPool({
+    pool:staffPool,issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+   })(roles),
+   events:{readStaffEvents:args=>h6PickupRepository.readStaffEvents(args)},
+   issueCapability:createH6StaffCapabilityIssuer({
+    keyId,secret:signingSecret,databaseRole:h6OperationsRole,
+   }),
+   subscribeCommitted:()=>()=>{},heartbeatMs:5000,
+  });
+  const readFrames=async(response,expected)=>{
+   const reader=response.body.getReader();
+   let body='';
+   try{
+    for(let attempt=0;attempt<8;attempt++){
+     const chunk=await Promise.race([reader.read(),new Promise((_,reject)=>
+      setTimeout(()=>reject(Error('h6_transfer_sse_timeout')),2500))]);
+     if(chunk.done)break;
+     body+=new TextDecoder().decode(chunk.value);
+     if(expected.every(id=>body.includes('id: '+id+'\\n')))break;
+    }
+    return body;
+   }finally{await reader.cancel().catch(()=>{});}
+  };
+  try{
+   await sseApp.listen({host:'127.0.0.1',port:0});
+   const addr=sseApp.server.address();
+   const sseUrl=`http://127.0.0.1:${addr.port}/api/v1/operations/events`;
+   const firstCursor=Number(outbox[0].id)-1;
+   const stream=await fetch(sseUrl,{
+    headers:{authorization:'Bearer '+bearer(waiterId),
+     'last-event-id':String(firstCursor)},signal:AbortSignal.timeout(10000),
+   });
+   assert.equal(stream.status,200);
+   const allIds=outbox.filter(e=>e.staff_role==='waiter').map(e=>Number(e.id));
+   const firstFrames=await readFrames(stream,allIds);
+   for(const id of allIds)assert.ok(firstFrames.includes('id: '+id+'\\n'));
+   assert.ok(firstFrames.includes('event: sabora.pickup.claim_cancelled'));
+   assert.ok(firstFrames.includes('deliveryTableId'));
+   assert.ok(firstFrames.includes(targetId));
+   const replay=await fetch(sseUrl,{
+    headers:{authorization:'Bearer '+bearer(waiterId),
+     'last-event-id':String(allIds[1])},signal:AbortSignal.timeout(10000),
+   });
+   assert.equal(replay.status,200);
+   const replayFrames=await readFrames(replay,allIds.slice(2));
+   assert.ok(!replayFrames.includes('id: '+allIds[1]+'\\n'));
+   for(const id of allIds.slice(2))
+    assert.ok(replayFrames.includes('id: '+id+'\\n'));
+  }finally{await sseApp.close();}
+
   const finalDestination=(await admin.query(`SELECT table_id,destination_version
    FROM sabora.order_line_delivery_destinations WHERE order_line_id=$1`,
    [item.lineId])).rows[0];
