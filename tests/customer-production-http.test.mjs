@@ -74,3 +74,27 @@ test('malformed backend results remain an unavailable service, not a client vali
   assert.deepEqual(result.json(),{error:'customer_flow_unavailable'});
  }finally{await app.close();}
 });
+
+test('F12 confirmation rejects missing grant or conflicting economic binding without leaking internals',async()=>{
+ const cookieAuth={requireSameOrigin:request=>request.headers.origin==='https://sabora.example',
+  authenticate:async request=>{request.customerIdentity={
+   customerId:'internal',publicId:'SB-23456789ABCD',alias:'Ana',company:null};},
+  logout:async()=>{}};
+ const denied=['table_change_approval_required','h6_account_binding_scope_conflict',
+  'h6_multiple_open_accounts_ambiguous','h6_replay_account_scope_conflict'];
+ for(const reason of denied){
+  const flow={authorizeVisit:async()=>{},quote:async()=>{},
+   confirm:async()=>{throw Error(reason);}};
+  const app=Fastify({logger:false});
+  registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
+  await app.ready();
+  try{
+   const result=await app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+    headers:{origin:'https://sabora.example','content-type':'application/json',cookie},
+    payload:{}});
+   assert.equal(result.statusCode,409,reason);
+   assert.deepEqual(result.json(),{error:'table_change_confirmation_conflict'},reason);
+   assert.equal(result.body.includes(reason),false,'do not expose SQL error detail');
+  }finally{await app.close();}
+ }
+});
