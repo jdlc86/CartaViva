@@ -285,3 +285,32 @@ not payment-provider authorization/capture concurrency, payment
 settlement, or authenticated API/PWA kitchen/sala delivery-reader
 acceptance. Candidate SQL remains inaccessible to runtime roles;
 **NO-GO** for activation and deployment.
+
+
+## B2 Stripe-pending and per-line delivery projection — 2026-10-31
+
+Commit `687306d7c3499b2d0f418343c00c55a10aceede4` passed Sabora CI,
+bootstrap and browser conformance. Its disposable PG17 integration case
+confirms A→B against an account with a prior `pay_now` Stripe attempt in
+`requires_action`, preserving the original provider intent and authorization/
+capture keys, creating exactly one independent attempt for the new B round,
+and returning that same attempt on idempotent replay. The initial test
+commit failed because a committed concurrency fixture reused the same
+customer primary key; the correction executes the rollback-isolated payment
+fixture before the committed concurrency fixture. This was a test-fixture
+collision, not evidence of a production Stripe defect.
+
+Commit `5cab006638be2cb75dd5a80ba8fb93f74da02afe` adds SQL-level
+delivery-reader assertions to the same integrated scenario: historical A
+order scope remains immutable, its picked-up line retains A, its pending
+line redirects to B with version increment, the newly confirmed B line
+routes to B, and zero pending lines for this account remain addressed to A.
+The test exercises actual `order_line_delivery_destinations` joins and
+account ownership, **not** an authenticated kitchen/sala HTTP reader.
+
+**Outstanding:** the current H6 operational SQL/API and SSE surfaces
+still need an explicitly authorized, least-privilege integration of
+line-level destinations, plus kitchen/sala PWA browser acceptance and
+provider-side Stripe capture/settlement races. Candidate transfer remains
+sealed, with no runtime EXECUTE. No merge, deployment, VPS, Fleetia or
+operational Supabase changes are authorized. **NO-GO** remains in force.
