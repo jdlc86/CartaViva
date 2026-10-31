@@ -108,3 +108,7 @@ Commits `e18ae2e0c74adc72042c047f2baea25b8c3ae687` y `df9914ebfc1bfc626056efed18
 ## 16. Compatibilidad del recibo RPC F12 con HTTP cliente (2026-10-31)
 
 Commits `50cd5e0c01f2e35a0db387da8b9b07a17ed2c26f` y `a71ccd75c37a267d4a64d03f67a553a39f89033a`: `customer-production-http.mjs` admite recibo mínimo sellado `{id,status,expiresAtMs}` y mantiene compatibilidad con recibos extendidos que incluyen `sourceTableId` y `createdAtMs`; no inventa timestamps ni origen. Tests de recibo mínimo, privacidad y resultados malformados en `tests/customer-production-http.test.mjs`. **Pendiente:** verificar CI y PostgreSQL 17 del SHA funcional, montar composición autenticada/privilegios mínimos, notificaciones y PWA E2E; B3 NO-GO. No se activó ningún runtime ni se modificaron recursos productivos.
+
+## 17. Prueba integrada HTTP + RPC sellada (2026-10-31)
+
+Commit `e2c3eac2c605c2af72def35510dd183c7a37a09e` incorpora `apps/api/src/table-change-sealed-rpc-http-integration.test.mjs`: Fastify real con cookie/same-origin, rechazo de entrada destino/rol cocina, solicitud mínima, aprobación autenticada por camarero, redacción de IDs privados y replay/cooldown fallando cerrado. Query PostgreSQL **simulada** y RPC SQL todavía sin EXECUTE; la prueba no acredita permisos PG17 ni traslado real. Verificar Actions y consolidar integración PG17 + bootstrap + E2E antes de activar. B3 NO-GO.
