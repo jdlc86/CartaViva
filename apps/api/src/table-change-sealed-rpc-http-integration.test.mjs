@@ -44,7 +44,7 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
   verifyStaff:async({verifiedIdentity,verifiedStaff})=>{
    assert.equal(verifiedIdentity.id,'staff-authenticated');
    assert.equal(verifiedStaff.role,'waiter');
-   return {id:staffId,role:'waiter'};
+   return {userId:staffId,role:'waiter'};
   }
  });
  const cookieAuth={
