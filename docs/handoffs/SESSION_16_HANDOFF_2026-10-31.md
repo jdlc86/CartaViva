@@ -96,6 +96,10 @@ Los primeros CI de la migración `20261031110000` mostraron una **regresión rea
 
 **Límites del PASS:** es un escenario integrado con destino A→B configurado por fixture, **no** el cutover runtime de la función de confirmación de transferencia F12 ni un recorrido completo de PWA de solicitud/aprobación/QR/primer pedido. Mantener **NO-GO producción** y continuar con pruebas de reocupación de B, carrera entre traslado y recogida, roles/RLS, integración F12 y aceptación visual.
 
+### Reocupación de B y rotación QR — prueba integrada añadida
+
+Commit `67c9ad3`: extensión del escenario real Fastify + PG17 `PG17 H6/B2 authenticated Fastify board reflects A-to-B...` para rotar `session_id` y `qr_version` de la mesa B **después de cerrar su visita** y comprobar que el intento de pickup devuelve 403, sin alterar la tarea, insertar solicitud idempotente ni emitir eventos. Se mantiene la cuenta histórica y el destino de la línea sin reescribir. **Resultado del nuevo commit pendiente de CI; no confundir con el PASS anterior `e86ba57e`.** También constan PASS Sabora CI `41189890385` y Bootstrap `41189890332` sobre `6dd4d85`.
+
 ### Registro vivo de hitos
 
 | Fecha | Hito / cambio | SHA / evidencia | Estado |
