@@ -220,3 +220,7 @@ Revision de seguridad: un login NOINHERIT puede recibir EXECUTE directamente o v
 ## 44. CI F12 verde y prueba PG17 de SET ROLE explicito
 
 Commit 5643d07c: tres workflows SUCCESS (Sabora CI 41243201287, Bootstrap PG17 41243201426, browser 41243201280). Se agrega commit 0c854a4b: prueba PG17 transaccional en base desechable que crea rol de capacidad NOLOGIN y login NOINHERIT, concede membresia SET TRUE/INHERIT FALSE, verifica ausencia de EXECUTE antes de SET ROLE y disponibilidad al asumir rol explicitamente. Su CI esta pendiente; no confundir prueba de rol con validacion de login remoto/pools productivos. No se crea ni concede rol F12 operativo. B3 NO-GO.
+
+## 45. Diagnostico y correccion PG17 de prueba NOINHERIT
+
+El commit 0c854a4b produjo CI Sabora FAILURE 41244046055 y Bootstrap FAILURE 41244046104: 37/38 tests PG17, unico fallo en test SET ROLE por `permission denied for schema sabora` al usar has_function_privilege con firma textual bajo login sin USAGE; navegador SUCCESS 41244046099. Commit d013c41e resuelve el OID de la funcion antes de asumir el login restringido y consulta has_function_privilege(current_user,oid,'EXECUTE'), sin ampliar permisos del login. CI de la correccion pendiente. No relajar el control NOINHERIT ni otorgar USAGE al login para hacer pasar el test. B3 NO-GO.
