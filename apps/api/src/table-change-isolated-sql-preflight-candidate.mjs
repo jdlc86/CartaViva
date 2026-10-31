@@ -14,6 +14,10 @@ export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_use
  has_schema_privilege(current_user,'sabora','CREATE') AS schema_create,
  ARRAY[pg_has_role(current_user,$1::name,'SET'),
        pg_has_role(current_user,$2::name,'SET')] AS role_set,
+ (SELECT coalesce(array_agg(other.rolname::text ORDER BY other.rolname::text),
+  '{}'::text[]) FROM pg_roles other
+  WHERE other.rolname<>current_user AND
+   pg_has_role(current_user,other.oid,'SET')) AS all_set_roles,
  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='sabora' AND c.relkind IN ('r','p') AND
   has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) AS direct_relations,
@@ -45,7 +49,9 @@ export async function assertF12SqlIdentity({pool,expectedLogin,capability}={}){
    row.replication!==false||row.database_create!==false||row.schema_create!==false||
    row.direct_relations!==false||row.direct_sequences!==false||
    !Array.isArray(row.role_set)||row.role_set.length!==expectedSets.length||
-   row.role_set.some((value,index)=>value!==expectedSets[index]))throw fail('identity-policy');
+   row.role_set.some((value,index)=>value!==expectedSets[index])||
+   !Array.isArray(row.all_set_roles)||row.all_set_roles.length!==1||
+   row.all_set_roles[0]!==capability)throw fail('identity-policy');
   const surface=await client.query(F12_FUNCTION_SQL,[capability]);
   const actual=surface?.rows?.length===1?surface.rows[0].names:null;
   if(!Array.isArray(actual)||actual.length!==1||actual[0]!==ROLES[capability])
