@@ -2324,3 +2324,35 @@ test('PG17 B3 confirmation preflight remains fail-closed without a dedicated run
   WHERE rolname='sabora_b3_confirmation_runtime'`)).rows[0];
  assert.equal(role.count,0,'B3 runtime role must not be silently provisioned');
 });
+
+test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is exact',async()=>{
+ await transaction(async client=>{
+  const role='sabora_b3_confirmation_runtime',login='sabora_b3_confirmation_probe_login';
+  const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+  await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+  await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  const functionOid=(await client.query('SELECT to_regprocedure($1)::oid AS oid',
+   [signature])).rows[0].oid;
+  assert.ok(functionOid);
+  await client.query(`SET LOCAL ROLE ${login}`);
+  const before=(await client.query(`SELECT current_user AS who,
+   pg_has_role(current_user,$1::name,'SET') AS may_set,
+   has_function_privilege(current_user,$2::oid,'EXECUTE') AS can_execute`,
+   [role,functionOid])).rows[0];
+  assert.equal(before.who,login);
+  assert.equal(before.may_set,true);
+  assert.equal(before.can_execute,false);
+  await client.query(`SET LOCAL ROLE ${role}`);
+  const after=(await client.query(`SELECT current_user AS who,
+   has_function_privilege(current_user,$1::oid,'EXECUTE') AS can_execute`,
+   [functionOid])).rows[0];
+  assert.equal(after.who,role);
+  assert.equal(after.can_execute,true);
+  const names=(await client.query(F12_FUNCTION_SQL,[role])).rows[0].names;
+  assert.deepEqual(names,[signature],'B3 role must have exactly one Sabora EXECUTE');
+  await client.query('RESET ROLE');
+ });
+});
