@@ -116,3 +116,10 @@ export async function assertCustomerProductionSqlCapabilities({
  await inspect(flowPool,expectedFlowLogin,'sabora_customer_flow_runtime');
  return Object.freeze({validated:true});
 }
+
+// Reuse the exact existing customer-flow capability policy for an isolated B3
+// candidate pool; this does not create a role, pool or operational grant.
+export async function assertCustomerFlowSqlCapabilities({pool,expectedLogin}={}){
+ await inspect(pool,expectedLogin,'sabora_customer_flow_runtime');
+ return Object.freeze({validated:true,login:expectedLogin});
+}
