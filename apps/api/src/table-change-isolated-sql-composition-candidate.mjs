@@ -43,7 +43,7 @@ export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
   WHERE n.nspname='sabora' AND c.relkind='S' AND
    has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
  FROM pg_roles r WHERE r.rolname=current_user`;
-export const B3_H6_READER_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text),
+export const B3_H6_READER_FUNCTION_SQL=`SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),
  '{}'::text[]) AS signatures FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND has_function_privilege($1::name,p.oid,'EXECUTE')`;
 export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
