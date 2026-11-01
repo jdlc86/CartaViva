@@ -2502,12 +2502,12 @@ test('PG17 B3 fifth customer-flow login validates six exact RPCs and one SET ROL
    'sabora.prepare_customer_confirmation_line_candidate(bytea,uuid,text,text,text,uuid,uuid)',
    'sabora.prepare_customer_quote_candidate(bytea,uuid,text,text,text,uuid)'
   ];
-  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
-  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-  for(const signature of signatures)
-   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  for(const signature of signatures){
+   const found=(await client.query('SELECT to_regprocedure($1) IS NOT NULL AS found',[signature])).rows[0].found;
+   assert.equal(found,true,`expected existing customer flow RPC: ${signature}`);
+  }
   const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
   assert.deepEqual(await assertCustomerFlowSqlCapabilities({pool,expectedLogin:login}),
