@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
 
@@ -203,9 +204,9 @@ test('B3 full isolated composition validates all three identities before constru
   expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
-  createConfirmationFlow:async({pool})=>{
+  createConfirmationFlow:async({withConfirmationTransaction})=>{
    constructed++;
-   assert.equal(pool,confirmation);
+   assert.equal(typeof withConfirmationTransaction,'function');
    assert.equal(customer.calls.length,3);
    assert.equal(operations.calls.length,3);
    assert.equal(confirmation.calls.length,3);
@@ -234,4 +235,21 @@ test('B3 full isolated composition never constructs confirmation on privilege dr
   assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
   assert.equal(operations.calls.some(x=>x.sql==='BEGIN'),false);
  }
+});
+
+
+test('B3 confirmation writer executes only transfer SQL under a local capability role',async()=>{
+ assert.deepEqual(B3_CONFIRMATION_SQL,[PERSIST_H6_TRANSFER_ORDER_SQL]);
+ const confirmation=pool(PERSIST_H6_TRANSFER_ORDER_SQL,[{persisted_order_id:requestId}]);
+ const transaction=createIsolatedB3ConfirmationTransaction({confirmationPool:confirmation});
+ await assert.rejects(()=>transaction(query=>query(PERSIST_H6_ORDER_SQL,[])),
+  /role_scoped_sql_not_allowed/);
+ assert.deepEqual(confirmation.calls.map(x=>x.sql),['BEGIN',
+  'SET LOCAL ROLE sabora_b3_confirmation_runtime','ROLLBACK']);
+ assert.equal(confirmation.destroyed,true);
+ confirmation.calls.length=0;
+ const row=await transaction(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[]));
+ assert.equal(row.rows[0].persisted_order_id,requestId);
+ assert.deepEqual(confirmation.calls.map(x=>x.sql),['BEGIN',
+  'SET LOCAL ROLE sabora_b3_confirmation_runtime',PERSIST_H6_TRANSFER_ORDER_SQL,'COMMIT']);
 });
