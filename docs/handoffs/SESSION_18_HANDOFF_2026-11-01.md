@@ -171,3 +171,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `1cd714d8f06df5c43f3a3a5625d74f9b87439838`: factoría opt-in `createVerifiedTableChangeB3CustomerFlowCandidate` que exige cinco pools y logins distintos: F12 cliente, F12 operaciones, B3 escritor, H6 lector y cesta/cotización. Valida quinta identidad, permite exclusivamente seis SQL de flujo cliente y reutiliza la factoría B3 verificada. No monta rutas ni toca producción.
 - `0f67061d9697d0abd3a83eaa100f8791d1a4a391`: pruebas de rechazo previo a SQL por reutilización de pool/login. **CI de nuevos cambios pendiente**. Faltan prueba positiva PG17 con las cinco identidades y recorrido económico F01–F28/R01–R10.
 - PR #43 Draft, NO-GO. Sin despliegue, cambios de Supabase operativo, VPS ni Fleetia.
+
+## 23. Preflight positivo de cinco identidades y concesiones excesivas (2026-11-01)
+
+- Commit `b1238066e55d286cb579e5b183e79e68f54ebf6f`: pruebas de construcción positiva de `createVerifiedTableChangeB3CustomerFlowCandidate` con cinco pools simulados, sin ejecutar SQL de negocio en el arranque, y rechazo de concesiones adicionales al rol de cesta/cotización. Verificar resultado en CI; no equivale a un preflight de cinco logins PostgreSQL 17 reales.
+- Las CI de `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4` y `4f1dd0b040f645a7de87ab43c38701b389969789` seguían ejecutándose en la última consulta. No marcar éxito sin conclusión.
+- Prioridad siguiente: cerrar ejecución de CI, corregir regresiones y luego prueba PG17 de confirmación y replay real de A→B con políticas de cobro y aislamiento completo. PR #43 Draft, NO-GO; no desplegar ni tocar infraestructura compartida.
