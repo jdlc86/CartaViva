@@ -163,3 +163,11 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - HEAD `28cfbc56d14e2156b53ab08354fb5b7963263425`: CI 3/3 SUCCESS (Sabora CI `41330643606`, Bootstrap `41330643679`, navegador `41330643559`).
 - `76e2c0f14c679b575fb12e4afe79c2f923c3ad97`: nuevo adaptador opt-in `createB3CustomerConfirmationFlowCandidate` que instancia el flujo real `createCustomerProductionFlow` después de preflight y conecta transacción de cesta/cotización provista por el llamador, escritor B3 exclusivamente para confirmación transferible y lector H6 para política/replay. No monta rutas ni concede permisos. `d7f3498af4a9bd149321a4a95803022f0b1b9afb`: tests del contrato de entrada y exposición mínima del adaptador. **CI nueva pendiente**.
 - Límite crítico: aún no hay prueba PG17 de extremo a extremo con este adaptador ni garantía de que la transacción de cesta/cotización tenga permisos mínimos independientes. No declarar GO, no habilitar producción ni alterar SQL operativo.
+
+## 22. Quinta identidad SQL para cesta/cotización B3 (2026-11-01)
+
+- La CI de `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4` seguía en ejecución al comprobarla: navegador SUCCESS, Sabora CI y Bootstrap ejecutando pruebas PG17. No declarar éxito total.
+- `b48274a6d131cc8236e8361b22d29d0cb865d93b`: exporta `assertCustomerFlowSqlCapabilities`, reutilizando sin rebajar el preflight exacto de `sabora_customer_flow_runtime`.
+- `1cd714d8f06df5c43f3a3a5625d74f9b87439838`: factoría opt-in `createVerifiedTableChangeB3CustomerFlowCandidate` que exige cinco pools y logins distintos: F12 cliente, F12 operaciones, B3 escritor, H6 lector y cesta/cotización. Valida quinta identidad, permite exclusivamente seis SQL de flujo cliente y reutiliza la factoría B3 verificada. No monta rutas ni toca producción.
+- `0f67061d9697d0abd3a83eaa100f8791d1a4a391`: pruebas de rechazo previo a SQL por reutilización de pool/login. **CI de nuevos cambios pendiente**. Faltan prueba positiva PG17 con las cinco identidades y recorrido económico F01–F28/R01–R10.
+- PR #43 Draft, NO-GO. Sin despliegue, cambios de Supabase operativo, VPS ni Fleetia.
