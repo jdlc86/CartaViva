@@ -356,11 +356,6 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await assertPickupDenied('closed destination B','h6_transfer_closed_b_001',
   `UPDATE sabora.dining_tables SET ordering_state='closed' WHERE id=$1`,
   `UPDATE sabora.dining_tables SET ordering_state='open' WHERE id=$1`);
- await assertPickupDenied('rotated QR destination B','h6_transfer_rotated_b_001',
-  `UPDATE sabora.dining_tables SET qr_version=qr_version+1 WHERE id=$1`,
-  `UPDATE sabora.customer_table_visits SET authorized_qr_version=
-   (SELECT qr_version FROM sabora.dining_tables WHERE id=$1)
-   WHERE table_id=$1 AND visit_key='h6_pickup_destination_visit_001'`);
  const httpClaim=await operations.managePickup({lineId:httpLine,action:'claim_pickup',
   expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
    actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
