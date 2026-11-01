@@ -288,3 +288,8 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `445acc79ad9433f3b76195824d513397554bcef0`: el preflight B3 lector ahora condiciona `has_table_privilege` y `has_sequence_privilege` al `relkind` correspondiente, para evitar evaluaciones sobre objetos de otro tipo.
 - `91bd5f55beed4b02e1b07ed0866f87af90d7c177`: se detectó un bloqueo funcional en la función candidata de confirmación: `PERFORM ... OFFSET 1 LIMIT 1` sin `ORDER BY` ni prueba específica de dos cuentas era difícil de auditar; se explicita orden estable y se conserva rechazo exclusivamente cuando hay segunda cuenta abierta. La cuenta original A no debe impedir B.
 - **Pendiente**: CI de este HEAD, y PG17 real del recorrido A→B con cuenta abierta, aprobación, primer pedido B, replay, concurrencia, redirección, pagos y rollback. No confundir la prueba de grants con la aceptación funcional. PR #43 Draft NO-GO; sin despliegue ni Supabase operativo.
+
+## 39. CI completa del bloque B3 (2026-11-01)
+
+- Commit `b8c9eb4b50a8106c9a7bdf6874690ffa78742bc6`: **3/3 SUCCESS** en GitHub Actions: Sabora CI `41344840001`, Bootstrap `41344839974`, conformidad navegador `41344839968`. Sabora CI completó aceptación consolidada H6, PG17 desechable y construcción aislada de imagen API.
+- Este resultado certifica la regresión existente del HEAD; no certifica que el primer pedido B tras aprobación transfiera una cuenta abierta en A. Sigue pendiente aceptación económica transaccional real, pagos, concurrencia y UI F01–F28/R01–R10. PR #43 Draft NO-GO.
