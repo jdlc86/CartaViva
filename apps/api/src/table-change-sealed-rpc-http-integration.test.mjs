@@ -112,3 +112,87 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
   assert.deepEqual(sqlCalls[1].args,[staffId,requestId,true]);
  }finally{await app.close();}
 });
+
+
+test('B3 HTTP A-to-B approval is inert until confirmed checkout and replay is economically idempotent',async()=>{
+ const events=[];
+ const economic={table:'A',accountId,amount:1200,rounds:1,approval:'none'};
+ const query=async(sql,args)=>{
+  if(sql===REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL){
+   if(economic.approval!=='none')throw Error('table_change_request_locked');
+   economic.approval='pending';events.push('request');
+   return {rows:[{request_id:requestId,request_status:'pending',expires_at:expiry}]};
+  }
+  if(sql===DECIDE_TABLE_CHANGE_H6_SQL){
+   if(economic.approval!=='pending')throw Error('table_change_already_decided');
+   economic.approval=args[2]?'approved':'rejected';events.push('decision');
+   return {rows:[{status:economic.approval}]};
+  }
+  throw Error('unexpected_sql');
+ };
+ const tableChange=createSealedTableChangeRpcCandidate({
+  withCustomerTransaction:fn=>fn(query),withStaffTransaction:fn=>fn(query),
+  hashSession:async()=>Buffer.alloc(32,17),
+  verifyStaff:async()=>({userId:staffId,role:'waiter'})
+ });
+ const flow={authorizeVisit:async()=>({}),quote:async()=>({}),
+  confirm:async({requestKey})=>{
+   if(economic.approval!=='approved')throw Error('table_change_approval_required');
+   if(requestKey!=='b3_confirm_request_0001')throw Error('invalid_customer_flow_input');
+   if(economic.table==='A'){
+    economic.table='B';economic.amount+=700;economic.rounds++;events.push('checkout');
+   }else events.push('replay');
+   return {status:'confirmed',orderId:'44444444-4444-4444-8444-444444444444',
+    grouping:'first',accountId:economic.accountId,
+    roundId:'55555555-5555-4555-8555-555555555555',amountCents:700,
+    paymentMode:'pay_at_end',roundState:'grouping'};
+  }
+ };
+ const cookieAuth={
+  requireSameOrigin(request,reply){if(request.headers.origin!==origin){reply.code(403).send({error:'origin_not_allowed'});return false;}return true;},
+  async authenticate(request,reply){if(request.headers.cookie!==cookie)return reply.code(401).send({error:'unauthorized'});request.customerIdentity={publicId:'SB-23456789ABCD',alias:'Ana'};},
+  logout:async()=>{}
+ };
+ const app=Fastify({logger:false});
+ registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange});
+ registerTableChangeStaffHttp(app,{service:tableChange,
+  forRoles:roles=>async(request,reply)=>{
+   const role=request.headers['x-test-role'];
+   if(!roles.includes(role))return reply.code(403).send({error:'forbidden'});
+   request.verifiedIdentity={id:'staff-authenticated'};
+   request.verifiedStaff={role};
+  }});
+ await app.ready();
+ const headers={cookie,origin,'content-type':'application/json'};
+ const confirm=()=>app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+  headers,payload:{requestKey:'b3_confirm_request_0001'}});
+ try{
+  const before=await confirm();
+  assert.equal(before.statusCode,409);
+  assert.deepEqual(economic,{table:'A',accountId,amount:1200,rounds:1,approval:'none'});
+  const requested=await app.inject({method:'POST',url:requestPath,headers,payload:{}});
+  assert.equal(requested.statusCode,201);
+  const kitchen=await app.inject({method:'POST',url:decisionPath,
+   headers:{'content-type':'application/json','x-test-role':'kitchen'},
+   payload:{requestId,decision:'approved'}});
+  assert.equal(kitchen.statusCode,403);
+  assert.equal(economic.approval,'pending');
+  const approved=await app.inject({method:'POST',url:decisionPath,
+   headers:{'content-type':'application/json','x-test-role':'waiter'},
+   payload:{requestId,decision:'approved'}});
+  assert.equal(approved.statusCode,200);
+  assert.deepEqual(economic,{table:'A',accountId,amount:1200,rounds:1,approval:'approved'});
+  const first=await confirm();
+  assert.equal(first.statusCode,201);
+  assert.equal(first.json().accountId,accountId);
+  assert.equal(economic.table,'B');
+  assert.equal(economic.amount,1900);
+  assert.equal(economic.rounds,2);
+  const replay=await confirm();
+  assert.equal(replay.statusCode,201);
+  assert.equal(replay.json().orderId,first.json().orderId);
+  assert.equal(economic.amount,1900);
+  assert.equal(economic.rounds,2);
+  assert.deepEqual(events,['request','decision','checkout','replay']);
+ }finally{await app.close();}
+});
