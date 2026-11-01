@@ -258,3 +258,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `748a32571f7c9f03ad028714d224c555109eefa8`: Sabora CI run `41343560263` FAILURE en Block 2A. La nueva prueba PG17 completó creación de roles, GRANT, comprobaciones de login y rol, RESET y ROLLBACK, pero la sentencia final `SELECT CASE ... THEN (1/0)::int ELSE 1 END` falló por evaluación de la constante `1/0` en PostgreSQL, aunque no hubiera roles supervivientes. No interpretar ese error como una filtración de roles.
 - `be74c3ef6299a65cb470dd73b56ac078a9b4b432`: sustituida la expresión por `DO` con `RAISE EXCEPTION` condicional que comprueba ausencia de **ambos** roles después de rollback. Nueva CI pendiente.
 - El contrato B3 sigue candidato y NO-GO; el hito económico A→B y F01–F28/R01–R10 permanecen abiertos. Sin merge, despliegue ni cambios de infraestructura operativa.
+
+## 34. PG17: evaluación de funciones de privilegio por tipo de relación (2026-11-01)
+
+- CI `bb7c60ccca9b3a86a256e5252344c410e341299c`: Sabora CI `41343800427` FAILURE y Bootstrap `41343800418` FAILURE en bloque 2A. Error `pg_toast_16387 is not a sequence` en la nueva comprobación de privilegios directos del rol lector. PostgreSQL evaluó `has_sequence_privilege` sobre un OID de relación no secuencia a pesar del filtro `relkind='S'` en la expresión con OR.
+- `0800845fa7acbc02cd29ed10c00d118126fb74cf`: se protege cada llamada a `has_table_privilege` / `has_sequence_privilege` mediante `CASE WHEN relkind ... THEN ... ELSE false END` para evitar evaluación sobre OID de tipo incompatible. **CI pendiente**; no afirmar PG17 PASS.
+- No se han realizado cambios operativos, merges ni despliegues. PR #43 Draft NO-GO. Continuar hasta CI PG17 verde antes de ampliar a E2E económico A→B.
