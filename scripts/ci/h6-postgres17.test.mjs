@@ -363,6 +363,43 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   (SELECT count(*)::integer FROM sabora.pickup_task_events WHERE order_line_id=$1) AS events
   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[httpLine])).rows[0];
  assert.deepEqual(afterDenied,beforeDenied,'denied B pickup must not mutate task or events');
+ // Separate destination fixtures ensure a QR denial cannot be explained by
+ // the previous closed-table condition. The claimed task is intentionally
+ // not modified by any denied operation.
+ const verifyDeniedDestination=async({suffix,tableNumber,changeSql,reason})=>{
+  const destinationId=`a6200000-0000-4000-8000-0000000000${suffix}`;
+  const destinationSession=`a6200000-0000-4000-8000-0000000000${Number(suffix)+1}`;
+  const visitKey=`h6_pickup_negative_destination_${suffix}`;
+  await admin.query(`INSERT INTO sabora.dining_tables
+   (id,number,capacity,qr_token_hash,session_id,ordering_state)
+   VALUES($1,$2,4,$3,$4,'open')`,
+   [destinationId,tableNumber,qr.tokenHash,destinationSession]);
+  await admin.query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+   VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+   [destinationId,destinationSession,historicalScope.customer_id,visitKey]);
+  await admin.query(`UPDATE sabora.customer_account_operational_bindings
+   SET table_id=$2,session_id=$3,visit_key=$4,binding_version=binding_version+1
+   WHERE account_id=$1`,[pickupAccount,destinationId,destinationSession,visitKey]);
+  await admin.query(`UPDATE sabora.order_line_delivery_destinations
+   SET table_id=$2,session_id=$3,visit_key=$4,destination_version=destination_version+1
+   WHERE order_line_id=$1`,[httpLine,destinationId,destinationSession,visitKey]);
+  await admin.query(changeSql,[destinationId,visitKey]);
+  await assert.rejects(operations.managePickup({lineId:httpLine,action:'cancel_pickup',
+   expectedVersion:claimedVersion,capability:issueKitchen({
+    actorId:waiterId,staffRole:'waiter',action:'cancel_pickup',targetId:httpLine,
+    expectedVersion:claimedVersion,correlationId:`h6_transfer_${reason}_cancel_001`})}),
+   /pickup_scope_forbidden/,reason);
+  const snapshot=(await admin.query(`SELECT state,version,
+   (SELECT count(*)::integer FROM sabora.pickup_task_events WHERE order_line_id=$1) AS events
+   FROM sabora.pickup_tasks WHERE order_line_id=$1`,[httpLine])).rows[0];
+  assert.deepEqual(snapshot,beforeDenied,`denied ${reason} must not mutate pickup or events`);
+ };
+ await verifyDeniedDestination({suffix:'21',tableNumber:976121,reason:'qr_rotated',
+  changeSql:`UPDATE sabora.dining_tables SET qr_version=qr_version+1 WHERE id=$1`});
+ await verifyDeniedDestination({suffix:'23',tableNumber:976123,reason:'visit_revoked',
+  changeSql:`UPDATE sabora.customer_table_visits SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND visit_key=$2`});
 
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
