@@ -282,3 +282,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `3ed8173da1499c19b3a5089c92c185b4ed8ebb55`: Sabora CI `41344339279` y Bootstrap `41344339196` FAILURE; navegador `41344339192` SUCCESS. Fallo de bloque 2A: `syntax error at or near "$"`, línea `DO $ DECLARE names text[]` del nuevo smoke `b3-h6-reader-role-smoke.sql`. Es un error de delimitador en la prueba, no evidencia de fallo de aislamiento.
 - `fde8db6d573752ef55819986c36c04069891412b`: corregidos ambos delimitadores a `DO $$ ... END $$;`. Se verificó que el blob cambió; anteriores intentos de sustitución no cambiaron el contenido porque `$$` tiene significado especial en reemplazos JavaScript. **CI del HEAD pendiente**.
 - Mantener PR #43 Draft NO-GO; no desplegar ni modificar recursos compartidos. Siguiente hito: validación PG17 verde y recorrido económico A→B completo.
+
+## 38. B3: guardia de cuentas abiertas y preflight de privilegios (2026-11-01)
+
+- `445acc79ad9433f3b76195824d513397554bcef0`: el preflight B3 lector ahora condiciona `has_table_privilege` y `has_sequence_privilege` al `relkind` correspondiente, para evitar evaluaciones sobre objetos de otro tipo.
+- `91bd5f55beed4b02e1b07ed0866f87af90d7c177`: se detectó un bloqueo funcional en la función candidata de confirmación: `PERFORM ... OFFSET 1 LIMIT 1` sin `ORDER BY` ni prueba específica de dos cuentas era difícil de auditar; se explicita orden estable y se conserva rechazo exclusivamente cuando hay segunda cuenta abierta. La cuenta original A no debe impedir B.
+- **Pendiente**: CI de este HEAD, y PG17 real del recorrido A→B con cuenta abierta, aprobación, primer pedido B, replay, concurrencia, redirección, pagos y rollback. No confundir la prueba de grants con la aceptación funcional. PR #43 Draft NO-GO; sin despliegue ni Supabase operativo.
