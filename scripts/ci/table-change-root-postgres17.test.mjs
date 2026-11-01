@@ -2142,9 +2142,9 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    WHERE q.id=$1`,[grant])).rows[0];
   assert.equal(afterSession.status,'approved');
   assert.equal(afterSession.bound_table,scenarioA.sourceTable);
-  // An economically closed account cannot be transferred, even with an
+  // An economically settled account cannot be transferred, even with an
   // approved grant and a valid destination order; no partial consumption.
-  await client.query(`UPDATE sabora.customer_accounts SET state='closed'
+  await client.query(`UPDATE sabora.customer_accounts SET state='settled'
    WHERE id=$1`,[scenarioA.sourceAccount]);
   const closedAccount=await expectSqlError(client,consume,/table_change_account_forbidden/);
   assert.equal(closedAccount.code,'42501');
