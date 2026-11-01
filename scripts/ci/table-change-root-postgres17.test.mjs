@@ -2173,6 +2173,14 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    WHERE q.id=$1`,[grant])).rows[0];
   assert.equal(afterBlocked.status,'approved');
   assert.equal(afterBlocked.bound_table,scenarioA.sourceTable);
+  // F15: the 90-second deadline governs pending decisions, not approved grants.
+  // An approved-but-unused grant remains consumable after its original TTL.
+  await client.query(`UPDATE sabora.customer_table_change_requests
+   SET expires_at=clock_timestamp()-interval '1 minute' WHERE id=$1`,[grant]);
+  const approvedExpired=(await client.query(`SELECT status,expires_at<clock_timestamp() AS expired
+   FROM sabora.customer_table_change_requests WHERE id=$1`,[grant])).rows[0];
+  assert.equal(approvedExpired.status,'approved');
+  assert.equal(approvedExpired.expired,true);
   assert.equal((await consume()).rows[0].grant_id,grant);
   const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
    a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
