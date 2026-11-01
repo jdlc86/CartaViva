@@ -43,11 +43,12 @@ BEGIN
      AND v.visit_key=p_visit_key AND v.revoked_at IS NULL
      AND v.expires_at>clock_timestamp() FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'customer_visit_forbidden' USING errcode='42501'; END IF;
-  -- Never choose an arbitrary account when legacy data contains multiple
-  -- open accounts for one customer. The transfer must not mix balances.
+  -- Reject only a second open account. OFFSET 1 is intentional: the
+  -- original economic account in A must remain eligible for transfer to B.
+  -- The customer advisory lock serializes confirmations for this customer.
   PERFORM 1 FROM sabora.customer_accounts a
    WHERE a.customer_id=v_session.customer_id AND a.state='open'
-   OFFSET 1 LIMIT 1;
+   ORDER BY a.created_at,a.id OFFSET 1 LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION 'h6_multiple_open_accounts_ambiguous' USING errcode='23514';
   END IF;
