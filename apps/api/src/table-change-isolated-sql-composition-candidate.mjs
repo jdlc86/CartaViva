@@ -5,6 +5,10 @@ import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-ca
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
 import {createCustomerProductionFlow,PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
+import {assertCustomerFlowSqlCapabilities} from './customer-production-sql-preflight.mjs';
+import {AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
+ LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL}
+ from './customer-production-flow.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -134,4 +138,43 @@ export function createB3CustomerConfirmationFlowCandidate({
   });
   return Object.freeze({confirm:flow.confirm});
  };
+}
+
+
+export const B3_CUSTOMER_FLOW_SQL=Object.freeze([
+ AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
+ LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL
+]);
+
+/**
+ * Five-identity, opt-in candidate. Validate the basket/quote login using the
+ * existing exact customer-flow PG capability preflight, and independently
+ * validate F12 customer/operations, B3 writer and H6 reader. Nothing mounts.
+ */
+export async function createVerifiedTableChangeB3CustomerFlowCandidate({
+ customerPool,operationsPool,confirmationPool,h6ReadPool,flowPool,
+ expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin,
+ expectedH6ReadLogin,expectedFlowLogin,hashSession,verifyStaff,
+ secretKey,clock,newId
+}={}){
+ const pools=[customerPool,operationsPool,confirmationPool,h6ReadPool,flowPool];
+ const logins=[expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin,
+  expectedH6ReadLogin,expectedFlowLogin];
+ if(pools.some(pool=>!pool||typeof pool.connect!=='function')||
+    new Set(pools).size!==5||new Set(logins).size!==5||
+    logins.some(login=>typeof login!=='string'||login.length===0))
+  throw Error('invalid_b3_customer_flow_isolation');
+ await assertCustomerFlowSqlCapabilities({pool:flowPool,expectedLogin:expectedFlowLogin});
+ const withCustomerTransaction=createRoleScopedPostgresTransaction({
+  pool:flowPool,role:'sabora_customer_flow_runtime',
+  allowedSql:new Set(B3_CUSTOMER_FLOW_SQL)
+ });
+ return createVerifiedTableChangeB3Candidate({
+  customerPool,operationsPool,confirmationPool,h6ReadPool,
+  expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin,
+  expectedH6ReadLogin,hashSession,verifyStaff,
+  createConfirmationFlow:createB3CustomerConfirmationFlowCandidate({
+   withCustomerTransaction,secretKey,clock,newId
+  })
+ });
 }
