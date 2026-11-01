@@ -101,3 +101,8 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Esto incluye los tests positivos y negativos del preflight B3 sobre catálogo real de PostgreSQL 17 desechable, con concesiones adicionales deliberadas y revertidas al finalizar la transacción. El resultado permite cerrar **el subhito de validación de privilegios**, no el hito funcional B3/F12 completo.
 - **Siguiente hito integral:** composición candidata que conecte solicitud/decisión HTTP autenticadas, confirmación atómica al primer pedido en mesa B, PWA, proyección de entrega, SSE, pickup y pagos; aceptación F01–F28/R01–R10 y regresión real. No hacer cutover ni ampliar grants productivos.
 - El commit que incorpora esta actualización documental tendrá otro SHA: sus workflows deben verificarse por separado. PR #43 Draft, B3/F12 NO-GO.
+
+## 12. Aislamiento de identidad entre los tres pools B3/F12 (2026-11-01)
+
+- Commits `3236e384db4ef0b13e1f01ea4bd712d38d14e1d8` y `1716b99e290f7aaaf2788de6ed35ca3a16a09b6a`: la composición B3 rechaza **antes de cualquier consulta SQL** que el login de confirmación coincida con el de solicitud del cliente o el de decisión del personal, incluso cuando los pools sean objetos distintos. Test comprueba rechazo de ambas identidades reutilizadas, cero queries y cero construcción del flujo. Esto cierra una posibilidad de confusión de principales; no constituye montaje HTTP ni activación.
+- **CI de estos commits todavía no verificada al registrar el hito**; consultar workflow del HEAD más reciente y corregir si falla. PR #43 Draft, B3/F12 NO-GO. Sin merge, despliegue ni cambios en VPS/Supabase operativo/Fleetia.
