@@ -80,3 +80,11 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 ## 8. Prompt corto para arrancar la sesión 18
 
 > Continúa CartaViva/Sabora exclusivamente en `jdlc86/CartaViva`. Lee normativa vigente y `docs/handoffs/SESSION_18_HANDOFF_2026-11-01.md`, contrasta handoffs 16/17, HEAD, PR #43 Draft y CI. Prioriza cerrar B3/F12 como bloque completo: preflight de permisos PG17 real, RPC cliente/camarero selladas, confirmación atómica del primer pedido en B con cuenta única, HTTP/PWA, pagos, pickup y SSE; aceptación F01–F28/R01–R10 y E2E real. Corrige y repite pruebas, documenta hitos en este mismo archivo. Sin merges, despliegues, Supabase operativo, VPS ni tocar Fleetia. Mantén NO-GO hasta evidencia integral.
+
+## 9. Continuación sesión 17 — preflight B3 contra catálogo PG17 real (2026-11-01)
+
+- Commit `93961ae524ac3eb35474b90ba2b5355bdc4f07bc`: ampliada la suite `scripts/ci/table-change-root-postgres17.test.mjs` para crear un rol B3 y login **dentro de una transacción reversible**, conceder solo SET y EXECUTE de confirmación, asumir la identidad mediante `SET LOCAL SESSION AUTHORIZATION` y ejecutar el preflight **real** `assertB3ConfirmationCapabilities` contra catálogos PG17. La prueba exige login/session_user exactos y rechazo implícito de cualquier superficie extra; el rollback elimina los roles de prueba.
+- **Estado de evidencia:** commit publicado, **CI de `93961ae5` todavía no verificada** al redactar esta actualización. No registrar PASS hasta obtener el resultado real. Si falla, corregir la prueba o el diseño y repetir, sin tocar Supabase operativo.
+- Los tres workflows del commit documental anterior `c7ea83b4` estaban en curso durante la inspección; consultar su estado final por SHA.
+- Sin cambios en roles operativos, sin despliegue ni merge. PR #43 Draft; B3/F12 NO-GO.
+- Próximo paso: esperar/verificar GitHub Actions del commit de prueba; después continuar con composición vertical candidata HTTP/PWA/transferencia/pickup, con aceptación real F01–F28/R01–R10.
