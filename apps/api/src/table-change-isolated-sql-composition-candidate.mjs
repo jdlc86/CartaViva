@@ -32,7 +32,7 @@ export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
  (SELECT coalesce(array_agg(other.rolname::text ORDER BY other.rolname::text),'{}'::text[])
   FROM pg_roles other WHERE other.rolname<>current_user AND
    pg_has_role(current_user,other.oid,'SET')) AS set_roles,
- (SELECT coalesce(array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text),
+ (SELECT coalesce(array_agg(replace(p.oid::regprocedure::text,', ',',') ORDER BY p.oid::regprocedure::text),
   '{}'::text[]) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='sabora' AND
    has_function_privilege(current_user,p.oid,'EXECUTE')) AS executable_functions,
