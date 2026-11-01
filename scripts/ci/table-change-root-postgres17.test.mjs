@@ -2052,6 +2052,9 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
   await client.query(`INSERT INTO sabora.customer_account_operational_bindings
    (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
    [scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit]);
+  // The F17 guard requires a genuinely orderable destination in the positive fixture.
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='open'
+   WHERE id=$1`,[scenarioA.destinationTable]);
   const orderId='b0a00000-0000-4000-8000-000000000141';
   await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
    customer_alias,customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
