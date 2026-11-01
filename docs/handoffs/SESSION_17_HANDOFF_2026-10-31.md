@@ -248,3 +248,7 @@ Commit 982a8d2c validado en Sabora CI `41270325492`, Bootstrap PG17 `41270325493
 ## 51. CI F12 identidad y guardas de confirmacion
 
 Commit 4fd4d1a5: tres workflows SUCCESS (Sabora CI 41291468559, Bootstrap PG17 41291468557, browser 41291468576). Inspeccion de `table-change-h6-contract.test.mjs` detecto que el contrato de orden de cuenta/aprobacion/persistencia, consumo de grant y aislamiento del cutover NO figuraba en `pnpm test`; commit cfe94013 lo incorpora al gate principal. Dos pruebas de readiness de la funcion H6 ACTIVA permanecen `test.skip` por defecto: no presentar el candidato como flujo activo completado. CI nuevo pendiente. B3 NO-GO, sin despliegues.
+
+## 52. Confirmacion candidata: riesgo de persistencia antes de consumir grant
+
+Commit cfe94013 acreditado con Sabora CI 41291805713, Bootstrap PG17 41291805707 y browser 41291805741, todos SUCCESS. Auditoria de la funcion candidata confirma que `persist_customer_order_candidate` se invoca antes de `consume_customer_table_change_h6_candidate`; esto no demuestra que el primer pedido B pueda persistirse con binding aun en A ni que mantenga cuenta unica. Se documenta prueba de aceptacion PG17 real y rollback en `docs/reviews/SABORA_TABLE_TRANSFER_B0_ATOMICITY_DEPENDENCIES_2026-10-31.md` commit 2afbe8fb. Priorizar bloque completo de persistencia/transferencia y recogida, no mas tests superficiales. B3 NO-GO.
