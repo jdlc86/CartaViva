@@ -177,3 +177,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `b1238066e55d286cb579e5b183e79e68f54ebf6f`: pruebas de construcción positiva de `createVerifiedTableChangeB3CustomerFlowCandidate` con cinco pools simulados, sin ejecutar SQL de negocio en el arranque, y rechazo de concesiones adicionales al rol de cesta/cotización. Verificar resultado en CI; no equivale a un preflight de cinco logins PostgreSQL 17 reales.
 - Las CI de `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4` y `4f1dd0b040f645a7de87ab43c38701b389969789` seguían ejecutándose en la última consulta. No marcar éxito sin conclusión.
 - Prioridad siguiente: cerrar ejecución de CI, corregir regresiones y luego prueba PG17 de confirmación y replay real de A→B con políticas de cobro y aislamiento completo. PR #43 Draft, NO-GO; no desplegar ni tocar infraestructura compartida.
+
+## 24. Rechazo temprano de configuración B3 y estado CI (2026-11-01)
+
+- `5d69d998ef14c0bfd65a7174fb73bf6095b9e050`: la factoría de cinco identidades rechaza antes de abrir conexiones cualquier secreto insuficiente, reloj/UUID inválidos o callbacks de identidad ausentes. Se mantiene preflight exacto por rol para configuración válida.
+- `a33b7fcb7c1fd49ba7d8d3c26c0f2acbd3cdffd4`: prueba negativa que verifica cero consultas en los cinco pools ante configuración inválida. **Nueva CI pendiente**.
+- CI antigua `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4`: Bootstrap y navegador SUCCESS; Sabora CI todavía IN_PROGRESS al consultar. CI `3538dcbd7ad53120481467f721ec7dfb305b3b39` aún IN_PROGRESS 3/3. No inferir PASS.
+- Sigue pendiente hito de integración real PG17 de cinco identidades y traslado económico A→B. PR #43 Draft, NO-GO. Sin despliegues ni cambios en Fleetia, VPS o Supabase operativo.
