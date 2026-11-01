@@ -384,7 +384,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   await admin.query(`UPDATE sabora.order_line_delivery_destinations
    SET table_id=$2,session_id=$3,visit_key=$4,destination_version=destination_version+1
    WHERE order_line_id=$1`,[httpLine,destinationId,destinationSession,visitKey]);
-  await admin.query(changeSql,[destinationId,visitKey]);
+  await admin.query(changeSql,reason==='visit_revoked'?[destinationId,visitKey]:[destinationId]);
   await assert.rejects(operations.managePickup({lineId:httpLine,action:'cancel_pickup',
    expectedVersion:claimedVersion,capability:issueKitchen({
     actorId:waiterId,staffRole:'waiter',action:'cancel_pickup',targetId:httpLine,
