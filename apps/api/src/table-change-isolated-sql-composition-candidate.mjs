@@ -18,8 +18,8 @@ export const F12_OPERATIONS_SQL=Object.freeze([DECIDE_TABLE_CHANGE_H6_SQL]);
 // The login has exactly one SET ROLE membership and no direct Sabora EXECUTE.
 export const B3_H6_READER_ROLE='sabora_b3_h6_reader_runtime';
 export const B3_H6_READER_SIGNATURES=Object.freeze([
- 'sabora.read_customer_round_h6_candidate',
- 'sabora.read_customer_payment_policy_h6_candidate'
+ 'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
+ 'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)'
 ]);
 export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
  current_user AS effective_role,session_user AS login_role,
@@ -67,7 +67,7 @@ export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
   const functions=await client.query(B3_H6_READER_FUNCTION_SQL,[B3_H6_READER_ROLE]);
   const signatures=functions?.rows?.length===1?functions.rows[0].signatures:null;
   if(!Array.isArray(signatures)||signatures.length!==2||
-     !B3_H6_READER_SIGNATURES.every(name=>signatures.some(sig=>sig.startsWith(name+'('))))
+     !B3_H6_READER_SIGNATURES.every(name=>signatures.includes(name)))
    throw Error('invalid_b3_h6_reader_function_surface');
   valid=true;
   return Object.freeze({validated:true});
