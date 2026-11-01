@@ -268,3 +268,7 @@ Tras registrar migracion 68 en auditoria, CI 41292910636 y Bootstrap 41292910603
 ## 56. PG17: correccion del guard de binding tras auditoria de migraciones
 
 Commit 8e1161b7 corrige prueba de recuento de migraciones; workflows 41293140119 y 41293140124 alcanzaron Block 2B PG17, pero fallaron con `h6_transfer_binding_guard_drift`. Se verifico en la migracion previa `20261031030000` que el branch real ya utiliza `v_binding_id` tipado, no `IF FOUND` ni `v_binding.id`; commit 55e3ddaf ajusta el patron de reescritura de la funcion candidata. Su CI detecto test contractual obsoleto que aun esperaba `v_binding.id`; commit f0c7799a lo actualiza. Workflows 41293618050/41293618028/41293618018 en curso. No confundir estos arreglos con una prueba funcional A→B superada; B3 NO-GO.
+
+## 57. PG17 real del guard F12 sin binding
+
+Los tres workflows del commit f0c7799a terminaron SUCCESS: Sabora CI 41293618050, Bootstrap PG17 41293618028, navegador 41293618018. Se incorpora prueba SQL real en `scripts/ci/table-change-root-postgres17.test.mjs`, commit bea335ed, para cliente con cuenta abierta sin binding y primera confirmacion en destino B: exige error `h6_open_account_binding_missing` SQLSTATE 42501 y cero pedidos B / grants, conservando una sola cuenta. CI del nuevo commit: Sabora 41294202929 y Bootstrap 41294202925 en curso, navegador 41294202902 SUCCESS al redactar. Esta prueba negativa NO acredita el camino positivo aprobado A→B ni F12–F23 completos. B3 NO-GO; no merge ni deploy.
