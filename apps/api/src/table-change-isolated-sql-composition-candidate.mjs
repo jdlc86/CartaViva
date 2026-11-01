@@ -2,6 +2,7 @@
 // privileges, mount routes or modify the existing H6 production composition.
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
+import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -54,13 +55,12 @@ export async function createVerifiedIsolatedTableChangeSqlCandidate({
 export async function createVerifiedTableChangeB3Candidate({
  customerPool,operationsPool,confirmationPool,
  expectedCustomerLogin,expectedOperationsLogin,
- hashSession,verifyStaff,assertConfirmationCapabilities,
+ hashSession,verifyStaff,expectedConfirmationLogin,
  createConfirmationFlow
 }={}){
  if(!confirmationPool||confirmationPool===customerPool||
     confirmationPool===operationsPool||
     typeof confirmationPool.connect!=='function'||
-    typeof assertConfirmationCapabilities!=='function'||
     typeof createConfirmationFlow!=='function')
   throw Error('invalid_b3_isolated_composition');
  const tableChange=await createVerifiedIsolatedTableChangeSqlCandidate({
@@ -69,7 +69,9 @@ export async function createVerifiedTableChangeB3Candidate({
  });
  // The confirmation preflight must validate the exact transfer-only EXECUTE
  // surface of its separate login. Do not substitute an H6 production preflight.
- const confirmationCheck=await assertConfirmationCapabilities({pool:confirmationPool});
+ const confirmationCheck=await assertB3ConfirmationCapabilities({
+  pool:confirmationPool,expectedLogin:expectedConfirmationLogin
+ });
  if(confirmationCheck?.validated!==true)
   throw Error('invalid_b3_confirmation_capabilities');
  const confirmation=await createConfirmationFlow({pool:confirmationPool});
