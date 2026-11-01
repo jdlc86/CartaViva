@@ -192,3 +192,21 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `4c866770ecfbbadf2187d550ed45375b8f5533be`: prueba negativa que simula membresía extra de B3 writer y verifica rechazo sin llegar a preflight de las otras cuatro identidades. **CI de estos cambios pendiente**.
 - Riesgo todavía abierto: la identidad H6 lectora usa `sabora_h6_customer_runtime`, cuyo EXECUTE en PostgreSQL abarca funciones H6 adicionales. El allowlist de aplicación no equivale a un rol de lectura exclusivamente DB. Se requiere revisión de privilegios y prueba PG17 real antes de GO.
 - PR #43 Draft, NO-GO. Sin despliegue ni cambios en VPS/Fleetia/Supabase operativo.
+
+## 26. Actualización de continuidad verificada (2026-11-01)
+
+**Evidencia CI de HEAD anterior `3356a95404d276888cc2d93d8d97297768197498`: 3/3 SUCCESS**, comprobada en GitHub Actions:
+- Sabora CI: run `41336053533`, SUCCESS.
+- Bootstrap Sabora lockfile: run `41336053562`, SUCCESS.
+- Sabora client browser conformance: run `41336053368`, SUCCESS.
+
+**Estado técnico actual:** rama `integration/sabora-h6-b2-delivery-board-contract-20261031`, PR #43 Draft. El código candidato contiene separación de cinco pools/logins (F12 cliente, F12 operaciones, escritor B3, lector H6, cesta/cotización), preflight SQL, exclusividad SET ROLE para quinta identidad y adaptador opt-in de confirmación H6 transferible. La CI verde valida el commit anterior, **no certifica** todavía el recorrido económico integral A→B ni la preparación para producción.
+
+**Bloqueos y secuencia para próxima sesión:**
+1. Verificar CI del commit documental más reciente; no atribuirle automáticamente la conclusión del SHA anterior.
+2. Auditar privilegios de `sabora_h6_customer_runtime`: la lectura H6 está restringida por allowlist de aplicación, pero el rol DB conserva EXECUTE adicional. Definir y probar una identidad lectora de mínimo privilegio en PG17 desechable, sin conceder acceso operativo ni modificar producción.
+3. Validar cinco identidades reales, SET ROLE exclusivo, denegación de privilegios cruzados y RPC de transferencia con PostgreSQL 17 desechable.
+4. Ejecutar aceptación de negocio completa F01–F28/R01–R10: solicitud/caducidad 90 s, decisión personal, QR B, primer pedido en B con traslado atómico de cuenta y consumo, pagos Stripe test, replay y concurrencia, rollback, sala/cocina/SSE, bloqueo por QR revocado o mesa reocupada y conformidad PWA.
+5. Solo tras evidencias completas considerar GO técnico; no hacer merge ni despliegue sin autorización expresa. La documentación normativa de GitHub prevalece sobre este handoff.
+
+**Restricciones permanentes:** NO-GO, sin merges, sin despliegues, sin cambios en Supabase operativo, VPS, Fleetia u otros proyectos. Actualizar esta continuidad en cada hito importante.
