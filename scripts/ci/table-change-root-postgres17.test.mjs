@@ -2075,6 +2075,22 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS grant_id`,[
    scenarioA.sourceAccount,scenarioA.customer,scenarioA.token,scenarioA.destinationTable,
    scenarioA.destinationSession,scenarioA.destinationVisit,orderId]);
+  // A grant cannot be consumed by a nonexistent or unrelated confirmed order.
+  const badOrder=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid)`,[
+   scenarioA.sourceAccount,scenarioA.customer,scenarioA.token,scenarioA.destinationTable,
+   scenarioA.destinationSession,scenarioA.destinationVisit,
+   'b0a00000-0000-4000-8000-000000000143'
+  ]),/table_change_order_scope_forbidden/);
+  assert.equal(badOrder.code,'42501');
+  const before=(await client.query(`SELECT q.status,b.table_id AS bound_table,
+   a.outstanding_cents FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,[grant])).rows[0];
+  assert.equal(before.status,'approved');
+  assert.equal(before.bound_table,scenarioA.sourceTable);
+  assert.equal(before.outstanding_cents,'2400');
   assert.equal((await consume()).rows[0].grant_id,grant);
   const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
    a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
