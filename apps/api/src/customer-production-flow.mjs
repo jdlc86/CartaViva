@@ -32,6 +32,12 @@ export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,
  $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
  )`;
 
+// B3 candidate-only confirmation entrypoint. Production remains pinned to
+// PERSIST_H6_ORDER_SQL; no runtime EXECUTE is granted to this function.
+export const PERSIST_H6_TRANSFER_ORDER_SQL=PERSIST_H6_ORDER_SQL.replace(
+ 'sabora.confirm_customer_round_h6_candidate(',
+ 'sabora.confirm_customer_round_h6_transfer_integration_candidate(');
+
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TABLE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY=/^[A-Za-z0-9_-]{16,128}$/;
@@ -90,12 +96,13 @@ const one=result=>{
 
 export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
  newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
- withH6Transaction=null}={}){
+ withH6Transaction=null,h6ConfirmationSql=PERSIST_H6_ORDER_SQL}={}){
  if(typeof withTransaction!=='function'||typeof secretKey!=='string'||
     Buffer.byteLength(secretKey,'utf8')<32||typeof clock!=='function'||typeof newId!=='function'||
     !Number.isSafeInteger(visitTtlSeconds)||visitTtlSeconds<60||visitTtlSeconds>86400||
     !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800||
-    (withH6Transaction!==null&&typeof withH6Transaction!=='function'))
+    (withH6Transaction!==null&&typeof withH6Transaction!=='function')||
+    ![PERSIST_H6_ORDER_SQL,PERSIST_H6_TRANSFER_ORDER_SQL].includes(h6ConfirmationSql))
   throw Error('invalid_customer_production_flow');
  const h6=typeof withH6Transaction==='function';
 
@@ -223,7 +230,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   });
   if(prepared.kind==='complete')return prepared.value;
   const h6Row=await withH6Transaction(async query=>one(await query(
-   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:PERSIST_H6_ORDER_SQL,
+   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
    prepared.kind==='h6_replay'?
     [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
     [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
