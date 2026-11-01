@@ -125,3 +125,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - HEAD `d27dafaf0765f0d58a235930171444cc0ea710a8` **3/3 SUCCESS**: navegador `41323257051`, Bootstrap `41323257041`, Sabora CI `41323257075`. Queda verificado el escritor transaccional restringido a la función de transferencia.
 - Commit `4041175c55260dcf68a12a0479270c1fd19f8747`: prueba adicional desde la **factoría verificada**: solo se entrega `withConfirmationTransaction`, no el pool crudo; un consumidor que intente ejecutar el SQL H6 heredado recibe `role_scoped_sql_not_allowed` y rollback, aunque los tres preflights hayan pasado. **CI nueva pendiente**.
 - Próximo bloque funcional: replay y lecturas H6 con rol independiente y privilegios mínimos; confirmación real mesa B, transferencia económica, proyección sala/SSE y aceptación completa. No ampliar B3 para incluir lecturas H6; mantener NO-GO y PR #43 Draft.
+
+## 16. Incidencia CI del test de factoría B3 y corrección (2026-11-01)
+
+- HEAD `cf2bee2a8d0c78a0b49fcbc19fce3c39d149cc09`: **Sabora CI FAIL** (run `41324210095`) y **Bootstrap FAIL** (run `41324210044`); navegador estaba en ejecución al diagnóstico. Error concreto del test `B3 verified factory passes only sealed transaction and denies legacy H6 SQL`: `unexpected_b3_sql` antes de probar la allowlist, porque el doble `b3ConfirmationPool` no implementaba `BEGIN` / `SET LOCAL ROLE` / `ROLLBACK`. No atribuir el fallo a PG17 real.
+- Corrección commit `a2fcfd1646d270241d3bade5d250ea5536bd454e`: el doble admite únicamente esos comandos transaccionales, preservando la comprobación de que el SQL H6 heredado se rechaza. **Nueva CI pendiente**; no declarar PASS hasta confirmar los workflows del HEAD.
+- Mantener PR #43 Draft y B3/F12 NO-GO; siguiente trabajo tras verde: composición real de replay/lectura H6 sin conceder permisos de lectura al escritor B3.
