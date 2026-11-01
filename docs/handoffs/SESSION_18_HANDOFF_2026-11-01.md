@@ -269,3 +269,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 
 - HEAD `eef95da169b83ed6fc1ac5ec4c0b532eab371f80`: **3/3 workflows SUCCESS**: Sabora CI `41343907200`, Bootstrap `41343907237`, navegador `41343907212`. El bloque de migraciones PG17 desechable incluye `scripts/ci/b3-h6-reader-role-smoke.sql` con roles transaccionales, privilegios mínimos y verificación de rollback. Esto valida el smoke B3 lector en el circuito actual; **no equivale a activación del runtime ni cierre integral de B3/F01–F28/R01–R10**.
 - Próximo hito: recorrido A→B con confirmación transaccional, pagos, cocina/sala, concurrencia y privilegios de las identidades efectivas. Mantener PR #43 Draft NO-GO y no tocar Supabase operativo/VPS/Fleetia.
+
+## 36. B3: firmas SQL canónicas y comprobación PG17 bajo search_path alternativo (2026-11-01)
+
+- Inspección del código real detectó discrepancia: `B3_H6_READER_FUNCTION_SQL` seguía serializando `p.oid::regprocedure::text`, cuyo resultado depende del `search_path`, mientras la lista esperada utiliza firmas completamente calificadas. El smoke PG17 anterior validaba grants, pero no esa consulta del preflight Node bajo otro `search_path`.
+- `c7a0b4b44d9196ddabe06da0e5a9638bb79b3e51`: consulta de preflight cambiada a firmas explícitas `schema.function(types)`, sin depender de `regprocedure::text`.
+- `3048a849de5161ee494b2a69d67fefbc66066197`: smoke PG17 ejecuta comprobación de firmas bajo `SET LOCAL search_path TO sabora,public` con rol lector; el rollback sigue siendo obligatorio. **Nueva CI pendiente**; los 3/3 SUCCESS anteriores corresponden a `eef95da1`, no a este HEAD.
+- El recorrido funcional y económico A→B no queda cerrado por estas comprobaciones. PR #43 Draft NO-GO. Sin cambios en Fleetia/VPS/Supabase operativo.
