@@ -2157,8 +2157,8 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
   assert.equal(afterClosure.status,'approved');
   assert.equal(afterClosure.bound_table,scenarioA.sourceTable);
   assert.equal(afterClosure.outstanding_cents,'2400');
-  // F17: valid QR and live visit are insufficient when destination is blocked.
-  await client.query(`UPDATE sabora.dining_tables SET ordering_state='blocked'
+  // F17: valid QR and live visit are insufficient when destination is closed.
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
    WHERE id=$1`,[scenarioA.destinationTable]);
   const blocked=await expectSqlError(client,consume,/table_change_destination_forbidden/);
   assert.equal(blocked.code,'42501');
