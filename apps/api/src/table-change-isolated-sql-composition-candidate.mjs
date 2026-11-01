@@ -44,3 +44,36 @@ export async function createVerifiedIsolatedTableChangeSqlCandidate({
  return createIsolatedTableChangeSqlCandidate({customerPool,operationsPool,
   hashSession,verifyStaff});
 }
+
+/**
+ * B3 candidate-only composition gate. It exposes the verified F12 request and
+ * decision RPCs together with a caller-supplied confirmation candidate, but
+ * never mounts HTTP or grants SQL privileges. All three isolated pools must
+ * pass their independent preflight before a service is returned.
+ */
+export async function createVerifiedTableChangeB3Candidate({
+ customerPool,operationsPool,confirmationPool,
+ expectedCustomerLogin,expectedOperationsLogin,
+ hashSession,verifyStaff,assertConfirmationCapabilities,
+ createConfirmationFlow
+}={}){
+ if(!confirmationPool||confirmationPool===customerPool||
+    confirmationPool===operationsPool||
+    typeof confirmationPool.connect!=='function'||
+    typeof assertConfirmationCapabilities!=='function'||
+    typeof createConfirmationFlow!=='function')
+  throw Error('invalid_b3_isolated_composition');
+ const tableChange=await createVerifiedIsolatedTableChangeSqlCandidate({
+  customerPool,operationsPool,expectedCustomerLogin,expectedOperationsLogin,
+  hashSession,verifyStaff
+ });
+ // The confirmation preflight must validate the exact transfer-only EXECUTE
+ // surface of its separate login. Do not substitute an H6 production preflight.
+ const confirmationCheck=await assertConfirmationCapabilities({pool:confirmationPool});
+ if(confirmationCheck?.validated!==true)
+  throw Error('invalid_b3_confirmation_capabilities');
+ const confirmation=await createConfirmationFlow({pool:confirmationPool});
+ if(!confirmation||typeof confirmation.confirm!=='function')
+  throw Error('invalid_b3_confirmation_flow');
+ return Object.freeze({tableChange,confirmation});
+}
