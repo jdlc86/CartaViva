@@ -218,3 +218,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `3905847c7ed13cc6dd7e44662ed9e6a4caee9988`: pruebas negativas de ambas desviaciones. **CI nueva pendiente**.
 - **Advertencia importante:** este control endurece el **login** lector, pero no reduce el EXECUTE del **rol** `sabora_h6_customer_runtime`, que sigue teniendo confirmación H6 y lectura de backlog además de política/replay. Para cumplir privilegio mínimo de base de datos hace falta un rol lector dedicado y validación PG17 desechable antes de activar B3.
 - Próximo hito: pruebas reales PG17 de las cinco identidades, rol H6 estrictamente lector, confirmación atómica A→B y F01–F28/R01–R10. PR #43 Draft NO-GO; sin merges/despliegues ni cambios a Fleetia, VPS o Supabase operativo.
+
+## 28. Regresión CI detectada y corrección focalizada (2026-11-01)
+
+- En `bcc47da1e70aafad1c915769ada0ca4573f57166`, Sabora CI run `41340775519` terminó FAILURE en Block 1: 1.161 tests PASS, 1 FAIL, 2 SKIP. El test `B3 verified factory keeps writer and H6 reader capabilities separate end to end` asumía índices fijos de llamadas y omitía la nueva consulta de auditoría `B3_H6_LOGIN_SURFACE_SQL` del preflight. No es evidencia de fallo de la lógica transaccional; sí es una regresión de test que bloquea CI.
+- `7bc3ee0eda1c16e4d895aa7905c00dcb93c83437`: se elimina dependencia del índice fijo filtrando explícitamente SQL transaccional esperado; se mantiene la auditoría de permisos H6. **CI de la corrección pendiente**.
+- El último SHA con 3/3 SUCCESS confirmado antes de esta regresión es `20834baf04a42dfd8d33bf24dd3b76c7edde2b26`. No afirmar que HEAD esté verde sin comprobar sus runs.
+- Pendientes: rol H6 verdaderamente solo lectura a nivel PostgreSQL, cinco logins PG17 reales, integración económica A→B y aceptación F01–F28/R01–R10. PR #43 Draft NO-GO; ningún merge, despliegue o modificación de Fleetia/VPS/Supabase operativo.
