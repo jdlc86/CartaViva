@@ -2006,3 +2006,33 @@ test('PG17 F12 SET ROLE boundary denies direct execution but permits explicitly 
   await client.query('RESET ROLE');
  });
 });
+
+test('PG17 F12 candidate fails closed on open account without binding before persisting destination order',async()=>{
+ await transaction(async client=>{
+  await insertF12IsolatedIdentity(client,scenarioA);
+  await client.query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+   VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+   [scenarioA.destinationTable,scenarioA.destinationSession,scenarioA.customer,scenarioA.destinationVisit]);
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit,scenarioA.customer]);
+  const failure=await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+   $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+   $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,[
+   scenarioA.token,scenarioA.destinationTable,'A'.repeat(43),scenarioA.destinationVisit,
+   'f12_binding_missing_basket','f12_binding_missing_request',Buffer.alloc(32,71),
+   'b0a00000-0000-4000-8000-000000000131','b0a00000-0000-4000-8000-000000000132',
+   JSON.stringify([]),false,'pay_at_end'
+  ]),/h6_open_account_binding_missing/);
+  assert.equal(failure.code,'42501');
+  const state=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.customer_accounts WHERE customer_id=$1) AS accounts,
+   (SELECT count(*)::int FROM sabora.orders WHERE table_id=$2) AS destination_orders,
+   (SELECT count(*)::int FROM sabora.customer_table_change_requests WHERE customer_id=$1) AS grants`,
+   [scenarioA.customer,scenarioA.destinationTable])).rows[0];
+  assert.deepEqual(state,{accounts:1,destination_orders:0,grants:0});
+ });
+});
