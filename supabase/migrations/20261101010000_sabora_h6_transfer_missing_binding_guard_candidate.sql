@@ -8,9 +8,7 @@ BEGIN
  SELECT pg_get_functiondef(p.oid) INTO v_body
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora'
-  AND p.proname='confirm_customer_round_h6_transfer_integration_candidate'
-  AND pg_get_function_identity_arguments(p.oid)=
-   'p_session_hash bytea, p_table_id uuid, p_qr_token text, p_visit_key text, p_basket_id text, p_request_key text, p_request_fingerprint bytea, p_batch_id uuid, p_order_id uuid, p_lines jsonb, p_accepted_reprice boolean, p_payment_mode text';
+  AND p.oid=to_regprocedure('sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)');
  IF v_body IS NULL THEN RAISE EXCEPTION 'h6_transfer_candidate_signature_drift'; END IF;
  IF (length(v_body)-length(replace(v_body,
   'IF FOUND AND v_binding.table_id<>p_table_id THEN','')))
