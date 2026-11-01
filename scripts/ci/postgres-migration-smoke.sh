@@ -25,7 +25,7 @@ SQL
 # Apply the real chain with an exact checksum ledger, interrupt after one
 # confirmed migration, and resume without re-executing confirmed SQL.
 bash scripts/ci/postgres-migration-chain-smoke.sh "$container"
-# Validate candidate kitchen/waiter operation grants and RLS in disposable PG17.
+# B3 candidate-only reader login/role/function isolation; all grants rolled back.\ndocker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \\\n < scripts/ci/b3-h6-reader-role-smoke.sql\n# Validate candidate kitchen/waiter operation grants and RLS in disposable PG17.
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
  < scripts/ci/order-operations-grants-smoke.sql
 # Authenticate a real restricted LOGIN and exercise negative operations SQL boundaries.
