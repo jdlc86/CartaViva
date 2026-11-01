@@ -38,10 +38,12 @@ export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
    has_function_privilege(current_user,p.oid,'EXECUTE')) AS executable_functions,
  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='sabora' AND c.relkind IN ('r','p') AND
-   has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) AS direct_relations,
+   CASE WHEN c.relkind IN ('r','p') THEN
+    has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') ELSE false END) AS direct_relations,
  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='sabora' AND c.relkind='S' AND
-   has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
+   CASE WHEN c.relkind='S' THEN
+    has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE') ELSE false END) AS direct_sequences
  FROM pg_roles r WHERE r.rolname=current_user`;
 export const B3_H6_READER_FUNCTION_SQL=`SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),
  '{}'::text[]) AS signatures FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
