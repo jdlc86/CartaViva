@@ -109,9 +109,9 @@ test('F12 candidate preserves the economic account on replay without re-consumin
 const missingBindingGuard=readFileSync(new URL('../../../supabase/migrations/20261101010000_sabora_h6_transfer_missing_binding_guard_candidate.sql',import.meta.url),'utf8');
 test('F12 candidate refuses an open account without operational binding before order persistence',()=>{
  assert.match(missingBindingGuard,/h6_open_account_binding_missing/);
- assert.match(missingBindingGuard,/v_binding\.id IS NULL AND EXISTS/);
+ assert.match(missingBindingGuard,/v_binding_id IS NULL AND EXISTS/);
  assert.match(missingBindingGuard,/a\.customer_id=v_session\.customer_id AND a\.state=''open''/);
- assert.match(missingBindingGuard,/IF v_binding\.id IS NOT NULL AND v_binding\.table_id<>p_table_id THEN/);
+ assert.match(missingBindingGuard,/IF v_binding_id IS NOT NULL AND v_binding\.table_id<>p_table_id THEN/);
  assert.match(missingBindingGuard,/REVOKE ALL ON FUNCTION sabora\.confirm_customer_round_h6_transfer_integration_candidate/);
  assert.doesNotMatch(missingBindingGuard,/GRANT EXECUTE/);
 });
