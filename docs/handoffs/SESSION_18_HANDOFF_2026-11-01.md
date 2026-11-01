@@ -246,3 +246,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `1ca6956d02f3ddd415a7743ca7ddce05c82cdcbb`: nueva prueba `scripts/ci/b3-h6-reader-role-smoke.sql` que crea rol y login solo dentro de transacción desechable, revoca EXECUTE PUBLIC temporalmente, concede exactamente dos lecturas, comprueba SET ROLE único, login sin EXECUTE y rol sin permiso de confirmación económica, y verifica rollback de roles.
 - `916ab7648bee519d4f59589556bd4167d3d9e892`: prueba conectada al bloque 2A de `scripts/ci/postgres-migration-smoke.sh` después de la cadena de migraciones. Solo se ejecuta en runner GitHub Actions con PostgreSQL 17 aislado y Docker --network none. **No afirmar que la prueba PG17 pasó hasta ver la CI de HEAD**.
 - Siguiente: inspeccionar CI, corregir fallos SQL reales si aparecen y completar E2E económico A→B con permisos separados. PR #43 Draft NO-GO. No merge/despliegue/cambios Fleetia/VPS/Supabase operativo.
+
+## 32. PG17 real: fallo de permiso de esquema en prueba del login (2026-11-01)
+
+- CI HEAD `d49b68c9c300f4fae1da44ed0cfa5a7959703dd8`: navegador SUCCESS, Sabora CI `41343287923` FAILURE, Bootstrap `41343287995` FAILURE. Bloque 1 PASS; Bloque 2A falló en el nuevo smoke PG17 con `ERROR: permission denied for schema sabora` después de `SET LOCAL ROLE sabora_b3_h6_reader_login`. Causa: la prueba llamaba `has_function_privilege` con firma textual desde un login que deliberadamente carece de USAGE del esquema; la resolución de firma requiere acceso al esquema. No es evidencia de que el login tenga permisos indebidos.
+- `cf4cbf061f1b43d3d71562fb81d15b188fd537bc`: la prueba negativa ahora consulta `pg_proc` por OID, como el preflight, sin resolver una firma por nombre desde el login restringido. **CI de corrección pendiente**.
+- Mantener PR #43 Draft NO-GO. Aún no se ha demostrado éxito completo del nuevo smoke PG17; ninguna concesión de permisos en DB operativa, VPS o Fleetia.
