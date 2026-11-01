@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
-import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL} from './customer-production-flow.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
 
@@ -128,10 +128,30 @@ test('F12 verified composition rejects identical expected logins before any quer
  assert.equal(operations.calls.length,0);
 });
 
+function h6ReadPool(){
+ const calls=[];
+ return {calls,async connect(){return {async query(sql,args){
+  calls.push({sql,args});
+  if(sql.includes('current_user AS effective_role'))return {rows:[{
+   effective_role:'h6_read_login',login_role:'h6_read_login',can_login:true,
+   inherit_role:false,superuser:false,bypass_rls:false,create_db:false,
+   create_role:false,replication:false,database_create:false,schema_create:false,
+   direct_relations:false,direct_sequences:false,role_set:[true,false,false]
+  }]};
+  if(sql.includes('aclexplode('))return {rows:[{names:[
+   'confirm_customer_round_h6_candidate','read_customer_payment_policy_h6_candidate',
+   'read_customer_round_h6_candidate','read_customer_event_backlog_h6_candidate'
+  ]}]};
+  if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_h6_customer_runtime'].includes(sql))return {rows:[]};
+  if(sql===READ_H6_ROUND_SQL||sql===READ_H6_PAYMENT_POLICY_SQL)return {rows:[{round_id:requestId}]};
+  throw Error('unexpected_h6_read_sql');
+ },release(){}};}};
+}
+
 test('B3 gate rejects shared pool and refuses unverified transfer EXECUTE',async()=>{
  const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
  const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
- const args={customerPool:customer,operationsPool:operations,
+ const args={customerPool:customer,operationsPool:operations,h6ReadPool:h6ReadPool(),expectedH6ReadLogin:'h6_read_login',
   expectedCustomerLogin:'f12_customer_login',
   expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
@@ -156,7 +176,7 @@ test('B3 composition rejects reused F12 login identities before any SQL or flow 
  const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
  const confirmation=preflightPool('sabora_b3_confirmation_runtime','f12_customer_login');
  let constructed=0;
- const base={customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+ const base={customerPool:customer,operationsPool:operations,confirmationPool:confirmation,h6ReadPool:h6ReadPool(),expectedH6ReadLogin:'h6_read_login',
   expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
   createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}};
@@ -203,10 +223,12 @@ test('B3 full isolated composition validates all three identities before constru
  let constructed=0;
  const service=await createVerifiedTableChangeB3Candidate({
   customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  h6ReadPool:h6ReadPool(),expectedH6ReadLogin:'h6_read_login',
   expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
-  createConfirmationFlow:async({withConfirmationTransaction})=>{
+  createConfirmationFlow:async({withConfirmationTransaction,withH6ReadTransaction})=>{
+   assert.equal(typeof withH6ReadTransaction,'function');
    constructed++;
    assert.equal(typeof withConfirmationTransaction,'function');
    assert.equal(customer.calls.length,3);
@@ -273,8 +295,23 @@ test('B3 verified factory passes only sealed transaction and denies legacy H6 SQ
     query=>query(PERSIST_H6_ORDER_SQL,[]))};
   }
  });
- assert.deepEqual(Object.keys(exposed),['withConfirmationTransaction']);
+ assert.deepEqual(Object.keys(exposed),['withConfirmationTransaction','withH6ReadTransaction']);
  await assert.rejects(()=>service.confirmation.confirm(),/role_scoped_sql_not_allowed/);
  assert.deepEqual(confirmation.calls.slice(3).map(x=>x.sql),[
   'BEGIN','SET LOCAL ROLE sabora_b3_confirmation_runtime','ROLLBACK']);
+});
+
+
+test('B3 H6 read capability allows only replay and policy queries',async()=>{
+ assert.deepEqual(B3_H6_READ_SQL,[READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL]);
+ const h6=h6ReadPool();
+ const withRead=createIsolatedB3H6ReadTransaction({h6ReadPool:h6});
+ await assert.rejects(()=>withRead(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[])),
+  /role_scoped_sql_not_allowed/);
+ assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
+  'SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
+ h6.calls.length=0;
+ await withRead(query=>query(READ_H6_ROUND_SQL,[]));
+ assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
+  'SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT']);
 });
