@@ -5,7 +5,8 @@ import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
-import {assertB3H6LoginSurface} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
+import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
+import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2486,5 +2487,44 @@ test('PG17 F12 customer and waiter live identity preflights use separate restric
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${customerLogin}`);
   await assert.rejects(()=>assertF12SqlIdentity({pool,expectedLogin:customerLogin,
    capability:customerRole}),/invalid_f12_sql_capabilities:function-surface/);
+ });
+});
+
+
+test('PG17 B3 fifth customer-flow login validates six exact RPCs and one SET ROLE',async()=>{
+ await transaction(async client=>{
+  const role='sabora_customer_flow_runtime',login='sabora_b3_customer_flow_probe';
+  const signatures=[
+   'sabora.authorize_customer_visit_candidate(bytea,uuid,text,text,text,timestamp with time zone)',
+   'sabora.insert_customer_quote_candidate(bytea,uuid,text,text,text,uuid,uuid,bigint,jsonb,timestamp with time zone)',
+   'sabora.lookup_customer_order_attempt_candidate(bytea,uuid,text,text,text,text)',
+   'sabora.persist_customer_order_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean)',
+   'sabora.prepare_customer_confirmation_line_candidate(bytea,uuid,text,text,text,uuid,uuid)',
+   'sabora.prepare_customer_quote_candidate(bytea,uuid,text,text,text,uuid)'
+  ];
+  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+  await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+  await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  for(const signature of signatures)
+   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  assert.deepEqual(await assertCustomerFlowSqlCapabilities({pool,expectedLogin:login}),
+   {validated:true,login});
+  assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool}),{validated:true});
+  await client.query('RESET SESSION AUTHORIZATION');
+  const extra='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  await client.query(`GRANT EXECUTE ON FUNCTION ${extra} TO ${role}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertCustomerFlowSqlCapabilities({pool,expectedLogin:login}),
+   /invalid_customer_production_sql_capabilities:function-surface/);
+  await client.query('RESET SESSION AUTHORIZATION');
+  await client.query(`REVOKE EXECUTE ON FUNCTION ${extra} FROM ${role}`);
+  await client.query('CREATE ROLE sabora_b3_customer_flow_extra NOLOGIN');
+  await client.query(`GRANT sabora_b3_customer_flow_extra TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertB3CustomerFlowExactSetRole({pool}),
+   /invalid_b3_customer_flow_set_roles/);
  });
 });
