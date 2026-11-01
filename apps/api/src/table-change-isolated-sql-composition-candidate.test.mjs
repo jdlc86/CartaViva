@@ -250,6 +250,7 @@ test('B3 full isolated composition never constructs confirmation on privilege dr
   let constructed=0;
   await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
    customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+   h6ReadPool:h6ReadPool(),expectedH6ReadLogin:'h6_read_login',
    expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
    expectedConfirmationLogin:'b3_confirmation_login',
    hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
@@ -286,6 +287,7 @@ test('B3 verified factory passes only sealed transaction and denies legacy H6 SQ
  let exposed;
  const service=await createVerifiedTableChangeB3Candidate({
   customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  h6ReadPool:h6ReadPool(),expectedH6ReadLogin:'h6_read_login',
   expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
