@@ -2063,6 +2063,30 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    (order_id,account_id,amount_cents,payment_mode,payment_policy_version,grouping_deadline,state)
    VALUES($1,$2,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
    [orderId,scenarioA.sourceAccount]);
+  // Two historical lines share a round: only the pending one may move.
+  const sourceOrder='b0a00000-0000-4000-8000-000000000144';
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+   customer_alias,customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'F12 PG17 isolated',$4,$5,
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+   '[{"category":"main","name":"Pendiente","quantity":1},
+     {"category":"drink","name":"Recogido","quantity":1}]'::jsonb)`,
+   [sourceOrder,scenarioA.sourceTable,scenarioA.sourceSession,'SB-BABABABABABJ',scenarioA.sourceVisit]);
+  const sourceRound=(await client.query(`INSERT INTO sabora.order_rounds
+   (order_id,account_id,amount_cents,payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')
+   RETURNING id`,[sourceOrder,scenarioA.sourceAccount])).rows[0].id;
+  await client.query(`INSERT INTO sabora.order_round_delivery_destinations
+   (round_id,account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4,$5)`,
+   [sourceRound,scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit]);
+  const historicalLines=(await client.query(`SELECT id,line_number FROM sabora.order_lines
+   WHERE order_id=$1 ORDER BY line_number`,[sourceOrder])).rows;
+  assert.equal(historicalLines.length,2);
+  await client.query(`UPDATE sabora.order_lines SET status='picked_up' WHERE id=$1`,[historicalLines[1].id]);
+  await client.query(`INSERT INTO sabora.order_line_delivery_destinations
+   (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+   SELECT l.id,$2,$3,$1,$4,$5,$6 FROM sabora.order_lines l WHERE l.order_id=$1`,
+   [sourceOrder,sourceRound,scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit]);
   const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests
    (account_id,customer_id,visit_key,source_table_id,requesting_session_hash,
     status,expires_at,decided_at,decided_by)
@@ -2120,6 +2144,22 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
   assert.equal(state.status,'consumed');
   assert.equal(state.destination_table_id,scenarioA.destinationTable);
   assert.equal(state.consumed_order_id,orderId);
+  const projections=(await client.query(`SELECT l.line_number,l.status,
+   d.table_id,d.destination_version FROM sabora.order_lines l
+   JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+   WHERE l.order_id=$1 ORDER BY l.line_number`,[sourceOrder])).rows;
+  assert.equal(projections[0].status,'confirmed');
+  assert.equal(projections[0].table_id,scenarioA.destinationTable);
+  assert.equal(projections[0].destination_version,'2');
+  assert.equal(projections[1].status,'picked_up');
+  assert.equal(projections[1].table_id,scenarioA.sourceTable);
+  assert.equal(projections[1].destination_version,'1');
+  const roundDestination=(await client.query(`SELECT table_id,destination_version
+   FROM sabora.order_round_delivery_destinations WHERE round_id=$1`,[sourceRound])).rows[0];
+  assert.equal(roundDestination.table_id,scenarioA.sourceTable,
+   'mixed historical round must not overwrite the completed pickup');
+  assert.equal(roundDestination.destination_version,'1');
+
   const failure=await expectSqlError(client,consume,/table_change_same_table/);
   assert.equal(failure.code,'23514');
   assert.equal((await client.query(`SELECT count(*)::int AS n
