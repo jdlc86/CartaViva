@@ -1272,6 +1272,27 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    [quoteId,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
     ids.customer.toString(),itemId,evidence]);
   const lines=[{quoteId,itemId,evidence}];
+  // An approved grant must not permit checkout into a table closed after QR scan.
+  // This is a real invocation of the integrated writer, not only a SQL source check.
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
+   WHERE id=$1`,[ids.destinationTable]);
+  await expectSqlError(client,()=>client.query(`SELECT * FROM
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
+    $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
+    Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end']),
+   /table|ordering|closed|forbidden|invalid/i);
+  const closedState=(await client.query(`SELECT
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT status FROM sabora.customer_table_change_requests WHERE id=$2) AS grant,
+   (SELECT table_id FROM sabora.customer_account_operational_bindings WHERE account_id=$3) AS binding
+   `,[ids.order,grant.id,ids.sourceAccount])).rows[0];
+  assert.equal(closedState.orders,0);
+  assert.equal(closedState.grant,'approved');
+  assert.equal(closedState.binding,ids.sourceTable);
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='open'
+   WHERE id=$1`,[ids.destinationTable]);
   // A conflicting payment-mode switch at B must rollback the persisted
   // order, round, grant consumption and every pending delivery redirect.
   await expectSqlError(client,()=>client.query(`SELECT * FROM
