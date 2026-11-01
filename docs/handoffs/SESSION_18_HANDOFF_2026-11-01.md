@@ -106,3 +106,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 
 - Commits `3236e384db4ef0b13e1f01ea4bd712d38d14e1d8` y `1716b99e290f7aaaf2788de6ed35ca3a16a09b6a`: la composición B3 rechaza **antes de cualquier consulta SQL** que el login de confirmación coincida con el de solicitud del cliente o el de decisión del personal, incluso cuando los pools sean objetos distintos. Test comprueba rechazo de ambas identidades reutilizadas, cero queries y cero construcción del flujo. Esto cierra una posibilidad de confusión de principales; no constituye montaje HTTP ni activación.
 - **CI de estos commits todavía no verificada al registrar el hito**; consultar workflow del HEAD más reciente y corregir si falla. PR #43 Draft, B3/F12 NO-GO. Sin merge, despliegue ni cambios en VPS/Supabase operativo/Fleetia.
+
+## 13. Prueba integrada de puerta B3/F12 para tres identidades (2026-11-01)
+
+- Commit `444f38087bcaafc6c9250a839b2927dfa2e90daf`: la suite de composición B3 comprueba el camino **positivo** de los tres preflights independientes (cliente, personal y confirmación) y verifica que solo entonces se construye el flujo de confirmación. También cubre **rechazo de privilegios adicionales** tanto al rol B3 como directamente al login, sin emitir SQL de negocio ni construir confirmación.
+- **Alcance limitado:** los pools de esta prueba son dobles controlados y la función `confirm` es simulada; no prueba la confirmación atómica real, el recorrido HTTP/PWA ni los efectos en cuenta/pagos/recogida. El PG17 real de privilegios fue validado previamente en el subhito 11. **CI de este nuevo commit pendiente**.
+- Auditoría pendiente antes de integración real: la composición B3 acepta una factoría de confirmación externa; verificar que el runtime final utilice exclusivamente el SQL de transferencia autorizado y resuelva correctamente lectura/replay H6, sin reutilizar el rol de confirmación para operaciones no permitidas. No declarar GO sin ello.
+- Sin merges ni despliegues, sin tocar Fleetia, VPS o Supabase operativo; PR #43 Draft y B3/F12 NO-GO.
