@@ -131,3 +131,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - HEAD `cf2bee2a8d0c78a0b49fcbc19fce3c39d149cc09`: **Sabora CI FAIL** (run `41324210095`) y **Bootstrap FAIL** (run `41324210044`); navegador estaba en ejecución al diagnóstico. Error concreto del test `B3 verified factory passes only sealed transaction and denies legacy H6 SQL`: `unexpected_b3_sql` antes de probar la allowlist, porque el doble `b3ConfirmationPool` no implementaba `BEGIN` / `SET LOCAL ROLE` / `ROLLBACK`. No atribuir el fallo a PG17 real.
 - Corrección commit `a2fcfd1646d270241d3bade5d250ea5536bd454e`: el doble admite únicamente esos comandos transaccionales, preservando la comprobación de que el SQL H6 heredado se rechaza. **Nueva CI pendiente**; no declarar PASS hasta confirmar los workflows del HEAD.
 - Mantener PR #43 Draft y B3/F12 NO-GO; siguiente trabajo tras verde: composición real de replay/lectura H6 sin conceder permisos de lectura al escritor B3.
+
+## 17. Separación del lector H6 y escritor de transferencia B3 (2026-11-01)
+
+- HEAD `46cccde3bcca669bb2e4f5bba0920806437210e3` **CI 3/3 SUCCESS**: navegador `41324368639`, Bootstrap `41324368669`, Sabora CI `41324368722`. Se cerró el fallo de fixture documentado en sección 16.
+- Commits `3c39272bfa8fea2e06591e0ad0941345f6667a00`, `9ba3ef4f2aa2814d2ab5fa48649c099eeee99537` y `82d959034190a57ebfc8b60dc538f8c66fad44d0`: la factoría B3 exige **cuarto pool/login aislado** para consultas H6 y comprueba su identidad contra `sabora_h6_customer_runtime`. Entrega dos interfaces selladas: `withConfirmationTransaction` (solo SQL de transferencia) y `withH6ReadTransaction` (solo lectura de ronda y política). Tests de SQL denegado y aislamiento. **CI de estos commits pendiente**.
+- Advertencia normativa: el rol H6 existente tiene superficie de funciones más amplia que el allowlist de la aplicación. El lector restringe SQL de aplicación pero no sustituye el análisis de privilegios PostgreSQL ni las pruebas de transfer/replay end-to-end. No conceder lecturas al rol B3, no montar rutas operativas ni declarar GO.
+- PR #43 Draft; B3/F12 NO-GO. Sin merge, VPS, Supabase operativo ni Fleetia.
