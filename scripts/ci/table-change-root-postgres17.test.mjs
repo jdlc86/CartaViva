@@ -1274,6 +1274,7 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   const lines=[{quoteId,itemId,evidence}];
   // An approved grant must not permit checkout into a table closed after QR scan.
   // This is a real invocation of the integrated writer, not only a SQL source check.
+  await client.query('SAVEPOINT closed_destination_case');
   await client.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
    WHERE id=$1`,[ids.destinationTable]);
   await expectSqlError(client,()=>client.query(`SELECT * FROM
@@ -1291,8 +1292,9 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.equal(closedState.orders,0);
   assert.equal(closedState.grant,'approved');
   assert.equal(closedState.binding,ids.sourceTable);
-  await client.query(`UPDATE sabora.dining_tables SET ordering_state='open'
-   WHERE id=$1`,[ids.destinationTable]);
+  // Closing a table may revoke the active visit. Roll back this isolated
+  // negative case before testing the independent payment-mode failure.
+  await client.query('ROLLBACK TO SAVEPOINT closed_destination_case');
   // A conflicting payment-mode switch at B must rollback the persisted
   // order, round, grant consumption and every pending delivery redirect.
   await expectSqlError(client,()=>client.query(`SELECT * FROM
