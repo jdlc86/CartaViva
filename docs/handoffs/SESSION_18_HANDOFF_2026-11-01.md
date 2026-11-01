@@ -298,3 +298,8 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 
 - `99639f03d4158cac8357c62e6f5bf3ca254f5465`: ampliado `scripts/ci/b3-h6-reader-role-smoke.sql` para ejercer `SET SESSION AUTHORIZATION sabora_b3_h6_reader_login`, verificar `session_user=current_user=login`, ejecutar `SET ROLE sabora_b3_h6_reader_runtime`, comprobar las dos RPC lectoras y restaurar la autorización antes de `ROLLBACK`. Evita dar por válido un preflight que solo simula `SET ROLE` desde superusuario. Es una simulación real de identidad SQL dentro de una conexión administrativa desechable, **no una autenticación TCP de login real**.
 - Las pruebas del commit anterior `1274b39f` estaban aún en curso al comenzar este bloque. **CI del nuevo HEAD pendiente**. No montar rutas, no crear roles operativos y mantener PR #43 Draft NO-GO.
+
+## 41. Cierre CI de identidad lectora B3 (2026-11-01)
+
+- HEAD `2821d05f395dd3e4e18be6264987866fa4366ace`: Sabora CI run `41345369792` job `124963938064` SUCCESS; Bootstrap `41345369807` SUCCESS; navegador `41345369774` SUCCESS. La ejecución incluye la prueba PG17 `SET SESSION AUTHORIZATION` del commit `99639f03`.
+- **Alcance del cierre**: identidad y ACL de lector B3 bajo pruebas aisladas, no aceptación de traslado económico A→B, ni autenticación TCP real del nuevo lector. PR #43 permanece Draft/NO-GO.
