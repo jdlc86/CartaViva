@@ -293,3 +293,8 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 
 - Commit `b8c9eb4b50a8106c9a7bdf6874690ffa78742bc6`: **3/3 SUCCESS** en GitHub Actions: Sabora CI `41344840001`, Bootstrap `41344839974`, conformidad navegador `41344839968`. Sabora CI completó aceptación consolidada H6, PG17 desechable y construcción aislada de imagen API.
 - Este resultado certifica la regresión existente del HEAD; no certifica que el primer pedido B tras aprobación transfiera una cuenta abierta en A. Sigue pendiente aceptación económica transaccional real, pagos, concurrencia y UI F01–F28/R01–R10. PR #43 Draft NO-GO.
+
+## 40. B3 lector: identidad de sesión restringida en PG17 (2026-11-01)
+
+- `99639f03d4158cac8357c62e6f5bf3ca254f5465`: ampliado `scripts/ci/b3-h6-reader-role-smoke.sql` para ejercer `SET SESSION AUTHORIZATION sabora_b3_h6_reader_login`, verificar `session_user=current_user=login`, ejecutar `SET ROLE sabora_b3_h6_reader_runtime`, comprobar las dos RPC lectoras y restaurar la autorización antes de `ROLLBACK`. Evita dar por válido un preflight que solo simula `SET ROLE` desde superusuario. Es una simulación real de identidad SQL dentro de una conexión administrativa desechable, **no una autenticación TCP de login real**.
+- Las pruebas del commit anterior `1274b39f` estaban aún en curso al comenzar este bloque. **CI del nuevo HEAD pendiente**. No montar rutas, no crear roles operativos y mantener PR #43 Draft NO-GO.
