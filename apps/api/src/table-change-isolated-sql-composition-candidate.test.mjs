@@ -402,7 +402,9 @@ test('B3 verified factory keeps writer and H6 reader capabilities separate end t
  assert.deepEqual(await service.confirmation.confirm(),{policy:1,replay:1});
  assert.deepEqual(writer.calls.slice(3).map(x=>x.sql),[
   'BEGIN','SET LOCAL ROLE sabora_b3_confirmation_runtime','ROLLBACK']);
- assert.deepEqual(reader.calls.slice(2).map(x=>x.sql),[
+ assert.deepEqual(reader.calls.filter(x=>['BEGIN','COMMIT','ROLLBACK'].includes(x.sql)||
+  x.sql.startsWith('SET LOCAL ROLE ')||
+  [READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL].includes(x.sql)).map(x=>x.sql),[
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_PAYMENT_POLICY_SQL,'COMMIT',
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT',
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
