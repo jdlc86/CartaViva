@@ -179,6 +179,8 @@ function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
  return {calls,async connect(){return {
   async query(sql,args){
    calls.push({sql,args});
+   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||
+      sql==='SET LOCAL ROLE sabora_b3_confirmation_runtime')return {rows:[]};
    if(sql.includes('current_user AS effective_role'))return {rows:[{
     effective_role:login,login_role:login,can_login:true,inherit_role:false,
     superuser:false,bypass_rls:false,create_db:false,create_role:false,
