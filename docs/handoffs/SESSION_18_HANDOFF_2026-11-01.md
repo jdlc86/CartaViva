@@ -151,3 +151,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `e6f93ce0d268fbcd1051dec2a3652d45307d4ca7`: `createCustomerProductionFlow` admite opcionalmente `withH6ReadTransaction`. La lectura de política y el replay `READ_H6_ROUND_SQL` utilizan esa transacción, mientras la persistencia de la ronda usa `withH6Transaction`. Por defecto se mantiene el comportamiento anterior si no se configura un lector separado. Rechaza configuración de lector sin escritor. No se ha conectado aún el flujo completo a la factoría B3.
 - `046b56e23630120f90f53283fbb8a7c23c7f526a`: comentario de composición corregido a cuatro identidades. **CI nueva pendiente**. Revisar especialmente tests del flujo H6 y su replay antes de considerar integración terminada.
 - Mantener PR #43 Draft y NO-GO; no ampliar privilegios del escritor ni tocar Fleetia/VPS/Supabase operativo.
+
+## 20. Verificación de encaminamiento lector/escritor (2026-11-01)
+
+- HEAD `540c1af72248a6936e71f5a4e66b6ebe5b0df531`: **3/3 SUCCESS** — Sabora CI `41329154602`, Bootstrap `41329154596`, navegador `41329154615`. El nuevo parámetro opcional de lectura H6 no produjo regresión en esa CI.
+- Commit `4369d99875d3f4ad2af88f83f42d6472f3b1cbd2`: prueba integrada de la factoría verificada que ejerce ambas capacidades independientes; política y replay H6 pasan por el lector, mientras los intentos cruzados (lectura con B3 y escritura con lector) se rechazan y revierten. **Pendiente CI de este commit**. Es una prueba con pools simulados; no equivale al recorrido real F01–F28/R01–R10 en PG17.
+- Próxima dependencia: conectar `createCustomerProductionFlow` real a factoría candidata con el pool de negocio base y secretos verificados; ejecutar pruebas funcionales de primer pedido en mesa B, transferencia, pagos y replay bajo PostgreSQL 17 aislado. No exponer rutas ni conceder privilegios operativos antes de cierre y autorización.
