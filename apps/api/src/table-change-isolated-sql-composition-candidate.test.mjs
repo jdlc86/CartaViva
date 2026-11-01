@@ -367,3 +367,38 @@ test('B3 four-way composition fails closed on H6 reader identity drift',async()=
  assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
  assert.equal(operations.calls.some(x=>x.sql==='BEGIN'),false);
 });
+
+
+test('B3 verified factory keeps writer and H6 reader capabilities separate end to end',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ // The writer fixture must also answer the B3 preflight; reuse the strict B3
+ // fixture for the actual verified factory and test SQL rejection on both sides.
+ const writer=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ const service=await createVerifiedTableChangeB3Candidate({
+  customerPool:customer,operationsPool:operations,confirmationPool:writer,
+  h6ReadPool:reader,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async({withConfirmationTransaction,withH6ReadTransaction})=>({
+   confirm:async()=>{
+    const policy=await withH6ReadTransaction(query=>query(READ_H6_PAYMENT_POLICY_SQL,[]));
+    const replay=await withH6ReadTransaction(query=>query(READ_H6_ROUND_SQL,[]));
+    await assert.rejects(()=>withConfirmationTransaction(query=>query(READ_H6_ROUND_SQL,[])),
+     /role_scoped_sql_not_allowed/);
+    await assert.rejects(()=>withH6ReadTransaction(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[])),
+     /role_scoped_sql_not_allowed/);
+    return {policy:policy.rows.length,replay:replay.rows.length};
+   }
+  })
+ });
+ assert.deepEqual(await service.confirmation.confirm(),{policy:1,replay:1});
+ assert.deepEqual(writer.calls.slice(3).map(x=>x.sql),[
+  'BEGIN','SET LOCAL ROLE sabora_b3_confirmation_runtime','ROLLBACK']);
+ assert.deepEqual(reader.calls.slice(2).map(x=>x.sql),[
+  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_PAYMENT_POLICY_SQL,'COMMIT',
+  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT',
+  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
+});
