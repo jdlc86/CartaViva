@@ -365,7 +365,7 @@ test('B3 four-way composition fails closed on H6 reader identity drift',async()=
   expectedH6ReadLogin:'wrong_h6_login',
   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
   createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}
- }),/invalid_h6_sql_capabilities:identity-policy/);
+ }),/invalid_b3_h6_reader_capabilities/);
  assert.equal(constructed,0);
  assert.equal(reader.calls.length,1);
  assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
