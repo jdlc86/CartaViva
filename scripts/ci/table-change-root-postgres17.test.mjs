@@ -2091,6 +2091,20 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
   assert.equal(before.status,'approved');
   assert.equal(before.bound_table,scenarioA.sourceTable);
   assert.equal(before.outstanding_cents,'2400');
+  // Revoking the destination QR version must invalidate the visit and leave
+  // the grant available for a later authorized scan, without side effects.
+  await client.query(`UPDATE sabora.dining_tables SET qr_version=qr_version+1 WHERE id=$1`,
+   [scenarioA.destinationTable]);
+  const revoked=await expectSqlError(client,consume,/table_change_destination_forbidden/);
+  assert.equal(revoked.code,'42501');
+  await client.query(`UPDATE sabora.dining_tables SET qr_version=qr_version-1 WHERE id=$1`,
+   [scenarioA.destinationTable]);
+  const afterQr=(await client.query(`SELECT q.status,b.table_id AS bound_table
+   FROM sabora.customer_table_change_requests q JOIN
+   sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   WHERE q.id=$1`,[grant])).rows[0];
+  assert.equal(afterQr.status,'approved');
+  assert.equal(afterQr.bound_table,scenarioA.sourceTable);
   assert.equal((await consume()).rows[0].grant_id,grant);
   const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
    a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
