@@ -252,3 +252,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - CI HEAD `d49b68c9c300f4fae1da44ed0cfa5a7959703dd8`: navegador SUCCESS, Sabora CI `41343287923` FAILURE, Bootstrap `41343287995` FAILURE. Bloque 1 PASS; Bloque 2A falló en el nuevo smoke PG17 con `ERROR: permission denied for schema sabora` después de `SET LOCAL ROLE sabora_b3_h6_reader_login`. Causa: la prueba llamaba `has_function_privilege` con firma textual desde un login que deliberadamente carece de USAGE del esquema; la resolución de firma requiere acceso al esquema. No es evidencia de que el login tenga permisos indebidos.
 - `cf4cbf061f1b43d3d71562fb81d15b188fd537bc`: la prueba negativa ahora consulta `pg_proc` por OID, como el preflight, sin resolver una firma por nombre desde el login restringido. **CI de corrección pendiente**.
 - Mantener PR #43 Draft NO-GO. Aún no se ha demostrado éxito completo del nuevo smoke PG17; ninguna concesión de permisos en DB operativa, VPS o Fleetia.
+
+## 33. PG17 B3 reader: rollback test reached and false failure fixed (2026-11-01)
+
+- `748a32571f7c9f03ad028714d224c555109eefa8`: Sabora CI run `41343560263` FAILURE en Block 2A. La nueva prueba PG17 completó creación de roles, GRANT, comprobaciones de login y rol, RESET y ROLLBACK, pero la sentencia final `SELECT CASE ... THEN (1/0)::int ELSE 1 END` falló por evaluación de la constante `1/0` en PostgreSQL, aunque no hubiera roles supervivientes. No interpretar ese error como una filtración de roles.
+- `be74c3ef6299a65cb470dd73b56ac078a9b4b432`: sustituida la expresión por `DO` con `RAISE EXCEPTION` condicional que comprueba ausencia de **ambos** roles después de rollback. Nueva CI pendiente.
+- El contrato B3 sigue candidato y NO-GO; el hito económico A→B y F01–F28/R01–R10 permanecen abiertos. Sin merge, despliegue ni cambios de infraestructura operativa.
