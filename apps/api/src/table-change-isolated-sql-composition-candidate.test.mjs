@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -401,4 +401,21 @@ test('B3 verified factory keeps writer and H6 reader capabilities separate end t
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_PAYMENT_POLICY_SQL,'COMMIT',
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT',
   'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
+});
+
+
+test('B3 customer confirmation adapter validates inputs before exposing flow',async()=>{
+ assert.throws(()=>createB3CustomerConfirmationFlowCandidate({
+  withCustomerTransaction:async()=>{},secretKey:'short'
+ }),/invalid_b3_customer_confirmation_adapter/);
+ const factory=createB3CustomerConfirmationFlowCandidate({
+  withCustomerTransaction:async()=>{},secretKey:'a'.repeat(48)
+ });
+ assert.throws(()=>factory({withConfirmationTransaction:async()=>{}}),
+  /invalid_b3_customer_confirmation_adapter/);
+ const flow=factory({withConfirmationTransaction:async()=>{},
+  withH6ReadTransaction:async()=>{}});
+ assert.deepEqual(Object.keys(flow),['confirm']);
+ assert.equal(typeof flow.confirm,'function');
+ assert.equal(Object.isFrozen(flow),true);
 });
