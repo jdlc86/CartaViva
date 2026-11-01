@@ -240,3 +240,7 @@ Commit 6585fb18050a0e1e36db8d40195862201feeeb43: tres workflows SUCCESS, Sabora 
 ## 49. F12 factory verificada (candidata, sin montaje)
 
 Commit a0204ef2 incorpora `createVerifiedIsolatedTableChangeSqlCandidate`: antes de crear el servicio sellado ejecuta `assertF12SqlCapabilities` sobre los dos pools/login SQL independientes; un fallo impide entregar el servicio. Commit 982a8d2c agrega pruebas de denegacion ante grants indebidos de login y de aceptacion tras preflight dual; ambas integradas en `pnpm test` desde 6585fb18. No se han creado roles/grants ni montado rutas, y la factoría original no verificada sigue disponible como candidata para pruebas, por lo que el cutover exige revisar y usar expresamente la verificada. CI del commit nuevo pendiente. B3 NO-GO.
+
+## 50. F12 factory dual-login: CI PASS y controles negativos adicionales
+
+Commit 982a8d2c validado en Sabora CI `41270325492`, Bootstrap PG17 `41270325493`, browser `41270325524`, todos SUCCESS. La factoría verificada sigue candidata, sin roles ni grants reales ni montaje. Commit 4fd4d1a5 añade regresiones obligatorias que rechazan identidad de login cambiada y logins esperados compartidos, sin ejecutar transacciones de negocio ni inspeccionar el segundo pool tras fallo del primero. La ejecución CI de este último commit está pendiente. El control de login en arranque no sustituye la verificación de credenciales reales ni evita por sí solo deriva de privilegios después del arranque; pendiente definir controles de cutover antes de B3. No declarar GO.
