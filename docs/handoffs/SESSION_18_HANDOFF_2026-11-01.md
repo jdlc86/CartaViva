@@ -264,3 +264,8 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - CI `bb7c60ccca9b3a86a256e5252344c410e341299c`: Sabora CI `41343800427` FAILURE y Bootstrap `41343800418` FAILURE en bloque 2A. Error `pg_toast_16387 is not a sequence` en la nueva comprobación de privilegios directos del rol lector. PostgreSQL evaluó `has_sequence_privilege` sobre un OID de relación no secuencia a pesar del filtro `relkind='S'` en la expresión con OR.
 - `0800845fa7acbc02cd29ed10c00d118126fb74cf`: se protege cada llamada a `has_table_privilege` / `has_sequence_privilege` mediante `CASE WHEN relkind ... THEN ... ELSE false END` para evitar evaluación sobre OID de tipo incompatible. **CI pendiente**; no afirmar PG17 PASS.
 - No se han realizado cambios operativos, merges ni despliegues. PR #43 Draft NO-GO. Continuar hasta CI PG17 verde antes de ampliar a E2E económico A→B.
+
+## 35. CI PG17 B3 lector verificada verde (2026-11-01)
+
+- HEAD `eef95da169b83ed6fc1ac5ec4c0b532eab371f80`: **3/3 workflows SUCCESS**: Sabora CI `41343907200`, Bootstrap `41343907237`, navegador `41343907212`. El bloque de migraciones PG17 desechable incluye `scripts/ci/b3-h6-reader-role-smoke.sql` con roles transaccionales, privilegios mínimos y verificación de rollback. Esto valida el smoke B3 lector en el circuito actual; **no equivale a activación del runtime ni cierre integral de B3/F01–F28/R01–R10**.
+- Próximo hito: recorrido A→B con confirmación transaccional, pagos, cocina/sala, concurrencia y privilegios de las identidades efectivas. Mantener PR #43 Draft NO-GO y no tocar Supabase operativo/VPS/Fleetia.
