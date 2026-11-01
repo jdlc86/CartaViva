@@ -66,5 +66,10 @@ DO $$ BEGIN
 END $$;
 RESET ROLE;
 ROLLBACK;
-SELECT CASE WHEN EXISTS(SELECT 1 FROM pg_roles WHERE rolname='sabora_b3_h6_reader_runtime') THEN
-  (1/0)::int ELSE 1 END AS rollback_roles_verified;
+DO $$ BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN
+  ('sabora_b3_h6_reader_runtime','sabora_b3_h6_reader_login')) THEN
+  RAISE EXCEPTION 'B3 H6 reader test roles survived transaction rollback';
+ END IF;
+END $$;
+SELECT 'b3_h6_reader_role_rollback_verified' AS result;
