@@ -141,6 +141,29 @@ export function createB3CustomerConfirmationFlowCandidate({
 }
 
 
+// A separate B3 guard closes a gap in the shared customer preflight: its
+// three-role SET checks alone do not exclude membership in a fourth role.
+export const B3_CUSTOMER_FLOW_EXACT_SET_SQL=`SELECT coalesce(array_agg(r.rolname::text ORDER BY r.rolname::text),
+ '{}'::text[]) AS roles FROM pg_roles r
+ WHERE r.rolname<>current_user AND pg_has_role(current_user,r.oid,'SET')`;
+
+export async function assertB3CustomerFlowExactSetRole({pool}={}){
+ if(!pool||typeof pool.connect!=='function')
+  throw Error('invalid_b3_customer_flow_set_roles');
+ let client,valid=false;
+ try{
+  client=await pool.connect();
+  const result=await client.query(B3_CUSTOMER_FLOW_EXACT_SET_SQL);
+  const roles=result?.rows?.length===1?result.rows[0].roles:null;
+  if(!Array.isArray(roles)||roles.length!==1||roles[0]!=='sabora_customer_flow_runtime')
+   throw Error('invalid_b3_customer_flow_set_roles');
+  valid=true;
+  return Object.freeze({validated:true});
+ }catch(error){
+  throw Error('invalid_b3_customer_flow_set_roles');
+ }finally{if(client)try{client.release(!valid);}catch{}}
+}
+
 export const B3_CUSTOMER_FLOW_SQL=Object.freeze([
  AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
  LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL
@@ -172,6 +195,7 @@ export async function createVerifiedTableChangeB3CustomerFlowCandidate({
     typeof hashSession!=='function'||typeof verifyStaff!=='function')
   throw Error('invalid_b3_customer_flow_configuration');
  await assertCustomerFlowSqlCapabilities({pool:flowPool,expectedLogin:expectedFlowLogin});
+ await assertB3CustomerFlowExactSetRole({pool:flowPool});
  const withCustomerTransaction=createRoleScopedPostgresTransaction({
   pool:flowPool,role:'sabora_customer_flow_runtime',
   allowedSql:new Set(B3_CUSTOMER_FLOW_SQL)
