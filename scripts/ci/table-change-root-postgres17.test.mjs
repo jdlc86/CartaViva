@@ -2036,3 +2036,63 @@ test('PG17 F12 candidate fails closed on open account without binding before per
   assert.deepEqual(state,{accounts:1,destination_orders:0,grants:0});
  });
 });
+
+test('PG17 F12 atomic grant consumption moves operational binding without moving economic history',async()=>{
+ await transaction(async client=>{
+  await insertF12IsolatedIdentity(client,scenarioA);
+  await insertF12Visit(client,scenarioA);
+  await client.query(`INSERT INTO sabora.customer_table_visits
+   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+   VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+   [scenarioA.destinationTable,scenarioA.destinationSession,scenarioA.customer,scenarioA.destinationVisit]);
+  await client.query(`INSERT INTO sabora.customer_accounts
+   (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
+   VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+   [scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit,scenarioA.customer]);
+  await client.query(`INSERT INTO sabora.customer_account_operational_bindings
+   (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+   [scenarioA.sourceAccount,scenarioA.sourceTable,scenarioA.sourceSession,scenarioA.sourceVisit]);
+  const orderId='b0a00000-0000-4000-8000-000000000141';
+  await client.query(`INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,
+   customer_alias,customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
+   VALUES($1,$2,$3,NULL,NULL,'F12 PG17 isolated',$4,$5,
+   '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+   '[{"category":"main","name":"Plato auditoría","quantity":1}]'::jsonb)`,
+   [orderId,scenarioA.destinationTable,scenarioA.destinationSession,'SB-BABABABABABJ',scenarioA.destinationVisit]);
+  await client.query(`INSERT INTO sabora.order_rounds
+   (order_id,account_id,amount_cents,payment_mode,payment_policy_version,grouping_deadline,state)
+   VALUES($1,$2,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+   [orderId,scenarioA.sourceAccount]);
+  const grant=(await client.query(`INSERT INTO sabora.customer_table_change_requests
+   (account_id,customer_id,visit_key,source_table_id,requesting_session_hash,
+    status,expires_at,decided_at,decided_by)
+   VALUES($1,$2,$3,$4,$5,'approved',clock_timestamp()+interval '90 seconds',
+    clock_timestamp(),$6) RETURNING id`,[
+    scenarioA.sourceAccount,scenarioA.customer,scenarioA.sourceVisit,scenarioA.sourceTable,
+    scenarioA.token,'b0a00000-0000-4000-8000-000000000142'
+   ])).rows[0].id;
+  const consume=()=>client.query(`SELECT sabora.consume_customer_table_change_h6_candidate(
+   $1::uuid,$2::uuid,$3::bytea,$4::uuid,$5::uuid,$6::text,$7::uuid) AS grant_id`,[
+   scenarioA.sourceAccount,scenarioA.customer,scenarioA.token,scenarioA.destinationTable,
+   scenarioA.destinationSession,scenarioA.destinationVisit,orderId]);
+  assert.equal((await consume()).rows[0].grant_id,grant);
+  const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
+   a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
+   q.status,q.destination_table_id,q.consumed_order_id
+   FROM sabora.customer_accounts a
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+   JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+   WHERE a.id=$1`,[scenarioA.sourceAccount])).rows[0];
+  assert.equal(state.historical_table,scenarioA.sourceTable);
+  assert.equal(state.operational_table,scenarioA.destinationTable);
+  assert.equal(state.outstanding_cents,'2400');
+  assert.equal(state.binding_version,'2');
+  assert.equal(state.status,'consumed');
+  assert.equal(state.destination_table_id,scenarioA.destinationTable);
+  assert.equal(state.consumed_order_id,orderId);
+  const failure=await expectSqlError(client,consume,/table_change_same_table/);
+  assert.equal(failure.code,'23514');
+  assert.equal((await client.query(`SELECT count(*)::int AS n
+   FROM sabora.customer_accounts WHERE customer_id=$1`,[scenarioA.customer])).rows[0].n,1);
+ });
+});
