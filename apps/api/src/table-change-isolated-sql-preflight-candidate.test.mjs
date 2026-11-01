@@ -28,7 +28,7 @@ test('F12 preflight accepts only exact isolated login, SET membership and one RP
   operationsPool:operations,expectedCustomerLogin:customer.login,
   expectedOperationsLogin:operations.login}),{validated:true});
  assert.equal(customer.released,false);assert.equal(operations.released,false);
- assert.deepEqual(customer.calls.map(x=>x.sql),[F12_IDENTITY_SQL,F12_FUNCTION_SQL]);
+ assert.deepEqual(customer.calls.map(x=>x.sql),[F12_IDENTITY_SQL,F12_FUNCTION_SQL,F12_FUNCTION_SQL]);
  assert.deepEqual(customer.calls[0].args,roles);
  assert.deepEqual(operations.calls[1].args,[roles[1]]);
  assert.deepEqual(customer.calls[1].args,[roles[0]]);
