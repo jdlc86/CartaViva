@@ -1,6 +1,7 @@
 // F12 isolated composition candidate. This module does not create pools, grant
 // privileges, mount routes or modify the existing H6 production composition.
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
+import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -27,4 +28,19 @@ export function createIsolatedTableChangeSqlCandidate({
   }),
   hashSession,verifyStaff
  });
+}
+
+// Explicit opt-in candidate factory: never expose a service until BOTH
+// independent database logins pass the live least-privilege preflight.
+// Does not mount HTTP routes or alter any existing production pool.
+export async function createVerifiedIsolatedTableChangeSqlCandidate({
+ customerPool,operationsPool,expectedCustomerLogin,expectedOperationsLogin,
+ hashSession,verifyStaff
+}={}){
+ if(typeof hashSession!=='function'||typeof verifyStaff!=='function')
+  throw Error('invalid_f12_isolated_composition');
+ await assertF12SqlCapabilities({customerPool,operationsPool,
+  expectedCustomerLogin,expectedOperationsLogin});
+ return createIsolatedTableChangeSqlCandidate({customerPool,operationsPool,
+  hashSession,verifyStaff});
 }
