@@ -328,11 +328,11 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   SET table_id=$2,session_id=$3,visit_key=$4,binding_version=binding_version+1
   WHERE account_id=$1`,[pickupAccount,pickupDestinationTable,
    pickupDestinationSession,pickupDestinationVisit]);
- await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
-  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
-  VALUES($1,$2,$3,$4,$5,$6,$7)`,[httpLine,historicalScope.round_id,
-   pickupAccount,httpConfirmedOrder.orderId,pickupDestinationTable,
-   pickupDestinationSession,pickupDestinationVisit]);
+ await admin.query(`UPDATE sabora.order_line_delivery_destinations
+  SET table_id=$2,session_id=$3,visit_key=$4,destination_version=destination_version+1
+  WHERE order_line_id=$1 AND account_id=$5 AND order_id=$6`,
+  [httpLine,pickupDestinationTable,pickupDestinationSession,
+   pickupDestinationVisit,pickupAccount,httpConfirmedOrder.orderId]);
  await admin.query(`UPDATE sabora.customer_table_visits
   SET revoked_at=clock_timestamp()
   WHERE table_id=$1 AND customer_id=$2 AND visit_key=$3`,
