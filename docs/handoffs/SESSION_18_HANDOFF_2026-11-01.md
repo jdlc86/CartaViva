@@ -210,3 +210,11 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 5. Solo tras evidencias completas considerar GO técnico; no hacer merge ni despliegue sin autorización expresa. La documentación normativa de GitHub prevalece sobre este handoff.
 
 **Restricciones permanentes:** NO-GO, sin merges, sin despliegues, sin cambios en Supabase operativo, VPS, Fleetia u otros proyectos. Actualizar esta continuidad en cada hito importante.
+
+## 27. Auditoría del login lector H6 y CI (2026-11-01)
+
+- Commit documental anterior `20834baf04a42dfd8d33bf24dd3b76c7edde2b26`: **3/3 SUCCESS** verificados: Sabora CI `41336640101`, Bootstrap `41336640096`, navegador `41336640082`.
+- `b2b06783e143cf17b9a7772116990efae72e916e`: se añade a la composición candidata B3 `assertB3H6LoginSurface`. Además del preflight H6 existente, comprueba que el login lector pueda hacer SET ROLE exactamente a `sabora_h6_customer_runtime` y no pueda ejecutar directamente ninguna función Sabora. Rechaza membresías y EXECUTE inesperados, sin tocar permisos operativos.
+- `3905847c7ed13cc6dd7e44662ed9e6a4caee9988`: pruebas negativas de ambas desviaciones. **CI nueva pendiente**.
+- **Advertencia importante:** este control endurece el **login** lector, pero no reduce el EXECUTE del **rol** `sabora_h6_customer_runtime`, que sigue teniendo confirmación H6 y lectura de backlog además de política/replay. Para cumplir privilegio mínimo de base de datos hace falta un rol lector dedicado y validación PG17 desechable antes de activar B3.
+- Próximo hito: pruebas reales PG17 de las cinco identidades, rol H6 estrictamente lector, confirmación atómica A→B y F01–F28/R01–R10. PR #43 Draft NO-GO; sin merges/despliegues ni cambios a Fleetia, VPS o Supabase operativo.
