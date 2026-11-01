@@ -232,3 +232,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `bbbc8407090d46252126eebc83af3759ecf87832`: fixtures y pruebas del nuevo contrato, incluidos permisos cruzados, EXECUTE directo y función adicional en rol lector.
 - **No se ha creado ni concedido todavía el rol en ninguna base de datos**. El contrato es candidato, no un cambio de esquema desplegado. Falta provisionar roles en PG17 desechable y validar con SQL real la superficie de permisos y su funcionamiento. No activar B3 antes de ello.
 - CI de `347602745683171a3ca58431f75275d80c265c5e` seguía en ejecución al último chequeo; no afirmar verde. Las nuevas modificaciones aún requieren CI. PR #43 Draft NO-GO. Sin merge/despliegue/cambios Fleetia/VPS/Supabase operativo.
+
+## 30. CI del rol lector dedicado: diagnóstico y corrección (2026-11-01)
+
+- `347602745683171a3ca58431f75275d80c265c5e`: Sabora CI `41340850189` y navegador `41340850102` SUCCESS; Bootstrap seguía en ejecución en la consulta.
+- `8bc411a9a804302d52a439bacecfebde961cd7cc`: Sabora CI `41341150028` FAILURE y Bootstrap `41341150023` FAILURE. Ambos ejecutan tests Node; el error común es la expectativa antigua `invalid_h6_sql_capabilities:identity-policy` del test de deriva de identidad, mientras que el nuevo preflight dedicado devuelve `invalid_b3_h6_reader_capabilities`. El fallo se produce en Block 1, 1.161 PASS, 1 FAIL, 2 SKIP; no se debe afirmar que la integración nueva está validada.
+- `71e803ed31c3604cc6bd9121def3cb1fbdfec061`: corregida la expectativa del test para el nuevo preflight; CI de corrección pendiente.
+- **Pendiente de seguridad:** la comprobación actual de funciones lectoras exige dos nombres y dos entradas, pero todavía debe contrastarse contra firmas completas y probarse en PG17 desechable. No se ha creado ni concedido rol lector en ninguna DB. PR #43 Draft NO-GO; sin merge, despliegue, Fleetia, VPS o Supabase operativo.
