@@ -400,6 +400,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await verifyDeniedDestination({suffix:'23',tableNumber:976123,reason:'visit_revoked',
   changeSql:`UPDATE sabora.customer_table_visits SET revoked_at=clock_timestamp()
    WHERE table_id=$1 AND visit_key=$2`});
+ await verifyDeniedDestination({suffix:'25',tableNumber:976125,reason:'table_reoccupied',
+  changeSql:`UPDATE sabora.dining_tables
+   SET session_id='a6200000-0000-4000-8000-000000000027'
+   WHERE id=$1`});
 
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
