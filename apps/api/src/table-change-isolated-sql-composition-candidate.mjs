@@ -4,7 +4,6 @@ import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
 import {createCustomerProductionFlow,PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
-import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {assertCustomerFlowSqlCapabilities} from './customer-production-sql-preflight.mjs';
 import {AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
  LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL}
@@ -15,32 +14,64 @@ import {createSealedTableChangeRpcCandidate,
 
 export const F12_CUSTOMER_SQL=Object.freeze([REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL]);
 export const F12_OPERATIONS_SQL=Object.freeze([DECIDE_TABLE_CHANGE_H6_SQL]);
-// Candidate-only H6 login audit. The legacy H6 preflight checks its three
-// known roles; this additionally rejects hidden SET ROLE memberships and
-// directly executable Sabora functions on the login itself.
+// B3 uses a dedicated reader role, never the H6 customer runtime writer.
+// The login has exactly one SET ROLE membership and no direct Sabora EXECUTE.
+export const B3_H6_READER_ROLE='sabora_b3_h6_reader_runtime';
+export const B3_H6_READER_SIGNATURES=Object.freeze([
+ 'sabora.read_customer_round_h6_candidate',
+ 'sabora.read_customer_payment_policy_h6_candidate'
+]);
 export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
- (SELECT coalesce(array_agg(r.rolname::text ORDER BY r.rolname::text),'{}'::text[])
-  FROM pg_roles r WHERE r.rolname<>current_user AND
-   pg_has_role(current_user,r.oid,'SET')) AS set_roles,
+ current_user AS effective_role,session_user AS login_role,
+ r.rolcanlogin AS can_login,r.rolinherit AS inherit_role,
+ r.rolsuper AS superuser,r.rolbypassrls AS bypass_rls,
+ r.rolcreatedb AS create_db,r.rolcreaterole AS create_role,
+ r.rolreplication AS replication,
+ has_database_privilege(current_user,current_database(),'CREATE') AS database_create,
+ has_schema_privilege(current_user,'sabora','CREATE') AS schema_create,
+ (SELECT coalesce(array_agg(other.rolname::text ORDER BY other.rolname::text),'{}'::text[])
+  FROM pg_roles other WHERE other.rolname<>current_user AND
+   pg_has_role(current_user,other.oid,'SET')) AS set_roles,
  (SELECT coalesce(array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text),
   '{}'::text[]) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='sabora' AND
-   has_function_privilege(current_user,p.oid,'EXECUTE')) AS executable_functions`;
-
-export async function assertB3H6LoginSurface({pool}={}){
- if(!pool||typeof pool.connect!=='function')throw Error('invalid_b3_h6_login_surface');
+   has_function_privilege(current_user,p.oid,'EXECUTE')) AS executable_functions,
+ EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relkind IN ('r','p') AND
+   has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) AS direct_relations,
+ EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='sabora' AND c.relkind='S' AND
+   has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
+ FROM pg_roles r WHERE r.rolname=current_user`;
+export const B3_H6_READER_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text),
+ '{}'::text[]) AS signatures FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='sabora' AND has_function_privilege($1::name,p.oid,'EXECUTE')`;
+export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
+ if(!pool||typeof pool.connect!=='function'||
+    typeof expectedLogin!=='string'||!/^[a-z][a-z0-9_]{0,62}$/.test(expectedLogin)||
+    expectedLogin===B3_H6_READER_ROLE)throw Error('invalid_b3_h6_login_surface');
  let client,valid=false;
  try{
   client=await pool.connect();
   const result=await client.query(B3_H6_LOGIN_SURFACE_SQL);
   const row=result?.rows?.length===1?result.rows[0]:null;
-  if(!row||!Array.isArray(row.set_roles)||row.set_roles.length!==1||
-     row.set_roles[0]!=='sabora_h6_customer_runtime'||
+  if(!row||row.effective_role!==expectedLogin||row.login_role!==expectedLogin||
+     row.can_login!==true||row.inherit_role!==false||row.superuser!==false||
+     row.bypass_rls!==false||row.create_db!==false||row.create_role!==false||
+     row.replication!==false||row.database_create!==false||row.schema_create!==false||
+     row.direct_relations!==false||row.direct_sequences!==false||
+     !Array.isArray(row.set_roles)||row.set_roles.length!==1||
+     row.set_roles[0]!==B3_H6_READER_ROLE||
      !Array.isArray(row.executable_functions)||row.executable_functions.length!==0)
    throw Error('invalid_b3_h6_login_surface');
+  const functions=await client.query(B3_H6_READER_FUNCTION_SQL,[B3_H6_READER_ROLE]);
+  const signatures=functions?.rows?.length===1?functions.rows[0].signatures:null;
+  if(!Array.isArray(signatures)||signatures.length!==2||
+     !B3_H6_READER_SIGNATURES.every(name=>signatures.some(sig=>sig.startsWith(name+'('))))
+   throw Error('invalid_b3_h6_reader_function_surface');
   valid=true;
   return Object.freeze({validated:true});
- }catch{throw Error('invalid_b3_h6_login_surface');}
+ }catch{throw Error('invalid_b3_h6_reader_capabilities');}
  finally{if(client)try{client.release(!valid);}catch{}}
 }
 
@@ -49,7 +80,7 @@ export const B3_H6_READ_SQL=Object.freeze([READ_H6_ROUND_SQL,READ_H6_PAYMENT_POL
 
 export function createIsolatedB3H6ReadTransaction({h6ReadPool}={}){
  return createRoleScopedPostgresTransaction({pool:h6ReadPool,
-  role:'sabora_h6_customer_runtime',allowedSql:new Set(B3_H6_READ_SQL)});
+  role:B3_H6_READER_ROLE,allowedSql:new Set(B3_H6_READ_SQL)});
 }
 
 // B3 is a transfer-only writer: do not pass the raw pool to a flow factory.
@@ -129,10 +160,7 @@ export async function createVerifiedTableChangeB3Candidate({
  });
  if(confirmationCheck?.validated!==true)
   throw Error('invalid_b3_confirmation_capabilities');
- const h6ReadCheck=await assertH6RuntimeIdentity({pool:h6ReadPool,
-  expectedLogin:expectedH6ReadLogin,capability:'sabora_h6_customer_runtime'});
- if(h6ReadCheck?.validated!==true)throw Error('invalid_b3_h6_read_capabilities');
- await assertB3H6LoginSurface({pool:h6ReadPool});
+ await assertB3H6LoginSurface({pool:h6ReadPool,expectedLogin:expectedH6ReadLogin});
  const confirmation=await createConfirmationFlow({
   withConfirmationTransaction:createIsolatedB3ConfirmationTransaction({confirmationPool}),
   withH6ReadTransaction:createIsolatedB3H6ReadTransaction({h6ReadPool})
