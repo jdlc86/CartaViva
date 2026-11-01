@@ -276,3 +276,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `c7a0b4b44d9196ddabe06da0e5a9638bb79b3e51`: consulta de preflight cambiada a firmas explícitas `schema.function(types)`, sin depender de `regprocedure::text`.
 - `3048a849de5161ee494b2a69d67fefbc66066197`: smoke PG17 ejecuta comprobación de firmas bajo `SET LOCAL search_path TO sabora,public` con rol lector; el rollback sigue siendo obligatorio. **Nueva CI pendiente**; los 3/3 SUCCESS anteriores corresponden a `eef95da1`, no a este HEAD.
 - El recorrido funcional y económico A→B no queda cerrado por estas comprobaciones. PR #43 Draft NO-GO. Sin cambios en Fleetia/VPS/Supabase operativo.
+
+## 37. Corrección de sintaxis SQL en regresión PG17 (2026-11-01)
+
+- `3ed8173da1499c19b3a5089c92c185b4ed8ebb55`: Sabora CI `41344339279` y Bootstrap `41344339196` FAILURE; navegador `41344339192` SUCCESS. Fallo de bloque 2A: `syntax error at or near "$"`, línea `DO $ DECLARE names text[]` del nuevo smoke `b3-h6-reader-role-smoke.sql`. Es un error de delimitador en la prueba, no evidencia de fallo de aislamiento.
+- `fde8db6d573752ef55819986c36c04069891412b`: corregidos ambos delimitadores a `DO $$ ... END $$;`. Se verificó que el blob cambió; anteriores intentos de sustitución no cambiaron el contenido porque `$$` tiene significado especial en reemplazos JavaScript. **CI del HEAD pendiente**.
+- Mantener PR #43 Draft NO-GO; no desplegar ni modificar recursos compartidos. Siguiente hito: validación PG17 verde y recorrido económico A→B completo.
