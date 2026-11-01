@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
+import {assertB3H6LoginSurface} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2420,5 +2421,38 @@ test('PG17 B3 live preflight accepts only the isolated transactional login capab
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
   await assert.rejects(()=>assertB3ConfirmationCapabilities({pool,expectedLogin:login}),
    /invalid_b3_confirmation_capabilities:login-function-surface/);
+ });
+});
+
+
+test('PG17 B3 H6 reader live preflight validates isolated login and rejects privilege drift',async()=>{
+ await transaction(async client=>{
+  const role='sabora_b3_h6_reader_runtime',login='sabora_b3_h6_reader_probe';
+  const readerRound='sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)';
+  const readerPolicy='sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)';
+  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+  await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+  await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${readerRound} TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${readerPolicy} TO ${role}`);
+  const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  assert.deepEqual(await assertB3H6LoginSurface({pool,expectedLogin:login}),{validated:true});
+  const identity=(await client.query('SELECT current_user,session_user')).rows[0];
+  assert.equal(identity.current_user,login);
+  assert.equal(identity.session_user,login);
+  await client.query('RESET SESSION AUTHORIZATION');
+  const extra='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  await client.query(`GRANT EXECUTE ON FUNCTION ${extra} TO ${role}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertB3H6LoginSurface({pool,expectedLogin:login}),
+   /invalid_b3_h6_reader_capabilities/);
+  await client.query('RESET SESSION AUTHORIZATION');
+  await client.query(`REVOKE EXECUTE ON FUNCTION ${extra} FROM ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${readerRound} TO ${login}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertB3H6LoginSurface({pool,expectedLogin:login}),
+   /invalid_b3_h6_reader_capabilities/);
  });
 });
