@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -418,4 +418,31 @@ test('B3 customer confirmation adapter validates inputs before exposing flow',as
  assert.deepEqual(Object.keys(flow),['confirm']);
  assert.equal(typeof flow.confirm,'function');
  assert.equal(Object.isFrozen(flow),true);
+});
+
+
+test('B3 five-identity candidate rejects any shared customer-flow pool or login before SQL',async()=>{
+ assert.equal(B3_CUSTOMER_FLOW_SQL.length,6);
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const writer=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ const args={customerPool:customer,operationsPool:operations,confirmationPool:writer,
+  h6ReadPool:reader,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  secretKey:'s'.repeat(48)};
+ for(const shared of [customer,operations,writer,reader]){
+  await assert.rejects(()=>createVerifiedTableChangeB3CustomerFlowCandidate({
+   ...args,flowPool:shared
+  }),/invalid_b3_customer_flow_isolation/);
+ }
+ await assert.rejects(()=>createVerifiedTableChangeB3CustomerFlowCandidate({
+  ...args,flowPool:pool('not_used',[]),expectedFlowLogin:'b3_confirmation_login'
+ }),/invalid_b3_customer_flow_isolation/);
+ assert.equal(customer.calls.length,0);
+ assert.equal(operations.calls.length,0);
+ assert.equal(writer.calls.length,0);
+ assert.equal(reader.calls.length,0);
 });
