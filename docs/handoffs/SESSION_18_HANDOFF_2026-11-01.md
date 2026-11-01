@@ -239,3 +239,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `8bc411a9a804302d52a439bacecfebde961cd7cc`: Sabora CI `41341150028` FAILURE y Bootstrap `41341150023` FAILURE. Ambos ejecutan tests Node; el error común es la expectativa antigua `invalid_h6_sql_capabilities:identity-policy` del test de deriva de identidad, mientras que el nuevo preflight dedicado devuelve `invalid_b3_h6_reader_capabilities`. El fallo se produce en Block 1, 1.161 PASS, 1 FAIL, 2 SKIP; no se debe afirmar que la integración nueva está validada.
 - `71e803ed31c3604cc6bd9121def3cb1fbdfec061`: corregida la expectativa del test para el nuevo preflight; CI de corrección pendiente.
 - **Pendiente de seguridad:** la comprobación actual de funciones lectoras exige dos nombres y dos entradas, pero todavía debe contrastarse contra firmas completas y probarse en PG17 desechable. No se ha creado ni concedido rol lector en ninguna DB. PR #43 Draft NO-GO; sin merge, despliegue, Fleetia, VPS o Supabase operativo.
+
+## 31. PG17 desechable: prueba de rol H6 lector (2026-11-01)
+
+- `9a4542f9bace797c23582cb15cc774277a8fbed5`: 3/3 workflows SUCCESS (Sabora CI, Bootstrap, navegador).
+- `1ca6956d02f3ddd415a7743ca7ddce05c82cdcbb`: nueva prueba `scripts/ci/b3-h6-reader-role-smoke.sql` que crea rol y login solo dentro de transacción desechable, revoca EXECUTE PUBLIC temporalmente, concede exactamente dos lecturas, comprueba SET ROLE único, login sin EXECUTE y rol sin permiso de confirmación económica, y verifica rollback de roles.
+- `916ab7648bee519d4f59589556bd4167d3d9e892`: prueba conectada al bloque 2A de `scripts/ci/postgres-migration-smoke.sh` después de la cadena de migraciones. Solo se ejecuta en runner GitHub Actions con PostgreSQL 17 aislado y Docker --network none. **No afirmar que la prueba PG17 pasó hasta ver la CI de HEAD**.
+- Siguiente: inspeccionar CI, corregir fallos SQL reales si aparecen y completar E2E económico A→B con permisos separados. PR #43 Draft NO-GO. No merge/despliegue/cambios Fleetia/VPS/Supabase operativo.
