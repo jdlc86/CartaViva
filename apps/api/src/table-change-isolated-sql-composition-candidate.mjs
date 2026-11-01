@@ -66,7 +66,7 @@ export async function createVerifiedIsolatedTableChangeSqlCandidate({
 /**
  * B3 candidate-only composition gate. It exposes the verified F12 request and
  * decision RPCs together with a caller-supplied confirmation candidate, but
- * never mounts HTTP or grants SQL privileges. All three isolated pools must
+ * never mounts HTTP or grants SQL privileges. All four isolated pools must
  * pass their independent preflight before a service is returned.
  */
 export async function createVerifiedTableChangeB3Candidate({
