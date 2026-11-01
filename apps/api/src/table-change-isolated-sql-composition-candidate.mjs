@@ -117,7 +117,7 @@ export async function createVerifiedTableChangeB3Candidate({
  * Candidate-only adapter to the real customer confirmation flow. The ordinary
  * customer basket/quote SQL remains on its separately supplied transaction;
  * B3 can only persist the transfer, while H6 can only read policy/replay.
- * Call only after all four SQL identities pass the verified factory preflight.
+ * Call only after all five SQL identities pass the verified factory preflight.
  * No routes, connections or database privileges are created here.
  */
 export function createB3CustomerConfirmationFlowCandidate({
@@ -164,6 +164,13 @@ export async function createVerifiedTableChangeB3CustomerFlowCandidate({
     new Set(pools).size!==5||new Set(logins).size!==5||
     logins.some(login=>typeof login!=='string'||login.length===0))
   throw Error('invalid_b3_customer_flow_isolation');
+ // Reject malformed application configuration before touching any SQL pool.
+ // The actual role-capability preflights still run before constructing the flow.
+ if(typeof secretKey!=='string'||Buffer.byteLength(secretKey,'utf8')<32||
+    (clock!==undefined&&typeof clock!=='function')||
+    (newId!==undefined&&typeof newId!=='function')||
+    typeof hashSession!=='function'||typeof verifyStaff!=='function')
+  throw Error('invalid_b3_customer_flow_configuration');
  await assertCustomerFlowSqlCapabilities({pool:flowPool,expectedLogin:expectedFlowLogin});
  const withCustomerTransaction=createRoleScopedPostgresTransaction({
   pool:flowPool,role:'sabora_customer_flow_runtime',
