@@ -318,7 +318,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.ok(historicalScope?.customer_id);
  await admin.query(`INSERT INTO sabora.dining_tables
   (id,number,capacity,qr_token_hash,session_id,ordering_state)
-  VALUES($1,976002,4,$2,$3,'open')`,
+  VALUES($1,976099,4,$2,$3,'open')`,
   [pickupDestinationTable,qr.tokenHash,pickupDestinationSession]);
  await admin.query(`INSERT INTO sabora.customer_table_visits
   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
