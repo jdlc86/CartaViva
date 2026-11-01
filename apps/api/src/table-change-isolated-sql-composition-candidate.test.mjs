@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -125,4 +125,34 @@ test('F12 verified composition rejects identical expected logins before any quer
  }),/invalid_f12_sql_capabilities:isolation/);
  assert.equal(customer.calls.length,0);
  assert.equal(operations.calls.length,0);
+});
+
+test('B3 gate refuses shared confirmation pool and rejects failed transfer capability before creating flow',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const args={customerPool:customer,operationsPool:operations,
+  expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'})};
+ await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+  ...args,confirmationPool:customer,
+  assertConfirmationCapabilities:async()=>({validated:true}),
+  createConfirmationFlow:async()=>({confirm:async()=>{}})
+ }),/invalid_b3_isolated_composition/);
+ let created=0;
+ const confirmationPool={connect:async()=>({release(){}})};
+ await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+  ...args,confirmationPool,
+  assertConfirmationCapabilities:async()=>({validated:false}),
+  createConfirmationFlow:async()=>{created++;return {confirm:async()=>{}};}
+ }),/invalid_b3_confirmation_capabilities/);
+ assert.equal(created,0);
+ const ready=await createVerifiedTableChangeB3Candidate({
+  ...args,confirmationPool,
+  assertConfirmationCapabilities:async()=>({validated:true}),
+  createConfirmationFlow:async()=>({confirm:async()=>({status:'confirmed'})})
+ });
+ assert.equal(typeof ready.tableChange.request,'function');
+ assert.equal(typeof ready.tableChange.decide,'function');
+ assert.equal((await ready.confirmation.confirm()).status,'confirmed');
 });
