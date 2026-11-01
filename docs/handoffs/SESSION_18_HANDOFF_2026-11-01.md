@@ -225,3 +225,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `7bc3ee0eda1c16e4d895aa7905c00dcb93c83437`: se elimina dependencia del índice fijo filtrando explícitamente SQL transaccional esperado; se mantiene la auditoría de permisos H6. **CI de la corrección pendiente**.
 - El último SHA con 3/3 SUCCESS confirmado antes de esta regresión es `20834baf04a42dfd8d33bf24dd3b76c7edde2b26`. No afirmar que HEAD esté verde sin comprobar sus runs.
 - Pendientes: rol H6 verdaderamente solo lectura a nivel PostgreSQL, cinco logins PG17 reales, integración económica A→B y aceptación F01–F28/R01–R10. PR #43 Draft NO-GO; ningún merge, despliegue o modificación de Fleetia/VPS/Supabase operativo.
+
+## 29. Hito B3: contrato de rol H6 lector dedicado (2026-11-01)
+
+- `9208f4ab58aa57581b622f7a71c7278e09f65f16`: la composición B3 deja de aceptar `sabora_h6_customer_runtime` para lecturas y exige **`sabora_b3_h6_reader_runtime`**, separado del escritor. El preflight exige login sin atributos elevados ni permisos directos, SET ROLE exclusivo y exactamente las dos funciones `read_customer_round_h6_candidate` y `read_customer_payment_policy_h6_candidate`. El transaction wrapper usa ese rol y permite únicamente las dos sentencias exactas.
+- `bbbc8407090d46252126eebc83af3759ecf87832`: fixtures y pruebas del nuevo contrato, incluidos permisos cruzados, EXECUTE directo y función adicional en rol lector.
+- **No se ha creado ni concedido todavía el rol en ninguna base de datos**. El contrato es candidato, no un cambio de esquema desplegado. Falta provisionar roles en PG17 desechable y validar con SQL real la superficie de permisos y su funcionamiento. No activar B3 antes de ello.
+- CI de `347602745683171a3ca58431f75275d80c265c5e` seguía en ejecución al último chequeo; no afirmar verde. Las nuevas modificaciones aún requieren CI. PR #43 Draft NO-GO. Sin merge/despliegue/cambios Fleetia/VPS/Supabase operativo.
