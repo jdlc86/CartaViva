@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -128,26 +128,25 @@ test('F12 verified composition rejects identical expected logins before any quer
  assert.equal(operations.calls.length,0);
 });
 
-function h6ReadPool({extraRole=false,directExecute=false}={}){
+function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false}={}){
  const calls=[];
  return {calls,async connect(){return {async query(sql,args){
   calls.push({sql,args});
-  if(sql.includes('current_user AS effective_role'))return {rows:[{
+  if(sql===B3_H6_LOGIN_SURFACE_SQL)return {rows:[{
    effective_role:'h6_read_login',login_role:'h6_read_login',can_login:true,
    inherit_role:false,superuser:false,bypass_rls:false,create_db:false,
    create_role:false,replication:false,database_create:false,schema_create:false,
-   direct_relations:false,direct_sequences:false,role_set:[true,false,false]
+   direct_relations:false,direct_sequences:false,
+   set_roles:extraRole?['sabora_b3_h6_reader_runtime','sabora_b3_confirmation_runtime']:
+    ['sabora_b3_h6_reader_runtime'],
+   executable_functions:directExecute?['sabora.read_customer_round_h6_candidate(bytea,uuid,text)']:[]
   }]};
-  if(sql===B3_H6_LOGIN_SURFACE_SQL)return {rows:[{
-   set_roles:extraRole?['sabora_h6_customer_runtime','sabora_b3_confirmation_runtime']:
-    ['sabora_h6_customer_runtime'],
-   executable_functions:directExecute?['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)']:[]
-  }]};
-  if(sql.includes('aclexplode('))return {rows:[{names:[
-   'confirm_customer_round_h6_candidate','read_customer_payment_policy_h6_candidate',
-   'read_customer_round_h6_candidate','read_customer_event_backlog_h6_candidate'
+  if(sql===B3_H6_READER_FUNCTION_SQL)return {rows:[{signatures:[
+   'sabora.read_customer_round_h6_candidate(bytea,uuid,text)',
+   'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+   ...(extraFunction?['sabora.confirm_customer_round_h6_candidate(bytea,uuid)']:[])
   ]}]};
-  if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_h6_customer_runtime'].includes(sql))return {rows:[]};
+  if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_b3_h6_reader_runtime'].includes(sql))return {rows:[]};
   if(sql===READ_H6_ROUND_SQL||sql===READ_H6_PAYMENT_POLICY_SQL)return {rows:[{round_id:requestId}]};
   throw Error('unexpected_h6_read_sql');
  },release(){}};}};
@@ -316,11 +315,11 @@ test('B3 H6 read capability allows only replay and policy queries',async()=>{
  await assert.rejects(()=>withRead(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[])),
   /role_scoped_sql_not_allowed/);
  assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
-  'SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
+  'SET LOCAL ROLE sabora_b3_h6_reader_runtime','ROLLBACK']);
  h6.calls.length=0;
  await withRead(query=>query(READ_H6_ROUND_SQL,[]));
  assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
-  'SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT']);
+  'SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_ROUND_SQL,'COMMIT']);
 });
 
 
@@ -405,9 +404,9 @@ test('B3 verified factory keeps writer and H6 reader capabilities separate end t
  assert.deepEqual(reader.calls.filter(x=>['BEGIN','COMMIT','ROLLBACK'].includes(x.sql)||
   x.sql.startsWith('SET LOCAL ROLE ')||
   [READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL].includes(x.sql)).map(x=>x.sql),[
-  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_PAYMENT_POLICY_SQL,'COMMIT',
-  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT',
-  'BEGIN','SET LOCAL ROLE sabora_h6_customer_runtime','ROLLBACK']);
+  'BEGIN','SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_PAYMENT_POLICY_SQL,'COMMIT',
+  'BEGIN','SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_ROUND_SQL,'COMMIT',
+  'BEGIN','SET LOCAL ROLE sabora_b3_h6_reader_runtime','ROLLBACK']);
 });
 
 
@@ -544,7 +543,7 @@ test('B3 fifth login rejects a second SET ROLE membership even when standard pre
 
 
 test('B3 H6 reader login rejects extra SET ROLE or direct Sabora EXECUTE before constructing confirmation',async()=>{
- for(const invalid of [{extraRole:true},{directExecute:true}]){
+ for(const invalid of [{extraRole:true},{directExecute:true},{extraFunction:true}]){
   const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
   const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
   const writer=b3ConfirmationPool();
@@ -557,7 +556,7 @@ test('B3 H6 reader login rejects extra SET ROLE or direct Sabora EXECUTE before 
    expectedH6ReadLogin:'h6_read_login',hashSession:async()=>tokenHash,
    verifyStaff:async()=>({userId:staffId,role:'waiter'}),
    createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}
-  }),/invalid_b3_h6_login_surface/);
+  }),/invalid_b3_h6_reader_capabilities/);
   assert.equal(constructed,0);
   assert.equal(reader.calls.some(x=>x.sql===B3_H6_LOGIN_SURFACE_SQL),true);
   assert.equal(writer.calls.some(x=>x.sql==='BEGIN'),false);
