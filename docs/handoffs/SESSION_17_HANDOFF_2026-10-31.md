@@ -260,3 +260,7 @@ Se añade migracion candidata `20261101010000_sabora_h6_transfer_missing_binding
 ## 54. CI de migracion 20261101010000: auditoria obligatoria
 
 CI del commit d546ac71 falló en Sabora CI 41292809096 y Bootstrap 41292809057 por `migration_audit_coverage_mismatch:missing=20261101010000_sabora_h6_transfer_missing_binding_guard_candidate.sql`, no por evidencia de fallo SQL. Se ha registrado la migracion en `scripts/ci/migration-audit.mjs` con permisos, dependencias, impacto de locks y datos (commits f4f34458, correccion de sintaxis 04dc871c). Nuevos workflows 41292910636 / 41292910603 / 41292910601 en progreso. No dar PASS hasta ver resultados; tampoco inferir prueba A→B real del inventario.
+
+## 55. CI migracion 68: inventario consistente y gate en ejecucion
+
+Tras registrar migracion 68 en auditoria, CI 41292910636 y Bootstrap 41292910603 fallaron exclusivamente por test `scripts/ci/migration-audit.test.mjs` que exigia literalmente 67 migraciones (`68 !== 67`); browser 41292910601 SUCCESS. Commit 8e1161b7 cambia la asercion a longitud del inventario revisado y exige al menos 68, manteniendo fail-closed para faltantes o sobrantes. Nuevas ejecuciones: Sabora CI 41293140119, Bootstrap 41293140124, browser 41293140152. Pendientes resultados y prueba funcional PG17 de transferencia. No afirmar cierre B3.
