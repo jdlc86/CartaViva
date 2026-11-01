@@ -41,3 +41,7 @@ La prueba de aceptación debe forzar rollback después de cada fase; repetir mis
 - Solo después, informe de cierre con SHA, workflow y dictamen GO/NO-GO. No merge ni despliegue sin autorización.
 
 **Restricción:** sin cambios en Fleetia, VPS ni Supabase operativo. Este inventario no certifica la implementación.
+
+## 5. Riesgo transaccional abierto detectado en la funcion candidata (01-11-2026)
+
+La funcion `confirm_customer_round_h6_transfer_integration_candidate` comprueba una concesion aprobada, pero llama a `persist_customer_order_candidate` antes de `consume_customer_table_change_h6_candidate`. Esto **no prueba por si solo** que la persistencia admita un pedido en B cuando la cuenta y el binding operativo siguen en A, ni que el idempotency key y las claves de orden se comporten correctamente bajo concurrencia. La atomicidad de una transaccion solo evita efectos parciales al abortar; no demuestra la posibilidad de completar el flujo ni la ausencia de una segunda cuenta. Antes de modificar la funcion activa: ejecutar PG17 real con A vinculada, aprobacion vigente y primer pedido en B; exigir exactamente una cuenta economica original, ronda B en la misma cuenta, binding B, grant consumido una vez, pedidos A historicos, entregas pendientes redirigidas, y rollback total ante error forzado. Si la persistencia falla por el binding A, refactorizar la funcion candidata y sus dependencias como un bloque completo, sin abrir grants. Este riesgo no queda cerrado por tests de orden textual ni por mocks. **B3 NO-GO**.
