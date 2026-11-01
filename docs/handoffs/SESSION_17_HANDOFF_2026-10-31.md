@@ -264,3 +264,7 @@ CI del commit d546ac71 falló en Sabora CI 41292809096 y Bootstrap 41292809057 p
 ## 55. CI migracion 68: inventario consistente y gate en ejecucion
 
 Tras registrar migracion 68 en auditoria, CI 41292910636 y Bootstrap 41292910603 fallaron exclusivamente por test `scripts/ci/migration-audit.test.mjs` que exigia literalmente 67 migraciones (`68 !== 67`); browser 41292910601 SUCCESS. Commit 8e1161b7 cambia la asercion a longitud del inventario revisado y exige al menos 68, manteniendo fail-closed para faltantes o sobrantes. Nuevas ejecuciones: Sabora CI 41293140119, Bootstrap 41293140124, browser 41293140152. Pendientes resultados y prueba funcional PG17 de transferencia. No afirmar cierre B3.
+
+## 56. PG17: correccion del guard de binding tras auditoria de migraciones
+
+Commit 8e1161b7 corrige prueba de recuento de migraciones; workflows 41293140119 y 41293140124 alcanzaron Block 2B PG17, pero fallaron con `h6_transfer_binding_guard_drift`. Se verifico en la migracion previa `20261031030000` que el branch real ya utiliza `v_binding_id` tipado, no `IF FOUND` ni `v_binding.id`; commit 55e3ddaf ajusta el patron de reescritura de la funcion candidata. Su CI detecto test contractual obsoleto que aun esperaba `v_binding.id`; commit f0c7799a lo actualiza. Workflows 41293618050/41293618028/41293618018 en curso. No confundir estos arreglos con una prueba funcional A→B superada; B3 NO-GO.
