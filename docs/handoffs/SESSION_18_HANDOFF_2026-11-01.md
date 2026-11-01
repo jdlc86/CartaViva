@@ -88,3 +88,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Los tres workflows del commit documental anterior `c7ea83b4` estaban en curso durante la inspección; consultar su estado final por SHA.
 - Sin cambios en roles operativos, sin despliegue ni merge. PR #43 Draft; B3/F12 NO-GO.
 - Próximo paso: esperar/verificar GitHub Actions del commit de prueba; después continuar con composición vertical candidata HTTP/PWA/transferencia/pickup, con aceptación real F01–F28/R01–R10.
+
+## 10. Refuerzo de pruebas negativas PG17 (2026-11-01)
+
+- Commit `be6dd8f2d1df0a157e1027d424665391a184ea36`: en la misma transacción PG17 desechable de B3, el preflight comprueba primero el login mínimo, después **rechaza un EXECUTE adicional otorgado al rol B3**, y después **rechaza un EXECUTE directo otorgado al login**. Todo se revierte; no hay grants persistentes ni activación de rutas.
+- La prueba utiliza el RPC H6 de confirmación ya presente como permiso extra, y verifica el rechazo por etapas `function-surface` y `login-function-surface`. **CI de este commit pendiente de comprobación**; si PostgreSQL rechaza algún cambio de sesión/autorización, corregir y volver a ejecutar antes de marcar PASS.
+- En inspección anterior: para `1cb23160` navegador SUCCESS, Sabora CI y Bootstrap en curso; volver a consultar los resultados por SHA. PR #43 Draft, B3 NO-GO.
