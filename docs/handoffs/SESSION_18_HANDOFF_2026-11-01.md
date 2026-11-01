@@ -303,3 +303,11 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 
 - HEAD `2821d05f395dd3e4e18be6264987866fa4366ace`: Sabora CI run `41345369792` job `124963938064` SUCCESS; Bootstrap `41345369807` SUCCESS; navegador `41345369774` SUCCESS. La ejecución incluye la prueba PG17 `SET SESSION AUTHORIZATION` del commit `99639f03`.
 - **Alcance del cierre**: identidad y ACL de lector B3 bajo pruebas aisladas, no aceptación de traslado económico A→B, ni autenticación TCP real del nuevo lector. PR #43 permanece Draft/NO-GO.
+
+## 42. Regresión PG17 de destino cerrado y aceptación H6 (2026-11-01)
+
+- `0d925976`: añadida prueba de rechazo del primer pedido B con aprobación A vigente cuando B se cierra después de escanear. Exige rollback de pedido, concesión y binding.
+- Sabora CI `41345835269` y Bootstrap `41345835262` FAILURE (43/44 pruebas PG17): el cierre invalida la visita y la prueba posterior de modo de pago esperaba `payment_mode_conflict` pero recibió `customer_visit_forbidden`. No se observó autorización de traslado indebido; el fallo estaba en el aislamiento del fixture.
+- `1d42f99` y `c3217ad1689fa9ea8679dcbe1c09742288f8bbd1`: expectativa específica y SAVEPOINT para revertir el cierre y la revocación de visita antes del caso positivo independiente.
+- **CI final 3/3 SUCCESS** para `c3217ad`: Sabora CI `41346273378`, Bootstrap `41346273397`, navegador `41346273387`. La aceptación consolidada incluye las pruebas PG17 existentes de A→B real, replay, concurrencia, pagos, saldo, destino de líneas pendientes y rechazo de B cerrada.
+- **No confundir CI verde con GO**: el contrato de activación B3, permisos de runtime efectivo, integración API opt-in, PWA de sala/cliente, SSE y aceptación normativa F01–F28/R01–R10 siguen pendientes de cierre integral. El documento B0 contiene riesgos históricos previos a los tests positivos y no sustituye el estado verificado en CI. Priorizar un bloque completo de integración HTTP+PG17+PWA, no nuevas microcorrecciones ACL. PR #43 Draft/NO-GO; sin merge, despliegue, ni cambios en Fleetia, VPS o Supabase operativo.
