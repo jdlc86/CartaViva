@@ -345,6 +345,24 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.kitchen_dispatches
   WHERE order_id=$1 AND round_id=$2`,
   [httpConfirmedOrder.orderId,httpConfirmedOrder.roundId])).rows[0].n,1);
+ // Destructive authorization checks run only AFTER the positive signed claim,
+ // so closing B cannot invalidate the precondition of that positive case.
+ const claimedVersion=Number(httpClaim.taskVersion);
+ const beforeDenied=(await admin.query(`SELECT state,version,
+  (SELECT count(*)::integer FROM sabora.pickup_task_events WHERE order_line_id=$1) AS events
+  FROM sabora.pickup_tasks WHERE order_line_id=$1`,[httpLine])).rows[0];
+ assert.equal(Number(beforeDenied.version),claimedVersion);
+ await admin.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
+  WHERE id=$1`,[pickupDestinationTable]);
+ await assert.rejects(operations.managePickup({lineId:httpLine,action:'cancel_pickup',
+  expectedVersion:claimedVersion,capability:issueKitchen({
+   actorId:waiterId,staffRole:'waiter',action:'cancel_pickup',targetId:httpLine,
+   expectedVersion:claimedVersion,correlationId:'h6_transfer_closed_b_cancel_001'})}),
+  /pickup_scope_forbidden/);
+ const afterDenied=(await admin.query(`SELECT state,version,
+  (SELECT count(*)::integer FROM sabora.pickup_task_events WHERE order_line_id=$1) AS events
+  FROM sabora.pickup_tasks WHERE order_line_id=$1`,[httpLine])).rows[0];
+ assert.deepEqual(afterDenied,beforeDenied,'denied B pickup must not mutate task or events');
 
  const visit=await flow.authorizeVisit({customerSessionToken:customer.token,tableId,qrToken});
  assert.deepEqual(visit.paymentPolicy,{requirePayAsOrdered:false,version:1});
