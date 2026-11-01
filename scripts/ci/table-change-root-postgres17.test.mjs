@@ -2528,3 +2528,59 @@ test('PG17 B3 fifth customer-flow login validates six exact RPCs and one SET ROL
    /invalid_b3_customer_flow_set_roles/);
  });
 });
+
+
+test('PG17 B3 combined five-identity preflight accepts only independently scoped capabilities',async()=>{
+ await transaction(async client=>{
+  const specs=[
+   {role:'sabora_f12_customer_runtime',login:'sabora_b3_combined_request',
+    functions:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)']},
+   {role:'sabora_f12_operations_runtime',login:'sabora_b3_combined_decision',
+    functions:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
+   {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_combined_writer',
+    functions:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']},
+   {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_combined_reader',
+    functions:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
+     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']},
+   {role:'sabora_customer_flow_runtime',login:'sabora_b3_combined_basket',functions:[]}
+  ];
+  for(const spec of specs){
+   if(spec.role!=='sabora_customer_flow_runtime'){
+    await client.query(`CREATE ROLE ${spec.role} NOLOGIN NOINHERIT`);
+    await client.query(`GRANT USAGE ON SCHEMA sabora TO ${spec.role}`);
+    for(const signature of spec.functions)
+     await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${spec.role}`);
+   }
+   await client.query(`CREATE ROLE ${spec.login} LOGIN NOINHERIT`);
+   await client.query(`GRANT ${spec.role} TO ${spec.login} WITH SET TRUE, INHERIT FALSE`);
+  }
+  const pool={connect:async()=>({query:(sql,args)=>client.query(sql,args),release:()=>{}})};
+  const [request,decision,writer,reader,basket]=specs;
+  for(const spec of specs){
+   await client.query(`SET LOCAL SESSION AUTHORIZATION ${spec.login}`);
+   const who=(await client.query('SELECT current_user,session_user')).rows[0];
+   assert.equal(who.current_user,spec.login);
+   assert.equal(who.session_user,spec.login);
+   if(spec===request||spec===decision){
+    assert.deepEqual(await assertF12SqlIdentity({pool,expectedLogin:spec.login,
+     capability:spec.role}),{validated:true,login:spec.login,capability:spec.role});
+   }else if(spec===writer){
+    assert.deepEqual(await assertB3ConfirmationCapabilities({pool,expectedLogin:spec.login}),
+     {validated:true,login:spec.login,capability:spec.role});
+   }else if(spec===reader){
+    assert.deepEqual(await assertB3H6LoginSurface({pool,expectedLogin:spec.login}),
+     {validated:true});
+   }else{
+    assert.deepEqual(await assertCustomerFlowSqlCapabilities({pool,expectedLogin:spec.login}),
+     {validated:true,login:spec.login});
+    assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool}),{validated:true});
+   }
+   await client.query('RESET SESSION AUTHORIZATION');
+  }
+  const writerSignature=writer.functions[0];
+  await client.query(`GRANT EXECUTE ON FUNCTION ${writerSignature} TO ${reader.role}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${reader.login}`);
+  await assert.rejects(()=>assertB3H6LoginSurface({pool,expectedLogin:reader.login}),
+   /invalid_b3_h6_reader_capabilities/);
+ });
+});
