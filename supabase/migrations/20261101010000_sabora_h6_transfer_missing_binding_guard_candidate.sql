@@ -13,17 +13,17 @@ BEGIN
  -- pg_get_functiondef normalizes whitespace/operators; match the semantic
  -- branch once rather than relying on original migration source formatting.
  IF (SELECT count(*) FROM regexp_matches(v_body,
-  'IF[[:space:]]+FOUND[[:space:]]+AND[[:space:]]+v_binding[.]table_id[[:space:]]*<>[[:space:]]*p_table_id[[:space:]]+THEN','g'))<>1 THEN
+  'IF[[:space:]]+v_binding_id[[:space:]]+IS[[:space:]]+NOT[[:space:]]+NULL[[:space:]]+AND[[:space:]]+v_binding[.]table_id[[:space:]]*<>[[:space:]]*p_table_id[[:space:]]+THEN','g'))<>1 THEN
   RAISE EXCEPTION 'h6_transfer_binding_guard_drift';
  END IF;
  v_new:=regexp_replace(v_body,
-  'IF[[:space:]]+FOUND[[:space:]]+AND[[:space:]]+v_binding[.]table_id[[:space:]]*<>[[:space:]]*p_table_id[[:space:]]+THEN',
-  'IF v_binding.id IS NULL AND EXISTS ('||
+  'IF[[:space:]]+v_binding_id[[:space:]]+IS[[:space:]]+NOT[[:space:]]+NULL[[:space:]]+AND[[:space:]]+v_binding[.]table_id[[:space:]]*<>[[:space:]]*p_table_id[[:space:]]+THEN',
+  'IF v_binding_id IS NULL AND EXISTS ('||
   'SELECT 1 FROM sabora.customer_accounts a '||
   'WHERE a.customer_id=v_session.customer_id AND a.state=''open'') THEN '||
   'RAISE EXCEPTION ''h6_open_account_binding_missing'' USING errcode=''42501''; '||
   'END IF; '||
-  'IF v_binding.id IS NOT NULL AND v_binding.table_id<>p_table_id THEN');
+  'IF v_binding_id IS NOT NULL AND v_binding.table_id<>p_table_id THEN');
  EXECUTE v_new;
 END;
 $guard$;
