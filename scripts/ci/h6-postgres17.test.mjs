@@ -303,6 +303,40 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   WHERE order_line_id=$1`,[httpLine])).rows;
  assert.equal(httpPickup.length,1);
  assert.equal(httpPickup[0].state,'ready');
+ // Isolated pickup authorization regression: simulate the persisted result of an
+ // approved A→B transfer, then exercise the REAL signed operations repository.
+ // Full end-to-end grant consumption is separately exercised by PG17 B2 tests.
+ const pickupDestinationTable='a6200000-0000-4000-8000-000000000009';
+ const pickupDestinationSession='a6200000-0000-4000-8000-000000000010';
+ const pickupDestinationVisit='h6_pickup_destination_visit_001';
+ const pickupAccount=httpConfirmedOrder.accountId;
+ const historicalScope=(await admin.query(`SELECT o.table_id,o.session_id,
+  o.customer_visit_key,a.customer_id,r.id AS round_id
+  FROM sabora.orders o JOIN sabora.order_rounds r ON r.order_id=o.id
+  JOIN sabora.customer_accounts a ON a.id=r.account_id
+  WHERE o.id=$1`,[httpConfirmedOrder.orderId])).rows[0];
+ assert.ok(historicalScope?.customer_id);
+ await admin.query(`INSERT INTO sabora.dining_tables
+  (id,number,capacity,qr_token_hash,session_id,ordering_state)
+  VALUES($1,976002,4,$2,$3,'open')`,
+  [pickupDestinationTable,qr.tokenHash,pickupDestinationSession]);
+ await admin.query(`INSERT INTO sabora.customer_table_visits
+  (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+  VALUES($1,$2,$3,$4,$3::text,1,clock_timestamp()+interval '1 hour')`,
+  [pickupDestinationTable,pickupDestinationSession,historicalScope.customer_id,pickupDestinationVisit]);
+ await admin.query(`UPDATE sabora.customer_account_operational_bindings
+  SET table_id=$2,session_id=$3,visit_key=$4,binding_version=binding_version+1
+  WHERE account_id=$1`,[pickupAccount,pickupDestinationTable,
+   pickupDestinationSession,pickupDestinationVisit]);
+ await admin.query(`INSERT INTO sabora.order_line_delivery_destinations
+  (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+  VALUES($1,$2,$3,$4,$5,$6,$7)`,[httpLine,historicalScope.round_id,
+   pickupAccount,httpConfirmedOrder.orderId,pickupDestinationTable,
+   pickupDestinationSession,pickupDestinationVisit]);
+ await admin.query(`UPDATE sabora.customer_table_visits
+  SET revoked_at=clock_timestamp()
+  WHERE table_id=$1 AND customer_id=$2 AND visit_key=$3`,
+  [historicalScope.table_id,historicalScope.customer_id,historicalScope.customer_visit_key]);
  const httpClaim=await operations.managePickup({lineId:httpLine,action:'claim_pickup',
   expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
    actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
