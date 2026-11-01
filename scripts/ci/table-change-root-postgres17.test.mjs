@@ -1590,6 +1590,39 @@ test('PG17 B2 Stripe authorization pending survives A-to-B transfer with distinc
   assert.equal((await client.query(`SELECT table_id FROM
    sabora.customer_account_operational_bindings WHERE account_id=$1`,
    [ids.sourceAccount])).rows[0].table_id,ids.destinationTable);
+  // In the actual confirmed A→B checkout, retiring A must not invalidate the
+  // still-current destination scope of the pending historical line.
+  await client.query(`UPDATE sabora.customer_table_visits
+   SET revoked_at=clock_timestamp()
+   WHERE table_id=$1 AND customer_id=$2`,[ids.sourceTable,ids.customer]);
+  const effectiveScope=async()=>(await client.query(`SELECT count(*)::integer AS n
+   FROM sabora.order_line_delivery_destinations d
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=d.account_id
+    AND b.table_id=d.table_id AND b.session_id=d.session_id AND b.visit_key=d.visit_key
+   JOIN sabora.customer_accounts a ON a.id=b.account_id
+   JOIN sabora.dining_tables t ON t.id=d.table_id AND t.session_id=d.session_id
+    AND t.ordering_state='open'
+   JOIN sabora.customer_table_visits v ON v.table_id=d.table_id
+    AND v.session_id=d.session_id AND v.visit_key=d.visit_key
+    AND v.customer_id=a.customer_id AND v.authorized_qr_version=t.qr_version
+    AND v.revoked_at IS NULL AND v.expires_at>clock_timestamp()
+   JOIN sabora.order_lines l ON l.id=d.order_line_id AND l.order_id=d.order_id
+   WHERE d.account_id=$1 AND d.order_id=$2 AND l.status<>'picked_up'`,
+   [ids.sourceAccount,priorOrder])).rows[0].n;
+  assert.equal(await effectiveScope(),1,'revoking A must preserve valid B delivery scope');
+  await client.query('SAVEPOINT destination_qr_revoked');
+  await client.query(`UPDATE sabora.dining_tables SET qr_version=qr_version+1
+   WHERE id=$1`,[ids.destinationTable]);
+  assert.equal(await effectiveScope(),0,'rotated B QR must invalidate pickup scope');
+  await client.query('ROLLBACK TO SAVEPOINT destination_qr_revoked');
+  await client.query('RELEASE SAVEPOINT destination_qr_revoked');
+  await client.query('SAVEPOINT destination_closed');
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
+   WHERE id=$1`,[ids.destinationTable]);
+  assert.equal(await effectiveScope(),0,'closed B must invalidate pickup scope');
+  await client.query('ROLLBACK TO SAVEPOINT destination_closed');
+  await client.query('RELEASE SAVEPOINT destination_closed');
+  assert.equal(await effectiveScope(),1,'restored B must recover current delivery scope');
   const replay=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
