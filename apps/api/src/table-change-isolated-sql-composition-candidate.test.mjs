@@ -103,3 +103,26 @@ test('F12 verified composition permits sealed RPC only after both logins pass',a
  assert.equal(customer.calls.filter(x=>x.sql==='BEGIN').length,1);
  assert.equal(operations.calls.filter(x=>x.sql==='BEGIN').length,0);
 });
+
+test('F12 verified composition rejects swapped login identities without business SQL',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','unexpected_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ await assert.rejects(()=>createVerifiedIsolatedTableChangeSqlCandidate({
+  customerPool:customer,operationsPool:operations,
+  expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'})
+ }),/invalid_f12_sql_capabilities:identity-policy/);
+ assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
+ assert.equal(operations.calls.length,0,'second pool must not be inspected after first fails');
+});
+test('F12 verified composition rejects identical expected logins before any query',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_shared_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_shared_login');
+ await assert.rejects(()=>createVerifiedIsolatedTableChangeSqlCandidate({
+  customerPool:customer,operationsPool:operations,
+  expectedCustomerLogin:'f12_shared_login',expectedOperationsLogin:'f12_shared_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'})
+ }),/invalid_f12_sql_capabilities:isolation/);
+ assert.equal(customer.calls.length,0);
+ assert.equal(operations.calls.length,0);
+});
