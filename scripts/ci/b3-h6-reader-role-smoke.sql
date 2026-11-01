@@ -33,11 +33,13 @@ DO $$ DECLARE functions text[]; memberships text[]; BEGIN
  IF cardinality(functions) <> 2 THEN RAISE EXCEPTION 'extra reader grant: %',functions; END IF;
  IF EXISTS(SELECT 1 FROM pg_class rel JOIN pg_namespace ns ON ns.oid=rel.relnamespace
   WHERE ns.nspname='sabora' AND rel.relkind IN ('r','p')
-   AND has_table_privilege('sabora_b3_h6_reader_runtime',rel.oid,
-    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) OR
+   AND CASE WHEN rel.relkind IN ('r','p') THEN
+    has_table_privilege('sabora_b3_h6_reader_runtime',rel.oid,
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') ELSE false END) OR
     EXISTS(SELECT 1 FROM pg_class rel JOIN pg_namespace ns ON ns.oid=rel.relnamespace
      WHERE ns.nspname='sabora' AND rel.relkind='S' AND
-      has_sequence_privilege('sabora_b3_h6_reader_runtime',rel.oid,'USAGE,SELECT,UPDATE')) THEN
+      CASE WHEN rel.relkind='S' THEN
+      has_sequence_privilege('sabora_b3_h6_reader_runtime',rel.oid,'USAGE,SELECT,UPDATE') ELSE false END) THEN
   RAISE EXCEPTION 'B3 reader role has direct table or sequence privileges';
  END IF;
  IF has_schema_privilege('sabora_b3_h6_reader_runtime','sabora','CREATE') OR
