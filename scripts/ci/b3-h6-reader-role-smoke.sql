@@ -81,7 +81,7 @@ DO $$ BEGIN
 END $$;
 -- The reader catalog signature is canonical under both search_path variants.
 SET LOCAL search_path TO sabora,public;
-DO $ DECLARE names text[]; BEGIN
+DO $$ DECLARE names text[]; BEGIN
  SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),'{}'::text[])
  INTO names FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND has_function_privilege(current_user,p.oid,'EXECUTE');
@@ -90,7 +90,7 @@ DO $ DECLARE names text[]; BEGIN
  'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']::text[] THEN
   RAISE EXCEPTION 'reader canonical signatures changed with search_path: %',names;
  END IF;
-END $;
+END $$;
 RESET ROLE;
 ROLLBACK;
 DO $$ BEGIN
