@@ -119,3 +119,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commits `b564e1a77c833cd5b8ccdb33717d2a84445a557f` y `38956f990c289ed9ebee39d6bdd751266c75eedb`: se retira la entrega del pool SQL crudo a `createConfirmationFlow`. La factoría recibe únicamente `withConfirmationTransaction`, con `SET LOCAL ROLE sabora_b3_confirmation_runtime` y allowlist de **solo** `PERSIST_H6_TRANSFER_ORDER_SQL`. Test: SQL H6 anterior rechazado y ROLLBACK; SQL de transferencia aceptado y COMMIT. No se crean grants ni se monta la ruta.
 - **Limitación deliberada:** la confirmación de cliente H6 existente también necesita otras consultas (por ejemplo, lectura de ronda para replay); no reutilizar este escritor para ellas. Se requiere composición con pools y capacidades separados, y una prueba integrada de replay/transferencia antes del GO. Los tests nuevos y CI de este HEAD están pendientes de verificar.
 - PR #43 Draft, B3/F12 NO-GO. Sin merge, despliegue, ni modificaciones de Supabase operativo, VPS o Fleetia.
+
+## 15. Cierre de CI del escritor B3 y protección de la factoría (2026-11-01)
+
+- HEAD `d27dafaf0765f0d58a235930171444cc0ea710a8` **3/3 SUCCESS**: navegador `41323257051`, Bootstrap `41323257041`, Sabora CI `41323257075`. Queda verificado el escritor transaccional restringido a la función de transferencia.
+- Commit `4041175c55260dcf68a12a0479270c1fd19f8747`: prueba adicional desde la **factoría verificada**: solo se entrega `withConfirmationTransaction`, no el pool crudo; un consumidor que intente ejecutar el SQL H6 heredado recibe `role_scoped_sql_not_allowed` y rollback, aunque los tres preflights hayan pasado. **CI nueva pendiente**.
+- Próximo bloque funcional: replay y lecturas H6 con rol independiente y privilegios mínimos; confirmación real mesa B, transferencia económica, proyección sala/SSE y aceptación completa. No ampliar B3 para incluir lecturas H6; mantener NO-GO y PR #43 Draft.
