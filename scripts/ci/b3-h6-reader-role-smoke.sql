@@ -31,6 +31,19 @@ DO $$ DECLARE functions text[]; memberships text[]; BEGIN
   RAISE EXCEPTION 'unexpected reader function surface: %',functions;
  END IF;
  IF cardinality(functions) <> 2 THEN RAISE EXCEPTION 'extra reader grant: %',functions; END IF;
+ IF EXISTS(SELECT 1 FROM pg_class rel JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+  WHERE ns.nspname='sabora' AND rel.relkind IN ('r','p')
+   AND has_table_privilege('sabora_b3_h6_reader_runtime',rel.oid,
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) OR
+    EXISTS(SELECT 1 FROM pg_class rel JOIN pg_namespace ns ON ns.oid=rel.relnamespace
+     WHERE ns.nspname='sabora' AND rel.relkind='S' AND
+      has_sequence_privilege('sabora_b3_h6_reader_runtime',rel.oid,'USAGE,SELECT,UPDATE')) THEN
+  RAISE EXCEPTION 'B3 reader role has direct table or sequence privileges';
+ END IF;
+ IF has_schema_privilege('sabora_b3_h6_reader_runtime','sabora','CREATE') OR
+    has_database_privilege('sabora_b3_h6_reader_runtime',current_database(),'CREATE') THEN
+  RAISE EXCEPTION 'B3 reader role has schema or database CREATE';
+ END IF;
  SELECT coalesce(array_agg(r.rolname::text ORDER BY r.rolname),'{}'::text[])
  INTO memberships FROM pg_roles r WHERE r.rolname<>'sabora_b3_h6_reader_login'
  AND pg_has_role('sabora_b3_h6_reader_login',r.oid,'SET');
