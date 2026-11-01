@@ -184,3 +184,11 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - `a33b7fcb7c1fd49ba7d8d3c26c0f2acbd3cdffd4`: prueba negativa que verifica cero consultas en los cinco pools ante configuración inválida. **Nueva CI pendiente**.
 - CI antigua `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4`: Bootstrap y navegador SUCCESS; Sabora CI todavía IN_PROGRESS al consultar. CI `3538dcbd7ad53120481467f721ec7dfb305b3b39` aún IN_PROGRESS 3/3. No inferir PASS.
 - Sigue pendiente hito de integración real PG17 de cinco identidades y traslado económico A→B. PR #43 Draft, NO-GO. Sin despliegues ni cambios en Fleetia, VPS o Supabase operativo.
+
+## 25. Control de pertenencia SET ROLE en quinta identidad (2026-11-01)
+
+- CI `e0682072f77bc7cb9afd6cd7eab7e9a94c8418d4` completada **3/3 SUCCESS** (Sabora CI `41335548891`, Bootstrap `41335548878`, navegador `41335548922`). CI de `75c1b5757548e60ddfb3ccdfdff7977d7e2892b4` seguía en cola/ejecución al consultar.
+- `69848df15ebb1f424a37788735c545bdcd6d2306`: se detecta y cierra en la composición candidata un hueco del preflight reutilizado: comprobar solo los tres roles conocidos no excluye permisos SET ROLE adicionales. La quinta identidad ahora debe demostrar exactamente un rol SET accesible: `sabora_customer_flow_runtime`.
+- `4c866770ecfbbadf2187d550ed45375b8f5533be`: prueba negativa que simula membresía extra de B3 writer y verifica rechazo sin llegar a preflight de las otras cuatro identidades. **CI de estos cambios pendiente**.
+- Riesgo todavía abierto: la identidad H6 lectora usa `sabora_h6_customer_runtime`, cuyo EXECUTE en PostgreSQL abarca funciones H6 adicionales. El allowlist de aplicación no equivale a un rol de lectura exclusivamente DB. Se requiere revisión de privilegios y prueba PG17 real antes de GO.
+- PR #43 Draft, NO-GO. Sin despliegue ni cambios en VPS/Fleetia/Supabase operativo.
