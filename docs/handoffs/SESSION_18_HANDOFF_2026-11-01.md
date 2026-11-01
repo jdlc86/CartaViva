@@ -344,3 +344,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `dc55c057ba4185b80e83bdc34224fed713ea4322`: incorpora prueba PG17 de las cinco identidades B3 en un mismo entorno transaccional desechable, con comprobación de `current_user/session_user`, funciones y roles exactos y rechazo de EXECUTE indebido en el lector H6.
 - GitHub Actions **3/3 SUCCESS**: Sabora CI `41349160773`, Bootstrap `41349160768`, client browser `41349160791`.
 - **Límite de la evidencia**: las cinco identidades se comprueban secuencialmente con `SET LOCAL SESSION AUTHORIZATION` en una única conexión administrativa de prueba. No son cinco pools/login físicos simultáneos ni un flujo funcional HTTP A→B. No afirmar cierre B3 por esta prueba. Próximo bloque: ejecutar cinco conexiones reales restringidas y confirmar pedido en B, traspaso económico y proyecciones, replays y casos de fallo, más HTTP/PWA. PR #43 Draft; **NO-GO**, sin grants ni despliegues operativos.
+
+## 48. Checkout A→B ejecutado con rol SQL restringido (2026-11-01)
+
+- Commit `077f75cd6ca1e1cad8f20873646ee65a75cab39f`: la prueba positiva integrada PG17 de confirmación A→B ahora hace `SET LOCAL ROLE sabora_b3_positive_checkout` (rol transaccional NOLOGIN, USAGE del esquema y EXECUTE exclusivo de la función de confirmación) para la invocación real del writer. Se restablece el rol antes de verificar las invariantes económicas y de entrega; la transacción completa se revierte.
+- GitHub Actions **3/3 SUCCESS**: Sabora CI `41349760311`, Bootstrap `41349760220`, client browser `41349760202`.
+- La evidencia valida el writer restringido en una invocación positiva real, pero no constituye cinco conexiones independientes, ni integración HTTP/PWA de extremo a extremo. **PR #43 Draft, B3 NO-GO**. No se concedieron privilegios ni se desplegó en entornos operativos.
