@@ -317,3 +317,53 @@ test('B3 H6 read capability allows only replay and policy queries',async()=>{
  assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
   'SET LOCAL ROLE sabora_h6_customer_runtime',READ_H6_ROUND_SQL,'COMMIT']);
 });
+
+
+test('B3 four-way composition rejects shared H6 reader identity and pool before checkout',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const confirmation=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ let constructed=0;
+ const args={customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  h6ReadPool:reader,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}};
+ for(const shared of [customer,operations,confirmation]){
+  await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+   ...args,h6ReadPool:shared
+  }),/invalid_b3_isolated_composition/);
+ }
+ for(const login of ['f12_customer_login','f12_operations_login','b3_confirmation_login']){
+  await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+   ...args,expectedH6ReadLogin:login
+  }),/invalid_b3_isolated_composition/);
+ }
+ assert.equal(constructed,0);
+ assert.equal(customer.calls.length,0);
+ assert.equal(operations.calls.length,0);
+ assert.equal(confirmation.calls.length,0);
+ assert.equal(reader.calls.length,0);
+});
+
+test('B3 four-way composition fails closed on H6 reader identity drift',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const confirmation=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ let constructed=0;
+ await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+  customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  h6ReadPool:reader,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'wrong_h6_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}
+ }),/invalid_h6_sql_capabilities:identity-policy/);
+ assert.equal(constructed,0);
+ assert.equal(reader.calls.length,1);
+ assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
+ assert.equal(operations.calls.some(x=>x.sql==='BEGIN'),false);
+});
