@@ -446,3 +446,46 @@ test('B3 five-identity candidate rejects any shared customer-flow pool or login 
  assert.equal(writer.calls.length,0);
  assert.equal(reader.calls.length,0);
 });
+
+
+function b3CustomerFlowPool({extraGrant=false}={}){
+ const calls=[];
+ return {calls,async connect(){return {async query(sql,args){
+  calls.push({sql,args});
+  if(sql.includes('current_user AS effective_role'))return {rows:[{
+   effective_role:'flow_login',login_role:'flow_login',can_login:true,
+   inherit_role:false,superuser:false,bypass_rls:false,create_db:false,
+   create_role:false,replication:false,database_create:false,schema_create:false,
+   direct_relation_access:false,direct_sequence_access:false,
+   registration_set:false,session_set:false,flow_set:true
+  }]};
+  if(sql.includes(' AS login_execute'))return {rows:[{login_execute:false,capability_execute:true}]};
+  if(sql.includes(' AS exact'))return {rows:[{exact:!extraGrant}]};
+  if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_customer_flow_runtime'].includes(sql))
+   return {rows:[]};
+  throw Error('unexpected_customer_flow_sql');
+ },release(){}};}};
+}
+
+test('B3 five-way verified candidate exposes real customer confirmation only after all preflights',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const writer=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ const flow=b3CustomerFlowPool();
+ const args={customerPool:customer,operationsPool:operations,confirmationPool:writer,
+  h6ReadPool:reader,flowPool:flow,
+  expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+  expectedConfirmationLogin:'b3_confirmation_login',expectedH6ReadLogin:'h6_read_login',
+  expectedFlowLogin:'flow_login',hashSession:async()=>tokenHash,
+  verifyStaff:async()=>({userId:staffId,role:'waiter'}),secretKey:'s'.repeat(48)};
+ const service=await createVerifiedTableChangeB3CustomerFlowCandidate(args);
+ assert.equal(typeof service.confirmation.confirm,'function');
+ assert.equal(Object.isFrozen(service.confirmation),true);
+ assert.equal(flow.calls.filter(x=>x.sql==='BEGIN').length,0);
+ assert.equal(writer.calls.filter(x=>x.sql==='BEGIN').length,0);
+ await assert.rejects(()=>createVerifiedTableChangeB3CustomerFlowCandidate({
+  ...args,flowPool:b3CustomerFlowPool({extraGrant:true})
+ }),/invalid_customer_production_sql_capabilities:function-surface/);
+ assert.equal(customer.calls.filter(x=>x.sql==='BEGIN').length,0);
+});
