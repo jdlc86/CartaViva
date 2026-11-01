@@ -128,7 +128,7 @@ test('F12 verified composition rejects identical expected logins before any quer
  assert.equal(operations.calls.length,0);
 });
 
-function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false}={}){
+function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false,wrongOverload=false}={}){
  const calls=[];
  return {calls,async connect(){return {async query(sql,args){
   calls.push({sql,args});
@@ -142,7 +142,8 @@ function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false}={}
    executable_functions:directExecute?['sabora.read_customer_round_h6_candidate(bytea,uuid,text)']:[]
   }]};
   if(sql===B3_H6_READER_FUNCTION_SQL)return {rows:[{signatures:[
-   'sabora.read_customer_round_h6_candidate(bytea,uuid,text)',
+   wrongOverload?'sabora.read_customer_round_h6_candidate(bytea,uuid,text)':
+    'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
    ...(extraFunction?['sabora.confirm_customer_round_h6_candidate(bytea,uuid)']:[])
   ]}]};
@@ -543,7 +544,7 @@ test('B3 fifth login rejects a second SET ROLE membership even when standard pre
 
 
 test('B3 H6 reader login rejects extra SET ROLE or direct Sabora EXECUTE before constructing confirmation',async()=>{
- for(const invalid of [{extraRole:true},{directExecute:true},{extraFunction:true}]){
+ for(const invalid of [{extraRole:true},{directExecute:true},{extraFunction:true},{wrongOverload:true}]){
   const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
   const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
   const writer=b3ConfirmationPool();
