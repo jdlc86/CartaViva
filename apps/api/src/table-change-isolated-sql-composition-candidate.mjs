@@ -15,6 +15,35 @@ import {createSealedTableChangeRpcCandidate,
 
 export const F12_CUSTOMER_SQL=Object.freeze([REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL]);
 export const F12_OPERATIONS_SQL=Object.freeze([DECIDE_TABLE_CHANGE_H6_SQL]);
+// Candidate-only H6 login audit. The legacy H6 preflight checks its three
+// known roles; this additionally rejects hidden SET ROLE memberships and
+// directly executable Sabora functions on the login itself.
+export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
+ (SELECT coalesce(array_agg(r.rolname::text ORDER BY r.rolname::text),'{}'::text[])
+  FROM pg_roles r WHERE r.rolname<>current_user AND
+   pg_has_role(current_user,r.oid,'SET')) AS set_roles,
+ (SELECT coalesce(array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text),
+  '{}'::text[]) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='sabora' AND
+   has_function_privilege(current_user,p.oid,'EXECUTE')) AS executable_functions`;
+
+export async function assertB3H6LoginSurface({pool}={}){
+ if(!pool||typeof pool.connect!=='function')throw Error('invalid_b3_h6_login_surface');
+ let client,valid=false;
+ try{
+  client=await pool.connect();
+  const result=await client.query(B3_H6_LOGIN_SURFACE_SQL);
+  const row=result?.rows?.length===1?result.rows[0]:null;
+  if(!row||!Array.isArray(row.set_roles)||row.set_roles.length!==1||
+     row.set_roles[0]!=='sabora_h6_customer_runtime'||
+     !Array.isArray(row.executable_functions)||row.executable_functions.length!==0)
+   throw Error('invalid_b3_h6_login_surface');
+  valid=true;
+  return Object.freeze({validated:true});
+ }catch{throw Error('invalid_b3_h6_login_surface');}
+ finally{if(client)try{client.release(!valid);}catch{}}
+}
+
 export const B3_CONFIRMATION_SQL=Object.freeze([PERSIST_H6_TRANSFER_ORDER_SQL]);
 export const B3_H6_READ_SQL=Object.freeze([READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL]);
 
@@ -103,6 +132,7 @@ export async function createVerifiedTableChangeB3Candidate({
  const h6ReadCheck=await assertH6RuntimeIdentity({pool:h6ReadPool,
   expectedLogin:expectedH6ReadLogin,capability:'sabora_h6_customer_runtime'});
  if(h6ReadCheck?.validated!==true)throw Error('invalid_b3_h6_read_capabilities');
+ await assertB3H6LoginSurface({pool:h6ReadPool});
  const confirmation=await createConfirmationFlow({
   withConfirmationTransaction:createIsolatedB3ConfirmationTransaction({confirmationPool}),
   withH6ReadTransaction:createIsolatedB3H6ReadTransaction({h6ReadPool})
