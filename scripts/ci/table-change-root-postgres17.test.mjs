@@ -2129,6 +2129,19 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    WHERE q.id=$1`,[grant])).rows[0];
   assert.equal(afterQr.status,'approved');
   assert.equal(afterQr.bound_table,scenarioA.sourceTable);
+  // A revoked customer session must never consume an otherwise valid approval.
+  await client.query(`UPDATE sabora.customer_sessions SET revoked_at=clock_timestamp()
+   WHERE token_hash=$1`,[scenarioA.token]);
+  const revokedSession=await expectSqlError(client,consume,/table_change_session_forbidden/);
+  assert.equal(revokedSession.code,'42501');
+  await client.query(`UPDATE sabora.customer_sessions SET revoked_at=NULL
+   WHERE token_hash=$1`,[scenarioA.token]);
+  const afterSession=(await client.query(`SELECT q.status,b.table_id AS bound_table
+   FROM sabora.customer_table_change_requests q JOIN
+   sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   WHERE q.id=$1`,[grant])).rows[0];
+  assert.equal(afterSession.status,'approved');
+  assert.equal(afterSession.bound_table,scenarioA.sourceTable);
   assert.equal((await consume()).rows[0].grant_id,grant);
   const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
    a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
