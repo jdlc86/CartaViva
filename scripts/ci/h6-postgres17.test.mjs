@@ -322,7 +322,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   [pickupDestinationTable,qr.tokenHash,pickupDestinationSession]);
  await admin.query(`INSERT INTO sabora.customer_table_visits
   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
-  VALUES($1,$2,$3,$4,$3::text,1,clock_timestamp()+interval '1 hour')`,
+  VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
   [pickupDestinationTable,pickupDestinationSession,historicalScope.customer_id,pickupDestinationVisit]);
  await admin.query(`UPDATE sabora.customer_account_operational_bindings
   SET table_id=$2,session_id=$3,visit_key=$4,binding_version=binding_version+1
