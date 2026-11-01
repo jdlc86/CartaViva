@@ -2381,5 +2381,21 @@ test('PG17 B3 live preflight accepts only the isolated transactional login capab
   const current=(await client.query('SELECT current_user,session_user')).rows[0];
   assert.equal(current.current_user,login);
   assert.equal(current.session_user,login);
+  // A privilege added after the initial success must invalidate the same
+  // live preflight. All changes remain inside the disposable transaction.
+  await client.query('RESET SESSION AUTHORIZATION');
+  const extra='sabora.confirm_customer_round_h6_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  const extraExists=(await client.query('SELECT to_regprocedure($1) IS NOT NULL AS found',[extra])).rows[0].found;
+  assert.equal(extraExists,true,'H6 baseline RPC must exist for negative privilege probe');
+  await client.query(`GRANT EXECUTE ON FUNCTION ${extra} TO ${role}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertB3ConfirmationCapabilities({pool,expectedLogin:login}),
+   /invalid_b3_confirmation_capabilities:function-surface/);
+  await client.query('RESET SESSION AUTHORIZATION');
+  await client.query(`REVOKE EXECUTE ON FUNCTION ${extra} FROM ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${login}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  await assert.rejects(()=>assertB3ConfirmationCapabilities({pool,expectedLogin:login}),
+   /invalid_b3_confirmation_capabilities:login-function-surface/);
  });
 });
