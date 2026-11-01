@@ -300,3 +300,7 @@ La revision del consumidor F12 detecto que verificaba visita/QR vigente pero no 
 ## 64. F17 CI rojo diagnosticado y corregido sin relajar guard
 
 Commit 4bb40fd1: Sabora CI run 41300878426 FAIL en bloque 2B PG17, test 40, `table_change_destination_forbidden` SQLSTATE 42501 al ejecutar el consumo positivo. Bloque 2A de migraciones PASS, navegador SUCCESS. Causa comprobada: la mesa B del fixture se creaba en estado `closed` por defecto normativo, y la nueva funcion exigia `open` correctamente. Commit fa36e68d abre expresamente la mesa B en el fixture antes de la comprobacion positiva; la prueba negativa sigue cerrandola y reabriendola. No se relajo la seguridad ni se cambio runtime. Nuevos workflows Sabora 41301155537, Bootstrap 41301155479 y navegador 41301155546 en curso. B3 NO-GO; sin merge/deploy.
+
+## 65. F15 autorizacion aprobada no caduca con TTL de solicitud
+
+Commit a55556f4 amplia el escenario PG17 de consumo atomico de F12/F16/F17 con F15: tras aprobar, `expires_at` se fija en pasado para simular superar los 90 segundos; la autorizacion debe permanecer `approved` y el mismo consumo positivo A→B debe prosperar. Esta prueba evita tratar incorrectamente el TTL de una solicitud pendiente como caducidad del permiso aprobado, conforme al contrato normativo. Sabora CI 41301299712, Bootstrap 41301299705 y navegador 41301299718 en curso al documentar. La correccion del fixture F17 `fa36e68d` tambien estaba pendiente de Sabora/Bootstrap, navegador SUCCESS. No activar runtime: B3 NO-GO; sin merge/deploy.
