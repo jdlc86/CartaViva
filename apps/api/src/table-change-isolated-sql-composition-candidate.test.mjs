@@ -69,7 +69,8 @@ function preflightPool(capability,login,{deny=false}={}){
    role_set:['sabora_f12_customer_runtime','sabora_f12_operations_runtime']
     .map(role=>role===capability),all_set_roles:[capability]
   }]};
-  if(sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
+  if(sql.includes('array_agg(p.oid::regprocedure')||
+     (capability==='sabora_b3_confirmation_runtime'&&sql.includes('array_agg(n.nspname')))return {rows:[{names:
    args[0]===login?(deny?['sabora.unexpected()']:[]):[
     capability==='sabora_f12_customer_runtime'?
      'sabora.request_customer_table_change_h6_resolved_candidate(bytea)':
