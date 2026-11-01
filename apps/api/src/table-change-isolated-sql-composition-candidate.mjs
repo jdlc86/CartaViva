@@ -3,7 +3,8 @@
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
-import {PERSIST_H6_TRANSFER_ORDER_SQL} from './customer-production-flow.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
+import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -11,6 +12,12 @@ import {createSealedTableChangeRpcCandidate,
 export const F12_CUSTOMER_SQL=Object.freeze([REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL]);
 export const F12_OPERATIONS_SQL=Object.freeze([DECIDE_TABLE_CHANGE_H6_SQL]);
 export const B3_CONFIRMATION_SQL=Object.freeze([PERSIST_H6_TRANSFER_ORDER_SQL]);
+export const B3_H6_READ_SQL=Object.freeze([READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL]);
+
+export function createIsolatedB3H6ReadTransaction({h6ReadPool}={}){
+ return createRoleScopedPostgresTransaction({pool:h6ReadPool,
+  role:'sabora_h6_customer_runtime',allowedSql:new Set(B3_H6_READ_SQL)});
+}
 
 // B3 is a transfer-only writer: do not pass the raw pool to a flow factory.
 // Every statement must match the exact SQL string accepted by the preflight.
@@ -63,16 +70,19 @@ export async function createVerifiedIsolatedTableChangeSqlCandidate({
  * pass their independent preflight before a service is returned.
  */
 export async function createVerifiedTableChangeB3Candidate({
- customerPool,operationsPool,confirmationPool,
- expectedCustomerLogin,expectedOperationsLogin,
+ customerPool,operationsPool,confirmationPool,h6ReadPool,
+ expectedCustomerLogin,expectedOperationsLogin,expectedH6ReadLogin,
  hashSession,verifyStaff,expectedConfirmationLogin,
  createConfirmationFlow
 }={}){
  if(!confirmationPool||confirmationPool===customerPool||
     confirmationPool===operationsPool||
+    !h6ReadPool||typeof h6ReadPool.connect!=='function'||
+    [customerPool,operationsPool,confirmationPool].includes(h6ReadPool)||
     typeof confirmationPool.connect!=='function'||
     expectedConfirmationLogin===expectedCustomerLogin||
     expectedConfirmationLogin===expectedOperationsLogin||
+    [expectedCustomerLogin,expectedOperationsLogin,expectedConfirmationLogin].includes(expectedH6ReadLogin)||
     typeof createConfirmationFlow!=='function')
   throw Error('invalid_b3_isolated_composition');
  const tableChange=await createVerifiedIsolatedTableChangeSqlCandidate({
@@ -86,8 +96,12 @@ export async function createVerifiedTableChangeB3Candidate({
  });
  if(confirmationCheck?.validated!==true)
   throw Error('invalid_b3_confirmation_capabilities');
+ const h6ReadCheck=await assertH6RuntimeIdentity({pool:h6ReadPool,
+  expectedLogin:expectedH6ReadLogin,capability:'sabora_h6_customer_runtime'});
+ if(h6ReadCheck?.validated!==true)throw Error('invalid_b3_h6_read_capabilities');
  const confirmation=await createConfirmationFlow({
-  withConfirmationTransaction:createIsolatedB3ConfirmationTransaction({confirmationPool})
+  withConfirmationTransaction:createIsolatedB3ConfirmationTransaction({confirmationPool}),
+  withH6ReadTransaction:createIsolatedB3H6ReadTransaction({h6ReadPool})
  });
  if(!confirmation||typeof confirmation.confirm!=='function')
   throw Error('invalid_b3_confirmation_flow');
