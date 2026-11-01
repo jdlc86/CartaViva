@@ -92,6 +92,34 @@ DO $$ DECLARE names text[]; BEGIN
  END IF;
 END $$;
 RESET ROLE;
+-- Simulate a genuine login identity rather than SET ROLE from postgres alone.
+-- session_user must be the restricted login, as required by the Node preflight.
+SET SESSION AUTHORIZATION sabora_b3_h6_reader_login;
+DO $$ BEGIN
+ IF session_user <> 'sabora_b3_h6_reader_login' OR
+    current_user <> 'sabora_b3_h6_reader_login' THEN
+  RAISE EXCEPTION 'B3 reader preflight session identity mismatch';
+ END IF;
+ IF NOT pg_has_role(current_user,'sabora_b3_h6_reader_runtime','SET') OR
+    has_schema_privilege(current_user,'sabora','CREATE') THEN
+  RAISE EXCEPTION 'B3 reader login identity has invalid role or schema privileges';
+ END IF;
+END $$;
+SET ROLE sabora_b3_h6_reader_runtime;
+DO $$ BEGIN
+ IF session_user <> 'sabora_b3_h6_reader_login' OR
+    current_user <> 'sabora_b3_h6_reader_runtime' THEN
+  RAISE EXCEPTION 'B3 reader role switch escaped login session';
+ END IF;
+ IF NOT has_function_privilege(current_user,
+  'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') OR
+    NOT has_function_privilege(current_user,
+  'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)','EXECUTE') THEN
+  RAISE EXCEPTION 'B3 restricted login cannot assume reader capabilities';
+ END IF;
+END $$;
+RESET ROLE;
+RESET SESSION AUTHORIZATION;
 ROLLBACK;
 DO $$ BEGIN
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN
