@@ -3,7 +3,7 @@
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
-import {PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
+import {createCustomerProductionFlow,PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -106,4 +106,32 @@ export async function createVerifiedTableChangeB3Candidate({
  if(!confirmation||typeof confirmation.confirm!=='function')
   throw Error('invalid_b3_confirmation_flow');
  return Object.freeze({tableChange,confirmation});
+}
+
+
+/**
+ * Candidate-only adapter to the real customer confirmation flow. The ordinary
+ * customer basket/quote SQL remains on its separately supplied transaction;
+ * B3 can only persist the transfer, while H6 can only read policy/replay.
+ * Call only after all four SQL identities pass the verified factory preflight.
+ * No routes, connections or database privileges are created here.
+ */
+export function createB3CustomerConfirmationFlowCandidate({
+ withCustomerTransaction,secretKey,clock,newId
+}={}){
+ if(typeof withCustomerTransaction!=='function'||
+    typeof secretKey!=='string'||Buffer.byteLength(secretKey,'utf8')<32)
+  throw Error('invalid_b3_customer_confirmation_adapter');
+ return ({withConfirmationTransaction,withH6ReadTransaction}={})=>{
+  if(typeof withConfirmationTransaction!=='function'||
+     typeof withH6ReadTransaction!=='function')
+   throw Error('invalid_b3_customer_confirmation_adapter');
+  const flow=createCustomerProductionFlow({
+   withTransaction:withCustomerTransaction,secretKey,
+   ...(clock===undefined?{}:{clock}),...(newId===undefined?{}:{newId}),
+   withH6Transaction:withConfirmationTransaction,
+   withH6ReadTransaction,h6ConfirmationSql:PERSIST_H6_TRANSFER_ORDER_SQL
+  });
+  return Object.freeze({confirm:flow.confirm});
+ };
 }
