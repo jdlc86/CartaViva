@@ -216,7 +216,7 @@ function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
     can_set_confirmation:true,direct_relations:false,direct_sequences:false,
     all_set_roles:[role]
    }]};
-   if(sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
+   if(sql.includes('array_agg(n.nspname')||sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
     args[0]===role?[signature,...(extraFunction?['sabora.unexpected()']:[])]:
      (directLoginGrant?[signature]:[])}]};
    throw Error('unexpected_b3_sql');
