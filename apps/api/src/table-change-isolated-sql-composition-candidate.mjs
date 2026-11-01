@@ -61,6 +61,8 @@ export async function createVerifiedTableChangeB3Candidate({
  if(!confirmationPool||confirmationPool===customerPool||
     confirmationPool===operationsPool||
     typeof confirmationPool.connect!=='function'||
+    expectedConfirmationLogin===expectedCustomerLogin||
+    expectedConfirmationLogin===expectedOperationsLogin||
     typeof createConfirmationFlow!=='function')
   throw Error('invalid_b3_isolated_composition');
  const tableChange=await createVerifiedIsolatedTableChangeSqlCandidate({
