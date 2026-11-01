@@ -148,3 +148,24 @@ test('B3 gate rejects shared pool and refuses unverified transfer EXECUTE',async
  }),/invalid_b3_confirmation_capabilities:query/);
  assert.equal(created,0);
 });
+
+
+test('B3 composition rejects reused F12 login identities before any SQL or flow construction',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const confirmation=preflightPool('sabora_b3_confirmation_runtime','f12_customer_login');
+ let constructed=0;
+ const base={customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}};
+ for(const reused of ['f12_customer_login','f12_operations_login']){
+  await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+   ...base,expectedConfirmationLogin:reused
+  }),/invalid_b3_isolated_composition/);
+ }
+ assert.equal(customer.calls.length,0);
+ assert.equal(operations.calls.length,0);
+ assert.equal(confirmation.calls.length,0);
+ assert.equal(constructed,0);
+});
