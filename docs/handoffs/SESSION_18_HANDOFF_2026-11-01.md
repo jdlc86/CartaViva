@@ -144,3 +144,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `ae093f7d2c96c564f168f7d0a827a9bfc0110964`: nuevos casos de rechazo previo a SQL cuando el pool lector H6 coincide con cualquiera de los otros tres o cuando reutiliza un login F12/B3. Si la identidad efectiva del lector H6 difiere de la declarada, falla el preflight y no se construye la factoría; no se ejecuta SQL de negocio.
 - La CI de `9c41cac7c7d455f14158f1e0ad0454f736471bd2` estaba en ejecución al revisar; la del commit nuevo requiere verificación independiente. No declarar GO ni resultado verde anticipado.
 - Próxima prioridad: resolver pruebas de CI, luego conectar el recorrido real de confirmación/replay sin saltarse el preflight ni aumentar permisos; cerrar escenario F/R de transferencia y pagos antes de producción.
+
+## 19. CI verde y encaminamiento explícito de lecturas H6 (2026-11-01)
+
+- `9c41cac7c7d455f14158f1e0ad0454f736471bd2`: CI, Bootstrap y navegador **3/3 SUCCESS**. `011bd01a6ab26ee527f575cbf53afbc51099b45c`: **3/3 SUCCESS** (runs `41325076716`, `41325076708`, `41325076707`). Se validó el aislamiento de cuatro identidades.
+- `e6f93ce0d268fbcd1051dec2a3652d45307d4ca7`: `createCustomerProductionFlow` admite opcionalmente `withH6ReadTransaction`. La lectura de política y el replay `READ_H6_ROUND_SQL` utilizan esa transacción, mientras la persistencia de la ronda usa `withH6Transaction`. Por defecto se mantiene el comportamiento anterior si no se configura un lector separado. Rechaza configuración de lector sin escritor. No se ha conectado aún el flujo completo a la factoría B3.
+- `046b56e23630120f90f53283fbb8a7c23c7f526a`: comentario de composición corregido a cuatro identidades. **CI nueva pendiente**. Revisar especialmente tests del flujo H6 y su replay antes de considerar integración terminada.
+- Mantener PR #43 Draft y NO-GO; no ampliar privilegios del escritor ni tocar Fleetia/VPS/Supabase operativo.
