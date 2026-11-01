@@ -337,6 +337,30 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   SET revoked_at=clock_timestamp()
   WHERE table_id=$1 AND customer_id=$2 AND visit_key=$3`,
   [historicalScope.table_id,historicalScope.customer_id,historicalScope.customer_visit_key]);
+ // Negative authorization cases exercise the same restricted HMAC-signed RPC,
+ // not only a privileged SQL projection. Every denial must leave task state intact.
+ const assertPickupDenied=async(label,correlationId,changeSql,restoreSql)=>{
+  await admin.query(changeSql,[pickupDestinationTable]);
+  try{
+   await assert.rejects(operations.managePickup({lineId:httpLine,action:'claim_pickup',
+    expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
+     actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
+     expectedVersion:Number(httpPickup[0].version),correlationId})}),
+    /pickup_scope_forbidden/,label);
+   const task=(await admin.query(`SELECT state,version FROM sabora.pickup_tasks
+    WHERE order_line_id=$1`,[httpLine])).rows[0];
+   assert.equal(task.state,'ready',label);
+   assert.equal(Number(task.version),Number(httpPickup[0].version),label);
+  }finally{await admin.query(restoreSql,[pickupDestinationTable]);}
+ };
+ await assertPickupDenied('closed destination B','h6_transfer_closed_b_001',
+  `UPDATE sabora.dining_tables SET ordering_state='closed' WHERE id=$1`,
+  `UPDATE sabora.dining_tables SET ordering_state='open' WHERE id=$1`);
+ await assertPickupDenied('rotated QR destination B','h6_transfer_rotated_b_001',
+  `UPDATE sabora.dining_tables SET qr_version=qr_version+1 WHERE id=$1`,
+  `UPDATE sabora.customer_table_visits SET authorized_qr_version=
+   (SELECT qr_version FROM sabora.dining_tables WHERE id=$1)
+   WHERE table_id=$1 AND visit_key='h6_pickup_destination_visit_001'`);
  const httpClaim=await operations.managePickup({lineId:httpLine,action:'claim_pickup',
   expectedVersion:Number(httpPickup[0].version),capability:issueKitchen({
    actorId:waiterId,staffRole:'waiter',action:'claim_pickup',targetId:httpLine,
