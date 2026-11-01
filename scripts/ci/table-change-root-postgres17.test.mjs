@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
+import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2354,5 +2355,31 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
   const names=(await client.query(F12_FUNCTION_SQL,[role])).rows[0].names;
   assert.deepEqual(names,[signature],'B3 role must have exactly one Sabora EXECUTE');
   await client.query('RESET ROLE');
+ });
+});
+
+
+test('PG17 B3 live preflight accepts only the isolated transactional login capability',async()=>{
+ await transaction(async client=>{
+  const role='sabora_b3_confirmation_runtime';
+  const login='sabora_b3_confirmation_preflight_probe';
+  const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+  await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+  await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  // A disposable superuser session can impersonate the exact login within
+  // this rolled-back transaction. This checks the real PostgreSQL catalog,
+  // not a fixture, and never creates persistent runtime credentials.
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+  const pool={connect:async()=>({
+   query:(sql,params)=>client.query(sql,params),release:()=>{}
+  })};
+  const result=await assertB3ConfirmationCapabilities({pool,expectedLogin:login});
+  assert.deepEqual(result,{validated:true,login,capability:role});
+  const current=(await client.query('SELECT current_user,session_user')).rows[0];
+  assert.equal(current.current_user,login);
+  assert.equal(current.session_user,login);
  });
 });
