@@ -113,3 +113,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - **Alcance limitado:** los pools de esta prueba son dobles controlados y la función `confirm` es simulada; no prueba la confirmación atómica real, el recorrido HTTP/PWA ni los efectos en cuenta/pagos/recogida. El PG17 real de privilegios fue validado previamente en el subhito 11. **CI de este nuevo commit pendiente**.
 - Auditoría pendiente antes de integración real: la composición B3 acepta una factoría de confirmación externa; verificar que el runtime final utilice exclusivamente el SQL de transferencia autorizado y resuelva correctamente lectura/replay H6, sin reutilizar el rol de confirmación para operaciones no permitidas. No declarar GO sin ello.
 - Sin merges ni despliegues, sin tocar Fleetia, VPS o Supabase operativo; PR #43 Draft y B3/F12 NO-GO.
+
+## 14. Sellado del escritor de confirmación B3 (2026-11-01)
+
+- Commits `b564e1a77c833cd5b8ccdb33717d2a84445a557f` y `38956f990c289ed9ebee39d6bdd751266c75eedb`: se retira la entrega del pool SQL crudo a `createConfirmationFlow`. La factoría recibe únicamente `withConfirmationTransaction`, con `SET LOCAL ROLE sabora_b3_confirmation_runtime` y allowlist de **solo** `PERSIST_H6_TRANSFER_ORDER_SQL`. Test: SQL H6 anterior rechazado y ROLLBACK; SQL de transferencia aceptado y COMMIT. No se crean grants ni se monta la ruta.
+- **Limitación deliberada:** la confirmación de cliente H6 existente también necesita otras consultas (por ejemplo, lectura de ronda para replay); no reutilizar este escritor para ellas. Se requiere composición con pools y capacidades separados, y una prueba integrada de replay/transferencia antes del GO. Los tests nuevos y CI de este HEAD están pendientes de verificar.
+- PR #43 Draft, B3/F12 NO-GO. Sin merge, despliegue, ni modificaciones de Supabase operativo, VPS o Fleetia.
