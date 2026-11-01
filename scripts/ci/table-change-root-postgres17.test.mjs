@@ -1282,7 +1282,7 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
     $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
    [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
     Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end']),
-   /table|ordering|closed|forbidden|invalid/i);
+   /customer_visit_forbidden/);
   const closedState=(await client.query(`SELECT
    (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
    (SELECT status FROM sabora.customer_table_change_requests WHERE id=$2) AS grant,
