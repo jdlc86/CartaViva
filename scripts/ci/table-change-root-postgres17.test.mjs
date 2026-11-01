@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
-import {F12_FUNCTION_SQL} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
+import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
 import {assertB3H6LoginSurface} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 
@@ -2454,5 +2454,37 @@ test('PG17 B3 H6 reader live preflight validates isolated login and rejects priv
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
   await assert.rejects(()=>assertB3H6LoginSurface({pool,expectedLogin:login}),
    /invalid_b3_h6_reader_capabilities/);
+ });
+});
+
+
+test('PG17 F12 customer and waiter live identity preflights use separate restricted logins',async()=>{
+ await transaction(async client=>{
+  const cases=[
+   ['sabora_f12_customer_runtime','sabora_f12_customer_probe',
+    'sabora.request_customer_table_change_h6_resolved_candidate(bytea)'],
+   ['sabora_f12_operations_runtime','sabora_f12_operations_probe',
+    'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']
+  ];
+  for(const [role,login,signature] of cases){
+   await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
+   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
+   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
+   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
+   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  }
+  const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
+  for(const [role,login] of cases){
+   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
+   assert.deepEqual(await assertF12SqlIdentity({pool,expectedLogin:login,capability:role}),
+    {validated:true,capability:role,login});
+   await client.query('RESET SESSION AUTHORIZATION');
+  }
+  const [customerRole,customerLogin]=cases[0];
+  const extra='sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)';
+  await client.query(`GRANT EXECUTE ON FUNCTION ${extra} TO ${customerRole}`);
+  await client.query(`SET LOCAL SESSION AUTHORIZATION ${customerLogin}`);
+  await assert.rejects(()=>assertF12SqlIdentity({pool,expectedLogin:customerLogin,
+   capability:customerRole}),/invalid_f12_sql_capabilities:function-surface/);
  });
 });
