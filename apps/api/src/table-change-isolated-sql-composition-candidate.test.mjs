@@ -489,3 +489,25 @@ test('B3 five-way verified candidate exposes real customer confirmation only aft
  }),/invalid_customer_production_sql_capabilities:function-surface/);
  assert.equal(customer.calls.filter(x=>x.sql==='BEGIN').length,0);
 });
+
+
+test('B3 five-identity candidate rejects invalid bootstrap before querying PostgreSQL',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const writer=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ const flow=b3CustomerFlowPool();
+ const args={customerPool:customer,operationsPool:operations,confirmationPool:writer,
+  h6ReadPool:reader,flowPool:flow,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  secretKey:'s'.repeat(48)};
+ for(const invalid of [{secretKey:'weak'},{clock:0},{newId:null},{hashSession:null},
+  {verifyStaff:null}]){
+  await assert.rejects(()=>createVerifiedTableChangeB3CustomerFlowCandidate({...args,...invalid}),
+   /invalid_b3_customer_flow_configuration/);
+ }
+ for(const candidate of [customer,operations,writer,reader,flow])
+  assert.equal(candidate.calls.length,0);
+});
