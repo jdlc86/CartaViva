@@ -2157,6 +2157,19 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
   assert.equal(afterClosure.status,'approved');
   assert.equal(afterClosure.bound_table,scenarioA.sourceTable);
   assert.equal(afterClosure.outstanding_cents,'2400');
+  // F17: valid QR and live visit are insufficient when destination is blocked.
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='blocked'
+   WHERE id=$1`,[scenarioA.destinationTable]);
+  const blocked=await expectSqlError(client,consume,/table_change_destination_forbidden/);
+  assert.equal(blocked.code,'42501');
+  await client.query(`UPDATE sabora.dining_tables SET ordering_state='open'
+   WHERE id=$1`,[scenarioA.destinationTable]);
+  const afterBlocked=(await client.query(`SELECT q.status,b.table_id AS bound_table
+   FROM sabora.customer_table_change_requests q
+   JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+   WHERE q.id=$1`,[grant])).rows[0];
+  assert.equal(afterBlocked.status,'approved');
+  assert.equal(afterBlocked.bound_table,scenarioA.sourceTable);
   assert.equal((await consume()).rows[0].grant_id,grant);
   const state=(await client.query(`SELECT a.id,a.table_id AS historical_table,
    a.outstanding_cents,b.table_id AS operational_table,b.binding_version,
