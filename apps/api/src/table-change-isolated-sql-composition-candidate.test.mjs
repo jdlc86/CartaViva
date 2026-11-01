@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
+import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -448,7 +448,7 @@ test('B3 five-identity candidate rejects any shared customer-flow pool or login 
 });
 
 
-function b3CustomerFlowPool({extraGrant=false}={}){
+function b3CustomerFlowPool({extraGrant=false,extraRole=false}={}){
  const calls=[];
  return {calls,async connect(){return {async query(sql,args){
   calls.push({sql,args});
@@ -459,6 +459,9 @@ function b3CustomerFlowPool({extraGrant=false}={}){
    direct_relation_access:false,direct_sequence_access:false,
    registration_set:false,session_set:false,flow_set:true
   }]};
+  if(sql===B3_CUSTOMER_FLOW_EXACT_SET_SQL)return {rows:[{roles:extraRole?
+   ['sabora_customer_flow_runtime','sabora_b3_confirmation_runtime']:
+   ['sabora_customer_flow_runtime']}]};
   if(sql.includes(' AS login_execute'))return {rows:[{login_execute:false,capability_execute:true}]};
   if(sql.includes(' AS exact'))return {rows:[{exact:!extraGrant}]};
   if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_customer_flow_runtime'].includes(sql))
@@ -509,5 +512,25 @@ test('B3 five-identity candidate rejects invalid bootstrap before querying Postg
    /invalid_b3_customer_flow_configuration/);
  }
  for(const candidate of [customer,operations,writer,reader,flow])
+  assert.equal(candidate.calls.length,0);
+});
+
+
+test('B3 fifth login rejects a second SET ROLE membership even when standard preflight passes',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const writer=b3ConfirmationPool();
+ const reader=h6ReadPool();
+ const flow=b3CustomerFlowPool({extraRole:true});
+ await assert.rejects(()=>createVerifiedTableChangeB3CustomerFlowCandidate({
+  customerPool:customer,operationsPool:operations,confirmationPool:writer,
+  h6ReadPool:reader,flowPool:flow,expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  secretKey:'s'.repeat(48)
+ }),/invalid_b3_customer_flow_set_roles/);
+ assert.equal(flow.calls.some(x=>x.sql===B3_CUSTOMER_FLOW_EXACT_SET_SQL),true);
+ for(const candidate of [customer,operations,writer,reader])
   assert.equal(candidate.calls.length,0);
 });
