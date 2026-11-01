@@ -138,3 +138,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commits `3c39272bfa8fea2e06591e0ad0941345f6667a00`, `9ba3ef4f2aa2814d2ab5fa48649c099eeee99537` y `82d959034190a57ebfc8b60dc538f8c66fad44d0`: la factoría B3 exige **cuarto pool/login aislado** para consultas H6 y comprueba su identidad contra `sabora_h6_customer_runtime`. Entrega dos interfaces selladas: `withConfirmationTransaction` (solo SQL de transferencia) y `withH6ReadTransaction` (solo lectura de ronda y política). Tests de SQL denegado y aislamiento. **CI de estos commits pendiente**.
 - Advertencia normativa: el rol H6 existente tiene superficie de funciones más amplia que el allowlist de la aplicación. El lector restringe SQL de aplicación pero no sustituye el análisis de privilegios PostgreSQL ni las pruebas de transfer/replay end-to-end. No conceder lecturas al rol B3, no montar rutas operativas ni declarar GO.
 - PR #43 Draft; B3/F12 NO-GO. Sin merge, VPS, Supabase operativo ni Fleetia.
+
+## 18. Regresión negativa de aislamiento de cuatro identidades (2026-11-01)
+
+- Commit `ae093f7d2c96c564f168f7d0a827a9bfc0110964`: nuevos casos de rechazo previo a SQL cuando el pool lector H6 coincide con cualquiera de los otros tres o cuando reutiliza un login F12/B3. Si la identidad efectiva del lector H6 difiere de la declarada, falla el preflight y no se construye la factoría; no se ejecuta SQL de negocio.
+- La CI de `9c41cac7c7d455f14158f1e0ad0454f736471bd2` estaba en ejecución al revisar; la del commit nuevo requiere verificación independiente. No declarar GO ni resultado verde anticipado.
+- Próxima prioridad: resolver pruebas de CI, luego conectar el recorrido real de confirmación/replay sin saltarse el preflight ni aumentar permisos; cerrar escenario F/R de transferencia y pagos antes de producción.
