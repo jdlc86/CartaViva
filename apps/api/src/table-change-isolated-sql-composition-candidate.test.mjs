@@ -169,3 +169,69 @@ test('B3 composition rejects reused F12 login identities before any SQL or flow 
  assert.equal(confirmation.calls.length,0);
  assert.equal(constructed,0);
 });
+
+
+function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
+ const login='b3_confirmation_login',role='sabora_b3_confirmation_runtime';
+ const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+ const calls=[];
+ return {calls,async connect(){return {
+  async query(sql,args){
+   calls.push({sql,args});
+   if(sql.includes('current_user AS effective_role'))return {rows:[{
+    effective_role:login,login_role:login,can_login:true,inherit_role:false,
+    superuser:false,bypass_rls:false,create_db:false,create_role:false,
+    replication:false,database_create:false,schema_create:false,
+    can_set_confirmation:true,direct_relations:false,direct_sequences:false,
+    all_set_roles:[role]
+   }]};
+   if(sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
+    args[0]===role?[signature,...(extraFunction?['sabora.unexpected()']:[])]:
+     (directLoginGrant?[signature]:[])}]};
+   throw Error('unexpected_b3_sql');
+  },release(){}
+ };}};
+}
+
+test('B3 full isolated composition validates all three identities before constructing confirmation',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const confirmation=b3ConfirmationPool();
+ let constructed=0;
+ const service=await createVerifiedTableChangeB3Candidate({
+  customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+  expectedConfirmationLogin:'b3_confirmation_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async({pool})=>{
+   constructed++;
+   assert.equal(pool,confirmation);
+   assert.equal(customer.calls.length,3);
+   assert.equal(operations.calls.length,3);
+   assert.equal(confirmation.calls.length,3);
+   return {confirm:async()=>({status:'candidate_only'})};
+  }
+ });
+ assert.equal(constructed,1);
+ assert.equal((await service.tableChange.request({customerSessionToken:'secret'})).status,'pending');
+ assert.deepEqual(await service.confirmation.confirm(),{status:'candidate_only'});
+});
+
+test('B3 full isolated composition never constructs confirmation on privilege drift',async()=>{
+ for(const bad of [{extraFunction:true},{directLoginGrant:true}]){
+  const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+  const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+  const confirmation=b3ConfirmationPool(bad);
+  let constructed=0;
+  await assert.rejects(()=>createVerifiedTableChangeB3Candidate({
+   customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+   expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+   expectedConfirmationLogin:'b3_confirmation_login',
+   hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+   createConfirmationFlow:async()=>{constructed++;return {confirm:async()=>{}};}
+  }),/invalid_b3_confirmation_capabilities:/);
+  assert.equal(constructed,0);
+  assert.equal(customer.calls.some(x=>x.sql==='BEGIN'),false);
+  assert.equal(operations.calls.some(x=>x.sql==='BEGIN'),false);
+ }
+});
