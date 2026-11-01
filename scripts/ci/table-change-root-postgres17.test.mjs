@@ -1327,12 +1327,24 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    FROM sabora.order_line_delivery_destinations
    WHERE order_id=$1 AND table_id=$2`,
    [priorOrder,ids.destinationTable])).rows[0].n,0);
+  // The integrated checkout must work through the restricted B3 writer
+  // capability, not merely through the privileged PG17 test connection.
+  await client.query('CREATE ROLE sabora_b3_positive_checkout NOLOGIN NOINHERIT');
+  await client.query('GRANT USAGE ON SCHEMA sabora TO sabora_b3_positive_checkout');
+  await client.query(`GRANT EXECUTE ON FUNCTION
+   sabora.confirm_customer_round_h6_transfer_integration_candidate(
+    bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)
+   TO sabora_b3_positive_checkout`);
+  await client.query('SET LOCAL ROLE sabora_b3_positive_checkout');
+  const roleAtCheckout=(await client.query('SELECT current_user')).rows[0].current_user;
+  assert.equal(roleAtCheckout,'sabora_b3_positive_checkout');
   const result=(await client.query(`SELECT * FROM
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,
     $8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text)`,
    [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,requestKey,
     Buffer.alloc(32,211),batchId,ids.order,JSON.stringify(lines),false,'pay_at_end'])).rows[0];
+  await client.query('RESET ROLE');
   assert.equal(result.persisted_order_id,ids.order);
   assert.equal(result.account_id,ids.sourceAccount);
   assert.equal(result.amount_cents,'700');
