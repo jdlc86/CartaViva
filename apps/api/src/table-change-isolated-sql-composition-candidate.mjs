@@ -3,12 +3,22 @@
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL} from './customer-production-flow.mjs';
 import {createSealedTableChangeRpcCandidate,
  REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
 
 export const F12_CUSTOMER_SQL=Object.freeze([REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL]);
 export const F12_OPERATIONS_SQL=Object.freeze([DECIDE_TABLE_CHANGE_H6_SQL]);
+export const B3_CONFIRMATION_SQL=Object.freeze([PERSIST_H6_TRANSFER_ORDER_SQL]);
+
+// B3 is a transfer-only writer: do not pass the raw pool to a flow factory.
+// Every statement must match the exact SQL string accepted by the preflight.
+export function createIsolatedB3ConfirmationTransaction({confirmationPool}={}){
+ return createRoleScopedPostgresTransaction({pool:confirmationPool,
+  role:'sabora_b3_confirmation_runtime',allowedSql:new Set(B3_CONFIRMATION_SQL)});
+}
+
 
 export function createIsolatedTableChangeSqlCandidate({
  customerPool,operationsPool,hashSession,verifyStaff
@@ -76,7 +86,9 @@ export async function createVerifiedTableChangeB3Candidate({
  });
  if(confirmationCheck?.validated!==true)
   throw Error('invalid_b3_confirmation_capabilities');
- const confirmation=await createConfirmationFlow({pool:confirmationPool});
+ const confirmation=await createConfirmationFlow({
+  withConfirmationTransaction:createIsolatedB3ConfirmationTransaction({confirmationPool})
+ });
  if(!confirmation||typeof confirmation.confirm!=='function')
   throw Error('invalid_b3_confirmation_flow');
  return Object.freeze({tableChange,confirmation});
