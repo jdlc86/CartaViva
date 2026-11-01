@@ -253,3 +253,26 @@ test('B3 confirmation writer executes only transfer SQL under a local capability
  assert.deepEqual(confirmation.calls.map(x=>x.sql),['BEGIN',
   'SET LOCAL ROLE sabora_b3_confirmation_runtime',PERSIST_H6_TRANSFER_ORDER_SQL,'COMMIT']);
 });
+
+
+test('B3 verified factory passes only sealed transaction and denies legacy H6 SQL',async()=>{
+ const customer=preflightPool('sabora_f12_customer_runtime','f12_customer_login');
+ const operations=preflightPool('sabora_f12_operations_runtime','f12_operations_login');
+ const confirmation=b3ConfirmationPool();
+ let exposed;
+ const service=await createVerifiedTableChangeB3Candidate({
+  customerPool:customer,operationsPool:operations,confirmationPool:confirmation,
+  expectedCustomerLogin:'f12_customer_login',expectedOperationsLogin:'f12_operations_login',
+  expectedConfirmationLogin:'b3_confirmation_login',
+  hashSession:async()=>tokenHash,verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  createConfirmationFlow:async capabilities=>{
+   exposed=capabilities;
+   return {confirm:async()=>capabilities.withConfirmationTransaction(
+    query=>query(PERSIST_H6_ORDER_SQL,[]))};
+  }
+ });
+ assert.deepEqual(Object.keys(exposed),['withConfirmationTransaction']);
+ await assert.rejects(()=>service.confirmation.confirm(),/role_scoped_sql_not_allowed/);
+ assert.deepEqual(confirmation.calls.slice(3).map(x=>x.sql),[
+  'BEGIN','SET LOCAL ROLE sabora_b3_confirmation_runtime','ROLLBACK']);
+});
