@@ -65,6 +65,50 @@ async function insertVisit(client,{tableId,sessionId,visitKey}){
   [tableId,sessionId,ids.customer,visitKey]);
 }
 
+
+test('PG17 H6 pickup authorizes the effective destination with live QR, not historical order A',async()=>{
+ const signature='sabora.manage_pickup_task_h6_candidate(text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text)';
+ const result=await admin.query(`SELECT pg_get_functiondef(p.oid) AS definition,
+  p.prosecdef AS security_definer,p.proowner::regrole::text AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS browser_execute,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS operations_execute,
+  has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE') AS customer_execute
+  FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(result.rows.length,1,'effective pickup function must exist in PG17');
+ const row=result.rows[0];
+ assert.equal(row.security_definer,true);
+ assert.equal(row.owner,'sabora_h6_fn_owner');
+ assert.equal(row.anon_execute,false);
+ assert.equal(row.browser_execute,false);
+ assert.equal(row.customer_execute,false);
+ assert.equal(row.operations_execute,true);
+ assert.match(row.definition,/LEFT JOIN sabora\.order_line_delivery_destinations dest/);
+ assert.match(row.definition,/COALESCE\(dest\.table_id,o\.table_id\)/);
+ assert.match(row.definition,/COALESCE\(dest\.session_id,o\.session_id\)/);
+ assert.match(row.definition,/COALESCE\(dest\.visit_key,o\.customer_visit_key\)/);
+ assert.match(row.definition,/sabora\.customer_account_operational_bindings binding/);
+ assert.match(row.definition,/binding\.account_id=v_scope\.account_id/);
+ assert.match(row.definition,/binding\.table_id=v_scope\.table_id/);
+ assert.match(row.definition,/binding\.session_id=v_scope\.session_id/);
+ assert.match(row.definition,/binding\.visit_key=v_scope\.customer_visit_key/);
+ assert.match(row.definition,/d\.ordering_state='open'/);
+ assert.match(row.definition,/v\.authorized_qr_version=d\.qr_version/);
+ assert.match(row.definition,/v\.revoked_at IS NULL AND v\.expires_at>clock_timestamp\(\)/);
+ assert.match(row.definition,/FOR SHARE OF v/);
+ assert.match(row.definition,/FOR UPDATE/);
+ await transaction(async client=>{
+  const now=Date.now();
+  const failure=await expectSqlError(client,()=>client.query(`SELECT
+   sabora.manage_pickup_task_h6_candidate($1,$2,$3::uuid,$4,$5,$6::uuid,
+    $7::bigint,$8,$9::bigint,$10::bigint,$11)`,[
+    'forged_pickup_key','postgres',ids.customer,'waiter','claim_pickup',
+    ids.order,1,'forged_pickup_attempt_01',now,now+30000,'0'.repeat(64)
+   ]),/invalid_pickup_capability/);
+  assert.equal(failure.code,'42501');
+ });
+});
+
 test('PG17 H6 delivery board is sealed and retains picked-up fallback in its SQL contract',async()=>{
  const signature='sabora.read_order_operations_delivery_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)';
  const result=await admin.query(`SELECT p.oid::regprocedure::text AS signature,
