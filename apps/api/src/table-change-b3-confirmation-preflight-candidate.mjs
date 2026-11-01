@@ -17,13 +17,17 @@ export const B3_CONFIRMATION_IDENTITY_SQL=`SELECT current_user AS effective_role
    pg_has_role(current_user,other.oid,'SET')) AS all_set_roles,
  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='sabora' AND c.relkind IN ('r','p') AND
-  has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')) AS direct_relations,
+  CASE WHEN c.relkind IN ('r','p') THEN
+   has_table_privilege(current_user,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+   ELSE false END) AS direct_relations,
  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='sabora' AND c.relkind='S' AND
-  has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')) AS direct_sequences
+  CASE WHEN c.relkind='S' THEN
+   has_sequence_privilege(current_user,c.oid,'USAGE,SELECT,UPDATE')
+   ELSE false END) AS direct_sequences
  FROM pg_roles r WHERE r.rolname=current_user`;
-export const B3_CONFIRMATION_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text
- ORDER BY p.oid::regprocedure::text),'{}'::text[]) AS names
+export const B3_CONFIRMATION_FUNCTION_SQL=`SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')'
+ ORDER BY p.oid),'{}'::text[]) AS names
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND
  has_function_privilege($1::name,p.oid,'EXECUTE')`;
