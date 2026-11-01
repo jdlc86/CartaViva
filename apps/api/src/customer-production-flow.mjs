@@ -96,15 +96,19 @@ const one=result=>{
 
 export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
  newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
- withH6Transaction=null,h6ConfirmationSql=PERSIST_H6_ORDER_SQL}={}){
+ withH6Transaction=null,withH6ReadTransaction=null,
+ h6ConfirmationSql=PERSIST_H6_ORDER_SQL}={}){
  if(typeof withTransaction!=='function'||typeof secretKey!=='string'||
     Buffer.byteLength(secretKey,'utf8')<32||typeof clock!=='function'||typeof newId!=='function'||
     !Number.isSafeInteger(visitTtlSeconds)||visitTtlSeconds<60||visitTtlSeconds>86400||
     !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800||
     (withH6Transaction!==null&&typeof withH6Transaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6ReadTransaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6Transaction!=='function')||
     ![PERSIST_H6_ORDER_SQL,PERSIST_H6_TRANSFER_ORDER_SQL].includes(h6ConfirmationSql))
   throw Error('invalid_customer_production_flow');
  const h6=typeof withH6Transaction==='function';
+ const withH6Reader=withH6ReadTransaction??withH6Transaction;
 
  const authorizeVisit=async({customerSessionToken,tableId,qrToken}={})=>{
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
@@ -121,7 +125,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    throw Error('invalid_customer_flow_result');
   let paymentPolicy=null;
   if(h6){
-   const policy=await withH6Transaction(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
+   const policy=await withH6Reader(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
     [sessionHash,tableId,visitId])));
    const version=revision(policy.payment_policy_version);
    if(typeof policy.require_pay_as_ordered!=='boolean'||version===null)
@@ -229,7 +233,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
     orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping})});
   });
   if(prepared.kind==='complete')return prepared.value;
-  const h6Row=await withH6Transaction(async query=>one(await query(
+  const h6Row=await (prepared.kind==='h6_replay'?withH6Reader:withH6Transaction)(async query=>one(await query(
    prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
    prepared.kind==='h6_replay'?
     [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
