@@ -47,7 +47,9 @@ DO $$ BEGIN
  IF NOT pg_has_role(current_user,'sabora_b3_h6_reader_runtime','SET') THEN
   RAISE EXCEPTION 'login cannot SET reader role';
  END IF;
- IF has_function_privilege(current_user,'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') THEN
+ IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='sabora' AND p.proname='read_customer_round_h6_candidate'
+   AND has_function_privilege(current_user,p.oid,'EXECUTE')) THEN
   RAISE EXCEPTION 'login unexpectedly executes reader RPC';
  END IF;
 END $$;
