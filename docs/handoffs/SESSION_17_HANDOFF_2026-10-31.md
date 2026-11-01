@@ -252,3 +252,7 @@ Commit 4fd4d1a5: tres workflows SUCCESS (Sabora CI 41291468559, Bootstrap PG17 4
 ## 52. Confirmacion candidata: riesgo de persistencia antes de consumir grant
 
 Commit cfe94013 acreditado con Sabora CI 41291805713, Bootstrap PG17 41291805707 y browser 41291805741, todos SUCCESS. Auditoria de la funcion candidata confirma que `persist_customer_order_candidate` se invoca antes de `consume_customer_table_change_h6_candidate`; esto no demuestra que el primer pedido B pueda persistirse con binding aun en A ni que mantenga cuenta unica. Se documenta prueba de aceptacion PG17 real y rollback en `docs/reviews/SABORA_TABLE_TRANSFER_B0_ATOMICITY_DEPENDENCIES_2026-10-31.md` commit 2afbe8fb. Priorizar bloque completo de persistencia/transferencia y recogida, no mas tests superficiales. B3 NO-GO.
+
+## 53. F12 cuenta abierta sin binding: bloqueo antes de persistir
+
+Se añade migracion candidata `20261101010000_sabora_h6_transfer_missing_binding_guard_candidate.sql` (commits 4f87e106, acaa212e) que reescribe por OID exacto solo la funcion sellada de confirmacion transferida y rechaza `h6_open_account_binding_missing` cuando existe cuenta abierta del cliente sin binding operativo, antes de `persist_customer_order_candidate`. Evita entrar en rama de nueva cuenta bajo inconsistencia; no toca funcion activa ni concede EXECUTE. Commit d546ac71 incorpora prueba contractual al gate `pnpm test`. Falta comprobar migracion sobre PG17 real y flujos funcionales de A→B, concurrencia y rollback; NO-GO hasta resultados. No deploy.
