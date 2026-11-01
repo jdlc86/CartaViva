@@ -2304,3 +2304,23 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
    FROM sabora.customer_accounts WHERE customer_id=$1`,[scenarioA.customer])).rows[0].n,1);
  });
 });
+
+test('PG17 B3 confirmation preflight remains fail-closed without a dedicated runtime role',async()=>{
+ const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+ const row=(await admin.query(`SELECT p.prosecdef AS security_definer,
+  p.proowner::regrole::text AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated_execute,
+  has_function_privilege('sabora_h6_customer_runtime',p.oid,'EXECUTE') AS h6_customer_execute,
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS h6_operations_execute,
+  has_function_privilege('sabora_h6_provider_runtime',p.oid,'EXECUTE') AS h6_provider_execute
+  FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature])).rows[0];
+ assert.ok(row,'transfer function must exist in disposable PG17');
+ assert.equal(row.security_definer,true);
+ assert.equal(row.owner,'sabora_h6_fn_owner');
+ for(const key of ['anon_execute','authenticated_execute','h6_customer_execute',
+  'h6_operations_execute','h6_provider_execute'])assert.equal(row[key],false,key);
+ const role=(await admin.query(`SELECT count(*)::int AS count FROM pg_roles
+  WHERE rolname='sabora_b3_confirmation_runtime'`)).rows[0];
+ assert.equal(role.count,0,'B3 runtime role must not be silently provisioned');
+});
