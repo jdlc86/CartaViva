@@ -132,3 +132,16 @@ El avance es un **contrato de transporte autenticado**, no una bandeja de solici
 - `3a8fbe68`: migración **candidata** `20261102120000_sabora_h6_pending_staff_projection_candidate.sql`: función `SECURITY DEFINER` que comprueba personal activo de sala/admin y lista solo solicitudes pendientes no caducadas con mesa origen y caducidad, máximo 100. No se concedió `EXECUTE` a ningún runtime; el rol F12 de decisiones sigue con una sola RPC. **Sin prueba PG17 real confirmada**, sin validación aún de permisos del propietario/RLS para todas las tablas leídas. No desplegar la migración ni conectar el endpoint sin ese cierre.
 
 La función SQL no implica que la bandeja sea operativa: falta rol lector separado y preflight de superficie exacta, servicio de lectura enlazado al HTTP, UI de gestión conforme a diseño normativo, prueba de caducidad/competencia y E2E PG17+Chromium. B3 sigue NO-GO, PR #43 Draft. No merge, VPS, Fleetia ni Supabase operativo.
+
+
+## 18. Lector de pendientes con preflight de rol separado (2026-11-02)
+
+- `1d5319e7`: se registra formalmente la migración candidata de proyección en `scripts/ci/migration-audit.mjs`. Antes de este commit CI/bootstrap fallaban por `migration_audit_coverage_mismatch` (migración nueva no auditada).
+- `842e19f0`, `ccb069db`: servicio `createPendingTableChangeReader` que ejecuta una única sentencia `SELECT request_id,source_table_number,expires_at FROM sabora.list_pending_table_changes_h6_candidate($1::uuid)`, exige staff verificado y restringe la proyección. Pruebas de binding, privacidad y denegación cocina.
+- `c6df9db1`, `af994a92`: preflight independiente `assertPendingReaderCapabilities`: login NOINHERIT, no superusuario/BYPASSRLS/DDL/SELECT directo, exactamente un SET ROLE hacia `sabora_f12_pending_reader_runtime`, ninguna RPC Sabora ejecutable desde el login y exactamente la función de pendientes desde el rol.
+- `413f462f`, `eccab346`, `d18fdbf2`: fábrica verificada que rechaza activar el lector sin preflight; rol centralizado para evitar importación circular.
+- `0ec3e9e9`: pruebas de preflight contra grants directos, heredados y RPCs sobrantes.
+- **Pendiente crítico**: la migración de proyección no crea ni concede el rol lector; se mantiene sin EXECUTE deliberadamente. El preflight no ha sido ejecutado todavía contra PG17 real con dicho rol, ni se ha demostrado que el propietario SECURITY DEFINER pueda leer las tablas bajo FORCE RLS. No se puede activar ni montar endpoint/UI por inferencia.
+- CI de los últimos SHA en curso al redactar; no confundir suites de navegador aprobadas en SHA anteriores con validación del HEAD.
+
+Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos mínimos de la función y el lector, completar la composición HTTP y la bandeja visual conforme a la referencia aprobada, ejecutar E2E de aprobación/caducidad/transferencia y documentar evidencias. B3 NO-GO / PR #43 Draft, sin despliegues, merges ni acceso a Fleetia o al VPS.
