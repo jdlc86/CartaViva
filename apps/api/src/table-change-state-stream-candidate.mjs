@@ -77,7 +77,12 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
    }
   };
   const emitBacklog=backlog=>{
-   if(!backlogValid(backlog,cursor))throw Error('invalid_table_change_backlog');
+   if(!backlogValid(backlog,cursor))throw Error('invalid_table_change_backlog:envelope:'+JSON.stringify({
+    version:backlog?.version,resyncRequired:backlog?.resyncRequired,
+    nextCursor:backlog?.nextCursor,minAvailableCursor:backlog?.minAvailableCursor,
+    maxAvailableCursor:backlog?.maxAvailableCursor,cursor,
+    count:backlog?.events?.length
+   }));
    if(backlog.resyncRequired){
     response.write(frame('resync-required',{maxAvailableCursor:backlog.maxAvailableCursor}));
     if(backlog.maxAvailableCursor!==null)
@@ -90,13 +95,20 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
        !UUID.test(event.eventKey??'')||!UUID.test(event.requestId??'')||
        !decisions.has(event.type)||!Number.isSafeInteger(event.expiresAtMs)||
        typeof event.createdAt!=='string'||!Number.isFinite(Date.parse(event.createdAt)))
-     throw Error('invalid_table_change_backlog');
+     throw Error('invalid_table_change_backlog:event:'+JSON.stringify({
+      id:event?.id,current,eventKeyValid:UUID.test(event?.eventKey??''),
+      requestIdValid:UUID.test(event?.requestId??''),
+      typeValid:decisions.has(event?.type),expiresType:typeof event?.expiresAtMs,
+      expiresSafe:Number.isSafeInteger(event?.expiresAtMs),
+      createdAtType:typeof event?.createdAt,
+      createdAtValid:typeof event?.createdAt==='string'&&Number.isFinite(Date.parse(event.createdAt))
+     }));
     response.write(frame(event.type,{
      eventKey:event.eventKey,requestId:event.requestId,
      expiresAtMs:event.expiresAtMs,createdAt:event.createdAt},event.id));
     current=event.id;
    }
-   if(current!==backlog.nextCursor)throw Error('invalid_table_change_backlog');
+   if(current!==backlog.nextCursor)throw Error('invalid_table_change_backlog:cursor:'+current+'/'+backlog.nextCursor);
    cursor=current;
   };
   const refresh=async()=>{
