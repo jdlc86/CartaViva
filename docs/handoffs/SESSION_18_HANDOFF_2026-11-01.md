@@ -350,3 +350,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `077f75cd6ca1e1cad8f20873646ee65a75cab39f`: la prueba positiva integrada PG17 de confirmación A→B ahora hace `SET LOCAL ROLE sabora_b3_positive_checkout` (rol transaccional NOLOGIN, USAGE del esquema y EXECUTE exclusivo de la función de confirmación) para la invocación real del writer. Se restablece el rol antes de verificar las invariantes económicas y de entrega; la transacción completa se revierte.
 - GitHub Actions **3/3 SUCCESS**: Sabora CI `41349760311`, Bootstrap `41349760220`, client browser `41349760202`.
 - La evidencia valida el writer restringido en una invocación positiva real, pero no constituye cinco conexiones independientes, ni integración HTTP/PWA de extremo a extremo. **PR #43 Draft, B3 NO-GO**. No se concedieron privilegios ni se desplegó en entornos operativos.
+
+## 49. HTTP solicitud→aprobación→confirmación y replay, contrato aislado (2026-11-02)
+
+- Commit `70f30cdaa8ce8f992fae98040f4f490ba695c503`: prueba Fastify del flujo HTTP solicitud cliente, denegación de autorización por cocina, aprobación por camarero, confirmación A→B y replay sin duplicar consumo. La aprobación no traslada por sí sola la cuenta. El almacén económico de esta prueba es **simulado**; no sustituye PG17.
+- GitHub Actions **3/3 SUCCESS**: Sabora CI `41350243399`, Bootstrap `41350243213`, client browser `41350243088`.
+- Evidencia acumulada: writer A→B con rol restringido en PG17 real (`077f75c`) + HTTP Fastify con estado simulado (`70f30cd`), todavía **sin** recorrido HTTP con cinco pools reales simultáneos. Próximo bloque obligatorio: conectar esos límites sin activar la composición operativa, cubrir errores/replays concurrentes y contrastar F01–F28/R01–R10. PR #43 Draft; B3 **NO-GO**.
