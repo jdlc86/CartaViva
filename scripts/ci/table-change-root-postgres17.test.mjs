@@ -3116,7 +3116,69 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await page.setViewportSize({width:1440,height:900});
       await page.screenshot({path:join(evidenceDir,'b3-pending-pg17-desktop.png'),
        fullPage:true});
-      await page.getByRole('button',{name:'Aprobar cambio'}).click();
+      // The SAME PG17/Fastify/management scenario now keeps a second real
+      // Chromium customer PWA online: staff decisions must arrive over SSE,
+      // not through a manually triggered GET or UI mock.
+      let liveClientVite,liveClientBrowser,liveClientContext;
+      const liveClientErrors=[];
+      try{
+       const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+       const {createServer:createClientVite}=await import(
+        pathToFileURL(clientRequire.resolve('vite')).href);
+       liveClientVite=await createClientVite({
+        root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+        mode:'test',logLevel:'error',
+        server:{host:'127.0.0.1',port:0,strictPort:false,
+         proxy:{'/api':{target:'http://127.0.0.1:'+apiAddress.port,changeOrigin:false}}}
+       });
+       await liveClientVite.listen();
+       const liveAddress=liveClientVite.httpServer?.address();
+       assert.ok(liveAddress&&typeof liveAddress==='object'&&liveAddress.port>0);
+       liveClientBrowser=await chromium.launch({headless:true});
+       liveClientContext=await liveClientBrowser.newContext({
+        viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+       });
+       await liveClientContext.addCookies([{name:'__Secure-sabora_customer',
+        value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
+        httpOnly:true,sameSite:'Lax'}]);
+       const livePage=await liveClientContext.newPage();
+       livePage.on('pageerror',error=>liveClientErrors.push(error.message));
+       const manualStateReads=[];
+       livePage.on('request',request=>{
+        if(new URL(request.url()).pathname==='/api/v1/customer/table-change/state')
+         manualStateReads.push(request.url());
+       });
+       const streamReady=livePage.waitForResponse(response=>
+        new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+        response.status()===200,{timeout:20000});
+       await livePage.goto('http://127.0.0.1:'+liveAddress.port+
+        '/qr/v1/SABORA/'+httpFixture.destinationTable+'#'+qrToken);
+       await streamReady;
+       await livePage.getByText('Solicitud enviada al personal').waitFor({timeout:20000});
+       const readsBeforeDecision=manualStateReads.length;
+       await page.getByRole('button',{name:'Aprobar cambio'}).click();
+       const normativeApproval='Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos';
+       await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
+       assert.equal(manualStateReads.length,readsBeforeDecision,
+        'staff decision must notify the customer without manual state refresh');
+       await livePage.screenshot({path:join(evidenceDir,
+        'b3-customer-pg17-auto-approved-mobile.png'),fullPage:true});
+       // On reconnect without the QR fragment, replay the authorized durable
+       // server state into the live customer notification banner.
+       const streamReconnected=livePage.waitForResponse(response=>
+        new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+        response.status()===200,{timeout:20000});
+       await livePage.reload();
+       await streamReconnected;
+       await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
+       await livePage.screenshot({path:join(evidenceDir,
+        'b3-customer-pg17-auto-approved-reconnected-mobile.png'),fullPage:true});
+       assert.deepEqual(liveClientErrors,[]);
+      }finally{
+       if(liveClientContext)await liveClientContext.close();
+       if(liveClientBrowser)await liveClientBrowser.close();
+       if(liveClientVite)await liveClientVite.close();
+      }
       await page.getByText('Sin solicitudes pendientes').first().waitFor();
       assert.ok(browserRequests.some(row=>row.method==='GET'));
       assert.ok(browserRequests.some(row=>row.method==='POST'));
