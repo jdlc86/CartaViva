@@ -55,6 +55,7 @@ export function createAuthenticatedOrderOperationsGateway({
   return Object.freeze({
     ...gateway,
     decideTableChange: tableChangeDecisions.decide,
+    listPendingTableChanges: tableChangeDecisions.listPending,
     subscribeEvents(callbacks) {
       if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
       const unsubscribe = gateway.subscribeEvents(callbacks);
