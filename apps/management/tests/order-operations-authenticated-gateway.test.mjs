@@ -354,3 +354,35 @@ test('SSE access-revoked event stops delivery and does not reconnect', async () 
     gateway.revoke();
   }
 });
+
+
+test('table-change decisions use fresh management bearer and no customer cookies',async()=>{
+ const seen=[];
+ const gateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=>token,
+  fetchImpl:async(path,options)=>{
+   seen.push({path,options});
+   return new Response(JSON.stringify({
+    requestId:'10000000-0000-4000-8000-000000000001',status:'approved'
+   }),{status:200,headers:{'Content-Type':'application/json'}});
+  }
+ });
+ const result=await gateway.decideTableChange({
+  requestId:'10000000-0000-4000-8000-000000000001',decision:'approved'
+ });
+ assert.deepEqual(result,{
+  requestId:'10000000-0000-4000-8000-000000000001',status:'approved'
+ });
+ assert.equal(seen.length,1);
+ assert.equal(seen[0].path,'/api/v1/operations/table-change/decisions');
+ assert.equal(seen[0].options.headers.get('Authorization'),`Bearer ${token}`);
+ assert.equal(seen[0].options.credentials,'omit');
+ assert.deepEqual(JSON.parse(seen[0].options.body),{
+  requestId:'10000000-0000-4000-8000-000000000001',decision:'approved'
+ });
+ gateway.revoke();
+ await assert.rejects(gateway.decideTableChange({
+  requestId:'10000000-0000-4000-8000-000000000001',decision:'rejected'
+ }),/table_change_unavailable/);
+ assert.equal(seen.length,1,'revoked management session must not issue a new request');
+});
