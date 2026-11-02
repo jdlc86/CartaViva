@@ -46,3 +46,34 @@ test('staff PWA fails closed on inconsistent or overbroad successful responses',
    /table_change_unavailable/);
  }
 });
+
+test('staff pending queue accepts only the minimal authorized projection',async()=>{
+ const calls=[];
+ const gateway=createTableChangeDecisionGateway({send:async(path,options)=>{
+  calls.push({path,options});
+  return json(200,{items:[{
+   requestId:id,sourceTableNumber:7,expiresAt:'2026-11-02T12:00:00Z'
+  }]});
+ }});
+ assert.deepEqual(await gateway.listPending(),[{
+  requestId:id,sourceTableNumber:7,expiresAt:'2026-11-02T12:00:00Z'
+ }]);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].path,'/api/v1/operations/table-change/pending');
+ assert.equal(calls[0].options.method,'GET');
+ assert.equal(calls[0].options.credentials,'omit');
+});
+test('staff pending queue rejects private fields, malformed identifiers and oversized lists',async()=>{
+ for(const value of [
+  {items:[{requestId:id,sourceTableNumber:1,expiresAt:'2026-11-02T12:00:00Z',
+   accountId:'private'}]},
+  {items:[{requestId:'bad',sourceTableNumber:1,expiresAt:'2026-11-02T12:00:00Z'}]},
+  {items:Array.from({length:101},()=>({
+   requestId:id,sourceTableNumber:1,expiresAt:'2026-11-02T12:00:00Z'
+  }))},
+  {items:[],customerId:'private'}
+ ]){
+  const gateway=createTableChangeDecisionGateway({send:async()=>json(200,value)});
+  await assert.rejects(gateway.listPending(),/table_change_unavailable/);
+ }
+});
