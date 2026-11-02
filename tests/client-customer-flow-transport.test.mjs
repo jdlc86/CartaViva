@@ -76,3 +76,21 @@ test('F12 PWA rejects malformed table-change responses and propagates cooldown c
   error instanceof CustomerFlowTransportError&&error.status===409&&
   error.message==='table_change_request_locked');
 });
+
+test('F12 PWA accepts sealed minimal receipt without leaking source table or creation time',async()=>{
+ const id='10000000-0000-4000-8000-000000000001';
+ const transport=createCustomerFlowTransport({fetchImpl:async()=>json(201,{
+  id,status:'pending',expiresAtMs:91000
+ })});
+ assert.deepEqual(await transport.requestTableChange(),{
+  requestId:id,status:'pending',expiresAtMs:91000
+ });
+ for(const invalid of [
+  {id,status:'pending',expiresAtMs:0},
+  {id,status:'pending',expiresAtMs:91000,createdAtMs:91000},
+  {id,status:'pending',expiresAtMs:91000,sourceTableId:'invalid'}
+ ]){
+  const malformed=createCustomerFlowTransport({fetchImpl:async()=>json(201,invalid)});
+  await assert.rejects(malformed.requestTableChange(),/customer_flow_unavailable/);
+ }
+});
