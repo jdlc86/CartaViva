@@ -10,6 +10,8 @@ import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-pro
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
+import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
+import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2604,7 +2606,7 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
 });
 
 
-test('PG17 B3 five physically independent login connections enforce exact preflights',async()=>{
+test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey',async()=>{
  const suffix=process.pid.toString(36);
  const specs=[
   {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
@@ -2617,13 +2619,15 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    signatures:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']},
   {role:'sabora_customer_flow_runtime',login:'sabora_b3_physical_basket_'+suffix,
+   signatures:[]},
+  {role:'sabora_f12_pending_reader_runtime',login:'sabora_b3_physical_pending_'+suffix,
    signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
  try{
   for(const spec of specs){
-   if(spec.role!=='sabora_customer_flow_runtime'){
+   if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2669,10 +2673,11 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     capability:specs[1].role}),
    assertB3ConfirmationCapabilities({pool:scopedPools[2],expectedLogin:specs[2].login}),
    assertB3H6LoginSurface({pool:scopedPools[3],expectedLogin:specs[3].login}),
-   assertCustomerFlowSqlCapabilities({pool:scopedPools[4],expectedLogin:specs[4].login})
+   assertCustomerFlowSqlCapabilities({pool:scopedPools[4],expectedLogin:specs[4].login}),
+   assertPendingReaderCapabilities({pool:scopedPools[5],expectedLogin:specs[5].login})
   ];
   const results=await Promise.all(checks);
-  assert.equal(results.length,5);
+  assert.equal(results.length,6);
   assert.ok(results.every(result=>result.validated===true));
   assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool:scopedPools[4]}),
    {validated:true});
@@ -2693,7 +2698,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.equal(typeof candidate.tableChange.request,'function');
   assert.equal(typeof candidate.tableChange.decide,'function');
   assert.equal(typeof candidate.confirmation.confirm,'function');
-  // Exercise actual Fastify registration after five independent PG17 login
+  // Exercise Fastify registration after six independent PG17 login
   // preflights. Authentication must reject HTTP before any business RPC.
   const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
   const http=Fastify({logger:false});
@@ -2701,6 +2706,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
     confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
+    pendingPool:scopedPools[5],expectedPendingLogin:specs[5].login,
     expectedCustomerLogin:specs[0].login,
     expectedOperationsLogin:specs[1].login,
     expectedConfirmationLogin:specs[2].login,
