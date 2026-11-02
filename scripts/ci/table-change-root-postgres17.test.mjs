@@ -3759,7 +3759,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query(`INSERT INTO sabora.customer_table_visits
        (table_id,session_id,customer_id,visit_key,actor_id,
         authorized_qr_version,expires_at)
-       VALUES($1,$2,$3,$4,$3::text,1,clock_timestamp()+interval '1 hour')`,
+       VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
        [httpFixture.sourceTable,httpFixture.sourceSession,
         rival.customer,rival.visitKey]);
       await raceFixture.query(`INSERT INTO sabora.customer_accounts
