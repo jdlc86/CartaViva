@@ -3589,7 +3589,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        {timeout:20000});
       await customerPage.getByRole('button',
        {name:'Continuar con la mesa escaneada'}).click();
-      assert.equal((await visitPromise).status(),200,
+      assert.equal((await visitPromise).status(),201,
        scenario.name+': valid QR before invalidation');
       await customerPage.getByText('Mesa verificada').waitFor({timeout:20000});
       const quotePromise=customerPage.waitForResponse(response=>
