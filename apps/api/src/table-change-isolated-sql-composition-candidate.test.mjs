@@ -8,6 +8,10 @@ import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeS
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
+import {F12_IDENTITY_SQL,F12_FUNCTION_SQL}
+ from './table-change-isolated-sql-preflight-candidate.mjs';
+import {PENDING_READER_ROLE,PENDING_READER_SIGNATURE}
+ from './table-change-pending-reader-preflight-candidate.mjs';
 
 const requestId='22222222-2222-4222-8222-222222222222';
 const staffId='33333333-3333-4333-8333-333333333333';
@@ -573,11 +577,33 @@ test('B3 H6 reader login rejects extra SET ROLE or direct Sabora EXECUTE before 
  }
 });
 
-test('B3 five verified identities mount protected customer and staff HTTP surfaces',async()=>{
+function b3PendingReaderPool(){
+ const calls=[],login='sabora_f12_pending_login';
+ return {calls,async connect(){return {async query(sql,args){
+  calls.push({sql,args});
+  if(sql===F12_IDENTITY_SQL)return {rows:[{
+   effective_role:login,login_role:login,can_login:true,inherit_role:false,
+   superuser:false,bypass_rls:false,create_db:false,create_role:false,
+   replication:false,database_create:false,schema_create:false,
+   direct_relations:false,direct_sequences:false,role_set:[true,true],
+   all_set_roles:[PENDING_READER_ROLE]
+  }]};
+  if(sql===F12_FUNCTION_SQL&&args[0]===login)return {rows:[{names:[]}]};
+  if(sql===F12_FUNCTION_SQL&&args[0]===PENDING_READER_ROLE)
+   return {rows:[{names:[PENDING_READER_SIGNATURE]}]};
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||
+     sql==='SET LOCAL ROLE '+PENDING_READER_ROLE)return {rows:[]};
+  throw Error('unexpected_pending_reader_sql');
+ },release(){}};}}
+}
+
+test('B3 six verified identities mount protected customer and staff HTTP surfaces',async()=>{
  const args={customerPool:preflightPool('sabora_f12_customer_runtime','f12_customer_login'),
   operationsPool:preflightPool('sabora_f12_operations_runtime','f12_operations_login'),
   confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
-  flowPool:b3CustomerFlowPool(),expectedCustomerLogin:'f12_customer_login',
+  flowPool:b3CustomerFlowPool(),
+  pendingPool:b3PendingReaderPool(),expectedPendingLogin:'sabora_f12_pending_login',
+  expectedCustomerLogin:'f12_customer_login',
   expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
   expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
@@ -616,7 +642,9 @@ test('B3 HTTP composition rejects invalid operations guard without partial custo
  const args={customerPool:preflightPool('sabora_f12_customer_runtime','f12_customer_login'),
   operationsPool:preflightPool('sabora_f12_operations_runtime','f12_operations_login'),
   confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
-  flowPool:b3CustomerFlowPool(),expectedCustomerLogin:'f12_customer_login',
+  flowPool:b3CustomerFlowPool(),
+  pendingPool:b3PendingReaderPool(),expectedPendingLogin:'sabora_f12_pending_login',
+  expectedCustomerLogin:'f12_customer_login',
   expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
   expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
