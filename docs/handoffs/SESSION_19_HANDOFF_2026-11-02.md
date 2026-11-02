@@ -154,3 +154,11 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - `8d456bf3`: `registerVerifiedPendingTableChangeHttpCandidate` compone preflight independiente + lector SQL de una sentencia + ruta GET protegida; no monta en producción por defecto.
 - `20ab3747`: pruebas integradas de GET con rol aislado simulado y de no montaje ante login con permisos directos.
 - Las suites del HEAD estaban en cola al consultar, por lo que **no se declara CI PASS**. Falta ejecutar migraciones en PG17 desechable, validar que la función owner ve solicitudes bajo RLS, probar expiración y concurrencia, montar interfaz visual conforme al diseño normativo y completar transferencia económica E2E. B3 NO-GO, PR #43 Draft; sin merge, despliegues ni modificaciones de Fleetia/VPS/Supabase operativo.
+
+
+## 20. PWA de gestión: bandeja candidata de solicitudes (2026-11-02)
+
+- `2a4ced1e`: `TableChangeRequestsPanel` con lectura explícita, estado vacío/error/carga, caducidad visible y acciones aprobar/rechazar. La aprobación NO transfiere la cuenta; solo una confirmación posterior en otra mesa puede hacerlo.
+- `956ff79d`: inserción condicional del panel en `TablesView`, sin afectar al inventario de mesas ni a la vista sin gateway.
+- `3c17cc89`: dependencia `tableChangeGateway` opcional en `ManagementApp`; el bootstrap autenticado actual no la suministra y la vista de diseño tampoco. **No está activada funcionalmente**.
+- CI de los nuevos commits estaba en cola en la última consulta (gran acumulación de workflows), por lo que no se declara build/Playwright PASS del HEAD. Falta validación visual contra la referencia normativa, E2E navegador, PG17 real de RLS/ACL y autorización de un login aislado antes de montar la ruta. PR #43 Draft, B3 NO-GO; no merge ni despliegue.
