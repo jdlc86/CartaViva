@@ -2733,6 +2733,68 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      'content-type':'application/json'},payload:{}});
    assert.equal(forbidden.statusCode,403);
    assert.deepEqual(forbidden.json(),{error:'customer_context_forbidden'});
+   // Positive request: commit a disposable business fixture so the
+   // physically separate customer login can see it. The first HTTP call
+   // must create exactly one pending grant; a replay must hit cooldown.
+   const fixture=await admin.connect();
+   try{
+    await fixture.query('BEGIN');
+    await insertIdentityAndTables(fixture,{publicId:'SB-BABABABABABP'});
+    await insertVisit(fixture,{tableId:ids.sourceTable,
+     sessionId:ids.sourceSession,visitKey:sourceVisit});
+    await fixture.query(`INSERT INTO sabora.customer_accounts
+     (id,table_id,session_id,visit_key,customer_id,payment_mode,
+      payment_mode_selected_at,outstanding_cents)
+     VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
+     [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+    await fixture.query(`INSERT INTO sabora.customer_account_operational_bindings
+     (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+     [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+    await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
+     VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
+    await fixture.query('COMMIT');
+    const positiveToken='s'.repeat(43);
+    // The SQL session hash must match the cookie passed to the HTTP adapter.
+    await admin.query(`UPDATE sabora.customer_sessions SET token_hash=$1
+     WHERE customer_id=$2`,[createHash('sha256').update(positiveToken).digest(),ids.customer]);
+    const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
+     'content-type':'application/json'};
+    const created=await http.inject({method:'POST',
+     url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
+    assert.equal(created.statusCode,201,created.body);
+    assert.equal(created.json().status,'pending');
+    const saved=(await admin.query(`SELECT q.status,q.account_id,
+     b.table_id AS bound_table,b.binding_version
+     FROM sabora.customer_table_change_requests q
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+     WHERE q.id=$1`,[created.json().id])).rows[0];
+    assert.equal(saved.status,'pending');
+    assert.equal(saved.account_id,ids.sourceAccount);
+    assert.equal(saved.bound_table,ids.sourceTable,
+     'request must not transfer the account');
+    const replay=await http.inject({method:'POST',
+     url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
+    assert.equal(replay.statusCode,409,replay.body);
+    assert.deepEqual(replay.json(),{error:'table_change_request_locked'});
+    const count=(await admin.query(`SELECT count(*)::int AS total
+     FROM sabora.customer_table_change_requests WHERE account_id=$1`,
+     [ids.sourceAccount])).rows[0].total;
+    assert.equal(count,1,'cooldown must not create a second grant');
+   }finally{
+    await fixture.query('ROLLBACK').catch(()=>{});
+    fixture.release();
+    // The fixture lives only in the explicitly disposable CI database.
+    await admin.query('DELETE FROM sabora.customer_table_change_requests WHERE account_id=$1',
+     [ids.sourceAccount]);
+    await admin.query('DELETE FROM sabora.customer_account_operational_bindings WHERE account_id=$1',
+     [ids.sourceAccount]);
+    await admin.query('DELETE FROM sabora.customer_accounts WHERE id=$1',[ids.sourceAccount]);
+    await admin.query('DELETE FROM sabora.customer_table_visits WHERE customer_id=$1',[ids.customer]);
+    await admin.query('DELETE FROM sabora.customer_sessions WHERE customer_id=$1',[ids.customer]);
+    await admin.query('DELETE FROM sabora.dining_tables WHERE id=ANY($1::uuid[])',
+     [[ids.sourceTable,ids.destinationTable]]);
+    await admin.query('DELETE FROM sabora.customer_profiles WHERE id=$1',[ids.customer]);
+   }
    const invalidPayload=await http.inject({method:'POST',
     url:'/api/v1/customer/table-change/requests',
     headers:{cookie:'__Secure-sabora_customer='+ 's'.repeat(43),
