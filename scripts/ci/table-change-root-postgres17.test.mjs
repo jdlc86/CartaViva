@@ -3291,7 +3291,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // technical visit. The economic account remains at A until confirmation.
      await customerPage.getByRole('button',
       {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
-     await customerPage.getByText(
+     await customerPage.getByLabel('QR de mesa').getByText(
       'Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos').waitFor();
      await customerPage.getByRole('button',
       {name:'Continuar con la mesa escaneada'}).click();
