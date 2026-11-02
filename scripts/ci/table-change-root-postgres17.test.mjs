@@ -3399,7 +3399,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const rejectManageRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
     const {createServer:createRejectManageVite}=await import(
      rejectPathToFileURL(rejectManageRequire.resolve('vite')).href);
-    let rejectVite,rejectManageVite,rejectBrowser,rejectClientContext,rejectStaffContext;
+    let rejectVite,rejectManageVite,rejectBrowser,rejectClientContext,rejectStaffContext,
+      rejectOfflineContext;
     const rejectedClientErrors=[];
     try{
      rejectVite=await createRejectVite({
@@ -3456,6 +3457,25 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       'second request must originate at current operational B, not historical A');
      assert.equal(second.destination_table_id,null);
      assert.equal(second.account_id,httpFixture.sourceAccount);
+     // A second real customer device has a valid earlier cursor, then goes
+     // offline BEFORE rejection. The event must be recovered after the
+     // request window expires: a current-state snapshot alone cannot do so.
+     rejectOfflineContext=await rejectBrowser.newContext({
+      viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+     });
+     await rejectOfflineContext.addCookies([{name:'__Secure-sabora_customer',
+      value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
+      httpOnly:true,sameSite:'Lax'}]);
+     const offlinePage=await rejectOfflineContext.newPage();
+     const offlineStream=offlinePage.waitForResponse(response=>
+      new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+      response.status()===200,{timeout:20000});
+     await offlinePage.goto('http://127.0.0.1:'+caddr.port+'/');
+     await offlineStream;
+     await offlinePage.waitForFunction(()=>
+      Object.keys(localStorage).some(key=>key.startsWith('sabora.table-change.cursor.')&&
+       Number(localStorage.getItem(key))>0),null,{timeout:20000});
+     await offlinePage.close();
      const staffPage=await rejectStaffContext.newPage();
      await staffPage.goto('http://127.0.0.1:'+maddr.port+'/#mesas');
      await staffPage.evaluate(async()=>{
@@ -3508,6 +3528,35 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       decided_at=clock_timestamp()-interval '2 minutes',
       expires_at=clock_timestamp()-interval '1 minute'
       WHERE id=$1 AND status='rejected'`,[second.id]);
+     const reconnectPage=await rejectOfflineContext.newPage();
+     const replayRequests=[];
+     reconnectPage.on('request',request=>{
+      if(new URL(request.url()).pathname==='/api/v1/customer/table-change/events')
+       replayRequests.push(request.url());
+     });
+     const reconnectStream=reconnectPage.waitForResponse(response=>
+      new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+      response.status()===200,{timeout:20000});
+     await reconnectPage.goto('http://127.0.0.1:'+caddr.port+'/');
+     await reconnectStream;
+     await reconnectPage.locator('.table-change-live-notice')
+      .getByText(rejectedCopy).waitFor({timeout:20000});
+     assert.equal(await reconnectPage.locator('.table-change-live-notice')
+      .getByText(rejectedCopy).count(),1,
+      'replayed decision must be visible once, never duplicate notifications');
+     assert.ok(replayRequests.some(path=>new URL(path).searchParams.has('after')),
+      'offline device must recover by last persisted H6 cursor');
+     const persisted=(await admin.query(`SELECT count(*)::int AS n
+      FROM sabora.event_outbox WHERE customer_id=$1 AND account_id=$2
+      AND event_type='sabora.table_change.rejected'`,
+      [httpFixture.customer,httpFixture.sourceAccount])).rows[0].n;
+     assert.equal(persisted,1,
+      'rejection must be one immutable event even after the 90s window ends');
+     const {join:replayJoin}=await import('node:path');
+     await reconnectPage.screenshot({path:replayJoin(process.env.RUNNER_TEMP,
+      'sabora-h6-acceptance','b3-customer-pg17-rejected-offline-replay-mobile.png'),
+      fullPage:true});
+     await reconnectPage.close();
      await rejectingCustomerPage.getByRole('button',{name:'Solicitar cambio de mesa'})
       .waitFor({timeout:20000});
      assert.equal((await admin.query(`SELECT b.table_id FROM
@@ -3597,6 +3646,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      await staffPage.evaluate(()=>window.__saboraCiDispose());
     }finally{
      if(rejectClientContext)await rejectClientContext.close();
+     if(rejectOfflineContext)await rejectOfflineContext.close();
      if(rejectStaffContext)await rejectStaffContext.close();
      if(rejectBrowser)await rejectBrowser.close();
      if(rejectVite)await rejectVite.close();
