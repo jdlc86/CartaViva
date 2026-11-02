@@ -145,3 +145,12 @@ La función SQL no implica que la bandeja sea operativa: falta rol lector separa
 - CI de los últimos SHA en curso al redactar; no confundir suites de navegador aprobadas en SHA anteriores con validación del HEAD.
 
 Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos mínimos de la función y el lector, completar la composición HTTP y la bandeja visual conforme a la referencia aprobada, ejecutar E2E de aprobación/caducidad/transferencia y documentar evidencias. B3 NO-GO / PR #43 Draft, sin despliegues, merges ni acceso a Fleetia o al VPS.
+
+
+## 19. Composición F12 de bandeja con rol SQL aislado (2026-11-02)
+
+- `b2803fa6`: migración candidata `20261102130000_sabora_h6_pending_reader_role_candidate.sql`: rol `sabora_f12_pending_reader_runtime` NOLOGIN/NOINHERIT, USAGE de esquema y EXECUTE de una única RPC; grants SELECT por columnas y políticas de lectura para el propietario `sabora_h6_fn_owner` en relaciones FORCE RLS. **No crea login ni concede membresía SET ROLE**. La migración NO se ha aplicado a Supabase operativo.
+- `7e36f5a9`: registro de revisión de migración en `scripts/ci/migration-audit.mjs`.
+- `8d456bf3`: `registerVerifiedPendingTableChangeHttpCandidate` compone preflight independiente + lector SQL de una sentencia + ruta GET protegida; no monta en producción por defecto.
+- `20ab3747`: pruebas integradas de GET con rol aislado simulado y de no montaje ante login con permisos directos.
+- Las suites del HEAD estaban en cola al consultar, por lo que **no se declara CI PASS**. Falta ejecutar migraciones en PG17 desechable, validar que la función owner ve solicitudes bajo RLS, probar expiración y concurrencia, montar interfaz visual conforme al diseño normativo y completar transferencia económica E2E. B3 NO-GO, PR #43 Draft; sin merge, despliegues ni modificaciones de Fleetia/VPS/Supabase operativo.
