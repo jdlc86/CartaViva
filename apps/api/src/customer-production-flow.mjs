@@ -93,6 +93,14 @@ const one=result=>{
   throw Error('invalid_customer_flow_result');
  return result.rows[0];
 };
+// A zero-row authenticated context is an expected denial after QR rotation,
+// table closure, visit expiry or session revocation. Keep backend shape/SQL
+// failures as unavailable, never reinterpret them as a successful empty order.
+const confirmationContextRow=result=>{
+ if(result&&Array.isArray(result.rows)&&result.rows.length===0)
+  throw Error('customer_order_context_forbidden');
+ return one(result);
+};
 
 export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
  newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
@@ -175,7 +183,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   const now=clock();
   if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
   const prepared=await withTransaction(async query=>{
-   const attempt=one(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
+   const attempt=confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
     raw.visitId,raw.basketId,raw.requestKey]));
    if(attempt.order_id!==null&&attempt.order_id!==undefined){
     if(!Buffer.isBuffer(attempt.request_fingerprint)||
@@ -190,7 +198,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    let repriced=false;
    const changes=[];
    for(const line of raw.lines){
-    const prepared=one(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,raw.tableId,raw.qrToken,
+    const prepared=confirmationContextRow(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,raw.tableId,raw.qrToken,
      raw.visitId,raw.basketId,line.itemId,line.quoteId]));
     const publishedRevision=revision(prepared.published_revision);
     if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot)||
@@ -262,7 +270,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    throw Error('invalid_customer_flow_input');
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
   if(!sessionHash)throw Error('invalid_customer_flow_input');
-  const attempt=await withTransaction(async query=>one(await query(LOOKUP_ATTEMPT_SQL,
+  const attempt=await withTransaction(async query=>confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,
    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey])));
   if(attempt.order_id===null||attempt.order_id===undefined)
    return Object.freeze({status:'not_found'});
