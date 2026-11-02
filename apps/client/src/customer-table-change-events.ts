@@ -1,6 +1,6 @@
 // Candidate B3: authenticated EventSource with H6 outbox cursor replay.
 // The current SQL state remains authoritative for ordering and account scope.
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const EVENTS=['sabora.table_change.approved','sabora.table_change.rejected'] as const;
 export type TableChangeStreamState=Readonly<{
  state:'unbound'|'bound'|'pending'|'approved'|'rejected';
