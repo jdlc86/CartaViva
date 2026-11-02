@@ -4,6 +4,8 @@ export const REQUEST_TABLE_CHANGE_H6_SQL=
  'SELECT request_id,request_status,expires_at FROM sabora.request_customer_table_change_h6_candidate($1::bytea,$2::uuid)';
 export const REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL=
  'SELECT request_id,request_status,expires_at FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)';
+export const READ_TABLE_CHANGE_H6_SQL=
+ 'SELECT bound_table_id,change_state,change_expires_at,server_time FROM sabora.read_customer_table_change_h6_candidate($1::bytea)';
 export const DECIDE_TABLE_CHANGE_H6_SQL=
  'SELECT sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean) AS status';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,6 +45,26 @@ export function createSealedTableChangeRpcCandidate({
   (resolveAccount!==undefined&&typeof resolveAccount!=='function'))
   throw Error('invalid_table_change_rpc_configuration');
  return Object.freeze({
+  async readState({customerSessionToken}={}){
+   if(typeof customerSessionToken!=='string'||!customerSessionToken)
+    throw Error('table_change_unauthorized');
+   const hash=await hashSession(customerSessionToken);
+   if(!Buffer.isBuffer(hash)||hash.length!==32)
+    throw Error('invalid_table_change_session_hash');
+   let row;
+   try{row=await withCustomerTransaction(query=>one(query,READ_TABLE_CHANGE_H6_SQL,[hash]));}
+   catch(error){throw rpcFailure(error,'request');}
+   const states=new Set(['unbound','bound','pending','approved','rejected']);
+   const deadline=row.change_expires_at==null?null:new Date(row.change_expires_at).getTime();
+   const serverNow=new Date(row.server_time).getTime();
+   if(!states.has(row.change_state)||!Number.isFinite(serverNow)||
+      (row.change_state==='unbound'?row.bound_table_id!==null:!UUID.test(row.bound_table_id??''))||
+      (['pending','rejected'].includes(row.change_state)?
+       !Number.isFinite(deadline)||deadline<=serverNow:deadline!==null))
+    throw Error('invalid_table_change_rpc_result');
+   return Object.freeze({state:row.change_state,boundTableId:row.bound_table_id,
+    expiresAtMs:deadline,serverNowMs:serverNow});
+  },
   async request({customerSessionToken}={}){
    if(typeof customerSessionToken!=='string'||!customerSessionToken)
     throw Error('table_change_unauthorized');

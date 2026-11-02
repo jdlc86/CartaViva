@@ -2611,7 +2611,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
  const suffix=process.pid.toString(36);
  const specs=[
   {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
-   signatures:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)']},
+   signatures:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+     'sabora.read_customer_table_change_h6_candidate(bytea)']},
   {role:'sabora_f12_operations_runtime',login:'sabora_b3_physical_decision_'+suffix,
    signatures:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
   {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_physical_writer_'+suffix,

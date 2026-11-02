@@ -59,6 +59,30 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
+  if(tableChange&&typeof tableChange.readState==='function'){
+   scope.get('/table-change/state',async(request,reply)=>{
+    reply.header('Cache-Control','no-store');
+    reply.header('X-Content-Type-Options','nosniff');
+    try{
+     const result=await tableChange.readState({
+      customerSessionToken:readCustomerCookie(request.headers.cookie)
+     });
+     if(!result||!['unbound','bound','pending','approved','rejected'].includes(result.state)||
+        (result.boundTableId!==null&&typeof result.boundTableId!=='string')||
+        !Number.isSafeInteger(result.serverNowMs)||
+        (['pending','rejected'].includes(result.state)?
+         !Number.isSafeInteger(result.expiresAtMs):result.expiresAtMs!==null))
+      throw Error('invalid_table_change_state_result');
+     return reply.code(200).send({state:result.state,
+      boundTableId:result.boundTableId,expiresAtMs:result.expiresAtMs,
+      serverNowMs:result.serverNowMs});
+    }catch(error){
+     if(['table_change_unauthorized','table_change_account_forbidden'].includes(code(error)))
+      return reply.code(403).send({error:'customer_context_forbidden'});
+     return reply.code(503).send({error:'customer_flow_unavailable'});
+    }
+   });
+  }
   if(tableChange&&typeof tableChange.request==='function'){
    scope.post('/table-change/requests',{bodyLimit:1024},async(request,reply)=>{
     if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});

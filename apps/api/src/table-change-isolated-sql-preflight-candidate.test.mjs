@@ -14,15 +14,15 @@ function mock(capability,{override={},names,loginNames=[],queryError=false}={}){
   async query(sql,args){calls.push({sql,args});if(queryError)throw Error('connection');
    if(sql===F12_IDENTITY_SQL)return {rows:[row]};
    if(sql===F12_FUNCTION_SQL&&args?.[0]===login)return {rows:[{names:loginNames}]};
-   if(sql===F12_FUNCTION_SQL)return {rows:[{names:names??[
-    capability==='sabora_f12_customer_runtime'?
-     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)':
-     'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
+   if(sql===F12_FUNCTION_SQL)return {rows:[{names:names??(capability==='sabora_f12_customer_runtime'?
+    ['sabora.read_customer_table_change_h6_candidate(bytea)',
+     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)']:
+    ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'])}]};
    throw Error('unexpected');
   },release(discard){released=discard;}
  };}};
 }
-test('F12 preflight accepts only exact isolated login, SET membership and one RPC',async()=>{
+test('F12 preflight accepts only exact isolated login, SET membership and role-scoped RPC set',async()=>{
  const customer=mock(roles[0]),operations=mock(roles[1]);
  assert.deepEqual(await assertF12SqlCapabilities({customerPool:customer,
   operationsPool:operations,expectedCustomerLogin:customer.login,

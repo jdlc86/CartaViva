@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
-import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
+import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,READ_TABLE_CHANGE_H6_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
 import {F12_IDENTITY_SQL,F12_FUNCTION_SQL}
  from './table-change-isolated-sql-preflight-candidate.mjs';
@@ -28,7 +28,7 @@ function pool(expectedSql,rows){
 }
 const requestRow={request_id:requestId,request_status:'pending',expires_at:'2026-11-01T00:00:00Z'};
 test('F12 isolated composition binds customer and waiter to distinct exact SQL capabilities',async()=>{
- assert.deepEqual(F12_CUSTOMER_SQL,[REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL]);
+ assert.deepEqual(F12_CUSTOMER_SQL,[REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,READ_TABLE_CHANGE_H6_SQL]);
  assert.deepEqual(F12_OPERATIONS_SQL,[DECIDE_TABLE_CHANGE_H6_SQL]);
  const customer=pool(REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,[requestRow]);
  const operations=pool(DECIDE_TABLE_CHANGE_H6_SQL,[{status:'approved'}]);

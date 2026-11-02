@@ -1,8 +1,13 @@
 // F12 candidate-only SQL identity gate. No role creation, grants or live calls.
 // A successful check is necessary but not sufficient for an authorized cutover.
 const ROLES=Object.freeze({
- sabora_f12_customer_runtime:'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
- sabora_f12_operations_runtime:'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'
+ sabora_f12_customer_runtime:Object.freeze([
+  'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+  'sabora.read_customer_table_change_h6_candidate(bytea)'
+ ]),
+ sabora_f12_operations_runtime:Object.freeze([
+  'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'
+ ])
 });
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
 export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_user AS login_role,
@@ -53,7 +58,8 @@ export async function assertF12SqlIdentity({pool,expectedLogin,capability}={}){
    row.all_set_roles[0]!==capability)throw fail('identity-policy');
   const surface=await client.query(F12_FUNCTION_SQL,[capability]);
   const actual=surface?.rows?.length===1?surface.rows[0].names:null;
-  if(!Array.isArray(actual)||actual.length!==1||actual[0]!==ROLES[capability])
+  if(!Array.isArray(actual)||actual.length!==ROLES[capability].length||
+     !ROLES[capability].every(signature=>actual.includes(signature)))
    throw fail('function-surface');
   // The login must not execute *any* Sabora RPC before SET LOCAL ROLE.
   // NOINHERIT alone is insufficient if PUBLIC or direct grants exist.
