@@ -23,6 +23,11 @@ export function TableChangeRequestsPanel({gateway}:{
  const [busy,setBusy]=useState<string|null>(null);
  const [error,setError]=useState<string|null>(null);
  const [version,setVersion]=useState(0);
+ const [now,setNow]=useState(()=>Date.now());
+ useEffect(()=>{
+  const timer=window.setInterval(()=>setNow(Date.now()),1000);
+  return ()=>window.clearInterval(timer);
+ },[]);
  const generation=useRef(0);
  useEffect(()=>{
   const current=++generation.current;
@@ -78,7 +83,7 @@ export function TableChangeRequestsPanel({gateway}:{
    description="Las nuevas solicitudes aparecerán cuando actualices la lectura." compact/>:null}
   {phase==='ready'&&items.length>0?<div className="table-grid">
    {items.map(item=>{
-    const expired=Date.parse(item.expiresAt)<=Date.now();
+    const expired=Date.parse(item.expiresAt)<=now;
     return <article key={item.requestId} className="table-card">
      <div className="table-card__heading">
       <h3>Mesa {item.sourceTableNumber}</h3>
