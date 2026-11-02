@@ -103,6 +103,7 @@ ALTER FUNCTION sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigin
 REVOKE ALL ON FUNCTION sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,
  sabora_h6_customer_runtime,sabora_h6_operations_runtime,sabora_h6_provider_runtime;
-GRANT EXECUTE ON FUNCTION sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)
- TO sabora_f12_customer_runtime;
+-- No grant is made to the candidate runtime role, which is deliberately not
+-- installed in normal production. The disposable CI login receives only this
+-- exact function after independent role and RLS preflight.
 COMMIT;
