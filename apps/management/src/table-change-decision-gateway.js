@@ -1,6 +1,6 @@
 // Staff table-change decisions share the authenticated operations send adapter.
 // The host owns JWT acquisition/revocation; this module never stores credentials.
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECISIONS=new Set(['approved','rejected']);
 const ERRORS=new Set(['unauthorized','forbidden','invalid_table_change_decision',
  'table_change_request_not_found','table_change_request_not_pending','table_change_unavailable']);
