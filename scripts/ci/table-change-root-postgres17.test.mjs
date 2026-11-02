@@ -3532,6 +3532,92 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await admin.query(`UPDATE sabora.dining_tables SET ordering_state='open'
        WHERE id=$1`,[httpFixture.blockedTable]);
      }
+     // F17 critical confirmation gate. An approval is not a shortcut:
+     // even AFTER an authorized visit and a genuine SQL quote, revocation or
+     // table closure must abort the entire destination order. The same PWA,
+     // HTTP cookie, SQL roles, original account and outstanding delivery are
+     // used for both forbidden attempts and the successful B checkout below.
+     const rotatedQrToken='R'.repeat(42)+'A';
+     const assertStillInA=async label=>{
+      const snapshot=(await admin.query(`SELECT q.status,b.table_id,
+       a.outstanding_cents,
+       (SELECT count(*)::int FROM sabora.order_rounds r
+        WHERE r.account_id=a.id) AS rounds,
+       (SELECT count(*)::int FROM sabora.payment_attempts p
+        WHERE p.account_id=a.id) AS payments,
+       (SELECT count(*)::int FROM sabora.order_line_delivery_destinations d
+        WHERE d.account_id=a.id AND d.table_id=$2) AS original_deliveries
+       FROM sabora.customer_table_change_requests q
+       JOIN sabora.customer_account_operational_bindings b
+        ON b.account_id=q.account_id
+       JOIN sabora.customer_accounts a ON a.id=q.account_id
+       WHERE q.id=$1`,
+       [created.json().id,httpFixture.sourceTable])).rows[0];
+      assert.equal(snapshot.status,'approved',label+': grant retained');
+      assert.equal(snapshot.table_id,httpFixture.sourceTable,
+       label+': operational binding retained');
+      assert.equal(snapshot.outstanding_cents,'2400',label+': debt intact');
+      assert.equal(snapshot.rounds,1,label+': no extra order round');
+      assert.equal(snapshot.payments,0,label+': no charged attempt');
+      assert.equal(snapshot.original_deliveries,2,
+       label+': historic and pending delivery remain at A');
+      assert.equal((await admin.query(`SELECT count(*)::int AS total
+       FROM sabora.orders WHERE table_id=$1`,
+       [httpFixture.blockedTable])).rows[0].total,0,
+       label+': no destination order written');
+     };
+     const brokenDestinationCases=[
+      {name:'QR revocado después de cotizar',token:qrToken,breakDestination:async()=>{
+       await admin.query(`UPDATE sabora.dining_tables
+        SET qr_version=qr_version+1,qr_token_hash=$1 WHERE id=$2`,
+        [createHash('sha256').update(rotatedQrToken).digest(),
+         httpFixture.blockedTable]);
+      }},
+      {name:'Mesa cerrada después de cotizar',token:rotatedQrToken,breakDestination:async()=>{
+       await admin.query(`UPDATE sabora.dining_tables
+        SET ordering_state='closed' WHERE id=$1`,
+        [httpFixture.blockedTable]);
+      }}
+     ];
+     for(const scenario of brokenDestinationCases){
+      await customerPage.goto(origin+'/qr/v1/SABORA/'+
+       httpFixture.blockedTable+'#'+scenario.token);
+      await customerPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+      const visitPromise=customerPage.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/visits',
+       {timeout:20000});
+      await customerPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).click();
+      assert.equal((await visitPromise).status(),200,
+       scenario.name+': valid QR before invalidation');
+      await customerPage.getByText('Mesa verificada').waitFor({timeout:20000});
+      const quotePromise=customerPage.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/quotes',
+       {timeout:20000});
+      await customerPage.getByRole('button',
+       {name:'Continuar con el pedido'}).click();
+      assert.equal((await quotePromise).status(),200,
+       scenario.name+': real quote prepared while authorized');
+      await customerPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await customerPage.getByRole('button',
+       {name:'Confirmar pedido'}).waitFor({timeout:20000});
+      await scenario.breakDestination();
+      const deniedConfirmation=customerPage.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+       {timeout:20000});
+      await customerPage.getByRole('button',{name:'Confirmar pedido'}).click();
+      const rejectedConfirmation=await deniedConfirmation;
+      assert.ok([403,409].includes(rejectedConfirmation.status()),
+       scenario.name+': stale visit/quote must be denied during actual confirm: '+
+        await rejectedConfirmation.text());
+      await assertStillInA(scenario.name);
+     }
+     // C is the isolated adversarial destination. It has no co-diners;
+     // restoring its session has no effect on B, where a third diner remains.
+     await admin.query(`UPDATE sabora.dining_tables SET ordering_state='open'
+      WHERE id=$1`,[httpFixture.blockedTable]);
+     await assertStillInA('before recovered B transfer');
      // Enter through the real QR deep link after restoring destination B.
      // Its token must be scrubbed from browser history before ordering.
      await customerPage.goto(origin+'/qr/v1/SABORA/'+
