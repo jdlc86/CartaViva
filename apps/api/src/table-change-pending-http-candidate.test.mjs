@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {registerTableChangeStaffPendingHttp} from './table-change-http-candidate.mjs';
+import {createAuthenticatedOrderOperationsGateway} from '../../management/src/order-operations-authenticated-gateway.js';
 const requireApi=createRequire(new URL('../package.json',import.meta.url));
 const Fastify=requireApi('fastify');
 const id='10000000-0000-4000-8000-000000000001';
@@ -67,4 +68,31 @@ test('F12 pending queue requires an explicit authorized service and guard',()=>{
  const app=Fastify({logger:false});
  assert.throws(()=>registerTableChangeStaffPendingHttp(app,{forRoles:()=>()=>{}}),
   /invalid_table_change_pending_configuration/);
+});
+
+test('F12 authenticated management PWA reads minimal pending queue via Fastify',async()=>{
+ const {app,calls}=setup({rows:[{
+  requestId:id,sourceTableNumber:9,expiresAt:'2026-11-02T12:00:00Z'
+ }]});
+ await app.ready();
+ let network=0;
+ const gateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'verified-staff-token',
+  fetchImpl:async(path,init)=>{
+   network++;
+   assert.equal(init.headers.get('Authorization'),'Bearer verified-staff-token');
+   const result=await app.inject({method:init.method,url:path});
+   return new Response(result.body,{status:result.statusCode,
+    headers:{'content-type':result.headers['content-type']??'application/json'}});
+  }
+ });
+ try{
+  assert.deepEqual(await gateway.listPendingTableChanges(),[{
+   requestId:id,sourceTableNumber:9,expiresAt:'2026-11-02T12:00:00Z'
+  }]);
+  assert.equal(calls.length,1);
+  gateway.revoke();
+  await assert.rejects(gateway.listPendingTableChanges(),/table_change_unavailable/);
+  assert.equal(network,1);
+ }finally{gateway.revoke();await app.close();}
 });
