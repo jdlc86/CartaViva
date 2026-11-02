@@ -2958,7 +2958,7 @@ test('PG17 F12 pending-reader function is sealed and kitchen cannot enumerate re
   has_function_privilege('anon',p.oid,'EXECUTE') AS anonymous,
   has_function_privilege('authenticated',p.oid,'EXECUTE') AS browser,
   has_function_privilege('sabora_f12_pending_reader_runtime',p.oid,'EXECUTE') AS reader,
-  has_function_privilege('sabora_f12_operations_runtime',p.oid,'EXECUTE') AS decision
+  has_function_privilege('sabora_h6_operations_runtime',p.oid,'EXECUTE') AS decision
   FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
  assert.equal(metadata.rows.length,1);
  assert.deepEqual(metadata.rows[0],{
