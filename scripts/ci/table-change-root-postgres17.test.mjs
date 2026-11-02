@@ -3743,6 +3743,213 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         fullPage:true});
       }finally{await otherContext.close();}
      }
+     // F22/R03: a fourth account in A races two separate real PWA
+     // checkouts at B and C under a SINGLE approved departure grant.
+     // All of these use the same disposable PG17/Fastify/Chromium system.
+     const raceFixture=await admin.connect();
+     try{
+      await raceFixture.query('BEGIN');
+      await raceFixture.query(`INSERT INTO sabora.customer_profiles
+       (id,public_id,alias) VALUES($1,$2,$3)`,
+       [rival.customer,rival.publicId,rival.alias]);
+      await raceFixture.query(`INSERT INTO sabora.customer_sessions
+       (customer_id,token_hash,expires_at)
+       VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
+       [rival.customer,hashCustomerSessionToken(rival.token)]);
+      await raceFixture.query(`INSERT INTO sabora.customer_table_visits
+       (table_id,session_id,customer_id,visit_key,actor_id,
+        authorized_qr_version,expires_at)
+       VALUES($1,$2,$3,$4,$3::text,1,clock_timestamp()+interval '1 hour')`,
+       [httpFixture.sourceTable,httpFixture.sourceSession,
+        rival.customer,rival.visitKey]);
+      await raceFixture.query(`INSERT INTO sabora.customer_accounts
+       (id,table_id,session_id,visit_key,customer_id,payment_mode,
+        payment_mode_selected_at,outstanding_cents)
+       VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),$6)`,
+       [rival.account,httpFixture.sourceTable,httpFixture.sourceSession,
+        rival.visitKey,rival.customer,rival.balance]);
+      await raceFixture.query(`INSERT INTO
+       sabora.customer_account_operational_bindings
+       (account_id,table_id,session_id,visit_key)
+       VALUES($1,$2,$3,$4)`,
+       [rival.account,httpFixture.sourceTable,httpFixture.sourceSession,
+        rival.visitKey]);
+      await raceFixture.query(`INSERT INTO sabora.orders
+       (id,table_id,session_id,company,employee_number,customer_alias,
+        customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,
+        grouping,items)
+       VALUES($1,$2,$3,NULL,NULL,$4,$5,$6,
+        '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
+        '[{"category":"main","name":"Pendiente carrera","quantity":1}]'::jsonb)`,
+       [rival.order,httpFixture.sourceTable,httpFixture.sourceSession,
+        rival.alias,rival.publicId,rival.visitKey]);
+      await raceFixture.query(`INSERT INTO sabora.order_rounds
+       (id,order_id,account_id,amount_cents,payment_mode,
+        payment_policy_version,grouping_deadline,state)
+       VALUES($1,$2,$3,$4,'pay_at_end',1,
+        clock_timestamp()+interval '5 minutes','grouping')`,
+       [rival.round,rival.order,rival.account,rival.balance]);
+      await raceFixture.query(`INSERT INTO
+       sabora.order_round_delivery_destinations
+       (round_id,account_id,table_id,session_id,visit_key)
+       VALUES($1,$2,$3,$4,$5)`,
+       [rival.round,rival.account,httpFixture.sourceTable,
+        httpFixture.sourceSession,rival.visitKey]);
+      const raceLine=(await raceFixture.query(`SELECT id
+       FROM sabora.order_lines WHERE order_id=$1`,[rival.order])).rows[0];
+      assert.ok(raceLine?.id,'historical order requires line');
+      await raceFixture.query(`INSERT INTO
+       sabora.order_line_delivery_destinations
+       (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+       VALUES($1,$2,$3,$4,$5,$6,$7)`,
+       [raceLine.id,rival.round,rival.account,rival.order,
+        httpFixture.sourceTable,httpFixture.sourceSession,rival.visitKey]);
+      await raceFixture.query('COMMIT');
+     }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
+     finally{raceFixture.release();}
+     const raceRequest=await http.inject({method:'POST',
+      url:'/api/v1/customer/table-change/requests',
+      headers:{cookie:'__Secure-sabora_customer='+rival.token,
+       'content-type':'application/json'},payload:{}});
+     assert.equal(raceRequest.statusCode,201,raceRequest.body);
+     const raceGrant=(await admin.query(`SELECT id,status
+      FROM sabora.customer_table_change_requests
+      WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1`,
+      [rival.account])).rows[0];
+     assert.equal(raceGrant.status,'pending');
+     const raceApproval=await http.inject({method:'POST',
+      url:'/api/v1/operations/table-change/decisions',
+      headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+      payload:{requestId:raceGrant.id,decision:'approved'}});
+     assert.equal(raceApproval.statusCode,200,raceApproval.body);
+     assert.equal((await admin.query(`SELECT status FROM
+      sabora.customer_table_change_requests WHERE id=$1`,
+      [raceGrant.id])).rows[0].status,'approved');
+     const probeWriterConnections=await Promise.all([
+      pools[2].connect(),pools[2].connect()]);
+     try{
+      const backendPids=await Promise.all(probeWriterConnections.map(link=>
+       link.query('SELECT pg_backend_pid() AS pid')));
+      assert.notEqual(backendPids[0].rows[0].pid,backendPids[1].rows[0].pid,
+       'competing confirmations need independent real PG17 backends');
+     }finally{for(const link of probeWriterConnections)link.release();}
+     const contenders=[
+      {seat:'B',table:httpFixture.destinationTable,qrToken},
+      {seat:'C',table:httpFixture.blockedTable,qrToken:rotatedQrToken}
+     ];
+     const rivalContexts=[],rivalPages=[];
+     try{
+      for(const contender of contenders){
+       const context=await clientBrowser.newContext({
+        viewport:{width:390,height:844},reducedMotion:'reduce',
+        serviceWorkers:'block'
+       });
+       rivalContexts.push(context);
+       await context.addCookies([{name:'__Secure-sabora_customer',
+        value:rival.token,domain:'127.0.0.1',path:'/',secure:true,
+        httpOnly:true,sameSite:'Lax'}]);
+       await context.addInitScript(({id})=>{
+        localStorage.setItem('sabora.client.selection.v1',
+         JSON.stringify([{itemId:id,name:'Plato de integración',
+          priceCents:700,quantity:1}]));
+       },{id:itemId});
+       const contenderPage=await context.newPage();
+       contenderPage.on('pageerror',error=>
+        customerBrowserErrors.push('rival-'+contender.seat+':'+error.message));
+       let confirmationBody=null;
+       contenderPage.on('request',request=>{
+        if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
+         confirmationBody=request.postDataJSON();
+       });
+       await contenderPage.goto(origin+'/qr/v1/SABORA/'+
+        contender.table+'#'+contender.qrToken);
+       await contenderPage.getByRole('button',
+        {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+       await contenderPage.getByRole('button',
+        {name:'Continuar con la mesa escaneada'}).click();
+       await contenderPage.getByText('Mesa verificada').waitFor({timeout:20000});
+       await contenderPage.getByRole('button',
+        {name:'Continuar con el pedido'}).click();
+       await contenderPage.getByRole('radio',
+        {name:/Pagar al terminar/}).check();
+       await contenderPage.getByRole('button',
+        {name:'Confirmar pedido'}).waitFor({timeout:20000});
+       rivalPages.push({...contender,page:contenderPage,
+        getConfirmationBody:()=>confirmationBody});
+      }
+      const responsesPending=rivalPages.map(({page})=>page.waitForResponse(
+       response=>new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+       {timeout:30000}));
+      await Promise.all(rivalPages.map(({page})=>
+       page.getByRole('button',{name:'Confirmar pedido'}).click()));
+      const responses=await Promise.all(responsesPending);
+      assert.deepEqual(responses.map(value=>value.status()).sort((a,b)=>a-b),
+       [201,409],'one of two valid destination checkouts must win');
+      const winnerIndex=responses.findIndex(value=>value.status()===201);
+      const winner=rivalPages[winnerIndex],loser=rivalPages[1-winnerIndex];
+      const success=await responses[winnerIndex].json();
+      assert.equal(success.status,'confirmed');
+      assert.equal(success.accountId,rival.account);
+      assert.deepEqual(await responses[1-winnerIndex].json(),
+       {error:'table_change_confirmation_conflict'});
+      const final=(await admin.query(`SELECT q.status,q.destination_table_id,
+       b.table_id,b.session_id,a.outstanding_cents
+       FROM sabora.customer_table_change_requests q
+       JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+       JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+       [raceGrant.id])).rows[0];
+      assert.equal(final.status,'consumed');
+      assert.equal(final.destination_table_id,winner.table);
+      assert.equal(final.table_id,winner.table);
+      assert.equal(final.outstanding_cents,'2300');
+      const rounds=(await admin.query(`SELECT r.id,o.table_id
+       FROM sabora.order_rounds r JOIN sabora.orders o ON o.id=r.order_id
+       WHERE r.account_id=$1 ORDER BY o.confirmed_at`,
+       [rival.account])).rows;
+      assert.equal(rounds.length,2,'exactly one new round after B/C race');
+      assert.ok(rounds.some(row=>row.table_id===httpFixture.sourceTable));
+      assert.ok(rounds.some(row=>row.table_id===winner.table));
+      assert.equal(rounds.some(row=>row.table_id===loser.table),false,
+       'loser destination must never persist an order');
+      const oldRound=(await admin.query(`SELECT o.table_id AS historical,
+       d.table_id AS delivery FROM sabora.orders o
+       JOIN sabora.order_rounds r ON r.order_id=o.id
+       JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+       WHERE o.id=$1`,[rival.order])).rows[0];
+      assert.equal(oldRound.historical,httpFixture.sourceTable,
+       'historical A order origin must be immutable');
+      assert.equal(oldRound.delivery,winner.table,
+       'pending delivery follows the sole winning transfer');
+      const pendingLines=(await admin.query(`SELECT d.table_id
+       FROM sabora.order_line_delivery_destinations d
+       WHERE d.account_id=$1 AND d.order_id=$2`,
+       [rival.account,rival.order])).rows;
+      assert.equal(pendingLines.length,1);
+      assert.equal(pendingLines[0].table_id,winner.table);
+      assert.equal((await admin.query(`SELECT count(*)::int AS n FROM
+       sabora.payment_attempts WHERE account_id=$1`,
+       [rival.account])).rows[0].n,0);
+      const sameBody=winner.getConfirmationBody();
+      assert.ok(sameBody,'winning browser must expose its submitted request');
+      const replay=await winner.page.evaluate(async body=>{
+       const response=await fetch('/api/v1/customer/orders/confirm',{
+        method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(body)
+       });
+       return {status:response.status,result:await response.json()};
+      },sameBody);
+      assert.equal(replay.status,200,'winning replay must be idempotent');
+      assert.equal(replay.result.status,'replayed');
+      assert.equal(replay.result.accountId,rival.account);
+      assert.equal((await admin.query(`SELECT count(*)::int AS n FROM
+       sabora.order_rounds WHERE account_id=$1`,
+       [rival.account])).rows[0].n,2,
+       'replay must not produce a third round');
+      await winner.page.getByText('Pedido confirmado').waitFor({timeout:20000});
+      await winner.page.screenshot({path:join(evidence,
+       'b3-f22-rival-winner-'+winner.seat.toLowerCase()+'-mobile.png'),
+       fullPage:true});
+     }finally{for(const context of rivalContexts)await context.close();}
      assert.deepEqual(customerBrowserErrors,[]);
     }finally{
      if(clientContext)await clientContext.close();
