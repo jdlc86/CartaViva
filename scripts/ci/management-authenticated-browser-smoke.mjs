@@ -188,9 +188,10 @@ try {
   assert.deepEqual(changeDecisions,[{requestId:changeRequestId,decision:'approved'}]);
   assert.equal(pendingChanges.length,0);
   await page.evaluate(() => window.__saboraCiDispose());
-  await page.getByText('Solicitudes de cambio de mesa no conectadas.').waitFor()
-    .catch(()=>{}); // Preview mount is intentionally disconnected after sign-out.
-  await page.getByText('Canal operativo sin conectar').first().waitFor();
+  // Disposal must revoke the bearer and disconnect the queue. The active
+  // route is #mesas, so the #comandas-only operational notice is not visible.
+  await page.getByText('Solicitudes de cambio de mesa no conectadas.').waitFor();
+  assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).count(),0);
   assert.ok(calls.some(call => call.method === 'POST'));
   assert.ok(calls.every(call => call.auth?.startsWith('Bearer sabora_ci_browser_token_')));
   console.log('PASS: Chromium kitchen, waiter claim/cancel, recoverable error, role isolation and logout (isolated HTTP fixture; PG17 is exercised separately)');
