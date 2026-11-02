@@ -2757,6 +2757,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    alias:'Comensal rollback',visitKey:'b3_rollback_origin_0381_integral',
    balance:900
   };
+  // Concurrent revocation uses distinct account holders and an otherwise
+  // unoccupied destination D, never interfering with original A/B/C diners.
+  const rotatedDiner={
+   customer:'b0a00000-0000-4000-8000-000000000392',
+   account:'b0a00000-0000-4000-8000-000000000393',
+   order:'b0a00000-0000-4000-8000-000000000394',
+   round:'b0a00000-0000-4000-8000-000000000395',
+   token:'y'.repeat(42)+'s',publicId:'SB-MNMNMNMNMNMP',
+   alias:'Comensal QR concurrente',visitKey:'b3_qr_race_origin_0392_integral',
+   balance:1100
+  };
+  const revokedDiner={
+   customer:'b0a00000-0000-4000-8000-000000000396',
+   account:'b0a00000-0000-4000-8000-000000000397',
+   order:'b0a00000-0000-4000-8000-000000000398',
+   round:'b0a00000-0000-4000-8000-000000000399',
+   token:'z'.repeat(42)+'s',publicId:'SB-NPNPNPNPNPNP',
+   alias:'Comensal sesion concurrente',visitKey:'b3_revoke_race_origin_0396_integral',
+   balance:1300
+  };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
@@ -2779,7 +2799,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
        return;
       }
-      const peer=[...peers,rival,rollbackDiner].find(row=>
+      const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
        request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
@@ -2841,6 +2861,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     destinationTable:'b0a00000-0000-4000-8000-000000000303',
     blockedTable:'b0a00000-0000-4000-8000-000000000308',
     blockedSession:'b0a00000-0000-4000-8000-000000000309',
+    concurrentTable:'b0a00000-0000-4000-8000-000000000390',
+    concurrentSession:'b0a00000-0000-4000-8000-000000000391',
     sourceSession:'b0a00000-0000-4000-8000-000000000304',
     destinationSession:'b0a00000-0000-4000-8000-000000000305',
     sourceAccount:'b0a00000-0000-4000-8000-000000000306',
@@ -2857,11 +2879,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      [httpFixture.customer,Buffer.alloc(32,230)]);
     await fixture.query(`INSERT INTO sabora.dining_tables
      (id,number,capacity,qr_token_hash,session_id,ordering_state)
-     VALUES($1,981301,4,$4,$5,'open'),($2,981302,4,$4,$6,'open'),
-      ($3,981303,4,$4,$7,'open')`,
+     VALUES($1,981301,4,$5,$6,'open'),($2,981302,4,$5,$7,'open'),
+      ($3,981303,4,$5,$8,'open'),($4,981304,4,$5,$9,'open')`,
      [httpFixture.sourceTable,httpFixture.destinationTable,
-      httpFixture.blockedTable,qrHash,httpFixture.sourceSession,
-      httpFixture.destinationSession,httpFixture.blockedSession]);
+      httpFixture.blockedTable,httpFixture.concurrentTable,qrHash,
+      httpFixture.sourceSession,httpFixture.destinationSession,
+      httpFixture.blockedSession,httpFixture.concurrentSession]);
     await fixture.query(`INSERT INTO sabora.customer_table_visits
      (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
      VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
@@ -2911,7 +2934,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
      [createHash('sha256').update(qrToken).digest(),
       [httpFixture.sourceTable,httpFixture.destinationTable,
-       httpFixture.blockedTable]]);
+       httpFixture.blockedTable,httpFixture.concurrentTable]]);
     await fixture.query(`INSERT INTO sabora.catalog_items
      (id,draft,draft_revision,published_revision,published_snapshot,published_at)
      VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,snapshot]);
@@ -3758,7 +3781,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const raceFixture=await admin.connect();
      try{
       await raceFixture.query('BEGIN');
-      for(const diner of [rival,rollbackDiner]){
+      for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
        [diner.customer,diner.publicId,diner.alias]);
