@@ -381,3 +381,10 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commits `4871d9e4e38a90dc7c228242d8c5d01a4d6c1712` y `69244dcb054760a04c53bae3f4efbd3ab25c070d`: llamada allowlisted a `PERSIST_H6_TRANSFER_ORDER_SQL` sobre PostgreSQL 17 real bajo el login y rol de writer B3. El contexto de negocio deliberadamente inválido debe ser rechazado por PostgreSQL, sin error de falta de privilegio EXECUTE; tras rollback se comprueba restauración de `current_user` y `session_user`.
 - GitHub Actions del último commit: **3/3 SUCCESS**: Sabora CI `41390767221`, Bootstrap `41390767299`, client browser `41390767219`.
 - No equivale a un checkout positivo HTTP A→B con las cinco conexiones físicas restringidas. Mantener **B3 NO-GO**, **PR #43 Draft**, sin despliegues ni cambios en entornos operativos.
+
+## 54. B3 montaje HTTP aislado con cinco logins PG17: validado (2026-11-02)
+
+- Commit `9082ca4647f0807bdaf9dd007a21fbcf340c4dd0`: montaje de las rutas de cliente y operaciones con cinco conexiones autenticadas físicamente independientes en PostgreSQL 17 desechable, después de preflights de privilegios. Comprueba rechazo HTTP por autenticación/autorización y restauración de identidades SQL.
+- **3/3 GitHub Actions SUCCESS** para ese commit: Sabora CI `41391931914`, Bootstrap `41391931866`, client browser `41391932028`.
+- La evidencia **no incluye** un pedido HTTP positivo con transferencia económica A→B real. Las pruebas SQL de transferencia y las HTTP de montaje son todavía recorridos separados. No declarar B3 cerrado hasta unir solicitud, aprobación, confirmación en B y comprobaciones económicas/reintentos en una única prueba con PostgreSQL real.
+- Mantener PR #43 Draft / NO-GO. Sin merges, despliegues ni cambios en Fleetia, VPS o Supabase operativo.
