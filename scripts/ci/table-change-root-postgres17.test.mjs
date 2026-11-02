@@ -2758,8 +2758,11 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      VALUES($1,981301,4,$3,$4,'open'),($2,981302,4,$3,$5,'open')`,
      [httpFixture.sourceTable,httpFixture.destinationTable,qrHash,
       httpFixture.sourceSession,httpFixture.destinationSession]);
-    await insertVisit(fixture,{tableId:httpFixture.sourceTable,
-     sessionId:httpFixture.sourceSession,visitKey:httpFixture.sourceVisit});
+    await fixture.query(`INSERT INTO sabora.customer_table_visits
+     (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+     VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+     [httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.customer,
+      httpFixture.sourceVisit]);
     await fixture.query(`INSERT INTO sabora.customer_accounts
      (id,table_id,session_id,visit_key,customer_id,payment_mode,
       payment_mode_selected_at,outstanding_cents)
