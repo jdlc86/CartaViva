@@ -2866,6 +2866,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE customer_id=$2`,[hashCustomerSessionToken(positiveToken),httpFixture.customer]);
     const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
      'content-type':'application/json'};
+    const stateProbe=await http.inject({method:'GET',
+     url:'/api/v1/customer/table-change/state',headers:requestHeaders});
+    assert.equal(stateProbe.statusCode,200,
+     'sealed customer state must be readable before opening B QR: '+stateProbe.body);
+    assert.equal(stateProbe.json().state,'bound');
+    assert.equal(stateProbe.json().boundTableId,httpFixture.sourceTable);
     // Integrated customer PWA -> Fastify -> six physical PG17 roles:
     // cancel the warning once (must not write any request), then submit
     // the destination-free request from the actual browser and leave A intact.
@@ -2908,8 +2914,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const deepLink='http://127.0.0.1:'+uiAddress.port+'/qr/v1/SABORA/'+
       httpFixture.destinationTable+'#'+qrToken;
      await requestPage.goto(deepLink);
-     await requestPage.getByRole('button',{name:'Solicitar cambio de mesa'})
-      .waitFor({timeout:25000});
+     try{
+      await requestPage.getByRole('button',{name:'Solicitar cambio de mesa'})
+       .waitFor({timeout:15000});
+     }catch(error){
+      const body=(await requestPage.locator('body').innerText()).slice(-1800);
+      throw Error('pg17_customer_change_prompt_not_visible:'+
+       JSON.stringify({body,requests:customerRequests})+': '+error.message);
+     }
      assert.equal((await admin.query(
       'SELECT count(*)::int AS n FROM sabora.customer_table_change_requests WHERE account_id=$1',
       [httpFixture.sourceAccount])).rows[0].n,0,
