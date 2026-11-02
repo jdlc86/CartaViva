@@ -44,6 +44,18 @@ Fecha: 2026-10-18. Estado: decisiones aprobadas y propuesta técnica; no implica
 3. Presupuesto de recursos de Sabora, límites y alertas; decisión documentada de coexistencia o VPS independiente si la capacidad es insuficiente.
 4. Identificar región y plan del nuevo proyecto Supabase, políticas RLS, retención, backups y coste; **no reutilizar el proyecto de Fleetia**.
 
+
+## Regla de ejecución aprobada: hitos integrales y pruebas de extremo a extremo (2026-11-02)
+
+**Obligatorio.** Queda prohibido organizar el avance ordinario de Sabora como una sucesión de pruebas pequeñas, aisladas, mocks o microcorrecciones sin cerrar un hito funcional. La unidad de planificación y entrega es el **hito completo verificable**, de extremo a extremo, según los flujos aprobados y la normativa vigente. No se da por terminado un hito mediante piezas individuales en verde.
+
+- Antes de implementar, definir el recorrido integral, sus invariantes, los actores involucrados, el estado inicial/final y los IDs de aceptación que cerrará. Implementar en el mismo hito todas las capas necesarias: PWA(s), HTTP/autenticación, roles mínimos/RLS/funciones PG17, dominio y persistencia, pedidos/pagos/entregas/eventos donde apliquen.
+- **Prueba principal obligatoria:** integrada, con datos reales en PostgreSQL 17 desechable, API autenticada y navegador real para los flujos con interfaz. Verificar cambios en todas las relaciones relevantes y resultado funcional observable; incluir carreras, rollback, reintentos, revocación y controles económicos cuando afecten al hito.
+- Una prueba unitaria o aislada solo es admisible **excepcionalmente** para diagnosticar un fallo concreto ya identificado o proteger un requisito crítico. Será complementaria y no se presentará como avance funcional ni sustituirá la prueba integrada.
+- La secuencia de desarrollo no se divide artificialmente en pequeños hitos de pruebas para generar commits, CI verdes o informes de progreso. Corregir los fallos encontrados dentro del mismo hito y repetir su integración completa y la regresión afectada; automatizar las esperas y observación de CI sin requerir aprobaciones intermedias del usuario.
+- Un hito se cierra únicamente con evidencia por escenario (SHA, ejecución, entorno, resultado real y requisitos F/R), además de conformidad visual y de los flujos aprobados. Separar siempre código implementado, pruebas ejecutadas y funcionalidad validada. CI verde por sí sola no implica GO ni autorización de merge/despliegue.
+- Se mantienen el aislamiento de Fleetia y recursos compartidos, la prohibición de operaciones en producción/VPS/Supabase operativo sin autorización expresa y la prioridad de los documentos normativos sobre handoffs.
+
 ## Método de ejecución
 - Trabajar en ramas y PRs acotados; pruebas automáticas y revisión independiente para cambios críticos.
 - No copiar módulos de Fleetia sin inventario, comparación de contratos, adaptación y pruebas propias.

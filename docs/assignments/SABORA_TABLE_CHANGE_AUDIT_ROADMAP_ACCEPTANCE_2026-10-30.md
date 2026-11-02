@@ -38,6 +38,8 @@ La **fuente normativa**, que prevalece íntegramente sobre este plan, es `docs/a
 
 ## 3. Hoja de ruta: bloques completos y puertas de salida
 
+**Aplicación obligatoria de la regla de hitos integrales:** no se utilizará la sucesión de tests pequeños o SQL/HTTP/mocks por separado como metodología. Para el cambio de mesa, la siguiente unidad de ejecución es el recorrido completo solicitud cliente A → decisión por camarero → nueva confirmación en B → transferencia transaccional de la misma cuenta → pagos/entregas/eventos consistentes → cliente y sala en navegador real. Incluye permisos de PostgreSQL 17 desechable, carreras, idempotencia, rollback, revocación y evidencia F/R. Pruebas aisladas solo para fallos específicos o requisitos críticos, y nunca como sustituto de aceptación integral. La regla de método está fijada en `docs/architecture/SABORA_TECHNICAL_ROADMAP_INFRASTRUCTURE_V1.md`.
+
 ### B0 — Inventario y contrato ejecutable (obligatorio antes de SQL)
 - Inventariar migraciones y dependencias de `customer_accounts`, visitas, pedidos, rondas, pagos, tareas de recogida/entrega, proyecciones, eventos y SSE. Dibujar invariantes y orden de bloqueos.
 - Mapear rutas reales de composición cliente/sala/cocina, identidad, roles, QR, agrupación, pagos y UI aprobada.
