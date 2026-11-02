@@ -3550,6 +3550,49 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(replay.status,200,'replay must not create another order');
      assert.equal(replay.result.status,'replayed');
      assert.equal(replay.result.accountId,httpFixture.sourceAccount);
+     // F18 complete journey: the co-diners at A and B keep ordering from
+     // separate real Chromium PWAs, each on its own PG17 account.
+     for(const peer of peers){
+      const otherContext=await clientBrowser.newContext({
+       viewport:{width:390,height:844},reducedMotion:'reduce',
+       serviceWorkers:'block'
+      });
+      try{
+       await otherContext.addCookies([{name:'__Secure-sabora_customer',
+        value:peer.token,domain:'127.0.0.1',path:'/',secure:true,
+        httpOnly:true,sameSite:'Lax'}]);
+       await otherContext.addInitScript(({id})=>{
+        localStorage.setItem('sabora.client.selection.v1',
+         JSON.stringify([{itemId:id,name:'Plato de integración',
+          priceCents:700,quantity:1}]));
+       },{id:itemId});
+       const otherPage=await otherContext.newPage();
+       otherPage.on('pageerror',error=>customerBrowserErrors.push(
+        'peer-'+peer.seat+':'+error.message));
+       const peerTable=peer.seat==='A'?
+        httpFixture.sourceTable:httpFixture.destinationTable;
+       await otherPage.goto(origin+'/qr/v1/SABORA/'+peerTable+'#'+qrToken);
+       await otherPage.getByText('Mesa verificada').waitFor({timeout:20000});
+       await otherPage.getByRole('button',{name:'Continuar con el pedido'}).click();
+       await otherPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+       const resultPromise=otherPage.waitForResponse(response=>
+        new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+        {timeout:20000});
+       await otherPage.getByRole('button',{name:'Confirmar pedido'}).click();
+       const result=await resultPromise;
+       assert.equal(result.status(),201,'peer '+peer.seat+' PG17 checkout: '+
+        await result.text());
+       const receipt=await result.json();
+       assert.equal(receipt.status,'confirmed');
+       assert.equal(receipt.accountId,peer.account,
+        'transfer must not redirect a co-diner checkout to another account');
+       await otherPage.getByText('Pedido confirmado').waitFor();
+       await otherPage.screenshot({path:join(evidence,
+        'b3-f18-codiner-'+peer.seat.toLowerCase()+'-confirmed-mobile.png'),
+        fullPage:true});
+      }finally{await otherContext.close();}
+     }
+     assert.deepEqual(customerBrowserErrors,[]);
     }finally{
      if(clientContext)await clientContext.close();
      if(clientBrowser)await clientBrowser.close();
@@ -3586,6 +3629,44 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const rounds=(await admin.query(`SELECT count(*)::int AS total FROM sabora.order_rounds
      WHERE account_id=$1`,[httpFixture.sourceAccount])).rows[0].total;
     assert.equal(rounds,2,'old A and new B rounds remain on one account');
+    // Three distinct users have independently confirmed consumption through
+    // real PG17/HTTP/PWA. Neither table-sharing nor A->B transfer merges
+    // accounts, reassigns historical orders or leaks another account's SSE.
+    const accounts=(await admin.query(`SELECT a.id,a.customer_id,
+     a.outstanding_cents,b.table_id FROM sabora.customer_accounts a
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+     WHERE a.id=ANY($1::uuid[]) ORDER BY a.id`,
+     [[httpFixture.sourceAccount,...peers.map(peer=>peer.account)]])).rows;
+    assert.equal(accounts.length,3,'exactly three original economic accounts');
+    const owner=accounts.find(row=>row.id===httpFixture.sourceAccount);
+    assert.equal(owner.outstanding_cents,'3100');
+    assert.equal(owner.table_id,httpFixture.destinationTable);
+    for(const peer of peers){
+     const own=accounts.find(row=>row.id===peer.account);
+     assert.ok(own,'co-diner must retain its existing account id');
+     assert.equal(own.customer_id,peer.customer);
+     assert.equal(own.table_id,peer.seat==='A'?
+      httpFixture.sourceTable:httpFixture.destinationTable);
+     assert.equal(own.outstanding_cents,String(peer.balance+700),
+      'a co-diner balance must gain only their own 700-cent order');
+     const historic=(await admin.query(`SELECT o.table_id,r.account_id,
+      d.table_id AS delivery_table FROM sabora.orders o
+      JOIN sabora.order_rounds r ON r.order_id=o.id
+      JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+      WHERE o.id=$1`,[peer.order])).rows[0];
+     assert.equal(historic.account_id,peer.account);
+     assert.equal(historic.table_id,own.table_id);
+     assert.equal(historic.delivery_table,own.table_id,
+      'moving customer must not redirect a co-diner pending delivery');
+     const decisions=await candidate.tableChange.readDecisions({
+      customerSessionToken:peer.token,afterCursor:0,limit:100});
+     assert.deepEqual(decisions.events,[],
+      'SSE outbox replay must not leak another account decision');
+    }
+    assert.equal((await admin.query(`SELECT count(*)::int AS n
+     FROM sabora.customer_accounts WHERE customer_id=ANY($1::uuid[])`,
+     [[httpFixture.customer,...peers.map(peer=>peer.customer)]])).rows[0].n,3,
+     'no extra account may be created by crossing occupied tables');
 
     // The second half of the SAME real customer/waiter/PG17 journey:
     // after transfer B, a new request to leave B can be rejected while the
