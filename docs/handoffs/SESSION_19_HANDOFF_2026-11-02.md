@@ -95,3 +95,7 @@ Commit `9769d27a37fa10cbcdd42b3d493d95a4703b0c0a`: nueva migración `supabase/mi
 ## 13. Gate de auditoría para la migración H6 (2026-11-02)
 
 La CI del commit `9769d27a` falló en Block 1 (no alcanzó PG17): `migration_audit_coverage_mismatch:missing=20261102010000_sabora_h6_original_confirmation_lock_order_candidate.sql`. La prueba registró 1165 PASS, 1 FAIL y 2 SKIP; el fallo no valida ni invalida la corrección SQL. Se añadió ficha individual en `scripts/ci/migration-audit.mjs` mediante commit `d64a5cd9e43e7df2664aaccbcb9a38a2bdae1da4`, conservando el gate fail-closed. Queda pendiente comprobar nueva CI y ejecutar prueba PG17 concurrente real. No afirmar H6 PASS ni B3 GO.
+
+## 14. Cierre del gate H6 original (2026-11-02)
+
+El commit `b6872a97f6b711ba478ebb0a510ad525e7d76e82` actualizó la prueba `scripts/ci/table-change-root-postgres17.test.mjs` para exigir el advisory lock de cliente, locks `FOR SHARE` de sesión/visita y orden persistencia→cuenta→ronda→destino, sin retirar la aceptación PG17. Tres workflows de ese SHA finalizaron SUCCESS: Sabora CI `41424727544`, Bootstrap PostgreSQL 17 `41424727514` y conformidad navegador `41424727576`. El fallo anterior era una aserción obsoleta sobre `FOR UPDATE`; esta revisión pasó toda la aceptación automatizada del SHA. **H6 original validado por CI**, pero B3/F12 y traslado económico E2E completo permanecen NO-GO. No hubo merge, despliegue ni cambios en Supabase operativo/VPS/Fleetia.
