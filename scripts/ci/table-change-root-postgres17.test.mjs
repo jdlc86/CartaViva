@@ -2596,3 +2596,81 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
    /invalid_b3_h6_reader_capabilities/);
  });
 });
+
+
+test('PG17 B3 five physically independent login connections enforce exact preflights',async()=>{
+ const suffix=process.pid.toString(36);
+ const specs=[
+  {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
+   signatures:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)']},
+  {role:'sabora_f12_operations_runtime',login:'sabora_b3_physical_decision_'+suffix,
+   signatures:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
+  {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_physical_writer_'+suffix,
+   signatures:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']},
+  {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_physical_reader_'+suffix,
+   signatures:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
+    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']},
+  {role:'sabora_customer_flow_runtime',login:'sabora_b3_physical_basket_'+suffix,
+   signatures:[]}
+ ];
+ const createdRoles=[],pools=[],connections=[];
+ const password='sabora_b3_disposable_'+suffix+'_only';
+ try{
+  for(const spec of specs){
+   if(spec.role!=='sabora_customer_flow_runtime'){
+    await admin.query('SELECT pg_advisory_lock(934781, 3)');
+    try{
+     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
+     if(!exists){
+      await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
+      createdRoles.push(spec.role);
+     }
+     await admin.query('GRANT USAGE ON SCHEMA sabora TO '+spec.role);
+     for(const signature of spec.signatures)
+      await admin.query('GRANT EXECUTE ON FUNCTION '+signature+' TO '+spec.role);
+    }finally{await admin.query('SELECT pg_advisory_unlock(934781, 3)');}
+   }
+   await admin.query('CREATE ROLE '+spec.login+' LOGIN NOINHERIT PASSWORD '+
+    "'"+password+"'");
+   createdRoles.push(spec.login);
+   await admin.query('GRANT '+spec.role+' TO '+spec.login+' WITH SET TRUE, INHERIT FALSE');
+  }
+  for(const spec of specs){
+   const loginUrl=new URL(url);
+   loginUrl.username=spec.login;
+   loginUrl.password=password;
+   const pool=new Pool({connectionString:loginUrl.toString(),max:1,connectionTimeoutMillis:3000,
+    options:'-c statement_timeout=15000'});
+   pools.push(pool);
+   const connection=await pool.connect();
+   connections.push(connection);
+   const identity=(await connection.query('SELECT current_user,session_user')).rows[0];
+   assert.equal(identity.current_user,spec.login);
+   assert.equal(identity.session_user,spec.login);
+  }
+  const scopedPools=connections.map(connection=>({
+   connect:async()=>({query:(sql,args)=>connection.query(sql,args),release:()=>{}})
+  }));
+  const checks=[
+   assertF12SqlIdentity({pool:scopedPools[0],expectedLogin:specs[0].login,
+    capability:specs[0].role}),
+   assertF12SqlIdentity({pool:scopedPools[1],expectedLogin:specs[1].login,
+    capability:specs[1].role}),
+   assertB3ConfirmationCapabilities({pool:scopedPools[2],expectedLogin:specs[2].login}),
+   assertB3H6LoginSurface({pool:scopedPools[3],expectedLogin:specs[3].login}),
+   assertCustomerFlowSqlCapabilities({pool:scopedPools[4],expectedLogin:specs[4].login})
+  ];
+  const results=await Promise.all(checks);
+  assert.equal(results.length,5);
+  assert.ok(results.every(result=>result.validated===true));
+  assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool:scopedPools[4]}),
+   {validated:true});
+ }finally{
+  for(const connection of connections)connection.release();
+  for(const pool of pools)await pool.end();
+  for(const role of createdRoles.reverse()){
+   await admin.query('DROP OWNED BY '+role).catch(()=>{});
+   await admin.query('DROP ROLE IF EXISTS '+role);
+  }
+ }
+});
