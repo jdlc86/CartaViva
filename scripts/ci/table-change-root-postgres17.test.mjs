@@ -2861,10 +2861,89 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE customer_id=$2`,[hashCustomerSessionToken(positiveToken),httpFixture.customer]);
     const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
      'content-type':'application/json'};
-    const created=await http.inject({method:'POST',
-     url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
-    assert.equal(created.statusCode,201,created.body);
-    assert.equal(created.json().status,'pending');
+    // Integrated customer PWA -> Fastify -> six physical PG17 roles:
+    // cancel the warning once (must not write any request), then submit
+    // the destination-free request from the actual browser and leave A intact.
+    const {pathToFileURL:requestPathToFileURL,fileURLToPath:requestFileURLToPath}
+     =await import('node:url');
+    const {chromium:requestChromium}=await import(
+     requestPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const requestRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+    const {createServer:createRequestViteServer}=await import(
+     requestPathToFileURL(requestRequire.resolve('vite')).href);
+    let requestVite,requestBrowser,requestContext;
+    try{
+     if(!http.server.listening)await http.listen({host:'127.0.0.1',port:0});
+     const apiAddress=http.server.address();
+     assert.ok(apiAddress&&typeof apiAddress==='object'&&apiAddress.port>0);
+     requestVite=await createRequestViteServer({
+      root:requestFileURLToPath(new URL('../../apps/client/',import.meta.url)),
+      mode:'test',logLevel:'error',
+      server:{host:'127.0.0.1',port:0,strictPort:false,
+       proxy:{'/api':{target:'http://127.0.0.1:'+apiAddress.port,changeOrigin:false}}}
+     });
+     await requestVite.listen();
+     const uiAddress=requestVite.httpServer?.address();
+     assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
+     requestBrowser=await requestChromium.launch({headless:true});
+     requestContext=await requestBrowser.newContext({
+      viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+     });
+     await requestContext.addCookies([{name:'__Secure-sabora_customer',
+      value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
+      httpOnly:true,sameSite:'Lax'}]);
+     const requestPage=await requestContext.newPage();
+     const customerRequests=[];
+     requestPage.on('request',r=>{
+      if(new URL(r.url()).pathname.startsWith('/api/v1/customer/table-change/'))
+       customerRequests.push({method:r.method(),
+        path:new URL(r.url()).pathname,
+        body:r.method()==='POST'?r.postDataJSON():null});
+     });
+     const deepLink='http://127.0.0.1:'+uiAddress.port+'/qr/v1/SABORA/'+
+      httpFixture.destinationTable+'#'+qrToken;
+     await requestPage.goto(deepLink);
+     await requestPage.getByRole('button',{name:'Solicitar cambio de mesa'})
+      .waitFor({timeout:25000});
+     assert.equal((await admin.query(
+      'SELECT count(*)::int AS n FROM sabora.customer_table_change_requests WHERE account_id=$1',
+      [httpFixture.sourceAccount])).rows[0].n,0,
+      'QR scan alone must not create a request or move the account');
+     await requestPage.getByRole('button',{name:'Cancelar',exact:true}).click();
+     assert.equal((await admin.query(
+      'SELECT count(*)::int AS n FROM sabora.customer_table_change_requests WHERE account_id=$1',
+      [httpFixture.sourceAccount])).rows[0].n,0,
+      'cancel the UI prompt without any business mutation');
+     await requestPage.goto(deepLink);
+     await requestPage.getByRole('button',{name:'Solicitar cambio de mesa'})
+      .waitFor({timeout:25000});
+     await requestPage.getByRole('button',{name:'Solicitar cambio de mesa'}).click();
+     await requestPage.getByText('Solicitud enviada al personal').waitFor();
+     assert.ok(customerRequests.some(r=>r.method==='GET'&&r.path.endsWith('/state')),
+      'customer reads the real sealed PG17 binding state');
+     assert.deepEqual(customerRequests.filter(r=>r.path.endsWith('/requests')),
+      [{method:'POST',path:'/api/v1/customer/table-change/requests',body:{}}],
+      'the customer must never send the destination in the request');
+     const {mkdir}=await import('node:fs/promises');
+     const {join}=await import('node:path');
+     const evidenceDir=join(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+     await mkdir(evidenceDir,{recursive:true});
+     await requestPage.screenshot({path:join(evidenceDir,'b3-customer-pg17-request-mobile.png'),
+      fullPage:true});
+     await requestPage.setViewportSize({width:1440,height:900});
+     await requestPage.screenshot({path:join(evidenceDir,'b3-customer-pg17-request-desktop.png'),
+      fullPage:true});
+    }finally{
+     if(requestContext)await requestContext.close();
+     if(requestBrowser)await requestBrowser.close();
+     if(requestVite)await requestVite.close();
+    }
+    const requestRecord=(await admin.query(
+     'SELECT id,status FROM sabora.customer_table_change_requests WHERE account_id=$1',
+     [httpFixture.sourceAccount])).rows;
+    assert.equal(requestRecord.length,1);
+    assert.equal(requestRecord[0].status,'pending');
+    const created={json:()=>({id:requestRecord[0].id})};
     const saved=(await admin.query(`SELECT q.status,q.account_id,
      b.table_id AS bound_table,b.binding_version
      FROM sabora.customer_table_change_requests q
@@ -2923,7 +3002,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      let vite,browser,context;
      const browserErrors=[],browserRequests=[];
      try{
-      await http.listen({host:'127.0.0.1',port:0});
+      if(!http.server.listening)await http.listen({host:'127.0.0.1',port:0});
       const apiAddress=http.server.address();
       assert.ok(apiAddress&&typeof apiAddress==='object'&&apiAddress.port>0);
       vite=await createServer({
@@ -3108,6 +3187,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // browser history by the production QR bootstrap before the first order.
      await customerPage.goto(origin+'/qr/v1/SABORA/'+
       httpFixture.destinationTable+'#'+qrToken);
+     // Approval must be visible and explicit before authorizing the new
+     // technical visit. The economic account remains at A until confirmation.
+     await customerPage.getByRole('button',
+      {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+     await customerPage.getByText(
+      'Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos').waitFor();
+     await customerPage.getByRole('button',
+      {name:'Continuar con la mesa escaneada'}).click();
      await customerPage.getByText('Mesa verificada').waitFor({timeout:20000});
      assert.equal(new URL(customerPage.url()).hash,'',
       'QR bearer fragment must be scrubbed from browser history');
