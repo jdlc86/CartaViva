@@ -2725,7 +2725,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      requireSameOrigin:()=>true,
      authenticate:async(request,reply)=>{
       if(request.headers.cookie==='__Secure-sabora_customer='+ 's'.repeat(43)){
-       request.customerIdentity={publicId:'SB-PG17',alias:'PG17'};
+       request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
        return;
       }
       return reply.code(401).send({error:'unauthorized'});
@@ -2746,6 +2746,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      return reply.code(403).send({error:'forbidden'});
     }
    }),{mounted:true});
+   // Test-only public catalog projection; checkout still revalidates the
+   // published SQL fixture through the production quote/confirmation RPCs.
+   http.get('/api/v1/catalog',async()=>[{
+    id:'b0a00000-0000-4000-8000-000000000330',
+    name:'Plato de integración',category:'Primeros',
+    priceCents:700,available:true,allergens:[]
+   }]);
    await http.ready();
    for(const endpoint of ['/api/v1/customer/visits',
     '/api/v1/customer/quotes','/api/v1/customer/orders/confirm',
@@ -3050,33 +3057,107 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(before.table_id,httpFixture.sourceTable);
     assert.equal(before.outstanding_cents,'2400');
     assert.equal(before.grant,'approved');
-    const transport=createCustomerFlowTransport({fetchImpl:async(path,options)=>{
-     const response=await http.inject({method:options.method,url:path,
-      headers:{...options.headers,cookie:'__Secure-sabora_customer='+positiveToken},
-      payload:options.body});
-     return new Response(response.body,{status:response.statusCode,
-      headers:{'content-type':response.headers['content-type']??'application/json'}});
-    }});
-    const visit=await transport.authorizeVisit({
-     tableId:httpFixture.destinationTable,qrToken
-    });
-    const quoted=await transport.quote({
-     tableId:httpFixture.destinationTable,qrToken,
-     visitId:visit.visitId,basketId:visit.basketId,
-     lines:[{itemId,selection:{},quantity:1}]
-    });
-    assert.equal(quoted.lines.length,1);
-    const orderInput={
-     tableId:httpFixture.destinationTable,qrToken,
-     visitId:visit.visitId,basketId:visit.basketId,
-     requestKey:'b3_http_transfer_request_0301',
-     lines:[{itemId,quoteId:quoted.lines[0].quoteId,selection:{},quantity:1}],
-     paymentMode:'pay_at_end'
-    };
-    const confirmed=await transport.confirm(orderInput);
-    assert.equal(confirmed.status,'confirmed');
-    assert.equal(confirmed.accountId,httpFixture.sourceAccount,
-     'the historical A and new B orders must belong to one economic account');
+    // The real client PWA now joins the SAME disposable PostgreSQL 17,
+    // Fastify and management-browser journey. Only the public catalog
+    // presentation is an explicitly isolated HTTP fixture: the order,
+    // quote, session, QR and account transfer use the live SQL functions.
+    const {pathToFileURL,fileURLToPath}=await import('node:url');
+    const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+    const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
+    let clientVite,clientBrowser,clientContext;
+    let confirmedOrderBody=null;
+    const customerBrowserErrors=[];
+    try{
+     assert.equal(http.server.listening,true,'management and client must use one live API');
+     const address=http.server.address();
+     assert.ok(address&&typeof address==='object'&&address.port>0);
+     clientVite=await createServer({
+      root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+      mode:'test',logLevel:'error',
+      server:{host:'127.0.0.1',port:0,strictPort:false,
+       proxy:{'/api':{target:'http://127.0.0.1:'+address.port,changeOrigin:false}}}
+     });
+     await clientVite.listen();
+     const uiAddress=clientVite.httpServer?.address();
+     assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
+     const origin='http://127.0.0.1:'+uiAddress.port;
+     clientBrowser=await chromium.launch({headless:true});
+     clientContext=await clientBrowser.newContext({
+      viewport:{width:390,height:844},reducedMotion:'reduce',
+      serviceWorkers:'block'
+     });
+     // The browser must carry the real test-only HttpOnly cookie through Vite
+     // into Fastify. No interception of order or visit API calls is allowed.
+     await clientContext.addCookies([{name:'__Secure-sabora_customer',
+      value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
+      httpOnly:true,sameSite:'Lax'}]);
+     await clientContext.addInitScript(({id})=>{
+      localStorage.setItem('sabora.client.selection.v1',
+       JSON.stringify([{itemId:id,name:'Plato de integración',
+        priceCents:700,quantity:1}]));
+     },{id:itemId});
+     const customerPage=await clientContext.newPage();
+     customerPage.on('pageerror',error=>customerBrowserErrors.push(error.message));
+     customerPage.on('request',request=>{
+      if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
+       confirmedOrderBody=request.postDataJSON();
+     });
+     // Enter through the real QR deep link. Its token must be removed from
+     // browser history by the production QR bootstrap before the first order.
+     await customerPage.goto(origin+'/qr/v1/SABORA/'+
+      httpFixture.destinationTable+'#'+qrToken);
+     await customerPage.getByText('Mesa verificada').waitFor({timeout:20000});
+     assert.equal(new URL(customerPage.url()).hash,'',
+      'QR bearer fragment must be scrubbed from browser history');
+     assert.equal(new URL(customerPage.url()).pathname,'/');
+     const {mkdir}=await import('node:fs/promises');
+     const {join}=await import('node:path');
+     assert.ok(process.env.RUNNER_TEMP,'disposable_actions_artifact_dir_required');
+     const evidence=join(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+     await mkdir(evidence,{recursive:true});
+     await customerPage.screenshot({path:join(evidence,
+      'b3-customer-pg17-qr-mobile.png'),fullPage:true});
+     await customerPage.getByRole('button',
+      {name:'Continuar con el pedido'}).click();
+     await customerPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+     const confirmedResponsePromise=customerPage.waitForResponse(response=>
+      new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+      {timeout:20000});
+     await customerPage.getByRole('button',{name:'Confirmar pedido'}).click();
+     const confirmedResponse=await confirmedResponsePromise;
+     assert.equal(confirmedResponse.status(),201,
+      'real customer browser must confirm through authenticated Fastify/PG17');
+     const confirmed=await confirmedResponse.json();
+     assert.equal(confirmed.status,'confirmed');
+     assert.equal(confirmed.accountId,httpFixture.sourceAccount,
+      'the historical A and new B orders must belong to one economic account');
+     await customerPage.getByText('Pedido confirmado').waitFor();
+     assert.ok(confirmedOrderBody,
+      'the browser must send the real checkout request, not a mock');
+     await customerPage.screenshot({path:join(evidence,
+      'b3-customer-pg17-confirmed-mobile.png'),fullPage:true});
+     await customerPage.setViewportSize({width:1440,height:900});
+     await customerPage.screenshot({path:join(evidence,
+      'b3-customer-pg17-confirmed-desktop.png'),fullPage:true});
+     assert.deepEqual(customerBrowserErrors,[]);
+     // Idempotency is replayed through the SAME real browser cookie/API/SQL.
+     const replay=await customerPage.evaluate(async body=>{
+      const response=await fetch('/api/v1/customer/orders/confirm',{
+       method:'POST',credentials:'same-origin',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify(body)
+      });
+      return {status:response.status,result:await response.json()};
+     },confirmedOrderBody);
+     assert.equal(replay.status,200,'replay must not create another order');
+     assert.equal(replay.result.status,'replayed');
+     assert.equal(replay.result.accountId,httpFixture.sourceAccount);
+    }finally{
+     if(clientContext)await clientContext.close();
+     if(clientBrowser)await clientBrowser.close();
+     if(clientVite)await clientVite.close();
+    }
     const transfer=(await admin.query(`SELECT b.table_id,b.session_id,b.visit_key,
      a.outstanding_cents,q.status AS grant,q.destination_table_id
      FROM sabora.customer_accounts a
@@ -3084,7 +3165,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
      WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0];
     assert.equal(transfer.table_id,httpFixture.destinationTable);
-    assert.equal(transfer.visit_key,visit.visitId);
+    const destinationVisit=(await admin.query(`SELECT visit_key FROM sabora.customer_table_visits
+     WHERE table_id=$1 AND customer_id=$2 ORDER BY granted_at DESC LIMIT 1`,
+     [httpFixture.destinationTable,httpFixture.customer])).rows[0];
+    assert.equal(transfer.visit_key,destinationVisit.visit_key);
     assert.equal(transfer.grant,'consumed');
     assert.equal(transfer.destination_table_id,httpFixture.destinationTable);
     assert.equal(transfer.outstanding_cents,'3100',
@@ -3102,9 +3186,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(destinations[0].table_id,httpFixture.sourceTable);
     assert.equal(destinations[1].table_id,httpFixture.destinationTable,
      'outstanding delivery follows customer to B');
-    const replayed=await transport.confirm(orderInput);
-    assert.equal(replayed.status,'replayed');
-    assert.equal(replayed.accountId,httpFixture.sourceAccount);
     const rounds=(await admin.query(`SELECT count(*)::int AS total FROM sabora.order_rounds
      WHERE account_id=$1`,[httpFixture.sourceAccount])).rows[0].total;
     assert.equal(rounds,2,'old A and new B rounds remain on one account');
