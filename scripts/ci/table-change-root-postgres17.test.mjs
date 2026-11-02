@@ -2743,7 +2743,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     sourceSession:'b0a00000-0000-4000-8000-000000000304',
     destinationSession:'b0a00000-0000-4000-8000-000000000305',
     sourceAccount:'b0a00000-0000-4000-8000-000000000306',
-    httpFixture.sourceVisit:'b3_http_source_visit_0301'
+    sourceVisit:'b3_http_source_visit_0301'
    });
    const fixture=await admin.connect();
    try{
