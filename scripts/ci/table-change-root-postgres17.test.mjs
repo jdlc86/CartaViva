@@ -2801,6 +2801,45 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')`,[httpFixture.waiter]);
+    // Historical A order has a completed pickup and a still-pending line.
+    // The integrated B checkout must redirect only the pending destination.
+    const priorOrder='b0a00000-0000-4000-8000-000000000340';
+    const priorRound='b0a00000-0000-4000-8000-000000000341';
+    const qrToken='Q'.repeat(42)+'A';
+    const itemId='b0a00000-0000-4000-8000-000000000330';
+    const snapshot={name:'Plato de integración',category:'Primeros',
+     priceCents:700,allergens:[],options:[],extras:[],discount:null};
+    await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
+     [createHash('sha256').update(qrToken).digest(),
+      [httpFixture.sourceTable,httpFixture.destinationTable]]);
+    await fixture.query(`INSERT INTO sabora.catalog_items
+     (id,draft,draft_revision,published_revision,published_snapshot,published_at)
+     VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,snapshot]);
+    await fixture.query(`INSERT INTO sabora.orders
+     (id,table_id,session_id,company,employee_number,customer_alias,customer_identifier,
+      customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
+     VALUES($1,$2,$3,NULL,NULL,'Histórico A',$4,$5,'{"schemaVersion":"1"}'::jsonb,
+      clock_timestamp(),'first','[{"category":"main","name":"Recogido","quantity":1},{"category":"main","name":"Pendiente","quantity":1}]'::jsonb)`,
+     [priorOrder,httpFixture.sourceTable,httpFixture.sourceSession,'SB-BABABABABABP',httpFixture.sourceVisit]);
+    await fixture.query(`INSERT INTO sabora.order_rounds
+     (id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
+      grouping_deadline,state)
+     VALUES($1,$2,$3,1200,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+     [priorRound,priorOrder,httpFixture.sourceAccount]);
+    await fixture.query("UPDATE sabora.order_lines SET status='picked_up' WHERE order_id=$1 AND line_number=1",
+     [priorOrder]);
+    await fixture.query(`INSERT INTO sabora.order_round_delivery_destinations
+     (round_id,account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4,$5)`,
+     [priorRound,httpFixture.sourceAccount,httpFixture.sourceTable,
+      httpFixture.sourceSession,httpFixture.sourceVisit]);
+    const priorLines=(await fixture.query('SELECT id FROM sabora.order_lines WHERE order_id=$1 ORDER BY line_number',
+     [priorOrder])).rows;
+    assert.equal(priorLines.length,2);
+    for(const line of priorLines)await fixture.query(`INSERT INTO sabora.order_line_delivery_destinations
+     (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+     VALUES($1,$2,$3,$4,$5,$6,$7)`,
+     [line.id,priorRound,httpFixture.sourceAccount,priorOrder,httpFixture.sourceTable,
+      httpFixture.sourceSession,httpFixture.sourceVisit]);
     await fixture.query('COMMIT');
     const positiveToken='s'.repeat(43);
     // The SQL session hash must match the cookie passed to the HTTP adapter.
@@ -2839,12 +2878,32 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(afterForgery.decided_at,null);
     assert.equal(afterForgery.table_id,httpFixture.sourceTable);
     assert.equal(afterForgery.outstanding_cents,'2400');
-    const authorizedDecision=await http.inject({
-     method:'POST',url:'/api/v1/operations/table-change/decisions',
-     headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
-     payload:{requestId:created.json().id,decision:'approved'}
+    // Real management PWA bearer transport -> Fastify -> two separately
+    // authenticated PostgreSQL roles for reading and deciding.
+    const managementGateway=createAuthenticatedOrderOperationsGateway({
+     getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
+     fetchImpl:async(path,options)=>{
+      const response=await http.inject({method:options.method,url:path,
+       headers:{...Object.fromEntries(options.headers.entries()),
+        'x-ci-staff':'authorized-waiter'},payload:options.body});
+      return new Response(response.body,{status:response.statusCode,
+       headers:{'content-type':response.headers['content-type']??'application/json'}});
+     }
     });
-    assert.equal(authorizedDecision.statusCode,200,authorizedDecision.body);
+    try{
+     const pending=await managementGateway.listPendingTableChanges();
+     assert.equal(pending.length,1);
+     assert.equal(pending[0].requestId,created.json().id);
+     assert.equal(pending[0].sourceTableNumber,981301);
+     const kitchen=await http.inject({method:'GET',
+      url:'/api/v1/operations/table-change/pending',
+      headers:{'x-ci-staff':'kitchen'}});
+     assert.equal(kitchen.statusCode,403);
+     assert.deepEqual(await managementGateway.decideTableChange({
+      requestId:created.json().id,decision:'approved'
+     }),{requestId:created.json().id,status:'approved'});
+     assert.deepEqual(await managementGateway.listPendingTableChanges(),[]);
+    }finally{managementGateway.revoke();}
     const replay=await http.inject({method:'POST',
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
     assert.equal(replay.statusCode,409,replay.body);
@@ -2872,6 +2931,76 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      FROM sabora.customer_table_change_requests WHERE account_id=$1`,
      [httpFixture.sourceAccount])).rows[0].total;
     assert.equal(count,1,'cooldown must not create a second grant');
+
+    // Real client PWA transport -> Fastify -> five SQL capabilities,
+    // finishing the deferred B transfer with an actual confirmed order.
+    const before=(await admin.query(`SELECT b.table_id,
+     a.outstanding_cents, q.status AS grant
+     FROM sabora.customer_accounts a
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+     JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+     WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0];
+    assert.equal(before.table_id,httpFixture.sourceTable);
+    assert.equal(before.outstanding_cents,'2400');
+    assert.equal(before.grant,'approved');
+    const transport=createCustomerFlowTransport({fetchImpl:async(path,options)=>{
+     const response=await http.inject({method:options.method,url:path,
+      headers:{...options.headers,cookie:'__Secure-sabora_customer='+positiveToken},
+      payload:options.body});
+     return new Response(response.body,{status:response.statusCode,
+      headers:{'content-type':response.headers['content-type']??'application/json'}});
+    }});
+    const visit=await transport.authorizeVisit({
+     tableId:httpFixture.destinationTable,qrToken
+    });
+    const quoted=await transport.quote({
+     tableId:httpFixture.destinationTable,qrToken,
+     visitId:visit.visitId,basketId:visit.basketId,
+     lines:[{itemId,selection:{},quantity:1}]
+    });
+    assert.equal(quoted.lines.length,1);
+    const orderInput={
+     tableId:httpFixture.destinationTable,qrToken,
+     visitId:visit.visitId,basketId:visit.basketId,
+     requestKey:'b3_http_transfer_request_0301',
+     lines:[{itemId,quoteId:quoted.lines[0].quoteId,selection:{},quantity:1}],
+     paymentMode:'pay_at_end'
+    };
+    const confirmed=await transport.confirm(orderInput);
+    assert.equal(confirmed.status,'confirmed');
+    assert.equal(confirmed.accountId,httpFixture.sourceAccount,
+     'the historical A and new B orders must belong to one economic account');
+    const transfer=(await admin.query(`SELECT b.table_id,b.session_id,b.visit_key,
+     a.outstanding_cents,q.status AS grant,q.destination_table_id
+     FROM sabora.customer_accounts a
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+     JOIN sabora.customer_table_change_requests q ON q.account_id=a.id
+     WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0];
+    assert.equal(transfer.table_id,httpFixture.destinationTable);
+    assert.equal(transfer.visit_key,visit.visitId);
+    assert.equal(transfer.grant,'consumed');
+    assert.equal(transfer.destination_table_id,httpFixture.destinationTable);
+    assert.equal(transfer.outstanding_cents,'3100',
+     'new B order must add 700 cents to the original 2400-cent balance');
+    const old=(await admin.query('SELECT table_id FROM sabora.orders WHERE id=$1',
+     [priorOrder])).rows[0];
+    assert.equal(old.table_id,httpFixture.sourceTable,
+     'historical order must retain A as origin');
+    const destinations=(await admin.query(`SELECT l.line_number,l.status,d.table_id
+     FROM sabora.order_lines l
+     JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+     WHERE l.order_id=$1 ORDER BY l.line_number`,[priorOrder])).rows;
+    assert.equal(destinations.length,2);
+    assert.equal(destinations[0].status,'picked_up');
+    assert.equal(destinations[0].table_id,httpFixture.sourceTable);
+    assert.equal(destinations[1].table_id,httpFixture.destinationTable,
+     'outstanding delivery follows customer to B');
+    const replayed=await transport.confirm(orderInput);
+    assert.equal(replayed.status,'replayed');
+    assert.equal(replayed.accountId,httpFixture.sourceAccount);
+    const rounds=(await admin.query(`SELECT count(*)::int AS total FROM sabora.order_rounds
+     WHERE account_id=$1`,[httpFixture.sourceAccount])).rows[0].total;
+    assert.equal(rounds,2,'old A and new B rounds remain on one account');
    }finally{
     await fixture.query('ROLLBACK').catch(()=>{});
     fixture.release();
