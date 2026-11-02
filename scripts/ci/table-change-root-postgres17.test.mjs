@@ -2736,27 +2736,45 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    // Positive request: commit a disposable business fixture so the
    // physically separate customer login can see it. The first HTTP call
    // must create exactly one pending grant; a replay must hit cooldown.
+   const httpFixture=Object.freeze({
+    customer:'b0a00000-0000-4000-8000-000000000301',
+    sourceTable:'b0a00000-0000-4000-8000-000000000302',
+    destinationTable:'b0a00000-0000-4000-8000-000000000303',
+    sourceSession:'b0a00000-0000-4000-8000-000000000304',
+    destinationSession:'b0a00000-0000-4000-8000-000000000305',
+    sourceAccount:'b0a00000-0000-4000-8000-000000000306',
+    httpFixture.sourceVisit:'b3_http_source_visit_0301'
+   });
    const fixture=await admin.connect();
    try{
     await fixture.query('BEGIN');
-    await insertIdentityAndTables(fixture,{publicId:'SB-BABABABABABP'});
-    await insertVisit(fixture,{tableId:ids.sourceTable,
-     sessionId:ids.sourceSession,visitKey:sourceVisit});
+    await fixture.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+     VALUES($1,'SB-BABABABABABP','B3 HTTP PG17')`,[httpFixture.customer]);
+    await fixture.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+     VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
+     [httpFixture.customer,Buffer.alloc(32,230)]);
+    await fixture.query(`INSERT INTO sabora.dining_tables
+     (id,number,capacity,qr_token_hash,session_id,ordering_state)
+     VALUES($1,981301,4,$3,$4,'open'),($2,981302,4,$3,$5,'open')`,
+     [httpFixture.sourceTable,httpFixture.destinationTable,qrHash,
+      httpFixture.sourceSession,httpFixture.destinationSession]);
+    await insertVisit(fixture,{tableId:httpFixture.sourceTable,
+     sessionId:httpFixture.sourceSession,visitKey:httpFixture.sourceVisit});
     await fixture.query(`INSERT INTO sabora.customer_accounts
      (id,table_id,session_id,visit_key,customer_id,payment_mode,
       payment_mode_selected_at,outstanding_cents)
      VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),2400)`,
-     [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit,ids.customer]);
+     [httpFixture.sourceAccount,httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.sourceVisit,httpFixture.customer]);
     await fixture.query(`INSERT INTO sabora.customer_account_operational_bindings
      (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
-     [ids.sourceAccount,ids.sourceTable,ids.sourceSession,sourceVisit]);
+     [httpFixture.sourceAccount,httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.sourceVisit]);
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query('COMMIT');
     const positiveToken='s'.repeat(43);
     // The SQL session hash must match the cookie passed to the HTTP adapter.
     await admin.query(`UPDATE sabora.customer_sessions SET token_hash=$1
-     WHERE customer_id=$2`,[createHash('sha256').update(positiveToken).digest(),ids.customer]);
+     WHERE customer_id=$2`,[createHash('sha256').update(positiveToken).digest(),httpFixture.customer]);
     const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
      'content-type':'application/json'};
     const created=await http.inject({method:'POST',
@@ -2769,8 +2787,8 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
      WHERE q.id=$1`,[created.json().id])).rows[0];
     assert.equal(saved.status,'pending');
-    assert.equal(saved.account_id,ids.sourceAccount);
-    assert.equal(saved.bound_table,ids.sourceTable,
+    assert.equal(saved.account_id,httpFixture.sourceAccount);
+    assert.equal(saved.bound_table,httpFixture.sourceTable,
      'request must not transfer the account');
     const replay=await http.inject({method:'POST',
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
@@ -2778,7 +2796,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     assert.deepEqual(replay.json(),{error:'table_change_request_locked'});
     const count=(await admin.query(`SELECT count(*)::int AS total
      FROM sabora.customer_table_change_requests WHERE account_id=$1`,
-     [ids.sourceAccount])).rows[0].total;
+     [httpFixture.sourceAccount])).rows[0].total;
     assert.equal(count,1,'cooldown must not create a second grant');
    }finally{
     await fixture.query('ROLLBACK').catch(()=>{});
