@@ -14,6 +14,7 @@ import {CatalogView} from './views/CatalogView';
 import {OrdersView} from './views/OrdersView';
 import {SummaryView} from './views/SummaryView';
 import {TablesView} from './views/TablesView';
+import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
 import './style.css';
 
@@ -27,12 +28,14 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
 
 export function ManagementApp({
   tablesGateway,
+  tableChangeGateway,
   catalogGateway,
   operationsGateway,
   staffGateway,
   staffDirectoryGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
+  tableChangeGateway?: TableChangeQueueGateway;
   catalogGateway?: AdminCatalogGateway;
   operationsGateway?: OrderOperationsGateway;
   staffGateway?: StaffManagementGateway;
@@ -76,7 +79,7 @@ export function ManagementApp({
 
   const activeView = area === 'resumen' ? <SummaryView/>
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
-    : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
+    : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
 
