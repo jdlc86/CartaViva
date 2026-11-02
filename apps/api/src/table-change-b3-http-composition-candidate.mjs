@@ -22,7 +22,6 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  // Six independent SQL login preflights MUST succeed before registering
  // any route. The pending reader has its own one-function capability.
  const {pendingPool,expectedPendingLogin,notificationPool,verifyStaff,...b3Configuration}=sqlConfiguration;
- if(typeof notificationPool?.connect!=='function')throw Error('invalid_b3_http_composition');
  const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
   ...b3Configuration,verifyStaff
  });
@@ -38,8 +37,9 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  // a customer-only partial surface when the operations guard is invalid.
  const guard=forRoles(['admin','waiter']);
  if(typeof guard!=='function')throw Error('invalid_b3_http_composition');
+ if(typeof notificationPool?.connect!=='function')throw Error('invalid_b3_http_composition');
  const notifier=await createTableChangeCommitNotifier({
-  pool:notificationPool,expectedLogin:expectedOperationsLogin
+  pool:notificationPool,expectedLogin:b3Configuration.expectedOperationsLogin
  });
  try{
   registerCustomerProductionFlowHttp(app,{
