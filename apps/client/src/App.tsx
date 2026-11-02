@@ -10,6 +10,7 @@ import {TableQrScanner} from './components/TableQrScanner';
 import {CheckoutPanel,type CheckoutPhase,type PaymentMode} from './components/CheckoutPanel';
 import {createCustomerFlowTransport,CustomerFlowTransportError} from './customer-flow-transport';
 import {subscribeCustomerEvents,type CustomerEvent} from './customer-event-stream';
+import {subscribeCustomerTableChange} from './customer-table-change-events';
 import {configuredRestaurantCode,parseScannedTableQr,type InitialTableQr,type TableQrCredential} from './table-qr';
 
 type Overlay='cart'|'notifications'|'qr'|'checkout'|null;
@@ -83,6 +84,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [qrState,setQrState]=useState<QrState>(initialTableQr?.status==='valid'?'pending':initialTableQr?'invalid':'idle');
  const [tableVisit,setTableVisit]=useState<TableVisit|null>(null);
  const [tableChangeState,setTableChangeState]=useState<TableChangeState|null>(null);
+ const [tableChangeNotice,setTableChangeNotice]=useState<'approved'|'rejected'|null>(null);
  const [changeClock,setChangeClock]=useState(()=>Date.now());
  const [checkoutPhase,setCheckoutPhase]=useState<CheckoutPhase>('quoting');
  const [paymentMode,setPaymentMode]=useState<PaymentMode>('pay_now');
@@ -95,6 +97,9 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const qrCredentialRef=useRef<TableQrCredential|null>(null);
  const scannedCredentialRef=useRef<TableQrCredential|null>(initialTableQr?.status==='valid'?initialTableQr.credential:null);
  const changeStateReceivedAtRef=useRef(Date.now());
+ const qrStateRef=useRef<QrState>(qrState);
+ const lastStreamStateRef=useRef<TableChangeState|null>(null);
+ useEffect(()=>{qrStateRef.current=qrState;},[qrState]);
  const qrAuthorizationRef=useRef<Promise<void>|null>(null);
  const checkoutRequestRef=useRef<string|null>(null);
  const acceptanceTokenRef=useRef<string|null>(null);
@@ -198,11 +203,42 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[tableChangeState,authorizeTable]);
 
  useEffect(()=>{
-  if(!tableChangeState||!['pending','rejected'].includes(tableChangeState.state))return;
-  // This is a one-shot local countdown, never a business-state poll.
+  if(!tableChangeState||!['pending','rejected'].includes(tableChangeState.state)||
+     tableChangeState.expiresAtMs===null||
+     tableChangeState.serverNowMs+Date.now()-changeStateReceivedAtRef.current>=tableChangeState.expiresAtMs)return;
+  // Local display only; expiry and the decision are always revalidated in PG17.
   const tick=window.setTimeout(()=>setChangeClock(Date.now()),1000);
   return()=>window.clearTimeout(tick);
  },[tableChangeState,changeClock]);
+ useEffect(()=>{
+  if(flowContract!=='h6'||!enableTableChangeFlow||identity.status!=='authenticated')return;
+  return subscribeCustomerTableChange({
+   onState:state=>{
+    const previous=lastStreamStateRef.current;
+    lastStreamStateRef.current=state;
+    if(state.state==='approved'&&previous?.state!=='approved')
+     setTableChangeNotice('approved');
+    else if(state.state==='rejected'&&previous?.state!=='rejected')
+     setTableChangeNotice('rejected');
+    else if(state.state==='bound'||state.state==='unbound')
+     setTableChangeNotice(null);
+    const credential=scannedCredentialRef.current;
+    if(credential&&['checking_change','change_prompt','change_pending',
+       'change_rejected','change_approved'].includes(qrStateRef.current))
+     applyScannedChangeState(state,credential);
+    else{
+     changeStateReceivedAtRef.current=Date.now();
+     setChangeClock(changeStateReceivedAtRef.current);
+     setTableChangeState(state);
+    }
+   },
+   onRevoked:()=>{
+    lastStreamStateRef.current=null;
+    setTableChangeState(null);setTableChangeNotice(null);
+    setQrState('change_error');
+   }
+  });
+ },[flowContract,enableTableChangeFlow,identity.status,applyScannedChangeState]);
  const changeRemainingSeconds=tableChangeState?.expiresAtMs==null?null:Math.max(0,
   Math.ceil((tableChangeState.expiresAtMs-(
    tableChangeState.serverNowMs+changeClock-changeStateReceivedAtRef.current))/1000));
@@ -440,7 +476,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   setIdentityBusy(true);
   try{await customerTransport.logout();setIdentity({status:'guest'});
    qrCredentialRef.current=null;scannedCredentialRef.current=null;setTableVisit(null);
-   setTableChangeState(null);setQrState('idle');setEventScope(null);setCustomerEvents([]);
+   setTableChangeState(null);setTableChangeNotice(null);lastStreamStateRef.current=null;
+   setQrState('idle');setEventScope(null);setCustomerEvents([]);
    setNotice(locale==='es'?'Sesión cerrada en este dispositivo.':'Session closed on this device.');}
   catch{setNotice(locale==='es'?'No se ha podido cerrar la sesión con seguridad.':'The session could not be closed securely.');}
   finally{setIdentityBusy(false);}
@@ -450,6 +487,13 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
 
  return <div className="client-app">
   <Header locale={locale} quantity={totalQuantity} searchOpen={searchOpen} onLocale={switchLocale} onSearch={toggleSearch} onCart={openCart} onNotifications={openNotifications} onHome={goHome}/>
+  {tableChangeNotice?<aside className="table-change-live-notice" role="status" aria-live="polite">
+   <p>{tableChangeNotice==='approved'?APPROVED_CHANGE_MESSAGE:REJECTED_CHANGE_MESSAGE}</p>
+   <div>
+    <button type="button" onClick={()=>{setTableChangeNotice(null);setArea('qr');setOverlay('qr');}}>Ver cambio de mesa</button>
+    <button type="button" onClick={()=>setTableChangeNotice(null)} aria-label="Cerrar aviso">Cerrar</button>
+   </div>
+  </aside>:null}
   <div className={`search-panel${searchOpen?' open':''}`} aria-hidden={!searchOpen}><label htmlFor="catalog-search">{copy.search}</label><div><Icon name="search"/><input ref={searchRef} id="catalog-search" type="search" value={query} maxLength={100} placeholder={copy.search} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Escape')setSearchOpen(false);}}/></div></div>
   <main id="main-content" className="client-main">
    {area==='home'?<>
