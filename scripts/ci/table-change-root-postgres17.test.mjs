@@ -2637,7 +2637,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    const loginUrl=new URL(url);
    loginUrl.username=spec.login;
    loginUrl.password=password;
-   const pool=new Pool({connectionString:loginUrl.toString(),max:1,connectionTimeoutMillis:3000,
+   const pool=new Pool({connectionString:loginUrl.toString(),max:3,connectionTimeoutMillis:3000,
     options:'-c statement_timeout=15000'});
    pools.push(pool);
    const connection=await pool.connect();
@@ -2672,6 +2672,10 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.ok(results.every(result=>result.validated===true));
   assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool:scopedPools[4]}),
    {validated:true});
+  // Unlike the pinned preflight connection, runtime customer requests must
+  // check out distinct physical clients to exercise concurrent transactions.
+  // One client stays pinned for identity assertions; two remain available.
+  scopedPools[0]={connect:()=>pools[0].connect()};
   const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:scopedPools[0],operationsPool:scopedPools[1],
    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
@@ -2822,15 +2826,13 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
     assert.equal(replay.statusCode,409,replay.body);
     assert.deepEqual(replay.json(),{error:'table_change_request_locked'});
-    // The scoped test pool deliberately pins one physical login connection.
-    // Do not issue concurrent BEGIN/SET LOCAL ROLE transactions on that same
-    // connection: interleaved transaction state is invalid and returns 503.
-    // Concurrent acceptance needs separate checked-out SQL connections.
-    for(let attempt=0;attempt<2;attempt++){
-     const response=await http.inject({
-      method:'POST',url:'/api/v1/customer/table-change/requests',
-      headers:requestHeaders,payload:{}
-     });
+    // Two independent physical SQL connections race the same HTTP request.
+    // The database must serialize the business transition, not the test pool.
+    const concurrent=await Promise.all(Array.from({length:2},()=>http.inject({
+     method:'POST',url:'/api/v1/customer/table-change/requests',
+     headers:requestHeaders,payload:{}
+    })));
+    for(const response of concurrent){
      assert.equal(response.statusCode,409,response.body);
      assert.deepEqual(response.json(),{error:'table_change_request_locked'});
     }
