@@ -20,6 +20,8 @@ export async function assertPendingReaderCapabilities({pool,expectedLogin}={}){
    row.bypass_rls!==false||row.create_db!==false||row.create_role!==false||
    row.replication!==false||row.database_create!==false||row.schema_create!==false||
    row.direct_relations!==false||row.direct_sequences!==false||
+   !Array.isArray(row.role_set)||row.role_set.length!==2||
+   row.role_set[0]!==true||row.role_set[1]!==true||
    !Array.isArray(row.all_set_roles)||row.all_set_roles.length!==1||
    row.all_set_roles[0]!==PENDING_READER_ROLE)
    throw Error('invalid_pending_reader_capabilities:identity');
