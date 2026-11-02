@@ -55,10 +55,12 @@ function EmptyState({children}:Readonly<{children:string}>){
 }
 
 export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
- flowContract='h6'}:Readonly<{
+ flowContract='h6',enableTableChangeFlow=false}:Readonly<{
  initialTableQr?:InitialTableQr;
  confirmStripePayment?:((clientSecret:string)=>Promise<void>)|null;
  flowContract?:'h6'|'h3-candidate';
+ /** Opt-in only for the verified isolated B3 composition, never default H6. */
+ enableTableChangeFlow?:boolean;
 }>){
  const [initial]=useState(()=>loadClientPreferences(localStorage));
  const [locale,setLocale]=useState<Locale>(initial.locale);
@@ -131,7 +133,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[authorizeTable]);
 
  const inspectScannedQr=useCallback(async(credential:TableQrCredential)=>{
-  if(flowContract==='h3-candidate'){
+  if(flowContract==='h3-candidate'||!enableTableChangeFlow){
    qrCredentialRef.current=credential;setTableVisit(null);
    void authorizeTable(credential);return;
   }
@@ -143,7 +145,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   }catch{
    if(scannedCredentialRef.current===credential)setQrState('change_error');
   }
- },[flowContract,authorizeTable,applyScannedChangeState]);
+ },[flowContract,enableTableChangeFlow,authorizeTable,applyScannedChangeState]);
 
  const acceptScannedQr=useCallback((payload:string)=>{
   let credential:TableQrCredential;

@@ -2608,6 +2608,8 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
 
 
 test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey',async()=>{
+ const priorB3Flag=process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
+ process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE='isolated_pg17';
  const suffix=process.pid.toString(36);
  const specs=[
   {role:'sabora_f12_customer_runtime',login:'sabora_b3_physical_request_'+suffix,
@@ -3353,6 +3355,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    /invalid_b3_confirmation_capabilities/,
    'a revoked writer privilege must prevent candidate construction');
  }finally{
+  if(priorB3Flag===undefined)delete process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
+  else process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE=priorB3Flag;
   for(const connection of connections)connection.release();
   for(const pool of pools)await pool.end();
   for(const role of createdRoles.reverse()){
