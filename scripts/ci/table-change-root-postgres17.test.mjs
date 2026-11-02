@@ -2618,17 +2618,13 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
  try{
   for(const spec of specs){
    if(spec.role!=='sabora_customer_flow_runtime'){
-    await admin.query('SELECT pg_advisory_lock(934781, 3)');
-    try{
-     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
-     if(!exists){
-      await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
-      createdRoles.push(spec.role);
-     }
-     await admin.query('GRANT USAGE ON SCHEMA sabora TO '+spec.role);
-     for(const signature of spec.signatures)
-      await admin.query('GRANT EXECUTE ON FUNCTION '+signature+' TO '+spec.role);
-    }finally{await admin.query('SELECT pg_advisory_unlock(934781, 3)');}
+    const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
+    assert.equal(exists,0,'disposable PG17 roles must not preexist');
+    await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
+    createdRoles.push(spec.role);
+    await admin.query('GRANT USAGE ON SCHEMA sabora TO '+spec.role);
+    for(const signature of spec.signatures)
+     await admin.query('GRANT EXECUTE ON FUNCTION '+signature+' TO '+spec.role);
    }
    await admin.query('CREATE ROLE '+spec.login+' LOGIN NOINHERIT PASSWORD '+
     "'"+password+"'");
