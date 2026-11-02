@@ -2900,9 +2900,74 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       url:'/api/v1/operations/table-change/pending',
       headers:{'x-ci-staff':'kitchen'}});
      assert.equal(kitchen.statusCode,403);
-     assert.deepEqual(await managementGateway.decideTableChange({
-      requestId:created.json().id,decision:'approved'
-     }),{requestId:created.json().id,status:'approved'});
+     // Same disposable PostgreSQL 17 database and Fastify instance now
+     // drive the real management PWA in Chromium. The browser approves the
+     // request; an injected SQL mock cannot substitute for this boundary.
+     const {pathToFileURL,fileURLToPath}=await import('node:url');
+     const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+     const manageRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+     const {createServer}=await import(pathToFileURL(manageRequire.resolve('vite')).href);
+     let vite,browser,context;
+     const browserErrors=[],browserRequests=[];
+     try{
+      await http.listen({host:'127.0.0.1',port:0});
+      const apiAddress=http.server.address();
+      assert.ok(apiAddress&&typeof apiAddress==='object'&&apiAddress.port>0);
+      vite=await createServer({
+       root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+       logLevel:'error',
+       server:{host:'127.0.0.1',port:0,strictPort:false,
+        proxy:{'/api':{target:'http://127.0.0.1:'+apiAddress.port,
+         changeOrigin:false}}}
+      });
+      await vite.listen();
+      const uiAddress=vite.httpServer?.address();
+      assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
+      browser=await chromium.launch({headless:true});
+      context=await browser.newContext({viewport:{width:390,height:844},
+       reducedMotion:'reduce'});
+      const page=await context.newPage();
+      page.on('pageerror',error=>browserErrors.push(error.message));
+      page.on('request',request=>{
+       if(new URL(request.url()).pathname.startsWith('/api/v1/operations/table-change/'))
+        browserRequests.push({method:request.method(),
+         authorization:request.headers().authorization});
+      });
+      await page.goto('http://127.0.0.1:'+uiAddress.port+'/#mesas');
+      await page.evaluate(async()=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       const fetchImpl=(input,init={})=>{
+        const headers=new Headers(init.headers);
+        headers.set('x-ci-staff','authorized-waiter');
+        return fetch(input,{...init,headers});
+       };
+       window.__saboraCiDispose=mountAuthenticatedManagementApp({
+        element:document.getElementById('root'),
+        getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
+        fetchImpl,enableTableChangeQueue:true
+       });
+      });
+      await page.getByRole('heading',{name:'Solicitudes de cambio de mesa'}).waitFor();
+      await page.getByText('Mesa 981301').first().waitFor();
+      assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).isEnabled(),true);
+      await page.getByRole('button',{name:'Aprobar cambio'}).click();
+      await page.getByText('Sin solicitudes pendientes').first().waitFor();
+      assert.ok(browserRequests.some(row=>row.method==='GET'));
+      assert.ok(browserRequests.some(row=>row.method==='POST'));
+      assert.ok(browserRequests.every(row=>
+       row.authorization==='Bearer verified-ci-waiter-bearer-token'));
+      const approvedInSql=(await admin.query(
+       'SELECT status FROM sabora.customer_table_change_requests WHERE id=$1',
+       [created.json().id])).rows[0];
+      assert.equal(approvedInSql.status,'approved');
+      await page.evaluate(()=>window.__saboraCiDispose());
+      assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).count(),0);
+      assert.deepEqual(browserErrors,[]);
+     }finally{
+      if(context)await context.close();
+      if(browser)await browser.close();
+      if(vite)await vite.close();
+     }
      assert.deepEqual(await managementGateway.listPendingTableChanges(),[]);
     }finally{managementGateway.revoke();}
     const replay=await http.inject({method:'POST',
