@@ -10,9 +10,9 @@
 - **Repositorio autorizado:** `jdlc86/CartaViva`.
 - **Rama de trabajo en la entrega:** `integration/sabora-h6-b2-delivery-board-contract-20261031`.
 - **PR:** [#43 (Draft)](https://github.com/jdlc86/CartaViva/pull/43); **no fusionado**.
-- **HEAD comprobado:** `de1bcc48ed2defd7c450fde6e6d2eabf4ebe98de`.
+- **Último HEAD funcional validado (antes de documentación):** `d8852114fd141301a7246780f91a5fe44dbaf9ca`. Revisar el HEAD más reciente al tomar control.
 - **Estado global del cambio de mesa:** **B3 NO-GO / B4 NO-GO**, aunque existen recorridos integrados verdes.
-- **Última comprobación del HEAD:** [CI H6](https://github.com/jdlc86/CartaViva/actions/runs/41518927497), [bootstrap / PG17](https://github.com/jdlc86/CartaViva/actions/runs/41518927476), [navegador cliente](https://github.com/jdlc86/CartaViva/actions/runs/41518927334) y [navegador gestión](https://github.com/jdlc86/CartaViva/actions/runs/41518927270): **4/4 SUCCESS** el 2026-11-02. **Verificar nuevamente HEAD y workflows al comenzar la sesión 20**, pues pueden cambiar.
+- **Última comprobación del hito funcional:** [CI H6](https://github.com/jdlc86/CartaViva/actions/runs/41524366119), [bootstrap / PG17](https://github.com/jdlc86/CartaViva/actions/runs/41524366376), [navegador cliente](https://github.com/jdlc86/CartaViva/actions/runs/41524366047) y [navegador gestión](https://github.com/jdlc86/CartaViva/actions/runs/41524366063): **4/4 SUCCESS** el 2026-11-02 (bloques H6 1, 2A y 2B PASS). Verificar el HEAD documental más reciente al iniciar la sesión 20. **Verificar nuevamente HEAD y workflows al comenzar la sesión 20**, pues pueden cambiar.
 
 **Orden obligatorio de lectura antes de actuar:**
 1. `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`: contrato funcional normativo y decisión aprobada de cambio de mesa (2026-10-30).
@@ -54,12 +54,20 @@ No reemplazar este resumen por el texto literal normativo.
 
 **Importante:** B3 sigue exclusivamente como **composición candidata opt-in del entorno aislado**. El arnés usa todavía adaptadores de identidad HTTP/cookie y catálogo de prueba; no equivale a montaje productivo autorizado.
 
+### Hito funcional posterior: aislamiento de tres cuentas en dos mesas (F14/F18 y R07 parcial)
+
+**SHA `d8852114fd141301a7246780f91a5fe44dbaf9ca` — 4/4 workflows SUCCESS.** En el **mismo recorrido integral PG17 real desechable + seis logins SQL físicos + Fastify + PWA cliente/gestión Chromium**, un comensal con consumo en A obtiene permiso y confirma en B mientras **otro comensal permanece y pide en A** y **un tercero ya consume y vuelve a pedir en B**. Los tres tienen sesiones, cuentas, historial y pagos diferidos separados. Se comprueban 3 `account_id` preexistentes sin duplicados, saldo del trasladado **2400→3100 céntimos**, saldo comensal A **1800→2500** y comensal B **2500→3200**, historial y destinos de entrega pendientes de los que no se trasladan inalterados. Los dos comensales ajenos mantienen canales SSE reales y no reciben decisiones H6 de la otra cuenta; el lector sellado tampoco las devuelve. Capturas en `sabora-h6-acceptance/b3-f18-codiner-{a,b}-confirmed-mobile.png`. [CI](https://github.com/jdlc86/CartaViva/actions/runs/41524366119) · [bootstrap/PG17](https://github.com/jdlc86/CartaViva/actions/runs/41524366376) · [cliente](https://github.com/jdlc86/CartaViva/actions/runs/41524366047) · [gestión](https://github.com/jdlc86/CartaViva/actions/runs/41524366063).
+
+**Defecto real corregido:** la confirmación candidata rechazaba pedir tras reescanear **la propia mesa** porque exigía coincidencia del `visit_key` histórico. La migración candidata nueva `20261102200000_sabora_h6_same_table_rescan_binding_candidate.sql` elimina **solo esa igualdad**, pero exige la mesa y sesión operativas iguales y la visita/QR actual autorizada; conserva intacta la vinculación original y el permiso de cambio de mesa sin usar. Con revisión en `scripts/ci/migration-audit.mjs`. No cambia la confirmación productiva, ni concede roles operativos, ni despliega.
+
+**Límites:** F18 tiene **evidencia positiva del recorrido principal**, no de todas las variantes de pagos, recogidas, QR revocados y eventos cocina/sala; R07 tampoco está certificado de forma global. La autenticación HTTP y el catálogo siguen con fixtures de integración, la ventana de 90 s natural no se ha medido, B3/B4 siguen **NO-GO**.
+
 ## 5. Qué falta de verdad: siguiente hito integral propuesto
 
 **Objetivo:** continuar el cierre funcional **B3 completo**, no abrir una serie de pruebas parciales. Antes de modificar código, definir una única campaña/recorrido E2E que abarque todas las capas afectadas, con IDs F/R, estados de cuenta y eventos esperados. Priorizar, como conjunto integrado y no como microhitos:
 
 - Composición de **identidad y catálogo operativa autorizable**, evitando los adaptadores del arnés y manteniendo privilegios mínimos y fail-closed; distinguir preparación técnica de autorización para activarla.
-- Clientes múltiples con **cuentas independientes** en mesas A y B; SSE cliente/camarero/cocina, reconexión, aislamiento entre comensales, replays y cursores caducados/huecos, caída/reinicio y alcance de retención del outbox.
+- **Ya comprobado:** convivencia de 3 comensales/cuentas con pedidos reales en A/B y sin decisiones H6 cruzadas. **Falta:** SSE de cocina/sala y sus variantes, reconexión multiusuario, replays con cursores caducados/huecos, caída/reinicio de servidor, caducidad de retención y todos los límites de autorización.
 - Ventana **natural exacta de 90 s** y condiciones de carrera en instantes límite, aprobación/decisión/confirmación concurrentes, cierre de cuenta, revocación de identidad/permiso, QR rotado o mesa bloqueada, autorización consumida o pendiente.
 - Conciliación real del mismo historial económico en **pagos parciales, efectivo, Stripe pendiente/reintentos**, reversiones y fallos inyectados con rollback atómico; destinos cocina/sala, estados de recogida, agrupación e idempotencia.
 - Conformidad de **ambas PWA con diseño aprobado**, accesibilidad y capturas móvil/escritorio. Evidencia **por cada F01–F28 / R01–R10** antes de emitir GO.
