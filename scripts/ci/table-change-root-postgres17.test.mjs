@@ -2831,7 +2831,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     assert.equal(afterForgery.outstanding_cents,'2400');
     const authorizedDecision=await http.inject({
      method:'POST',url:'/api/v1/operations/table-change/decisions',
-     headers:{'x-ci-staff':'authorized-waiter'},
+     headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
      payload:{requestId:created.json().id,decision:'approved'}
     });
     assert.equal(authorizedDecision.statusCode,200,authorizedDecision.body);
