@@ -181,6 +181,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     boundTableId:tableChangeState?.boundTableId??null,
     expiresAtMs:receipt.expiresAtMs,serverNowMs:now});
    setQrState('change_pending');
+   setTableChangeNotice(null);
   }catch(error){
    if(error instanceof CustomerFlowTransportError&&error.status===409)
     await refreshTableChange();
@@ -212,16 +213,22 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[tableChangeState,changeClock]);
  useEffect(()=>{
   if(flowContract!=='h6'||!enableTableChangeFlow||identity.status!=='authenticated')return;
+  // The cursor is scoped to the authenticated public identity. A reconnect
+  // can recover committed decisions even after the 90-second UI window has
+  // expired. Never put the HttpOnly session secret in browser storage.
+  const cursorKey='sabora.table-change.cursor.'+identity.publicId;
+  const saved=Number(localStorage.getItem(cursorKey)??'0');
+  const afterCursor=Number.isSafeInteger(saved)&&saved>=0?saved:0;
+  const saveCursor=(cursor:number)=>{
+   const previous=Number(localStorage.getItem(cursorKey)??'0');
+   if(!Number.isSafeInteger(previous)||cursor>previous)
+    localStorage.setItem(cursorKey,String(cursor));
+  };
   return subscribeCustomerTableChange({
+   afterCursor,
    onState:state=>{
-    const previous=lastStreamStateRef.current;
+    // A snapshot updates authority; it is not another notification.
     lastStreamStateRef.current=state;
-    if(state.state==='approved'&&previous?.state!=='approved')
-     setTableChangeNotice('approved');
-    else if(state.state==='rejected'&&previous?.state!=='rejected')
-     setTableChangeNotice('rejected');
-    else if(state.state==='bound'||state.state==='unbound')
-     setTableChangeNotice(null);
     const credential=scannedCredentialRef.current;
     if(credential&&['checking_change','change_prompt','change_pending',
        'change_rejected','change_approved'].includes(qrStateRef.current))
@@ -232,13 +239,33 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
      setTableChangeState(state);
     }
    },
+   onDecision:event=>{
+    const last=Number(localStorage.getItem(cursorKey)??'0');
+    if(Number.isSafeInteger(last)&&event.id<=last)return;
+    saveCursor(event.id);
+    const current=lastStreamStateRef.current;
+    // An approval already consumed must not reappear as a usable grant
+    // merely because the outbox retains its immutable audit event.
+    if(event.type==='sabora.table_change.approved'){
+     if(current?.state==='approved')setTableChangeNotice('approved');
+    }else if(current?.state!=='approved'&&
+      !(current?.state==='pending'&&current.expiresAtMs!==null&&
+        current.expiresAtMs>event.expiresAtMs)){
+     setTableChangeNotice('rejected');
+    }
+   },
+   onResync:maxCursor=>{
+    if(maxCursor!==null)saveCursor(maxCursor);
+    setNotice('El historial de avisos no está completo. Se ha recuperado el estado actual autorizado.');
+   },
    onRevoked:()=>{
     lastStreamStateRef.current=null;
     setTableChangeState(null);setTableChangeNotice(null);
     setQrState('change_error');
    }
   });
- },[flowContract,enableTableChangeFlow,identity.status,applyScannedChangeState]);
+ },[flowContract,enableTableChangeFlow,identity.status,
+    identity.status==='authenticated'?identity.publicId:null,applyScannedChangeState]);
  const changeRemainingSeconds=tableChangeState?.expiresAtMs==null?null:Math.max(0,
   Math.ceil((tableChangeState.expiresAtMs-(
    tableChangeState.serverNowMs+changeClock-changeStateReceivedAtRef.current))/1000));
