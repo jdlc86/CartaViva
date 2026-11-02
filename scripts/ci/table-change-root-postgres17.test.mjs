@@ -3377,6 +3377,160 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const rounds=(await admin.query(`SELECT count(*)::int AS total FROM sabora.order_rounds
      WHERE account_id=$1`,[httpFixture.sourceAccount])).rows[0].total;
     assert.equal(rounds,2,'old A and new B rounds remain on one account');
+
+    // The second half of the SAME real customer/waiter/PG17 journey:
+    // after transfer B, a new request to leave B can be rejected while the
+    // account, economic history and outstanding deliveries remain unchanged.
+    // Advance ONLY the old consumed request's CI fixture timestamps so this
+    // deterministic test exercises a new 90-second response window.
+    await admin.query(`UPDATE sabora.customer_table_change_requests
+     SET created_at=clock_timestamp()-interval '5 minutes',
+         decided_at=clock_timestamp()-interval '4 minutes',
+         expires_at=clock_timestamp()-interval '3 minutes'
+     WHERE id=$1 AND status='consumed'`,[created.json().id]);
+    const {pathToFileURL:rejectPathToFileURL,fileURLToPath:rejectFileURLToPath}
+     =await import('node:url');
+    const {chromium:rejectChromium}=await import(
+     rejectPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const rejectRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+    const {createServer:createRejectVite}=await import(
+     rejectPathToFileURL(rejectRequire.resolve('vite')).href);
+    const rejectManageRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+    const {createServer:createRejectManageVite}=await import(
+     rejectPathToFileURL(rejectManageRequire.resolve('vite')).href);
+    let rejectVite,rejectManageVite,rejectBrowser,rejectClientContext,rejectStaffContext;
+    const rejectedClientErrors=[];
+    try{
+     rejectVite=await createRejectVite({
+      root:rejectFileURLToPath(new URL('../../apps/client/',import.meta.url)),
+      mode:'test',logLevel:'error',
+      server:{host:'127.0.0.1',port:0,strictPort:false,
+       proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
+        changeOrigin:false}}}
+     });
+     rejectManageVite=await createRejectManageVite({
+      root:rejectFileURLToPath(new URL('../../apps/management/',import.meta.url)),
+      logLevel:'error',
+      server:{host:'127.0.0.1',port:0,strictPort:false,
+       proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
+        changeOrigin:false}}}
+     });
+     await rejectVite.listen();await rejectManageVite.listen();
+     const caddr=rejectVite.httpServer.address();
+     const maddr=rejectManageVite.httpServer.address();
+     assert.ok(caddr&&maddr&&typeof caddr==='object'&&typeof maddr==='object');
+     rejectBrowser=await rejectChromium.launch({headless:true});
+     rejectClientContext=await rejectBrowser.newContext({
+      viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+     });
+     rejectStaffContext=await rejectBrowser.newContext({
+      viewport:{width:1440,height:900},reducedMotion:'reduce',serviceWorkers:'block'
+     });
+     await rejectClientContext.addCookies([{name:'__Secure-sabora_customer',
+      value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
+      httpOnly:true,sameSite:'Lax'}]);
+     const rejectingCustomerPage=await rejectClientContext.newPage();
+     rejectingCustomerPage.on('pageerror',error=>rejectedClientErrors.push(error.message));
+     const stateRequests=[];
+     rejectingCustomerPage.on('request',request=>{
+      if(new URL(request.url()).pathname==='/api/v1/customer/table-change/state')
+       stateRequests.push(request.url());
+     });
+     const stream=rejectingCustomerPage.waitForResponse(response=>
+      new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+      response.status()===200,{timeout:20000});
+     await rejectingCustomerPage.goto('http://127.0.0.1:'+caddr.port+
+      '/qr/v1/SABORA/'+httpFixture.sourceTable+'#'+qrToken);
+     await stream;
+     await rejectingCustomerPage.getByRole('button',{name:'Solicitar cambio de mesa'})
+      .waitFor({timeout:20000});
+     await rejectingCustomerPage.getByRole('button',{name:'Solicitar cambio de mesa'}).click();
+     await rejectingCustomerPage.getByText('Solicitud enviada al personal').waitFor();
+     const second=(await admin.query(`SELECT id,status,source_table_id,
+      destination_table_id,account_id,expires_at,created_at
+      FROM sabora.customer_table_change_requests WHERE account_id=$1
+      ORDER BY created_at DESC,id DESC LIMIT 1`,[httpFixture.sourceAccount])).rows[0];
+     assert.equal(second.status,'pending');
+     assert.equal(second.source_table_id,httpFixture.destinationTable,
+      'second request must originate at current operational B, not historical A');
+     assert.equal(second.destination_table_id,null);
+     assert.equal(second.account_id,httpFixture.sourceAccount);
+     const staffPage=await rejectStaffContext.newPage();
+     await staffPage.goto('http://127.0.0.1:'+maddr.port+'/#mesas');
+     await staffPage.evaluate(async()=>{
+      const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+      const fetchImpl=(input,init={})=>{
+       const headers=new Headers(init.headers);
+       headers.set('x-ci-staff','authorized-waiter');
+       return fetch(input,{...init,headers});
+      };
+      window.__saboraCiDispose=mountAuthenticatedManagementApp({
+       element:document.getElementById('root'),
+       getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
+       fetchImpl,enableTableChangeQueue:true
+      });
+     });
+     await staffPage.getByText('Mesa 981302').first().waitFor({timeout:20000});
+     const readsBeforeRejection=stateRequests.length;
+     await staffPage.getByRole('button',{name:'Rechazar',exact:true}).click();
+     const rejectedCopy='Cambio de mesa no autorizado. Tu solicitud de cambio de mesa no ha sido aprobada. Si necesitas más información, consulta al personal del restaurante';
+     await rejectingCustomerPage.locator('.table-change-live-notice')
+      .getByText(rejectedCopy).waitFor({timeout:20000});
+     assert.equal(stateRequests.length,readsBeforeRejection,
+      'rejection must arrive automatically from committed PG17 state, without polling');
+     await staffPage.getByText('Sin solicitudes pendientes').first().waitFor();
+     const refused=(await admin.query(`SELECT q.status,q.decided_at,b.table_id,
+      a.outstanding_cents FROM sabora.customer_table_change_requests q
+      JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+      JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+      [second.id])).rows[0];
+     assert.equal(refused.status,'rejected');
+     assert.ok(refused.decided_at);
+     assert.equal(refused.table_id,httpFixture.destinationTable);
+     assert.equal(refused.outstanding_cents,'3100');
+     const blocked=await http.inject({method:'POST',
+      url:'/api/v1/customer/table-change/requests',
+      headers:requestHeaders,payload:{}});
+     assert.equal(blocked.statusCode,409,'rejection must preserve the response window');
+     assert.equal(blocked.json().error,'table_change_request_locked');
+     const {mkdir:rejectMkdir}=await import('node:fs/promises');
+     const {join:rejectJoin}=await import('node:path');
+     const rejectEvidence=rejectJoin(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+     await rejectMkdir(rejectEvidence,{recursive:true});
+     await rejectingCustomerPage.screenshot({path:rejectJoin(rejectEvidence,
+      'b3-customer-pg17-auto-rejected-mobile.png'),fullPage:true});
+     // Simulate elapsed server time by rewriting only isolated fixture
+     // timestamps. The UPDATE is committed, so the NOTIFY must invalidate
+     // both the customer's countdown and the staff's stale decision.
+     await admin.query(`UPDATE sabora.customer_table_change_requests SET
+      created_at=clock_timestamp()-interval '3 minutes',
+      decided_at=clock_timestamp()-interval '2 minutes',
+      expires_at=clock_timestamp()-interval '1 minute'
+      WHERE id=$1 AND status='rejected'`,[second.id]);
+     await rejectingCustomerPage.getByRole('button',{name:'Solicitar cambio de mesa'})
+      .waitFor({timeout:20000});
+     assert.equal((await admin.query(`SELECT b.table_id FROM
+      sabora.customer_account_operational_bindings b WHERE b.account_id=$1`,
+      [httpFixture.sourceAccount])).rows[0].table_id,httpFixture.destinationTable,
+      'expired rejected request must never move the account');
+     await rejectingCustomerPage.getByRole('button',{name:'Solicitar cambio de mesa'}).click();
+     await rejectingCustomerPage.getByText('Solicitud enviada al personal').waitFor();
+     const third=(await admin.query(`SELECT id,status,source_table_id FROM
+      sabora.customer_table_change_requests WHERE account_id=$1
+      ORDER BY created_at DESC,id DESC LIMIT 1`,[httpFixture.sourceAccount])).rows[0];
+     assert.equal(third.status,'pending');
+     assert.equal(third.source_table_id,httpFixture.destinationTable);
+     assert.notEqual(third.id,second.id);
+     assert.deepEqual(rejectedClientErrors,[]);
+     await staffPage.evaluate(()=>window.__saboraCiDispose());
+    }finally{
+     if(rejectClientContext)await rejectClientContext.close();
+     if(rejectStaffContext)await rejectStaffContext.close();
+     if(rejectBrowser)await rejectBrowser.close();
+     if(rejectVite)await rejectVite.close();
+     if(rejectManageVite)await rejectManageVite.close();
+    }
+
    }finally{
     await fixture.query('ROLLBACK').catch(()=>{});
     fixture.release();
