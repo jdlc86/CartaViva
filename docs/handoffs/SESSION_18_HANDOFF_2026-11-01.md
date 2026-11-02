@@ -369,3 +369,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `4ff1932d83d02216b05c1a7825c01fcdb770fa1a`: tras construir correctamente el candidato con cinco conexiones físicas, el arnés PG17 desechable revoca EXECUTE de la única RPC de transferencia del rol writer y exige que una segunda construcción falle con `invalid_b3_confirmation_capabilities`. Comprueba que el preflight no reutiliza una autorización anterior.
 - GitHub Actions **3/3 SUCCESS**: Sabora CI `41389685742`, Bootstrap `41389685741`, client browser `41389685760`.
 - Alcance: revalidación de permisos, no ejecución HTTP A→B real. Pendiente la prueba unificada Fastify+cinco conexiones restringidas+checkout PG17+replay/concurrencia y las matrices funcional/visual. **B3 NO-GO, PR #43 Draft**, sin despliegues ni cambios operativos.
+
+## 52. Transacción writer B3: rechazo SQL y restauración de login (2026-11-02)
+
+- Commit `676b8a0c01a746fd5c5e54b274cb9ba80e8daa99`: prueba sobre conexión física autenticada del writer; intenta ejecutar `SELECT current_user` fuera de la allowlist, exige `role_scoped_sql_not_allowed`, `ROLLBACK` y recuperación de `current_user=session_user=login`.
+- GitHub Actions **3/3 SUCCESS**: Sabora CI `41390117220`, Bootstrap `41390117219`, client browser `41390117240`.
+- Esta validación no sustituye la aceptación HTTP A→B con PostgreSQL 17 real y cinco logins restringidos. Mantener **B3 NO-GO / PR #43 Draft**, sin permisos operativos ni despliegue.
