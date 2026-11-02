@@ -91,3 +91,7 @@ La prueba de CI que falla usa `PERSIST_H6_ORDER_SQL` (ruta H6 original), no el w
 ## 12. Corrección candidata H6 original (2026-11-02)
 
 Commit `9769d27a37fa10cbcdd42b3d493d95a4703b0c0a`: nueva migración `supabase/migrations/20261102010000_sabora_h6_original_confirmation_lock_order_candidate.sql`. Cambia a `FOR SHARE` dos bloqueos de sesión y dos de visita dentro de la función H6 original; mantiene bloqueos de fila frente a revocación y el advisory lock de cliente, sin alterar el writer B3 ni ampliar privilegios. Usa verificación de definición previa y aborta ante drift. **Solo código implementado**: aún no existe prueba PG17 ni CI confirmada para este SHA. Verificar aplicación de migración, prueba concurrente H6 original, negativas de revocación y regresión integrada antes de dar PASS. PR 43 Draft, B3/F12 NO-GO.
+
+## 13. Gate de auditoría para la migración H6 (2026-11-02)
+
+La CI del commit `9769d27a` falló en Block 1 (no alcanzó PG17): `migration_audit_coverage_mismatch:missing=20261102010000_sabora_h6_original_confirmation_lock_order_candidate.sql`. La prueba registró 1165 PASS, 1 FAIL y 2 SKIP; el fallo no valida ni invalida la corrección SQL. Se añadió ficha individual en `scripts/ci/migration-audit.mjs` mediante commit `d64a5cd9e43e7df2664aaccbcb9a38a2bdae1da4`, conservando el gate fail-closed. Queda pendiente comprobar nueva CI y ejecutar prueba PG17 concurrente real. No afirmar H6 PASS ni B3 GO.
