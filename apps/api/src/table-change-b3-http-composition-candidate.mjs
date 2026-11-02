@@ -11,7 +11,7 @@ import {createVerifiedPendingTableChangeReader}
 import {createTableChangeCommitNotifier} from './table-change-state-stream-candidate.mjs';
 
 export async function mountVerifiedTableChangeB3HttpCandidate(app,{
- cookieAuth,forRoles,...sqlConfiguration
+ cookieAuth,forRoles,observeStreamFailure=null,...sqlConfiguration
 }={}){
  if(!app||typeof app.register!=='function'||typeof app.post!=='function'||
     typeof app.addHook!=='function'||
@@ -44,7 +44,7 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  try{
   registerCustomerProductionFlowHttp(app,{
    cookieAuth,flow:candidate.flow,tableChange:candidate.tableChange,
-   tableChangeNotifier:notifier
+   tableChangeNotifier:notifier,tableChangeObserveFailure:observeStreamFailure
   });
   registerTableChangeStaffHttp(app,{
    service:candidate.tableChange,forRoles:()=>guard
