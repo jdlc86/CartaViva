@@ -2718,6 +2718,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
   const http=Fastify({logger:false});
   const streamFailures=[];
+  // F18: one remaining guest at A and one incumbent at B, with distinct
+  // customer identities, sessions, accounts, orders and delivery histories.
+  const peers=[
+   {seat:'A',customer:'b0a00000-0000-4000-8000-000000000351',
+    account:'b0a00000-0000-4000-8000-000000000352',
+    order:'b0a00000-0000-4000-8000-000000000353',
+    round:'b0a00000-0000-4000-8000-000000000354',
+    token:'u'.repeat(43),publicId:'SB-CDCDCDCDCDCP',alias:'Comensal A',
+    visitKey:'b3_peer_a_0351',balance:1800},
+   {seat:'B',customer:'b0a00000-0000-4000-8000-000000000361',
+    account:'b0a00000-0000-4000-8000-000000000362',
+    order:'b0a00000-0000-4000-8000-000000000363',
+    round:'b0a00000-0000-4000-8000-000000000364',
+    token:'v'.repeat(43),publicId:'SB-EFEFEFEFEFEP',alias:'Comensal B',
+    visitKey:'b3_peer_b_0361',balance:2500}
+  ];
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
@@ -2738,6 +2754,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      authenticate:async(request,reply)=>{
       if(request.headers.cookie==='__Secure-sabora_customer='+ 's'.repeat(43)){
        request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
+       return;
+      }
+      const peer=peers.find(row=>
+       request.headers.cookie==='__Secure-sabora_customer='+row.token);
+      if(peer){
+       request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
        return;
       }
       return reply.code(401).send({error:'unauthorized'});
@@ -2826,6 +2848,28 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.customer_account_operational_bindings
      (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
      [httpFixture.sourceAccount,httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.sourceVisit]);
+    // Both co-diners have committed account scopes before the moving customer asks.
+    for(const peer of peers){
+     const table=peer.seat==='A'?httpFixture.sourceTable:httpFixture.destinationTable;
+     const session=peer.seat==='A'?httpFixture.sourceSession:httpFixture.destinationSession;
+     await fixture.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+      VALUES($1,$2,$3)`,[peer.customer,peer.publicId,peer.alias]);
+     await fixture.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+      VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
+      [peer.customer,hashCustomerSessionToken(peer.token)]);
+     await fixture.query(`INSERT INTO sabora.customer_table_visits
+      (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
+      VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
+      [table,session,peer.customer,peer.visitKey]);
+     await fixture.query(`INSERT INTO sabora.customer_accounts
+      (id,table_id,session_id,visit_key,customer_id,payment_mode,
+       payment_mode_selected_at,outstanding_cents)
+      VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),$6)`,
+      [peer.account,table,session,peer.visitKey,peer.customer,peer.balance]);
+     await fixture.query(`INSERT INTO sabora.customer_account_operational_bindings
+      (account_id,table_id,session_id,visit_key) VALUES($1,$2,$3,$4)`,
+      [peer.account,table,session,peer.visitKey]);
+    }
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')`,[httpFixture.waiter]);
@@ -2868,6 +2912,32 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      VALUES($1,$2,$3,$4,$5,$6,$7)`,
      [line.id,priorRound,httpFixture.sourceAccount,priorOrder,httpFixture.sourceTable,
       httpFixture.sourceSession,httpFixture.sourceVisit]);
+    // Each co-diner has historical consumption and a pending delivery.
+    for(const peer of peers){
+     const table=peer.seat==='A'?httpFixture.sourceTable:httpFixture.destinationTable;
+     const session=peer.seat==='A'?httpFixture.sourceSession:httpFixture.destinationSession;
+     await fixture.query(`INSERT INTO sabora.orders
+      (id,table_id,session_id,company,employee_number,customer_alias,
+       customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
+      VALUES($1,$2,$3,NULL,NULL,$4,$5,$6,'{"schemaVersion":"1"}'::jsonb,
+       clock_timestamp(),'first','[{"category":"main","name":"Consumo previo","quantity":1}]'::jsonb)`,
+      [peer.order,table,session,peer.alias,peer.publicId,peer.visitKey]);
+     await fixture.query(`INSERT INTO sabora.order_rounds
+      (id,order_id,account_id,amount_cents,payment_mode,payment_policy_version,
+       grouping_deadline,state)
+      VALUES($1,$2,$3,$4,'pay_at_end',1,clock_timestamp()+interval '5 minutes','grouping')`,
+      [peer.round,peer.order,peer.account,peer.balance]);
+     await fixture.query(`INSERT INTO sabora.order_round_delivery_destinations
+      (round_id,account_id,table_id,session_id,visit_key)
+      VALUES($1,$2,$3,$4,$5)`,[peer.round,peer.account,table,session,peer.visitKey]);
+     const lineIds=(await fixture.query(
+      'SELECT id FROM sabora.order_lines WHERE order_id=$1',[peer.order])).rows;
+     assert.equal(lineIds.length,1);
+     await fixture.query(`INSERT INTO sabora.order_line_delivery_destinations
+      (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
+      VALUES($1,$2,$3,$4,$5,$6,$7)`,
+      [lineIds[0].id,peer.round,peer.account,peer.order,table,session,peer.visitKey]);
+    }
     await fixture.query('COMMIT');
     const positiveToken='s'.repeat(43);
     // The SQL session hash must match the cookie passed to the HTTP adapter.
