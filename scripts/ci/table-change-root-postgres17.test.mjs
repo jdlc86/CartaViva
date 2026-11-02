@@ -2822,6 +2822,25 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
     assert.equal(replay.statusCode,409,replay.body);
     assert.deepEqual(replay.json(),{error:'table_change_request_locked'});
+    // Race two HTTP retries through the same physically isolated customer
+    // login. Both must be rejected and the persisted grant must stay unique.
+    const concurrent=await Promise.all(Array.from({length:2},()=>http.inject({
+     method:'POST',url:'/api/v1/customer/table-change/requests',
+     headers:requestHeaders,payload:{}
+    })));
+    for(const response of concurrent){
+     assert.equal(response.statusCode,409,response.body);
+     assert.deepEqual(response.json(),{error:'table_change_request_locked'});
+    }
+    const afterRace=(await admin.query(`SELECT q.status,
+     b.table_id,a.outstanding_cents
+     FROM sabora.customer_table_change_requests q
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+     JOIN sabora.customer_accounts a ON a.id=q.account_id
+     WHERE q.id=$1`,[created.json().id])).rows[0];
+    assert.equal(afterRace.status,'pending');
+    assert.equal(afterRace.table_id,httpFixture.sourceTable);
+    assert.equal(afterRace.outstanding_cents,'2400');
     const count=(await admin.query(`SELECT count(*)::int AS total
      FROM sabora.customer_table_change_requests WHERE account_id=$1`,
      [httpFixture.sourceAccount])).rows[0].total;
