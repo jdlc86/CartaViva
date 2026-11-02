@@ -62,6 +62,10 @@ No reemplazar este resumen por el texto literal normativo.
 
 **Límites:** F18 tiene **evidencia positiva del recorrido principal**, no de todas las variantes de pagos, recogidas, QR revocados y eventos cocina/sala; R07 tampoco está certificado de forma global. La autenticación HTTP y el catálogo siguen con fixtures de integración, la ventana de 90 s natural no se ha medido, B3/B4 siguen **NO-GO**.
 
+### Hito integrado posterior: rechazo de destino cerrado sin afectar a otros comensales (F17 parcial)
+
+**SHA `f4286a8c7e6468ab50448b575d5c6fd06ab37792` — cuatro workflows SUCCESS:** [CI](https://github.com/jdlc86/CartaViva/actions/runs/41531115933), [PG17/bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/41531115941), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/41531116172), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/41531116053). Se amplió el **mismo** recorrido E2E de tres comensales, API real, PostgreSQL 17 desechable y PWA Chromium: con autorización A→B aprobada, un tercer destino C cerrado deniega la autorización de visita desde la PWA sin consumir permiso, mover cuenta, modificar deuda ni crear ronda; al recuperar C en el fixture, el cliente continúa con su pedido auténtico en B y los otros dos comensales conservan sesiones, cuentas, pedidos y saldos independientes. La primera tentativa sobre B detectó correctamente que cerrar/reabrir una mesa crea **nueva sesión operativa**, por lo que el caso negativo se aisló en C sin alterar la sesión de un tercero en B. **Evidencia parcial de F17**, no su aceptación íntegra: queda pendiente la revocación/mesa bloqueada **entre autorización de visita y confirmación**, carrera de revocación y comprobación de rollback en la confirmación.
+
 ## 5. Qué falta de verdad: siguiente hito integral propuesto
 
 **Objetivo:** continuar el cierre funcional **B3 completo**, no abrir una serie de pruebas parciales. Antes de modificar código, definir una única campaña/recorrido E2E que abarque todas las capas afectadas, con IDs F/R, estados de cuenta y eventos esperados. Priorizar, como conjunto integrado y no como microhitos:
