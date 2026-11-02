@@ -8,6 +8,7 @@ import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-
 import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTableChangeB3CustomerFlowCandidate,createIsolatedB3ConfirmationTransaction} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
+import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2684,6 +2685,45 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.equal(typeof candidate.tableChange.request,'function');
   assert.equal(typeof candidate.tableChange.decide,'function');
   assert.equal(typeof candidate.confirmation.confirm,'function');
+  // Exercise actual Fastify registration after five independent PG17 login
+  // preflights. Authentication must reject HTTP before any business RPC.
+  const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
+  const http=Fastify({logger:false});
+  try{
+   assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
+    customerPool:scopedPools[0],operationsPool:scopedPools[1],
+    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
+    expectedCustomerLogin:specs[0].login,
+    expectedOperationsLogin:specs[1].login,
+    expectedConfirmationLogin:specs[2].login,
+    expectedH6ReadLogin:specs[3].login,
+    expectedFlowLogin:specs[4].login,
+    hashSession:value=>createHash('sha256').update(value).digest(),
+    verifyStaff:async()=>({role:'waiter'}),
+    secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
+    cookieAuth:{
+     requireSameOrigin:()=>true,
+     authenticate:async(request,reply)=>reply.code(401).send({error:'unauthorized'}),
+     logout:async()=>{}
+    },
+    forRoles:()=>async(request,reply)=>reply.code(403).send({error:'forbidden'})
+   }),{mounted:true});
+   await http.ready();
+   for(const endpoint of ['/api/v1/customer/visits',
+    '/api/v1/customer/quotes','/api/v1/customer/orders/confirm',
+    '/api/v1/customer/table-change/requests']){
+    const response=await http.inject({method:'POST',url:endpoint,payload:{}});
+    assert.equal(response.statusCode,401,endpoint);
+   }
+   const denied=await http.inject({method:'POST',
+    url:'/api/v1/operations/table-change/decisions',payload:{}});
+   assert.equal(denied.statusCode,403);
+   for(let index=0;index<connections.length;index++){
+    const role=(await connections[index].query('SELECT current_user,session_user')).rows[0];
+    assert.equal(role.current_user,specs[index].login);
+    assert.equal(role.session_user,specs[index].login);
+   }
+  }finally{await http.close();}
   // Exercise the real transaction boundary on a physically authenticated
   // writer connection: an unlisted SQL statement must be rejected before it
   // reaches PostgreSQL, and ROLLBACK must restore the login identity.
