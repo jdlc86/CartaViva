@@ -169,3 +169,11 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - `998f9ad3`: corrección de arquitectura en `table-change-pending-reader-candidate.mjs`. El verificador de staff ya no recibe ni usa el query SQL del lector; se ejecuta contra la identidad verificada de la capa HTTP antes de abrir la transacción de rol. La única sentencia permitida del lector sigue siendo la RPC de pendientes, que revalida rol y estado activo en SECURITY DEFINER. Evita que un verificador trate de usar SELECT fuera de la whitelist o que se amplíe el rol para acomodarlo.
 - `954389d8`: el panel de gestión actualiza únicamente el reloj local cada segundo para deshabilitar decisiones tras la caducidad, sin polling de datos ni exposición de credenciales.
 - CI para HEAD y commits recientes permanecía en cola al consultar. No declarar validación de navegador/PG17 ni aprobación visual definitiva. Sigue faltando prueba integrada de SQL real, autenticación efectiva del login aislado y recorrido cliente→personal→confirmación económica. PR #43 Draft / B3 NO-GO; no merge, despliegue ni Fleetia/VPS/Supabase operativo.
+
+
+## 22. CI real y corrección de contrato sin sondeo (2026-11-02)
+
+- Evidencia GitHub Actions: en SHA `20ab3747` los cuatro workflows (Sabora CI, Bootstrap lockfile, navegador gestión y navegador cliente) finalizaron SUCCESS. Esto valida ese SHA, no los cambios posteriores.
+- En SHA `4622929f`, CI y bootstrap finalizaron FAILURE: 1177 tests, 1173 PASS, 2 FAIL, 2 SKIP; ambos fallos procedían del gate `periodic_business_polling_detected` (un `setInterval` en `TableChangeRequestsPanel`). Los dos workflows de navegador de ese SHA sí terminaron SUCCESS.
+- `e15f6b0d`: se sustituyó el intervalo por un único `setTimeout` a la siguiente caducidad conocida. El panel no sondea backend; reevalúa el estado al vencer la solicitud. **No declarar CI PASS hasta conocer el resultado de los workflows de este SHA**.
+- Prioridad: validar el HEAD, ejecutar PG17 real con login/rol lector y FORCE RLS, comprobar la bandeja en navegador con gateway autorizado y cerrar E2E de transferencia. PR #43 Draft / B3 NO-GO. Sin merge, despliegue ni cambios en Fleetia, VPS o Supabase operativo.
