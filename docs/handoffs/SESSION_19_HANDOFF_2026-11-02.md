@@ -184,3 +184,10 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - Evidencia Actions: los cuatro workflows de `570f3d09` y los cuatro de `e15f6b0d` terminaron SUCCESS. Se considera resuelta la regresión de sondeo periódico en dichos SHA, sin extrapolar a cambios posteriores.
 - `c9a74f29`: prueba nueva dentro del arnés PG17 real `scripts/ci/table-change-root-postgres17.test.mjs`, ejecutado por `catalog-postgres17-node-driver-smoke.sh`. Inspecciona propietario SECURITY DEFINER y EXECUTE por rol, NOLOGIN/NOINHERIT/BYPASSRLS, consulta vacía para camarero activo y denegación a cocina y SELECT directo bajo SET LOCAL ROLE; datos de personal insertados en transacción revertida.
 - **Prueba añadida, aún sin resultado de CI confirmado para `c9a74f29`**. No cubre todavía login físico dedicado con preflight completo, solicitudes pendientes con datos reales ni E2E de traslado económico. La nueva prueba podría descubrir un defecto en grants/RLS: corregirlo antes de avanzar. PR #43 Draft / B3 NO-GO, sin merge, despliegue ni cambios en Fleetia/VPS/Supabase operativo.
+
+
+## 24. PG17: primera ejecución de la prueba de bandeja y corrección (2026-11-02)
+
+- Actions para `c9a74f29`: browser gestión y cliente SUCCESS; CI y bootstrap FAILURE. En CI: bloque 2A de migraciones/privilegios PG17 PASS, bloque 2B FAIL en el test nuevo de lector porque la aserción refería `sabora_f12_operations_runtime`, rol aún no provisionado en el arnés PG17 (error PostgreSQL `role ... does not exist`). **No atribuir este fallo a la función de lectura**: el test abortó antes de probar su comportamiento.
+- `3af58186`: corregida la aserción para consultar `sabora_h6_operations_runtime`, rol existente en el arnés y explícitamente revocado en la migración de la función. No se amplían ACL ni roles. Workflows del commit corregido pendientes de confirmación.
+- Siguiente decisión según CI: si falla por ACL/RLS, corregir causa real en migración y repetir PG17; después ampliar al login físico NOINHERIT con preflight. No activar la bandeja ni declarar B3 GO. PR #43 Draft, sin merge, despliegue ni Fleetia/VPS/Supabase operativo.
