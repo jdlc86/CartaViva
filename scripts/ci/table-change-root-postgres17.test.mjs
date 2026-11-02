@@ -2686,6 +2686,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
   scopedPools[0]={connect:()=>pools[0].connect()};
+  // React StrictMode may start overlapping GETs for the queue on mount.
+  // A pinned preflight connection cannot serve concurrent SQL transactions:
+  // use the dedicated physical pending login's real pool at runtime, preserving
+  // the one-function SET ROLE allowlist and the two remaining pool clients.
+  scopedPools[5]={connect:()=>pools[5].connect()};
   const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:scopedPools[0],operationsPool:scopedPools[1],
    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
