@@ -4,7 +4,7 @@ import {readCustomerCookie} from './customer-cookie-session-candidate.mjs';
 
 const states=new Set(['unbound','bound','pending','approved','rejected']);
 const decisions=new Set(['sabora.table_change.approved','sabora.table_change.rejected']);
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const validState=value=>value&&states.has(value.state)&&
  Number.isSafeInteger(value.serverNowMs)&&
  (value.boundTableId===null||typeof value.boundTableId==='string')&&
