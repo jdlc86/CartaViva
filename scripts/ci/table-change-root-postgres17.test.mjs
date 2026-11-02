@@ -409,12 +409,15 @@ test('PG17 H6 confirmation integrates account binding and delivery projection wi
  const source=(await admin.query(`SELECT pg_get_functiondef(p.oid) AS source
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname='sabora' AND p.proname='confirm_customer_round_h6_candidate'`)).rows[0].source;
- const lock=source.indexOf('FOR UPDATE');
+ const lock=source.indexOf('pg_advisory_xact_lock');
+ const sessionShare=source.indexOf('AND s.expires_at>clock_timestamp() FOR SHARE');
+ const visitShare=source.indexOf('AND v.expires_at>clock_timestamp() FOR SHARE');
  const persist=source.indexOf('persist_customer_order_candidate');
  const account=source.indexOf('INSERT INTO sabora.customer_account_operational_bindings');
  const round=source.indexOf('INSERT INTO sabora.order_rounds');
  const delivery=source.indexOf('INSERT INTO sabora.order_round_delivery_destinations');
- assert.ok(lock>=0&&lock<persist&&persist<account&&account<round&&round<delivery);
+ assert.ok(sessionShare>=0&&sessionShare<lock&&lock<visitShare&&visitShare<persist);
+ assert.ok(lock<persist&&persist<account&&account<round&&round<delivery);
  assert.match(source,/h6_replay_account_scope_conflict/);
  assert.match(source,/v_round\.account_id,v_round\.id/);
  assert.match(source,/table_change_transfer_not_integrated/);
