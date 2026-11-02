@@ -8,18 +8,21 @@ import {registerTableChangeStaffHttp,registerTableChangeStaffPendingHttp}
  from './table-change-http-candidate.mjs';
 import {createVerifiedPendingTableChangeReader}
  from './table-change-pending-reader-candidate.mjs';
+import {createTableChangeCommitNotifier} from './table-change-state-stream-candidate.mjs';
 
 export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  cookieAuth,forRoles,...sqlConfiguration
 }={}){
  if(!app||typeof app.register!=='function'||typeof app.post!=='function'||
+    typeof app.addHook!=='function'||
     !cookieAuth||typeof cookieAuth.authenticate!=='function'||
     typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||typeof forRoles!=='function')
   throw Error('invalid_b3_http_composition');
  // Six independent SQL login preflights MUST succeed before registering
  // any route. The pending reader has its own one-function capability.
- const {pendingPool,expectedPendingLogin,verifyStaff,...b3Configuration}=sqlConfiguration;
+ const {pendingPool,expectedPendingLogin,notificationPool,verifyStaff,...b3Configuration}=sqlConfiguration;
+ if(typeof notificationPool?.connect!=='function')throw Error('invalid_b3_http_composition');
  const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
   ...b3Configuration,verifyStaff
  });
@@ -35,14 +38,21 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  // a customer-only partial surface when the operations guard is invalid.
  const guard=forRoles(['admin','waiter']);
  if(typeof guard!=='function')throw Error('invalid_b3_http_composition');
- registerCustomerProductionFlowHttp(app,{
-  cookieAuth,flow:candidate.flow,tableChange:candidate.tableChange
+ const notifier=await createTableChangeCommitNotifier({
+  pool:notificationPool,expectedLogin:expectedOperationsLogin
  });
- registerTableChangeStaffHttp(app,{
-  service:candidate.tableChange,forRoles:()=>guard
- });
- registerTableChangeStaffPendingHttp(app,{
-  service:pendingReader,forRoles:()=>guard
- });
- return Object.freeze({mounted:true});
+ try{
+  registerCustomerProductionFlowHttp(app,{
+   cookieAuth,flow:candidate.flow,tableChange:candidate.tableChange,
+   tableChangeNotifier:notifier
+  });
+  registerTableChangeStaffHttp(app,{
+   service:candidate.tableChange,forRoles:()=>guard
+  });
+  registerTableChangeStaffPendingHttp(app,{
+   service:pendingReader,forRoles:()=>guard
+  });
+  app.addHook('onClose',async()=>{await notifier.close();});
+  return Object.freeze({mounted:true});
+ }catch(error){await notifier.close();throw error;}
 }
