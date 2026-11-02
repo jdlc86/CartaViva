@@ -162,3 +162,10 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - `956ff79d`: inserción condicional del panel en `TablesView`, sin afectar al inventario de mesas ni a la vista sin gateway.
 - `3c17cc89`: dependencia `tableChangeGateway` opcional en `ManagementApp`; el bootstrap autenticado actual no la suministra y la vista de diseño tampoco. **No está activada funcionalmente**.
 - CI de los nuevos commits estaba en cola en la última consulta (gran acumulación de workflows), por lo que no se declara build/Playwright PASS del HEAD. Falta validación visual contra la referencia normativa, E2E navegador, PG17 real de RLS/ACL y autorización de un login aislado antes de montar la ruta. PR #43 Draft, B3 NO-GO; no merge ni despliegue.
+
+
+## 21. Corrección de aislamiento y caducidad UI (2026-11-02)
+
+- `998f9ad3`: corrección de arquitectura en `table-change-pending-reader-candidate.mjs`. El verificador de staff ya no recibe ni usa el query SQL del lector; se ejecuta contra la identidad verificada de la capa HTTP antes de abrir la transacción de rol. La única sentencia permitida del lector sigue siendo la RPC de pendientes, que revalida rol y estado activo en SECURITY DEFINER. Evita que un verificador trate de usar SELECT fuera de la whitelist o que se amplíe el rol para acomodarlo.
+- `954389d8`: el panel de gestión actualiza únicamente el reloj local cada segundo para deshabilitar decisiones tras la caducidad, sin polling de datos ni exposición de credenciales.
+- CI para HEAD y commits recientes permanecía en cola al consultar. No declarar validación de navegador/PG17 ni aprobación visual definitiva. Sigue faltando prueba integrada de SQL real, autenticación efectiva del login aislado y recorrido cliente→personal→confirmación económica. PR #43 Draft / B3 NO-GO; no merge, despliegue ni Fleetia/VPS/Supabase operativo.
