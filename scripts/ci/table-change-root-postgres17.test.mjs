@@ -2703,7 +2703,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     expectedH6ReadLogin:specs[3].login,
     expectedFlowLogin:specs[4].login,
     hashSession:value=>createHash('sha256').update(value).digest(),
-    verifyStaff:async()=>({userId:ids.customer,role:'waiter'}),
+    verifyStaff:async({verifiedIdentity,verifiedStaff})=>({userId:verifiedIdentity.userId,role:verifiedStaff.role}),
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:{
      requireSameOrigin:()=>true,
@@ -2754,6 +2754,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     sourceSession:'b0a00000-0000-4000-8000-000000000304',
     destinationSession:'b0a00000-0000-4000-8000-000000000305',
     sourceAccount:'b0a00000-0000-4000-8000-000000000306',
+    waiter:'b0a00000-0000-4000-8000-000000000307',
     sourceVisit:'b3_http_source_visit_0301'
    });
    const fixture=await admin.connect();
@@ -2784,6 +2785,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      [httpFixture.sourceAccount,httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.sourceVisit]);
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
+    await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')`,[httpFixture.waiter]);
     await fixture.query('COMMIT');
     const positiveToken='s'.repeat(43);
     // The SQL session hash must match the cookie passed to the HTTP adapter.
