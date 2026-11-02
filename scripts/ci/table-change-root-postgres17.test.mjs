@@ -2866,6 +2866,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE customer_id=$2`,[hashCustomerSessionToken(positiveToken),httpFixture.customer]);
     const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
      'content-type':'application/json'};
+    // Diagnostic is inside the same integrated HTTP/PG17/browser scenario:
+    // report the exact sealed PostgreSQL error without leaking it to HTTP.
+    let scopedStateError=null;
+    try{
+     await connections[0].query('BEGIN');
+     await connections[0].query('SET LOCAL ROLE sabora_f12_customer_runtime');
+     const stateSql=await connections[0].query(
+      'SELECT bound_table_id,change_state,change_expires_at,server_time FROM sabora.read_customer_table_change_h6_candidate($1::bytea)',
+      [hashCustomerSessionToken(positiveToken)]);
+     assert.equal(stateSql.rows.length,1);
+     assert.equal(stateSql.rows[0].bound_table_id,httpFixture.sourceTable);
+     assert.equal(stateSql.rows[0].change_state,'bound');
+    }catch(error){scopedStateError=error;}
+    finally{await connections[0].query('ROLLBACK');}
+    assert.equal(scopedStateError,null,
+     'real isolated role state query failed: '+(scopedStateError?.message??'')+
+     ' / SQLSTATE '+(scopedStateError?.code??''));
     const stateProbe=await http.inject({method:'GET',
      url:'/api/v1/customer/table-change/state',headers:requestHeaders});
     assert.equal(stateProbe.statusCode,200,
