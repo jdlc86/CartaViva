@@ -3145,6 +3145,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         value:positiveToken,domain:'127.0.0.1',path:'/',secure:true,
         httpOnly:true,sameSite:'Lax'}]);
        const livePage=await liveClientContext.newPage();
+       await livePage.addInitScript(()=>{
+        const Native=window.EventSource;
+        window.__b3StreamFrames=[];
+        window.EventSource=class extends Native{
+         constructor(url,options){
+          super(url,options);
+          for(const name of ['sabora.table_change.state','sabora.table_change.approved',
+           'sabora.table_change.rejected','resync-required','access-revoked']){
+           this.addEventListener(name,event=>window.__b3StreamFrames.push({
+            name,data:event.data,lastEventId:event.lastEventId
+           }));
+          }
+         }
+        };
+       });
        livePage.on('pageerror',error=>liveClientErrors.push(error.message));
        const manualStateReads=[];
        livePage.on('request',request=>{
@@ -3189,12 +3204,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
        }catch(error){
         const body=(await livePage.locator('body').innerText()).slice(-1400);
+        const frames=await livePage.evaluate(()=>window.__b3StreamFrames);
         const rows=(await admin.query(`SELECT event_type,aggregate_id FROM
          sabora.event_outbox WHERE customer_id=$1 AND account_id=$2
          AND event_type LIKE 'sabora.table_change.%' ORDER BY id`,
          [httpFixture.customer,httpFixture.sourceAccount])).rows;
+        let state,stateError;
+        try{state=await candidate.tableChange.readState({
+         customerSessionToken:positiveToken});}
+        catch(failure){stateError=failure.message;}
         throw Error('b3_durable_decision_not_delivered: '+
-         JSON.stringify({body,rows})+': '+error.message);
+         JSON.stringify({body,rows,frames,state,stateError})+': '+error.message);
        }
        assert.equal(manualStateReads.length,readsBeforeDecision,
         'staff decision must notify the customer without manual state refresh');
