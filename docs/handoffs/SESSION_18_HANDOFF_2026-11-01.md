@@ -375,3 +375,9 @@ Verificar también migraciones posteriores; no reescribir historial de migracion
 - Commit `676b8a0c01a746fd5c5e54b274cb9ba80e8daa99`: prueba sobre conexión física autenticada del writer; intenta ejecutar `SELECT current_user` fuera de la allowlist, exige `role_scoped_sql_not_allowed`, `ROLLBACK` y recuperación de `current_user=session_user=login`.
 - GitHub Actions **3/3 SUCCESS**: Sabora CI `41390117220`, Bootstrap `41390117219`, client browser `41390117240`.
 - Esta validación no sustituye la aceptación HTTP A→B con PostgreSQL 17 real y cinco logins restringidos. Mantener **B3 NO-GO / PR #43 Draft**, sin permisos operativos ni despliegue.
+
+## 53. Writer B3 real bajo SET LOCAL ROLE: CI completo (2026-11-02)
+
+- Commits `4871d9e4e38a90dc7c228242d8c5d01a4d6c1712` y `69244dcb054760a04c53bae3f4efbd3ab25c070d`: llamada allowlisted a `PERSIST_H6_TRANSFER_ORDER_SQL` sobre PostgreSQL 17 real bajo el login y rol de writer B3. El contexto de negocio deliberadamente inválido debe ser rechazado por PostgreSQL, sin error de falta de privilegio EXECUTE; tras rollback se comprueba restauración de `current_user` y `session_user`.
+- GitHub Actions del último commit: **3/3 SUCCESS**: Sabora CI `41390767221`, Bootstrap `41390767299`, client browser `41390767219`.
+- No equivale a un checkout positivo HTTP A→B con las cinco conexiones físicas restringidas. Mantener **B3 NO-GO**, **PR #43 Draft**, sin despliegues ni cambios en entornos operativos.
