@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
+import {TableChangeRequestsPanel,type TableChangeQueueGateway} from './TableChangeRequestsPanel';
 import {
   ConnectionNotice,
   DefinitionRow,
@@ -39,7 +40,7 @@ function stateMeta(state: TableOrderingState) {
   return tableStates.find((item) => item.id === state) ?? tableStates[2];
 }
 
-export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
+export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesGateway;tableChangeGateway?: TableChangeQueueGateway}) {
   const [phase, setPhase] = useState<ReadPhase>(gateway ? 'loading' : 'disconnected');
   const [tables, setTables] = useState<readonly AdminTable[]>([]);
   const [nextAfterNumber, setNextAfterNumber] = useState<number | null>(null);
@@ -159,6 +160,7 @@ export function TablesView({gateway}: {gateway?: AdminTablesGateway}) {
 
   return (
     <div className="view-stack">
+      {tableChangeGateway ? <TableChangeRequestsPanel gateway={tableChangeGateway}/> : null}
       <PageHeader
         eyebrow="Mesas y QR"
         title="Control de mesas"
