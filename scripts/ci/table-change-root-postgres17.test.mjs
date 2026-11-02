@@ -3522,6 +3522,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(third.source_table_id,httpFixture.destinationTable);
      assert.notEqual(third.id,second.id);
      assert.deepEqual(rejectedClientErrors,[]);
+     // This PG17 fixture is committed for six physical logins. Retire its
+     // last pending request without deleting any historical record so the
+     // subsequent independent staff-reader test sees an empty live queue.
+     // The simulated server time remains valid under the normative checks.
+     await admin.query(`UPDATE sabora.customer_table_change_requests SET
+      created_at=clock_timestamp()-interval '3 minutes',
+      expires_at=clock_timestamp()-interval '1 minute',
+      status='expired'
+      WHERE id=$1 AND status='pending'`,[third.id]);
+     const remaining=(await admin.query(`SELECT count(*)::int AS n FROM
+      sabora.customer_table_change_requests WHERE status='pending'
+      AND account_id=$1`,[httpFixture.sourceAccount])).rows[0].n;
+     assert.equal(remaining,0,'integrated fixture must leave no actionable request');
      await staffPage.evaluate(()=>window.__saboraCiDispose());
     }finally{
      if(rejectClientContext)await rejectClientContext.close();
