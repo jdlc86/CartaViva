@@ -1,11 +1,11 @@
 // Candidate-only staff pending read. Never reuse the F12 decision-only role.
 // No pool or route is created here; a separate login/role preflight is required.
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
-import {assertPendingReaderCapabilities} from './table-change-pending-reader-preflight-candidate.mjs';
+import {assertPendingReaderCapabilities,PENDING_READER_ROLE} from './table-change-pending-reader-preflight-candidate.mjs';
 export const PENDING_TABLE_CHANGES_SQL=
  'SELECT request_id,source_table_number,expires_at FROM sabora.list_pending_table_changes_h6_candidate($1::uuid)';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const PENDING_READER_ROLE='sabora_f12_pending_reader_runtime';
+export {PENDING_READER_ROLE};
 export function createPendingTableChangeReader({withTransaction,verifyStaff}={}){
  if(typeof withTransaction!=='function'||typeof verifyStaff!=='function')
   throw Error('invalid_pending_reader_configuration');
