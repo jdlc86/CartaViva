@@ -120,3 +120,15 @@ Estas pruebas HTTP usan un adaptador SQL simulado: no certifican transferencia e
 - `1b38fbac`: prueba Fastify real + gateway autenticado PWA + RPC sellada con SQL simulado, incluyendo denegación de nuevas operaciones tras revocar. **Workflows pendientes** al último seguimiento; no declarar PASS hasta comprobar el SHA.
 
 El avance es un **contrato de transporte autenticado**, no una bandeja de solicitudes ni una funcionalidad operativa activada. No existe aún lectura SQL autorizada de solicitudes pendientes ni montaje visual aprobado en `TablesView`; tampoco confirmación económica A→B validada con PostgreSQL 17 real. No conectar una bandeja con datos ficticios o con lectura directa privilegiada. Próximo bloque integral: función/proyección SQL mínima de pendientes con permisos, endpoint autenticado, gateway, vista aprobada y pruebas de integración PG17 + navegador. PR #43 Draft, B3/F12 NO-GO. Sin merge, despliegue o intervención en Fleetia/VPS/Supabase operativo.
+
+
+## 17. Bandeja F12 pendiente: contrato HTTP/PWA y SQL sellado sin activar (2026-11-02)
+
+- `c2763517`: endpoint opt-in `GET /api/v1/operations/table-change/pending`, con guard `admin|waiter`, proyección pública mínima `requestId/sourceTableNumber/expiresAt`, límite 100, `no-store` y error genérico ante fallos internos. No se monta en el bootstrap.
+- `378648b2`: pruebas HTTP de autorización por rol, rechazo de cocina y privacidad.
+- `395cb3b8`, `f12459a7`, `f898cfff`: lector estricto en el gateway de gestión, exposición a través del bearer revocable y pruebas de respuesta. La primera implementación contenía una expresión regular escapada incorrectamente: CI/bootstrap/smoke gestión FALLARON.
+- `5b417764`: corrige el error sintáctico de expresión regular. Navegadores cliente y gestión SUCCESS; CI/bootstrap seguían en curso al consultar.
+- `51396a6a`: prueba PWA autenticada → Fastify GET pendientes, con revocación. Navegadores cliente y gestión SUCCESS; CI/bootstrap todavía sin confirmación.
+- `3a8fbe68`: migración **candidata** `20261102120000_sabora_h6_pending_staff_projection_candidate.sql`: función `SECURITY DEFINER` que comprueba personal activo de sala/admin y lista solo solicitudes pendientes no caducadas con mesa origen y caducidad, máximo 100. No se concedió `EXECUTE` a ningún runtime; el rol F12 de decisiones sigue con una sola RPC. **Sin prueba PG17 real confirmada**, sin validación aún de permisos del propietario/RLS para todas las tablas leídas. No desplegar la migración ni conectar el endpoint sin ese cierre.
+
+La función SQL no implica que la bandeja sea operativa: falta rol lector separado y preflight de superficie exacta, servicio de lectura enlazado al HTTP, UI de gestión conforme a diseño normativo, prueba de caducidad/competencia y E2E PG17+Chromium. B3 sigue NO-GO, PR #43 Draft. No merge, VPS, Fleetia ni Supabase operativo.
