@@ -36,7 +36,7 @@ const replyFailure=(reply,error)=>{
 
 // Explicit opt-in adapter. Cookie authentication and same-origin enforcement
 // are injected and apply before any QR, quote or order capability runs.
-export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,tableChangeNotifier=null}={}){
+export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,tableChangeNotifier=null,tableChangeObserveFailure=null}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
@@ -85,7 +85,8 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
    });
   }
   if(tableChangeNotifier)registerTableChangeStateStreamCandidate(scope,{
-   tableChange,subscribeCommitted:tableChangeNotifier.subscribe
+   tableChange,subscribeCommitted:tableChangeNotifier.subscribe,
+   onFailure:tableChangeObserveFailure
   });
   if(tableChange&&typeof tableChange.request==='function'){
    scope.post('/table-change/requests',{bodyLimit:1024},async(request,reply)=>{
