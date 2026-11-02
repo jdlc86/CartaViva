@@ -3535,6 +3535,64 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       sabora.customer_table_change_requests WHERE status='pending'
       AND account_id=$1`,[httpFixture.sourceAccount])).rows[0].n;
      assert.equal(remaining,0,'integrated fixture must leave no actionable request');
+     // The same waiter who saw the earlier item cannot act on an expired
+     // request, even if a stale browser retained its ID and an explicit role.
+     for(const decision of ['approved','rejected']){
+      const late=await http.inject({
+       method:'POST',url:'/api/v1/operations/table-change/decisions',
+       headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+       payload:{requestId:third.id,decision}
+      });
+      assert.equal(late.statusCode,409,
+       'expired PG17 request must reject late '+decision+': '+late.body);
+      assert.deepEqual(late.json(),{error:'table_change_request_not_pending'});
+     }
+     // Two real physical customer SQL connections compete immediately after
+     // expiry. Exactly one new request may be created, never two live grants.
+     const race=await Promise.all([0,1].map(()=>http.inject({
+      method:'POST',url:'/api/v1/customer/table-change/requests',
+      headers:requestHeaders,payload:{}
+     })));
+     assert.deepEqual(race.map(row=>row.statusCode).sort((a,b)=>a-b),
+      [201,409],'concurrent post-expiry customer requests must serialize');
+     const fourth=(await admin.query(`SELECT id,status,source_table_id
+      FROM sabora.customer_table_change_requests WHERE account_id=$1
+      ORDER BY created_at DESC,id DESC LIMIT 1`,[httpFixture.sourceAccount])).rows[0];
+     assert.equal(fourth.status,'pending');
+     assert.equal(fourth.source_table_id,httpFixture.destinationTable);
+     assert.equal((await admin.query(`SELECT count(*)::int AS n
+      FROM sabora.customer_table_change_requests WHERE account_id=$1
+      AND status='pending'`,[httpFixture.sourceAccount])).rows[0].n,1);
+     // Retire only the disposable fixture, not the economic account. Keep
+     // expiry ordering valid for the normative database constraints.
+     await admin.query(`UPDATE sabora.customer_table_change_requests SET
+      created_at=clock_timestamp()-interval '3 minutes',
+      expires_at=clock_timestamp()-interval '1 minute',
+      status='expired' WHERE id=$1 AND status='pending'`,[fourth.id]);
+     // Revoking the customer session while its SSE connection is still open
+     // must cut off event access, fail closed in the PWA and reject the next
+     // HTTP operation. The HTTP authentication fixture intentionally accepts
+     // this cookie; denial must come from the real sealed PG17 boundary.
+     await admin.query(`UPDATE sabora.customer_sessions SET
+      revoked_at=clock_timestamp() WHERE customer_id=$1
+      AND revoked_at IS NULL`,[httpFixture.customer]);
+     await rejectingCustomerPage.getByText('No se puede comprobar el cambio de mesa')
+      .waitFor({timeout:20000});
+     const revokedState=await http.inject({
+      method:'GET',url:'/api/v1/customer/table-change/state',headers:requestHeaders
+     });
+     assert.equal(revokedState.statusCode,403);
+     const revokedRequest=await http.inject({
+      method:'POST',url:'/api/v1/customer/table-change/requests',
+      headers:requestHeaders,payload:{}
+     });
+     assert.equal(revokedRequest.statusCode,403);
+     assert.equal((await admin.query(`SELECT b.table_id,a.outstanding_cents
+      FROM sabora.customer_accounts a JOIN
+      sabora.customer_account_operational_bindings b ON b.account_id=a.id
+      WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0].table_id,
+      httpFixture.destinationTable);
+     assert.deepEqual(rejectedClientErrors,[]);
      await staffPage.evaluate(()=>window.__saboraCiDispose());
     }finally{
      if(rejectClientContext)await rejectClientContext.close();
