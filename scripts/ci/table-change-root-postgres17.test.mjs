@@ -2703,7 +2703,13 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:{
      requireSameOrigin:()=>true,
-     authenticate:async(request,reply)=>reply.code(401).send({error:'unauthorized'}),
+     authenticate:async(request,reply)=>{
+      if(request.headers.cookie==='__Secure-sabora_customer='+ 's'.repeat(43)){
+       request.customerIdentity={publicId:'SB-PG17',alias:'PG17'};
+       return;
+      }
+      return reply.code(401).send({error:'unauthorized'});
+     },
      logout:async()=>{}
     },
     forRoles:()=>async(request,reply)=>reply.code(403).send({error:'forbidden'})
@@ -2718,6 +2724,21 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    const denied=await http.inject({method:'POST',
     url:'/api/v1/operations/table-change/decisions',payload:{}});
    assert.equal(denied.statusCode,403);
+   // A valid HTTP cookie must cross the real five-login SQL boundary.
+   // This deliberately has no matching customer fixture: the database RPC,
+   // not a mock or the HTTP authentication layer, must reject the scope.
+   const forbidden=await http.inject({method:'POST',
+    url:'/api/v1/customer/table-change/requests',
+    headers:{cookie:'__Secure-sabora_customer='+ 's'.repeat(43),
+     'content-type':'application/json'},payload:{}});
+   assert.equal(forbidden.statusCode,403);
+   assert.deepEqual(forbidden.json(),{error:'customer_context_forbidden'});
+   const invalidPayload=await http.inject({method:'POST',
+    url:'/api/v1/customer/table-change/requests',
+    headers:{cookie:'__Secure-sabora_customer='+ 's'.repeat(43),
+     'content-type':'application/json'},
+    payload:{destinationTableId:ids.destinationTable}});
+   assert.equal(invalidPayload.statusCode,400);
    for(let index=0;index<connections.length;index++){
     const role=(await connections[index].query('SELECT current_user,session_user')).rows[0];
     assert.equal(role.current_user,specs[index].login);
