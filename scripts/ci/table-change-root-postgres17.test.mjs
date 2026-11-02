@@ -2949,3 +2949,39 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   }
  }
 });
+
+
+test('PG17 F12 pending-reader function is sealed and kitchen cannot enumerate requests',async()=>{
+ const signature='sabora.list_pending_table_changes_h6_candidate(uuid)';
+ const metadata=await admin.query(`SELECT p.prosecdef AS sealed,
+  p.proowner::regrole::text AS owner,
+  has_function_privilege('anon',p.oid,'EXECUTE') AS anonymous,
+  has_function_privilege('authenticated',p.oid,'EXECUTE') AS browser,
+  has_function_privilege('sabora_f12_pending_reader_runtime',p.oid,'EXECUTE') AS reader,
+  has_function_privilege('sabora_f12_operations_runtime',p.oid,'EXECUTE') AS decision
+  FROM pg_proc p WHERE p.oid=to_regprocedure($1)`,[signature]);
+ assert.equal(metadata.rows.length,1);
+ assert.deepEqual(metadata.rows[0],{
+  sealed:true,owner:'sabora_h6_fn_owner',anonymous:false,
+  browser:false,reader:true,decision:false
+ });
+ const role=await admin.query(`SELECT rolcanlogin,rolinherit,rolbypassrls
+  FROM pg_roles WHERE rolname='sabora_f12_pending_reader_runtime'`);
+ assert.deepEqual(role.rows,[{rolcanlogin:false,rolinherit:false,rolbypassrls:false}]);
+ await transaction(async client=>{
+  const waiter='e5000000-0000-4000-8000-000000000001';
+  const kitchen='e5000000-0000-4000-8000-000000000002';
+  await client.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+   VALUES ($1,'waiter','active'),($2,'kitchen','active')`,[waiter,kitchen]);
+  await client.query('SET LOCAL ROLE sabora_f12_pending_reader_runtime');
+  const rows=await client.query(`SELECT request_id,source_table_number,expires_at
+   FROM sabora.list_pending_table_changes_h6_candidate($1::uuid)`,[waiter]);
+  assert.deepEqual(rows.rows,[]);
+  const denied=await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.list_pending_table_changes_h6_candidate($1::uuid)',
+   [kitchen]),/table_change_staff_forbidden/);
+  assert.equal(denied.code,'42501');
+  await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.staff_members'),/permission denied/);
+ });
+});
