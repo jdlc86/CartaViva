@@ -56,6 +56,23 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    if(typeof value.revoked!=='boolean')throw new CustomerFlowTransportError('customer_flow_unavailable',503);
    return value.revoked;
   },
+  async tableChangeState(){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/state','GET');
+   if(!['unbound','bound','pending','approved','rejected'].includes(value.state as string)||
+      (value.boundTableId!==null&&
+       (typeof value.boundTableId!=='string'||!UUID.test(value.boundTableId)))||
+      !Number.isSafeInteger(value.serverNowMs)||
+      (['pending','rejected'].includes(value.state as string)?
+       !Number.isSafeInteger(value.expiresAtMs)||
+        (value.expiresAtMs as number)<=(value.serverNowMs as number):
+       value.expiresAtMs!==null))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   if((value.state==='unbound')!==(value.boundTableId===null))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({state:value.state as 'unbound'|'bound'|'pending'|'approved'|'rejected',
+    boundTableId:value.boundTableId as string|null,
+    expiresAtMs:value.expiresAtMs as number|null,serverNowMs:value.serverNowMs as number});
+  },
   async requestTableChange(){
    // The destination must never be part of the request payload.
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/requests','POST',{});

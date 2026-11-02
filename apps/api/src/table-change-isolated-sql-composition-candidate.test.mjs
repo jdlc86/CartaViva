@@ -77,12 +77,13 @@ function preflightPool(capability,login,{deny=false}={}){
     .map(role=>role===capability),all_set_roles:[capability]
   }]};
   if(sql.includes('array_agg(n.nspname')||sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
-   args[0]===login?(deny?['sabora.unexpected()']:[]):[
+   args[0]===login?(deny?['sabora.unexpected()']:[]):
     capability==='sabora_f12_customer_runtime'?
-     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)':
+     ['sabora.read_customer_table_change_h6_candidate(bytea)',
+      'sabora.request_customer_table_change_h6_resolved_candidate(bytea)']:
     capability==='sabora_b3_confirmation_runtime'?
-     'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)':
-     'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
+     ['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']:
+     ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK'||sql.startsWith('SET LOCAL ROLE '))
    return {rows:[]};
   if(sql===REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL)return {rows:[requestRow]};
