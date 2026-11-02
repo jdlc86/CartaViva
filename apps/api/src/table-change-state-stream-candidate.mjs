@@ -21,9 +21,10 @@ const backlogValid=(backlog,cursor)=>backlog&&backlog.version===1&&
  (backlog.minAvailableCursor===null||Number.isSafeInteger(backlog.minAvailableCursor))&&
  (backlog.maxAvailableCursor===null||Number.isSafeInteger(backlog.maxAvailableCursor));
 
-export function registerTableChangeStateStreamCandidate(scope,{tableChange,subscribeCommitted}={}){
+export function registerTableChangeStateStreamCandidate(scope,{tableChange,subscribeCommitted,onFailure=null}={}){
  if(typeof scope?.get!=='function'||typeof tableChange?.readState!=='function'||
-    typeof tableChange?.readDecisions!=='function'||typeof subscribeCommitted!=='function')
+    typeof tableChange?.readDecisions!=='function'||typeof subscribeCommitted!=='function'||
+    (onFailure!==null&&typeof onFailure!=='function'))
   throw Error('invalid_table_change_stream_configuration');
  scope.get('/table-change/events',async(request,reply)=>{
   if(!request.customerIdentity||!request.query||typeof request.query!=='object'||
@@ -54,6 +55,9 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
   response.setHeader('Connection','keep-alive');
   response.flushHeaders?.();
   let closed=false,running=false,dirty=false,previous='',expiry=null;
+  const report=(phase,error)=>{try{onFailure?.({phase,
+   code:typeof error?.code==='string'?error.code:null,
+   message:typeof error?.message==='string'?error.message.slice(0,160):'unknown'});}catch{}};
   let unsubscribe=()=>{},heartbeat=null;
   const close=()=>{
    if(closed)return;closed=true;
@@ -99,16 +103,18 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
    if(closed)return;
    if(running){dirty=true;return;}
    running=true;
+   let phase='read_state';
    try{
     do{
      dirty=false;
-     emitState(await readState());
-     const backlog=await readDecisions();
-     emitBacklog(backlog);
+     phase='read_state';emitState(await readState());
+     phase='read_backlog';const backlog=await readDecisions();
+     phase='emit_backlog';emitBacklog(backlog);
      // Drain bounded committed pages; never poll when the cursor is caught up.
      if(backlog.events.length===100)dirty=true;
     }while(dirty&&!closed);
-   }catch{
+   }catch(error){
+    report(phase,error);
     if(!closed){
      response.write(frame('access-revoked',{reason:'scope_unavailable'}));
      response.end();close();
