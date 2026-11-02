@@ -169,7 +169,8 @@ export async function createVerifiedTableChangeB3Candidate({
  });
  if(!confirmation||typeof confirmation.confirm!=='function')
   throw Error('invalid_b3_confirmation_flow');
- return Object.freeze({tableChange,confirmation});
+ return Object.freeze({tableChange,confirmation,
+  ...(confirmation.flow?{flow:confirmation.flow}:null)});
 }
 
 
@@ -196,7 +197,7 @@ export function createB3CustomerConfirmationFlowCandidate({
    withH6Transaction:withConfirmationTransaction,
    withH6ReadTransaction,h6ConfirmationSql:PERSIST_H6_TRANSFER_ORDER_SQL
   });
-  return Object.freeze({confirm:flow.confirm});
+  return Object.freeze({confirm:flow.confirm,flow});
  };
 }
 
