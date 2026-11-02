@@ -3222,16 +3222,39 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         'staff decision must notify the customer without manual state refresh');
        await livePage.screenshot({path:join(evidenceDir,
         'b3-customer-pg17-auto-approved-mobile.png'),fullPage:true});
-       // On reconnect without the QR fragment, replay the authorized durable
-       // server state into the live customer notification banner.
+       // A device that already acknowledged approval must resume from its
+       // committed outbox cursor, restore the *authorized state* and never
+       // emit the same user alert a second time.
+       const approvedCursor=await livePage.evaluate(()=>{
+        const key=Object.keys(localStorage).find(name=>
+         name.startsWith('sabora.table-change.cursor.'));
+        return Number(key?localStorage.getItem(key):0);
+       });
+       assert.ok(Number.isSafeInteger(approvedCursor)&&approvedCursor>0,
+        'approved notification must persist an H6 event cursor');
        const streamReconnected=livePage.waitForResponse(response=>
         new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
         response.status()===200,{timeout:20000});
        await livePage.reload();
        await streamReconnected;
-       await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
+       await livePage.waitForFunction(()=>
+        Array.isArray(window.__b3StreamFrames)&&
+        window.__b3StreamFrames.some(row=>
+         row.name==='sabora.table_change.state'&&
+         JSON.parse(row.data).state==='approved'),null,{timeout:20000});
+       assert.equal(await livePage.locator('.table-change-live-notice').count(),0,
+        'reconnected device must not duplicate an already-read approval');
+       const recovered=await livePage.evaluate(()=>({
+        frames:window.__b3StreamFrames,
+        cursors:Object.entries(localStorage).filter(([key])=>
+         key.startsWith('sabora.table-change.cursor.'))
+       }));
+       assert.equal(recovered.cursors.length,1);
+       assert.equal(Number(recovered.cursors[0][1]),approvedCursor);
+       assert.ok(recovered.frames.every(row=>row.name!=='sabora.table_change.approved'),
+        'cursor replay must not deliver already-acknowledged events');
        await livePage.screenshot({path:join(evidenceDir,
-        'b3-customer-pg17-auto-approved-reconnected-mobile.png'),fullPage:true});
+        'b3-customer-pg17-approved-state-reconnected-mobile.png'),fullPage:true});
        assert.deepEqual(liveClientErrors,[]);
       }finally{
        if(liveClientContext)await liveClientContext.close();
