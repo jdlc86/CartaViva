@@ -604,6 +604,11 @@ test('B3 six verified identities mount protected customer and staff HTTP surface
   confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
   flowPool:b3CustomerFlowPool(),
   pendingPool:b3PendingReaderPool(),expectedPendingLogin:'sabora_f12_pending_login',
+  notificationPool:{connect:async()=>({
+   query:async sql=>({rows:sql.startsWith('SELECT current_user')?
+    [{actor:'f12_operations_login',login:'f12_operations_login'}]:[]}),
+   on:()=>{},off:()=>{},release:()=>{}
+  })},
   expectedCustomerLogin:'f12_customer_login',
   expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
@@ -645,6 +650,11 @@ test('B3 HTTP composition rejects invalid operations guard without partial custo
   confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
   flowPool:b3CustomerFlowPool(),
   pendingPool:b3PendingReaderPool(),expectedPendingLogin:'sabora_f12_pending_login',
+  notificationPool:{connect:async()=>({
+   query:async sql=>({rows:sql.startsWith('SELECT current_user')?
+    [{actor:'f12_operations_login',login:'f12_operations_login'}]:[]}),
+   on:()=>{},off:()=>{},release:()=>{}
+  })},
   expectedCustomerLogin:'f12_customer_login',
   expectedOperationsLogin:'f12_operations_login',
   expectedConfirmationLogin:'b3_confirmation_login',
