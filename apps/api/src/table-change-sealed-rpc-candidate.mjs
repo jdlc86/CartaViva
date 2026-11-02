@@ -6,6 +6,8 @@ export const REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL=
  'SELECT request_id,request_status,expires_at FROM sabora.request_customer_table_change_h6_resolved_candidate($1::bytea)';
 export const READ_TABLE_CHANGE_H6_SQL=
  'SELECT bound_table_id,change_state,change_expires_at,server_time FROM sabora.read_customer_table_change_h6_candidate($1::bytea)';
+export const READ_TABLE_CHANGE_H6_OUTBOX_SQL=
+ 'SELECT sabora.read_customer_table_change_outbox_h6_candidate($1::bytea,$2::bigint,$3::integer) AS backlog';
 export const DECIDE_TABLE_CHANGE_H6_SQL=
  'SELECT sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean) AS status';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,6 +47,47 @@ export function createSealedTableChangeRpcCandidate({
   (resolveAccount!==undefined&&typeof resolveAccount!=='function'))
   throw Error('invalid_table_change_rpc_configuration');
  return Object.freeze({
+  async readDecisions({customerSessionToken,afterCursor=0,limit=100}={}){
+   if(typeof customerSessionToken!=='string'||!customerSessionToken)
+    throw Error('table_change_unauthorized');
+   if(!Number.isSafeInteger(afterCursor)||afterCursor<0||
+      !Number.isSafeInteger(limit)||limit<1||limit>100)
+    throw Error('invalid_table_change_cursor');
+   const hash=await hashSession(customerSessionToken);
+   if(!Buffer.isBuffer(hash)||hash.length!==32)
+    throw Error('invalid_table_change_session_hash');
+   let row;
+   try{
+    row=await withCustomerTransaction(query=>one(query,
+     READ_TABLE_CHANGE_H6_OUTBOX_SQL,[hash,afterCursor,limit]));
+   }catch(error){throw rpcFailure(error,'request');}
+   const value=row.backlog;
+   if(!value||typeof value!=='object'||value.version!==1||
+      typeof value.resyncRequired!=='boolean'||!Array.isArray(value.events)||
+      value.events.length>limit||!Number.isSafeInteger(value.nextCursor)||
+      value.nextCursor<afterCursor||
+      (value.minAvailableCursor!==null&&!Number.isSafeInteger(value.minAvailableCursor))||
+      (value.maxAvailableCursor!==null&&!Number.isSafeInteger(value.maxAvailableCursor)))
+    throw Error('invalid_table_change_backlog');
+   let cursor=afterCursor;
+   const events=value.events.map(event=>{
+    if(!event||!Number.isSafeInteger(event.id)||event.id<=cursor||
+       !UUID.test(event.eventKey??'')||!UUID.test(event.requestId??'')||
+       !['sabora.table_change.approved','sabora.table_change.rejected'].includes(event.type)||
+       !Number.isSafeInteger(event.expiresAtMs)||
+       typeof event.createdAt!=='string'||!Number.isFinite(Date.parse(event.createdAt)))
+     throw Error('invalid_table_change_backlog');
+    cursor=event.id;
+    return Object.freeze({id:event.id,eventKey:event.eventKey,type:event.type,
+     requestId:event.requestId,expiresAtMs:event.expiresAtMs,createdAt:event.createdAt});
+   });
+   if((events.length&&value.nextCursor!==cursor)||
+      (value.resyncRequired&&events.length!==0))
+    throw Error('invalid_table_change_backlog');
+   return Object.freeze({version:1,resyncRequired:value.resyncRequired,
+    nextCursor:value.nextCursor,minAvailableCursor:value.minAvailableCursor,
+    maxAvailableCursor:value.maxAvailableCursor,events:Object.freeze(events)});
+  },
   async readState({customerSessionToken}={}){
    if(typeof customerSessionToken!=='string'||!customerSessionToken)
     throw Error('table_change_unauthorized');
