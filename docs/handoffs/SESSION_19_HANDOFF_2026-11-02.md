@@ -191,3 +191,10 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - Actions para `c9a74f29`: browser gestión y cliente SUCCESS; CI y bootstrap FAILURE. En CI: bloque 2A de migraciones/privilegios PG17 PASS, bloque 2B FAIL en el test nuevo de lector porque la aserción refería `sabora_f12_operations_runtime`, rol aún no provisionado en el arnés PG17 (error PostgreSQL `role ... does not exist`). **No atribuir este fallo a la función de lectura**: el test abortó antes de probar su comportamiento.
 - `3af58186`: corregida la aserción para consultar `sabora_h6_operations_runtime`, rol existente en el arnés y explícitamente revocado en la migración de la función. No se amplían ACL ni roles. Workflows del commit corregido pendientes de confirmación.
 - Siguiente decisión según CI: si falla por ACL/RLS, corregir causa real en migración y repetir PG17; después ampliar al login físico NOINHERIT con preflight. No activar la bandeja ni declarar B3 GO. PR #43 Draft, sin merge, despliegue ni Fleetia/VPS/Supabase operativo.
+
+
+## 25. Refuerzo de pruebas de privilegios mínimos (2026-11-02)
+
+- `1d5849ad`: la prueba PG17 integrada del lector F12 ahora exige denegación de SELECT directo sobre `staff_members`, `customer_accounts` y `dining_tables`, además de denegación de EXECUTE de la función de decisión, bajo `SET LOCAL ROLE sabora_f12_pending_reader_runtime`. Se conserva la prueba de autorización waiter/kitchen y de propietario SECURITY DEFINER.
+- En el momento de la revisión, las CI de `3af58186` y `ab881058` seguían en ejecución; ambos SHA tenían browser gestión y cliente SUCCESS. No hay todavía resultado PG17 confirmado del test corregido ni del refuerzo `1d5849ad`.
+- La nueva prueba es cobertura de un requisito crítico, no una activación de permisos. Siguiente: observar resultados PG17, corregir causas SQL reales si aparecen, completar preflight de login físico y E2E económico. PR #43 Draft / B3 NO-GO; sin merge, despliegues ni Fleetia/VPS/Supabase operativo.
