@@ -12,6 +12,43 @@ function exact(value,keys){
   Object.prototype.propertyIsEnumerable.call(value,key)&&
   Object.hasOwn(Object.getOwnPropertyDescriptor(value,key),'value'));
 }
+// Optional read-only queue is deliberately not mounted until a sealed,
+// least-privilege SQL projection and its preflight are supplied.
+export function registerTableChangeStaffPendingHttp(app,{forRoles,service}={}){
+ if(!app||typeof app.get!=='function'||typeof forRoles!=='function'||
+    !service||typeof service.listPending!=='function')
+  throw Error('invalid_table_change_pending_configuration');
+ const authorized=forRoles(['admin','waiter']);
+ if(typeof authorized!=='function')throw Error('invalid_table_change_pending_configuration');
+ app.get('/api/v1/operations/table-change/pending',
+  {preHandler:authorized},async(request,reply)=>{
+   reply.header('Cache-Control','no-store');
+   reply.header('X-Content-Type-Options','nosniff');
+   if(!request.verifiedIdentity||!request.verifiedStaff)
+    return reply.code(403).send({error:'forbidden'});
+   try{
+    const rows=await service.listPending({
+     verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff
+    });
+    if(!Array.isArray(rows)||rows.length>100)throw Error('invalid_pending_projection');
+    const items=rows.map(row=>{
+     if(!row||typeof row!=='object'||Array.isArray(row)||
+      !UUID.test(row.requestId??'')||
+      !Number.isSafeInteger(row.sourceTableNumber)||row.sourceTableNumber<1||
+      typeof row.expiresAt!=='string'||!Number.isFinite(Date.parse(row.expiresAt)))
+      throw Error('invalid_pending_projection');
+     return {requestId:row.requestId,sourceTableNumber:row.sourceTableNumber,
+      expiresAt:row.expiresAt};
+    });
+    return reply.code(200).send({items});
+   }catch(error){
+    if(error?.message==='table_change_unauthorized')
+     return reply.code(403).send({error:'forbidden'});
+    return reply.code(503).send({error:'table_change_unavailable'});
+   }
+  });
+}
+
 export function registerTableChangeStaffHttp(app,{forRoles,service}={}){
  if(!app||typeof app.post!=='function'||typeof forRoles!=='function'||
   !service||typeof service.decide!=='function')
