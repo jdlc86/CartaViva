@@ -2822,13 +2822,15 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
     assert.equal(replay.statusCode,409,replay.body);
     assert.deepEqual(replay.json(),{error:'table_change_request_locked'});
-    // Race two HTTP retries through the same physically isolated customer
-    // login. Both must be rejected and the persisted grant must stay unique.
-    const concurrent=await Promise.all(Array.from({length:2},()=>http.inject({
-     method:'POST',url:'/api/v1/customer/table-change/requests',
-     headers:requestHeaders,payload:{}
-    })));
-    for(const response of concurrent){
+    // The scoped test pool deliberately pins one physical login connection.
+    // Do not issue concurrent BEGIN/SET LOCAL ROLE transactions on that same
+    // connection: interleaved transaction state is invalid and returns 503.
+    // Concurrent acceptance needs separate checked-out SQL connections.
+    for(let attempt=0;attempt<2;attempt++){
+     const response=await http.inject({
+      method:'POST',url:'/api/v1/customer/table-change/requests',
+      headers:requestHeaders,payload:{}
+     });
      assert.equal(response.statusCode,409,response.body);
      assert.deepEqual(response.json(),{error:'table_change_request_locked'});
     }
