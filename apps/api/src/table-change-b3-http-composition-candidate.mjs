@@ -22,10 +22,10 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
     typeof candidate.tableChange?.request!=='function'||
     typeof candidate.tableChange?.decide!=='function')
   throw Error('invalid_b3_http_composition');
+ // Validate the staff guard before registering any route. Never register
+ // a customer-only partial surface when the operations guard is invalid.
  const guard=forRoles(['admin','waiter']);
  if(typeof guard!=='function')throw Error('invalid_b3_http_composition');
- // Pass a stable, prevalidated guard; the staff route remains independently
- // protected by its own role check and request validation.
  registerCustomerProductionFlowHttp(app,{
   cookieAuth,flow:candidate.flow,tableChange:candidate.tableChange
  });
