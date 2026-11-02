@@ -3167,6 +3167,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        assert.equal(decisionResponse.status(),200,
         'PG17 decision and transactional outbox must both commit: '+
         await decisionResponse.text());
+       let durableRead,readFailure;
+       try{
+        durableRead=await candidate.tableChange.readDecisions({
+         customerSessionToken:positiveToken,afterCursor:0,limit:100
+        });
+       }catch(error){readFailure=error;}
+       if(readFailure){
+        const raw=(await admin.query(
+         'SELECT sabora.read_customer_table_change_outbox_h6_candidate($1::bytea,0,100) AS backlog',
+         [hashCustomerSessionToken(positiveToken)])).rows[0].backlog;
+        throw Error('b3_outbox_reader_failed:'+
+         JSON.stringify({message:readFailure.message,code:readFailure.code,
+          sql:readFailure.cause?.message,raw}));
+       }
+       assert.equal(durableRead.events.length,1,
+        'approved grant must emit exactly one authorized durable outbox event');
+       assert.equal(durableRead.events[0].type,'sabora.table_change.approved');
        const normativeApproval='Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos';
        try{
         await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
