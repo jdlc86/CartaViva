@@ -27,8 +27,8 @@ export const F12_IDENTITY_SQL=`SELECT current_user AS effective_role,session_use
  FROM pg_roles r WHERE r.rolname=current_user`;
 // Inspect both capability and LOGIN effective privileges: direct grants,
 // PUBLIC and inherited grants must not bypass SET LOCAL ROLE.
-export const F12_FUNCTION_SQL=`SELECT coalesce(array_agg(p.oid::regprocedure::text
- ORDER BY p.oid::regprocedure::text),'{}'::text[]) AS names
+export const F12_FUNCTION_SQL=`SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')'||')'
+ ORDER BY p.oid),'{}'::text[]) AS names
  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND
  has_function_privilege($1::name,p.oid,'EXECUTE')`;
