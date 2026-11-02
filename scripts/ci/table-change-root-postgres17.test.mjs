@@ -9,6 +9,7 @@ import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTa
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
+import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2991,4 +2992,29 @@ test('PG17 F12 pending-reader function is sealed and kitchen cannot enumerate re
    'SELECT * FROM sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean)',
    [waiter,waiter,true]),/permission denied/);
  });
+});
+
+test('PG17 F12 pending reader requires dedicated NOINHERIT physical login',async()=>{
+ const login='sabora_f12_pending_ci_login';
+ const password='sabora_pending_ci_disposable_only';
+ const loginUrl=new URL(url);
+ loginUrl.username=login;loginUrl.password=password;
+ await admin.query(`CREATE ROLE sabora_f12_pending_ci_login LOGIN NOINHERIT
+  NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+  PASSWORD 'sabora_pending_ci_disposable_only'`);
+ await admin.query('GRANT sabora_f12_pending_reader_runtime TO '+login);
+ const pool=new Pool({connectionString:loginUrl.toString(),max:2,
+  connectionTimeoutMillis:3000,idleTimeoutMillis:1000});
+ try{
+  await assertPendingReaderCapabilities({pool,expectedLogin:login});
+  const identity=(await pool.query('SELECT current_user,session_user')).rows[0];
+  assert.deepEqual(identity,{current_user:login,session_user:login});
+  await assert.rejects(pool.query('SELECT * FROM sabora.staff_members'),/permission denied/);
+  await assert.rejects(pool.query('SET ROLE sabora_h6_fn_owner'),/permission denied/);
+  await assert.rejects(pool.query('SET ROLE sabora_h6_operations_runtime'),/permission denied/);
+ }finally{
+  await pool.end();
+  await admin.query('DROP OWNED BY '+login).catch(()=>{});
+  await admin.query('DROP ROLE IF EXISTS '+login);
+ }
 });
