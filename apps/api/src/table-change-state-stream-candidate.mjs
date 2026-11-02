@@ -57,3 +57,43 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
   try{deliver(initial);void refresh();}catch{response.end();close();}
  });
 }
+
+// One physical NOTIFY listener under the verified operations SQL login.
+// It has no business-data privileges; every wake-up re-reads per-session SQL.
+export async function createTableChangeCommitNotifier({pool,expectedLogin}={}){
+ if(typeof pool?.connect!=='function'||typeof expectedLogin!=='string'||!expectedLogin)
+  throw Error('invalid_table_change_notifier');
+ const connection=await pool.connect();
+ let ready=false;
+ try{
+  if(typeof connection?.on!=='function'||typeof connection?.release!=='function')
+   throw Error('invalid_table_change_notifier_connection');
+  const identity=await connection.query('SELECT current_user AS actor,session_user AS login');
+  if(identity?.rows?.length!==1||identity.rows[0].actor!==expectedLogin||
+   identity.rows[0].login!==expectedLogin)
+   throw Error('invalid_table_change_notifier_login');
+  const listeners=new Set();
+  const receive=notification=>{
+   if(notification?.channel!=='sabora_h6_table_change_changed')return;
+   for(const listener of [...listeners]){try{listener();}catch{}}
+  };
+  connection.on('notification',receive);
+  try{await connection.query('LISTEN sabora_h6_table_change_changed');}
+  catch(error){connection.off?.('notification',receive);throw error;}
+  let closed=false;
+  ready=true;
+  return Object.freeze({
+   subscribe(listener){
+    if(closed||typeof listener!=='function')throw Error('invalid_table_change_subscription');
+    listeners.add(listener);
+    return()=>listeners.delete(listener);
+   },
+   async close(){
+    if(closed)return;
+    closed=true;listeners.clear();
+    try{await connection.query('UNLISTEN sabora_h6_table_change_changed');}
+    finally{connection.off?.('notification',receive);connection.release();}
+   }
+  });
+ }finally{if(!ready)connection.release(true);}
+}
