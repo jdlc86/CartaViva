@@ -60,14 +60,18 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    // The destination must never be part of the request payload.
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/requests','POST',{});
    if(typeof value.id!=='string'||!UUID.test(value.id)||
-      typeof value.sourceTableId!=='string'||!UUID.test(value.sourceTableId)||
-      value.status!=='pending'||
-      !Number.isSafeInteger(value.createdAtMs)||!Number.isSafeInteger(value.expiresAtMs)||
-      (value.expiresAtMs as number)<=(value.createdAtMs as number))
+      (value.sourceTableId!==undefined&&
+       (typeof value.sourceTableId!=='string'||!UUID.test(value.sourceTableId)))||
+      value.status!=='pending'||!Number.isSafeInteger(value.expiresAtMs)||
+      (value.expiresAtMs as number)<=0||
+      (value.createdAtMs!==undefined&&
+       (!Number.isSafeInteger(value.createdAtMs)||(value.createdAtMs as number)<0||
+        (value.expiresAtMs as number)<=(value.createdAtMs as number))))
     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
-   return Object.freeze({requestId:value.id,sourceTableId:value.sourceTableId,
-    status:'pending' as const,createdAtMs:value.createdAtMs as number,
-    expiresAtMs:value.expiresAtMs as number});
+   return Object.freeze({requestId:value.id,status:'pending' as const,
+    expiresAtMs:value.expiresAtMs as number,
+    ...(value.sourceTableId===undefined?{}:{sourceTableId:value.sourceTableId as string}),
+    ...(value.createdAtMs===undefined?{}:{createdAtMs:value.createdAtMs as number})});
   },
   async authorizeVisit(input:{tableId:string;qrToken:string}){
    if(!UUID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken))
