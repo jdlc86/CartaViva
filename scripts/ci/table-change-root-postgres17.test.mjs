@@ -2695,6 +2695,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
   scopedPools[0]={connect:()=>pools[0].connect()};
+  // F22 concurrent customer confirmations must use distinct authenticated
+  // writer and flow connections rather than the pinned preflight handles.
+  scopedPools[2]={connect:()=>pools[2].connect()};
+  scopedPools[4]={connect:()=>pools[4].connect()};
   // React StrictMode may start overlapping GETs for the queue on mount.
   // A pinned preflight connection cannot serve concurrent SQL transactions:
   // use the dedicated physical pending login's real pool at runtime, preserving
@@ -2734,6 +2738,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     token:'v'.repeat(42)+'s',publicId:'SB-EFEFEFEFEFEP',alias:'Comensal B',
     visitKey:'b3_peer_b_0361_integral',balance:2500}
   ];
+  // Fourth independent customer only for two-destination confirmation race.
+  const rival={
+   customer:'b0a00000-0000-4000-8000-000000000371',
+   account:'b0a00000-0000-4000-8000-000000000372',
+   order:'b0a00000-0000-4000-8000-000000000373',
+   round:'b0a00000-0000-4000-8000-000000000374',
+   token:'w'.repeat(42)+'s',publicId:'SB-GHGHGHGHGHGP',
+   alias:'Comensal de carrera',visitKey:'b3_race_origin_0371_integral',
+   balance:1600
+  };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
@@ -2756,7 +2770,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
        return;
       }
-      const peer=peers.find(row=>
+      const peer=[...peers,rival].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
        request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
