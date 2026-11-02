@@ -2717,12 +2717,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // preflights. Authentication must reject HTTP before any business RPC.
   const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
   const http=Fastify({logger:false});
+  const streamFailures=[];
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
     confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
     pendingPool:scopedPools[5],expectedPendingLogin:specs[5].login,
     notificationPool:pools[1],
+    observeStreamFailure:failure=>streamFailures.push(failure),
     expectedCustomerLogin:specs[0].login,
     expectedOperationsLogin:specs[1].login,
     expectedConfirmationLogin:specs[2].login,
@@ -3214,7 +3216,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          customerSessionToken:positiveToken});}
         catch(failure){stateError=failure.message;}
         throw Error('b3_durable_decision_not_delivered: '+
-         JSON.stringify({body,rows,frames,state,stateError})+': '+error.message);
+         JSON.stringify({body,rows,frames,state,stateError,streamFailures})+': '+error.message);
        }
        assert.equal(manualStateReads.length,readsBeforeDecision,
         'staff decision must notify the customer without manual state refresh');
