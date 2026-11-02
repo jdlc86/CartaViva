@@ -177,3 +177,10 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - En SHA `4622929f`, CI y bootstrap finalizaron FAILURE: 1177 tests, 1173 PASS, 2 FAIL, 2 SKIP; ambos fallos procedían del gate `periodic_business_polling_detected` (un `setInterval` en `TableChangeRequestsPanel`). Los dos workflows de navegador de ese SHA sí terminaron SUCCESS.
 - `e15f6b0d`: se sustituyó el intervalo por un único `setTimeout` a la siguiente caducidad conocida. El panel no sondea backend; reevalúa el estado al vencer la solicitud. **No declarar CI PASS hasta conocer el resultado de los workflows de este SHA**.
 - Prioridad: validar el HEAD, ejecutar PG17 real con login/rol lector y FORCE RLS, comprobar la bandeja en navegador con gateway autorizado y cerrar E2E de transferencia. PR #43 Draft / B3 NO-GO. Sin merge, despliegue ni cambios en Fleetia, VPS o Supabase operativo.
+
+
+## 23. CI verde y prueba integrada de lector PG17 (2026-11-02)
+
+- Evidencia Actions: los cuatro workflows de `570f3d09` y los cuatro de `e15f6b0d` terminaron SUCCESS. Se considera resuelta la regresión de sondeo periódico en dichos SHA, sin extrapolar a cambios posteriores.
+- `c9a74f29`: prueba nueva dentro del arnés PG17 real `scripts/ci/table-change-root-postgres17.test.mjs`, ejecutado por `catalog-postgres17-node-driver-smoke.sh`. Inspecciona propietario SECURITY DEFINER y EXECUTE por rol, NOLOGIN/NOINHERIT/BYPASSRLS, consulta vacía para camarero activo y denegación a cocina y SELECT directo bajo SET LOCAL ROLE; datos de personal insertados en transacción revertida.
+- **Prueba añadida, aún sin resultado de CI confirmado para `c9a74f29`**. No cubre todavía login físico dedicado con preflight completo, solicitudes pendientes con datos reales ni E2E de traslado económico. La nueva prueba podría descubrir un defecto en grants/RLS: corregirlo antes de avanzar. PR #43 Draft / B3 NO-GO, sin merge, despliegue ni cambios en Fleetia/VPS/Supabase operativo.
