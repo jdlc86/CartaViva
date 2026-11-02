@@ -75,3 +75,7 @@ Verificar ubicación y vigencia en HEAD; revisar migraciones posteriores, sin re
 ## 8. Prompt corto de arranque sesión 19
 
 > Continúa CartaViva/Sabora exclusivamente en `jdlc86/CartaViva`. Lee primero normativa vigente y después `docs/handoffs/SESSION_19_HANDOFF_2026-11-02.md`, el handoff 18, PR #43 y HEAD/CI. Corrige la CI fallida del último HEAD, cierra B3/F12 como hito vertical real: aprobación HTTP por camarero autorizado con cinco logins PG17, sin traslado en aprobación, primer checkout B con transferencia económica atómica y cuenta única, replay/concurrencia, pagos, pickup/SSE, PWA y aceptación F01–F28/R01–R10. Actualiza este mismo handoff al cerrar hitos. Sin merges, despliegues, cambios operativos en Supabase/VPS ni tocar Fleetia. NO-GO hasta validación integral.
+
+## 9. Diagnóstico de CI del 2 de noviembre
+
+La ejecución 41420226860 falló en el bloque H6 2B de integración PostgreSQL 17. El job 125193725462 registra SQLSTATE 40P01 (deadlock detected) durante una prueba de confirmaciones concurrentes. Referencias: scripts/ci/h6-postgres17.test.mjs línea 415 y apps/api/src/customer-production-flow.mjs línea 178. Los bloques 1 y 2A finalizaron correctamente. No se ha determinado todavía el ciclo exacto de bloqueos ni se ha demostrado que lo provoque el cambio HTTP. Investigar con pruebas PG17 aisladas y conservar la concurrencia real. PR 43 sigue Draft y B3/F12 NO-GO.
