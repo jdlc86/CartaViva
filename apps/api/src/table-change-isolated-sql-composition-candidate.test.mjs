@@ -611,3 +611,35 @@ test('B3 five verified identities mount protected customer and staff HTTP surfac
     'unauthenticated HTTP must not start a SQL transaction');
  }finally{await app.close();}
 });
+
+test('B3 HTTP composition rejects invalid operations guard without partial customer routes',async()=>{
+ const args={customerPool:preflightPool('sabora_f12_customer_runtime','f12_customer_login'),
+  operationsPool:preflightPool('sabora_f12_operations_runtime','f12_operations_login'),
+  confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
+  flowPool:b3CustomerFlowPool(),expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',
+  expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
+  hashSession:async()=>tokenHash,
+  verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  secretKey:'s'.repeat(48)};
+ const app=Fastify({logger:false});
+ const cookieAuth={requireSameOrigin:()=>true,
+  authenticate:async()=>{},logout:async()=>{}};
+ try{
+  await assert.rejects(mountVerifiedTableChangeB3HttpCandidate(app,{
+   ...args,cookieAuth,forRoles:()=>null
+  }),/invalid_b3_http_composition/);
+  await app.ready();
+  for(const url of ['/api/v1/customer/visits',
+   '/api/v1/customer/orders/confirm',
+   '/api/v1/customer/table-change/requests',
+   '/api/v1/operations/table-change/decisions']){
+   const response=await app.inject({method:'POST',url,payload:{}});
+   assert.equal(response.statusCode,404,url+' must not mount after invalid guard');
+  }
+  for(const candidate of [args.customerPool,args.operationsPool,args.confirmationPool,
+   args.h6ReadPool,args.flowPool])
+   assert.equal(candidate.calls.some(call=>call.sql==='BEGIN'),false);
+ }finally{await app.close();}
+});
