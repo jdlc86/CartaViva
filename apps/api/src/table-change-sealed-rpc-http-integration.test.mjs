@@ -128,6 +128,47 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
 });
 
 
+test('F12 PWA receives minimal successful table-change receipt from sealed HTTP endpoint',async()=>{
+ const query=async(sql,args)=>{
+  assert.equal(sql,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL);
+  assert.deepEqual(args,[Buffer.alloc(32,17)]);
+  return {rows:[{request_id:requestId,request_status:'pending',expires_at:expiry}]};
+ };
+ const service=createSealedTableChangeRpcCandidate({
+  withCustomerTransaction:fn=>fn(query),withStaffTransaction:fn=>fn(query),
+  hashSession:async()=>Buffer.alloc(32,17),
+  verifyStaff:async()=>({userId:staffId,role:'waiter'})
+ });
+ const app=Fastify({logger:false});
+ registerCustomerProductionFlowHttp(app,{
+  cookieAuth:{
+   requireSameOrigin(request,reply){
+    if(request.headers.origin!==origin){reply.code(403).send({error:'origin_not_allowed'});return false;}
+    return true;
+   },
+   async authenticate(request,reply){
+    if(request.headers.cookie!==cookie)return reply.code(401).send({error:'unauthorized'});
+    request.customerIdentity={publicId:'SB-23456789ABCD',alias:'Ana'};
+   },
+   logout:async()=>{}
+  },
+  tableChange:service,
+  flow:{authorizeVisit:async()=>{},quote:async()=>{},confirm:async()=>{}}
+ });
+ await app.ready();
+ try{
+  const transport=createCustomerFlowTransport({fetchImpl:async(path,init)=>{
+   const result=await app.inject({method:init.method,url:path,
+    headers:{...init.headers,cookie,origin},payload:init.body});
+   return new Response(result.body,{status:result.statusCode,
+    headers:{'content-type':result.headers['content-type']??'application/json'}});
+  }});
+  assert.deepEqual(await transport.requestTableChange(),{
+   requestId,status:'pending',expiresAtMs:Date.parse(expiry)
+  });
+ }finally{await app.close();}
+});
+
 test('B3 HTTP A-to-B approval is inert until confirmed checkout and replay is economically idempotent',async()=>{
  const events=[];
  const economic={table:'A',accountId,amount:1200,rounds:1,approval:'none'};
