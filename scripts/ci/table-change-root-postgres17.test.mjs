@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
-import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTableChangeB3CustomerFlowCandidate} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
+import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTableChangeB3CustomerFlowCandidate,createIsolatedB3ConfirmationTransaction} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
@@ -2683,6 +2683,21 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.equal(typeof candidate.tableChange.request,'function');
   assert.equal(typeof candidate.tableChange.decide,'function');
   assert.equal(typeof candidate.confirmation.confirm,'function');
+  // Exercise the real transaction boundary on a physically authenticated
+  // writer connection: an unlisted SQL statement must be rejected before it
+  // reaches PostgreSQL, and ROLLBACK must restore the login identity.
+  const withWriter=createIsolatedB3ConfirmationTransaction({
+   confirmationPool:scopedPools[2]
+  });
+  await assert.rejects(
+   withWriter(async query=>query('SELECT current_user',[])),
+   /role_scoped_sql_not_allowed/,
+   'writer must reject all unlisted SQL');
+  const restored=(await connections[2].query(
+   'SELECT current_user,session_user')).rows[0];
+  assert.equal(restored.current_user,specs[2].login,
+   'failed writer transaction must restore original login role');
+  assert.equal(restored.session_user,specs[2].login);
   // A green preflight must not be cached across a privilege change.
   // Revoke the only transfer RPC from the disposable writer capability and
   // require the complete five-login factory to fail closed on revalidation.
