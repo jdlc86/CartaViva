@@ -3615,8 +3615,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         {timeout:20000});
        await otherPage.getByRole('button',{name:'Confirmar pedido'}).click();
        const result=await resultPromise;
-       assert.equal(result.status(),201,'peer '+peer.seat+' PG17 checkout: '+
-        await result.text());
+       if(result.status()!==201){
+        const diagnostic=(await admin.query(`SELECT t.id,t.ordering_state,t.qr_version,
+         t.session_id,v.visit_key,v.authorized_qr_version,v.revoked_at,
+         v.expires_at,b.visit_key AS bound_visit,b.session_id AS bound_session
+         FROM sabora.dining_tables t
+         LEFT JOIN sabora.customer_table_visits v ON v.table_id=t.id
+          AND v.customer_id=$2
+         LEFT JOIN sabora.customer_account_operational_bindings b ON b.account_id=$3
+         WHERE t.id=$1 ORDER BY v.granted_at DESC LIMIT 1`,
+         [peerTable,peer.customer,peer.account])).rows;
+        throw Error('peer '+peer.seat+' PG17 checkout: '+await result.text()+
+         '; table_visit_binding='+JSON.stringify(diagnostic));
+       }
        const receipt=await result.json();
        assert.equal(receipt.status,'confirmed');
        assert.equal(receipt.accountId,peer.account,
