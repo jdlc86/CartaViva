@@ -1,4 +1,7 @@
 import test from 'node:test';
+import {createRequire} from 'node:module';
+import {mountVerifiedTableChangeB3HttpCandidate} from './table-change-b3-http-composition-candidate.mjs';
+const Fastify=createRequire(new URL('../package.json',import.meta.url))('fastify');
 import assert from 'node:assert/strict';
 import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
@@ -568,4 +571,43 @@ test('B3 H6 reader login rejects extra SET ROLE or direct Sabora EXECUTE before 
   assert.equal(reader.calls.some(x=>x.sql===B3_H6_LOGIN_SURFACE_SQL),true);
   assert.equal(writer.calls.some(x=>x.sql==='BEGIN'),false);
  }
+});
+
+test('B3 five verified identities mount protected customer and staff HTTP surfaces',async()=>{
+ const args={customerPool:preflightPool('sabora_f12_customer_runtime','f12_customer_login'),
+  operationsPool:preflightPool('sabora_f12_operations_runtime','f12_operations_login'),
+  confirmationPool:b3ConfirmationPool(),h6ReadPool:h6ReadPool(),
+  flowPool:b3CustomerFlowPool(),expectedCustomerLogin:'f12_customer_login',
+  expectedOperationsLogin:'f12_operations_login',
+  expectedConfirmationLogin:'b3_confirmation_login',
+  expectedH6ReadLogin:'h6_read_login',expectedFlowLogin:'flow_login',
+  hashSession:async()=>tokenHash,
+  verifyStaff:async()=>({userId:staffId,role:'waiter'}),
+  secretKey:'s'.repeat(48)};
+ const app=Fastify({logger:false});
+ const cookieAuth={
+  requireSameOrigin:()=>true,
+  authenticate:async(request,reply)=>reply.code(401).send({error:'unauthorized'}),
+  logout:async()=>{}
+ };
+ try{
+  const mounted=await mountVerifiedTableChangeB3HttpCandidate(app,{
+   ...args,cookieAuth,forRoles:()=>async(request,reply)=>
+    reply.code(403).send({error:'forbidden'})
+  });
+  assert.deepEqual(mounted,{mounted:true});
+  await app.ready();
+  for(const url of ['/api/v1/customer/visits','/api/v1/customer/quotes',
+   '/api/v1/customer/orders/confirm','/api/v1/customer/table-change/requests']){
+   const result=await app.inject({method:'POST',url,payload:{}});
+   assert.equal(result.statusCode,401,url+' must require customer authentication');
+  }
+  const staff=await app.inject({method:'POST',
+   url:'/api/v1/operations/table-change/decisions',payload:{}});
+  assert.equal(staff.statusCode,403,'staff decision must require role guard');
+  for(const candidate of [args.customerPool,args.operationsPool,args.confirmationPool,
+   args.h6ReadPool,args.flowPool])
+   assert.equal(candidate.calls.some(call=>call.sql==='BEGIN'),false,
+    'unauthenticated HTTP must not start a SQL transaction');
+ }finally{await app.close();}
 });
