@@ -7,6 +7,7 @@ import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs
 import {registerTableChangeStaffHttp} from './table-change-http-candidate.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from './table-change-b3-http-composition-candidate.mjs';
 import {createCustomerFlowTransport} from '../../client/src/customer-flow-transport.ts';
+import {createAuthenticatedOrderOperationsGateway} from '../../management/src/order-operations-authenticated-gateway.js';
 
 const requireApi=createRequire(new URL('../package.json',import.meta.url));
 const Fastify=requireApi('fastify');
@@ -127,6 +128,59 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
  }finally{await app.close();}
 });
 
+
+test('F12 management authenticated PWA decision crosses Fastify and sealed RPC',async()=>{
+ let status='pending';
+ const query=async(sql,args)=>{
+  assert.equal(sql,DECIDE_TABLE_CHANGE_H6_SQL);
+  assert.deepEqual(args,[staffId,requestId,true]);
+  status='approved';
+  return {rows:[{status}]};
+ };
+ const service=createSealedTableChangeRpcCandidate({
+  withCustomerTransaction:fn=>fn(query),withStaffTransaction:fn=>fn(query),
+  hashSession:async()=>Buffer.alloc(32,17),
+  verifyStaff:async({verifiedIdentity,verifiedStaff})=>{
+   assert.equal(verifiedIdentity.id,'authenticated-waiter');
+   assert.equal(verifiedStaff.role,'waiter');
+   return {userId:staffId,role:'waiter'};
+  }
+ });
+ const app=Fastify({logger:false});
+ registerTableChangeStaffHttp(app,{service,
+  forRoles:roles=>async(request,reply)=>{
+   if(request.headers.authorization!=='Bearer verified-test-waiter-token')
+    return reply.code(401).send({error:'unauthorized'});
+   const role=request.headers['x-test-role'];
+   if(!roles.includes(role))return reply.code(403).send({error:'forbidden'});
+   request.verifiedIdentity={id:'authenticated-waiter'};
+   request.verifiedStaff={role};
+  }
+ });
+ await app.ready();
+ let calls=0;
+ const gateway=createAuthenticatedOrderOperationsGateway({
+  getAccessToken:async()=> 'verified-test-waiter-token',
+  fetchImpl:async(path,init)=>{
+   calls++;
+   const response=await app.inject({method:init.method,url:path,
+    headers:{...Object.fromEntries(init.headers.entries()),'x-test-role':'waiter'},
+    payload:init.body});
+   return new Response(response.body,{status:response.statusCode,
+    headers:{'content-type':response.headers['content-type']??'application/json'}});
+  }
+ });
+ try{
+  assert.deepEqual(await gateway.decideTableChange({requestId,decision:'approved'}),
+   {requestId,status:'approved'});
+  assert.equal(status,'approved');
+  assert.equal(calls,1);
+  gateway.revoke();
+  await assert.rejects(gateway.decideTableChange({requestId,decision:'rejected'}),
+   /table_change_unavailable/);
+  assert.equal(calls,1);
+ }finally{gateway.revoke();await app.close();}
+});
 
 test('F12 PWA receives minimal successful table-change receipt from sealed HTTP endpoint',async()=>{
  const query=async(sql,args)=>{
