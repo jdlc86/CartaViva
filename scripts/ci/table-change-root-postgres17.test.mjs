@@ -2484,16 +2484,18 @@ test('PG17 F12 customer and waiter live identity preflights use separate restric
  await transaction(async client=>{
   const cases=[
    ['sabora_f12_customer_runtime','sabora_f12_customer_probe',
-    'sabora.request_customer_table_change_h6_resolved_candidate(bytea)'],
+    ['sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+     'sabora.read_customer_table_change_h6_candidate(bytea)']],
    ['sabora_f12_operations_runtime','sabora_f12_operations_probe',
-    'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']
+    ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']]
   ];
-  for(const [role,login,signature] of cases){
+  for(const [role,login,signatures] of cases){
    await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
    await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
    await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
    await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+   for(const signature of signatures)
+    await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
   }
   const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
   for(const [role,login] of cases){
@@ -2555,7 +2557,8 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
  await transaction(async client=>{
   const specs=[
    {role:'sabora_f12_customer_runtime',login:'sabora_b3_combined_request',
-    functions:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)']},
+    functions:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+     'sabora.read_customer_table_change_h6_candidate(bytea)']},
    {role:'sabora_f12_operations_runtime',login:'sabora_b3_combined_decision',
     functions:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
    {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_combined_writer',
