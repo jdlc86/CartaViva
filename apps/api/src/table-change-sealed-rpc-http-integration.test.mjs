@@ -5,6 +5,7 @@ import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL
  DECIDE_TABLE_CHANGE_H6_SQL} from './table-change-sealed-rpc-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
 import {registerTableChangeStaffHttp} from './table-change-http-candidate.mjs';
+import {mountVerifiedTableChangeB3HttpCandidate} from './table-change-b3-http-composition-candidate.mjs';
 
 const requireApi=createRequire(new URL('../package.json',import.meta.url));
 const Fastify=requireApi('fastify');
@@ -194,5 +195,25 @@ test('B3 HTTP A-to-B approval is inert until confirmed checkout and replay is ec
   assert.equal(economic.amount,1900);
   assert.equal(economic.rounds,2);
   assert.deepEqual(events,['request','decision','checkout','replay']);
+ }finally{await app.close();}
+});
+
+test('B3 opt-in HTTP composition fails closed without five verified SQL identities',async()=>{
+ const app=Fastify({logger:false});
+ const cookieAuth={authenticate:async()=>{},requireSameOrigin:()=>true,logout:async()=>{}};
+ try{
+  await assert.rejects(mountVerifiedTableChangeB3HttpCandidate(app,{
+   cookieAuth,forRoles:()=>async()=>{}
+  }),/invalid_b3_customer_flow_isolation/);
+  await app.ready();
+  const customer=await app.inject({method:'POST',
+   url:'/api/v1/customer/table-change/requests',payload:{}});
+  const decision=await app.inject({method:'POST',
+   url:'/api/v1/operations/table-change/decisions',payload:{}});
+  const confirm=await app.inject({method:'POST',
+   url:'/api/v1/customer/orders/confirm',payload:{}});
+  assert.equal(customer.statusCode,404);
+  assert.equal(decision.statusCode,404);
+  assert.equal(confirm.statusCode,404);
  }finally{await app.close();}
 });
