@@ -18,6 +18,10 @@ let pickupState = 'ready';
 let pickupVersion = 1;
 let pickupDisplayId = null;
 let failNextBoard = false;
+const changeRequestId='a8000000-0000-4000-8000-000000000001';
+const pendingChanges=[{requestId:changeRequestId,sourceTableNumber:7,
+  expiresAt:new Date(Date.now()+90000).toISOString()}];
+const changeDecisions=[];
 const calls = [];
 const board = () => ({version: 2, role, nextCursor: null, items: [{
   orderId, lineId, tableNumber: 7, customerLabel: 'Mesa E2E',
@@ -44,6 +48,24 @@ try {
     if (auth !== 'Bearer sabora_ci_browser_token_kitchen_001' &&
         auth !== 'Bearer sabora_ci_browser_token_waiter_001') {
       return route.fulfill({status: 401, headers, body: JSON.stringify({error:'unauthorized'})});
+    }
+    if (request.method()==='GET'&&request.url().endsWith('/table-change/pending')) {
+      if(role!=='waiter')return route.fulfill({status:403,headers,
+        body:JSON.stringify({error:'forbidden'})});
+      return route.fulfill({status:200,headers,body:JSON.stringify({items:pendingChanges})});
+    }
+    if (request.method()==='POST'&&request.url().endsWith('/table-change/decisions')) {
+      if(role!=='waiter')return route.fulfill({status:403,headers,
+        body:JSON.stringify({error:'forbidden'})});
+      const {requestId,decision}=request.postDataJSON();
+      const index=pendingChanges.findIndex(item=>item.requestId===requestId);
+      if(index<0||!['approved','rejected'].includes(decision))
+        return route.fulfill({status:409,headers,
+          body:JSON.stringify({error:'table_change_request_not_pending'})});
+      pendingChanges.splice(index,1);
+      changeDecisions.push({requestId,decision});
+      return route.fulfill({status:200,headers,
+        body:JSON.stringify({requestId,status:decision})});
     }
     if (request.url().includes('/events')) {
       return route.fulfill({status: 403, headers, body: JSON.stringify({error:'forbidden'})});
@@ -143,6 +165,31 @@ try {
   await page.getByRole('button',{name:'Actualizar estado'}).click();
   await page.getByRole('button',{name:'Voy a recoger'}).waitFor();
   await page.evaluate(() => window.__saboraCiDispose());
+  // PWA waiter session: the queue remains opt-in and uses the authenticated
+  // bearer transport; pending and decision share the same approved visual UI.
+  await page.evaluate(async () => {
+    window.location.hash='#mesas';
+    const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+    window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),
+      getAccessToken:async()=> 'sabora_ci_browser_token_waiter_001',
+      enableTableChangeQueue:true,
+    });
+  });
+  await page.getByRole('heading',{name:'Solicitudes de cambio de mesa'}).waitFor();
+  await page.getByText('Mesa 7').first().waitFor();
+  await page.screenshot({path:'/tmp/sabora-management-visual-smoke/table-change-authenticated-mobile.png',
+    fullPage:true});
+  await page.setViewportSize({width:1440,height:900});
+  await page.screenshot({path:'/tmp/sabora-management-visual-smoke/table-change-authenticated-desktop.png',
+    fullPage:true});
+  await page.getByRole('button',{name:'Aprobar cambio'}).click();
+  await page.getByText('Sin solicitudes pendientes').first().waitFor();
+  assert.deepEqual(changeDecisions,[{requestId:changeRequestId,decision:'approved'}]);
+  assert.equal(pendingChanges.length,0);
+  await page.evaluate(() => window.__saboraCiDispose());
+  await page.getByText('Solicitudes de cambio de mesa no conectadas.').waitFor()
+    .catch(()=>{}); // Preview mount is intentionally disconnected after sign-out.
   await page.getByText('Canal operativo sin conectar').first().waitFor();
   assert.ok(calls.some(call => call.method === 'POST'));
   assert.ok(calls.every(call => call.auth?.startsWith('Bearer sabora_ci_browser_token_')));
