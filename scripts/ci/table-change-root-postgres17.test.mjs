@@ -2699,7 +2699,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     expectedH6ReadLogin:specs[3].login,
     expectedFlowLogin:specs[4].login,
     hashSession:value=>createHash('sha256').update(value).digest(),
-    verifyStaff:async()=>({role:'waiter'}),
+    verifyStaff:async()=>({userId:ids.customer,role:'waiter'}),
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:{
      requireSameOrigin:()=>true,
@@ -2712,7 +2712,14 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      },
      logout:async()=>{}
     },
-    forRoles:()=>async(request,reply)=>reply.code(403).send({error:'forbidden'})
+    forRoles:()=>async(request,reply)=>{
+     if(request.headers['x-ci-staff']==='waiter'){
+      request.verifiedIdentity={userId:ids.customer};
+      request.verifiedStaff={role:'waiter'};
+      return;
+     }
+     return reply.code(403).send({error:'forbidden'});
+    }
    }),{mounted:true});
    await http.ready();
    for(const endpoint of ['/api/v1/customer/visits',
@@ -2793,6 +2800,24 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
     assert.equal(saved.account_id,httpFixture.sourceAccount);
     assert.equal(saved.bound_table,httpFixture.sourceTable,
      'request must not transfer the account');
+    // A forged waiter assertion must not be enough to approve the grant.
+    // Exercise the actual operations SQL login/RPC with a UUID that belongs
+    // to a customer rather than an authorized staff member.
+    const forgedDecision=await http.inject({method:'POST',
+     url:'/api/v1/operations/table-change/decisions',
+     headers:{'x-ci-staff':'waiter','content-type':'application/json'},
+     payload:{requestId:created.json().id,decision:'approved'}});
+    assert.equal(forgedDecision.statusCode,403,forgedDecision.body);
+    const afterForgery=(await admin.query(`SELECT q.status,
+     q.decided_at,b.table_id,b.binding_version,a.outstanding_cents
+     FROM sabora.customer_table_change_requests q
+     JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+     JOIN sabora.customer_accounts a ON a.id=q.account_id
+     WHERE q.id=$1`,[created.json().id])).rows[0];
+    assert.equal(afterForgery.status,'pending');
+    assert.equal(afterForgery.decided_at,null);
+    assert.equal(afterForgery.table_id,httpFixture.sourceTable);
+    assert.equal(afterForgery.outstanding_cents,2400);
     const replay=await http.inject({method:'POST',
      url:'/api/v1/customer/table-change/requests',headers:requestHeaders,payload:{}});
     assert.equal(replay.statusCode,409,replay.body);
