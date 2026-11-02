@@ -7,6 +7,7 @@ import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-ch
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
 import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTableChangeB3CustomerFlowCandidate,createIsolatedB3ConfirmationTransaction} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2698,6 +2699,26 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.equal(restored.current_user,specs[2].login,
    'failed writer transaction must restore original login role');
   assert.equal(restored.session_user,specs[2].login);
+  // The allowlisted SQL must actually reach the live SECURITY DEFINER
+  // function under SET LOCAL ROLE; deliberately invalid business scope
+  // must fail inside PostgreSQL, not with a permission/allowlist error.
+  let rejectedByDatabase;
+  try{
+   await withWriter(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[
+    Buffer.alloc(32,251),ids.destinationTable,'invalid-qr',
+    'nonexistent-visit','nonexistent-basket','nonexistent-request',
+    Buffer.alloc(32,252),ids.round,ids.order,'[]',false,'pay_at_end'
+   ]));
+  }catch(error){rejectedByDatabase=error;}
+  assert.ok(rejectedByDatabase,'invalid business scope must be rejected');
+  assert.ok(typeof rejectedByDatabase.code==='string',
+   'allowlisted writer call must reach PostgreSQL and return a SQLSTATE');
+  assert.notEqual(rejectedByDatabase.code,'42501',
+   'writer must have the intended EXECUTE privilege');
+  const afterDbFailure=(await connections[2].query(
+   'SELECT current_user,session_user')).rows[0];
+  assert.equal(afterDbFailure.current_user,specs[2].login);
+  assert.equal(afterDbFailure.session_user,specs[2].login);
   // A green preflight must not be cached across a privilege change.
   // Revoke the only transfer RPC from the disposable writer capability and
   // require the complete five-login factory to fail closed on revalidation.
