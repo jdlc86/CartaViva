@@ -2,7 +2,7 @@
 // decision-only operations role and has exactly one SQL EXECUTE privilege.
 import {F12_IDENTITY_SQL,F12_FUNCTION_SQL}
  from './table-change-isolated-sql-preflight-candidate.mjs';
-import {PENDING_READER_ROLE} from './table-change-pending-reader-candidate.mjs';
+export const PENDING_READER_ROLE='sabora_f12_pending_reader_runtime';
 export const PENDING_READER_SIGNATURE=
  'sabora.list_pending_table_changes_h6_candidate(uuid)';
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
