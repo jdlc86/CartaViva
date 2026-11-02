@@ -79,3 +79,7 @@ Verificar ubicación y vigencia en HEAD; revisar migraciones posteriores, sin re
 ## 9. Diagnóstico de CI del 2 de noviembre
 
 La ejecución 41420226860 falló en el bloque H6 2B de integración PostgreSQL 17. El job 125193725462 registra SQLSTATE 40P01 (deadlock detected) durante una prueba de confirmaciones concurrentes. Referencias: scripts/ci/h6-postgres17.test.mjs línea 415 y apps/api/src/customer-production-flow.mjs línea 178. Los bloques 1 y 2A finalizaron correctamente. No se ha determinado todavía el ciclo exacto de bloqueos ni se ha demostrado que lo provoque el cambio HTTP. Investigar con pruebas PG17 aisladas y conservar la concurrencia real. PR 43 sigue Draft y B3/F12 NO-GO.
+
+## 10. Inspección del recorrido concurrente H6
+
+Se ha inspeccionado el código de `customer-production-flow.mjs` y la prueba `h6-postgres17.test.mjs`. La línea 415 ejecuta dos `flow.confirm(request)` concurrentes con idéntica clave de idempotencia; exige un `confirmed`, un `replayed`, y mismos `orderId` y `accountId`. `confirm` ejecuta una primera transacción para `LOOKUP_ATTEMPT_SQL` y preparación de líneas y una segunda para `PERSIST_H6_ORDER_SQL`; las conexiones usan `SET LOCAL ROLE` y `ROLLBACK` ante error. El error SQLSTATE 40P01 del run 41420226860 todavía no identifica el ciclo exacto de locks. Antes de alterar SQL o introducir reintentos, inspeccionar las funciones PostgreSQL y los locks en el fixture PG17; conservar las garantías de idempotencia. No se ha ejecutado una nueva prueba ni corregido código en este punto.
