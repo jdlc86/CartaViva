@@ -9,6 +9,7 @@ import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTa
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
+import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
@@ -2691,7 +2692,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    expectedCustomerLogin:specs[0].login,expectedOperationsLogin:specs[1].login,
    expectedConfirmationLogin:specs[2].login,expectedH6ReadLogin:specs[3].login,
    expectedFlowLogin:specs[4].login,
-   hashSession:value=>createHash('sha256').update(value).digest(),
+   hashSession:hashCustomerSessionToken,
    verifyStaff:async()=>({role:'waiter'}),
    secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum'
   });
@@ -2712,7 +2713,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     expectedConfirmationLogin:specs[2].login,
     expectedH6ReadLogin:specs[3].login,
     expectedFlowLogin:specs[4].login,
-    hashSession:value=>createHash('sha256').update(value).digest(),
+    hashSession:hashCustomerSessionToken,
     verifyStaff:async({verifiedIdentity,verifiedStaff})=>({userId:verifiedIdentity.userId,role:verifiedStaff.role}),
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:{
@@ -2844,7 +2845,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const positiveToken='s'.repeat(43);
     // The SQL session hash must match the cookie passed to the HTTP adapter.
     await admin.query(`UPDATE sabora.customer_sessions SET token_hash=$1
-     WHERE customer_id=$2`,[createHash('sha256').update(positiveToken).digest(),httpFixture.customer]);
+     WHERE customer_id=$2`,[hashCustomerSessionToken(positiveToken),httpFixture.customer]);
     const requestHeaders={cookie:'__Secure-sabora_customer='+positiveToken,
      'content-type':'application/json'};
     const created=await http.inject({method:'POST',
@@ -3070,7 +3071,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     expectedCustomerLogin:specs[0].login,expectedOperationsLogin:specs[1].login,
     expectedConfirmationLogin:specs[2].login,expectedH6ReadLogin:specs[3].login,
     expectedFlowLogin:specs[4].login,
-    hashSession:value=>createHash('sha256').update(value).digest(),
+    hashSession:hashCustomerSessionToken,
     verifyStaff:async()=>({role:'waiter'}),
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum'
    }),

@@ -188,9 +188,11 @@ try {
   assert.deepEqual(changeDecisions,[{requestId:changeRequestId,decision:'approved'}]);
   assert.equal(pendingChanges.length,0);
   await page.evaluate(() => window.__saboraCiDispose());
-  // Disposal must revoke the bearer and disconnect the queue. The active
-  // route is #mesas, so the #comandas-only operational notice is not visible.
-  await page.getByText('Solicitudes de cambio de mesa no conectadas.').waitFor();
+  // Disposal revokes the bearer and unmounts the opt-in queue entirely.
+  // Only the default disconnected tables inventory remains visible.
+  await page.getByRole('heading',{name:'Control de mesas'}).waitFor();
+  assert.equal(await page.getByRole('heading',
+    {name:'Solicitudes de cambio de mesa'}).count(),0);
   assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).count(),0);
   assert.ok(calls.some(call => call.method === 'POST'));
   assert.ok(calls.every(call => call.auth?.startsWith('Bearer sabora_ci_browser_token_')));
