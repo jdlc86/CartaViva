@@ -2783,17 +2783,10 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    }finally{
     await fixture.query('ROLLBACK').catch(()=>{});
     fixture.release();
-    // The fixture lives only in the explicitly disposable CI database.
-    await admin.query('DELETE FROM sabora.customer_table_change_requests WHERE account_id=$1',
-     [ids.sourceAccount]);
-    await admin.query('DELETE FROM sabora.customer_account_operational_bindings WHERE account_id=$1',
-     [ids.sourceAccount]);
-    await admin.query('DELETE FROM sabora.customer_accounts WHERE id=$1',[ids.sourceAccount]);
-    await admin.query('DELETE FROM sabora.customer_table_visits WHERE customer_id=$1',[ids.customer]);
-    await admin.query('DELETE FROM sabora.customer_sessions WHERE customer_id=$1',[ids.customer]);
-    await admin.query('DELETE FROM sabora.dining_tables WHERE id=ANY($1::uuid[])',
-     [[ids.sourceTable,ids.destinationTable]]);
-    await admin.query('DELETE FROM sabora.customer_profiles WHERE id=$1',[ids.customer]);
+    // The PG17 acceptance harness creates and destroys this entire database.
+    // Do not manually delete a committed business fixture here: order-round
+    // foreign keys and trigger-created dependents make ad hoc teardown unsafe.
+    // The harness's disposable database is the isolation/cleanup boundary.
    }
    const invalidPayload=await http.inject({method:'POST',
     url:'/api/v1/customer/table-change/requests',
