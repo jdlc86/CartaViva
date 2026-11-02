@@ -12,11 +12,14 @@ export function createPendingTableChangeReader({withTransaction,verifyStaff}={})
  return Object.freeze({
   async listPending({verifiedIdentity,verifiedStaff}={}){
    if(!verifiedIdentity||!verifiedStaff)throw Error('table_change_unauthorized');
+   // Staff identity comes from the trusted HTTP auth boundary, not an
+   // unapproved SELECT on the read-only SQL connection. The SECURITY DEFINER
+   // function independently rechecks active waiter/admin membership.
+   const staff=await verifyStaff({verifiedIdentity,verifiedStaff});
+   if(!staff||!UUID.test(staff.userId??'')||
+    !['admin','waiter'].includes(staff.role))
+    throw Error('table_change_unauthorized');
    return withTransaction(async query=>{
-    const staff=await verifyStaff({query,verifiedIdentity,verifiedStaff});
-    if(!staff||!UUID.test(staff.userId??'')||
-     !['admin','waiter'].includes(staff.role))
-     throw Error('table_change_unauthorized');
     const result=await query(PENDING_TABLE_CHANGES_SQL,[staff.userId]);
     if(!result||!Array.isArray(result.rows)||result.rows.length>100)
      throw Error('invalid_pending_projection');
