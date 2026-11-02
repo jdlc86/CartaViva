@@ -2719,6 +2719,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
     confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
     pendingPool:scopedPools[5],expectedPendingLogin:specs[5].login,
+    notificationPool:pools[1],
     expectedCustomerLogin:specs[0].login,
     expectedOperationsLogin:specs[1].login,
     expectedConfirmationLogin:specs[2].login,
@@ -2766,6 +2767,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const response=await http.inject({method:'POST',url:endpoint,payload:{}});
     assert.equal(response.statusCode,401,endpoint);
    }
+   const privateStream=await http.inject({method:'GET',
+    url:'/api/v1/customer/table-change/events'});
+   assert.equal(privateStream.statusCode,401,'no anonymous customer SSE');
    const denied=await http.inject({method:'POST',
     url:'/api/v1/operations/table-change/decisions',payload:{}});
    assert.equal(denied.statusCode,403);
