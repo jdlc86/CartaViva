@@ -6,6 +6,7 @@ import {createSealedTableChangeRpcCandidate,REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
 import {registerTableChangeStaffHttp} from './table-change-http-candidate.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from './table-change-b3-http-composition-candidate.mjs';
+import {createCustomerFlowTransport} from '../../client/src/customer-flow-transport.ts';
 
 const requireApi=createRequire(new URL('../package.json',import.meta.url));
 const Fastify=requireApi('fastify');
@@ -90,6 +91,17 @@ test('F12 sealed RPC HTTP request/decision contract preserves permissions, coold
   assert.deepEqual(requested.json(),{id:requestId,status:'pending',expiresAtMs:Date.parse(expiry)});
   assert.equal(requested.body.includes(accountId),false);
   assert.equal(requested.headers['cache-control'],'no-store');
+  // Exercise the actual PWA transport against the real Fastify response shape,
+  // not a hand-authored fixture with optional private account/table metadata.
+  const transport=createCustomerFlowTransport({fetchImpl:async(path,init)=>{
+   const result=await app.inject({method:init.method,url:path,
+    headers:{...init.headers,cookie,origin},payload:init.body});
+   return new Response(result.body,{status:result.statusCode,
+    headers:{'content-type':result.headers['content-type']??'application/json'}});
+  }});
+  await assert.rejects(transport.requestTableChange(),error=>
+   error.status===409&&error.message==='table_change_request_locked');
+
   const denied=await app.inject({method:'POST',url:decisionPath,
    headers:{...decisionHeaders,'x-test-role':'kitchen'},
    payload:{requestId,decision:'approved'}});
