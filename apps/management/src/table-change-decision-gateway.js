@@ -19,7 +19,7 @@ export function createTableChangeDecisionGateway({send}={}){
     });
    }catch{throw new TableChangeDecisionGatewayError('table_change_unavailable',503);}
    if(!response||typeof response.status!=='number'||
-    !/^application\\/json(?:\\s*;|$)/i.test(String(response.headers?.get?.('content-type')??'')))
+    !/^application\/json(?:\s*;|$)/i.test(String(response.headers?.get?.('content-type')??'')))
     throw new TableChangeDecisionGatewayError('table_change_unavailable',503);
    let value;
    try{value=await response.json();}catch{
