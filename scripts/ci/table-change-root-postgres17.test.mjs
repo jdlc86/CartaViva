@@ -2683,6 +2683,25 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.equal(typeof candidate.tableChange.request,'function');
   assert.equal(typeof candidate.tableChange.decide,'function');
   assert.equal(typeof candidate.confirmation.confirm,'function');
+  // A green preflight must not be cached across a privilege change.
+  // Revoke the only transfer RPC from the disposable writer capability and
+  // require the complete five-login factory to fail closed on revalidation.
+  const writerSignature=specs[2].signatures[0];
+  await admin.query('REVOKE EXECUTE ON FUNCTION '+writerSignature+
+   ' FROM '+specs[2].role);
+  await assert.rejects(
+   createVerifiedTableChangeB3CustomerFlowCandidate({
+    customerPool:scopedPools[0],operationsPool:scopedPools[1],
+    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
+    expectedCustomerLogin:specs[0].login,expectedOperationsLogin:specs[1].login,
+    expectedConfirmationLogin:specs[2].login,expectedH6ReadLogin:specs[3].login,
+    expectedFlowLogin:specs[4].login,
+    hashSession:value=>createHash('sha256').update(value).digest(),
+    verifyStaff:async()=>({role:'waiter'}),
+    secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum'
+   }),
+   /invalid_b3_confirmation_capabilities/,
+   'a revoked writer privilege must prevent candidate construction');
  }finally{
   for(const connection of connections)connection.release();
   for(const pool of pools)await pool.end();
