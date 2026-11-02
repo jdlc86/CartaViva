@@ -3195,6 +3195,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       // Chromium customer PWA online: staff decisions must arrive over SSE,
       // not through a manually triggered GET or UI mock.
       let liveClientVite,liveClientBrowser,liveClientContext;
+      const peerContexts=[],peerScreens=[];
       const liveClientErrors=[];
       try{
        const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
@@ -3245,6 +3246,46 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         '/qr/v1/SABORA/'+httpFixture.destinationTable+'#'+qrToken);
        await streamReady;
        await livePage.getByText('Solicitud enviada al personal').waitFor({timeout:20000});
+       // Two independently authenticated PWA browsers watch the decision,
+       // without sharing session, economic identity or SSE event cursors.
+       for(const peer of peers){
+        const context=await liveClientBrowser.newContext({
+         viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+        });
+        peerContexts.push(context);
+        await context.addCookies([{name:'__Secure-sabora_customer',
+         value:peer.token,domain:'127.0.0.1',path:'/',secure:true,
+         httpOnly:true,sameSite:'Lax'}]);
+        const otherPage=await context.newPage();
+        await otherPage.addInitScript(()=>{
+         const Native=window.EventSource;
+         window.__b3PeerFrames=[];
+         window.EventSource=class extends Native{
+          constructor(url,options){
+           super(url,options);
+           for(const name of ['sabora.table_change.state',
+            'sabora.table_change.approved','sabora.table_change.rejected',
+            'access-revoked']){
+            this.addEventListener(name,event=>window.__b3PeerFrames.push({
+             name,data:event.data
+            }));
+           }
+          }
+         };
+        });
+        otherPage.on('pageerror',error=>
+         liveClientErrors.push('peer-'+peer.seat+':'+error.message));
+        const peerStream=otherPage.waitForResponse(response=>
+         new URL(response.url()).pathname==='/api/v1/customer/table-change/events'&&
+         response.status()===200,{timeout:20000});
+        await otherPage.goto('http://127.0.0.1:'+liveAddress.port+'/');
+        await peerStream;
+        await otherPage.waitForFunction(()=>Array.isArray(window.__b3PeerFrames)&&
+         window.__b3PeerFrames.some(row=>
+          row.name==='sabora.table_change.state'&&
+          JSON.parse(row.data).state==='bound'),null,{timeout:20000});
+        peerScreens.push({peer,page:otherPage});
+       }
        const readsBeforeDecision=manualStateReads.length;
        const decisionResponsePromise=page.waitForResponse(response=>
         new URL(response.url()).pathname==='/api/v1/operations/table-change/decisions',
@@ -3271,6 +3312,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        assert.equal(durableRead.events.length,1,
         'approved grant must emit exactly one authorized durable outbox event');
        assert.equal(durableRead.events[0].type,'sabora.table_change.approved');
+       for(const {peer,page:otherPage} of peerScreens){
+        const own=await candidate.tableChange.readDecisions({
+         customerSessionToken:peer.token,afterCursor:0,limit:100});
+        assert.deepEqual(own.events,[],
+         'a customer at '+peer.seat+' must not read another account decision');
+        const peerFrames=await otherPage.evaluate(()=>window.__b3PeerFrames);
+        assert.ok(peerFrames.every(row=>
+         !['sabora.table_change.approved','sabora.table_change.rejected'].includes(row.name)),
+         'live peer PWA must not receive a cross-account H6 decision');
+        const peerState=await http.inject({method:'GET',
+         url:'/api/v1/customer/table-change/state',
+         headers:{cookie:'__Secure-sabora_customer='+peer.token}});
+        assert.equal(peerState.statusCode,200);
+        assert.equal(peerState.json().state,'bound');
+       }
        const normativeApproval='Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos';
        try{
         await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
@@ -3327,6 +3383,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         'b3-customer-pg17-approved-state-reconnected-mobile.png'),fullPage:true});
        assert.deepEqual(liveClientErrors,[]);
       }finally{
+       for(const context of peerContexts)await context.close();
        if(liveClientContext)await liveClientContext.close();
        if(liveClientBrowser)await liveClientBrowser.close();
        if(liveClientVite)await liveClientVite.close();
