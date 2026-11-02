@@ -52,3 +52,10 @@ svg{width:24px;height:24px}.client-app{position:relative;min-height:100dvh;max-w
 .table-change-client-actions{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}
 .table-change-client-actions>button{min-height:44px}
 @media(max-width:480px){.table-change-client-actions{display:grid;grid-template-columns:1fr}.table-change-client-actions>button{width:100%}}
+
+/* Opt-in B3 customer decision feedback, matching the approved premium tokens. */
+.table-change-live-notice{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px clamp(16px,4vw,42px);border-bottom:1px solid var(--cart-border);background:var(--cart-bg);color:var(--ink)}
+.table-change-live-notice p{margin:0;line-height:1.55;font-size:.87rem;font-weight:650}
+.table-change-live-notice>div{display:flex;gap:8px;flex-shrink:0}
+.table-change-live-notice button{min-height:44px;padding:8px 12px;border:1px solid var(--brand);border-radius:11px;background:var(--surface);color:var(--brand);font-weight:750}
+@media(max-width:600px){.table-change-live-notice{align-items:stretch;flex-direction:column}.table-change-live-notice>div{flex-wrap:wrap}.table-change-live-notice button{flex:1}}
