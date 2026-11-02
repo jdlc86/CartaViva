@@ -24,10 +24,18 @@ export function TableChangeRequestsPanel({gateway}:{
  const [error,setError]=useState<string|null>(null);
  const [version,setVersion]=useState(0);
  const [now,setNow]=useState(()=>Date.now());
+ // One-shot deadline timer: no polling, and no stale active decisions after expiry.
  useEffect(()=>{
-  const timer=window.setInterval(()=>setNow(Date.now()),1000);
-  return ()=>window.clearInterval(timer);
- },[]);
+  if(phase!=='ready'||items.length===0)return;
+  const current=Date.now();
+  const deadlines=items.map(item=>Date.parse(item.expiresAt))
+   .filter(deadline=>Number.isFinite(deadline)&&deadline>current);
+  if(deadlines.length===0)return;
+  const next=Math.min(...deadlines);
+  const timer=window.setTimeout(()=>setNow(Date.now()),
+   Math.min(Math.max(1,next-current),2147483647));
+  return ()=>window.clearTimeout(timer);
+ },[phase,items,now]);
  const generation=useRef(0);
  useEffect(()=>{
   const current=++generation.current;
