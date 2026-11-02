@@ -4171,6 +4171,192 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        'b3-f23-injected-post-consume-rollback-recovered-mobile.png'),
        fullPage:true});
      }finally{await rollbackContext.close();}
+     // F16/F17/R03: deliberately interleave real QR/session revocation
+     // while the H6 CONFIRMATION transaction waits on its per-customer
+     // advisory lock. pg_blocking_pids proves it reached the database
+     // boundary; merely sending HTTP requests together is not enough.
+     // The same integral Fastify/PG17/Chromium scene and account fixtures
+     // exercise both denial and subsequent authorized QR recovery.
+     let dQr=qrToken;
+     const dQrAfterRotation='D'.repeat(42)+'A';
+     const dContexts=[];
+     const dHeaders=diner=>({cookie:'__Secure-sabora_customer='+diner.token,
+      'content-type':'application/json'});
+     const checkUnmoved=async(diner,grantId,why)=>{
+      const state=(await admin.query(`SELECT q.status,b.table_id,
+       a.outstanding_cents,(SELECT count(*)::int
+       FROM sabora.order_rounds r WHERE r.account_id=a.id) AS rounds,
+       (SELECT count(*)::int FROM sabora.payment_attempts p
+       WHERE p.account_id=a.id) AS payments,
+       (SELECT count(*)::int FROM sabora.order_line_delivery_destinations d
+       WHERE d.account_id=a.id AND d.order_id=$2 AND d.table_id=$3) AS historic_delivery,
+       (SELECT count(*)::int FROM sabora.orders o
+       WHERE o.customer_identifier=$4) AS orders
+       FROM sabora.customer_table_change_requests q
+       JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+       JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+       [grantId,diner.order,httpFixture.sourceTable,diner.publicId])).rows[0];
+      assert.equal(state.status,'approved',why+': grant must remain approved');
+      assert.equal(state.table_id,httpFixture.sourceTable,why+': binding remains in A');
+      assert.equal(state.outstanding_cents,String(diner.balance),why+': unchanged debt');
+      assert.equal(state.rounds,1,why+': no new round');
+      assert.equal(state.payments,0,why+': no payment');
+      assert.equal(state.orders,1,why+': no destination order');
+      assert.equal(state.historic_delivery,1,why+': pending delivery still in A');
+     };
+     const prepareD=async(diner,token)=>{
+      const context=await clientBrowser.newContext({
+       viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
+      });
+      dContexts.push(context);
+      await context.addCookies([{name:'__Secure-sabora_customer',
+       value:diner.token,domain:'127.0.0.1',path:'/',secure:true,
+       httpOnly:true,sameSite:'Lax'}]);
+      await context.addInitScript(({id})=>{
+       localStorage.setItem('sabora.client.selection.v1',
+        JSON.stringify([{itemId:id,name:'Plato de integración',priceCents:700,quantity:1}]));
+      },{id:itemId});
+      const page=await context.newPage();
+      page.on('pageerror',error=>customerBrowserErrors.push(
+       'concurrent-'+diner.publicId+':'+error.message));
+      await page.goto(origin+'/qr/v1/SABORA/'+httpFixture.concurrentTable+'#'+token);
+      await page.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+      await page.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).click();
+      await page.getByText('Mesa verificada').waitFor({timeout:20000});
+      await page.getByRole('button',{name:'Continuar con el pedido'}).click();
+      await page.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await page.getByRole('button',{name:'Confirmar pedido'}).waitFor({timeout:20000});
+      return page;
+     };
+     try{
+      for(const scenario of [
+       {diner:rotatedDiner,change:'qr'},
+       {diner:revokedDiner,change:'session'}
+      ]){
+       const {diner,change}=scenario;
+       const request=await http.inject({method:'POST',
+        url:'/api/v1/customer/table-change/requests',
+        headers:dHeaders(diner),payload:{}});
+       assert.equal(request.statusCode,201,change+': '+request.body);
+       const grantId=(await admin.query(`SELECT id FROM
+        sabora.customer_table_change_requests WHERE account_id=$1
+        ORDER BY created_at DESC LIMIT 1`,[diner.account])).rows[0].id;
+       const approved=await http.inject({method:'POST',
+        url:'/api/v1/operations/table-change/decisions',
+        headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+        payload:{requestId:grantId,decision:'approved'}});
+       assert.equal(approved.statusCode,200,change+': '+approved.body);
+       const page=await prepareD(diner,dQr);
+       const lockHolder=await admin.connect();
+       let held=false;
+       try{
+        await lockHolder.query('BEGIN');
+        held=true;
+        const holderPid=(await lockHolder.query(
+         'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        const key=(await lockHolder.query(`SELECT
+         pg_catalog.hashtextextended($1::text,140630)::bigint AS key`,
+         [diner.customer])).rows[0].key;
+        await lockHolder.query('SELECT pg_advisory_xact_lock($1::bigint)',[key]);
+        const resultPromise=page.waitForResponse(response=>
+         new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+         {timeout:30000});
+        await page.getByRole('button',{name:'Confirmar pedido'}).click();
+        let blocked=false;
+        for(let attempt=0;attempt<145;attempt++){
+         const active=(await admin.query(`SELECT count(*)::int AS n
+          FROM pg_catalog.pg_stat_activity a
+          WHERE a.pid<>$1::int AND a.wait_event_type='Lock'
+          AND a.wait_event='advisory'
+          AND $1::int=ANY(pg_catalog.pg_blocking_pids(a.pid))
+          AND a.query LIKE '%confirm_customer_round_h6_transfer_integration_candidate%'`,
+          [holderPid])).rows[0].n;
+         if(active>0){blocked=true;break;}
+         await new Promise(resolve=>setTimeout(resolve,40));
+        }
+        assert.equal(blocked,true,change+
+         ': H6 writer must be blocked in PostgreSQL behind our actual advisory lock');
+        if(change==='qr'){
+         await admin.query(`UPDATE sabora.dining_tables
+          SET qr_version=qr_version+1,qr_token_hash=$1
+          WHERE id=$2`,[createHash('sha256').update(dQrAfterRotation).digest(),
+          httpFixture.concurrentTable]);
+         dQr=dQrAfterRotation;
+        }else{
+         await admin.query(`UPDATE sabora.customer_sessions
+          SET revoked_at=clock_timestamp()
+          WHERE customer_id=$1 AND revoked_at IS NULL`,[diner.customer]);
+        }
+        // COMMIT the adversarial change before the waiting confirmation may
+        // resume. An asynchronous click without this ordering proves nothing.
+        await lockHolder.query('COMMIT');
+        held=false;
+        const denied=await resultPromise;
+        assert.equal(denied.status(),403,
+         change+': stale in-flight confirmation must deny at SQL boundary: '+
+         await denied.text());
+        assert.deepEqual(await denied.json(),{error:'customer_context_forbidden'});
+        await checkUnmoved(diner,grantId,change+' in-flight revocation');
+       }finally{
+        if(held)await lockHolder.query('ROLLBACK').catch(()=>{});
+        lockHolder.release();
+       }
+       if(change==='qr'){
+        // Revoking QR does not revoke this customer's one-use staff approval.
+        // A fresh QR + new visit/quote can still consume it once.
+        const renewed=await prepareD(diner,dQr);
+        const successPending=renewed.waitForResponse(response=>
+         new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+         {timeout:20000});
+        await renewed.getByRole('button',{name:'Confirmar pedido'}).click();
+        const response=await successPending;
+        assert.equal(response.status(),201,
+         'authorized customer must recover from QR race by rescanning: '+
+         await response.text());
+        const receipt=await response.json();
+        assert.equal(receipt.accountId,diner.account);
+        assert.equal(receipt.status,'confirmed');
+        const done=(await admin.query(`SELECT q.status,q.destination_table_id,
+         b.table_id,a.outstanding_cents,
+         (SELECT count(*)::int FROM sabora.order_rounds r
+          WHERE r.account_id=a.id) AS rounds,
+         (SELECT count(*)::int FROM sabora.payment_attempts p
+          WHERE p.account_id=a.id) AS payments
+         FROM sabora.customer_table_change_requests q
+         JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+         JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+         [grantId])).rows[0];
+        assert.equal(done.status,'consumed');
+        assert.equal(done.destination_table_id,httpFixture.concurrentTable);
+        assert.equal(done.table_id,httpFixture.concurrentTable);
+        assert.equal(done.outstanding_cents,'1800');
+        assert.equal(done.rounds,2);
+        assert.equal(done.payments,0);
+        const pending=(await admin.query(`SELECT d.table_id
+         FROM sabora.order_line_delivery_destinations d
+         WHERE d.account_id=$1 AND d.order_id=$2`,
+         [diner.account,diner.order])).rows;
+        assert.equal(pending.length,1);
+        assert.equal(pending[0].table_id,httpFixture.concurrentTable);
+        await renewed.getByText('Pedido confirmado').waitFor({timeout:20000});
+        await renewed.screenshot({path:join(evidence,
+         'b3-f17-inflight-qr-rotation-recovered-mobile.png'),fullPage:true});
+       }else{
+        // Session revocation is terminal. Neither new customer requests nor
+        // outbox reads may revive the staff grant or disclose another account.
+        const rejected=await http.inject({method:'POST',
+         url:'/api/v1/customer/table-change/requests',
+         headers:dHeaders(diner),payload:{}});
+        assert.equal(rejected.statusCode,403);
+        assert.equal((await admin.query(`SELECT status FROM
+         sabora.customer_table_change_requests WHERE id=$1`,
+         [grantId])).rows[0].status,'approved',
+         'stale approval persists for audit but is unusable by revoked session');
+       }
+      }
+     }finally{for(const context of dContexts)await context.close();}
      assert.deepEqual(customerBrowserErrors,[]);
     }finally{
      if(clientContext)await clientContext.close();
