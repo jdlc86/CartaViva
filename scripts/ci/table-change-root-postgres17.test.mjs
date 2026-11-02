@@ -3597,7 +3597,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        {timeout:20000});
       await customerPage.getByRole('button',
        {name:'Continuar con el pedido'}).click();
-      assert.equal((await quotePromise).status(),200,
+      assert.equal((await quotePromise).status(),201,
        scenario.name+': real quote prepared while authorized');
       await customerPage.getByRole('radio',{name:/Pagar al terminar/}).check();
       await customerPage.getByRole('button',
