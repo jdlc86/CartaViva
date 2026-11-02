@@ -2713,8 +2713,9 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
   assert.ok(rejectedByDatabase,'invalid business scope must be rejected');
   assert.ok(typeof rejectedByDatabase.code==='string',
    'allowlisted writer call must reach PostgreSQL and return a SQLSTATE');
-  assert.notEqual(rejectedByDatabase.code,'42501',
-   'writer must have the intended EXECUTE privilege');
+  assert.doesNotMatch(rejectedByDatabase.message,
+   /permission denied for (function|schema)|must be owner of function/i,
+   'writer must have the intended EXECUTE privilege; business authorization may itself return SQLSTATE 42501');
   const afterDbFailure=(await connections[2].query(
    'SELECT current_user,session_user')).rows[0];
   assert.equal(afterDbFailure.current_user,specs[2].login);
