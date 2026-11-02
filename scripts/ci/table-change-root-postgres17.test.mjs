@@ -2643,6 +2643,15 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
    const identity=(await connection.query('SELECT current_user,session_user')).rows[0];
    assert.equal(identity.current_user,spec.login);
    assert.equal(identity.session_user,spec.login);
+   const capabilities=(await connection.query(F12_FUNCTION_SQL,[spec.login])).rows[0].names;
+   assert.deepEqual(capabilities,[],
+    'authenticated login must not inherit or directly execute any Sabora RPC');
+   if(spec.signatures.length){
+    const allowed=(await connection.query(
+     'SELECT pg_has_role(current_user,$1::name,\'SET\') AS can_set',
+     [spec.role])).rows[0].can_set;
+    assert.equal(allowed,true,'login must be able to assume only its scoped role');
+   }
   }
   const scopedPools=connections.map(connection=>({
    connect:async()=>({query:(sql,args)=>connection.query(sql,args),release:()=>{}})
