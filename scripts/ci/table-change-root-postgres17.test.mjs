@@ -2983,5 +2983,12 @@ test('PG17 F12 pending-reader function is sealed and kitchen cannot enumerate re
   assert.equal(denied.code,'42501');
   await expectSqlError(client,()=>client.query(
    'SELECT * FROM sabora.staff_members'),/permission denied/);
+  await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.customer_accounts'),/permission denied/);
+  await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.dining_tables'),/permission denied/);
+  await expectSqlError(client,()=>client.query(
+   'SELECT * FROM sabora.decide_customer_table_change_h6_candidate($1::uuid,$2::uuid,$3::boolean)',
+   [waiter,waiter,true]),/permission denied/);
  });
 });
