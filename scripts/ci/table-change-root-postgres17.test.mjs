@@ -2748,6 +2748,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    alias:'Comensal de carrera',visitKey:'b3_race_origin_0371_integral',
    balance:1600
   };
+  const rollbackDiner={
+   customer:'b0a00000-0000-4000-8000-000000000381',
+   account:'b0a00000-0000-4000-8000-000000000382',
+   order:'b0a00000-0000-4000-8000-000000000383',
+   round:'b0a00000-0000-4000-8000-000000000384',
+   token:'x'.repeat(42)+'s',publicId:'SB-JKJKJKJKJKJP',
+   alias:'Comensal rollback',visitKey:'b3_rollback_origin_0381_integral',
+   balance:900
+  };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
@@ -2770,7 +2779,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
        return;
       }
-      const peer=[...peers,rival].find(row=>
+      const peer=[...peers,rival,rollbackDiner].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
        request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
@@ -3749,31 +3758,32 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const raceFixture=await admin.connect();
      try{
       await raceFixture.query('BEGIN');
+      for(const diner of [rival,rollbackDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
-       [rival.customer,rival.publicId,rival.alias]);
+       [diner.customer,diner.publicId,diner.alias]);
       await raceFixture.query(`INSERT INTO sabora.customer_sessions
        (customer_id,token_hash,expires_at)
        VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
-       [rival.customer,hashCustomerSessionToken(rival.token)]);
+       [diner.customer,hashCustomerSessionToken(diner.token)]);
       await raceFixture.query(`INSERT INTO sabora.customer_table_visits
        (table_id,session_id,customer_id,visit_key,actor_id,
         authorized_qr_version,expires_at)
        VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
        [httpFixture.sourceTable,httpFixture.sourceSession,
-        rival.customer,rival.visitKey]);
+        diner.customer,diner.visitKey]);
       await raceFixture.query(`INSERT INTO sabora.customer_accounts
        (id,table_id,session_id,visit_key,customer_id,payment_mode,
         payment_mode_selected_at,outstanding_cents)
        VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),$6)`,
-       [rival.account,httpFixture.sourceTable,httpFixture.sourceSession,
-        rival.visitKey,rival.customer,rival.balance]);
+       [diner.account,httpFixture.sourceTable,httpFixture.sourceSession,
+        diner.visitKey,diner.customer,diner.balance]);
       await raceFixture.query(`INSERT INTO
        sabora.customer_account_operational_bindings
        (account_id,table_id,session_id,visit_key)
        VALUES($1,$2,$3,$4)`,
-       [rival.account,httpFixture.sourceTable,httpFixture.sourceSession,
-        rival.visitKey]);
+       [diner.account,httpFixture.sourceTable,httpFixture.sourceSession,
+        diner.visitKey]);
       await raceFixture.query(`INSERT INTO sabora.orders
        (id,table_id,session_id,company,employee_number,customer_alias,
         customer_identifier,customer_visit_key,economic_snapshot,confirmed_at,
@@ -3781,29 +3791,30 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        VALUES($1,$2,$3,NULL,NULL,$4,$5,$6,
         '{"schemaVersion":"1"}'::jsonb,clock_timestamp(),'first',
         '[{"category":"main","name":"Pendiente carrera","quantity":1}]'::jsonb)`,
-       [rival.order,httpFixture.sourceTable,httpFixture.sourceSession,
-        rival.alias,rival.publicId,rival.visitKey]);
+       [diner.order,httpFixture.sourceTable,httpFixture.sourceSession,
+        diner.alias,diner.publicId,diner.visitKey]);
       await raceFixture.query(`INSERT INTO sabora.order_rounds
        (id,order_id,account_id,amount_cents,payment_mode,
         payment_policy_version,grouping_deadline,state)
        VALUES($1,$2,$3,$4,'pay_at_end',1,
         clock_timestamp()+interval '5 minutes','grouping')`,
-       [rival.round,rival.order,rival.account,rival.balance]);
+       [diner.round,diner.order,diner.account,diner.balance]);
       await raceFixture.query(`INSERT INTO
        sabora.order_round_delivery_destinations
        (round_id,account_id,table_id,session_id,visit_key)
        VALUES($1,$2,$3,$4,$5)`,
-       [rival.round,rival.account,httpFixture.sourceTable,
-        httpFixture.sourceSession,rival.visitKey]);
+       [diner.round,diner.account,httpFixture.sourceTable,
+        httpFixture.sourceSession,diner.visitKey]);
       const raceLine=(await raceFixture.query(`SELECT id
-       FROM sabora.order_lines WHERE order_id=$1`,[rival.order])).rows[0];
+       FROM sabora.order_lines WHERE order_id=$1`,[diner.order])).rows[0];
       assert.ok(raceLine?.id,'historical order requires line');
       await raceFixture.query(`INSERT INTO
        sabora.order_line_delivery_destinations
        (order_line_id,round_id,account_id,order_id,table_id,session_id,visit_key)
        VALUES($1,$2,$3,$4,$5,$6,$7)`,
-       [raceLine.id,rival.round,rival.account,rival.order,
-        httpFixture.sourceTable,httpFixture.sourceSession,rival.visitKey]);
+       [raceLine.id,diner.round,diner.account,diner.order,
+        httpFixture.sourceTable,httpFixture.sourceSession,diner.visitKey]);
+      }
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
