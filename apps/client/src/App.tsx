@@ -197,9 +197,10 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
 
  useEffect(()=>{
   if(!tableChangeState||!['pending','rejected'].includes(tableChangeState.state))return;
-  const tick=window.setInterval(()=>setChangeClock(Date.now()),1000);
-  return()=>window.clearInterval(tick);
- },[tableChangeState]);
+  // This is a one-shot local countdown, never a business-state poll.
+  const tick=window.setTimeout(()=>setChangeClock(Date.now()),1000);
+  return()=>window.clearTimeout(tick);
+ },[tableChangeState,changeClock]);
  const changeRemainingSeconds=tableChangeState?.expiresAtMs==null?null:Math.max(0,
   Math.ceil((tableChangeState.expiresAtMs-(
    tableChangeState.serverNowMs+changeClock-changeStateReceivedAtRef.current))/1000));
