@@ -3,7 +3,8 @@
 const ROLES=Object.freeze({
  sabora_f12_customer_runtime:Object.freeze([
   'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
-  'sabora.read_customer_table_change_h6_candidate(bytea)'
+  'sabora.read_customer_table_change_h6_candidate(bytea)',
+  'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)'
  ]),
  sabora_f12_operations_runtime:Object.freeze([
   'sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'
