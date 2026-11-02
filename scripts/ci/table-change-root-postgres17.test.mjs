@@ -2574,8 +2574,6 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
    assert.equal(who.current_user,spec.login);
    assert.equal(who.session_user,spec.login);
    if(spec===request||spec===decision){
-    // A schema-qualified RPC signature must not depend on search_path.
-    await client.query("SET LOCAL search_path TO sabora, public");
     assert.deepEqual(await assertF12SqlIdentity({pool,expectedLogin:spec.login,
      capability:spec.role}),{validated:true,login:spec.login,capability:spec.role});
    }else if(spec===writer){
@@ -2590,7 +2588,6 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
     assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool}),{validated:true});
    }
    await client.query('RESET SESSION AUTHORIZATION');
-   await client.query('SET LOCAL search_path TO public');
   }
   const writerSignature=writer.functions[0];
   await client.query(`GRANT EXECUTE ON FUNCTION ${writerSignature} TO ${reader.role}`);
