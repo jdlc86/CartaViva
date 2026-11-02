@@ -2726,13 +2726,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     order:'b0a00000-0000-4000-8000-000000000353',
     round:'b0a00000-0000-4000-8000-000000000354',
     token:'u'.repeat(42)+'s',publicId:'SB-CDCDCDCDCDCP',alias:'Comensal A',
-    visitKey:'b3_peer_a_0351',balance:1800},
+    visitKey:'b3_peer_a_0351_integral',balance:1800},
    {seat:'B',customer:'b0a00000-0000-4000-8000-000000000361',
     account:'b0a00000-0000-4000-8000-000000000362',
     order:'b0a00000-0000-4000-8000-000000000363',
     round:'b0a00000-0000-4000-8000-000000000364',
     token:'v'.repeat(42)+'s',publicId:'SB-EFEFEFEFEFEP',alias:'Comensal B',
-    visitKey:'b3_peer_b_0361',balance:2500}
+    visitKey:'b3_peer_b_0361_integral',balance:2500}
   ];
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
