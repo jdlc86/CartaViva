@@ -152,3 +152,13 @@ Revisión de seguridad:
 Dictamen: GO / NO-GO
 Alcance de GO: candidato de código, nunca autorización implícita de despliegue
 ```
+
+## 7. Evidencia intermedia verificable: recorrido integrado A→B (2026-11-02)
+
+**Esta sección es un registro de ejecución, no una modificación ni relajación de la matriz F01–F28/R01–R10.** En la rama del PR #43 Draft, SHA `4229ee7091e3a1d8495b43ae184f720e81919514`, los cuatro workflows terminaron SUCCESS: [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/41441324253), [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/41441324189), [Chromium gestión](https://github.com/jdlc86/CartaViva/actions/runs/41441324434) y [navegador cliente](https://github.com/jdlc86/CartaViva/actions/runs/41441324195).
+
+La prueba **única e integrada** `PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey` terminó PASS: seis identidades SQL reales de privilegios mínimos en PostgreSQL 17 desechable; solicitud A, lectura de pendientes y decisión de camarero por la PWA React ejecutada en Chromium conectada al mismo Fastify real/PG17 (el adaptador de identidad HTTP del arnés es de prueba); confirmación de un pedido en B mediante transporte real de cliente y Fastify; `account_id` inmutable, saldo de 2400→3100 céntimos, origen histórico A intacto, redirección exclusiva de la entrega pendiente a B, concesión consumida una vez y replay sin ronda duplicada. También se ejecutaron las negativas de sala/cocina y privilegios SQL y el logout visual. El fallo de aislamiento por dos GET React StrictMode quedó corregido usando el pool físico de lector, sin ampliar privilegios.
+
+**No acreditado aún:** navegador del cliente conectado al mismo backend SQL en el mismo escenario; verificador JWT real completo en vez del adaptador HTTP de CI; aceptación de pagos Stripe/efectivo, SSE durables, revocación/cierre y concurrencia económica exhaustiva, mensajes cliente exactos y revisión visual final F28; cierre individual de F01–F28/R01–R10. La bandeja y composición B3 siguen opt-in, sin activación operativa. **B3 NO-GO.**
+
+La revisión siguiente incorpora **capturas Chromium de datos PG17 reales** en el artefacto H6 para pantallas móvil/escritorio; solo se marcarán como evidencias ejecutadas cuando su commit supere CI. No hay autorización de merge, despliegue, uso del VPS o Supabase operativo ni intervención en Fleetia.

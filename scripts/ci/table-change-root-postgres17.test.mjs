@@ -2979,6 +2979,18 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         ': '+error.message);
       }
       assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).isEnabled(),true);
+      // This is real pending SQL data, not a route mock. Save the approved
+      // interface at both breakpoints in the existing H6 CI artifact.
+      const {mkdir}=await import('node:fs/promises');
+      const {join}=await import('node:path');
+      assert.ok(process.env.RUNNER_TEMP,'disposable_actions_artifact_dir_required');
+      const evidenceDir=join(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+      await mkdir(evidenceDir,{recursive:true});
+      await page.screenshot({path:join(evidenceDir,'b3-pending-pg17-mobile.png'),
+       fullPage:true});
+      await page.setViewportSize({width:1440,height:900});
+      await page.screenshot({path:join(evidenceDir,'b3-pending-pg17-desktop.png'),
+       fullPage:true});
       await page.getByRole('button',{name:'Aprobar cambio'}).click();
       await page.getByText('Sin solicitudes pendientes').first().waitFor();
       assert.ok(browserRequests.some(row=>row.method==='GET'));
