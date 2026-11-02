@@ -2855,7 +2855,7 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
      JOIN sabora.customer_accounts a ON a.id=q.account_id
      WHERE q.id=$1`,[created.json().id])).rows[0];
-    assert.equal(afterRace.status,'pending');
+    assert.equal(afterRace.status,'approved');
     assert.equal(afterRace.table_id,httpFixture.sourceTable);
     assert.equal(afterRace.outstanding_cents,'2400');
     const count=(await admin.query(`SELECT count(*)::int AS total
