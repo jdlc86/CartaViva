@@ -16,7 +16,8 @@ function mock(capability,{override={},names,loginNames=[],queryError=false}={}){
    if(sql===F12_FUNCTION_SQL&&args?.[0]===login)return {rows:[{names:loginNames}]};
    if(sql===F12_FUNCTION_SQL)return {rows:[{names:names??(capability==='sabora_f12_customer_runtime'?
     ['sabora.read_customer_table_change_h6_candidate(bytea)',
-     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)']:
+     'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
+     'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)']:
     ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)'])}]};
    throw Error('unexpected');
   },release(discard){released=discard;}
