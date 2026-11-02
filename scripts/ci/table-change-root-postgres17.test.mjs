@@ -2485,7 +2485,8 @@ test('PG17 F12 customer and waiter live identity preflights use separate restric
   const cases=[
    ['sabora_f12_customer_runtime','sabora_f12_customer_probe',
     ['sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
-     'sabora.read_customer_table_change_h6_candidate(bytea)']],
+     'sabora.read_customer_table_change_h6_candidate(bytea)',
+     'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)']],
    ['sabora_f12_operations_runtime','sabora_f12_operations_probe',
     ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']]
   ];
@@ -2558,7 +2559,8 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
   const specs=[
    {role:'sabora_f12_customer_runtime',login:'sabora_b3_combined_request',
     functions:['sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
-     'sabora.read_customer_table_change_h6_candidate(bytea)']},
+     'sabora.read_customer_table_change_h6_candidate(bytea)',
+     'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)']},
    {role:'sabora_f12_operations_runtime',login:'sabora_b3_combined_decision',
     functions:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
    {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_combined_writer',
@@ -3157,9 +3159,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        await streamReady;
        await livePage.getByText('Solicitud enviada al personal').waitFor({timeout:20000});
        const readsBeforeDecision=manualStateReads.length;
+       const decisionResponsePromise=page.waitForResponse(response=>
+        new URL(response.url()).pathname==='/api/v1/operations/table-change/decisions',
+        {timeout:20000});
        await page.getByRole('button',{name:'Aprobar cambio'}).click();
+       const decisionResponse=await decisionResponsePromise;
+       assert.equal(decisionResponse.status(),200,
+        'PG17 decision and transactional outbox must both commit: '+
+        await decisionResponse.text());
        const normativeApproval='Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos';
-       await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
+       try{
+        await livePage.getByText(normativeApproval).first().waitFor({timeout:20000});
+       }catch(error){
+        const body=(await livePage.locator('body').innerText()).slice(-1400);
+        const rows=(await admin.query(`SELECT event_type,aggregate_id FROM
+         sabora.event_outbox WHERE customer_id=$1 AND account_id=$2
+         AND event_type LIKE 'sabora.table_change.%' ORDER BY id`,
+         [httpFixture.customer,httpFixture.sourceAccount])).rows;
+        throw Error('b3_durable_decision_not_delivered: '+
+         JSON.stringify({body,rows})+': '+error.message);
+       }
        assert.equal(manualStateReads.length,readsBeforeDecision,
         'staff decision must notify the customer without manual state refresh');
        await livePage.screenshot({path:join(evidenceDir,
