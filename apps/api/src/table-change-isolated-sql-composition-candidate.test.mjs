@@ -424,7 +424,11 @@ test('B3 customer confirmation adapter validates inputs before exposing flow',as
   /invalid_b3_customer_confirmation_adapter/);
  const flow=factory({withConfirmationTransaction:async()=>{},
   withH6ReadTransaction:async()=>{}});
- assert.deepEqual(Object.keys(flow),['confirm']);
+ assert.deepEqual(Object.keys(flow),['confirm','flow']);
+ assert.equal(flow.flow.confirm,flow.confirm);
+ assert.equal(typeof flow.flow.authorizeVisit,'function');
+ assert.equal(typeof flow.flow.quote,'function');
+ assert.equal(Object.isFrozen(flow.flow),true);
  assert.equal(typeof flow.confirm,'function');
  assert.equal(Object.isFrozen(flow),true);
 });
