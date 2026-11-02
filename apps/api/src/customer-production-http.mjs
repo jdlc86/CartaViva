@@ -1,4 +1,5 @@
 import {readCustomerCookie} from './customer-cookie-session-candidate.mjs';
+import {registerTableChangeStateStreamCandidate} from './table-change-state-stream-candidate.mjs';
 
 const json=request=>typeof request.headers['content-type']==='string'&&
  /^application\/json(?:\s*;|$)/i.test(request.headers['content-type']);
@@ -35,7 +36,7 @@ const replyFailure=(reply,error)=>{
 
 // Explicit opt-in adapter. Cookie authentication and same-origin enforcement
 // are injected and apply before any QR, quote or order capability runs.
-export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null}={}){
+export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,tableChangeNotifier=null}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
@@ -83,6 +84,9 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     }
    });
   }
+  if(tableChangeNotifier)registerTableChangeStateStreamCandidate(scope,{
+   tableChange,subscribeCommitted:tableChangeNotifier.subscribe
+  });
   if(tableChange&&typeof tableChange.request==='function'){
    scope.post('/table-change/requests',{bodyLimit:1024},async(request,reply)=>{
     if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
