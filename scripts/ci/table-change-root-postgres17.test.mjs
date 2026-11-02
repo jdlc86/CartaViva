@@ -2717,6 +2717,11 @@ test('PG17 B3 five physically independent login connections enforce exact prefli
      logout:async()=>{}
     },
     forRoles:()=>async(request,reply)=>{
+     if(request.headers['x-ci-staff']==='authorized-waiter'){
+      request.verifiedIdentity={userId:'b0a00000-0000-4000-8000-000000000307'};
+      request.verifiedStaff={role:'waiter'};
+      return;
+     }
      if(request.headers['x-ci-staff']==='waiter'){
       request.verifiedIdentity={userId:ids.customer};
       request.verifiedStaff={role:'waiter'};
