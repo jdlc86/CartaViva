@@ -198,3 +198,10 @@ Próximo hito: preparar y validar en PostgreSQL 17 desechable los permisos míni
 - `1d5849ad`: la prueba PG17 integrada del lector F12 ahora exige denegación de SELECT directo sobre `staff_members`, `customer_accounts` y `dining_tables`, además de denegación de EXECUTE de la función de decisión, bajo `SET LOCAL ROLE sabora_f12_pending_reader_runtime`. Se conserva la prueba de autorización waiter/kitchen y de propietario SECURITY DEFINER.
 - En el momento de la revisión, las CI de `3af58186` y `ab881058` seguían en ejecución; ambos SHA tenían browser gestión y cliente SUCCESS. No hay todavía resultado PG17 confirmado del test corregido ni del refuerzo `1d5849ad`.
 - La nueva prueba es cobertura de un requisito crítico, no una activación de permisos. Siguiente: observar resultados PG17, corregir causas SQL reales si aparecen, completar preflight de login físico y E2E económico. PR #43 Draft / B3 NO-GO; sin merge, despliegues ni Fleetia/VPS/Supabase operativo.
+
+
+## 26. Lector F12: CI completa verde y preflight con login físico (2026-11-02)
+
+- Evidencia GitHub Actions: los cuatro workflows de `df886c11` y de `1d5849ad` finalizaron SUCCESS. La cobertura PG17 previa valida el lector bajo `SET LOCAL ROLE`, su denegación a cocina, SELECT directo a tablas y EXECUTE de la función de decisión. No implica activación operativa.
+- `a84f2364`: añadida prueba al mismo arnés PG17 que crea login físico desechable `LOGIN NOINHERIT NOBYPASSRLS`, concede únicamente `sabora_f12_pending_reader_runtime`, ejecuta `assertPendingReaderCapabilities` y verifica identidad de sesión, SELECT directo prohibido y SET ROLE de owner/operaciones prohibido. El arnés descarta toda la base y elimina el login tras el test.
+- La prueba nueva está implementada pero **CI del commit `a84f2364` pendiente**. Si falla, analizar el contrato exacto de privilegios antes de modificar grants. Quedan pruebas de solicitudes reales, expiración y E2E económico; PR #43 Draft / B3 NO-GO. Sin merge, despliegues ni Fleetia/VPS/Supabase operativo.
