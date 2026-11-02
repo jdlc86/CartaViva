@@ -19,7 +19,7 @@ BEGIN
  IF NOT FOUND THEN
   RAISE EXCEPTION 'customer_session_forbidden' USING errcode='42501';
  END IF;
- SELECT count(*),min(a.id) INTO v_open_count,v_account_id
+ SELECT count(*),min(a.id::text)::uuid INTO v_open_count,v_account_id
  FROM sabora.customer_accounts a WHERE a.customer_id=v_customer AND a.state='open';
  IF v_open_count>1 THEN
   RAISE EXCEPTION 'table_change_account_forbidden' USING errcode='42501';
