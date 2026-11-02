@@ -2816,6 +2816,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     customer:'b0a00000-0000-4000-8000-000000000301',
     sourceTable:'b0a00000-0000-4000-8000-000000000302',
     destinationTable:'b0a00000-0000-4000-8000-000000000303',
+    blockedTable:'b0a00000-0000-4000-8000-000000000308',
+    blockedSession:'b0a00000-0000-4000-8000-000000000309',
     sourceSession:'b0a00000-0000-4000-8000-000000000304',
     destinationSession:'b0a00000-0000-4000-8000-000000000305',
     sourceAccount:'b0a00000-0000-4000-8000-000000000306',
@@ -2832,9 +2834,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      [httpFixture.customer,Buffer.alloc(32,230)]);
     await fixture.query(`INSERT INTO sabora.dining_tables
      (id,number,capacity,qr_token_hash,session_id,ordering_state)
-     VALUES($1,981301,4,$3,$4,'open'),($2,981302,4,$3,$5,'open')`,
-     [httpFixture.sourceTable,httpFixture.destinationTable,qrHash,
-      httpFixture.sourceSession,httpFixture.destinationSession]);
+     VALUES($1,981301,4,$4,$5,'open'),($2,981302,4,$4,$6,'open'),
+      ($3,981303,4,$4,$7,'open')`,
+     [httpFixture.sourceTable,httpFixture.destinationTable,
+      httpFixture.blockedTable,qrHash,httpFixture.sourceSession,
+      httpFixture.destinationSession,httpFixture.blockedSession]);
     await fixture.query(`INSERT INTO sabora.customer_table_visits
      (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
      VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
@@ -2883,7 +2887,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      priceCents:700,allergens:[],options:[],extras:[],discount:null};
     await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
      [createHash('sha256').update(qrToken).digest(),
-      [httpFixture.sourceTable,httpFixture.destinationTable]]);
+      [httpFixture.sourceTable,httpFixture.destinationTable,
+       httpFixture.blockedTable]]);
     await fixture.query(`INSERT INTO sabora.catalog_items
      (id,draft,draft_revision,published_revision,published_snapshot,published_at)
      VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,snapshot]);
@@ -3496,10 +3501,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // must survive a blocked B destination, with no partial account/round
      // mutation. Restore the disposable PG17 table and finish B checkout.
      await admin.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
-      WHERE id=$1`,[httpFixture.destinationTable]);
+      WHERE id=$1`,[httpFixture.blockedTable]);
      try{
       await customerPage.goto(origin+'/qr/v1/SABORA/'+
-       httpFixture.destinationTable+'#'+qrToken);
+       httpFixture.blockedTable+'#'+qrToken);
       await customerPage.getByRole('button',
        {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
       const blockedVisit=customerPage.waitForResponse(response=>
@@ -3525,7 +3530,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        'blocked destination must not create an economic round');
      }finally{
       await admin.query(`UPDATE sabora.dining_tables SET ordering_state='open'
-       WHERE id=$1`,[httpFixture.destinationTable]);
+       WHERE id=$1`,[httpFixture.blockedTable]);
      }
      // Enter through the real QR deep link after restoring destination B.
      // Its token must be scrubbed from browser history before ordering.
