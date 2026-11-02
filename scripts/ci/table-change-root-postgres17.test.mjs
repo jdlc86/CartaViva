@@ -3492,8 +3492,43 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
        confirmedOrderBody=request.postDataJSON();
      });
-     // Enter through the real QR deep link. Its token must be removed from
-     // browser history by the production QR bootstrap before the first order.
+     // F17 integrated negative-to-positive journey: the same approved grant
+     // must survive a blocked B destination, with no partial account/round
+     // mutation. Restore the disposable PG17 table and finish B checkout.
+     await admin.query(`UPDATE sabora.dining_tables SET ordering_state='closed'
+      WHERE id=$1`,[httpFixture.destinationTable]);
+     try{
+      await customerPage.goto(origin+'/qr/v1/SABORA/'+
+       httpFixture.destinationTable+'#'+qrToken);
+      await customerPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+      const blockedVisit=customerPage.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/visits',
+       {timeout:20000});
+      await customerPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).click();
+      const blockedResponse=await blockedVisit;
+      assert.ok(blockedResponse.status()>=400,
+       'closed B must deny actual PWA visit authorization: '+
+       await blockedResponse.text());
+      const unchanged=(await admin.query(`SELECT q.status,b.table_id,
+       a.outstanding_cents FROM sabora.customer_table_change_requests q
+       JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+       JOIN sabora.customer_accounts a ON a.id=q.account_id
+       WHERE q.id=$1`,[created.json().id])).rows[0];
+      assert.equal(unchanged.status,'approved');
+      assert.equal(unchanged.table_id,httpFixture.sourceTable);
+      assert.equal(unchanged.outstanding_cents,'2400');
+      assert.equal((await admin.query(`SELECT count(*)::int AS n
+       FROM sabora.order_rounds WHERE account_id=$1`,
+       [httpFixture.sourceAccount])).rows[0].n,1,
+       'blocked destination must not create an economic round');
+     }finally{
+      await admin.query(`UPDATE sabora.dining_tables SET ordering_state='open'
+       WHERE id=$1`,[httpFixture.destinationTable]);
+     }
+     // Enter through the real QR deep link after restoring destination B.
+     // Its token must be scrubbed from browser history before ordering.
      await customerPage.goto(origin+'/qr/v1/SABORA/'+
       httpFixture.destinationTable+'#'+qrToken);
      // Approval must be visible and explicit before authorizing the new
