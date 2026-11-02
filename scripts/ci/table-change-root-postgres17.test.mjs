@@ -2923,11 +2923,28 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await vite.listen();
       const uiAddress=vite.httpServer?.address();
       assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
+      const managementOrigin='http://127.0.0.1:'+uiAddress.port;
+      const probe=await fetch(managementOrigin+'/api/v1/operations/table-change/pending',{
+       headers:{authorization:'Bearer verified-ci-waiter-bearer-token',
+        'x-ci-staff':'authorized-waiter'}
+      });
+      const probeBody=await probe.text();
+      assert.equal(probe.status,200,
+       'Vite proxy and live Fastify/PG17 queue must agree: '+probeBody);
+      assert.equal(JSON.parse(probeBody).items.length,1,
+       'live proxy must return the just-created pending request');
       browser=await chromium.launch({headless:true});
       context=await browser.newContext({viewport:{width:390,height:844},
        reducedMotion:'reduce'});
       const page=await context.newPage();
+      const browserResponses=[];
       page.on('pageerror',error=>browserErrors.push(error.message));
+      page.on('response',response=>{
+       if(new URL(response.url()).pathname.startsWith('/api/v1/operations/table-change/'))
+        browserResponses.push({status:response.status(),url:response.url()});
+      });
+      page.on('requestfailed',request=>
+       browserErrors.push('requestfailed:'+request.url()+':'+request.failure()?.errorText));
       page.on('request',request=>{
        if(new URL(request.url()).pathname.startsWith('/api/v1/operations/table-change/'))
         browserRequests.push({method:request.method(),
@@ -2948,7 +2965,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        });
       });
       await page.getByRole('heading',{name:'Solicitudes de cambio de mesa'}).waitFor();
-      await page.getByText('Mesa 981301').first().waitFor();
+      try{
+       await page.getByText('Mesa 981301').first().waitFor({timeout:12000});
+      }catch(error){
+       const visible=(await page.locator('body').innerText()).slice(-1800);
+       throw Error('pg17_pending_not_visible_in_browser: '+
+        JSON.stringify({visible,browserRequests,browserResponses,browserErrors})+
+        ': '+error.message);
+      }
       assert.equal(await page.getByRole('button',{name:'Aprobar cambio'}).isEnabled(),true);
       await page.getByRole('button',{name:'Aprobar cambio'}).click();
       await page.getByText('Sin solicitudes pendientes').first().waitFor();
