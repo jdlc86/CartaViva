@@ -81,7 +81,8 @@ export async function mountVerifiedTableChangeB3JwtHttpCandidate(app,{
   pools.some(pool=>!pool||pool===staffReaderPool)||
   typeof expectedStaffReaderLogin!=='string'||!expectedStaffReaderLogin||
   typeof issuer!=='string'||!/^https:\/\/[^/]+\/auth\/v1$/.test(issuer)||
-  typeof getTrustedKeys!=='function'||candidate.forRoles!==undefined)
+  typeof getTrustedKeys!=='function'||candidate.forRoles!==undefined||
+  candidate.verifyStaff!==undefined)
   throw Error('invalid_b3_staff_jwt_composition');
  await preflightOrderTransitionStaffIdentity({
   pool:staffReaderPool,role:expectedStaffReaderLogin
@@ -89,5 +90,8 @@ export async function mountVerifiedTableChangeB3JwtHttpCandidate(app,{
  const forRoles=createStaffProtectedHooksFromPool({
   pool:staffReaderPool,issuer,getTrustedKeys
  });
- return mountVerifiedTableChangeB3HttpCandidate(app,{...candidate,forRoles});
+ return mountVerifiedTableChangeB3HttpCandidate(app,{...candidate,forRoles,
+  verifyStaff:async({verifiedIdentity,verifiedStaff})=>({
+   userId:verifiedIdentity.userId,role:verifiedStaff.role
+  })});
 }
