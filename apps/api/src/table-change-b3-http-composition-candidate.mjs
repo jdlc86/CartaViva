@@ -87,9 +87,18 @@ export async function mountVerifiedTableChangeB3JwtHttpCandidate(app,{
  await preflightOrderTransitionStaffIdentity({
   pool:staffReaderPool,role:expectedStaffReaderLogin
  });
- const forRoles=createStaffProtectedHooksFromPool({
+ const staffHooks=createStaffProtectedHooksFromPool({
   pool:staffReaderPool,issuer,getTrustedKeys
  });
+ // The B3 candidate's restricted staff routes require a single preHandler
+ // function. Compose the existing verified JWT and live membership hooks in
+ // order; never run the membership/SQL decision after a denied JWT.
+ const forRoles=roles=>async(request,reply)=>{
+  for(const hook of staffHooks(roles)){
+   await hook(request,reply);
+   if(reply.sent)return;
+  }
+ };
  return mountVerifiedTableChangeB3HttpCandidate(app,{...candidate,forRoles,
   verifyStaff:async({verifiedIdentity,verifiedStaff})=>({
    userId:verifiedIdentity.userId,role:verifiedStaff.role
