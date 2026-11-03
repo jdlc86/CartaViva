@@ -24,6 +24,7 @@ import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {preflightOrderTransitionStaffIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
@@ -2793,6 +2794,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const jwtExpired=staffJwt('b0a00000-0000-4000-8000-000000000307',
    {expiresIn:-30});
   const ciVerifiedStaffHeaders=()=>({authorization:'Bearer '+jwtWaiter});
+  const ciStaffRoles=createStaffProtectedHooksFromPool({
+   pool:pools[9],issuer:ciIssuer,getTrustedKeys:async()=>[ciJwk]
+  });
   const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
   const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[6].login});
@@ -2938,7 +2942,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    balance:1200,mode:'pay_at_end',historicAmount:1200,cashSettled:0
   };
   try{
-   assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
+   assert.deepEqual(await mountVerifiedTableChangeB3JwtHttpCandidate(http,{
+    staffReaderPool:pools[9],expectedStaffReaderLogin:specs[9].login,
+    issuer:ciIssuer,getTrustedKeys:async()=>[ciJwk],
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
     confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
     pendingPool:scopedPools[5],expectedPendingLogin:specs[5].login,
@@ -2950,7 +2956,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     expectedH6ReadLogin:specs[3].login,
     expectedFlowLogin:specs[4].login,
     hashSession:hashCustomerSessionToken,
-    verifyStaff:async({verifiedIdentity,verifiedStaff})=>({userId:verifiedIdentity.userId,role:verifiedStaff.role}),
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
     cookieAuth:{
      requireSameOrigin:()=>true,
@@ -2971,29 +2976,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      },
      logout:async()=>{}
     },
-    forRoles:()=>async(request,reply)=>{
-     if(request.headers['x-ci-staff']==='authorized-waiter'){
-      request.verifiedIdentity={userId:'b0a00000-0000-4000-8000-000000000307'};
-      request.verifiedStaff={role:'waiter'};
-      return;
-     }
-     if(request.headers['x-ci-staff']==='waiter'){
-      request.verifiedIdentity={userId:ids.customer};
-      request.verifiedStaff={role:'waiter'};
-      return;
-     }
-     return reply.code(403).send({error:'forbidden'});
-    }
    }),{mounted:true});
-   // Seventh isolated SQL login exposes only the signed cash receipt.
-   // Header-based staff identity is confined to this disposable E2E runner.
-   registerH6OperationsHttp(http,{operations:cashOperations,forRoles:roles=>
-    async(request,reply)=>{
-     if(request.headers['x-ci-staff']!=='authorized-waiter'||!roles.includes('waiter'))
-      return reply.code(403).send({error:'forbidden'});
-     request.verifiedIdentity={userId:'b0a00000-0000-4000-8000-000000000307'};
-     request.verifiedStaff={userId:'b0a00000-0000-4000-8000-000000000307',role:'waiter'};
-    }});
+   // Seventh sealed cash RPC and the staff decision/queue now share the
+   // same verified RS256 JWT and live PostgreSQL membership checks. The
+   // tenth login can read only user_id/role/state and never payment tables.
+   registerH6OperationsHttp(http,{operations:cashOperations,forRoles:ciStaffRoles});
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
    http.get('/api/v1/catalog',async()=>[{
