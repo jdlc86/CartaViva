@@ -5084,13 +5084,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           AND event_type='sabora.account.closed'`,[diner.account])).rows;
         assert.equal(closedEvents.length,1);
         assert.equal(closedEvents[0].table_id,httpFixture.concurrentTable);
-        // Same customer cookie cannot replay its confirmed order or create
-        // another account under the former authorized visit after closure.
-        assert.ok(payload,'original PWA checkout body is needed for closed-session replay');
-        const staleOrder=await http.inject({method:'POST',
+        // Historical confirmed orders remain visible and replayable through
+        // the original authenticated visit; closure forbids NEW confirmations,
+        // not reading or idempotently looking up already-persisted consumption.
+        assert.ok(payload,'original PWA checkout body is required');
+        const historicalReplay=await http.inject({method:'POST',
          url:'/api/v1/customer/orders/confirm',headers:dHeaders(diner),
          payload});
-        assert.equal(staleOrder.statusCode,403,staleOrder.body);
+        assert.equal(historicalReplay.statusCode,200,historicalReplay.body);
+        assert.equal(historicalReplay.json().status,'replayed');
+        const freshAfterClose=await http.inject({method:'POST',
+         url:'/api/v1/customer/orders/confirm',headers:dHeaders(diner),
+         payload:{...payload,requestKey:'b3_f20_fresh_after_close_01'}});
+        assert.equal(freshAfterClose.statusCode,403,
+         'new request key under a pre-closure session must fail closed: '+
+          freshAfterClose.body);
         assert.equal((await admin.query(`SELECT count(*)::int AS n
          FROM sabora.order_rounds WHERE account_id=$1`,
          [diner.account])).rows[0].n,2);
