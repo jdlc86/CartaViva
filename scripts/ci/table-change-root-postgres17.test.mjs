@@ -5360,6 +5360,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // Signed H6 waiter pickup remains available at the current table D
         // after closure, and the line stays READY (never legacy picked_up).
         const activePickup=readyBeforeClose[0];
+        const waiterBoardResponse=await http.inject({method:'GET',
+         url:'/api/v1/operations/order-lines?limit=100',
+         headers:{authorization:'Bearer '+jwtWaiter}});
+        assert.equal(waiterBoardResponse.statusCode,200,
+         'post-close waiter board HTTP: '+waiterBoardResponse.body);
+        const waiterBoardBody=waiterBoardResponse.json();
+        assert.equal(waiterBoardBody.role,'waiter');
+        assert.ok(waiterBoardBody.items.some(row=>row.lineId===activePickup.id)||
+         waiterBoardBody.nextCursor!==null,
+         'post-close READY task must be visible or reachable by waiter cursor');
+
         chefWaiterContext=await chefBrowser.newContext({
          viewport:{width:1440,height:900},
          reducedMotion:'reduce',serviceWorkers:'block'});
