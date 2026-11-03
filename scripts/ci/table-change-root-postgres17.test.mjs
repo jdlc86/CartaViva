@@ -1,13 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {createHash} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
 import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTableChangeB3CustomerFlowCandidate,createIsolatedB3ConfirmationTransaction} from '../../apps/api/src/table-change-isolated-sql-composition-candidate.mjs';
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
+import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {createH6OperationsRepository,SETTLE_CASH_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
+import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
+import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
@@ -2631,7 +2636,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_customer_flow_runtime',login:'sabora_b3_physical_basket_'+suffix,
    signatures:[]},
   {role:'sabora_f12_pending_reader_runtime',login:'sabora_b3_physical_pending_'+suffix,
-   signatures:[]}
+   signatures:[]},
+  {role:'sabora_b3_cash_runtime',login:'sabora_b3_physical_cash_'+suffix,
+   signatures:['sabora.settle_h6_account_cash_authorized_candidate(text,text,uuid,text,uuid,bigint,text,bigint,bigint,text)']}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
@@ -2691,6 +2698,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   assert.ok(results.every(result=>result.validated===true));
   assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool:scopedPools[4]}),
    {validated:true});
+  const cashFunctions=(await connections[6].query(F12_FUNCTION_SQL,[specs[6].role])).rows[0].names;
+  assert.deepEqual(cashFunctions,specs[6].signatures,
+   'F20 cash role executes exactly the reviewed settlement RPC');
+  await assert.rejects(connections[6].query('SELECT * FROM sabora.customer_accounts'),
+   /permission denied/);
+  await assert.rejects(connections[6].query('SET ROLE sabora_h6_fn_owner'),/permission denied/);
   // Unlike the pinned preflight connection, runtime customer requests must
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
@@ -2704,6 +2717,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // use the dedicated physical pending login's real pool at runtime, preserving
   // the one-function SET ROLE allowlist and the two remaining pool clients.
   scopedPools[5]={connect:()=>pools[5].connect()};
+  scopedPools[6]={connect:()=>pools[6].connect()};
+  const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
+  const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
+   secret:cashSigningSecret,databaseRole:specs[6].login});
+  const cashSql=createRoleScopedPostgresTransaction({pool:scopedPools[6],
+   role:specs[6].role,allowedSql:new Set([SETTLE_CASH_H6_SQL])});
+  const cashOperations=createH6OperationsCoordinator({
+   repository:createH6OperationsRepository({withTransaction:cashSql}),
+   issueCapability:cashIssuer
+  });
   const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:scopedPools[0],operationsPool:scopedPools[1],
    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
@@ -2795,7 +2818,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    round:'b0a00000-0000-4000-8000-000000000414',
    token:'l'.repeat(42)+'s',publicId:'SB-RTRTRTRTRTRT',
    alias:'Comensal con efectivo previo',visitKey:'b3_h6_cash_origin_0411_integral',
-   balance:900,mode:'pay_at_end',historicAmount:1200,cashSettled:300
+   balance:1200,mode:'pay_at_end',historicAmount:1200,cashSettled:0
   };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
@@ -2844,6 +2867,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      return reply.code(403).send({error:'forbidden'});
     }
    }),{mounted:true});
+   // Seventh isolated SQL login exposes only the signed cash receipt.
+   // Header-based staff identity is confined to this disposable E2E runner.
+   registerH6OperationsHttp(http,{operations:cashOperations,forRoles:roles=>
+    async(request,reply)=>{
+     if(request.headers['x-ci-staff']!=='authorized-waiter'||!roles.includes('waiter'))
+      return reply.code(403).send({error:'forbidden'});
+     request.verifiedIdentity={userId:'b0a00000-0000-4000-8000-000000000307'};
+     request.verifiedStaff={userId:'b0a00000-0000-4000-8000-000000000307',role:'waiter'};
+    }});
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
    http.get('/api/v1/catalog',async()=>[{
