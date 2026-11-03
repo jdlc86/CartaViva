@@ -214,6 +214,25 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   const tick=window.setTimeout(()=>setChangeClock(Date.now()),1000);
   return()=>window.clearTimeout(tick);
  },[tableChangeState,changeClock]);
+ // Schedule exactly one revalidation at the real server deadline, not a
+ // periodic API poll. The SQL state remains authoritative and a rejected
+ // decision is immutable; expiry does not require an UPDATE or NOTIFY.
+ const refreshedExpiryRef=useRef<string|null>(null);
+ useEffect(()=>{
+  if(!enableTableChangeFlow||!tableChangeState||
+     !['pending','rejected'].includes(tableChangeState.state)||
+     tableChangeState.expiresAtMs===null)return;
+  const deadline=tableChangeState.expiresAtMs;
+  const key=String(deadline)+':'+String(tableChangeState.boundTableId);
+  if(refreshedExpiryRef.current===key)return;
+  const serverNow=tableChangeState.serverNowMs+Date.now()-changeStateReceivedAtRef.current;
+  const remaining=Math.max(0,deadline-serverNow+1000);
+  const timer=window.setTimeout(()=>{
+   refreshedExpiryRef.current=key;
+   void refreshTableChange();
+  },remaining);
+  return()=>window.clearTimeout(timer);
+ },[enableTableChangeFlow,tableChangeState,refreshTableChange]);
  useEffect(()=>{
   if(flowContract!=='h6'||!enableTableChangeFlow||identity.status!=='authenticated')return;
   // The cursor is scoped to the authenticated public identity. A reconnect
