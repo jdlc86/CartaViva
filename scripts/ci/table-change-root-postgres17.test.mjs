@@ -5180,6 +5180,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          WHERE r.account_id=$1 ORDER BY r.created_at,r.id,l.line_number,l.id`,
          [diner.account])).rows;
         assert.ok(kitchenLines.length>=2);
+        // Integrated diagnostic: distinguish server-side read failure from
+        // pagination. A kitchen action cannot be tested against an invisible
+        // order, even when the SQL fixture contains the line.
+        const kitchenBoardResponse=await http.inject({method:'GET',
+         url:'/api/v1/operations/order-lines?limit=100',
+         headers:{authorization:'Bearer '+jwtKitchen}});
+        assert.equal(kitchenBoardResponse.statusCode,200,
+         'signed kitchen board read must succeed: '+kitchenBoardResponse.body);
+        const kitchenBoardBody=kitchenBoardResponse.json();
+        assert.equal(kitchenBoardBody.role,'kitchen');
+        assert.ok(Array.isArray(kitchenBoardBody.items));
+        const kitchenSqlLineCount=(await admin.query(`SELECT count(*)::int AS n
+         FROM sabora.order_lines l
+         JOIN sabora.order_line_delivery_destinations d ON d.order_line_id=l.id
+         WHERE l.status IN ('confirmed','preparing','ready')`)).rows[0].n;
+        assert.ok(kitchenBoardBody.items.length>0,
+         'kitchen board must expose SQL confirmed lines; SQL visible='+kitchenSqlLineCount);
+
         // The management board is paginated. Historic CI lines can occupy
         // the first 100 results; the chef must explicitly load further pages
         // rather than silently losing actionable orders.
