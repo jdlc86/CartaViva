@@ -5055,6 +5055,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // preparation, READY task and pickup claim uses signed JWT/HMAC HTTP
         // operations on distinct physical runtime logins. In particular,
         // nobody writes retired 'picked_up' on the account's lines.
+        // The manually seeded historical A round predates the H6 test
+        // dispatch projection and has NO kitchen_dispatch row. Backfill
+        // just this disposable fixture, never the live data or migrations,
+        // before exercising BOTH rounds through real signed kitchen actions.
+        const historicDispatch=(await admin.query(`SELECT count(*)::int AS n
+         FROM sabora.kitchen_dispatches WHERE order_id=$1`,
+         [diner.order])).rows[0].n;
+        assert.equal(historicDispatch,0,
+         'only the synthetic historic round lacks its H6 dispatch fixture');
+        await admin.query(`INSERT INTO sabora.kitchen_dispatches(
+         round_id,order_id,revision_number,dispatch_key,state)
+         SELECT r.id,r.order_id,r.revision_number,
+         'h6_dispatch_'||replace(r.order_id::text,'-','_'),'blocked'
+         FROM sabora.order_rounds r
+         WHERE r.order_id=$1 AND r.account_id=$2
+         AND NOT EXISTS(SELECT 1 FROM sabora.kitchen_dispatches d
+          WHERE d.round_id=r.id)`,[diner.order,diner.account]);
         const stagedDispatches=(await admin.query(`SELECT k.id,r.order_id,
          k.state FROM sabora.kitchen_dispatches k
          JOIN sabora.order_rounds r ON r.id=k.round_id
