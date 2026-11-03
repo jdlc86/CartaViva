@@ -4039,7 +4039,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const preCashBody={amountCents:300,correlationId:'f20_pre_transfer_cash_300'};
      const forbiddenCash=await http.inject({method:'POST',url:preCashUrl,
       payload:preCashBody});
-     assert.equal(forbiddenCash.statusCode,403);
+     assert.equal(forbiddenCash.statusCode,401,
+      'anonymous cash settlement is rejected at the JWT authentication gate');
      const preReceipts=await Promise.all([1,2].map(()=>http.inject({
       method:'POST',url:preCashUrl,headers:cashHeaders,payload:preCashBody})));
      assert.ok(preReceipts.every(r=>r.statusCode===201),
