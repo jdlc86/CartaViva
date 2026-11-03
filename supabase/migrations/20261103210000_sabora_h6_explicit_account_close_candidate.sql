@@ -20,7 +20,7 @@ ALTER TABLE sabora.h6_action_requests
 ALTER TABLE sabora.h6_action_requests
  ADD CONSTRAINT h6_action_requests_action_check
  CHECK (action IN ('report_incident','resolve_incident','settle_cash','refund_cash',
-   'ack_dispatch','close_account'));
+   'ack_dispatch','claim_pickup','cancel_pickup','correct_ready','close_account'));
 
 -- Extend only the exact signed action allowlist. Preserve the original
 -- staff state check, key revocation, TTL, database-login binding and HMAC.
