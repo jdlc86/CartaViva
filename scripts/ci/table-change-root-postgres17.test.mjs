@@ -12,7 +12,9 @@ import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scope
 import {createH6OperationsRepository,SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,
  MANAGE_PICKUP_TASK_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
-import {TRANSITION_ORDER_LINE_SQL} from '../../apps/api/src/order-operations-repository.mjs';
+import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
+import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,
+ READ_ORDER_HISTORY_SQL} from '../../apps/api/src/order-operations-repository.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
@@ -2667,7 +2669,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Kitchen transitions have a separate signed login and a single exact
   // function grant: no browser or generic operational direct table access.
   {role:'sabora_b3_h4_transition_runtime',login:'sabora_b3_physical_h4_'+suffix,
-   signatures:['sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)']}
+   signatures:['sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
+    'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
+    'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)']}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
@@ -2860,11 +2864,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // explicitly forbids retired physical pickup. The kitchen actor is
   // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
   const h4KitchenTx=createRoleScopedPostgresTransaction({pool:scopedPools[11],
-   role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL])});
+   role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
+    READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
    keyId:cashSigningKeyId,secret:cashSigningSecret,databaseRole:specs[11].login});
+  const h4ReadIssuer=createOrderOperationReadCapabilityIssuer({
+   keyId:cashSigningKeyId,secret:cashSigningSecret,databaseRole:specs[11].login});
   const h4KitchenOperations=createOrderOperationsCoordinator({
-   withTransaction:h4KitchenTx,issueTransitionCapability:h4KitchenIssuer
+   withTransaction:h4KitchenTx,
+   repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
+   issueTransitionCapability:h4KitchenIssuer,issueReadCapability:h4ReadIssuer
   });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
   const verifiedStripeWebhook=createH6StripeWebhookHandler({
@@ -3034,7 +3043,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     forRoles:ciStaffRoles
    });
    registerOrderOperationsHttp(http,{forRoles:ciStaffRoles,
-    operations:h4KitchenOperations,transitionOnly:true,legacyPickupDisabled:true});
+    operations:h4KitchenOperations,legacyPickupDisabled:true});
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
    http.get('/api/v1/catalog',async()=>[{
