@@ -2837,7 +2837,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   });
   // Dedicated SQL statement allowlist: closing is not a cash receipt, a
   // kitchen acknowledgement or a generic role-granted table UPDATE.
-  const closeTx=createRoleScopedPostgresTransaction({pool:scopedPools[10],
+  // Closure races require independent physical PG17 sockets. scopedPools[10]
+  // wraps a pinned preflight client and cannot safely execute two BEGINs.
+  const closeTx=createRoleScopedPostgresTransaction({pool:pools[10],
    role:specs[10].role,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
   const closeIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[10].login});
