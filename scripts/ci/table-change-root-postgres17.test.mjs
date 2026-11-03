@@ -5797,6 +5797,30 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(response.statusCode,403,
     'revoked waiter cannot reuse a valid JWT for staff business operations');
   }
+  // Removing waiter A must not revoke waiter B or grant kitchen permissions.
+  // Both JWTs were signed with the same trusted key and authenticated at
+  // runtime; business authorization must follow CURRENT per-user PG17 state.
+  const survivingWaiterQueue=await http.inject({method:'GET',
+   url:'/api/v1/operations/table-change/pending',
+   headers:ciSecondWaiterHeaders()});
+  assert.equal(survivingWaiterQueue.statusCode,200,survivingWaiterQueue.body);
+  for(const jwt of [jwtKitchen,jwtCustomer]){
+   const forbiddenRole=await http.inject({method:'GET',
+    url:'/api/v1/operations/table-change/pending',
+    headers:{authorization:'Bearer '+jwt}});
+   assert.equal(forbiddenRole.statusCode,403,
+    'a valid signed JWT without active waiter/admin membership cannot inspect the queue');
+  }
+  const peerRevoke=await admin.query(
+   "UPDATE sabora.staff_members SET state='revoked' WHERE user_id=$1",
+   [secondWaiterId]);
+  assert.equal(peerRevoke.rowCount,1);
+  for(const headers of [ciVerifiedStaffHeaders(),ciSecondWaiterHeaders()]){
+   const deniedAfterRevoke=await http.inject({method:'GET',
+    url:'/api/v1/operations/table-change/pending',headers});
+   assert.equal(deniedAfterRevoke.statusCode,403,
+    'both individual JWTs must be denied immediately after their own SQL revocation');
+  }
   const accountAfter=(await admin.query(
    'SELECT b.table_id,a.outstanding_cents FROM sabora.customer_account_operational_bindings b JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE a.id=$1',
    ['b0a00000-0000-4000-8000-000000000306'])).rows[0];
