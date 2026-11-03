@@ -159,7 +159,7 @@ ALTER FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,
 REVOKE ALL ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
   sabora_h6_provider_runtime,sabora_h6_operations_runtime;
-GRANT EXECUTE ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,bigint,bigint,text)
+GRANT EXECUTE ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
 
 -- An old authenticated customer session must not create a new account or
