@@ -3023,7 +3023,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     }
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
-    await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')`,[httpFixture.waiter]);
+    await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+     VALUES($1,'waiter','active'),($2,'kitchen','active')`,
+     [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310']);
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
