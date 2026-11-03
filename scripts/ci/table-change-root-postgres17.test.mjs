@@ -5363,13 +5363,88 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          payload:{targetStatus:'picked_up',correlationId:'b3_close_legacy_retired'}});
         assert.equal(legacyTransition.statusCode,409,
          'physical picked_up must remain disabled in H6');
+        // F20/R03: deterministic race of TWO signed staff closings against
+        // a newly quoted customer order, all on real restricted PG17 sockets.
+        // Force the closer to acquire the customer advisory lock while waiting
+        // for the account row, then start the genuine competing checkout.
+        // No state/clock injection, financial fixture or authorization bypass.
+        const raceBasket='b3_close_race_basket_'+suffix;
+        const quote=await http.inject({method:'POST',
+         url:'/api/v1/customer/quotes',headers:dHeaders(diner),
+         payload:{tableId:httpFixture.concurrentTable,qrToken:dQr,
+          visitId:payload.visitId,basketId:raceBasket,
+          lines:[{itemId,selection:{options:{},extras:[]},quantity:1}]}});
+        assert.equal(quote.statusCode,201,
+         'fresh quoted purchase must be genuinely authorized: '+quote.body);
+        const quoted=quote.json();
+        assert.equal(quoted.lines.length,1);
+        const competingOrder={tableId:httpFixture.concurrentTable,qrToken:dQr,
+         visitId:payload.visitId,basketId:raceBasket,
+         requestKey:'b3_close_competing_order_01',paymentMode:'pay_at_end',
+         lines:[{quoteId:quoted.lines[0].quoteId,itemId,
+          selection:{options:{},extras:[]},quantity:1}]};
         const concurrentCloseBody={correlationId:'b3_f20_close_after_resolved'};
-        const concurrentClose=await Promise.all([0,1].map(()=>http.inject({
-         method:'POST',url:closeUrl,headers:closingHeaders,
-         payload:concurrentCloseBody
-        })));
-        assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
-         'simultaneous signed close submissions must be idempotent');
+        const accountLock=await admin.connect();
+        let accountLockOpen=false,closureRequests=[],customerRequest=null;
+        let concurrentClose;
+        try{
+         await accountLock.query('BEGIN');accountLockOpen=true;
+         const holderPid=(await accountLock.query(
+          'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+         await accountLock.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
+          [diner.account]);
+         closureRequests=[0,1].map(()=>http.inject({
+          method:'POST',url:closeUrl,headers:closingHeaders,
+          payload:concurrentCloseBody
+         }));
+         let closerBlocked=false;
+         for(let tries=0;tries<150;tries++){
+          const waiting=await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a WHERE a.pid<>$1::int
+           AND a.wait_event_type='Lock'
+           AND a.query LIKE '%close_h6_account_authorized_candidate%'
+           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[holderPid]);
+          if(waiting.rows[0].n>0){closerBlocked=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(closerBlocked,true,
+          'signed closer must be blocked on live PG17 account lock');
+         customerRequest=http.inject({method:'POST',
+          url:'/api/v1/customer/orders/confirm',
+          headers:dHeaders(diner),payload:competingOrder});
+         let checkoutBlocked=false;
+         for(let tries=0;tries<150;tries++){
+          const waiting=await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
+           AND a.query LIKE '%confirm_customer_round_h6_transfer_integration_candidate%'`);
+          if(waiting.rows[0].n>0){checkoutBlocked=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(checkoutBlocked,true,
+          'new quoted order must actually wait behind closure in PG17');
+         await accountLock.query('COMMIT');accountLockOpen=false;
+         concurrentClose=await Promise.all(closureRequests);
+         assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
+          'simultaneous signed close submissions must be idempotent');
+         const denied=await customerRequest;
+         assert.equal(denied.statusCode,403,
+          'fresh checkout must fail after committed close: '+denied.body);
+         assert.deepEqual(denied.json(),{error:'customer_context_forbidden'});
+         assert.equal((await admin.query(`SELECT count(*)::int AS n
+          FROM sabora.customer_order_attempt_batches WHERE request_key=$1`,
+          [competingOrder.requestKey])).rows[0].n,0);
+         assert.equal((await admin.query(`SELECT count(*)::int AS n
+          FROM sabora.order_rounds WHERE account_id=$1`,[diner.account])).rows[0].n,2,
+          'closing under contention may not create a third economic round');
+         assert.equal((await admin.query(`SELECT outstanding_cents
+          FROM sabora.customer_accounts WHERE id=$1`,[diner.account])).rows[0].outstanding_cents,
+          '0','closing under contention may not invent new debt');
+        }finally{
+         if(accountLockOpen)await accountLock.query('ROLLBACK').catch(()=>{});
+         accountLock.release();
+         if(closureRequests.length)await Promise.allSettled(closureRequests);
+         if(customerRequest)await Promise.allSettled([customerRequest]);
+        }
         const outcomes=concurrentClose.map(r=>r.json());
         assert.deepEqual(outcomes.map(x=>x.repeated).sort(),[false,true],
          'exactly one concurrent request must commit the account closure');
