@@ -493,4 +493,69 @@ REVOKE ALL ON FUNCTION sabora.refund_h6_cash_authorized_candidate(text,text,uuid
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_provider_runtime,sabora_h6_customer_runtime;
 GRANT EXECUTE ON FUNCTION sabora.refund_h6_cash_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
+-- Also follow the live table when acknowledging a captured kitchen dispatch.
+CREATE OR REPLACE FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(
+ p_key_id text,p_database_role text,p_actor_user_id uuid,p_staff_role text,
+ p_dispatch_id uuid,p_correlation_id text,p_issued_at_ms bigint,p_expires_at_ms bigint,p_signature_hex text
+)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
+AS $ack_dispatch$
+DECLARE v_live_binding record; v_role text;v_dispatch sabora.kitchen_dispatches%ROWTYPE;v_round sabora.order_rounds%ROWTYPE;
+ v_account sabora.customer_accounts%ROWTYPE;v_order sabora.orders%ROWTYPE;v_existing jsonb;v_result jsonb;v_fingerprint bytea;
+BEGIN
+ v_role:=sabora.verify_h6_staff_capability_candidate(p_key_id,p_database_role,p_actor_user_id,
+  p_staff_role,'ack_dispatch',p_dispatch_id,p_correlation_id,p_issued_at_ms,p_expires_at_ms,p_signature_hex);
+ IF v_role NOT IN ('kitchen','admin') THEN RAISE EXCEPTION 'h6_staff_action_forbidden' USING errcode='42501'; END IF;
+ PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+  p_actor_user_id::text||':'||p_correlation_id,0));
+ IF floor(extract(epoch FROM clock_timestamp())*1000)::bigint>=p_expires_at_ms THEN
+   RAISE EXCEPTION 'expired_h6_staff_capability' USING errcode='42501'; END IF;
+ v_fingerprint:=sha256(convert_to('ack_dispatch:'||p_dispatch_id::text,'UTF8'));
+ SELECT r.result INTO v_existing FROM sabora.h6_action_requests r
+  WHERE r.actor_user_id=p_actor_user_id AND r.correlation_id=p_correlation_id;
+ IF FOUND THEN
+   IF (SELECT fingerprint FROM sabora.h6_action_requests WHERE actor_user_id=p_actor_user_id AND correlation_id=p_correlation_id)<>v_fingerprint
+   THEN RAISE EXCEPTION 'h6_idempotency_conflict' USING errcode='23505'; END IF;
+   RETURN v_existing||jsonb_build_object('repeated',true);
+ END IF;
+ SELECT * INTO v_dispatch FROM sabora.kitchen_dispatches d WHERE d.id=p_dispatch_id FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'dispatch_not_found' USING errcode='P0002'; END IF;
+ IF floor(extract(epoch FROM clock_timestamp())*1000)::bigint>=p_expires_at_ms THEN
+   RAISE EXCEPTION 'expired_h6_staff_capability' USING errcode='42501'; END IF;
+ SELECT * INTO v_round FROM sabora.order_rounds WHERE id=v_dispatch.round_id FOR UPDATE;
+ SELECT * INTO v_account FROM sabora.customer_accounts WHERE id=v_round.account_id;
+ SELECT table_id,session_id,visit_key INTO v_live_binding
+ FROM sabora.customer_account_operational_bindings WHERE account_id=v_account.id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'h6_economic_binding_missing' USING errcode='42501'; END IF;
+ SELECT o.id,o.table_id,o.session_id,o.customer_visit_key
+  INTO v_order.id,v_order.table_id,v_order.session_id,v_order.customer_visit_key
+  FROM sabora.orders o WHERE o.id=v_round.order_id;
+ IF v_dispatch.state='acknowledged' THEN
+   v_result:=jsonb_build_object('dispatchId',v_dispatch.id,'orderId',v_order.id,'state','acknowledged');
+ ELSIF v_dispatch.state<>'requested' THEN RAISE EXCEPTION 'dispatch_not_acknowledgeable' USING errcode='23514';
+ ELSE
+   UPDATE sabora.kitchen_dispatches SET state='acknowledged',acknowledged_at=clock_timestamp(),updated_at=clock_timestamp()
+    WHERE id=v_dispatch.id RETURNING * INTO v_dispatch;
+   UPDATE sabora.order_rounds SET state='kitchen_acknowledged',updated_at=clock_timestamp()
+    WHERE id=v_round.id;
+   PERFORM sabora.emit_h6_event_candidate(v_live_binding.table_id,v_live_binding.session_id,v_live_binding.visit_key,
+    v_account.customer_id,v_account.id,NULL,'customer','sabora.kitchen.dispatch_acknowledged',
+    v_dispatch.id,2,jsonb_build_object('orderId',v_order.id,'dispatchId',v_dispatch.id));
+   PERFORM sabora.emit_h6_event_candidate(v_live_binding.table_id,v_live_binding.session_id,NULL,NULL,NULL,
+    'waiter','waiter','sabora.kitchen.dispatch_acknowledged',v_dispatch.id,2,
+    jsonb_build_object('orderId',v_order.id,'roundId',v_round.id,'dispatchId',v_dispatch.id));
+   v_result:=jsonb_build_object('dispatchId',v_dispatch.id,'orderId',v_order.id,'state','acknowledged');
+ END IF;
+ INSERT INTO sabora.h6_action_requests(actor_user_id,correlation_id,fingerprint,action,result)
+ VALUES(p_actor_user_id,p_correlation_id,v_fingerprint,'ack_dispatch',v_result);
+ RETURN v_result||jsonb_build_object('repeated',false);
+END;
+$ack_dispatch$;
+ALTER FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
+ OWNER TO sabora_h6_fn_owner;
+REVOKE ALL ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
+ FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_provider_runtime;
+GRANT USAGE ON SCHEMA sabora TO sabora_h6_operations_runtime;
+GRANT EXECUTE ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
+ TO sabora_h6_operations_runtime;
 COMMIT;
