@@ -5400,7 +5400,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const {createServer:createRejectManageVite}=await import(
      rejectPathToFileURL(rejectManageRequire.resolve('vite')).href);
     let rejectVite,rejectManageVite,rejectBrowser,rejectClientContext,rejectStaffContext,
-      rejectOfflineContext;
+      rejectSecondStaffContext,rejectOfflineContext;
     const rejectedClientErrors=[];
     try{
      rejectVite=await createRejectVite({
@@ -5720,13 +5720,32 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal((await admin.query(`SELECT count(*)::int AS n
       FROM sabora.customer_table_change_requests WHERE account_id=$1
       AND status='pending'`,[httpFixture.sourceAccount])).rows[0].n,1);
-     // F15/R03: two staff approvals collide on the same real customer
-     // advisory lock. Both use distinct authenticated PG17 connections.
+     // F09/F15/R03/R08: TWO real management PWAs with distinct signed staff
+     // JWTs see the same live pending request. Both users click Approve.
+     // The real PG17 decision sockets must collide on the customer advisory
+     // lock; UI responses and decided_by must agree with the winning actor.
+     // No direct http.inject approval substitutes for the browser gestures.
+     await staffPage.getByRole('button',{name:'Actualizar solicitudes'}).click();
+     await staffPage.getByText('Mesa 981302').first().waitFor({timeout:20000});
+     rejectSecondStaffContext=await rejectBrowser.newContext({
+      viewport:{width:1440,height:900},reducedMotion:'reduce',serviceWorkers:'block'
+     });
+     const secondStaffPage=await rejectSecondStaffContext.newPage();
+     await secondStaffPage.goto('http://127.0.0.1:'+maddr.port+'/#mesas');
+     await secondStaffPage.evaluate(async jwt=>{
+      const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+      window.__saboraCiDispose=mountAuthenticatedManagementApp({
+       element:document.getElementById('root'),
+       getAccessToken:async()=>jwt,enableTableChangeQueue:true
+      });
+     },jwtSecondWaiter);
+     await secondStaffPage.getByText('Mesa 981302').first().waitFor({timeout:20000});
      const staffDecisionUrl='/api/v1/operations/table-change/decisions';
      const staffDecisionHeaders={authorization:'Bearer '+jwtWaiter,
       'content-type':'application/json'};
-     const secondStaffDecisionHeaders={...ciSecondWaiterHeaders(),
-      'content-type':'application/json'};
+     const responseOn=(page)=>page.waitForResponse(response=>
+      new URL(response.url()).pathname===staffDecisionUrl&&
+       response.request().method()==='POST',{timeout:25000});
      const lockForStaff=await admin.connect();
      let staffLockOpen=false,firstApproval,secondApproval;
      try{
@@ -5748,12 +5767,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        }
        throw Error('concurrent_staff_sql_lock_unobserved:'+expected);
       };
-      const payload={requestId:fourth.id,decision:'approved'};
-      firstApproval=http.inject({method:'POST',url:staffDecisionUrl,
-       headers:staffDecisionHeaders,payload});
+      firstApproval=responseOn(staffPage);
+      await staffPage.getByRole('button',{name:'Aprobar cambio'}).click();
       await awaitPhysicalWait(1);
-      secondApproval=http.inject({method:'POST',url:staffDecisionUrl,
-       headers:secondStaffDecisionHeaders,payload});
+      secondApproval=responseOn(secondStaffPage);
+      await secondStaffPage.getByRole('button',{name:'Aprobar cambio'}).click();
       await awaitPhysicalWait(2);
       await lockForStaff.query('COMMIT');staffLockOpen=false;
      }finally{
@@ -5761,14 +5779,28 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       lockForStaff.release();
      }
      const staffDecisions=await Promise.all([firstApproval,secondApproval]);
-     assert.deepEqual(staffDecisions.map(r=>r.statusCode).sort((x,y)=>x-y),
-      [200,409],'two simultaneous staff decisions cannot both approve');
-     assert.ok(staffDecisions.some(r=>r.json().error==='table_change_request_not_pending'));
-     const winningStaff=staffDecisions[0].statusCode===200?
+     assert.deepEqual(staffDecisions.map(r=>r.status()).sort((x,y)=>x-y),
+      [200,409],'two browser staff decisions cannot both approve');
+     assert.ok((await Promise.all(staffDecisions.map(r=>r.json())))
+      .some(r=>r.error==='table_change_request_not_pending'));
+     const winningStaff=staffDecisions[0].status()===200?
       httpFixture.waiter:secondWaiterId;
-     const losingStaff=staffDecisions[0].statusCode===409?
+     const losingStaff=staffDecisions[0].status()===409?
       httpFixture.waiter:secondWaiterId;
      assert.notEqual(winningStaff,losingStaff);
+     const winningPage=staffDecisions[0].status()===200?
+      staffPage:secondStaffPage;
+     const losingPage=staffDecisions[0].status()===409?
+      staffPage:secondStaffPage;
+     await winningPage.getByText('Sin solicitudes pendientes')
+      .first().waitFor({timeout:20000});
+     await losingPage.getByText('No se pudo decidir la solicitud. Actualiza la lectura antes de reintentar.')
+      .waitFor({timeout:20000});
+     await staffPage.screenshot({path:rejectJoin(rejectEvidence,
+      'b3-two-jwt-waiters-decision-browser-a.png'),fullPage:true});
+     await secondStaffPage.screenshot({path:rejectJoin(rejectEvidence,
+      'b3-two-jwt-waiters-decision-browser-b.png'),fullPage:true});
+     await secondStaffPage.evaluate(()=>window.__saboraCiDispose());
      const opposed=await http.inject({method:'POST',url:staffDecisionUrl,
       headers:staffDecisionHeaders,
       payload:{requestId:fourth.id,decision:'rejected'}});
@@ -5920,6 +5952,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      if(rejectClientContext)await rejectClientContext.close();
      if(rejectOfflineContext)await rejectOfflineContext.close();
      if(rejectStaffContext)await rejectStaffContext.close();
+     if(rejectSecondStaffContext)await rejectSecondStaffContext.close();
      if(rejectBrowser)await rejectBrowser.close();
      if(rejectVite)await rejectVite.close();
      if(rejectManageVite)await rejectManageVite.close();
