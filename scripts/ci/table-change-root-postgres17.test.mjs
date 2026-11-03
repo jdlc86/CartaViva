@@ -4756,6 +4756,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          verifiedIdentity:{userId:kitchenUser},verifiedStaff:{userId:kitchenUser,role:'kitchen'}},{
          dispatchId:evidencePay.dispatch_id,correlationId:'f20_after_move_kitchen_ack'});
         assert.equal(kitchenAck.state,'acknowledged');
+        const kitchenEvents=(await admin.query(`SELECT event_type,table_id FROM
+         sabora.event_outbox WHERE aggregate_id=$1
+         AND event_type IN ('sabora.kitchen.dispatch_requested',
+          'sabora.kitchen.dispatch_acknowledged') ORDER BY id`,
+         [evidencePay.dispatch_id])).rows;
+        assert.ok(kitchenEvents.some(e=>e.event_type==='sabora.kitchen.dispatch_requested'));
+        assert.ok(kitchenEvents.some(e=>e.event_type==='sabora.kitchen.dispatch_acknowledged'));
+        assert.ok(kitchenEvents.every(e=>e.table_id===httpFixture.concurrentTable),
+         'dispatch and acknowledgement must follow the operational destination D');
         const staff={verifiedIdentity:{userId:httpFixture.waiter},
          verifiedStaff:{userId:httpFixture.waiter,role:'waiter'}};
         const incident=await providerStaff.reportIncident(staff,{
