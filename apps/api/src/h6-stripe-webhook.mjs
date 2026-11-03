@@ -59,8 +59,12 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  if(event.type==='refund.updated'){
   refundAttemptId=object?.metadata?.sabora_refund_attempt_id;
   refundStatus=object?.status;
+  // The refund ID and metadata alone are insufficient: the sealed SQL must
+  // also reconcile the provider's original charge to the payment attempt.
+  providerChargeId=typeof object?.charge==='string'?object.charge:object?.charge?.id;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refundAttemptId??'')||
-     !['pending','requires_action','succeeded','failed','canceled'].includes(refundStatus))
+     !['pending','requires_action','succeeded','failed','canceled'].includes(refundStatus)||
+     typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
    throw Error('invalid_stripe_webhook_payload');
  }
  return Object.freeze({eventId:event.id,eventType:event.type,providerObjectId:object.id,
