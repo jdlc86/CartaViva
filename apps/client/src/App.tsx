@@ -91,6 +91,9 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [quoteLines,setQuoteLines]=useState<readonly QuoteLine[]>([]);
  const [quotedTotal,setQuotedTotal]=useState(0);
  const [checkoutMessage,setCheckoutMessage]=useState<string|null>(null);
+ // Payment/confirmation truth must never be replaced by SSE transport notices.
+ const [eventFeedNotice,setEventFeedNotice]=useState<string|null>(null);
+ const [eventFeedConnected,setEventFeedConnected]=useState(false);
  const [eventScope,setEventScope]=useState<{accountId:string;roundId:string;orderId:string}|null>(null);
  const [customerEvents,setCustomerEvents]=useState<readonly CustomerEvent[]>([]);
  const searchRef=useRef<HTMLInputElement>(null);
@@ -308,8 +311,12 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[]);
  useEffect(()=>{
   if(!eventScope||!tableVisit)return;
+  setEventFeedConnected(false);
+  setEventFeedNotice(null);
   return subscribeCustomerEvents({tableId:tableVisit.tableId,visitId:tableVisit.visitId,
    accountId:eventScope.accountId,onEvent:event=>{
+    setEventFeedConnected(true);
+    setEventFeedNotice(null);
     setCustomerEvents(current=>Object.freeze([...current.slice(-49),event]));
     if(event.type==='sabora.payment.requires_action')setCheckoutPhase('payment_action');
     if(event.type==='sabora.payment.authorized'){
@@ -321,13 +328,15 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
       'El resultado del proveedor es incierto. No intentes otro medio de pago; pide ayuda al personal.':
       'The provider result is uncertain. Do not try another payment method; ask staff for help.');
     }
-    if(event.type==='sabora.kitchen.dispatch_acknowledged')setCheckoutMessage(locale==='es'?
-     'Cocina ha recibido el pedido.':'The kitchen has received the order.');
+    if(event.type==='sabora.kitchen.dispatch_acknowledged')setEventFeedNotice(locale==='es'?
+     'Cocina ha recibido un pedido.':'Kitchen has received an order.');
    },onResync:()=>{
-    setCheckoutMessage(locale==='es'?'El historial disponible ha caducado; se requiere una recarga segura.':
+    setEventFeedConnected(false);
+    setEventFeedNotice(locale==='es'?'El historial disponible ha caducado; se requiere una recarga segura.':
      'The available history has expired; a secure reload is required.');
    },onUnavailable:()=>{
-    setCheckoutMessage(locale==='es'?'El canal de seguimiento perdió autorización. Vuelve a validar la mesa.':
+    setEventFeedConnected(false);
+    setEventFeedNotice(locale==='es'?'El canal de seguimiento perdió autorización. Vuelve a validar la mesa.':
      'The tracking channel lost authorization. Validate the table again.');
    }});
  },[eventScope,locale,tableVisit]);
@@ -547,7 +556,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   {totalQuantity>0&&overlay!=='cart'?<aside className="cart-summary" aria-label={copy.selection}><div><strong>{totalQuantity} {locale==='es'?'platos':'dishes'}</strong><span>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</span></div><button type="button" onClick={openCart}>{copy.view}<Icon name="arrow"/></button></aside>:null}
   <BottomNav locale={locale} active={area} onSelect={selectArea}/>
 
-  {overlay==='notifications'?<Modal title={copy.notifications} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy"><Icon name="bell"/>{customerEvents.length?<ol className="customer-event-list">{[...customerEvents].reverse().map(event=><li key={`${event.id}-${event.type}`}><strong>{event.type.replace('sabora.','').replaceAll('_',' ')}</strong><span>{new Date(event.createdAt).toLocaleTimeString(locale==='es'?'es-ES':'en-GB',{hour:'2-digit',minute:'2-digit'})}</span></li>)}</ol>:<p>{locale==='es'?'Todavía no hay eventos autorizados para esta cuenta.':'There are no authorized events for this account yet.'}</p>}<span className="honest-status">{eventScope?(locale==='es'?'Canal SSE durable conectado, sin sondeo periódico':'Durable SSE channel connected, without periodic polling'):(locale==='es'?'El canal se abre al confirmar un pedido':'The channel opens after confirming an order')}</span></div></Modal>:null}
+  {overlay==='notifications'?<Modal title={copy.notifications} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy"><Icon name="bell"/>{customerEvents.length?<ol className="customer-event-list">{[...customerEvents].reverse().map(event=><li key={`${event.id}-${event.type}`}><strong>{event.type.replace('sabora.','').replaceAll('_',' ')}</strong><span>{new Date(event.createdAt).toLocaleTimeString(locale==='es'?'es-ES':'en-GB',{hour:'2-digit',minute:'2-digit'})}</span></li>)}</ol>:<p>{locale==='es'?'Todavía no hay eventos autorizados para esta cuenta.':'There are no authorized events for this account yet.'}</p>}<span className="honest-status">{eventScope?(eventFeedConnected?(locale==='es'?'Canal SSE durable conectado, sin sondeo periódico':'Durable SSE channel connected, without periodic polling'):(locale==='es'?'Canal de seguimiento pendiente o no disponible; no se presume conexión':'Tracking channel pending or unavailable; connection is not assumed')):(locale==='es'?'El canal se abre al confirmar un pedido':'The channel opens after confirming an order')}</span>{eventFeedNotice?<p className="honest-status" role="status">{eventFeedNotice}</p>:null}</div></Modal>:null}
   {overlay==='qr'?<Modal title={locale==='es'?'QR de mesa':'Table QR'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy qr-flow"><Icon name="qr"/><p>{locale==='es'?'Escanea el QR auténtico de la mesa. Sabora conservará tu selección y el servidor comprobará identidad, credencial revocable, estado y visita antes de habilitar el pedido.':'Scan the authentic table QR. Sabora keeps your selection, and the server verifies identity, revocable credential, state and visit before enabling ordering.'}</p>
    {qrState==='checking_change'?<span className="honest-status" role="status">Comprobando tu vinculación y las solicitudes con el restaurante…</span>:
     qrState==='change_prompt'?<div className="table-change-client-notice" role="group" aria-label="Cambio de mesa">
