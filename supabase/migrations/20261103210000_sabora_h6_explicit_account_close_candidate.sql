@@ -159,8 +159,13 @@ ALTER FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,
 REVOKE ALL ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
   sabora_h6_provider_runtime,sabora_h6_operations_runtime;
+-- Do NOT widen sabora_h6_operations_runtime: its existing exact-three-
+-- function surface is a security invariant checked by PG17 integration.
+-- A separate NOLOGIN capability may execute only this one sealed function.
+CREATE ROLE sabora_h6_account_close_runtime NOLOGIN NOINHERIT NOBYPASSRLS;
+GRANT USAGE ON SCHEMA sabora TO sabora_h6_account_close_runtime;
 GRANT EXECUTE ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
- TO sabora_h6_operations_runtime;
+ TO sabora_h6_account_close_runtime;
 
 -- An old authenticated customer session must not create a new account or
 -- replay the old order after closure. A future session plus a new authorized
