@@ -5108,14 +5108,38 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      await rejectMkdir(rejectEvidence,{recursive:true});
      await rejectingCustomerPage.screenshot({path:rejectJoin(rejectEvidence,
       'b3-customer-pg17-auto-rejected-mobile.png'),fullPage:true});
-     // Simulate elapsed server time by rewriting only isolated fixture
-     // timestamps. The UPDATE is committed, so the NOTIFY must invalidate
-     // both the customer's countdown and the staff's stale decision.
-     await admin.query(`UPDATE sabora.customer_table_change_requests SET
-      created_at=clock_timestamp()-interval '3 minutes',
-      decided_at=clock_timestamp()-interval '2 minutes',
-      expires_at=clock_timestamp()-interval '1 minute'
-      WHERE id=$1 AND status='rejected'`,[second.id]);
+     // Natural 90-second expiry on the real server clock, with both PWAs
+     // still mounted and a second client offline. No timestamp rewrites,
+     // fake clocks, direct state changes, polling or shortened intervals.
+     // The waiter rejection remains visible until its actual expiry.
+     const expiryStart=(await admin.query(`SELECT created_at,expires_at,
+      clock_timestamp() AS server_now,status FROM sabora.customer_table_change_requests
+      WHERE id=$1`,[second.id])).rows[0];
+     assert.equal(expiryStart.status,'rejected');
+     assert.ok(expiryStart.expires_at.getTime()-expiryStart.created_at.getTime()>=89900,
+      'the server must enforce the normative 90-second response window');
+     assert.ok(expiryStart.expires_at.getTime()>expiryStart.server_now.getTime(),
+      'rejection should precede natural expiry');
+     const remainingMs=expiryStart.expires_at.getTime()-expiryStart.server_now.getTime();
+     assert.ok(remainingMs<=90000&&remainingMs>0);
+     assert.equal((await rejectingCustomerPage.getByRole('button',
+      {name:'Solicitar cambio de mesa'}).count()),0,
+      'the live customer cannot request again before the real deadline');
+     await new Promise(resolve=>setTimeout(resolve,remainingMs+1600));
+     const expiryEnd=(await admin.query(`SELECT created_at,expires_at,
+      clock_timestamp() AS server_now,status FROM sabora.customer_table_change_requests
+      WHERE id=$1`,[second.id])).rows[0];
+     assert.equal(expiryEnd.status,'rejected',
+      'expiry must not rewrite the immutable rejection decision');
+     assert.ok(expiryEnd.server_now.getTime()>=expiryEnd.expires_at.getTime(),
+      'server clock must actually pass the 90-second deadline');
+     assert.ok(expiryEnd.server_now.getTime()-expiryEnd.created_at.getTime()>=90000,
+      'the window must elapse naturally, not through fixture manipulation');
+     const released=await http.inject({method:'GET',
+      url:'/api/v1/customer/table-change/state',headers:requestHeaders});
+     assert.equal(released.statusCode,200,released.body);
+     assert.notEqual(released.json().state,'pending',
+      'a naturally expired rejected request must not remain pending');
      const reconnectPage=await rejectOfflineContext.newPage();
      const replayRequests=[];
      reconnectPage.on('request',request=>{
