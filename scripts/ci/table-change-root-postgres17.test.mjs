@@ -4610,6 +4610,55 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        await page.screenshot({path:join(evidence,
         'b3-f20-economic-'+mode.replaceAll('_','-')+'-mobile.png'),
         fullPage:true});
+       if(mode==='pay_at_end'){
+        // After A->D, repeat a genuinely authorized partial receipt and then
+        // liquidate the remaining debt. The economic account stays OPEN so
+        // later orders may reuse it, irrespective of a zero outstanding balance.
+        const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
+        const cashHeaders={'x-ci-staff':'authorized-waiter','content-type':'application/json'};
+        const partialBody={amountCents:400,correlationId:'f20_after_transfer_cash_400'};
+        const partial=await http.inject({method:'POST',url:cashUrl,
+         headers:cashHeaders,payload:partialBody});
+        assert.equal(partial.statusCode,201,partial.body);
+        assert.equal(partial.json().accountId,diner.account);
+        assert.equal(partial.json().state,'partial');
+        assert.equal(partial.json().outstandingCents,1200);
+        assert.equal(partial.json().accountState,'open');
+        const partialReplay=await http.inject({method:'POST',url:cashUrl,
+         headers:cashHeaders,payload:partialBody});
+        assert.equal(partialReplay.statusCode,201);
+        assert.equal(partialReplay.json().repeated,true);
+        const full=await http.inject({method:'POST',url:cashUrl,
+         headers:cashHeaders,payload:{amountCents:1200,correlationId:'f20_after_transfer_cash_full'}});
+        assert.equal(full.statusCode,201,full.body);
+        assert.equal(full.json().state,'settled');
+        assert.equal(full.json().outstandingCents,0);
+        assert.equal(full.json().accountState,'open');
+        const account=(await admin.query(`SELECT id,customer_id,state,outstanding_cents,
+         cash_settled_cents FROM sabora.customer_accounts WHERE id=$1`,
+         [diner.account])).rows[0];
+        assert.equal(account.id,diner.account);
+        assert.equal(account.customer_id,diner.customer);
+        assert.equal(account.state,'open');
+        assert.equal(account.outstanding_cents,'0');
+        assert.equal(account.cash_settled_cents,'1900');
+        const receipts=(await admin.query(`SELECT amount_cents,kind FROM sabora.cash_settlements
+         WHERE account_id=$1 ORDER BY created_at,id`,[diner.account])).rows;
+        assert.deepEqual(receipts.map(r=>[r.amount_cents,r.kind]),
+         [['300','payment'],['400','payment'],['1200','payment']]);
+        const notices=(await admin.query(`SELECT event_type,table_id,account_id,
+         payload->>'outstandingCents' AS remaining FROM sabora.event_outbox
+         WHERE account_id=$1 AND event_type LIKE 'sabora.account.cash_%'
+         ORDER BY id`,[diner.account])).rows;
+        assert.deepEqual(notices.map(n=>n.event_type),[
+         'sabora.account.cash_partially_paid','sabora.account.cash_partially_paid',
+         'sabora.account.cash_settled']);
+        assert.deepEqual(notices.map(n=>n.table_id),[
+         httpFixture.sourceTable,httpFixture.concurrentTable,httpFixture.concurrentTable],
+         'post-transfer cash events must follow the live table D, never historical A');
+        assert.deepEqual(notices.map(n=>n.remaining),['900','1200','0']);
+        assert.ok(notices.every(n=>n.account_id===diner.account));
+       }
       }
      }finally{for(const context of dContexts)await context.close();}
      assert.deepEqual(customerBrowserErrors,[]);
