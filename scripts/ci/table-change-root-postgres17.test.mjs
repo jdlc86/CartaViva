@@ -4539,6 +4539,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        assert.equal(postReplay.payments,scenario.attempts);
        assert.equal(postReplay.cash,scenario.cash);
        await page.getByText('Pedido confirmado').waitFor({timeout:20000});
+       if(mode==='pay_now'){
+        await page.getByText(/la autorización de Stripe sigue pendiente/).waitFor();
+        await page.getByText(/No se ha confirmado ningún cobro ni envío a cocina/).waitFor();
+       }else{
+        await page.getByText(/El envío a cocina respetará la ventana/).waitFor();
+       }
        await page.screenshot({path:join(evidence,
         'b3-f20-economic-'+mode.replaceAll('_','-')+'-mobile.png'),
         fullPage:true});
