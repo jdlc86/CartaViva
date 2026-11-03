@@ -4242,7 +4242,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       assert.equal(state.orders,1,why+': no destination order');
       assert.equal(state.historic_delivery,1,why+': pending delivery still in A');
      };
-     const prepareD=async(diner,token)=>{
+     const prepareD=async(diner,token,mode='pay_at_end')=>{
       const context=await clientBrowser.newContext({
        viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'
       });
@@ -4264,7 +4264,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        {name:'Continuar con la mesa escaneada'}).click();
       await page.getByText('Mesa verificada').waitFor({timeout:20000});
       await page.getByRole('button',{name:'Continuar con el pedido'}).click();
-      await page.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await page.getByRole('radio',{name:mode==='pay_now'?/Pagar ahora/:/Pagar al terminar/}).check();
       await page.getByRole('button',{name:'Confirmar pedido'}).waitFor({timeout:20000});
       return page;
      };
