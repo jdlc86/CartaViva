@@ -30,9 +30,11 @@ export function createH6PaymentOrchestrator({stripe,repository,clock=Date.now}={
     errorCode:safeCode(result.errorCode)});
    return Object.freeze({...recorded,...(result.clientSecret?{clientSecret:result.clientSecret}:null)});
   },
-  async captureOrDispatch({orderId}={}){
+  async captureOrDispatch({orderId,serverDue=false}={}){
    if(!UUID.test(orderId??''))throw Error('invalid_h6_capture_request');
-   const requested=await repository.requestCapture({orderId,now:new Date(clock())});
+   const requested=serverDue?
+    await repository.requestDueCapture({orderId}):
+    await repository.requestCapture({orderId,now:new Date(clock())});
    if(requested.action==='dispatch')return requested;
    if(requested.action!=='capture'||!IDEMPOTENCY.test(requested.capture_key??''))
     throw Error('invalid_h6_capture_state');

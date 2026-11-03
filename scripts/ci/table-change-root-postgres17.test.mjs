@@ -21,7 +21,8 @@ import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-co
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {assertH6RuntimeIdentity} from '../../apps/api/src/h6-sql-preflight.mjs';
-import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+import {createH6ProviderRepository,LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+ RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,REQUEST_REFUND_H6_SQL,
  RECORD_REFUND_H6_SQL} from '../../apps/api/src/h6-provider-repository.mjs';
 import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
@@ -29,6 +30,8 @@ import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
+import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
+import {createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
 import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {preflightOrderTransitionStaffIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
@@ -2835,7 +2838,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    issueCapability:cashIssuer
   });
   const providerTx=createRoleScopedPostgresTransaction({pool:scopedPools[7],
-   role:specs[7].role,allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,
+   role:specs[7].role,allowedSql:new Set([LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+    RECORD_AUTHORIZATION_H6_SQL,
     REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
     REQUEST_REFUND_H6_SQL,RECORD_REFUND_H6_SQL])});
   const h6Provider=createH6ProviderRepository({withTransaction:providerTx});
@@ -5093,12 +5097,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal((await admin.query(`SELECT status FROM
          sabora.customer_table_change_requests WHERE id=$1`,
          [closeGrant.id])).rows[0].status,'approved');
-        // The pay-at-end grouping dispatcher is not yet wired to this
-        // B3 HTTP composition. ONLY its overdue dispatch-ready fixture is
-        // staged directly in disposable PG17. From here every receipt,
-        // preparation, READY task and pickup claim uses signed JWT/HMAC HTTP
-        // operations on distinct physical runtime logins. In particular,
-        // nobody writes retired 'picked_up' on the account's lines.
+        // Use the dormant server-side deferred dispatcher against the SAME
+        // real PostgreSQL 17 ledger and scoped provider login. Only time is
+        // advanced in this disposable fixture; no dispatch state is forced.
+        // Kitchen receipt, preparation and pickup remain authenticated HTTP.
+        // The five-minute natural-clock delay remains a separate acceptance
+        // gap: this case checks due execution/recovery, not five minutes elapsed.
         // The manually seeded historical A round predates the H6 test
         // dispatch projection and has NO kitchen_dispatch row. Backfill
         // just this disposable fixture, never the live data or migrations,
@@ -5123,14 +5127,41 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          [diner.account])).rows;
         assert.equal(stagedDispatches.length,2);
         assert.ok(stagedDispatches.every(row=>row.state==='blocked'));
-        await admin.query(`UPDATE sabora.kitchen_dispatches k SET
-         state='requested',requested_at=clock_timestamp(),
-         updated_at=clock_timestamp()
-         FROM sabora.order_rounds r WHERE r.id=k.round_id
-         AND r.account_id=$1 AND k.state='blocked'`,[diner.account]);
+        // Explicit disposable time fixture, never a mutation of delivery,
+        // payment, outbox or kitchen dispatch status. The scheduler itself
+        // must write the two due dispatches through the existing sealed RPC.
         await admin.query(`UPDATE sabora.order_rounds SET
-         state='dispatch_requested',updated_at=clock_timestamp()
-         WHERE account_id=$1 AND state='grouping'`,[diner.account]);
+         grouping_deadline=clock_timestamp()-interval '1 second'
+         WHERE account_id=$1 AND state IN ('grouping','free_grouping')`,
+         [diner.account]);
+        const dispatchNotifier=await createPostgresH6OutboxNotifier({pool:pools[8]});
+        const dispatchFailures=[];
+        const dispatchScheduler=createH6DeferredDispatchScheduler({
+         listSchedulable:options=>h6Provider.listSchedulable(options),
+         dispatchDue:({orderId})=>h6Provider.requestDueCapture({orderId}),
+         subscribeCommitted:dispatchNotifier.subscribe,
+         onFailure:error=>dispatchFailures.push(error)
+        });
+        try{
+         await dispatchScheduler.start(); // startup rehydrates overdue work
+         assert.deepEqual(dispatchFailures,[]);
+         const requested=(await admin.query(`SELECT k.state,r.state AS round_state
+          FROM sabora.kitchen_dispatches k JOIN sabora.order_rounds r
+          ON r.id=k.round_id WHERE r.account_id=$1`,[diner.account])).rows;
+         assert.equal(requested.length,2);
+         assert.ok(requested.every(v=>v.state==='requested' &&
+           v.round_state==='dispatch_requested'),
+           'scheduler dispatched both rounds without directly changing state');
+         await dispatchScheduler.wake(); // replay must not duplicate events
+         const once=(await admin.query(`SELECT count(*)::int AS n FROM sabora.event_outbox e
+          WHERE e.event_type='sabora.kitchen.dispatch_requested'
+           AND e.aggregate_id=ANY($1::uuid[])`,
+          [stagedDispatches.map(d=>d.id)])).rows[0].n;
+         assert.equal(once,2,'due dispatch is idempotent across wakeups');
+        }finally{
+         await dispatchScheduler.close();
+         await dispatchNotifier.close();
+        }
         const kitchenHeaders={authorization:'Bearer '+jwtKitchen,
          'content-type':'application/json'};
         for(const [index,dispatch] of stagedDispatches.entries()){

@@ -9,7 +9,9 @@ import {createH6CustomerEventRepository,createH6OperationsRepository,ACK_DISPATC
  REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
  REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL} from './h6-operations-repository.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
+import {createH6DeferredDispatchScheduler} from './h6-deferred-dispatch-scheduler.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+ LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
  from './h6-provider-repository.mjs';
@@ -17,6 +19,7 @@ import {assertH6SqlCapabilities} from './h6-sql-preflight.mjs';
 
 const customerSql=new Set([READ_CUSTOMER_EVENTS_H6_SQL]);
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+ LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
@@ -30,10 +33,11 @@ const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
 export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerFlow,stripe,
  customerPool,providerPool,operationsPool,notifierPool=operationsPool,
  expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin,issueStaffCapability,
- clock,eventHeartbeatMs=15_000}={}){
+ clock,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeDispatchFailure=()=>{}}={}){
  if(!app||!cookieAuth||typeof forRoles!=='function'||!customerFlow||!stripe||
     typeof issueStaffCapability!=='function'||!notifierPool||typeof notifierPool.connect!=='function'||
-    !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
+    !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000||
+    typeof enableDeferredDispatch!=='boolean'||typeof observeDispatchFailure!=='function')
   throw Error('invalid_h6_candidate_composition');
  await assertH6SqlCapabilities({customerPool,providerPool,operationsPool,
   expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin});
@@ -52,6 +56,7 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  const operations=createH6OperationsCoordinator({repository:operationsRepository,
   issueCapability:issueStaffCapability});
  const notifier=await createPostgresH6OutboxNotifier({pool:notifierPool});
+ let scheduler=null;
  try{
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
   registerH6OperationsHttp(app,{forRoles,operations});
@@ -60,6 +65,16 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
   registerH6StaffEventStreamHttp(app,{forRoles,events:operationsRepository,
    issueCapability:issueStaffCapability,subscribeCommitted:notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
- }catch(error){await notifier.close();throw error;}
- return Object.freeze({provider,payments,operations,close:()=>notifier.close()});
+  if(enableDeferredDispatch){
+   scheduler=createH6DeferredDispatchScheduler({
+    listSchedulable:options=>provider.listSchedulable(options),
+    dispatchDue:({orderId})=>payments.captureOrDispatch({orderId,serverDue:true}),
+    subscribeCommitted:notifier.subscribe,onFailure:observeDispatchFailure
+   });
+   await scheduler.start();
+  }
+ }catch(error){await scheduler?.close();await notifier.close();throw error;}
+ return Object.freeze({provider,payments,operations,
+  close:async()=>{await scheduler?.close();await notifier.close();}});
+
 }
