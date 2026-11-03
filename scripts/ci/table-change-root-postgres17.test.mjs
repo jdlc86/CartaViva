@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {createHash,randomBytes,createHmac} from 'node:crypto';
+import {createHash,randomBytes,createHmac,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
@@ -22,7 +22,8 @@ import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
-import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
+import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
+import {preflightOrderTransitionStaffIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
@@ -2651,6 +2652,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_h6_provider_runtime',login:'sabora_b3_physical_provider_'+suffix,
    signatures:[]},
   {role:'sabora_h6_operations_runtime',login:'sabora_b3_physical_oper_'+suffix,
+   signatures:[]},
+  {role:'sabora_staff_reader',login:'sabora_b3_physical_staff_auth_'+suffix,
    signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
@@ -2658,7 +2661,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
  try{
   for(const spec of specs){
    if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime',
-       'sabora_h6_provider_runtime','sabora_h6_operations_runtime'].includes(spec.role)){
+       'sabora_h6_provider_runtime','sabora_h6_operations_runtime',
+       'sabora_staff_reader'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2670,7 +2674,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    await admin.query('CREATE ROLE '+spec.login+' LOGIN NOINHERIT PASSWORD '+
     "'"+password+"'");
    createdRoles.push(spec.login);
-   await admin.query('GRANT '+spec.role+' TO '+spec.login+' WITH SET TRUE, INHERIT FALSE');
+   if(spec.role==='sabora_staff_reader'){
+    await admin.query('GRANT USAGE ON SCHEMA sabora TO '+spec.login);
+    await admin.query('GRANT SELECT(user_id,role,state) ON sabora.staff_members TO '+spec.login);
+    await admin.query('CREATE POLICY ci_b3_staff_login_'+suffix+
+     ' ON sabora.staff_members FOR SELECT TO '+spec.login+' USING (true)');
+   }else{
+    await admin.query('GRANT '+spec.role+' TO '+spec.login+
+     ' WITH SET TRUE, INHERIT FALSE');
+   }
   }
   for(const spec of specs){
    const loginUrl=new URL(url);
@@ -2716,6 +2728,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   assert.ok(results.every(result=>result.validated===true));
   assert.deepEqual(await assertB3CustomerFlowExactSetRole({pool:scopedPools[4]}),
    {validated:true});
+  await preflightOrderTransitionStaffIdentity({pool:pools[9],role:specs[9].login});
+  const staffAuthRole=(await connections[9].query(
+   'SELECT current_user AS login,session_user AS session')).rows[0];
+  assert.deepEqual(staffAuthRole,{login:specs[9].login,session:specs[9].login});
+  await assert.rejects(connections[9].query('SELECT * FROM sabora.staff_members'),
+   /permission denied/);
+  await assert.rejects(connections[9].query('SELECT * FROM sabora.customer_accounts'),
+   /permission denied/);
+  await assert.rejects(connections[9].query('SET ROLE sabora_h6_fn_owner'),
+   /permission denied/);
   const cashFunctions=(await connections[6].query(F12_FUNCTION_SQL,[specs[6].role])).rows[0].names;
   assert.deepEqual(cashFunctions,specs[6].signatures,
    'F20 cash role executes exactly the reviewed settlement RPC');
@@ -2751,6 +2773,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   scopedPools[6]={connect:()=>pools[6].connect()};
   scopedPools[7]={connect:()=>pools[7].connect()};
   scopedPools[8]={connect:()=>pools[8].connect()};
+  const {privateKey:ciPrivateKey,publicKey:ciPublicKey}=generateKeyPairSync('rsa',
+   {modulusLength:2048,publicExponent:0x10001});
+  const ciIssuer='https://sabora-disposable.test/auth/v1';
+  const ciJwk=Object.freeze({...ciPublicKey.export({format:'jwk'}),
+   kid:'b3-ci-staff-'+suffix,kty:'RSA',alg:'RS256',use:'sig'});
+  const staffJwt=(userId,{expiresIn=3600,role='authenticated'}={})=>{
+   const now=Math.floor(Date.now()/1000);
+   const head=Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT',kid:ciJwk.kid}))
+    .toString('base64url');
+   const body=Buffer.from(JSON.stringify({iss:ciIssuer,aud:'authenticated',
+    sub:userId,role,iat:now,exp:now+expiresIn})).toString('base64url');
+   return head+'.'+body+'.'+sign('RSA-SHA256',
+    Buffer.from(head+'.'+body),ciPrivateKey).toString('base64url');
+  };
+  const jwtWaiter=staffJwt('b0a00000-0000-4000-8000-000000000307');
+  const jwtKitchen=staffJwt('b0a00000-0000-4000-8000-000000000310');
+  const jwtCustomer=staffJwt('b0a00000-0000-4000-8000-000000000301');
+  const jwtExpired=staffJwt('b0a00000-0000-4000-8000-000000000307',
+   {expiresIn:-30});
+  const ciVerifiedStaffHeaders=()=>({authorization:'Bearer '+jwtWaiter});
   const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
   const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[6].login});
