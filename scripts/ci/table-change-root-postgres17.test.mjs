@@ -2863,7 +2863,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // Reuse the existing H4 signed RPC; this route is transition-only and
   // explicitly forbids retired physical pickup. The kitchen actor is
   // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
-  const h4KitchenTx=createRoleScopedPostgresTransaction({pool:scopedPools[11],
+  const h4KitchenTx=createRoleScopedPostgresTransaction({pool:pools[11],
    role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
     READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
