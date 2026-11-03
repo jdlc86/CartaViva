@@ -2,7 +2,7 @@ import type {OrderBoard, OrderHistory, OrderLineStatus, OrderLineTarget, OrderTr
 export type OrderOperationsSender = (path: string, init: RequestInit) => Promise<Response>;
 export type H6OperationEvent = Readonly<{id: number; type: string; payload: Readonly<Record<string, unknown>>; createdAt: string}>;
 export interface OrderOperationsGateway {
-  listBoard(input?: {status?: OrderLineStatus | null; limit?: number}): Promise<OrderBoard>;
+  listBoard(input?: {status?: OrderLineStatus | null; limit?: number; cursor?: OrderBoard['nextCursor']}): Promise<OrderBoard>;
   transitionLine(input: {lineId: string; targetStatus: OrderLineTarget; correlationId: string}): Promise<OrderTransition>;
   listHistory(input: {orderId: string; limit?: number}): Promise<OrderHistory>;
   acknowledgeDispatch(input: {dispatchId: string; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
