@@ -2857,6 +2857,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    alias:'Comensal sesion concurrente',visitKey:'b3_revoke_race_origin_0396_integral',
    balance:1300
   };
+  // Post-consumption race: two independent economic accounts so session
+  // revocation and destination QR rotation cannot interfere with one another.
+  const postConsumeSessionDiner={
+   customer:'b0a00000-0000-4000-8000-000000000421',
+   account:'b0a00000-0000-4000-8000-000000000422',
+   order:'b0a00000-0000-4000-8000-000000000423',
+   round:'b0a00000-0000-4000-8000-000000000424',
+   token:'m'.repeat(42)+'s',publicId:'SB-UVUVUVUVUVUP',
+   alias:'Comensal carrera commit sesion',visitKey:'b3_postconsume_session_0421',balance:1500
+  };
+  const postConsumeQrDiner={
+   customer:'b0a00000-0000-4000-8000-000000000431',
+   account:'b0a00000-0000-4000-8000-000000000432',
+   order:'b0a00000-0000-4000-8000-000000000433',
+   round:'b0a00000-0000-4000-8000-000000000434',
+   token:'n'.repeat(42)+'s',publicId:'SB-VWVWVWVWVWVP',
+   alias:'Comensal carrera commit QR',visitKey:'b3_postconsume_qr_0431',balance:1700
+  };
   // F20/R05: exercise transfers with two distinct historical payment states
   // in the same full PG17/Fastify/Chromium confirmation journey.
   const payNowDiner={
@@ -2900,6 +2918,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        return;
       }
       const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
+       postConsumeSessionDiner,postConsumeQrDiner,
        payNowDiner,cashHistoryDiner].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
@@ -3898,6 +3917,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      try{
       await raceFixture.query('BEGIN');
       for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner,
+       postConsumeSessionDiner,postConsumeQrDiner,
        payNowDiner,cashHistoryDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
