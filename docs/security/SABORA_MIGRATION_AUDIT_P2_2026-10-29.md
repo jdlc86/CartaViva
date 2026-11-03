@@ -2,11 +2,11 @@
 
 **Fecha:** 2026-10-29
 
-**Ámbito:** las 42 migraciones de `supabase/migrations` en PR Draft #40.
+**Ámbito:** las 43 migraciones de `supabase/migrations` tras la corrección aislada del replay H6.
 
 **Estado:** inventario técnico revisado; no autoriza aplicar migraciones en un entorno operativo.
 
-La fuente ejecutable de esta auditoría es `scripts/ci/migration-audit.mjs`. El gate une cada ficha revisada al nombre, orden, tamaño y SHA-256 calculado desde el SQL. El manifiesto de esta revisión tiene SHA-256 `7ceffee4cecbb2d2559dd23c4fadfccff43febd142d407e54ca356867097405e`. `node scripts/ci/migration-audit.mjs` muestra los 42 checksums completos y falla si falta o sobra una ficha, si hay una versión duplicada o si queda un campo `unverified`.
+La fuente ejecutable de esta auditoría es `scripts/ci/migration-audit.mjs`. El gate une cada ficha revisada al nombre, orden, tamaño y SHA-256 calculado desde el SQL. El manifiesto de esta revisión tiene SHA-256 `a39c828f9b519e7cd03f2efa846256c6592e25fd1994d8cfe17bc14ae84a0417`. `node scripts/ci/migration-audit.mjs` muestra los 43 checksums completos y falla si falta o sobra una ficha, si hay una versión duplicada o si queda un campo `unverified`.
 
 Todas las migraciones se clasifican como `single_apply_checksum_guarded`: no se autoriza reejecutarlas para averiguar si son idempotentes. Ninguna tiene un *down* destructivo aprobado. Ante fallo confirmado se reanuda solo desde un historial con el mismo checksum; ante estado ambiguo se detiene la aplicación y se elige corrección hacia delante o restauración verificada.
 
@@ -54,6 +54,7 @@ Todas las migraciones se clasifican como `single_apply_checksum_guarded`: no se 
 | 20261027190334 | Recogida; H6/operaciones | tareas/eventos, unicidad y RPC; owners sellados/FORCE RLS | alto, backfill/índice/locks; recogida | PG17; pgcrypto heredado |
 | 20261027225805 | Identidad de personal; lifecycle/pickup/HMAC | pool, mantenimiento, identidad y binding; owner sellado/FORCE RLS | **muy alto**, 46.655 códigos/backfill/locks | PG17; pgcrypto heredado |
 | 20261028120000 | Directorio; identidad/pickup/HMAC | contactos y lecturas contextuales; scopes list/detail/self/FORCE RLS | alto, backfill/constraint/lecturas | PG17; pgcrypto heredado |
+| 20261030091748 | Replay H6; lector de ronda/RLS de pedidos | reemplazo acotado de función; conserva owner sellado y EXECUTE de cliente, sin nuevos grants/policies | reemplazo de catálogo; locks de sesión, visita, mesa, cuenta y ronda; sin mutación de datos | PG17; pgcrypto heredado |
 
 ## Decisiones de revisión
 
@@ -65,7 +66,7 @@ Todas las migraciones se clasifican como `single_apply_checksum_guarded`: no se 
 
 ## Evidencia automática asociada
 
-- `migration-audit.test.mjs`: cobertura exacta de las 42 fichas.
+- `migration-audit.test.mjs`: cobertura exacta de las 43 fichas.
 - `migration-preflight.mjs`: SHA del checkout, orden y checksum antes de abrir el contenedor.
 - `postgres-migration-chain-smoke.sh`: cadena real, ledger exacto, interrupción tras una migración confirmada, reanudación y rechazo de drift.
 - `postgres-migration-failure-smoke.sh`: fallo dentro de transacción, ausencia de parcial y reintento.

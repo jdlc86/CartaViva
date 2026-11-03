@@ -15,6 +15,8 @@ Este documento describe la implementación candidata de H6. No modifica ni susti
 
 `confirm_customer_round_h6_candidate` envuelve la persistencia canónica H3 dentro de la misma transacción que crea cuenta individual, ronda económica, intento de pago —solo para una ronda positiva `pay_now`— y despacho bloqueado. Un fallo en cualquiera de esos efectos revierte todos. La clave de petición y el fingerprint impiden convertir un replay en otra intención.
 
+El replay recupera la ronda mediante el `orderId` durable y vuelve a comprobar sesión, visita, mesa, cuenta y versión QR. El lector bloquea sesión, visita, mesa, cuenta y ronda; el pedido permanece como predicado inmutable de pertenencia, sin solicitar un row lock que obligaría a ampliar su policy RLS a UPDATE. No acepta `roundId` como sustituto del pedido ni concede lectura directa de tablas.
+
 La modalidad se fija con la primera ronda positiva de la cuenta. Una ronda gratuita no fija modalidad ni crea intento de proveedor. La política versionada de mesa bloquea `pay_at_end` cuando exige pago conforme se pide.
 
 Las tablas H6 tienen RLS forzada, políticas exclusivas del owner técnico, guardas append-only donde procede y ninguna concesión directa a los logins runtime.
