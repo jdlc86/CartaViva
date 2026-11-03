@@ -5379,29 +5379,118 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(third.source_table_id,httpFixture.destinationTable);
      assert.notEqual(third.id,second.id);
      assert.deepEqual(rejectedClientErrors,[]);
-     // This PG17 fixture is committed for six physical logins. Retire its
-     // last pending request without deleting any historical record so the
-     // subsequent independent staff-reader test sees an empty live queue.
-     // The simulated server time remains valid under the normative checks.
-     await admin.query(`UPDATE sabora.customer_table_change_requests SET
-      created_at=clock_timestamp()-interval '3 minutes',
-      expires_at=clock_timestamp()-interval '1 minute',
-      status='expired'
-      WHERE id=$1 AND status='pending'`,[third.id]);
+     // F08/F09/R03: a real 90-second pending response window, with the
+     // waiter APPROVAL and REJECTION both entering PG17 just before expiry
+     // but blocked on the account row until AFTER the deadline. The DB
+     // clock at actual decision, not HTTP arrival, decides the outcome.
+     // This is part of the same two-PWA, Fastify, HMAC, physical-login,
+     // SSE, historical-account and subsequent checkout integration.
+     const thirdDeadline=(await admin.query(`SELECT created_at,expires_at,
+      clock_timestamp() AS now FROM sabora.customer_table_change_requests
+      WHERE id=$1`,[third.id])).rows[0];
+     const windowMs=thirdDeadline.expires_at.getTime()-thirdDeadline.created_at.getTime();
+     assert.ok(windowMs>=89900&&windowMs<=90100,
+      'pending requests must enforce the full normative 90-second window');
+     const nearBoundaryMs=thirdDeadline.expires_at.getTime()-
+      thirdDeadline.now.getTime()-2800;
+     assert.ok(nearBoundaryMs>1000,
+      'third request must be observable well before its natural deadline');
+     await new Promise(resolve=>setTimeout(resolve,nearBoundaryMs));
+     const boundaryHolder=await admin.connect();
+     let boundaryLockOpen=false,nearApproval,nearRejection;
+     try{
+      await boundaryHolder.query('BEGIN');boundaryLockOpen=true;
+      const holderPid=(await boundaryHolder.query(
+       'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      await boundaryHolder.query(
+       'SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
+       [httpFixture.sourceAccount]);
+      const staffEndpoint='/api/v1/operations/table-change/decisions';
+      const staffHeaders={'x-ci-staff':'authorized-waiter',
+       'content-type':'application/json'};
+      // Both requests are sent BEFORE expiry. They wait on different SQL
+      // connections behind the real account-row lock; neither is allowed to
+      // decide with its old HTTP arrival time.
+      const beforeExpiry=(await admin.query(
+       'SELECT clock_timestamp() AS now')).rows[0].now;
+      assert.ok(beforeExpiry<thirdDeadline.expires_at,
+       'both decision requests must be issued before the real server deadline');
+      nearApproval=http.inject({method:'POST',url:staffEndpoint,
+       headers:staffHeaders,payload:{requestId:third.id,decision:'approved'}});
+      nearRejection=http.inject({method:'POST',url:staffEndpoint,
+       headers:staffHeaders,payload:{requestId:third.id,decision:'rejected'}});
+      let blockedPids=[];
+      for(let attempt=0;attempt<150;attempt++){
+       blockedPids=(await admin.query(`SELECT a.pid FROM pg_stat_activity a
+        WHERE a.wait_event_type='Lock' AND a.state='active'
+         AND a.query LIKE '%decide_customer_table_change_h6_candidate%'
+         AND cardinality(pg_blocking_pids(a.pid))>0`)).rows.map(r=>r.pid);
+       if(new Set(blockedPids).size>=2)break;
+       await new Promise(resolve=>setTimeout(resolve,30));
+      }
+      assert.equal(new Set(blockedPids).size,2,
+       'two different staff SQL sockets must actually block before deadline');
+      const deadlineCheck=(await admin.query(
+       'SELECT clock_timestamp() AS now')).rows[0].now;
+      const untilActualExpiry=Math.max(0,thirdDeadline.expires_at.getTime()-
+       deadlineCheck.getTime()+250);
+      await new Promise(resolve=>setTimeout(resolve,untilActualExpiry));
+      const realBoundary=(await admin.query(
+       'SELECT clock_timestamp() AS now')).rows[0].now;
+      assert.ok(realBoundary>=thirdDeadline.expires_at,
+       'release staff decisions only after real PostgreSQL expiry');
+      await boundaryHolder.query('COMMIT');boundaryLockOpen=false;
+     }finally{
+      if(boundaryLockOpen)await boundaryHolder.query('ROLLBACK').catch(()=>{});
+      boundaryHolder.release();
+     }
+     const boundaryDecisions=await Promise.all([nearApproval,nearRejection]);
+     assert.deepEqual(boundaryDecisions.map(row=>row.statusCode),[409,409],
+      'staff approval/rejection begun before expiry must both reject after expiry');
+     assert.ok(boundaryDecisions.every(row=>
+      row.json().error==='table_change_request_not_pending'));
+     // The expired transition MUST persist even though the HTTP result is
+     // a conflict. Previously the adapter threw inside its transaction and
+     // rolled this SQL state change back, leaving a stale pending record.
+     const naturalExpired=(await admin.query(`SELECT status,created_at,
+      expires_at,decided_at,decided_by,consumed_at FROM
+      sabora.customer_table_change_requests WHERE id=$1`,[third.id])).rows[0];
+     assert.equal(naturalExpired.status,'expired',
+      'staff deadline expiry must COMMIT before returning HTTP 409');
+     assert.equal(naturalExpired.decided_at,null);
+     assert.equal(naturalExpired.decided_by,null);
+     assert.equal(naturalExpired.consumed_at,null);
+     assert.ok(naturalExpired.expires_at.getTime()-
+      naturalExpired.created_at.getTime()>=89900);
+     const expiredEvents=(await admin.query(`SELECT count(*)::int AS n
+      FROM sabora.event_outbox
+      WHERE aggregate_id=$1 AND event_type IN
+       ('sabora.table_change.approved','sabora.table_change.rejected')`,
+      [third.id])).rows[0].n;
+     assert.equal(expiredEvents,0,
+      'expiry is not a staff approval/rejection and cannot emit either event');
+     const unchangedAtDeadline=(await admin.query(`SELECT b.table_id,
+      a.outstanding_cents,(SELECT count(*)::int FROM sabora.order_rounds r
+       WHERE r.account_id=a.id) AS rounds
+      FROM sabora.customer_account_operational_bindings b
+      JOIN sabora.customer_accounts a ON a.id=b.account_id
+      WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0];
+     assert.equal(unchangedAtDeadline.table_id,httpFixture.destinationTable);
+     assert.equal(unchangedAtDeadline.outstanding_cents,'3100');
+     assert.equal(unchangedAtDeadline.rounds,2);
      const remaining=(await admin.query(`SELECT count(*)::int AS n FROM
       sabora.customer_table_change_requests WHERE status='pending'
       AND account_id=$1`,[httpFixture.sourceAccount])).rows[0].n;
-     assert.equal(remaining,0,'integrated fixture must leave no actionable request');
-     // The same waiter who saw the earlier item cannot act on an expired
-     // request, even if a stale browser retained its ID and an explicit role.
+     assert.equal(remaining,0,
+      'expiring the request must clear the live staff queue durably');
+     // Stale staff devices must remain unable to approve either later action.
      for(const decision of ['approved','rejected']){
-      const late=await http.inject({
-       method:'POST',url:'/api/v1/operations/table-change/decisions',
+      const late=await http.inject({method:'POST',
+       url:'/api/v1/operations/table-change/decisions',
        headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
-       payload:{requestId:third.id,decision}
-      });
+       payload:{requestId:third.id,decision}});
       assert.equal(late.statusCode,409,
-       'expired PG17 request must reject late '+decision+': '+late.body);
+       'persisted expired PG17 request must reject late '+decision+': '+late.body);
       assert.deepEqual(late.json(),{error:'table_change_request_not_pending'});
      }
      // Two real physical customer SQL connections compete immediately after
