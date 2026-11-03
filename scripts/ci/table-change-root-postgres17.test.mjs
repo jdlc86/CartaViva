@@ -3153,6 +3153,41 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active')`,
      [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310',
       secondWaiterId]);
+    // H6 pickup claims require the employee's real compact operational
+    // identity, not merely an active JWT/role. Mirror the existing H4
+    // enrollment fixture inside this disposable PG17 transaction; do not
+    // bypass bind_pickup_claimed_display_id_candidate or relax its check.
+    const kitchenActor='b0a00000-0000-4000-8000-000000000310';
+    const staffActors=[httpFixture.waiter,kitchenActor,secondWaiterId];
+    await fixture.query(`INSERT INTO sabora.staff_enrollments(
+     id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
+     credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
+     credential_registered_at,activated_at,updated_at,given_name,family_name,
+     employee_code,operational_display_id)
+     SELECT gen_random_uuid(),sha256(convert_to(source.email,'UTF8')),
+      source.role,'active',source.user_id,
+      sha256(convert_to(source.token,'UTF8')),
+      sha256(convert_to(source.credential,'UTF8')),
+      $1,clock_timestamp(),clock_timestamp(),clock_timestamp(),
+      clock_timestamp(),clock_timestamp(),clock_timestamp(),
+      source.given_name,source.family_name,source.code,source.display_id
+     FROM (VALUES
+      ($1::uuid,'waiter','b3-waiter-a@example.invalid',
+       'b3-waiter-a-token','b3-waiter-a-passkey','Mario','Sala','839','MS-839'),
+      ($2::uuid,'kitchen','b3-kitchen@example.invalid',
+       'b3-kitchen-token','b3-kitchen-passkey','Karla','Cocina','840','KC-840'),
+      ($3::uuid,'waiter','b3-waiter-b@example.invalid',
+       'b3-waiter-b-token','b3-waiter-b-passkey','Lucia','Sala','841','LS-841')
+     ) source(user_id,role,email,token,credential,given_name,family_name,code,display_id)`,
+     staffActors);
+    const assignedCodes=await fixture.query(`UPDATE sabora.staff_employee_code_pool pool
+     SET enrollment_id=enrollment.id,reserved_at=clock_timestamp()
+     FROM sabora.staff_enrollments enrollment
+     WHERE pool.code=enrollment.employee_code
+       AND enrollment.auth_user_id=ANY($1::uuid[])
+       AND pool.enrollment_id IS NULL`,[staffActors]);
+    assert.equal(assignedCodes.rowCount,3,
+     'all three isolated staff actors need reserved compact display IDs');
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
