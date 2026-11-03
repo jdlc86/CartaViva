@@ -4972,6 +4972,135 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'post-transfer cash events must follow the live table D, never historical A');
         assert.deepEqual(notices.map(n=>n.remaining),['900','1200','0']);
         assert.ok(notices.every(n=>n.account_id===diner.account));
+        // F20/F23/R03/R05: explicit account closure is not implicit cash
+        // settlement. Exercise the new authenticated JWT + scoped HMAC + PG17
+        // RPC in the SAME customer PWA/checkout/cash/transfer scenario.
+        const closeUrl='/api/v1/operations/accounts/'+diner.account+'/close';
+        const closingHeaders={authorization:'Bearer '+jwtWaiter,
+         'content-type':'application/json'};
+        const unresolvedClose=await http.inject({method:'POST',url:closeUrl,
+         headers:closingHeaders,payload:{correlationId:'b3_f20_close_early_unresolved'}});
+        assert.equal(unresolvedClose.statusCode,409,unresolvedClose.body);
+        assert.equal((await admin.query(`SELECT state FROM sabora.customer_accounts
+         WHERE id=$1`,[diner.account])).rows[0].state,'open',
+         'zero debt must not close account with undelivered order lines');
+        // The departure approval remains possible while fully paid but open.
+        // Respect the real server cooldown, not a synthetic SQL date shift.
+        const latestGrantClock=(await admin.query(`SELECT q.created_at,
+         clock_timestamp() AS server_now,rs.table_change_response_seconds AS seconds
+         FROM sabora.customer_table_change_requests q
+         CROSS JOIN sabora.restaurant_settings rs
+         WHERE q.account_id=$1 AND rs.singleton=true
+         ORDER BY q.created_at DESC,q.id DESC LIMIT 1`,[diner.account])).rows[0];
+        if(latestGrantClock){
+         const cooldownEnd=latestGrantClock.created_at.getTime()+
+          Number(latestGrantClock.seconds)*1000;
+         const remaining=Math.max(0,cooldownEnd-latestGrantClock.server_now.getTime()+150);
+         if(remaining>0)await new Promise(resolve=>setTimeout(resolve,remaining));
+        }
+        const leaveD=await http.inject({method:'POST',
+         url:'/api/v1/customer/table-change/requests',
+         headers:dHeaders(diner),payload:{}});
+        assert.equal(leaveD.statusCode,201,leaveD.body);
+        const closeGrant=(await admin.query(`SELECT id,status FROM
+         sabora.customer_table_change_requests WHERE account_id=$1
+         ORDER BY created_at DESC,id DESC LIMIT 1`,[diner.account])).rows[0];
+        assert.equal(closeGrant.status,'pending');
+        const leaveApproved=await http.inject({method:'POST',
+         url:'/api/v1/operations/table-change/decisions',
+         headers:closingHeaders,
+         payload:{requestId:closeGrant.id,decision:'approved'}});
+        assert.equal(leaveApproved.statusCode,200,leaveApproved.body);
+        assert.equal((await admin.query(`SELECT status FROM
+         sabora.customer_table_change_requests WHERE id=$1`,
+         [closeGrant.id])).rows[0].status,'approved');
+        // The H6 browser scene uses historical fixture order/line states that
+        // are not a real kitchen lifecycle. For this closure gate ONLY,
+        // complete those fixture operational states in disposable PG17.
+        // Do not claim this directly executed kitchen pickup in the PWA.
+        await admin.query(`UPDATE sabora.order_lines l SET status='picked_up'
+         FROM sabora.order_rounds r WHERE l.order_id=r.order_id
+          AND r.account_id=$1 AND l.status<>'picked_up'`,[diner.account]);
+        await admin.query(`UPDATE sabora.kitchen_dispatches k SET
+         state='acknowledged',requested_at=COALESCE(requested_at,clock_timestamp()),
+         acknowledged_at=clock_timestamp()
+         FROM sabora.order_rounds r WHERE r.id=k.round_id AND
+         r.account_id=$1 AND k.state='blocked'`,[diner.account]);
+        await admin.query(`UPDATE sabora.order_rounds SET
+         state='kitchen_acknowledged' WHERE account_id=$1
+         AND state<>'kitchen_acknowledged'`,[diner.account]);
+        const closed=await http.inject({method:'POST',url:closeUrl,
+         headers:closingHeaders,payload:{correlationId:'b3_f20_close_after_resolved'}});
+        assert.equal(closed.statusCode,200,closed.body);
+        assert.equal(closed.json().accountId,diner.account);
+        assert.equal(closed.json().state,'settled');
+        assert.equal(closed.json().outstandingCents,0);
+        assert.equal(closed.json().repeated,false);
+        const closedReplay=await http.inject({method:'POST',url:closeUrl,
+         headers:closingHeaders,payload:{correlationId:'b3_f20_close_after_resolved'}});
+        assert.equal(closedReplay.statusCode,200);
+        assert.equal(closedReplay.json().repeated,true);
+        const secondClose=await http.inject({method:'POST',url:closeUrl,
+         headers:closingHeaders,payload:{correlationId:'b3_f20_close_wrong_second'}});
+        assert.equal(secondClose.statusCode,409,
+         'closed account may not be closed again with another correlation');
+        const kitchenClose=await http.inject({method:'POST',url:closeUrl,
+         headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+         payload:{correlationId:'b3_f20_close_kitchen_denied'}});
+        assert.equal(kitchenClose.statusCode,403);
+        const closedSql=(await admin.query(`SELECT a.id,a.state,a.closed_at,a.closed_by,
+         a.close_correlation_id,a.outstanding_cents,a.cash_settled_cents,b.table_id,
+         (SELECT count(*)::int FROM sabora.customer_accounts c
+           WHERE c.customer_id=a.customer_id) AS accounts,
+         (SELECT count(*)::int FROM sabora.order_rounds r
+           WHERE r.account_id=a.id) AS rounds
+         FROM sabora.customer_accounts a
+         JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
+         WHERE a.id=$1`,[diner.account])).rows[0];
+        assert.equal(closedSql.state,'settled');
+        assert.ok(closedSql.closed_at);
+        assert.equal(closedSql.closed_by,httpFixture.waiter);
+        assert.equal(closedSql.close_correlation_id,'b3_f20_close_after_resolved');
+        assert.equal(closedSql.outstanding_cents,'0');
+        assert.equal(closedSql.cash_settled_cents,'1900');
+        assert.equal(closedSql.table_id,httpFixture.concurrentTable);
+        assert.equal(closedSql.accounts,1);
+        assert.equal(closedSql.rounds,2);
+        const revokedGrant=(await admin.query(`SELECT status,decided_by,revoked_at,
+         consumed_at FROM sabora.customer_table_change_requests WHERE id=$1`,
+         [closeGrant.id])).rows[0];
+        assert.equal(revokedGrant.status,'approved',
+         'retain original decision audit columns while invalidating grant by closure');
+        assert.equal(revokedGrant.decided_by,httpFixture.waiter);
+        assert.ok(revokedGrant.revoked_at,
+         'approved-but-unused permission must be marked unusable on close');
+        assert.equal(revokedGrant.consumed_at,null);
+        assert.equal((await admin.query(`SELECT count(*)::int AS n
+         FROM sabora.h6_action_requests WHERE action='close_account'
+          AND result->>'accountId'=$1`,[diner.account])).rows[0].n,1,
+         'idempotency and accounting audit must persist exactly one closure');
+        const closedEvents=(await admin.query(`SELECT event_type,table_id,account_id
+         FROM sabora.event_outbox WHERE account_id=$1
+          AND event_type='sabora.account.closed'`,[diner.account])).rows;
+        assert.equal(closedEvents.length,1);
+        assert.equal(closedEvents[0].table_id,httpFixture.concurrentTable);
+        // Same customer cookie cannot replay its confirmed order or create
+        // another account under the former authorized visit after closure.
+        assert.ok(payload,'original PWA checkout body is needed for closed-session replay');
+        const staleOrder=await http.inject({method:'POST',
+         url:'/api/v1/customer/orders/confirm',headers:dHeaders(diner),
+         payload});
+        assert.equal(staleOrder.statusCode,403,staleOrder.body);
+        assert.equal((await admin.query(`SELECT count(*)::int AS n
+         FROM sabora.order_rounds WHERE account_id=$1`,
+         [diner.account])).rows[0].n,2);
+        const untouchedStripe=(await admin.query(`SELECT a.state,
+         (SELECT count(*)::int FROM sabora.order_rounds r
+          WHERE r.account_id=a.id) AS rounds FROM sabora.customer_accounts a
+         WHERE a.id=$1`,[payNowDiner.account])).rows[0];
+        assert.equal(untouchedStripe.state,'open',
+         'closing a cash payer cannot close another diner's Stripe account');
+        assert.equal(untouchedStripe.rounds,2);
        }
       }
       // F16/F17/R03/R04: pause after consumed grant but before COMMIT.
