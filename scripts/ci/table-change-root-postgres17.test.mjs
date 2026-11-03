@@ -3000,6 +3000,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    alias:'Comensal con efectivo previo',visitKey:'b3_h6_cash_origin_0411_integral',
    balance:1200,mode:'pay_at_end',historicAmount:1200,cashSettled:0
   };
+  // Fresh table: unlike the historical A/D fixtures, this customer has no
+  // account, order, visit or first_confirmed_at before the browser checks out.
+  const naturalGroupingDiner={
+   customer:'b0a00000-0000-4000-8000-000000000451',
+   token:'o'.repeat(42)+'s',publicId:'SB-XYXYXYXYXYXY',
+   alias:'Comensal agrupación natural'
+  };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3JwtHttpCandidate(http,{
     staffReaderPool:pools[9],expectedStaffReaderLogin:specs[9].login,
@@ -3025,7 +3032,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       }
       const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
        postConsumeSessionDiner,postConsumeQrDiner,
-       payNowDiner,cashHistoryDiner].find(row=>
+       payNowDiner,cashHistoryDiner,naturalGroupingDiner].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
        request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
@@ -3103,6 +3110,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     blockedSession:'b0a00000-0000-4000-8000-000000000309',
     concurrentTable:'b0a00000-0000-4000-8000-000000000390',
     concurrentSession:'b0a00000-0000-4000-8000-000000000391',
+    naturalTable:'b0a00000-0000-4000-8000-000000000452',
+    naturalSession:'b0a00000-0000-4000-8000-000000000453',
     sourceSession:'b0a00000-0000-4000-8000-000000000304',
     destinationSession:'b0a00000-0000-4000-8000-000000000305',
     sourceAccount:'b0a00000-0000-4000-8000-000000000306',
@@ -3120,16 +3129,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.dining_tables
      (id,number,capacity,qr_token_hash,session_id,ordering_state)
      VALUES($1,981301,4,$5,$6,'open'),($2,981302,4,$5,$7,'open'),
-      ($3,981303,4,$5,$8,'open'),($4,981304,4,$5,$9,'open')`,
+      ($3,981303,4,$5,$8,'open'),($4,981304,4,$5,$9,'open'),
+      ($10,981305,4,$5,$11,'open')`,
      [httpFixture.sourceTable,httpFixture.destinationTable,
       httpFixture.blockedTable,httpFixture.concurrentTable,qrHash,
       httpFixture.sourceSession,httpFixture.destinationSession,
-      httpFixture.blockedSession,httpFixture.concurrentSession]);
+      httpFixture.blockedSession,httpFixture.concurrentSession,
+      httpFixture.naturalTable,httpFixture.naturalSession]);
     await fixture.query(`INSERT INTO sabora.customer_table_visits
      (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
      VALUES($1,$2,$3::uuid,$4,($3::uuid)::text,1,clock_timestamp()+interval '1 hour')`,
      [httpFixture.sourceTable,httpFixture.sourceSession,httpFixture.customer,
       httpFixture.sourceVisit]);
+    await fixture.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+     VALUES($1,$2,$3)`,[naturalGroupingDiner.customer,
+      naturalGroupingDiner.publicId,naturalGroupingDiner.alias]);
+    await fixture.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+     VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
+     [naturalGroupingDiner.customer,hashCustomerSessionToken(naturalGroupingDiner.token)]);
     await fixture.query(`INSERT INTO sabora.customer_accounts
      (id,table_id,session_id,visit_key,customer_id,payment_mode,
       payment_mode_selected_at,outstanding_cents)
@@ -3216,7 +3233,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
      [createHash('sha256').update(qrToken).digest(),
       [httpFixture.sourceTable,httpFixture.destinationTable,
-       httpFixture.blockedTable,httpFixture.concurrentTable]]);
+       httpFixture.blockedTable,httpFixture.concurrentTable,
+       httpFixture.naturalTable]]);
     await fixture.query(`INSERT INTO sabora.catalog_items
      (id,draft,draft_revision,published_revision,published_snapshot,published_at)
      VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,snapshot]);
@@ -6435,6 +6453,210 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    ['b0a00000-0000-4000-8000-000000000306'])).rows[0];
   assert.deepEqual(accountAfter,accountBefore,
    'revoked staff may not mutate any existing economic account');
+
+  // F21/R06: a genuinely fresh table follows the entire approved 300-second
+  // window on the PostgreSQL server clock. No synthetic dispatch, adjusted
+  // grouping_deadline, forced first_confirmed_at, virtual clock or test HTTP
+  // route. The same real client PWA confirms first/grouped/late orders.
+  {
+   const {pathToFileURL,fileURLToPath}=await import('node:url');
+   const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+   const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
+   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const {mkdir}=await import('node:fs/promises');
+   const {join}=await import('node:path');
+   if(!http.server.listening)await http.listen({host:'127.0.0.1',port:0});
+   const clientVite=await createServer({
+    root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+    mode:'test',logLevel:'error',
+    server:{host:'127.0.0.1',port:0,strictPort:false,
+     proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
+      changeOrigin:false}}}
+   });
+   let browser=null,notifier=null;
+   const schedulers=[],naturalErrors=[],dispatchedIds=new Set(),dispatchWaiters=new Map();
+   const evidence=join(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+   await mkdir(evidence,{recursive:true});
+   try{
+    await clientVite.listen();
+    const origin='http://127.0.0.1:'+clientVite.httpServer.address().port;
+    browser=await chromium.launch({headless:true});
+    const freshQr='Q'.repeat(42)+'A';
+    const confirmFromPwa=async(step)=>{
+     const context=await browser.newContext({viewport:{width:390,height:844},
+      reducedMotion:'reduce',serviceWorkers:'block'});
+     try{
+      await context.addCookies([{name:'__Secure-sabora_customer',
+       value:naturalGroupingDiner.token,domain:'127.0.0.1',path:'/',
+       secure:true,httpOnly:true,sameSite:'Lax'}]);
+      await context.addInitScript(id=>{
+       localStorage.setItem('sabora.client.selection.v1',JSON.stringify([{
+        itemId:id,name:'Plato de integración',priceCents:700,quantity:1
+       }]));
+      },'b0a00000-0000-4000-8000-000000000330');
+      const page=await context.newPage();
+      page.on('pageerror',error=>naturalErrors.push(error.message));
+      await page.goto(origin+'/qr/v1/SABORA/'+httpFixture.naturalTable+'#'+freshQr);
+      await page.getByRole('button',{name:'Continuar con la mesa escaneada'})
+       .waitFor({timeout:20000});
+      await page.getByRole('button',{name:'Continuar con la mesa escaneada'}).click();
+      await page.getByText('Mesa verificada').waitFor({timeout:20000});
+      await page.getByRole('button',{name:'Continuar con el pedido'}).click();
+      await page.getByRole('radio',{name:/Pagar al terminar/}).check();
+      const confirmation=page.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+       {timeout:20000});
+      await page.getByRole('button',{name:'Confirmar pedido'}).click();
+      const response=await confirmation;
+      assert.equal(response.status(),201,step+': '+await response.text());
+      const receipt=await response.json();
+      assert.equal(receipt.status,'confirmed');
+      assert.equal(receipt.paymentMode,'pay_at_end');
+      assert.equal(receipt.amountCents,700);
+      assert.equal(receipt.roundState,'grouping');
+      await page.getByText('Pedido confirmado').waitFor({timeout:20000});
+      await page.screenshot({path:join(evidence,'f21-five-minutes-'+step+'-mobile.png'),
+       fullPage:true});
+      return receipt;
+     }finally{await context.close();}
+    };
+    const first=await confirmFromPwa('first');
+    const firstRow=(await admin.query(`SELECT r.grouping_deadline,
+     o.grouping,t.first_confirmed_at,t.grouping_window_seconds,
+     r.account_id,r.state,k.state AS dispatch_state
+     FROM sabora.order_rounds r
+     JOIN sabora.orders o ON o.id=r.order_id
+     JOIN sabora.dining_tables t ON t.id=o.table_id
+     JOIN sabora.kitchen_dispatches k ON k.round_id=r.id
+     WHERE r.id=$1`,[first.roundId])).rows[0];
+    assert.equal(firstRow.grouping,'first');
+    assert.equal(firstRow.grouping_window_seconds,300,
+     'production policy is five actual minutes, not a test-shortened window');
+    assert.equal(firstRow.grouping_deadline.getTime()-
+     firstRow.first_confirmed_at.getTime(),300000);
+    assert.equal(firstRow.dispatch_state,'blocked');
+    const grouped=await confirmFromPwa('grouped');
+    const groupedRow=(await admin.query(`SELECT r.grouping_deadline,
+     o.grouping,k.state AS dispatch_state,r.account_id FROM sabora.order_rounds r
+     JOIN sabora.orders o ON o.id=r.order_id
+     JOIN sabora.kitchen_dispatches k ON k.round_id=r.id
+     WHERE r.id=$1`,[grouped.roundId])).rows[0];
+    assert.equal(groupedRow.grouping,'grouped');
+    assert.equal(groupedRow.grouping_deadline.getTime(),
+     firstRow.grouping_deadline.getTime(),'grouping cannot extend the first deadline');
+    assert.equal(groupedRow.account_id,firstRow.account_id);
+    assert.equal(groupedRow.dispatch_state,'blocked');
+    const cashBefore=(await admin.query(`SELECT outstanding_cents,state
+     FROM sabora.customer_accounts WHERE id=$1`,[first.accountId])).rows[0];
+    assert.equal(cashBefore.outstanding_cents,'1400');
+    assert.equal(cashBefore.state,'open');
+    const eventCount=async()=>Number((await admin.query(`SELECT count(*)::int AS n
+     FROM sabora.event_outbox
+     WHERE event_type='sabora.kitchen.dispatch_requested'
+     AND aggregate_id=ANY($1::uuid[])`,
+     [[first.roundId,grouped.roundId]])).rows[0].n);
+    // No worker may dispatch a 300-second round early.
+    const liveListener=await createPostgresH6OutboxNotifier({pool:pools[8]});
+    notifier=liveListener;
+    const createScheduler=()=>createH6DeferredDispatchScheduler({
+     listSchedulable:opts=>h6Provider.listSchedulable(opts),
+     dispatchDue:async({orderId})=>{
+      const result=await h6Provider.requestDueCapture({orderId});
+      dispatchedIds.add(orderId);
+      dispatchWaiters.get(orderId)?.();
+      return result;
+     },
+     subscribeCommitted:notifier.subscribe,
+     onFailure:error=>naturalErrors.push('dispatch:'+error.message)
+    });
+    const beforeRestart=createScheduler();
+    schedulers.push(beforeRestart);
+    await beforeRestart.start();
+    assert.equal(await eventCount(),0,'first and grouped orders cannot ship early');
+    await beforeRestart.close(); // simulate application shutdown before deadline
+    const server=(await admin.query('SELECT clock_timestamp() AS now')).rows[0].now;
+    const until=firstRow.grouping_deadline.getTime()-server.getTime();
+    assert.ok(until>240000&&until<=300000,
+     'a fresh first order must retain most of its real five-minute window');
+    await new Promise(resolve=>setTimeout(resolve,until+350));
+    assert.equal(await eventCount(),0,
+     'without the service, due work is durable but never pretends to be delivered');
+    // Two independently scheduled workers race the SAME PG17 row locks.
+    // Only the sealed function can transition each durable dispatch once.
+    const a=createScheduler(),b=createScheduler();
+    schedulers.push(a,b);
+    await Promise.all([a.start(),b.start()]);
+    const historic=(await admin.query(`SELECT r.order_id,r.account_id,
+     r.state,k.id AS dispatch_id,k.state AS dispatch_state
+     FROM sabora.order_rounds r
+     JOIN sabora.kitchen_dispatches k ON k.round_id=r.id
+     WHERE r.id=ANY($1::uuid[]) ORDER BY r.id`,
+     [[first.roundId,grouped.roundId]])).rows;
+    assert.equal(historic.length,2);
+    assert.ok(historic.every(row=>row.state==='dispatch_requested'
+     &&row.dispatch_state==='requested'&&row.account_id===first.accountId));
+    assert.equal(await eventCount(),2,'two workers may not duplicate dispatch events');
+    await Promise.all([a.wake(),b.wake()]);
+    assert.equal(await eventCount(),2);
+    // A genuinely late checkout gets an already-due deadline and is
+    // automatically woken by the COMMITTED outbox, without polling.
+    const late=await confirmFromPwa('late');
+    const lateRow=(await admin.query(`SELECT o.grouping,r.grouping_deadline,
+     r.account_id FROM sabora.order_rounds r JOIN sabora.orders o
+     ON o.id=r.order_id WHERE r.id=$1`,[late.roundId])).rows[0];
+    assert.equal(lateRow.grouping,'late');
+    assert.equal(lateRow.grouping_deadline.getTime(),
+     firstRow.grouping_deadline.getTime());
+    assert.equal(lateRow.account_id,first.accountId);
+    if(!dispatchedIds.has(late.orderId)){
+     await Promise.race([
+      new Promise(resolve=>dispatchWaiters.set(late.orderId,resolve)),
+      new Promise((_,reject)=>setTimeout(()=>
+       reject(Error('late_dispatch_committed_wakeup_missing')),10000))
+     ]);
+    }
+    const lateDispatch=(await admin.query(`SELECT k.state,
+     r.state AS round_state FROM sabora.kitchen_dispatches k
+     JOIN sabora.order_rounds r ON r.id=k.round_id WHERE r.id=$1`,
+     [late.roundId])).rows[0];
+    assert.equal(lateDispatch.state,'requested');
+    assert.equal(lateDispatch.round_state,'dispatch_requested');
+    const allIds=[first.orderId,grouped.orderId,late.orderId];
+    const dispatches=(await admin.query(`SELECT d.id,d.order_id,d.state,
+     o.table_id AS origin,r.account_id FROM sabora.kitchen_dispatches d
+     JOIN sabora.order_rounds r ON r.id=d.round_id
+     JOIN sabora.orders o ON o.id=r.order_id
+     WHERE d.order_id=ANY($1::uuid[])`,[allIds])).rows;
+    assert.equal(dispatches.length,3);
+    assert.ok(dispatches.every(row=>row.state==='requested'
+     &&row.account_id===first.accountId&&row.origin===httpFixture.naturalTable));
+    for(const [index,dispatch] of dispatches.entries()){
+     const ack=await http.inject({method:'POST',
+      url:'/api/v1/operations/dispatches/'+dispatch.id+'/ack',
+      headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+      payload:{correlationId:'f21_natural_kitchen_ack_'+index}});
+     assert.equal(ack.statusCode,200,ack.body);
+     assert.equal(ack.json().state,'acknowledged');
+    }
+    const final=(await admin.query(`SELECT
+     (SELECT count(*)::int FROM sabora.order_rounds
+      WHERE account_id=$1 AND state='kitchen_acknowledged') AS received,
+     (SELECT count(*)::int FROM sabora.event_outbox e
+      WHERE e.event_type='sabora.kitchen.dispatch_requested'
+      AND e.aggregate_id=ANY($2::uuid[])) AS requested_events,
+     (SELECT outstanding_cents FROM sabora.customer_accounts WHERE id=$1) AS debt,
+     (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$1) AS attempts`,
+     [first.accountId,dispatches.map(row=>row.id)])).rows[0];
+    assert.deepEqual(final,{received:3,requested_events:3,debt:'2100',attempts:0},
+     'five-minute scheduling must preserve all three orders and account ledger');
+    assert.deepEqual(naturalErrors,[]);
+   }finally{
+    for(const scheduler of schedulers)await scheduler.close();
+    if(notifier)await notifier.close();
+    if(browser)await browser.close();
+    await clientVite.close();
+   }
+  }
   }finally{await http.close();}
   // Exercise the real transaction boundary on a physically authenticated
   // writer connection: an unlisted SQL statement must be rejected before it
