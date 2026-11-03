@@ -270,8 +270,16 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
             (row.notification_id !== null && !UUID.test(row.notification_id)) ||
             (row.status === 'ready' && (!UUID.test(row.notification_id) ||
               row.notification_acknowledged_at !== null)) ||
-            (row.status === 'picked_up' && (!UUID.test(row.notification_id) ||
-              row.notification_acknowledged_at === null)) ||
+            // Legacy physically picked_up history may predate a durable pickup
+            // notification. The H6 destination-aware board must preserve
+            // that history without fabricating receipt/assignment evidence.
+            // H4 readers and any row with an H6 pickup task stay strict.
+            (row.status === 'picked_up' && (
+              row.notification_id === null
+                ? !(deliveryBoardCandidate && capability !== null &&
+                    row.pickup_task_id === null)
+                : row.notification_acknowledged_at === null
+            )) ||
             (row.pickup_task_id !== null && (!UUID.test(row.pickup_task_id) ||
               !['ready','claimed','corrected'].includes(row.pickup_state) ||
               !Number.isSafeInteger(Number(row.pickup_version)) || Number(row.pickup_version)<1 ||
