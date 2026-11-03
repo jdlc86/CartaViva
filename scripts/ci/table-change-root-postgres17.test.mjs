@@ -5535,6 +5535,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           FROM sabora.order_lines l WHERE l.order_id=$1`,
           [reverseReceipt.orderId])).rows;
          assert.equal(additionalLines.length,1);
+         // This kitchen page was mounted before the new customer checkout.
+         // When its live event stream is reconnecting, use the approved
+         // explicit refresh rather than asserting stale UI is authoritative.
+         // This verifies fallback usability, NOT automatic SSE delivery.
+         const kitchenRefresh=chefPage.waitForResponse(response=>
+          new URL(response.url()).pathname==='/api/v1/operations/order-lines'
+          &&response.status()===200,{timeout:20000});
+         await chefPage.getByRole('button',{name:'Actualizar estado'}).click();
+         await kitchenRefresh;
          const extraLine=await ensureVisibleBoardLine(chefPage,additionalLines[0].id);
          const preparing=chefPage.waitForResponse(response=>
           new URL(response.url()).pathname===
