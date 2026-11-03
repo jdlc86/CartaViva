@@ -2676,7 +2676,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const loginUrl=new URL(url);
    loginUrl.username=spec.login;
    loginUrl.password=password;
-   const pool=new Pool({connectionString:loginUrl.toString(),max:3,connectionTimeoutMillis:3000,
+   // Two genuinely concurrent staff decision RPCs must not wait for a
+   // spare connection while the pool also serves its pinned preflight login
+   // and the durable staff-event notifier.
+   const pool=new Pool({connectionString:loginUrl.toString(),
+    max:spec.role==='sabora_f12_operations_runtime'?5:3,connectionTimeoutMillis:3000,
     options:'-c statement_timeout=15000'});
    pools.push(pool);
    const connection=await pool.connect();
@@ -2732,6 +2736,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
   scopedPools[0]={connect:()=>pools[0].connect()};
+   // Concurrent staff decision transactions require distinct physical
+   // authenticated connections, not the pinned preflight connection.
+   scopedPools[1]={connect:()=>pools[1].connect()};
   // F22 concurrent customer confirmations must use distinct authenticated
   // writer and flow connections rather than the pinned preflight handles.
   scopedPools[2]={connect:()=>pools[2].connect()};
