@@ -113,6 +113,11 @@ export function createH6OperationsRepository({withTransaction}={}){
    const head=capability(cap,'settle_cash',accountId);
    return withTransaction(query=>one(query(SETTLE_CASH_H6_SQL,[...head,accountId,amountCents,...tail(cap)])));
   },
+  closeAccount:({accountId,capability:cap}={})=>{
+   if(!UUID.test(accountId??''))throw Error('invalid_h6_account_close');
+   const head=capability(cap,'close_account',accountId);
+   return withTransaction(query=>one(query(CLOSE_ACCOUNT_H6_SQL,[...head,accountId,...tail(cap)])));
+  },
   refundCash:({incidentId,capability:cap}={})=>{
    if(!UUID.test(incidentId??''))throw Error('invalid_h6_cash_refund');
    const head=capability(cap,'refund_cash',incidentId);
