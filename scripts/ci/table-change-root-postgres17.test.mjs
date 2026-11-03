@@ -2655,7 +2655,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_h6_operations_runtime',login:'sabora_b3_physical_oper_'+suffix,
    signatures:[]},
   {role:'sabora_staff_reader',login:'sabora_b3_physical_staff_auth_'+suffix,
-   signatures:[]}
+   signatures:[]},
+  // Runtime closure must not expand the exact H6 operations capability.
+  {role:'sabora_h6_account_close_runtime',login:'sabora_b3_physical_close_'+suffix,
+   signatures:['sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)']}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
@@ -2663,7 +2666,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   for(const spec of specs){
    if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime',
        'sabora_h6_provider_runtime','sabora_h6_operations_runtime',
-       'sabora_staff_reader'].includes(spec.role)){
+       'sabora_staff_reader','sabora_h6_account_close_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2753,12 +2756,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    expectedLogin:specs[7].login,capability:specs[7].role});
   await assertH6RuntimeIdentity({pool:scopedPools[8],
    expectedLogin:specs[8].login,capability:specs[8].role});
-  for(const index of [7,8]){
+  for(const index of [7,8,10]){
    await assert.rejects(connections[index].query('SELECT * FROM sabora.payment_attempts'),
     /permission denied/);
    await assert.rejects(connections[index].query('SET ROLE sabora_h6_fn_owner'),
     /permission denied/);
   }
+  assert.deepEqual((await connections[10].query(
+   F12_FUNCTION_SQL,[specs[10].role])).rows[0].names,specs[10].signatures,
+   'close-only role executes one reviewed RPC and no existing H6 operations');
   // Unlike the pinned preflight connection, runtime customer requests must
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
@@ -2778,6 +2784,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   scopedPools[6]={connect:()=>pools[6].connect()};
   scopedPools[7]={connect:()=>pools[7].connect()};
   scopedPools[8]={connect:()=>pools[8].connect()};
+  scopedPools[10]={connect:()=>pools[10].connect()};
   const {privateKey:ciPrivateKey,publicKey:ciPublicKey}=generateKeyPairSync('rsa',
    {modulusLength:2048,publicExponent:0x10001});
   const ciIssuer='https://sabora-disposable.test/auth/v1';
@@ -2830,11 +2837,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   });
   // Dedicated SQL statement allowlist: closing is not a cash receipt, a
   // kitchen acknowledgement or a generic role-granted table UPDATE.
-  const closeTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
-   role:specs[8].role,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
+  const closeTx=createRoleScopedPostgresTransaction({pool:scopedPools[10],
+   role:specs[10].role,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
+  const closeIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
+   secret:cashSigningSecret,databaseRole:specs[10].login});
   const closeOperations=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:closeTx}),
-   issueCapability:staffIssuer
+   issueCapability:closeIssuer
   });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
   const verifiedStripeWebhook=createH6StripeWebhookHandler({
