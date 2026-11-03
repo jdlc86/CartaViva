@@ -9,7 +9,7 @@ import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTa
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
-import {createH6OperationsRepository,SETTLE_CASH_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createH6OperationsRepository,SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
@@ -2828,6 +2828,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    repository:createH6OperationsRepository({withTransaction:staffTx}),
    issueCapability:staffIssuer
   });
+  // Dedicated SQL statement allowlist: closing is not a cash receipt, a
+  // kitchen acknowledgement or a generic role-granted table UPDATE.
+  const closeTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
+   role:specs[8].role,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
+  const closeOperations=createH6OperationsCoordinator({
+   repository:createH6OperationsRepository({withTransaction:closeTx}),
+   issueCapability:staffIssuer
+  });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
   const verifiedStripeWebhook=createH6StripeWebhookHandler({
    providerRepository:h6Provider,secret:signedStripeSecret,expectedLivemode:false
@@ -2988,7 +2996,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // Seventh sealed cash RPC and the staff decision/queue now share the
    // same verified RS256 JWT and live PostgreSQL membership checks. The
    // tenth login can read only user_id/role/state and never payment tables.
-   registerH6OperationsHttp(http,{operations:cashOperations,forRoles:ciStaffRoles});
+   registerH6OperationsHttp(http,{
+    operations:Object.freeze({...cashOperations,closeAccount:closeOperations.closeAccount}),
+    forRoles:ciStaffRoles
+   });
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
    http.get('/api/v1/catalog',async()=>[{
