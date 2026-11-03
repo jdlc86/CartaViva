@@ -5183,6 +5183,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // Integrated diagnostic: distinguish server-side read failure from
         // pagination. A kitchen action cannot be tested against an invisible
         // order, even when the SQL fixture contains the line.
+        // The HTTP layer deliberately hides database internals as 503.
+        // In this disposable PG17 acceptance only, surface the exact SQL
+        // failure from the SAME production coordinator to diagnose the
+        // missing permission/contract without relaxing fail-closed HTTP.
+        try {
+         await h4KitchenOperations.listBoard({
+          verifiedIdentity:{userId:'b0a00000-0000-4000-8000-000000000310'},
+          verifiedStaff:{userId:'b0a00000-0000-4000-8000-000000000310',
+           role:'kitchen'}},{status:null,limit:100,cursor:null});
+        } catch (cause) {
+         throw Error('disposable_pg17_kitchen_board_read_failed:'+
+          String(cause?.message??cause),{cause});
+        }
         const kitchenBoardResponse=await http.inject({method:'GET',
          url:'/api/v1/operations/order-lines?limit=100',
          headers:{authorization:'Bearer '+jwtKitchen}});
