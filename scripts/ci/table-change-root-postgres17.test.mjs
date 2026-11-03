@@ -6497,10 +6497,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       const page=await context.newPage();
       page.on('pageerror',error=>naturalErrors.push(error.message));
       await page.goto(origin+'/qr/v1/SABORA/'+httpFixture.naturalTable+'#'+freshQr);
-      await page.getByRole('button',{name:'Continuar con la mesa escaneada'})
-       .waitFor({timeout:20000});
-      await page.getByRole('button',{name:'Continuar con la mesa escaneada'}).click();
-      await page.getByText('Mesa verificada').waitFor({timeout:20000});
+      // A new customer has no open origin account and needs no change-of-
+      // table approval. The approved QR flow authorizes the table directly.
+      // The 'Continuar con la mesa escaneada' action belongs exclusively to
+      // an already approved A->B change, not to initial registration/rescan.
+      try{await page.getByText('Mesa verificada').waitFor({timeout:20000});}
+      catch(error){
+       const body=(await page.locator('body').innerText()).slice(-1500);
+       throw Error('f21_initial_qr_authorization_failed:'+step+':'+body+
+        ':pageErrors='+JSON.stringify(naturalErrors),{cause:error});
+      }
       await page.getByRole('button',{name:'Continuar con el pedido'}).click();
       await page.getByRole('radio',{name:/Pagar al terminar/}).check();
       const confirmation=page.waitForResponse(response=>
