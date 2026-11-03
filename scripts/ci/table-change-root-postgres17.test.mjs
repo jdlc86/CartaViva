@@ -5197,6 +5197,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          WHERE l.status IN ('confirmed','preparing','ready')`)).rows[0].n;
         assert.ok(kitchenBoardBody.items.length>0,
          'kitchen board must expose SQL confirmed lines; SQL visible='+kitchenSqlLineCount);
+        const kitchenApiIds=new Set(kitchenBoardBody.items.map(row=>row.lineId));
+        const kitchenMissing=kitchenLines.filter(line=>!kitchenApiIds.has(line.id));
+        assert.ok(kitchenMissing.length===0||kitchenBoardBody.nextCursor!==null,
+         'signed board omitted confirmed lines without pagination: '+
+         JSON.stringify({missing:kitchenMissing.map(x=>x.id),
+          returned:kitchenBoardBody.items.length,sqlVisible:kitchenSqlLineCount,
+          nextCursor:kitchenBoardBody.nextCursor}));
+
 
         // The management board is paginated. Historic CI lines can occupy
         // the first 100 results; the chef must explicitly load further pages
@@ -5207,7 +5215,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           if(await row.count())return row;
           const more=page.getByRole('button',{name:'Cargar más comandas'});
           assert.ok(await more.count(),
-           'signed management board has no page containing required line '+lineId);
+           'signed management board has no page containing required line '+lineId+
+           '; ui='+JSON.stringify((await page.locator('main').allTextContents())
+            .map(x=>x.slice(0,1200)))+
+           '; visible='+JSON.stringify(await page.locator('li[data-line-id]')
+            .evaluateAll(rows=>rows.map(row=>row.getAttribute('data-line-id')))));
           assert.ok(pageLoads<20,'management board cursor failed to terminate');
           const previous=await page.locator('li[data-line-id]').count();
           await more.click();
