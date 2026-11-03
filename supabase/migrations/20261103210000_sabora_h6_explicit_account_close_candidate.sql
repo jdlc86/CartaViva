@@ -159,6 +159,37 @@ ALTER FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,
 REVOKE ALL ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
   sabora_h6_provider_runtime,sabora_h6_operations_runtime;
-GRANT EXECUTE ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
+GRANT EXECUTE ON FUNCTION sabora.close_h6_account_authorized_candidate(text,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
+
+-- An old authenticated customer session must not create a new account or
+-- replay the old order after closure. A future session plus a new authorized
+-- visit remains a separately revalidated customer journey. Apply this guard
+-- BEFORE persist_customer_order_candidate writes any ledger row.
+GRANT SELECT(created_at) ON sabora.customer_sessions TO sabora_h6_fn_owner;
+DO $closed_session_guard$
+DECLARE v_def text;v_guard text;v_anchor text;
+BEGIN
+ SELECT pg_get_functiondef(
+  'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)'::regprocedure
+ ) INTO v_def;
+ v_anchor:='SELECT * INTO v_persist FROM sabora.persist_customer_order_candidate(';
+ IF v_def IS NULL OR (length(v_def)-length(replace(v_def,v_anchor,'')))<>length(v_anchor)
+ THEN RAISE EXCEPTION 'h6_account_close_confirmation_signature_drift'; END IF;
+ v_guard:='IF EXISTS(SELECT 1 FROM sabora.customer_accounts a
+  JOIN sabora.customer_sessions s ON s.customer_id=a.customer_id
+  WHERE s.token_hash=p_session_hash AND a.state=''settled''
+    AND a.closed_at IS NOT NULL AND s.created_at<=a.closed_at)
+  THEN RAISE EXCEPTION ''customer_session_forbidden'' USING errcode=''42501''; END IF;
+  SELECT * INTO v_persist FROM sabora.persist_customer_order_candidate(';
+ EXECUTE replace(v_def,v_anchor,v_guard);
+END;
+$closed_session_guard$;
+ALTER FUNCTION sabora.confirm_customer_round_h6_transfer_integration_candidate(
+ bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)
+ OWNER TO sabora_h6_fn_owner;
+REVOKE ALL ON FUNCTION sabora.confirm_customer_round_h6_transfer_integration_candidate(
+ bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)
+ FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
+ sabora_h6_operations_runtime,sabora_h6_provider_runtime;
 COMMIT;
