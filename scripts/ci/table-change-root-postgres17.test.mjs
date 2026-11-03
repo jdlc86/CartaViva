@@ -9,7 +9,12 @@ import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTa
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
-import {createH6OperationsRepository,SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createH6OperationsRepository,SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,
+ MANAGE_PICKUP_TASK_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
+import {TRANSITION_ORDER_LINE_SQL} from '../../apps/api/src/order-operations-repository.mjs';
+import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
+import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
@@ -2658,7 +2663,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    signatures:[]},
   // Runtime closure must not expand the exact H6 operations capability.
   {role:'sabora_h6_account_close_runtime',login:'sabora_b3_physical_close_'+suffix,
-   signatures:['sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)']}
+   signatures:['sabora.close_h6_account_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)']},
+  // Kitchen transitions have a separate signed login and a single exact
+  // function grant: no browser or generic operational direct table access.
+  {role:'sabora_b3_h4_transition_runtime',login:'sabora_b3_physical_h4_'+suffix,
+   signatures:['sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)']}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
@@ -2828,7 +2837,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const h6Provider=createH6ProviderRepository({withTransaction:providerTx});
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
-    REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL])});
+    REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL])});
   const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
@@ -2846,6 +2855,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const closeOperations=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:closeTx}),
    issueCapability:closeIssuer
+  });
+  // Reuse the existing H4 signed RPC; this route is transition-only and
+  // explicitly forbids retired physical pickup. The kitchen actor is
+  // verified by JWT, PostgreSQL staff membership and the H4 HMAC.
+  const h4KitchenTx=createRoleScopedPostgresTransaction({pool:scopedPools[11],
+   role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL])});
+  const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
+   keyId:cashSigningKeyId,secret:cashSigningSecret,databaseRole:specs[11].login});
+  const h4KitchenOperations=createOrderOperationsCoordinator({
+   withTransaction:h4KitchenTx,issueTransitionCapability:h4KitchenIssuer
   });
   const signedStripeSecret='whsec_B3F20IsolatedCandidate_0001';
   const verifiedStripeWebhook=createH6StripeWebhookHandler({
@@ -3008,9 +3027,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // same verified RS256 JWT and live PostgreSQL membership checks. The
    // tenth login can read only user_id/role/state and never payment tables.
    registerH6OperationsHttp(http,{
-    operations:Object.freeze({...cashOperations,closeAccount:closeOperations.closeAccount}),
+    operations:Object.freeze({...cashOperations,
+     acknowledgeDispatch:providerStaff.acknowledgeDispatch,
+     managePickup:providerStaff.managePickup,
+     closeAccount:closeOperations.closeAccount}),
     forRoles:ciStaffRoles
    });
+   registerOrderOperationsHttp(http,{forRoles:ciStaffRoles,
+    operations:h4KitchenOperations,transitionOnly:true,legacyPickupDisabled:true});
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
    http.get('/api/v1/catalog',async()=>[{
