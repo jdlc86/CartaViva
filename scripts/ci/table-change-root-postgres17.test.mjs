@@ -5291,15 +5291,44 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // Signed H6 waiter pickup remains available at the current table D
         // after closure, and the line stays READY (never legacy picked_up).
         const activePickup=readyBeforeClose[0];
-        const pickupResponse=await http.inject({method:'POST',
-         url:'/api/v1/operations/order-lines/'+activePickup.id+'/pickup-claim',
-         headers:closingHeaders,
-         payload:{expectedVersion:Number(activePickup.version),
-          correlationId:'b3_close_h6_pickup_after_closed'}});
-        assert.equal(pickupResponse.statusCode,200,
-         'account closure cannot destroy authorized pending pickup: '+
-          pickupResponse.body);
-        assert.equal(pickupResponse.json().outcome,'claimed');
+        chefWaiterContext=await chefBrowser.newContext({
+         viewport:{width:1440,height:900},
+         reducedMotion:'reduce',serviceWorkers:'block'});
+        const waiterPage=await chefWaiterContext.newPage();
+        waiterPage.on('pageerror',error=>chefErrors.push(error.message));
+        await waiterPage.goto(chefOrigin+'/#comandas');
+        await waiterPage.evaluate(async jwt=>{
+         const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+         window.__saboraCiDispose=mountAuthenticatedManagementApp({
+          element:document.getElementById('root'),getAccessToken:async()=>jwt});
+        },jwtWaiter);
+        await waiterPage.getByRole('button',{name:'Sala',exact:true})
+         .click();
+        const pickupLine=waiterPage.locator(
+         'li[data-line-id="'+activePickup.id+'"]');
+        await pickupLine.getByRole('button',{name:'Voy a recoger'})
+         .waitFor({timeout:20000});
+        const pickupPending=waiterPage.waitForResponse(response=>
+         new URL(response.url()).pathname==
+          '/api/v1/operations/order-lines/'+activePickup.id+'/pickup-claim',
+         {timeout:20000});
+        await pickupLine.getByRole('button',{name:'Voy a recoger'}).click();
+        const pickupResponse=await pickupPending;
+        assert.equal(pickupResponse.status(),200,
+         'post-close signed pickup from real waiter PWA: '+
+          await pickupResponse.text());
+        assert.equal((await pickupResponse.json()).outcome,'claimed');
+        await pickupLine.getByText('En recogida · responsable MS-839')
+         .waitFor({timeout:20000});
+        assert.deepEqual(chefErrors,[],'both kitchen and waiter management PWAs are error-free');
+        const {mkdir:chefMkdir}=await import('node:fs/promises');
+        const {join:chefJoin}=await import('node:path');
+        const chefEvidence=chefJoin(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+        await chefMkdir(chefEvidence,{recursive:true});
+        await chefPage.screenshot({path:chefJoin(chefEvidence,
+         'b3-f20-kitchen-ready-before-financial-close.png'),fullPage:true});
+        await waiterPage.screenshot({path:chefJoin(chefEvidence,
+         'b3-f20-waiter-pickup-after-financial-close.png'),fullPage:true});
         const pickupAfterClose=(await admin.query(`SELECT l.status,t.state,
          t.version,t.claimed_by FROM sabora.order_lines l
          JOIN sabora.pickup_tasks t ON t.order_line_id=l.id
@@ -5312,6 +5341,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal((await admin.query(`SELECT state,outstanding_cents
          FROM sabora.customer_accounts WHERE id=$1`,[diner.account])).rows[0].state,
          'settled','pickup claim cannot reopen closed financial account');
+        }finally{
+         if(chefWaiterContext)await chefWaiterContext.close();
+         if(chefContext)await chefContext.close();
+         if(chefBrowser)await chefBrowser.close();
+         if(chefVite)await chefVite.close();
+        }
         // Historical confirmed orders remain visible and replayable through
         // the original authenticated visit; closure forbids NEW confirmations,
         // not reading or idempotently looking up already-persisted consumption.
