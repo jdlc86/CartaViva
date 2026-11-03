@@ -838,7 +838,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal((await admin.query('SELECT state FROM sabora.incident_cases WHERE id=$1',
   [incident.incidentId])).rows[0].state,'resolved');
  const refundWebhook=await provider.ingestWebhook({eventId:'evt_H6RefundUpdate1',eventType:'refund.updated',
-  providerObjectId:'re_H6Pg17Refund01',providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,6),
+  providerObjectId:'re_H6Pg17Refund01',providerChargeId:'ch_H6Pg17Charge01',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,6),
   refundAttemptId:refund.id,refundStatus:'succeeded'});
  assert.equal(refundWebhook.outcome,'applied');
 
