@@ -2793,11 +2793,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     Buffer.from(head+'.'+body),ciPrivateKey).toString('base64url');
   };
   const jwtWaiter=staffJwt('b0a00000-0000-4000-8000-000000000307');
+  // Two REAL personnel identities, not two sessions impersonating one user.
+  const secondWaiterId='b0a00000-0000-4000-8000-000000000311';
+  const jwtSecondWaiter=staffJwt(secondWaiterId);
   const jwtKitchen=staffJwt('b0a00000-0000-4000-8000-000000000310');
   const jwtCustomer=staffJwt('b0a00000-0000-4000-8000-000000000301');
   const jwtExpired=staffJwt('b0a00000-0000-4000-8000-000000000307',
    {expiresIn:-30});
   const ciVerifiedStaffHeaders=()=>({authorization:'Bearer '+jwtWaiter});
+  const ciSecondWaiterHeaders=()=>({authorization:'Bearer '+jwtSecondWaiter});
   const ciStaffRoles=createStaffProtectedHooksFromPool({
    pool:pools[9],issuer:ciIssuer,getTrustedKeys:async()=>[ciJwk]
   });
@@ -3100,8 +3104,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state)
-     VALUES($1,'waiter','active'),($2,'kitchen','active')`,
-     [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310']);
+     VALUES($1,'waiter','active'),($2,'kitchen','active'),($3,'waiter','active')`,
+     [httpFixture.waiter,'b0a00000-0000-4000-8000-000000000310',
+      secondWaiterId]);
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
@@ -5549,6 +5554,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const staffDecisionUrl='/api/v1/operations/table-change/decisions';
      const staffDecisionHeaders={authorization:'Bearer '+jwtWaiter,
       'content-type':'application/json'};
+     const secondStaffDecisionHeaders={...ciSecondWaiterHeaders(),
+      'content-type':'application/json'};
      const lockForStaff=await admin.connect();
      let staffLockOpen=false,firstApproval,secondApproval;
      try{
@@ -5575,7 +5582,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        headers:staffDecisionHeaders,payload});
       await awaitPhysicalWait(1);
       secondApproval=http.inject({method:'POST',url:staffDecisionUrl,
-       headers:staffDecisionHeaders,payload});
+       headers:secondStaffDecisionHeaders,payload});
       await awaitPhysicalWait(2);
       await lockForStaff.query('COMMIT');staffLockOpen=false;
      }finally{
@@ -5586,6 +5593,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.deepEqual(staffDecisions.map(r=>r.statusCode).sort((x,y)=>x-y),
       [200,409],'two simultaneous staff decisions cannot both approve');
      assert.ok(staffDecisions.some(r=>r.json().error==='table_change_request_not_pending'));
+     const winningStaff=staffDecisions[0].statusCode===200?
+      httpFixture.waiter:secondWaiterId;
+     const losingStaff=staffDecisions[0].statusCode===409?
+      httpFixture.waiter:secondWaiterId;
+     assert.notEqual(winningStaff,losingStaff);
      const opposed=await http.inject({method:'POST',url:staffDecisionUrl,
       headers:staffDecisionHeaders,
       payload:{requestId:fourth.id,decision:'rejected'}});
@@ -5599,6 +5611,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
       [fourth.id])).rows[0];
      assert.equal(grantBefore.status,'approved');
+     assert.equal(grantBefore.decided_by,winningStaff,
+      'PG17 audit must identify the winning signed staff JWT, not a shared CI identity');
      assert.ok(grantBefore.decided_at<grantBefore.expires_at);
      assert.equal(grantBefore.consumed_at,null);
      assert.equal(grantBefore.table_id,httpFixture.destinationTable);
