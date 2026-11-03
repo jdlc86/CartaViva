@@ -5367,6 +5367,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'post-close waiter board HTTP: '+waiterBoardResponse.body);
         const waiterBoardBody=waiterBoardResponse.json();
         assert.equal(waiterBoardBody.role,'waiter');
+        const {normalizeOrderBoard:normalizeWaiterBoard}=await import(
+         '../../apps/management/src/order-operations-model.js');
+        try{normalizeWaiterBoard(waiterBoardBody);}
+        catch(cause){throw Error('post_close_waiter_board_model_rejected:'+
+         String(cause?.message??cause)+':'+JSON.stringify(waiterBoardBody.items
+          .map(row=>({lineId:row.lineId,status:row.status,
+           notification:row.notification,pickup:row.pickup})).slice(0,30)),{cause});}
+
         assert.ok(waiterBoardBody.items.some(row=>row.lineId===activePickup.id)||
          waiterBoardBody.nextCursor!==null,
          'post-close READY task must be visible or reachable by waiter cursor');
