@@ -5227,6 +5227,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           const row=page.locator('li[data-line-id="'+lineId+'"]');
           if(await row.count())return row;
           const more=page.getByRole('button',{name:'Cargar más comandas'});
+          if(!await more.count()){
+           // SSE and the initial board read may commit a React render between
+           // the two locator checks. Recheck the requested row after the
+           // render settles before declaring it absent.
+           await row.waitFor({state:'attached',timeout:5000}).catch(()=>{});
+           if(await row.count())return row;
+          }
           assert.ok(await more.count(),
            'signed management board has no page containing required line '+lineId+
            '; ui='+JSON.stringify((await page.locator('main').allTextContents())
