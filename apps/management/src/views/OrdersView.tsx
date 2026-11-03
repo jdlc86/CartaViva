@@ -41,6 +41,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingLines, setPendingLines] = useState<ReadonlySet<string>>(new Set());
   const [history, setHistory] = useState<OrderHistory | null>(null);
@@ -73,6 +74,32 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
       setPhase('error');
     }
   }, [gateway]);
+
+  const loadMore = async () => {
+    if (!gateway || !board?.nextCursor || loadingMore || phase !== 'ready') return;
+    const epoch = readEpoch.current;
+    const cursor = board.nextCursor;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const next = await gateway.listBoard({limit: 100, cursor});
+      if (epoch !== readEpoch.current) return;
+      if (next.role !== board.role || next.version !== board.version ||
+        (next.items.length === 0 && next.nextCursor !== null) ||
+        next.nextCursor?.confirmedAt === cursor.confirmedAt &&
+        next.nextCursor?.orderId === cursor.orderId &&
+        next.nextCursor?.lineNumber === cursor.lineNumber) {
+        throw Error('invalid_order_board_page');
+      }
+      const seen = new Set(board.items.map(item => item.lineId));
+      if (next.items.some(item => seen.has(item.lineId))) throw Error('overlapping_order_board_page');
+      setBoard({...next, items: [...board.items, ...next.items]});
+    } catch {
+      if (epoch === readEpoch.current) setError('No se pudo cargar la siguiente página de comandas. Reintenta antes de actuar.');
+    } finally {
+      if (epoch === readEpoch.current) setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -338,6 +365,16 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
             ))}
           </div>
         )}
+
+        {workspace !== 'reservations' && phase === 'ready' && board?.nextCursor ? (
+          <div className="button-row">
+            <button className="filter-button" type="button" disabled={loadingMore || !gateway}
+              onClick={() => void loadMore()}>
+              {loadingMore ? 'Cargando más comandas…' : 'Cargar más comandas'}
+            </button>
+            <span className="honest-operational-note">Mostrando {board.items.length} líneas; existen más páginas.</span>
+          </div>
+        ) : null}
 
         {historyOrderId ? (
           <section className="order-history" aria-label="Historial de comanda">
