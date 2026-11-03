@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {createHash,randomBytes} from 'node:crypto';
+import {createHash,randomBytes,createHmac} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
@@ -13,6 +13,13 @@ import {createH6OperationsRepository,SETTLE_CASH_H6_SQL} from '../../apps/api/sr
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
+import {assertH6RuntimeIdentity} from '../../apps/api/src/h6-sql-preflight.mjs';
+import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+ RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,REQUEST_REFUND_H6_SQL,
+ RECORD_REFUND_H6_SQL} from '../../apps/api/src/h6-provider-repository.mjs';
+import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
+ READ_STAFF_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createVerifiedH6StripeWebhookCandidate} from '../../apps/api/src/stripe-verified-webhook-candidate.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
@@ -2638,13 +2645,18 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_f12_pending_reader_runtime',login:'sabora_b3_physical_pending_'+suffix,
    signatures:[]},
   {role:'sabora_b3_cash_runtime',login:'sabora_b3_physical_cash_'+suffix,
-   signatures:['sabora.settle_h6_account_cash_authorized_candidate(text,text,uuid,text,uuid,bigint,text,bigint,bigint,text)']}
+   signatures:['sabora.settle_h6_account_cash_authorized_candidate(text,text,uuid,text,uuid,bigint,text,bigint,bigint,text)']},
+  {role:'sabora_h6_provider_runtime',login:'sabora_b3_physical_provider_'+suffix,
+   signatures:[]},
+  {role:'sabora_h6_operations_runtime',login:'sabora_b3_physical_oper_'+suffix,
+   signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
  const password='sabora_b3_disposable_'+suffix+'_only';
  try{
   for(const spec of specs){
-   if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime'].includes(spec.role)){
+   if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime',
+       'sabora_h6_provider_runtime','sabora_h6_operations_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2704,6 +2716,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   await assert.rejects(connections[6].query('SELECT * FROM sabora.customer_accounts'),
    /permission denied/);
   await assert.rejects(connections[6].query('SET ROLE sabora_h6_fn_owner'),/permission denied/);
+  await assertH6RuntimeIdentity({pool:scopedPools[7],
+   expectedLogin:specs[7].login,capability:specs[7].role});
+  await assertH6RuntimeIdentity({pool:scopedPools[8],
+   expectedLogin:specs[8].login,capability:specs[8].role});
+  for(const index of [7,8]){
+   await assert.rejects(connections[index].query('SELECT * FROM sabora.payment_attempts'),
+    /permission denied/);
+   await assert.rejects(connections[index].query('SET ROLE sabora_h6_fn_owner'),
+    /permission denied/);
+  }
   // Unlike the pinned preflight connection, runtime customer requests must
   // check out distinct physical clients to exercise concurrent transactions.
   // One client stays pinned for identity assertions; two remain available.
@@ -2718,6 +2740,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // the one-function SET ROLE allowlist and the two remaining pool clients.
   scopedPools[5]={connect:()=>pools[5].connect()};
   scopedPools[6]={connect:()=>pools[6].connect()};
+  scopedPools[7]={connect:()=>pools[7].connect()};
+  scopedPools[8]={connect:()=>pools[8].connect()};
   const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
   const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[6].login});
@@ -2727,6 +2751,30 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    repository:createH6OperationsRepository({withTransaction:cashSql}),
    issueCapability:cashIssuer
   });
+  const providerTx=createRoleScopedPostgresTransaction({pool:scopedPools[7],
+   role:specs[7].role,allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,
+    REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
+    REQUEST_REFUND_H6_SQL,RECORD_REFUND_H6_SQL])});
+  const h6Provider=createH6ProviderRepository({withTransaction:providerTx});
+  const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
+   role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
+    REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL])});
+  const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
+   secret:cashSigningSecret,databaseRole:specs[8].login});
+  const providerStaff=createH6OperationsCoordinator({
+   repository:createH6OperationsRepository({withTransaction:staffTx}),
+   issueCapability:staffIssuer
+  });
+  const signedStripeSecret=randomBytes(32);
+  const verifiedStripeWebhook=createVerifiedH6StripeWebhookCandidate({
+   provider:h6Provider,endpointSecret:signedStripeSecret,expectedLivemode:false
+  });
+  const signStripeEvent=(event,{secret=signedStripeSecret,timestamp=Math.floor(Date.now()/1000)}={})=>{
+   const rawBody=Buffer.from(JSON.stringify(event));
+   const signature=createHmac('sha256',secret)
+    .update(String(timestamp)+'.').update(rawBody).digest('hex');
+   return {rawBody,stripeSignature:'t='+timestamp+',v1='+signature};
+  };
   const candidate=await createVerifiedTableChangeB3CustomerFlowCandidate({
    customerPool:scopedPools[0],operationsPool:scopedPools[1],
    confirmationPool:scopedPools[2],h6ReadPool:scopedPools[3],flowPool:scopedPools[4],
