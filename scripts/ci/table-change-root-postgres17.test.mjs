@@ -5466,7 +5466,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
            const row=(await admin.query(`SELECT count(*)::int AS n
             FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
              AND $1::int=ANY(pg_blocking_pids(a.pid))
-             AND a.query LIKE '%settle_h6_cash%'`,
+             AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'`,
             [cashHolderPid])).rows[0];
            if(row.n>0){cashQueued=true;break;}
            await new Promise(resolve=>setTimeout(resolve,40));
