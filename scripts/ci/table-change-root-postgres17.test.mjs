@@ -5049,26 +5049,75 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal((await admin.query(`SELECT status FROM
          sabora.customer_table_change_requests WHERE id=$1`,
          [closeGrant.id])).rows[0].status,'approved');
-        // The H6 browser scene uses historical fixture order/line states that
-        // are not a real kitchen lifecycle. For this closure gate ONLY,
-        // complete those fixture operational states in disposable PG17.
-        // Do not claim this directly executed kitchen pickup in the PWA.
-        await admin.query(`UPDATE sabora.order_lines l SET status='picked_up'
-         FROM sabora.order_rounds r WHERE l.order_id=r.order_id
-          AND r.account_id=$1 AND l.status<>'picked_up'`,[diner.account]);
+        // The pay-at-end grouping dispatcher is not yet wired to this
+        // B3 HTTP composition. ONLY its overdue dispatch-ready fixture is
+        // staged directly in disposable PG17. From here every receipt,
+        // preparation, READY task and pickup claim uses signed JWT/HMAC HTTP
+        // operations on distinct physical runtime logins. In particular,
+        // nobody writes retired 'picked_up' on the account's lines.
+        const stagedDispatches=(await admin.query(`SELECT k.id,r.order_id,
+         k.state FROM sabora.kitchen_dispatches k
+         JOIN sabora.order_rounds r ON r.id=k.round_id
+         WHERE r.account_id=$1 ORDER BY r.created_at,r.id`,
+         [diner.account])).rows;
+        assert.equal(stagedDispatches.length,2);
+        assert.ok(stagedDispatches.every(row=>row.state==='blocked'));
         await admin.query(`UPDATE sabora.kitchen_dispatches k SET
-         state='acknowledged',requested_at=COALESCE(requested_at,clock_timestamp()),
-         acknowledged_at=clock_timestamp()
-         FROM sabora.order_rounds r WHERE r.id=k.round_id AND
-         r.account_id=$1 AND k.state='blocked'`,[diner.account]);
+         state='requested',requested_at=clock_timestamp(),
+         updated_at=clock_timestamp()
+         FROM sabora.order_rounds r WHERE r.id=k.round_id
+         AND r.account_id=$1 AND k.state='blocked'`,[diner.account]);
         await admin.query(`UPDATE sabora.order_rounds SET
-         state='kitchen_acknowledged' WHERE account_id=$1
-         AND state<>'kitchen_acknowledged'`,[diner.account]);
-        // A close action is one economic transition, even if the waiter
-        // double-submits it from two concurrent HTTP requests. Both requests
-        // use the real signed capability and dedicated PG17 close-login pool.
-        // They must serialize on the correlation advisory lock, never emit
-        // two closure events or create two close-action ledger entries.
+         state='dispatch_requested',updated_at=clock_timestamp()
+         WHERE account_id=$1 AND state='grouping'`,[diner.account]);
+        const kitchenHeaders={authorization:'Bearer '+jwtKitchen,
+         'content-type':'application/json'};
+        for(const [index,dispatch] of stagedDispatches.entries()){
+         const ack=await http.inject({method:'POST',
+          url:'/api/v1/operations/dispatches/'+dispatch.id+'/ack',
+          headers:kitchenHeaders,payload:{correlationId:'b3_close_kitchen_ack_'+index}});
+         assert.equal(ack.statusCode,200,
+          'signed kitchen dispatch acknowledgement '+index+': '+ack.body);
+         assert.equal(ack.json().state,'acknowledged');
+        }
+        const kitchenLines=(await admin.query(`SELECT l.id,l.status,
+         r.order_id FROM sabora.order_lines l
+         JOIN sabora.order_rounds r ON r.order_id=l.order_id
+         WHERE r.account_id=$1 ORDER BY r.created_at,r.id,l.line_number,l.id`,
+         [diner.account])).rows;
+        assert.ok(kitchenLines.length>=2);
+        for(const [index,line] of kitchenLines.entries()){
+         assert.equal(line.status,'confirmed',
+          'kitchen transitions must start from real confirmed lines');
+         const transitionPath='/api/v1/operations/order-lines/'+line.id+'/transitions';
+         for(const [step,targetStatus] of ['preparing','ready'].entries()){
+          const response=await http.inject({method:'POST',
+           url:transitionPath,headers:kitchenHeaders,
+           payload:{targetStatus,
+            correlationId:'b3_close_h4_kitchen_'+index+'_'+step}});
+          assert.equal(response.statusCode,201,
+           'JWT/HMAC kitchen '+targetStatus+': '+response.body);
+          assert.equal(response.json().currentStatus,targetStatus);
+          assert.equal(response.json().lineId,line.id);
+         }
+        }
+        const readyBeforeClose=(await admin.query(`SELECT l.id,l.status,
+         t.id AS pickup_id,t.state AS pickup_state,t.version
+         FROM sabora.order_lines l
+         JOIN sabora.order_rounds r ON r.order_id=l.order_id
+         JOIN sabora.pickup_tasks t ON t.order_line_id=l.id
+         WHERE r.account_id=$1 ORDER BY r.created_at,r.id,l.line_number,l.id`,
+         [diner.account])).rows;
+        assert.equal(readyBeforeClose.length,kitchenLines.length,
+         'real kitchen READY RPC must create one durable H6 task per line');
+        assert.ok(readyBeforeClose.every(row=>row.status==='ready'&&
+         row.pickup_state==='ready'&&Number(row.version)>=1));
+        const legacyTransition=await http.inject({method:'POST',
+         url:'/api/v1/operations/order-lines/'+readyBeforeClose[0].id+'/transitions',
+         headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
+         payload:{targetStatus:'picked_up',correlationId:'b3_close_legacy_retired'}});
+        assert.equal(legacyTransition.statusCode,409,
+         'physical picked_up must remain disabled in H6');
         const concurrentCloseBody={correlationId:'b3_f20_close_after_resolved'};
         const concurrentClose=await Promise.all([0,1].map(()=>http.inject({
          method:'POST',url:closeUrl,headers:closingHeaders,
@@ -5131,6 +5180,31 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           AND event_type='sabora.account.closed'`,[diner.account])).rows;
         assert.equal(closedEvents.length,1);
         assert.equal(closedEvents[0].table_id,httpFixture.concurrentTable);
+        // Closing is ECONOMIC only: no physical delivery claim is asserted.
+        // Signed H6 waiter pickup remains available at the current table D
+        // after closure, and the line stays READY (never legacy picked_up).
+        const activePickup=readyBeforeClose[0];
+        const pickupResponse=await http.inject({method:'POST',
+         url:'/api/v1/operations/order-lines/'+activePickup.id+'/pickup-claim',
+         headers:closingHeaders,
+         payload:{expectedVersion:Number(activePickup.version),
+          correlationId:'b3_close_h6_pickup_after_closed'}});
+        assert.equal(pickupResponse.statusCode,200,
+         'account closure cannot destroy authorized pending pickup: '+
+          pickupResponse.body);
+        assert.equal(pickupResponse.json().outcome,'claimed');
+        const pickupAfterClose=(await admin.query(`SELECT l.status,t.state,
+         t.version,t.claimed_by FROM sabora.order_lines l
+         JOIN sabora.pickup_tasks t ON t.order_line_id=l.id
+         WHERE l.id=$1`,[activePickup.id])).rows[0];
+        assert.equal(pickupAfterClose.status,'ready',
+         'staff pickup claim is NOT physical service or terminal line state');
+        assert.equal(pickupAfterClose.state,'claimed');
+        assert.equal(pickupAfterClose.claimed_by,httpFixture.waiter);
+        assert.equal(Number(pickupAfterClose.version),Number(activePickup.version)+1);
+        assert.equal((await admin.query(`SELECT state,outstanding_cents
+         FROM sabora.customer_accounts WHERE id=$1`,[diner.account])).rows[0].state,
+         'settled','pickup claim cannot reopen closed financial account');
         // Historical confirmed orders remain visible and replayable through
         // the original authenticated visit; closure forbids NEW confirmations,
         // not reading or idempotently looking up already-persisted consumption.
