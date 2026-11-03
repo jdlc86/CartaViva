@@ -5367,6 +5367,33 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'post-close waiter board HTTP: '+waiterBoardResponse.body);
         const waiterBoardBody=waiterBoardResponse.json();
         assert.equal(waiterBoardBody.role,'waiter');
+        // The same complete A->D/customer/cash/kitchen->close->waiter
+        // scenario contains a genuinely historical picked_up line created
+        // before the H6 pickup-task model. It has NO synthetic pickup
+        // notification, and MUST remain visible as history without turning
+        // the new 'Voy a recoger' into physical delivery evidence.
+        const legacyHistory=(await admin.query(`SELECT l.id,l.status,
+         (SELECT count(*)::int FROM sabora.pickup_notifications n
+           WHERE n.order_line_id=l.id) AS notifications,
+         (SELECT count(*)::int FROM sabora.pickup_tasks t
+           WHERE t.order_line_id=l.id) AS tasks
+         FROM sabora.order_lines l WHERE l.order_id=$1 AND l.line_number=1`,
+         ['b0a00000-0000-4000-8000-000000000340'])).rows[0];
+        assert.equal(legacyHistory.status,'picked_up');
+        assert.equal(legacyHistory.notifications,0);
+        assert.equal(legacyHistory.tasks,0);
+        const legacyBoardRow=waiterBoardBody.items.find(row=>
+         row.lineId===legacyHistory.id);
+        if(legacyBoardRow){
+         assert.equal(legacyBoardRow.status,'picked_up');
+         assert.equal(legacyBoardRow.notification,null,
+          'legacy historical item must not gain invented pickup notice');
+         assert.equal(legacyBoardRow.pickup,null,
+          'historical physical pickup is not a new H6 assignment');
+        }else{
+         assert.ok(waiterBoardBody.nextCursor,
+          'old pickup must stay reachable in paginated waiter board');
+        }
         const {normalizeOrderBoard:normalizeWaiterBoard}=await import(
          '../../apps/management/src/order-operations-model.js');
         try{normalizeWaiterBoard(waiterBoardBody);}
