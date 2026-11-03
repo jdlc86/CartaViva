@@ -3286,7 +3286,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // to a customer rather than an authorized staff member.
     const forgedDecision=await http.inject({method:'POST',
      url:'/api/v1/operations/table-change/decisions',
-     headers:{'x-ci-staff':'waiter','content-type':'application/json'},
+     headers:{authorization:'Bearer '+jwtCustomer,'content-type':'application/json'},
      payload:{requestId:created.json().id,decision:'approved'}});
     assert.equal(forgedDecision.statusCode,403,forgedDecision.body);
     const afterForgery=(await admin.query(`SELECT q.status,
@@ -3302,11 +3302,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // Real management PWA bearer transport -> Fastify -> two separately
     // authenticated PostgreSQL roles for reading and deciding.
     const managementGateway=createAuthenticatedOrderOperationsGateway({
-     getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
+     getAccessToken:async()=>jwtWaiter,
      fetchImpl:async(path,options)=>{
       const response=await http.inject({method:options.method,url:path,
-       headers:{...Object.fromEntries(options.headers.entries()),
-        'x-ci-staff':'authorized-waiter'},payload:options.body});
+       headers:Object.fromEntries(options.headers.entries()),payload:options.body});
       return new Response(response.body,{status:response.statusCode,
        headers:{'content-type':response.headers['content-type']??'application/json'}});
      }
@@ -3318,7 +3317,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(pending[0].sourceTableNumber,981301);
      const kitchen=await http.inject({method:'GET',
       url:'/api/v1/operations/table-change/pending',
-      headers:{'x-ci-staff':'kitchen'}});
+      headers:{authorization:'Bearer '+jwtKitchen}});
      assert.equal(kitchen.statusCode,403);
      // Same disposable PostgreSQL 17 database and Fastify instance now
      // drive the real management PWA in Chromium. The browser approves the
@@ -3345,8 +3344,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       assert.ok(uiAddress&&typeof uiAddress==='object'&&uiAddress.port>0);
       const managementOrigin='http://127.0.0.1:'+uiAddress.port;
       const probe=await fetch(managementOrigin+'/api/v1/operations/table-change/pending',{
-       headers:{authorization:'Bearer verified-ci-waiter-bearer-token',
-        'x-ci-staff':'authorized-waiter'}
+       headers:{authorization:'Bearer '+jwtWaiter}
       });
       const probeBody=await probe.text();
       assert.equal(probe.status,200,
@@ -3601,7 +3599,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       assert.ok(browserRequests.some(row=>row.method==='GET'));
       assert.ok(browserRequests.some(row=>row.method==='POST'));
       assert.ok(browserRequests.every(row=>
-       row.authorization==='Bearer verified-ci-waiter-bearer-token'));
+       row.authorization==='Bearer '+jwtWaiter));
       const approvedInSql=(await admin.query(
        'SELECT status FROM sabora.customer_table_change_requests WHERE id=$1',
        [created.json().id])).rows[0];
@@ -4018,7 +4016,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // signed Fastify/PG17. Concurrent replay and overpayment must not mutate
      // the same account a second time. The old direct cash insert is gone.
      const preCashUrl='/api/v1/operations/accounts/'+cashHistoryDiner.account+'/cash-settlements';
-     const cashHeaders={'x-ci-staff':'authorized-waiter','content-type':'application/json'};
+     const cashHeaders={authorization:'Bearer '+jwtWaiter,'content-type':'application/json'};
      const preCashBody={amountCents:300,correlationId:'f20_pre_transfer_cash_300'};
      const forbiddenCash=await http.inject({method:'POST',url:preCashUrl,
       payload:preCashBody});
@@ -4055,7 +4053,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(raceGrant.status,'pending');
      const raceApproval=await http.inject({method:'POST',
       url:'/api/v1/operations/table-change/decisions',
-      headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+      headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
       payload:{requestId:raceGrant.id,decision:'approved'}});
      assert.equal(raceApproval.statusCode,200,raceApproval.body);
      assert.equal((await admin.query(`SELECT status FROM
@@ -4208,7 +4206,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(rollbackGrant.status,'pending');
      const rollbackApproved=await http.inject({method:'POST',
       url:'/api/v1/operations/table-change/decisions',
-      headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+      headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
       payload:{requestId:rollbackGrant.id,decision:'approved'}});
      assert.equal(rollbackApproved.statusCode,200,rollbackApproved.body);
      const rollbackContext=await clientBrowser.newContext({
@@ -4447,7 +4445,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         ORDER BY created_at DESC LIMIT 1`,[diner.account])).rows[0].id;
        const approved=await http.inject({method:'POST',
         url:'/api/v1/operations/table-change/decisions',
-        headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+        headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
         payload:{requestId:grantId,decision:'approved'}});
        assert.equal(approved.statusCode,200,change+': '+approved.body);
        const page=await prepareD(diner,dQr);
@@ -4597,7 +4595,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         ORDER BY created_at DESC LIMIT 1`,[diner.account])).rows[0].id;
        const approval=await http.inject({method:'POST',
         url:'/api/v1/operations/table-change/decisions',
-        headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+        headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
         payload:{requestId:grantId,decision:'approved'}});
        assert.equal(approval.statusCode,200,mode+': '+approval.body);
        const page=await prepareD(diner,dQr,mode);
@@ -4895,7 +4893,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // liquidate the remaining debt. The economic account stays OPEN so
         // later orders may reuse it, irrespective of a zero outstanding balance.
         const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
-        const cashHeaders={'x-ci-staff':'authorized-waiter','content-type':'application/json'};
+        const cashHeaders={authorization:'Bearer '+jwtWaiter,'content-type':'application/json'};
         const partialBody={amountCents:400,correlationId:'f20_after_transfer_cash_400'};
         const partial=await http.inject({method:'POST',url:cashUrl,
          headers:cashHeaders,payload:partialBody});
@@ -4983,7 +4981,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          [diner.account])).rows[0].id;
         const decision=await http.inject({method:'POST',
          url:'/api/v1/operations/table-change/decisions',
-         headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+         headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
          payload:{requestId:grantId,decision:'approved'}});
         assert.equal(decision.statusCode,200,change+': '+decision.body);
         const page=await prepareD(diner,dQr);
@@ -5423,7 +5421,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        'SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
        [httpFixture.sourceAccount]);
       const staffEndpoint='/api/v1/operations/table-change/decisions';
-      const staffHeaders={'x-ci-staff':'authorized-waiter',
+      const staffHeaders={authorization:'Bearer '+jwtWaiter,
        'content-type':'application/json'};
       // Both requests are sent BEFORE expiry. They wait on different SQL
       // connections behind the real account-row lock; neither is allowed to
@@ -5504,7 +5502,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      for(const decision of ['approved','rejected']){
       const late=await http.inject({method:'POST',
        url:'/api/v1/operations/table-change/decisions',
-       headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+       headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
        payload:{requestId:third.id,decision}});
       assert.equal(late.statusCode,409,
        'persisted expired PG17 request must reject late '+decision+': '+late.body);
@@ -5529,7 +5527,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // F15/R03: two staff approvals collide on the same real customer
      // advisory lock. Both use distinct authenticated PG17 connections.
      const staffDecisionUrl='/api/v1/operations/table-change/decisions';
-     const staffDecisionHeaders={'x-ci-staff':'authorized-waiter',
+     const staffDecisionHeaders={authorization:'Bearer '+jwtWaiter,
       'content-type':'application/json'};
      const lockForStaff=await admin.connect();
      let staffLockOpen=false,firstApproval,secondApproval;
