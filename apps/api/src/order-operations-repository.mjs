@@ -17,6 +17,25 @@ export const TRANSITION_ORDER_LINE_SQL=`SELECT updated_order_id, updated_line_id
              $6::text, $7::bigint, $8::bigint, $9::text
            )`;
 
+// Exact role-scoped SQL used by H4/H6 authenticated board and history reads.
+export const READ_H4_ORDER_BOARD_SQL=`SELECT *
+             FROM sabora.read_order_operations_board_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`;
+export const READ_H6_DELIVERY_BOARD_SQL=`SELECT *
+             FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`;
+export const READ_ORDER_HISTORY_SQL=`SELECT *
+             FROM sabora.read_order_operations_history_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
+               $6::integer, $7::bigint, $8::bigint, $9::text
+             )`;
+
 const STATUSES = new Set(['confirmed', 'preparing', 'ready', 'picked_up']);
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 
@@ -188,12 +207,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
           throw Error('invalid_order_operation_read_capability');
         }
         result = await query(
-          `SELECT *
-             FROM sabora.${deliveryBoardCandidate ? 'read_order_operations_delivery_pickup_board_h6_candidate' : 'read_order_operations_board_authorized_candidate'}(
-               $1::text, $2::text, $3::uuid, $4::text, $5::text,
-               $6::bigint, $7::uuid, $8::integer, $9::integer,
-               $10::bigint, $11::bigint, $12::text
-             )`,
+          (deliveryBoardCandidate ? READ_H6_DELIVERY_BOARD_SQL : READ_H4_ORDER_BOARD_SQL),
           [
             capability.keyId,
             capability.databaseRole,
@@ -420,11 +434,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
           throw Error('invalid_order_operation_read_capability');
         }
         result = await query(
-          `SELECT *
-             FROM sabora.read_order_operations_history_authorized_candidate(
-               $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
-               $6::integer, $7::bigint, $8::bigint, $9::text
-             )`,
+          READ_ORDER_HISTORY_SQL,
           [
             capability.keyId,
             capability.databaseRole,
