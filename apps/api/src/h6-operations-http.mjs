@@ -14,7 +14,7 @@ const publicPickup=result=>{
 };
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
 const FORBIDDEN=new Set(['h6_operations_forbidden','invalid_h6_staff_capability','h6_staff_action_forbidden',
- 'incident_line_scope_forbidden','expired_h6_staff_capability','cash_refund_forbidden',
+ 'incident_line_scope_forbidden','expired_h6_staff_capability','cash_refund_forbidden','account_close_forbidden',
  'invalid_pickup_capability','expired_pickup_capability','pickup_action_forbidden','pickup_scope_forbidden']);
 const NOT_FOUND=new Set(['dispatch_not_found','round_not_found','incident_not_found','payment_attempt_not_found',
  'pickup_task_not_found']);
