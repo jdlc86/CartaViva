@@ -19,6 +19,7 @@ const FORBIDDEN=new Set(['h6_operations_forbidden','invalid_h6_staff_capability'
 const NOT_FOUND=new Set(['dispatch_not_found','round_not_found','incident_not_found','payment_attempt_not_found',
  'pickup_task_not_found']);
 const CONFLICT=new Set(['dispatch_not_acknowledgeable','cash_settlement_conflict',
+ 'account_close_conflict','account_close_unresolved','h6_account_close_unavailable',
  'customer_cancellation_limits_not_configured','h6_idempotency_conflict','incident_already_resolved',
  'incident_exceeds_captured_amount','incident_exceeds_cash_paid','incident_payment_not_reconcilable',
  'kitchen_refund_cannot_be_denied','payment_outcome_unknown','cash_refund_not_due']);
