@@ -5038,15 +5038,27 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         await admin.query(`UPDATE sabora.order_rounds SET
          state='kitchen_acknowledged' WHERE account_id=$1
          AND state<>'kitchen_acknowledged'`,[diner.account]);
-        const closed=await http.inject({method:'POST',url:closeUrl,
-         headers:closingHeaders,payload:{correlationId:'b3_f20_close_after_resolved'}});
-        assert.equal(closed.statusCode,200,closed.body);
-        assert.equal(closed.json().accountId,diner.account);
-        assert.equal(closed.json().state,'settled');
-        assert.equal(closed.json().outstandingCents,0);
-        assert.equal(closed.json().repeated,false);
+        // A close action is one economic transition, even if the waiter
+        // double-submits it from two concurrent HTTP requests. Both requests
+        // use the real signed capability and dedicated PG17 close-login pool.
+        // They must serialize on the correlation advisory lock, never emit
+        // two closure events or create two close-action ledger entries.
+        const concurrentCloseBody={correlationId:'b3_f20_close_after_resolved'};
+        const concurrentClose=await Promise.all([0,1].map(()=>http.inject({
+         method:'POST',url:closeUrl,headers:closingHeaders,
+         payload:concurrentCloseBody
+        })));
+        assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
+         'simultaneous signed close submissions must be idempotent');
+        const outcomes=concurrentClose.map(r=>r.json());
+        assert.deepEqual(outcomes.map(x=>x.repeated).sort(),[false,true],
+         'exactly one concurrent request must commit the account closure');
+        assert.ok(outcomes.every(x=>x.accountId===diner.account&&
+         x.state==='settled'&&x.outstandingCents===0));
+        assert.equal(outcomes[0].closedAt,outcomes[1].closedAt,
+         'concurrent replay must return the exact original close timestamp');
         const closedReplay=await http.inject({method:'POST',url:closeUrl,
-         headers:closingHeaders,payload:{correlationId:'b3_f20_close_after_resolved'}});
+         headers:closingHeaders,payload:concurrentCloseBody});
         assert.equal(closedReplay.statusCode,200);
         assert.equal(closedReplay.json().repeated,true);
         const secondClose=await http.inject({method:'POST',url:closeUrl,
