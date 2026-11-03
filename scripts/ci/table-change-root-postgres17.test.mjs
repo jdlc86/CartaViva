@@ -5130,21 +5130,41 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // Explicit disposable time fixture, never a mutation of delivery,
         // payment, outbox or kitchen dispatch status. The scheduler itself
         // must write the two due dispatches through the existing sealed RPC.
+        // The historical fixture was already overdue. Keep the genuinely
+        // confirmed new round in a future deadline to verify the live timer.
         await admin.query(`UPDATE sabora.order_rounds SET
-         grouping_deadline=clock_timestamp()-interval '1 second'
+         grouping_deadline=CASE WHEN order_id=$2 THEN
+          clock_timestamp()-interval '1 second'
+         ELSE clock_timestamp()+interval '2 seconds' END
          WHERE account_id=$1 AND state IN ('grouping','free_grouping')`,
-         [diner.account]);
+         [diner.account,diner.order]);
         const dispatchNotifier=await createPostgresH6OutboxNotifier({pool:pools[8]});
         const dispatchFailures=[];
+        let resolveTimedDispatch;
+        const timedDispatch=new Promise(resolve=>{resolveTimedDispatch=resolve;});
         const dispatchScheduler=createH6DeferredDispatchScheduler({
          listSchedulable:options=>h6Provider.listSchedulable(options),
-         dispatchDue:({orderId})=>h6Provider.requestDueCapture({orderId}),
+         dispatchDue:async({orderId})=>{
+          const result=await h6Provider.requestDueCapture({orderId});
+          if(orderId!==diner.order)resolveTimedDispatch(result);
+          return result;
+         },
          subscribeCommitted:dispatchNotifier.subscribe,
          onFailure:error=>dispatchFailures.push(error)
         });
         try{
-         await dispatchScheduler.start(); // startup rehydrates overdue work
+         await dispatchScheduler.start(); // rehydrates overdue historic order
          assert.deepEqual(dispatchFailures,[]);
+         const early=(await admin.query(`SELECT k.state,r.order_id,
+          r.state AS round_state FROM sabora.kitchen_dispatches k
+          JOIN sabora.order_rounds r ON r.id=k.round_id
+          WHERE r.account_id=$1`,[diner.account])).rows;
+         assert.equal(early.length,2);
+         assert.equal(early.find(v=>v.order_id===diner.order).state,'requested');
+         assert.equal(early.find(v=>v.order_id!==diner.order).state,'blocked',
+          'the confirmed new round cannot be sent before its deadline');
+         await Promise.race([timedDispatch,new Promise((_,reject)=>setTimeout(()=>
+          reject(Error('h6_deferred_dispatch_deadline_not_reached')),10000))]);
          const requested=(await admin.query(`SELECT k.state,r.state AS round_state
           FROM sabora.kitchen_dispatches k JOIN sabora.order_rounds r
           ON r.id=k.round_id WHERE r.account_id=$1`,[diner.account])).rows;
