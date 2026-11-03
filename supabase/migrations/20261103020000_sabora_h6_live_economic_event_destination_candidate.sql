@@ -204,7 +204,8 @@ BEGIN
   OR p_provider_created_at IS NULL OR p_payload_sha256 IS NULL OR octet_length(p_payload_sha256)<>32
  OR (p_event_type='payment_intent.amount_capturable_updated' AND p_capture_before IS NULL)
   OR (p_event_type='refund.updated' AND (p_refund_attempt_id IS NULL OR
-      p_refund_status NOT IN ('pending','requires_action','succeeded','failed','canceled')))
+      p_refund_status NOT IN ('pending','requires_action','succeeded','failed','canceled')
+      OR p_provider_charge_id !~ '^ch_[A-Za-z0-9]{8,128}$'))
  THEN RAISE EXCEPTION 'invalid_stripe_webhook' USING errcode='22023'; END IF;
  SELECT * INTO v_existing FROM sabora.stripe_webhook_events WHERE event_id=p_event_id;
  IF FOUND THEN
@@ -267,8 +268,11 @@ BEGIN
   END IF;
  END IF;
  IF v_payment.id IS NULL AND p_event_type='refund.updated' THEN
-  IF NOT EXISTS(SELECT 1 FROM sabora.refund_attempts r WHERE r.id=p_refund_attempt_id
-    AND (r.provider_refund_id IS NULL OR r.provider_refund_id=p_provider_object_id)) THEN
+  -- A signed refund event can settle only the attempt assigned to its original captured charge.
+  IF NOT EXISTS(SELECT 1 FROM sabora.refund_attempts r
+    JOIN sabora.payment_attempts p ON p.id=r.payment_attempt_id
+    WHERE r.id=p_refund_attempt_id AND p.provider_charge_id=p_provider_charge_id
+      AND (r.provider_refund_id IS NULL OR r.provider_refund_id=p_provider_object_id)) THEN
    v_outcome:='ignored';
   ELSIF p_refund_status IN ('succeeded','failed') THEN
    PERFORM sabora.record_h6_refund_outcome_candidate(p_refund_attempt_id,p_refund_status,
