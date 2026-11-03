@@ -302,7 +302,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
                     const pickupActions = board ? pickupTaskActions(board.role, line.status, line.pickup) : [];
                     const pending = pendingLines.has(line.lineId);
                     return (
-                      <li key={line.lineId}>
+                      <li key={line.lineId} data-line-id={line.lineId}>
                         <div className="order-line__identity"><span>{line.quantity}×</span><div><strong>{line.name}</strong><small>Línea {line.lineNumber} · {line.category}</small></div></div>
                         <div className="order-line__status-stack">
                           <StatusBadge tone={tone(line.status)}>{ORDER_STATUS_LABELS[line.status]}</StatusBadge>
