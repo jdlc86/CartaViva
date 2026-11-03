@@ -5141,27 +5141,73 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           'signed kitchen dispatch acknowledgement '+index+': '+ack.body);
          assert.equal(ack.json().state,'acknowledged');
         }
+        // A real authenticated kitchen PWA (not direct http.inject)
+        // drives all confirmed->preparing->ready transitions. After close,
+        // a second waiter PWA must still be able to claim pickup without
+        // falsely marking the food delivered.
+        const {pathToFileURL:chefToUrl,fileURLToPath:chefFilePath}=await import('node:url');
+        const chefRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+        const {createServer:chefServe}=await import(chefToUrl(chefRequire.resolve('vite')).href);
+        const {chromium:chefChromium}=await import(chefToUrl(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+        let chefVite=null,chefBrowser=null,chefContext=null,chefWaiterContext=null;
+        try{
+         chefVite=await chefServe({
+          root:chefFilePath(new URL('../../apps/management/',import.meta.url)),
+          logLevel:'error',
+          server:{host:'127.0.0.1',port:0,strictPort:false,
+           proxy:{'/api':{target:'http://127.0.0.1:'+http.server.address().port,
+            changeOrigin:false}}}
+         });
+         await chefVite.listen();
+         const chefAddress=chefVite.httpServer.address();
+         assert.ok(chefAddress&&typeof chefAddress==='object'&&chefAddress.port>0);
+         const chefOrigin='http://127.0.0.1:'+chefAddress.port;
+         chefBrowser=await chefChromium.launch({headless:true});
+         chefContext=await chefBrowser.newContext({
+          viewport:{width:1440,height:900},reducedMotion:'reduce',serviceWorkers:'block'});
+         const chefPage=await chefContext.newPage();
+         const chefErrors=[];
+         chefPage.on('pageerror',error=>chefErrors.push(error.message));
+         await chefPage.goto(chefOrigin+'/#comandas');
+         await chefPage.evaluate(async jwt=>{
+          const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+          window.__saboraCiDispose=mountAuthenticatedManagementApp({
+           element:document.getElementById('root'),getAccessToken:async()=>jwt});
+         },jwtKitchen);
         const kitchenLines=(await admin.query(`SELECT l.id,l.status,
          r.order_id FROM sabora.order_lines l
          JOIN sabora.order_rounds r ON r.order_id=l.order_id
          WHERE r.account_id=$1 ORDER BY r.created_at,r.id,l.line_number,l.id`,
          [diner.account])).rows;
         assert.ok(kitchenLines.length>=2);
-        for(const [index,line] of kitchenLines.entries()){
+        for(const line of kitchenLines){
          assert.equal(line.status,'confirmed',
           'kitchen transitions must start from real confirmed lines');
-         const transitionPath='/api/v1/operations/order-lines/'+line.id+'/transitions';
-         for(const [step,targetStatus] of ['preparing','ready'].entries()){
-          const response=await http.inject({method:'POST',
-           url:transitionPath,headers:kitchenHeaders,
-           payload:{targetStatus,
-            correlationId:'b3_close_h4_kitchen_'+index+'_'+step}});
-          assert.equal(response.statusCode,201,
-           'JWT/HMAC kitchen '+targetStatus+': '+response.body);
-          assert.equal(response.json().currentStatus,targetStatus);
-          assert.equal(response.json().lineId,line.id);
-         }
+         const cardLine=chefPage.locator('li[data-line-id="'+line.id+'"]');
+         await cardLine.getByRole('button',{name:'Iniciar preparación'})
+          .waitFor({timeout:20000});
+         const firstResponse=chefPage.waitForResponse(response=>
+          new URL(response.url()).pathname==
+           '/api/v1/operations/order-lines/'+line.id+'/transitions',
+          {timeout:20000});
+         await cardLine.getByRole('button',{name:'Iniciar preparación'}).click();
+         const first=await firstResponse;
+         assert.equal(first.status(),201,
+          'signed kitchen PWA preparing HTTP: '+await first.text());
+         assert.equal((await first.json()).currentStatus,'preparing');
+         await cardLine.getByRole('button',{name:'Marcar lista'})
+          .waitFor({timeout:20000});
+         const readyResponse=chefPage.waitForResponse(response=>
+          new URL(response.url()).pathname==
+           '/api/v1/operations/order-lines/'+line.id+'/transitions',
+          {timeout:20000});
+         await cardLine.getByRole('button',{name:'Marcar lista'}).click();
+         const ready=await readyResponse;
+         assert.equal(ready.status(),201,
+          'signed kitchen PWA ready HTTP: '+await ready.text());
+         assert.equal((await ready.json()).currentStatus,'ready');
         }
+        assert.deepEqual(chefErrors,[],'kitchen management PWA has no JS errors');
         const readyBeforeClose=(await admin.query(`SELECT l.id,l.status,
          t.id AS pickup_id,t.state AS pickup_state,t.version
          FROM sabora.order_lines l
