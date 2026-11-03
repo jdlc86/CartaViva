@@ -2777,6 +2777,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    alias:'Comensal sesion concurrente',visitKey:'b3_revoke_race_origin_0396_integral',
    balance:1300
   };
+  // F20/R05: exercise transfers with two distinct historical payment states
+  // in the same full PG17/Fastify/Chromium confirmation journey.
+  const payNowDiner={
+   customer:'b0a00000-0000-4000-8000-000000000401',
+   account:'b0a00000-0000-4000-8000-000000000402',
+   order:'b0a00000-0000-4000-8000-000000000403',
+   round:'b0a00000-0000-4000-8000-000000000404',
+   token:'k'.repeat(42)+'s',publicId:'SB-PQPQPQPQPQPQ',
+   alias:'Comensal Stripe pendiente',visitKey:'b3_h6_stripe_origin_0401_integral',
+   balance:0,mode:'pay_now',historicAmount:1200
+  };
+  const cashHistoryDiner={
+   customer:'b0a00000-0000-4000-8000-000000000411',
+   account:'b0a00000-0000-4000-8000-000000000412',
+   order:'b0a00000-0000-4000-8000-000000000413',
+   round:'b0a00000-0000-4000-8000-000000000414',
+   token:'l'.repeat(42)+'s',publicId:'SB-RTRTRTRTRTRT',
+   alias:'Comensal con efectivo previo',visitKey:'b3_h6_cash_origin_0411_integral',
+   balance:900,mode:'pay_at_end',historicAmount:1200,cashSettled:300
+  };
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3HttpCandidate(http,{
     customerPool:scopedPools[0],operationsPool:scopedPools[1],
@@ -2799,7 +2819,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
        return;
       }
-      const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner].find(row=>
+      const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
+       payNowDiner,cashHistoryDiner].find(row=>
        request.headers.cookie==='__Secure-sabora_customer='+row.token);
       if(peer){
        request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
@@ -3781,7 +3802,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      const raceFixture=await admin.connect();
      try{
       await raceFixture.query('BEGIN');
-      for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner]){
+      for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner,
+       payNowDiner,cashHistoryDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
        [diner.customer,diner.publicId,diner.alias]);
@@ -3797,10 +3819,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         diner.customer,diner.visitKey]);
       await raceFixture.query(`INSERT INTO sabora.customer_accounts
        (id,table_id,session_id,visit_key,customer_id,payment_mode,
-        payment_mode_selected_at,outstanding_cents)
-       VALUES($1,$2,$3,$4,$5,'pay_at_end',clock_timestamp(),$6)`,
+        payment_mode_selected_at,outstanding_cents,cash_settled_cents)
+       VALUES($1,$2,$3,$4,$5,$6,clock_timestamp(),$7,$8)`,
        [diner.account,httpFixture.sourceTable,httpFixture.sourceSession,
-        diner.visitKey,diner.customer,diner.balance]);
+        diner.visitKey,diner.customer,diner.mode??'pay_at_end',diner.balance,
+        diner.cashSettled??0]);
       await raceFixture.query(`INSERT INTO
        sabora.customer_account_operational_bindings
        (account_id,table_id,session_id,visit_key)
@@ -3819,9 +3842,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query(`INSERT INTO sabora.order_rounds
        (id,order_id,account_id,amount_cents,payment_mode,
         payment_policy_version,grouping_deadline,state)
-       VALUES($1,$2,$3,$4,'pay_at_end',1,
-        clock_timestamp()+interval '5 minutes','grouping')`,
-       [diner.round,diner.order,diner.account,diner.balance]);
+       VALUES($1,$2,$3,$4,$5,1,
+        clock_timestamp()+interval '5 minutes',$6)`,
+       [diner.round,diner.order,diner.account,
+        diner.historicAmount??diner.balance,diner.mode??'pay_at_end',
+        diner.mode==='pay_now'?'awaiting_authorization':'grouping']);
       await raceFixture.query(`INSERT INTO
        sabora.order_round_delivery_destinations
        (round_id,account_id,table_id,session_id,visit_key)
@@ -3838,6 +3863,19 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        [raceLine.id,diner.round,diner.account,diner.order,
         httpFixture.sourceTable,httpFixture.sourceSession,diner.visitKey]);
       }
+      // Immutable payment history fixtures, not invocations of a cash or
+      // Stripe provider. The real HTTP/SQL/PWA transaction happens below.
+      await raceFixture.query(`INSERT INTO sabora.payment_attempts
+       (round_id,account_id,amount_cents,authorization_key,capture_key,
+        state,provider_intent_id)
+       VALUES($1,$2,1200,'h6_auth_f20_history_pending_00001',
+        'h6_capture_f20_history_pending_00001','requires_action',
+        'pi_F20HistoryPending12345')`,
+       [payNowDiner.round,payNowDiner.account]);
+      await raceFixture.query(`INSERT INTO sabora.cash_settlements
+       (account_id,actor_user_id,correlation_id,amount_cents,kind)
+       VALUES($1,$2,'f20_prior_cash_00001',300,'payment')`,
+       [cashHistoryDiner.account,httpFixture.waiter]);
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
