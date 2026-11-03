@@ -4394,6 +4394,155 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'stale approval persists for audit but is unusable by revoked session');
        }
       }
+      // F20/R05/R06: the original account is preserved across a new
+      // client checkout even with a pre-existing Stripe authorization
+      // still pending or an immutable prior cash payment. Provider and cash
+      // history are fixture SETUP only; the transfer/quote/confirm/replay
+      // below run through real PWA, Fastify, six PG17 roles and H6 SQL.
+      for(const scenario of [
+       {diner:payNowDiner,mode:'pay_now',balance:'0',attempts:2,cash:0},
+       {diner:cashHistoryDiner,mode:'pay_at_end',balance:'1600',
+        attempts:0,cash:1}
+      ]){
+       const {diner,mode}=scenario;
+       const historicalPayments=(await admin.query(`SELECT id,round_id,
+        amount_cents,state,provider_intent_id,authorization_key,capture_key
+        FROM sabora.payment_attempts WHERE account_id=$1`,
+        [diner.account])).rows;
+       assert.equal(historicalPayments.length,mode==='pay_now'?1:0);
+       const historicalCash=(await admin.query(`SELECT id,actor_user_id,
+        correlation_id,amount_cents,kind FROM sabora.cash_settlements
+        WHERE account_id=$1`,[diner.account])).rows;
+       assert.equal(historicalCash.length,scenario.cash);
+       if(mode==='pay_now'){
+        assert.equal(historicalPayments[0].round_id,diner.round);
+        assert.equal(historicalPayments[0].state,'requires_action');
+        assert.equal(historicalPayments[0].amount_cents,'1200');
+        assert.equal(historicalPayments[0].provider_intent_id,
+         'pi_F20HistoryPending12345');
+       }else{
+        assert.equal(historicalCash[0].amount_cents,'300');
+        assert.equal(historicalCash[0].kind,'payment');
+       }
+       const requested=await http.inject({method:'POST',
+        url:'/api/v1/customer/table-change/requests',
+        headers:dHeaders(diner),payload:{}});
+       assert.equal(requested.statusCode,201,mode+': '+requested.body);
+       const grantId=(await admin.query(`SELECT id FROM
+        sabora.customer_table_change_requests WHERE account_id=$1
+        ORDER BY created_at DESC LIMIT 1`,[diner.account])).rows[0].id;
+       const approval=await http.inject({method:'POST',
+        url:'/api/v1/operations/table-change/decisions',
+        headers:{'x-ci-staff':'authorized-waiter','content-type':'application/json'},
+        payload:{requestId:grantId,decision:'approved'}});
+       assert.equal(approval.statusCode,200,mode+': '+approval.body);
+       const page=await prepareD(diner,dQr,mode);
+       let payload=null;
+       page.on('request',request=>{
+        if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
+         payload=request.postDataJSON();
+       });
+       const resultPromise=page.waitForResponse(response=>
+        new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+        {timeout:20000});
+       await page.getByRole('button',{name:'Confirmar pedido'}).click();
+       const response=await resultPromise;
+       assert.equal(response.status(),201,mode+': '+await response.text());
+       const confirmed=await response.json();
+       assert.equal(confirmed.status,'confirmed');
+       assert.equal(confirmed.accountId,diner.account);
+       assert.equal(confirmed.paymentMode,mode);
+       assert.equal(confirmed.amountCents,700);
+       assert.equal(confirmed.roundState,mode==='pay_now'?
+        'awaiting_authorization':'grouping');
+       const state=(await admin.query(`SELECT q.status,q.destination_table_id,
+        b.table_id,a.customer_id,a.payment_mode,a.outstanding_cents,
+        a.cash_settled_cents,
+        (SELECT count(*)::int FROM sabora.order_rounds r
+         WHERE r.account_id=a.id) AS rounds,
+        (SELECT count(*)::int FROM sabora.payment_attempts p
+         WHERE p.account_id=a.id) AS payments,
+        (SELECT count(*)::int FROM sabora.cash_settlements c
+         WHERE c.account_id=a.id) AS cash_records
+        FROM sabora.customer_table_change_requests q
+        JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+        JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+        [grantId])).rows[0];
+       assert.equal(state.status,'consumed');
+       assert.equal(state.destination_table_id,httpFixture.concurrentTable);
+       assert.equal(state.table_id,httpFixture.concurrentTable);
+       assert.equal(state.customer_id,diner.customer);
+       assert.equal(state.payment_mode,mode);
+       assert.equal(state.outstanding_cents,scenario.balance);
+       assert.equal(state.cash_settled_cents,String(diner.cashSettled??0));
+       assert.equal(state.rounds,2);
+       assert.equal(state.payments,scenario.attempts);
+       assert.equal(state.cash_records,scenario.cash);
+       const subsequentPayments=(await admin.query(`SELECT id,round_id,
+        amount_cents,state,provider_intent_id,authorization_key,capture_key
+        FROM sabora.payment_attempts WHERE account_id=$1`,
+        [diner.account])).rows;
+       if(mode==='pay_now'){
+        const original=subsequentPayments.find(p=>p.id===historicalPayments[0].id);
+        const current=subsequentPayments.find(p=>p.round_id===confirmed.roundId);
+        assert.deepEqual(original,historicalPayments[0],
+         'Stripe pending provider state and keys survive transfer unchanged');
+        assert.ok(current);
+        assert.notEqual(current.id,original.id);
+        assert.notEqual(current.authorization_key,original.authorization_key);
+        assert.notEqual(current.capture_key,original.capture_key);
+        assert.equal(current.state,'authorization_requested');
+        assert.equal(current.amount_cents,'700');
+        assert.equal(current.provider_intent_id,null,
+         'no provider authorization has been falsely claimed');
+       }else{
+        const afterCash=(await admin.query(`SELECT id,actor_user_id,
+         correlation_id,amount_cents,kind FROM sabora.cash_settlements
+         WHERE account_id=$1`,[diner.account])).rows;
+        assert.deepEqual(afterCash,historicalCash,
+         'prior cash receipt must remain append-only and intact');
+       }
+       const history=(await admin.query(`SELECT o.table_id AS source,
+        r.amount_cents AS amount,d.table_id AS operational
+        FROM sabora.orders o JOIN sabora.order_rounds r ON r.order_id=o.id
+        JOIN sabora.order_round_delivery_destinations d ON d.round_id=r.id
+        WHERE o.id=$1`,[diner.order])).rows[0];
+       assert.equal(history.source,httpFixture.sourceTable);
+       assert.equal(history.operational,httpFixture.concurrentTable);
+       assert.equal(history.amount,'1200');
+       const historyLine=(await admin.query(`SELECT d.table_id FROM
+        sabora.order_line_delivery_destinations d
+        WHERE d.account_id=$1 AND d.order_id=$2`,
+        [diner.account,diner.order])).rows;
+       assert.equal(historyLine.length,1);
+       assert.equal(historyLine[0].table_id,httpFixture.concurrentTable);
+       assert.ok(payload,'real PWA must submit confirm body for same-key replay');
+       const replay=await page.evaluate(async input=>{
+        const response=await fetch('/api/v1/customer/orders/confirm',{
+         method:'POST',credentials:'same-origin',
+         headers:{'Content-Type':'application/json'},
+         body:JSON.stringify(input)
+        });
+        return {status:response.status,result:await response.json()};
+       },payload);
+       assert.equal(replay.status,200,'replay cannot make another payment');
+       assert.equal(replay.result.status,'replayed');
+       assert.equal(replay.result.accountId,diner.account);
+       const postReplay=(await admin.query(`SELECT
+        (SELECT count(*)::int FROM sabora.order_rounds r
+         WHERE r.account_id=$1) AS rounds,
+        (SELECT count(*)::int FROM sabora.payment_attempts p
+         WHERE p.account_id=$1) AS payments,
+        (SELECT count(*)::int FROM sabora.cash_settlements c
+         WHERE c.account_id=$1) AS cash`,[diner.account])).rows[0];
+       assert.equal(postReplay.rounds,2);
+       assert.equal(postReplay.payments,scenario.attempts);
+       assert.equal(postReplay.cash,scenario.cash);
+       await page.getByText('Pedido confirmado').waitFor({timeout:20000});
+       await page.screenshot({path:join(evidence,
+        'b3-f20-economic-'+mode.replaceAll('_','-')+'-mobile.png'),
+        fullPage:true});
+      }
      }finally{for(const context of dContexts)await context.close();}
      assert.deepEqual(customerBrowserErrors,[]);
     }finally{
