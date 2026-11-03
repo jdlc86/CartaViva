@@ -3005,6 +3005,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const denied=await http.inject({method:'POST',
     url:'/api/v1/operations/table-change/decisions',payload:{}});
    assert.equal(denied.statusCode,401);
+   // Cryptographic JWT verification precedes all staff SQL and cannot be
+   // bypassed by the removed header-only fixture.
+   const badSignature=jwtWaiter.slice(0,-2)+
+    (jwtWaiter.at(-2)==='A'?'B':'A')+jwtWaiter.at(-1);
+   for(const headers of [
+    {'x-ci-staff':'authorized-waiter'},
+    {authorization:'Bearer '+jwtExpired},
+    {authorization:'Bearer '+badSignature},
+    {authorization:'Bearer invalid.bearer.payload'}
+   ]){
+    const probe=await http.inject({method:'GET',
+     url:'/api/v1/operations/table-change/pending',headers});
+    assert.equal(probe.statusCode,401,
+     'an unverified JWT/header cannot access the restricted staff queue');
+   }
    // A valid HTTP cookie must cross the real five-login SQL boundary.
    // This deliberately has no matching customer fixture: the database RPC,
    // not a mock or the HTTP authentication layer, must reject the scope.
@@ -5743,6 +5758,35 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(role.current_user,specs[index].login);
     assert.equal(role.session_user,specs[index].login);
    }
+  // The same signed staff JWT must cease authorizing operations as soon
+  // as PostgreSQL records staff revocation, without JWT expiration or re-login.
+  const staffBefore=(await admin.query(
+   'SELECT role,state FROM sabora.staff_members WHERE user_id=$1',
+   ['b0a00000-0000-4000-8000-000000000307'])).rows[0];
+  assert.deepEqual(staffBefore,{role:'waiter',state:'active'});
+  const accountBefore=(await admin.query(
+   'SELECT b.table_id,a.outstanding_cents FROM sabora.customer_account_operational_bindings b JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE a.id=$1',
+   ['b0a00000-0000-4000-8000-000000000306'])).rows[0];
+  const revokeStaff=await admin.query(
+   "UPDATE sabora.staff_members SET state='revoked' WHERE user_id=$1",
+   ['b0a00000-0000-4000-8000-000000000307']);
+  assert.equal(revokeStaff.rowCount,1);
+  for(const input of [
+   {method:'GET',url:'/api/v1/operations/table-change/pending',
+    headers:ciVerifiedStaffHeaders()},
+   {method:'POST',url:'/api/v1/operations/table-change/decisions',
+    headers:{...ciVerifiedStaffHeaders(),'content-type':'application/json'},
+    payload:{requestId:'b0a00000-0000-4000-8000-000000000001',decision:'approved'}}
+  ]){
+   const response=await http.inject(input);
+   assert.equal(response.statusCode,403,
+    'revoked waiter cannot reuse a valid JWT for staff business operations');
+  }
+  const accountAfter=(await admin.query(
+   'SELECT b.table_id,a.outstanding_cents FROM sabora.customer_account_operational_bindings b JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE a.id=$1',
+   ['b0a00000-0000-4000-8000-000000000306'])).rows[0];
+  assert.deepEqual(accountAfter,accountBefore,
+   'revoked staff may not mutate any existing economic account');
   }finally{await http.close();}
   // Exercise the real transaction boundary on a physically authenticated
   // writer connection: an unlisted SQL statement must be rejected before it
