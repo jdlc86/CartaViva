@@ -20,6 +20,8 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H
 import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  READ_STAFF_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
+import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
+import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {mountVerifiedTableChangeB3HttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
@@ -4667,25 +4669,52 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const orderId=confirmed.orderId,roundId=confirmed.roundId;
         const providerIntentId='pi_F20PostTransferIntent001';
         const providerChargeId='ch_F20PostTransferCharge001';
-        const expires=new Date(Date.now()+86400000);
-        const auth=await h6Provider.recordAuthorization({orderId,
-         outcome:'authorized',providerIntentId,captureBefore:expires});
+        // The existing Stripe adapter and orchestrator are used, but their
+        // network transport is a deterministic test double. All ledger effects
+        // go through the real, isolated PG17 provider login and H6 SQL.
+        const outboundStripe=[];
+        const stripe=createH6StripeAdapter({
+         credential:'sk_test_F20_Integration_Candidate_No_Network',
+         request:async call=>{
+          outboundStripe.push(call);
+          if(call.path==='/v1/payment_intents'&&call.method==='POST')
+           return {id:providerIntentId,status:'requires_capture',
+            latest_charge:{payment_method_details:{card:{
+             capture_before:Math.floor(Date.now()/1000)+86400}}}};
+          if(call.path==='/v1/payment_intents/'+providerIntentId+'/capture')
+           throw Error('simulated_stripe_capture_timeout');
+          if(call.path==='/v1/refunds')throw Error('simulated_stripe_refund_timeout');
+          throw Error('unexpected_external_provider_call:'+call.path);
+         }
+        });
+        const payments=createH6PaymentOrchestrator({stripe,repository:h6Provider,
+         // Move only the worker's virtual grouping deadline to preserve the
+         // five-minute production policy without a five-minute CI sleep.
+         clock:()=>Date.now()+360000});
+        const authorizationKey=(await admin.query(`SELECT authorization_key
+         FROM sabora.payment_attempts WHERE round_id=$1`,[roundId])).rows[0].authorization_key;
+        const auth=await payments.authorize({orderId,amountCents:700,authorizationKey});
         assert.equal(auth.payment_state,'authorized');
-        const capture=await h6Provider.requestCapture({orderId,
-         now:new Date(Date.now()+360000)});
-        assert.equal(capture.action,'capture');
-        assert.equal(capture.provider_intent_id,providerIntentId);
-        const pending=await h6Provider.recordCapture({orderId,outcome:'unknown',
-         errorCode:'provider_timeout'});
+        assert.equal(outboundStripe.length,1);
+        assert.equal(outboundStripe[0].headers['idempotency-key'],authorizationKey);
+        const quotedCharge=new URLSearchParams(outboundStripe[0].body);
+        assert.equal(quotedCharge.get('capture_method'),'manual');
+        assert.equal(quotedCharge.get('amount'),'700');
+        assert.equal(quotedCharge.get('currency'),'eur');
+        const pending=await payments.captureOrDispatch({orderId});
         assert.equal(pending.payment_state,'capture_unknown');
         assert.equal(pending.dispatch_state,'blocked',
-         'unknown provider charge must not dispatch to kitchen');
+         'ambiguous Stripe result must not dispatch to kitchen');
+        assert.equal(outboundStripe.length,2);
+        const capturedKey=outboundStripe[1].headers['idempotency-key'];
+        assert.match(capturedKey,/^h6_capture_/);
         const retry=await h6Provider.requestCapture({orderId,
          now:new Date(Date.now()+360000)});
         assert.equal(retry.action,'capture');
         assert.equal(retry.repeated,true);
-        assert.equal(retry.capture_key,capture.capture_key,
-         'unknown result must retry the same provider idempotency key');
+        assert.equal(retry.provider_intent_id,providerIntentId);
+        assert.equal(retry.capture_key,capturedKey,
+         'unknown capture must retain the same durable idempotency key');
         const successEvent={id:'evt_F20AfterTransferCapture001',object:'event',
          livemode:false,created:Math.floor(Date.now()/1000),
          type:'payment_intent.succeeded',
@@ -4743,9 +4772,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(requested.action,'refund');
         assert.equal(requested.provider_charge_id,providerChargeId);
         assert.equal(requested.amount_cents,'300');
-        const unknownRefund=await h6Provider.recordRefund({
-         refundAttemptId:refundId.id,outcome:'unknown'});
+        const unknownRefund=await payments.refund({refundAttemptId:refundId.id});
         assert.equal(unknownRefund.state,'unknown');
+        assert.equal(outboundStripe.length,3);
+        assert.equal(outboundStripe[2].path,'/v1/refunds');
+        assert.equal(outboundStripe[2].headers['idempotency-key'],
+         requested.idempotency_key);
+        const refundBody=new URLSearchParams(outboundStripe[2].body);
+        assert.equal(refundBody.get('charge'),providerChargeId);
+        assert.equal(refundBody.get('amount'),'300');
+        assert.equal(refundBody.get('metadata[sabora_refund_attempt_id]'),refundId.id);
         const refundRetry=await h6Provider.requestRefund({refundAttemptId:refundId.id});
         assert.equal(refundRetry.idempotency_key,requested.idempotency_key);
         assert.equal(refundRetry.repeated,true);
