@@ -23,7 +23,7 @@ const CONFLICT=new Set(['dispatch_not_acknowledgeable','cash_settlement_conflict
  'customer_cancellation_limits_not_configured','h6_idempotency_conflict','incident_already_resolved',
  'incident_exceeds_captured_amount','incident_exceeds_cash_paid','incident_payment_not_reconcilable',
  'kitchen_refund_cannot_be_denied','payment_outcome_unknown','cash_refund_not_due']);
-const INPUT=new Set(['invalid_h6_operation','invalid_h6_dispatch_request','invalid_h6_incident_request',
+const INPUT=new Set(['invalid_h6_operation','invalid_h6_account_close','invalid_h6_dispatch_request','invalid_h6_incident_request',
  'invalid_h6_incident_resolution','invalid_h6_cash_settlement','invalid_h6_cash_refund',
  'invalid_incident_request','invalid_incident_resolution','invalid_cash_settlement','invalid_pickup_operation']);
 const failure=(reply,error)=>{
