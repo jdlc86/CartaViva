@@ -4797,7 +4797,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const refundEvent={id:'evt_F20AfterTransferRefund001',object:'event',
          livemode:false,created:Math.floor(Date.now()/1000),
          type:'refund.updated',data:{object:{object:'refund',
-          id:'re_F20PostTransferRefund001',status:'succeeded',
+          id:'re_F20PostTransferRefund001',charge:providerChargeId,status:'succeeded',
           metadata:{sabora_refund_attempt_id:refundId.id}}}};
         const refundDone=await verifiedStripeWebhook(signStripeEvent(refundEvent));
         assert.equal(refundDone.outcome,'applied');
