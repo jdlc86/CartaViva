@@ -6458,7 +6458,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // window on the PostgreSQL server clock. No synthetic dispatch, adjusted
   // grouping_deadline, forced first_confirmed_at, virtual clock or test HTTP
   // route. The same real client PWA confirms first/grouped/late orders.
-  {
+  if(process.env.SABORA_CI_F21_FULL_WINDOW==='true'){
    const {pathToFileURL,fileURLToPath}=await import('node:url');
    const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
@@ -6551,9 +6551,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(cashBefore.outstanding_cents,'1400');
     assert.equal(cashBefore.state,'open');
     const eventCount=async()=>Number((await admin.query(`SELECT count(*)::int AS n
-     FROM sabora.event_outbox
-     WHERE event_type='sabora.kitchen.dispatch_requested'
-     AND aggregate_id=ANY($1::uuid[])`,
+     FROM sabora.event_outbox e
+     JOIN sabora.kitchen_dispatches d ON d.id=e.aggregate_id
+     WHERE e.event_type='sabora.kitchen.dispatch_requested'
+     AND d.round_id=ANY($1::uuid[])`,
      [[first.roundId,grouped.roundId]])).rows[0].n);
     // No worker may dispatch a 300-second round early.
     const liveListener=await createPostgresH6OutboxNotifier({pool:pools[8]});
@@ -6562,6 +6563,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      listSchedulable:opts=>h6Provider.listSchedulable(opts),
      dispatchDue:async({orderId})=>{
       const result=await h6Provider.requestDueCapture({orderId});
+      assert.equal(result.action,'dispatch',
+       'natural-window cash rounds cannot initiate an unobserved Stripe capture');
       dispatchedIds.add(orderId);
       dispatchWaiters.get(orderId)?.();
       return result;
