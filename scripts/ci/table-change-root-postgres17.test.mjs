@@ -5357,6 +5357,208 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'real kitchen READY RPC must create one durable H6 task per line');
         assert.ok(readyBeforeClose.every(row=>row.status==='ready'&&
          row.pickup_state==='ready'&&Number(row.version)>=1));
+        // F20/R03 inverse interleaving in the SAME A->D/PG17/Chromium
+        // scenario: a legitimate newly quoted checkout enters the customer
+        // advisory lock BEFORE signed account closure. The economic account
+        // is fully paid and operationally READY, so closure would otherwise
+        // be permitted. This is not a mock of SQL ordering or API responses.
+        const reverseBasket='b3_reverse_close_race_basket_01';
+        const reverseQuote=await http.inject({method:'POST',
+         url:'/api/v1/customer/quotes',headers:dHeaders(diner),
+         payload:{tableId:httpFixture.concurrentTable,qrToken:dQr,
+          visitId:payload.visitId,basketId:reverseBasket,
+          lines:[{itemId,selection:{options:{},extras:[]},quantity:1}]}});
+        assert.equal(reverseQuote.statusCode,201,
+         'inverse race must start from server-authorized quote: '+reverseQuote.body);
+        const reverseLines=reverseQuote.json().lines;
+        assert.equal(reverseLines.length,1);
+        const reversePayload={tableId:httpFixture.concurrentTable,qrToken:dQr,
+         visitId:payload.visitId,basketId:reverseBasket,
+         requestKey:'b3_reverse_close_checkout_01',paymentMode:'pay_at_end',
+         lines:[{quoteId:reverseLines[0].quoteId,itemId,
+          selection:{options:{},extras:[]},quantity:1}]};
+        const reverseHolder=await admin.connect();
+        let reverseLocked=false,reverseCheckout=null,reverseClose=null;
+        try{
+         await reverseHolder.query('BEGIN');reverseLocked=true;
+         const holderPid=(await reverseHolder.query(
+          'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+         await reverseHolder.query(`SELECT pg_advisory_xact_lock(
+          pg_catalog.hashtextextended($1::text,140630))`,[diner.customer]);
+         reverseCheckout=http.inject({method:'POST',
+          url:'/api/v1/customer/orders/confirm',
+          headers:dHeaders(diner),payload:reversePayload});
+         let customerQueued=false;
+         for(let tries=0;tries<150;tries++){
+          const row=(await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a
+           WHERE a.pid<>$1::int AND a.wait_event_type='Lock'
+            AND a.wait_event='advisory'
+            AND a.query LIKE '%confirm_customer_round_h6_transfer_integration_candidate%'
+            AND $1::int=ANY(pg_blocking_pids(a.pid))`,
+           [holderPid])).rows[0];
+          if(row.n>0){customerQueued=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(customerQueued,true,
+          'customer checkout must queue FIRST at the actual customer advisory lock');
+         reverseClose=http.inject({method:'POST',url:closeUrl,
+          headers:closingHeaders,payload:{
+           correlationId:'b3_f20_inverse_close_loses_to_new_checkout'}});
+         let closerQueued=false;
+         for(let tries=0;tries<150;tries++){
+          const row=(await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a
+           WHERE a.pid<>$1::int AND a.wait_event_type='Lock'
+            AND a.wait_event='advisory'
+            AND a.query LIKE '%close_h6_account_authorized_candidate%'
+            AND $1::int=ANY(pg_blocking_pids(a.pid))`,
+           [holderPid])).rows[0];
+          if(row.n>0){closerQueued=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(closerQueued,true,
+          'signed close must queue SECOND on the same customer advisory lock');
+         await reverseHolder.query('COMMIT');reverseLocked=false;
+         const purchased=await reverseCheckout;
+         assert.equal(purchased.statusCode,201,
+          'first-in-queue checkout must win: '+purchased.body);
+         const reverseReceipt=purchased.json();
+         assert.equal(reverseReceipt.accountId,diner.account);
+         assert.equal(reverseReceipt.amountCents,700);
+         assert.equal(reverseReceipt.paymentMode,'pay_at_end');
+         const refused=await reverseClose;
+         assert.equal(refused.statusCode,409,
+          'late closing must not settle newly charged consumption: '+refused.body);
+         assert.equal((await admin.query(`SELECT
+          state,outstanding_cents,cash_settled_cents
+          FROM sabora.customer_accounts WHERE id=$1`,
+          [diner.account])).rows[0].outstanding_cents,'700');
+         assert.equal((await admin.query(`SELECT count(*)::int AS n
+          FROM sabora.order_rounds WHERE account_id=$1`,
+          [diner.account])).rows[0].n,3);
+         assert.equal((await admin.query(`SELECT count(*)::int AS n
+          FROM sabora.customer_order_attempt_batches WHERE request_key=$1`,
+          [reversePayload.requestKey])).rows[0].n,1);
+         const reverseReplay=await http.inject({method:'POST',
+          url:'/api/v1/customer/orders/confirm',
+          headers:dHeaders(diner),payload:reversePayload});
+         assert.equal(reverseReplay.statusCode,200,reverseReplay.body);
+         assert.equal(reverseReplay.json().status,'replayed');
+         // Cash collection and an optimistic close now queue in the SAME
+         // PostgreSQL transaction window: cash must be registered once,
+         // but an unfinished kitchen round still vetoes closing.
+         const cashHolder=await admin.connect();
+         let cashHeld=false,cashPending=null,closePending=null;
+         try{
+          await cashHolder.query('BEGIN');cashHeld=true;
+          const cashHolderPid=(await cashHolder.query(
+           'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+          await cashHolder.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
+           [diner.account]);
+          const dueBody={amountCents:700,
+           correlationId:'b3_f20_inverse_cash_700_once'};
+          cashPending=http.inject({method:'POST',
+           url:'/api/v1/operations/accounts/'+diner.account+'/cash-settlements',
+           headers:closingHeaders,payload:dueBody});
+          let cashQueued=false;
+          for(let tries=0;tries<150;tries++){
+           const row=(await admin.query(`SELECT count(*)::int AS n
+            FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
+             AND $1::int=ANY(pg_blocking_pids(a.pid))
+             AND a.query LIKE '%settle_h6_cash%'`,
+            [cashHolderPid])).rows[0];
+           if(row.n>0){cashQueued=true;break;}
+           await new Promise(resolve=>setTimeout(resolve,40));
+          }
+          assert.equal(cashQueued,true,
+           'cash settlement must reach PostgreSQL account lock, not just HTTP');
+          closePending=http.inject({method:'POST',url:closeUrl,
+           headers:closingHeaders,
+           payload:{correlationId:'b3_f20_inverse_close_versus_cash'}});
+          let closeQueued=false;
+          for(let tries=0;tries<150;tries++){
+           const row=(await admin.query(`SELECT count(*)::int AS n
+            FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
+             AND a.query LIKE '%close_h6_account_authorized_candidate%'`)).rows[0];
+           if(row.n>0){closeQueued=true;break;}
+           await new Promise(resolve=>setTimeout(resolve,40));
+          }
+          assert.equal(closeQueued,true,
+           'close must be blocked on live PostgreSQL during competing cash receipt');
+          await cashHolder.query('COMMIT');cashHeld=false;
+          const cashResult=await cashPending;
+          assert.equal(cashResult.statusCode,201,cashResult.body);
+          assert.equal(cashResult.json().outstandingCents,0);
+          const refused=await closePending;
+          assert.equal(refused.statusCode,409,
+           'cash zero cannot close unacknowledged kitchen round: '+refused.body);
+          const cashReplay=await http.inject({method:'POST',
+           url:'/api/v1/operations/accounts/'+diner.account+'/cash-settlements',
+           headers:closingHeaders,payload:dueBody});
+          assert.equal(cashReplay.statusCode,201);
+          assert.equal(cashReplay.json().repeated,true);
+         }finally{
+          if(cashHeld)await cashHolder.query('ROLLBACK').catch(()=>{});
+          cashHolder.release();
+          if(cashPending)await Promise.allSettled([cashPending]);
+          if(closePending)await Promise.allSettled([closePending]);
+         }
+         const outstanding=(await admin.query(`SELECT state,
+          outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
+          WHERE id=$1`,[diner.account])).rows[0];
+         assert.deepEqual(outstanding,{state:'open',outstanding_cents:'0',
+          cash_settled_cents:'2600'});
+         // The new real order must complete its full life cycle, too:
+         // sealed SQL dispatch -> signed kitchen ACK -> Chromium PREPARING /
+         // READY -> durable H6 pickup task, before the original close-wins
+         // contention can legitimately settle the account.
+         const reverseRound=(await admin.query(`SELECT id,state,
+          grouping_deadline FROM sabora.order_rounds WHERE order_id=$1`,
+          [reverseReceipt.orderId])).rows[0];
+         assert.equal(reverseRound.state,'grouping');
+         // This short deadline adjustment is disposable fixture setup only;
+         // the separate 300-second scenario below validates natural timing.
+         await admin.query(`UPDATE sabora.order_rounds SET
+          grouping_deadline=clock_timestamp()-interval '1 second'
+          WHERE id=$1 AND state='grouping'`,[reverseRound.id]);
+         const dispatch=await h6Provider.requestDueCapture({
+          orderId:reverseReceipt.orderId});
+         assert.equal(dispatch.action,'dispatch');
+         assert.equal(dispatch.repeated,false);
+         const ack=await http.inject({method:'POST',
+          url:'/api/v1/operations/dispatches/'+dispatch.dispatch_id+'/ack',
+          headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+          payload:{correlationId:'b3_f20_inverse_kitchen_ack'}});
+         assert.equal(ack.statusCode,200,ack.body);
+         const additionalLines=(await admin.query(`SELECT l.id,l.status
+          FROM sabora.order_lines l WHERE l.order_id=$1`,
+          [reverseReceipt.orderId])).rows;
+         assert.equal(additionalLines.length,1);
+         const extraLine=await ensureVisibleBoardLine(chefPage,additionalLines[0].id);
+         const preparing=chefPage.waitForResponse(response=>
+          new URL(response.url()).pathname===
+           '/api/v1/operations/order-lines/'+additionalLines[0].id+'/transitions',
+          {timeout:20000});
+         await extraLine.getByRole('button',{name:'Iniciar preparación'}).click();
+         assert.equal((await preparing).status(),201);
+         const ready=chefPage.waitForResponse(response=>
+          new URL(response.url()).pathname===
+           '/api/v1/operations/order-lines/'+additionalLines[0].id+'/transitions',
+          {timeout:20000});
+         await extraLine.getByRole('button',{name:'Marcar lista'}).click();
+         assert.equal((await ready).status(),201);
+         const finalLine=(await admin.query(`SELECT l.status,t.state
+          FROM sabora.order_lines l JOIN sabora.pickup_tasks t
+          ON t.order_line_id=l.id WHERE l.id=$1`,
+          [additionalLines[0].id])).rows[0];
+         assert.deepEqual(finalLine,{status:'ready',state:'ready'});
+        }finally{
+         if(reverseLocked)await reverseHolder.query('ROLLBACK').catch(()=>{});
+         reverseHolder.release();
+         if(reverseCheckout)await Promise.allSettled([reverseCheckout]);
+         if(reverseClose)await Promise.allSettled([reverseClose]);
+        }
         const legacyTransition=await http.inject({method:'POST',
          url:'/api/v1/operations/order-lines/'+readyBeforeClose[0].id+'/transitions',
          headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
@@ -5434,8 +5636,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           FROM sabora.customer_order_attempt_batches WHERE request_key=$1`,
           [competingOrder.requestKey])).rows[0].n,0);
          assert.equal((await admin.query(`SELECT count(*)::int AS n
-          FROM sabora.order_rounds WHERE account_id=$1`,[diner.account])).rows[0].n,2,
-          'closing under contention may not create a third economic round');
+          FROM sabora.order_rounds WHERE account_id=$1`,[diner.account])).rows[0].n,3,
+          'closing under contention may not create a fourth economic round');
          assert.equal((await admin.query(`SELECT outstanding_cents
           FROM sabora.customer_accounts WHERE id=$1`,[diner.account])).rows[0].outstanding_cents,
           '0','closing under contention may not invent new debt');
@@ -5478,10 +5680,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(closedSql.closed_by,httpFixture.waiter);
         assert.equal(closedSql.close_correlation_id,'b3_f20_close_after_resolved');
         assert.equal(closedSql.outstanding_cents,'0');
-        assert.equal(closedSql.cash_settled_cents,'1900');
+        assert.equal(closedSql.cash_settled_cents,'2600');
         assert.equal(closedSql.table_id,httpFixture.concurrentTable);
         assert.equal(closedSql.accounts,1);
-        assert.equal(closedSql.rounds,2);
+        assert.equal(closedSql.rounds,3);
         const revokedGrant=(await admin.query(`SELECT status,decided_by,revoked_at,
          consumed_at FROM sabora.customer_table_change_requests WHERE id=$1`,
          [closeGrant.id])).rows[0];
@@ -5622,7 +5824,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           freshAfterClose.body);
         assert.equal((await admin.query(`SELECT count(*)::int AS n
          FROM sabora.order_rounds WHERE account_id=$1`,
-         [diner.account])).rows[0].n,2);
+         [diner.account])).rows[0].n,3);
         const untouchedStripe=(await admin.query(`SELECT a.state,
          (SELECT count(*)::int FROM sabora.order_rounds r
           WHERE r.account_id=a.id) AS rounds FROM sabora.customer_accounts a
