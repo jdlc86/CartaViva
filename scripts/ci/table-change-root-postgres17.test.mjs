@@ -5317,6 +5317,82 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       headers:requestHeaders,payload:{}});
      assert.equal(duplicateGrant.statusCode,409,
       'an unused approval remains exclusive even after real 90-second expiry');
+     // F15 positive completion: use this still-approved grant after >90 s.
+     // A second real customer PWA, signed cookie, QR A, quote and checkout
+     // execute against the SAME Fastify and PG17 used by the waiter race.
+     const grantedPage=await rejectClientContext.newPage();
+     try{
+      await grantedPage.addInitScript(({id})=>{
+       localStorage.setItem('sabora.client.selection.v1',
+        JSON.stringify([{itemId:id,name:'Plato de integración',
+         priceCents:700,quantity:1}]));
+      },{id:itemId});
+      await grantedPage.goto('http://127.0.0.1:'+caddr.port+
+       '/qr/v1/SABORA/'+httpFixture.sourceTable+'#'+qrToken);
+      await grantedPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).waitFor({timeout:20000});
+      await grantedPage.getByText('Cambio de mesa aprobado').first().waitFor();
+      await grantedPage.screenshot({path:rejectJoin(rejectEvidence,
+       'b3-f15-approved-after-natural-expiry-mobile.png'),fullPage:true});
+      await grantedPage.getByRole('button',
+       {name:'Continuar con la mesa escaneada'}).click();
+      await grantedPage.getByText('Mesa verificada').waitFor({timeout:20000});
+      await grantedPage.getByRole('button',
+       {name:'Continuar con el pedido'}).click();
+      await grantedPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+      let confirmedBody=null;
+      grantedPage.on('request',request=>{
+       if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
+        confirmedBody=request.postDataJSON();
+      });
+      const finalOrderResponse=grantedPage.waitForResponse(response=>
+       new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+       {timeout:30000});
+      await grantedPage.getByRole('button',{name:'Confirmar pedido'}).click();
+      const finalOrder=await finalOrderResponse;
+      if(finalOrder.status()!==201)throw Error(
+       'approved_grant_expired_checkout_failed:'+await finalOrder.text());
+      const receipt=await finalOrder.json();
+      assert.equal(receipt.status,'confirmed');
+      assert.equal(receipt.accountId,httpFixture.sourceAccount);
+      await grantedPage.getByText('Pedido confirmado').waitFor({timeout:20000});
+      assert.ok(confirmedBody);
+      const replay=await grantedPage.evaluate(async input=>{
+       const response=await fetch('/api/v1/customer/orders/confirm',{
+        method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+       return {status:response.status,result:await response.json()};
+      },confirmedBody);
+      assert.equal(replay.status,200);
+      assert.equal(replay.result.status,'replayed');
+      assert.equal(replay.result.accountId,httpFixture.sourceAccount);
+      const finalState=(await admin.query(`SELECT q.status,q.destination_table_id,
+       q.consumed_order_id,b.table_id,a.outstanding_cents,
+       (SELECT count(*)::int FROM sabora.order_rounds r WHERE r.account_id=a.id) AS rounds,
+       (SELECT count(*)::int FROM sabora.customer_accounts c
+        WHERE c.customer_id=a.customer_id) AS accounts
+       FROM sabora.customer_table_change_requests q
+       JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+       JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+       [fourth.id])).rows[0];
+      assert.equal(finalState.status,'consumed');
+      assert.equal(finalState.destination_table_id,httpFixture.sourceTable);
+      assert.equal(finalState.consumed_order_id,receipt.orderId);
+      assert.equal(finalState.table_id,httpFixture.sourceTable);
+      assert.equal(finalState.outstanding_cents,'3800');
+      assert.equal(finalState.rounds,3);
+      assert.equal(finalState.accounts,1);
+      const histories=(await admin.query(`SELECT o.table_id,r.account_id
+       FROM sabora.orders o JOIN sabora.order_rounds r ON r.order_id=o.id
+       WHERE r.account_id=$1 ORDER BY o.confirmed_at,o.id`,
+       [httpFixture.sourceAccount])).rows;
+      assert.equal(histories.length,3,'two transfers preserve three rounds');
+      assert.ok(histories.some(row=>row.table_id===httpFixture.destinationTable),
+       'intermediate B order keeps historical B origin');
+      assert.ok(histories.every(row=>row.account_id===httpFixture.sourceAccount));
+      await grantedPage.screenshot({path:rejectJoin(rejectEvidence,
+       'b3-f15-confirmed-grant-after-natural-expiry-mobile.png'),fullPage:true});
+     }finally{await grantedPage.close();}
      // Revoking the customer session while its SSE connection is still open
      // must cut off event access, fail closed in the PWA and reject the next
      // HTTP operation. The HTTP authentication fixture intentionally accepts
@@ -5339,7 +5415,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       FROM sabora.customer_accounts a JOIN
       sabora.customer_account_operational_bindings b ON b.account_id=a.id
       WHERE a.id=$1`,[httpFixture.sourceAccount])).rows[0].table_id,
-      httpFixture.destinationTable);
+      httpFixture.sourceTable,
+      'new B-to-A confirmation remains committed after revocation');
      assert.deepEqual(rejectedClientErrors,[]);
      await staffPage.evaluate(()=>window.__saboraCiDispose());
     }finally{
