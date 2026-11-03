@@ -5604,7 +5604,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(opposed.statusCode,409,
       'a later contradictory rejection cannot overwrite approval');
      const grantBefore=(await admin.query(`SELECT q.status,q.created_at,q.expires_at,
-      q.decided_at,q.consumed_at,b.table_id,a.outstanding_cents,
+      q.decided_at,q.decided_by,q.consumed_at,b.table_id,a.outstanding_cents,
       clock_timestamp() AS server_now
       FROM sabora.customer_table_change_requests q
       JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
