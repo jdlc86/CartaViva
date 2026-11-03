@@ -2976,6 +2976,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.restaurant_settings(singleton,name)
      VALUES(true,'Sabora PG17 isolated test') ON CONFLICT(singleton) DO NOTHING`);
     await fixture.query(`INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')`,[httpFixture.waiter]);
+    await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
+     (key_id,hmac_key,not_before,expires_at)
+     VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
+     [cashSigningKeyId,cashSigningSecret]);
     // Historical A order has a completed pickup and a still-pending line.
     // The integrated B checkout must redirect only the pending destination.
     const priorOrder='b0a00000-0000-4000-8000-000000000340';
@@ -3904,13 +3908,39 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         'h6_capture_f20_history_pending_00001','requires_action',
         'pi_F20HistoryPending12345')`,
        [payNowDiner.round,payNowDiner.account]);
-      await raceFixture.query(`INSERT INTO sabora.cash_settlements
-       (account_id,actor_user_id,correlation_id,amount_cents,kind)
-       VALUES($1,$2,'f20_prior_cash_00001',300,'payment')`,
-       [cashHistoryDiner.account,httpFixture.waiter]);
+      // The partial cash receipt will be performed by signed HTTP + PG17, not seeded.
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
+     // Before A->D, a waiter performs an actual 300-cent partial receipt over
+     // signed Fastify/PG17. Concurrent replay and overpayment must not mutate
+     // the same account a second time. The old direct cash insert is gone.
+     const preCashUrl='/api/v1/operations/accounts/'+cashHistoryDiner.account+'/cash-settlements';
+     const cashHeaders={'x-ci-staff':'authorized-waiter','content-type':'application/json'};
+     const preCashBody={amountCents:300,correlationId:'f20_pre_transfer_cash_300'};
+     const forbiddenCash=await http.inject({method:'POST',url:preCashUrl,
+      payload:preCashBody});
+     assert.equal(forbiddenCash.statusCode,403);
+     const preReceipts=await Promise.all([1,2].map(()=>http.inject({
+      method:'POST',url:preCashUrl,headers:cashHeaders,payload:preCashBody})));
+     assert.ok(preReceipts.every(r=>r.statusCode===201),
+      preReceipts.map(r=>r.body).join(' '));
+     assert.deepEqual(preReceipts.map(r=>r.json().repeated).sort(),[false,true]);
+     assert.ok(preReceipts.every(r=>r.json().accountId===cashHistoryDiner.account));
+     assert.ok(preReceipts.every(r=>r.json().outstandingCents===900));
+     assert.ok(preReceipts.every(r=>r.json().state==='partial'));
+     const refusedCash=await http.inject({method:'POST',url:preCashUrl,
+      headers:cashHeaders,payload:{amountCents:1200,correlationId:'f20_overpay_forbidden'}});
+     assert.equal(refusedCash.statusCode,409,'overpayment must fail before ledger write');
+     const originalCash=(await admin.query(`SELECT state,outstanding_cents,cash_settled_cents
+      FROM sabora.customer_accounts WHERE id=$1`,[cashHistoryDiner.account])).rows[0];
+     assert.deepEqual(originalCash,{state:'open',outstanding_cents:'900',
+      cash_settled_cents:'300'});
+     assert.equal((await admin.query(`SELECT count(*)::int AS n
+      FROM sabora.cash_settlements WHERE account_id=$1`,
+      [cashHistoryDiner.account])).rows[0].n,1);
+     cashHistoryDiner.balance=900;
+     cashHistoryDiner.cashSettled=300;
      const raceRequest=await http.inject({method:'POST',
       url:'/api/v1/customer/table-change/requests',
       headers:{cookie:'__Secure-sabora_customer='+rival.token,
