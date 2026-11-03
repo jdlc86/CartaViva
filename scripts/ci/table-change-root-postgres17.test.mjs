@@ -5183,28 +5183,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // The management board is paginated. Historic CI lines can occupy
         // the first 100 results; the chef must explicitly load further pages
         // rather than silently losing actionable orders.
-        const requiredIds=new Set(kitchenLines.map(line=>line.id));
-        let pageLoads=0;
-        while(true){
-         const visibleIds=await chefPage.locator('li[data-line-id]')
-          .evaluateAll(elements=>elements.map(element=>element.getAttribute('data-line-id')));
-         if([...requiredIds].every(id=>visibleIds.includes(id)))break;
-         const more=chefPage.getByRole('button',{name:'Cargar más comandas'});
-         assert.ok(await more.count(),
-          'kitchen board must expose pagination when confirmed lines are beyond first page');
-         assert.ok(++pageLoads<=20,'kitchen pagination must terminate within 20 pages');
-         await more.click();
-         await chefPage.getByRole('button',{name:'Cargar más comandas'})
-          .or(chefPage.getByText('Mostrando', {exact:false})).first()
-          .waitFor({timeout:20000}).catch(()=>{});
-         await chefPage.waitForFunction(previous=>
-          document.querySelectorAll('li[data-line-id]').length>previous,
-          visibleIds.length,{timeout:20000});
-        }
+        const ensureVisibleBoardLine=async(page,lineId)=>{
+         for(let pageLoads=0;pageLoads<=20;pageLoads++){
+          const row=page.locator('li[data-line-id="'+lineId+'"]');
+          if(await row.count())return row;
+          const more=page.getByRole('button',{name:'Cargar más comandas'});
+          assert.ok(await more.count(),
+           'signed management board has no page containing required line '+lineId);
+          assert.ok(pageLoads<20,'management board cursor failed to terminate');
+          const previous=await page.locator('li[data-line-id]').count();
+          await more.click();
+          await page.waitForFunction(count=>
+           document.querySelectorAll('li[data-line-id]').length>count,
+           previous,{timeout:20000});
+         }
+         throw Error('management_board_line_unreachable:'+lineId);
+        };
         for(const line of kitchenLines){
          assert.equal(line.status,'confirmed',
           'kitchen transitions must start from real confirmed lines');
-         const cardLine=chefPage.locator('li[data-line-id="'+line.id+'"]');
+         const cardLine=await ensureVisibleBoardLine(chefPage,line.id);
          await cardLine.getByRole('button',{name:'Iniciar preparación'})
           .waitFor({timeout:20000});
          const firstResponse=chefPage.waitForResponse(response=>
@@ -5325,8 +5323,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         },jwtWaiter);
         await waiterPage.getByRole('button',{name:'Sala',exact:true})
          .click();
-        const pickupLine=waiterPage.locator(
-         'li[data-line-id="'+activePickup.id+'"]');
+        const pickupLine=await ensureVisibleBoardLine(waiterPage,activePickup.id);
         await pickupLine.getByRole('button',{name:'Voy a recoger'})
          .waitFor({timeout:20000});
         const pickupPending=waiterPage.waitForResponse(response=>
