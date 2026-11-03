@@ -6,7 +6,7 @@ const ROLE_NAME=/^[a-z][a-z0-9_]{0,62}$/;
 const CORRELATION=/^[A-Za-z0-9_-]{8,128}$/;
 const ROLES=new Set(['admin','waiter','kitchen','root']);
 const PICKUP_ACTIONS=new Set(['claim_pickup','cancel_pickup','correct_ready']);
-const ACTIONS=new Set(['report_incident','resolve_incident','settle_cash','refund_cash','ack_dispatch','read_events',
+const ACTIONS=new Set(['report_incident','resolve_incident','settle_cash','refund_cash','close_account','ack_dispatch','read_events',
  ...PICKUP_ACTIONS]);
 
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
