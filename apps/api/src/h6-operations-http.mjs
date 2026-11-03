@@ -113,6 +113,18 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
   try{return reply.code(201).send(await operations.settleCash(verified(request),{
    accountId:request.params.accountId,...body}));}catch(error){return failure(reply,error);}
  });
+ // Paying in full is not account closure: an explicit staff action is required.
+ app.post('/api/v1/operations/accounts/:accountId/close',
+  {preHandler:floor,bodyLimit:2048},async(request,reply)=>{
+   const body=request.body;
+   if(!UUID.test(request.params?.accountId??'')||!exact(body,['correlationId'])||
+      !CORRELATION.test(body.correlationId))
+    return reply.code(400).send({error:'invalid_h6_operation'});
+   try{return reply.code(200).send(await operations.closeAccount(verified(request),{
+    accountId:request.params.accountId,correlationId:body.correlationId
+   }));}
+   catch(error){return failure(reply,error);}
+  });
  app.post('/api/v1/operations/incidents/:incidentId/cash-refund',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
   const body=request.body;
   if(!UUID.test(request.params?.incidentId??'')||!exact(body,['correlationId'])||
