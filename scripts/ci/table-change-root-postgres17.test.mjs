@@ -4799,6 +4799,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          type:'refund.updated',data:{object:{object:'refund',
           id:'re_F20PostTransferRefund001',charge:providerChargeId,status:'succeeded',
           metadata:{sabora_refund_attempt_id:refundId.id}}}};
+        // Even an otherwise correctly signed refund event cannot settle an
+        // incident if it references another charge: binding is checked in SQL.
+        const misbound=await verifiedStripeWebhook(signStripeEvent({
+         ...refundEvent,id:'evt_F20WrongOriginalCharge001',
+         data:{object:{...refundEvent.data.object,
+          charge:'ch_F20OtherAccountWrongCharge01'}}}));
+        assert.equal(misbound.outcome,'ignored');
+        assert.equal((await admin.query(`SELECT state FROM sabora.refund_attempts
+         WHERE id=$1`,[refundId.id])).rows[0].state,'unknown');
         const refundDone=await verifiedStripeWebhook(signStripeEvent(refundEvent));
         assert.equal(refundDone.outcome,'applied');
         assert.equal(refundDone.repeated,false);
