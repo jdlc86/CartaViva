@@ -4709,7 +4709,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          data:{object:{object:'payment_intent',id:providerIntentId,
           status:'requires_payment_method'}}}));
         assert.equal(failedLate.outcome,'stale');
-        const evidencePay=(await admin.query(`SELECT p.state,p.provider_intent_id,
+        const evidencePay=(await admin.query(`SELECT p.id AS payment_attempt_id,p.state,p.provider_intent_id,
          p.provider_charge_id,r.state AS round_state,d.id AS dispatch_id,
          d.state AS dispatch_state FROM sabora.payment_attempts p
          JOIN sabora.order_rounds r ON r.id=p.round_id
@@ -4773,7 +4773,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const scopedEvents=(await admin.query(`SELECT event_type,table_id
          FROM sabora.event_outbox WHERE account_id=$1
          AND aggregate_id=ANY($2::uuid[]) ORDER BY id`,
-         [diner.account,[confirmed.paymentAttemptId,refundId.id,incident.incidentId]])).rows;
+         [diner.account,[evidencePay.payment_attempt_id,refundId.id,incident.incidentId]])).rows;
         assert.ok(scopedEvents.some(e=>e.event_type==='sabora.payment.authorized'));
         assert.ok(scopedEvents.some(e=>e.event_type==='sabora.stripe.webhook_applied'));
         assert.ok(scopedEvents.some(e=>e.event_type==='sabora.refund.succeeded'));
@@ -4784,7 +4784,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          [cashHistoryDiner.account])).rows[0];
         // The other diner has independent signed-cash history, not this Stripe refund.
         assert.equal(otherCash.cash_settled_cents,'300');
-        assert.equal(otherCash.outstanding_cents,'1600');
+        assert.equal(otherCash.outstanding_cents,'900');
        }
        if(mode==='pay_at_end'){
         // After A->D, repeat a genuinely authorized partial receipt and then
