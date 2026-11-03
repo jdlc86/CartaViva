@@ -3371,19 +3371,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          authorization:request.headers().authorization});
       });
       await page.goto('http://127.0.0.1:'+uiAddress.port+'/#mesas');
-      await page.evaluate(async()=>{
+      await page.evaluate(async jwt=>{
        const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
-       const fetchImpl=(input,init={})=>{
-        const headers=new Headers(init.headers);
-        headers.set('x-ci-staff','authorized-waiter');
-        return fetch(input,{...init,headers});
-       };
        window.__saboraCiDispose=mountAuthenticatedManagementApp({
         element:document.getElementById('root'),
-        getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
-        fetchImpl,enableTableChangeQueue:true
+        getAccessToken:async()=>jwt,enableTableChangeQueue:true
        });
-      });
+      },jwtWaiter);
       await page.getByRole('heading',{name:'Solicitudes de cambio de mesa'}).waitFor();
       try{
        await page.getByText('Mesa 981301').first().waitFor({timeout:12000});
@@ -5290,19 +5284,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      await offlinePage.close();
      const staffPage=await rejectStaffContext.newPage();
      await staffPage.goto('http://127.0.0.1:'+maddr.port+'/#mesas');
-     await staffPage.evaluate(async()=>{
-      const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
-      const fetchImpl=(input,init={})=>{
-       const headers=new Headers(init.headers);
-       headers.set('x-ci-staff','authorized-waiter');
-       return fetch(input,{...init,headers});
-      };
-      window.__saboraCiDispose=mountAuthenticatedManagementApp({
-       element:document.getElementById('root'),
-       getAccessToken:async()=> 'verified-ci-waiter-bearer-token',
-       fetchImpl,enableTableChangeQueue:true
-      });
-     });
+     await staffPage.evaluate(async jwt=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       window.__saboraCiDispose=mountAuthenticatedManagementApp({
+        element:document.getElementById('root'),
+        getAccessToken:async()=>jwt,enableTableChangeQueue:true
+       });
+      },jwtWaiter);
      await staffPage.getByText('Mesa 981302').first().waitFor({timeout:20000});
      const readsBeforeRejection=stateRequests.length;
      await staffPage.getByRole('button',{name:'Rechazar',exact:true}).click();
