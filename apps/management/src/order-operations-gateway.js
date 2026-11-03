@@ -123,10 +123,23 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
   if (typeof send !== 'function'||!Number.isSafeInteger(reconnectDelayMs)||reconnectDelayMs<100||reconnectDelayMs>30000)
     throw Error('invalid_order_operations_sender');
   return Object.freeze({
-    async listBoard({status = null, limit = 100} = {}) {
+    async listBoard({status = null, limit = 100, cursor = null} = {}) {
       const parameters = new URLSearchParams();
       if (status !== null) parameters.set('status', status);
       parameters.set('limit', String(limit));
+      if (cursor !== null) {
+        if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor) ||
+          typeof cursor.confirmedAt !== 'string' ||
+          !Number.isFinite(Date.parse(cursor.confirmedAt)) ||
+          new Date(cursor.confirmedAt).toISOString() !== cursor.confirmedAt ||
+          !UUID.test(cursor.orderId) ||
+          !Number.isSafeInteger(cursor.lineNumber) || cursor.lineNumber < 1) {
+          throw Error('invalid_order_board_cursor');
+        }
+        parameters.set('afterConfirmedAt', cursor.confirmedAt);
+        parameters.set('afterOrderId', cursor.orderId);
+        parameters.set('afterLineNumber', String(cursor.lineNumber));
+      }
       const response = await send(`/api/v1/operations/order-lines?${parameters}`, {
         method: 'GET', cache: 'no-store', redirect: 'error', credentials: 'omit',
         headers: {'Accept': 'application/json'},
