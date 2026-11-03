@@ -9,6 +9,14 @@ const CAPABILITY_KEY = /^[A-Za-z0-9_-]{8,64}$/;
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
+// Exact SQL surface for the signed, role-scoped kitchen transition candidate.
+export const TRANSITION_ORDER_LINE_SQL=`SELECT updated_order_id, updated_line_id, previous_status,
+                current_status, repeated, event_id, notification_id
+           FROM sabora.transition_order_line_authorized_candidate(
+             $1::text, $2::text, $3::uuid, $4::uuid, $5::text,
+             $6::text, $7::bigint, $8::bigint, $9::text
+           )`;
+
 const STATUSES = new Set(['confirmed', 'preparing', 'ready', 'picked_up']);
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 
@@ -342,12 +350,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
         throw Error('invalid_order_operation_capability');
       }
       const rows = assertResult(await query(
-        `SELECT updated_order_id, updated_line_id, previous_status,
-                current_status, repeated, event_id, notification_id
-           FROM sabora.transition_order_line_authorized_candidate(
-             $1::text, $2::text, $3::uuid, $4::uuid, $5::text,
-             $6::text, $7::bigint, $8::bigint, $9::text
-           )`,
+        TRANSITION_ORDER_LINE_SQL,
         [
           capability.keyId,
           capability.databaseRole,
