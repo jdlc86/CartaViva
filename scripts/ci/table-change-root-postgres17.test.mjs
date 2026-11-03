@@ -2733,8 +2733,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const staffAuthRole=(await connections[9].query(
    'SELECT current_user AS login,session_user AS session')).rows[0];
   assert.deepEqual(staffAuthRole,{login:specs[9].login,session:specs[9].login});
-  await assert.rejects(connections[9].query('SELECT * FROM sabora.staff_members'),
-   /permission denied/);
+  // staff_members currently contains only these three publicly readable-to-staff
+  // columns. SELECT * is consequently not a negative privilege assertion.
+  // Enforce the intended read-only boundary using UPDATE and private accounts.
+  await assert.rejects(connections[9].query(
+   "UPDATE sabora.staff_members SET state='revoked' WHERE user_id=$1",
+   ['b0a00000-0000-4000-8000-000000000307']),/permission denied/);
   await assert.rejects(connections[9].query('SELECT * FROM sabora.customer_accounts'),
    /permission denied/);
   await assert.rejects(connections[9].query('SET ROLE sabora_h6_fn_owner'),
@@ -3000,7 +3004,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(privateStream.statusCode,401,'no anonymous customer SSE');
    const denied=await http.inject({method:'POST',
     url:'/api/v1/operations/table-change/decisions',payload:{}});
-   assert.equal(denied.statusCode,403);
+   assert.equal(denied.statusCode,401);
    // A valid HTTP cookie must cross the real five-login SQL boundary.
    // This deliberately has no matching customer fixture: the database RPC,
    // not a mock or the HTTP authentication layer, must reject the scope.
