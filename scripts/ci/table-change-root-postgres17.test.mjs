@@ -4660,6 +4660,132 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        await page.screenshot({path:join(evidence,
         'b3-f20-economic-'+mode.replaceAll('_','-')+'-mobile.png'),
         fullPage:true});
+       if(mode==='pay_now'){
+        // F20 provider journey: a *simulated* Stripe service result is applied
+        // by real sealed H6 PostgreSQL RPCs under a distinct physical login.
+        // No Stripe network, real funds or production webhook secret is used.
+        const orderId=confirmed.orderId,roundId=confirmed.roundId;
+        const providerIntentId='pi_F20PostTransferIntent001';
+        const providerChargeId='ch_F20PostTransferCharge001';
+        const expires=new Date(Date.now()+86400000);
+        const auth=await h6Provider.recordAuthorization({orderId,
+         outcome:'authorized',providerIntentId,captureBefore:expires});
+        assert.equal(auth.payment_state,'authorized');
+        const capture=await h6Provider.requestCapture({orderId,
+         now:new Date(Date.now()+360000)});
+        assert.equal(capture.action,'capture');
+        assert.equal(capture.provider_intent_id,providerIntentId);
+        const pending=await h6Provider.recordCapture({orderId,outcome:'unknown',
+         errorCode:'provider_timeout'});
+        assert.equal(pending.payment_state,'capture_unknown');
+        assert.equal(pending.dispatch_state,'blocked',
+         'unknown provider charge must not dispatch to kitchen');
+        const retry=await h6Provider.requestCapture({orderId,
+         now:new Date(Date.now()+360000)});
+        assert.equal(retry.action,'capture');
+        assert.equal(retry.repeated,true);
+        assert.equal(retry.capture_key,capture.capture_key,
+         'unknown result must retry the same provider idempotency key');
+        const successEvent={id:'evt_F20AfterTransferCapture001',object:'event',
+         livemode:false,created:Math.floor(Date.now()/1000),
+         type:'payment_intent.succeeded',
+         data:{object:{object:'payment_intent',id:providerIntentId,
+          latest_charge:providerChargeId,status:'succeeded'}}};
+        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
+         secret:randomBytes(32)})),/stripe_webhook_unverified/);
+        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
+         timestamp:Math.floor(Date.now()/1000)-601})),/stripe_webhook_unverified/);
+        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent({
+         ...successEvent,livemode:true})),/stripe_webhook_unverified/);
+        const applied=await verifiedStripeWebhook(signStripeEvent(successEvent));
+        assert.equal(applied.outcome,'applied');
+        assert.equal(applied.repeated,false);
+        const replayEvent=await verifiedStripeWebhook(signStripeEvent(successEvent));
+        assert.equal(replayEvent.outcome,'applied');
+        assert.equal(replayEvent.repeated,true);
+        const failedLate=await verifiedStripeWebhook(signStripeEvent({
+         ...successEvent,id:'evt_F20StaleFailedAfterCaptured01',
+         type:'payment_intent.payment_failed',
+         data:{object:{object:'payment_intent',id:providerIntentId,
+          status:'requires_payment_method'}}}));
+        assert.equal(failedLate.outcome,'stale');
+        const evidencePay=(await admin.query(`SELECT p.state,p.provider_intent_id,
+         p.provider_charge_id,r.state AS round_state,d.id AS dispatch_id,
+         d.state AS dispatch_state FROM sabora.payment_attempts p
+         JOIN sabora.order_rounds r ON r.id=p.round_id
+         JOIN sabora.kitchen_dispatches d ON d.round_id=r.id
+         WHERE r.id=$1`,[roundId])).rows[0];
+        assert.equal(evidencePay.state,'captured');
+        assert.equal(evidencePay.provider_intent_id,providerIntentId);
+        assert.equal(evidencePay.provider_charge_id,providerChargeId);
+        assert.equal(evidencePay.round_state,'dispatch_requested');
+        assert.equal(evidencePay.dispatch_state,'requested');
+        assert.equal((await admin.query(`SELECT count(*)::int AS n
+         FROM sabora.kitchen_dispatches WHERE order_id=$1`,[orderId])).rows[0].n,1);
+        const kitchenUser='b0a00000-0000-4000-8000-000000000310';
+        const kitchenAck=await providerStaff.acknowledgeDispatch({
+         verifiedIdentity:{userId:kitchenUser},verifiedStaff:{userId:kitchenUser,role:'kitchen'}},{
+         dispatchId:evidencePay.dispatch_id,correlationId:'f20_after_move_kitchen_ack'});
+        assert.equal(kitchenAck.state,'acknowledged');
+        const staff={verifiedIdentity:{userId:httpFixture.waiter},
+         verifiedStaff:{userId:httpFixture.waiter,role:'waiter'}};
+        const incident=await providerStaff.reportIncident(staff,{
+         roundId,lineId:null,origin:'waiter_restaurant',
+         reason:'Plato no prestado: devolución al pagador de la ronda',
+         affectedCents:300,correlationId:'f20_after_move_restaurant_incident'});
+        assert.equal(incident.state,'refund_due');
+        assert.equal(incident.requiresArbitration,false);
+        const refundId=(await admin.query(`SELECT id,amount_cents
+         FROM sabora.refund_attempts WHERE incident_id=$1`,
+         [incident.incidentId])).rows[0];
+        assert.equal(refundId.amount_cents,'300');
+        const requested=await h6Provider.requestRefund({refundAttemptId:refundId.id});
+        assert.equal(requested.action,'refund');
+        assert.equal(requested.provider_charge_id,providerChargeId);
+        assert.equal(requested.amount_cents,'300');
+        const unknownRefund=await h6Provider.recordRefund({
+         refundAttemptId:refundId.id,outcome:'unknown'});
+        assert.equal(unknownRefund.state,'unknown');
+        const refundRetry=await h6Provider.requestRefund({refundAttemptId:refundId.id});
+        assert.equal(refundRetry.idempotency_key,requested.idempotency_key);
+        assert.equal(refundRetry.repeated,true);
+        const refundEvent={id:'evt_F20AfterTransferRefund001',object:'event',
+         livemode:false,created:Math.floor(Date.now()/1000),
+         type:'refund.updated',data:{object:{object:'refund',
+          id:'re_F20PostTransferRefund001',status:'succeeded',
+          metadata:{sabora_refund_attempt_id:refundId.id}}}};
+        const refundDone=await verifiedStripeWebhook(signStripeEvent(refundEvent));
+        assert.equal(refundDone.outcome,'applied');
+        assert.equal(refundDone.repeated,false);
+        const refundReplay=await verifiedStripeWebhook(signStripeEvent(refundEvent));
+        assert.equal(refundReplay.repeated,true);
+        const final=(await admin.query(`SELECT f.state AS refund_state,
+         f.amount_cents,f.provider_refund_id,i.state AS incident_state,
+         r.account_id FROM sabora.refund_attempts f
+         JOIN sabora.incident_cases i ON i.id=f.incident_id
+         JOIN sabora.order_rounds r ON r.id=i.round_id
+         WHERE f.id=$1`,[refundId.id])).rows[0];
+        assert.equal(final.refund_state,'succeeded');
+        assert.equal(final.amount_cents,'300');
+        assert.equal(final.provider_refund_id,'re_F20PostTransferRefund001');
+        assert.equal(final.incident_state,'resolved');
+        assert.equal(final.account_id,diner.account);
+        const scopedEvents=(await admin.query(`SELECT event_type,table_id
+         FROM sabora.event_outbox WHERE account_id=$1
+         AND aggregate_id=ANY($2::uuid[]) ORDER BY id`,
+         [diner.account,[confirmed.paymentAttemptId,refundId.id,incident.incidentId]])).rows;
+        assert.ok(scopedEvents.some(e=>e.event_type==='sabora.payment.authorized'));
+        assert.ok(scopedEvents.some(e=>e.event_type==='sabora.stripe.webhook_applied'));
+        assert.ok(scopedEvents.some(e=>e.event_type==='sabora.refund.succeeded'));
+        assert.ok(scopedEvents.every(e=>e.table_id===httpFixture.concurrentTable),
+         'customer payment and refund events must use operational destination D');
+        const otherCash=(await admin.query(`SELECT cash_settled_cents,
+         outstanding_cents FROM sabora.customer_accounts WHERE id=$1`,
+         [cashHistoryDiner.account])).rows[0];
+        // The other diner has independent signed-cash history, not this Stripe refund.
+        assert.equal(otherCash.cash_settled_cents,'300');
+        assert.equal(otherCash.outstanding_cents,'1600');
+       }
        if(mode==='pay_at_end'){
         // After A->D, repeat a genuinely authorized partial receipt and then
         // liquidate the remaining debt. The economic account stays OPEN so
