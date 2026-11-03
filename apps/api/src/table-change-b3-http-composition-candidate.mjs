@@ -1,6 +1,8 @@
 // Opt-in B3 HTTP composition. This is deliberately not imported by the
 // production bootstrap: a caller must supply six isolated SQL pools and
 // explicit HTTP authentication/authorization adapters.
+import {createStaffProtectedHooksFromPool} from './staff-protected-hooks-from-pool.mjs';
+import {preflightOrderTransitionStaffIdentity} from './order-operations-identity-preflight.mjs';
 import {createVerifiedTableChangeB3CustomerFlowCandidate}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
@@ -55,4 +57,37 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
   app.addHook('onClose',async()=>{await notifier.close();});
   return Object.freeze({mounted:true});
  }catch(error){await notifier.close();throw error;}
+}
+
+
+/**
+ * Candidate-only B3 staff JWT gate. The operational personnel JWT is checked
+ * cryptographically against an injected trusted JWKS source on EVERY request.
+ * A distinct read-only PostgreSQL LOGIN then verifies current staff membership,
+ * including suspension/revocation, before any queue read or SQL decision.
+ *
+ * No caller-provided verify/lookup function or x-ci-staff bypass is accepted.
+ * This adapter does not create users/logins, mount production routes or deploy.
+ */
+export async function mountVerifiedTableChangeB3JwtHttpCandidate(app,{
+ staffReaderPool,expectedStaffReaderLogin,issuer,getTrustedKeys,
+ ...candidate
+}={}){
+ const pools=[candidate.customerPool,candidate.operationsPool,
+  candidate.confirmationPool,candidate.h6ReadPool,candidate.flowPool,
+  candidate.pendingPool,candidate.notificationPool];
+ if(!staffReaderPool||typeof staffReaderPool.connect!=='function'||
+  typeof staffReaderPool.query!=='function'||
+  pools.some(pool=>!pool||pool===staffReaderPool)||
+  typeof expectedStaffReaderLogin!=='string'||!expectedStaffReaderLogin||
+  typeof issuer!=='string'||!/^https:\/\/[^/]+\/auth\/v1$/.test(issuer)||
+  typeof getTrustedKeys!=='function'||candidate.forRoles!==undefined)
+  throw Error('invalid_b3_staff_jwt_composition');
+ await preflightOrderTransitionStaffIdentity({
+  pool:staffReaderPool,role:expectedStaffReaderLogin
+ });
+ const forRoles=createStaffProtectedHooksFromPool({
+  pool:staffReaderPool,issuer,getTrustedKeys
+ });
+ return mountVerifiedTableChangeB3HttpCandidate(app,{...candidate,forRoles});
 }
