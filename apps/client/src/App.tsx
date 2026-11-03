@@ -439,6 +439,13 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
       'Esta compilación no tiene conectado el componente autorizado de Stripe. El pedido queda pendiente, sin inventar un pago correcto.':
       'This build has no authorized Stripe component connected. The order remains pending without inventing payment success.');
     }
+   }else if(result.paymentMode==='pay_now'&&
+     ['awaiting_authorization','payment_unknown'].includes(result.roundState??'')){
+    // A persisted order is not proof of a completed Stripe payment or dispatch.
+    setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
+    setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
+     'Pedido registrado; la autorización de Stripe sigue pendiente. No se ha confirmado ningún cobro ni envío a cocina. Consulta Notificaciones para conocer el estado.':
+     'Order recorded; Stripe authorization is still pending. No charge or kitchen dispatch has been confirmed. Check Notifications for its status.');
    }else{
     setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
     setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
