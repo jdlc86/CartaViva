@@ -140,7 +140,12 @@ export function createSealedTableChangeRpcCandidate({
    if(!verifiedIdentity||!verifiedStaff||!UUID.test(requestId??'')||
     !['approved','rejected'].includes(decision))
     throw Error('invalid_table_change_decision');
-   return withStaffTransaction(async query=>{
+   // SQL may make a pending request expired at the server deadline. That
+   // transition is a legitimate database outcome, not a failed transaction:
+   // commit it before reporting 409 to the staff HTTP caller. Throwing
+   // inside withStaffTransaction would roll the expiration back and leave
+   // a stale pending record until an unrelated customer request cleaned it.
+   const outcome=await withStaffTransaction(async query=>{
     const staff=await verifyStaff({query,verifiedIdentity,verifiedStaff});
     if(!staff||!UUID.test(staff.userId??'')||!['admin','waiter'].includes(staff.role))
      throw Error('table_change_unauthorized');
@@ -148,9 +153,12 @@ export function createSealedTableChangeRpcCandidate({
     try{row=await one(query,DECIDE_TABLE_CHANGE_H6_SQL,
      [staff.userId,requestId,decision==='approved']);}
     catch(error){throw rpcFailure(error,'decide');}
+    if(row.status==='expired')return null;
     if(row.status!==decision)throw Error('table_change_request_not_pending');
     return Object.freeze({request:Object.freeze({id:requestId,status:decision})});
    });
+   if(outcome===null)throw Error('table_change_request_not_pending');
+   return outcome;
   }
  });
 }
