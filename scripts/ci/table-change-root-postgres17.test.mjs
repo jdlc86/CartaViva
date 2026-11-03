@@ -6563,7 +6563,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      AND d.round_id=ANY($1::uuid[])`,
      [[first.roundId,grouped.roundId]])).rows[0].n);
     // No worker may dispatch a 300-second round early.
-    const liveListener=await createPostgresH6OutboxNotifier({pool:pools[8]});
+    const listenerFailures=[];
+    let listenerBackend=null,beforeRestart=null;
+    const liveListener=await createPostgresH6OutboxNotifier({
+     pool:{connect:async()=>{
+      const client=await pools[8].connect();
+      listenerBackend=client.processID;
+      return client;
+     }},
+     onLost:error=>{
+      listenerFailures.push(error.message);
+      // The production candidate also shuts down its scheduler on lost
+      // connection. Its reactivation requires explicit operator startup.
+      if(beforeRestart)void beforeRestart.close();
+     }
+    });
     notifier=liveListener;
     const createScheduler=()=>createH6DeferredDispatchScheduler({
      listSchedulable:opts=>h6Provider.listSchedulable(opts),
@@ -6578,11 +6592,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      subscribeCommitted:notifier.subscribe,
      onFailure:error=>naturalErrors.push('dispatch:'+error.message)
     });
-    const beforeRestart=createScheduler();
+    beforeRestart=createScheduler();
     schedulers.push(beforeRestart);
     await beforeRestart.start();
     assert.equal(await eventCount(),0,'first and grouped orders cannot ship early');
-    await beforeRestart.close(); // simulate application shutdown before deadline
+    assert.ok(Number.isSafeInteger(listenerBackend)&&listenerBackend>0);
+    // Kill ONLY the dedicated disposable PG17 LISTEN backend: the server must
+    // signal loss once and fail closed, not leave a silent "healthy" worker.
+    const terminated=await admin.query('SELECT pg_terminate_backend($1) AS killed',
+     [listenerBackend]);
+    assert.equal(terminated.rows[0].killed,true);
+    for(let tries=0;tries<100&&listenerFailures.length===0;tries++)
+     await new Promise(resolve=>setTimeout(resolve,30));
+    assert.deepEqual(listenerFailures,['h6_outbox_notification_connection_lost']);
+    await beforeRestart.close();
+    await liveListener.close(); // already lost: no duplicate release
+    assert.throws(()=>liveListener.subscribe(()=>{}),/invalid_h6_outbox_subscription/);
+    assert.equal(await eventCount(),0);
+    // The next service instance creates its own LISTEN connection. Old
+    // messages need not survive: durable SQL deadlines are authoritative.
+    notifier=await createPostgresH6OutboxNotifier({pool:pools[8]});
     const server=(await admin.query('SELECT clock_timestamp() AS now')).rows[0].now;
     const until=firstRow.grouping_deadline.getTime()-server.getTime();
     assert.ok(until>240000&&until<=300000,

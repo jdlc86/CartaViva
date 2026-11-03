@@ -55,8 +55,19 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
  const operations=createH6OperationsCoordinator({repository:operationsRepository,
   issueCapability:issueStaffCapability});
- const notifier=await createPostgresH6OutboxNotifier({pool:notifierPool});
  let scheduler=null;
+ const notifier=await createPostgresH6OutboxNotifier({
+  pool:notifierPool,
+  onLost:error=>{
+   if(!enableDeferredDispatch)return;
+   // The callback observes a sanitized, fail-closed signal; never restart
+   // workers behind the operator's back or spawn a replacement process.
+   try{observeDispatchFailure(error);}catch{}
+   if(scheduler)void scheduler.close().catch(closeError=>{
+    try{observeDispatchFailure(closeError);}catch{}
+   });
+  }
+ });
  try{
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
   registerH6OperationsHttp(app,{forRoles,operations});
