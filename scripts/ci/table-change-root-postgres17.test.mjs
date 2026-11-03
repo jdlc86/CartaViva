@@ -5232,12 +5232,91 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal((await admin.query(`SELECT count(*)::int AS n
       FROM sabora.customer_table_change_requests WHERE account_id=$1
       AND status='pending'`,[httpFixture.sourceAccount])).rows[0].n,1);
-     // Retire only the disposable fixture, not the economic account. Keep
-     // expiry ordering valid for the normative database constraints.
-     await admin.query(`UPDATE sabora.customer_table_change_requests SET
-      created_at=clock_timestamp()-interval '3 minutes',
-      expires_at=clock_timestamp()-interval '1 minute',
-      status='expired' WHERE id=$1 AND status='pending'`,[fourth.id]);
+     // F15/R03: two staff approvals collide on the same real customer
+     // advisory lock. Both use distinct authenticated PG17 connections.
+     const staffDecisionUrl='/api/v1/operations/table-change/decisions';
+     const staffDecisionHeaders={'x-ci-staff':'authorized-waiter',
+      'content-type':'application/json'};
+     const lockForStaff=await admin.connect();
+     let staffLockOpen=false,firstApproval,secondApproval;
+     try{
+      await lockForStaff.query('BEGIN');staffLockOpen=true;
+      const holderPid=(await lockForStaff.query(
+       'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const lockKey=(await lockForStaff.query(
+       'SELECT pg_catalog.hashtextextended($1::text,140630)::bigint AS key',
+       [httpFixture.customer])).rows[0].key;
+      await lockForStaff.query('SELECT pg_advisory_xact_lock($1::bigint)',[lockKey]);
+      const awaitPhysicalWait=async expected=>{
+       for(let attempt=0;attempt<140;attempt++){
+        const n=(await admin.query(`SELECT count(*)::int AS n FROM pg_stat_activity a
+         WHERE a.pid<>$1::int AND a.wait_event_type='Lock'
+         AND a.wait_event='advisory' AND $1::int=ANY(pg_blocking_pids(a.pid))`,
+         [holderPid])).rows[0].n;
+        if(n>=expected)return;
+        await new Promise(resolve=>setTimeout(resolve,40));
+       }
+       throw Error('concurrent_staff_sql_lock_unobserved:'+expected);
+      };
+      const payload={requestId:fourth.id,decision:'approved'};
+      firstApproval=http.inject({method:'POST',url:staffDecisionUrl,
+       headers:staffDecisionHeaders,payload});
+      await awaitPhysicalWait(1);
+      secondApproval=http.inject({method:'POST',url:staffDecisionUrl,
+       headers:staffDecisionHeaders,payload});
+      await awaitPhysicalWait(2);
+      await lockForStaff.query('COMMIT');staffLockOpen=false;
+     }finally{
+      if(staffLockOpen)await lockForStaff.query('ROLLBACK');
+      lockForStaff.release();
+     }
+     const staffDecisions=await Promise.all([firstApproval,secondApproval]);
+     assert.deepEqual(staffDecisions.map(r=>r.statusCode).sort((x,y)=>x-y),
+      [200,409],'two simultaneous staff decisions cannot both approve');
+     assert.ok(staffDecisions.some(r=>r.json().error==='table_change_request_not_pending'));
+     const opposed=await http.inject({method:'POST',url:staffDecisionUrl,
+      headers:staffDecisionHeaders,
+      payload:{requestId:fourth.id,decision:'rejected'}});
+     assert.equal(opposed.statusCode,409,
+      'a later contradictory rejection cannot overwrite approval');
+     const grantBefore=(await admin.query(`SELECT q.status,q.created_at,q.expires_at,
+      q.decided_at,q.consumed_at,b.table_id,a.outstanding_cents,
+      clock_timestamp() AS server_now
+      FROM sabora.customer_table_change_requests q
+      JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+      JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+      [fourth.id])).rows[0];
+     assert.equal(grantBefore.status,'approved');
+     assert.ok(grantBefore.decided_at<grantBefore.expires_at);
+     assert.equal(grantBefore.consumed_at,null);
+     assert.equal(grantBefore.table_id,httpFixture.destinationTable);
+     assert.equal(grantBefore.outstanding_cents,'3100');
+     assert.equal((await admin.query(`SELECT count(*)::int AS n FROM sabora.event_outbox
+      WHERE event_type='sabora.table_change.approved' AND aggregate_id=$1`,
+      [fourth.id])).rows[0].n,1,'double decision must emit exactly one approval');
+     // An approval remains usable after its request-window clock expires;
+     // PG17 server time elapses naturally, with NO timestamp fixture edits.
+     const untilExpiry=grantBefore.expires_at.getTime()-grantBefore.server_now.getTime();
+     assert.ok(untilExpiry>0&&untilExpiry<=90000);
+     await new Promise(resolve=>setTimeout(resolve,untilExpiry+1700));
+     const grantAfter=(await admin.query(`SELECT q.status,q.expires_at,q.consumed_at,
+      q.destination_table_id,b.table_id,a.outstanding_cents,
+      clock_timestamp() AS server_now
+      FROM sabora.customer_table_change_requests q
+      JOIN sabora.customer_account_operational_bindings b ON b.account_id=q.account_id
+      JOIN sabora.customer_accounts a ON a.id=q.account_id WHERE q.id=$1`,
+      [fourth.id])).rows[0];
+     assert.ok(grantAfter.server_now>=grantAfter.expires_at);
+     assert.equal(grantAfter.status,'approved');
+     assert.equal(grantAfter.consumed_at,null);
+     assert.equal(grantAfter.destination_table_id,null);
+     assert.equal(grantAfter.table_id,httpFixture.destinationTable);
+     assert.equal(grantAfter.outstanding_cents,'3100');
+     const duplicateGrant=await http.inject({method:'POST',
+      url:'/api/v1/customer/table-change/requests',
+      headers:requestHeaders,payload:{}});
+     assert.equal(duplicateGrant.statusCode,409,
+      'an unused approval remains exclusive even after real 90-second expiry');
      // Revoking the customer session while its SSE connection is still open
      // must cut off event access, fail closed in the PWA and reject the next
      // HTTP operation. The HTTP authentication fixture intentionally accepts
