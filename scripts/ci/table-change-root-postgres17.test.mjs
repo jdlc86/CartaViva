@@ -5107,7 +5107,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           WHERE r.account_id=a.id) AS rounds FROM sabora.customer_accounts a
          WHERE a.id=$1`,[payNowDiner.account])).rows[0];
         assert.equal(untouchedStripe.state,'open',
-         'closing a cash payer cannot close another diner's Stripe account');
+         "closing a cash payer cannot close another diner's Stripe account");
         assert.equal(untouchedStripe.rounds,2);
        }
       }
