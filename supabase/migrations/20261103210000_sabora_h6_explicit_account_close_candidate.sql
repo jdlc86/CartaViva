@@ -123,9 +123,20 @@ BEGIN
     AND i.state NOT IN ('adjusted','rejected_customer_request','resolved'))
   OR EXISTS(SELECT 1 FROM sabora.order_rounds r
     WHERE r.account_id=p_account_id AND r.state NOT IN ('kitchen_acknowledged','cancelled'))
+  -- H6 'Voy a recoger' is a task assignment, not delivery proof. The
+  -- retired physical 'picked_up' transition MUST NOT be required to close
+  -- a reconciled economic account. Require kitchen-ready line evidence and
+  -- a durable H6 pickup task instead; keep its task active after account
+  -- closure so staff can still claim/cancel without inventing delivery.
+  -- Legacy physically picked_up rows retain their distinct historical state.
   OR EXISTS(SELECT 1 FROM sabora.order_rounds r
     JOIN sabora.order_lines l ON l.order_id=r.order_id
-    WHERE r.account_id=p_account_id AND l.status<>'picked_up')
+    WHERE r.account_id=p_account_id AND
+      (l.status NOT IN ('ready','picked_up')
+       OR (l.status='ready' AND NOT EXISTS(
+        SELECT 1 FROM sabora.pickup_tasks t
+        WHERE t.order_line_id=l.id AND t.state IN ('ready','claimed'))))
+  )
   THEN RAISE EXCEPTION 'account_close_unresolved' USING errcode='23514'; END IF;
  IF floor(extract(epoch FROM clock_timestamp())*1000)::bigint>=p_expires_at_ms THEN
   RAISE EXCEPTION 'expired_h6_staff_capability' USING errcode='42501'; END IF;
