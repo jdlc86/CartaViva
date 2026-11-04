@@ -6,6 +6,8 @@
 **PR:** [#44 Draft](https://github.com/jdlc86/CartaViva/pull/44)  
 **Base:** `integration/sabora-h6-b2-delivery-board-contract-20261031` (`79092962c0bf8d4e43979a7db0808f6102a268a0`)  
 **Commit funcional:** `f951f7a9`  
+**Commit de validación CI:** `eda167bbc60122734d1d0a5b611b4c6097504f0f`
+
 **Naturaleza:** evidencia de implementación y validación; no es normativa ni autorización de merge, despliegue o producción.
 
 ## 1. Dictamen
@@ -18,7 +20,6 @@ El resultado global permanece **NO-GO para producción**. Los bloqueos no resuel
 2. Semántica normativa de cuenta de coste cero y «todas las partidas resueltas»: no se inventa equivalencia con `ready`, `claimed` o entrega física.
 3. Caja/cierre visual definitivo: no existe aprobación para una pantalla nueva que permita declararla final.
 4. Aceptación visual humana final de F28/R09 y configuración/identidad/secretos operativos.
-5. GitHub Actions del SHA documental final debe terminar antes de cerrar R10; este informe se actualizará con sus enlaces exactos.
 
 ## 2. Implementación candidata
 
@@ -73,6 +74,7 @@ Durante la regresión se corrigieron dos incompatibilidades reales:
 | segundo consentimiento cambiaba la huella | la PWA volvía a cotizar y generaba otro `quoteId` | cache efímera de selección/cotización/aceptación hasta éxito o cambio del usuario | Chromium F21 PASS |
 | SSE tras cambio de mesa no recuperaba eventos | lector anclado a mesa histórica | autorización por binding operativo vigente, conservando cliente/visita/QR | reconexión y aislamiento E2E PASS |
 | rotación QR aparentaba no bloquear al escritor | SSE introducía un bloqueador intermedio en el grafo de espera | aserción del grafo transitivo de `pg_blocking_pids`, sin ampliar `lock_timeout` | carrera F16/F17 PASS |
+| efectivo aparentaba no entrar en la cola económica en CI | otro backend podía quedar entre el poseedor del lock de cuenta y la liquidación; la aserción solo aceptaba bloqueo directo | observación recursiva y acotada del grafo real de `pg_blocking_pids`, conservando la espera original de 6 s | CI y Bootstrap PG17 del SHA `eda167bb`: PASS |
 
 ## 4. Pruebas realmente ejecutadas
 
@@ -103,6 +105,17 @@ Resultado final:
 | `git diff --check` | PASS; solo avisos de normalización CRLF del entorno Windows |
 
 No se ejecutó Stripe sandbox ni se consultó ningún secreto operativo. No se activaron worker, correo, endpoints productivos o migraciones externas.
+
+### 4.3 GitHub Actions y diagnóstico del gate remoto
+
+El SHA `eda167bbc60122734d1d0a5b611b4c6097504f0f` terminó con **4/4 workflows SUCCESS**:
+
+- [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/41915111167): 15 min 30 s; aceptación H6 consolidada, publicación de evidencias, build, gate de configuración, Docker Compose, imagen API aislada y healthcheck PASS.
+- [Bootstrap PostgreSQL 17](https://github.com/jdlc86/CartaViva/actions/runs/41915111224): 10 min 05 s; migraciones y regresión PG17 PASS.
+- [PWA cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41915111115): PASS.
+- [PWA gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41915111259): PASS.
+
+La primera ejecución funcional (`f951f7a9`) y las dos ejecuciones siguientes (`426d52ce`, `0e06df98`) permitieron reproducir en runner la aserción incorrecta «cash settlement must enter PG17 account-row queue before close». Aumentar temporalmente la observación de 6 a 12 segundos en `0e06df98` reprodujo el mismo fallo y descartó lentitud del runner. El diagnóstico del grafo de espera mostró el bloqueador intermedio; `eda167bb` corrigió solo la observación transitiva, restauró los 6 segundos originales y repitió los cuatro workflows hasta verde. No se relajaron timeouts SQL, permisos, fencing ni resultado económico.
 
 ## 5. Matriz F01–F28
 
@@ -151,8 +164,8 @@ La evidencia principal es el test integrado `PG17 B3 six isolated logins complet
 | R06 | PASS | agrupación, invalidación, revisión, cocina, sala, pickup y destino A→B observados en PG17/Chromium |
 | R07 | PASS | outbox, SSE, cursor, resincronización, pérdida LISTEN, replay y aislamiento multiusuario |
 | R08 | PASS | HTTP autenticado con cookies/JWT/HMAC y negativas de pertenencia/rol |
-| R09 | BLOCKED | E2E Chromium, axe, responsive y capturas pasan localmente; falta aceptación visual final y workflow del SHA final |
-| R10 | NOT_RUN | pendiente de los cuatro workflows GitHub Actions del SHA documental final |
+| R09 | BLOCKED | E2E Chromium, axe, responsive y capturas pasan localmente y en Actions; falta aceptación visual humana final |
+| R10 | PASS | cuatro workflows del commit de validación `eda167bb` terminan SUCCESS; enlaces y pasos en §4.3 |
 
 ## 7. Riesgos residuales y operación
 
@@ -165,9 +178,9 @@ La evidencia principal es el test integrado `PG17 B3 six isolated logins complet
 
 ## 8. Estado de cierre
 
-- **Hito I — revisiones correctivas F21/R06:** implementado y validado localmente, pendiente confirmación CI del SHA final.
+- **Hito I — revisiones correctivas F21/R06:** implementado y validado localmente y en GitHub Actions.
 - **Hito II — Stripe/caja/cierre:** parcialmente implementado; BLOCKED por proveedor real, coste cero y UI aprobada.
 - **Hito III — operativa/seguridad/visual:** operativa y seguridad automatizadas PASS; visual final BLOCKED.
-- **Hito IV — puerta F/R:** acta emitida; R10 pendiente y existen filas BLOCKED, por tanto no puede declararse cierre productivo.
+- **Hito IV — puerta F/R:** acta emitida y R10 PASS; existen filas BLOCKED, por tanto no puede declararse cierre productivo.
 
 **Dictamen:** PR revisable y candidato técnico F21/R06 listo para revisión independiente; **NO-GO de producción**, PR permanece Draft, sin merge ni despliegue.
