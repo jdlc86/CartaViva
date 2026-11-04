@@ -5558,6 +5558,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const dueBody={amountCents:700,
          correlationId:'b3_f20_inverse_cash_700_once'};
         const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
+        // Cash and close must authenticate as DISTINCT active waiters:
+        // verify_h6_staff_capability_candidate locks its own staff_members
+        // row. Reusing the closer identity would serialize on staff auth,
+        // masking the intended account-row lock race.
+        const concurrentCashHeaders={authorization:'Bearer '+jwtSecondWaiter,
+         'content-type':'application/json'};
         const accountLock=await admin.connect();
         let accountLockOpen=false,closureRequests=[],customerRequest=null,cashRequest=null;
         let concurrentClose;
@@ -5568,7 +5574,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          await accountLock.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
           [diner.account]);
          cashRequest=http.inject({method:'POST',url:cashUrl,
-          headers:closingHeaders,payload:dueBody});
+          headers:concurrentCashHeaders,payload:dueBody});
          let cashQueued=false;
          for(let tries=0;tries<150;tries++){
           const waiting=await admin.query(`SELECT count(*)::int AS n
@@ -5644,7 +5650,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // return its originally committed response. Neither cash replay nor
         // the losing quoted order may resurrect or repay closed debt.
         const cashReplayAfterClose=await http.inject({method:'POST',
-         url:cashUrl,headers:closingHeaders,payload:dueBody});
+         url:cashUrl,headers:concurrentCashHeaders,payload:dueBody});
         assert.equal(cashReplayAfterClose.statusCode,201,cashReplayAfterClose.body);
         assert.equal(cashReplayAfterClose.json().repeated,true);
         assert.equal(cashReplayAfterClose.json().accountState,'open',
