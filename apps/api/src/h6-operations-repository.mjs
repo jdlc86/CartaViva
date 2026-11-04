@@ -15,6 +15,8 @@ export const SETTLE_CASH_H6_SQL=`SELECT sabora.settle_h6_account_cash_authorized
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::bigint,$7::text,$8::bigint,$9::bigint,$10::text) AS result`;
 export const REFUND_CASH_H6_SQL=`SELECT sabora.refund_h6_cash_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::bigint,$8::bigint,$9::text) AS result`;
+export const CLOSE_ACCOUNT_H6_SQL=`SELECT sabora.close_h6_account_authorized_candidate(
+ $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::bigint,$8::bigint,$9::text) AS result`;
 export const READ_STAFF_EVENTS_H6_SQL=`SELECT sabora.read_staff_event_backlog_h6_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text,$9::bigint,$10::integer) AS result`;
 export const READ_CUSTOMER_EVENTS_H6_SQL=`SELECT sabora.read_customer_event_backlog_h6_candidate(
@@ -110,6 +112,11 @@ export function createH6OperationsRepository({withTransaction}={}){
     throw Error('invalid_h6_cash_settlement');
    const head=capability(cap,'settle_cash',accountId);
    return withTransaction(query=>one(query(SETTLE_CASH_H6_SQL,[...head,accountId,amountCents,...tail(cap)])));
+  },
+  closeAccount:({accountId,capability:cap}={})=>{
+   if(!UUID.test(accountId??''))throw Error('invalid_h6_account_close');
+   const head=capability(cap,'close_account',accountId);
+   return withTransaction(query=>one(query(CLOSE_ACCOUNT_H6_SQL,[...head,accountId,...tail(cap)])));
   },
   refundCash:({incidentId,capability:cap}={})=>{
    if(!UUID.test(incidentId??''))throw Error('invalid_h6_cash_refund');

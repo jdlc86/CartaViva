@@ -1,4 +1,5 @@
 import {createOrderOperationsGateway, OrderOperationsGatewayError} from './order-operations-gateway.js';
+import {createTableChangeDecisionGateway} from './table-change-decision-gateway.js';
 
 // Explicit opt-in transport. The host authentication layer owns token
 // acquisition and renewal; never persist credentials in browser storage.
@@ -49,9 +50,12 @@ export function createAuthenticatedOrderOperationsGateway({
     }
   };
   const gateway = createOrderOperationsGateway({send, reconnectDelayMs});
+  const tableChangeDecisions = createTableChangeDecisionGateway({send});
   const subscriptions = new Set();
   return Object.freeze({
     ...gateway,
+    decideTableChange: tableChangeDecisions.decide,
+    listPendingTableChanges: tableChangeDecisions.listPending,
     subscribeEvents(callbacks) {
       if (controller.signal.aborted) throw Error('order_operations_auth_unavailable');
       const unsubscribe = gateway.subscribeEvents(callbacks);

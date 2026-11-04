@@ -1,4 +1,5 @@
 import {readCustomerCookie} from './customer-cookie-session-candidate.mjs';
+import {registerTableChangeStateStreamCandidate} from './table-change-state-stream-candidate.mjs';
 
 const json=request=>typeof request.headers['content-type']==='string'&&
  /^application\/json(?:\s*;|$)/i.test(request.headers['content-type']);
@@ -14,6 +15,9 @@ const replyFailure=(reply,error)=>{
   return reply.code(400).send({error:'invalid_customer_request'});
  if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden']
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
+ if(['table_change_approval_required','h6_account_binding_scope_conflict',
+     'h6_multiple_open_accounts_ambiguous','h6_replay_account_scope_conflict'].includes(failure))
+  return reply.code(409).send({error:'table_change_confirmation_conflict'});
  if(failure==='customer_order_idempotency_conflict')
   return reply.code(409).send({error:'order_idempotency_conflict'});
  if(['payment_mode_required','invalid_payment_mode'].includes(failure))
@@ -32,7 +36,7 @@ const replyFailure=(reply,error)=>{
 
 // Explicit opt-in adapter. Cookie authentication and same-origin enforcement
 // are injected and apply before any QR, quote or order capability runs.
-export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null}={}){
+export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableChange=null,tableChangeNotifier=null,tableChangeObserveFailure=null}={}){
  if(!app||typeof app.register!=='function'||!cookieAuth||
     typeof cookieAuth.authenticate!=='function'||typeof cookieAuth.requireSameOrigin!=='function'||
     typeof cookieAuth.logout!=='function'||!flow||typeof flow.authorizeVisit!=='function'||
@@ -56,6 +60,34 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
+  if(tableChange&&typeof tableChange.readState==='function'){
+   scope.get('/table-change/state',async(request,reply)=>{
+    reply.header('Cache-Control','no-store');
+    reply.header('X-Content-Type-Options','nosniff');
+    try{
+     const result=await tableChange.readState({
+      customerSessionToken:readCustomerCookie(request.headers.cookie)
+     });
+     if(!result||!['unbound','bound','pending','approved','rejected'].includes(result.state)||
+        (result.boundTableId!==null&&typeof result.boundTableId!=='string')||
+        !Number.isSafeInteger(result.serverNowMs)||
+        (['pending','rejected'].includes(result.state)?
+         !Number.isSafeInteger(result.expiresAtMs):result.expiresAtMs!==null))
+      throw Error('invalid_table_change_state_result');
+     return reply.code(200).send({state:result.state,
+      boundTableId:result.boundTableId,expiresAtMs:result.expiresAtMs,
+      serverNowMs:result.serverNowMs});
+    }catch(error){
+     if(['table_change_unauthorized','table_change_account_forbidden'].includes(code(error)))
+      return reply.code(403).send({error:'customer_context_forbidden'});
+     return reply.code(503).send({error:'customer_flow_unavailable'});
+    }
+   });
+  }
+  if(tableChangeNotifier)registerTableChangeStateStreamCandidate(scope,{
+   tableChange,subscribeCommitted:tableChangeNotifier.subscribe,
+   onFailure:tableChangeObserveFailure
+  });
   if(tableChange&&typeof tableChange.request==='function'){
    scope.post('/table-change/requests',{bodyLimit:1024},async(request,reply)=>{
     if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
@@ -63,7 +95,22 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
        Object.keys(request.body).length!==0)return reply.code(400).send({error:'invalid_customer_request'});
     try{
      const result=await tableChange.request({customerSessionToken:readCustomerCookie(request.headers.cookie)});
-     return reply.header('Cache-Control','no-store').code(201).send(result);
+     // Expose only the request receipt; never return account, customer,
+     // session, visit, audit or internal store fields to the browser.
+     if(!result||typeof result.id!=='string'||result.status!=='pending'||
+        !Number.isSafeInteger(result.expiresAtMs)||result.expiresAtMs<=0||
+        (result.sourceTableId!==undefined&&typeof result.sourceTableId!=='string')||
+        (result.createdAtMs!==undefined&&
+         (!Number.isSafeInteger(result.createdAtMs)||result.createdAtMs<0||
+          result.expiresAtMs<=result.createdAtMs)))
+      throw Error('invalid_table_change_request_result');
+     // The sealed RPC returns only ID, state and deadline. Do not synthesize
+     // a creation timestamp or disclose operational table/account bindings.
+     return reply.header('Cache-Control','no-store').code(201).send({
+      id:result.id,status:'pending',expiresAtMs:result.expiresAtMs,
+      ...(result.sourceTableId===undefined?{}:{sourceTableId:result.sourceTableId}),
+      ...(result.createdAtMs===undefined?{}:{createdAtMs:result.createdAtMs})
+     });
     }catch(error){
      const failure=code(error);
      if(failure==='table_change_request_locked')return reply.code(409).send({error:'table_change_request_locked'});

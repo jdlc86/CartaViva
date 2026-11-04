@@ -14,6 +14,7 @@ import {CatalogView} from './views/CatalogView';
 import {OrdersView} from './views/OrdersView';
 import {SummaryView} from './views/SummaryView';
 import {TablesView} from './views/TablesView';
+import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
 import './style.css';
 
@@ -27,12 +28,14 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
 
 export function ManagementApp({
   tablesGateway,
+  tableChangeGateway,
   catalogGateway,
   operationsGateway,
   staffGateway,
   staffDirectoryGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
+  tableChangeGateway?: TableChangeQueueGateway;
   catalogGateway?: AdminCatalogGateway;
   operationsGateway?: OrderOperationsGateway;
   staffGateway?: StaffManagementGateway;
@@ -76,7 +79,7 @@ export function ManagementApp({
 
   const activeView = area === 'resumen' ? <SummaryView/>
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
-    : area === 'mesas' ? <TablesView gateway={tablesGateway}/>
+    : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
 
@@ -160,7 +163,11 @@ let managementElement: HTMLElement | null = null;
 const managementSessionFence = createManagementSessionFence();
 let managementRenderGeneration = 0;
 
-function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway) {
+function renderManagement(
+  element: HTMLElement,
+  gateway?: OrderOperationsGateway,
+  tableChangeGateway?: TableChangeQueueGateway,
+) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
   }
@@ -172,7 +179,8 @@ function renderManagement(element: HTMLElement, gateway?: OrderOperationsGateway
   // employee's board, history, incident draft or SSE state may survive.
   const key = ++managementRenderGeneration;
   flushSync(() => managementRoot!.render(
-    <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}/></React.StrictMode>,
+    <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
+      tableChangeGateway={tableChangeGateway}/></React.StrictMode>,
   ));
 }
 
@@ -181,11 +189,14 @@ export function mountAuthenticatedManagementApp({
   getAccessToken,
   fetchImpl,
   reconnectDelayMs,
+  enableTableChangeQueue = false,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
   fetchImpl?: typeof fetch;
   reconnectDelayMs?: number;
+  /** Opt-in only after the server's six isolated SQL logins pass preflight. */
+  enableTableChangeQueue?: boolean;
 }) {
   if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
     throw Error('invalid_management_bootstrap');
@@ -198,7 +209,13 @@ export function mountAuthenticatedManagementApp({
     throw Error('management_root_already_mounted');
   }
   const disposeSession = managementSessionFence.replace(operationsGateway);
-  renderManagement(element, operationsGateway);
+  // The default preview and authenticated operation mount keep the queue
+  // disconnected; a verified B3 host must explicitly enable its gateway.
+  const queueGateway: TableChangeQueueGateway | undefined = enableTableChangeQueue
+    ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
+       decideTableChange: operationsGateway.decideTableChange}
+    : undefined;
+  renderManagement(element, operationsGateway, queueGateway);
   let disposed = false;
   return () => {
     if (disposed) return;

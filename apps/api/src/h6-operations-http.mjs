@@ -14,15 +14,16 @@ const publicPickup=result=>{
 };
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
 const FORBIDDEN=new Set(['h6_operations_forbidden','invalid_h6_staff_capability','h6_staff_action_forbidden',
- 'incident_line_scope_forbidden','expired_h6_staff_capability','cash_refund_forbidden',
+ 'incident_line_scope_forbidden','expired_h6_staff_capability','cash_refund_forbidden','account_close_forbidden',
  'invalid_pickup_capability','expired_pickup_capability','pickup_action_forbidden','pickup_scope_forbidden']);
 const NOT_FOUND=new Set(['dispatch_not_found','round_not_found','incident_not_found','payment_attempt_not_found',
  'pickup_task_not_found']);
 const CONFLICT=new Set(['dispatch_not_acknowledgeable','cash_settlement_conflict',
+ 'account_close_conflict','account_close_unresolved','h6_account_close_unavailable',
  'customer_cancellation_limits_not_configured','h6_idempotency_conflict','incident_already_resolved',
  'incident_exceeds_captured_amount','incident_exceeds_cash_paid','incident_payment_not_reconcilable',
  'kitchen_refund_cannot_be_denied','payment_outcome_unknown','cash_refund_not_due']);
-const INPUT=new Set(['invalid_h6_operation','invalid_h6_dispatch_request','invalid_h6_incident_request',
+const INPUT=new Set(['invalid_h6_operation','invalid_h6_account_close','invalid_h6_dispatch_request','invalid_h6_incident_request',
  'invalid_h6_incident_resolution','invalid_h6_cash_settlement','invalid_h6_cash_refund',
  'invalid_incident_request','invalid_incident_resolution','invalid_cash_settlement','invalid_pickup_operation']);
 const failure=(reply,error)=>{
@@ -112,6 +113,18 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
   try{return reply.code(201).send(await operations.settleCash(verified(request),{
    accountId:request.params.accountId,...body}));}catch(error){return failure(reply,error);}
  });
+ // Paying in full is not account closure: an explicit staff action is required.
+ app.post('/api/v1/operations/accounts/:accountId/close',
+  {preHandler:floor,bodyLimit:2048},async(request,reply)=>{
+   const body=request.body;
+   if(!UUID.test(request.params?.accountId??'')||!exact(body,['correlationId'])||
+      !CORRELATION.test(body.correlationId))
+    return reply.code(400).send({error:'invalid_h6_operation'});
+   try{return reply.code(200).send(await operations.closeAccount(verified(request),{
+    accountId:request.params.accountId,correlationId:body.correlationId
+   }));}
+   catch(error){return failure(reply,error);}
+  });
  app.post('/api/v1/operations/incidents/:incidentId/cash-refund',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
   const body=request.body;
   if(!UUID.test(request.params?.incidentId??'')||!exact(body,['correlationId'])||

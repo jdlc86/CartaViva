@@ -6,6 +6,7 @@ const CAPABILITIES=Object.freeze({
  ]),
  sabora_h6_provider_runtime:Object.freeze([
   'record_h6_authorization_outcome_candidate','request_h6_capture_dispatch_candidate',
+  'list_schedulable_h6_rounds_candidate',
   'record_h6_capture_outcome_candidate','record_h6_capture_compensation_candidate',
   'ingest_stripe_webhook_h6_candidate','record_h6_refund_outcome_candidate',
   'request_h6_refund_candidate','request_h6_release_candidate','record_h6_release_outcome_candidate'

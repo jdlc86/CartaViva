@@ -32,6 +32,12 @@ export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,
  $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
  )`;
 
+// B3 candidate-only confirmation entrypoint. Production remains pinned to
+// PERSIST_H6_ORDER_SQL; no runtime EXECUTE is granted to this function.
+export const PERSIST_H6_TRANSFER_ORDER_SQL=PERSIST_H6_ORDER_SQL.replace(
+ 'sabora.confirm_customer_round_h6_candidate(',
+ 'sabora.confirm_customer_round_h6_transfer_integration_candidate(');
+
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TABLE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY=/^[A-Za-z0-9_-]{16,128}$/;
@@ -87,17 +93,30 @@ const one=result=>{
   throw Error('invalid_customer_flow_result');
  return result.rows[0];
 };
+// A zero-row authenticated context is an expected denial after QR rotation,
+// table closure, visit expiry or session revocation. Keep backend shape/SQL
+// failures as unavailable, never reinterpret them as a successful empty order.
+const confirmationContextRow=result=>{
+ if(result&&Array.isArray(result.rows)&&result.rows.length===0)
+  throw Error('customer_order_context_forbidden');
+ return one(result);
+};
 
 export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
  newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
- withH6Transaction=null}={}){
+ withH6Transaction=null,withH6ReadTransaction=null,
+ h6ConfirmationSql=PERSIST_H6_ORDER_SQL}={}){
  if(typeof withTransaction!=='function'||typeof secretKey!=='string'||
     Buffer.byteLength(secretKey,'utf8')<32||typeof clock!=='function'||typeof newId!=='function'||
     !Number.isSafeInteger(visitTtlSeconds)||visitTtlSeconds<60||visitTtlSeconds>86400||
     !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800||
-    (withH6Transaction!==null&&typeof withH6Transaction!=='function'))
+    (withH6Transaction!==null&&typeof withH6Transaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6ReadTransaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6Transaction!=='function')||
+    ![PERSIST_H6_ORDER_SQL,PERSIST_H6_TRANSFER_ORDER_SQL].includes(h6ConfirmationSql))
   throw Error('invalid_customer_production_flow');
  const h6=typeof withH6Transaction==='function';
+ const withH6Reader=withH6ReadTransaction??withH6Transaction;
 
  const authorizeVisit=async({customerSessionToken,tableId,qrToken}={})=>{
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
@@ -114,7 +133,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    throw Error('invalid_customer_flow_result');
   let paymentPolicy=null;
   if(h6){
-   const policy=await withH6Transaction(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
+   const policy=await withH6Reader(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
     [sessionHash,tableId,visitId])));
    const version=revision(policy.payment_policy_version);
    if(typeof policy.require_pay_as_ordered!=='boolean'||version===null)
@@ -164,7 +183,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   const now=clock();
   if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
   const prepared=await withTransaction(async query=>{
-   const attempt=one(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
+   const attempt=confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
     raw.visitId,raw.basketId,raw.requestKey]));
    if(attempt.order_id!==null&&attempt.order_id!==undefined){
     if(!Buffer.isBuffer(attempt.request_fingerprint)||
@@ -179,7 +198,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    let repriced=false;
    const changes=[];
    for(const line of raw.lines){
-    const prepared=one(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,raw.tableId,raw.qrToken,
+    const prepared=confirmationContextRow(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,raw.tableId,raw.qrToken,
      raw.visitId,raw.basketId,line.itemId,line.quoteId]));
     const publishedRevision=revision(prepared.published_revision);
     if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot)||
@@ -222,8 +241,8 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
     orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping})});
   });
   if(prepared.kind==='complete')return prepared.value;
-  const h6Row=await withH6Transaction(async query=>one(await query(
-   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:PERSIST_H6_ORDER_SQL,
+  const h6Row=await (prepared.kind==='h6_replay'?withH6Reader:withH6Transaction)(async query=>one(await query(
+   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
    prepared.kind==='h6_replay'?
     [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
     [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
@@ -251,7 +270,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    throw Error('invalid_customer_flow_input');
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
   if(!sessionHash)throw Error('invalid_customer_flow_input');
-  const attempt=await withTransaction(async query=>one(await query(LOOKUP_ATTEMPT_SQL,
+  const attempt=await withTransaction(async query=>confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,
    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey])));
   if(attempt.order_id===null||attempt.order_id===undefined)
    return Object.freeze({status:'not_found'});

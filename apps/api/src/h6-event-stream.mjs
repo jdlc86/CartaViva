@@ -105,27 +105,56 @@ export function registerH6StaffEventStreamHttp(app,{forRoles,events,issueCapabil
 
 // LISTEN is event-driven and carries only a cursor hint. Every consumer still
 // re-reads its authorized durable backlog; no business data trusts NOTIFY.
-export async function createPostgresH6OutboxNotifier({pool}={}){
- if(!pool||typeof pool.connect!=='function')throw Error('invalid_h6_outbox_notifier');
+// A broken LISTEN connection must NEVER look like a working subscribed
+// scheduler. PostgreSQL's durable outbox survives this failure; a supervisor
+// must explicitly replace the notifier/service before work resumes. No polling
+// or automatic unbounded reconnection.
+export async function createPostgresH6OutboxNotifier({pool,onLost=()=>{}}={}){
+ if(!pool||typeof pool.connect!=='function'||typeof onLost!=='function')
+  throw Error('invalid_h6_outbox_notifier');
  const client=await pool.connect();
  const listeners=new Set();
+ let closed=false,released=false;
+ const removeHandlers=()=>{
+  client.off?.('notification',onNotification);
+  client.off?.('error',onError);
+  client.off?.('end',onEnd);
+ };
+ const release=broken=>{
+  if(released)return;released=true;
+  try{client.release(broken);}catch{}
+ };
+ const lost=()=>{
+  if(closed)return;
+  closed=true;listeners.clear();removeHandlers();release(true);
+  // Never expose driver/host/credential details to the consumer.
+  try{onLost(Error('h6_outbox_notification_connection_lost'));}catch{}
+ };
+ const onError=()=>lost();
+ const onEnd=()=>lost();
  const onNotification=message=>{
-  if(message?.channel!=='sabora_h6_event_committed')return;
+  if(closed||message?.channel!=='sabora_h6_event_committed')return;
   for(const listener of [...listeners]){try{listener();}catch{}}
  };
- try{client.on('notification',onNotification);await client.query('LISTEN sabora_h6_event_committed');}
- catch(error){try{client.release(true);}catch{}throw error;}
- let closed=false;
+ try{
+  client.on('error',onError);
+  client.on('end',onEnd);
+  client.on('notification',onNotification);
+  await client.query('LISTEN sabora_h6_event_committed');
+  if(closed)throw Error('h6_outbox_notification_connection_lost');
+ }catch(error){lost();throw error;}
  return Object.freeze({
   subscribe(listener){
-   if(closed||typeof listener!=='function')throw Error('invalid_h6_outbox_subscription');
+   if(closed||typeof listener!=='function')
+    throw Error('invalid_h6_outbox_subscription');
    listeners.add(listener);return()=>listeners.delete(listener);
   },
   async close(){
-   if(closed)return;closed=true;listeners.clear();
-   try{await client.query('UNLISTEN sabora_h6_event_committed');}finally{
-    client.off?.('notification',onNotification);client.release();
-   }
+   if(closed)return;
+   closed=true;listeners.clear();
+   try{await client.query('UNLISTEN sabora_h6_event_committed');}
+   catch(error){release(true);throw error;}
+   finally{removeHandlers();release(false);}
   }
  });
 }

@@ -10,6 +10,7 @@ import {TableQrScanner} from './components/TableQrScanner';
 import {CheckoutPanel,type CheckoutPhase,type PaymentMode} from './components/CheckoutPanel';
 import {createCustomerFlowTransport,CustomerFlowTransportError} from './customer-flow-transport';
 import {subscribeCustomerEvents,type CustomerEvent} from './customer-event-stream';
+import {subscribeCustomerTableChange} from './customer-table-change-events';
 import {configuredRestaurantCode,parseScannedTableQr,type InitialTableQr,type TableQrCredential} from './table-qr';
 
 type Overlay='cart'|'notifications'|'qr'|'checkout'|null;
@@ -19,7 +20,15 @@ type CustomerIdentityState={status:'checking'|'guest'|'unavailable'}|{
 type TableVisit=Readonly<{tableId:string;visitId:string;basketId:string;expiresAt:string;
  paymentPolicy:Readonly<{requirePayAsOrdered:boolean;version:number}>|null}>;
 type QuoteLine=Readonly<{quoteId:string;itemId:string;totalCents:number;expiresAt:string}>;
-type QrState='idle'|'pending'|'identity_required'|'authorizing'|'authorized'|'invalid'|'forbidden'|'unavailable';
+type QrState='idle'|'pending'|'identity_required'|'authorizing'|'authorized'|
+ 'invalid'|'forbidden'|'unavailable'|'checking_change'|'change_prompt'|
+ 'change_pending'|'change_rejected'|'change_approved'|'change_error';
+type TableChangeState=Readonly<{
+ state:'unbound'|'bound'|'pending'|'approved'|'rejected';
+ boundTableId:string|null;expiresAtMs:number|null;serverNowMs:number;
+}>;
+const APPROVED_CHANGE_MESSAGE='Cambio de mesa aprobado. Ya puedes escanear el código QR de tu nueva mesa y continuar realizando pedidos';
+const REJECTED_CHANGE_MESSAGE='Cambio de mesa no autorizado. Tu solicitud de cambio de mesa no ha sido aprobada. Si necesitas más información, consulta al personal del restaurante';
 const customerTransport=createCustomerFlowTransport();
 const text={
  es:{menu:'Nuestra carta',kicker:'SELECCIÓN GASTRONÓMICA',hero:'El placer está en cada detalle.',intro:'Explora la carta publicada de Sabora. Precios, disponibilidad y alérgenos proceden siempre del restaurante.',search:'Buscar platos o alérgenos',available:'Solo disponibles',empty:'No hay platos que coincidan con esta selección.',retry:'Reintentar',loading:'Preparando la carta…',error:'No se ha podido cargar la carta.',later:'Inténtalo de nuevo más tarde.',selection:'Tu selección',view:'Ver selección',notifications:'Notificaciones',cart:'Cesta',searchButton:'Buscar',closeSearch:'Cerrar búsqueda',all:'Todos',info:'Información',allergens:'Alérgenos',favorites:'Favoritos',settings:'Ajustes'},
@@ -47,10 +56,12 @@ function EmptyState({children}:Readonly<{children:string}>){
 }
 
 export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
- flowContract='h6'}:Readonly<{
+ flowContract='h6',enableTableChangeFlow=false}:Readonly<{
  initialTableQr?:InitialTableQr;
  confirmStripePayment?:((clientSecret:string)=>Promise<void>)|null;
  flowContract?:'h6'|'h3-candidate';
+ /** Opt-in only for the verified isolated B3 composition, never default H6. */
+ enableTableChangeFlow?:boolean;
 }>){
  const [initial]=useState(()=>loadClientPreferences(localStorage));
  const [locale,setLocale]=useState<Locale>(initial.locale);
@@ -72,15 +83,26 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [identityBusy,setIdentityBusy]=useState(false);
  const [qrState,setQrState]=useState<QrState>(initialTableQr?.status==='valid'?'pending':initialTableQr?'invalid':'idle');
  const [tableVisit,setTableVisit]=useState<TableVisit|null>(null);
+ const [tableChangeState,setTableChangeState]=useState<TableChangeState|null>(null);
+ const [tableChangeNotice,setTableChangeNotice]=useState<'approved'|'rejected'|null>(null);
+ const [changeClock,setChangeClock]=useState(()=>Date.now());
  const [checkoutPhase,setCheckoutPhase]=useState<CheckoutPhase>('quoting');
  const [paymentMode,setPaymentMode]=useState<PaymentMode>('pay_now');
  const [quoteLines,setQuoteLines]=useState<readonly QuoteLine[]>([]);
  const [quotedTotal,setQuotedTotal]=useState(0);
  const [checkoutMessage,setCheckoutMessage]=useState<string|null>(null);
+ // Payment/confirmation truth must never be replaced by SSE transport notices.
+ const [eventFeedNotice,setEventFeedNotice]=useState<string|null>(null);
+ const [eventFeedConnected,setEventFeedConnected]=useState(false);
  const [eventScope,setEventScope]=useState<{accountId:string;roundId:string;orderId:string}|null>(null);
  const [customerEvents,setCustomerEvents]=useState<readonly CustomerEvent[]>([]);
  const searchRef=useRef<HTMLInputElement>(null);
- const qrCredentialRef=useRef<TableQrCredential|null>(initialTableQr?.status==='valid'?initialTableQr.credential:null);
+ const qrCredentialRef=useRef<TableQrCredential|null>(null);
+ const scannedCredentialRef=useRef<TableQrCredential|null>(initialTableQr?.status==='valid'?initialTableQr.credential:null);
+ const changeStateReceivedAtRef=useRef(Date.now());
+ const qrStateRef=useRef<QrState>(qrState);
+ const lastStreamStateRef=useRef<TableChangeState|null>(null);
+ useEffect(()=>{qrStateRef.current=qrState;},[qrState]);
  const qrAuthorizationRef=useRef<Promise<void>|null>(null);
  const checkoutRequestRef=useRef<string|null>(null);
  const acceptanceTokenRef=useRef<string|null>(null);
@@ -101,16 +123,174 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   return pending;
  },[]);
 
+ const applyScannedChangeState=useCallback((state:TableChangeState,credential:TableQrCredential)=>{
+  changeStateReceivedAtRef.current=Date.now();
+  setChangeClock(changeStateReceivedAtRef.current);
+  setTableChangeState(state);
+  if(state.state==='unbound'||state.boundTableId===credential.tableId){
+   qrCredentialRef.current=credential;
+   setTableVisit(null);
+   void authorizeTable(credential);
+  }else if(state.state==='approved'){
+   setQrState('change_approved');
+  }else if(state.state==='pending'){
+   setQrState('change_pending');
+  }else if(state.state==='rejected'){
+   setQrState('change_rejected');
+  }else setQrState('change_prompt');
+ },[authorizeTable]);
+
+ const inspectScannedQr=useCallback(async(credential:TableQrCredential)=>{
+  if(flowContract==='h3-candidate'||!enableTableChangeFlow){
+   qrCredentialRef.current=credential;setTableVisit(null);
+   void authorizeTable(credential);return;
+  }
+  setQrState('checking_change');
+  try{
+   const state=await customerTransport.tableChangeState();
+   if(scannedCredentialRef.current!==credential)return;
+   applyScannedChangeState(state,credential);
+  }catch{
+   if(scannedCredentialRef.current===credential)setQrState('change_error');
+  }
+ },[flowContract,enableTableChangeFlow,authorizeTable,applyScannedChangeState]);
+
  const acceptScannedQr=useCallback((payload:string)=>{
   let credential:TableQrCredential;
   try{credential=parseScannedTableQr(payload);}
-  catch{setTableVisit(null);setQrState('invalid');return;}
+  catch{setQrState('invalid');return;}
+  // Scanning another QR must not discard the origin visit, its payment context
+  // or live events: only the first confirmed destination order moves the account.
+  scannedCredentialRef.current=credential;
+  if(identity.status==='authenticated')void inspectScannedQr(credential);
+  else setQrState(identity.status==='checking'?'pending':
+    identity.status==='guest'?'identity_required':'unavailable');
+ },[inspectScannedQr,identity.status]);
+
+ const refreshTableChange=useCallback(async()=>{
+  const credential=scannedCredentialRef.current;
+  if(!credential)return;
+  await inspectScannedQr(credential);
+ },[inspectScannedQr]);
+
+ const requestTableChange=useCallback(async()=>{
+  if(qrState!=='change_prompt'||!scannedCredentialRef.current)return;
+  setQrState('checking_change');
+  try{
+   const receipt=await customerTransport.requestTableChange();
+   const now=Date.now();
+   changeStateReceivedAtRef.current=now;setChangeClock(now);
+   setTableChangeState({state:'pending',
+    boundTableId:tableChangeState?.boundTableId??null,
+    expiresAtMs:receipt.expiresAtMs,serverNowMs:now});
+   setQrState('change_pending');
+   setTableChangeNotice(null);
+  }catch(error){
+   if(error instanceof CustomerFlowTransportError&&error.status===409)
+    await refreshTableChange();
+   else setQrState('change_error');
+  }
+ },[qrState,tableChangeState,refreshTableChange]);
+
+ const cancelChangePrompt=useCallback(()=>{
+  scannedCredentialRef.current=null;
+  setTableChangeState(null);
+  // Leave the origin authorization, account, outstanding basket and event scope.
+  setQrState('idle');
+ },[]);
+
+ const continueAfterApproval=useCallback(()=>{
+  const credential=scannedCredentialRef.current;
+  if(!credential||tableChangeState?.state!=='approved')return;
   qrCredentialRef.current=credential;setTableVisit(null);
-  // A new QR must never inherit the previous table's payment/dispatch stream.
-  setEventScope(null);setCustomerEvents([]);
-  if(identity.status==='authenticated')void authorizeTable(credential);
-  else setQrState(identity.status==='checking'?'pending':identity.status==='guest'?'identity_required':'unavailable');
- },[authorizeTable,identity.status]);
+  void authorizeTable(credential);
+ },[tableChangeState,authorizeTable]);
+
+ useEffect(()=>{
+  if(!tableChangeState||!['pending','rejected'].includes(tableChangeState.state)||
+     tableChangeState.expiresAtMs===null||
+     tableChangeState.serverNowMs+Date.now()-changeStateReceivedAtRef.current>=tableChangeState.expiresAtMs)return;
+  // Local display only; expiry and the decision are always revalidated in PG17.
+  const tick=window.setTimeout(()=>setChangeClock(Date.now()),1000);
+  return()=>window.clearTimeout(tick);
+ },[tableChangeState,changeClock]);
+ // Schedule exactly one revalidation at the real server deadline, not a
+ // periodic API poll. The SQL state remains authoritative and a rejected
+ // decision is immutable; expiry does not require an UPDATE or NOTIFY.
+ const refreshedExpiryRef=useRef<string|null>(null);
+ useEffect(()=>{
+  if(!enableTableChangeFlow||!tableChangeState||
+     !['pending','rejected'].includes(tableChangeState.state)||
+     tableChangeState.expiresAtMs===null)return;
+  const deadline=tableChangeState.expiresAtMs;
+  const key=String(deadline)+':'+String(tableChangeState.boundTableId);
+  if(refreshedExpiryRef.current===key)return;
+  const serverNow=tableChangeState.serverNowMs+Date.now()-changeStateReceivedAtRef.current;
+  const remaining=Math.max(0,deadline-serverNow+1000);
+  const timer=window.setTimeout(()=>{
+   refreshedExpiryRef.current=key;
+   void refreshTableChange();
+  },remaining);
+  return()=>window.clearTimeout(timer);
+ },[enableTableChangeFlow,tableChangeState,refreshTableChange]);
+ useEffect(()=>{
+  if(flowContract!=='h6'||!enableTableChangeFlow||identity.status!=='authenticated')return;
+  // The cursor is scoped to the authenticated public identity. A reconnect
+  // can recover committed decisions even after the 90-second UI window has
+  // expired. Never put the HttpOnly session secret in browser storage.
+  const cursorKey='sabora.table-change.cursor.'+identity.publicId;
+  const saved=Number(localStorage.getItem(cursorKey)??'0');
+  const afterCursor=Number.isSafeInteger(saved)&&saved>=0?saved:0;
+  const saveCursor=(cursor:number)=>{
+   const previous=Number(localStorage.getItem(cursorKey)??'0');
+   if(!Number.isSafeInteger(previous)||cursor>previous)
+    localStorage.setItem(cursorKey,String(cursor));
+  };
+  return subscribeCustomerTableChange({
+   afterCursor,
+   onState:state=>{
+    // A snapshot updates authority; it is not another notification.
+    lastStreamStateRef.current=state;
+    const credential=scannedCredentialRef.current;
+    if(credential&&['checking_change','change_prompt','change_pending',
+       'change_rejected','change_approved'].includes(qrStateRef.current))
+     applyScannedChangeState(state,credential);
+    else{
+     changeStateReceivedAtRef.current=Date.now();
+     setChangeClock(changeStateReceivedAtRef.current);
+     setTableChangeState(state);
+    }
+   },
+   onDecision:event=>{
+    const last=Number(localStorage.getItem(cursorKey)??'0');
+    if(Number.isSafeInteger(last)&&event.id<=last)return;
+    saveCursor(event.id);
+    const current=lastStreamStateRef.current;
+    // An approval already consumed must not reappear as a usable grant
+    // merely because the outbox retains its immutable audit event.
+    if(event.type==='sabora.table_change.approved'){
+     if(current?.state==='approved')setTableChangeNotice('approved');
+    }else if(current?.state!=='approved'&&
+      !(current?.state==='pending'&&current.expiresAtMs!==null&&
+        current.expiresAtMs>event.expiresAtMs)){
+     setTableChangeNotice('rejected');
+    }
+   },
+   onResync:maxCursor=>{
+    if(maxCursor!==null)saveCursor(maxCursor);
+    setNotice('El historial de avisos no está completo. Se ha recuperado el estado actual autorizado.');
+   },
+   onRevoked:()=>{
+    lastStreamStateRef.current=null;
+    setTableChangeState(null);setTableChangeNotice(null);
+    setQrState('change_error');
+   }
+  });
+ },[flowContract,enableTableChangeFlow,identity.status,
+    identity.status==='authenticated'?identity.publicId:null,applyScannedChangeState]);
+ const changeRemainingSeconds=tableChangeState?.expiresAtMs==null?null:Math.max(0,
+  Math.ceil((tableChangeState.expiresAtMs-(
+   tableChangeState.serverNowMs+changeClock-changeStateReceivedAtRef.current))/1000));
 
  useEffect(()=>{
   const controller=new AbortController();
@@ -132,10 +312,10 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   return()=>{active=false;};
  },[]);
  useEffect(()=>{
-  const credential=qrCredentialRef.current;
+  const credential=scannedCredentialRef.current;
   if(identity.status==='authenticated'&&credential&&['pending','identity_required'].includes(qrState))
-   void authorizeTable(credential);
- },[authorizeTable,identity.status,qrState]);
+   void inspectScannedQr(credential);
+ },[inspectScannedQr,identity.status,qrState]);
  useEffect(()=>{if(searchOpen)searchRef.current?.focus();},[searchOpen]);
  useEffect(()=>{saveClientPreferences(localStorage,{locale,alias,company,favorites});},[locale,alias,company,favorites]);
  useEffect(()=>{saveBasket(localStorage,basket);},[basket]);
@@ -150,8 +330,12 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[]);
  useEffect(()=>{
   if(!eventScope||!tableVisit)return;
+  setEventFeedConnected(false);
+  setEventFeedNotice(null);
   return subscribeCustomerEvents({tableId:tableVisit.tableId,visitId:tableVisit.visitId,
    accountId:eventScope.accountId,onEvent:event=>{
+    setEventFeedConnected(true);
+    setEventFeedNotice(null);
     setCustomerEvents(current=>Object.freeze([...current.slice(-49),event]));
     if(event.type==='sabora.payment.requires_action')setCheckoutPhase('payment_action');
     if(event.type==='sabora.payment.authorized'){
@@ -163,13 +347,15 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
       'El resultado del proveedor es incierto. No intentes otro medio de pago; pide ayuda al personal.':
       'The provider result is uncertain. Do not try another payment method; ask staff for help.');
     }
-    if(event.type==='sabora.kitchen.dispatch_acknowledged')setCheckoutMessage(locale==='es'?
-     'Cocina ha recibido el pedido.':'The kitchen has received the order.');
+    if(event.type==='sabora.kitchen.dispatch_acknowledged')setEventFeedNotice(locale==='es'?
+     'Cocina ha recibido un pedido.':'Kitchen has received an order.');
    },onResync:()=>{
-    setCheckoutMessage(locale==='es'?'El historial disponible ha caducado; se requiere una recarga segura.':
+    setEventFeedConnected(false);
+    setEventFeedNotice(locale==='es'?'El historial disponible ha caducado; se requiere una recarga segura.':
      'The available history has expired; a secure reload is required.');
    },onUnavailable:()=>{
-    setCheckoutMessage(locale==='es'?'El canal de seguimiento perdió autorización. Vuelve a validar la mesa.':
+    setEventFeedConnected(false);
+    setEventFeedNotice(locale==='es'?'El canal de seguimiento perdió autorización. Vuelve a validar la mesa.':
      'The tracking channel lost authorization. Validate the table again.');
    }});
  },[eventScope,locale,tableVisit]);
@@ -281,6 +467,13 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
       'Esta compilación no tiene conectado el componente autorizado de Stripe. El pedido queda pendiente, sin inventar un pago correcto.':
       'This build has no authorized Stripe component connected. The order remains pending without inventing payment success.');
     }
+   }else if(result.paymentMode==='pay_now'&&
+     ['awaiting_authorization','payment_unknown'].includes(result.roundState??'')){
+    // A persisted order is not proof of a completed Stripe payment or dispatch.
+    setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
+    setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
+     'Pedido registrado; la autorización de Stripe sigue pendiente. No se ha confirmado ningún cobro ni envío a cocina. Consulta Notificaciones para conocer el estado.':
+     'Order recorded; Stripe authorization is still pending. No charge or kitchen dispatch has been confirmed. Check Notifications for its status.');
    }else{
     setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
     setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
@@ -344,7 +537,9 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   if(identity.status!=='authenticated'||identityBusy)return;
   setIdentityBusy(true);
   try{await customerTransport.logout();setIdentity({status:'guest'});
-   qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');setEventScope(null);setCustomerEvents([]);
+   qrCredentialRef.current=null;scannedCredentialRef.current=null;setTableVisit(null);
+   setTableChangeState(null);setTableChangeNotice(null);lastStreamStateRef.current=null;
+   setQrState('idle');setEventScope(null);setCustomerEvents([]);
    setNotice(locale==='es'?'Sesión cerrada en este dispositivo.':'Session closed on this device.');}
   catch{setNotice(locale==='es'?'No se ha podido cerrar la sesión con seguridad.':'The session could not be closed securely.');}
   finally{setIdentityBusy(false);}
@@ -354,6 +549,13 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
 
  return <div className="client-app">
   <Header locale={locale} quantity={totalQuantity} searchOpen={searchOpen} onLocale={switchLocale} onSearch={toggleSearch} onCart={openCart} onNotifications={openNotifications} onHome={goHome}/>
+  {tableChangeNotice?<aside className="table-change-live-notice" role="status" aria-live="polite">
+   <p>{tableChangeNotice==='approved'?APPROVED_CHANGE_MESSAGE:REJECTED_CHANGE_MESSAGE}</p>
+   <div>
+    <button type="button" onClick={()=>{setTableChangeNotice(null);setArea('qr');setOverlay('qr');}}>Ver cambio de mesa</button>
+    <button type="button" onClick={()=>setTableChangeNotice(null)} aria-label="Cerrar aviso">Cerrar</button>
+   </div>
+  </aside>:null}
   <div className={`search-panel${searchOpen?' open':''}`} aria-hidden={!searchOpen}><label htmlFor="catalog-search">{copy.search}</label><div><Icon name="search"/><input ref={searchRef} id="catalog-search" type="search" value={query} maxLength={100} placeholder={copy.search} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Escape')setSearchOpen(false);}}/></div></div>
   <main id="main-content" className="client-main">
    {area==='home'?<>
@@ -373,9 +575,46 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   {totalQuantity>0&&overlay!=='cart'?<aside className="cart-summary" aria-label={copy.selection}><div><strong>{totalQuantity} {locale==='es'?'platos':'dishes'}</strong><span>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</span></div><button type="button" onClick={openCart}>{copy.view}<Icon name="arrow"/></button></aside>:null}
   <BottomNav locale={locale} active={area} onSelect={selectArea}/>
 
-  {overlay==='notifications'?<Modal title={copy.notifications} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy"><Icon name="bell"/>{customerEvents.length?<ol className="customer-event-list">{[...customerEvents].reverse().map(event=><li key={`${event.id}-${event.type}`}><strong>{event.type.replace('sabora.','').replaceAll('_',' ')}</strong><span>{new Date(event.createdAt).toLocaleTimeString(locale==='es'?'es-ES':'en-GB',{hour:'2-digit',minute:'2-digit'})}</span></li>)}</ol>:<p>{locale==='es'?'Todavía no hay eventos autorizados para esta cuenta.':'There are no authorized events for this account yet.'}</p>}<span className="honest-status">{eventScope?(locale==='es'?'Canal SSE durable conectado, sin sondeo periódico':'Durable SSE channel connected, without periodic polling'):(locale==='es'?'El canal se abre al confirmar un pedido':'The channel opens after confirming an order')}</span></div></Modal>:null}
+  {overlay==='notifications'?<Modal title={copy.notifications} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy"><Icon name="bell"/>{customerEvents.length?<ol className="customer-event-list">{[...customerEvents].reverse().map(event=><li key={`${event.id}-${event.type}`}><strong>{event.type.replace('sabora.','').replaceAll('_',' ')}</strong><span>{new Date(event.createdAt).toLocaleTimeString(locale==='es'?'es-ES':'en-GB',{hour:'2-digit',minute:'2-digit'})}</span></li>)}</ol>:<p>{locale==='es'?'Todavía no hay eventos autorizados para esta cuenta.':'There are no authorized events for this account yet.'}</p>}<span className="honest-status">{eventScope?(eventFeedConnected?(locale==='es'?'Canal SSE durable conectado, sin sondeo periódico':'Durable SSE channel connected, without periodic polling'):(locale==='es'?'Canal de seguimiento pendiente o no disponible; no se presume conexión':'Tracking channel pending or unavailable; connection is not assumed')):(locale==='es'?'El canal se abre al confirmar un pedido':'The channel opens after confirming an order')}</span>{eventFeedNotice?<p className="honest-status" role="status">{eventFeedNotice}</p>:null}</div></Modal>:null}
   {overlay==='qr'?<Modal title={locale==='es'?'QR de mesa':'Table QR'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="modal-copy qr-flow"><Icon name="qr"/><p>{locale==='es'?'Escanea el QR auténtico de la mesa. Sabora conservará tu selección y el servidor comprobará identidad, credencial revocable, estado y visita antes de habilitar el pedido.':'Scan the authentic table QR. Sabora keeps your selection, and the server verifies identity, revocable credential, state and visit before enabling ordering.'}</p>
-   {qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}>{locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
+   {qrState==='checking_change'?<span className="honest-status" role="status">Comprobando tu vinculación y las solicitudes con el restaurante…</span>:
+    qrState==='change_prompt'?<div className="table-change-client-notice" role="group" aria-label="Cambio de mesa">
+      <strong>Cambio de mesa</strong>
+      <p>Tienes una consumición activa en otra mesa. Para cambiar de mesa necesitas la autorización del personal. Hasta entonces puedes seguir pidiendo y pagando en tu mesa actual.</p>
+      <div className="table-change-client-actions">
+       <button className="primary-action" type="button" onClick={()=>void requestTableChange()}>Solicitar cambio de mesa</button>
+       <button type="button" onClick={cancelChangePrompt}>Cancelar</button>
+      </div>
+    </div>:
+    qrState==='change_pending'||qrState==='change_rejected'?<div className="table-change-client-notice" role="status">
+      <strong>{qrState==='change_pending'?'Solicitud enviada al personal':'Cambio de mesa no autorizado'}</strong>
+      <p>{qrState==='change_rejected'?REJECTED_CHANGE_MESSAGE:
+       'Puedes seguir consumiendo y pagando en tu mesa actual mientras el personal responde.'}</p>
+      <p>{changeRemainingSeconds!==null&&changeRemainingSeconds>0?
+       `Podrás realizar una nueva solicitud en ${changeRemainingSeconds} segundos`:
+       'Consulta el estado para comprobar si puedes solicitar de nuevo.'}</p>
+      <div className="table-change-client-actions">
+       <button className="primary-action" type="button" onClick={()=>void refreshTableChange()}>Consultar respuesta</button>
+       <button type="button" onClick={cancelChangePrompt}>Volver a mi mesa</button>
+      </div>
+    </div>:
+    qrState==='change_approved'?<div className="table-change-client-notice" role="status">
+      <strong>Cambio de mesa aprobado</strong><p>{APPROVED_CHANGE_MESSAGE}</p>
+      <p>El consumo seguirá en tu mesa actual hasta confirmar un pedido en la nueva mesa.</p>
+      <div className="table-change-client-actions">
+       <button className="primary-action" type="button" onClick={continueAfterApproval}>Continuar con la mesa escaneada</button>
+       <button type="button" onClick={cancelChangePrompt}>Seguir en mi mesa</button>
+      </div>
+    </div>:
+    qrState==='change_error'?<div className="table-change-client-notice" role="alert">
+      <strong>No se puede comprobar el cambio de mesa</strong>
+      <p>Por seguridad no se habilitará otra mesa. Tu consumición anterior se conserva.</p>
+      <div className="table-change-client-actions">
+       <button type="button" onClick={()=>void refreshTableChange()}>Reintentar</button>
+       <button type="button" onClick={cancelChangePrompt}>Cancelar</button>
+      </div>
+    </div>:
+    qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}>{locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
     qrState==='authorizing'?<span className="honest-status" role="status">{locale==='es'?'Validando mesa y visita…':'Validating table and visit…'}</span>:
     qrState==='identity_required'?<><span className="honest-status" role="status">{locale==='es'?'Crea tu identidad segura para validar esta mesa. El QR queda pendiente solo en memoria.':'Create your secure identity to validate this table. The QR remains pending in memory only.'}</span><button className="primary-action" type="button" onClick={()=>{setOverlay(null);setArea('settings');}}>{locale==='es'?'Crear identidad':'Create identity'}</button></>:
     qrState==='invalid'?<><span className="qr-error" role="alert">{locale==='es'?'Este QR no cumple el contrato seguro de Sabora o pertenece a otra instalación.':'This QR does not meet Sabora’s secure contract or belongs to another installation.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Intentar otro QR':'Try another QR'}</button></>:

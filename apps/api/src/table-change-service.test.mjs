@@ -92,3 +92,42 @@ test('request persists expired pending state before inserting replacement',async
  assert.deepEqual(calls.map(entry=>entry[0]),['expire','insert']);
  assert.deepEqual(calls[0],['expire','a1',92000]);
 });
+
+test('F12 consumption fails closed without an approved grant and never applies transfer',async()=>{
+ let applications=0;
+ const tx={serverNowMs:async()=>2000,lockApprovedRequest:async()=>null,
+  applyTransfer:async()=>{applications++;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ await assert.rejects(()=>service.consumeInOrderTransaction(tx,{
+  accountId:'a1',sourceTableId:'t1',destinationTableId:'t2',orderId:'o1'
+ }),/table_change_transfer_forbidden/);
+ assert.equal(applications,0);
+});
+
+test('F12 consumption rejects wrong origin and same-table destination before any write',async()=>{
+ let applications=0;
+ const approved={status:'approved',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
+ const tx={serverNowMs:async()=>2000,lockApprovedRequest:async()=>approved,
+  applyTransfer:async()=>{applications++;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ for(const [sourceTableId,destinationTableId,reason] of [
+  ['t3','t2','table_change_origin_conflict'],
+  ['t1','t1','table_change_transfer_forbidden']
+ ]){
+  await assert.rejects(()=>service.consumeInOrderTransaction(tx,{
+   accountId:'a1',sourceTableId,destinationTableId,orderId:'o1'
+  }),error=>error.message===reason);
+ }
+ assert.equal(applications,0);
+});
+
+test('F12 consumption propagates storage failure rather than claiming a completed transfer',async()=>{
+ const approved={status:'approved',sourceTableId:'t1',createdAtMs:1000,expiresAtMs:91000};
+ const failure=new Error('transaction_rolled_back');
+ const tx={serverNowMs:async()=>2000,lockApprovedRequest:async()=>approved,
+  applyTransfer:async()=>{throw failure;}};
+ const service=createTableChangeService({store:{transaction:async(_,run)=>run(tx)}});
+ await assert.rejects(()=>service.consumeInOrderTransaction(tx,{
+  accountId:'a1',sourceTableId:'t1',destinationTableId:'t2',orderId:'o1'
+ }),error=>error===failure);
+});

@@ -61,11 +61,12 @@ function requestContext(request) {
   return {verifiedIdentity: request.verifiedIdentity, verifiedStaff: request.verifiedStaff};
 }
 
-export function registerOrderOperationsHttp(app, {forRoles, operations, transitionOnly = false} = {}) {
+export function registerOrderOperationsHttp(app, {forRoles, operations, transitionOnly = false, legacyPickupDisabled = false} = {}) {
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function' ||
       typeof forRoles !== 'function' || !operations ||
       typeof operations.listBoard !== 'function' || typeof operations.transitionLine !== 'function' ||
-      typeof operations.listHistory !== 'function' || typeof transitionOnly !== 'boolean') {
+      typeof operations.listHistory !== 'function' || typeof transitionOnly !== 'boolean' ||
+      typeof legacyPickupDisabled !== 'boolean') {
     throw Error('invalid_order_operations_http_config');
   }
   const protectedRoles = forRoles(['admin', 'waiter', 'kitchen']);
@@ -126,6 +127,9 @@ export function registerOrderOperationsHttp(app, {forRoles, operations, transiti
         Reflect.ownKeys(body).length !== 2 || !TARGET_SET.has(body.targetStatus) ||
         !CORRELATION.test(body.correlationId)) {
       return reply.code(400).send({error: 'invalid_order_operation'});
+    }
+    if (legacyPickupDisabled && body.targetStatus === 'picked_up') {
+      return reply.code(409).send({error: 'order_operation_conflict'});
     }
     if ((verifiedRole === 'kitchen' && body.targetStatus === 'picked_up') ||
         (verifiedRole === 'waiter' && body.targetStatus !== 'picked_up')) {

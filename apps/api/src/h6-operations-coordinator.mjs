@@ -43,6 +43,11 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
    const bound=capability(verified,'settle_cash',accountId,correlationId);
    return repository.settleCash({accountId,amountCents,capability:bound.capability});
   },
+  closeAccount(verified,{accountId,correlationId}={}){
+   if(typeof repository.closeAccount!=='function')throw Error('h6_account_close_unavailable');
+   const bound=capability(verified,'close_account',accountId,correlationId);
+   return repository.closeAccount({accountId,capability:bound.capability});
+  },
   refundCash(verified,{incidentId,correlationId}={}){
    const bound=capability(verified,'refund_cash',incidentId,correlationId);
    return repository.refundCash({incidentId,capability:bound.capability});

@@ -30,7 +30,7 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
    insertRequest:async v=>{
     let result;
     try { result=await query(
-    "WITH request_clock AS (SELECT clock_timestamp() AS at), eligible AS (SELECT c.at FROM request_clock c JOIN sabora.customer_accounts a ON a.id=$1 AND a.customer_id=$2 AND a.visit_key=$3 AND a.table_id=$4 AND a.state='open' WHERE NOT EXISTS (SELECT 1 FROM sabora.customer_table_change_requests r WHERE r.account_id=a.id AND (r.status='approved' OR r.expires_at>c.at))) INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) SELECT $1,$2,$3,$4,e.at,e.at+make_interval(secs=>$5::integer) FROM eligible e RETURNING *",
+    "WITH request_clock AS (SELECT clock_timestamp() AS at), eligible AS (SELECT c.at FROM request_clock c JOIN sabora.customer_accounts a ON a.id=$1 AND a.customer_id=$2 AND a.state='open' JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id AND b.visit_key=$3 AND b.table_id=$4 WHERE NOT EXISTS (SELECT 1 FROM sabora.customer_table_change_requests r WHERE r.account_id=a.id AND (r.status='approved' OR r.expires_at>c.at))) INSERT INTO sabora.customer_table_change_requests (account_id,customer_id,visit_key,source_table_id,created_at,expires_at) SELECT $1,$2,$3,$4,e.at,e.at+make_interval(secs=>$5::integer) FROM eligible e RETURNING *",
     [v.accountId,v.customerId,v.visitId,v.sourceTableId,Math.round((v.expiresAtMs-v.createdAtMs)/1000)]); }
     catch(error){
      // The partial unique index is the final defense against concurrent inserts.
@@ -52,7 +52,7 @@ export function createTableChangePostgresStore({withTransaction,resolveAccount,v
     'SELECT * FROM sabora.customer_table_change_requests WHERE id=$1 FOR UPDATE',[id])).rows[0]),
    recordDecision:async({request,staffId})=>{
     const result=await query(
-    "UPDATE sabora.customer_table_change_requests SET status=$2,decided_at=clock_timestamp(),decided_by=$3 WHERE id=$1 AND status='pending' AND expires_at>clock_timestamp() AND EXISTS (SELECT 1 FROM sabora.customer_accounts a WHERE a.id=sabora.customer_table_change_requests.account_id AND a.state='open' AND a.table_id=sabora.customer_table_change_requests.source_table_id AND a.customer_id=sabora.customer_table_change_requests.customer_id AND a.visit_key=sabora.customer_table_change_requests.visit_key) RETURNING *",
+    "UPDATE sabora.customer_table_change_requests SET status=$2,decided_at=clock_timestamp(),decided_by=$3 WHERE id=$1 AND status='pending' AND expires_at>clock_timestamp() AND EXISTS (SELECT 1 FROM sabora.customer_accounts a WHERE a.id=sabora.customer_table_change_requests.account_id AND a.state='open' AND a.customer_id=sabora.customer_table_change_requests.customer_id AND EXISTS (SELECT 1 FROM sabora.customer_account_operational_bindings b WHERE b.account_id=a.id AND b.table_id=sabora.customer_table_change_requests.source_table_id AND b.visit_key=sabora.customer_table_change_requests.visit_key)) RETURNING *",
     [request.id,request.status,staffId]);
     if(result.rows.length===0)throw Error('table_change_request_not_pending');
     if(result.rows.length!==1)throw Error('invalid_table_change_sql_result');

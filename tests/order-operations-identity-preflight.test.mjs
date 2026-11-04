@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   preflightOrderOperationsIdentities,
   preflightOrderOperationsRuntimeIdentity,
+  preflightOrderOperationsH6DeliveryIdentity,
   preflightOrderTransitionIdentity,
   preflightOrderTransitionStaffIdentity,
 } from '../apps/api/src/order-operations-identity-preflight.mjs';
@@ -30,6 +31,10 @@ function pool(role, overrides = {}) {
             authorized_rpc_execute: false,
             authorized_board_rpc_execute: false,
             authorized_history_rpc_execute: false,
+            h6_delivery_board_rpc_execute: false,
+            h6_delivery_board_is_definer: true,
+            h6_delivery_board_owner: 'sabora_order_operations_fn_owner',
+            h6_delivery_board_search_path_locked: true,
             unsafe_actor_rpc_execute: 0,
             accessible_private_tables: 0, accessible_private_sequences: 0,
             accessible_private_definer_routines: 0,
@@ -66,6 +71,20 @@ test('preflight accepts only two distinct verified non-privileged SQL logins', a
   assert.equal(operationsPool.state.queries, 1);
   assert.deepEqual(staffPool.state.releases, [null]);
   assert.deepEqual(operationsPool.state.releases, [null]);
+});
+
+test('legacy H4 preflight treats the H6 delivery board RPC as optional without regprocedure resolution errors', async () => {
+  const operationsPool = pool(roles.operationsRole);
+  await preflightOrderOperationsIdentities({
+    staffPool: pool(roles.staffRole), operationsPool, ...roles,
+  });
+  assert.equal(operationsPool.state.queries, 1);
+  const sql = operationsPool.state.sql[0];
+  const signature = 'sabora.read_order_operations_delivery_pickup_board_h6_candidate';
+  assert.match(sql, /to_regprocedure\('sabora\.read_order_operations_delivery_pickup_board_h6_candidate/);
+  assert.doesNotMatch(sql, /read_order_operations_delivery_pickup_board_h6_candidate[^']*'::regprocedure/);
+  assert.match(sql, /COALESCE\(has_function_privilege\(current_user,\s*to_regprocedure/);
+  assert.ok(sql.includes(signature));
 });
 
 test('candidate transition preflight accepts exactly one authorized wrapper', async () => {
@@ -301,4 +320,28 @@ test('transition staff preflight accepts only exact column-scoped membership rea
       pool: pool(roles.staffRole, override), role: roles.staffRole,
     }), /order_operations_sql_identity_rejected/);
   }
+});
+
+test('H6 delivery preflight requires exactly four sealed authorized routines',async()=>{
+ const valid={
+  authorized_rpc_execute:true,authorized_board_rpc_execute:true,
+  authorized_history_rpc_execute:true,h6_delivery_board_rpc_execute:true,
+  accessible_private_definer_routines:4,
+ };
+ assert.deepEqual(await preflightOrderOperationsH6DeliveryIdentity({
+  pool:pool(roles.operationsRole,valid),role:roles.operationsRole,
+ }),{role:roles.operationsRole});
+ for(const override of [
+  {...valid,h6_delivery_board_rpc_execute:false},
+  {...valid,h6_delivery_board_is_definer:false},
+  {...valid,h6_delivery_board_owner:'postgres'},
+  {...valid,h6_delivery_board_search_path_locked:false},
+  {...valid,accessible_private_definer_routines:5},
+  {...valid,accessible_private_tables:1},
+ ]) await assert.rejects(preflightOrderOperationsH6DeliveryIdentity({
+  pool:pool(roles.operationsRole,override),role:roles.operationsRole,
+ }),/order_operations_sql_identity_rejected/);
+ await assert.rejects(preflightOrderOperationsRuntimeIdentity({
+  pool:pool(roles.operationsRole,valid),role:roles.operationsRole,
+ }),/order_operations_sql_identity_rejected/);
 });

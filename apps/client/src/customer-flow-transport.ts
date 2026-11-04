@@ -56,18 +56,39 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    if(typeof value.revoked!=='boolean')throw new CustomerFlowTransportError('customer_flow_unavailable',503);
    return value.revoked;
   },
+  async tableChangeState(){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/state','GET');
+   if(!['unbound','bound','pending','approved','rejected'].includes(value.state as string)||
+      (value.boundTableId!==null&&
+       (typeof value.boundTableId!=='string'||!UUID.test(value.boundTableId)))||
+      !Number.isSafeInteger(value.serverNowMs)||
+      (['pending','rejected'].includes(value.state as string)?
+       !Number.isSafeInteger(value.expiresAtMs)||
+        (value.expiresAtMs as number)<=(value.serverNowMs as number):
+       value.expiresAtMs!==null))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   if((value.state==='unbound')!==(value.boundTableId===null))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({state:value.state as 'unbound'|'bound'|'pending'|'approved'|'rejected',
+    boundTableId:value.boundTableId as string|null,
+    expiresAtMs:value.expiresAtMs as number|null,serverNowMs:value.serverNowMs as number});
+  },
   async requestTableChange(){
    // The destination must never be part of the request payload.
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/requests','POST',{});
-   if(typeof value.accountId!=='string'||!value.accountId||
-      typeof value.sourceTableId!=='string'||!value.sourceTableId||
-      value.status!=='pending'||
-      !Number.isSafeInteger(value.createdAtMs)||!Number.isSafeInteger(value.expiresAtMs)||
-      (value.expiresAtMs as number)<=(value.createdAtMs as number))
+   if(typeof value.id!=='string'||!UUID.test(value.id)||
+      (value.sourceTableId!==undefined&&
+       (typeof value.sourceTableId!=='string'||!UUID.test(value.sourceTableId)))||
+      value.status!=='pending'||!Number.isSafeInteger(value.expiresAtMs)||
+      (value.expiresAtMs as number)<=0||
+      (value.createdAtMs!==undefined&&
+       (!Number.isSafeInteger(value.createdAtMs)||(value.createdAtMs as number)<0||
+        (value.expiresAtMs as number)<=(value.createdAtMs as number))))
     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
-   return Object.freeze({accountId:value.accountId,sourceTableId:value.sourceTableId,
-    status:'pending' as const,createdAtMs:value.createdAtMs as number,
-    expiresAtMs:value.expiresAtMs as number});
+   return Object.freeze({requestId:value.id,status:'pending' as const,
+    expiresAtMs:value.expiresAtMs as number,
+    ...(value.sourceTableId===undefined?{}:{sourceTableId:value.sourceTableId as string}),
+    ...(value.createdAtMs===undefined?{}:{createdAtMs:value.createdAtMs as number})});
   },
   async authorizeVisit(input:{tableId:string;qrToken:string}){
    if(!UUID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken))

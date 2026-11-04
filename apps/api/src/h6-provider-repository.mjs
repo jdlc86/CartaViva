@@ -2,6 +2,11 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const RECORD_AUTHORIZATION_H6_SQL=`SELECT payment_attempt_id,payment_state,round_state,repeated
  FROM sabora.record_h6_authorization_outcome_candidate($1::uuid,$2::text,$3::text,$4::timestamptz,$5::text)`;
+export const LIST_SCHEDULABLE_H6_SQL=`SELECT order_id,grouping_deadline,server_now
+ FROM sabora.list_schedulable_h6_rounds_candidate($1::integer)`;
+export const REQUEST_DUE_CAPTURE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,capture_key,
+ dispatch_id,dispatch_key,action,repeated
+ FROM sabora.request_h6_capture_dispatch_candidate($1::uuid,clock_timestamp())`;
 export const REQUEST_CAPTURE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,capture_key,
  dispatch_id,dispatch_key,action,repeated FROM sabora.request_h6_capture_dispatch_candidate($1::uuid,$2::timestamptz)`;
 export const RECORD_CAPTURE_H6_SQL=`SELECT payment_state,round_state,dispatch_id,dispatch_state,repeated
@@ -27,6 +32,19 @@ const rows=async promise=>{
 export function createH6ProviderRepository({withTransaction}={}){
  if(typeof withTransaction!=='function')throw Error('invalid_h6_provider_repository');
  return Object.freeze({
+  async listSchedulable({limit=100}={}){
+   if(!Number.isSafeInteger(limit)||limit<1||limit>100)
+    throw Error('invalid_h6_dispatch_limit');
+   const result=await withTransaction(query=>query(LIST_SCHEDULABLE_H6_SQL,[limit]));
+   if(!result||!Array.isArray(result.rows))throw Error('invalid_h6_dispatch_schedule');
+   return result.rows.map(row=>Object.freeze({
+    orderId:row.order_id,groupingDeadline:row.grouping_deadline,serverNow:row.server_now
+   }));
+  },
+  requestDueCapture({orderId}={}){
+   if(!UUID.test(orderId??''))throw Error('invalid_h6_capture_request');
+   return withTransaction(query=>rows(query(REQUEST_DUE_CAPTURE_H6_SQL,[orderId])));
+  },
   recordAuthorization({orderId,outcome,providerIntentId=null,captureBefore=null,errorCode=null}={}){
    if(!UUID.test(orderId??'')||!['authorized','requires_action','failed','unknown'].includes(outcome))
     throw Error('invalid_h6_authorization_record');

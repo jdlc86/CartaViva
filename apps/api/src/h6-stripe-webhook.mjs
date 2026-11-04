@@ -16,11 +16,13 @@ const signatures=value=>{
  return timestamp!==null&&v1.length?{timestamp,v1}:null;
 };
 
-export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date.now(),toleranceSeconds=300}={}){
+export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date.now(),toleranceSeconds=300,expectedLivemode=null}={}){
  if(!(rawBody instanceof Uint8Array)||rawBody.byteLength<2||rawBody.byteLength>1024*1024||
     typeof secret!=='string'||!/^whsec_[A-Za-z0-9_]{16,}$/.test(secret)||
     !Number.isSafeInteger(nowMs)||nowMs<0||!Number.isSafeInteger(toleranceSeconds)||
-    toleranceSeconds<1||toleranceSeconds>300)throw Error('invalid_stripe_webhook_input');
+    toleranceSeconds<1||toleranceSeconds>300||
+    (expectedLivemode!==null&&typeof expectedLivemode!=='boolean'))
+  throw Error('invalid_stripe_webhook_input');
  const parsed=signatures(signatureHeader);
  if(!parsed||Math.abs(Math.floor(nowMs/1000)-parsed.timestamp)>toleranceSeconds)
   throw Error('invalid_stripe_webhook_signature');
@@ -31,6 +33,13 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  let event;
  try{event=JSON.parse(body.toString('utf8'));}catch{throw Error('invalid_stripe_webhook_payload');}
  const object=event?.data?.object;
+ // Strict single-restaurant environment check is opt-in for the isolated
+ // provider composition; the historic signature-only callers are unchanged.
+ if(expectedLivemode!==null &&
+    (event?.livemode!==expectedLivemode||event?.account!==undefined&&event.account!==null||
+     event?.object!=='event'||object?.object!==(
+      event?.type?.startsWith('payment_intent.')?'payment_intent':'refund') ))
+  throw Error('invalid_stripe_webhook_payload');
  if(!EVENT.test(event?.id??'')||!TYPES.has(event?.type)||!OBJECT.test(object?.id??'')||
     !Number.isSafeInteger(event?.created)||event.created<1)
   throw Error('invalid_stripe_webhook_payload');
@@ -50,8 +59,12 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  if(event.type==='refund.updated'){
   refundAttemptId=object?.metadata?.sabora_refund_attempt_id;
   refundStatus=object?.status;
+  // The refund ID and metadata alone are insufficient: the sealed SQL must
+  // also reconcile the provider's original charge to the payment attempt.
+  providerChargeId=typeof object?.charge==='string'?object.charge:object?.charge?.id;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refundAttemptId??'')||
-     !['pending','requires_action','succeeded','failed','canceled'].includes(refundStatus))
+     !['pending','requires_action','succeeded','failed','canceled'].includes(refundStatus)||
+     typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
    throw Error('invalid_stripe_webhook_payload');
  }
  return Object.freeze({eventId:event.id,eventType:event.type,providerObjectId:object.id,
@@ -59,9 +72,10 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
   providerChargeId,captureBefore,refundAttemptId,refundStatus});
 }
 
-export function createH6StripeWebhookHandler({secret,providerRepository,clock=Date.now}={}){
+export function createH6StripeWebhookHandler({secret,providerRepository,
+ clock=Date.now,expectedLivemode=null}={}){
  if(typeof secret!=='string'||!providerRepository||typeof providerRepository.ingestWebhook!=='function'||
     typeof clock!=='function')throw Error('invalid_h6_stripe_webhook_handler');
  return async({rawBody,signatureHeader}={})=>providerRepository.ingestWebhook(
-  verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs:clock()}));
+  verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs:clock(),expectedLivemode}));
 }

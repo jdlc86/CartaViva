@@ -11,6 +11,14 @@ const catalog=[
 test.beforeEach(async({page})=>{
  await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
  await page.route('**/api/v1/customer/session',route=>route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'unauthorized'})}));
+ // Earlier H6 browser fixtures have no confirmed account. A sealed read-only
+ // state projection must say unbound before those visits may be authorized.
+ // The separate B3 PG17 integration exercises the actual SQL projection.
+ await page.route('**/api/v1/customer/table-change/state',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({state:'unbound',boundTableId:null,
+   expiresAtMs:null,serverNowMs:Date.now()})
+ }));
  await page.goto('/');
  await expect(page.getByRole('heading',{name:'Nuestra carta'})).toBeVisible();
  await expect(page.getByTestId('product-card')).toHaveCount(4);

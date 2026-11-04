@@ -40,7 +40,8 @@ test('request adapter delegates account ownership and transaction to injected H6
  assert.match(insertion.sql,/WHERE NOT EXISTS/);
  assert.match(insertion.sql,/JOIN sabora.customer_accounts a/);
  assert.match(insertion.sql,/a\.state='open'/);
- assert.match(insertion.sql,/a\.table_id=\$4/);
+ assert.match(insertion.sql,/JOIN sabora\.customer_account_operational_bindings b ON b\.account_id=a\.id AND b\.visit_key=\$3 AND b\.table_id=\$4/);
+ assert.doesNotMatch(insertion.sql,/a\.table_id=\$4/);
  assert.match(insertion.sql,/status='approved'/);
  assert.equal(insertion.args[4],90);
  const expiry=calls.find(x=>x.sql.includes("status='expired'"));
@@ -83,7 +84,8 @@ test('decision update enforces server deadline at write time',async()=>{
  assert.match(updateSql,/expires_at>clock_timestamp\(\)/);
  assert.match(updateSql,/decided_at=clock_timestamp\(\)/);
  assert.match(updateSql,/a\.state='open'/);
- assert.match(updateSql,/a\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
+ assert.match(updateSql,/EXISTS \(SELECT 1 FROM sabora\.customer_account_operational_bindings b WHERE b\.account_id=a\.id AND b\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
+ assert.doesNotMatch(updateSql,/a\.table_id=sabora\.customer_table_change_requests\.source_table_id/);
  assert.doesNotMatch(updateSql,/to_timestamp\(/);
 });
 

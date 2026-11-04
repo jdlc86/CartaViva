@@ -9,6 +9,33 @@ const CAPABILITY_KEY = /^[A-Za-z0-9_-]{8,64}$/;
 const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
+// Exact SQL surface for the signed, role-scoped kitchen transition candidate.
+export const TRANSITION_ORDER_LINE_SQL=`SELECT updated_order_id, updated_line_id, previous_status,
+                current_status, repeated, event_id, notification_id
+           FROM sabora.transition_order_line_authorized_candidate(
+             $1::text, $2::text, $3::uuid, $4::uuid, $5::text,
+             $6::text, $7::bigint, $8::bigint, $9::text
+           )`;
+
+// Exact role-scoped SQL used by H4/H6 authenticated board and history reads.
+export const READ_H4_ORDER_BOARD_SQL=`SELECT *
+             FROM sabora.read_order_operations_board_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`;
+export const READ_H6_DELIVERY_BOARD_SQL=`SELECT *
+             FROM sabora.read_order_operations_delivery_pickup_board_h6_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::text,
+               $6::bigint, $7::uuid, $8::integer, $9::integer,
+               $10::bigint, $11::bigint, $12::text
+             )`;
+export const READ_ORDER_HISTORY_SQL=`SELECT *
+             FROM sabora.read_order_operations_history_authorized_candidate(
+               $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
+               $6::integer, $7::bigint, $8::bigint, $9::text
+             )`;
+
 const STATUSES = new Set(['confirmed', 'preparing', 'ready', 'picked_up']);
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 
@@ -87,7 +114,8 @@ function assertRoleStatus(role, status) {
   }
 }
 
-export function createOrderOperationsRepository() {
+export function createOrderOperationsRepository({deliveryBoardCandidate = false} = {}) {
+  if (typeof deliveryBoardCandidate !== 'boolean') throw Error('invalid_order_operations_repository_config');
   return Object.freeze({
     async verifyMembership(query, {actorId, role}) {
       if (typeof query !== 'function' || !UUID.test(actorId) || !ROLES.has(role)) {
@@ -179,12 +207,7 @@ export function createOrderOperationsRepository() {
           throw Error('invalid_order_operation_read_capability');
         }
         result = await query(
-          `SELECT *
-             FROM sabora.read_order_operations_board_authorized_candidate(
-               $1::text, $2::text, $3::uuid, $4::text, $5::text,
-               $6::bigint, $7::uuid, $8::integer, $9::integer,
-               $10::bigint, $11::bigint, $12::text
-             )`,
+          (deliveryBoardCandidate ? READ_H6_DELIVERY_BOARD_SQL : READ_H4_ORDER_BOARD_SQL),
           [
             capability.keyId,
             capability.databaseRole,
@@ -247,8 +270,16 @@ export function createOrderOperationsRepository() {
             (row.notification_id !== null && !UUID.test(row.notification_id)) ||
             (row.status === 'ready' && (!UUID.test(row.notification_id) ||
               row.notification_acknowledged_at !== null)) ||
-            (row.status === 'picked_up' && (!UUID.test(row.notification_id) ||
-              row.notification_acknowledged_at === null)) ||
+            // Legacy physically picked_up history may predate a durable pickup
+            // notification. The H6 destination-aware board must preserve
+            // that history without fabricating receipt/assignment evidence.
+            // H4 readers and any row with an H6 pickup task stay strict.
+            (row.status === 'picked_up' && (
+              row.notification_id === null
+                ? !(deliveryBoardCandidate && capability !== null &&
+                    row.pickup_task_id === null)
+                : row.notification_acknowledged_at === null
+            )) ||
             (row.pickup_task_id !== null && (!UUID.test(row.pickup_task_id) ||
               !['ready','claimed','corrected'].includes(row.pickup_state) ||
               !Number.isSafeInteger(Number(row.pickup_version)) || Number(row.pickup_version)<1 ||
@@ -264,6 +295,15 @@ export function createOrderOperationsRepository() {
               (row.pickup_state!=='corrected' && row.status!=='ready')))) {
           throw Error('invalid_order_operations_sql_result');
         }
+        if (deliveryBoardCandidate && capability !== null && (
+          !UUID.test(row.delivery_table_id) ||
+          !UUID.test(row.delivery_session_id) ||
+          !Number.isSafeInteger(Number(row.delivery_version)) ||
+          Number(row.delivery_version) < 1 ||
+          (row.delivery_visit_key !== null &&
+            (typeof row.delivery_visit_key !== 'string' ||
+             row.delivery_visit_key.length === 0 || row.delivery_visit_key.length > 256))
+        )) throw Error('invalid_order_operations_sql_result');
         const confirmedAt = asDate(row.confirmed_at);
         const notification = row.notification_id === null ? null : Object.freeze({
           id: row.notification_id,
@@ -293,6 +333,14 @@ export function createOrderOperationsRepository() {
           status: row.status,
           notification,
           pickup,
+          ...(deliveryBoardCandidate && capability !== null ? {
+            delivery: Object.freeze({
+              tableId: row.delivery_table_id,
+              sessionId: row.delivery_session_id,
+              visitKey: row.delivery_visit_key,
+              version: Number(row.delivery_version),
+            }),
+          } : {}),
         });
       });
       const page = validatedRows.slice(0, limit);
@@ -324,12 +372,7 @@ export function createOrderOperationsRepository() {
         throw Error('invalid_order_operation_capability');
       }
       const rows = assertResult(await query(
-        `SELECT updated_order_id, updated_line_id, previous_status,
-                current_status, repeated, event_id, notification_id
-           FROM sabora.transition_order_line_authorized_candidate(
-             $1::text, $2::text, $3::uuid, $4::uuid, $5::text,
-             $6::text, $7::bigint, $8::bigint, $9::text
-           )`,
+        TRANSITION_ORDER_LINE_SQL,
         [
           capability.keyId,
           capability.databaseRole,
@@ -399,11 +442,7 @@ export function createOrderOperationsRepository() {
           throw Error('invalid_order_operation_read_capability');
         }
         result = await query(
-          `SELECT *
-             FROM sabora.read_order_operations_history_authorized_candidate(
-               $1::text, $2::text, $3::uuid, $4::text, $5::uuid,
-               $6::integer, $7::bigint, $8::bigint, $9::text
-             )`,
+          READ_ORDER_HISTORY_SQL,
           [
             capability.keyId,
             capability.databaseRole,

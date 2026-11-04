@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRoleScopedPostgresTransaction} from '../apps/api/src/role-scoped-postgres.mjs';
-import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,
+import {createCustomerProductionFlow,PERSIST_H6_ORDER_SQL,PERSIST_H6_TRANSFER_ORDER_SQL,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,
  INSERT_QUOTE_SQL,LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL}
  from '../apps/api/src/customer-production-flow.mjs';
 import {issueCustomerBasketAcceptance,verifyCustomerBasketAcceptance}
@@ -133,4 +133,19 @@ test('basket acceptance expires, rejects tampering and is independent of object 
  const tampered=issued.token.slice(0,-1)+(issued.token.endsWith('0')?'1':'0');
  assert.equal(verifyCustomerBasketAcceptance({token:tampered,secretKey,
   context,nowMs:2000}),false);
+});
+
+test('B3 candidate confirmation is explicitly selectable but never the production default',()=>{
+ assert.match(PERSIST_H6_ORDER_SQL,/sabora\.confirm_customer_round_h6_candidate\(/);
+ assert.match(PERSIST_H6_TRANSFER_ORDER_SQL,/sabora\.confirm_customer_round_h6_transfer_integration_candidate\(/);
+ assert.equal(PERSIST_H6_TRANSFER_ORDER_SQL.replace(
+  'sabora.confirm_customer_round_h6_transfer_integration_candidate(',
+  'sabora.confirm_customer_round_h6_candidate('),PERSIST_H6_ORDER_SQL);
+ const common={withTransaction:async()=>{},withH6Transaction:async()=>{},
+  secretKey:'production-test-secret-key-that-is-at-least-32-bytes'};
+ assert.throws(()=>createCustomerProductionFlow({...common,
+  h6ConfirmationSql:'SELECT * FROM sabora.untrusted()'}),/invalid_customer_production_flow/);
+ assert.doesNotThrow(()=>createCustomerProductionFlow({...common,
+  h6ConfirmationSql:PERSIST_H6_TRANSFER_ORDER_SQL}));
+ assert.doesNotThrow(()=>createCustomerProductionFlow(common));
 });

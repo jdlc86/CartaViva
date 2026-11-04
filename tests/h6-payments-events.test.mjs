@@ -164,7 +164,7 @@ test('Stripe capturable webhook preserves the provider authorization deadline',(
 test('Stripe refund webhook binds provider outcome to the durable refund attempt metadata',()=>{
  const secret='whsec_candidate_0123456789abcdef',timestamp=Math.floor(Date.UTC(2026,9,27,12,0,0)/1000);
  const rawBody=Buffer.from(JSON.stringify({id:'evt_refund123',type:'refund.updated',created:timestamp,
-  data:{object:{id:'re_12345678',status:'succeeded',metadata:{sabora_refund_attempt_id:targetId}}}}));
+  data:{object:{id:'re_12345678',charge:'ch_12345678',status:'succeeded',metadata:{sabora_refund_attempt_id:targetId}}}}));
  const valid=createHmac('sha256',secret).update(`${timestamp}.`).update(rawBody).digest('hex');
  const verified=verifyH6StripeWebhook({rawBody,signatureHeader:`t=${timestamp},v1=${valid}`,
   secret,nowMs:timestamp*1000});

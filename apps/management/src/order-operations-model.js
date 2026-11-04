@@ -22,9 +22,10 @@ function iso(value) {
     new Date(value).toISOString() === value;
 }
 
-function normalizeNotification(value, status) {
+function normalizeNotification(value, status, allowUnnotifiedHistoricalPickup = false) {
   if (value === null) {
-    if (status === 'ready' || status === 'picked_up') throw Error('invalid_order_board');
+    if (status === 'ready' || (status === 'picked_up' && !allowUnnotifiedHistoricalPickup))
+      throw Error('invalid_order_board');
     return null;
   }
   if (!plain(value) || !UUID.test(value.id) || !iso(value.createdAt) ||
@@ -86,7 +87,8 @@ export function normalizeOrderBoard(value) {
       name: item.name.trim(),
       quantity: item.quantity,
       status: item.status,
-      notification: normalizeNotification(item.notification, item.status),
+      notification: normalizeNotification(item.notification, item.status,
+        value.version === 2 && item.status === 'picked_up' && item.pickup === null),
       pickup: value.version === 2 ? normalizePickup(item.pickup, item.status) : null,
     });
   });
