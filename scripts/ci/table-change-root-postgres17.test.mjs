@@ -7072,20 +7072,33 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'f21-revision-economic-consent-mobile.png'),fullPage:true});
     assert.equal(revisionBodies.length,1);
     const acceptedBody={...revisionBodies[0],acceptanceToken:acceptance.acceptanceToken};
-    const uiAcceptedResponse=firstUi.page.waitForResponse(response=>
-     new URL(response.url()).pathname===
-      '/api/v1/customer/orders/'+first.orderId+'/revisions');
-    const uiAccepted=(async()=>{
-     await firstUi.page.getByRole('button',{name:'Reenviar pedido'}).click();
-     return uiAcceptedResponse;
-    })();
-    const concurrentReplay=http.inject({method:'POST',
+    const acceptedRevisionRequest=request=>{
+     if(request.method()!=='POST'||new URL(request.url()).pathname!==
+        '/api/v1/customer/orders/'+first.orderId+'/revisions')return false;
+     try{return request.postDataJSON()?.acceptanceToken===acceptance.acceptanceToken;}
+     catch{return false;}
+    };
+    // Start the direct replay only once Chromium has emitted the accepted
+    // request. This preserves real overlap at the HTTP/SQL boundary without
+    // allowing the injected request to finish before the browser click has
+    // even been dispatched. Attach both Playwright waiters immediately so a
+    // slow action cannot turn their timeout into an unhandled rejection.
+    const acceptedRequest=firstUi.page.waitForRequest(acceptedRevisionRequest,
+     {timeout:20000});
+    const concurrentReplay=acceptedRequest.then(()=>http.inject({method:'POST',
      url:'/api/v1/customer/orders/'+first.orderId+'/revisions',
      headers:{cookie:'__Secure-sabora_customer='+naturalGroupingDiner.token,
-      'content-type':'application/json'},payload:acceptedBody});
+      'content-type':'application/json'},payload:acceptedBody}));
+    const uiAccepted=Promise.all([
+     firstUi.page.waitForResponse(response=>
+      acceptedRevisionRequest(response.request()),{timeout:60000}),
+     firstUi.page.getByRole('button',{name:'Reenviar pedido'}).click()
+    ]).then(([response])=>response);
     const [uiCorrection,directReplay]=await Promise.all([uiAccepted,concurrentReplay]);
     assert.deepEqual([uiCorrection.status(),directReplay.statusCode].sort(),[200,201],
      'concurrent same-key resubmission must commit once and replay once');
+    assert.equal(revisionBodies.length,2,
+     'the accepted correction must originate from the real client PWA');
     await firstUi.page.getByRole('dialog',{name:'Corregir pedido'}).waitFor({state:'hidden'});
     const revisionState=(await admin.query(`SELECT r.id AS round_id,r.account_id,
      r.revision_number,r.amount_cents,r.grouping_deadline,r.state AS round_state,
