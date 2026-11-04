@@ -5708,7 +5708,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          cashRequest=http.inject({method:'POST',url:cashUrl,
           headers:concurrentCashHeaders,payload:dueBody});
          let cashQueued=false;
-         for(let tries=0;tries<150;tries++){
+         // Shared CI runners can spend several seconds scheduling the signed
+         // staff/key checks before this statement reaches the account row.
+         // Keep the observation below the connection's 15 s statement timeout:
+         // the economic lock order and failure boundary remain unchanged.
+         for(let tries=0;tries<300;tries++){
           const waiting=await admin.query(`SELECT count(*)::int AS n
            FROM pg_stat_activity a WHERE a.pid<>$1::int
            AND a.wait_event_type='Lock'
@@ -5727,7 +5731,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          // must be queued on some REAL PostgreSQL lock. It cannot yet
          // reach the account row because the key is serialized by SQL.
          let closerQueued=false;
-         for(let tries=0;tries<150;tries++){
+         for(let tries=0;tries<300;tries++){
           const waiting=await admin.query(`SELECT count(*)::int AS n
            FROM pg_stat_activity a
            WHERE a.wait_event_type='Lock'
