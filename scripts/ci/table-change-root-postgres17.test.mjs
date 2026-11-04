@@ -5445,70 +5445,18 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           headers:dHeaders(diner),payload:reversePayload});
          assert.equal(reverseReplay.statusCode,200,reverseReplay.body);
          assert.equal(reverseReplay.json().status,'replayed');
-         // Cash collection and an optimistic close now queue in the SAME
-         // PostgreSQL transaction window: cash must be registered once,
-         // but an unfinished kitchen round still vetoes closing.
-         const cashHolder=await admin.connect();
-         let cashHeld=false,cashPending=null,closePending=null;
-         try{
-          await cashHolder.query('BEGIN');cashHeld=true;
-          const cashHolderPid=(await cashHolder.query(
-           'SELECT pg_backend_pid() AS pid')).rows[0].pid;
-          await cashHolder.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
-           [diner.account]);
-          const dueBody={amountCents:700,
-           correlationId:'b3_f20_inverse_cash_700_once'};
-          cashPending=http.inject({method:'POST',
-           url:'/api/v1/operations/accounts/'+diner.account+'/cash-settlements',
-           headers:closingHeaders,payload:dueBody});
-          let cashQueued=false;
-          for(let tries=0;tries<150;tries++){
-           const row=(await admin.query(`SELECT count(*)::int AS n
-            FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
-             AND $1::int=ANY(pg_blocking_pids(a.pid))
-             AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'`,
-            [cashHolderPid])).rows[0];
-           if(row.n>0){cashQueued=true;break;}
-           await new Promise(resolve=>setTimeout(resolve,40));
-          }
-          assert.equal(cashQueued,true,
-           'cash settlement must reach PostgreSQL account lock, not just HTTP');
-          closePending=http.inject({method:'POST',url:closeUrl,
-           headers:closingHeaders,
-           payload:{correlationId:'b3_f20_inverse_close_versus_cash'}});
-          let closeQueued=false;
-          for(let tries=0;tries<150;tries++){
-           const row=(await admin.query(`SELECT count(*)::int AS n
-            FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
-             AND a.query LIKE '%close_h6_account_authorized_candidate%'`)).rows[0];
-           if(row.n>0){closeQueued=true;break;}
-           await new Promise(resolve=>setTimeout(resolve,40));
-          }
-          assert.equal(closeQueued,true,
-           'close must be blocked on live PostgreSQL during competing cash receipt');
-          await cashHolder.query('COMMIT');cashHeld=false;
-          const cashResult=await cashPending;
-          assert.equal(cashResult.statusCode,201,cashResult.body);
-          assert.equal(cashResult.json().outstandingCents,0);
-          const refused=await closePending;
-          assert.equal(refused.statusCode,409,
-           'cash zero cannot close unacknowledged kitchen round: '+refused.body);
-          const cashReplay=await http.inject({method:'POST',
-           url:'/api/v1/operations/accounts/'+diner.account+'/cash-settlements',
-           headers:closingHeaders,payload:dueBody});
-          assert.equal(cashReplay.statusCode,201);
-          assert.equal(cashReplay.json().repeated,true);
-         }finally{
-          if(cashHeld)await cashHolder.query('ROLLBACK').catch(()=>{});
-          cashHolder.release();
-          if(cashPending)await Promise.allSettled([cashPending]);
-          if(closePending)await Promise.allSettled([closePending]);
-         }
+         // The order won the advisory-lock race, so this paid-but-not-
+         // reconciled account must remain OPEN. A simple subsequent closure
+         // is also denied while the newly confirmed round is unresolved.
+         const unpaidClose=await http.inject({method:'POST',url:closeUrl,
+          headers:closingHeaders,payload:{
+           correlationId:'b3_f20_inverse_unpaid_unready_close'}});
+         assert.equal(unpaidClose.statusCode,409,unpaidClose.body);
          const outstanding=(await admin.query(`SELECT state,
           outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
           WHERE id=$1`,[diner.account])).rows[0];
-         assert.deepEqual(outstanding,{state:'open',outstanding_cents:'0',
-          cash_settled_cents:'2600'});
+         assert.deepEqual(outstanding,{state:'open',outstanding_cents:'700',
+          cash_settled_cents:'1900'});
          // The new real order must complete its full life cycle, too:
          // sealed SQL dispatch -> signed kitchen ACK -> Chromium PREPARING /
          // READY -> durable H6 pickup task, before the original close-wins
@@ -5562,6 +5510,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           ON t.order_line_id=l.id WHERE l.id=$1`,
           [additionalLines[0].id])).rows[0];
          assert.deepEqual(finalLine,{status:'ready',state:'ready'});
+         const readyButUnpaid=(await admin.query(`SELECT state,
+          outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
+          WHERE id=$1`,[diner.account])).rows[0];
+         assert.deepEqual(readyButUnpaid,{state:'open',outstanding_cents:'700',
+          cash_settled_cents:'1900'},
+          'kitchen readiness does not settle economic debt or close an account');
         }finally{
          if(reverseLocked)await reverseHolder.query('ROLLBACK').catch(()=>{});
          reverseHolder.release();
@@ -5595,8 +5549,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          lines:[{quoteId:quoted.lines[0].quoteId,itemId,
           selection:{options:{},extras:[]},quantity:1}]};
         const concurrentCloseBody={correlationId:'b3_f20_close_after_resolved'};
+        // F20/R03/R05: at this point ALL THREE real kitchen rounds are
+        // acknowledged and READY, but the just-confirmed round still owes
+        // 700 cents. Place the actual signed cash receipt FIRST in the PG17
+        // account-row lock queue, then two identical close requests and a
+        // newly quoted customer checkout. Only after releasing this lock can
+        // cash reconcile, close commit once, and the fresh order be rejected.
+        const dueBody={amountCents:700,
+         correlationId:'b3_f20_inverse_cash_700_once'};
+        const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
         const accountLock=await admin.connect();
-        let accountLockOpen=false,closureRequests=[],customerRequest=null;
+        let accountLockOpen=false,closureRequests=[],customerRequest=null,cashRequest=null;
         let concurrentClose;
         try{
          await accountLock.query('BEGIN');accountLockOpen=true;
@@ -5604,6 +5567,20 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           'SELECT pg_backend_pid() AS pid')).rows[0].pid;
          await accountLock.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
           [diner.account]);
+         cashRequest=http.inject({method:'POST',url:cashUrl,
+          headers:closingHeaders,payload:dueBody});
+         let cashQueued=false;
+         for(let tries=0;tries<150;tries++){
+          const waiting=await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a WHERE a.pid<>$1::int
+           AND a.wait_event_type='Lock'
+           AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
+           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[holderPid]);
+          if(waiting.rows[0].n>0){cashQueued=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(cashQueued,true,
+          'cash settlement must enter PG17 account-row queue before close');
          closureRequests=[0,1].map(()=>http.inject({
           method:'POST',url:closeUrl,headers:closingHeaders,
           payload:concurrentCloseBody
@@ -5634,6 +5611,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          assert.equal(checkoutBlocked,true,
           'new quoted order must actually wait behind closure in PG17');
          await accountLock.query('COMMIT');accountLockOpen=false;
+         const settledCash=await cashRequest;
+         assert.equal(settledCash.statusCode,201,settledCash.body);
+         assert.equal(settledCash.json().repeated,false);
+         assert.equal(settledCash.json().outstandingCents,0);
+         assert.equal(settledCash.json().accountState,'open',
+          'even a full cash receipt never closes a customer account itself');
          concurrentClose=await Promise.all(closureRequests);
          assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
           'simultaneous signed close submissions must be idempotent');
@@ -5653,9 +5636,33 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         }finally{
          if(accountLockOpen)await accountLock.query('ROLLBACK').catch(()=>{});
          accountLock.release();
+         if(cashRequest)await Promise.allSettled([cashRequest]);
          if(closureRequests.length)await Promise.allSettled(closureRequests);
          if(customerRequest)await Promise.allSettled([customerRequest]);
         }
+        // Retrying the identical signed cash receipt AFTER closure must
+        // return its originally committed response. Neither cash replay nor
+        // the losing quoted order may resurrect or repay closed debt.
+        const cashReplayAfterClose=await http.inject({method:'POST',
+         url:cashUrl,headers:closingHeaders,payload:dueBody});
+        assert.equal(cashReplayAfterClose.statusCode,201,cashReplayAfterClose.body);
+        assert.equal(cashReplayAfterClose.json().repeated,true);
+        assert.equal(cashReplayAfterClose.json().accountState,'open',
+         'idempotent replay retains the historical settlement response');
+        assert.equal(cashReplayAfterClose.json().outstandingCents,0);
+        const finalCash=(await admin.query(`SELECT
+         (SELECT count(*)::int FROM sabora.cash_settlements
+          WHERE account_id=$1 AND correlation_id=$2) AS receipts,
+         (SELECT count(*)::int FROM sabora.event_outbox
+          WHERE account_id=$1 AND event_type='sabora.account.cash_settled') AS settled_notices,
+         (SELECT cash_settled_cents FROM sabora.customer_accounts
+          WHERE id=$1) AS paid_cents`,
+         [diner.account,dueBody.correlationId])).rows[0];
+        assert.equal(finalCash.receipts,1,
+         'real simultaneous cash/close must create exactly one receipt');
+        assert.equal(finalCash.settled_notices,2,
+         'original cash settlement and new one each have one durable event');
+        assert.equal(finalCash.paid_cents,'2600');
         const outcomes=concurrentClose.map(r=>r.json());
         assert.deepEqual(outcomes.map(x=>x.repeated).sort(),[false,true],
          'exactly one concurrent request must commit the account closure');
