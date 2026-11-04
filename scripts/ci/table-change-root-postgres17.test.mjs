@@ -5708,16 +5708,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          cashRequest=http.inject({method:'POST',url:cashUrl,
           headers:concurrentCashHeaders,payload:dueBody});
          let cashQueued=false;
-         // Shared CI runners can spend several seconds scheduling the signed
-         // staff/key checks before this statement reaches the account row.
-         // Keep the observation below the connection's 15 s statement timeout:
-         // the economic lock order and failure boundary remain unchanged.
-         for(let tries=0;tries<300;tries++){
-          const waiting=await admin.query(`SELECT count(*)::int AS n
-           FROM pg_stat_activity a WHERE a.pid<>$1::int
-           AND a.wait_event_type='Lock'
-           AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
-           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[holderPid]);
+         for(let tries=0;tries<150;tries++){
+          // A concurrent authenticated operation can sit between cash and the
+          // held account row in PostgreSQL's lock queue. Follow the complete
+          // wait graph so the test observes the real economic fence without
+          // requiring the account holder to be the immediate blocker.
+          const waiting=await admin.query(`WITH RECURSIVE wait_graph(root_pid,pid,depth) AS (
+           SELECT a.pid,blocker,1 FROM pg_stat_activity a
+           CROSS JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS blocker
+           WHERE a.wait_event_type='Lock'
+            AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
+           UNION
+           SELECT wait_graph.root_pid,blocker,wait_graph.depth+1 FROM wait_graph
+           CROSS JOIN LATERAL unnest(pg_blocking_pids(wait_graph.pid)) AS blocker
+           WHERE wait_graph.depth<8
+          ) SELECT count(*)::int AS n FROM wait_graph WHERE pid=$1::int`,[holderPid]);
           if(waiting.rows[0].n>0){cashQueued=true;break;}
           await new Promise(resolve=>setTimeout(resolve,40));
          }
@@ -5731,7 +5736,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          // must be queued on some REAL PostgreSQL lock. It cannot yet
          // reach the account row because the key is serialized by SQL.
          let closerQueued=false;
-         for(let tries=0;tries<300;tries++){
+         for(let tries=0;tries<150;tries++){
           const waiting=await admin.query(`SELECT count(*)::int AS n
            FROM pg_stat_activity a
            WHERE a.wait_event_type='Lock'
