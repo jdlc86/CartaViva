@@ -1,7 +1,10 @@
 // B3 transfer-confirmation identity gate. Candidate only: no grants, role creation,
 // HTTP mounting or production pool reuse. Requires a dedicated least-privilege login.
 const ROLE='sabora_b3_confirmation_runtime';
-const SIGNATURE='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+const SIGNATURES=Object.freeze([
+ 'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+ 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'
+]);
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
 export const B3_CONFIRMATION_IDENTITY_SQL=`SELECT current_user AS effective_role,
  session_user AS login_role,r.rolcanlogin AS can_login,r.rolinherit AS inherit_role,
@@ -51,7 +54,8 @@ export async function assertB3ConfirmationCapabilities({pool,expectedLogin}={}){
    row.all_set_roles[0]!==ROLE)throw fail('identity-policy');
   const capability=await client.query(B3_CONFIRMATION_FUNCTION_SQL,[ROLE]);
   const names=capability?.rows?.length===1?capability.rows[0].names:null;
-  if(!Array.isArray(names)||names.length!==1||names[0]!==SIGNATURE)
+  if(!Array.isArray(names)||names.length!==SIGNATURES.length||
+     !SIGNATURES.every(signature=>names.includes(signature)))
    throw fail('function-surface');
   const login=await client.query(B3_CONFIRMATION_FUNCTION_SQL,[expectedLogin]);
   const loginNames=login?.rows?.length===1?login.rows[0].names:null;

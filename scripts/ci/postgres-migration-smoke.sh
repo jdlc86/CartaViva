@@ -119,10 +119,10 @@ declare v_count int; v_role text; v_table text;
 begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
- -- Table-change and line-delivery candidates add four FORCE RLS tables to the 44-table baseline.
- -- Assert exact count and identities/privileges of all four tables.
- if v_count<>48 then raise exception 'Expected 48 FORCE RLS Sabora tables (including line-delivery candidate), got %',v_count; end if;
- foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations'] loop
+ -- Table-change, line-delivery and immutable-revision candidates add six
+ -- FORCE RLS tables to the 44-table baseline.
+ if v_count<>50 then raise exception 'Expected 50 FORCE RLS Sabora tables (including order revisions), got %',v_count; end if;
+ foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests'] loop
  if not exists (
   select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname=v_table

@@ -78,7 +78,7 @@ export function ManagementApp({
   };
 
   const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView gateway={catalogGateway}/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} operationsGateway={operationsGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;

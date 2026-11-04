@@ -31,6 +31,11 @@ export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,
  FROM sabora.confirm_customer_round_h6_candidate(
  $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
  )`;
+export const READ_H6_ORDER_REVISION_SQL=`SELECT sabora.read_customer_order_revision_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::uuid) AS result`;
+export const RESUBMIT_H6_ORDER_REVISION_SQL=`SELECT sabora.resubmit_customer_order_revision_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::integer,$8::text,$9::jsonb,$10::boolean
+ ) AS result`;
 
 // B3 candidate-only confirmation entrypoint. Production remains pinned to
 // PERSIST_H6_ORDER_SQL; no runtime EXECUTE is granted to this function.
@@ -60,6 +65,11 @@ const canonical=value=>{
 };
 const digest=value=>createHash('sha256').update(canonical(value)).digest();
 const equal=(a,b)=>canonical(a)===canonical(b);
+const economicEvidence=value=>plain(value)?Object.freeze({
+ basePriceCents:value.basePriceCents,selected:value.selected,discount:value.discount,
+ unitSubtotalCents:value.unitSubtotalCents,unitDiscountCents:value.unitDiscountCents,
+ subtotalCents:value.subtotalCents,discountCents:value.discountCents,totalCents:value.totalCents
+}):null;
 
 function assertScope(input,{request=false,h6=false}={}){
  if(!strictObject(input,request?
@@ -279,5 +289,120 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   return Object.freeze({status:'confirmed',orderId:attempt.order_id,grouping:attempt.grouping});
  };
 
- return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation});
+ const readOrderRevision=async({customerSessionToken,...raw}={})=>{
+  if(!h6||!strictObject(raw,['tableId','visitId','orderId'])||
+     !TABLE_ID.test(raw.tableId)||!KEY.test(raw.visitId)||!UUID.test(raw.orderId))
+   throw Error('invalid_customer_revision_request');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_revision_request');
+  const row=await withH6Reader(async query=>one(await query(READ_H6_ORDER_REVISION_SQL,
+   [sessionHash,raw.tableId,raw.visitId,raw.orderId])));
+  const value=row.result;
+  if(!plain(value)||value.version!==1||value.orderId?.toLowerCase()!==raw.orderId.toLowerCase()||
+     !UUID.test(value.roundId)||!Number.isSafeInteger(value.revisionNumber)||value.revisionNumber<1||
+     !['current','invalidated','dispatch_requested','acknowledged','failed','compensation_required'].includes(value.state)||
+     !Number.isSafeInteger(value.amountCents)||value.amountCents<0||!Array.isArray(value.lines)||
+     !value.lines.every(line=>plain(line)&&Number.isSafeInteger(line.lineNumber)&&line.lineNumber>0&&
+       UUID.test(line.itemId)&&typeof line.itemName==='string'&&line.itemName.trim()&&
+       Number.isSafeInteger(line.quantity)&&line.quantity>0&&Number.isSafeInteger(line.totalCents)&&
+       line.totalCents>=0&&typeof line.affected==='boolean'&&plain(line.evidence)))
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({...value,lines:Object.freeze(value.lines.map(line=>Object.freeze({...line,
+   evidence:Object.freeze({...line.evidence})})))});
+ };
+
+ const resubmitOrderRevision=async({customerSessionToken,...raw}={})=>{
+  if(!h6||!strictObject(raw,['tableId','qrToken','visitId','basketId','orderId',
+     'expectedRevision','requestKey','replacements','acceptanceToken'])||
+     !TABLE_ID.test(raw.tableId)||typeof raw.qrToken!=='string'||!QR_TOKEN.test(raw.qrToken)||
+     !KEY.test(raw.visitId)||!KEY.test(raw.basketId)||!UUID.test(raw.orderId)||
+     !Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<1||!KEY.test(raw.requestKey)||
+     !Array.isArray(raw.replacements)||raw.replacements.length<1||raw.replacements.length>50||
+     (raw.acceptanceToken!==undefined&&
+      (typeof raw.acceptanceToken!=='string'||raw.acceptanceToken.length>256)))
+   throw Error('invalid_customer_revision_request');
+  const seen=new Set();
+  for(const replacement of raw.replacements){
+   if(!strictObject(replacement,['lineNumber','quoteId','itemId','selection','quantity'])||
+      !Number.isSafeInteger(replacement.lineNumber)||replacement.lineNumber<1||seen.has(replacement.lineNumber)||
+      !UUID.test(replacement.quoteId)||!UUID.test(replacement.itemId)||!plain(replacement.selection)||
+      !Number.isSafeInteger(replacement.quantity)||replacement.quantity<1||replacement.quantity>20)
+    throw Error('invalid_customer_revision_request');
+   seen.add(replacement.lineNumber);
+  }
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_revision_request');
+  const revisionState=await readOrderRevision({customerSessionToken,tableId:raw.tableId,
+   visitId:raw.visitId,orderId:raw.orderId});
+  const correctable=revisionState.revisionNumber===raw.expectedRevision&&
+   revisionState.state==='invalidated';
+  const affected=correctable?revisionState.lines.filter(line=>line.affected):[];
+  if(correctable&&(affected.length!==raw.replacements.length||
+     raw.replacements.some(replacement=>!affected.some(line=>line.lineNumber===replacement.lineNumber))))
+   throw Error('invalid_customer_revision_request');
+  const current=await withTransaction(async query=>{
+   const result=[];
+   for(const replacement of raw.replacements){
+    const prepared=confirmationContextRow(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,
+     raw.tableId,raw.qrToken,raw.visitId,raw.basketId,replacement.itemId,replacement.quoteId]));
+    const publishedRevision=revision(prepared.published_revision);
+    if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot)||
+       !plain(prepared.quote_evidence))throw Error('revision_quote_invalid');
+    const evidence=buildCatalogLineEvidence({itemId:replacement.itemId,publishedRevision,
+     snapshot:prepared.published_snapshot,selection:replacement.selection,quantity:replacement.quantity});
+    assertDisplayedQuoteMatchesConfirmation({previous:{evidence:prepared.quote_evidence,
+     publishedRevision:prepared.quote_evidence.publishedRevision,
+     subtotalCents:prepared.quote_evidence.subtotalCents,
+     discountCents:prepared.quote_evidence.discountCents,
+     totalCents:prepared.quote_evidence.totalCents},currentEvidence:evidence});
+    result.push(Object.freeze({lineNumber:replacement.lineNumber,quoteId:replacement.quoteId,
+     itemId:replacement.itemId,evidence}));
+   }
+   return Object.freeze(result);
+  });
+  const persistRevision=async acceptedEconomicChange=>{
+   const row=await withH6Transaction(async query=>one(await query(RESUBMIT_H6_ORDER_REVISION_SQL,
+    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.orderId,
+     raw.expectedRevision,raw.requestKey,JSON.stringify(current),acceptedEconomicChange])));
+   const value=row.result;
+   if(!plain(value)||value.version!==1||value.orderId?.toLowerCase()!==raw.orderId.toLowerCase()||
+      !UUID.test(value.roundId)||!UUID.test(value.dispatchId)||
+      !Number.isSafeInteger(value.revisionNumber)||value.revisionNumber!==raw.expectedRevision+1||
+      !Number.isSafeInteger(value.amountCents)||!Number.isSafeInteger(value.differenceCents)||
+      typeof value.state!=='string'||typeof value.dispatchState!=='string'||
+      typeof value.captureRequired!=='boolean'||typeof value.repeated!=='boolean')
+    throw Error('invalid_customer_flow_result');
+   return Object.freeze({status:'resubmitted',...value});
+  };
+  // A concurrent request may have committed after the read above.  Let the
+  // durable SQL request ledger decide exact replay versus stale/conflicting
+  // input. Replays repeat the original token-presence bit but never authorize
+  // a new economic mutation; a missing/different ledger row still fails SQL.
+  if(!correctable)return persistRevision(raw.acceptanceToken!==undefined);
+  const changes=current.map(replacement=>{
+   const previous=affected.find(line=>line.lineNumber===replacement.lineNumber);
+   const previousTotal=previous.totalCents,currentTotal=replacement.evidence.totalCents;
+   return Object.freeze({lineNumber:replacement.lineNumber,itemId:replacement.itemId,
+    previousItemName:previous.itemName,currentItemName:replacement.evidence.itemName,
+    previousTotalCents:previousTotal,currentTotalCents:currentTotal,
+    differenceCents:currentTotal-previousTotal});
+  });
+  const economicChanged=current.some(replacement=>{
+   const previous=affected.find(line=>line.lineNumber===replacement.lineNumber);
+   return !equal(economicEvidence(previous.evidence),economicEvidence(replacement.evidence));
+  });
+  const acceptanceContext={schemaVersion:3,tableId:raw.tableId,visitId:raw.visitId,
+   basketId:raw.basketId,orderId:raw.orderId,expectedRevision:raw.expectedRevision,
+   requestKey:raw.requestKey,replacements:current};
+  const now=clock();
+  if(economicChanged&&!verifyCustomerBasketAcceptance({token:raw.acceptanceToken,
+     secretKey,context:acceptanceContext,nowMs:now})){
+   const acceptance=issueCustomerBasketAcceptance({secretKey,context:acceptanceContext,nowMs:now});
+   return Object.freeze({status:'acceptance_required',changes:Object.freeze(changes),acceptance});
+  }
+  return persistRevision(economicChanged);
+ };
+
+ return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation,
+  ...(h6?{readOrderRevision,resubmitOrderRevision}:null)});
 }

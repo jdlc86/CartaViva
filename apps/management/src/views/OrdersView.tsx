@@ -145,6 +145,9 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const pendingCashRefunds = useMemo(() => operationEvents.filter((event) =>
     event.type==='sabora.incident.cash_refund_due'&&typeof event.payload.incidentId==='string'&&
     Number.isSafeInteger(event.payload.amountCents)), [operationEvents]);
+  const invalidatedRevisions=useMemo(()=>operationEvents.filter(event=>
+    event.type==='sabora.order.revision_invalidated'&&typeof event.payload.orderId==='string'),
+    [operationEvents]);
 
   const transition = async (line: OrderLineItem) => {
     if (!gateway || !board || pendingLines.has(line.lineId)) return;
@@ -387,6 +390,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
 
         {board?.role==='admin'&&pendingArbitrations.length?<section className="incident-arbitration" aria-label="Arbitraje de incidencias"><div><span className="eyebrow">Administración</span><h3>Incidencias pendientes</h3></div><label>Motivo de resolución<input maxLength={500} value={resolutionReason} onChange={event=>setResolutionReason(event.target.value)}/></label><ul>{pendingArbitrations.map(event=><li key={event.id}><span>Incidencia {String(event.payload.incidentId).slice(0,8)}</span><div className="button-row"><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'approve')}>Aprobar ajuste</button>{event.payload.origin!=='kitchen'?<button type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'reject')}>Rechazar solicitud</button>:null}</div></li>)}</ul></section>:null}
         {pendingCashRefunds.length?<section className="incident-arbitration" aria-label="Devoluciones presenciales pendientes"><div><span className="eyebrow">Sala</span><h3>Devolución en efectivo pendiente</h3></div><ul>{pendingCashRefunds.map(event=><li key={event.id}><span>{Number(event.payload.amountCents)/100} € · incidencia {String(event.payload.incidentId).slice(0,8)}</span><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void refundCash(String(event.payload.incidentId))}>Registrar devolución entregada</button></li>)}</ul></section>:null}
+        {invalidatedRevisions.length?<section className="incident-arbitration" aria-label="Revisiones de pedido pendientes"><div><span className="eyebrow">Agrupación</span><h3>Pedidos pendientes de corrección por el cliente</h3></div><ul>{invalidatedRevisions.map(event=><li key={event.id}><span>Pedido {String(event.payload.orderId).slice(0,8)} · revisión {String(event.payload.revisionNumber??'—')} · fuera del despacho</span><StatusBadge tone="warning">ESPERANDO REENVÍO</StatusBadge></li>)}</ul><p className="honest-operational-note">Cocina no puede preparar esta revisión. Si el pedido ya hubiese sido despachado, corresponde registrar una incidencia; no se habilita edición del cliente.</p></section>:null}
 
         {!gateway ? (
           <div className="button-row button-row--end"><LockedButton icon="check">Cambiar estado</LockedButton><LockedButton>Registrar incidencia</LockedButton></div>

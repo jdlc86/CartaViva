@@ -7,7 +7,8 @@ import {createCustomerCookieAuth} from './customer-cookie-session-candidate.mjs'
 import {registerCustomerRegistrationCandidate} from './customer-registration-http-candidate.mjs';
 import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,
  INSERT_QUOTE_SQL,LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL,
- READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL}
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
+ READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
  from './customer-production-flow.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
@@ -18,7 +19,8 @@ import {createCatalogScopedQuery} from './catalog-scoped-query.mjs';
 import {registerCatalogHttpRoute} from './catalog-http-route.mjs';
 
 const registrationSql=new Set([REGISTER_CUSTOMER_SQL]);
-const h6FlowSql=new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL]);
+const h6FlowSql=new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
+ READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL]);
 const flowSql=new Set([AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
  LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,PERSIST_ORDER_SQL]);
 

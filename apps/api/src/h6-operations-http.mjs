@@ -25,7 +25,8 @@ const CONFLICT=new Set(['dispatch_not_acknowledgeable','cash_settlement_conflict
  'kitchen_refund_cannot_be_denied','payment_outcome_unknown','cash_refund_not_due']);
 const INPUT=new Set(['invalid_h6_operation','invalid_h6_account_close','invalid_h6_dispatch_request','invalid_h6_incident_request',
  'invalid_h6_incident_resolution','invalid_h6_cash_settlement','invalid_h6_cash_refund',
- 'invalid_incident_request','invalid_incident_resolution','invalid_cash_settlement','invalid_pickup_operation']);
+ 'invalid_incident_request','invalid_incident_resolution','invalid_cash_settlement','invalid_pickup_operation',
+ 'invalid_catalog_availability_operation']);
 const failure=(reply,error)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(FORBIDDEN.has(code))return reply.code(403).send({error:'forbidden'});
@@ -105,6 +106,16 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
  pickupRoute('/api/v1/operations/order-lines/:lineId/pickup-claim/cancel',floor,'cancel_pickup');
  pickupRoute('/api/v1/operations/order-lines/:lineId/ready-correction',
   forRoles(['admin','root','kitchen']),'correct_ready');
+ app.post('/api/v1/operations/catalog/items/:itemId/availability',
+  {preHandler:forRoles(['admin','root','kitchen']),bodyLimit:2048},async(request,reply)=>{
+   const body=request.body,itemId=request.params?.itemId;
+   if(!UUID.test(itemId??'')||!exact(body,['soldOut','correlationId'])||
+      typeof body.soldOut!=='boolean'||!CORRELATION.test(body.correlationId))
+    return reply.code(400).send({error:'invalid_h6_operation'});
+   try{return reply.code(200).send(await operations.setCatalogSoldOut(verified(request),{
+    itemId,soldOut:body.soldOut,correlationId:body.correlationId}));}
+   catch(error){return failure(reply,error);}
+  });
  app.post('/api/v1/operations/accounts/:accountId/cash-settlements',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
   const body=request.body;
   if(!UUID.test(request.params?.accountId??'')||!exact(body,['amountCents','correlationId'])||

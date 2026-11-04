@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {assertB3ConfirmationCapabilities,B3_CONFIRMATION_IDENTITY_SQL,
  B3_CONFIRMATION_FUNCTION_SQL} from './table-change-b3-confirmation-preflight-candidate.mjs';
 const role='sabora_b3_confirmation_runtime',login='b3_confirmation_login';
-const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+const signatures=[
+ 'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+ 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'
+];
 function fixture({extra=[],loginGrants=[],badIdentity=false}={}){
  const calls=[];let discarded;
  return {calls,get discarded(){return discarded;},async connect(){return {
@@ -17,7 +20,7 @@ function fixture({extra=[],loginGrants=[],badIdentity=false}={}){
     all_set_roles:[role]
    }]};
    if(sql===B3_CONFIRMATION_FUNCTION_SQL)return {rows:[{
-    names:args[0]===role?[signature,...extra]:loginGrants
+    names:args[0]===role?[...signatures,...extra]:loginGrants
    }]};
    throw Error('unexpected SQL');
   },release(value){discarded=value;}
@@ -33,7 +36,7 @@ test('B3 exact transfer role and login pass independent capability checks',async
 test('B3 refuses any additional function, inherited login grant or direct table access',async()=>{
  for(const config of [
   {extra:['sabora.confirm_customer_round_h6_candidate(bytea)']},
-  {loginGrants:[signature]},{badIdentity:true}
+  {loginGrants:[signatures[0]]},{badIdentity:true}
  ]){
   const pool=fixture(config);
   await assert.rejects(()=>assertB3ConfirmationCapabilities({pool,expectedLogin:login}),

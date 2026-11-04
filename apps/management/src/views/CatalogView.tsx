@@ -21,6 +21,7 @@ import {
   StatusBadge,
 } from '../components/Primitives';
 import {createLatestReadTaskController, type LatestReadTaskController} from '../latest-read-task';
+import type {OrderOperationsGateway} from '../order-operations-gateway.js';
 import {ImageStudio} from './ImageStudio';
 
 type CatalogSection = 'dishes' | 'categories' | 'studio';
@@ -33,9 +34,14 @@ type CatalogReadProps = Readonly<{
   onSelect: (id: string) => void;
   onRetry: () => void;
   refreshing: boolean;
+  availabilityPending: boolean;
+  availabilityMessage: string | null;
+  onAvailability: (item: AdminPublishedCatalogItem) => void;
 }>;
 
-export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
+export function CatalogView({gateway,operationsGateway}: {
+  gateway?: AdminCatalogGateway;operationsGateway?: OrderOperationsGateway;
+}) {
   const [section, setSection] = useState<CatalogSection>('dishes');
   const [phase, setPhase] = useState<CatalogReadPhase>(gateway ? 'loading' : 'disconnected');
   const [items, setItems] = useState<readonly AdminPublishedCatalogItem[]>([]);
@@ -43,6 +49,8 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
   const [reloadVersion, setReloadVersion] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState(false);
+  const [availabilityPending,setAvailabilityPending]=useState(false);
+  const [availabilityMessage,setAvailabilityMessage]=useState<string|null>(null);
   const readControllerRef = useRef<LatestReadTaskController | null>(null);
   if (readControllerRef.current === null) readControllerRef.current = createLatestReadTaskController();
   const readController = readControllerRef.current;
@@ -109,6 +117,19 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
     onSelect: setSelectedId,
     onRetry: () => setReloadVersion((value) => value + 1),
     refreshing,
+    availabilityPending,
+    availabilityMessage,
+    onAvailability:(item)=>{
+      if(!operationsGateway||availabilityPending)return;
+      setAvailabilityPending(true);setAvailabilityMessage(null);
+      void operationsGateway.setCatalogSoldOut({itemId:item.id,soldOut:item.available,
+       correlationId:`ui_catalog_${crypto.randomUUID().replaceAll('-','_')}`})
+       .then(async()=>{setAvailabilityMessage(item.available?
+        'Plato marcado como agotado. Las revisiones agrupadas afectadas se han invalidado de forma transaccional.':
+        'Disponibilidad restaurada. No se modifica ningún pedido ya confirmado.');await refreshCatalog();})
+       .catch(()=>setAvailabilityMessage('No se cambió la disponibilidad. El estado publicado se conserva.'))
+       .finally(()=>setAvailabilityPending(false));
+    },
   };
 
   return (
@@ -157,7 +178,8 @@ export function CatalogView({gateway}: {gateway?: AdminCatalogGateway}) {
   );
 }
 
-function DishWorkspace({phase, items, selectedId, onSelect, onRetry, refreshing}: CatalogReadProps) {
+function DishWorkspace({phase, items, selectedId, onSelect, onRetry, refreshing,
+ availabilityPending,availabilityMessage,onAvailability}: CatalogReadProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<CatalogCategoryFilter>('Todos');
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
@@ -287,10 +309,15 @@ function DishWorkspace({phase, items, selectedId, onSelect, onRetry, refreshing}
           <h3>Publicación explícita</h3>
           <p>Esta lectura sólo refleja el snapshot publicado. No permite deducir ni modificar el borrador editorial.</p>
           <div className="button-row">
+            {selectedItem?<button className="button button--primary" type="button"
+              disabled={availabilityPending} onClick={()=>onAvailability(selectedItem)}>
+              {availabilityPending?'Confirmando…':selectedItem.available?'Marcar agotado':'Restaurar disponibilidad'}
+            </button>:null}
             <LockedButton>Guardar borrador</LockedButton>
             <LockedButton icon="check">Publicar cambios</LockedButton>
             <LockedButton>Retirar plato</LockedButton>
           </div>
+          {availabilityMessage?<p className="honest-operational-note" role="status">{availabilityMessage}</p>:null}
         </div>
       </section>
     </div>

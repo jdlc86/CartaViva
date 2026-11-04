@@ -3,7 +3,8 @@
 BEGIN;
 DO $$ BEGIN
  IF to_regprocedure('sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)') IS NULL OR
-    to_regprocedure('sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)') IS NULL THEN
+    to_regprocedure('sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)') IS NULL OR
+    to_regprocedure('sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)') IS NULL THEN
   RAISE EXCEPTION 'B3 H6 reader signatures missing';
  END IF;
 END $$;
@@ -18,19 +19,22 @@ DO $$ DECLARE fn record; BEGIN
 END $$;
 GRANT EXECUTE ON FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid) TO sabora_b3_h6_reader_runtime;
 GRANT EXECUTE ON FUNCTION sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text) TO sabora_b3_h6_reader_runtime;
+GRANT EXECUTE ON FUNCTION sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid) TO sabora_b3_h6_reader_runtime;
 GRANT sabora_b3_h6_reader_runtime TO sabora_b3_h6_reader_login WITH SET TRUE, INHERIT FALSE;
 DO $$ DECLARE functions text[]; memberships text[]; BEGIN
  SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),'{}'::text[])
  INTO functions FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND has_function_privilege('sabora_b3_h6_reader_runtime',p.oid,'EXECUTE');
  IF functions <> ARRAY['sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+ 'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)',
  'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)']::text[] AND
     (SELECT count(*) FROM unnest(functions) f WHERE f IN (
     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
-    'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)')) <> 2 THEN
+    'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)',
+    'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)')) <> 3 THEN
   RAISE EXCEPTION 'unexpected reader function surface: %',functions;
  END IF;
- IF cardinality(functions) <> 2 THEN RAISE EXCEPTION 'extra reader grant: %',functions; END IF;
+ IF cardinality(functions) <> 3 THEN RAISE EXCEPTION 'extra reader grant: %',functions; END IF;
  IF EXISTS(SELECT 1 FROM pg_class rel JOIN pg_namespace ns ON ns.oid=rel.relnamespace
   WHERE ns.nspname='sabora' AND rel.relkind IN ('r','p')
    AND CASE WHEN rel.relkind IN ('r','p') THEN
@@ -71,7 +75,8 @@ END $$;
 SET LOCAL ROLE sabora_b3_h6_reader_runtime;
 DO $$ BEGIN
  IF NOT has_function_privilege(current_user,'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') OR
-    NOT has_function_privilege(current_user,'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)','EXECUTE') THEN
+    NOT has_function_privilege(current_user,'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)','EXECUTE') OR
+    NOT has_function_privilege(current_user,'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') THEN
   RAISE EXCEPTION 'reader cannot execute expected functions';
  END IF;
  IF to_regprocedure('sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)') IS NOT NULL AND
@@ -85,9 +90,10 @@ DO $$ DECLARE names text[]; BEGIN
  SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),'{}'::text[])
  INTO names FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
  WHERE n.nspname='sabora' AND has_function_privilege(current_user,p.oid,'EXECUTE');
- IF cardinality(names) <> 2 OR NOT names @> ARRAY[
+ IF cardinality(names) <> 3 OR NOT names @> ARRAY[
  'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
- 'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']::text[] THEN
+ 'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+ 'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)']::text[] THEN
   RAISE EXCEPTION 'reader canonical signatures changed with search_path: %',names;
  END IF;
 END $$;
@@ -114,7 +120,9 @@ DO $$ BEGIN
  IF NOT has_function_privilege(current_user,
   'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') OR
     NOT has_function_privilege(current_user,
-  'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)','EXECUTE') THEN
+  'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)','EXECUTE') OR
+    NOT has_function_privilege(current_user,
+  'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)','EXECUTE') THEN
   RAISE EXCEPTION 'B3 restricted login cannot assume reader capabilities';
  END IF;
 END $$;

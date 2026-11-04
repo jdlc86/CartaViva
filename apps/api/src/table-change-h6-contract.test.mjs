@@ -96,7 +96,7 @@ test('F12 candidate serializes customer confirmations and rejects ambiguous open
 });
 
 test('F12 candidate preserves the economic account on replay without re-consuming approval',()=>{
- const replay=transferConfirmation.indexOf('IF FOUND THEN\n    -- Idempotency is anchored');
+ const replay=transferConfirmation.search(/IF FOUND THEN\r?\n    -- Idempotency is anchored/);
  const consume=transferConfirmation.indexOf('sabora.consume_customer_table_change_h6_candidate(');
  assert.ok(replay>=0&&consume>replay);
  const replayBlock=transferConfirmation.slice(replay,consume);
