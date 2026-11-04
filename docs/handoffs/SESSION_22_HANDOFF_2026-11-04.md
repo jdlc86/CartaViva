@@ -79,3 +79,13 @@ Reordenar si la normativa fija dependencias diferentes. Prioridad constante: **c
 Incorporar nuevos registros **solo tras validaciones completas**, con SHA, cuatro workflows, incidencias y límites.
 
 **Regla final:** CartaViva/Sabora sigue en **PR #43 Draft y B3/B4 NO-GO** hasta la aceptación y autorización correspondientes. Ninguna operación sobre Fleetia o recursos compartidos.
+
+## 8. Hito F21/R06 implementado en PR #44 (2026-11-04)
+
+La rama `feat/sabora-table-change-final-closure-20261104` y el [PR #44 Draft](https://github.com/jdlc86/CartaViva/pull/44) incorporan el cierre candidato de revisiones correctivas de pedido. **Commit funcional:** `f951f7a9`. La base verificada antes del push fue `79092962c0bf8d4e43979a7db0808f6102a268a0`; no había avance remoto ni commits ajenos que integrar.
+
+El flujo ya ejecutado sobre PostgreSQL 17 limpio + Fastify + JWT/HMAC + PWA cliente/gestión Chromium cubre: agotado/publicación antes de despacho, invalidación durable de una sola revisión, SSE/reconexión, precio anterior/nuevo/diferencia, consentimiento, reenvío del mismo pedido/ronda/cuenta, nueva revisión inmutable, despacho inmediato, ACK de cocina, replay concurrente, cambio A→B, revocación y fencing. La ventana natural de 300 s se conserva y se volvió a esperar completa. El gate raíz terminó **51/51 PASS**; `npm test`, **1175 PASS / 0 FAIL / 2 SKIP**; `npm run check`, PASS con builds.
+
+El informe verificable es [`docs/reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_REPORT_2026-11-04.md`](../reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_REPORT_2026-11-04.md) y la matriz de aceptación se amplió con §34. Consultar allí los defectos detectados, RLS/roles, archivos, comandos y estado individual F01–F28/R01–R10.
+
+**No confundir este cierre con producción.** Permanecen BLOCKED Stripe sandbox real, regla normativa de coste cero/partidas resueltas, caja visual aprobada y aceptación visual final; R10 espera los workflows del SHA documental final. El dictamen global sigue **NO-GO**, ambos PR permanecen Draft y no existe autorización de merge, despliegue, Supabase operativo, VPS o Fleetia.
