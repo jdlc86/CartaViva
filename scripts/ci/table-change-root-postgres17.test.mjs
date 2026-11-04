@@ -5552,9 +5552,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // F20/R03/R05: at this point ALL THREE real kitchen rounds are
         // acknowledged and READY, but the just-confirmed round still owes
         // 700 cents. Place the actual signed cash receipt FIRST in the PG17
-        // account-row lock queue, then two identical close requests and a
-        // newly quoted customer checkout. Only after releasing this lock can
-        // cash reconcile, close commit once, and the fresh order be rejected.
+        // account-row lock queue, then two identical close requests. The
+        // customer lock is independently held until cash commits and the
+        // closer is queued, before allowing a new quoted checkout to race.
         const dueBody={amountCents:700,
          correlationId:'b3_f20_inverse_cash_700_once'};
         const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
@@ -5564,10 +5564,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         // masking the intended account-row lock race.
         const concurrentCashHeaders={authorization:'Bearer '+jwtSecondWaiter,
          'content-type':'application/json'};
+        // A second disposable transaction holds the customer's advisory
+        // lock separately from the account row. The shared signing key is
+        // locked during capability verification, so cash and close cannot
+        // both reach the account row concurrently. Release the row first,
+        // prove cash committed, THEN release the customer advisory lock with
+        // the closer already queued ahead of the next customer checkout.
+        const customerLock=await admin.connect();
         const accountLock=await admin.connect();
-        let accountLockOpen=false,closureRequests=[],customerRequest=null,cashRequest=null;
+        let accountLockOpen=false,customerLockOpen=false;
+        let closureRequests=[],customerRequest=null,cashRequest=null;
         let concurrentClose;
         try{
+         await customerLock.query('BEGIN');customerLockOpen=true;
+         const customerHolderPid=(await customerLock.query(
+          'SELECT pg_backend_pid() AS pid')).rows[0].pid;
+         await customerLock.query(`SELECT pg_advisory_xact_lock(
+          pg_catalog.hashtextextended($1::text,140630))`,[diner.customer]);
          await accountLock.query('BEGIN');accountLockOpen=true;
          const holderPid=(await accountLock.query(
           'SELECT pg_backend_pid() AS pid')).rows[0].pid;
@@ -5591,31 +5604,24 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           method:'POST',url:closeUrl,headers:closingHeaders,
           payload:concurrentCloseBody
          }));
-         let closerBlocked=false;
+         // While cash owns the HMAC signing-key lock, the signed closer
+         // must be queued on some REAL PostgreSQL lock. It cannot yet
+         // reach the account row because the key is serialized by SQL.
+         let closerQueued=false;
          for(let tries=0;tries<150;tries++){
           const waiting=await admin.query(`SELECT count(*)::int AS n
-           FROM pg_stat_activity a WHERE a.pid<>$1::int
-           AND a.wait_event_type='Lock'
+           FROM pg_stat_activity a
+           WHERE a.wait_event_type='Lock'
            AND a.query LIKE '%close_h6_account_authorized_candidate%'
-           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[holderPid]);
-          if(waiting.rows[0].n>0){closerBlocked=true;break;}
+           AND cardinality(pg_blocking_pids(a.pid))>0`);
+          if(waiting.rows[0].n>0){closerQueued=true;break;}
           await new Promise(resolve=>setTimeout(resolve,40));
          }
-         assert.equal(closerBlocked,true,
-          'signed closer must be blocked on live PG17 account lock');
-         customerRequest=http.inject({method:'POST',
-          url:'/api/v1/customer/orders/confirm',
-          headers:dHeaders(diner),payload:competingOrder});
-         let checkoutBlocked=false;
-         for(let tries=0;tries<150;tries++){
-          const waiting=await admin.query(`SELECT count(*)::int AS n
-           FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
-           AND a.query LIKE '%confirm_customer_round_h6_transfer_integration_candidate%'`);
-          if(waiting.rows[0].n>0){checkoutBlocked=true;break;}
-          await new Promise(resolve=>setTimeout(resolve,40));
-         }
-         assert.equal(checkoutBlocked,true,
-          'new quoted order must actually wait behind closure in PG17');
+         assert.equal(closerQueued,true,
+          'signed closure must enter PostgreSQL lock queue while cash is pending');
+         // Unlock ONLY the row. The customer advisory lock remains held in
+         // the independent disposable connection, so the new checkout cannot
+         // interleave ahead of a fully paid but not yet closed account.
          await accountLock.query('COMMIT');accountLockOpen=false;
          const settledCash=await cashRequest;
          assert.equal(settledCash.statusCode,201,settledCash.body);
@@ -5623,6 +5629,43 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          assert.equal(settledCash.json().outstandingCents,0);
          assert.equal(settledCash.json().accountState,'open',
           'even a full cash receipt never closes a customer account itself');
+         const paidBeforeClose=(await admin.query(`SELECT state,
+          outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
+          WHERE id=$1`,[diner.account])).rows[0];
+         assert.deepEqual(paidBeforeClose,{state:'open',outstanding_cents:'0',
+          cash_settled_cents:'2600'},
+          'cash must commit before any explicit account close can proceed');
+         // The first closer has now passed HMAC verification and queues
+         // at the customer advisory lock, which is shared with checkout.
+         let closerOnCustomer=false;
+         for(let tries=0;tries<150;tries++){
+          const waiting=await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a WHERE a.pid<>$1::int
+           AND a.wait_event_type='Lock'
+           AND a.wait_event='advisory'
+           AND a.query LIKE '%close_h6_account_authorized_candidate%'
+           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[customerHolderPid]);
+          if(waiting.rows[0].n>0){closerOnCustomer=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(closerOnCustomer,true,
+          'signed close must queue BEFORE the new checkout on customer lock');
+         customerRequest=http.inject({method:'POST',
+          url:'/api/v1/customer/orders/confirm',
+          headers:dHeaders(diner),payload:competingOrder});
+         let checkoutBlocked=false;
+         for(let tries=0;tries<150;tries++){
+          const waiting=await admin.query(`SELECT count(*)::int AS n
+           FROM pg_stat_activity a WHERE a.wait_event_type='Lock'
+           AND a.wait_event='advisory'
+           AND a.query LIKE '%confirm_customer_round_h6_transfer_integration_candidate%'
+           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[customerHolderPid]);
+          if(waiting.rows[0].n>0){checkoutBlocked=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,40));
+         }
+         assert.equal(checkoutBlocked,true,
+          'new quoted checkout must wait behind committed cash and pending close');
+         await customerLock.query('COMMIT');customerLockOpen=false;
          concurrentClose=await Promise.all(closureRequests);
          assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
           'simultaneous signed close submissions must be idempotent');
@@ -5641,7 +5684,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           '0','closing under contention may not invent new debt');
         }finally{
          if(accountLockOpen)await accountLock.query('ROLLBACK').catch(()=>{});
+         if(customerLockOpen)await customerLock.query('ROLLBACK').catch(()=>{});
          accountLock.release();
+         customerLock.release();
          if(cashRequest)await Promise.allSettled([cashRequest]);
          if(closureRequests.length)await Promise.allSettled(closureRequests);
          if(customerRequest)await Promise.allSettled([customerRequest]);
