@@ -286,7 +286,8 @@ test('H3 selection review resolves mixed catalog incidents before allowing QR in
  await dialog.getByRole('button',{name:'Validar mesa para pedir'}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]'));
- expect(saved).toEqual([{itemId:id,name:'Arroz meloso',priceCents:1290,quantity:2}]);
+ expect(saved).toEqual([{itemId:id,name:'Arroz meloso',priceCents:1290,quantity:2,
+  selection:{options:{},extras:[]}}]);
 });
 
 test('H6 customer completes QR, server quote, pay-at-end confirmation and durable SSE tracking',async({page})=>{
