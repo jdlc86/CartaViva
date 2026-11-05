@@ -7382,8 +7382,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(replayed.status,'replayed');
    assert.equal(replayed.orderId,confirmed.orderId);
    assert.equal(replayed.accountId,peer.account);
+   const m2WaiterId='b0a00000-0000-4000-8000-000000000312';
+   const jwtM2Waiter=staffJwt(m2WaiterId);
+   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+    VALUES($1,'waiter','active')`,[m2WaiterId]);
    const managementPwa=createAuthenticatedOrderOperationsGateway({
-    getAccessToken:async()=>jwtSecondWaiter,
+    getAccessToken:async()=>jwtM2Waiter,
     fetchImpl:async(path,options)=>{
      const response=await m2.app.inject({method:options.method,url:path,
       headers:Object.fromEntries(options.headers.entries()),payload:options.body});
@@ -7391,6 +7395,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       'content-type':response.headers['content-type']??'application/json'}});
     }});
    assert.ok(Array.isArray(await managementPwa.listPendingTableChanges()));
+   await admin.query("UPDATE sabora.staff_members SET state='revoked' WHERE user_id=$1",
+    [m2WaiterId]);
+   assert.equal((await m2.app.inject({method:'GET',
+    url:'/api/v1/operations/table-change/pending',
+    headers:{authorization:'Bearer '+jwtM2Waiter}})).statusCode,403,
+    'M2 must recheck current SQL staff state and reject a just-revoked JWT');
    managementPwa.revoke();
    assert.equal((await m2.app.inject({method:'GET',url:'/api/v1/operations/order-lines',
     headers:{authorization:'Bearer '+jwtKitchen}})).statusCode,200);

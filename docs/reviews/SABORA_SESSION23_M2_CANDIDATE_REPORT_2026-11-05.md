@@ -31,6 +31,8 @@
 
 La primera CI del commit `e252779b` falló antes de las baterías funcionales porque `b3-h6-reader-role-smoke.sql` todavía intentaba crear la capacidad que la migración M2 ya provisiona. El smoke se corrigió para auditar el rol versionado, crear únicamente su LOGIN desechable y comprobar que el rollback conserva la capacidad y elimina el LOGIN. No se amplió ningún privilegio.
 
+La segunda CI (`30a3c927`) superó migraciones y llegó al subrecorrido M2 tras 48 pruebas PG17 correctas. La lectura de gestión devolvió `403` porque el arnés reutilizaba un camarero que el recorrido de revocación anterior había desactivado intencionadamente. Se sustituyó por un cuarto actor real activo, con JWT propio y pertenencia PostgreSQL; después de la lectura positiva se revoca en SQL y el mismo JWT debe recibir `403`. La autorización no se relajó.
+
 ## Dictamen y límites
 
 - **CV-004: implementado**, pendiente de fijar enlace/SHA final del PR y CI.
