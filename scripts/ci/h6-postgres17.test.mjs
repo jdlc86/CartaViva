@@ -871,9 +871,20 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const debtQuote=await flow.quote({customerSessionToken:secondCustomer.token,tableId,qrToken,
   visitId:secondVisit.visitId,basketId:secondVisit.basketId,
   lines:[{itemId,selection,quantity:1}]});
+ const debtLines=[{quoteId:debtQuote.lines[0].quoteId,itemId,selection,quantity:1}];
+ await assert.rejects(flow.confirm({customerSessionToken:secondCustomer.token,tableId,qrToken,
+  visitId:secondVisit.visitId,basketId:secondVisit.basketId,
+  requestKey:'h6_debt_requires_mode_0001',paymentMode:null,lines:debtLines}),
+ /payment_mode_required/,
+ 'the first positive round after a complimentary round must require payment selection');
+ assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.order_rounds
+  WHERE account_id=$1`,[freeOrder.accountId])).rows[0].n,1,
+ 'missing payment selection must roll back the positive order atomically');
  const debtOrder=await flow.confirm({customerSessionToken:secondCustomer.token,tableId,qrToken,
   visitId:secondVisit.visitId,basketId:secondVisit.basketId,requestKey:'h6_debt_round_0001',
-  paymentMode:'pay_at_end',lines:[{quoteId:debtQuote.lines[0].quoteId,itemId,selection,quantity:1}]});
+  paymentMode:'pay_at_end',lines:debtLines});
+ assert.equal(debtOrder.accountId,freeOrder.accountId,
+  'the positive round must reuse the still-open complimentary account');
  assert.equal(debtOrder.paymentMode,'pay_at_end');
  assert.equal(debtOrder.paymentAttemptId,null);
  assert.equal((await admin.query('SELECT outstanding_cents::integer AS cents FROM sabora.customer_accounts WHERE id=$1',

@@ -192,6 +192,12 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
       return mutation(send,`/api/v1/operations/accounts/${accountId}/cash-settlements`,
        {amountCents,correlationId});
     },
+    setCatalogSoldOut({itemId,soldOut,correlationId}={}) {
+      if(!UUID.test(itemId)||typeof soldOut!=='boolean'||!CORRELATION.test(correlationId))
+       throw Error('invalid_catalog_availability_operation');
+      return mutation(send,`/api/v1/operations/catalog/items/${itemId}/availability`,
+       {soldOut,correlationId});
+    },
     refundCash({incidentId,correlationId}={}) {
       if(!UUID.test(incidentId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
       return mutation(send,`/api/v1/operations/incidents/${incidentId}/cash-refund`,{correlationId});

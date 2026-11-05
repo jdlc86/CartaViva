@@ -5,7 +5,9 @@ const Fastify=createRequire(new URL('../package.json',import.meta.url))('fastify
 import assert from 'node:assert/strict';
 import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
-import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL} from './customer-production-flow.mjs';
+import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
+ from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,READ_TABLE_CHANGE_H6_SQL,
  READ_TABLE_CHANGE_H6_OUTBOX_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
  from './table-change-sealed-rpc-candidate.mjs';
@@ -84,7 +86,8 @@ function preflightPool(capability,login,{deny=false}={}){
       'sabora.request_customer_table_change_h6_resolved_candidate(bytea)',
       'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)']:
     capability==='sabora_b3_confirmation_runtime'?
-     ['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']:
+     ['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+      'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)']:
      ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK'||sql.startsWith('SET LOCAL ROLE '))
    return {rows:[]};
@@ -157,10 +160,12 @@ function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false,wro
    wrongOverload?'sabora.read_customer_round_h6_candidate(bytea,uuid,text)':
     'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+   'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)',
    ...(extraFunction?['sabora.confirm_customer_round_h6_candidate(bytea,uuid)']:[])
   ]}]};
   if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_b3_h6_reader_runtime'].includes(sql))return {rows:[]};
-  if(sql===READ_H6_ROUND_SQL||sql===READ_H6_PAYMENT_POLICY_SQL)return {rows:[{round_id:requestId}]};
+  if(sql===READ_H6_ROUND_SQL||sql===READ_H6_PAYMENT_POLICY_SQL||
+     sql===READ_H6_ORDER_REVISION_SQL)return {rows:[{round_id:requestId}]};
   throw Error('unexpected_h6_read_sql');
  },release(){}};}};
 }
@@ -211,7 +216,9 @@ test('B3 composition rejects reused F12 login identities before any SQL or flow 
 
 function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
  const login='b3_confirmation_login',role='sabora_b3_confirmation_runtime';
- const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+ const signatures=[
+  'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+  'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'];
  const calls=[];
  return {calls,async connect(){return {
   async query(sql,args){
@@ -226,8 +233,8 @@ function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
     all_set_roles:[role]
    }]};
    if(sql.includes('array_agg(n.nspname')||sql.includes('array_agg(p.oid::regprocedure'))return {rows:[{names:
-    args[0]===role?[signature,...(extraFunction?['sabora.unexpected()']:[])]:
-     (directLoginGrant?[signature]:[])}]};
+    args[0]===role?[...signatures,...(extraFunction?['sabora.unexpected()']:[])]:
+     (directLoginGrant?[signatures[0]]:[])}]};
    throw Error('unexpected_b3_sql');
   },release(){}
  };}};
@@ -281,7 +288,7 @@ test('B3 full isolated composition never constructs confirmation on privilege dr
 
 
 test('B3 confirmation writer executes only transfer SQL under a local capability role',async()=>{
- assert.deepEqual(B3_CONFIRMATION_SQL,[PERSIST_H6_TRANSFER_ORDER_SQL]);
+ assert.deepEqual(B3_CONFIRMATION_SQL,[PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL]);
  const confirmation=pool(PERSIST_H6_TRANSFER_ORDER_SQL,[{persisted_order_id:requestId}]);
  const transaction=createIsolatedB3ConfirmationTransaction({confirmationPool:confirmation});
  await assert.rejects(()=>transaction(query=>query(PERSIST_H6_ORDER_SQL,[])),
@@ -322,7 +329,8 @@ test('B3 verified factory passes only sealed transaction and denies legacy H6 SQ
 
 
 test('B3 H6 read capability allows only replay and policy queries',async()=>{
- assert.deepEqual(B3_H6_READ_SQL,[READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL]);
+ assert.deepEqual(B3_H6_READ_SQL,[READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL,
+  READ_H6_ORDER_REVISION_SQL]);
  const h6=h6ReadPool();
  const withRead=createIsolatedB3H6ReadTransaction({h6ReadPool:h6});
  await assert.rejects(()=>withRead(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[])),

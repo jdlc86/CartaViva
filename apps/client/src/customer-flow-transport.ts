@@ -149,6 +149,43 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     requiresPaymentAction:value.requiresPaymentAction as boolean|undefined,
     clientSecret:value.clientSecret as string|undefined
    });
+  },
+  async readOrderRevision(input:{tableId:string;visitId:string;orderId:string}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||!UUID.test(input.orderId))
+    throw Error('invalid_customer_revision_transport');
+   const query=new URLSearchParams({tableId:input.tableId,visitId:input.visitId});
+   const value=await jsonRequest(fetchImpl,
+    `/api/v1/customer/orders/${input.orderId}/revision?${query}`,'GET');
+   if(value.version!==1||value.orderId!==input.orderId||typeof value.roundId!=='string'||
+      !UUID.test(value.roundId)||!Number.isSafeInteger(value.revisionNumber)||
+      !['current','invalidated','dispatch_requested','acknowledged','failed','compensation_required']
+       .includes(String(value.state))||!Number.isSafeInteger(value.amountCents)||
+      !Array.isArray(value.lines)||!value.lines.every(line=>plain(line)&&
+       Number.isSafeInteger(line.lineNumber)&&typeof line.itemId==='string'&&UUID.test(line.itemId)&&
+       typeof line.itemName==='string'&&typeof line.quantity==='number'&&Number.isSafeInteger(line.quantity)&&
+       typeof line.totalCents==='number'&&Number.isSafeInteger(line.totalCents)&&typeof line.affected==='boolean'))
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({version:1 as const,orderId:value.orderId as string,roundId:value.roundId as string,
+    revisionNumber:value.revisionNumber as number,state:value.state as string,
+    amountCents:value.amountCents as number,paymentMode:value.paymentMode as 'pay_now'|'pay_at_end'|null,
+    invalidation:plain(value.invalidation)?Object.freeze({...value.invalidation}):null,
+    lines:Object.freeze(value.lines.map(line=>Object.freeze({lineNumber:line.lineNumber as number,
+     itemId:line.itemId as string,itemName:line.itemName as string,quantity:line.quantity as number,
+     totalCents:line.totalCents as number,affected:line.affected as boolean})))
+   });
+  },
+  async resubmitOrderRevision(orderId:string,input:Json){
+   if(!UUID.test(orderId))throw Error('invalid_customer_revision_transport');
+   const value=await jsonRequest(fetchImpl,`/api/v1/customer/orders/${orderId}/revisions`,'POST',input);
+   if(value.status!=='resubmitted'||value.version!==1||value.orderId!==orderId||
+      typeof value.roundId!=='string'||!UUID.test(value.roundId)||
+      !Number.isSafeInteger(value.revisionNumber)||!Number.isSafeInteger(value.amountCents)||
+      !Number.isSafeInteger(value.differenceCents)||typeof value.state!=='string'||
+      typeof value.dispatchId!=='string'||!UUID.test(value.dispatchId)||
+      typeof value.dispatchState!=='string'||typeof value.captureRequired!=='boolean'||
+      typeof value.repeated!=='boolean')
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({...value,status:'resubmitted' as const});
   }
  });
 }

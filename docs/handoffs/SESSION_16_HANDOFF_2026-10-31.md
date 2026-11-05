@@ -1,5 +1,7 @@
 # CartaViva / Sabora — continuidad viva para la sesión 16
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 **Creado:** 31-10-2026. **Naturaleza:** documento de continuidad operativo, **NO NORMATIVO**. **Estado:** vivo; actualizar al cerrar cada hito importante y antes de cambiar de sesión. **Estado de activación:** **NO-GO**.
 
 > **Jerarquía:** la fuente de verdad es la documentación **normativa** vigente en GitHub `jdlc86/CartaViva`. Este handoff, los informes de revisión, planes, comentarios de PR y los mensajes de ChatGPT son subordinados. Si hay contradicción, prevalece la normativa. No inventar ni reinterpretar decisiones funcionales, de seguridad ni visuales.

@@ -9,6 +9,7 @@ export interface OrderOperationsGateway {
   reportIncident(input: {roundId: string; lineId: string | null; origin: 'kitchen' | 'waiter_customer' | 'waiter_restaurant'; reason: string; affectedCents: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   resolveIncident(input: {incidentId: string; resolution: 'approve' | 'reject'; reason: string; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   settleCash(input: {accountId: string; amountCents: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
+  setCatalogSoldOut(input: {itemId: string; soldOut: boolean; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   refundCash(input: {incidentId: string; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   claimPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;
   cancelPickup(input: {lineId: string; expectedVersion: number; correlationId: string}): Promise<Readonly<Record<string, unknown>>>;

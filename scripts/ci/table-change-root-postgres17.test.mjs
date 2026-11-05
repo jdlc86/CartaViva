@@ -9,8 +9,9 @@ import {assertB3H6LoginSurface,assertB3CustomerFlowExactSetRole,createVerifiedTa
 import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-production-sql-preflight.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
-import {createH6OperationsRepository,SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,
- MANAGE_PICKUP_TASK_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+import {createH6OperationsRepository,createH6CustomerEventRepository,
+ SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
 import {createOrderOperationsRepository,TRANSITION_ORDER_LINE_SQL,READ_H6_DELIVERY_BOARD_SQL,
@@ -26,12 +27,14 @@ import {createH6ProviderRepository,LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H
  RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,REQUEST_REFUND_H6_SQL,
  RECORD_REFUND_H6_SQL} from '../../apps/api/src/h6-provider-repository.mjs';
 import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
- READ_STAFF_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
+ READ_STAFF_EVENTS_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL}
+ from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
-import {createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
+import {createPostgresH6OutboxNotifier,registerH6CustomerEventStreamHttp}
+ from '../../apps/api/src/h6-event-stream.mjs';
 import {mountVerifiedTableChangeB3JwtHttpCandidate} from '../../apps/api/src/table-change-b3-http-composition-candidate.mjs';
 import {preflightOrderTransitionStaffIdentity} from '../../apps/api/src/order-operations-identity-preflight.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
@@ -1370,6 +1373,10 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
    sabora.confirm_customer_round_h6_transfer_integration_candidate(
     bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)
    TO sabora_b3_positive_checkout`);
+  await client.query(`GRANT EXECUTE ON FUNCTION
+   sabora.resubmit_customer_order_revision_h6_candidate(
+    bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)
+   TO sabora_b3_positive_checkout`);
   await client.query('SET LOCAL ROLE sabora_b3_positive_checkout');
   const roleAtCheckout=(await client.query('SELECT current_user')).rows[0].current_user;
   assert.equal(roleAtCheckout,'sabora_b3_positive_checkout');
@@ -1469,12 +1476,80 @@ test('PG17 B2 positive integrated A-to-B confirmation consumes approval with rea
   assert.deepEqual(afterReplay,beforeReplay,
    'F12 replay must not create economic rounds, dispatches, payments or grant consumption');
 
+  const replacementItem='b0a00000-0000-4000-8000-000000000033';
+  const replacementQuote='b0a00000-0000-4000-8000-000000000034';
+  const replacementDraft={name:'Alternativa PG17',category:'Primeros',priceCents:600,
+   allergens:[],options:[],extras:[],discount:null};
+  const replacementEvidence={schemaVersion:'1',itemId:replacementItem,
+   publishedRevision:1,quantity:1,itemName:'Alternativa PG17',category:'Primeros',
+   subtotalCents:'600',discountCents:'0',totalCents:'600'};
+  await client.query(`INSERT INTO sabora.catalog_items
+   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
+   VALUES($1,$2,1,1,$2,clock_timestamp())`,[replacementItem,replacementDraft]);
+  await client.query(`INSERT INTO sabora.catalog_displayed_quotes
+   (id,table_id,session_id,visit_id,basket_id,actor_id,item_id,
+    published_revision,subtotal_cents,discount_cents,total_cents,evidence,expires_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,1,600,0,600,$8,clock_timestamp()+interval '15 minutes')`,
+   [replacementQuote,ids.destinationTable,ids.destinationSession,destinationVisit,basket,
+    ids.customer.toString(),replacementItem,replacementEvidence]);
+  await client.query('UPDATE sabora.catalog_items SET sold_out=true WHERE id=$1',[itemId]);
+  const invalidated=(await client.query(`SELECT state,invalidation,
+   economic_snapshot->'lines'->0->'evidence'->>'itemName' AS original_item
+   FROM sabora.order_revisions WHERE order_id=$1 AND revision_number=1`,[ids.order])).rows[0];
+  assert.equal(invalidated.state,'invalidated');
+  assert.equal(invalidated.original_item,'Plato de integración');
+  assert.deepEqual(invalidated.invalidation.affectedLineNumbers,[1]);
+  await client.query('SET LOCAL ROLE sabora_h6_customer_runtime');
+  const customerRevision=(await client.query(`SELECT
+   sabora.read_customer_order_revision_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid) AS result`,
+   [tokenHash,ids.destinationTable,destinationVisit,ids.order])).rows[0].result;
+  await client.query('RESET ROLE');
+  assert.equal(customerRevision.state,'invalidated');
+  assert.equal(customerRevision.lines[0].affected,true);
+  const replacements=[{lineNumber:1,quoteId:replacementQuote,itemId:replacementItem,
+   evidence:replacementEvidence}];
+  await client.query('SET LOCAL ROLE sabora_b3_positive_checkout');
+  const correction=(await client.query(`SELECT
+   sabora.resubmit_customer_order_revision_h6_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::integer,
+    $8::text,$9::jsonb,$10::boolean) AS result`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,ids.order,1,
+    'h6_revision_request_0001',JSON.stringify(replacements),true])).rows[0].result;
+  const correctionReplay=(await client.query(`SELECT
+   sabora.resubmit_customer_order_revision_h6_candidate(
+    $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::integer,
+    $8::text,$9::jsonb,$10::boolean) AS result`,
+   [tokenHash,ids.destinationTable,qrToken,destinationVisit,basket,ids.order,1,
+    'h6_revision_request_0001',JSON.stringify(replacements),true])).rows[0].result;
+  await client.query('RESET ROLE');
+  assert.equal(correction.revisionNumber,2);
+  assert.equal(correction.amountCents,600);
+  assert.equal(correction.dispatchState,'requested');
+  assert.equal(correction.repeated,false);
+  assert.equal(correctionReplay.repeated,true);
+  const revised=(await client.query(`SELECT r.account_id,r.revision_number,r.amount_cents,
+   r.state AS round_state,d.state AS dispatch_state,d.revision_number AS dispatch_revision,
+   (SELECT count(*)::int FROM sabora.orders WHERE id=$1) AS orders,
+   (SELECT count(*)::int FROM sabora.order_revisions WHERE order_id=$1) AS revisions,
+   (SELECT count(*)::int FROM sabora.order_revision_requests WHERE order_id=$1) AS requests,
+   (SELECT count(*)::int FROM sabora.event_outbox WHERE event_type='sabora.kitchen.dispatch_requested'
+     AND aggregate_id=d.id) AS dispatch_events
+   FROM sabora.order_rounds r JOIN sabora.kitchen_dispatches d ON d.round_id=r.id
+   WHERE r.order_id=$1`,[ids.order])).rows[0];
+  assert.deepEqual(revised,{account_id:ids.sourceAccount,revision_number:2,
+   amount_cents:'600',round_state:'dispatch_requested',dispatch_state:'requested',
+   dispatch_revision:2,orders:1,revisions:2,requests:1,dispatch_events:1});
+
   assert.equal((await client.query(`SELECT count(*)::int AS n
    FROM sabora.order_line_delivery_destinations d
    JOIN sabora.order_lines l ON l.id=d.order_line_id
-   WHERE l.order_id=$1`,[ids.order])).rows[0].n,1);
+   WHERE l.order_id=$1`,[ids.order])).rows[0].n,2);
+  assert.deepEqual((await client.query(`SELECT revision_number,is_current_revision,name
+   FROM sabora.order_lines WHERE order_id=$1 ORDER BY revision_number`,[ids.order])).rows,
+   [{revision_number:1,is_current_revision:false,name:'Plato de integración'},
+    {revision_number:2,is_current_revision:true,name:'Alternativa PG17'}]);
   assert.equal((await client.query(`SELECT outstanding_cents FROM sabora.customer_accounts
-   WHERE id=$1`,[ids.sourceAccount])).rows[0].outstanding_cents,'1900');
+   WHERE id=$1`,[ids.sourceAccount])).rows[0].outstanding_cents,'1800');
  });
 });
 
@@ -2402,11 +2477,13 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
  await transaction(async client=>{
   const role='sabora_b3_confirmation_runtime',login='sabora_b3_confirmation_probe_login';
   const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  const revisionSignature='sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)';
   await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${revisionSignature} TO ${role}`);
   const functionOid=(await client.query('SELECT to_regprocedure($1)::oid AS oid',
    [signature])).rows[0].oid;
   assert.ok(functionOid);
@@ -2425,7 +2502,8 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
   assert.equal(after.who,role);
   assert.equal(after.can_execute,true);
   const names=(await client.query(F12_FUNCTION_SQL,[role])).rows[0].names;
-  assert.deepEqual(names,[signature],'B3 role must have exactly one Sabora EXECUTE');
+  assert.deepEqual(names,[signature,revisionSignature].sort(),
+   'B3 role must have exactly the confirmation and corrective-revision writes');
   await client.query('RESET ROLE');
  });
 });
@@ -2436,11 +2514,13 @@ test('PG17 B3 live preflight accepts only the isolated transactional login capab
   const role='sabora_b3_confirmation_runtime';
   const login='sabora_b3_confirmation_preflight_probe';
   const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
+  const revisionSignature='sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)';
   await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
   await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${revisionSignature} TO ${role}`);
   // A disposable superuser session can impersonate the exact login within
   // this rolled-back transaction. This checks the real PostgreSQL catalog,
   // not a fixture, and never creates persistent runtime credentials.
@@ -2478,12 +2558,14 @@ test('PG17 B3 H6 reader live preflight validates isolated login and rejects priv
   const role='sabora_b3_h6_reader_runtime',login='sabora_b3_h6_reader_probe';
   const readerRound='sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)';
   const readerPolicy='sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)';
+  const readerRevision='sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)';
   await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
   await client.query(`GRANT EXECUTE ON FUNCTION ${readerRound} TO ${role}`);
   await client.query(`GRANT EXECUTE ON FUNCTION ${readerPolicy} TO ${role}`);
+  await client.query(`GRANT EXECUTE ON FUNCTION ${readerRevision} TO ${role}`);
   const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
   assert.deepEqual(await assertB3H6LoginSurface({pool,expectedLogin:login}),{validated:true});
@@ -2590,10 +2672,12 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
    {role:'sabora_f12_operations_runtime',login:'sabora_b3_combined_decision',
     functions:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
    {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_combined_writer',
-    functions:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']},
+    functions:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+     'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)']},
    {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_combined_reader',
     functions:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
-     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']},
+     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+     'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)']},
    {role:'sabora_customer_flow_runtime',login:'sabora_b3_combined_basket',functions:[]}
   ];
   for(const spec of specs){
@@ -2650,10 +2734,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_f12_operations_runtime',login:'sabora_b3_physical_decision_'+suffix,
    signatures:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
   {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_physical_writer_'+suffix,
-   signatures:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)']},
+   signatures:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+    'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)']},
   {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_physical_reader_'+suffix,
    signatures:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
-    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)']},
+    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+    'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)']},
   {role:'sabora_customer_flow_runtime',login:'sabora_b3_physical_basket_'+suffix,
    signatures:[]},
   {role:'sabora_f12_pending_reader_runtime',login:'sabora_b3_physical_pending_'+suffix,
@@ -2674,15 +2760,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_b3_h4_transition_runtime',login:'sabora_b3_physical_h4_'+suffix,
    signatures:['sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
     'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
-    'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)']}
+    'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)']},
+  // Customer outbox delivery has its own production H6 capability and LOGIN;
+  // the B3 round reader is intentionally not broadened to impersonate it.
+  {role:'sabora_h6_customer_runtime',login:'sabora_b3_physical_events_'+suffix,
+   signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
+ let customerEventNotifier=null;
  const password='sabora_b3_disposable_'+suffix+'_only';
  try{
   for(const spec of specs){
    if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime',
        'sabora_h6_provider_runtime','sabora_h6_operations_runtime',
-       'sabora_staff_reader','sabora_h6_account_close_runtime'].includes(spec.role)){
+       'sabora_staff_reader','sabora_h6_account_close_runtime',
+       'sabora_h6_customer_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2772,6 +2864,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    expectedLogin:specs[7].login,capability:specs[7].role});
   await assertH6RuntimeIdentity({pool:scopedPools[8],
    expectedLogin:specs[8].login,capability:specs[8].role});
+  await assertH6RuntimeIdentity({pool:scopedPools[12],
+   expectedLogin:specs[12].login,capability:specs[12].role});
   for(const index of [7,8,10]){
    await assert.rejects(connections[index].query('SELECT * FROM sabora.payment_attempts'),
     /permission denied/);
@@ -2789,8 +2883,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // authenticated connections, not the pinned preflight connection.
    scopedPools[1]={connect:()=>pools[1].connect()};
   // F22 concurrent customer confirmations must use distinct authenticated
-  // writer and flow connections rather than the pinned preflight handles.
+  // writer, H6 read and flow connections rather than the pinned preflight
+  // handles. Customer SSE/revision reads can overlap a confirmation replay;
+  // sharing the preflight client would interleave BEGIN/SET LOCAL and test a
+  // connection state that no production pool is allowed to expose.
   scopedPools[2]={connect:()=>pools[2].connect()};
+  scopedPools[3]={connect:()=>pools[3].connect()};
   scopedPools[4]={connect:()=>pools[4].connect()};
   // React StrictMode may start overlapping GETs for the queue on mount.
   // A pinned preflight connection cannot serve concurrent SQL transactions:
@@ -2801,6 +2899,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   scopedPools[7]={connect:()=>pools[7].connect()};
   scopedPools[8]={connect:()=>pools[8].connect()};
   scopedPools[10]={connect:()=>pools[10].connect()};
+  scopedPools[12]={connect:()=>pools[12].connect()};
   const {privateKey:ciPrivateKey,publicKey:ciPublicKey}=generateKeyPairSync('rsa',
    {modulusLength:2048,publicExponent:0x10001});
   const ciIssuer='https://sabora-disposable.test/auth/v1';
@@ -2845,13 +2944,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const h6Provider=createH6ProviderRepository({withTransaction:providerTx});
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
-    REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL])});
+    REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+    SET_CATALOG_SOLD_OUT_H6_SQL])});
   const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:staffTx}),
    issueCapability:staffIssuer
   });
+  const customerEventsTx=createRoleScopedPostgresTransaction({pool:scopedPools[12],
+   role:specs[12].role,allowedSql:new Set([READ_CUSTOMER_EVENTS_H6_SQL])});
+  const customerEvents=createH6CustomerEventRepository({withTransaction:customerEventsTx});
   // Dedicated SQL statement allowlist: closing is not a cash receipt, a
   // kitchen acknowledgement or a generic role-granted table UPDATE.
   // Closure races require independent physical PG17 sockets. scopedPools[10]
@@ -2906,6 +3009,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // preflights. Authentication must reject HTTP before any business RPC.
   const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
   const http=Fastify({logger:false});
+  customerEventNotifier=await createPostgresH6OutboxNotifier({pool:pools[12]});
   const streamFailures=[];
   // F18: one remaining guest at A and one incumbent at B, with distinct
   // customer identities, sessions, accounts, orders and delivery histories.
@@ -3007,6 +3111,25 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    token:'o'.repeat(42)+'s',publicId:'SB-XYXYXYXYXYXY',
    alias:'Comensal agrupación natural'
   };
+  const customerCookieAuth=Object.freeze({
+   requireSameOrigin:()=>true,
+   authenticate:async(request,reply)=>{
+    if(request.headers.cookie==='__Secure-sabora_customer='+'s'.repeat(43)){
+     request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
+     return;
+    }
+    const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
+     postConsumeSessionDiner,postConsumeQrDiner,payNowDiner,cashHistoryDiner,
+     naturalGroupingDiner].find(row=>
+     request.headers.cookie==='__Secure-sabora_customer='+row.token);
+    if(peer){
+     request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
+     return;
+    }
+    return reply.code(401).send({error:'unauthorized'});
+   },
+   logout:async()=>{}
+  });
   try{
    assert.deepEqual(await mountVerifiedTableChangeB3JwtHttpCandidate(http,{
     staffReaderPool:pools[9],expectedStaffReaderLogin:specs[9].login,
@@ -3023,26 +3146,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     expectedFlowLogin:specs[4].login,
     hashSession:hashCustomerSessionToken,
     secretKey:'sabora_b3_ephemeral_test_secret_key_32_bytes_minimum',
-    cookieAuth:{
-     requireSameOrigin:()=>true,
-     authenticate:async(request,reply)=>{
-      if(request.headers.cookie==='__Secure-sabora_customer='+ 's'.repeat(43)){
-       request.customerIdentity={publicId:'SB-BABABABABABP',alias:'PG17',company:null};
-       return;
-      }
-      const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
-       postConsumeSessionDiner,postConsumeQrDiner,
-       payNowDiner,cashHistoryDiner,naturalGroupingDiner].find(row=>
-       request.headers.cookie==='__Secure-sabora_customer='+row.token);
-      if(peer){
-       request.customerIdentity={publicId:peer.publicId,alias:peer.alias,company:null};
-       return;
-      }
-      return reply.code(401).send({error:'unauthorized'});
-     },
-     logout:async()=>{}
-    },
+    cookieAuth:customerCookieAuth,
    }),{mounted:true});
+   registerH6CustomerEventStreamHttp(http,{cookieAuth:customerCookieAuth,
+    events:customerEvents,subscribeCommitted:customerEventNotifier.subscribe,
+    heartbeatMs:5000});
    // Seventh sealed cash RPC and the staff decision/queue now share the
    // same verified RS256 JWT and live PostgreSQL membership checks. The
    // tenth login can read only user_id/role/state and never payment tables.
@@ -3050,6 +3158,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     operations:Object.freeze({...cashOperations,
      acknowledgeDispatch:providerStaff.acknowledgeDispatch,
      managePickup:providerStaff.managePickup,
+     setCatalogSoldOut:providerStaff.setCatalogSoldOut,
      closeAccount:closeOperations.closeAccount}),
     forRoles:ciStaffRoles
    });
@@ -3057,11 +3166,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     operations:h4KitchenOperations,legacyPickupDisabled:true});
    // Test-only public catalog projection; checkout still revalidates the
    // published SQL fixture through the production quote/confirmation RPCs.
-   http.get('/api/v1/catalog',async()=>[{
-    id:'b0a00000-0000-4000-8000-000000000330',
-    name:'Plato de integración',category:'Primeros',
-    priceCents:700,available:true,allergens:[]
-   }]);
+   http.get('/api/v1/catalog',async()=>{
+    const rows=(await admin.query(`SELECT id,published_snapshot,sold_out,withdrawn_at
+     FROM sabora.catalog_items WHERE id=ANY($1::uuid[]) ORDER BY id`,[[
+      'b0a00000-0000-4000-8000-000000000330',
+      'b0a00000-0000-4000-8000-000000000331']])).rows;
+    return rows.map(row=>({id:row.id,name:row.published_snapshot.name,
+     category:row.published_snapshot.category,
+     priceCents:row.published_snapshot.priceCents,
+     available:!row.sold_out&&!row.withdrawn_at,allergens:row.published_snapshot.allergens}));
+   });
    await http.ready();
    for(const endpoint of ['/api/v1/customer/visits',
     '/api/v1/customer/quotes','/api/v1/customer/orders/confirm',
@@ -3228,8 +3342,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const priorRound='b0a00000-0000-4000-8000-000000000341';
     const qrToken='Q'.repeat(42)+'A';
     const itemId='b0a00000-0000-4000-8000-000000000330';
+    const replacementItemId='b0a00000-0000-4000-8000-000000000331';
     const snapshot={name:'Plato de integración',category:'Primeros',
      priceCents:700,allergens:[],options:[],extras:[],discount:null};
+    const replacementSnapshot={name:'Alternativa de temporada',category:'Primeros',
+     priceCents:600,allergens:[],options:[],extras:[],discount:null};
     await fixture.query('UPDATE sabora.dining_tables SET qr_token_hash=$1 WHERE id=ANY($2::uuid[])',
      [createHash('sha256').update(qrToken).digest(),
       [httpFixture.sourceTable,httpFixture.destinationTable,
@@ -3237,7 +3354,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        httpFixture.naturalTable]]);
     await fixture.query(`INSERT INTO sabora.catalog_items
      (id,draft,draft_revision,published_revision,published_snapshot,published_at)
-     VALUES($1,$2,1,1,$2,clock_timestamp())`,[itemId,snapshot]);
+     VALUES($1,$2,1,1,$2,clock_timestamp()),
+           ($3,$4,1,1,$4,clock_timestamp())`,
+     [itemId,snapshot,replacementItemId,replacementSnapshot]);
     await fixture.query(`INSERT INTO sabora.orders
      (id,table_id,session_id,company,employee_number,customer_alias,customer_identifier,
       customer_visit_key,economic_snapshot,confirmed_at,grouping,items)
@@ -5590,11 +5709,20 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           headers:concurrentCashHeaders,payload:dueBody});
          let cashQueued=false;
          for(let tries=0;tries<150;tries++){
-          const waiting=await admin.query(`SELECT count(*)::int AS n
-           FROM pg_stat_activity a WHERE a.pid<>$1::int
-           AND a.wait_event_type='Lock'
-           AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
-           AND $1::int=ANY(pg_blocking_pids(a.pid))`,[holderPid]);
+          // A concurrent authenticated operation can sit between cash and the
+          // held account row in PostgreSQL's lock queue. Follow the complete
+          // wait graph so the test observes the real economic fence without
+          // requiring the account holder to be the immediate blocker.
+          const waiting=await admin.query(`WITH RECURSIVE wait_graph(root_pid,pid,depth) AS (
+           SELECT a.pid,blocker,1 FROM pg_stat_activity a
+           CROSS JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS blocker
+           WHERE a.wait_event_type='Lock'
+            AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
+           UNION
+           SELECT wait_graph.root_pid,blocker,wait_graph.depth+1 FROM wait_graph
+           CROSS JOIN LATERAL unnest(pg_blocking_pids(wait_graph.pid)) AS blocker
+           WHERE wait_graph.depth<8
+          ) SELECT count(*)::int AS n FROM wait_graph WHERE pid=$1::int`,[holderPid]);
           if(waiting.rows[0].n>0){cashQueued=true;break;}
           await new Promise(resolve=>setTimeout(resolve,40));
          }
@@ -5997,11 +6125,20 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
            SET qr_version=qr_version+1,qr_token_hash=$1 WHERE id=$2 RETURNING id`,
            [createHash('sha256').update(nextQr).digest(),httpFixture.concurrentTable]);
          }
-         let blockedByWriter=false;
+          let blockedByWriter=false;
          for(let i=0;i<145;i++){
-          const blockers=(await admin.query(
-           'SELECT pg_blocking_pids($1::int) AS pids',
-           [revokerPid])).rows[0].pids;
+           // A live customer SSE refresh can be queued between the revoker and
+           // the confirmation row lock. Assert the complete PostgreSQL wait
+           // graph, not only the first backend in that graph: the economic
+           // writer must still fence the external revocation transitively.
+           const blockers=(await admin.query(`WITH RECURSIVE wait_graph(pid,depth) AS (
+            SELECT blocker,1 FROM unnest(pg_blocking_pids($1::int)) AS blocker
+            UNION
+            SELECT blocker,wait_graph.depth+1 FROM wait_graph
+            CROSS JOIN LATERAL unnest(pg_blocking_pids(wait_graph.pid)) AS blocker
+            WHERE wait_graph.depth<8
+           ) SELECT coalesce(array_agg(DISTINCT pid),'{}'::int[]) AS pids
+           FROM wait_graph`,[revokerPid])).rows[0].pids;
           if(blockers.includes(writerPid)){blockedByWriter=true;break;}
           await new Promise(resolve=>setTimeout(resolve,40));
          }
@@ -6826,9 +6963,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const origin='http://127.0.0.1:'+clientVite.httpServer.address().port;
     browser=await chromium.launch({headless:true});
     const freshQr='Q'.repeat(42)+'A';
-    const confirmFromPwa=async(step)=>{
+    const confirmFromPwa=async(step,{retain=false}={})=>{
      const context=await browser.newContext({viewport:{width:390,height:844},
       reducedMotion:'reduce',serviceWorkers:'block'});
+     let retained=false;
      try{
       await context.addCookies([{name:'__Secure-sabora_customer',
        value:naturalGroupingDiner.token,domain:'127.0.0.1',path:'/',
@@ -6867,10 +7005,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await page.getByText('Pedido confirmado').waitFor({timeout:20000});
       await page.screenshot({path:join(evidence,'f21-five-minutes-'+step+'-mobile.png'),
        fullPage:true});
+      if(retain){retained=true;return {receipt,page,context};}
       return receipt;
-     }finally{await context.close();}
+     }finally{if(!retained)await context.close();}
     };
-    const first=await confirmFromPwa('first');
+    const firstUi=await confirmFromPwa('first',{retain:true});
+    const first=firstUi.receipt;
     const firstRow=(await admin.query(`SELECT r.grouping_deadline,
      o.grouping,t.first_confirmed_at,t.grouping_window_seconds,
      r.account_id,r.state,k.state AS dispatch_state
@@ -6885,6 +7025,136 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(firstRow.grouping_deadline.getTime()-
      firstRow.first_confirmed_at.getTime(),300000);
     assert.equal(firstRow.dispatch_state,'blocked');
+    const revisionBodies=[];
+    firstUi.page.on('request',request=>{
+     if(request.method()==='POST'&&new URL(request.url()).pathname===
+        '/api/v1/customer/orders/'+first.orderId+'/revisions')
+      revisionBodies.push(request.postDataJSON());
+    });
+    const revisionReadResponse=firstUi.page.waitForResponse(response=>
+     response.request().method()==='GET'&&new URL(response.url()).pathname===
+      '/api/v1/customer/orders/'+first.orderId+'/revision',{timeout:20000});
+    const catalogRefreshResponse=firstUi.page.waitForResponse(response=>
+     response.request().method()==='GET'&&new URL(response.url()).pathname===
+      '/api/v1/catalog',{timeout:20000});
+    const soldOut=await http.inject({method:'POST',
+     url:'/api/v1/operations/catalog/items/b0a00000-0000-4000-8000-000000000330/availability',
+     headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+     payload:{soldOut:true,correlationId:'f21_catalog_sold_out_first'}});
+    assert.equal(soldOut.statusCode,200,soldOut.body);
+    assert.equal(soldOut.json().soldOut,true);
+    await firstUi.page.getByRole('dialog',{name:'Corregir pedido'}).waitFor({timeout:20000});
+    const [revisionRead,catalogRefresh]=await Promise.all([
+     revisionReadResponse,catalogRefreshResponse]);
+    assert.equal(revisionRead.status(),200,await revisionRead.text());
+    assert.equal(catalogRefresh.status(),200,await catalogRefresh.text());
+    const revisionReadBody=await revisionRead.json();
+    assert.equal(revisionReadBody.state,'invalidated');
+    assert.equal(revisionReadBody.lines[0].itemName,'Plato de integración');
+    assert.equal(revisionReadBody.lines[0].affected,true);
+    await firstUi.page.getByRole('combobox',
+     {name:'Alternativa para Plato de integración'}).selectOption(
+      'b0a00000-0000-4000-8000-000000000331');
+    const firstRevisionResponse=firstUi.page.waitForResponse(response=>
+     new URL(response.url()).pathname===
+      '/api/v1/customer/orders/'+first.orderId+'/revisions');
+    await firstUi.page.getByRole('button',{name:'Reenviar pedido'}).click();
+    const acceptanceResponse=await firstRevisionResponse;
+    assert.equal(acceptanceResponse.status(),409);
+    const acceptance=await acceptanceResponse.json();
+    assert.equal(acceptance.error,'revision_acceptance_required');
+    assert.equal(acceptance.changes[0].previousTotalCents,700);
+    assert.equal(acceptance.changes[0].currentTotalCents,600);
+    assert.equal(acceptance.changes[0].differenceCents,-100,
+     'a lower price still requires explicit consent');
+    await firstUi.page.getByText('Revisión económica').waitFor();
+    await firstUi.page.screenshot({path:join(evidence,
+     'f21-revision-economic-consent-mobile.png'),fullPage:true});
+    assert.equal(revisionBodies.length,1);
+    const acceptedBody={...revisionBodies[0],acceptanceToken:acceptance.acceptanceToken};
+    const acceptedRevisionRequest=request=>{
+     if(request.method()!=='POST'||new URL(request.url()).pathname!==
+        '/api/v1/customer/orders/'+first.orderId+'/revisions')return false;
+     try{return request.postDataJSON()?.acceptanceToken===acceptance.acceptanceToken;}
+     catch{return false;}
+    };
+    // Start the direct replay only once Chromium has emitted the accepted
+    // request. This preserves real overlap at the HTTP/SQL boundary without
+    // allowing the injected request to finish before the browser click has
+    // even been dispatched. Attach both Playwright waiters immediately so a
+    // slow action cannot turn their timeout into an unhandled rejection.
+    const acceptedRequest=firstUi.page.waitForRequest(acceptedRevisionRequest,
+     {timeout:20000});
+    const concurrentReplay=acceptedRequest.then(()=>http.inject({method:'POST',
+     url:'/api/v1/customer/orders/'+first.orderId+'/revisions',
+     headers:{cookie:'__Secure-sabora_customer='+naturalGroupingDiner.token,
+      'content-type':'application/json'},payload:acceptedBody}));
+    const uiAccepted=Promise.all([
+     firstUi.page.waitForResponse(response=>
+      acceptedRevisionRequest(response.request()),{timeout:60000}),
+     firstUi.page.getByRole('button',{name:'Reenviar pedido'}).click()
+    ]).then(([response])=>response);
+    const [uiCorrection,directReplay]=await Promise.all([uiAccepted,concurrentReplay]);
+    assert.deepEqual([uiCorrection.status(),directReplay.statusCode].sort(),[200,201],
+     'concurrent same-key resubmission must commit once and replay once');
+    assert.equal(revisionBodies.length,2,
+     'the accepted correction must originate from the real client PWA');
+    await firstUi.page.getByRole('dialog',{name:'Corregir pedido'}).waitFor({state:'hidden'});
+    const revisionState=(await admin.query(`SELECT r.id AS round_id,r.account_id,
+     r.revision_number,r.amount_cents,r.grouping_deadline,r.state AS round_state,
+     d.id AS dispatch_id,d.revision_number AS dispatch_revision,d.state AS dispatch_state,
+     (SELECT count(*)::int FROM sabora.orders o2 WHERE o2.id=$1) AS same_order,
+     (SELECT count(*)::int FROM sabora.order_revisions v WHERE v.order_id=$1) AS revisions,
+     (SELECT count(*)::int FROM sabora.order_revision_requests q WHERE q.order_id=$1) AS requests,
+     (SELECT outstanding_cents FROM sabora.customer_accounts a WHERE a.id=r.account_id) AS debt
+     FROM sabora.order_rounds r JOIN sabora.kitchen_dispatches d ON d.round_id=r.id
+     WHERE r.order_id=$1`,[first.orderId])).rows[0];
+    assert.equal(revisionState.round_id,first.roundId);
+    assert.equal(revisionState.account_id,first.accountId);
+    assert.equal(revisionState.revision_number,2);
+    assert.equal(revisionState.amount_cents,'600');
+    assert.ok(revisionState.grouping_deadline.getTime()<firstRow.grouping_deadline.getTime(),
+     'correction makes the existing round immediately due without a second window');
+    assert.ok(revisionState.grouping_deadline.getTime()<=Date.now()+1000);
+    assert.equal(revisionState.round_state,'dispatch_requested');
+    assert.equal(revisionState.dispatch_revision,2);
+    assert.equal(revisionState.dispatch_state,'requested');
+    assert.equal(revisionState.same_order,1);
+    assert.equal(revisionState.revisions,2);
+    assert.equal(revisionState.requests,1);
+    assert.equal(revisionState.debt,'600');
+    const immutable=(await admin.query(`SELECT v.revision_number,v.state,v.amount_cents,
+     v.economic_snapshot->'lines'->0->'evidence'->>'itemName' AS item,
+     (SELECT count(*)::int FROM sabora.order_lines l WHERE l.order_id=v.order_id
+       AND l.revision_number=v.revision_number AND l.is_current_revision) AS current_lines
+     FROM sabora.order_revisions v WHERE v.order_id=$1 ORDER BY v.revision_number`,
+     [first.orderId])).rows;
+    assert.deepEqual(immutable,[
+     {revision_number:1,state:'invalidated',amount_cents:'700',
+      item:'Plato de integración',current_lines:0},
+     {revision_number:2,state:'dispatch_requested',amount_cents:'600',
+      item:'Alternativa de temporada',current_lines:1}
+    ]);
+    const kitchenBoard=await http.inject({method:'GET',
+     url:'/api/v1/operations/order-lines?status=confirmed&limit=100',
+     headers:{authorization:'Bearer '+jwtKitchen}});
+    assert.equal(kitchenBoard.statusCode,200,kitchenBoard.body);
+    const currentBoard=kitchenBoard.json().items.filter(item=>item.orderId===first.orderId);
+    assert.equal(currentBoard.length,1);
+    assert.equal(currentBoard[0].name,'Alternativa de temporada',
+     'only the current dispatched revision may reach kitchen');
+    const foreignRevision=await http.inject({method:'GET',
+     url:'/api/v1/customer/orders/'+first.orderId+'/revision?tableId='+
+      httpFixture.sourceTable+'&visitId='+httpFixture.sourceVisit,
+     headers:{cookie:'__Secure-sabora_customer='+'s'.repeat(43)}});
+    assert.equal(foreignRevision.statusCode,403,
+     'another customer and table cannot read the revision');
+    const restore=await http.inject({method:'POST',
+     url:'/api/v1/operations/catalog/items/b0a00000-0000-4000-8000-000000000330/availability',
+     headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+     payload:{soldOut:false,correlationId:'f21_catalog_restore_first'}});
+    assert.equal(restore.statusCode,200,restore.body);
+    await firstUi.context.close();
     const grouped=await confirmFromPwa('grouped');
     const groupedRow=(await admin.query(`SELECT r.grouping_deadline,
      o.grouping,k.state AS dispatch_state,r.account_id FROM sabora.order_rounds r
@@ -6898,7 +7168,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(groupedRow.dispatch_state,'blocked');
     const cashBefore=(await admin.query(`SELECT outstanding_cents,state
      FROM sabora.customer_accounts WHERE id=$1`,[first.accountId])).rows[0];
-    assert.equal(cashBefore.outstanding_cents,'1400');
+    assert.equal(cashBefore.outstanding_cents,'1300');
     assert.equal(cashBefore.state,'open');
     const eventCount=async()=>Number((await admin.query(`SELECT count(*)::int AS n
      FROM sabora.event_outbox e
@@ -6939,7 +7209,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     beforeRestart=createScheduler();
     schedulers.push(beforeRestart);
     await beforeRestart.start();
-    assert.equal(await eventCount(),0,'first and grouped orders cannot ship early');
+    assert.equal(await eventCount(),1,
+     'only the explicitly corrected revision may ship before the natural deadline');
     assert.ok(Number.isSafeInteger(listenerBackend)&&listenerBackend>0);
     // Kill ONLY the dedicated disposable PG17 LISTEN backend: the server must
     // signal loss once and fail closed, not leave a silent "healthy" worker.
@@ -6952,7 +7223,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await beforeRestart.close();
     await liveListener.close(); // already lost: no duplicate release
     assert.throws(()=>liveListener.subscribe(()=>{}),/invalid_h6_outbox_subscription/);
-    assert.equal(await eventCount(),0);
+    assert.equal(await eventCount(),1);
     // The next service instance creates its own LISTEN connection. Old
     // messages need not survive: durable SQL deadlines are authoritative.
     notifier=await createPostgresH6OutboxNotifier({pool:pools[8]});
@@ -6961,7 +7232,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.ok(until>240000&&until<=300000,
      'a fresh first order must retain most of its real five-minute window');
     await new Promise(resolve=>setTimeout(resolve,until+350));
-    assert.equal(await eventCount(),0,
+    assert.equal(await eventCount(),1,
      'without the service, due work is durable but never pretends to be delivered');
     // Two independently scheduled workers race the SAME PG17 row locks.
     // Only the sealed function can transition each durable dispatch once.
@@ -7029,7 +7300,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      (SELECT outstanding_cents FROM sabora.customer_accounts WHERE id=$1) AS debt,
      (SELECT count(*)::int FROM sabora.payment_attempts WHERE account_id=$1) AS attempts`,
      [first.accountId,dispatches.map(row=>row.id)])).rows[0];
-    assert.deepEqual(final,{received:3,requested_events:3,debt:'2100',attempts:0},
+    assert.deepEqual(final,{received:3,requested_events:3,debt:'2000',attempts:0},
      'five-minute scheduling must preserve all three orders and account ledger');
     assert.deepEqual(naturalErrors,[]);
    }finally{
@@ -7098,6 +7369,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
  }finally{
   if(priorB3Flag===undefined)delete process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
   else process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE=priorB3Flag;
+  if(customerEventNotifier)await customerEventNotifier.close();
   for(const connection of connections)connection.release();
   for(const pool of pools)await pool.end();
   for(const role of createdRoles.reverse()){

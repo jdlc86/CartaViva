@@ -332,6 +332,75 @@ test('H6 customer completes QR, server quote, pay-at-end confirmation and durabl
  await expect(page.getByRole('dialog',{name:'Notificaciones'})).toContainText('round.confirmed');
 });
 
+test('zero-cost round hides payment and a later positive round asks once on the same visit',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
+ const free={id:'61000000-0000-4000-8000-000000000001',name:'Detalle de cortesía',
+  category:'Postres',priceCents:0,available:true,allergens:[]};
+ const confirmations:unknown[]=[];
+ await page.unroute('**/api/v1/catalog');
+ await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify([free,catalog[0]])}));
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({authenticated:true,
+   publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,
+  contentType:'application/json',body:JSON.stringify({tableId,
+   visitId:'visit_zero_cost_1234',basketId:'basket_zero_cost_123',
+   expiresAt:'2026-11-05T23:00:00.000Z',
+   paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/quotes',route=>{
+  const request=route.request().postDataJSON() as {lines:Array<{itemId:string}>};
+  const itemId=request.lines[0].itemId;
+  const totalCents=itemId===free.id?0:catalog[0].priceCents;
+  return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({
+   lines:[{quoteId:itemId===free.id?'62000000-0000-4000-8000-000000000002':
+    '62000000-0000-4000-8000-000000000003',itemId,totalCents,
+    expiresAt:'2026-11-05T22:00:00.000Z'}]})});
+ });
+ await page.route('**/api/v1/customer/orders/confirm',route=>{
+  const body=route.request().postDataJSON() as {paymentMode:null|'pay_now'|'pay_at_end'};
+  confirmations.push(body);
+  const freeRound=body.paymentMode===null,index=confirmations.length;
+  return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({
+   status:'confirmed',orderId:`63000000-0000-4000-8000-${String(index).padStart(12,'0')}`,
+   grouping:index===1?'first':'grouped',accountId:'64000000-0000-4000-8000-000000000004',
+   roundId:`65000000-0000-4000-8000-${String(index).padStart(12,'0')}`,
+   amountCents:freeRound?0:catalog[0].priceCents,paymentMode:body.paymentMode,
+   roundState:freeRound?'free_grouping':'grouping',paymentState:null,
+   requiresPaymentAction:false})});
+ });
+ await page.route('**/api/v1/customer/events**',route=>route.fulfill({status:200,
+  headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store'},body:''}));
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ await page.getByRole('dialog',{name:'QR de mesa'}).getByRole('button',{name:'Cerrar'}).click();
+
+ await page.getByTestId('product-card').filter({hasText:free.name})
+  .getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ let checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await expect(checkout).toContainText('Esta ronda es gratuita y no fija modalidad de pago');
+ await expect(checkout.getByLabel('Pagar ahora')).toHaveCount(0);
+ await expect(checkout.getByLabel('Pagar al terminar')).toHaveCount(0);
+ await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(checkout).toContainText('Pedido confirmado');
+ await checkout.getByRole('button',{name:'Cerrar'}).click();
+
+ await page.getByTestId('product-card').filter({hasText:catalog[0].name})
+  .getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await expect(checkout.getByLabel('Pagar ahora')).toBeVisible();
+ await expect(checkout.getByLabel('Pagar al terminar')).toBeVisible();
+ await checkout.getByLabel('Pagar al terminar').check();
+ await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(checkout).toContainText('Pedido confirmado');
+ expect(confirmations).toHaveLength(2);
+ expect(confirmations[0]).toMatchObject({paymentMode:null,tableId,qrToken:token});
+ expect(confirmations[1]).toMatchObject({paymentMode:'pay_at_end',tableId,qrToken:token});
+});
+
 test('ambiguous order failure stays unconfirmed and is never retried without a user action',async({page})=>{
  const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
  const quoteId='54000000-0000-4000-8000-000000000004';

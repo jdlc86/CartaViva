@@ -1,5 +1,7 @@
 # Sesión 6 — integración candidata de confirmación (22-10-2026)
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 ## Alcance publicado
 
 Se añadió `apps/api/src/catalog-confirmation-candidate-runtime.mjs` para componer, sin rutas HTTP ni configuración de conexión, el coordinador de confirmación, el repositorio de lecturas, el escritor de pedidos y la frontera transaccional PostgreSQL existente. La fábrica recibe un pool inyectado, una clave secreta confiable y opcionalmente reloj y generador de UUID. No abre conexiones al construirse.

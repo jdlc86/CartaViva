@@ -1,5 +1,7 @@
 # Integración aislada — Hito 1 identidad y personal
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 **Base:** `integration/sabora-order-management-review` @ `03f5a4796c5ffa392c868dab74525233e5155e66`.
 **Origen incorporado sin merge:** PR #10 @ `8598ee31a51edd80b1d7799013946766f67a0dfa` (3 commits por delante, 0 por detrás).
 **Estado:** integración de código candidata, **no activación de runtime**.

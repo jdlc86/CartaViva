@@ -11,15 +11,26 @@ const code=error=>{
 };
 const replyFailure=(reply,error)=>{
  const failure=code(error);
- if(['invalid_customer_flow_input','invalid_customer_visit_input'].includes(failure))
+ if(['invalid_customer_flow_input','invalid_customer_visit_input','invalid_customer_revision_request'].includes(failure))
   return reply.code(400).send({error:'invalid_customer_request'});
  if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden']
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
+ if(failure==='customer_revision_scope_forbidden')
+  return reply.code(403).send({error:'customer_context_forbidden'});
  if(['table_change_approval_required','h6_account_binding_scope_conflict',
      'h6_multiple_open_accounts_ambiguous','h6_replay_account_scope_conflict'].includes(failure))
   return reply.code(409).send({error:'table_change_confirmation_conflict'});
  if(failure==='customer_order_idempotency_conflict')
   return reply.code(409).send({error:'order_idempotency_conflict'});
+ if(failure==='revision_idempotency_conflict')
+  return reply.code(409).send({error:'revision_idempotency_conflict'});
+ if(['revision_concurrency_conflict','revision_not_correctable','order_revision_not_dispatchable']
+    .includes(failure))return reply.code(409).send({error:'revision_state_conflict'});
+ if(['revision_payment_adjustment_required','revision_economic_reconciliation_required',
+     'revision_payment_mode_required'].includes(failure))
+  return reply.code(409).send({error:'revision_payment_review_required'});
+ if(['revision_quote_invalid','revision_acceptance_required','invalid_revision_replacements']
+    .includes(failure))return reply.code(409).send({error:'revision_correction_conflict'});
  if(['payment_mode_required','invalid_payment_mode'].includes(failure))
   return reply.code(400).send({error:'payment_mode_required'});
  if(['table_requires_pay_now','payment_mode_conflict','payment_policy_conflict',
@@ -154,5 +165,25 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
      ...(result.clientSecret?{clientSecret:result.clientSecret}:null)});
    }catch(error){return replyFailure(reply,error);}
   });
+  if(typeof flow.readOrderRevision==='function')scope.get('/orders/:orderId/revision',async(request,reply)=>{
+   reply.header('Cache-Control','no-store');reply.header('X-Content-Type-Options','nosniff');
+   try{
+    const result=await flow.readOrderRevision({customerSessionToken:readCustomerCookie(request.headers.cookie),
+     tableId:request.query?.tableId,visitId:request.query?.visitId,orderId:request.params?.orderId});
+    return reply.send({...result,lines:result.lines.map(({evidence,...line})=>line)});
+   }catch(error){return replyFailure(reply,error);}
+  });
+  if(typeof flow.resubmitOrderRevision==='function')scope.post('/orders/:orderId/revisions',
+   {bodyLimit:65536},async(request,reply)=>{
+    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
+    try{
+     const result=await flow.resubmitOrderRevision({...request.body,orderId:request.params?.orderId,
+      customerSessionToken:readCustomerCookie(request.headers.cookie)});
+     if(result.status==='acceptance_required')return reply.code(409).send({
+      error:'revision_acceptance_required',changes:result.changes,
+      acceptanceToken:result.acceptance.token,expiresAt:result.acceptance.expiresAt});
+     return reply.code(result.repeated?200:201).send(result);
+    }catch(error){return replyFailure(reply,error);}
+   });
  },{prefix:'/api/v1/customer'});
 }

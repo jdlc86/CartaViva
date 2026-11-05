@@ -31,6 +31,7 @@ export function subscribeCustomerEvents({tableId,visitId,accountId,onEvent,onRes
   'sabora.incident.cash_refund_due','sabora.refund.cash_recorded',
   'sabora.payment.compensation_required','sabora.refund.succeeded','sabora.refund.failed',
   'sabora.refund.unknown','sabora.account.cash_settled','sabora.stripe.webhook_applied'];
+ names.push('sabora.order.revision_invalidated','sabora.order.revision_submitted');
  for(const name of names)source.addEventListener(name,receive as EventListener);
  source.addEventListener('resync-required',()=>onResync());
  source.addEventListener('access-revoked',()=>{onUnavailable();source.close();});

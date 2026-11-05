@@ -1,5 +1,7 @@
 # Encargo a Codex — Hito de identidad SQL no falsificable (24-10-2026)
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 ## Mandato y fuente de verdad
 
 Repositorio exclusivo: `jdlc86/CartaViva`. Rama de referencia: `integration/sabora-order-management-review`, PR Draft #7. Leer **antes de cambiar nada**:

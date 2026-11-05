@@ -1,5 +1,7 @@
 # Encargo Codex — Hito 6: eventos, pagos y operación completa (27-10-2026)
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 ## Autoridad y punto de partida
 Repositorio exclusivo: `jdlc86/CartaViva`. Leer primero TODOS los documentos normativos vigentes de `docs/architecture/`, especialmente `SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md` y `SABORA_CONTRACT_CONSISTENCY_V1.md`. Contrastar con PR Draft #30, su descendencia y el SHA de QR V1 `3f89d2939cd30522d97ded2c06bb3b1ed26119a7`. La normativa prevalece sobre documentos de continuidad y resúmenes. No inferir aprobación de una propuesta ni reabrir decisiones aprobadas. Comprobar rama, commits, conflictos y CI antes de codificar.
 

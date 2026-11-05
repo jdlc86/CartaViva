@@ -22,6 +22,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Require live tracker link in every continuity document
+        run: node scripts/ci/continuity-tracker-links-gate.mjs
       - name: Enable Corepack
         run: corepack enable
       - name: Install exact dependencies

@@ -10,7 +10,7 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
  if(!repository||typeof repository.acknowledgeDispatch!=='function'||
     typeof repository.reportIncident!=='function'||typeof repository.resolveIncident!=='function'||
     typeof repository.settleCash!=='function'||typeof repository.refundCash!=='function'||
-    typeof repository.managePickup!=='function'||
+    typeof repository.managePickup!=='function'||typeof repository.setCatalogSoldOut!=='function'||
     typeof issueCapability!=='function')
   throw Error('invalid_h6_operations_coordinator');
  const capability=(verified,action,targetId,correlationId)=>{
@@ -47,6 +47,11 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
    if(typeof repository.closeAccount!=='function')throw Error('h6_account_close_unavailable');
    const bound=capability(verified,'close_account',accountId,correlationId);
    return repository.closeAccount({accountId,capability:bound.capability});
+  },
+  setCatalogSoldOut(verified,{itemId,soldOut,correlationId}={}){
+   if(typeof soldOut!=='boolean')throw Error('invalid_catalog_availability_operation');
+   const bound=capability(verified,'set_catalog_sold_out',itemId,correlationId);
+   return repository.setCatalogSoldOut({itemId,soldOut,capability:bound.capability});
   },
   refundCash(verified,{incidentId,correlationId}={}){
    const bound=capability(verified,'refund_cash',incidentId,correlationId);
