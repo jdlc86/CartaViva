@@ -7428,7 +7428,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // M3 management extends the same M2 composition with two independent
   // least-privileged SQL logins. This is one integrated PG17/API acceptance,
   // not an administrative superuser substitute.
-  const m3=await createM3RestaurantCandidate({...m2Options,management:{
+  const m3Failures=[];
+  const m3=await createM3RestaurantCandidate({...m2Options,
+   observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
    issueCatalogCapability:m3CatalogIssuer,qr:{
@@ -7465,7 +7467,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(replay.replayed,true);
    await assert.rejects(management.manageTable({requestId:createRequest,operation:'create',
     payload:{number:914,capacity:4,description:'Conflicto'}}),/m3_management_conflict/);
-   const listed=await management.listTables({afterNumber:900,limit:20});
+   let listed;
+   try{listed=await management.listTables({afterNumber:900,limit:20});}
+   catch(error){throw m3Failures.at(-1)??error;}
    assert.equal(listed.version,2);assert.ok(listed.items.some(row=>row.id===created.tableId));
    // A fresh table is not customer-operational merely because its QR was
    // delivered. EN_PREPARACION and occupancy remain distinct server axes.

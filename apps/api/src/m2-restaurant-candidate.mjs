@@ -270,7 +270,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
-   catalog:m3Catalog,qr:management.qr});
+   catalog:m3Catalog,qr:management.qr,observeFailure});
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({

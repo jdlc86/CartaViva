@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
 import {createM3ManagementCapabilityIssuer} from '../apps/api/src/m3-management-capability.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
  MANAGE_M3_CATALOG_SQL} from '../apps/api/src/m3-management-repository.mjs';
+import {registerM3ManagementHttp} from '../apps/api/src/m3-management-http.mjs';
+
+const Fastify=createRequire(new URL('../apps/api/package.json',import.meta.url))('fastify');
 
 const actorId='10000000-0000-4000-8000-000000000001';
 const requestId='20000000-0000-4000-8000-000000000002';
@@ -94,4 +98,21 @@ test('identity mismatch and malformed issuer result never reach SQL',async()=>{
   verifiedStaff:{userId:requestId,role:'admin'}}),/m3_management_forbidden/);
  assert.throws(()=>repository.read(verified('admin')),/invalid_m3_management_capability/);
  assert.equal(transactions,0);
+});
+
+test('M3 HTTP observes internal failure without disclosing it to the caller',async()=>{
+ const app=Fastify({logger:false}),observed=[];
+ registerM3ManagementHttp(app,{forRoles:()=>async()=>{},
+  tables:{read:async()=>{throw Error('sensitive_sql_details');}},catalog:{},
+  qr:{secret:'m3_http_test_secret_at_least_32_bytes',origin:'https://sabora.example',
+   restaurantCode:'SABORA_CI'},observeFailure:error=>observed.push(error)});
+ try{
+  await app.ready();
+  const response=await app.inject('/api/v1/admin/tables');
+  assert.equal(response.statusCode,503);
+  assert.deepEqual(response.json(),{error:'tables_unavailable'});
+  assert.equal(response.body.includes('sensitive_sql_details'),false);
+  assert.equal(observed.length,1);
+  assert.equal(observed[0].message,'sensitive_sql_details');
+ }finally{await app.close();}
 });

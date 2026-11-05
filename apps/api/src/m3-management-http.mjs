@@ -7,7 +7,7 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&
 const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.length&&
  keys.every(key=>Object.hasOwn(value,key));
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
-const failure=(reply,error,kind)=>{
+const failure=(reply,error,kind,observeFailure)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(['m3_management_forbidden','staff_not_authorized'].includes(code))
   return reply.code(403).send({error:'forbidden'});
@@ -15,14 +15,15 @@ const failure=(reply,error,kind)=>{
  if(code.includes('conflict')||code.includes('not_publishable')||code.includes('not_withdrawable')||
     code.includes('not_available'))return reply.code(409).send({error:`${kind}_conflict`});
  if(code.startsWith('invalid_'))return reply.code(400).send({error:`invalid_${kind}_request`});
+ try{observeFailure(error);}catch{}
  return reply.code(503).send({error:`${kind}_unavailable`});
 };
 const deriveEntropy=(secret,operation,requestId)=>createHmac('sha256',secret)
  .update(`sabora-qr-v1\0${operation}\0${requestId}`,'utf8').digest();
 
-export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr}={}){
+export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observeFailure=()=>{}}={}){
  if(!app||typeof app.get!=='function'||typeof app.post!=='function'||
-    typeof forRoles!=='function'||!tables||!catalog||!qr||
+    typeof forRoles!=='function'||!tables||!catalog||!qr||typeof observeFailure!=='function'||
     typeof qr.secret!=='string'||Buffer.byteLength(qr.secret,'utf8')<32||
     typeof qr.origin!=='string'||typeof qr.restaurantCode!=='string')
   throw Error('invalid_m3_management_http');
@@ -43,7 +44,7 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr}={}){
   try{return reply.code(200).send(await tables.read(verified(request),{
    afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
    limit:query.limit===undefined?50:Number(query.limit)}));}
-  catch(error){return failure(reply,error,'tables');}
+  catch(error){return failure(reply,error,'tables',observeFailure);}
  });
  app.post('/api/v1/admin/tables/actions',{preHandler:admin,bodyLimit:16_384},async(request,reply)=>{
   if(!exact(request.body,['requestId','operation','payload'])||!UUID.test(request.body.requestId??'')||
@@ -64,7 +65,7 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr}={}){
    if(credential.token!==token)throw Error('invalid_table_qr_credential');
    return reply.code(operation==='create'&&result.replayed!==true?201:200)
     .send({...result,qrPayload:credential.payload});
-  }catch(error){return failure(reply,error,'tables');}
+  }catch(error){return failure(reply,error,'tables',observeFailure);}
  });
  app.post('/api/v1/admin/tables/:tableId/occupancy',
   {preHandler:floor,bodyLimit:2048},async(request,reply)=>{
@@ -76,18 +77,18 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr}={}){
     return reply.code(400).send({error:'invalid_tables_request'});
    try{return reply.code(200).send(await tables.occupancy(verified(request),{
     tableId:request.params.tableId,...request.body}));}
-   catch(error){return failure(reply,error,'tables');}
+   catch(error){return failure(reply,error,'tables',observeFailure);}
   });
  app.get('/api/v1/admin/catalog',{preHandler:admin},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   try{return reply.code(200).send(await catalog.read(verified(request)));}
-  catch(error){return failure(reply,error,'catalog');}
+  catch(error){return failure(reply,error,'catalog',observeFailure);}
  });
  app.post('/api/v1/admin/catalog/actions',{preHandler:admin,bodyLimit:65_536},async(request,reply)=>{
   if(!exact(request.body,['requestId','operation','payload'])||!UUID.test(request.body.requestId??'')||
      typeof request.body.operation!=='string'||!plain(request.body.payload))
    return reply.code(400).send({error:'invalid_catalog_request'});
   try{return reply.code(200).send(await catalog.manage(verified(request),request.body));}
-  catch(error){return failure(reply,error,'catalog');}
+  catch(error){return failure(reply,error,'catalog',observeFailure);}
  });
 }
