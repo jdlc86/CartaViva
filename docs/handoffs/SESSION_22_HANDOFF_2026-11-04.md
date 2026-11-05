@@ -1,5 +1,7 @@
 # Sabora / CartaViva — continuidad operativa para la sesión 22 (2026-11-04)
 
+> **Seguimiento vivo obligatorio (05-11-2026):** [Tablero central de tareas de CartaViva/Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Este traspaso conserva su contexto histórico; las ramas, SHAs y estados pueden haber cambiado. Consultar siempre HEAD/CI y los **requisitos normativos vigentes**: [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md) y demás contratos aplicables. **El tablero y este handoff no sustituyen la normativa.**
+
 > **Documento de continuidad, NO normativo ni autorización de operación.** Este archivo proporciona contexto a la sesión 22; no crea ni modifica requisitos. **Prevalece siempre la documentación normativa de GitHub**, incluso sobre este texto y sobre las sesiones previas. Mantenerlo actualizado **solo al alcanzar hitos relevantes**, indicando implementación, pruebas realmente ejecutadas, funcionalidades validadas, SHA y límites. Nunca registrar un hito como superado por tener únicamente código escrito.
 
 ## 1. Estado verificado al crear el traspaso
