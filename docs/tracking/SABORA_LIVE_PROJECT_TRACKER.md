@@ -130,6 +130,7 @@ Merge/despliegue/Supabase/VPS/Fleetia: SIN AUTORIZACIÓN; no ejecutado
 | 2026-11-05 | Se crea el seguimiento único a partir de revisión de PR #43/#44, normas y árbol completo. Se distinguen 18 tareas, seis hitos y bloqueos, sin afirmar porcentaje de avance. Política de cero ya aprobada e implementada en candidato; revisar cierre de visita individual. | PR #44 SHA `2d22e917`, [informe coste cero](../reviews/SABORA_H6_ZERO_COST_ACCOUNT_LIFECYCLE_2026-11-05.md), [handoff 22](../handoffs/SESSION_22_HANDOFF_2026-11-04.md). |
 | 2026-11-05 | Se establece referencia universal al tablero desde **todos los archivos de continuidad existentes** en `docs/continuity/` y `docs/handoffs/`; su contenido histórico permanece intacto. | Inspección de árbol GitHub y actualización documental de estos archivos. |
 | 2026-11-05 | Se abre [continuidad de sesión 23](../handoffs/SESSION_23_HANDOFF_2026-11-05.md), enlazada al tablero y a la matriz H6. Cambio solo documental: no altera estados M1–M6, pruebas ni autorizaciones. | [Sesión 23](../handoffs/SESSION_23_HANDOFF_2026-11-05.md), PR #45 Draft. |
+| 2026-11-05 | Se reconstruye el mapa vigente de **28 F y 10 R** de H6 y se explica el origen de **2 SKIP** legados; se aclaran bloqueos verdaderos y límites de CI, sin declarar CV-003/M1 cerrados. | [Matriz §37](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md), [sesión 23](../handoffs/SESSION_23_HANDOFF_2026-11-05.md). |
 
 ## 9. Revisión independiente de coste cero — M1/CV-001 a CV-003 (05-11-2026)
 
@@ -143,3 +144,16 @@ Merge/despliegue/Supabase/VPS/Fleetia: SIN AUTORIZACIÓN; no ejecutado
 **No se modificaron módulos de aplicación ni la migración de Codex** por esta auditoría, solo el arnés integrado y los documentos de ejecución. Sin merge, despliegue, VPS, Supabase operativo ni Fleetia.
 
 **Última decisión global:** **NO-GO de producción**. Candidato H6 técnicamente avanzado y pruebas aisladas fuertes, pero faltan ciclo operativo, pagos Stripe reales de test, gestión visual completa, seguridad/infraestructura y aceptación final. El seguimiento no concede permisos de operación.
+
+## 10. Reconciliación documental CV-003 y límites de la aceptación H6 (05-11-2026)
+
+**Estado actualizado:** **CV-003 EN CURSO (matriz íntegramente reconciliada; aceptación no cerrada)**. La [matriz viva §37](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md) presenta **28 escenarios F y 10 criterios R** con su dictamen de candidato, fuente de evidencia y límites. No se infiere «CERRADO» de tener las 38 filas escritas ni del CI consolidado. Revisión basada en fuente normativa, [informe 04-11](../reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_REPORT_2026-11-04.md), [auditoría independiente 05-11](../reviews/SABORA_H6_INDEPENDENT_ZERO_COST_ACCEPTANCE_2026-11-05.md), archivos de código y logs de Actions, sin cambios funcionales.
+
+**Puntos de control:**
+- **CV-002 CERRADO:** «solo al terminar la ocupación» figura como decisión normativa; no implementar cierre al acabar visita individual. El bloqueo histórico de coste cero de 04-11 queda **superado** por la implementación, pruebas y norma 05-11.
+- **CV-001 / M1 EN CURSO:** cuenta gratuita resuelta se autocierra en PG17 con comensales reales; la transición de ocupación se hace mediante RPC de personal desde el harness, **no** desde la PWA de gestión. F28/R09 y caja visual siguen sin aceptación humana.
+- **CV-003 EN CURSO:** se localizaron dos `test.skip` en `apps/api/src/table-change-h6-contract.test.mjs`. Son aserciones legadas sobre la función H6 original, mientras la transferencia A→B se verifica en composición candidata separada. Están **explicadas, no aprobadas ni eliminadas**; deben resolverse con el cutover integral de M2/CV-005.
+- **CI sin extrapolación:** en SHA funcional `0661e7b7`, [CI](https://github.com/jdlc86/CartaViva/actions/runs/41997924753) y [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/41997924755) SUCCESS, regresión 51/51 y Node 1175 PASS/2 SKIP. El 4/4 histórico corresponde a SHA `3fe626ce` de PR #44, no al PR #45. La matriz documental se actualizó en commit `3fb50a633c09183be2eaf859a1f1629c88916b88` **sin ejecución funcional nueva**.
+- **Deuda de producto expresamente preservada:** F12/R08 cutover de runtime H3–H6, F20/R03–R05 Stripe sandbox real, CV-009/F28/R09 gestión visual/caja, y R10 4/4 del mismo SHA. `server.mjs` conserva arranque `health-only`; no hay certificación de producción.
+
+**Siguiente acción integrada recomendada:** completar la puerta pendiente de M1 para el alcance realmente aprobado y preparar **M2 (CV-004/CV-005)** como una integración de arranque segura, en vez de sumar pruebas pequeñas a una ruta que todavía no está cableada. Mantener el cierre global en **NO-GO**, sin merge ni operación en Supabase operativo, VPS, Fleetia ni recursos ajenos.
