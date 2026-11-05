@@ -914,6 +914,227 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.cash_settlements
   WHERE incident_id=$1 AND kind='refund'`,[cashIncident.incidentId])).rows[0].n,1);
 
+ // H6 ZERO-COST MULTI-DINER FULL STACK. This is one continuous business
+ // scenario on genuine PG17: a Chromium customer confirms a free round via
+ // Fastify and its restricted SQL login; other diners use the same real HTTP
+ // API; kitchen acknowledges one round; a signed-in waiter ends occupancy.
+ // Verify the resolved account closes once but the other accounts remain
+ // open if any obligation/debt survives. Browser API calls are NOT mocked.
+ const zeroTableId='a6200000-0000-4000-8000-000000000011';
+ const zeroQr=createTableQrCredential({origin:'https://sabora.example',
+  restaurantCode:'SABORA',tableId:zeroTableId,
+  randomBytesImpl:()=>Buffer.alloc(32,41)});
+ const zeroToken=parseTableQrPayload(zeroQr.payload,{expectedOrigin:'https://sabora.example',
+  expectedRestaurantCode:'SABORA'}).token;
+ await admin.query("INSERT INTO sabora.dining_tables (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds) VALUES($1,976010,4,$2,'open',300)",
+  [zeroTableId,zeroQr.tokenHash]);
+ const zeroGuests=await Promise.all([
+  register({alias:'Cortesía resuelta',company:null}),
+  register({alias:'Cortesía pendiente',company:null}),
+  register({alias:'Cortesía y consumo',company:null})
+ ]);
+ const zeroByToken=new Map(zeroGuests.map((guest,index)=>[guest.token,{
+  customerId:guest.profile.id,publicId:guest.profile.public_id,
+  alias:['Cortesía resuelta','Cortesía pendiente','Cortesía y consumo'][index],
+  company:null
+ }]));
+ // The isolated Vite origin is allocated dynamically. Delegate to the
+ // unchanged production same-origin checker after Vite starts, rather than
+ // weakening the browser's actual Origin validation or allowing any origin.
+ const zeroOrigin={value:null,auth:null};
+ const zeroCookieHooks={
+  authenticate:(request,reply)=>zeroOrigin.auth.authenticate(request,reply),
+  requireSameOrigin:(request,reply)=>zeroOrigin.auth.requireSameOrigin(request,reply),
+  logout:(request,reply)=>zeroOrigin.auth.logout(request,reply)
+ };
+ const zeroApi=Fastify({logger:false});
+ await registerCustomerProductionFlowHttp(zeroApi,{cookieAuth:zeroCookieHooks,flow});
+ // The public catalog is merely projected from the REAL published PG17 items;
+ // confirmation, quote, table, QR and economic account never use a fixture.
+ zeroApi.get('/api/v1/catalog',async()=>{
+  const rows=(await admin.query("SELECT id,published_snapshot,sold_out FROM sabora.catalog_items WHERE id=ANY($1::uuid[]) ORDER BY id",
+   [[itemId,freeItemId]])).rows;
+  return rows.map(row=>({id:row.id,name:row.published_snapshot.name,
+   category:row.published_snapshot.category,priceCents:row.published_snapshot.priceCents,
+   available:!row.sold_out,allergens:row.published_snapshot.allergens}));
+ });
+ const zeroPost=(guest,path,payload)=>zeroApi.inject({method:'POST',
+  url:'/api/v1/customer/'+path,
+  headers:{origin:zeroOrigin.value,'content-type':'application/json',
+   cookie:'__Secure-sabora_customer='+guest.token},payload});
+ const confirmZeroCustomer=async(guest,{visit,productId,mode,key})=>{
+  const q=await zeroPost(guest,'quotes',{tableId:zeroTableId,qrToken:zeroToken,
+   visitId:visit.visitId,basketId:visit.basketId,
+   lines:[{itemId:productId,selection,quantity:1}]});
+  assert.equal(q.statusCode,201,q.body);
+  const receipt=await zeroPost(guest,'orders/confirm',{tableId:zeroTableId,
+   qrToken:zeroToken,visitId:visit.visitId,basketId:visit.basketId,requestKey:key,
+   paymentMode:mode,lines:[{quoteId:q.json().lines[0].quoteId,
+    itemId:productId,selection,quantity:1}]});
+  assert.equal(receipt.statusCode,201,receipt.body);
+  return receipt.json();
+ };
+ const visitZeroCustomer=async guest=>{
+  const r=await zeroPost(guest,'visits',{tableId:zeroTableId,qrToken:zeroToken});
+  assert.equal(r.statusCode,201,r.body);
+  return r.json();
+ };
+ let zeroResolved,zeroPending,zeroMixedFree,zeroMixedPaid;
+ try{
+  await zeroApi.listen({host:'127.0.0.1',port:0});
+  const {pathToFileURL,fileURLToPath}=await import('node:url');
+  const {join}=await import('node:path');
+  const {mkdir}=await import('node:fs/promises');
+  const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  const zeroVite=await createServer({root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,
+    proxy:{'/api':{target:'http://127.0.0.1:'+zeroApi.server.address().port,
+     changeOrigin:false}}}});
+  let browser=null;
+  try{
+   await zeroVite.listen();
+   const origin='http://127.0.0.1:'+zeroVite.httpServer.address().port;
+   zeroOrigin.value=origin;
+   zeroOrigin.auth=createCustomerCookieAuth({allowedOrigin:origin,
+    verifyCustomerSession:async token=>zeroByToken.get(token)??null,
+    revokeCustomerSession:async()=>false});
+   browser=await chromium.launch({headless:true});
+   const context=await browser.newContext({viewport:{width:390,height:844},
+    reducedMotion:'reduce',serviceWorkers:'block'});
+   try{
+    await context.addCookies([{name:'__Secure-sabora_customer',
+     value:zeroGuests[0].token,domain:'127.0.0.1',path:'/',secure:true,
+     httpOnly:true,sameSite:'Lax'}]);
+    const page=await context.newPage(),browserErrors=[];
+    page.on('pageerror',error=>browserErrors.push(error.message));
+    const apiResponses=[];
+    page.on('response',response=>{
+     if(new URL(response.url()).pathname.startsWith('/api/v1/'))
+      apiResponses.push({path:new URL(response.url()).pathname,status:response.status()});
+    });
+    await page.goto(origin+'/qr/v1/SABORA/'+zeroTableId+'#'+zeroToken);
+    try{await page.getByText('Mesa verificada').waitFor({timeout:20000});}
+    catch(error){
+     const visible=(await page.locator('body').innerText()).slice(-1600);
+     throw Error('zero_cost_browser_visit_failed:'+JSON.stringify({visible,apiResponses,browserErrors}),
+      {cause:error});
+    }
+    // Organic UI path: scan first, close QR dialog, then select the free dish.
+    await page.getByRole('dialog',{name:'QR de mesa'}).getByRole('button',{name:'Cerrar'}).click();
+    await page.getByRole('button',{name:'Sabora — inicio'}).click();
+    await page.getByTestId('product-card').filter({hasText:'Detalle de cortesía'})
+     .getByRole('button',{name:/Añadir$/}).click();
+    await page.getByRole('button',{name:/Cesta: 1/}).click();
+    await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+    const checkout=page.getByRole('dialog',{name:'Confirmar pedido'});
+    await checkout.getByText('Esta ronda es gratuita y no fija modalidad de pago').waitFor();
+    assert.equal(await checkout.getByLabel('Pagar ahora').count(),0);
+    assert.equal(await checkout.getByLabel('Pagar al terminar').count(),0);
+    const confirmed=page.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
+     {timeout:20000});
+    await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+    const response=await confirmed;
+    assert.equal(response.status(),201,await response.text());
+    zeroResolved=await response.json();
+    assert.equal(zeroResolved.amountCents,0);
+    assert.equal(zeroResolved.paymentMode,null);
+    await checkout.getByText('Pedido confirmado').waitFor();
+    assert.deepEqual(browserErrors,[]);
+    const evidence=join(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+    await mkdir(evidence,{recursive:true});
+    await page.screenshot({path:join(evidence,
+     'zero-cost-multidiner-real-customer-pg17-mobile.png'),fullPage:true});
+   }finally{await context.close();}
+  }finally{await browser?.close();await zeroVite.close();}
+  // A second free diner has a still-pending kitchen obligation; that account
+  // must NOT be auto-settled just because this table's occupancy ends.
+  const pendingVisit=await visitZeroCustomer(zeroGuests[1]);
+  zeroPending=await confirmZeroCustomer(zeroGuests[1],{visit:pendingVisit,
+   productId:freeItemId,mode:null,key:'h6_zero_full_pending_0001'});
+  assert.equal(zeroPending.accountId===zeroResolved.accountId,false);
+  // A third diner confirms a free order and later chooses the only required
+  // payment mode at their first positive round, keeping the SAME account.
+  const mixedVisit=await visitZeroCustomer(zeroGuests[2]);
+  zeroMixedFree=await confirmZeroCustomer(zeroGuests[2],{visit:mixedVisit,
+   productId:freeItemId,mode:null,key:'h6_zero_full_mixed_free_001'});
+  zeroMixedPaid=await confirmZeroCustomer(zeroGuests[2],{visit:mixedVisit,
+   productId:itemId,mode:'pay_at_end',key:'h6_zero_full_mixed_paid_001'});
+  assert.equal(zeroMixedFree.accountId,zeroMixedPaid.accountId);
+  assert.equal(zeroMixedPaid.amountCents,2400);
+ }finally{await zeroApi.close();}
+
+ // The free browser order must be dispatched and actually acknowledged by
+ // kitchen before readiness resolves the remaining pickup obligation.
+ const zeroDue=await provider.requestCapture({orderId:zeroResolved.orderId,
+  now:new Date(Date.now()+360000)});
+ assert.equal(zeroDue.action,'dispatch');
+ const zeroDispatch=(await admin.query(
+  'SELECT id,state FROM sabora.kitchen_dispatches WHERE order_id=$1',
+  [zeroResolved.orderId])).rows[0];
+ assert.equal(zeroDispatch.state,'requested');
+ await operations.acknowledgeDispatch({dispatchId:zeroDispatch.id,
+  capability:issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'ack_dispatch',
+   targetId:zeroDispatch.id,correlationId:'h6_zero_full_kitchen_ack_001'})});
+ const zeroLine=(await admin.query('SELECT id FROM sabora.order_lines WHERE order_id=$1',
+  [zeroResolved.orderId])).rows[0].id;
+ await admin.query("UPDATE sabora.order_lines SET status='preparing' WHERE id=$1",[zeroLine]);
+ await admin.query("UPDATE sabora.order_lines SET status='ready' WHERE id=$1",[zeroLine]);
+ await admin.query('INSERT INTO sabora.pickup_notifications (order_id,order_line_id) VALUES($1,$2)',
+  [zeroResolved.orderId,zeroLine]);
+ await admin.query("INSERT INTO sabora.order_line_events (order_id,order_line_id,actor_user_id,from_status,to_status,correlation_id) VALUES($1,$2,$3,'preparing','ready',$4)",
+  [zeroResolved.orderId,zeroLine,kitchenId,'h6_zero_full_ready_001']);
+ const readyPickup=(await admin.query(
+  'SELECT state FROM sabora.pickup_tasks WHERE order_line_id=$1',[zeroLine])).rows[0];
+ assert.equal(readyPickup.state,'ready');
+ const uniqueAccounts=[zeroResolved.accountId,zeroPending.accountId,zeroMixedPaid.accountId];
+ assert.equal(new Set(uniqueAccounts).size,3);
+ const beforeEnd=(await admin.query('SELECT id,state FROM sabora.customer_accounts WHERE id=ANY($1::uuid[])',
+  [uniqueAccounts])).rows;
+ assert.equal(beforeEnd.length,3);
+ assert.ok(beforeEnd.every(row=>row.state==='open'));
+ // The staff transition is the existing authorized SQL entry point: it checks
+ // the currently active waiter and causes the actual table occupancy triggers.
+ // The management PWA does not yet have an approved enabled close-table UI.
+ const endOccupancy=await admin.query("SELECT table_id,ordering_state FROM sabora.transition_table_ordering_candidate($1::uuid,$2::uuid,'closed',NULL)",
+  [waiterId,zeroTableId]);
+ assert.equal(endOccupancy.rows[0].ordering_state,'closed');
+ const afterEnd=(await admin.query(
+  'SELECT id,state,close_origin,closed_at,outstanding_cents,payment_mode FROM sabora.customer_accounts WHERE id=ANY($1::uuid[])',
+  [uniqueAccounts])).rows;
+ const byAccount=new Map(afterEnd.map(row=>[row.id,row]));
+ assert.equal(byAccount.get(zeroResolved.accountId).state,'settled');
+ assert.equal(byAccount.get(zeroResolved.accountId).close_origin,'system_zero_cost');
+ assert.ok(byAccount.get(zeroResolved.accountId).closed_at);
+ assert.equal(byAccount.get(zeroPending.accountId).state,'open');
+ assert.equal(byAccount.get(zeroPending.accountId).close_origin,null);
+ assert.equal(byAccount.get(zeroMixedPaid.accountId).state,'open');
+ assert.equal(byAccount.get(zeroMixedPaid.accountId).outstanding_cents,'2400');
+ assert.equal(byAccount.get(zeroMixedPaid.accountId).payment_mode,'pay_at_end');
+ const closeEvents=(await admin.query(
+  "SELECT account_id,payload FROM sabora.event_outbox WHERE account_id=ANY($1::uuid[]) AND event_type='sabora.account.closed'",
+  [uniqueAccounts])).rows;
+ assert.equal(closeEvents.length,1);
+ assert.equal(closeEvents[0].account_id,zeroResolved.accountId);
+ assert.equal(closeEvents[0].payload.deliveryConfirmed,false);
+ assert.equal(closeEvents[0].payload.closeOrigin,'system_zero_cost');
+ assert.equal((await admin.query('SELECT status FROM sabora.order_lines WHERE id=$1',
+  [zeroLine])).rows[0].status,'ready','economic closure must not invent physical handoff');
+ assert.equal((await admin.query('SELECT state FROM sabora.pickup_tasks WHERE order_line_id=$1',
+  [zeroLine])).rows[0].state,'ready');
+ const oldVisitGrant=(await admin.query(
+  'SELECT count(*)::integer AS n FROM sabora.customer_table_visits WHERE table_id=$1 AND revoked_at IS NULL',
+  [zeroTableId])).rows[0];
+ assert.equal(oldVisitGrant.n,0,'table close must revoke every customer visit in that occupancy');
+ assert.equal((await admin.query(
+  'SELECT sabora.try_auto_close_zero_cost_account_h6_candidate($1::uuid) AS closed',
+  [zeroResolved.accountId])).rows[0].closed,false,'replay must not emit another close');
+ assert.equal((await admin.query(
+  "SELECT count(*)::integer AS n FROM sabora.event_outbox WHERE account_id=$1 AND event_type='sabora.account.closed'",
+  [zeroResolved.accountId])).rows[0].n,1);
+
  // The table policy rejects pay-at-end in the same transaction that would
  // otherwise persist the order, leaving no economic or kitchen artifacts.
  const strictTableId='a6200000-0000-4000-8000-000000000007';
