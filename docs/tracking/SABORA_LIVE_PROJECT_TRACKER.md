@@ -105,6 +105,7 @@ En cada ejecución añadir **responsable asignado, fecha, rama/PR, SHA, enlace d
 6. **Revisión independiente:** verificar diffs de seguridad, ergonomía de gestión, errores 409/503, ACL/RLS, cajas, autorización económica, eventos, locks de PG17 y coherencia con los flujos. El autor del código no certifica solo su propio trabajo.
 7. **Seguridad:** solo ramas/PR/Actions en `jdlc86/CartaViva`; sin merges, despliegues, reinicios, migraciones operativas ni acceso a VPS/Fleetia/otros proyectos sin autorización expresa. Despliegues futuros deberán ser completamente independientes de Fleetia.
 8. **Compatibilidad documental:** todo archivo `.md` nuevo o editado bajo `docs/continuity/` y `docs/handoffs/` ha de incluir un enlace relativo a `../tracking/SABORA_LIVE_PROJECT_TRACKER.md` **sin omitir los enlaces a los requisitos normativos**. Los handoffs antiguos son fotografías y no se actualizan sus estados históricos.
+9. **Control automático:** `scripts/ci/continuity-tracker-links-gate.mjs` se ejecuta en `.github/workflows/ci.yml`. Recorre recursivamente los dos directorios y rechaza archivos Markdown sin el enlace; verifica la existencia del tablero y sus referencias a fuentes normativas. Este control de navegación documental no reemplaza una auditoría de contenidos.
 
 ## 7. Plantilla de registro de hito (copiar solo al cerrar)
 
