@@ -6,7 +6,7 @@
 **PR:** [#44 Draft](https://github.com/jdlc86/CartaViva/pull/44)  
 **Base:** `integration/sabora-h6-b2-delivery-board-contract-20261031` (`79092962c0bf8d4e43979a7db0808f6102a268a0`)  
 **Commit funcional:** `f951f7a9`  
-**Commit de validación CI:** `eda167bbc60122734d1d0a5b611b4c6097504f0f`
+**Commit de validación CI:** `3fe626ce436050672b56b6b316d917f25572b39c`
 
 **Naturaleza:** evidencia de implementación y validación; no es normativa ni autorización de merge, despliegue o producción.
 
@@ -75,6 +75,7 @@ Durante la regresión se corrigieron dos incompatibilidades reales:
 | SSE tras cambio de mesa no recuperaba eventos | lector anclado a mesa histórica | autorización por binding operativo vigente, conservando cliente/visita/QR | reconexión y aislamiento E2E PASS |
 | rotación QR aparentaba no bloquear al escritor | SSE introducía un bloqueador intermedio en el grafo de espera | aserción del grafo transitivo de `pg_blocking_pids`, sin ampliar `lock_timeout` | carrera F16/F17 PASS |
 | efectivo aparentaba no entrar en la cola económica en CI | otro backend podía quedar entre el poseedor del lock de cuenta y la liquidación; la aserción solo aceptaba bloqueo directo | observación recursiva y acotada del grafo real de `pg_blocking_pids`, conservando la espera original de 6 s | CI y Bootstrap PG17 del SHA `eda167bb`: PASS |
+| el segundo clic de revisión agotaba el waiter Playwright de forma intermitente | el replay inyectado podía adelantarse antes de que Chromium emitiera su POST y el waiter quedaba temporalmente sin manejador durante el clic | el replay arranca al observar el POST aceptado de la PWA; ambos waiters quedan enlazados desde el inicio y se siguen exigiendo respuestas 200/201, una sola revisión y dos peticiones reales | gate local 51/51 y 4/4 Actions de `3fe626ce`: PASS |
 
 ## 4. Pruebas realmente ejecutadas
 
@@ -108,14 +109,16 @@ No se ejecutó Stripe sandbox ni se consultó ningún secreto operativo. No se a
 
 ### 4.3 GitHub Actions y diagnóstico del gate remoto
 
-El SHA `eda167bbc60122734d1d0a5b611b4c6097504f0f` terminó con **4/4 workflows SUCCESS**:
+El SHA de código validado `3fe626ce436050672b56b6b316d917f25572b39c` terminó con **4/4 workflows SUCCESS**:
 
-- [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/41915111167): 15 min 30 s; aceptación H6 consolidada, publicación de evidencias, build, gate de configuración, Docker Compose, imagen API aislada y healthcheck PASS.
-- [Bootstrap PostgreSQL 17](https://github.com/jdlc86/CartaViva/actions/runs/41915111224): 10 min 05 s; migraciones y regresión PG17 PASS.
-- [PWA cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41915111115): PASS.
-- [PWA gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41915111259): PASS.
+- [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/41924645402): 15 min 17 s; aceptación H6 consolidada, publicación de evidencias, build, gate de configuración, Docker Compose, imagen API aislada y healthcheck PASS.
+- [Bootstrap PostgreSQL 17](https://github.com/jdlc86/CartaViva/actions/runs/41924645392): 10 min 16 s; migraciones y regresión PG17 PASS.
+- [PWA cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41924645443): 1 min 25 s, PASS.
+- [PWA gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/41924645365): 52 s, PASS.
 
 La primera ejecución funcional (`f951f7a9`) y las dos ejecuciones siguientes (`426d52ce`, `0e06df98`) permitieron reproducir en runner la aserción incorrecta «cash settlement must enter PG17 account-row queue before close». Aumentar temporalmente la observación de 6 a 12 segundos en `0e06df98` reprodujo el mismo fallo y descartó lentitud del runner. El diagnóstico del grafo de espera mostró el bloqueador intermedio; `eda167bb` corrigió solo la observación transitiva, restauró los 6 segundos originales y repitió los cuatro workflows hasta verde. No se relajaron timeouts SQL, permisos, fencing ni resultado económico.
+
+La repetición del commit documental `d7a21708` volvió a pasar Bootstrap PG17 y ambos navegadores, pero el CI consolidado reprodujo un timeout Playwright al esperar la respuesta del segundo clic de consentimiento. La captura mostraba el diálogo y el botón habilitado; el defecto estaba en el orden del arnés, no en la RPC. `3fe626ce` espera primero la emisión del POST aceptado de Chromium y en ese instante inicia el replay HTTP concurrente, manteniendo la carrera SQL y los resultados obligatorios 200/201. Antes del push se repitió desde cero el gate PostgreSQL 17/Chromium: **51/51 PASS**, escenario n.º 49 en **710093 ms**. Después se repitieron los cuatro workflows indicados arriba hasta verde.
 
 ## 5. Matriz F01–F28
 
@@ -165,7 +168,7 @@ La evidencia principal es el test integrado `PG17 B3 six isolated logins complet
 | R07 | PASS | outbox, SSE, cursor, resincronización, pérdida LISTEN, replay y aislamiento multiusuario |
 | R08 | PASS | HTTP autenticado con cookies/JWT/HMAC y negativas de pertenencia/rol |
 | R09 | BLOCKED | E2E Chromium, axe, responsive y capturas pasan localmente y en Actions; falta aceptación visual humana final |
-| R10 | PASS | cuatro workflows del commit de validación `eda167bb` terminan SUCCESS; enlaces y pasos en §4.3 |
+| R10 | PASS | cuatro workflows del commit de código validado `3fe626ce` terminan SUCCESS; enlaces y pasos en §4.3 |
 
 ## 7. Riesgos residuales y operación
 
