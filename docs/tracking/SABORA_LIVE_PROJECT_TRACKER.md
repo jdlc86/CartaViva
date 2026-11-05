@@ -157,3 +157,11 @@ Merge/despliegue/Supabase/VPS/Fleetia: SIN AUTORIZACIÓN; no ejecutado
 - **Deuda de producto expresamente preservada:** F12/R08 cutover de runtime H3–H6, F20/R03–R05 Stripe sandbox real, CV-009/F28/R09 gestión visual/caja, y R10 4/4 del mismo SHA. `server.mjs` conserva arranque `health-only`; no hay certificación de producción.
 
 **Siguiente acción integrada recomendada:** completar la puerta pendiente de M1 para el alcance realmente aprobado y preparar **M2 (CV-004/CV-005)** como una integración de arranque segura, en vez de sumar pruebas pequeñas a una ruta que todavía no está cableada. Mantener el cierre global en **NO-GO**, sin merge ni operación en Supabase operativo, VPS, Fleetia ni recursos ajenos.
+
+## 11. Encargo de implementación integral a Codex — sesión 23 (05-11-2026)
+
+**Documento de ejecución autorizado para trabajo en GitHub, no para producción:** [CODEX_SABORA_SESSION23_INTEGRAL_M2_M3_EXECUTION_2026-11-05.md](../assignments/CODEX_SABORA_SESSION23_INTEGRAL_M2_M3_EXECUTION_2026-11-05.md). Vinculado a [continuidad activa sesión 23](../handoffs/SESSION_23_HANDOFF_2026-11-05.md) y a [matriz existente §37](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md), **sin duplicarla**.
+
+**Secuencia del encargo:** M2/CV-004–CV-005 (mapa de ramas/PR y bootstrap candidato H3–H6 integral, dos PWA/PG17/roles, control de los SKIP) y, **solo después de aceptación del M2 correspondiente**, M3/CV-006–CV-007 (mesas/QR y categorías dinámicas/catálogo). M1/CV-001/CV-003 mantiene sus pendientes; Stripe de red y caja visual sin aprobación se registrarán como bloqueos reales, no como PASS. Debe existir una PR Draft por hito, CI del mismo SHA y acta de aceptación, sin merge ni despliegue.
+
+**Esto constituye únicamente la publicación documental del encargo.** No se ha iniciado la implementación por Codex ni se altera ningún estado de cierre de M1–M6. El control sigue en los requisitos normativos y en la evidencia ejecutada de GitHub. Sin VPS, Supabase operativo ni Fleetia.
