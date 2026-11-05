@@ -92,3 +92,11 @@ La sesión que continúe deberá **leer primero** este documento, el [tablero vi
 - **Decisión de aceptación:** **CV-003 EN CURSO (reconciliación completa, puertas de aceptación pendientes)**, **CV-001 EN CURSO**, **CV-002 CERRADO normativamente**, **M1 NO CERRADO** y **producción NO-GO**. Esta auditoría no inicia el cutover M2 ni modifica estado operativo alguno.
 
 **Próxima unidad de trabajo:** decidir y ejecutar el cierre integral realmente pendiente de M1 sin fabricar aceptación de la PWA de gestión; preparar el encadenamiento M2/CV-004–CV-005 con inventario de ramas/PR y montaje autentificado de H3–H6 en PG17 efímero, respetando los contratos y pruebas integradoras. Actualizar tanto este handoff como el tablero **solo tras hitos importantes**. No merge, no deploy, no Supabase/VPS/Fleetia.
+
+## 9. Encargo a Codex preparado y publicado en GitHub — 05-11-2026 (DOCUMENTAL)
+
+Se publicó [CODEX_SABORA_SESSION23_INTEGRAL_M2_M3_EXECUTION_2026-11-05.md](../assignments/CODEX_SABORA_SESSION23_INTEGRAL_M2_M3_EXECUTION_2026-11-05.md), enlazado desde el [tablero vivo §11](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y con referencia expresa, **sin reescribir**, a la [matriz viva F01–F28/R01–R10 §37](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md). Este encargo es contexto operativo, **no normativa**.
+
+**Secuencia prevista para Codex:** (1) M2 completo, CV-004/CV-005, inventario de PR y arranque aislado, opt-in, realmente integrado de H3–H6 con roles mínimos/PG17/2 PWA y revisión de dos SKIP; (2) M3 completo, CV-006/CV-007, gestión mesa/QR y catálogo/categorías dinámicas tras su puerta de entrada. Si el contrato no autoriza pantallas o un grant, registrar bloqueo y no sortearlo. Mantener `server.mjs` sin rutas operativas activadas mientras la puerta de autorización lo prohíba.
+
+**Estado de la actividad:** instrucciones **preparadas y publicadas**, sin ejecución ni resultado de Codex acreditado todavía. Los PR #43/#44/#45 siguen siendo la referencia histórica a comprobar al inicio de la tarea; Codex debe revalidar HEAD/base/CI y trabajar mediante rama/PR Draft propio, sin force push. La publicación del encargo **no cambia** M1 EN CURSO ni el dictamen **NO-GO**; no merge, no deploy, no Supabase/VPS/Fleetia.
