@@ -12,6 +12,7 @@ node --check scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/order-operations-read-postgres17.test.mjs
+node --check scripts/ci/m3-management-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
 node --check scripts/ci/staff-display-id-postgres17.test.mjs
 node --check scripts/ci/staff-directory-postgres17.test.mjs
@@ -67,6 +68,7 @@ export SABORA_CI_PG_MODULE="$module_path"
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
+node --test scripts/ci/m3-management-postgres17.test.mjs
 # Browser-backed vertical E2E is isolated to this disposable PG17 container.
 # The Chromium binary is installed only on the ephemeral Actions runner.
 npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false pg@8.16.3 playwright@1.56.1 >/dev/null

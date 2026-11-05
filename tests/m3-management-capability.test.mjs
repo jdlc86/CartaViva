@@ -23,6 +23,10 @@ test('M3 sealed SQL qualifies every pgcrypto primitive outside search_path',()=>
  assert.doesNotMatch(migration,/(?<!extensions\.)\bgen_random_bytes\(/u);
  assert.match(migration,/GRANT EXECUTE ON FUNCTION extensions\.digest\(bytea,text\),/u);
  assert.match(migration,/extensions\.gen_random_bytes\(integer\) TO sabora_m3_management_fn_owner/u);
+ assert.doesNotMatch(migration,
+  /FROM sabora\.management_mutation_receipts_m3\s+WHERE[^;]+FOR UPDATE/gu);
+ assert.doesNotMatch(migration,
+  /GRANT[^;]*UPDATE[^;]*ON sabora\.management_mutation_receipts_m3/gu);
 });
 
 test('M3 capability binds physical login, actor, operation, request and exact body',()=>{

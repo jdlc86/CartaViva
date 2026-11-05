@@ -344,7 +344,7 @@ BEGIN
  v_fingerprint:=extensions.digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310051));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
-  WHERE request_id=p_request_id FOR UPDATE;
+  WHERE request_id=p_request_id;
  IF FOUND THEN
   IF v_receipt.actor_user_id<>p_actor OR v_receipt.operation<>'table.'||p_operation
      OR v_receipt.request_fingerprint<>v_fingerprint THEN
@@ -499,7 +499,7 @@ BEGIN
  v_fingerprint:=extensions.digest(convert_to(v_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310052));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
-  WHERE request_id=p_request_id FOR UPDATE;
+  WHERE request_id=p_request_id;
  IF FOUND THEN
   IF v_receipt.actor_user_id<>p_actor OR v_receipt.operation<>'table.occupancy'
     OR v_receipt.request_fingerprint<>v_fingerprint THEN
@@ -743,7 +743,7 @@ BEGIN
  v_fingerprint:=extensions.digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310053));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
-  WHERE request_id=p_request_id FOR UPDATE;
+  WHERE request_id=p_request_id;
  IF FOUND THEN
   IF v_receipt.actor_user_id<>p_actor OR v_receipt.operation<>'catalog.'||p_operation
     OR v_receipt.request_fingerprint<>v_fingerprint THEN
