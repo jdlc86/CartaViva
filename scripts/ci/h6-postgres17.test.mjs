@@ -1023,6 +1023,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
     }
     // Organic UI path: scan first, close QR dialog, then select the free dish.
     await page.getByRole('dialog',{name:'QR de mesa'}).getByRole('button',{name:'Cerrar'}).click();
+    await page.getByRole('button',{name:'Sabora — inicio'}).click();
     await page.getByTestId('product-card').filter({hasText:'Detalle de cortesía'})
      .getByRole('button',{name:/Añadir$/}).click();
     await page.getByRole('button',{name:/Cesta: 1/}).click();
