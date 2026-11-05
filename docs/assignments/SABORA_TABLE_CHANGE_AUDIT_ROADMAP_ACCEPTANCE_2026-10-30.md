@@ -539,3 +539,79 @@ La migración `20261105070000_sabora_h6_zero_cost_account_auto_close_candidate.s
 
 **Dictamen:** aceptación de coste cero reforzada sobre el alcance de candidato; no es la aceptación global F01–F28/R01–R10 ni Stripe real, caja visual ni autorización de producción. M1/CV-001 en curso, CV-002 cerrado normativamente, CV-003 pendiente. Sin merge, despliegue ni modificación de recursos operativos.
 
+## 37. Reconciliación CV-003 de la matriz viva — 05-11-2026 (estado documental, NO-GO)
+
+> **Revisión independiente de trazabilidad; no modifica requisitos ni equivale a volver a ejecutar cada fila.** Esta sección **actualiza el diagnóstico vigente** de §§4–6 y del [informe del 04-11](../reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_REPORT_2026-11-04.md), preservados como fotografías históricas. El cierre normativo de coste cero (05-11) prevalece sobre el bloqueo anterior. Mantener [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y [continuidad 23](../handoffs/SESSION_23_HANDOFF_2026-11-05.md) sincronizados.
+
+**Fuente normativa superior:** [contrato funcional](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [requisitos](../REQUISITOS_FUNCIONALES.md), [diseño aprobado](../DESIGN_SYSTEM_CONTRACT.md). **Evidencia examinada:** §§7–36 de esta matriz; informe de cierre PR #44 §§4–6; [auditoría independiente PR #45](../reviews/SABORA_H6_INDEPENDENT_ZERO_COST_ACCEPTANCE_2026-11-05.md); archivos de runtime y tests. **Punto de comparación:** PR #45 Draft en `audit/sabora-h6-zero-cost-integrated-acceptance-20261105`; HEAD documental previo `207fcfbcce28ae30e8483b9c3a4627f2f13fef38`, que no tiene Actions propias. No extrapolar los resultados de otros SHAs a nuevos commits.
+
+**Ejecución real comprobada para el SHA funcional `0661e7b78ada8f4d94c43872ec64ade6d501a6ff`:** [CI](https://github.com/jdlc86/CartaViva/actions/runs/41997924753) y [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/41997924755) SUCCESS. Logs Bootstrap: **Node 1175 PASS / 0 FAIL / 2 SKIP**, suite raíz **51/51**, H6 **2/2** y coste cero **4/4**, 83 migraciones PG17 efímeras documentadas; **no** se activaron los dos workflows de navegador por el cambio de ruta. Para SHA posterior `e3b461200a0205947cc596ea6d2b29b1f99d3901`, [CI](https://github.com/jdlc86/CartaViva/actions/runs/42000242640) y [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/42000242900) también SUCCESS. El **4/4** del informe #44 pertenece a **otro SHA**: `3fe626ce436050672b56b6b316d917f25572b39c`; no sirve como un 4/4 de #45.
+
+**Cómo interpretar esta tabla:** «CANDIDATO» = escenario acreditado en el alcance y por las fuentes **históricas** identificadas, con regresión integrada general confirmada en #45; **no** es aceptación operativa independiente por fila ni activación por defecto. «PARCIAL/BLOQUEADO» = falta puerta normativa, integración productiva, proveedor o visual. Las referencias a «informe cierre §5/§6» son declaraciones de evidencia del autor, diferenciadas de una nueva ejecución individual en esta auditoría. No usar la columna como porcentaje de producto terminado.
+
+### 37.1. Conciliación funcional F01–F28
+
+| ID | Dictamen vigente para candidato | Evidencia principal y limitación |
+| --- | --- | --- |
+| F01 | **CANDIDATO** | QR múltiples antes del pedido; sin traslado al escanear. §§7–9; informe cierre §5. |
+| F02 | **CANDIDATO** | Primera confirmación y anclaje de cuenta/ventana. §§7–9,30; informe cierre §5. |
+| F03 | **CANDIDATO** | Cancelar diálogo no crea solicitud. §9; informe cierre §5. |
+| F04 | **CANDIDATO** | Solicitud durable, sin destino; visibilidad de sala. §§7,9; informe cierre §5. |
+| F05 | **CANDIDATO** | Reintento y concurrencia de solicitud deduplicados. §§9–10; informe cierre §5. |
+| F06 | **CANDIDATO** | Origen mantiene pedidos/pagos con solicitud pendiente. §§18–19; informe cierre §5. |
+| F07 | **CANDIDATO** | Rechazo y cooldown de 90 s naturales. §21; informe cierre §5. |
+| F08 | **CANDIDATO** | Vencimiento efectivo en PG17, 409 y transición `expired` durable. §24; informe cierre §5. |
+| F09 | **CANDIDATO** | Aprobación única, dos JWT de personal y ausencia de traslado inmediato. §§22,25,27; informe cierre §5. |
+| F10 | **CANDIDATO** | Rechazo sin motivo ni traslado; avisos. §§10,21; informe cierre §5. |
+| F11 | **CANDIDATO** | Escaneos no consumen permiso aprobado. §§9,22; informe cierre §5. |
+| F12 | **CANDIDATO; CORTE OPERATIVO PENDIENTE** | Traslado atómico al pedido B en composición aislada; bootstrap normal conserva RPC H6 original. §§8–9,15; `customer-production-flow.mjs`; `customer-production-composition.mjs`. |
+| F13 | **CANDIDATO** | Nuevo traslado sin otra concesión denegado. Informe cierre §5; contraste matriz funcional §4. |
+| F14 | **CANDIDATO** | Pedido posterior en A no consume concesión. Informe cierre §5; contraste matriz funcional §4. |
+| F15 | **CANDIDATO** | Concesión aprobada sigue válida después de 90 s. §22; informe cierre §5. |
+| F16 | **CANDIDATO** | Cierre/revocación serializados frente a confirmación. §§17,23,26; informe cierre §5. |
+| F17 | **CANDIDATO** | QR revocado/mesa no operativa no producen traslado parcial. §§13–14,17,23; informe cierre §5. |
+| F18 | **CANDIDATO** | Cuentas de varios comensales separadas; nuevo E2E multicomensal. §12,§36; auditoría independiente 05-11. |
+| F19 | **CANDIDATO** | Destino de entregas pendientes cambia sin reescribir historia. §§7–8,12,28; informe cierre §5. |
+| F20 | **BLOQUEADO PARCIAL** | Caja/efectivo/concurrencia con proveedor simulado; cuenta cero normada y probada; Stripe test de red real, conciliación y refunds siguen pendientes. §§18–20,26,32–33,35–36; informe coste cero. |
+| F21 | **CANDIDATO** | Ventana 300 s natural, revisión correctiva sin reinicio ni duplicación. §§29–31,34; informe cierre §5. |
+| F22 | **CANDIDATO** | Confirmaciones B/C concurrentes consumen una sola concesión. §15; informe cierre §5. |
+| F23 | **CANDIDATO** | Rollback inyectado después del consumo sin efectos parciales. §§16,23; informe cierre §5. |
+| F24 | **CANDIDATO** | Reintento devuelve cuenta/pedido originales. §§8–9,15; informe cierre §5. |
+| F25 | **CANDIDATO** | Outbox, SSE, cursor, reconexión y aislamiento. §§11,30–31,34; informe cierre §5. |
+| F26 | **CANDIDATO** | JWT de rol, revocación del personal y negativas. §§25,27; informe cierre §5. |
+| F27 | **CANDIDATO** | Ledger de actor, origen, decisión, tiempo, destino y pedido. §§25,27; informe cierre §5. |
+| F28 | **BLOQUEADO** | Playwright/axe/capturas del candidato no sustituyen aprobación visual humana ni caja/mesa aprobada. Informe cierre §5; tracker CV-009/CV-017. |
+
+### 37.2. Conciliación técnica R01–R10
+
+| ID | Dictamen vigente para candidato | Evidencia principal y limitación |
+| --- | --- | --- |
+| R01 | **CANDIDATO** | 83 migraciones PG17 efímero (no Supabase operativo). §§34–36; Bootstrap 41997924755. |
+| R02 | **CANDIDATO** | RLS, FK, mínimos privilegios, funciones selladas, allowlists y negativas. §§23,25,34–36; informe cierre §6. |
+| R03 | **PARCIAL** | Carreras de cuenta/caja/cierre y revocación PG17; sin secuencias reales contra Stripe test. §§22–26,32–33; informe cierre §6. |
+| R04 | **PARCIAL** | Rollback y fallos internos inyectados; sin fallos externos Stripe sandbox por fase. §§16,23; informe cierre §6. |
+| R05 | **PARCIAL** | Efectivo, saldo, cuentas cero y proveedor simulado; sin conciliación/refund/captura reales en Stripe test. §§18–20,33,35–36; informe cierre §6. |
+| R06 | **CANDIDATO** | Agrupación, revisión, cocina, sala, pickup, destinos. §§28–31,34; informe cierre §6. |
+| R07 | **CANDIDATO** | SSE/reconexión/aislamiento, pérdida y recuperación de LISTEN. §§11,30–31,34; informe cierre §6. |
+| R08 | **CANDIDATO; BOOTSTRAP PENDIENTE** | HTTP/JWT/HMAC y negativas integrados; no implica montaje productivo H3–H6. §§25,27,34; `server.mjs` y `api-runtime-config.mjs`. |
+| R09 | **BLOQUEADO** | Chromium/axe del candidato, no aceptación humana final del diseño ni caja operativa. Informe cierre §6; CV-009/CV-017. |
+| R10 | **PARCIAL EN HEAD ACTUAL** | 4/4 en SHA `3fe626ce` de PR #44; SHA `0661e7b7` y `e3b46120` con solo CI + Bootstrap observados. No declarar 4/4 del SHA actual. Informe cierre §4.3; Actions 41997924753/55 y 42000242640/900. |
+
+### 37.3. Dos SKIP Node: origen concreto y decisión de trazabilidad
+
+El job Bootstrap del SHA `0661e7b7` registra **literalmente**:
+- `table transfer H6 readiness: account must be located before order persistence # SKIP`.
+- `table transfer H6 readiness: confirmation must consume an approved grant atomically # SKIP`.
+
+Ambas se encuentran en `apps/api/src/table-change-h6-contract.test.mjs` (dos `test.skip` deliberados). Sus aserciones inspeccionan **`confirm_customer_round_h6_candidate` de la migración H6 original**, no la ruta candidata separada `confirm_customer_round_h6_transfer_integration_candidate`. La propia suite exige en otros tests que la función de transferencia quede sin `EXECUTE` de runtime, fuera de la allowlist y del preflight ordinarios hasta el corte B3. En `apps/api/src/customer-production-flow.mjs`, `PERSIST_H6_ORDER_SQL` continúa dirigido a la función original y la variante transfer es una constante separada; `customer-production-composition.mjs` usa la allowlist H6 original. **No sería legítimo retirar los SKIP o convertirlos en PASS por inferencia**: hacerlo ocultaría la ausencia de cutover. Tampoco prueban que la ruta nueva tenga un defecto de atomicidad: esa ruta se ha ensayado separadamente en PG17 integrado.
+
+**Acción de cierre de los SKIP:** en el hito de **montaje y cutover M2/CV-005**, trasladar estos dos invariantes a la ruta efectivamente seleccionada del arranque normal, con comprobación de capacidades SQL, rol/JWT, replays y reversión en PG17+HTTP+ambas PWA; decidir entonces si la prueba legada se sustituye o se conserva como negativa, sin elevar permisos y con revisión de seguridad. Hasta ese momento **2 SKIP explicados, NO resueltos ni PASS**.
+
+### 37.4. Desacoples que impiden aceptar M1 como producto operativo
+
+1. **F12/R08:** las pruebas recorren A→B mediante composición candidata, pero `apps/api/src/server.mjs` solo monta `/health` y `/ready`, y `apps/api/src/api-runtime-config.mjs` solo acepta `health-only`. No hay arranque integrado H3–H6 certificado ni cutover de confirmación como ruta por defecto. Es una puerta **M2**; no activarla para maquillar M1.
+2. **CV-001 / F20 / R09:** la aceptación multicomensal de coste cero llega desde **PWA cliente Chromium** a Fastify y PG17, pero el cierre `open/paused→closed` se invoca en el harness por **RPC SQL de personal**; no se ejecuta desde la PWA de gestión ni su caja final. La cuenta cero está **normada e implementada**; su aceptación visual/operativa de gestión sigue pendiente. No declarar entrega física por `ready`/`claimed`.
+3. **F20/R03/R04/R05:** el motor económico de caja y el simulador de Stripe acreditan invariantes internas, **no una autorización, captura, webhook, conciliación o devolución del proveedor Stripe sandbox real**. No hay legitimidad para registrar cobros test reales sin evidencia.
+4. **F28/R09/R10:** las capturas automáticas y el 4/4 histórico no sustituyen aprobación humana del diseño ni 4/4 del **mismo SHA bajo evaluación**. Seguir el gate visual y el estado de PR, no inferirlo del número 51/51.
+
+**Dictamen CV-003:** **RECONCILIACIÓN DOCUMENTAL REALIZADA**, con 28 F y 10 R mapeadas y dos SKIP diagnosticados; **NO es cierre de aceptación F/R ni de M1**. CV-003 debe continuar **EN CURSO** hasta evidencias por el mismo SHA, resolución controlada de los dos SKIP durante M2 y las puertas de producto pendientes. La política cero deja de contarse como bloqueo normativo. PR #43/#44/#45 Draft, sin merge ni despliegue, sin Supabase operativo/VPS/Fleetia. La siguiente unidad de desarrollo debe ser **un hito integrado completo**, no nuevas micropruebas para mejorar el conteo.
