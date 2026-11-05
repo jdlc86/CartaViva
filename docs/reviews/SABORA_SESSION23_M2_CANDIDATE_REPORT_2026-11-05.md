@@ -1,6 +1,6 @@
 # Sabora M2 — informe de candidato CV-004/CV-005
 
-**Fecha:** 2026-11-05. **Estado:** implementación terminada, validación integral del SHA en GitHub Actions pendiente. Este informe no autoriza merge, despliegue ni operación.
+**Fecha:** 2026-11-05. **Estado:** M2 candidato validado en PR #46 Draft. Este informe no autoriza merge, despliegue ni operación.
 
 ## Base y consolidación
 
@@ -33,10 +33,15 @@ La primera CI del commit `e252779b` falló antes de las baterías funcionales po
 
 La segunda CI (`30a3c927`) superó migraciones y llegó al subrecorrido M2 tras 48 pruebas PG17 correctas. La lectura de gestión devolvió `403` porque el arnés reutilizaba un camarero que el recorrido de revocación anterior había desactivado intencionadamente. Se sustituyó por un cuarto actor real activo, con JWT propio y pertenencia PostgreSQL; después de la lectura positiva se revoca en SQL y el mismo JWT debe recibir `403`. La autorización no se relajó.
 
+La tercera CI validó el SHA `7f90000077ab77759935cf291ac6ec637411b983`:
+
+- [generate-lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42023242547): PASS en 10m22s; 84 migraciones con reanudación, smoke B3 con rollback, puerta de secretos y **51/51 PG17, 0 SKIP**.
+- [validate](https://github.com/jdlc86/CartaViva/actions/runs/42023242569): PASS en 15m19s; bloques H6 1, 2A y 2B, PostgreSQL 17, privilegios, HMAC, concurrencia y Chromium.
+
 ## Dictamen y límites
 
-- **CV-004: implementado**, pendiente de fijar enlace/SHA final del PR y CI.
-- **CV-005: implementado, EN VALIDACIÓN**. No se declara candidato validado hasta que el recorrido PG17/Fastify/Chromium final pase en Actions sobre el mismo SHA.
+- **CV-004: CANDIDATO VALIDADO** en [PR #46 Draft](https://github.com/jdlc86/CartaViva/pull/46).
+- **CV-005: CANDIDATO VALIDADO**. El recorrido PG17/Fastify/Chromium y las negativas de privilegio/revocación pasan en Actions sobre el mismo SHA.
 - Los mocks de Stripe solo demuestran el límite interno y no acreditan Stripe sandbox. No existe aprobación visual de caja/cierre ni autorización productiva.
-- M1 no se reabre ni se declara cerrado desde este trabajo. M3 no debe comenzar hasta superar la puerta CI de M2.
+- M1 no se reabre ni se declara cerrado desde este trabajo. M3 puede comenzar en rama/PR Draft propios porque la puerta técnica M2 está superada.
 - Producción: **NO-GO**. Sin merge, deploy, migración operativa, VPS, Fleetia o recursos compartidos.
