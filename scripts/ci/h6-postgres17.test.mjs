@@ -938,11 +938,17 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   alias:['Cortesía resuelta','Cortesía pendiente','Cortesía y consumo'][index],
   company:null
  }]));
- const zeroCookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
-  verifyCustomerSession:async token=>zeroByToken.get(token)??null,
-  revokeCustomerSession:async()=>false});
+ // The isolated Vite origin is allocated dynamically. Delegate to the
+ // unchanged production same-origin checker after Vite starts, rather than
+ // weakening the browser's actual Origin validation or allowing any origin.
+ const zeroOrigin={value:null,auth:null};
+ const zeroCookieHooks={
+  authenticate:(request,reply)=>zeroOrigin.auth.authenticate(request,reply),
+  requireSameOrigin:(request,reply)=>zeroOrigin.auth.requireSameOrigin(request,reply),
+  logout:(request,reply)=>zeroOrigin.auth.logout(request,reply)
+ };
  const zeroApi=Fastify({logger:false});
- await registerCustomerProductionFlowHttp(zeroApi,{cookieAuth:zeroCookieAuth,flow});
+ await registerCustomerProductionFlowHttp(zeroApi,{cookieAuth:zeroCookieHooks,flow});
  // The public catalog is merely projected from the REAL published PG17 items;
  // confirmation, quote, table, QR and economic account never use a fixture.
  zeroApi.get('/api/v1/catalog',async()=>{
@@ -954,7 +960,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  });
  const zeroPost=(guest,path,payload)=>zeroApi.inject({method:'POST',
   url:'/api/v1/customer/'+path,
-  headers:{origin:'https://sabora.example','content-type':'application/json',
+  headers:{origin:zeroOrigin.value,'content-type':'application/json',
    cookie:'__Secure-sabora_customer='+guest.token},payload});
  const confirmZeroCustomer=async(guest,{visit,productId,mode,key})=>{
   const q=await zeroPost(guest,'quotes',{tableId:zeroTableId,qrToken:zeroToken,
@@ -990,6 +996,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   try{
    await zeroVite.listen();
    const origin='http://127.0.0.1:'+zeroVite.httpServer.address().port;
+   zeroOrigin.value=origin;
+   zeroOrigin.auth=createCustomerCookieAuth({allowedOrigin:origin,
+    verifyCustomerSession:async token=>zeroByToken.get(token)??null,
+    revokeCustomerSession:async()=>false});
    browser=await chromium.launch({headless:true});
    const context=await browser.newContext({viewport:{width:390,height:844},
     reducedMotion:'reduce',serviceWorkers:'block'});
@@ -999,9 +1009,20 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
      httpOnly:true,sameSite:'Lax'}]);
     const page=await context.newPage(),browserErrors=[];
     page.on('pageerror',error=>browserErrors.push(error.message));
+    const apiResponses=[];
+    page.on('response',response=>{
+     if(new URL(response.url()).pathname.startsWith('/api/v1/'))
+      apiResponses.push({path:new URL(response.url()).pathname,status:response.status()});
+    });
     await page.goto(origin+'/qr/v1/SABORA/'+zeroTableId+'#'+zeroToken);
-    await page.getByText('Mesa verificada').waitFor({timeout:20000});
-    await page.getByRole('button',{name:'Continuar con el pedido'}).click();
+    try{await page.getByText('Mesa verificada').waitFor({timeout:20000});}
+    catch(error){
+     const visible=(await page.locator('body').innerText()).slice(-1600);
+     throw Error('zero_cost_browser_visit_failed:'+JSON.stringify({visible,apiResponses,browserErrors}),
+      {cause:error});
+    }
+    // Organic UI path: scan first, close QR dialog, then select the free dish.
+    await page.getByRole('dialog',{name:'QR de mesa'}).getByRole('button',{name:'Cerrar'}).click();
     await page.getByTestId('product-card').filter({hasText:'Detalle de cortesía'})
      .getByRole('button',{name:/Añadir$/}).click();
     await page.getByRole('button',{name:/Cesta: 1/}).click();
