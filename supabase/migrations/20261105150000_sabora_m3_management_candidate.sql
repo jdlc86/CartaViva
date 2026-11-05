@@ -131,6 +131,8 @@ ALTER TABLE sabora.order_lines ADD CONSTRAINT order_lines_category_check
 
 GRANT USAGE ON SCHEMA extensions TO sabora_m3_management_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_m3_management_fn_owner;
+GRANT EXECUTE ON FUNCTION extensions.digest(bytea,text),
+ extensions.gen_random_bytes(integer) TO sabora_m3_management_fn_owner;
 GRANT SELECT(user_id,role,state),UPDATE(state) ON sabora.staff_members
  TO sabora_m3_management_fn_owner;
 GRANT SELECT ON sabora.order_operation_signing_keys TO sabora_m3_management_fn_owner;
@@ -224,7 +226,7 @@ BEGIN
   OR (p_capability->>'requestId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   OR (p_capability->>'bodyHashHex') !~ '^[0-9a-f]{64}$'
   OR p_body IS NULL OR octet_length(convert_to(p_body,'UTF8'))>65536
-  OR encode(digest(convert_to(p_body,'UTF8'),'sha256'),'hex')
+  OR encode(extensions.digest(convert_to(p_body,'UTF8'),'sha256'),'hex')
       IS DISTINCT FROM p_capability->>'bodyHashHex'
   OR (p_capability->>'issuedAtMs') !~ '^(0|[1-9][0-9]*)$'
   OR (p_capability->>'expiresAtMs') !~ '^(0|[1-9][0-9]*)$'
@@ -339,7 +341,7 @@ BEGIN
     OR jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN
   RAISE EXCEPTION 'invalid_table_management_input' USING ERRCODE='22023';
  END IF;
- v_fingerprint:=digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
+ v_fingerprint:=extensions.digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310051));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
   WHERE request_id=p_request_id FOR UPDATE;
@@ -372,7 +374,7 @@ BEGIN
   v_description:=btrim(p_payload->>'description');v_token:=p_payload->>'qrToken';
   INSERT INTO sabora.dining_tables(number,capacity,description,qr_token_hash,
     readiness_state,ordering_state,qr_enabled)
-  VALUES(v_number,v_capacity,v_description,digest(convert_to(v_token,'UTF8'),'sha256'),
+  VALUES(v_number,v_capacity,v_description,extensions.digest(convert_to(v_token,'UTF8'),'sha256'),
     'EN_PREPARACION','closed',true) RETURNING * INTO v_table;
   v_result:=sabora.table_state_json_m3(v_table);
  ELSE
@@ -427,7 +429,7 @@ BEGIN
     RAISE EXCEPTION 'invalid_table_management_input' USING ERRCODE='22023';
    END IF;
    UPDATE sabora.dining_tables SET
-    qr_token_hash=digest(convert_to(p_payload->>'qrToken','UTF8'),'sha256'),
+    qr_token_hash=extensions.digest(convert_to(p_payload->>'qrToken','UTF8'),'sha256'),
     qr_version=qr_version+1,qr_enabled=true,
     management_revision=management_revision+1,management_changed_at=clock_timestamp()
     WHERE id=v_table_id RETURNING * INTO v_table;
@@ -436,7 +438,8 @@ BEGIN
       WHERE k.key NOT IN ('tableId','expectedRevision')) THEN
     RAISE EXCEPTION 'invalid_table_management_input' USING ERRCODE='22023';
    END IF;
-   UPDATE sabora.dining_tables SET qr_token_hash=digest(gen_random_bytes(32),'sha256'),
+   UPDATE sabora.dining_tables SET qr_token_hash=extensions.digest(
+    extensions.gen_random_bytes(32),'sha256'),
     qr_version=qr_version+1,qr_enabled=false,
     management_revision=management_revision+1,management_changed_at=clock_timestamp()
     WHERE id=v_table_id RETURNING * INTO v_table;
@@ -493,7 +496,7 @@ BEGIN
  IF p_request_id IS NULL OR p_table_id IS NULL OR p_target NOT IN ('open','paused','closed') THEN
   RAISE EXCEPTION 'invalid_table_transition' USING ERRCODE='22023';
  END IF;
- v_fingerprint:=digest(convert_to(v_payload::text,'UTF8'),'sha256');
+ v_fingerprint:=extensions.digest(convert_to(v_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310052));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
   WHERE request_id=p_request_id FOR UPDATE;
@@ -737,7 +740,7 @@ BEGIN
    OR jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN
   RAISE EXCEPTION 'invalid_catalog_management_input' USING ERRCODE='22023';
  END IF;
- v_fingerprint:=digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
+ v_fingerprint:=extensions.digest(convert_to(p_operation||':'||p_payload::text,'UTF8'),'sha256');
  PERFORM pg_advisory_xact_lock(hashtextextended(p_request_id::text,310053));
  SELECT * INTO v_receipt FROM sabora.management_mutation_receipts_m3
   WHERE request_id=p_request_id FOR UPDATE;

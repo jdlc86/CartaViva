@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createM3ManagementCapabilityIssuer} from '../apps/api/src/m3-management-capability.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
@@ -13,6 +14,15 @@ const issuer=role=>createM3ManagementCapabilityIssuer({keyId:'m3_test_key',
  secret:Buffer.alloc(32,7),databaseRole:role,clock:()=>1_800_000_000_000});
 const transaction=(result,calls)=>async handler=>handler(async(sql,params)=>{
  calls.push({sql,params});return {rows:[{result}]};
+});
+
+test('M3 sealed SQL qualifies every pgcrypto primitive outside search_path',()=>{
+ const migration=readFileSync(new URL('../supabase/migrations/20261105150000_sabora_m3_management_candidate.sql',
+  import.meta.url),'utf8');
+ assert.doesNotMatch(migration,/(?<!extensions\.)\bdigest\(/u);
+ assert.doesNotMatch(migration,/(?<!extensions\.)\bgen_random_bytes\(/u);
+ assert.match(migration,/GRANT EXECUTE ON FUNCTION extensions\.digest\(bytea,text\),/u);
+ assert.match(migration,/extensions\.gen_random_bytes\(integer\) TO sabora_m3_management_fn_owner/u);
 });
 
 test('M3 capability binds physical login, actor, operation, request and exact body',()=>{
