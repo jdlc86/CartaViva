@@ -29,6 +29,8 @@
 4. `production-config-secrets-gate.mjs`: PASS (`production_config_gate_ok`).
 5. `node --check` de bootstrap, capacidades y arnés, más `git diff --check`: PASS.
 
+La primera CI del commit `e252779b` falló antes de las baterías funcionales porque `b3-h6-reader-role-smoke.sql` todavía intentaba crear la capacidad que la migración M2 ya provisiona. El smoke se corrigió para auditar el rol versionado, crear únicamente su LOGIN desechable y comprobar que el rollback conserva la capacidad y elimina el LOGIN. No se amplió ningún privilegio.
+
 ## Dictamen y límites
 
 - **CV-004: implementado**, pendiente de fijar enlace/SHA final del PR y CI.
