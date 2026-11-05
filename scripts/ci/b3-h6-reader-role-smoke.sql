@@ -8,18 +8,20 @@ DO $$ BEGIN
   RAISE EXCEPTION 'B3 H6 reader signatures missing';
  END IF;
 END $$;
-CREATE ROLE sabora_b3_h6_reader_runtime NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='sabora_b3_h6_reader_runtime'
+  AND NOT rolcanlogin AND NOT rolinherit AND NOT rolsuper AND NOT rolbypassrls
+  AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication) THEN
+  RAISE EXCEPTION 'versioned B3 H6 reader capability missing or unsafe';
+ END IF;
+END $$;
 CREATE ROLE sabora_b3_h6_reader_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
-GRANT USAGE ON SCHEMA sabora TO sabora_b3_h6_reader_runtime;
 -- Remove inherited PUBLIC EXECUTE only inside this rollback-only transaction.
 DO $$ DECLARE fn record; BEGIN
  FOR fn IN SELECT p.oid::regprocedure AS signature FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='sabora' LOOP
   EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC',fn.signature);
  END LOOP;
 END $$;
-GRANT EXECUTE ON FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid) TO sabora_b3_h6_reader_runtime;
-GRANT EXECUTE ON FUNCTION sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text) TO sabora_b3_h6_reader_runtime;
-GRANT EXECUTE ON FUNCTION sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid) TO sabora_b3_h6_reader_runtime;
 GRANT sabora_b3_h6_reader_runtime TO sabora_b3_h6_reader_login WITH SET TRUE, INHERIT FALSE;
 DO $$ DECLARE functions text[]; memberships text[]; BEGIN
  SELECT coalesce(array_agg(n.nspname||'.'||p.proname||'('||replace(oidvectortypes(p.proargtypes),', ',',')||')' ORDER BY p.oid),'{}'::text[])
@@ -130,9 +132,9 @@ RESET ROLE;
 RESET SESSION AUTHORIZATION;
 ROLLBACK;
 DO $$ BEGIN
- IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN
-  ('sabora_b3_h6_reader_runtime','sabora_b3_h6_reader_login')) THEN
-  RAISE EXCEPTION 'B3 H6 reader test roles survived transaction rollback';
+ IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='sabora_b3_h6_reader_runtime') OR
+    EXISTS(SELECT 1 FROM pg_roles WHERE rolname='sabora_b3_h6_reader_login') THEN
+  RAISE EXCEPTION 'B3 H6 reader rollback changed versioned capability or retained disposable login';
  END IF;
 END $$;
 SELECT 'b3_h6_reader_role_rollback_verified' AS result;

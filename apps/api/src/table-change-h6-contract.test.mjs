@@ -11,17 +11,6 @@ const extract=(start,end)=>{
  assert.ok(b>a,'missing function terminator: '+end);
  return sql.slice(a,b);
 };
-const confirmation=extract('FUNCTION sabora.confirm_customer_round_h6_candidate(', '$confirm_h6$;');
-
-test.skip('table transfer H6 readiness: account must be located before order persistence',()=>{
- const persist=confirmation.indexOf('FROM sabora.persist_customer_order_candidate(');
- const account=confirmation.indexOf('FROM sabora.customer_accounts a');
- assert.ok(persist>=0&&account>=0);
- assert.ok(account<persist,'H6 persists an order before resolving the original account; destination confirmation may split financial identity');
-});
-test.skip('table transfer H6 readiness: confirmation must consume an approved grant atomically',()=>{
- assert.match(confirmation,/customer_table_change_requests/,'H6 does not yet consume table-change authorization inside its transaction');
-});
 test('table transfer H6 readiness: candidate grant records destination and consuming order',()=>{
  assert.match(candidate,/destination_table_id/);
  assert.match(candidate,/consumed_order_id/);
@@ -36,6 +25,25 @@ const transferStart=transferSql.indexOf('FUNCTION sabora.confirm_customer_round_
 const transferEnd=transferSql.indexOf('$confirm_h6$;',transferStart);
 assert.ok(transferStart>=0&&transferEnd>transferStart,'missing isolated F12 confirmation candidate');
 const transferConfirmation=transferSql.slice(transferStart,transferEnd);
+const m2Bootstrap=readFileSync(new URL('./m2-restaurant-candidate.mjs',import.meta.url),'utf8');
+
+test('M2 cutover: selected confirmation locates account and approval before persistence',()=>{
+ assert.match(m2Bootstrap,/createVerifiedTableChangeB3CustomerFlowCandidate/,
+  'the opt-in M2 bootstrap must select the isolated transfer flow');
+ const account=transferConfirmation.indexOf('FROM sabora.customer_accounts a');
+ const approval=transferConfirmation.indexOf('FROM sabora.customer_table_change_requests q');
+ const persist=transferConfirmation.indexOf('FROM sabora.persist_customer_order_candidate(');
+ assert.ok(account>=0&&approval>account&&persist>approval,
+  'the selected entrypoint must lock account and approval before persisting the order');
+});
+
+test('M2 cutover: selected confirmation consumes the approved grant atomically',()=>{
+ const round=transferConfirmation.indexOf('INSERT INTO sabora.order_rounds(');
+ const destination=transferConfirmation.indexOf('INSERT INTO sabora.order_line_delivery_destinations');
+ const consume=transferConfirmation.indexOf('sabora.consume_customer_table_change_h6_candidate(');
+ assert.ok(round>=0&&destination>round&&consume>destination,
+  'the selected transaction must persist round/destination and consume the grant once');
+});
 
 test('F12 candidate resolves the economic account and approval before order persistence',()=>{
  const account=transferConfirmation.indexOf('FROM sabora.customer_accounts a');

@@ -42,6 +42,8 @@ import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs'
 import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-pending-reader-preflight-candidate.mjs';
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
+import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
+import {assertM2CustomerEventCapability} from '../../apps/api/src/m2-runtime-capabilities.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
 if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
@@ -2453,7 +2455,7 @@ test('PG17 F12 atomic grant consumption moves operational binding without moving
  });
 });
 
-test('PG17 B3 confirmation preflight remains fail-closed without a dedicated runtime role',async()=>{
+test('PG17 M2 provisions only the dedicated transfer writer capability',async()=>{
  const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
  const row=(await admin.query(`SELECT p.prosecdef AS security_definer,
   p.proowner::regrole::text AS owner,
@@ -2468,9 +2470,12 @@ test('PG17 B3 confirmation preflight remains fail-closed without a dedicated run
  assert.equal(row.owner,'sabora_h6_fn_owner');
  for(const key of ['anon_execute','authenticated_execute','h6_customer_execute',
   'h6_operations_execute','h6_provider_execute'])assert.equal(row[key],false,key);
- const role=(await admin.query(`SELECT count(*)::int AS count FROM pg_roles
-  WHERE rolname='sabora_b3_confirmation_runtime'`)).rows[0];
- assert.equal(role.count,0,'B3 runtime role must not be silently provisioned');
+ const role=(await admin.query(`SELECT rolcanlogin,rolinherit,rolsuper,rolbypassrls
+  FROM pg_roles WHERE rolname='sabora_b3_confirmation_runtime'`)).rows[0];
+ assert.deepEqual(role,{rolcanlogin:false,rolinherit:false,rolsuper:false,rolbypassrls:false});
+ const exact=(await admin.query(F12_FUNCTION_SQL,['sabora_b3_confirmation_runtime'])).rows[0].names;
+ assert.deepEqual(exact,[signature,
+  'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'].sort());
 });
 
 test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is exact',async()=>{
@@ -2478,12 +2483,8 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
   const role='sabora_b3_confirmation_runtime',login='sabora_b3_confirmation_probe_login';
   const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
   const revisionSignature='sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)';
-  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
-  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${revisionSignature} TO ${role}`);
   const functionOid=(await client.query('SELECT to_regprocedure($1)::oid AS oid',
    [signature])).rows[0].oid;
   assert.ok(functionOid);
@@ -2515,12 +2516,8 @@ test('PG17 B3 live preflight accepts only the isolated transactional login capab
   const login='sabora_b3_confirmation_preflight_probe';
   const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
   const revisionSignature='sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)';
-  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
-  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${revisionSignature} TO ${role}`);
   // A disposable superuser session can impersonate the exact login within
   // this rolled-back transaction. This checks the real PostgreSQL catalog,
   // not a fixture, and never creates persistent runtime credentials.
@@ -2559,13 +2556,8 @@ test('PG17 B3 H6 reader live preflight validates isolated login and rejects priv
   const readerRound='sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)';
   const readerPolicy='sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)';
   const readerRevision='sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)';
-  await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
-  await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${readerRound} TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${readerPolicy} TO ${role}`);
-  await client.query(`GRANT EXECUTE ON FUNCTION ${readerRevision} TO ${role}`);
   const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
   await client.query(`SET LOCAL SESSION AUTHORIZATION ${login}`);
   assert.deepEqual(await assertB3H6LoginSurface({pool,expectedLogin:login}),{validated:true});
@@ -2599,12 +2591,8 @@ test('PG17 F12 customer and waiter live identity preflights use separate restric
     ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']]
   ];
   for(const [role,login,signatures] of cases){
-   await client.query(`CREATE ROLE ${role} NOLOGIN NOINHERIT`);
    await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
    await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
-   await client.query(`GRANT USAGE ON SCHEMA sabora TO ${role}`);
-   for(const signature of signatures)
-    await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${role}`);
   }
   const pool={connect:async()=>({query:(sql,params)=>client.query(sql,params),release:()=>{}})};
   for(const [role,login] of cases){
@@ -2681,12 +2669,6 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
    {role:'sabora_customer_flow_runtime',login:'sabora_b3_combined_basket',functions:[]}
   ];
   for(const spec of specs){
-   if(spec.role!=='sabora_customer_flow_runtime'){
-    await client.query(`CREATE ROLE ${spec.role} NOLOGIN NOINHERIT`);
-    await client.query(`GRANT USAGE ON SCHEMA sabora TO ${spec.role}`);
-    for(const signature of spec.functions)
-     await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${spec.role}`);
-   }
    await client.query(`CREATE ROLE ${spec.login} LOGIN NOINHERIT`);
    await client.query(`GRANT ${spec.role} TO ${spec.login} WITH SET TRUE, INHERIT FALSE`);
   }
@@ -2761,20 +2743,27 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    signatures:['sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
     'sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
     'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)']},
-  // Customer outbox delivery has its own production H6 capability and LOGIN;
-  // the B3 round reader is intentionally not broadened to impersonate it.
-  {role:'sabora_h6_customer_runtime',login:'sabora_b3_physical_events_'+suffix,
-   signatures:[]}
+  // Customer outbox delivery is a one-function read capability; it cannot
+  // execute the legacy H6 confirmation entrypoint.
+  {role:'sabora_m2_customer_event_runtime',login:'sabora_b3_physical_events_'+suffix,
+   signatures:['sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer)']},
+  {role:'sabora_catalog_reader',login:'sabora_b3_physical_catalog_'+suffix,signatures:[]},
+  {role:'sabora_customer_registration_runtime',login:'sabora_b3_physical_register_'+suffix,signatures:[]},
+  {role:'sabora_customer_session_runtime',login:'sabora_b3_physical_session_'+suffix,signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
  let customerEventNotifier=null;
  const password='sabora_b3_disposable_'+suffix+'_only';
  try{
   for(const spec of specs){
-   if(!['sabora_customer_flow_runtime','sabora_f12_pending_reader_runtime',
+   if(!['sabora_customer_flow_runtime','sabora_f12_customer_runtime',
+       'sabora_f12_operations_runtime','sabora_b3_confirmation_runtime',
+       'sabora_b3_h6_reader_runtime','sabora_f12_pending_reader_runtime',
        'sabora_h6_provider_runtime','sabora_h6_operations_runtime',
+       'sabora_b3_h4_transition_runtime',
        'sabora_staff_reader','sabora_h6_account_close_runtime',
-       'sabora_h6_customer_runtime'].includes(spec.role)){
+       'sabora_m2_customer_event_runtime','sabora_catalog_reader',
+       'sabora_customer_registration_runtime','sabora_customer_session_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2804,7 +2793,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // spare connection while the pool also serves its pinned preflight login
    // and the durable staff-event notifier.
    const pool=new Pool({connectionString:loginUrl.toString(),
-    max:spec.role==='sabora_f12_operations_runtime'?5:3,connectionTimeoutMillis:3000,
+    max:['sabora_f12_operations_runtime','sabora_h6_operations_runtime'].includes(spec.role)?5:3,
+    connectionTimeoutMillis:3000,
     options:'-c statement_timeout=15000'});
    pools.push(pool);
    const connection=await pool.connect();
@@ -2864,8 +2854,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    expectedLogin:specs[7].login,capability:specs[7].role});
   await assertH6RuntimeIdentity({pool:scopedPools[8],
    expectedLogin:specs[8].login,capability:specs[8].role});
-  await assertH6RuntimeIdentity({pool:scopedPools[12],
-   expectedLogin:specs[12].login,capability:specs[12].role});
+  await assertM2CustomerEventCapability({pool:scopedPools[12],
+   expectedLogin:specs[12].login});
   for(const index of [7,8,10]){
    await assert.rejects(connections[index].query('SELECT * FROM sabora.payment_attempts'),
     /permission denied/);
@@ -7311,6 +7301,118 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    }
   }
   }finally{await http.close();}
+
+  // M2 cutover acceptance: start the separately opted-in bootstrap over the
+  // same clean PG17 instance and physical capability logins. Reuse the broad
+  // A→B/Chromium evidence above; do not repeat its natural five-minute wait.
+  // This focused pass proves that the selected bootstrap itself uses real
+  // cookie auth, catalog SQL and the transfer writer rather than test hooks.
+  const m2SourceTable='b0a00000-0000-4000-8000-000000000302';
+  await admin.query(`UPDATE sabora.dining_tables SET qr_token_hash=$1,
+   qr_version=1,ordering_state='open' WHERE id=$2`,[
+   createHash('sha256').update('Q'.repeat(42)+'A').digest(),
+   m2SourceTable
+  ]);
+  await admin.query(`UPDATE sabora.catalog_items SET sold_out=false,withdrawn_at=NULL
+   WHERE id='b0a00000-0000-4000-8000-000000000330'`);
+  const dormantStripe=Object.freeze({
+   authorize:async()=>{throw Error('unexpected_m2_provider_call');},
+   capture:async()=>{throw Error('unexpected_m2_provider_call');},
+   release:async()=>{throw Error('unexpected_m2_provider_call');},
+   refund:async()=>{throw Error('unexpected_m2_provider_call');},
+   retrieve:async()=>{throw Error('unexpected_m2_provider_call');}
+  });
+  const m2=await createM2RestaurantCandidate({
+   customer:{catalogReaderPool:pools[13],registrationPool:pools[14],
+    sessionPool:pools[15],flowPool:pools[4],allowedOrigin:'https://sabora.example',
+    secretKey:'sabora_m2_ephemeral_test_secret_key_32_bytes_minimum',
+    expectedCatalogLogin:specs[13].login,expectedRegistrationLogin:specs[14].login,
+    expectedSessionLogin:specs[15].login,expectedFlowLogin:specs[4].login},
+   tableChange:{customerPool:pools[0],operationsPool:pools[1],
+    confirmationPool:pools[2],h6ReadPool:pools[3],pendingPool:pools[5],
+    notificationPool:pools[1],expectedCustomerLogin:specs[0].login,
+    expectedOperationsLogin:specs[1].login,expectedConfirmationLogin:specs[2].login,
+    expectedH6ReadLogin:specs[3].login,expectedPendingLogin:specs[5].login,
+    hashSession:hashCustomerSessionToken},
+   staff:{pool:pools[9],expectedLogin:specs[9].login,issuer:ciIssuer,
+    getTrustedKeys:async()=>[ciJwk]},
+   h4:{operationsPool:pools[11],expectedOperationsLogin:specs[11].login,
+    issueTransitionCapability:h4KitchenIssuer,issueReadCapability:h4ReadIssuer},
+   h6:{providerPool:pools[7],operationsPool:pools[8],closePool:pools[10],
+    eventPool:pools[12],notifierPool:pools[8],expectedProviderLogin:specs[7].login,
+    expectedOperationsLogin:specs[8].login,expectedCloseLogin:specs[10].login,
+    expectedEventLogin:specs[12].login,stripe:dormantStripe,
+    issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
+  });
+  try{
+   const address=await m2.listen({host:'127.0.0.1',port:0});
+   assert.match(address,/^http:\/\/127\.0\.0\.1:[0-9]+$/);
+   assert.deepEqual((await m2.app.inject('/health')).json(),{
+    status:'ok',service:'sabora-m2-candidate',mode:'opt-in'});
+   assert.deepEqual((await m2.app.inject('/ready')).json(),{
+    status:'ready',service:'sabora-m2-candidate',mode:'opt-in'});
+   const peer=peers[0],cookie='__Secure-sabora_customer='+peer.token;
+   const fetchImpl=async(path,init={})=>{
+    const response=await m2.app.inject({method:init.method??'GET',url:path,
+     headers:{...Object.fromEntries(new Headers(init.headers??{})),
+      origin:'https://sabora.example',cookie},payload:init.body});
+    return new Response(response.body,{status:response.statusCode,headers:{
+     'content-type':response.headers['content-type']??'application/json'}});
+   };
+   const customerPwa=createCustomerFlowTransport({fetchImpl});
+   assert.equal((await customerPwa.session()).publicId,peer.publicId);
+   const catalogResponse=await m2.app.inject('/api/v1/catalog');
+   assert.equal(catalogResponse.statusCode,200,catalogResponse.body);
+   const catalog=catalogResponse.json();
+   const item=catalog.find(row=>row.id==='b0a00000-0000-4000-8000-000000000330');
+   assert.ok(item,'M2 catalog must come from the restricted PG17 reader');
+   const quote=await customerPwa.quote({tableId:m2SourceTable,
+    qrToken:'Q'.repeat(42)+'A',visitId:peer.visitKey,basketId:'m2_candidate_basket_0001',
+    lines:[{itemId:item.id,selection:{options:{},extras:[]},quantity:1}]});
+   const confirmationInput={tableId:m2SourceTable,
+    qrToken:'Q'.repeat(42)+'A',visitId:peer.visitKey,basketId:'m2_candidate_basket_0001',
+    requestKey:'m2_candidate_request_0001',paymentMode:'pay_at_end',
+    lines:[{quoteId:quote.lines[0].quoteId,itemId:item.id,
+     selection:{options:{},extras:[]},quantity:1}]};
+   const confirmed=await customerPwa.confirm(confirmationInput);
+   assert.equal(confirmed.status,'confirmed');
+   assert.equal(confirmed.accountId,peer.account,
+    'M2 normal confirmation must preserve the existing economic account');
+   const replayed=await customerPwa.confirm(confirmationInput);
+   assert.equal(replayed.status,'replayed');
+   assert.equal(replayed.orderId,confirmed.orderId);
+   assert.equal(replayed.accountId,peer.account);
+   const m2WaiterId='b0a00000-0000-4000-8000-000000000312';
+   const jwtM2Waiter=staffJwt(m2WaiterId);
+   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+    VALUES($1,'waiter','active')`,[m2WaiterId]);
+   const managementPwa=createAuthenticatedOrderOperationsGateway({
+    getAccessToken:async()=>jwtM2Waiter,
+    fetchImpl:async(path,options)=>{
+     const response=await m2.app.inject({method:options.method,url:path,
+      headers:Object.fromEntries(options.headers.entries()),payload:options.body});
+     return new Response(response.body,{status:response.statusCode,headers:{
+      'content-type':response.headers['content-type']??'application/json'}});
+    }});
+   assert.ok(Array.isArray(await managementPwa.listPendingTableChanges()));
+   await admin.query("UPDATE sabora.staff_members SET state='revoked' WHERE user_id=$1",
+    [m2WaiterId]);
+   assert.equal((await m2.app.inject({method:'GET',
+    url:'/api/v1/operations/table-change/pending',
+    headers:{authorization:'Bearer '+jwtM2Waiter}})).statusCode,403,
+    'M2 must recheck current SQL staff state and reject a just-revoked JWT');
+   managementPwa.revoke();
+   assert.equal((await m2.app.inject({method:'GET',url:'/api/v1/operations/order-lines',
+    headers:{authorization:'Bearer '+jwtKitchen}})).statusCode,200);
+   assert.equal((await m2.app.inject({method:'POST',url:'/api/v1/customer/orders/confirm',
+    headers:{origin:'https://sabora.example','content-type':'application/json',
+     cookie:'__Secure-sabora_customer='+'A'.repeat(43)},payload:confirmationInput})).statusCode,401);
+  }finally{
+   const first=m2.close(),second=m2.close();
+   assert.equal(first,second,'candidate close must be idempotent');
+   await first;
+   assert.equal(m2.app.server.listening,false);
+  }
   // Exercise the real transaction boundary on a physically authenticated
   // writer connection: an unlisted SQL statement must be rejected before it
   // reaches PostgreSQL, and ROLLBACK must restore the login identity.
