@@ -1,4 +1,4 @@
-import type {MenuItem} from './catalog';
+import {catalogUnitPrice,type CatalogSelection,type MenuItem} from './catalog';
 
 export type Locale='es'|'en';
 export type ClientPreferences=Readonly<{
@@ -12,6 +12,7 @@ export type BasketLine=Readonly<{
  name:string;
  priceCents:number;
  quantity:number;
+ selection:CatalogSelection;
 }>;
 
 type StorageLike=Pick<Storage,'getItem'|'setItem'>;
@@ -29,6 +30,19 @@ const plain=(value:unknown):value is Record<string,unknown>=>value!==null&&typeo
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 const boundedText=(value:unknown,max:number,required=false)=>typeof value==='string'&&
  (!required||!!value.trim())&&[...value].length<=max&&!control.test(value);
+const validId=(value:unknown)=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,64}$/.test(value);
+const parseSelection=(value:unknown):CatalogSelection|null=>{
+ if(!plain(value)||Reflect.ownKeys(value).length!==2||!plain(value.options)||!Array.isArray(value.extras)||
+    value.extras.length>50||!value.extras.every(validId)||new Set(value.extras).size!==value.extras.length||
+    Object.keys(value.options).length>32)return null;
+ const options:Record<string,readonly string[]>={};
+ for(const [key,ids] of Object.entries(value.options)){
+  if(!validId(key)||!Array.isArray(ids)||ids.length>20||!ids.every(validId)||new Set(ids).size!==ids.length)return null;
+  options[key]=Object.freeze([...ids] as string[]);
+ }
+ return Object.freeze({options:Object.freeze(options),extras:Object.freeze([...value.extras] as string[])});
+};
+const emptySelection=():CatalogSelection=>Object.freeze({options:Object.freeze({}),extras:Object.freeze([])});
 const safeParse=(storage:StorageLike,key:string,max:number):unknown=>{
  try{
   const raw=storage.getItem(key);
@@ -62,8 +76,10 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  if(!Array.isArray(value)||value.length>MAX_BASKET_LINES)return Object.freeze([]);
  const ids=new Set<string>();
  const valid=value.every(line=>{
-  if(!plain(line)||Reflect.ownKeys(line).length!==4||
+  if(!plain(line)||![4,5].includes(Reflect.ownKeys(line).length)||
      !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(line,key))||
+     (Reflect.ownKeys(line).length===5&&!Object.hasOwn(line,'selection'))||
+     (Object.hasOwn(line,'selection')&&!parseSelection(line.selection))||
      typeof line.itemId!=='string'||!uuid.test(line.itemId)||ids.has(line.itemId.toLowerCase())||
      !boundedText(line.name,160,true)||typeof line.priceCents!=='number'||
      !Number.isSafeInteger(line.priceCents)||line.priceCents<0||typeof line.quantity!=='number'||
@@ -72,7 +88,8 @@ export function loadBasket(storage:StorageLike):readonly BasketLine[]{
  });
  if(!valid)return Object.freeze([]);
  return Object.freeze(value.map(line=>Object.freeze({itemId:line.itemId as string,name:(line.name as string).trim(),
-  priceCents:line.priceCents as number,quantity:line.quantity as number})));
+  priceCents:line.priceCents as number,quantity:line.quantity as number,
+  selection:parseSelection(line.selection)??emptySelection()})));
 }
 
 function validBasketLines(lines:readonly BasketLine[]):boolean{
@@ -80,12 +97,13 @@ function validBasketLines(lines:readonly BasketLine[]):boolean{
  const ids=new Set<string>();
  for(const line of lines){
   const candidate:unknown=line;
-  if(!plain(candidate)||Reflect.ownKeys(candidate).length!==4||
-     !['itemId','name','priceCents','quantity'].every(key=>Object.hasOwn(candidate,key))||
+  if(!plain(candidate)||Reflect.ownKeys(candidate).length!==5||
+     !['itemId','name','priceCents','quantity','selection'].every(key=>Object.hasOwn(candidate,key))||
      typeof candidate.itemId!=='string'||!uuid.test(candidate.itemId)||ids.has(candidate.itemId.toLowerCase())||
      !boundedText(candidate.name,160,true)||typeof candidate.priceCents!=='number'||
      !Number.isSafeInteger(candidate.priceCents)||candidate.priceCents<0||typeof candidate.quantity!=='number'||
-     !Number.isSafeInteger(candidate.quantity)||candidate.quantity<1||candidate.quantity>MAX_QUANTITY)return false;
+     !Number.isSafeInteger(candidate.quantity)||candidate.quantity<1||candidate.quantity>MAX_QUANTITY||
+     !parseSelection(candidate.selection))return false;
   ids.add(candidate.itemId.toLowerCase());
  }
  return true;
@@ -107,7 +125,10 @@ export function changeBasket(lines:readonly BasketLine[],item:MenuItem,delta:num
  const quantity=(current?.quantity??0)+delta;
  if(quantity<=0)return Object.freeze(lines.filter(line=>line.itemId.toLowerCase()!==item.id.toLowerCase()));
  if(quantity>MAX_QUANTITY)return lines;
- const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:current?.name??item.name,priceCents:current?.priceCents??item.priceCents,quantity});
+ const selection=current?.selection??emptySelection();
+ let unitPrice:number;try{unitPrice=catalogUnitPrice(item,selection);}catch{if(delta>0)return lines;unitPrice=current?.priceCents??item.priceCents;}
+ const next:BasketLine=Object.freeze({itemId:current?.itemId??item.id,name:current?.name??item.name,
+  priceCents:current?.priceCents??unitPrice,quantity,selection});
  return Object.freeze(current?lines.map(line=>line.itemId.toLowerCase()===item.id.toLowerCase()?next:line):[...lines,next]);
 }
 
@@ -117,6 +138,16 @@ export function reconcileBasket(lines:readonly BasketLine[],items:readonly MenuI
   const item=current.get(line.itemId.toLowerCase());
   return item?Object.freeze({...line,name:item.name}):line;
  }));
+}
+export function configureBasketLine(lines:readonly BasketLine[],item:MenuItem,selection:CatalogSelection,quantity=1):readonly BasketLine[]{
+ if(!validBasketLines(lines)||!Number.isSafeInteger(quantity)||quantity<1||quantity>MAX_QUANTITY||
+    !item.available||!parseSelection(selection))return lines;
+ let priceCents:number;try{priceCents=catalogUnitPrice(item,selection);}catch{return lines;}
+ const next=Object.freeze({itemId:item.id,name:item.name,priceCents,quantity,
+  selection:parseSelection(selection)!});
+ const current=lines.find(line=>line.itemId.toLowerCase()===item.id.toLowerCase());
+ if(!current&&lines.length>=MAX_BASKET_LINES)return lines;
+ return Object.freeze(current?lines.map(line=>line.itemId.toLowerCase()===item.id.toLowerCase()?next:line):[...lines,next]);
 }
 
 export const basketQuantity=(lines:readonly BasketLine[])=>lines.reduce((sum,line)=>sum+line.quantity,0);
@@ -129,7 +160,8 @@ export function basketIssues(lines:readonly BasketLine[],items:readonly MenuItem
   const item=published.get(line.itemId.toLowerCase());
   if(!item)return [Object.freeze({itemId:line.itemId,reason:'unpublished' as const})];
   if(!item.available)return [Object.freeze({itemId:line.itemId,reason:'sold_out' as const})];
-  if(item.priceCents!==line.priceCents)return [Object.freeze({itemId:line.itemId,reason:'price_changed' as const})];
+  let currentPrice:number;try{currentPrice=catalogUnitPrice(item,line.selection);}catch{return [Object.freeze({itemId:line.itemId,reason:'price_changed' as const})];}
+  if(currentPrice!==line.priceCents)return [Object.freeze({itemId:line.itemId,reason:'price_changed' as const})];
   return [];
  }));
 }
@@ -142,6 +174,8 @@ export function acceptBasketPrice(lines:readonly BasketLine[],items:readonly Men
  if(typeof itemId!=='string'||!uuid.test(itemId)||!validBasketLines(lines))return lines;
  const item=items.find(candidate=>typeof candidate.id==='string'&&candidate.id.toLowerCase()===itemId.toLowerCase());
  if(!item||!item.available||!Number.isSafeInteger(item.priceCents)||item.priceCents<0)return lines;
- return Object.freeze(lines.map(line=>line.itemId.toLowerCase()===itemId.toLowerCase()?
-  Object.freeze({...line,name:item.name,priceCents:item.priceCents}):line));
+ let price:number;const line=lines.find(value=>value.itemId.toLowerCase()===itemId.toLowerCase());
+ if(!line)return lines;try{price=catalogUnitPrice(item,line.selection);}catch{return lines;}
+ return Object.freeze(lines.map(value=>value.itemId.toLowerCase()===itemId.toLowerCase()?
+  Object.freeze({...value,name:item.name,priceCents:price}):value));
 }

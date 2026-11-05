@@ -7,8 +7,8 @@ psql_ci(){ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres
 table=00000000-0000-4000-8000-000000009201
 staff=00000000-0000-4000-8000-000000009202
 psql_ci <<SQL
-INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,ordering_state)
-VALUES ('$table',9201,4,decode(repeat('99',32),'hex'),'open');
+INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+VALUES ('$table',9201,4,decode(repeat('99',32),'hex'),'open','LISTA');
 INSERT INTO sabora.staff_members(user_id,role,state)
 VALUES ('$staff','waiter','active');
 SQL

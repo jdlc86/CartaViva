@@ -2,6 +2,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 export const TABLE_PAGE_SIZE = 24;
 export const TABLE_ORDERING_STATES = Object.freeze(['open', 'paused', 'closed']);
+export const TABLE_READINESS_STATES = Object.freeze(['EN_PREPARACION', 'LISTA', 'BLOQUEADA']);
 
 function isDataRecord(value, expectedKeys) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -30,20 +31,27 @@ function assertPageRequest({afterNumber, limit}) {
 export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE_PAGE_SIZE} = {}) {
   assertPageRequest({afterNumber, limit});
   if (!isDataRecord(payload, ['version', 'items', 'nextAfterNumber']) ||
-      payload.version !== 1 || !Array.isArray(payload.items) || payload.items.length > limit) {
+      ![1,2].includes(payload.version) || !Array.isArray(payload.items) || payload.items.length > limit) {
     throw new Error('invalid_admin_tables_page');
   }
 
   const ids = new Set();
   const numbers = new Set();
   const items = payload.items.map((item, index) => {
-    if (!isDataRecord(item, ['id', 'number', 'capacity', 'description', 'orderingState']) ||
+    const fields=payload.version===2
+      ? ['id','number','capacity','description','readinessState','orderingState','pauseUntil','qrVersion','qrEnabled','revision']
+      : ['id','number','capacity','description','orderingState'];
+    if (!isDataRecord(item, fields) ||
         typeof item.id !== 'string' || !UUID_PATTERN.test(item.id) || ids.has(item.id) ||
         !Number.isSafeInteger(item.number) || item.number <= afterNumber || numbers.has(item.number) ||
         (index > 0 && item.number <= payload.items[index - 1].number) ||
         !Number.isSafeInteger(item.capacity) || item.capacity < 1 ||
         (item.description !== null && typeof item.description !== 'string') ||
-        !TABLE_ORDERING_STATES.includes(item.orderingState)) {
+        !TABLE_ORDERING_STATES.includes(item.orderingState) ||
+        (payload.version===2&&(!TABLE_READINESS_STATES.includes(item.readinessState)||
+         (item.pauseUntil!==null&&(typeof item.pauseUntil!=='string'||Number.isNaN(Date.parse(item.pauseUntil))))||
+         !Number.isSafeInteger(item.qrVersion)||item.qrVersion<1||typeof item.qrEnabled!=='boolean'||
+         !Number.isSafeInteger(item.revision)||item.revision<1))) {
       throw new Error('invalid_admin_tables_page');
     }
 
@@ -55,6 +63,8 @@ export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE
       capacity: item.capacity,
       description: item.description,
       orderingState: item.orderingState,
+      ...(payload.version===2?{readinessState:item.readinessState,pauseUntil:item.pauseUntil,
+       qrVersion:item.qrVersion,qrEnabled:item.qrEnabled,revision:item.revision}:{}),
     });
   });
 
@@ -66,7 +76,7 @@ export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE
   }
 
   return Object.freeze({
-    version: 1,
+    version: payload.version,
     items: Object.freeze(items),
     nextAfterNumber,
   });

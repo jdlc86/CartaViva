@@ -54,6 +54,12 @@ import {createH6DeferredDispatchScheduler} from './h6-deferred-dispatch-schedule
 import {assertM2CustomerEventCapability,assertM2AccountCloseCapability,
  assertM2H4OperationsCapability,M2_CUSTOMER_EVENT_ROLE,M2_ACCOUNT_CLOSE_ROLE,
  M2_H4_OPERATIONS_ROLE} from './m2-runtime-capabilities.mjs';
+import {assertM3TablesCapability,assertM3CatalogCapability,
+ M3_TABLES_ROLE,M3_CATALOG_ROLE} from './m3-runtime-capabilities.mjs';
+import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
+ MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
+ MANAGE_M3_CATALOG_SQL} from './m3-management-repository.mjs';
+import {registerM3ManagementHttp} from './m3-management-http.mjs';
 
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
@@ -87,7 +93,7 @@ const staffGuard=forRoles=>roles=>{
 // Separate opt-in assembly. It owns Fastify/listeners/scheduler, but never
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
- eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
+ management=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
  const app=Fastify({logger:false,trustProxy:false});
  let tableNotifier,h6Notifier,scheduler,closed=false,operational=false;
  const closeServices=async()=>{
@@ -102,6 +108,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      typeof h4.issueTransitionCapability!=='function'||typeof h4.issueReadCapability!=='function'||
      typeof h6.issueStaffCapability!=='function'||typeof h6.issueCloseCapability!=='function'||
      !h6.stripe||typeof observeFailure!=='function'||typeof enableDeferredDispatch!=='boolean'||
+     (management!==null&&(!management||typeof management!=='object'||
+       typeof management.expectedTablesLogin!=='string'||
+       typeof management.expectedCatalogLogin!=='string'||
+       typeof management.issueTablesCapability!=='function'||
+       typeof management.issueCatalogCapability!=='function'||
+       typeof management.qr?.secret!=='string'||typeof management.qr?.origin!=='string'||
+       typeof management.qr?.restaurantCode!=='string'))||
      !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
    throw Error('invalid_m2_restaurant_candidate');
 
@@ -115,6 +128,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    tableChange.expectedH6ReadLogin,tableChange.expectedPendingLogin,staff.expectedLogin,
    h4.expectedOperationsLogin,h6.expectedProviderLogin,h6.expectedOperationsLogin,
    h6.expectedCloseLogin,h6.expectedEventLogin];
+  if(management){
+   capabilityPools.push(management.tablesPool,management.catalogPool);
+   logins.push(management.expectedTablesLogin,management.expectedCatalogLogin);
+  }
   if(!uniqueCapabilities(capabilityPools,logins)||
      typeof tableChange.notificationPool?.connect!=='function'||
      typeof h6.notifierPool?.connect!=='function')
@@ -154,6 +171,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
     expectedLogin:h6.expectedCloseLogin});
    await assertM2CustomerEventCapability({pool:h6.eventPool,
     expectedLogin:h6.expectedEventLogin});
+   if(management){
+    await assertM3TablesCapability({pool:management.tablesPool,
+     expectedLogin:management.expectedTablesLogin});
+    await assertM3CatalogCapability({pool:management.catalogPool,
+     expectedLogin:management.expectedCatalogLogin});
+   }
    return true;
   };
   await preflight();
@@ -211,6 +234,18 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
+  let m3Tables,m3Catalog;
+  if(management){
+   const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
+    role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
+     OCCUPANCY_M3_TABLE_SQL])});
+   const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
+    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL])});
+   m3Tables=createM3TablesRepository({withTransaction:tablesTx,
+    issueCapability:management.issueTablesCapability});
+   m3Catalog=createM3CatalogRepository({withTransaction:catalogTx,
+    issueCapability:management.issueCatalogCapability});
+  }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
    expectedLogin:tableChange.expectedOperationsLogin});
@@ -234,6 +269,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
+  if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
+   catalog:m3Catalog,qr:management.qr});
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({
@@ -246,19 +283,19 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
 
   app.get('/health',async(_request,reply)=>{
    reply.header('Cache-Control','no-store');
-   return {status:'ok',service:'sabora-m2-candidate',mode:'opt-in'};
+   return {status:'ok',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.get('/ready',async(_request,reply)=>{
    reply.header('Cache-Control','no-store');
    if(!operational)return reply.code(503).send({status:'unavailable'});
    try{await preflight();}
    catch{return reply.code(503).send({status:'unavailable'});}
-   return {status:'ready',service:'sabora-m2-candidate',mode:'opt-in'};
+   return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
   await app.ready();operational=true;
   let closePromise=null;
-  return Object.freeze({app,mode:'opt-in-h3-h6-m2-candidate',
+  return Object.freeze({app,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},
    async listen({host='127.0.0.1',port=0}={}){
     if(host!=='127.0.0.1'||!Number.isSafeInteger(port)||port<0||port>65535)

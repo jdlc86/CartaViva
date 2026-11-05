@@ -41,7 +41,9 @@ test('evidence is independent from subsequent snapshot and selection mutation',(
 test('rejects untrusted identifiers, revision and invalid published economics',()=>{
  for(const change of [
   {itemId:'invalid'}, {publishedRevision:0},{publishedRevision:1.5},
-  {snapshot:{...snapshot,name:' '}},{snapshot:{...snapshot,category:'Otro'}},
+  {snapshot:{...snapshot,name:' '}},{snapshot:{...snapshot,category:' '}},
+  {snapshot:{...snapshot,category:'A'.repeat(81)}},
+  {snapshot:{...snapshot,category:'Otro\ncurso'}},
   {snapshot:{...snapshot,allergens:[null]}},
   {selection:{options:{size:['missing']},extras:[]}},
   {selection:{options:{size:['large']},extras:['missing']}},

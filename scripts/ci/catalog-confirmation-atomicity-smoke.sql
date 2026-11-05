@@ -1,8 +1,8 @@
 -- Disposable PostgreSQL 17 only; never connect to operational Supabase.
 -- A candidate order and confirmation must disappear together on rollback.
 BEGIN;
-INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash)
- VALUES (930101,4,decode(repeat('93',32),'hex'))
+INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,readiness_state)
+ VALUES (930101,4,decode(repeat('93',32),'hex'),'LISTA')
  RETURNING id AS table_id,session_id \gset
 INSERT INTO sabora.catalog_items(draft) VALUES ('{}'::jsonb)
  RETURNING id AS item_id \gset

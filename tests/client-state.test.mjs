@@ -4,13 +4,20 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const ts=require('../apps/client/node_modules/typescript');
+const catalogSource=readFileSync(new URL('../apps/client/src/catalog.ts',import.meta.url),'utf8');
+const catalogJavascript=ts.transpileModule(catalogSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const catalogModule={exports:{}};
+new Function('module','exports','require',catalogJavascript)(catalogModule,catalogModule.exports,require);
 const source=readFileSync(new URL('../apps/client/src/client-state.ts',import.meta.url),'utf8');
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
-new Function('module','exports','require',javascript)(module,module.exports,require);
-const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
+const localRequire=value=>value==='./catalog'?catalogModule.exports:require(value);
+new Function('module','exports','require',javascript)(module,module.exports,localRequire);
+const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,configureBasketLine,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
+const selection=()=>({options:{},extras:[]});
+const line=(overrides={})=>({itemId:id,name:item.name,priceCents:1290,quantity:1,selection:selection(),...overrides});
 const storage=(initial={})=>{
  const values=new Map(Object.entries(initial));
  return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
@@ -37,8 +44,8 @@ test('malformed local preferences and selections fail closed',()=>{
 test('basket quantity changes are immutable, bounded and reject sold-out additions',()=>{
  const one=changeBasket([],item,1);
  const two=changeBasket(one,item,1);
- assert.deepEqual(one,[{itemId:id,name:item.name,priceCents:1290,quantity:1}]);
- assert.deepEqual(two,[{itemId:id,name:item.name,priceCents:1290,quantity:2}]);
+ assert.deepEqual(one,[line()]);
+ assert.deepEqual(two,[line({quantity:2})]);
  assert.deepEqual(changeBasket(two,item,-1),one);
  assert.deepEqual(changeBasket(one,item,-1),[]);
  assert.equal(changeBasket([], {...item,available:false},1).length,0);
@@ -48,16 +55,16 @@ test('basket quantity changes are immutable, bounded and reject sold-out additio
 
 test('basket persistence keeps a display snapshot and catalog reconciliation refreshes it',()=>{
  const target=storage();
- const stale=[{itemId:id,name:'Nombre anterior',priceCents:100,quantity:2}];
+ const stale=[line({name:'Nombre anterior',priceCents:100,quantity:2})];
  assert.equal(saveBasket(target,stale),true);
  assert.deepEqual(loadBasket(target),stale);
- assert.deepEqual(reconcileBasket(stale,[item]),[{itemId:id,name:item.name,priceCents:100,quantity:2}]);
+ assert.deepEqual(reconcileBasket(stale,[item]),[line({name:item.name,priceCents:100,quantity:2})]);
  assert.deepEqual(reconcileBasket(stale,[]),stale);
 });
 
 test('selection never persists duplicate, forged or oversized lines',()=>{
  const target=storage();
- const one={itemId:id,name:item.name,priceCents:1290,quantity:1};
+ const one=line();
  const upper={...one,itemId:id.toUpperCase()};
  for(const invalid of [
   [one,upper],
@@ -74,7 +81,7 @@ test('selection never persists duplicate, forged or oversized lines',()=>{
 test('selection updates enforce maximum distinct dishes and case-insensitive IDs',()=>{
  const lines=Array.from({length:100},(_,index)=>({
   itemId:`11111111-1111-4111-8111-${String(index).padStart(12,'0')}`,
-  name:'Plato',priceCents:100,quantity:1,
+  name:'Plato',priceCents:100,quantity:1,selection:selection(),
  }));
  const extra={...item,id:'22222222-2222-4222-8222-222222222222'};
  assert.equal(changeBasket(lines,extra,1),lines);
@@ -88,18 +95,18 @@ test('selection updates enforce maximum distinct dishes and case-insensitive IDs
 });
 
 test('catalog reconciliation refreshes IDs regardless of UUID casing',()=>{
- const snapshot=[{itemId:id.toUpperCase(),name:'Antiguo',priceCents:1,quantity:2}];
+ const snapshot=[line({itemId:id.toUpperCase(),name:'Antiguo',priceCents:1,quantity:2})];
  assert.deepEqual(reconcileBasket(snapshot,[item]),[
-  {itemId:id.toUpperCase(),name:item.name,priceCents:1,quantity:2},
+  line({itemId:id.toUpperCase(),name:item.name,priceCents:1,quantity:2}),
  ]);
 });
 
 test('malformed stored selections and invalid write inputs fail closed without exceptions',()=>{
  const target=storage();
  for(const bad of [
-  [{itemId:null,name:'Plato',priceCents:100,quantity:1}],
-  [{itemId:123,name:'Plato',priceCents:100,quantity:1}],
-  [{itemId:id,name:'Plato',priceCents:100,quantity:1}, {itemId:id.toUpperCase(),name:'Otro',priceCents:100,quantity:1}],
+  [{...line(),itemId:null}],
+  [{...line(),itemId:123}],
+  [line(), line({itemId:id.toUpperCase(),name:'Otro'})],
  ]){
   target.values.set('sabora.client.selection.v1',JSON.stringify(bad));
   assert.deepEqual(loadBasket(target),[]);
@@ -126,8 +133,8 @@ test('favorites persist as a case-insensitive UUID set and reject non-string IDs
 test('basket incidences distinguish sold-out and unpublished without deleting selections',()=>{
  const other='22222222-2222-4222-8222-222222222222';
  const lines=[
-  {itemId:id,name:'Original',priceCents:1290,quantity:2},
-  {itemId:other,name:'Retirado',priceCents:400,quantity:1},
+  line({name:'Original',quantity:2}),
+  line({itemId:other,name:'Retirado',priceCents:400}),
  ];
  const original=JSON.stringify(lines);
  const issues=basketIssues(lines,[{...item,available:false}]);
@@ -143,7 +150,7 @@ test('basket incidences distinguish sold-out and unpublished without deleting se
 });
 
 test('catalog price change remains pending until explicit acceptance, including quantity edits',()=>{
- const old=[{itemId:id.toUpperCase(),name:'Original',priceCents:100,quantity:2}];
+ const old=[line({itemId:id.toUpperCase(),name:'Original',priceCents:100,quantity:2})];
  const updated=reconcileBasket(old,[item]);
  assert.equal(updated[0].priceCents,100);
  assert.deepEqual(basketIssues(updated,[item]),[{itemId:id.toUpperCase(),reason:'price_changed'}]);
@@ -162,9 +169,9 @@ test('basket review remains blocked until all distinct price and availability in
  const second='22222222-2222-4222-8222-222222222222';
  const third='33333333-3333-4333-8333-333333333333';
  const lines=[
-  {itemId:id,name:'Precio anterior',priceCents:100,quantity:2},
-  {itemId:second,name:'Agotado',priceCents:500,quantity:1},
-  {itemId:third,name:'Retirado',priceCents:300,quantity:1},
+  line({name:'Precio anterior',priceCents:100,quantity:2}),
+  line({itemId:second,name:'Agotado',priceCents:500}),
+  line({itemId:third,name:'Retirado',priceCents:300}),
  ];
  const published=[item,{...item,id:second,priceCents:500,available:false}];
  assert.deepEqual(basketIssues(lines,published),[
@@ -182,13 +189,13 @@ test('basket review remains blocked until all distinct price and availability in
  assert.deepEqual(basketIssues(reviewed,published),[]);
  assert.equal(basketTotal(reviewed),2580);
  assert.equal(basketQuantity(reviewed),2);
- assert.deepEqual(lines[0],{itemId:id,name:'Precio anterior',priceCents:100,quantity:2});
+ assert.deepEqual(lines[0],line({name:'Precio anterior',priceCents:100,quantity:2}));
 });
 
 test('device sync uses only local selection and preferences keys and rejects malformed mutations',()=>{
  assert.equal(CLIENT_BASKET_STORAGE_KEY,'sabora.client.selection.v1');
  assert.equal(CLIENT_PREFERENCES_STORAGE_KEY,'sabora.client.preferences.v2');
- const existing=[{itemId:id,name:'Arroz',priceCents:100,quantity:1}];
+ const existing=[line({name:'Arroz',priceCents:100})];
  assert.equal(changeBasket(existing,{...item,id:null},1),existing);
  assert.equal(changeBasket(existing,{...item,id:123},1),existing);
  assert.equal(saveBasket(storage(),[{...existing[0],itemId:null}]),false);

@@ -90,8 +90,8 @@ async function fixture(suffix) {
   const tableId = `f2000000-0000-4000-8000-${padded}`;
   const orderId = `f3000000-0000-4000-8000-${padded}`;
   await admin.query(`INSERT INTO sabora.dining_tables
-    (id, number, capacity, qr_token_hash, ordering_state)
-    VALUES ($1, $2, 4, decode(repeat('f2',32),'hex'), 'open')`,
+    (id, number, capacity, qr_token_hash, ordering_state, readiness_state)
+    VALUES ($1, $2, 4, decode(repeat('f2',32),'hex'), 'open', 'LISTA')`,
   [tableId, 960000 + Number(suffix)]);
   const session = await admin.query(
     'SELECT session_id FROM sabora.dining_tables WHERE id=$1', [tableId]);

@@ -8,8 +8,8 @@ DECLARE t uuid:='00000000-0000-4000-8000-000000008301';
  paused_session uuid;
  next_session uuid;
 BEGIN
- INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash)
- VALUES(t,8301,4,decode(repeat('77',32),'hex'));
+ INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,readiness_state)
+ VALUES(t,8301,4,decode(repeat('77',32),'hex'),'LISTA');
  INSERT INTO sabora.customer_profiles(id,public_id,alias)
  VALUES(c,'SB-HJKLMNPQRSTV','Occupancy fixture');
  UPDATE sabora.dining_tables SET ordering_state='open' WHERE id=t;

@@ -11,6 +11,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLES = new Set(['admin', 'waiter', 'kitchen']);
 const STATUSES = new Set(ORDER_LINE_STATUSES);
 
+function validCategory(value) {
+  return typeof value === 'string' && value === value.trim() && value.length > 0 &&
+    [...value].length <= 80 && value !== 'Todos' &&
+    !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
 function plain(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -70,7 +76,7 @@ export function normalizeOrderBoard(value) {
         item.customerLabel.length > 160 || !iso(item.confirmedAt) ||
         !['first', 'grouped', 'late'].includes(item.grouping) ||
         !Number.isSafeInteger(item.lineNumber) || item.lineNumber < 1 ||
-        !['drink', 'starter', 'main', 'dessert'].includes(item.category) ||
+        !validCategory(item.category) ||
         typeof item.name !== 'string' || item.name.trim().length === 0 || item.name.length > 160 ||
         !Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 20 ||
         !STATUSES.has(item.status)) throw Error('invalid_order_board');

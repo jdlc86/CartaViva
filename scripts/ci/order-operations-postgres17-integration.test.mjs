@@ -55,8 +55,8 @@ async function fixture({suffix, actorAlias = 'Mesa operativa'}) {
   const orderId = `d3000000-0000-4000-8000-${suffix.padStart(12, '0')}`;
   const tableNumber = 940000 + Number(suffix);
   await pool.query(`INSERT INTO sabora.dining_tables
-    (id, number, capacity, qr_token_hash, ordering_state)
-    VALUES ($1, $2, 4, decode(repeat('d2',32),'hex'), 'open')`, [tableId, tableNumber]);
+    (id, number, capacity, qr_token_hash, ordering_state, readiness_state)
+    VALUES ($1, $2, 4, decode(repeat('d2',32),'hex'), 'open', 'LISTA')`, [tableId, tableNumber]);
   const session = await pool.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1', [tableId]);
   await pool.query(`INSERT INTO sabora.orders
     (id, table_id, session_id, company, employee_number,

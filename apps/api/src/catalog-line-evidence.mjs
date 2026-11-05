@@ -21,7 +21,9 @@ export function buildCatalogLineEvidence({itemId,publishedRevision,snapshot,sele
  if(!uuid(itemId)||!revision(publishedRevision)||!plain(snapshot)||!plain(selection)||
     typeof snapshot.name!=='string'||!snapshot.name.trim()||
     [...snapshot.name].length>160||/[\u0000-\u001f\u007f]/u.test(snapshot.name)||
-    !['Bebidas','Primeros','Segundos','Postres'].includes(snapshot.category)||
+    typeof snapshot.category!=='string'||!snapshot.category.trim()||
+    [...snapshot.category].length>80||snapshot.category.trim()==='Todos'||
+    /[\u0000-\u001f\u007f]/u.test(snapshot.category)||
     !Array.isArray(snapshot.allergens)||snapshot.allergens.length>32||
     !snapshot.allergens.every(a=>typeof a==='string'&&!!a.trim()&&[...a].length<=100&&
      !/[\u0000-\u001f\u007f]/u.test(a)))
@@ -36,7 +38,7 @@ export function buildCatalogLineEvidence({itemId,publishedRevision,snapshot,sele
   itemId:itemId.toLowerCase(),
   publishedRevision,
   itemName:snapshot.name.trim(),
-  category:snapshot.category,
+  category:snapshot.category.trim(),
   quantity,
   basePriceCents:quote.basePriceCents,
   selected:quote.selected.map(entry=>({

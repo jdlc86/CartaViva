@@ -286,7 +286,9 @@ test('SSE reconnect resumes after last accepted id and ignores replayed events',
     reconnectDelayMs: 100,
     fetchImpl: async (path, options) => {
       assert.equal(path, '/api/v1/operations/events');
-      cursors.push(options.headers['Last-Event-ID'] ?? null);
+      // The authenticated boundary canonicalizes caller headers into the
+      // platform Headers type before adding Authorization.
+      cursors.push(new Headers(options.headers).get('Last-Event-ID'));
       connections++;
       const frame = (id) => 'event: sabora.order.ready\nid: ' + id +
         '\ndata: {"payload":{"lineId":"test"},"createdAt":"2026-10-30T00:00:00.000Z"}\n\n';

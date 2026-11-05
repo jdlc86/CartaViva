@@ -64,7 +64,7 @@ test('candidate confirms with one transaction and kitchen projection plus ledger
  const ledger=f.statements.find(s=>s.sql.includes('INSERT INTO sabora.catalog_confirmation_attempts'));
  assert.ok(order);
  assert.ok(ledger);
- assert.deepEqual(JSON.parse(order.args[7]),[{category:'starter',name:'Plato CI',quantity:1}]);
+ assert.deepEqual(JSON.parse(order.args[7]),[{category:'Primeros',name:'Plato CI',quantity:1}]);
  assert.equal(order.args[3],'Cliente');
  assert.equal(order.args[4],'SB-23456789ABCD');
  assert.equal(ledger.args[10],orderId);

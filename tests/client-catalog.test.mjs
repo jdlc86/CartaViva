@@ -10,7 +10,7 @@ const source=readFileSync(new URL('../apps/client/src/catalog.ts',import.meta.ur
 const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const module={exports:{}};
 new Function('module','exports',javascript)(module,module.exports);
-const {parsePublishedCatalog,filterCatalog,formatPrice,categoriesFor,searchPublishedCatalog}=module.exports;
+const {parsePublishedCatalog,filterCatalog,formatPrice,categoriesFor,searchPublishedCatalog,catalogUnitPrice}=module.exports;
 const valid={id:'00000000-0000-4000-8000-000000000001',name:'Agua',category:'Bebidas',priceCents:150,available:true,allergens:[]};
 test('catalog accepts valid published presentation and filters categories',()=>{
  const items=parsePublishedCatalog([valid,{...valid,id:'00000000-0000-4000-8000-000000000002',category:'Postres',available:false}]);
@@ -54,6 +54,30 @@ test('published catalog input is not mutated',()=>{
  const items=parsePublishedCatalog(Object.freeze([source]));
  assert.deepEqual(items[0].allergens,['gluten']);
  assert.notEqual(items[0].allergens,source.allergens);
+});
+
+test('catalog validates public allergen declaration and never accepts verification identity',()=>{
+ const declaration={status:'VERIFICADA',taxonomyVersion:1,ids:[1,7,14]};
+ const [parsed]=parsePublishedCatalog([{...valid,allergenDeclaration:declaration}]);
+ assert.deepEqual(parsed.allergenDeclaration,declaration);
+ assert.throws(()=>parsePublishedCatalog([{...valid,allergenDeclaration:{...declaration,verifiedBy:valid.id}}]),/invalid_catalog/);
+ assert.throws(()=>parsePublishedCatalog([{...valid,allergenDeclaration:{...declaration,ids:[1,1]}}]),/invalid_catalog/);
+ assert.throws(()=>parsePublishedCatalog([{...valid,allergenDeclaration:{...declaration,status:'PENDIENTE'}}]),/invalid_catalog/);
+});
+
+test('configured price uses available modifiers and deterministic integer discounts',()=>{
+ const [configured]=parsePublishedCatalog([{...valid,priceCents:1000,
+  options:[{id:'size',name:'Tamaño',required:true,maxSelections:1,values:[
+   {id:'large',name:'Grande',priceCents:250,available:true,allergens:[]},
+   {id:'hidden',name:'No disponible',priceCents:1,available:false,allergens:[]},
+  ]}],extras:[{id:'bread',name:'Pan',priceCents:100,available:true,allergens:['Gluten']}],
+  discount:{type:'percent',basisPoints:2000}}]);
+ assert.equal(catalogUnitPrice(configured,{options:{size:['large']},extras:['bread']}),1080);
+ assert.throws(()=>catalogUnitPrice(configured,{options:{size:[]},extras:[]}),/invalid_catalog_selection/);
+ assert.throws(()=>catalogUnitPrice(configured,{options:{size:['hidden']},extras:[]}),/invalid_catalog_selection/);
+ assert.throws(()=>catalogUnitPrice(configured,{options:{size:['large']},extras:['bread','bread']}),/invalid_catalog_selection/);
+ const [free]=parsePublishedCatalog([{...valid,priceCents:100,discount:{type:'fixed',amountCents:500}}]);
+ assert.equal(catalogUnitPrice(free,{options:{},extras:[]}),0);
 });
 
 test('searchable menu combines category, accents, allergens and availability',()=>{

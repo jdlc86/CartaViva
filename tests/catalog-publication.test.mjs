@@ -20,17 +20,25 @@ test('duplicate IDs and malformed public rows fail closed',()=>{
  assert.throws(()=>projectPublishedCatalog([row].concat(Array(500).fill({...row,id:'22222222-2222-4222-8222-222222222222'}))),/invalid_catalog_rows/);
 });
 
-test('public catalog fails closed instead of dropping unrepresented economic rules',()=>{
+test('public catalog projects represented options, extras and discounts without draft fields',()=>{
  const row={id,published_snapshot:snapshot,withdrawn_at:null,sold_out:false};
- for(const extra of [
+ const option={id:'size',name:'Tamaño',required:true,maxSelections:1,values:[
+  {id:'large',name:'Grande',priceCents:100,available:true,allergens:[]}
+ ]};
+ const extra={id:'cheese',name:'Queso',priceCents:100,available:true,allergens:['Leche']};
+ const projected=projectPublishedCatalog([{...row,published_snapshot:{...snapshot,
+  options:[option],extras:[extra],discount:{type:'percent',basisPoints:1000}}}])[0];
+ assert.deepEqual(projected.options,[option]);
+ assert.deepEqual(projected.extras,[extra]);
+ assert.deepEqual(projected.discount,{type:'percent',basisPoints:1000});
+ for(const invalid of [
   {options:[{name:'Tamaño',values:['Grande']}]},
   {extras:[{name:'Queso',priceCents:100}]},
-  {discount:{type:'percent',basisPoints:1000}},
   {options:null},
   {extras:null},
   {discount:0}
  ]){
-  assert.throws(()=>projectPublishedCatalog([{...row,published_snapshot:{...snapshot,...extra}}]),/invalid_catalog_row/);
+  assert.throws(()=>projectPublishedCatalog([{...row,published_snapshot:{...snapshot,...invalid}}]),/invalid_catalog_row/);
  }
  assert.deepEqual(projectPublishedCatalog([{...row,published_snapshot:{...snapshot,options:[],extras:[],discount:null}}])[0].priceCents,800);
 });

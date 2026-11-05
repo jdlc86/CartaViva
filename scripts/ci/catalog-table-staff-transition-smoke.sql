@@ -9,8 +9,8 @@ DECLARE
  i uuid:='00000000-0000-4000-8000-000000008404';
  old_session uuid; new_session uuid;
 BEGIN
- INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash)
- VALUES(t,8401,4,decode(repeat('88',32),'hex'));
+ INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,readiness_state)
+ VALUES(t,8401,4,decode(repeat('88',32),'hex'),'LISTA');
  INSERT INTO sabora.staff_members(user_id,role,state)
  VALUES(w,'waiter','active'),(k,'kitchen','active'),(i,'waiter','invited');
  BEGIN

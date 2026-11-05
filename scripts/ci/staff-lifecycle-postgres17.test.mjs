@@ -525,8 +525,8 @@ test('PG17 active and suspended staff lose membership access immediately after r
   const tableId = uuid('c', sequence);
   const orderId = uuid('d', sequence);
   await admin.query(`INSERT INTO sabora.dining_tables
-    (id,number,capacity,qr_token_hash,ordering_state)
-    VALUES ($1,$2,4,decode(repeat('ab',32),'hex'),'open')`,
+    (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+    VALUES ($1,$2,4,decode(repeat('ab',32),'hex'),'open','LISTA')`,
   [tableId, 970000 + sequence]);
   const session = await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1', [tableId]);
   await admin.query(`INSERT INTO sabora.orders(

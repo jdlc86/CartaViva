@@ -37,8 +37,8 @@ async function seedZeroAccount(index,{roundState='kitchen_acknowledged',
  await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
   VALUES($1,$2,$3)`,[customer,publicId,`Cuenta gratuita ${index}`]);
  await admin.query(`INSERT INTO sabora.dining_tables(
-  id,number,capacity,qr_token_hash,session_id,ordering_state)
-  VALUES($1,$2,4,$3,$4,'open')`,[table,990000+index,qrHash,session]);
+  id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+  VALUES($1,$2,4,$3,$4,'open','LISTA')`,[table,990000+index,qrHash,session]);
  await admin.query(`INSERT INTO sabora.customer_table_visits(
   table_id,session_id,customer_id,visit_key,actor_id,
   authorized_qr_version,expires_at)

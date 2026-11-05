@@ -6,11 +6,11 @@ DECLARE
  item1 uuid; item2 uuid; q1 uuid; o1 uuid; o2 uuid; o3 uuid;
  v_constraint text;
 BEGIN
- INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash)
- VALUES(901001,4,decode(repeat('11',32),'hex'))
+ INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,readiness_state)
+ VALUES(901001,4,decode(repeat('11',32),'hex'),'LISTA')
  RETURNING id,session_id INTO t1,s1;
- INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash)
- VALUES(901002,4,decode(repeat('22',32),'hex'))
+ INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,readiness_state)
+ VALUES(901002,4,decode(repeat('22',32),'hex'),'LISTA')
  RETURNING id,session_id INTO t2,s2;
  INSERT INTO sabora.catalog_items(draft) VALUES('{}'::jsonb) RETURNING id INTO item1;
  INSERT INTO sabora.catalog_items(draft) VALUES('{}'::jsonb) RETURNING id INTO item2;

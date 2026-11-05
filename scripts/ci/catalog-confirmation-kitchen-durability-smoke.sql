@@ -2,8 +2,8 @@
 -- is durable within the transaction, and that a failed confirmation leaves
 -- neither an order nor an orphan kitchen line.
 BEGIN;
-INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state)
- VALUES (930292,4,decode(repeat('a2',32),'hex'),'open')
+INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,readiness_state)
+ VALUES (930292,4,decode(repeat('a2',32),'hex'),'open','LISTA')
  RETURNING id AS table_id,session_id \gset
 INSERT INTO sabora.catalog_items(draft) VALUES ('{}'::jsonb)
  RETURNING id AS item_id \gset

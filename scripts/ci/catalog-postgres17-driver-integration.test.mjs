@@ -52,8 +52,8 @@ test('actual PG17 transaction rollback is visible across pool connections',async
  assert.equal(before.rows[0].n,0);
  await assert.rejects(withTransaction(async query=>{
   await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930271,4,decode(repeat('71',32),'hex'),'open')`,[id]);
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930271,4,decode(repeat('71',32),'hex'),'open','LISTA')`,[id]);
   throw Error('rollback_probe');
  }),/rollback_probe/);
  const after=await pool.query('SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE id=$1',[id]);
@@ -91,8 +91,8 @@ test('PG17 catalog writer transaction persists first/grouped/late kitchen projec
  try{
   await client.query('BEGIN');
   const inserted=await client.query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds)
-   VALUES ($1,930272,4,decode(repeat('72',32),'hex'),'open',60)
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state,grouping_window_seconds)
+   VALUES ($1,930272,4,decode(repeat('72',32),'hex'),'open','LISTA',60)
    RETURNING session_id`,[id]);
   const session=inserted.rows[0].session_id;
   for(const [index,orderId] of orderIds.entries()){
@@ -180,8 +180,8 @@ test('canonical Node writer persists order, ledger and kitchen in one PG17 trans
   await client.query('BEGIN');
   const query=(sql,args)=>client.query(sql,args);
   const table=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930281,4,decode(repeat('81',32),'hex'),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930281,4,decode(repeat('81',32),'hex'),'open','LISTA')
    RETURNING session_id`,[tableId]);
   await query(`INSERT INTO sabora.catalog_items(id,draft)
    VALUES ($1,'{}'::jsonb)`,[itemId]);
@@ -378,8 +378,8 @@ test('real PG17 coordinator rejects QR mismatch even for an existing open table'
  try{
   await client.query('BEGIN');
   await client.query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930294,4,sha256(convert_to($2,'UTF8')),'open')`,
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930294,4,sha256(convert_to($2,'UTF8')),'open','LISTA')`,
    [tableId,correctQr]);
   // The candidate uses a different connection and cannot see uncommitted
   // fixtures. Assert authorization through the real repository on this client
@@ -421,8 +421,8 @@ test('real PG17 coordinator confirms authorized visit and replays without duplic
  const basketId='basket_real_authorized';
  const inserted=await withTransaction(async query=>{
   const table=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930301,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930301,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCD','Cliente autorizado')`,[customerId]);
@@ -630,8 +630,8 @@ test('PG17 rejects revoked customer bearer while QR and visit remain active',asy
   await client.query('BEGIN');
   const query=(sql,params)=>client.query(sql,params);
   const table=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930311,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930311,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCE','Cliente bearer')`,[customerId]);
@@ -684,8 +684,8 @@ test('PG17 independently rejects expired visit and expired customer session',asy
   await client.query('BEGIN');
   const query=(sql,params)=>client.query(sql,params);
   const table=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930312,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930312,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCF','Cliente expiración')`,[customerId]);
@@ -752,8 +752,8 @@ test('PG17 serializes table pause ahead of concurrent visit authorization',async
  const basketId='basket_pause_race';
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930313,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930313,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCG','Cliente concurrencia')`,[customerId]);
@@ -807,8 +807,8 @@ test('PG17 serializes staff pause behind an already authorized visit',async()=>{
  const basketId='basket_inverse_race';
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930314,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930314,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCH','Cliente carrera inversa')`,[customerId]);
@@ -863,8 +863,8 @@ test('PG17 serializes table closure after an authorized visit and revokes its se
  const basketId='basket_close_race';
  const initial=await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930315,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930315,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCJ','Cliente cierre concurrente')`,[customerId]);
@@ -926,8 +926,8 @@ test('PG17 serializes customer bearer revocation against concurrent visit author
  const basketId='basket_revoke_race';
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930316,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930316,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCK','Cliente revocación concurrente')`,[customerId]);
@@ -984,8 +984,8 @@ test('PG17 QR rotation waits for active authorization and invalidates old visit'
  const basketId='basket_rotate_race';
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930317,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930317,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCM','Cliente rotación concurrente')`,[customerId]);
@@ -1039,8 +1039,8 @@ test('PG17 rejects malformed visit grants at the database boundary',async()=>{
  const customerId='cafe0000-0000-4000-8000-0000000000f8';
  await withTransaction(async query=>{
   const table=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930318,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930318,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,'ci_constraints_qr_'.repeat(4)]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCN','Cliente restricciones SQL')`,[customerId]);
@@ -1084,8 +1084,8 @@ test('PG17 rejects revoked visits and preserves independent valid visits',async(
   actorId:'actor_selective_second',basketId:'basket_selective_second'};
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930319,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930319,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCP','Cliente revocación selectiva')`,[customerId]);
@@ -1131,8 +1131,8 @@ test('PG17 prevents stale visit authorization after table closure and reopening'
   qrToken,customerSessionToken:sessionToken};
  const oldSession=await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930320,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930320,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCR','Cliente cierre y reapertura')`,[customerId]);
@@ -1180,8 +1180,8 @@ test('PG17 rejects expired visit and expired bearer independently',async()=>{
   qrToken,customerSessionToken:sessionToken};
  await withTransaction(async query=>{
   const t=await query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,ordering_state)
-   VALUES ($1,930321,4,sha256(convert_to($2,'UTF8')),'open')
+   (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+   VALUES ($1,930321,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
    RETURNING session_id,qr_version`,[tableId,qrToken]);
   await query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
    VALUES ($1,'SB-23456789ABCS','Cliente caducidades separadas')`,[customerId]);
@@ -1222,8 +1222,8 @@ test('PG17 administrative table projection returns bounded non-secret rows',asyn
  const read=createAdminReadProjectionCandidate({query:(sql,params)=>pool.query(sql,params)});
  const id='cafe0000-0000-4000-8000-0000000000af';
  await pool.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state)
-  VALUES ($1,930399,4,decode(repeat('af',32),'hex'),'closed')`,[id]);
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+  VALUES ($1,930399,4,decode(repeat('af',32),'hex'),'closed','LISTA')`,[id]);
  const result=await read.listTables({role:'admin',afterNumber:930398,limit:1});
  assert.equal(result.version,1);
  assert.equal(result.items.length,1);
