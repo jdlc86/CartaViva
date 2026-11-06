@@ -69,6 +69,9 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   const [editCapacity,setEditCapacity]=useState('');
   const [editDescription,setEditDescription]=useState('');
   const [actionPending,setActionPending]=useState(false);
+  // Unknown transport outcomes and stale post-mutation reads must never
+  // authorize a second table action based on an old projection.
+  const [mutationRequiresRefresh,setMutationRequiresRefresh]=useState(false);
   const [actionMessage,setActionMessage]=useState<string|null>(null);
   const [qrPayload,setQrPayload]=useState<string|null>(null);
   const readControllerRef = useRef<LatestReadTaskController | null>(null);
@@ -105,6 +108,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         setTables(page.items);
         setNextAfterNumber(page.nextAfterNumber);
         setSelectedId(page.items[0]?.id ?? null);
+        setMutationRequiresRefresh(false);
         setPhase('ready');
       })
       .catch(() => {
@@ -194,6 +198,9 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
       setTables(page.items);
       setFocusedTable(verified);
       setNextAfterNumber(page.nextAfterNumber);
+      setMutationRequiresRefresh(false);
+      if(mutationRequiresRefresh)
+       setActionMessage('Lectura verificada. Comprueba el estado actual antes de otra operación.');
       setSelectedId((current) => {
         const requested=focus?.id??current;
         return page.items.some(table=>table.id===requested)||verified?.id===requested
@@ -211,7 +218,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   };
 
   const manage=async(operation:'create'|'update'|'readiness'|'qr_rotate'|'qr_revoke',payload:Record<string,unknown>)=>{
-   if(!gateway?.manageTable||actionPending||refreshing||phase!=='ready')return;
+   if(!gateway?.manageTable||actionPending||refreshing||mutationRequiresRefresh||phase!=='ready')return;
    setActionPending(true);setActionMessage(null);
    let committed=false;
    try{
@@ -224,6 +231,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     if(typeof nextId!=='string'||typeof nextNumber!=='number'||
       !Number.isSafeInteger(nextNumber)||nextNumber<1)throw Error('invalid_table_management_result');
     if(!await refreshTables({id:nextId,number:nextNumber})){
+      setMutationRequiresRefresh(true);
       setQrPayload(null);
       setActionMessage('Cambio confirmado en el servidor, pero no se pudo verificar la ficha actualizada. Actualiza la lista antes de otra operación; si era un QR nuevo, deberás rotarlo para obtener una nueva copia imprimible.');
       return;
@@ -234,21 +242,35 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
      operation==='qr_rotate'?'QR rotado. La credencial anterior ya no autoriza acciones nuevas.':
      operation==='qr_revoke'?'QR revocado sin alterar pedidos ni cuentas históricas.':'Cambio confirmado y auditado.');
     if(operation==='create'){setCreateOpen(false);setCreateNumber('');setCreateDescription('');}
-   }catch{setQrPayload(null);setActionMessage(committed?
-     'La operación fue aceptada, pero la respuesta no pudo verificarse. Consulta el estado real antes de reintentar.':
-     'No se aplicó el cambio. El estado persistido se conserva.');}
+    }catch{
+    setMutationRequiresRefresh(true);
+    setQrPayload(null);
+    setActionMessage(committed?
+      'La operación fue aceptada, pero la respuesta no pudo verificarse. Actualiza la lectura antes de otra operación.':
+      'No se pudo confirmar la operación. Actualiza la lectura antes de reintentar.');
+   }
    finally{setActionPending(false);}
   };
   const transitionOccupancy=async(target:TableOrderingState)=>{
-   if(!gateway?.transitionOccupancy||!selectedTable||actionPending)return;
+   if(!gateway?.transitionOccupancy||!selectedTable||actionPending||refreshing||mutationRequiresRefresh)return;
    setActionPending(true);setActionMessage(null);setQrPayload(null);
-   try{await gateway.transitionOccupancy({requestId:crypto.randomUUID(),tableId:selectedTable.id,
-    target,pauseUntil:null});
-    if(!await refreshTables({id:selectedTable.id,number:selectedTable.number}))
-      throw Error('table_occupancy_refresh_failed');
-    setActionMessage('Ocupación actualizada con la política económica vigente.');}
-   catch{setActionMessage('No se cambió la ocupación. Revisa la transición y las cuentas pendientes.');}
-   finally{setActionPending(false);}
+   let committed=false;
+   try{
+    await gateway.transitionOccupancy({requestId:crypto.randomUUID(),tableId:selectedTable.id,
+     target,pauseUntil:null});
+    committed=true;
+    if(!await refreshTables({id:selectedTable.id,number:selectedTable.number})){
+      setMutationRequiresRefresh(true);
+      setActionMessage('El servidor confirmó el cambio de ocupación, pero no se pudo verificar la ficha. Actualiza la lectura antes de otra operación.');
+      return;
+    }
+    setActionMessage('Ocupación actualizada con la política económica vigente.');
+   }catch{
+    setMutationRequiresRefresh(true);
+    setActionMessage(committed?
+     'El servidor confirmó la ocupación, pero la lectura no pudo verificarse. Actualiza la lectura.':
+     'No se pudo confirmar la ocupación. Actualiza la lectura y comprueba su estado antes de reintentar.');
+   }finally{setActionPending(false);}
   };
 
   return (
@@ -259,7 +281,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         title="Control de mesas"
         description="Administra preparación y ocupación como ejes separados, con credenciales QR revocables y auditoría."
         actions={canManage?<button className="button button--primary" type="button"
-          disabled={phase!=='ready'||refreshing||actionPending}
+          disabled={phase!=='ready'||refreshing||actionPending||mutationRequiresRefresh}
           onClick={()=>setCreateOpen(value=>!value)}>
           <Icon name="plus" size={18}/> {createOpen?'Cancelar alta':'Crear mesa'}</button>:
           <LockedButton icon="plus">Crear mesa</LockedButton>}
@@ -278,7 +300,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         <label className="management-form-grid__wide">Descripción<input maxLength={240} value={createDescription}
          onChange={event=>setCreateDescription(event.target.value)}/></label>
        </div>
-       <button className="button button--primary" disabled={actionPending} type="submit">
+       <button className="button button--primary" disabled={actionPending||mutationRequiresRefresh} type="submit">
         {actionPending?'Creando…':'Crear y emitir QR'}</button>
       </form>:null}
 
@@ -434,7 +456,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             <label className="management-form-grid__wide">Descripción<input maxLength={240} value={editDescription}
              onChange={event=>setEditDescription(event.target.value)}/></label>
            </div>
-           <button className="button" type="submit" disabled={actionPending}>Guardar ficha</button>
+           <button className="button" type="submit" disabled={actionPending||mutationRequiresRefresh}>Guardar ficha</button>
           </form>:null}
 
           <div className="detail-block">
@@ -443,7 +465,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             </div></div>
             <div className="state-control" aria-label="Cambiar preparación de la mesa">
              {readinessStates.map(state=><button className={selectedTable?.readinessState===state.id?'state-control__current':undefined}
-              type="button" disabled={!canManage||!selectedTable||actionPending||selectedTable.readinessState===state.id}
+              type="button" disabled={!canManage||!selectedTable||actionPending||mutationRequiresRefresh||selectedTable.readinessState===state.id}
               onClick={()=>selectedTable&&void manage('readiness',{tableId:selectedTable.id,
                expectedRevision:selectedTable.revision,state:state.id})} key={state.id}>{state.label}</button>)}
             </div>
@@ -461,7 +483,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
                 <button
                   className={selectedTable?.orderingState === state.id ? 'state-control__current' : undefined}
                   type="button"
-                  disabled={!canManage||!selectedTable||actionPending||selectedTable.orderingState===state.id||
+                  disabled={!canManage||!selectedTable||actionPending||mutationRequiresRefresh||selectedTable.orderingState===state.id||
                    (state.id==='paused'&&selectedTable.orderingState==='closed')}
                   onClick={()=>void transitionOccupancy(state.id)}
                   key={state.id}
@@ -492,11 +514,11 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             </div>
             <div className="button-row">
               {canManage&&selectedTable?<>
-               <button className="button" type="button" disabled={actionPending} onClick={()=>void manage('qr_rotate',{
+               <button className="button" type="button" disabled={actionPending||mutationRequiresRefresh} onClick={()=>void manage('qr_rotate',{
                 tableId:selectedTable.id,expectedRevision:selectedTable.revision})}>{selectedTable.qrEnabled?'Rotar QR':'Emitir QR'}</button>
-               <button className="button" type="button" disabled={actionPending||!selectedTable.qrEnabled}
+               <button className="button" type="button" disabled={actionPending||mutationRequiresRefresh||!selectedTable.qrEnabled}
                 onClick={()=>void manage('qr_revoke',{tableId:selectedTable.id,expectedRevision:selectedTable.revision})}>Revocar QR</button>
-               <button className="button button--primary" type="button" disabled={!qrPayload}
+               <button className="button button--primary" type="button" disabled={!qrPayload||actionPending||mutationRequiresRefresh}
                 onClick={()=>window.print()}>Imprimir</button></>:<><LockedButton>Rotar QR</LockedButton><LockedButton>Revocar QR</LockedButton></>}
             </div>
           </div>
