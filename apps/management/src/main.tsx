@@ -18,6 +18,7 @@ import {SummaryView} from './views/SummaryView';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
+import {registerManagementServiceWorker} from './pwa';
 import './style.css';
 
 const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string; icon: IconName}> = [
@@ -91,7 +92,7 @@ export function ManagementApp({
     <div className="management-shell">
       <header className="management-header">
         <button className="brand-lockup brand-lockup--button" type="button" aria-label="Ir al resumen" onClick={() => selectArea('resumen')}>
-          <img src="/sabora-logo.svg" alt="Sabora by Allaiso"/>
+          <img src={`${import.meta.env.BASE_URL}sabora-logo.svg`} alt="Sabora by Allaiso"/>
           <span className="brand-lockup__copy"><span>Gestión</span><small>Un restaurante · Una instalación</small></span>
         </button>
         <div className="header-status">
@@ -242,3 +243,4 @@ if (typeof document !== 'undefined') {
   const element = document.getElementById('root');
   if (element) renderManagement(element);
 }
+registerManagementServiceWorker();

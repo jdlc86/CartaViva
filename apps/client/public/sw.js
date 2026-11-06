@@ -1,27 +1,69 @@
-const CACHE='sabora-client-shell-v1';
-const STATIC_SHELL=['/manifest.webmanifest','/brand/sabora-logo-outline-v3.svg','/icons/sabora-mark.svg'];
-async function cacheBuiltShell(){
+// Customer PWA: offline shell only. Never persist API responses, QR tokens,
+// staff/customer identities, mutable catalog, orders, account balances or SSE.
+const APP='client';
+const CACHE='sabora-client-shell-v2';
+const SCOPE=new URL(self.registration.scope);
+const ROOT=SCOPE.pathname;
+const OFFLINE=new URL('offline.html',SCOPE).href;
+const STATIC=["icons/sabora-mark.svg","manifest.webmanifest","brand/sabora-logo-outline-v3.svg","offline.html"];
+const OWN_CACHE=name=>name.startsWith('sabora-'+APP+'-shell-');
+const inScope=url=>url.origin===SCOPE.origin&&url.pathname.startsWith(ROOT);
+const isBundledAsset=url=>inScope(url)&&url.search===''&&
+ /^\/assets\/[A-Za-z0-9_.-]+$/.test(url.pathname.slice(ROOT.length-1));
+const staticPath=url=>inScope(url)&&url.search===''&&
+ STATIC.some(name=>url.pathname===ROOT+name);
+const publicAsset=(request,url)=>
+ request.method==='GET'&&url.search===''&&
+ !request.headers.has('authorization')&&
+ (isBundledAsset(url)||staticPath(url));
+
+self.addEventListener('install',event=>event.waitUntil((async()=>{
+ const response=await fetch(ROOT,{cache:'no-store',credentials:'omit'});
+ if(!response.ok||!(response.headers.get('content-type')||'').includes('text/html'))
+  throw Error('pwa_shell_unavailable');
+ // The bundle is public, but HTML/navigation is deliberately NOT cached:
+ // a personalized bootstrap must never be replayed to another user.
+ const html=await response.text();
+ const referenced=[...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+  .map(match=>new URL(match[1],SCOPE))
+  .filter(url=>isBundledAsset(url)).map(url=>url.href);
  const cache=await caches.open(CACHE);
- const documentResponse=await fetch('/',{cache:'no-store'});
- if(!documentResponse.ok)throw Error('shell_unavailable');
- const html=await documentResponse.clone().text();
- const builtAssets=[...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+)"/g)].map(match=>match[1]);
- await cache.put('/',documentResponse);
- await cache.addAll([...STATIC_SHELL,...new Set(builtAssets)]);
+ const immutable=[...new Set([...STATIC.map(name=>new URL(name,SCOPE).href),...referenced])];
+ await cache.addAll(immutable.map(url=>new Request(url,{credentials:'omit',cache:'reload'})));
  await self.skipWaiting();
-}
-self.addEventListener('install',event=>{event.waitUntil(cacheBuiltShell());});
-self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
+})()));
+
+self.addEventListener('activate',event=>event.waitUntil((async()=>{
+ const keys=await caches.keys();
+ await Promise.all(keys.filter(name=>OWN_CACHE(name)&&name!==CACHE)
+  .map(name=>caches.delete(name)));
+ await self.clients.claim();
+})()));
+
 self.addEventListener('fetch',event=>{
  const request=event.request;
  if(request.method!=='GET')return;
  const url=new URL(request.url);
- if(url.origin!==self.location.origin||url.pathname.startsWith('/api/'))return;
+ if(!inScope(url)||url.pathname.startsWith(ROOT+'api/')||
+    url.pathname.startsWith('/api/')||
+    url.pathname==='/gestion'||url.pathname.startsWith('/gestion/')||
+    request.headers.has('authorization'))return;
  if(request.mode==='navigate'){
-  event.respondWith(fetch(request).then(response=>{if(response.ok)caches.open(CACHE).then(cache=>cache.put('/',response.clone()));return response;}).catch(()=>caches.match('/')));
+  // No HTML cache, even for root, QR links or the employee workspace.
+  event.respondWith(fetch(request).catch(async()=>
+   (await caches.open(CACHE)).match(OFFLINE)||Response.error()));
   return;
  }
- if(['script','style','image','font','manifest'].includes(request.destination)){
-  event.respondWith(caches.match(request).then(cached=>cached||fetch(request).then(response=>{if(response.ok)caches.open(CACHE).then(cache=>cache.put(request,response.clone()));return response;})));
+ if(publicAsset(request,url)&&['script','style','image','font','manifest'].includes(request.destination)){
+  event.respondWith((async()=>{
+   const cache=await caches.open(CACHE);
+   const stored=await cache.match(request);
+   if(stored)return stored;
+   const response=await fetch(request);
+   if(response.ok&&response.type==='basic'&&
+      !(response.headers.get('cache-control')||'').match(/private|no-store/i))
+    await cache.put(request,response.clone());
+   return response;
+  })());
  }
 });
