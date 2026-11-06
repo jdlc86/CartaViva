@@ -7853,7 +7853,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const browserCustomerToken='Y'.repeat(43);
     await admin.query(
      "INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,$3)",
-     [browserCustomerId,'SB-QWERTY123456','Cliente E2E M3']);
+     [browserCustomerId,'SB-QWERTY234567','Cliente E2E M3']);
     await admin.query(
      "INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
      [browserCustomerId,hashCustomerSessionToken(browserCustomerToken)]);
