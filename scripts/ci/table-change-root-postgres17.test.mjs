@@ -7474,7 +7474,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    try{listed=await management.listTables({afterNumber:900,limit:20});}
    catch(error){throw m3Failures.at(-1)??error;}
    assert.equal(listed.version,2);
-   assert.equal(listed.items.find(row=>row.tableId===created.tableId)?.number,913);
+   assert.equal(listed.items.find(row=>row.id===created.tableId)?.number,913);
+   assert.ok(listed.items.every(row=>Object.hasOwn(row,'id')&&!Object.hasOwn(row,'tableId')),
+    'HTTP paginated tables must match the exact management PWA projection');
    // A fresh table is not customer-operational merely because its QR was
    // delivered. EN_PREPARACION and occupancy remain distinct server axes.
    const m3CustomerId='b0a00000-0000-4000-8000-000000000317';
@@ -7503,8 +7505,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.management_audit_m3
     WHERE request_id=$1`,[updateRequest])).rows[0].n,1);
    current=concurrentUpdates[0];
-   current=await management.manageTable({requestId:randomUUID(),operation:'readiness',
+   // Normative RF: changing readiness is ordinary table-management work,
+   // not an admin-only action; QR rotation and editing stay admin-only.
+   const readinessWaiterId=randomUUID();
+   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+    VALUES($1,'waiter','active')`,[readinessWaiterId]);
+   const waiterManagement=createM3AuthenticatedManagementGateway({
+    getAccessToken:async()=>staffJwt(readinessWaiterId),fetchImpl:m3Fetch});
+   await assert.rejects(waiterManagement.manageTable({requestId:randomUUID(),
+    operation:'qr_revoke',payload:{tableId:current.tableId,
+     expectedRevision:current.revision}}),/m3_management_forbidden/,
+    'waiter cannot revoke a table QR');
+   current=await waiterManagement.manageTable({requestId:randomUUID(),operation:'readiness',
     payload:{tableId:current.tableId,expectedRevision:current.revision,state:'LISTA'}});
+   assert.equal(current.readinessState,'LISTA',
+    'ordinary management staff may activate preparation without admin role');
+   m3Failures.length=0;
    current=await management.transitionOccupancy({requestId:randomUUID(),tableId:current.tableId,
     target:'open',pauseUntil:null});
    // This dedicated identity proves that M3 confirmation creates its first
@@ -7629,7 +7645,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(expiredCapability),'update',capabilityBody])),
     /invalid_m3_management_capability/,'expired capability must fail closed');
-   const waiterCapability=m3TablesIssuer({actorId:httpFixture.waiter,staffRole:'waiter',
+   const waiterCapability=m3TablesIssuer({actorId:readinessWaiterId,staffRole:'waiter',
     action:'table.update',requestId:randomUUID(),body:capabilityBody});
    await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
@@ -7649,11 +7665,398 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      [JSON.stringify(validCapability),'update',capabilityBody])),/permission denied/,
     'catalog runtime cannot execute the table-management surface');
    await assert.rejects(connections[16].query('SELECT * FROM sabora.dining_tables'),/permission denied/);
+   await assert.rejects(connections[16].query(
+    "UPDATE sabora.customer_table_visits SET revoked_at=clock_timestamp() WHERE table_id=$1",
+    [current.tableId]),/permission denied/,
+    'physical M3 tables runtime may never revoke visits directly');
    await assert.rejects(connections[17].query('SELECT * FROM sabora.catalog_items'),/permission denied/);
    await management.manageCatalog({requestId:randomUUID(),operation:'item_withdraw',
     payload:{itemId,expectedRevision:itemResult.draftRevision}});
    assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),false,
     'withdrawn item must disappear from the public catalog without deleting history');
+
+   // CV-006/CV-007: actual Chromium interaction with BOTH PWAs and the same
+   // PG17/Fastify candidate. Playwright forwards requests to real loopback
+   // Vite/Fastify HTTP servers; it never fulfills an invented API response.
+   // The test-only HTTPS host mapping preserves the exact QR origin/token.
+   const {fileURLToPath:m3FileURLToPath,pathToFileURL:m3PathToFileURL}=await import('node:url');
+   const {mkdir:m3Mkdir}=await import('node:fs/promises');
+   const {join:m3Join}=await import('node:path');
+   const m3CiRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+   const {createServer:createM3ViteServer}=await import(
+    m3PathToFileURL(m3CiRequire.resolve('vite')).href);
+   const {chromium:m3Chromium}=await import(
+    m3PathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const m3ClientVite=await createM3ViteServer({
+    root:m3FileURLToPath(new URL('../../apps/client/',import.meta.url)),
+    mode:'test',logLevel:'error',
+    // Test-only installation code must match the candidate's issued QR V1.
+    define:{'import.meta.env.VITE_SABORA_RESTAURANT_CODE':JSON.stringify('SABORA_CI')},
+    server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false}
+   });
+   const m3ManagementVite=await createM3ViteServer({
+    root:m3FileURLToPath(new URL('../../apps/management/',import.meta.url)),
+    mode:'test',logLevel:'error',
+    server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false}
+   });
+   let m3Browser=null;
+   let m3BrowserClosing=false;
+   const m3BrowserErrors=[];
+   const m3Evidence=m3Join(process.env.RUNNER_TEMP,'sabora-m3-browser-acceptance');
+   await m3Mkdir(m3Evidence,{recursive:true});
+   try{
+    await m3.app.listen({host:'127.0.0.1',port:0});
+    await m3ClientVite.listen();
+    await m3ManagementVite.listen();
+    const m3BackendOrigin='http://127.0.0.1:'+m3.app.server.address().port;
+    const m3ClientOrigin='http://127.0.0.1:'+m3ClientVite.httpServer.address().port;
+    const m3ManagementOrigin='http://127.0.0.1:'+m3ManagementVite.httpServer.address().port;
+    const mapActualHttp=async(context,publicHost,frontendOrigin)=>{
+     await context.route('https://'+publicHost+'/**',async route=>{
+      const requested=new URL(route.request().url());
+      const upstreamOrigin=requested.pathname.startsWith('/api/')
+       ?m3BackendOrigin:frontendOrigin;
+      // Playwright route.fetch buffers the entire body. An EventSource stream
+      // never finishes: forwarding it with route.fetch cannot supply live SSE
+      // and rejects during context teardown. Exclude ONLY streaming requests
+      // from this transactional M3 browser journey. The consolidated H6
+      // suite has separate real SSE delivery/reconnect coverage. Aborting is
+      // explicit, not a fabricated successful API response or SSE acceptance.
+      const headers={...route.request().headers(),host:new URL(upstreamOrigin).host};
+      if(route.request().resourceType()==='eventsource'||
+        String(headers.accept??'').includes('text/event-stream')){
+       await route.abort('blockedbyclient');
+       return;
+      }
+      const target=upstreamOrigin+requested.pathname+requested.search;
+      try{
+       const actual=await route.fetch({url:target,headers,timeout:30000});
+       await route.fulfill({response:actual});
+      }catch(error){
+       // In-flight asset reads can be canceled by deliberate context close.
+       // They must never mask a real HTTP failure while the test is active.
+       if(m3BrowserClosing&&/Request context disposed|Target closed|Target page, context or browser has been closed/
+         .test(String(error)))return;
+       throw error;
+      }
+     });
+    };
+    m3Browser=await m3Chromium.launch({headless:true});
+    const m3StaffContext=await m3Browser.newContext({
+     viewport:{width:1440,height:900},reducedMotion:'reduce',serviceWorkers:'block'});
+    await mapActualHttp(m3StaffContext,'gestion.sabora.example',m3ManagementOrigin);
+    const m3StaffPage=await m3StaffContext.newPage();
+    m3StaffPage.on('pageerror',error=>m3BrowserErrors.push('management: '+error.message));
+    await m3StaffPage.goto('https://gestion.sabora.example/#catalogo');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByRole('heading',{name:'Editor de carta'})
+     .waitFor({timeout:20000});
+    await m3StaffPage.getByRole('textbox',{name:'Nombre de nueva categoría'})
+     .fill('BRUNCH E2E');
+    await m3StaffPage.getByRole('spinbutton',{name:'Orden de nueva categoría'})
+     .fill('170');
+    const createdCategoryHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='category_create',{timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Añadir',exact:true}).click();
+    const createdCategoryResponse=await createdCategoryHttp;
+    assert.equal(createdCategoryResponse.status(),200,await createdCategoryResponse.text());
+    await m3StaffPage.getByText('BRUNCH E2E').first().waitFor({timeout:20000});
+
+    await m3StaffPage.getByRole('button',{name:'Nuevo plato'}).click();
+    const editor=m3StaffPage.locator('.catalog-editor-form');
+    await editor.getByLabel('Nombre',{exact:true}).fill('Brunch de cortesía M3');
+    await editor.getByLabel('Descripción').fill('Publicado en Chromium desde gestión');
+    await editor.getByLabel('Categoría').selectOption({label:'BRUNCH E2E'});
+    await editor.getByLabel('Precio EUR').fill('0,00');
+    await editor.locator('fieldset').filter({hasText:'Declaración de alérgenos'})
+     .locator('select').selectOption('VERIFICADA');
+    const draftHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='item_save',{timeout:20000});
+    await editor.getByRole('button',{name:'Guardar borrador'}).click();
+    const draftResponse=await draftHttp;
+    assert.equal(draftResponse.status(),200,await draftResponse.text());
+    const browserItemId=(await draftResponse.json()).itemId;
+    assert.ok(browserItemId);
+    await editor.getByRole('button',{name:'Publicar'}).waitFor({timeout:20000});
+    const publishHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='item_publish',{timeout:20000});
+    await editor.getByRole('button',{name:'Publicar'}).click();
+    const publishResponse=await publishHttp;
+    assert.equal(publishResponse.status(),200,await publishResponse.text());
+    const browserPublished=(await m3.app.inject('/api/v1/catalog')).json()
+     .find(row=>row.id===browserItemId);
+    assert.equal(browserPublished?.category,'BRUNCH E2E');
+    assert.equal(browserPublished?.priceCents,0);
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-published.png'),fullPage:true});
+    // The actual desktop screenshot previously exposed a numeric sort input
+    // squeezed into the 42px category icon column. Assert legible hit targets
+    // in two real Chromium viewports, not just successful category SQL.
+    const categorySort=m3StaffPage.getByRole('spinbutton',{name:'Orden de BRUNCH E2E'});
+    const desktopSortBox=await categorySort.boundingBox();
+    assert.ok(desktopSortBox&&desktopSortBox.width>=90,
+     'desktop category ordering input must be legible, not in the icon column');
+    await m3StaffPage.setViewportSize({width:390,height:844});
+    const mobileSortBox=await categorySort.boundingBox();
+    const mobileCategoryBox=await m3StaffPage.locator('.catalog-category-grid > li')
+     .filter({hasText:'BRUNCH E2E'}).boundingBox();
+    assert.ok(mobileSortBox&&mobileCategoryBox&&mobileSortBox.width>=80&&
+     mobileSortBox.x>=mobileCategoryBox.x&&
+     mobileSortBox.x+mobileSortBox.width<=mobileCategoryBox.x+mobileCategoryBox.width+2,
+     'mobile category ordering must remain usable inside its card');
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-catalog-mobile.png')});
+    await m3StaffPage.setViewportSize({width:1440,height:900});
+
+    await m3StaffPage.goto('https://gestion.sabora.example/#mesas');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByRole('heading',{name:'Control de mesas'})
+     .waitFor({timeout:20000});
+    // Do not mutate while the first authorized table projection is loading.
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Crear mesa'}).click();
+    const tableForm=m3StaffPage.locator('.management-inline-form');
+    await tableForm.getByLabel('Número').fill('915');
+    await tableForm.getByLabel('Capacidad').fill('4');
+    await tableForm.getByLabel('Descripción').fill('Mesa real de aceptación Chromium');
+    const tableCreateHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='create',{timeout:20000});
+    await tableForm.getByRole('button',{name:'Crear y emitir QR'}).click();
+    const tableCreateResponse=await tableCreateHttp;
+    assert.equal(tableCreateResponse.status(),201,await tableCreateResponse.text());
+    const browserTable=await tableCreateResponse.json();
+    assert.match(browserTable.qrPayload,
+     /^https:\/\/sabora\.example\/qr\/v1\/SABORA_CI\//);
+    const browserTableId=browserTable.tableId;
+    const persistedTable=(await admin.query(
+     'SELECT id,number,readiness_state,ordering_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(persistedTable?.number,915,'HTTP create must persist table 915 before PWA selection');
+    try{
+     await m3StaffPage.getByRole('button',{name:/Mesa 915/}).first()
+      .waitFor({timeout:20000});
+    }catch(cause){
+     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-after-create-failure.png'),fullPage:true});
+     const diagnostic={
+      persistedTable,
+      list:(await m3StaffPage.locator('.table-list-item').allTextContents()).slice(0,35),
+      note:await m3StaffPage.locator('.honest-operational-note').allTextContents(),
+      loaded:await m3StaffPage.getByText(/[0-9]+ cargadas/).allTextContents(),
+      refresh:await m3StaffPage.locator('[role="alert"]').allTextContents(),
+      errors:m3BrowserErrors
+     };
+     throw Error('m3_browser_table_created_but_not_selected:'+JSON.stringify(diagnostic),{cause});
+    }
+    const readinessHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='readiness',{timeout:20000});
+    await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"]')
+     .getByRole('button',{name:'LISTA'}).click();
+    const readinessResponse=await readinessHttp;
+    assert.equal(readinessResponse.status(),200,await readinessResponse.text());
+    const prepared=(await admin.query(
+     'SELECT readiness_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(prepared.readiness_state,'LISTA');
+    const openHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+     response.request().method()==='POST',{timeout:20000});
+    await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'ABIERTA'}).click();
+    const openResponse=await openHttp;
+    assert.equal(openResponse.status(),200,await openResponse.text());
+    const opened=(await admin.query(
+     'SELECT ordering_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(opened.ordering_state,'open');
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-table-qr.png'),fullPage:true});
+
+    const browserCustomerId=randomUUID();
+    const browserCustomerToken='Y'.repeat(43);
+    await admin.query(
+     "INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,$3)",
+     [browserCustomerId,'SB-QWERTY234567','Cliente E2E M3']);
+    await admin.query(
+     "INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
+     [browserCustomerId,hashCustomerSessionToken(browserCustomerToken)]);
+    const m3CustomerContext=await m3Browser.newContext({
+     viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'});
+    await mapActualHttp(m3CustomerContext,'sabora.example',m3ClientOrigin);
+    await m3CustomerContext.addCookies([{name:'__Secure-sabora_customer',
+     value:browserCustomerToken,domain:'sabora.example',path:'/',
+     secure:true,httpOnly:true,sameSite:'Lax'}]);
+    const m3CustomerPage=await m3CustomerContext.newPage();
+    m3CustomerPage.on('pageerror',error=>m3BrowserErrors.push('customer: '+error.message));
+    await m3CustomerPage.goto('https://sabora.example/');
+    assert.equal(await m3CustomerPage.evaluate(async()=>{
+     const {configuredRestaurantCode}=await import('/src/table-qr.ts');
+     return configuredRestaurantCode();
+    }),'SABORA_CI');
+    const browserCard=m3CustomerPage.getByTestId('product-card')
+     .filter({hasText:'Brunch de cortesía M3'});
+    await browserCard.waitFor({timeout:20000});
+    await browserCard.getByRole('button',{name:/Añadir$/}).click();
+    await m3CustomerPage.goto(browserTable.qrPayload);
+    await m3CustomerPage.getByText('Mesa verificada')
+     .waitFor({timeout:20000});
+    await m3CustomerPage.getByRole('button',{name:'Continuar con el pedido'})
+     .click();
+    const checkout=m3CustomerPage.getByRole('dialog',{name:'Confirmar pedido'});
+    await checkout.getByText('Esta ronda es gratuita y no fija modalidad de pago')
+     .waitFor({timeout:20000});
+    const customerConfirmHttp=m3CustomerPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/customer/orders/confirm'&&
+     response.request().method()==='POST',{timeout:20000});
+    await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+    const customerConfirmResponse=await customerConfirmHttp;
+    assert.equal(customerConfirmResponse.status(),201,await customerConfirmResponse.text());
+    const browserOrder=await customerConfirmResponse.json();
+    assert.equal(browserOrder.status,'confirmed');
+    assert.equal(browserOrder.amountCents,0);
+    assert.equal(browserOrder.paymentMode,null);
+    await m3CustomerPage.getByText('Pedido confirmado')
+     .waitFor({timeout:20000});
+    await m3CustomerPage.screenshot({path:m3Join(m3Evidence,'customer-free-confirmed.png'),fullPage:true});
+
+    // End-to-end zero-cost account settlement requires the REAL H6 round
+    // to reach kitchen ACK and each line to be READY. Confirmation alone
+    // must not settle a live account; delivery/pickup is never fabricated.
+    const browserPreKitchen=(await admin.query(
+     'SELECT a.id,a.state,a.closed_at,a.payment_mode,a.outstanding_cents FROM sabora.customer_accounts a WHERE a.id=$1',
+     [browserOrder.accountId])).rows[0];
+    assert.deepEqual({
+     state:browserPreKitchen?.state,closed_at:browserPreKitchen?.closed_at,
+     payment_mode:browserPreKitchen?.payment_mode,outstanding_cents:browserPreKitchen?.outstanding_cents
+    },{state:'open',closed_at:null,payment_mode:null,outstanding_cents:'0'},
+    'zero-cost customer checkout must preserve an open reusable account');
+    const browserRound=(await admin.query(
+     'SELECT id,state FROM sabora.order_rounds WHERE order_id=$1',
+     [browserOrder.orderId])).rows[0];
+    assert.equal(browserRound?.state,'free_grouping',
+     'complimentary H6 rounds await dispatch without selecting a payment mode');
+    // Disposable fixture time compression ONLY: F21 separately validates the
+    // natural 300-second window; this scenario validates the full business
+    // closure chain without inserting a second five-minute delay.
+    const due=(await admin.query(
+     "UPDATE sabora.order_rounds SET grouping_deadline=clock_timestamp()-interval '1 second' WHERE id=$1 AND state='free_grouping' RETURNING id",
+     [browserRound.id])).rows;
+    assert.equal(due.length,1);
+    const browserDispatch=await h6Provider.requestDueCapture({orderId:browserOrder.orderId});
+    assert.equal(browserDispatch.action,'dispatch',
+     'due round must dispatch via the restricted H6 provider');
+    const kitchenAck=await m3.app.inject({method:'POST',
+     url:'/api/v1/operations/dispatches/'+browserDispatch.dispatch_id+'/ack',
+     headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+     payload:{correlationId:'m3_chromium_zero_cost_kitchen_ack'}});
+    assert.equal(kitchenAck.statusCode,200,kitchenAck.body);
+    const browserLines=(await admin.query(
+     'SELECT id,status FROM sabora.order_lines WHERE order_id=$1 AND is_current_revision ORDER BY line_number',
+     [browserOrder.orderId])).rows;
+    assert.equal(browserLines.length,1);
+    for(const [index,line] of browserLines.entries()){
+     assert.equal(line.status,'confirmed');
+     for(const [targetStatus,action] of [['preparing','prepare'],['ready','ready']]){
+      const transition=await m3.app.inject({method:'POST',
+       url:'/api/v1/operations/order-lines/'+line.id+'/transitions',
+       headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+       payload:{targetStatus,correlationId:'m3_chromium_'+action+'_'+index}});
+      assert.equal(transition.statusCode,201,transition.body);
+      assert.equal(transition.json().currentStatus,targetStatus);
+     }
+    }
+    const readyLines=(await admin.query(
+     'SELECT l.status,t.state AS pickup_state FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.order_id=$1',
+     [browserOrder.orderId])).rows;
+    assert.equal(readyLines.length,1);
+    assert.deepEqual(readyLines[0],{status:'ready',pickup_state:'ready'},
+     'signed kitchen transitions must leave durable pickup without inventing physical delivery');
+
+
+    // Only the post-commit management GET is fault-injected. The write,
+    // H6 settlement and account ledger still execute in real PG17.
+    let injectedCloseReadFailures=0;
+    let closePostCount=0;
+    m3StaffPage.on('request',request=>{
+     if(request.method()==='POST'&&new URL(request.url()).pathname===
+       '/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+       request.postDataJSON()?.target==='closed')closePostCount++;
+    });
+    await m3StaffPage.route(new RegExp('/api/v1/admin/tables[?]'),async route=>{
+     if(route.request().method()==='GET'&&injectedCloseReadFailures===0){
+      injectedCloseReadFailures++;
+      await route.fulfill({status:503,contentType:'application/json',
+       body:'{"error":"disposable_ci_read_interruption"}'});
+     }else await route.fallback();
+    });
+    const closeFailureStart=m3Failures.length;
+    const closeHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+     response.request().method()==='POST',{timeout:20000});
+    await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'CERRADA'}).click();
+    const closeResponse=await closeHttp;
+    assert.equal(closeResponse.status(),200,JSON.stringify({
+      response:await closeResponse.text(),
+      sqlFailure:m3Failures.slice(closeFailureStart).map(e=>({
+       sqlstate:e.code??null,message:e.message??null
+      }))
+    }));
+    const closed=(await admin.query(
+     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents,a.payment_mode,a.close_origin FROM sabora.dining_tables t JOIN sabora.customer_account_operational_bindings b ON b.table_id=t.id JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE t.id=$1 AND a.customer_id=$2",
+     [browserTableId,browserCustomerId])).rows[0];
+    assert.equal(closed.ordering_state,'closed');
+    assert.equal(closed.state,'settled');
+    assert.equal(closed.payment_mode,null);
+    assert.equal(closed.close_origin,'system_zero_cost',
+     'only resolved zero-cost history allows automatic occupancy close');
+    assert.ok(closed.closed_at,'closing a resolved zero-cost table must close the account');
+    assert.equal(closed.outstanding_cents,'0');
+    await m3StaffPage.getByRole('status').getByText(
+     'El servidor confirmó el cambio de ocupación, pero no se pudo verificar la ficha. Actualiza la lectura antes de otra operación.'
+    ).waitFor({timeout:20000});
+    assert.equal(injectedCloseReadFailures,1,
+     'exactly one post-commit read was interrupted');
+    assert.equal(closePostCount,1,'no duplicate economic close from Chromium');
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'ABIERTA'}).isDisabled(),true,
+     'stale mutation controls must be locked until a valid read');
+    await m3StaffPage.getByRole('button',{name:'Reintentar actualización'}).click();
+    await m3StaffPage.getByRole('status').getByText(
+     'Lectura verificada. Comprueba el estado actual antes de otra operación.'
+    ).waitFor({timeout:20000});
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'CERRADA'}).isDisabled(),true,
+     'the refreshed PWA must show the real closed state');
+    assert.equal(closePostCount,1,'read recovery must not repeat table closure');
+    assert.deepEqual(m3BrowserErrors,[]);
+    m3BrowserClosing=true;
+    await m3CustomerContext.close();
+    await m3StaffContext.close();
+   }finally{
+    m3BrowserClosing=true;
+    if(m3Browser)await m3Browser.close();
+    await Promise.allSettled([m3ClientVite.close(),m3ManagementVite.close()]);
+   }
+
    m3Operations.revoke();
    management.revoke();
   }finally{await m3.close();}

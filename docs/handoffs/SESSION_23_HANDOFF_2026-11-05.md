@@ -112,3 +112,53 @@ Durante PostgreSQL 17 se corrigieron defectos reales del arnés/integración: re
 El SHA `7f90000077ab77759935cf291ac6ec637411b983` de [PR #46 Draft](https://github.com/jdlc86/CartaViva/pull/46) obtuvo [generate-lockfile PASS](https://github.com/jdlc86/CartaViva/actions/runs/42023242547) y [validate PASS](https://github.com/jdlc86/CartaViva/actions/runs/42023242569): cadena de 84 migraciones/reanudación, rollback del LOGIN B3, **51/51 PG17**, bloques H6 1/2A/2B, Chromium y puerta de secretos. Los dos SKIP quedan resueltos como pruebas activas (**0 SKIP**). API y builds de ambas PWA también pasan. Informe: [SABORA_SESSION23_M2_CANDIDATE_REPORT_2026-11-05.md](../reviews/SABORA_SESSION23_M2_CANDIDATE_REPORT_2026-11-05.md).
 
 **Decisión:** M2 queda **CANDIDATO VALIDADO**, no fusionado ni activado. Su puerta permite iniciar M3 en rama/PR Draft propios. Producción continúa **NO-GO**; no merge, deploy, Supabase operativo, VPS ni Fleetia.
+
+## 11. M3 integrado: puerta técnica CI superada, revisión de producto pendiente (06-11-2026)
+
+Referencia principal: [tablero vivo §12](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). El [PR #48 Draft](https://github.com/jdlc86/CartaViva/pull/48) tiene como último SHA funcional **`a2b21121ad89d80bed0e07fc7f1dbd8f3344fb66`**. Tres gates de ese SHA en verde: [CI](https://github.com/jdlc86/CartaViva/actions/runs/42202011633), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42202011788), [Chromium visual](https://github.com/jdlc86/CartaViva/actions/runs/42202011685). Bootstrap: 51/51 PG17, 0 SKIP. Evidencia de ambas PWA en artefacto `sabora-m3-pg17-two-pwa-browser`.
+
+El cierre real del flujo M3 recorre publicación de plato gratuito, mesa/QR, pedido cliente, despacho H6, cocina ACK y líneas READY, pickup durable y cierre de ocupación con autocierre económico sin atribuir entrega. Se corrigieron fallos SQL de permisos mínimos del propietario M3 en revocación de visitas y consulta de `customer_accounts.id`, además de los problemas HTTP/visual y arnés SSE registrados en el PR. **No hay aceptación humana ni despliegue.** M3 se considera candidato técnico, no finalización de toda la aplicación. M1, matriz F/R, Stripe test, caja visual, observabilidad y producción siguen pendientes conforme a normativa y tablero.
+
+No merge, no VPS, no Supabase operativo, no Fleetia. Esta nota es contexto, no fuente normativa.
+
+## 12. Punto de relevo operativo de sesión 23 — comprobación de 06-11-2026 (11:51 Europe/Madrid)
+
+### Fuente de verdad y restricciones inalterables
+
+- **Repositorio único autorizado:** `jdlc86/CartaViva`. No tocar Fleetia ni otros recursos del VPS compartido. No tocar Supabase operativo. Sin merge, despliegue, reinicio, eliminación, activación ni modificaciones de infraestructura sin autorización expresa y aislamiento respecto de Fleetia.
+- **Primero normativa:** [requisitos funcionales](../REQUISITOS_FUNCIONALES.md), [contrato visual aprobado](../DESIGN_SYSTEM_CONTRACT.md) y [matriz de aceptación F01–F28/R01–R10](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md). Este handoff y el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) orientan la ejecución; **no** sustituyen ni reinterpretaban requisitos.
+- Implementar y cerrar **hitos completos**; pruebas integradoras como método normal. Pruebas aisladas solo para causa de un fallo concreto o protección de una invariante crítica. Distinguir siempre código implementado, tests ejecutados, resultado de CI, conformidad visual/producto y aceptación operacional.
+
+### Estado verificable en GitHub
+
+- **M2:** [PR #46](https://github.com/jdlc86/CartaViva/pull/46): **candidato técnicamente validado** en su SHA funcional documentado en §10; no fusionado ni activado.
+- **M3 CV-006/CV-007:** [PR #48 Draft](https://github.com/jdlc86/CartaViva/pull/48), rama `integration/sabora-session23-m3-acceptance-20261106`. **Último SHA funcional con prueba completa verde: `a2b21121ad89d80bed0e07fc7f1dbd8f3344fb66`**. [CI #42202011633](https://github.com/jdlc86/CartaViva/actions/runs/42202011633) **SUCCESS**; [Bootstrap PG17 #42202011788](https://github.com/jdlc86/CartaViva/actions/runs/42202011788) **SUCCESS**; [smoke visual gestión #42202011685](https://github.com/jdlc86/CartaViva/actions/runs/42202011685) **SUCCESS**. Bootstrap: **51/51 PG17, 0 fail, 0 skip**; artefacto `sabora-m3-pg17-two-pwa-browser`.
+- **HEAD encontrado al relevar:** `5c6e27b25c2d49252d0f4a714165cd5df9a54705`, **solo documental** (se actualizaron tablero §12 y este handoff §11). Para ese SHA, al comprobar: [gestión visual #42206194704](https://github.com/jdlc86/CartaViva/actions/runs/42206194704) **SUCCESS**; [Bootstrap PG17 #42206194764](https://github.com/jdlc86/CartaViva/actions/runs/42206194764) **EN CURSO**, sin error reportado; [CI #42206194870](https://github.com/jdlc86/CartaViva/actions/runs/42206194870) **EN CURSO**, sin error reportado. **Consultar conclusión real**; no convertir «en curso» en PASS.
+- El presente registro documental constituye un commit posterior a los SHA anteriores: **no atribuirle automáticamente los resultados del commit funcional** ni relanzar suites duplicadas para editar texto.
+
+### Qué resolvió M3 y qué NO demuestra
+
+Se corrigieron defectos contractuales reales de lectura HTTP de mesas (`tableId` SQL frente a `id` PWA), selección/refresh de mesa, creación/QR, identidad de fixture y proxy Chromium de SSE (una conexión persistente no puede consumirse con `route.fetch`). El último error del cierre de ocupación se resolvió con **privilegios mínimos** para la revocación de visitas y para leer `customer_accounts.id` durante el JOIN bajo propietario interno `NOLOGIN/NOBYPASSRLS`; no se concedieron permisos directos al runtime M3. El recorrido integrado real de 2 PWA + Fastify + PG17 efímero publica catálogo, crea/abre mesa, valida QR, confirma ronda gratuita, realiza despacho H6, ACK de cocina, transiciones a READY con pickup durable y finalmente cierra ocupación y cuenta gratuita resuelta con `close_origin=system_zero_cost`. No afirma entrega física ni cobro.
+
+**Conformidad humana/visual definitiva no validada**, **Stripe sandbox externo sin validar**, **caja y operación real pendientes**, **observabilidad/recuperación/autorizaciones de puesta en marcha pendientes**. Los controles de M1/CV-001/CV-003 y la matriz F/R no están cerrados por el éxito de M3. La producción sigue **NO-GO**.
+
+### Secuencia de continuación obligatoria
+
+1. Comprobar PR #48 (HEAD, estado Draft, base) y **los tres workflows** del último SHA; si hay FAIL, inspeccionar job/log y corregir la causa, no ocultar la prueba ni aumentar permisos sin SQLSTATE o evidencia PostgreSQL.
+2. Revisar el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), los documentos normativos y la matriz F/R antes de elegir el siguiente bloque de valor; contrastar de forma independiente la evidencia de M3 (Chromium, PG17 y roles) con el diseño aprobado, sin aceptar automáticamente las pantallas por un smoke verde.
+3. Preparar el siguiente **hito integrado de aceptación y preparación operacional** con cobertura real de los requisitos restantes; tratar Stripe test, caja, recuperación/observabilidad y aceptación visual como puertas separadas. No avanzar mediante una secuencia de micropruebas repetitivas. Registrar hechos demostrados, bloqueos y NO-GO en tablero y continuidad **solo cuando cambie un hito relevante**.
+4. Mantener PRs Draft y las prohibiciones de merge/despliegue/recursos compartidos hasta nueva autorización expresa.
+
+**Nota de cronología:** las secciones §9–§10 son el estado histórico al publicarse, no afirmaciones actuales de que Codex aún no implementó M2/M3. Prevalecen las evidencias más recientes §11–§12 y el estado vivo comprobado en GitHub.
+
+## 13. Seguimiento consolidado tras PR #48 — 06-11-2026
+
+Referencia vigente: [tablero vivo §13](../tracking/SABORA_LIVE_PROJECT_TRACKER.md); prevalecen siempre la normativa NF/RF/DV y la matriz única F/R. El [PR #48 Draft](https://github.com/jdlc86/CartaViva/pull/48) alcanzó SHA funcional `21f9e8123e36d0dbcd2d75c152669b73f8f589f7` con **3/3 workflows SUCCESS del mismo SHA**: [CI](https://github.com/jdlc86/CartaViva/actions/runs/42213850457), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42213850371) (**51/51, 0 SKIP**) y [Chromium gestión](https://github.com/jdlc86/CartaViva/actions/runs/42213850340). Se corrige la fotografía antigua de §12, cuando algunas ejecuciones estaban en curso. La última corrección de `M3CatalogManagementView.tsx` distingue mutación confirmada de fallo de actualización de vista y pasó esos gates.
+
+**M3/CV-006/CV-007 = candidato técnico validado, NO cerrado como producto ni visualmente aprobado.** M1/CV-001/CV-003 siguen en curso, M4/CV-008 Stripe sandbox real bloqueado por credenciales/permiso, CV-009 caja por aprobación de flujo, M5/M6 pendientes. Revisar tablero §13 y fuentes normativas antes de abrir siguiente bloque integral; no usar micropruebas como hito ni inferir `GO` de CI.
+
+Este registro es **documental**; no genera prueba funcional nueva ni autoriza merge, deploy, Supabase operativo, Fleetia o VPS compartido.
+
+## 14. Revisión independiente M3 y hallazgos para continuación — 06-11-2026
+
+Leer [tablero §14](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) e [informe independiente](../reviews/SABORA_SESSION23_M3_INDEPENDENT_ACCEPTANCE_2026-11-06.md), subordinados a la normativa. Se corrigieron dos defectos comprobados: (a) falsedad de interfaz si ocupación cerró en PG17 pero falló GET posterior, con bloqueo preventivo de nuevos cambios y recuperación obligatoria; (b) inputs de orden de categorías ilegibles por auto-colocación en columna de icono (42 px). Commit funcional `ceb6312e8b6e95c96bc2b256c0c21f21e1a5dfe4`: Bootstrap [#42219921523](https://github.com/jdlc86/CartaViva/actions/runs/42219921523) **51/51 PG17 PASS**, smoke [#42219921551](https://github.com/jdlc86/CartaViva/actions/runs/42219921551) **SUCCESS**; [CI #42219921755](https://github.com/jdlc86/CartaViva/actions/runs/42219921755) **SUCCESS**; **3/3 workflows en verde para `ceb6312e`**. Este registro documental no recibe PASS automáticamente. Evidencia real de UI en artefacto `sabora-m3-pg17-two-pwa-browser`, con `management-catalog-mobile.png` (390×844) y `management-published.png` (escritorio). El informe distingue defectos resueltos de roles de presentación y aprobación visual pendientes. M3 sigue candidato técnico; M1/M4/M5/M6 no se dan por cerrados; producción NO-GO. No merge/despliegue ni cambios en Fleetia, VPS o Supabase operativo.

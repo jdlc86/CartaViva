@@ -54,6 +54,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   const [tables, setTables] = useState<readonly AdminTable[]>([]);
   const [nextAfterNumber, setNextAfterNumber] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusedTable, setFocusedTable] = useState<AdminTable | null>(null);
   const [filter, setFilter] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -68,6 +69,9 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   const [editCapacity,setEditCapacity]=useState('');
   const [editDescription,setEditDescription]=useState('');
   const [actionPending,setActionPending]=useState(false);
+  // Unknown transport outcomes and stale post-mutation reads must never
+  // authorize a second table action based on an old projection.
+  const [mutationRequiresRefresh,setMutationRequiresRefresh]=useState(false);
   const [actionMessage,setActionMessage]=useState<string|null>(null);
   const [qrPayload,setQrPayload]=useState<string|null>(null);
   const readControllerRef = useRef<LatestReadTaskController | null>(null);
@@ -95,6 +99,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     setTables([]);
     setNextAfterNumber(null);
     setSelectedId(null);
+    setFocusedTable(null);
     setPaginationError(false);
 
     void loadAdminTablesPage(gateway, {afterNumber: 0, limit: TABLE_PAGE_SIZE, signal: task.signal})
@@ -103,6 +108,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         setTables(page.items);
         setNextAfterNumber(page.nextAfterNumber);
         setSelectedId(page.items[0]?.id ?? null);
+        setMutationRequiresRefresh(false);
         setPhase('ready');
       })
       .catch(() => {
@@ -116,7 +122,8 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     return () => readController.cancel();
   }, [gateway, readController, reloadVersion]);
 
-  const selectedTable = tables.find((table) => table.id === selectedId) ?? null;
+  const selectedTable = tables.find((table) => table.id === selectedId) ??
+    (focusedTable?.id===selectedId ? focusedTable : null);
   const canManage=typeof gateway?.manageTable==='function'&&typeof gateway?.transitionOccupancy==='function';
   useEffect(()=>{
    setEditNumber(selectedTable?String(selectedTable.number):'');
@@ -125,13 +132,18 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   },[selectedTable?.id,selectedTable?.number,selectedTable?.capacity,selectedTable?.description]);
   const visibleTables = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase('es');
-    if (!query) return tables;
-    return tables.filter((table) => {
+    // A freshly created/rotated table can lie outside the first paginated page.
+    // Keep its independently authorized projection visible without corrupting
+    // the server cursor or assigning a one-time QR to another table.
+    const loaded=focusedTable&&!tables.some(table=>table.id===focusedTable.id)
+      ? [focusedTable,...tables] : tables;
+    if (!query) return loaded;
+    return loaded.filter((table) => {
       const state = stateMeta(table.orderingState).label.toLocaleLowerCase('es');
       return String(table.number).includes(query) ||
         (table.description?.toLocaleLowerCase('es').includes(query) ?? false) || state.includes(query);
     });
-  }, [filter, tables]);
+  }, [filter, tables, focusedTable]);
 
   const loadMore = async () => {
     if (!gateway || nextAfterNumber === null || loadingMore || refreshing) return;
@@ -156,8 +168,8 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     }
   };
 
-  const refreshTables = async () => {
-    if (!gateway || phase !== 'ready' || refreshing) return;
+  const refreshTables = async (focus?:Readonly<{id:string;number:number}>):Promise<boolean> => {
+    if (!gateway || phase !== 'ready' || refreshing) return false;
     const task = readController.start();
     setLoadingMore(false);
     setPaginationError(false);
@@ -170,12 +182,34 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         limit: TABLE_PAGE_SIZE,
         signal: task.signal,
       });
-      if (!task.isCurrent()) return;
+      const expected=focus??(focusedTable?{id:focusedTable.id,number:focusedTable.number}:null);
+      let verified:AdminTable|null=null;
+      if(expected&&!page.items.some(table=>table.id===expected.id)){
+        if(!Number.isSafeInteger(expected.number)||expected.number<1)throw Error('invalid_focus_table_number');
+        const precise=await loadAdminTablesPage(gateway,{
+          afterNumber:expected.number-1,limit:1,signal:task.signal,
+        });
+        const row=precise.items[0];
+        if(row?.id!==expected.id||row.number!==expected.number)
+          throw Error('focused_table_projection_mismatch');
+        verified=row;
+      }
+      if (!task.isCurrent()) return false;
       setTables(page.items);
+      setFocusedTable(verified);
       setNextAfterNumber(page.nextAfterNumber);
-      setSelectedId((current) => page.items.some((table) => table.id === current) ? current : page.items[0]?.id ?? null);
+      setMutationRequiresRefresh(false);
+      if(mutationRequiresRefresh)
+       setActionMessage('Lectura verificada. Comprueba el estado actual antes de otra operación.');
+      setSelectedId((current) => {
+        const requested=focus?.id??current;
+        return page.items.some(table=>table.id===requested)||verified?.id===requested
+          ? requested : page.items[0]?.id??null;
+      });
+      return true;
     } catch {
       if (task.isCurrent()) setRefreshError(true);
+      return false;
     } finally {
       const isCurrent = task.isCurrent();
       task.finish();
@@ -184,29 +218,59 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   };
 
   const manage=async(operation:'create'|'update'|'readiness'|'qr_rotate'|'qr_revoke',payload:Record<string,unknown>)=>{
-   if(!gateway?.manageTable||actionPending)return;
+   if(!gateway?.manageTable||actionPending||refreshing||mutationRequiresRefresh||phase!=='ready')return;
    setActionPending(true);setActionMessage(null);
+   let committed=false;
    try{
     const result=await gateway.manageTable({requestId:crypto.randomUUID(),operation,payload});
     if(!result||typeof result!=='object'||Array.isArray(result))throw Error('invalid_table_management_result');
     const value=result as Record<string,unknown>;
+    committed=true;
+    const nextId=value.tableId;
+    const nextNumber=value.number;
+    if(typeof nextId!=='string'||typeof nextNumber!=='number'||
+      !Number.isSafeInteger(nextNumber)||nextNumber<1)throw Error('invalid_table_management_result');
+    if(!await refreshTables({id:nextId,number:nextNumber})){
+      setMutationRequiresRefresh(true);
+      setQrPayload(null);
+      setActionMessage('Cambio confirmado en el servidor, pero no se pudo verificar la ficha actualizada. Actualiza la lista antes de otra operación; si era un QR nuevo, deberás rotarlo para obtener una nueva copia imprimible.');
+      return;
+    }
+    // Only reveal the one-time QR AFTER the selected, authorized table is loaded.
     setQrPayload(typeof value.qrPayload==='string'?value.qrPayload:null);
-    if(typeof value.tableId==='string')setSelectedId(value.tableId);
     setActionMessage(operation==='create'?'Mesa creada en preparación. Imprime ahora su QR o rótalo después.':
      operation==='qr_rotate'?'QR rotado. La credencial anterior ya no autoriza acciones nuevas.':
      operation==='qr_revoke'?'QR revocado sin alterar pedidos ni cuentas históricas.':'Cambio confirmado y auditado.');
     if(operation==='create'){setCreateOpen(false);setCreateNumber('');setCreateDescription('');}
-    await refreshTables();
-   }catch{setActionMessage('No se aplicó el cambio. El estado persistido se conserva.');}
+    }catch{
+    setMutationRequiresRefresh(true);
+    setQrPayload(null);
+    setActionMessage(committed?
+      'La operación fue aceptada, pero la respuesta no pudo verificarse. Actualiza la lectura antes de otra operación.':
+      'No se pudo confirmar la operación. Actualiza la lectura antes de reintentar.');
+   }
    finally{setActionPending(false);}
   };
   const transitionOccupancy=async(target:TableOrderingState)=>{
-   if(!gateway?.transitionOccupancy||!selectedTable||actionPending)return;
+   if(!gateway?.transitionOccupancy||!selectedTable||actionPending||refreshing||mutationRequiresRefresh)return;
    setActionPending(true);setActionMessage(null);setQrPayload(null);
-   try{await gateway.transitionOccupancy({requestId:crypto.randomUUID(),tableId:selectedTable.id,
-    target,pauseUntil:null});setActionMessage('Ocupación actualizada con la política económica vigente.');await refreshTables();}
-   catch{setActionMessage('No se cambió la ocupación. Revisa la transición y las cuentas pendientes.');}
-   finally{setActionPending(false);}
+   let committed=false;
+   try{
+    await gateway.transitionOccupancy({requestId:crypto.randomUUID(),tableId:selectedTable.id,
+     target,pauseUntil:null});
+    committed=true;
+    if(!await refreshTables({id:selectedTable.id,number:selectedTable.number})){
+      setMutationRequiresRefresh(true);
+      setActionMessage('El servidor confirmó el cambio de ocupación, pero no se pudo verificar la ficha. Actualiza la lectura antes de otra operación.');
+      return;
+    }
+    setActionMessage('Ocupación actualizada con la política económica vigente.');
+   }catch{
+    setMutationRequiresRefresh(true);
+    setActionMessage(committed?
+     'El servidor confirmó la ocupación, pero la lectura no pudo verificarse. Actualiza la lectura.':
+     'No se pudo confirmar la ocupación. Actualiza la lectura y comprueba su estado antes de reintentar.');
+   }finally{setActionPending(false);}
   };
 
   return (
@@ -216,12 +280,14 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         eyebrow="Mesas y QR"
         title="Control de mesas"
         description="Administra preparación y ocupación como ejes separados, con credenciales QR revocables y auditoría."
-        actions={canManage?<button className="button button--primary" type="button" onClick={()=>setCreateOpen(value=>!value)}>
+        actions={canManage?<button className="button button--primary" type="button"
+          disabled={phase!=='ready'||refreshing||actionPending||mutationRequiresRefresh}
+          onClick={()=>setCreateOpen(value=>!value)}>
           <Icon name="plus" size={18}/> {createOpen?'Cancelar alta':'Crear mesa'}</button>:
           <LockedButton icon="plus">Crear mesa</LockedButton>}
       />
 
-      {createOpen&&canManage?<form className="panel management-inline-form" onSubmit={event=>{
+      {createOpen&&canManage&&phase==='ready'?<form className="panel management-inline-form" onSubmit={event=>{
        event.preventDefault();void manage('create',{number:Number(createNumber),capacity:Number(createCapacity),
         description:createDescription});}}>
        <div className="panel-heading"><div><span className="eyebrow">Alta segura</span><h2>Nueva mesa</h2>
@@ -234,7 +300,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         <label className="management-form-grid__wide">Descripción<input maxLength={240} value={createDescription}
          onChange={event=>setCreateDescription(event.target.value)}/></label>
        </div>
-       <button className="button button--primary" disabled={actionPending} type="submit">
+       <button className="button button--primary" disabled={actionPending||mutationRequiresRefresh} type="submit">
         {actionPending?'Creando…':'Crear y emitir QR'}</button>
       </form>:null}
 
@@ -390,7 +456,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             <label className="management-form-grid__wide">Descripción<input maxLength={240} value={editDescription}
              onChange={event=>setEditDescription(event.target.value)}/></label>
            </div>
-           <button className="button" type="submit" disabled={actionPending}>Guardar ficha</button>
+           <button className="button" type="submit" disabled={actionPending||mutationRequiresRefresh}>Guardar ficha</button>
           </form>:null}
 
           <div className="detail-block">
@@ -399,7 +465,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             </div></div>
             <div className="state-control" aria-label="Cambiar preparación de la mesa">
              {readinessStates.map(state=><button className={selectedTable?.readinessState===state.id?'state-control__current':undefined}
-              type="button" disabled={!canManage||!selectedTable||actionPending||selectedTable.readinessState===state.id}
+              type="button" disabled={!canManage||!selectedTable||actionPending||mutationRequiresRefresh||selectedTable.readinessState===state.id}
               onClick={()=>selectedTable&&void manage('readiness',{tableId:selectedTable.id,
                expectedRevision:selectedTable.revision,state:state.id})} key={state.id}>{state.label}</button>)}
             </div>
@@ -417,7 +483,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
                 <button
                   className={selectedTable?.orderingState === state.id ? 'state-control__current' : undefined}
                   type="button"
-                  disabled={!canManage||!selectedTable||actionPending||selectedTable.orderingState===state.id||
+                  disabled={!canManage||!selectedTable||actionPending||mutationRequiresRefresh||selectedTable.orderingState===state.id||
                    (state.id==='paused'&&selectedTable.orderingState==='closed')}
                   onClick={()=>void transitionOccupancy(state.id)}
                   key={state.id}
@@ -448,11 +514,11 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
             </div>
             <div className="button-row">
               {canManage&&selectedTable?<>
-               <button className="button" type="button" disabled={actionPending} onClick={()=>void manage('qr_rotate',{
+               <button className="button" type="button" disabled={actionPending||mutationRequiresRefresh} onClick={()=>void manage('qr_rotate',{
                 tableId:selectedTable.id,expectedRevision:selectedTable.revision})}>{selectedTable.qrEnabled?'Rotar QR':'Emitir QR'}</button>
-               <button className="button" type="button" disabled={actionPending||!selectedTable.qrEnabled}
+               <button className="button" type="button" disabled={actionPending||mutationRequiresRefresh||!selectedTable.qrEnabled}
                 onClick={()=>void manage('qr_revoke',{tableId:selectedTable.id,expectedRevision:selectedTable.revision})}>Revocar QR</button>
-               <button className="button button--primary" type="button" disabled={!qrPayload}
+               <button className="button button--primary" type="button" disabled={!qrPayload||actionPending||mutationRequiresRefresh}
                 onClick={()=>window.print()}>Imprimir</button></>:<><LockedButton>Rotar QR</LockedButton><LockedButton>Revocar QR</LockedButton></>}
             </div>
           </div>

@@ -158,11 +158,21 @@ GRANT SELECT,INSERT ON sabora.management_mutation_receipts_m3 TO sabora_m3_manag
 GRANT INSERT ON sabora.management_audit_m3 TO sabora_m3_management_fn_owner;
 GRANT USAGE ON SEQUENCE sabora.management_audit_m3_id_seq TO sabora_m3_management_fn_owner;
 GRANT INSERT ON sabora.table_ordering_audit_candidate TO sabora_m3_management_fn_owner;
-GRANT SELECT(customer_id,state) ON sabora.customer_accounts TO sabora_m3_management_fn_owner;
+-- The SEC INVOKER table-close transition joins open accounts by id before
+-- taking the table lock. Column-level SELECT must cover its JOIN predicate,
+-- not just the projected customer_id and state.
+GRANT SELECT(id,customer_id,state) ON sabora.customer_accounts TO sabora_m3_management_fn_owner;
 GRANT SELECT(account_id,table_id,session_id) ON sabora.customer_account_operational_bindings
  TO sabora_m3_management_fn_owner;
 GRANT EXECUTE ON FUNCTION sabora.transition_table_ordering_candidate(uuid,uuid,text,timestamptz)
  TO sabora_m3_management_fn_owner;
+
+-- The existing AFTER UPDATE occupancy trigger is SECURITY INVOKER: closing
+-- a table revokes visit grants by table/session, as the constrained M3
+-- function owner. Grant ONLY the columns this trigger reads/writes. Never
+-- grant table access to the physical runtime login or browser roles.
+GRANT SELECT(table_id,session_id,revoked_at),UPDATE(revoked_at)
+ ON sabora.customer_table_visits TO sabora_m3_management_fn_owner;
 
 CREATE POLICY management_owner_staff_m3 ON sabora.staff_members
  FOR SELECT TO sabora_m3_management_fn_owner USING(true);
@@ -202,6 +212,13 @@ CREATE POLICY management_owner_accounts_read_m3 ON sabora.customer_accounts
  FOR SELECT TO sabora_m3_management_fn_owner USING(true);
 CREATE POLICY management_owner_bindings_read_m3 ON sabora.customer_account_operational_bindings
  FOR SELECT TO sabora_m3_management_fn_owner USING(true);
+-- RLS stays FORCE; only the internal NOLOGIN owner can revoke visits via
+-- the authenticated, HMAC-protected table transition. No INSERT/DELETE
+-- permission or other UPDATE columns are exposed to this role.
+CREATE POLICY management_owner_visits_read_for_close_m3 ON sabora.customer_table_visits
+ FOR SELECT TO sabora_m3_management_fn_owner USING(true);
+CREATE POLICY management_owner_visits_revoke_for_close_m3 ON sabora.customer_table_visits
+ FOR UPDATE TO sabora_m3_management_fn_owner USING(true) WITH CHECK(true);
 
 CREATE FUNCTION sabora.verify_management_capability_m3(p_capability jsonb,p_body text)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER
@@ -332,7 +349,8 @@ DECLARE v_fingerprint bytea;v_receipt sabora.management_mutation_receipts_m3%ROW
 BEGIN
  v_role:=sabora.verify_management_capability_m3(p_capability,p_payload_text);
  IF p_capability->>'action' IS DISTINCT FROM 'table.'||p_operation
-    OR v_role NOT IN ('admin','root') THEN
+    OR (v_role NOT IN ('admin','root')
+      AND NOT (v_role='waiter' AND p_operation='readiness')) THEN
   RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501'; END IF;
  p_actor:=(p_capability->>'actorId')::uuid;
  p_request_id:=(p_capability->>'requestId')::uuid;
@@ -796,9 +814,13 @@ BEGIN
   ELSE
    IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_payload) k(key)
       WHERE k.key NOT IN ('categoryId','expectedRevision','hidden'))
-     OR jsonb_typeof(p_payload->'hidden') IS DISTINCT FROM 'boolean'
-     OR (v_category.mandatory AND (p_payload->>'hidden')::boolean) THEN
+     OR jsonb_typeof(p_payload->'hidden') IS DISTINCT FROM 'boolean' THEN
     RAISE EXCEPTION 'invalid_catalog_management_input' USING ERRCODE='22023'; END IF;
+   -- Valid request shape, but hiding a mandatory category conflicts with
+   -- an invariant; surface a 409 rather than masquerading as a 400/503.
+   IF v_category.mandatory AND (p_payload->>'hidden')::boolean THEN
+    RAISE EXCEPTION 'catalog_category_visibility_conflict' USING ERRCODE='23514';
+   END IF;
    UPDATE sabora.catalog_categories_m3 SET
     hidden_at=CASE WHEN (p_payload->>'hidden')::boolean THEN clock_timestamp() ELSE NULL END,
     revision=revision+1,updated_at=clock_timestamp()

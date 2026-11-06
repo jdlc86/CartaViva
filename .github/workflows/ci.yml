@@ -54,6 +54,14 @@ jobs:
           path: ${{ runner.temp }}/sabora-block-01-browser/
           if-no-files-found: warn
           retention-days: 7
+      - name: Publish M3 real PG17 and Chromium journey screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-m3-pg17-two-pwa-browser
+          path: ${{ runner.temp }}/sabora-m3-browser-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build
         run: pnpm build
       - name: Gate production configuration, isolation and frontend artifacts

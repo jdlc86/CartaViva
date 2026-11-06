@@ -52,18 +52,34 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  },[catalog?.categories,newItem,selected]);
  const mutate=async(operation:string,payload:Record<string,unknown>,success:string)=>{
   if(pending)return;setPending(true);setMessage(null);
-  try{const result=await gateway.manageCatalog({requestId:crypto.randomUUID(),operation,payload});
+  let committed=false;
+  try{
+   const result=await gateway.manageCatalog({requestId:crypto.randomUUID(),operation,payload});
+   committed=true;
    if(result&&typeof result==='object'&&'itemId' in result&&typeof result.itemId==='string')setSelectedId(result.itemId);
-   setMessage(success);setNewItem(false);await refresh();
-  }catch{setMessage('No se aplicó el cambio. El catálogo publicado permanece intacto.');}
-  finally{setPending(false);}
+   setNewItem(false);
+   await refresh();
+   setMessage(success);
+  }catch{
+   setMessage(committed
+    ?'El servidor confirmó el cambio, pero no se pudo actualizar el catálogo. Recarga antes de repetir la operación.'
+    :'No se pudo confirmar el cambio. Comprueba el estado del catálogo antes de reintentarlo.');
+  }finally{setPending(false);}
  };
  const availability=async()=>{
   if(!operationsGateway||!selected||pending)return;setPending(true);setMessage(null);
-  try{await operationsGateway.setCatalogSoldOut({itemId:selected.id,soldOut:!selected.soldOut,
+  let committed=false;
+  try{
+   await operationsGateway.setCatalogSoldOut({itemId:selected.id,soldOut:!selected.soldOut,
     correlationId:`m3_catalog_${crypto.randomUUID().replaceAll('-','_')}`});
-   setMessage(selected.soldOut?'Disponibilidad restaurada.':'Plato marcado como agotado sin retirar su publicación.');await refresh();}
-  catch{setMessage('No se cambió la disponibilidad.');}finally{setPending(false);}
+   committed=true;
+   await refresh();
+   setMessage(selected.soldOut?'Disponibilidad restaurada.':'Plato marcado como agotado sin retirar su publicación.');
+  }catch{
+   setMessage(committed
+    ?'El cambio de disponibilidad fue confirmado, pero no se pudo actualizar la lista. Recarga antes de repetirlo.'
+    :'No se pudo confirmar la disponibilidad. Comprueba su estado antes de reintentar.');
+  }finally{setPending(false);}
  };
  const save=()=>{
   const itemId=newItem?crypto.randomUUID():selected?.id;if(!itemId||!form.categoryId)return;
