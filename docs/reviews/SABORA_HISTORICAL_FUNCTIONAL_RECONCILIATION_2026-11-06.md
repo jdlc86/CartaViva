@@ -59,3 +59,51 @@ Prevalecen [requisitos funcionales](../REQUISITOS_FUNCIONALES.md), [contrato fun
 3. **Pendientes reales:** conformidad visual contra referencias aprobadas, pruebas de producto en dispositivos reales, requisito RF de líneas personalizadas independientes, matriz completa F/R, pagos Stripe sandbox/caja, M6 y operaciones protegidas. `server.mjs` permanece `health-only`.
 4. **Pruebas ejecutadas en esta intervención:** ninguna suite nueva; la evidencia CI publicada de `380a4777` corresponde a código anterior a los commits documentales. Las comparaciones de blobs y escenarios son observaciones de GitHub. **Producción NO-GO.**
 5. **Límites:** únicamente PR #49 Draft y docs de revisión/tracking/continuidad; sin modificación de normativa, runtime, SQL, `main`, otros PR, Supabase operativo, VPS, Fleetia ni despliegue.
+
+---
+
+## Ampliación integral: inventario de las 13 divergencias históricas — 06-11-2026
+
+**Alcance y valor del hito:** cierre de **inventario y conciliación estática de las 13 referencias de PR todavía no ancestrales respecto del candidato #49**, ampliando la revisión funcional previa de cinco referencias. **No implica cerrar ni fusionar ninguno de esos PR, ni demuestra paridad dinámica de todos los comportamientos.** PR #49 continúa siendo la referencia candidata; [tablero central](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), [auditoría de topología](SABORA_REPOSITORY_STABILIZATION_GRAPH_2026-11-06.md) y [continuidad de sesión 25](../handoffs/SESSION_25_HANDOFF_2026-11-06.md) deben leerse junto a este contraste. Prevalecen los documentos normativos RF/NF/DV y la matriz F/R.
+
+**Método verificado en GitHub:** se consultaron los 42 PR abiertos en Draft y la comparación `merge-base`/HEAD para #14, #18, #19, #20, #21, #31, #40 y #44, además de la revisión de cinco HEAD funcionales ya contenida arriba (#4, #5, #8, #17 y #22). Se compararon rutas, SHA de blobs, texto de las continuidades, firmas de modelos H3 y nombres de pruebas Node/Chromium frente al árbol de la rama `feat/sabora-cv012-independent-pwas-20261106`. No se ejecutaron pruebas nuevas ni se inspeccionaron todas las divergencias línea por línea; se conserva expresamente esta limitación. La referencia Git funcional con **5/5 CI del mismo SHA** sigue siendo `380a4777cad82ee359cc487b58a9f030b62596c3`, no los commits posteriores documentales.
+
+### Matriz exhaustiva de las 13 referencias no ancestrales
+
+| PR | Contenido identificado | Evidencia y decisión de conciliación | Situación |
+| --- | --- | --- | --- |
+| [#4](https://github.com/jdlc86/CartaViva/pull/4) | Cocina/camarero y contrato SQL | Revisado arriba: identidad SQL evolucionada, semantics «Cancelo» actuales normativas; sin rutas faltantes | **Paridad total NO demostrada** |
+| [#5](https://github.com/jdlc86/CartaViva/pull/5) | Lecturas y gestión | Modelos base idénticos; operaciones M3 por rol posteriores, revisión visual pendiente | **Paridad total NO demostrada** |
+| [#8](https://github.com/jdlc86/CartaViva/pull/8) | Actor SQL/HMAC | Capacidades y tests históricos identificados; seguridad posterior más estricta tras bloqueo | **No degradar SQL; paridad operacional NO certificada** |
+| [#14](https://github.com/jdlc86/CartaViva/pull/14) | **Solo continuidad 11**, un commit propio | El texto fuente `SESSION_11_HANDOFF.md` es prefijo idéntico del candidato; se añadió únicamente apéndice histórico con enlace al tablero. Ningún código exclusivo | **Documento preservado, no cierra PR** |
+| [#17](https://github.com/jdlc86/CartaViva/pull/17) | Validación escalar HTTP | Contratos originales conservados/evolucionados, incluido veto a ruta antigua de pickup | **Paridad total NO demostrada** |
+| [#18](https://github.com/jdlc86/CartaViva/pull/18) | Integridad selección H3 | Cuatro paths propios desde su `merge-base`; todas las rutas presentes en candidato; documentación de selección por SHA de blob idéntico | **Incluido en cadena #18→#22, no PR cerrado** |
+| [#19](https://github.com/jdlc86/CartaViva/pull/19) | Incidencias de cesta | Cinco paths propios; documento de incidencias idéntico por blob y modelo/UI evolucionados | **Incluido en cadena #18→#22, no PR cerrado** |
+| [#20](https://github.com/jdlc86/CartaViva/pull/20) | Consentimiento de cambio de precio | Seis paths propios; documento de consentimiento idéntico por blob, código/test evolucionados | **Incluido en cadena #18→#22, no PR cerrado** |
+| [#21](https://github.com/jdlc86/CartaViva/pull/21) | Revisión de disponibilidad y precios | Siete paths propios; documento de revisión idéntico por blob, código/test evolucionados | **Incluido en cadena #18→#22, no PR cerrado** |
+| [#22](https://github.com/jdlc86/CartaViva/pull/22) | Sincronización de cesta por dispositivo y cadena H3 completa | Nueve paths desde ancestro común: cinco informes H3 idénticos por blob, código del cliente y pruebas evolucionados; véase contraste funcional anterior | **Equivalencia integral NO demostrada** |
+| [#31](https://github.com/jdlc86/CartaViva/pull/31) | **Solo documento del encargo de sesión 13** | Un commit y una ruta; texto sustantivo del encargo conservado en candidato, ahora con cabecera/enlace al tablero y advertencia de contexto histórico | **Documento preservado, no cierra PR** |
+| [#40](https://github.com/jdlc86/CartaViva/pull/40) | **Solo continuidad 15** | Un commit y una ruta; el texto fuente de `SESSION_15_HANDOFF_2026-10-30.md` está íntegro como prefijo literal del candidato, seguido de aviso histórico y enlace al tablero | **Documento preservado, no cierra PR** |
+| [#44](https://github.com/jdlc86/CartaViva/pull/44) | **Solo actualización documental posterior a la implementación H6** | Un commit propio y tres rutas: informe `SABORA_H6_ZERO_COST_INDEPENDENT_REVIEW_2026-11-05.md` idéntico por blob; tablero y continuidad 22 evolucionados. Se ha recuperado una sección de coste cero que no figuraba literalmente en el handoff 22 candidato como **anexo histórico**, sin revocar estados posteriores | **Documento preservado con procedencia; no cierra PR** |
+
+### Una sola línea funcional H3, no cinco implementaciones independientes
+
+Las comparaciones de ancestros establecen **#18→#19 (4 commits de avance, 0 detrás), #19→#20 (6, 0), #20→#21 (4, 0), #21→#22 (7, 0)**. Los cuatro PR anteriores son ancestros del HEAD #22, aunque la cadena completa #18–#22 permanezca no ancestral respecto de #49. **No sumar sus commits como si fueran 5 bloques disjuntos**. El HEAD #22 tiene 32 commits propios desde el `merge-base` con el candidato y nueve paths funcionales/documentales netos en ese tramo.
+
+Las pruebas históricas de cliente conservan **13/13 títulos Node** y **8/8 títulos Chromium** en el candidato (que incluye pruebas nuevas), y los cinco informes H3 son idénticos por blob. El código `App.tsx` creció y cambió notablemente, con QR, sesiones y pagos, y `client-state.ts` incorporó selección de opciones/extras. La presencia de pruebas por nombre y de documentación idéntica **no basta para declarar paridad funcional de todos los flujos** ni sustituye la aceptación integrada contra el comportamiento vigente.
+
+**Defecto normativo independiente confirmado en código del candidato:** `configureBasketLine` encuentra la línea por `itemId` y la **sustituye**; `changeBasket`, `removeBasketLine` y `acceptBasketPrice` también operan por `itemId`. Ello impide mantener dos líneas independientes del mismo plato con personalizaciones diferentes y entra en conflicto con el requisito RF explícito. No hay evidencia de que se haya «perdido» esta función al reconciliar #22; **es trabajo funcional pendiente, no una justificación para copiar ciegamente el estado antiguo**.
+
+### Diferencias documentales no ignoradas
+
+- **#14 y #40:** textos históricos intactos como prefijo del candidato; cambios acotados a advertencia/enlace de gobernanza.
+- **#31:** encargo histórico preservado con introducción más reciente; no ejecutarlo como mandato de trabajo actual.
+- **#44:** el informe independiente de coste cero está conservado byte a byte. La nota original «Actualización 2026-11-05 — auditoría independiente de coste cero» de `SESSION_22_HANDOFF_2026-11-04.md` tenía una sección histórica no conservada literalmente en la versión candidata; se ha añadido bajo **«Anexo de preservación documental — PR #44»** al handoff 22. El tablero tiene decisiones/estados más nuevos, de modo que NO debe restaurarse el tablero anterior ni sus estados `PENDIENTE` de M2/M3.
+
+### Dictamen de estabilización y puerta de salida
+
+**Cumplido en este bloque:** inventario de las **13** divergencias, comprobación de la línea H3, clasificación de las cuatro ramas de documentación, conservación de la nota histórica faltante y delimitación de las diferencias funcionales sin reinterpretar RF/NF/DV. Se preservan archivos y escenarios relevantes **con el alcance descrito**. No se produjo regresión nueva ni prueba nueva; ningún PR quedó cerrado o integrado.
+
+**Lo que NO se cierra:** equivalencia funcional total de las evoluciones H3/H4/M3 y ramas antiguas; deuda RF de variantes independientes del mismo plato; validación humana del diseño, Stripe test, caja, aceptación M1/F-R, operación M6 y producción. No declarar listo el repositorio para `main` ni para piloto por tener paths presentes o CI 5/5 en un SHA anterior.
+
+**Siguiente unidad integral de trabajo:** someter el candidato actual a una **aceptación única de preservación funcional de cliente/gestión/cocina/sala** sobre PostgreSQL 17, Fastify y las dos PWA según escenarios normativos efectivamente aplicables y con revisión visual diferenciada. Preparar una **propuesta de resolución de PR por clase con evidencias del SHA real** (sin cerrar ni fusionar todavía) y, como siguiente hito funcional completo tras estabilización, resolver las variantes de cesta del mismo plato en todo el flujo, no con una colección de micropruebas aisladas. Actualizar tablero y continuidad de sesión 25 solo cuando cambie el dictamen; **no merge, no deploy, no VPS, no Fleetia, no Supabase operativo**.
