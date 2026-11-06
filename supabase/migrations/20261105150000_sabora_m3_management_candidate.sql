@@ -158,7 +158,10 @@ GRANT SELECT,INSERT ON sabora.management_mutation_receipts_m3 TO sabora_m3_manag
 GRANT INSERT ON sabora.management_audit_m3 TO sabora_m3_management_fn_owner;
 GRANT USAGE ON SEQUENCE sabora.management_audit_m3_id_seq TO sabora_m3_management_fn_owner;
 GRANT INSERT ON sabora.table_ordering_audit_candidate TO sabora_m3_management_fn_owner;
-GRANT SELECT(customer_id,state) ON sabora.customer_accounts TO sabora_m3_management_fn_owner;
+-- The SEC INVOKER table-close transition joins open accounts by id before
+-- taking the table lock. Column-level SELECT must cover its JOIN predicate,
+-- not just the projected customer_id and state.
+GRANT SELECT(id,customer_id,state) ON sabora.customer_accounts TO sabora_m3_management_fn_owner;
 GRANT SELECT(account_id,table_id,session_id) ON sabora.customer_account_operational_bindings
  TO sabora_m3_management_fn_owner;
 GRANT EXECUTE ON FUNCTION sabora.transition_table_ordering_candidate(uuid,uuid,text,timestamptz)
