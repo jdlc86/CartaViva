@@ -82,14 +82,21 @@ function assertScope(input,{request=false,h6=false}={}){
     !Array.isArray(input.lines)||input.lines.length<1||input.lines.length>50)
   throw Error('invalid_customer_flow_input');
  const seen=new Set();
+ const seenQuotes=new Set();
  for(const line of input.lines){
   const allowed=request?['quoteId','itemId','selection','quantity']:['itemId','selection','quantity'];
   if(!strictObject(line,allowed)||!UUID.test(line.itemId)||
      (request&&!UUID.test(line.quoteId))||!plain(line.selection)||
      !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>20||
-     Buffer.byteLength(JSON.stringify(line.selection),'utf8')>8192||seen.has(line.itemId.toLowerCase()))
+     Buffer.byteLength(JSON.stringify(line.selection),'utf8')>8192)
     throw Error('invalid_customer_flow_input');
-  seen.add(line.itemId.toLowerCase());
+  // Several configured variants of the same item must survive from quote to
+  // SQL. Reject exact repeated configurations and replayed quote identities.
+  const variant=canonical([line.itemId.toLowerCase(),line.selection]);
+  if(seen.has(variant)||(request&&seenQuotes.has(line.quoteId)))
+   throw Error('invalid_customer_flow_input');
+  seen.add(variant);
+  if(request)seenQuotes.add(line.quoteId);
  }
  if(request&&input.acceptanceToken!==undefined&&
     (typeof input.acceptanceToken!=='string'||input.acceptanceToken.length>256))
