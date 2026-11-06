@@ -111,3 +111,35 @@ Se comparó **cada una** de las 42 ramas HEAD de PR abiertos contra el candidato
 **Bloqueo verificable de ejecución CI:** último SHA funcional con 5/5 workflows SUCCESS = `d075e735b53d20722183e32ebefbfd291fd74475`. La corrección de permisos M3 de `a4229f1dca1a26c37b087da58996b2b320d5c2b8` aún NO tiene ejecución propia visible. Para intentar validar sin mutar código se creó `9fef3f6e47c44b29df716a6b3672b9a7a0244f5d` como **commit vacío con árbol idéntico** al anterior: GitHub informa **cero workflow runs y cero check runs** para ese SHA. La última ejecución del PR #49 sigue siendo la de `d075e735`; se verificó que los cinco workflows residen en ramas candidatas, no en el `main` actual. **No se conoce la causa raíz de que GitHub Actions no inicie ejecuciones nuevas.** La integración automática está bloqueada por ejecución, no por un fallo acreditado de test. La conexión GitHub disponible no expone una operación para despachar workflows nuevos; reejecutar un job antiguo no probaría el árbol corregido. No alterar triggers, crear ramas/PR ni modificar `main` de forma especulativa para forzar CI.
 
 **Orden de salida:** resolver la capacidad de ejecución CI con diagnóstico autorizado y evidencia del nuevo SHA funcional; completar las comprobaciones integradoras de M3 por rol y la auditoría semántica de #22; mantener los 42 PR Draft hasta decisión de integración separada. Candidatura funcional pendiente de nuevo CI, producción NO-GO. No hay cambios en Fleetia, VPS ni Supabase operativo.
+
+## Resolución comprobada PR #48 → #49 y validación integral — 06-11-2026
+
+**Hito técnico de estabilización, no cierre de requisitos ni autorización de despliegue.** Esta sección actualiza la fotografía anterior de conflicto/CI pendiente; prevalece siempre la documentación normativa.
+
+### Causa reproducida y corrección Git
+
+El PR #49 tenía base #48, pero su HEAD no incorporaba ocho commits posteriores de #48 por ancestralidad. La API de GitHub informó `mergeable=false`, `mergeable_state=dirty` y **cero runs nuevos** tras `a4229f1d` y los commits documentales. Se comprobaron los siete paths modificados por #48 respecto del ancestro compartido `dab86474`: tres blobs ya idénticos; la prueba PG17 y la continuidad contenían todas las líneas de #48 con adiciones; `TablesView.tsx` reemplazaba intencionadamente `canManage` por capacidades verificadas según rol; el tablero marcaba CV-012 como candidato CI en lugar de pendiente. Ningún cambio de #48 requería sobrescribir el árbol candidato.
+
+El commit de **reconciliación de historia en la rama del PR #49**, `65b0ead2e52a03ef738c939f3cd2d50b1052b7aa`, registró como segundo padre el HEAD de #48 `ead7633bd9796324de88bb024583ad16944941e8`, conservando **exactamente el mismo SHA de árbol** de archivos que el HEAD #49 previo. No se hizo merge del PR a `main`, rebase, force push, cambio de ficheros, VPS, Supabase operativo ni Fleetia. GitHub pasó a `mergeable=true`, y **los cinco workflows del PR se reactivaron inmediatamente**. La cuenta/importe de GitHub Actions no es accesible desde esta conexión; sí se acredita que no había un bloqueo de ejecución por saldo agotado en ese momento.
+
+### Fallos reales de la primera ejecución y corrección
+
+La primera corrida `65b0ead2` dio gestión y CV-012 SUCCESS. El workflow cliente falló **antes de Playwright**, al agotar el límite de 180 s durante descarga externa de fuente Ubuntu `fonts-ipafont-gothic`; el segundo intento del **mismo workflow/SHA**, sin cambiar código ni dependencias, finalizó SUCCESS. No había fallo de app en ese intento.
+
+Los workflows Bootstrap y CI H6 sí encontraron el **mismo fallo del E2E completo**: 50/51 PG17 PASS y el caso 49 `PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey` falló por `page.waitForResponse: Timeout 20000ms` durante cierre de la mesa 915. La revisión de `scripts/ci/table-change-root-postgres17.test.mjs` frente a `apps/management/src/main.tsx` demostró que el test alternaba sesión administrador→camarero→administrador **antes del cierre**, y el remontaje React reemplazaba intencionadamente el árbol, reseteando la mesa seleccionada. El E2E intentaba entonces cerrar 915 sin volver a seleccionarla. **No** se atribuyó falsamente el fallo a SQL, HMAC, Stripe o permisos reales.
+
+La corrección de la **misma prueba integrada**, sin tests aislados añadidos, es `380a4777cad82ee359cc487b58a9f030b62596c3`: se verifica expresamente que 915 está seleccionada antes del cierre con su fallo GET posterior inyectado y recuperación segura; **después** se ejercita cambio de rol administrador/camarero con sus controles y seis viewports. No se modificaron runtime, migraciones, permisos, SQL, normative F/R ni escenarios eliminados.
+
+### Puerta integral: cinco workflows SUCCESS sobre el mismo SHA funcional `380a4777`
+
+| Workflow | Resultado y evidencia |
+| --- | --- |
+| [Sabora CI H6 #42253454494](https://github.com/jdlc86/CartaViva/actions/runs/42253454494) | **SUCCESS**: contratos H6, integración PG17/Fastify/HMAC/concurrencia, recorrido real Chromium, compilación y aislamiento |
+| [Bootstrap Sabora PG17 #42253454770](https://github.com/jdlc86/CartaViva/actions/runs/42253454770) | **SUCCESS**: 1.349/1.349 Node, 51/51 PG17 con caso 49 ahora PASS, 4/4 coste cero, 0 fallos y 0 SKIP en estos bloques; Compose/imagen |
+| [Cliente Chromium #42253454758](https://github.com/jdlc86/CartaViva/actions/runs/42253454758) | **SUCCESS** |
+| [Gestión Chromium #42253454543](https://github.com/jdlc86/CartaViva/actions/runs/42253454543) | **SUCCESS** |
+| [CV-012 dos PWA #42253454564](https://github.com/jdlc86/CartaViva/actions/runs/42253454564) | **SUCCESS**: ámbitos SW/cachés públicos/offline/segregación |
+
+Se verificó al terminar que el PR #49 sigue **Draft**, base #48, GitHub devuelve `mergeable=true`, `mergeable_state=clean`; #48 es ahora **ancestro Git** de #49, con `behind=0` (19 commits adelante en #49). `main` permanece `42b46358a76162445fa9e0b20e7b87dd0a640b5b`; #48 permanece `ead7633b`. La anterior clasificación de 42 PR **27 ancestros, 14 divergentes y #49** debe actualizarse a **28 ancestros, 13 divergentes y #49**, exclusivamente porque #48 ya es ancestro; el resto de la auditoría histórica mantiene su alcance y ningún PR fue cerrado.
+
+**Dictamen:** conflicto Git **RESUELTO**; gate completo de código M3 + CV-012 **VALIDADO AUTOMÁTICAMENTE** en `380a4777`, incluida la corrección de roles M3 de `a4229f1d`. No es aprobación de aspecto humano, instalación real en iOS/Android, cierre de 42 PR, paridad semántica de las ramas históricas divergentes, aceptación total F01–F28/R01–R10, solución de la deuda normativa de personalizaciones de cesta, pago Stripe sandbox, caja, M6 o activación operativa. `server.mjs` sigue `health-only`. Producción **NO-GO**. La actualización documental posterior no hereda pruebas de un SHA distinto.
