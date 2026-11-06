@@ -20,6 +20,26 @@ const queryRecord=value=>{
 const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.length&&
  keys.every(key=>Object.hasOwn(value,key));
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
+// SQL mutation receipts keep the field 'tableId'. A paginated read must
+// instead honor the established PWA table projection contract ('id'), with
+// exact fields and no QR bearer data. Reject drift rather than displaying
+// a partial/incompatible administrative list.
+const TABLE_PAGE_FIELDS=['tableId','number','capacity','description','readinessState',
+ 'orderingState','pauseUntil','qrVersion','qrEnabled','revision'];
+const projectTablesPage=page=>{
+ if(!exact(page,['version','items','nextAfterNumber'])||page.version!==2||
+    !Array.isArray(page.items)||page.items.length>100||
+    (page.nextAfterNumber!==null&&(!Number.isSafeInteger(page.nextAfterNumber)||
+      page.nextAfterNumber<1)))
+  throw Error('m3_tables_projection_unavailable');
+ const items=page.items.map(value=>{
+  if(!exact(value,TABLE_PAGE_FIELDS)||!UUID.test(value.tableId))
+   throw Error('m3_tables_projection_unavailable');
+  const {tableId,...fields}=value;
+  return {id:tableId,...fields};
+ });
+ return {version:2,items,nextAfterNumber:page.nextAfterNumber};
+};
 const failure=(reply,error,kind,observeFailure)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(['m3_management_forbidden','staff_not_authorized'].includes(code))
@@ -54,9 +74,9 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
   if(!queryRecord(query)||Object.keys(query).some(k=>!['afterNumber','limit'].includes(k))||
      Object.values(query).some(v=>typeof v!=='string'||!/^(0|[1-9][0-9]*)$/.test(v)))
    return reply.code(400).send({error:'invalid_tables_request'});
-  try{return reply.code(200).send(await tables.read(verified(request),{
+  try{return reply.code(200).send(projectTablesPage(await tables.read(verified(request),{
    afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
-   limit:query.limit===undefined?50:Number(query.limit)}));}
+   limit:query.limit===undefined?50:Number(query.limit)})));}
   catch(error){return failure(reply,error,'tables',observeFailure);}
  });
  app.post('/api/v1/admin/tables/actions',{preHandler:floor,bodyLimit:16_384},async(request,reply)=>{

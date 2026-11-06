@@ -7474,7 +7474,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    try{listed=await management.listTables({afterNumber:900,limit:20});}
    catch(error){throw m3Failures.at(-1)??error;}
    assert.equal(listed.version,2);
-   assert.equal(listed.items.find(row=>row.tableId===created.tableId)?.number,913);
+   assert.equal(listed.items.find(row=>row.id===created.tableId)?.number,913);
+   assert.ok(listed.items.every(row=>Object.hasOwn(row,'id')&&!Object.hasOwn(row,'tableId')),
+    'HTTP paginated tables must match the exact management PWA projection');
    // A fresh table is not customer-operational merely because its QR was
    // delivered. EN_PREPARACION and occupancy remain distinct server axes.
    const m3CustomerId='b0a00000-0000-4000-8000-000000000317';
