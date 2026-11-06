@@ -280,8 +280,10 @@ test('H3 selection review resolves mixed catalog incidents before allowing QR in
  await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeDisabled();
  await dialog.getByRole('button',{name:'Aceptar nuevo precio'}).click();
  await expect(dialog).toContainText('2 plato(s) requieren una decisión');
- await dialog.getByRole('button',{name:'Retirar de la cesta'}).first().click();
- await dialog.getByRole('button',{name:'Retirar de la cesta'}).click();
+ await dialog.locator('.basket-lines article').filter({hasText:'Berenjena asada'})
+  .getByRole('button',{name:'Retirar de la cesta'}).click();
+ await dialog.locator('.basket-lines article').filter({hasText:'Tarta de limón'})
+  .getByRole('button',{name:'Retirar de la cesta'}).click();
  await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeEnabled();
  await dialog.getByRole('button',{name:'Validar mesa para pedir'}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
