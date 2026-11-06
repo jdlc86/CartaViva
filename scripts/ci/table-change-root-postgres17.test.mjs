@@ -7643,7 +7643,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(expiredCapability),'update',capabilityBody])),
     /invalid_m3_management_capability/,'expired capability must fail closed');
-   const waiterCapability=m3TablesIssuer({actorId:httpFixture.waiter,staffRole:'waiter',
+   const waiterCapability=m3TablesIssuer({actorId:readinessWaiterId,staffRole:'waiter',
     action:'table.update',requestId:randomUUID(),body:capabilityBody});
    await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
