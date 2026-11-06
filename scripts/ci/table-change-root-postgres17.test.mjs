@@ -7897,47 +7897,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(opened.ordering_state,'open');
     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-table-qr.png'),fullPage:true});
 
-    // Role switch in the SAME real PG17/Fastify/Chromium M3 acceptance journey.
-    // A waiter sees operational actions, not administrative edit/QR controls.
-    await m3StaffPage.evaluate(async jwt=>{
-     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
-     window.__saboraCiDispose=mountAuthenticatedManagementApp({
-      element:document.getElementById('root'),getAccessToken:async()=>jwt,
-      enableM3Management:true
-     });
-    },staffJwt(readinessWaiterId));
-    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
-    assert.equal(await m3StaffPage.getByRole('button',{name:'Crear mesa'}).count(),0,
-     'waiter cannot see admin table creation');
-    assert.equal(await m3StaffPage.getByRole('button',{name:'Rotar QR'}).count(),0,
-     'waiter cannot see admin QR rotation');
-    assert.equal(await m3StaffPage.locator('.detail-block__heading')
-     .filter({hasText:'Ficha administrativa'}).count(),0,
-     'waiter cannot edit administrative table fields');
-    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button').count(),3);
-    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"] button').count(),3);
-    assert.ok(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button:not([disabled])').count()>0,
-     'waiter retains operational preparation controls');
-    for(const width of [360,390,430,768,1024,1440]){
-     await m3StaffPage.setViewportSize({width,height:900});
-     if(width===390||width===1440)
-      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-waiter-'+width+'.png')});
-    }
-    await m3StaffPage.evaluate(async jwt=>{
-     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
-     window.__saboraCiDispose=mountAuthenticatedManagementApp({
-      element:document.getElementById('root'),getAccessToken:async()=>jwt,
-      enableM3Management:true
-     });
-    },jwtAdmin);
-    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
-    await m3StaffPage.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
-    for(const width of [360,390,430,768,1024,1440]){
-     await m3StaffPage.setViewportSize({width,height:900});
-     if(width===390||width===1440)
-      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-admin-'+width+'.png')});
-    }
-
     const browserCustomerId=randomUUID();
     const browserCustomerToken='Y'.repeat(43);
     await admin.query(
@@ -8039,6 +7998,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'signed kitchen transitions must leave durable pickup without inventing physical delivery');
 
 
+    // Keep the transactional close on the newly created table: a role switch
+    // deliberately replaces the component tree and resets selectedId.
+    assert.equal(await m3StaffPage.locator('#table-detail-title').textContent(),
+     'Mesa 915','the economic closure must target the created browser table');
     // Only the post-commit management GET is fault-injected. The write,
     // H6 settlement and account ledger still execute in real PG17.
     let injectedCloseReadFailures=0;
@@ -8095,6 +8058,49 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .getByRole('button',{name:'CERRADA'}).isDisabled(),true,
      'the refreshed PWA must show the real closed state');
     assert.equal(closePostCount,1,'read recovery must not repeat table closure');
+    // After settlement and read recovery, verify the identity transition
+    // without changing the table selected for the economic transaction.
+    // Role switch in the SAME real PG17/Fastify/Chromium M3 acceptance journey.
+    // A waiter sees operational actions, not administrative edit/QR controls.
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },staffJwt(readinessWaiterId));
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
+    assert.equal(await m3StaffPage.getByRole('button',{name:'Crear mesa'}).count(),0,
+     'waiter cannot see admin table creation');
+    assert.equal(await m3StaffPage.getByRole('button',{name:'Rotar QR'}).count(),0,
+     'waiter cannot see admin QR rotation');
+    assert.equal(await m3StaffPage.locator('.detail-block__heading')
+     .filter({hasText:'Ficha administrativa'}).count(),0,
+     'waiter cannot edit administrative table fields');
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button').count(),3);
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"] button').count(),3);
+    assert.ok(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button:not([disabled])').count()>0,
+     'waiter retains operational preparation controls');
+    for(const width of [360,390,430,768,1024,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     if(width===390||width===1440)
+      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-waiter-'+width+'.png')});
+    }
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
+    for(const width of [360,390,430,768,1024,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     if(width===390||width===1440)
+      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-admin-'+width+'.png')});
+    }
+
     assert.deepEqual(m3BrowserErrors,[]);
     m3BrowserClosing=true;
     await m3CustomerContext.close();
