@@ -120,3 +120,33 @@ Referencia principal: [tablero vivo §12](../tracking/SABORA_LIVE_PROJECT_TRACKE
 El cierre real del flujo M3 recorre publicación de plato gratuito, mesa/QR, pedido cliente, despacho H6, cocina ACK y líneas READY, pickup durable y cierre de ocupación con autocierre económico sin atribuir entrega. Se corrigieron fallos SQL de permisos mínimos del propietario M3 en revocación de visitas y consulta de `customer_accounts.id`, además de los problemas HTTP/visual y arnés SSE registrados en el PR. **No hay aceptación humana ni despliegue.** M3 se considera candidato técnico, no finalización de toda la aplicación. M1, matriz F/R, Stripe test, caja visual, observabilidad y producción siguen pendientes conforme a normativa y tablero.
 
 No merge, no VPS, no Supabase operativo, no Fleetia. Esta nota es contexto, no fuente normativa.
+
+## 12. Punto de relevo operativo de sesión 23 — comprobación de 06-11-2026 (11:51 Europe/Madrid)
+
+### Fuente de verdad y restricciones inalterables
+
+- **Repositorio único autorizado:** `jdlc86/CartaViva`. No tocar Fleetia ni otros recursos del VPS compartido. No tocar Supabase operativo. Sin merge, despliegue, reinicio, eliminación, activación ni modificaciones de infraestructura sin autorización expresa y aislamiento respecto de Fleetia.
+- **Primero normativa:** [requisitos funcionales](../REQUISITOS_FUNCIONALES.md), [contrato visual aprobado](../DESIGN_SYSTEM_CONTRACT.md) y [matriz de aceptación F01–F28/R01–R10](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md). Este handoff y el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) orientan la ejecución; **no** sustituyen ni reinterpretaban requisitos.
+- Implementar y cerrar **hitos completos**; pruebas integradoras como método normal. Pruebas aisladas solo para causa de un fallo concreto o protección de una invariante crítica. Distinguir siempre código implementado, tests ejecutados, resultado de CI, conformidad visual/producto y aceptación operacional.
+
+### Estado verificable en GitHub
+
+- **M2:** [PR #46](https://github.com/jdlc86/CartaViva/pull/46): **candidato técnicamente validado** en su SHA funcional documentado en §10; no fusionado ni activado.
+- **M3 CV-006/CV-007:** [PR #48 Draft](https://github.com/jdlc86/CartaViva/pull/48), rama `integration/sabora-session23-m3-acceptance-20261106`. **Último SHA funcional con prueba completa verde: `a2b21121ad89d80bed0e07fc7f1dbd8f3344fb66`**. [CI #42202011633](https://github.com/jdlc86/CartaViva/actions/runs/42202011633) **SUCCESS**; [Bootstrap PG17 #42202011788](https://github.com/jdlc86/CartaViva/actions/runs/42202011788) **SUCCESS**; [smoke visual gestión #42202011685](https://github.com/jdlc86/CartaViva/actions/runs/42202011685) **SUCCESS**. Bootstrap: **51/51 PG17, 0 fail, 0 skip**; artefacto `sabora-m3-pg17-two-pwa-browser`.
+- **HEAD encontrado al relevar:** `5c6e27b25c2d49252d0f4a714165cd5df9a54705`, **solo documental** (se actualizaron tablero §12 y este handoff §11). Para ese SHA, al comprobar: [gestión visual #42206194704](https://github.com/jdlc86/CartaViva/actions/runs/42206194704) **SUCCESS**; [Bootstrap PG17 #42206194764](https://github.com/jdlc86/CartaViva/actions/runs/42206194764) **EN CURSO**, sin error reportado; [CI #42206194870](https://github.com/jdlc86/CartaViva/actions/runs/42206194870) **EN CURSO**, sin error reportado. **Consultar conclusión real**; no convertir «en curso» en PASS.
+- El presente registro documental constituye un commit posterior a los SHA anteriores: **no atribuirle automáticamente los resultados del commit funcional** ni relanzar suites duplicadas para editar texto.
+
+### Qué resolvió M3 y qué NO demuestra
+
+Se corrigieron defectos contractuales reales de lectura HTTP de mesas (`tableId` SQL frente a `id` PWA), selección/refresh de mesa, creación/QR, identidad de fixture y proxy Chromium de SSE (una conexión persistente no puede consumirse con `route.fetch`). El último error del cierre de ocupación se resolvió con **privilegios mínimos** para la revocación de visitas y para leer `customer_accounts.id` durante el JOIN bajo propietario interno `NOLOGIN/NOBYPASSRLS`; no se concedieron permisos directos al runtime M3. El recorrido integrado real de 2 PWA + Fastify + PG17 efímero publica catálogo, crea/abre mesa, valida QR, confirma ronda gratuita, realiza despacho H6, ACK de cocina, transiciones a READY con pickup durable y finalmente cierra ocupación y cuenta gratuita resuelta con `close_origin=system_zero_cost`. No afirma entrega física ni cobro.
+
+**Conformidad humana/visual definitiva no validada**, **Stripe sandbox externo sin validar**, **caja y operación real pendientes**, **observabilidad/recuperación/autorizaciones de puesta en marcha pendientes**. Los controles de M1/CV-001/CV-003 y la matriz F/R no están cerrados por el éxito de M3. La producción sigue **NO-GO**.
+
+### Secuencia de continuación obligatoria
+
+1. Comprobar PR #48 (HEAD, estado Draft, base) y **los tres workflows** del último SHA; si hay FAIL, inspeccionar job/log y corregir la causa, no ocultar la prueba ni aumentar permisos sin SQLSTATE o evidencia PostgreSQL.
+2. Revisar el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), los documentos normativos y la matriz F/R antes de elegir el siguiente bloque de valor; contrastar de forma independiente la evidencia de M3 (Chromium, PG17 y roles) con el diseño aprobado, sin aceptar automáticamente las pantallas por un smoke verde.
+3. Preparar el siguiente **hito integrado de aceptación y preparación operacional** con cobertura real de los requisitos restantes; tratar Stripe test, caja, recuperación/observabilidad y aceptación visual como puertas separadas. No avanzar mediante una secuencia de micropruebas repetitivas. Registrar hechos demostrados, bloqueos y NO-GO en tablero y continuidad **solo cuando cambie un hito relevante**.
+4. Mantener PRs Draft y las prohibiciones de merge/despliegue/recursos compartidos hasta nueva autorización expresa.
+
+**Nota de cronología:** las secciones §9–§10 son el estado histórico al publicarse, no afirmaciones actuales de que Codex aún no implementó M2/M3. Prevalecen las evidencias más recientes §11–§12 y el estado vivo comprobado en GitHub.
