@@ -44,6 +44,9 @@ test('PWA metadata and service worker cache only the shell, never API data',()=>
  assert.equal(manifest.display,'standalone');
  assert.equal(manifest.theme_color,'#146B57');
  assert.equal(manifest.icons[0].purpose,'any maskable');
+ assert.ok(manifest.icons.some(icon=>icon.sizes==='192x192'&&icon.type==='image/png'));
+ assert.ok(manifest.icons.some(icon=>icon.sizes==='512x512'&&icon.type==='image/png'));
+ assert.doesNotMatch(sw,/cache\.put\(['"]\/api\//);
  assert.match(sw,/url\.pathname\.startsWith\('\/api\/'\)/);
  assert.doesNotMatch(sw,/api\/v1\/catalog['"]/);
 });

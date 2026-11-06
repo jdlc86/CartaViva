@@ -141,7 +141,9 @@ const main=async()=>{
   await page.screenshot({path:join(artifacts,'management-installed.png'),fullPage:true});
 
   await context.setOffline(true);
-  await page.goto(origin+'/gestion/#comandas',{waitUntil:'domcontentloaded'});
+  // A hash-only navigation does not make a network request and therefore
+  // cannot exercise the offline service-worker navigation fallback.
+  await page.goto(origin+'/gestion/?cv012-offline=1#comandas',{waitUntil:'domcontentloaded'});
   await page.getByRole('heading',{name:'Gestión sin conexión'}).waitFor();
   await page.screenshot({path:join(artifacts,'management-offline.png'),fullPage:true});
   await page.goto(origin+'/qr/v1/SABORA_CI/00000000-0000-4000-8000-000000000001#test-secret',
