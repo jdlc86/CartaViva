@@ -1,0 +1,39 @@
+name: Sabora CV-012 independent PWA installability
+on:
+  pull_request:
+    paths:
+      - 'apps/client/**'
+      - 'apps/management/**'
+      - 'scripts/ci/cv012-two-pwa-installation.mjs'
+      - '.github/workflows/cv012-pwa-installability.yml'
+permissions:
+  contents: read
+jobs:
+  two-pwa-installability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Build public client and management under the isolated staff path
+        run: |
+          pnpm --filter @sabora/client build
+          SABORA_MANAGEMENT_BASE_PATH=/gestion/ pnpm --filter @sabora/management build
+      - name: Install test Chromium
+        run: pnpm --filter @sabora/client exec playwright install --with-deps chromium
+      - name: Install both real PWAs, test scoped offline caches and isolation
+        run: node scripts/ci/cv012-two-pwa-installation.mjs
+      - name: Publish browser evidence of installation and offline behavior
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-cv012-two-pwa-installability
+          path: ${{ runner.temp }}/sabora-cv012-browser/
+          if-no-files-found: warn
+          retention-days: 7
