@@ -7803,14 +7803,25 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const browserTableId=browserTable.tableId;
     await m3StaffPage.getByRole('button',{name:/Mesa 915/}).first()
      .waitFor({timeout:20000});
+    const readinessHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='readiness',{timeout:20000});
     await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"]')
      .getByRole('button',{name:'LISTA'}).click();
+    const readinessResponse=await readinessHttp;
+    assert.equal(readinessResponse.status(),200,await readinessResponse.text());
     const prepared=(await admin.query(
      'SELECT readiness_state FROM sabora.dining_tables WHERE id=$1',
      [browserTableId])).rows[0];
     assert.equal(prepared.readiness_state,'LISTA');
+    const openHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+     response.request().method()==='POST',{timeout:20000});
     await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
      .getByRole('button',{name:'ABIERTA'}).click();
+    const openResponse=await openHttp;
+    assert.equal(openResponse.status(),200,await openResponse.text());
     const opened=(await admin.query(
      'SELECT ordering_state FROM sabora.dining_tables WHERE id=$1',
      [browserTableId])).rows[0];
@@ -7864,10 +7875,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .waitFor({timeout:20000});
     await m3CustomerPage.screenshot({path:m3Join(m3Evidence,'customer-free-confirmed.png'),fullPage:true});
 
+    const closeHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+     response.request().method()==='POST',{timeout:20000});
     await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
      .getByRole('button',{name:'CERRADA'}).click();
+    const closeResponse=await closeHttp;
+    assert.equal(closeResponse.status(),200,await closeResponse.text());
     const closed=(await admin.query(
-     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents FROM sabora.dining_tables t JOIN sabora.customer_accounts a ON a.table_id=t.id WHERE t.id=$1 AND a.customer_id=$2",
+     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents FROM sabora.dining_tables t JOIN sabora.customer_account_operational_bindings b ON b.table_id=t.id JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE t.id=$1 AND a.customer_id=$2",
      [browserTableId,browserCustomerId])).rows[0];
     assert.equal(closed.ordering_state,'closed');
     assert.ok(closed.closed_at,'closing an occupied zero-cost table must close the account');
