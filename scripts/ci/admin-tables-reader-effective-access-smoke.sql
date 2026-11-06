@@ -1,9 +1,9 @@
 -- Exercise actual PostgreSQL authorization, not only privilege metadata.
 -- Run as migration-owner superuser inside the disposable PG17 CI container.
 BEGIN;
-INSERT INTO sabora.dining_tables(id,number,capacity,description,qr_token_hash,ordering_state)
+INSERT INTO sabora.dining_tables(id,number,capacity,description,qr_token_hash,ordering_state,readiness_state)
  VALUES ('cafe0000-0000-4000-8000-000000009931',9931,4,'CI-only',
- decode(repeat('99',32),'hex'),'closed');
+ decode(repeat('99',32),'hex'),'closed','LISTA');
 SET LOCAL ROLE sabora_admin_tables_reader;
 DO $effective$
 DECLARE n integer;

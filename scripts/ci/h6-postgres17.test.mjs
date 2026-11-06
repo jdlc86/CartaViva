@@ -90,8 +90,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await assert.rejects(operationsPool.query(`SET ROLE sabora_h6_customer_runtime`),/permission denied/);
 
  await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds)
-  VALUES ($1,976001,4,$2,'open',300)`,[tableId,qr.tokenHash]);
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state,grouping_window_seconds)
+  VALUES ($1,976001,4,$2,'open','LISTA',300)`,[tableId,qr.tokenHash]);
  await admin.query(`INSERT INTO sabora.catalog_items
   (id,draft,draft_revision,published_revision,published_snapshot,published_at)
   VALUES ($1,$2,1,1,$2,clock_timestamp()),($3,$4,1,1,$4,clock_timestamp())`,
@@ -317,8 +317,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   WHERE o.id=$1`,[httpConfirmedOrder.orderId])).rows[0];
  assert.ok(historicalScope?.customer_id);
  await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,session_id,ordering_state)
-  VALUES($1,976099,4,$2,$3,'open')`,
+  (id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+  VALUES($1,976099,4,$2,$3,'open','LISTA')`,
   [pickupDestinationTable,qr.tokenHash,pickupDestinationSession]);
  await admin.query(`INSERT INTO sabora.customer_table_visits
   (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
@@ -371,8 +371,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const destinationSession=`a6200000-0000-4000-8000-0000000000${Number(suffix)+1}`;
   const visitKey=`h6_pickup_negative_destination_${suffix}`;
   await admin.query(`INSERT INTO sabora.dining_tables
-   (id,number,capacity,qr_token_hash,session_id,ordering_state)
-   VALUES($1,$2,4,$3,$4,'open')`,
+   (id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+   VALUES($1,$2,4,$3,$4,'open','LISTA')`,
    [destinationId,tableNumber,qr.tokenHash,destinationSession]);
   await admin.query(`INSERT INTO sabora.customer_table_visits
    (table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,expires_at)
@@ -926,7 +926,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   randomBytesImpl:()=>Buffer.alloc(32,41)});
  const zeroToken=parseTableQrPayload(zeroQr.payload,{expectedOrigin:'https://sabora.example',
   expectedRestaurantCode:'SABORA'}).token;
- await admin.query("INSERT INTO sabora.dining_tables (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds) VALUES($1,976010,4,$2,'open',300)",
+ await admin.query("INSERT INTO sabora.dining_tables (id,number,capacity,qr_token_hash,ordering_state,readiness_state,grouping_window_seconds) VALUES($1,976010,4,$2,'open','LISTA',300)",
   [zeroTableId,zeroQr.tokenHash]);
  const zeroGuests=await Promise.all([
   register({alias:'Cortesía resuelta',company:null}),
@@ -1143,8 +1143,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const strictToken=parseTableQrPayload(strictQr.payload,{expectedOrigin:'https://sabora.example',
   expectedRestaurantCode:'SABORA'}).token;
  await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state,require_pay_as_ordered)
-  VALUES($1,976002,4,$2,'open',true)`,[strictTableId,strictQr.tokenHash]);
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state,require_pay_as_ordered)
+  VALUES($1,976002,4,$2,'open','LISTA',true)`,[strictTableId,strictQr.tokenHash]);
  const strictCustomer=await register({alias:'Cliente política estricta',company:null});
  const strictVisit=await flow.authorizeVisit({customerSessionToken:strictCustomer.token,
   tableId:strictTableId,qrToken:strictToken});

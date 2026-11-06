@@ -39,6 +39,12 @@ export const READ_ORDER_HISTORY_SQL=`SELECT *
 const STATUSES = new Set(['confirmed', 'preparing', 'ready', 'picked_up']);
 const TARGETS = new Set(['preparing', 'ready', 'picked_up']);
 
+function validCategory(value) {
+  return typeof value === 'string' && value === value.trim() && value.length > 0 &&
+    [...value].length <= 80 && value !== 'Todos' &&
+    !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
 function isPlainObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -263,7 +269,7 @@ export function createOrderOperationsRepository({deliveryBoardCandidate = false}
             typeof row?.customer_label !== 'string' || row.customer_label.trim().length === 0 ||
             row.customer_label.length > 160 || !['first', 'grouped', 'late'].includes(row?.grouping) ||
             !Number.isSafeInteger(row?.line_number) || row.line_number < 1 ||
-            !['drink', 'starter', 'main', 'dessert'].includes(row?.category) ||
+            !validCategory(row?.category) ||
             typeof row?.name !== 'string' || row.name.trim().length === 0 || row.name.length > 160 ||
             !Number.isSafeInteger(row?.quantity) || row.quantity < 1 || row.quantity > 20 ||
             !STATUSES.has(row?.status) ||

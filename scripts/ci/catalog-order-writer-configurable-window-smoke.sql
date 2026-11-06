@@ -2,9 +2,9 @@
 -- real table constraints and kitchen triggers with a NONDEFAULT grouping window.
 -- No live database, runtime grants, or persistent fixture rows.
 BEGIN;
-INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,
+INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,readiness_state,
  grouping_window_seconds)
-VALUES (930192,4,decode(repeat('92',32),'hex'),'open',60)
+VALUES (930192,4,decode(repeat('92',32),'hex'),'open','LISTA',60)
 RETURNING id AS table_id,session_id \gset
 
 -- The first order must establish the occupancy timestamp. Reject a fixture

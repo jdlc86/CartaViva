@@ -32,7 +32,7 @@ test('candidate writes legacy kitchen projection and economic ledger on one quer
  assert.match(calls[0].sql,/FOR UPDATE/);
  assert.match(calls[1].sql,/UPDATE sabora.dining_tables/);
  assert.deepEqual(JSON.parse(calls[1].params[7]),
-  [{category:'starter',name:'Plato',quantity:2}]);
+  [{category:'Primeros',name:'Plato',quantity:2}]);
  assert.deepEqual(JSON.parse(calls[1].params[6]),evidence);
  assert.equal(calls[1].params[3],context.customerAlias);
  assert.equal(calls[1].params[4],context.customerIdentifier);
@@ -56,7 +56,9 @@ test('candidate fails closed on lost table or invalid identity before ledger',as
   {context:{...context,customerAlias:'Control'+String.fromCharCode(10)+'line'}},
   {context:{...context,customerAlias:'   '}},
   {context:{...context,customerIdentifier:'ID123'}},
-  {evidence:{...evidence,category:'invented'}},
+  {evidence:{...evidence,category:' '}},
+  {evidence:{...evidence,category:'A'.repeat(81)}},
+  {evidence:{...evidence,category:'invented\ncategory'}},
   {evidence:{...evidence,quantity:0}},
   {quoteId:'bad'}
  ]){
@@ -90,7 +92,7 @@ test('writer persists trimmed trusted alias and keeps kitchen projection derived
  assert.equal(calls[1].params[4],context.customerIdentifier);
  assert.equal(calls[1].params[5],context.visitId);
  assert.deepEqual(JSON.parse(calls[1].params[7]),
-  [{category:'starter',name:evidence.itemName,quantity:evidence.quantity}]);
+  [{category:evidence.category,name:evidence.itemName,quantity:evidence.quantity}]);
 });
 
 test('locked table state must be well-formed before an order or ledger INSERT',async()=>{

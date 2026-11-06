@@ -28,7 +28,7 @@ function board(status = 'ready') {
       confirmedAt: '2026-10-24T10:00:00.000Z',
       grouping: 'first',
       lineNumber: 1,
-      category: 'main',
+      category: 'Primeros',
       name: 'Arroz',
       quantity: 1,
       status,
@@ -50,11 +50,16 @@ test('board validation groups persisted lines and preserves ready notifications'
   const grouped = groupOrderBoard(normalized.items);
   assert.equal(grouped.length, 1);
   assert.equal(grouped[0].tableNumber, 8);
+  assert.equal(grouped[0].lines[0].category, 'Primeros');
   assert.equal(grouped[0].lines[0].notification.acknowledgedAt, null);
   assert.throws(() => normalizeOrderBoard({...board(), items: [...board().items, ...board().items]}),
     /invalid_order_board/);
   assert.throws(() => normalizeOrderBoard({...board(), items: [{...board().items[0], notification: null}]}),
     /invalid_order_board/);
+  for (const category of ['Todos', ' Con espacios ', 'x'.repeat(81), 'Con\u0000trol']) {
+    assert.throws(() => normalizeOrderBoard({...board(), items: [{...board().items[0], category}]}),
+      /invalid_order_board/);
+  }
 });
 
 test('local action policy mirrors the documented kitchen and waiter transitions', () => {

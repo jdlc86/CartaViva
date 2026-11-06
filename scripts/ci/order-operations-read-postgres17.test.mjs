@@ -131,8 +131,8 @@ async function directFixture(suffix, customerLabel = 'Mesa de integración') {
   const tableId = `a2000000-0000-4000-8000-${padded}`;
   const orderId = `a3000000-0000-4000-8000-${padded}`;
   await admin.query(`INSERT INTO sabora.dining_tables
-    (id, number, capacity, qr_token_hash, ordering_state)
-    VALUES ($1, $2, 4, decode(repeat('a2',32),'hex'), 'open')`,
+    (id, number, capacity, qr_token_hash, ordering_state, readiness_state)
+    VALUES ($1, $2, 4, decode(repeat('a2',32),'hex'), 'open', 'LISTA')`,
   [tableId, 970000 + Number(suffix)]);
   const table = await admin.query(
     'SELECT session_id FROM sabora.dining_tables WHERE id=$1', [tableId]);
@@ -567,8 +567,8 @@ test('PG17 canonical customer confirmation reaches restricted kitchen and waiter
     itemId, publishedRevision: 1, snapshot, selection, quantity: 1,
   });
   const table = await admin.query(`INSERT INTO sabora.dining_tables
-    (id,number,capacity,qr_token_hash,ordering_state)
-    VALUES ($1,970501,4,sha256(convert_to($2,'UTF8')),'open')
+    (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+    VALUES ($1,970501,4,sha256(convert_to($2,'UTF8')),'open','LISTA')
     RETURNING session_id,qr_version`, [tableId, qrToken]);
   await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
     VALUES ($1,'SB-555555555555','Cliente H5')`, [profileId]);
@@ -1040,8 +1040,8 @@ test('PG17 H6/B2 delivery projection follows A-to-B destination without changing
  const item=await integratedFixture(975,'Cliente cambio de mesa H6');
  const destinationTable='a2000000-0000-4000-8000-000000000976';
  await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state)
-  VALUES($1,970976,4,decode(repeat('a2',32),'hex'),'open')`,[destinationTable]);
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+  VALUES($1,970976,4,decode(repeat('a2',32),'hex'),'open','LISTA')`,[destinationTable]);
  const destSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',
   [destinationTable])).rows[0].session_id;
  const visit='delivery_visit_975_abcdefgh';
@@ -1111,8 +1111,8 @@ test('PG17 H6/B2 repository opt-in maps signed A-to-B destination and rejects ma
  assert.equal(line.pickup,null);
  const target='a2000000-0000-4000-8000-000000000978';
  await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state)
-  VALUES($1,970978,4,decode(repeat('a2',32),'hex'),'open')`,[target]);
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+  VALUES($1,970978,4,decode(repeat('a2',32),'hex'),'open','LISTA')`,[target]);
  const targetSession=(await admin.query(
   'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[target])).rows[0].session_id;
  await admin.query(`UPDATE sabora.order_line_delivery_destinations
@@ -1165,8 +1165,8 @@ test('PG17 H6/B2 authenticated Fastify board reflects A-to-B and enforces JWT an
  const item=await integratedFixture(979,'Mesa HTTP H6 B2');
  const targetId='a2000000-0000-4000-8000-000000000980';
  await admin.query(`INSERT INTO sabora.dining_tables
- (id,number,capacity,qr_token_hash,ordering_state)
- VALUES($1,970980,4,decode(repeat('a2',32),'hex'),'open')`,[targetId]);
+ (id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+ VALUES($1,970980,4,decode(repeat('a2',32),'hex'),'open','LISTA')`,[targetId]);
  const targetSession=(await admin.query(
   'SELECT session_id FROM sabora.dining_tables WHERE id=$1',[targetId])).rows[0].session_id;
  await admin.query(`INSERT INTO sabora.order_line_delivery_destinations

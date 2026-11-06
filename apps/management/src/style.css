@@ -35,6 +35,12 @@
   --cv-space-12: 48px;
 }
 
+.management-inline-form,.catalog-editor-form{display:grid;gap:1rem}.management-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.management-form-grid__wide{grid-column:1/-1}.management-form-grid label,.catalog-editor-form>label,.catalog-editor-form fieldset{display:grid;gap:.45rem;color:var(--cv-ink-muted);font-size:.82rem;font-weight:700}.management-form-grid input,.management-form-grid select,.catalog-editor-form input,.catalog-editor-form textarea,.catalog-editor-form select,.management-category-create input,.catalog-category-grid input{min-height:2.7rem;border:1px solid var(--cv-border);border-radius:12px;background:var(--cv-surface);color:var(--cv-ink);padding:.65rem .75rem;font:inherit}.catalog-editor-form textarea{min-height:7rem;resize:vertical}.catalog-editor-form fieldset{border:1px solid var(--cv-border);border-radius:16px;padding:1rem}.catalog-editor-form legend{padding:0 .4rem;color:var(--cv-ink);font-size:1rem}.allergen-selector{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem}.allergen-selector label,.modifier-row label,.option-editor>label{display:flex;gap:.45rem;align-items:center;font-weight:500}.allergen-selector input,.modifier-row input[type="checkbox"],.option-editor input[type="checkbox"]{min-height:auto}.modifier-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(7rem,1fr) auto auto;gap:.55rem;align-items:center}.option-editor{display:grid;gap:.65rem;padding:.8rem;border-radius:12px;background:var(--cv-surface-subtle)}.management-category-create{display:flex;gap:.5rem;align-items:end}.table-qr-one-time{display:grid;gap:.4rem;justify-items:center;margin:0}.table-qr-one-time canvas{max-width:100%;height:auto;border-radius:16px;background:#fffdf8}.table-qr-one-time figcaption{font-size:.75rem;color:var(--cv-ink-muted);text-align:center}
+
+@media (max-width:720px){.management-form-grid,.allergen-selector{grid-template-columns:1fr}.modifier-row{grid-template-columns:1fr}.management-category-create{align-items:stretch;flex-direction:column}}
+
+@media print{body *{visibility:hidden}.table-qr-one-time,.table-qr-one-time *{visibility:visible}.table-qr-one-time{position:fixed;inset:2cm;display:grid;place-content:center;background:white}.table-qr-one-time canvas{width:8cm!important;height:8cm!important}}
+
 * { box-sizing: border-box; }
 html { min-width: 320px; background: var(--cv-canvas); }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--cv-canvas); }

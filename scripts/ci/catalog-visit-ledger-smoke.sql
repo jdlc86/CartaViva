@@ -5,8 +5,8 @@ DECLARE t uuid:='00000000-0000-4000-8000-000000008101';
  c uuid:='00000000-0000-4000-8000-000000008102';
  s uuid:='00000000-0000-4000-8000-000000008103';
 BEGIN
- INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,session_id)
- VALUES(t,8101,4,decode(repeat('55',32),'hex'),s);
+ INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,session_id,readiness_state)
+ VALUES(t,8101,4,decode(repeat('55',32),'hex'),s,'LISTA');
  INSERT INTO sabora.customer_profiles(id,public_id,alias)
  VALUES(c,'SB-ABCDEFGHJKLM','Visit fixture');
  INSERT INTO sabora.customer_table_visits

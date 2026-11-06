@@ -120,9 +120,10 @@ begin
  select count(*) into v_count from pg_class c join pg_namespace n on n.oid=c.relnamespace
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
  -- Table-change, line-delivery and immutable-revision candidates add six
- -- FORCE RLS tables to the 44-table baseline.
- if v_count<>50 then raise exception 'Expected 50 FORCE RLS Sabora tables (including order revisions), got %',v_count; end if;
- foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests'] loop
+ -- FORCE RLS tables to the 44-table baseline; M3 adds four management,
+ -- category and allergen relations. Keep the exact count and names fail-closed.
+ if v_count<>54 then raise exception 'Expected 54 FORCE RLS Sabora tables (including M3 management), got %',v_count; end if;
+ foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3'] loop
  if not exists (
   select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname=v_table
@@ -842,8 +843,8 @@ begin
  end if;
 end;
 $governance$;
-insert into sabora.dining_tables(number,capacity,qr_token_hash)
-values (1,4,sha256(convert_to(repeat('A',43),'UTF8')));
+insert into sabora.dining_tables(number,capacity,qr_token_hash,readiness_state)
+values (1,4,sha256(convert_to(repeat('A',43),'UTF8')),'LISTA');
 do $$
 declare v_table uuid; v_order uuid; v_line uuid; v_session uuid; v_deadline timestamptz;
 begin

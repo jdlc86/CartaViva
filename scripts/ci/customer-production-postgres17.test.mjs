@@ -150,8 +150,8 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  const snapshotB={name:'Agua mineral',category:'Bebidas',priceCents:300,
   allergens:[],options:[],extras:[],discount:null};
  const table=await admin.query(`INSERT INTO sabora.dining_tables
-  (id,number,capacity,qr_token_hash,ordering_state,grouping_window_seconds)
-  VALUES ($1,971001,4,sha256(convert_to($2,'UTF8')),'open',300)
+  (id,number,capacity,qr_token_hash,ordering_state,readiness_state,grouping_window_seconds)
+  VALUES ($1,971001,4,sha256(convert_to($2,'UTF8')),'open','LISTA',300)
   RETURNING session_id`,[tableId,qrToken]);
  const storedQr=await admin.query(`SELECT qr_token_hash=$2::bytea AS matches
   FROM sabora.dining_tables WHERE id=$1`,[tableId,qrCredential.tokenHash]);

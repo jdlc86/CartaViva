@@ -6,9 +6,9 @@ set -euo pipefail
 container="${1:?isolated PostgreSQL container name required}"
 psql_ci() { docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres; }
 psql_ci <<'SQL'
-INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,session_id)
+INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,session_id,readiness_state)
 VALUES ('00000000-0000-4000-8000-000000009101',901003,4,decode(repeat('33',32),'hex'),
-        '00000000-0000-4000-8000-000000009102');
+        '00000000-0000-4000-8000-000000009102','LISTA');
 INSERT INTO sabora.catalog_items(id,draft)
 VALUES ('00000000-0000-4000-8000-000000009103','{}');
 INSERT INTO sabora.orders(id,table_id,session_id,company,employee_number,confirmed_at,grouping,items)

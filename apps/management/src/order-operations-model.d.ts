@@ -6,7 +6,7 @@ export type PickupTask = Readonly<{taskId: string; state: 'ready'|'claimed'|'cor
 export type OrderLineItem = Readonly<{
   orderId: string; lineId: string; tableNumber: number; customerLabel: string;
   confirmedAt: string; grouping: 'first' | 'grouped' | 'late'; lineNumber: number;
-  category: 'drink' | 'starter' | 'main' | 'dessert'; name: string; quantity: number;
+  category: string; name: string; quantity: number;
   status: OrderLineStatus;
   notification: null | Readonly<{id: string; createdAt: string; acknowledgedAt: string | null}>;
   pickup: PickupTask | null;

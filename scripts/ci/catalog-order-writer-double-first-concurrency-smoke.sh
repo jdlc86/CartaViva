@@ -9,8 +9,8 @@ first='00000000-0000-4000-8000-000000009463'
 second='00000000-0000-4000-8000-000000009464'
 psql_ci(){ docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U postgres -d postgres; }
 psql_ci <<SQL
-INSERT INTO sabora.dining_tables(id,session_id,number,capacity,qr_token_hash,ordering_state)
-VALUES ('$table','$session',9461,4,decode(repeat('96',32),'hex'),'open');
+INSERT INTO sabora.dining_tables(id,session_id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+VALUES ('$table','$session',9461,4,decode(repeat('96',32),'hex'),'open','LISTA');
 SQL
 # Match the candidate writer's lock + insert/update CTE on separate connections.
 order_sql(){
@@ -87,8 +87,8 @@ table='00000000-0000-4000-8000-000000009465'
 session='00000000-0000-4000-8000-000000009466'
 second='00000000-0000-4000-8000-000000009467'
 psql_ci <<SQL
-INSERT INTO sabora.dining_tables(id,session_id,number,capacity,qr_token_hash,ordering_state)
-VALUES ('$table','$session',9462,4,decode(repeat('97',32),'hex'),'open');
+INSERT INTO sabora.dining_tables(id,session_id,number,capacity,qr_token_hash,ordering_state,readiness_state)
+VALUES ('$table','$session',9462,4,decode(repeat('97',32),'hex'),'open','LISTA');
 SQL
 holder_sql=$(cat <<SQL
 BEGIN;

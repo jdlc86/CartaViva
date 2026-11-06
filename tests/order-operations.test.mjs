@@ -140,7 +140,7 @@ test('repository returns a bounded kitchen projection without private identifier
       confirmed_at: confirmedAt,
       grouping: 'first',
       line_number: 1,
-      category: 'main',
+      category: 'Primeros',
       name: 'Arroz',
       quantity: 2,
       status: 'ready',
@@ -155,6 +155,7 @@ test('repository returns a bounded kitchen projection without private identifier
     actorId, role: 'kitchen', status: 'ready', limit: 10, cursor: null,
   });
   assert.equal(board.version, 2);
+  assert.equal(board.items[0].category, 'Primeros');
   assert.equal(board.items[0].notification.id, notificationId);
   assert.equal(board.items[0].notification.acknowledgedAt, null);
   assert.deepEqual(queries[0].parameters, ['kitchen', 'ready', null, null, null, 11]);
@@ -270,6 +271,9 @@ test('repository validates ordering, cursor and overflow row before returning a 
     [base, {...second, notification_id: 'not-a-uuid'}],
     [base, {...second, notification_created_at: null}],
     [base, {...second, grouping: 'unknown'}],
+    [base, {...second, category: 'Todos'}],
+    [base, {...second, category: 'Con\u0000trol'}],
+    [base, {...second, category: 'x'.repeat(81)}],
   ]) {
     await assert.rejects(repository.listBoard(async () => ({rows}), options),
       /invalid_order_operations_sql_result/);

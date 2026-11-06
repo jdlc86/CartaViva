@@ -29,6 +29,17 @@ test('validates the documented versioned table page and preserves only the allow
   assert.ok(Object.isFrozen(page));
   assert.ok(Object.isFrozen(page.items));
   assert.ok(Object.isFrozen(page.items[0]));
+
+  const managed = validateAdminTablesPage({
+    version: 2,
+    items: [table(3, {readinessState: 'EN_PREPARACION', pauseUntil: null,
+      qrVersion: 1, qrEnabled: true, revision: 1})],
+    nextAfterNumber: null,
+  });
+  assert.deepEqual(managed.items[0], {
+    ...table(3), readinessState: 'EN_PREPARACION', pauseUntil: null,
+    qrVersion: 1, qrEnabled: true, revision: 1,
+  });
 });
 
 test('fails closed for extra fields, hostile descriptors and inconsistent cursors', () => {
@@ -53,7 +64,7 @@ test('fails closed for extra fields, hostile descriptors and inconsistent cursor
     {version: 1, items: [table(2), table(1)], nextAfterNumber: null},
     {version: 1, items: [table(1)], nextAfterNumber: 2},
     {version: 1, items: [], nextAfterNumber: 1},
-    {version: 2, items: [], nextAfterNumber: null},
+    {version: 3, items: [], nextAfterNumber: null},
   ]) {
     assert.throws(() => validateAdminTablesPage(payload), /invalid_admin_tables_page/);
   }

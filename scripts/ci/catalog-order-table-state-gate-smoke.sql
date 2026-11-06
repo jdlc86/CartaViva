@@ -2,9 +2,9 @@
 -- isolated disposable PostgreSQL 17 after canonical migrations.
 -- A denied state must produce zero lockable rows, before INSERT or ledger.
 BEGIN;
-INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,
+INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,readiness_state,
  grouping_window_seconds)
-VALUES (930193,4,decode(repeat('93',32),'hex'),'open',120)
+VALUES (930193,4,decode(repeat('93',32),'hex'),'open','LISTA',120)
 RETURNING id AS table_id,session_id \gset
 
 -- Exact SQL predicate used by catalog-order-writer.mjs.

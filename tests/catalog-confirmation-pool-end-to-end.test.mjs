@@ -105,7 +105,7 @@ test('pool candidate commits order, kitchen projection and ledger in one transac
  assert.equal(result.result.orderId,orderId);
  assert.equal(f.state.orders.length,1);
  assert.equal(f.state.attempts.length,1);
- assert.deepEqual(f.state.orders[0].items,[{category:'starter',name:'Plato',quantity:1}]);
+ assert.deepEqual(f.state.orders[0].items,[{category:'Primeros',name:'Plato',quantity:1}]);
  assert.equal(f.state.first instanceof Date,true);
  assert.equal(f.releases,1);
  assert.equal(f.connections,1);

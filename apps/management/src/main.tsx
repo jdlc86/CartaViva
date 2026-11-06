@@ -10,6 +10,8 @@ import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
 import type {AdminTablesGateway} from './tables-read-model';
+import type {M3CatalogGateway} from './m3-catalog-management-model.js';
+import {createM3AuthenticatedManagementGateway,type M3AuthenticatedManagementGateway} from './m3-authenticated-management-gateway.js';
 import {CatalogView} from './views/CatalogView';
 import {OrdersView} from './views/OrdersView';
 import {SummaryView} from './views/SummaryView';
@@ -30,6 +32,7 @@ export function ManagementApp({
   tablesGateway,
   tableChangeGateway,
   catalogGateway,
+  catalogManagementGateway,
   operationsGateway,
   staffGateway,
   staffDirectoryGateway,
@@ -37,6 +40,7 @@ export function ManagementApp({
   tablesGateway?: AdminTablesGateway;
   tableChangeGateway?: TableChangeQueueGateway;
   catalogGateway?: AdminCatalogGateway;
+  catalogManagementGateway?:M3CatalogGateway;
   operationsGateway?: OrderOperationsGateway;
   staffGateway?: StaffManagementGateway;
   staffDirectoryGateway?: StaffDirectoryGateway;
@@ -44,7 +48,7 @@ export function ManagementApp({
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const contentRef = useRef<HTMLElement>(null);
   const focusAfterNavigation = useRef(false);
-  const hasReadProjection = Boolean(tablesGateway || catalogGateway || staffDirectoryGateway);
+  const hasReadProjection = Boolean(tablesGateway || catalogGateway || catalogManagementGateway || staffDirectoryGateway);
   const hasOperationalChannel = Boolean(operationsGateway);
   const activeSection = sections.find((section) => section.id === area) ?? sections[0];
 
@@ -78,7 +82,7 @@ export function ManagementApp({
   };
 
   const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} operationsGateway={operationsGateway}/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
@@ -167,6 +171,7 @@ function renderManagement(
   element: HTMLElement,
   gateway?: OrderOperationsGateway,
   tableChangeGateway?: TableChangeQueueGateway,
+  managementGateway?:M3AuthenticatedManagementGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -180,7 +185,8 @@ function renderManagement(
   const key = ++managementRenderGeneration;
   flushSync(() => managementRoot!.render(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
-      tableChangeGateway={tableChangeGateway}/></React.StrictMode>,
+      tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
+      catalogManagementGateway={managementGateway}/></React.StrictMode>,
   ));
 }
 
@@ -190,6 +196,7 @@ export function mountAuthenticatedManagementApp({
   fetchImpl,
   reconnectDelayMs,
   enableTableChangeQueue = false,
+  enableM3Management = false,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
@@ -197,6 +204,8 @@ export function mountAuthenticatedManagementApp({
   reconnectDelayMs?: number;
   /** Opt-in only after the server's six isolated SQL logins pass preflight. */
   enableTableChangeQueue?: boolean;
+  /** Opt-in only after both M3 SQL capability preflights succeed. */
+  enableM3Management?:boolean;
 }) {
   if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
     throw Error('invalid_management_bootstrap');
@@ -204,8 +213,10 @@ export function mountAuthenticatedManagementApp({
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
     getAccessToken, fetchImpl, reconnectDelayMs,
   });
+  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
+    m3Gateway?.revoke();
     throw Error('management_root_already_mounted');
   }
   const disposeSession = managementSessionFence.replace(operationsGateway);
@@ -215,13 +226,14 @@ export function mountAuthenticatedManagementApp({
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway);
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
     const current = managementSessionFence.isCurrent(operationsGateway);
     disposeSession();
+    m3Gateway?.revoke();
     if (current && managementElement === element) renderManagement(element);
   };
 }

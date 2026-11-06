@@ -3,8 +3,8 @@ BEGIN;
 DO $smoke$
 DECLARE t uuid; s uuid; o uuid; bad_alias text; bad_identifier text;
 BEGIN
- INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state)
- VALUES (987654,4,decode(repeat('ab',32),'hex'),'open')
+ INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,readiness_state)
+ VALUES (987654,4,decode(repeat('ab',32),'hex'),'open','LISTA')
  RETURNING id,session_id INTO t,s;
 
  INSERT INTO sabora.orders

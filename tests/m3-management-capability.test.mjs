@@ -1,0 +1,144 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {createM3ManagementCapabilityIssuer} from '../apps/api/src/m3-management-capability.mjs';
+import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
+ MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
+ MANAGE_M3_CATALOG_SQL} from '../apps/api/src/m3-management-repository.mjs';
+import {registerM3ManagementHttp} from '../apps/api/src/m3-management-http.mjs';
+
+const Fastify=createRequire(new URL('../apps/api/package.json',import.meta.url))('fastify');
+
+const actorId='10000000-0000-4000-8000-000000000001';
+const requestId='20000000-0000-4000-8000-000000000002';
+const generatedId='30000000-0000-4000-8000-000000000003';
+const verified=role=>({verifiedIdentity:{userId:actorId},verifiedStaff:{userId:actorId,role}});
+const issuer=role=>createM3ManagementCapabilityIssuer({keyId:'m3_test_key',
+ secret:Buffer.alloc(32,7),databaseRole:role,clock:()=>1_800_000_000_000});
+const transaction=(result,calls)=>async handler=>handler(async(sql,params)=>{
+ calls.push({sql,params});return {rows:[{result}]};
+});
+
+test('M3 sealed SQL qualifies every pgcrypto primitive outside search_path',()=>{
+ const migration=readFileSync(new URL('../supabase/migrations/20261105150000_sabora_m3_management_candidate.sql',
+  import.meta.url),'utf8');
+ assert.doesNotMatch(migration,/(?<!extensions\.)\bdigest\(/u);
+ assert.doesNotMatch(migration,/(?<!extensions\.)\bgen_random_bytes\(/u);
+ assert.match(migration,/GRANT EXECUTE ON FUNCTION extensions\.digest\(bytea,text\),/u);
+ assert.match(migration,/extensions\.gen_random_bytes\(integer\) TO sabora_m3_management_fn_owner/u);
+ assert.doesNotMatch(migration,
+  /FROM sabora\.management_mutation_receipts_m3\s+WHERE[^;]+FOR UPDATE/gu);
+ assert.doesNotMatch(migration,
+  /GRANT[^;]*UPDATE[^;]*ON sabora\.management_mutation_receipts_m3/gu);
+});
+
+test('M3 capability binds physical login, actor, operation, request and exact body',()=>{
+ const issue=issuer('sabora_m3_tables_login');
+ const first=issue({actorId,staffRole:'admin',action:'table.create',requestId,
+  body:'{"number":1}'});
+ const second=issue({actorId,staffRole:'admin',action:'table.create',requestId,
+  body:'{"number":2}'});
+ assert.equal(first.databaseRole,'sabora_m3_tables_login');
+ assert.notEqual(first.bodyHashHex,second.bodyHashHex);
+ assert.notEqual(first.signatureHex,second.signatureHex);
+ assert.equal(first.expiresAtMs-first.issuedAtMs,15_000);
+ assert.throws(()=>issue({actorId,staffRole:'admin',action:'table.create',requestId,
+  body:'x',extra:true}),/invalid_m3_management_capability_input/);
+});
+
+test('table repository issues bounded capabilities and preserves exact SQL/body',async()=>{
+ const calls=[];
+ const repository=createM3TablesRepository({withTransaction:transaction({version:2,items:[],nextAfterNumber:null},calls),
+  issueCapability:issuer('sabora_m3_tables_login'),newId:()=>generatedId});
+ await repository.read(verified('waiter'),{afterNumber:4,limit:20});
+ assert.equal(calls[0].sql,READ_M3_TABLES_SQL);
+ assert.deepEqual(calls[0].params.slice(1),[4,20]);
+ const readCapability=JSON.parse(calls[0].params[0]);
+ assert.equal(readCapability.action,'tables.read');
+ assert.equal(readCapability.requestId,generatedId);
+
+ calls.length=0;
+ const payload={number:7,capacity:4,description:'Sala'};
+ await repository.manage(verified('admin'),{requestId,operation:'create',payload});
+ assert.equal(calls[0].sql,MANAGE_M3_TABLE_SQL);
+ assert.equal(calls[0].params[1],'create');
+ assert.equal(calls[0].params[2],JSON.stringify(payload));
+ assert.equal(JSON.parse(calls[0].params[0]).action,'table.create');
+
+ calls.length=0;
+ const occupancy={requestId,tableId:actorId,target:'open',pauseUntil:null};
+ await repository.occupancy(verified('waiter'),occupancy);
+ assert.equal(calls[0].sql,OCCUPANCY_M3_TABLE_SQL);
+ assert.equal(calls[0].params[1],JSON.stringify({tableId:actorId,target:'open',pauseUntil:null}));
+ assert.equal(JSON.parse(calls[0].params[0]).action,'table.occupancy');
+});
+
+test('catalog repository rejects waiter and binds every admin mutation',async()=>{
+ const calls=[];
+ const repository=createM3CatalogRepository({withTransaction:transaction({version:2},calls),
+  issueCapability:issuer('sabora_m3_catalog_login'),newId:()=>generatedId});
+ assert.throws(()=>repository.read(verified('waiter')),/m3_management_forbidden/);
+ await repository.read(verified('admin'));
+ assert.equal(calls[0].sql,READ_M3_CATALOG_SQL);
+ assert.equal(JSON.parse(calls[0].params[0]).action,'catalog.read');
+ calls.length=0;
+ const payload={categoryId:actorId,name:'MENÚ',sortOrder:600};
+ await repository.manage(verified('root'),{requestId,operation:'category_create',payload});
+ assert.equal(calls[0].sql,MANAGE_M3_CATALOG_SQL);
+ assert.equal(calls[0].params[2],JSON.stringify(payload));
+ assert.equal(JSON.parse(calls[0].params[0]).action,'catalog.category_create');
+});
+
+test('identity mismatch and malformed issuer result never reach SQL',async()=>{
+ let transactions=0;
+ const repository=createM3TablesRepository({withTransaction:async()=>{transactions++;},
+  issueCapability:()=>({}),newId:()=>generatedId});
+ assert.throws(()=>repository.read({verifiedIdentity:{userId:actorId},
+  verifiedStaff:{userId:requestId,role:'admin'}}),/m3_management_forbidden/);
+ assert.throws(()=>repository.read(verified('admin')),/invalid_m3_management_capability/);
+ assert.equal(transactions,0);
+});
+
+test('M3 HTTP observes internal failure without disclosing it to the caller',async()=>{
+ const app=Fastify({logger:false}),observed=[];
+ registerM3ManagementHttp(app,{forRoles:()=>async()=>{},
+  tables:{read:async()=>{throw Error('sensitive_sql_details');}},catalog:{},
+  qr:{secret:'m3_http_test_secret_at_least_32_bytes',origin:'https://sabora.example',
+   restaurantCode:'SABORA_CI'},observeFailure:error=>observed.push(error)});
+ try{
+  await app.ready();
+  const response=await app.inject('/api/v1/admin/tables');
+  assert.equal(response.statusCode,503);
+  assert.deepEqual(response.json(),{error:'tables_unavailable'});
+  assert.equal(response.body.includes('sensitive_sql_details'),false);
+  assert.equal(observed.length,1);
+  assert.equal(observed[0].message,'sensitive_sql_details');
+ }finally{await app.close();}
+});
+
+test('M3 HTTP accepts hardened Fastify pagination and rejects ambiguous query input',async()=>{
+ const app=Fastify({logger:false}),reads=[];
+ registerM3ManagementHttp(app,{forRoles:()=>async request=>{
+  request.verifiedIdentity={userId:actorId};
+  request.verifiedStaff={userId:actorId,role:'admin'};
+ },tables:{read:async(_verified,page)=>{reads.push(page);
+  return {version:2,items:[],nextAfterNumber:null};}},catalog:{},
+ qr:{secret:'m3_http_test_secret_at_least_32_bytes',origin:'https://sabora.example',
+  restaurantCode:'SABORA_CI'}});
+ try{
+  await app.ready();
+  const valid=await app.inject('/api/v1/admin/tables?afterNumber=900&limit=20');
+  assert.equal(valid.statusCode,200);
+  assert.deepEqual(reads,[{afterNumber:900,limit:20}]);
+  for(const query of [
+   'afterNumber=1&afterNumber=2','limit=20&limit=21','afterNumber=-1',
+   'limit=1.5','limit=%2020','unexpected=1','__proto__=polluted'
+  ]){
+   const rejected=await app.inject('/api/v1/admin/tables?'+query);
+   assert.equal(rejected.statusCode,400,query);
+   assert.deepEqual(rejected.json(),{error:'invalid_tables_request'});
+  }
+  assert.equal(reads.length,1);
+ }finally{await app.close();}
+});

@@ -58,7 +58,7 @@ test('invalid or spoofed persistence inputs never issue SQL',async()=>{
   {evidence:{...evidence,quantity:2}},
   {evidence:{...evidence,unitSubtotalCents:999}},
   {evidence:{...evidence,unitDiscountCents:99}},
-  {evidence:{...evidence,category:'invalid'}},
+  {evidence:{...evidence,category:'Todos'}},
   {evidence:{...evidence,selected:[{id:'x',name:'Extra',priceCents:-1,allergens:[]}]}},
   {evidence:{...evidence,allergens:[null]}},
   {evidence:{...evidence,selected:[undefined]}},

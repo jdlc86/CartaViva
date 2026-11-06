@@ -9,8 +9,6 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const opaque=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&
  (Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
-const categories=Object.freeze({Bebidas:'drink',Primeros:'starter',
- Segundos:'main',Postres:'dessert'});
 const safeRecord=v=>{
  if(!plain(v))return false;
  const keys=Reflect.ownKeys(v);
@@ -47,7 +45,8 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
       !args.context.customerIdentifier.trim()||
       !/^SB-[2-9A-HJ-NP-Y]{12}$/.test(args.context.customerIdentifier)||
       [...args.context.customerIdentifier].length>80||!plain(args.evidence)||
-      !Object.hasOwn(categories,args.evidence.category)||
+      typeof args.evidence.category!=='string'||!args.evidence.category.trim()||
+      [...args.evidence.category].length>80||/[\u0000-\u001f\u007f]/u.test(args.evidence.category)||
       typeof args.evidence.itemName!=='string'||
       !args.evidence.itemName.trim()||
       !Number.isSafeInteger(args.evidence.quantity)||
@@ -62,7 +61,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
    const {context,evidence}=args;
    // The legacy kitchen trigger reads orders.items. It must be derived
    // exclusively from the trusted published evidence, not browser JSON.
-   const items=[{category:categories[evidence.category],
+   const items=[{category:evidence.category.trim(),
     name:evidence.itemName,quantity:evidence.quantity}];
    // Lock and recheck the current occupancy before any write. The lock is
    // retained by the surrounding transaction through ledger insertion.
@@ -70,6 +69,7 @@ export function createCatalogOrderWriter({newOrderId=randomUUID}={}){
     `SELECT first_confirmed_at,grouping_window_seconds
        FROM sabora.dining_tables
       WHERE id=$1 AND session_id=$2
+        AND readiness_state='LISTA' AND qr_enabled
         AND (ordering_state='open' OR
              (ordering_state='paused' AND pause_until IS NOT NULL
               AND pause_until<=clock_timestamp()))

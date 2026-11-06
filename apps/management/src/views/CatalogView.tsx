@@ -23,6 +23,8 @@ import {
 import {createLatestReadTaskController, type LatestReadTaskController} from '../latest-read-task';
 import type {OrderOperationsGateway} from '../order-operations-gateway.js';
 import {ImageStudio} from './ImageStudio';
+import type {M3CatalogGateway} from '../m3-catalog-management-model.js';
+import {M3CatalogManagementView} from './M3CatalogManagementView';
 
 type CatalogSection = 'dishes' | 'categories' | 'studio';
 type CatalogReadPhase = 'disconnected' | 'loading' | 'ready' | 'error';
@@ -39,7 +41,14 @@ type CatalogReadProps = Readonly<{
   onAvailability: (item: AdminPublishedCatalogItem) => void;
 }>;
 
-export function CatalogView({gateway,operationsGateway}: {
+export function CatalogView({gateway,managementGateway,operationsGateway}: {
+  gateway?: AdminCatalogGateway;managementGateway?:M3CatalogGateway;operationsGateway?: OrderOperationsGateway;
+}) {
+  if(managementGateway)return <M3CatalogManagementView gateway={managementGateway} operationsGateway={operationsGateway}/>;
+  return <CatalogReadView gateway={gateway} operationsGateway={operationsGateway}/>;
+}
+
+function CatalogReadView({gateway,operationsGateway}: {
   gateway?: AdminCatalogGateway;operationsGateway?: OrderOperationsGateway;
 }) {
   const [section, setSection] = useState<CatalogSection>('dishes');

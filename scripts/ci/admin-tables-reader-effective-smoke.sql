@@ -3,9 +3,9 @@
 -- this does not create a login, grant membership or activate a runtime route.
 BEGIN;
 INSERT INTO sabora.dining_tables
- (id,number,capacity,description,qr_token_hash,ordering_state)
+ (id,number,capacity,description,qr_token_hash,ordering_state,readiness_state)
  VALUES ('00000000-0000-4000-8000-000000009321',9321,4,'CI read only',
- decode(repeat('a1',32),'hex'),'closed');
+ decode(repeat('a1',32),'hex'),'closed','LISTA');
 SET LOCAL ROLE sabora_admin_tables_reader;
 DO $reader$
 DECLARE n integer;

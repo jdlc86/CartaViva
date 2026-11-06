@@ -63,7 +63,8 @@ const validEvidence=e=>{
  if(!plain(e)||!safeJson(e)||!exactKeys(e,evidenceKeys)||e.schemaVersion!==1||!uuid.test(e.itemId)||
   !Number.isSafeInteger(e.publishedRevision)||e.publishedRevision<=0||
   typeof e.itemName!=='string'||!e.itemName.trim()||
-  [...e.itemName].length>160||!['Bebidas','Primeros','Segundos','Postres'].includes(e.category)||
+  [...e.itemName].length>160||typeof e.category!=='string'||!e.category.trim()||
+  [...e.category].length>80||e.category.trim()==='Todos'||/[\u0000-\u001f\u007f]/u.test(e.category)||
   !Number.isSafeInteger(e.quantity)||e.quantity<1||e.quantity>20||
   !Array.isArray(e.selected)||e.selected.length>50||
   !e.selected.every(s=>exactKeys(s,selectedKeys)&&typeof s.id==='string'&&s.id.length>0&&

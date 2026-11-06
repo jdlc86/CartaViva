@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {createHash,randomBytes,createHmac,generateKeyPairSync,sign} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from '../../apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs';
@@ -43,6 +43,9 @@ import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-p
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
+import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
+import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
 import {assertM2CustomerEventCapability} from '../../apps/api/src/m2-runtime-capabilities.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
@@ -93,8 +96,8 @@ async function insertIdentityAndTables(client,{publicId='SB-BABABABABABA'}={}){
  await client.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
   VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[ids.customer,tokenHash]);
  await client.query(`INSERT INTO sabora.dining_tables(
-   id,number,capacity,qr_token_hash,session_id,ordering_state)
-  VALUES($1,981001,4,$3,$4,'open'),($2,981002,4,$3,$5,'open')`,
+   id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+  VALUES($1,981001,4,$3,$4,'open','LISTA'),($2,981002,4,$3,$5,'open','LISTA')`,
   [ids.sourceTable,ids.destinationTable,qrHash,ids.sourceSession,ids.destinationSession]);
 }
 
@@ -1111,8 +1114,8 @@ test('PG17 B2 chained A-to-B-to-C requires a fresh approval and preserves the or
   const thirdRound='b0a00000-0000-4000-8000-000000000023';
   const thirdVisit='b0_third_visit_0001';
   await client.query(`INSERT INTO sabora.dining_tables(
-   id,number,capacity,qr_token_hash,session_id,ordering_state)
-   VALUES($1,981003,4,$2,$3,'open')`,[thirdTable,qrHash,thirdSession]);
+   id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+   VALUES($1,981003,4,$2,$3,'open','LISTA')`,[thirdTable,qrHash,thirdSession]);
   await insertVisit(client,{tableId:thirdTable,sessionId:thirdSession,visitKey:thirdVisit});
   await client.query(`INSERT INTO sabora.customer_accounts
    (id,table_id,session_id,visit_key,customer_id,payment_mode,payment_mode_selected_at,outstanding_cents)
@@ -2071,8 +2074,8 @@ async function insertF12IsolatedIdentity(client,scenario){
  await client.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
  VALUES($1,$2,clock_timestamp()+interval '1 hour')`,[scenario.customer,scenario.token]);
  await client.query(`INSERT INTO sabora.dining_tables
- (id,number,capacity,qr_token_hash,session_id,ordering_state)
- VALUES($1,$2,4,$5,$6,'open'),($3,$4,4,$5,$7,'open')`,[
+ (id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+ VALUES($1,$2,4,$5,$6,'open','LISTA'),($3,$4,4,$5,$7,'open','LISTA')`,[
  scenario.sourceTable,scenario===scenarioA?981101:981201,
  scenario.destinationTable,scenario===scenarioA?981102:981202,
  qrHash,scenario.sourceSession,scenario.destinationSession]);
@@ -2749,7 +2752,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    signatures:['sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer)']},
   {role:'sabora_catalog_reader',login:'sabora_b3_physical_catalog_'+suffix,signatures:[]},
   {role:'sabora_customer_registration_runtime',login:'sabora_b3_physical_register_'+suffix,signatures:[]},
-  {role:'sabora_customer_session_runtime',login:'sabora_b3_physical_session_'+suffix,signatures:[]}
+  {role:'sabora_customer_session_runtime',login:'sabora_b3_physical_session_'+suffix,signatures:[]},
+  {role:'sabora_m3_tables_runtime',login:'sabora_b3_physical_m3_tables_'+suffix,signatures:[]},
+  {role:'sabora_m3_catalog_runtime',login:'sabora_b3_physical_m3_catalog_'+suffix,signatures:[]}
  ];
  const createdRoles=[],pools=[],connections=[];
  let customerEventNotifier=null;
@@ -2763,7 +2768,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        'sabora_b3_h4_transition_runtime',
        'sabora_staff_reader','sabora_h6_account_close_runtime',
        'sabora_m2_customer_event_runtime','sabora_catalog_reader',
-       'sabora_customer_registration_runtime','sabora_customer_session_runtime'].includes(spec.role)){
+       'sabora_customer_registration_runtime','sabora_customer_session_runtime',
+       'sabora_m3_tables_runtime','sabora_m3_catalog_runtime'].includes(spec.role)){
     const exists=(await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1',[spec.role])).rowCount;
     assert.equal(exists,0,'disposable PG17 roles must not preexist');
     await admin.query('CREATE ROLE '+spec.role+' NOLOGIN NOINHERIT');
@@ -2918,6 +2924,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    pool:pools[9],issuer:ciIssuer,getTrustedKeys:async()=>[ciJwk]
   });
   const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
+  const m3TablesIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
+   secret:cashSigningSecret,databaseRole:specs[16].login});
+  const m3CatalogIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
+   secret:cashSigningSecret,databaseRole:specs[17].login});
   const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[6].login});
   const cashSql=createRoleScopedPostgresTransaction({pool:scopedPools[6],
@@ -3231,10 +3241,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
      [httpFixture.customer,Buffer.alloc(32,230)]);
     await fixture.query(`INSERT INTO sabora.dining_tables
-     (id,number,capacity,qr_token_hash,session_id,ordering_state)
-     VALUES($1,981301,4,$5,$6,'open'),($2,981302,4,$5,$7,'open'),
-      ($3,981303,4,$5,$8,'open'),($4,981304,4,$5,$9,'open'),
-      ($10,981305,4,$5,$11,'open')`,
+     (id,number,capacity,qr_token_hash,session_id,ordering_state,readiness_state)
+     VALUES($1,981301,4,$5,$6,'open','LISTA'),($2,981302,4,$5,$7,'open','LISTA'),
+      ($3,981303,4,$5,$8,'open','LISTA'),($4,981304,4,$5,$9,'open','LISTA'),
+      ($10,981305,4,$5,$11,'open','LISTA')`,
      [httpFixture.sourceTable,httpFixture.destinationTable,
       httpFixture.blockedTable,httpFixture.concurrentTable,qrHash,
       httpFixture.sourceSession,httpFixture.destinationSession,
@@ -7322,7 +7332,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    refund:async()=>{throw Error('unexpected_m2_provider_call');},
    retrieve:async()=>{throw Error('unexpected_m2_provider_call');}
   });
-  const m2=await createM2RestaurantCandidate({
+  const m2Options={
    customer:{catalogReaderPool:pools[13],registrationPool:pools[14],
     sessionPool:pools[15],flowPool:pools[4],allowedOrigin:'https://sabora.example',
     secretKey:'sabora_m2_ephemeral_test_secret_key_32_bytes_minimum',
@@ -7343,7 +7353,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     expectedOperationsLogin:specs[8].login,expectedCloseLogin:specs[10].login,
     expectedEventLogin:specs[12].login,stripe:dormantStripe,
     issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
-  });
+  };
+  const m2=await createM2RestaurantCandidate(m2Options);
   try{
    const address=await m2.listen({host:'127.0.0.1',port:0});
    assert.match(address,/^http:\/\/127\.0\.0\.1:[0-9]+$/);
@@ -7413,6 +7424,239 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    await first;
    assert.equal(m2.app.server.listening,false);
   }
+
+  // M3 management extends the same M2 composition with two independent
+  // least-privileged SQL logins. This is one integrated PG17/API acceptance,
+  // not an administrative superuser substitute.
+  const m3Failures=[];
+  const m3=await createM3RestaurantCandidate({...m2Options,
+   observeFailure:error=>m3Failures.push(error),management:{
+   tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
+   expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
+   issueCatalogCapability:m3CatalogIssuer,qr:{
+    secret:'sabora_m3_disposable_qr_derivation_secret_32_bytes_minimum',
+    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}});
+  try{
+   assert.deepEqual((await m3.app.inject('/health')).json(),{
+    status:'ok',service:'sabora-m3-candidate',mode:'opt-in'});
+   assert.deepEqual((await m3.app.inject('/ready')).json(),{
+    status:'ready',service:'sabora-m3-candidate',mode:'opt-in'});
+   const adminId='b0a00000-0000-4000-8000-000000000313';
+   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+    VALUES($1,'admin','active') ON CONFLICT(user_id) DO UPDATE SET role='admin',state='active'`,[adminId]);
+   const jwtAdmin=staffJwt(adminId);
+   const m3Fetch=async(path,options={})=>{
+    const response=await m3.app.inject({method:options.method??'GET',url:path,
+     headers:Object.fromEntries(new Headers(options.headers??{})),payload:options.body});
+    if(response.statusCode>=400)
+     m3Failures.push(Error(`m3_http_${response.statusCode}_${response.body}`));
+    return new Response(response.body,{status:response.statusCode,headers:{
+     'content-type':response.headers['content-type']??'application/json'}});
+   };
+   const management=createM3AuthenticatedManagementGateway({getAccessToken:async()=>jwtAdmin,
+    fetchImpl:m3Fetch});
+   const m3Operations=createAuthenticatedOrderOperationsGateway({getAccessToken:async()=>jwtAdmin,
+    fetchImpl:m3Fetch,reconnectDelayMs:100});
+   const createRequest='b0a00000-0000-4000-8000-000000000314';
+   const created=await management.manageTable({requestId:createRequest,operation:'create',
+    payload:{number:913,capacity:4,description:'Terraza M3'}});
+   assert.equal(created.readinessState,'EN_PREPARACION');
+   assert.equal(created.orderingState,'closed');
+   assert.equal(created.qrEnabled,true);assert.match(created.qrPayload,/^https:\/\/sabora\.example\/qr\/v1\/SABORA_CI\//);
+   const replay=await management.manageTable({requestId:createRequest,operation:'create',
+    payload:{number:913,capacity:4,description:'Terraza M3'}});
+   assert.equal(replay.tableId,created.tableId);assert.equal(replay.qrPayload,created.qrPayload);
+   assert.equal(replay.replayed,true);
+   await assert.rejects(management.manageTable({requestId:createRequest,operation:'create',
+    payload:{number:914,capacity:4,description:'Conflicto'}}),/m3_management_conflict/);
+   m3Failures.length=0;
+   let listed;
+   try{listed=await management.listTables({afterNumber:900,limit:20});}
+   catch(error){throw m3Failures.at(-1)??error;}
+   assert.equal(listed.version,2);
+   assert.equal(listed.items.find(row=>row.tableId===created.tableId)?.number,913);
+   // A fresh table is not customer-operational merely because its QR was
+   // delivered. EN_PREPARACION and occupancy remain distinct server axes.
+   const m3CustomerId='b0a00000-0000-4000-8000-000000000317';
+   const m3CustomerToken='M'.repeat(43);
+   await admin.query(`INSERT INTO sabora.customer_profiles(id,public_id,alias)
+    VALUES($1,'SB-WXWXWXWXWXWX','Comensal M3')`,[m3CustomerId]);
+   await admin.query(`INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at)
+    VALUES($1,$2,clock_timestamp()+interval '1 hour')`,
+    [m3CustomerId,hashCustomerSessionToken(m3CustomerToken)]);
+   const customerCookie='__Secure-sabora_customer='+m3CustomerToken;
+   const qrToken=new URL(created.qrPayload).hash.slice(1);
+   const preReady=await m3.app.inject({method:'POST',url:'/api/v1/customer/visits',
+    headers:{origin:'https://sabora.example','content-type':'application/json',cookie:customerCookie},
+    payload:{tableId:created.tableId,qrToken}});
+   assert.equal(preReady.statusCode,403,'EN_PREPARACION must reject customer visits');
+   let current=created;
+   // The same idempotency key racing on independent physical connections
+   // commits one mutation/audit row and replays the durable result.
+   const updateRequest=randomUUID();
+   const updateInput={requestId:updateRequest,operation:'update',payload:{tableId:current.tableId,
+    expectedRevision:current.revision,number:913,capacity:4,description:'Terraza M3 validada'}};
+   const concurrentUpdates=await Promise.all([
+    management.manageTable(updateInput),management.manageTable(updateInput)]);
+   assert.deepEqual(new Set(concurrentUpdates.map(value=>value.replayed)),new Set([false,true]));
+   assert.equal(concurrentUpdates[0].revision,concurrentUpdates[1].revision);
+   assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.management_audit_m3
+    WHERE request_id=$1`,[updateRequest])).rows[0].n,1);
+   current=concurrentUpdates[0];
+   current=await management.manageTable({requestId:randomUUID(),operation:'readiness',
+    payload:{tableId:current.tableId,expectedRevision:current.revision,state:'LISTA'}});
+   current=await management.transitionOccupancy({requestId:randomUUID(),tableId:current.tableId,
+    target:'open',pauseUntil:null});
+   // This dedicated identity proves that M3 confirmation creates its first
+   // account instead of entering the table-change contract of an older diner.
+   const visitReady=await m3.app.inject({method:'POST',url:'/api/v1/customer/visits',
+    headers:{origin:'https://sabora.example','content-type':'application/json',cookie:customerCookie},
+    payload:{tableId:current.tableId,qrToken}});
+   assert.equal(visitReady.statusCode,201,visitReady.body);
+
+   let category=await management.manageCatalog({requestId:randomUUID(),
+    operation:'category_create',payload:{categoryId:'b0a00000-0000-4000-8000-000000000315',
+     name:'DEGUSTACIÓN',sortOrder:150}});
+   category=await management.manageCatalog({requestId:randomUUID(),operation:'category_reorder',
+    payload:{categoryId:category.categoryId,expectedRevision:category.revision,sortOrder:140}});
+   const administrativeCatalog=await management.readManagementCatalog();
+   assert.deepEqual(administrativeCatalog.categories.filter(value=>value.mandatory)
+    .map(value=>value.name).sort(),['BEBIDA','ENTRANTE','POSTRE','PRIMERO','SEGUNDO']);
+   const mandatoryCategory=administrativeCatalog.categories.find(value=>value.name==='ENTRANTE');
+   await assert.rejects(management.manageCatalog({requestId:randomUUID(),operation:'category_visibility',
+    payload:{categoryId:mandatoryCategory.id,expectedRevision:mandatoryCategory.revision,hidden:true}}),
+    /m3_management_conflict/,'mandatory categories cannot be hidden');
+   const itemId='b0a00000-0000-4000-8000-000000000316';
+   const m3Draft={name:'Bocado M3',description:'Integración dinámica',imageUrl:null,priceCents:1000,
+    allergenIds:[7],allergenStatus:'PENDIENTE_DE_VERIFICAR',options:[{id:'salsa',name:'Salsa',
+     required:true,maxSelections:1,values:[{id:'suave',name:'Suave',priceCents:0,
+      available:true,allergens:['Leche, incluida la lactosa']}]}],extras:[{id:'trufa',name:'Trufa',
+     priceCents:200,available:true,allergens:['Leche, incluida la lactosa']}],
+    discount:{type:'percent',basisPoints:2000}};
+   let itemResult=await management.manageCatalog({requestId:randomUUID(),operation:'item_save',
+    payload:{itemId,expectedRevision:0,categoryId:category.categoryId,draft:m3Draft}});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),false,
+    'saving a draft must not publish it');
+   await assert.rejects(management.manageCatalog({requestId:randomUUID(),operation:'item_publish',
+    payload:{itemId,expectedRevision:itemResult.draftRevision}}),/m3_management_conflict/,
+    'unverified allergen declarations must not publish');
+   itemResult=await management.manageCatalog({requestId:randomUUID(),operation:'item_save',
+    payload:{itemId,expectedRevision:itemResult.draftRevision,categoryId:category.categoryId,
+     draft:{...m3Draft,allergenStatus:'VERIFICADA'}}});
+   itemResult=await management.manageCatalog({requestId:randomUUID(),operation:'item_publish',
+    payload:{itemId,expectedRevision:itemResult.draftRevision}});
+   assert.equal(itemResult.publishedRevision,itemResult.draftRevision);
+   const publicCatalog=(await m3.app.inject('/api/v1/catalog')).json();
+   const publicItem=publicCatalog.find(row=>row.id===itemId);
+   assert.equal(publicItem.category,'DEGUSTACIÓN');assert.equal(publicItem.options[0].id,'salsa');
+   assert.equal(publicItem.extras[0].id,'trufa');
+   assert.deepEqual(publicItem.allergenDeclaration,{status:'VERIFICADA',taxonomyVersion:1,ids:[7]});
+   assert.equal(JSON.stringify(publicItem).includes('verifiedBy'),false);
+   await m3Operations.setCatalogSoldOut({itemId,soldOut:true,correlationId:'m3_sold_out_0001'});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json()
+    .find(row=>row.id===itemId).available,false,'sold-out item remains visible but unavailable');
+   await m3Operations.setCatalogSoldOut({itemId,soldOut:false,correlationId:'m3_sold_out_0002'});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json()
+    .find(row=>row.id===itemId).available,true);
+   const visit=visitReady.json();
+   const customerFetch=async(path,init={})=>{
+    const response=await m3.app.inject({method:init.method??'GET',url:path,
+     headers:{...Object.fromEntries(new Headers(init.headers??{})),origin:'https://sabora.example',
+      cookie:customerCookie},payload:init.body});
+    return new Response(response.body,{status:response.statusCode,headers:{
+     'content-type':response.headers['content-type']??'application/json'}});
+   };
+   const m3Customer=createCustomerFlowTransport({fetchImpl:customerFetch});
+   const m3Quote=await m3Customer.quote({tableId:current.tableId,qrToken,
+    visitId:visit.visitId,basketId:visit.basketId,lines:[{itemId,
+     selection:{options:{salsa:['suave']},extras:['trufa']},quantity:1}]});
+   assert.equal(m3Quote.lines[0].totalCents,960,'20% discount applies to dish plus extra');
+   const m3Confirmation={tableId:current.tableId,qrToken,visitId:visit.visitId,
+    basketId:visit.basketId,requestKey:'m3_dynamic_order_0001',paymentMode:'pay_at_end',
+    lines:[{quoteId:m3Quote.lines[0].quoteId,itemId,
+     selection:{options:{salsa:['suave']},extras:['trufa']},quantity:1}]};
+   const m3Confirmed=await m3Customer.confirm(m3Confirmation);
+   const m3Replayed=await m3Customer.confirm(m3Confirmation);
+   assert.equal(m3Replayed.status,'replayed');assert.equal(m3Replayed.orderId,m3Confirmed.orderId);
+   const line=(await admin.query(`SELECT category FROM sabora.order_lines
+    WHERE order_id=$1 AND is_current_revision ORDER BY line_number`,[m3Confirmed.orderId])).rows[0];
+   assert.equal(line.category,'DEGUSTACIÓN');
+   category=await management.manageCatalog({requestId:randomUUID(),operation:'category_visibility',
+    payload:{categoryId:category.categoryId,expectedRevision:category.revision,hidden:true}});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),false,
+    'hiding a custom category hides its published items');
+   category=await management.manageCatalog({requestId:randomUUID(),operation:'category_visibility',
+    payload:{categoryId:category.categoryId,expectedRevision:category.revision,hidden:false}});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),true);
+   let blocked=await management.manageTable({requestId:randomUUID(),operation:'readiness',
+    payload:{tableId:current.tableId,expectedRevision:current.revision,state:'BLOQUEADA'}});
+   await assert.rejects(m3Customer.quote({tableId:current.tableId,qrToken,
+    visitId:visit.visitId,basketId:visit.basketId,lines:[{itemId,
+     selection:{options:{salsa:['suave']},extras:['trufa']},quantity:1}]}),
+    /customer_context_forbidden/,
+    'BLOQUEADA must reject a new quote without altering the completed order');
+   current=await management.manageTable({requestId:randomUUID(),operation:'readiness',
+    payload:{tableId:current.tableId,expectedRevision:blocked.revision,state:'LISTA'}});
+   const rotated=await management.manageTable({requestId:randomUUID(),operation:'qr_rotate',
+    payload:{tableId:current.tableId,expectedRevision:current.revision}});
+   assert.notEqual(rotated.qrPayload,created.qrPayload);
+   const oldVisit=await m3.app.inject({method:'POST',url:'/api/v1/customer/visits',
+    headers:{origin:'https://sabora.example','content-type':'application/json',cookie:customerCookie},
+    payload:{tableId:current.tableId,qrToken}});
+   assert.equal(oldVisit.statusCode,403,'rotated QR must reject new customer authorization');
+   const revoked=await management.manageTable({requestId:randomUUID(),operation:'qr_revoke',
+    payload:{tableId:current.tableId,expectedRevision:rotated.revision}});
+   assert.equal(revoked.qrEnabled,false);
+   const underRole=async(connection,role,operation)=>{
+    await connection.query('BEGIN');
+    try{await connection.query('SET LOCAL ROLE '+role);return await operation();}
+    finally{await connection.query('ROLLBACK');}
+   };
+   const capabilityBody=JSON.stringify({tableId:current.tableId,expectedRevision:revoked.revision,
+    number:913,capacity:4,description:'No debe mutar'});
+   const capabilityRequest=randomUUID();
+   const validCapability=m3TablesIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
+    requestId:capabilityRequest,body:capabilityBody});
+   await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
+    connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
+     [JSON.stringify(validCapability),'update',capabilityBody.replace('No debe mutar','Manipulado')])),
+    /invalid_m3_management_capability/,'a signed capability cannot authorize a changed body');
+   const expiredIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
+    secret:cashSigningSecret,databaseRole:specs[16].login,ttlMs:1,clock:()=>Date.now()-1000});
+   const expiredCapability=expiredIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
+    requestId:randomUUID(),body:capabilityBody});
+   await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
+    connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
+     [JSON.stringify(expiredCapability),'update',capabilityBody])),
+    /invalid_m3_management_capability/,'expired capability must fail closed');
+   const waiterCapability=m3TablesIssuer({actorId:httpFixture.waiter,staffRole:'waiter',
+    action:'table.update',requestId:randomUUID(),body:capabilityBody});
+   await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
+    connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
+     [JSON.stringify(waiterCapability),'update',capabilityBody])),
+    /invalid_m3_management_capability/,'waiter capability cannot perform an admin mutation');
+   const suspendedCapability=m3TablesIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
+    requestId:randomUUID(),body:capabilityBody});
+   await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[adminId]);
+   try{
+    await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
+     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
+      [JSON.stringify(suspendedCapability),'update',capabilityBody])),
+     /invalid_m3_management_capability/,'suspension must invalidate an already issued capability');
+   }finally{await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1",[adminId]);}
+   await assert.rejects(underRole(connections[17],'sabora_m3_catalog_runtime',()=>
+    connections[17].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
+     [JSON.stringify(validCapability),'update',capabilityBody])),/permission denied/,
+    'catalog runtime cannot execute the table-management surface');
+   await assert.rejects(connections[16].query('SELECT * FROM sabora.dining_tables'),/permission denied/);
+   await assert.rejects(connections[17].query('SELECT * FROM sabora.catalog_items'),/permission denied/);
+   await management.manageCatalog({requestId:randomUUID(),operation:'item_withdraw',
+    payload:{itemId,expectedRevision:itemResult.draftRevision}});
+   assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),false,
+    'withdrawn item must disappear from the public catalog without deleting history');
+   m3Operations.revoke();
+   management.revoke();
+  }finally{await m3.close();}
   // Exercise the real transaction boundary on a physically authenticated
   // writer connection: an unlisted SQL statement must be rejected before it
   // reaches PostgreSQL, and ROLLBACK must restore the login identity.

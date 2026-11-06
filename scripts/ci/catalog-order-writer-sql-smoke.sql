@@ -1,8 +1,8 @@
 -- Exercise the actual candidate order-writer INSERT/UPDATE CTE on isolated PG17.
 -- No runtime grants, no live connection. All fixture changes rolled back.
 BEGIN;
-INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state)
- VALUES (930191,4,decode(repeat('91',32),'hex'),'open')
+INSERT INTO sabora.dining_tables(number,capacity,qr_token_hash,ordering_state,readiness_state)
+ VALUES (930191,4,decode(repeat('91',32),'hex'),'open','LISTA')
  RETURNING id AS table_id,session_id \gset
 INSERT INTO sabora.catalog_items(draft) VALUES ('{}'::jsonb)
  RETURNING id AS item_id \gset
