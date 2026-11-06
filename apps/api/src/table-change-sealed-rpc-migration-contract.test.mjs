@@ -26,7 +26,7 @@ test('F12 decision serializes on customer before account and request locks',()=>
 test('F12 request keeps server deadline, same-session ownership and one active approval',()=>{
  assert.match(request,/s\.token_hash=p_session_hash AND s\.revoked_at IS NULL/);
  assert.match(request,/a\.id=p_account_id AND a\.customer_id=v_customer AND a\.state='open'/);
- assert.match(request,/q\.status='approved'/);
+ assert.match(request,/IF FOUND AND v_latest\.status='approved' THEN/);
  assert.match(request,/RAISE EXCEPTION 'table_change_cooldown' USING errcode='23514'/);
  assert.match(request,/make_interval\(secs=>v_seconds\)/);
 });
