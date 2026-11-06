@@ -7503,8 +7503,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.management_audit_m3
     WHERE request_id=$1`,[updateRequest])).rows[0].n,1);
    current=concurrentUpdates[0];
-   current=await management.manageTable({requestId:randomUUID(),operation:'readiness',
+   // Normative RF: changing readiness is ordinary table-management work,
+   // not an admin-only action; QR rotation and editing stay admin-only.
+   const readinessWaiterId=randomUUID();
+   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+    VALUES($1,'waiter','active')`,[readinessWaiterId]);
+   const waiterManagement=createM3AuthenticatedManagementGateway({
+    getAccessToken:async()=>staffJwt(readinessWaiterId),fetchImpl:m3Fetch});
+   await assert.rejects(waiterManagement.manageTable({requestId:randomUUID(),
+    operation:'qr_revoke',payload:{tableId:current.tableId,
+     expectedRevision:current.revision}}),/m3_management_forbidden/,
+    'waiter cannot revoke a table QR');
+   current=await waiterManagement.manageTable({requestId:randomUUID(),operation:'readiness',
     payload:{tableId:current.tableId,expectedRevision:current.revision,state:'LISTA'}});
+   assert.equal(current.readinessState,'LISTA',
+    'ordinary management staff may activate preparation without admin role');
+   m3Failures.length=0;
    current=await management.transitionOccupancy({requestId:randomUUID(),tableId:current.tableId,
     target:'open',pauseUntil:null});
    // This dedicated identity proves that M3 confirmation creates its first

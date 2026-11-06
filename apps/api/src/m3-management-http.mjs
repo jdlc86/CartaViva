@@ -59,11 +59,15 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
    limit:query.limit===undefined?50:Number(query.limit)}));}
   catch(error){return failure(reply,error,'tables',observeFailure);}
  });
- app.post('/api/v1/admin/tables/actions',{preHandler:admin,bodyLimit:16_384},async(request,reply)=>{
+ app.post('/api/v1/admin/tables/actions',{preHandler:floor,bodyLimit:16_384},async(request,reply)=>{
   if(!exact(request.body,['requestId','operation','payload'])||!UUID.test(request.body.requestId??'')||
      !['create','update','readiness','qr_rotate','qr_revoke'].includes(request.body.operation)||
      !plain(request.body.payload))return reply.code(400).send({error:'invalid_tables_request'});
   const {requestId,operation}=request.body;
+  // Ordinary table-management staff may set readiness but cannot mutate
+  // administrative fields or QR credentials (SQL repeats this check).
+  if(operation!=='readiness'&&!['admin','root'].includes(request.verifiedStaff?.role))
+   return reply.code(403).send({error:'forbidden'});
   let payload={...request.body.payload},entropy,token;
   if(operation==='create'||operation==='qr_rotate'){
    entropy=deriveEntropy(qr.secret,operation,requestId);

@@ -332,7 +332,8 @@ DECLARE v_fingerprint bytea;v_receipt sabora.management_mutation_receipts_m3%ROW
 BEGIN
  v_role:=sabora.verify_management_capability_m3(p_capability,p_payload_text);
  IF p_capability->>'action' IS DISTINCT FROM 'table.'||p_operation
-    OR v_role NOT IN ('admin','root') THEN
+    OR (v_role NOT IN ('admin','root')
+      AND NOT (v_role='waiter' AND p_operation='readiness')) THEN
   RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501'; END IF;
  p_actor:=(p_capability->>'actorId')::uuid;
  p_request_id:=(p_capability->>'requestId')::uuid;
