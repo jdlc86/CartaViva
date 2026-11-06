@@ -7785,6 +7785,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     },jwtAdmin);
     await m3StaffPage.getByRole('heading',{name:'Control de mesas'})
      .waitFor({timeout:20000});
+    // Do not mutate while the first authorized table projection is loading.
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
     await m3StaffPage.getByRole('button',{name:'Crear mesa'}).click();
     const tableForm=m3StaffPage.locator('.management-inline-form');
     await tableForm.getByLabel('Número').fill('915');
@@ -7801,8 +7803,25 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.match(browserTable.qrPayload,
      /^https:\/\/sabora\.example\/qr\/v1\/SABORA_CI\//);
     const browserTableId=browserTable.tableId;
-    await m3StaffPage.getByRole('button',{name:/Mesa 915/}).first()
-     .waitFor({timeout:20000});
+    const persistedTable=(await admin.query(
+     'SELECT id,number,readiness_state,ordering_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(persistedTable?.number,915,'HTTP create must persist table 915 before PWA selection');
+    try{
+     await m3StaffPage.getByRole('button',{name:/Mesa 915/}).first()
+      .waitFor({timeout:20000});
+    }catch(cause){
+     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-after-create-failure.png'),fullPage:true});
+     const diagnostic={
+      persistedTable,
+      list:(await m3StaffPage.locator('.table-list-item').allTextContents()).slice(0,35),
+      note:await m3StaffPage.locator('.honest-operational-note').allTextContents(),
+      loaded:await m3StaffPage.getByText(/[0-9]+ cargadas/).allTextContents(),
+      refresh:await m3StaffPage.locator('[role="alert"]').allTextContents(),
+      errors:m3BrowserErrors
+     };
+     throw Error('m3_browser_table_created_but_not_selected:'+JSON.stringify(diagnostic),{cause});
+    }
     const readinessHttp=m3StaffPage.waitForResponse(response=>
      new URL(response.url()).pathname==='/api/v1/admin/tables/actions'&&
      response.request().method()==='POST'&&

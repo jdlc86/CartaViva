@@ -64,6 +64,14 @@ jobs:
         run: bash scripts/ci/postgres-migration-smoke.sh
       - name: Exercise real Node pg driver against disposable loopback-only PostgreSQL 17
         run: bash scripts/ci/catalog-postgres17-node-driver-smoke.sh
+      - name: Publish M3 real PG17 and Chromium journey screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-m3-pg17-two-pwa-browser
+          path: ${{ runner.temp }}/sabora-m3-browser-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
       - name: Validate isolated Docker Compose
         run: docker compose -f deploy/compose.sabora.yml config --quiet
       - name: Build isolated Sabora API image
