@@ -7668,6 +7668,218 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     payload:{itemId,expectedRevision:itemResult.draftRevision}});
    assert.equal((await m3.app.inject('/api/v1/catalog')).json().some(row=>row.id===itemId),false,
     'withdrawn item must disappear from the public catalog without deleting history');
+
+   // CV-006/CV-007: actual Chromium interaction with BOTH PWAs and the same
+   // PG17/Fastify candidate. Playwright forwards requests to real loopback
+   // Vite/Fastify HTTP servers; it never fulfills an invented API response.
+   // The test-only HTTPS host mapping preserves the exact QR origin/token.
+   const {fileURLToPath:m3FileURLToPath,pathToFileURL:m3PathToFileURL}=await import('node:url');
+   const {mkdir:m3Mkdir}=await import('node:fs/promises');
+   const {join:m3Join}=await import('node:path');
+   const m3CiRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
+   const {createServer:createM3ViteServer}=await import(
+    m3PathToFileURL(m3CiRequire.resolve('vite')).href);
+   const {chromium:m3Chromium}=await import(
+    m3PathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const m3ClientVite=await createM3ViteServer({
+    root:m3FileURLToPath(new URL('../../apps/client/',import.meta.url)),
+    mode:'test',logLevel:'error',
+    // Test-only installation code must match the candidate's issued QR V1.
+    define:{'import.meta.env.VITE_SABORA_RESTAURANT_CODE':JSON.stringify('SABORA_CI')},
+    server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false}
+   });
+   const m3ManagementVite=await createM3ViteServer({
+    root:m3FileURLToPath(new URL('../../apps/management/',import.meta.url)),
+    mode:'test',logLevel:'error',
+    server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false}
+   });
+   let m3Browser=null;
+   const m3BrowserErrors=[];
+   const m3Evidence=m3Join(process.env.RUNNER_TEMP,'sabora-m3-browser-acceptance');
+   await m3Mkdir(m3Evidence,{recursive:true});
+   try{
+    await m3.app.listen({host:'127.0.0.1',port:0});
+    await m3ClientVite.listen();
+    await m3ManagementVite.listen();
+    const m3BackendOrigin='http://127.0.0.1:'+m3.app.server.address().port;
+    const m3ClientOrigin='http://127.0.0.1:'+m3ClientVite.httpServer.address().port;
+    const m3ManagementOrigin='http://127.0.0.1:'+m3ManagementVite.httpServer.address().port;
+    const mapActualHttp=async(context,publicHost,frontendOrigin)=>{
+     await context.route('https://'+publicHost+'/**',async route=>{
+      const requested=new URL(route.request().url());
+      const upstreamOrigin=requested.pathname.startsWith('/api/')
+       ?m3BackendOrigin:frontendOrigin;
+      const target=upstreamOrigin+requested.pathname+requested.search;
+      const headers={...route.request().headers(),host:new URL(upstreamOrigin).host};
+      const actual=await route.fetch({url:target,headers,timeout:30000});
+      await route.fulfill({response:actual});
+     });
+    };
+    m3Browser=await m3Chromium.launch({headless:true});
+    const m3StaffContext=await m3Browser.newContext({
+     viewport:{width:1440,height:900},reducedMotion:'reduce',serviceWorkers:'block'});
+    await mapActualHttp(m3StaffContext,'gestion.sabora.example',m3ManagementOrigin);
+    const m3StaffPage=await m3StaffContext.newPage();
+    m3StaffPage.on('pageerror',error=>m3BrowserErrors.push('management: '+error.message));
+    await m3StaffPage.goto('https://gestion.sabora.example/#catalogo');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByRole('heading',{name:'Editor de carta'})
+     .waitFor({timeout:20000});
+    await m3StaffPage.getByRole('textbox',{name:'Nombre de nueva categoría'})
+     .fill('BRUNCH E2E');
+    await m3StaffPage.getByRole('spinbutton',{name:'Orden de nueva categoría'})
+     .fill('170');
+    const createdCategoryHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='category_create',{timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Añadir',exact:true}).click();
+    const createdCategoryResponse=await createdCategoryHttp;
+    assert.equal(createdCategoryResponse.status(),200,await createdCategoryResponse.text());
+    await m3StaffPage.getByText('BRUNCH E2E').first().waitFor({timeout:20000});
+
+    await m3StaffPage.getByRole('button',{name:'Nuevo plato'}).click();
+    const editor=m3StaffPage.locator('.catalog-editor-form');
+    await editor.getByLabel('Nombre',{exact:true}).fill('Brunch de cortesía M3');
+    await editor.getByLabel('Descripción').fill('Publicado en Chromium desde gestión');
+    await editor.getByLabel('Categoría').selectOption({label:'BRUNCH E2E'});
+    await editor.getByLabel('Precio EUR').fill('0,00');
+    await editor.locator('fieldset').filter({hasText:'Declaración de alérgenos'})
+     .locator('select').selectOption('VERIFICADA');
+    const draftHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='item_save',{timeout:20000});
+    await editor.getByRole('button',{name:'Guardar borrador'}).click();
+    const draftResponse=await draftHttp;
+    assert.equal(draftResponse.status(),200,await draftResponse.text());
+    const browserItemId=(await draftResponse.json()).itemId;
+    assert.ok(browserItemId);
+    await editor.getByRole('button',{name:'Publicar'}).waitFor({timeout:20000});
+    const publishHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/catalog/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='item_publish',{timeout:20000});
+    await editor.getByRole('button',{name:'Publicar'}).click();
+    const publishResponse=await publishHttp;
+    assert.equal(publishResponse.status(),200,await publishResponse.text());
+    const browserPublished=(await m3.app.inject('/api/v1/catalog')).json()
+     .find(row=>row.id===browserItemId);
+    assert.equal(browserPublished?.category,'BRUNCH E2E');
+    assert.equal(browserPublished?.priceCents,0);
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-published.png'),fullPage:true});
+
+    await m3StaffPage.goto('https://gestion.sabora.example/#mesas');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByRole('heading',{name:'Control de mesas'})
+     .waitFor({timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Crear mesa'}).click();
+    const tableForm=m3StaffPage.locator('.management-inline-form');
+    await tableForm.getByLabel('Número').fill('915');
+    await tableForm.getByLabel('Capacidad').fill('4');
+    await tableForm.getByLabel('Descripción').fill('Mesa real de aceptación Chromium');
+    const tableCreateHttp=m3StaffPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/admin/tables/actions'&&
+     response.request().method()==='POST'&&
+     response.request().postDataJSON()?.operation==='create',{timeout:20000});
+    await tableForm.getByRole('button',{name:'Crear y emitir QR'}).click();
+    const tableCreateResponse=await tableCreateHttp;
+    assert.equal(tableCreateResponse.status(),201,await tableCreateResponse.text());
+    const browserTable=await tableCreateResponse.json();
+    assert.match(browserTable.qrPayload,
+     /^https:\/\/sabora\.example\/qr\/v1\/SABORA_CI\//);
+    const browserTableId=browserTable.tableId;
+    await m3StaffPage.getByRole('button',{name:/Mesa 915/}).first()
+     .waitFor({timeout:20000});
+    await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"]')
+     .getByRole('button',{name:'LISTA'}).click();
+    const prepared=(await admin.query(
+     'SELECT readiness_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(prepared.readiness_state,'LISTA');
+    await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'ABIERTA'}).click();
+    const opened=(await admin.query(
+     'SELECT ordering_state FROM sabora.dining_tables WHERE id=$1',
+     [browserTableId])).rows[0];
+    assert.equal(opened.ordering_state,'open');
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-table-qr.png'),fullPage:true});
+
+    const browserCustomerId=randomUUID();
+    const browserCustomerToken='Y'.repeat(43);
+    await admin.query(
+     "INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,$3)",
+     [browserCustomerId,'SB-QWERTY123456','Cliente E2E M3']);
+    await admin.query(
+     "INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '1 hour')",
+     [browserCustomerId,hashCustomerSessionToken(browserCustomerToken)]);
+    const m3CustomerContext=await m3Browser.newContext({
+     viewport:{width:390,height:844},reducedMotion:'reduce',serviceWorkers:'block'});
+    await mapActualHttp(m3CustomerContext,'sabora.example',m3ClientOrigin);
+    await m3CustomerContext.addCookies([{name:'__Secure-sabora_customer',
+     value:browserCustomerToken,domain:'sabora.example',path:'/',
+     secure:true,httpOnly:true,sameSite:'Lax'}]);
+    const m3CustomerPage=await m3CustomerContext.newPage();
+    m3CustomerPage.on('pageerror',error=>m3BrowserErrors.push('customer: '+error.message));
+    await m3CustomerPage.goto('https://sabora.example/');
+    assert.equal(await m3CustomerPage.evaluate(async()=>{
+     const {configuredRestaurantCode}=await import('/src/table-qr.ts');
+     return configuredRestaurantCode();
+    }),'SABORA_CI');
+    const browserCard=m3CustomerPage.getByTestId('product-card')
+     .filter({hasText:'Brunch de cortesía M3'});
+    await browserCard.waitFor({timeout:20000});
+    await browserCard.getByRole('button',{name:/Añadir$/}).click();
+    await m3CustomerPage.goto(browserTable.qrPayload);
+    await m3CustomerPage.getByText('Mesa verificada')
+     .waitFor({timeout:20000});
+    await m3CustomerPage.getByRole('button',{name:'Continuar con el pedido'})
+     .click();
+    const checkout=m3CustomerPage.getByRole('dialog',{name:'Confirmar pedido'});
+    await checkout.getByText('Esta ronda es gratuita y no fija modalidad de pago')
+     .waitFor({timeout:20000});
+    const customerConfirmHttp=m3CustomerPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/customer/orders/confirm'&&
+     response.request().method()==='POST',{timeout:20000});
+    await checkout.getByRole('button',{name:'Confirmar pedido'}).click();
+    const customerConfirmResponse=await customerConfirmHttp;
+    assert.equal(customerConfirmResponse.status(),201,await customerConfirmResponse.text());
+    const browserOrder=await customerConfirmResponse.json();
+    assert.equal(browserOrder.status,'confirmed');
+    assert.equal(browserOrder.amountCents,0);
+    assert.equal(browserOrder.paymentMode,null);
+    await m3CustomerPage.getByText('Pedido confirmado')
+     .waitFor({timeout:20000});
+    await m3CustomerPage.screenshot({path:m3Join(m3Evidence,'customer-free-confirmed.png'),fullPage:true});
+
+    await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'CERRADA'}).click();
+    const closed=(await admin.query(
+     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents FROM sabora.dining_tables t JOIN sabora.customer_accounts a ON a.table_id=t.id WHERE t.id=$1 AND a.customer_id=$2",
+     [browserTableId,browserCustomerId])).rows[0];
+    assert.equal(closed.ordering_state,'closed');
+    assert.ok(closed.closed_at,'closing an occupied zero-cost table must close the account');
+    assert.equal(closed.outstanding_cents,'0');
+    assert.deepEqual(m3BrowserErrors,[]);
+    await m3CustomerContext.close();
+    await m3StaffContext.close();
+   }finally{
+    if(m3Browser)await m3Browser.close();
+    await Promise.allSettled([m3ClientVite.close(),m3ManagementVite.close()]);
+   }
+
    m3Operations.revoke();
    management.revoke();
   }finally{await m3.close();}
