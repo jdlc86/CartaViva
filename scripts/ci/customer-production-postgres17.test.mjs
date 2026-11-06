@@ -1021,12 +1021,20 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  await assert.rejects(flow.confirm({...request,lines:[request.lines[0]]}),
   /customer_order_idempotency_conflict/);
 
+ // The variant acceptance intentionally published a required sauce. Restore
+ // the *original* item contract at a newer published revision before the
+ // historical no-selection reprice journey: never weaken option validation.
+ await admin.query(`UPDATE sabora.catalog_items
+  SET draft_revision=3,published_revision=3,
+      draft=$2::jsonb,published_snapshot=$2::jsonb,
+      published_at=clock_timestamp() WHERE id=$1`,
+  [itemA,JSON.stringify(snapshotA)]);
  // A catalog change (including a lower price) requires explicit exact HMAC acceptance.
  const repriceQuote=await flow.quote({customerSessionToken:registered.token,tableId,qrToken,
   visitId:visit.visitId,basketId:visit.basketId,lines:[
    {itemId:itemA,selection,quantity:2},{itemId:itemB,selection,quantity:1}
   ]});
- await admin.query(`UPDATE sabora.catalog_items SET draft_revision=2,published_revision=2,
+ await admin.query(`UPDATE sabora.catalog_items SET draft_revision=4,published_revision=4,
   draft=jsonb_set(draft,'{priceCents}','1300'::jsonb),
   published_snapshot=jsonb_set(published_snapshot,'{priceCents}','1300'::jsonb),
   published_at=clock_timestamp() WHERE id=$1`,[itemA]);
