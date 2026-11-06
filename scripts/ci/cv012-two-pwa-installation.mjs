@@ -23,7 +23,12 @@ const mime={
  '.webmanifest':'application/manifest+json',
  '.png':'image/png'
 };
-const serve=(mode)=>createServer(async(req,res)=>{
+const serve=(mode,shouldDrop=()=>false)=>createServer(async(req,res)=>{
+ if(shouldDrop()){
+  // A real loss of the loopback origin, not a fulfilled mock document.
+  req.socket.destroy();
+  return;
+ }
  const url=new URL(req.url??'/','http://127.0.0.1');
  if(url.pathname==='/api/v1/private'){
   res.writeHead(200,{'content-type':'application/json','cache-control':'private, no-store'});
@@ -91,7 +96,8 @@ const assertNoPrivateCaches=state=>{
   'personalized HTML navigation must not be persisted');
 };
 const main=async()=>{
- const sameOrigin=serve('combined');
+ let originOutage=false;
+ const sameOrigin=serve('combined',()=>originOutage);
  const isolatedStaff=serve('management');
  let browser;
  const artifacts=join(process.env.RUNNER_TEMP??'/tmp','sabora-cv012-browser');
@@ -140,18 +146,33 @@ const main=async()=>{
   assertNoPrivateCaches(state);
   await page.screenshot({path:join(artifacts,'management-installed.png'),fullPage:true});
 
-  await context.setOffline(true);
+  // Drop the origin's actual HTTP connection. Browser offlining alone may
+  // not trigger identical service-worker network paths across CI versions.
+  originOutage=true;
   // A hash-only navigation does not make a network request and therefore
   // cannot exercise the offline service-worker navigation fallback.
   await page.goto(origin+'/gestion/?cv012-offline=1#comandas',{waitUntil:'domcontentloaded'});
-  await page.getByRole('heading',{name:'Gestión sin conexión'}).waitFor();
+  const staffFallback=await page.evaluate(async()=>({
+   title:document.title,heading:document.querySelector('h1')?.textContent,
+   controlled:navigator.serviceWorker.controller?.scriptURL,
+   offlineCached:Boolean(await caches.match('/gestion/offline.html'))
+  }));
+  assert.equal(staffFallback.heading,'Gestión sin conexión',JSON.stringify(staffFallback));
   await page.screenshot({path:join(artifacts,'management-offline.png'),fullPage:true});
   await page.goto(origin+'/qr/v1/SABORA_CI/00000000-0000-4000-8000-000000000001#test-secret',
    {waitUntil:'domcontentloaded'});
-  await page.getByRole('heading',{name:'Carta sin conexión'}).waitFor();
+  const customerFallback=await page.evaluate(()=>({
+   title:document.title,heading:document.querySelector('h1')?.textContent,
+   controlled:navigator.serviceWorker.controller?.scriptURL
+  }));
+  assert.equal(customerFallback.heading,'Carta sin conexión',JSON.stringify(customerFallback));
   assert.equal((await page.locator('body').innerText()).includes('test-secret'),false);
   await page.screenshot({path:join(artifacts,'client-offline.png'),fullPage:true});
-  await context.setOffline(false);
+  const secretAccessible=await page.evaluate(async()=>{
+   try{await fetch('/api/v1/private');return true;}catch{return false;}
+  });
+  assert.equal(secretAccessible,false,'private API must not serve from a service-worker cache');
+  originOutage=false;
   await page.goto(origin+'/',{waitUntil:'load'});
   assert.match(await page.title(),/Sabora/);
   state=await inventory(page);
