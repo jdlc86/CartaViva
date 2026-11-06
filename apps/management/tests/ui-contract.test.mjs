@@ -102,7 +102,10 @@ test('tables keep the disconnected lock and expose mutations only through the in
   for (const label of ['ABIERTA', 'PAUSADA', 'CERRADA']) assert.match(tables, new RegExp(label));
   assert.match(tables, /Cargar más mesas/);
   assert.match(tables, /Filtrar mesas cargadas/);
-  assert.match(tables, /canManage/);
+  assert.match(tables, /canConfigure/);
+  assert.match(tables, /canReadiness/);
+  assert.match(tables, /canOccupancy/);
+  assert.match(tables, /tablePermissions/);
   assert.match(tables, /gateway\.manageTable/);
   assert.match(tables, /gateway\.transitionOccupancy/);
   assert.match(tables, /<LockedButton icon="plus">Crear mesa<\/LockedButton>/);

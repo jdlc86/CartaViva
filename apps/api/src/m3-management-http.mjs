@@ -40,6 +40,12 @@ const projectTablesPage=page=>{
  });
  return {version:2,items,nextAfterNumber:page.nextAfterNumber};
 };
+const verifiedTablePermissions=request=>{
+ const role=request.verifiedStaff?.role;
+ if(!['admin','root','waiter'].includes(role))throw Error('m3_management_forbidden');
+ const administrative=role==='admin'||role==='root';
+ return {configure:administrative,qr:administrative,readiness:true,occupancy:true};
+};
 const failure=(reply,error,kind,observeFailure)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(['m3_management_forbidden','staff_not_authorized'].includes(code))
@@ -74,9 +80,12 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
   if(!queryRecord(query)||Object.keys(query).some(k=>!['afterNumber','limit'].includes(k))||
      Object.values(query).some(v=>typeof v!=='string'||!/^(0|[1-9][0-9]*)$/.test(v)))
    return reply.code(400).send({error:'invalid_tables_request'});
-  try{return reply.code(200).send(projectTablesPage(await tables.read(verified(request),{
-   afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
-   limit:query.limit===undefined?50:Number(query.limit)})));}
+  try{
+   const page=projectTablesPage(await tables.read(verified(request),{
+    afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
+    limit:query.limit===undefined?50:Number(query.limit)}));
+   return reply.code(200).send({...page,permissions:verifiedTablePermissions(request)});
+  }
   catch(error){return failure(reply,error,'tables',observeFailure);}
  });
  app.post('/api/v1/admin/tables/actions',{preHandler:floor,bodyLimit:16_384},async(request,reply)=>{
