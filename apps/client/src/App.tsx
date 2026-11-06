@@ -446,13 +446,15 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const openCart=useCallback(()=>setOverlay('cart'),[]);
  const openNotifications=useCallback(()=>setOverlay('notifications'),[]);
  const openDetail=useCallback((item:MenuItem,line?:BasketLine)=>{
+  if(line)setOverlay(null); // Do not nest two dialogs while editing from the basket.
   setDetailEditingKey(line?basketLineKey(line):null);
   setDetailSelection(line?{options:Object.fromEntries(Object.entries(line.selection.options)
    .map(([key,value])=>[key,[...value]])),extras:[...line.selection.extras]}:
    {options:{},extras:[]});
   setDetailQuantity(line?.quantity??1);setDetail(item);
  },[]);
- const closeDetail=useCallback(()=>{setDetail(null);setDetailEditingKey(null);},[]);
+ const closeDetail=useCallback(()=>{setDetail(null);setDetailEditingKey(null);
+  if(detailEditingKey!==null)setOverlay('cart');},[detailEditingKey]);
  const changeFromCard=useCallback((item:MenuItem,delta:number)=>{
   const configurable=(item.options?.length??0)>0||(item.extras?.length??0)>0;
   if(configurable){
