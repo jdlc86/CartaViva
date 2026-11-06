@@ -7800,6 +7800,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.equal(browserPublished?.category,'BRUNCH E2E');
     assert.equal(browserPublished?.priceCents,0);
     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-published.png'),fullPage:true});
+    // The actual desktop screenshot previously exposed a numeric sort input
+    // squeezed into the 42px category icon column. Assert legible hit targets
+    // in two real Chromium viewports, not just successful category SQL.
+    const categorySort=m3StaffPage.getByRole('spinbutton',{name:'Orden de BRUNCH E2E'});
+    const desktopSortBox=await categorySort.boundingBox();
+    assert.ok(desktopSortBox&&desktopSortBox.width>=90,
+     'desktop category ordering input must be legible, not in the icon column');
+    await m3StaffPage.setViewportSize({width:390,height:844});
+    const mobileSortBox=await categorySort.boundingBox();
+    const mobileCategoryBox=await m3StaffPage.locator('.catalog-category-grid > li')
+     .filter({hasText:'BRUNCH E2E'}).boundingBox();
+    assert.ok(mobileSortBox&&mobileCategoryBox&&mobileSortBox.width>=80&&
+     mobileSortBox.x>=mobileCategoryBox.x&&
+     mobileSortBox.x+mobileSortBox.width<=mobileCategoryBox.x+mobileCategoryBox.width+2,
+     'mobile category ordering must remain usable inside its card');
+    await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-catalog-mobile.png')});
+    await m3StaffPage.setViewportSize({width:1440,height:900});
 
     await m3StaffPage.goto('https://gestion.sabora.example/#mesas');
     await m3StaffPage.evaluate(async jwt=>{
