@@ -623,3 +623,24 @@ La rama `integration/sabora-session23-m2-bootstrap-20261105` selecciona de forma
 El corte usa capacidades `NOLOGIN/NOINHERIT` separadas para cliente F12, decisión staff, confirmación, lecturas H6, H4 y backlog SSE. Los logins físicos solo reciben pertenencia `SET`; la migración no los crea. El preflight rechaza privilegios directos, relaciones, secuencias, identidad compartida o una superficie distinta. Los ensayos iniciales detectaron un defecto de ámbito del arnés y rechazaron correctamente la composición H4 antigua. La solución conserva el aislamiento y ejecuta tres RPC H4 exactas bajo `SET LOCAL ROLE`.
 
 Evidencia del SHA `7f90000077ab77759935cf291ac6ec637411b983`: [generate-lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42023242547) PASS con cadena/reanudación de 84 migraciones, rollback del LOGIN desechable y **51/51 PG17, 0 SKIP**; [validate](https://github.com/jdlc86/CartaViva/actions/runs/42023242569) PASS en bloques H6 1/2A/2B, PostgreSQL 17, HMAC, concurrencia y Chromium. M2 queda candidato validado, no producción. Permanecen fuera de esta evidencia Stripe sandbox real, entrega física, aprobación visual humana de caja/cierre, merge y despliegue.
+
+## 39. Puerta técnica de estabilización superada y retorno controlado a F01–F28/R01–R10 — 06-11-2026
+
+[Dictamen contrastado con CI del SHA actual de revisión](../reviews/SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md), [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y [continuidad de sesión 25](../handoffs/SESSION_25_HANDOFF_2026-11-06.md). **No es nueva normativa ni aprobación automática de ninguna fila F/R.** La estabilización **técnica del candidato** queda superada para poder continuar trabajando en esta matriz, sin afirmar paridad de las 13 ramas divergentes ni cierre/merge de los 42 PR.
+
+### 39.1. Evidencia ejecutada actual que reemplaza referencias técnicas antiguas
+
+La rama del PR #49, SHA **`0402e63a82c23e80470f59f0da2bc39fd5aa43c0`**, tiene **5/5 workflows SUCCESS en el mismo SHA**: [CI](https://github.com/jdlc86/CartaViva/actions/runs/42284967581), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42284967612), [cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42284967849), [gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42284967661) y [CV-012 dos PWA](https://github.com/jdlc86/CartaViva/actions/runs/42284967631). Logs: **Node 1.349/1.349, 0 SKIP; PG17 51/51, 0 SKIP; coste cero 4/4; cliente Chromium 36/36**. En la prueba PG17 #49 se verificó recorrido real de PWA gestión y cliente + Fastify + PostgreSQL 17 con roles distintos, decisión de mesa, SSE, transferencia diferida y cuenta. La suite Chromium de gestión separada usa HTTP de pruebas; las capas no se presentan falsamente como todas reales en todos los escenarios.
+
+La comparación del SHA funcional `380a4777` al `0402e63a` contiene únicamente modificaciones y recuperaciones **documentales**. Esta sección **actualiza los límites temporales** de §37.3 y §37.2, no borra sus antecedentes:
+- **F12/R08:** corte A→B con capacidades mínimas opt-in validado; **arranque productivo por defecto sigue pendiente** (`server.mjs` health-only). No convertir candidato en operativo.
+- **CV-003 / 2 SKIP antiguos:** en el Bootstrap actual se observan **0 SKIP Node y 0 SKIP PG17**; §37.3 era una fotografía del corte pre-M2. La aceptación integral de M1/F-R **aún requiere** cierre por escenarios.
+- **R10 / coste cero:** **4/4 en el mismo SHA actual** y sin omisiones; pasa de evidencia histórica insuficiente a **evidencia técnica candidata verificada**, no cierre de caja/ocupación humana.
+- **F09/F12/F21/F25/F26/R02/R06/R07:** regresiones generales y escenario PG17 representativo incluyen autorización, cocina/sala, cuentas, SSE y roles, pero **no se ha firmado una aceptación independiente para cada fila**. Se mantienen los dictámenes candidatos/parciales de §37 hasta validación por requisito.
+- **F20, R03–R05:** parcial/bloqueado por caja y Stripe sandbox real; **F28/R09** bloqueados por conformidad humana. **No** están resueltos por el 5/5.
+
+### 39.2. Reapertura de trabajo en la matriz (sin pruebas diminutas)
+
+La matriz vuelve a ser el **instrumento de aceptación**; no se abre otro PR de saneamiento por inercia. Siguientes **unidades integrales**: (a) validar el recorrido H6 y rol de punta a punta en el candidato, reconciliar F01–F28/R01–R10 con el SHA y distinguir aprobación de producto; (b) cerrar como bloque la deuda normativa de distintas personalizaciones del mismo plato y sus consecuencias servidor/cuenta/UX; (c) caja y Stripe sandbox solo con autorización y credenciales test; (d) diseño visual humano y operación M6 como puertas independientes.
+
+La [propuesta de resolución de los 42 PR](../reviews/SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md) **no los cierra**. Ninguna modificación a `main`, VPS, Fleetia, Supabase operativo o despliegue. **Producción NO-GO.**
