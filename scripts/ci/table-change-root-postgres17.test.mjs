@@ -7934,12 +7934,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const browserRound=(await admin.query(
      'SELECT id,state FROM sabora.order_rounds WHERE order_id=$1',
      [browserOrder.orderId])).rows[0];
-    assert.equal(browserRound?.state,'grouping');
+    assert.equal(browserRound?.state,'free_grouping',
+     'complimentary H6 rounds await dispatch without selecting a payment mode');
     // Disposable fixture time compression ONLY: F21 separately validates the
     // natural 300-second window; this scenario validates the full business
     // closure chain without inserting a second five-minute delay.
     const due=(await admin.query(
-     "UPDATE sabora.order_rounds SET grouping_deadline=clock_timestamp()-interval '1 second' WHERE id=$1 AND state='grouping' RETURNING id",
+     "UPDATE sabora.order_rounds SET grouping_deadline=clock_timestamp()-interval '1 second' WHERE id=$1 AND state='free_grouping' RETURNING id",
      [browserRound.id])).rows;
     assert.equal(due.length,1);
     const browserDispatch=await h6Provider.requestDueCapture({orderId:browserOrder.orderId});
