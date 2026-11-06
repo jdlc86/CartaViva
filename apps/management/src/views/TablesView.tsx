@@ -54,6 +54,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   const [tables, setTables] = useState<readonly AdminTable[]>([]);
   const [nextAfterNumber, setNextAfterNumber] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusedTable, setFocusedTable] = useState<AdminTable | null>(null);
   const [filter, setFilter] = useState('');
   const [reloadVersion, setReloadVersion] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -95,6 +96,7 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     setTables([]);
     setNextAfterNumber(null);
     setSelectedId(null);
+    setFocusedTable(null);
     setPaginationError(false);
 
     void loadAdminTablesPage(gateway, {afterNumber: 0, limit: TABLE_PAGE_SIZE, signal: task.signal})
@@ -116,7 +118,8 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     return () => readController.cancel();
   }, [gateway, readController, reloadVersion]);
 
-  const selectedTable = tables.find((table) => table.id === selectedId) ?? null;
+  const selectedTable = tables.find((table) => table.id === selectedId) ??
+    (focusedTable?.id===selectedId ? focusedTable : null);
   const canManage=typeof gateway?.manageTable==='function'&&typeof gateway?.transitionOccupancy==='function';
   useEffect(()=>{
    setEditNumber(selectedTable?String(selectedTable.number):'');
@@ -125,13 +128,18 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   },[selectedTable?.id,selectedTable?.number,selectedTable?.capacity,selectedTable?.description]);
   const visibleTables = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase('es');
-    if (!query) return tables;
-    return tables.filter((table) => {
+    // A freshly created/rotated table can lie outside the first paginated page.
+    // Keep its independently authorized projection visible without corrupting
+    // the server cursor or assigning a one-time QR to another table.
+    const loaded=focusedTable&&!tables.some(table=>table.id===focusedTable.id)
+      ? [focusedTable,...tables] : tables;
+    if (!query) return loaded;
+    return loaded.filter((table) => {
       const state = stateMeta(table.orderingState).label.toLocaleLowerCase('es');
       return String(table.number).includes(query) ||
         (table.description?.toLocaleLowerCase('es').includes(query) ?? false) || state.includes(query);
     });
-  }, [filter, tables]);
+  }, [filter, tables, focusedTable]);
 
   const loadMore = async () => {
     if (!gateway || nextAfterNumber === null || loadingMore || refreshing) return;
@@ -156,8 +164,8 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     }
   };
 
-  const refreshTables = async () => {
-    if (!gateway || phase !== 'ready' || refreshing) return;
+  const refreshTables = async (focus?:Readonly<{id:string;number:number}>):Promise<boolean> => {
+    if (!gateway || phase !== 'ready' || refreshing) return false;
     const task = readController.start();
     setLoadingMore(false);
     setPaginationError(false);
@@ -170,12 +178,31 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         limit: TABLE_PAGE_SIZE,
         signal: task.signal,
       });
-      if (!task.isCurrent()) return;
+      const expected=focus??(focusedTable?{id:focusedTable.id,number:focusedTable.number}:null);
+      let verified:AdminTable|null=null;
+      if(expected&&!page.items.some(table=>table.id===expected.id)){
+        if(!Number.isSafeInteger(expected.number)||expected.number<1)throw Error('invalid_focus_table_number');
+        const precise=await loadAdminTablesPage(gateway,{
+          afterNumber:expected.number-1,limit:1,signal:task.signal,
+        });
+        const row=precise.items[0];
+        if(row?.id!==expected.id||row.number!==expected.number)
+          throw Error('focused_table_projection_mismatch');
+        verified=row;
+      }
+      if (!task.isCurrent()) return false;
       setTables(page.items);
+      setFocusedTable(verified);
       setNextAfterNumber(page.nextAfterNumber);
-      setSelectedId((current) => page.items.some((table) => table.id === current) ? current : page.items[0]?.id ?? null);
+      setSelectedId((current) => {
+        const requested=focus?.id??current;
+        return page.items.some(table=>table.id===requested)||verified?.id===requested
+          ? requested : page.items[0]?.id??null;
+      });
+      return true;
     } catch {
       if (task.isCurrent()) setRefreshError(true);
+      return false;
     } finally {
       const isCurrent = task.isCurrent();
       task.finish();
@@ -190,13 +217,18 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
     const result=await gateway.manageTable({requestId:crypto.randomUUID(),operation,payload});
     if(!result||typeof result!=='object'||Array.isArray(result))throw Error('invalid_table_management_result');
     const value=result as Record<string,unknown>;
+    const nextId=value.tableId;
+    const nextNumber=value.number;
+    if(typeof nextId!=='string'||typeof nextNumber!=='number'||
+      !Number.isSafeInteger(nextNumber)||nextNumber<1)throw Error('invalid_table_management_result');
+    if(!await refreshTables({id:nextId,number:nextNumber}))
+      throw Error('table_management_refresh_failed');
+    // Only reveal the one-time QR AFTER the selected, authorized table is loaded.
     setQrPayload(typeof value.qrPayload==='string'?value.qrPayload:null);
-    if(typeof value.tableId==='string')setSelectedId(value.tableId);
     setActionMessage(operation==='create'?'Mesa creada en preparación. Imprime ahora su QR o rótalo después.':
      operation==='qr_rotate'?'QR rotado. La credencial anterior ya no autoriza acciones nuevas.':
      operation==='qr_revoke'?'QR revocado sin alterar pedidos ni cuentas históricas.':'Cambio confirmado y auditado.');
     if(operation==='create'){setCreateOpen(false);setCreateNumber('');setCreateDescription('');}
-    await refreshTables();
    }catch{setActionMessage('No se aplicó el cambio. El estado persistido se conserva.');}
    finally{setActionPending(false);}
   };
@@ -204,7 +236,10 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
    if(!gateway?.transitionOccupancy||!selectedTable||actionPending)return;
    setActionPending(true);setActionMessage(null);setQrPayload(null);
    try{await gateway.transitionOccupancy({requestId:crypto.randomUUID(),tableId:selectedTable.id,
-    target,pauseUntil:null});setActionMessage('Ocupación actualizada con la política económica vigente.');await refreshTables();}
+    target,pauseUntil:null});
+    if(!await refreshTables({id:selectedTable.id,number:selectedTable.number}))
+      throw Error('table_occupancy_refresh_failed');
+    setActionMessage('Ocupación actualizada con la política económica vigente.');}
    catch{setActionMessage('No se cambió la ocupación. Revisa la transición y las cuentas pendientes.');}
    finally{setActionPending(false);}
   };
