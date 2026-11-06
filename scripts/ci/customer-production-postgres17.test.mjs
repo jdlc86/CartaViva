@@ -932,8 +932,33 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await detail.getByRole('button',{name:'Guardar en la selección'}).click();
    await variantCart.getByText('Salsa: Suave').waitFor();
    assert.equal(await rows.count(),2);
+   // F28/R09 visual usability gate inside the same REAL PG17/Chromium order:
+   // both configured variants must expose designed, touch-sized actions.
+   const inspectBasketPresentation=async viewport=>{
+    const actions=await variantCart.locator('.basket-line-actions button')
+     .evaluateAll(buttons=>buttons.map(button=>{
+      const box=button.getBoundingClientRect(),style=getComputedStyle(button);
+      return {width:box.width,height:box.height,radius:style.borderRadius,
+       background:style.backgroundColor};
+     }));
+    assert.equal(actions.length,4,viewport+': both rows need remove/edit controls');
+    assert.ok(actions.every(action=>action.height>=44&&action.width>=44&&
+     action.radius!=='0px'&&action.background!=='rgba(0, 0, 0, 0)'),
+     viewport+': configured variant controls must have 44px targets and Sabora styling');
+    const layout=await variantCart.evaluate(dialog=>({
+     width:dialog.clientWidth,scrollWidth:dialog.scrollWidth
+    }));
+    assert.ok(layout.scrollWidth<=layout.width+2,
+     viewport+': configured basket must not overflow horizontally');
+   };
+   await inspectBasketPresentation('390px');
    await variantCart.screenshot({path:join(evidenceDir,'client-two-configured-variants-390.png'),
     fullPage:true});
+   await clientPage.setViewportSize({width:1440,height:900});
+   await inspectBasketPresentation('1440px');
+   await variantCart.screenshot({path:join(evidenceDir,'client-two-configured-variants-1440.png'),
+    fullPage:true});
+   await clientPage.setViewportSize({width:390,height:844});
    const variantAxe=await new AxeBuilder({page:clientPage}).analyze();
    assert.deepEqual(variantAxe.violations.filter(v=>
     v.impact==='serious'||v.impact==='critical').map(v=>v.id),[]);
