@@ -796,9 +796,13 @@ BEGIN
   ELSE
    IF EXISTS(SELECT 1 FROM jsonb_object_keys(p_payload) k(key)
       WHERE k.key NOT IN ('categoryId','expectedRevision','hidden'))
-     OR jsonb_typeof(p_payload->'hidden') IS DISTINCT FROM 'boolean'
-     OR (v_category.mandatory AND (p_payload->>'hidden')::boolean) THEN
+     OR jsonb_typeof(p_payload->'hidden') IS DISTINCT FROM 'boolean' THEN
     RAISE EXCEPTION 'invalid_catalog_management_input' USING ERRCODE='22023'; END IF;
+   -- Valid request shape, but hiding a mandatory category conflicts with
+   -- an invariant; surface a 409 rather than masquerading as a 400/503.
+   IF v_category.mandatory AND (p_payload->>'hidden')::boolean THEN
+    RAISE EXCEPTION 'catalog_category_visibility_conflict' USING ERRCODE='23514';
+   END IF;
    UPDATE sabora.catalog_categories_m3 SET
     hidden_at=CASE WHEN (p_payload->>'hidden')::boolean THEN clock_timestamp() ELSE NULL END,
     revision=revision+1,updated_at=clock_timestamp()
