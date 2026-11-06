@@ -7448,6 +7448,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const m3Fetch=async(path,options={})=>{
     const response=await m3.app.inject({method:options.method??'GET',url:path,
      headers:Object.fromEntries(new Headers(options.headers??{})),payload:options.body});
+    if(response.statusCode>=400)
+     m3Failures.push(Error(`m3_http_${response.statusCode}_${response.body}`));
     return new Response(response.body,{status:response.statusCode,headers:{
      'content-type':response.headers['content-type']??'application/json'}});
    };
@@ -7467,6 +7469,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(replay.replayed,true);
    await assert.rejects(management.manageTable({requestId:createRequest,operation:'create',
     payload:{number:914,capacity:4,description:'Conflicto'}}),/m3_management_conflict/);
+   m3Failures.length=0;
    let listed;
    try{listed=await management.listTables({afterNumber:900,limit:20});}
    catch(error){throw m3Failures.at(-1)??error;}

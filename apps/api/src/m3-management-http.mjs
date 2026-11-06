@@ -4,6 +4,19 @@ import {createTableQrCredential} from './table-qr-credential.mjs';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
+// Fastify deliberately gives parsed query strings a hardened empty prototype
+// object instead of Object.prototype. Accept that exact inert shape while
+// continuing to reject arrays, accessors and attacker-controlled prototypes.
+const queryRecord=value=>{
+ if(value===null||typeof value!=='object'||Array.isArray(value))return false;
+ const prototype=Object.getPrototypeOf(value);
+ if(prototype!==null&&prototype!==Object.prototype&&
+    (Object.getPrototypeOf(prototype)!==null||Reflect.ownKeys(prototype).length!==0))return false;
+ return Reflect.ownKeys(value).every(key=>{
+  const descriptor=typeof key==='string'?Object.getOwnPropertyDescriptor(value,key):null;
+  return descriptor?.enumerable===true&&Object.hasOwn(descriptor,'value');
+ });
+};
 const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.length&&
  keys.every(key=>Object.hasOwn(value,key));
 const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff});
@@ -38,7 +51,7 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
  app.get('/api/v1/admin/tables',{preHandler:floor},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   const query=request.query??{};
-  if(!plain(query)||Object.keys(query).some(k=>!['afterNumber','limit'].includes(k))||
+  if(!queryRecord(query)||Object.keys(query).some(k=>!['afterNumber','limit'].includes(k))||
      Object.values(query).some(v=>typeof v!=='string'||!/^(0|[1-9][0-9]*)$/.test(v)))
    return reply.code(400).send({error:'invalid_tables_request'});
   try{return reply.code(200).send(await tables.read(verified(request),{

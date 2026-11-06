@@ -116,3 +116,29 @@ test('M3 HTTP observes internal failure without disclosing it to the caller',asy
   assert.equal(observed[0].message,'sensitive_sql_details');
  }finally{await app.close();}
 });
+
+test('M3 HTTP accepts hardened Fastify pagination and rejects ambiguous query input',async()=>{
+ const app=Fastify({logger:false}),reads=[];
+ registerM3ManagementHttp(app,{forRoles:()=>async request=>{
+  request.verifiedIdentity={userId:actorId};
+  request.verifiedStaff={userId:actorId,role:'admin'};
+ },tables:{read:async(_verified,page)=>{reads.push(page);
+  return {version:2,items:[],nextAfterNumber:null};}},catalog:{},
+ qr:{secret:'m3_http_test_secret_at_least_32_bytes',origin:'https://sabora.example',
+  restaurantCode:'SABORA_CI'}});
+ try{
+  await app.ready();
+  const valid=await app.inject('/api/v1/admin/tables?afterNumber=900&limit=20');
+  assert.equal(valid.statusCode,200);
+  assert.deepEqual(reads,[{afterNumber:900,limit:20}]);
+  for(const query of [
+   'afterNumber=1&afterNumber=2','limit=20&limit=21','afterNumber=-1',
+   'limit=1.5','limit=%2020','unexpected=1','__proto__=polluted'
+  ]){
+   const rejected=await app.inject('/api/v1/admin/tables?'+query);
+   assert.equal(rejected.statusCode,400,query);
+   assert.deepEqual(rejected.json(),{error:'invalid_tables_request'});
+  }
+  assert.equal(reads.length,1);
+ }finally{await app.close();}
+});
