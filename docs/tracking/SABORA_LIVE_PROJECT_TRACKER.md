@@ -226,3 +226,8 @@ Se documenta en [auditoría Git actualizada](../reviews/SABORA_REPOSITORY_STABIL
 - **M3 `a4229f1d`:** implementación por rol y prueba integrada de PG17/Fastify/Chromium en código, sin workflows nuevos acreditados. No declarar CV-006 aceptado ni usar los 5/5 verdes de `d075e735` para ese SHA.
 
 **Puerta inmediata:** obtener CI integrada verificable del código actual, revisar artefactos y fallos, y solo entonces emitir propuesta de reconciliación formal de PR (sin ejecutar merges/cierres). Nada modifica la matriz F/R ni despliega Sabora; `main`, Supabase operativo, VPS y Fleetia intactos. [Continuidad §17](../handoffs/SESSION_23_HANDOFF_2026-11-05.md). La presente actualización documental no acredita pruebas por sí misma.
+## 18. Salud Git: inventario completo de 42 PR — 06-11-2026
+
+[Informe Git](../reviews/SABORA_REPOSITORY_STABILIZATION_GRAPH_2026-11-06.md) y [continuidad §18](../handoffs/SESSION_23_HANDOFF_2026-11-05.md). Confirmados con comparaciones reales: **27 HEAD de PR ancestros del candidato; 14 divergentes (#4/#5/#8/#14/#17/#18/#19/#20/#21/#22/#31/#40/#44/#48); #49 es el candidato.** Los cinco PR de la línea H3 #18–#22 comparten historia propia; sus cuentas de commits no son aditivas. No cerrar en masa PR ancestros ni asumir paridad semántica de divergentes. El PR #48 sigue divergente pese a copiar siete blobs exactos al #49. No merge, rebase ni nuevos PR.
+
+**Bloqueo inmediato:** evidenciar ejecución integral de `a4229f1d` y de su descendencia con PG17/Fastify/Chromium; no existe un PASS comprobado para esa corrección. Los 5/5 de `d075e735` son anteriores. La presente actualización es documental, no valida el código. No alterar norma F/R, `main`, recursos operativos, VPS, Fleetia ni Supabase. Producción **NO-GO**.

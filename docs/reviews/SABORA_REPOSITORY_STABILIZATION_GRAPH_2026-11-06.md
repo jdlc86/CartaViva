@@ -80,3 +80,22 @@ Se inspeccionó el commit `a4229f1dca1a26c37b087da58996b2b320d5c2b8`: Fastify de
 **No hacer merge, rebase, force push, cierre masivo, borrado de ramas ni apertura de PR nuevo.** Conservar las seis terminales históricas y las diferencias intermedias documentales (#14, #40, #44) hasta disponer de evidencia de comportamiento en un único SHA candidato, revisión humana donde proceda y una decisión explícita de estrategia de integración. El avance verificable en este apartado es **la conciliación de contenido y riesgos**, no el cierre de los 42 PR.
 
 **Puerta siguiente:** comprobar CI H6 consolidada sobre el candidato actual que incorpora `a4229f1d` (en particular recorrido PG17/Fastify/Chromium de roles M3), más pruebas cliente pertinentes y artefactos. Un commit exclusivamente documental no debe heredar automáticamente evidencia de su ancestro. Se mantiene `server.mjs` en `health-only`, producción **NO-GO**, y prohibición absoluta de tocar Fleetia, VPS o Supabase operativo sin autorización.
+## Clasificación exhaustiva de ancestralidad de los 42 PR — 06-11-2026
+
+Se comparó **cada una** de las 42 ramas HEAD de PR abiertos contra el candidato #49 `94f2b9446f3686b2b1f563bb8f0e2c3b9578da86` utilizando la API GitHub Compare. La relación de ancestro es de **historia Git**, no certificado de equivalencia funcional, aprobación de producto o integración en `main`.
+
+| Relación Git HEAD histórica → candidato | PR | Total |
+| --- | --- | ---: |
+| HEAD ancestro exacto del candidato (behind = 0 al comparar HEAD→candidato) | #1, #2, #7, #10, #11, #12, #13, #15, #16, #23, #24, #25, #26, #27, #28, #29, #30, #32, #34, #36, #38, #41, #42, #43, #45, #46, #47 | **27** |
+| HEAD no ancestro; contiene commits propios no presentes en historial de #49 | #4, #5, #8, #14, #17, #18, #19, #20, #21, #22, #31, #40, #44, #48 | **14** |
+| Misma HEAD que el candidato | #49 | **1** |
+
+**Los 14 PR divergentes no son 14 líneas de trabajo independientes:**
+
+- **Familia H3 (#18–#22):** #18 es ancestro de #22 por 21 commits; #19 por 17, #20 por 11 y #21 por 7. Todos esos cambios exclusivos deben conciliarse bajo la auditoría semántica conjunta de #22, **sin declarar cuatro PR ya absorbidos**. Contra #49 presentan, respectivamente, 11/15/21/25/32 commits no ancestrales (los números se superponen y **no** se deben sumar).
+- **Seis terminales históricas independientes de #49:** #4 (4 commits), #5 (11), #8 (2), #17 (4), #22 (32), #31 (1). Su conservación/alcance está detallado en la sección precedente; ninguna se cierra.
+- **Ramas documentales intermedias:** #14 (1), #40 (1) y #44 (1) tienen historial divergente. Su reconciliación documental es independiente de la normativa y se debe comprobar sin sobrescribir documentos posteriores.
+- **PR #48 (8 commits no ancestrales):** la incorporación de siete archivos desde su HEAD `ead7633b` a #49 fue por igualdad de blobs, no un merge; el PR aún presenta historia divergente frente a #49. No declararlo fusionado.
+- **Otros 27 PR ancestros:** su historia es alcanzable desde #49, pero permanecen abiertos, Draft y con bases propias; Git no ha efectuado un merge a `main`. Cerrar o rebasar requiere decisión explícita después de verificar normativa, aprobación y plan de preservación.
+
+**Regla de salida:** preparar un único dictamen de integración sobre SHA funcional validado, luego proponer qué PR retener, reorientar o cerrar sin ejecutarlo sin autorización. La documentación de este inventario es un hito de **conocimiento verificado del grafo**, no de saneamiento completado. Sigue faltando CI del cambio `a4229f1d`, revisión de divergencias en contenido y aceptación visual/operativa. `main` y producción **NO-GO**.
