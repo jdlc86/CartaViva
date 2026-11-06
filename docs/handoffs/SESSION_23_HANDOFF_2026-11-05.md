@@ -150,3 +150,11 @@ Se corrigieron defectos contractuales reales de lectura HTTP de mesas (`tableId`
 4. Mantener PRs Draft y las prohibiciones de merge/despliegue/recursos compartidos hasta nueva autorización expresa.
 
 **Nota de cronología:** las secciones §9–§10 son el estado histórico al publicarse, no afirmaciones actuales de que Codex aún no implementó M2/M3. Prevalecen las evidencias más recientes §11–§12 y el estado vivo comprobado en GitHub.
+
+## 13. Seguimiento consolidado tras PR #48 — 06-11-2026
+
+Referencia vigente: [tablero vivo §13](../tracking/SABORA_LIVE_PROJECT_TRACKER.md); prevalecen siempre la normativa NF/RF/DV y la matriz única F/R. El [PR #48 Draft](https://github.com/jdlc86/CartaViva/pull/48) alcanzó SHA funcional `21f9e8123e36d0dbcd2d75c152669b73f8f589f7` con **3/3 workflows SUCCESS del mismo SHA**: [CI](https://github.com/jdlc86/CartaViva/actions/runs/42213850457), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42213850371) (**51/51, 0 SKIP**) y [Chromium gestión](https://github.com/jdlc86/CartaViva/actions/runs/42213850340). Se corrige la fotografía antigua de §12, cuando algunas ejecuciones estaban en curso. La última corrección de `M3CatalogManagementView.tsx` distingue mutación confirmada de fallo de actualización de vista y pasó esos gates.
+
+**M3/CV-006/CV-007 = candidato técnico validado, NO cerrado como producto ni visualmente aprobado.** M1/CV-001/CV-003 siguen en curso, M4/CV-008 Stripe sandbox real bloqueado por credenciales/permiso, CV-009 caja por aprobación de flujo, M5/M6 pendientes. Revisar tablero §13 y fuentes normativas antes de abrir siguiente bloque integral; no usar micropruebas como hito ni inferir `GO` de CI.
+
+Este registro es **documental**; no genera prueba funcional nueva ni autoriza merge, deploy, Supabase operativo, Fleetia o VPS compartido.
