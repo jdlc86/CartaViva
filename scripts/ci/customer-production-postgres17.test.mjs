@@ -892,6 +892,121 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     value.pathname.includes('/transitions')));
    assert.ok(requests.filter(value=>value.pathname==='/api/v1/operations/events').length<=3,
     'H4 candidate may attempt SSE once per each of three mounted staff sessions but must not poll business state');
+
+   // H3 full-stack variant milestone. Update only the disposable PG17 catalog
+   // after the original H3/H4 round. The same two real PWAs must now process
+   // two distinct configured lines of the SAME published dish without
+   // collapsing quantities, quotes, prices, order snapshots or kitchen rows.
+   const variantSnapshot={...snapshotA,options:[{
+    id:'sauce',name:'Salsa',required:true,maxSelections:1,values:[
+     {id:'suave',name:'Suave',priceCents:0,available:true,allergens:[]},
+     {id:'picante',name:'Picante',priceCents:200,available:true,allergens:[]}
+    ]
+   }]};
+   await admin.query(`UPDATE sabora.catalog_items SET draft=$2::jsonb,
+     draft_revision=2,published_snapshot=$2::jsonb,published_revision=2,
+     published_at=clock_timestamp() WHERE id=$1`,[itemA,JSON.stringify(variantSnapshot)]);
+   await clientPage.goto(clientOrigin+'/candidate.html');
+   await clientPage.getByRole('heading',{name:'Nuestra carta'}).waitFor({timeout:15000});
+   await clientPage.goto(`${clientOrigin}/qr/v1/SABORA/${tableId}#${qrToken}`);
+   const variantQr=clientPage.getByRole('dialog',{name:'QR de mesa'});
+   await variantQr.getByText('Mesa verificada').waitFor({timeout:15000});
+   await variantQr.getByRole('button',{name:'Cerrar'}).click();
+   const dish=clientPage.locator('[data-testid="product-card"]')
+    .filter({hasText:'Arroz de temporada'});
+   await dish.getByRole('button',{name:'Ver detalle'}).click();
+   let detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   await detail.getByRole('checkbox',{name:/Suave/}).check();
+   await detail.getByRole('button',{name:'Guardar en la selección'}).click();
+   await dish.getByRole('button',{name:'Ver detalle'}).click();
+   detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   await detail.getByRole('checkbox',{name:/Picante/}).check();
+   await detail.getByRole('button',{name:'Guardar en la selección'}).click();
+   await clientPage.getByRole('button',{name:'Cesta: 2'}).click();
+   const variantCart=clientPage.getByRole('dialog',{name:'Tu selección'});
+   const rows=variantCart.locator('.basket-lines article');
+   assert.equal(await rows.count(),2,'two distinct configurations must remain separate in the PWA');
+   await rows.filter({hasText:'Salsa: Suave'}).getByRole('button',{name:'Editar detalles'}).click();
+   detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   await detail.getByRole('spinbutton',{name:'Cantidad'}).fill('2');
+   await detail.getByRole('button',{name:'Guardar en la selección'}).click();
+   await variantCart.getByText('Salsa: Suave').waitFor();
+   assert.equal(await rows.count(),2);
+   await variantCart.screenshot({path:join(evidenceDir,'client-two-configured-variants-390.png'),
+    fullPage:true});
+   const variantAxe=await new AxeBuilder({page:clientPage}).analyze();
+   assert.deepEqual(variantAxe.violations.filter(v=>
+    v.impact==='serious'||v.impact==='critical').map(v=>v.id),[]);
+
+   const quoteRequestPromise=clientPage.waitForRequest(request=>
+    new URL(request.url()).pathname==='/api/v1/customer/quotes');
+   const quoteResponsePromise=clientPage.waitForResponse(response=>
+    new URL(response.url()).pathname==='/api/v1/customer/quotes');
+   await variantCart.getByRole('button',{name:'Revalidar y continuar'}).click();
+   const quoteRequest=(await quoteRequestPromise).postDataJSON();
+   const quoteResponse=await quoteResponsePromise;
+   assert.equal(quoteResponse.status(),201,await quoteResponse.text());
+   assert.deepEqual(quoteRequest.lines.map(line=>line.itemId),[itemA,itemA]);
+   assert.deepEqual(quoteRequest.lines.map(line=>line.selection.options.sauce),
+    [['suave'],['picante']]);
+   assert.deepEqual(quoteRequest.lines.map(line=>line.quantity),[2,1]);
+   const quoteRows=(await quoteResponse.json()).lines;
+   assert.equal(quoteRows.length,2);
+   assert.notEqual(quoteRows[0].quoteId,quoteRows[1].quoteId);
+   assert.deepEqual(quoteRows.map(line=>line.totalCents),[2800,1600]);
+   const variantCheckout=clientPage.getByRole('dialog',{name:'Confirmar pedido'});
+   await variantCheckout.getByText('Total confirmado por el servidor').waitFor();
+   const confirmRequestPromise=clientPage.waitForRequest(request=>
+    new URL(request.url()).pathname==='/api/v1/customer/orders/confirm');
+   await variantCheckout.getByRole('button',{name:'Confirmar pedido'}).click();
+   const variantBody=(await confirmRequestPromise).postDataJSON();
+   await variantCheckout.getByText('Pedido confirmado').waitFor({timeout:15000});
+   assert.deepEqual(variantBody.lines.map(line=>line.quoteId),
+    quoteRows.map(line=>line.quoteId));
+   assert.deepEqual(variantBody.lines.map(line=>line.selection.options.sauce),
+    [['suave'],['picante']]);
+   assert.deepEqual(variantBody.lines.map(line=>line.quantity),[2,1]);
+   const variantOrder=(await admin.query(`SELECT id FROM sabora.orders
+    WHERE customer_alias='Cliente navegador' ORDER BY confirmed_at DESC LIMIT 1`)).rows[0];
+   assert.ok(variantOrder?.id);
+   assert.notEqual(variantOrder.id,browserOrder.id);
+   const confirmedVariants=(await admin.query(`SELECT l.line_number,l.economic_evidence,
+     o.id AS order_id
+    FROM sabora.customer_order_attempt_lines l
+    JOIN sabora.customer_order_attempt_batches b ON b.id=l.batch_id
+    JOIN sabora.orders o ON o.id=b.order_id
+    WHERE o.id=$1 ORDER BY l.line_number`,[variantOrder.id])).rows;
+   assert.equal(confirmedVariants.length,2,'two distinct economic snapshots must be immutable');
+   assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.selected.map(v=>v.id)),
+    [['suave'],['picante']]);
+   assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.quantity),[2,1]);
+   assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.totalCents),[2800,1600]);
+   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+    [variantOrder.id])).rows[0].n,2);
+
+   // The same order can be replayed but never persisted a second time.
+   const variantReplay=await clientPage.evaluate(async body=>{
+    const reply=await fetch('/api/v1/customer/orders/confirm',{method:'POST',
+     credentials:'same-origin',cache:'no-store',
+     headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    return {status:reply.status,body:await reply.json()};
+   },variantBody);
+   assert.equal(variantReplay.status,200);
+   assert.equal(variantReplay.body.orderId,variantOrder.id);
+   assert.equal(variantReplay.body.status,'replayed');
+   assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
+    [variantOrder.id])).rows[0].n,2);
+
+   // H4 operations must see BOTH variant lines, not a flattened itemId.
+   await mountManagement(kitchenId);
+   const variantKitchen=managementPage.locator('.order-card')
+    .filter({hasText:'Cliente navegador'}).filter({hasText:'Arroz de temporada'});
+   await variantKitchen.first().getByRole('button',{name:'Iniciar preparación'})
+    .waitFor({timeout:15000});
+   assert.equal(await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).count(),2);
+   await managementPage.screenshot({path:join(evidenceDir,'management-two-configured-variants-390.png'),
+    fullPage:true});
    await managementPage.evaluate(()=>window.__block01Dispose?.());
   }finally{
    await context?.close().catch(()=>{});
