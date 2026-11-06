@@ -46,7 +46,6 @@ self.addEventListener('fetch',event=>{
  const url=new URL(request.url);
  if(!inScope(url)||url.pathname.startsWith(ROOT+'api/')||
     url.pathname.startsWith('/api/')||
-    false
     request.headers.has('authorization'))return;
  if(request.mode==='navigate'){
   // No HTML cache, even for root, QR links or the employee workspace.
