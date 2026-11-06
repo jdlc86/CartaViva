@@ -82,3 +82,11 @@ Se terminó el **inventario y contraste documental/estático de las 13 referenci
 **No hay cierre de 42 PR ni equivalencia histórica total demostrada.** Se registra una propuesta controlada de tratamiento, nunca cierre masivo; la revisión visual humana, Stripe sandbox, personalizaciones independientes de cesta según RF, M1/F-R y M6 siguen fuera del cierre. Los commits documentales posteriores no son una suite nueva.
 
 **La siguiente sesión puede continuar directamente la matriz §39**, con hitos integrales y estados basados en SHA; no volver a un bucle de pruebas pequeñas ni reabrir la estabilización Git salvo regresión nueva. `main`, VPS, Fleetia, Supabase operativo y despliegue sin tocar. Producción NO-GO.
+
+## 10. Matriz retomada: conciliación de las 38 filas con evidencia real — 06-11-2026
+
+Se ha cumplido la primera unidad tras el saneamiento técnico: [matriz §40](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md) y [tablero §25](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) ya contienen el dictamen **fila por fila F01–F28/R01–R10**, con mapeo a PG17 #1–#51, recorrido integrado #49 de dos PWA+Fastify+logins SQL y Chromium cliente/gestión. Fuente ejecutada revisada: `0402e63a`, [cinco workflows del mismo SHA](https://github.com/jdlc86/CartaViva/pull/49/checks) **SUCCESS**, Node 1.349/1.349, PG17 51/51, coste cero 4/4 y cliente 36/36, sin SKIP Node/PG17. Se distinguen fixtures HTTP de PG17 real.
+
+**La conciliación documental 38/38 NO cierra M1/H6, no acredita 38 pruebas independientes ni constituye aceptación visual humana.** F20/R03–R05 Stripe sandbox/caja y F28/R09 diseño siguen parciales/bloqueados, F12/R08 operan solo en candidato opt-in; R10 técnico válido para SHA probado. La deuda RF de distintas variantes de un plato continúa pendiente como hito funcional completo. Producción NO-GO y PR Draft sin cierres.
+
+**Continuación de valor:** preparar/ejecutar la **aceptación funcional integral H6** con sus límites de proveedor y diseño claramente separados; no iniciar una sucesión de micropruebas ni rehacer la estabilización Git. Ningún cambio a `main`, VPS/Fleetia, Supabase operativo, pagos reales o despliegue.

@@ -644,3 +644,74 @@ La comparación del SHA funcional `380a4777` al `0402e63a` contiene únicamente 
 La matriz vuelve a ser el **instrumento de aceptación**; no se abre otro PR de saneamiento por inercia. Siguientes **unidades integrales**: (a) validar el recorrido H6 y rol de punta a punta en el candidato, reconciliar F01–F28/R01–R10 con el SHA y distinguir aprobación de producto; (b) cerrar como bloque la deuda normativa de distintas personalizaciones del mismo plato y sus consecuencias servidor/cuenta/UX; (c) caja y Stripe sandbox solo con autorización y credenciales test; (d) diseño visual humano y operación M6 como puertas independientes.
 
 La [propuesta de resolución de los 42 PR](../reviews/SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md) **no los cierra**. Ninguna modificación a `main`, VPS, Fleetia, Supabase operativo o despliegue. **Producción NO-GO.**
+
+## 40. Reconciliación integral de evidencias F01–F28 / R01–R10 tras estabilización — 06-11-2026
+
+**Hito documental de aceptación de alcance completo, no ejecución inventada.** [Dictamen de estabilización técnica](../reviews/SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md), [tablero §24](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Se han cotejado **las 38 filas, una por una**, con los [criterios de §§4–5](#4-matriz-final-de-aceptación-funcional-obligatoria), su [último dictamen detallado §37](#37-reconciliación-cv-003-de-la-matriz-viva--05-11-2026-estado-documental-no-go), código actual y **logs del mismo SHA**. **La normativa NF/RF/DV prevalece**; no se cambian requisitos ni se confunde cobertura con aceptación humana.
+
+**SHA con aceptación integrada realmente examinada:** `0402e63a82c23e80470f59f0da2bc39fd5aa43c0` ([CI H6](https://github.com/jdlc86/CartaViva/actions/runs/42284967581), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42284967612), [cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42284967849), [gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42284967661), [CV-012](https://github.com/jdlc86/CartaViva/actions/runs/42284967631)). **5/5 SUCCESS en ese SHA.** Bootstrap: **1.349/1.349 Node, 0 SKIP; 51/51 PG17, 0 SKIP; coste cero 4/4, 0 SKIP**. Cliente Chromium: **36/36**. CI H6: bloques 1/2A/2B **PASS**, E2E PG17/Fastify/Chromium. La ejecución del Bootstrap, prueba **#49** (`PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey`), integra realmente **cliente PWA + gestión PWA + Fastify + seis logins SQL aislados + PostgreSQL 17 desechable**, con QR, solicitudes, autorización de camarero, negativa de cocina, SSE, cierre y transferencia económica; **solo la presentación de catálogo pública usa fixture HTTP declarado**. Los demás smokes de navegador pueden usar fixtures y no se venden como integraciones PG17.
+
+**Convención probatoria en ambas tablas:**
+- **PG#n**: subtest numerado dentro de los **51/51** del [Bootstrap PG17 del SHA 0402e63a](https://github.com/jdlc86/CartaViva/actions/runs/42284967612); **Z#n**: uno de los **4/4** escenarios reales de coste cero del mismo job.
+- **UI-C**: [36/36 Chromium cliente](https://github.com/jdlc86/CartaViva/actions/runs/42284967849), **con fixture HTTP**; **UI-G**: [smoke Chromium gestión](https://github.com/jdlc86/CartaViva/actions/runs/42284967661), **con fixture HTTP**; **I49**: PG#49, dos PWA/PG17/Fastify realmente integrados en el mismo escenario.
+- **H§n**: evidencia histórica detallada de esta matriz, **no reejecutada individualmente en esta revisión**. Cuando no existe prueba directa del requisito completo en los logs revisados se mantiene el dictamen histórico con ese límite. **CANDIDATO** significa prueba técnica de alcance delimitado, NO aceptación funcional humana, NO producción. **PARCIAL/BLOQUEADO** mantienen sus puertas.
+
+### 40.1. Dictamen fila a fila — funcional F01–F28
+
+| ID | Situación de aceptación | Evidencia actual y/o histórica que sí existe | Límite que NO queda certificado |
+| --- | --- | --- | --- |
+| **F01** | **CANDIDATO** | H§§7–9; QR y sesión en I49/UI-C | El escaneo libre sin anclaje, en todas las combinaciones, se apoya además en aceptación histórica |
+| **F02** | **CANDIDATO** | PG#10/#29, I49; H§§7–9,30 | No cerrar ventana de agrupación por una sola prueba de confirmación |
+| **F03** | **CANDIDATO** | H§9; diálogo cliente e integración de solicitud en I49 | Cancelación del diálogo sin efectos no tiene aceptación individual nueva observada |
+| **F04** | **CANDIDATO** | PG#35, I49: solicitud resuelta y notificación a gestión | Interfaz completa y textos de todas las variantes aún sujetos a diseño |
+| **F05** | **CANDIDATO** | PG#35/#49 y H§§9–10: unicidad, reintentos y solicitud bloqueada | Prueba de cada patrón de toque/concurrencia debe quedar trazada, no inferida solo de PG#35 |
+| **F06** | **CANDIDATO** | H§§18–19; escenarios de cuenta/pedido económico del Bootstrap | Continuar pagando en origen con aprobación pendiente requiere revisión por ruta completa |
+| **F07** | **CANDIDATO** | PG#15: cooldown/expiración; H§21 | Contador exacto de interfaz y mensaje normativo no son verificables por SQL |
+| **F08** | **CANDIDATO** | PG#15, H§24: expiración y decisión no válida | Certificar tiempo exacto de frontera mediante caso dirigido/constancia histórica |
+| **F09** | **CANDIDATO** | PG#14/#20/#49: decisión de camarero; sin transferencia previa; H§§22,25,27 | Texto normativo aprobado y variantes de UI no sustituidos por SQL |
+| **F10** | **CANDIDATO** | H§§10,21: rechazo, sin destino ni traslado | Mensaje literal y estado de pantalla pendientes de comparación visual humana |
+| **F11** | **CANDIDATO** | PG#15/#17, H§§9,22; I49 controla aprobación sin trasladar | Escaneos adicionales con aprobación no consumen concesión: evidencia histórica a preservar |
+| **F12** | **CANDIDATO opt-in; ACTIVACIÓN PENDIENTE** | PG#22/#26/#29/#41/#49; A→B en una transacción y cuenta económica estable | `server.mjs` sigue `health-only`; sin montaje operativo por defecto |
+| **F13** | **CANDIDATO** | PG#27 (A→B→C exige nueva aprobación), H§4 | Aceptación de UX de segundo cambio no acreditada |
+| **F14** | **CANDIDATO** | H§4 y anteriores; PG#22 preserva concesión para operación válida | No atribuir test individual del pedido en A a PG#22 |
+| **F15** | **CANDIDATO** | PG#15 y H§22: plazo de solicitud ≠ vigencia de aprobado | Control del texto/UI tras los 90 segundos pendiente de aceptación humana |
+| **F16** | **CANDIDATO** | PG#23/#25/#49 y H§§17,23,26: barreras y rechazo sin escrituras parciales | Completar evidencia por escenario de revocación/cierre sin inferencia |
+| **F17** | **CANDIDATO** | PG#24/#25 e I49, UI-C QR revocado; H§§13–14,17,23 | QR/estado real se revalida, pero no aceptar cada secuencia sin rastreo |
+| **F18** | **CANDIDATO** | H§§12,36; I49 conserva cuenta y terceros en destino; PG#13/FK | Aceptación multicomensal completa mantiene dependencia de M1/CV-001 |
+| **F19** | **CANDIDATO** | PG#16/#17/#26 e I49: destinos pendientes y exclusión de recogidos; H§§12,28 | Conformidad operativa de entrega/recogida no equivale a entrega física |
+| **F20** | **PARCIAL / BLOQUEADO externo** | PG#31 (Stripe **pendiente simulado**), PG#32, Z#1–4, H§§18–20,26,32–36 | **Sin Stripe sandbox real, captura, refund, reconciliación ni caja final aprobada** |
+| **F21** | **CANDIDATO** | H§§29–31,34; PG#9/#26 conservan historia y agrupación; I49 | No se reejecutó individualmente en esta revisión cada frontera de 300 s |
+| **F22** | **CANDIDATO** | PG#30/#32 e H§15: concurrencia y consumo único | Estados visuales para dos confirmaciones concurrentes no aprobados humanamente |
+| **F23** | **CANDIDATO** | PG#25 e H§§16,23: error al persistir no consume aprobación | Fallos inyectados de cada fase no equivalen a fallo externo Stripe real |
+| **F24** | **CANDIDATO** | PG#32, H§§8–9,15: una ronda/una concesión; UI-C recuperación ambigua | No confundir idempotencia de pedido y replay con doble cobro de proveedor |
+| **F25** | **CANDIDATO** | I49 SSE/cursores/reconexión de dos clientes; H§§11,30–31,34; UI-C H6 | Aceptación total de avisos sala/cocina pendiente por superficies y diseño |
+| **F26** | **CANDIDATO** | PG#12/#37–#50 e I49: roles SQL distintos, cocina denegada; UI-G | No extrapolar autorización de la composición opt-in a la activación productiva |
+| **F27** | **CANDIDATO** | PG#22/#35/#49 y H§§25,27: persistencia y actor en decisión | Auditoría integral del ledger por todos los eventos, sin motivo, no firmada |
+| **F28** | **BLOQUEADO / aceptación visual humana** | UI-C 36/36, UI-G y capturas PG17 I49; H§37 | **No aprobación humana de todos los flujos visuales y caja** |
+
+**Balance de dictámenes funcionales existentes sin ascensos artificiales:** **26 CANDIDATO** (incluida F12 opt-in), **1 PARCIAL (F20)** y **1 BLOQUEADO (F28)**. Estos números **no son porcentaje de aceptación ni sustituyen un cierre F/R**.
+
+### 40.2. Dictamen fila a fila — requisitos técnicos R01–R10
+
+| ID | Situación de aceptación | Evidencia verificable | Límite que permanece |
+| --- | --- | --- | --- |
+| **R01** | **CANDIDATO** | [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42284967612), instalación de migraciones/roles, preflight y 51/51 | PostgreSQL desechable, **no** Supabase operativo ni despliegue |
+| **R02** | **CANDIDATO** | PG#11/#12/#37–#51: FORCE RLS, grants, login aislado, `SET ROLE`, negativas | Revisión de seguridad de claves/propietarios operativos aún necesaria |
+| **R03** | **PARCIAL** | PG#14/#20/#30/#32, Z#4: carreras y ausencia de doble transferencia; H§§22–26,32–33 | Proveedor Stripe sandbox/concurrencia con cierre y caja reales no probado |
+| **R04** | **PARCIAL** | PG#23/#25 e H§§16,23: rollback/denegación sin escrituras parciales | Fallos externos Stripe por fase, rollback operacional y recuperación aún pendientes |
+| **R05** | **PARCIAL** | PG#22/#26/#31/#32 y Z#1–4: cuenta, saldo, efectivo/coste cero, Stripe pendiente simulado | No captura/refund/webhook/conciliación contra Stripe sandbox real |
+| **R06** | **CANDIDATO** | PG#16/#17/#26/#33 e I49; H§§28–31,34 | Entrega física fuera de contrato automatizado; aprobación operación final pendiente |
+| **R07** | **CANDIDATO** | I49: SSE/aislamiento/cursores/reconexión; H§§11,30–31,34 | No prueba observabilidad/recovery productiva M6 |
+| **R08** | **CANDIDATO opt-in; ARRANQUE PENDIENTE** | PG#37–#51, I49: HTTP/JWT/SQL mínimos; UI-G pruebas de rol | Servidor ordinario todavía `health-only`; no ruta operativa habilitada |
+| **R09** | **BLOQUEADO / aprobación humana** | UI-C 36/36, UI-G, capturas PG17 I49, axe/varios viewports | Revisión humana diseño aprobado y pantalla caja no cerradas |
+| **R10** | **CANDIDATO TÉCNICO EN SHA 0402e63a** | Cinco workflows del mismo SHA **5/5 SUCCESS**, 1.349 Node, 51 PG17, Z 4/4, 36 cliente Chromium, 0 SKIP Node/PG17 | No valida cambios de commits documentales posteriores ni producción |
+
+**Balance técnico:** **5 CANDIDATO** (R01/R02/R06/R07/R08, este último opt-in), **3 PARCIAL** (R03–R05), **1 BLOQUEADO** (R09) y **1 CANDIDATO TÉCNICO** (R10). El recuento es **clasificación de puertas**, no avance porcentual.
+
+### 40.3. Dictamen integrado y próximo bloque de valor
+
+**Completado en esta revisión:** lectura de **38/38 filas** frente a su contrato/estado histórico, contraste de los cinco workflows y de las 51 descripciones PG17 con la integración de dos PWA/Fastify/roles, identificación de discrepancias temporales **§37 SKIP y R10 históricos** ya corregidas por la ejecución de `0402e63a`. **No se editó runtime, SQL, permisos ni se lanzó un test nuevo.**
+
+**Dictamen de matriz: sigue NO-GO global.** M1/CV-001/CV-003 todavía carecen de cierre funcional independiente completo; F20/R03–R05 y F28/R09 están bloqueados/parciales por proveedor y conformidad humana; F12/R08 siguen aislados, no productivos. **Ninguna fila cambia a CERRADO por esta sola auditoría**, y no se reinterpretan los RF, NF, DV. Las 13 ramas históricas divergentes no están integradas ni los 42 PR cerrados.
+
+**Próxima unidad de trabajo:** un único hito de **aceptación integral funcional H6 del candidato**, con foco en las transiciones, roles y evidencias que faltan para firmar F/R, manteniendo las puertas humanas/proveedor separadas. Después abordar como otro bloque completo el incumplimiento RF de **variantes independientes de un plato en la cesta** (modelo → persistencia → edición → precio → servidor → PWA → PG17/Chromium); no confundir ese requisito nuevo pendiente con una regresión por rama histórica. **No merge, despliegue, VPS, Fleetia, Supabase operativo ni Stripe real.**
