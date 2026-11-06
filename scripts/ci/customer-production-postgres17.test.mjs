@@ -1030,8 +1030,19 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).first()
     .waitFor({timeout:15000});
    assert.equal(await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).count(),2);
-   await managementPage.screenshot({path:join(evidenceDir,'management-two-configured-variants-390.png'),
-    fullPage:true});
+   // This is a real responsive assertion, not a 1440px full-page capture
+   // mislabeled as mobile. Inspect both kitchen lines at both viewports.
+   for(const width of [390,1440]){
+    await managementPage.setViewportSize({width,height:width===390?844:900});
+    assert.equal(await managementPage.evaluate(()=>window.innerWidth),width);
+    assert.equal(await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).count(),2,
+     width+': both configured lines must remain actionable');
+    const cardBox=await variantKitchen.boundingBox();
+    assert.ok(cardBox&&cardBox.width<=width+2,
+     width+': kitchen order must not exceed its viewport width');
+    await variantKitchen.screenshot({path:join(evidenceDir,
+     'management-two-configured-variants-'+width+'.png')});
+   }
    await managementPage.evaluate(()=>window.__block01Dispose?.());
   }finally{
    await context?.close().catch(()=>{});
