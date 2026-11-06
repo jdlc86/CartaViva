@@ -1,11 +1,11 @@
 // Customer PWA: offline shell only. Never persist API responses, QR tokens,
 // staff/customer identities, mutable catalog, orders, account balances or SSE.
 const APP='client';
-const CACHE='sabora-client-shell-v2';
+const CACHE='sabora-client-shell-v3';
 const SCOPE=new URL(self.registration.scope);
 const ROOT=SCOPE.pathname;
 const OFFLINE=new URL('offline.html',SCOPE).href;
-const STATIC=["icons/sabora-mark.svg","manifest.webmanifest","brand/sabora-logo-outline-v3.svg","offline.html"];
+const STATIC=["icons/sabora-mark.svg","icons/sabora-mark-192.png","icons/sabora-mark-512.png","manifest.webmanifest","brand/sabora-logo-outline-v3.svg","offline.html"];
 const OWN_CACHE=name=>name.startsWith('sabora-'+APP+'-shell-');
 const inScope=url=>url.origin===SCOPE.origin&&url.pathname.startsWith(ROOT);
 const isBundledAsset=url=>inScope(url)&&url.search===''&&

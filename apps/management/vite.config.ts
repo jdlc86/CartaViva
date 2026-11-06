@@ -14,6 +14,8 @@ function manifestPlugin():Plugin{
   lang:'es',start_url:base,scope:base,display:'standalone',
   background_color:'#F8F7F4',theme_color:'#146B57',
   icons:[
+   {src:base+'icons/sabora-mark-192.png',sizes:'192x192',type:'image/png',purpose:'any'},
+   {src:base+'icons/sabora-mark-512.png',sizes:'512x512',type:'image/png',purpose:'any'},
    {src:base+'sabora-logo.svg',sizes:'any',type:'image/svg+xml',purpose:'any'}
   ]
  },null,2);

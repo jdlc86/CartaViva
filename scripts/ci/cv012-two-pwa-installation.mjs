@@ -110,6 +110,8 @@ const main=async()=>{
   assert.equal(customerManifest.scope,'/');
   assert.equal(customerManifest.start_url,'/');
   assert.equal(customerManifest.display,'standalone');
+  assert.ok(customerManifest.icons.some(icon=>icon.sizes==='192x192'&&icon.type==='image/png'));
+  assert.ok(customerManifest.icons.some(icon=>icon.sizes==='512x512'&&icon.type==='image/png'));
   await page.goto(origin+'/gestion/#mesas',{waitUntil:'load'});
   await waitForScope(page,'/gestion/');
   const staffManifest=await page.evaluate(async()=>
@@ -118,6 +120,16 @@ const main=async()=>{
   assert.equal(staffManifest.scope,'/gestion/');
   assert.equal(staffManifest.start_url,'/gestion/');
   assert.equal(staffManifest.display,'standalone');
+  assert.ok(staffManifest.icons.some(icon=>icon.sizes==='192x192'&&icon.type==='image/png'));
+  assert.ok(staffManifest.icons.some(icon=>icon.sizes==='512x512'&&icon.type==='image/png'));
+  for(const icon of staffManifest.icons.filter(icon=>icon.type==='image/png')){
+   const picture=await page.evaluate(async src=>{
+    const img=new Image();img.src=src;await img.decode();
+    return {width:img.naturalWidth,height:img.naturalHeight};
+   },icon.src);
+   assert.equal(picture.width,Number.parseInt(icon.sizes,10));
+   assert.equal(picture.height,picture.width);
+  }
   let state=await inventory(page);
   assert.deepEqual(state.registrations,['/','/gestion/']);
   assert.ok(state.names.some(n=>n.startsWith('sabora-client-shell-')));
