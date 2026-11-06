@@ -7696,6 +7696,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     server:{host:'127.0.0.1',port:0,strictPort:false,hmr:false}
    });
    let m3Browser=null;
+   let m3BrowserClosing=false;
    const m3BrowserErrors=[];
    const m3Evidence=m3Join(process.env.RUNNER_TEMP,'sabora-m3-browser-acceptance');
    await m3Mkdir(m3Evidence,{recursive:true});
@@ -7711,10 +7712,29 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       const requested=new URL(route.request().url());
       const upstreamOrigin=requested.pathname.startsWith('/api/')
        ?m3BackendOrigin:frontendOrigin;
-      const target=upstreamOrigin+requested.pathname+requested.search;
+      // Playwright route.fetch buffers the entire body. An EventSource stream
+      // never finishes: forwarding it with route.fetch cannot supply live SSE
+      // and rejects during context teardown. Exclude ONLY streaming requests
+      // from this transactional M3 browser journey. The consolidated H6
+      // suite has separate real SSE delivery/reconnect coverage. Aborting is
+      // explicit, not a fabricated successful API response or SSE acceptance.
       const headers={...route.request().headers(),host:new URL(upstreamOrigin).host};
-      const actual=await route.fetch({url:target,headers,timeout:30000});
-      await route.fulfill({response:actual});
+      if(route.request().resourceType()==='eventsource'||
+        String(headers.accept??'').includes('text/event-stream')){
+       await route.abort('blockedbyclient');
+       return;
+      }
+      const target=upstreamOrigin+requested.pathname+requested.search;
+      try{
+       const actual=await route.fetch({url:target,headers,timeout:30000});
+       await route.fulfill({response:actual});
+      }catch(error){
+       // In-flight asset reads can be canceled by deliberate context close.
+       // They must never mask a real HTTP failure while the test is active.
+       if(m3BrowserClosing&&/Request context disposed|Target closed|Target page, context or browser has been closed/
+         .test(String(error)))return;
+       throw error;
+      }
      });
     };
     m3Browser=await m3Chromium.launch({headless:true});
@@ -7910,9 +7930,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.ok(closed.closed_at,'closing an occupied zero-cost table must close the account');
     assert.equal(closed.outstanding_cents,'0');
     assert.deepEqual(m3BrowserErrors,[]);
+    m3BrowserClosing=true;
     await m3CustomerContext.close();
     await m3StaffContext.close();
    }finally{
+    m3BrowserClosing=true;
     if(m3Browser)await m3Browser.close();
     await Promise.allSettled([m3ClientVite.close(),m3ManagementVite.close()]);
    }
