@@ -7665,6 +7665,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      [JSON.stringify(validCapability),'update',capabilityBody])),/permission denied/,
     'catalog runtime cannot execute the table-management surface');
    await assert.rejects(connections[16].query('SELECT * FROM sabora.dining_tables'),/permission denied/);
+   await assert.rejects(connections[16].query(
+    "UPDATE sabora.customer_table_visits SET revoked_at=clock_timestamp() WHERE table_id=$1",
+    [current.tableId]),/permission denied/,
+    'physical M3 tables runtime may never revoke visits directly');
    await assert.rejects(connections[17].query('SELECT * FROM sabora.catalog_items'),/permission denied/);
    await management.manageCatalog({requestId:randomUUID(),operation:'item_withdraw',
     payload:{itemId,expectedRevision:itemResult.draftRevision}});
@@ -7916,18 +7920,80 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .waitFor({timeout:20000});
     await m3CustomerPage.screenshot({path:m3Join(m3Evidence,'customer-free-confirmed.png'),fullPage:true});
 
+    // End-to-end zero-cost account settlement requires the REAL H6 round
+    // to reach kitchen ACK and each line to be READY. Confirmation alone
+    // must not settle a live account; delivery/pickup is never fabricated.
+    const browserPreKitchen=(await admin.query(
+     'SELECT a.id,a.state,a.closed_at,a.payment_mode,a.outstanding_cents FROM sabora.customer_accounts a WHERE a.id=$1',
+     [browserOrder.accountId])).rows[0];
+    assert.deepEqual({
+     state:browserPreKitchen?.state,closed_at:browserPreKitchen?.closed_at,
+     payment_mode:browserPreKitchen?.payment_mode,outstanding_cents:browserPreKitchen?.outstanding_cents
+    },{state:'open',closed_at:null,payment_mode:null,outstanding_cents:'0'},
+    'zero-cost customer checkout must preserve an open reusable account');
+    const browserRound=(await admin.query(
+     'SELECT id,state FROM sabora.order_rounds WHERE order_id=$1',
+     [browserOrder.orderId])).rows[0];
+    assert.equal(browserRound?.state,'grouping');
+    // Disposable fixture time compression ONLY: F21 separately validates the
+    // natural 300-second window; this scenario validates the full business
+    // closure chain without inserting a second five-minute delay.
+    const due=(await admin.query(
+     "UPDATE sabora.order_rounds SET grouping_deadline=clock_timestamp()-interval '1 second' WHERE id=$1 AND state='grouping' RETURNING id",
+     [browserRound.id])).rows;
+    assert.equal(due.length,1);
+    const browserDispatch=await h6Provider.requestDueCapture({orderId:browserOrder.orderId});
+    assert.equal(browserDispatch.action,'dispatch',
+     'due round must dispatch via the restricted H6 provider');
+    const kitchenAck=await m3.app.inject({method:'POST',
+     url:'/api/v1/operations/dispatches/'+browserDispatch.dispatch_id+'/ack',
+     headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+     payload:{correlationId:'m3_chromium_zero_cost_kitchen_ack'}});
+    assert.equal(kitchenAck.statusCode,200,kitchenAck.body);
+    const browserLines=(await admin.query(
+     'SELECT id,status FROM sabora.order_lines WHERE order_id=$1 AND is_current_revision ORDER BY line_number',
+     [browserOrder.orderId])).rows;
+    assert.equal(browserLines.length,1);
+    for(const [index,line] of browserLines.entries()){
+     assert.equal(line.status,'confirmed');
+     for(const [targetStatus,action] of [['preparing','prepare'],['ready','ready']]){
+      const transition=await m3.app.inject({method:'POST',
+       url:'/api/v1/operations/order-lines/'+line.id+'/transitions',
+       headers:{authorization:'Bearer '+jwtKitchen,'content-type':'application/json'},
+       payload:{targetStatus,correlationId:'m3_chromium_'+action+'_'+index}});
+      assert.equal(transition.statusCode,201,transition.body);
+      assert.equal(transition.json().currentStatus,targetStatus);
+     }
+    }
+    const readyLines=(await admin.query(
+     'SELECT l.status,t.state AS pickup_state FROM sabora.order_lines l JOIN sabora.pickup_tasks t ON t.order_line_id=l.id WHERE l.order_id=$1',
+     [browserOrder.orderId])).rows;
+    assert.equal(readyLines.length,1);
+    assert.deepEqual(readyLines[0],{status:'ready',pickup_state:'ready'},
+     'signed kitchen transitions must leave durable pickup without inventing physical delivery');
+
+    const closeFailureStart=m3Failures.length;
     const closeHttp=m3StaffPage.waitForResponse(response=>
      new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
      response.request().method()==='POST',{timeout:20000});
     await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
      .getByRole('button',{name:'CERRADA'}).click();
     const closeResponse=await closeHttp;
-    assert.equal(closeResponse.status(),200,await closeResponse.text());
+    assert.equal(closeResponse.status(),200,JSON.stringify({
+      response:await closeResponse.text(),
+      sqlFailure:m3Failures.slice(closeFailureStart).map(e=>({
+       sqlstate:e.code??null,message:e.message??null
+      }))
+    }));
     const closed=(await admin.query(
-     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents FROM sabora.dining_tables t JOIN sabora.customer_account_operational_bindings b ON b.table_id=t.id JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE t.id=$1 AND a.customer_id=$2",
+     "SELECT t.ordering_state,a.state,a.closed_at,a.outstanding_cents,a.payment_mode,a.close_origin FROM sabora.dining_tables t JOIN sabora.customer_account_operational_bindings b ON b.table_id=t.id JOIN sabora.customer_accounts a ON a.id=b.account_id WHERE t.id=$1 AND a.customer_id=$2",
      [browserTableId,browserCustomerId])).rows[0];
     assert.equal(closed.ordering_state,'closed');
-    assert.ok(closed.closed_at,'closing an occupied zero-cost table must close the account');
+    assert.equal(closed.state,'settled');
+    assert.equal(closed.payment_mode,null);
+    assert.equal(closed.close_origin,'system_zero_cost',
+     'only resolved zero-cost history allows automatic occupancy close');
+    assert.ok(closed.closed_at,'closing a resolved zero-cost table must close the account');
     assert.equal(closed.outstanding_cents,'0');
     assert.deepEqual(m3BrowserErrors,[]);
     m3BrowserClosing=true;
