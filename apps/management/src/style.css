@@ -233,6 +233,11 @@ p { line-height: 1.55; }
 .catalog-category-grid li > div strong { font-size: .88rem; }
 .catalog-category-grid li > div span { color: var(--cv-ink-muted); font-size: .73rem; }
 .catalog-category-grid .badge { justify-self: end; }
+/* Every category has two distinct rows: identity/badge and editable sort
+   order/action. Without explicit placement the order input falls into the
+   42px icon column and its numeric value becomes unreadable. */
+.catalog-category-grid > li > input[type="number"] { grid-column: 2; width: min(100%, 8rem); min-width: 0; }
+.catalog-category-grid > li > button { grid-column: 3; justify-self: stretch; }
 
 .studio-stack { display: flex; flex-direction: column; gap: var(--cv-space-4); }
 .studio { padding: clamp(var(--cv-space-5), 3vw, var(--cv-space-8)); }
@@ -497,6 +502,7 @@ p { line-height: 1.55; }
   .catalog-list-item .badge { justify-self: start; }
   .catalog-category-grid > li { grid-template-columns: 42px minmax(0, 1fr); }
   .catalog-category-grid .badge { grid-column: 2; justify-self: start; }
+  .catalog-category-grid > li > button { grid-column: 2; justify-self: stretch; }
   .loading-state, .error-state { align-items: flex-start; flex-direction: column; padding: var(--cv-space-5); }
   .module-tabs { width: 100%; }
   .module-tabs button { flex: 1 1 100%; justify-content: flex-start; }
