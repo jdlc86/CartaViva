@@ -7973,6 +7973,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     assert.deepEqual(readyLines[0],{status:'ready',pickup_state:'ready'},
      'signed kitchen transitions must leave durable pickup without inventing physical delivery');
 
+
+    // Only the post-commit management GET is fault-injected. The write,
+    // H6 settlement and account ledger still execute in real PG17.
+    let injectedCloseReadFailures=0;
+    let closePostCount=0;
+    m3StaffPage.on('request',request=>{
+     if(request.method()==='POST'&&new URL(request.url()).pathname===
+       '/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
+       request.postDataJSON()?.target==='closed')closePostCount++;
+    });
+    await m3StaffPage.route(new RegExp('/api/v1/admin/tables[?]'),async route=>{
+     if(route.request().method()==='GET'&&injectedCloseReadFailures===0){
+      injectedCloseReadFailures++;
+      await route.fulfill({status:503,contentType:'application/json',
+       body:'{"error":"disposable_ci_read_interruption"}'});
+     }else await route.fallback();
+    });
     const closeFailureStart=m3Failures.length;
     const closeHttp=m3StaffPage.waitForResponse(response=>
      new URL(response.url()).pathname==='/api/v1/admin/tables/'+browserTableId+'/occupancy'&&
@@ -7996,6 +8013,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'only resolved zero-cost history allows automatic occupancy close');
     assert.ok(closed.closed_at,'closing a resolved zero-cost table must close the account');
     assert.equal(closed.outstanding_cents,'0');
+    await m3StaffPage.getByRole('status').getByText(
+     'El servidor confirmó el cambio de ocupación, pero no se pudo verificar la ficha. Actualiza la lectura antes de otra operación.'
+    ).waitFor({timeout:20000});
+    assert.equal(injectedCloseReadFailures,1,
+     'exactly one post-commit read was interrupted');
+    assert.equal(closePostCount,1,'no duplicate economic close from Chromium');
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'ABIERTA'}).isDisabled(),true,
+     'stale mutation controls must be locked until a valid read');
+    await m3StaffPage.getByRole('button',{name:'Reintentar actualización'}).click();
+    await m3StaffPage.getByRole('status').getByText(
+     'Lectura verificada. Comprueba el estado actual antes de otra operación.'
+    ).waitFor({timeout:20000});
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"]')
+     .getByRole('button',{name:'CERRADA'}).isDisabled(),true,
+     'the refreshed PWA must show the real closed state');
+    assert.equal(closePostCount,1,'read recovery must not repeat table closure');
     assert.deepEqual(m3BrowserErrors,[]);
     m3BrowserClosing=true;
     await m3CustomerContext.close();
