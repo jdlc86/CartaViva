@@ -7922,9 +7922,28 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .filter({hasText:'Brunch de cortesía M3'});
     await browserCard.waitFor({timeout:20000});
     await browserCard.getByRole('button',{name:/Añadir$/}).click();
+    // The QR is a full document navigation. A synthetic click resolving is
+    // not proof that React committed its asynchronous localStorage effect.
+    // Observe the exact configured row persisted before crossing that boundary.
+    await m3CustomerPage.getByRole('button',{name:/Cesta: 1/})
+     .waitFor({timeout:20000});
+    await m3CustomerPage.waitForFunction(itemId=>{
+     try{
+      const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null');
+      return Array.isArray(lines)&&lines.length===1&&lines[0].itemId===itemId&&
+       lines[0].quantity===1&&lines[0].priceCents===0&&
+       Array.isArray(lines[0].selection?.extras);
+     }catch{return false;}
+    },browserItemId,{timeout:20000});
     await m3CustomerPage.goto(browserTable.qrPayload);
     await m3CustomerPage.getByText('Mesa verificada')
      .waitFor({timeout:20000});
+    const persistedSelection=await m3CustomerPage.evaluate(()=>
+     JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null'));
+    assert.equal(persistedSelection?.length,1,
+     'full QR navigation must retain the previously persisted basket row');
+    assert.equal(persistedSelection[0].itemId,browserItemId,
+     'the browser QR must preserve the exact published dish selection');
     await m3CustomerPage.getByRole('button',{name:'Continuar con el pedido'})
      .click();
     const checkout=m3CustomerPage.getByRole('dialog',{name:'Confirmar pedido'});
