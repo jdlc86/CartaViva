@@ -1002,7 +1002,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await mountManagement(kitchenId);
    const variantKitchen=managementPage.locator('.order-card')
     .filter({hasText:'Cliente navegador'}).filter({hasText:'Arroz de temporada'});
-   await variantKitchen.first().getByRole('button',{name:'Iniciar preparación'})
+   await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).first()
     .waitFor({timeout:15000});
    assert.equal(await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).count(),2);
    await managementPage.screenshot({path:join(evidenceDir,'management-two-configured-variants-390.png'),
