@@ -211,25 +211,32 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   };
 
   const manage=async(operation:'create'|'update'|'readiness'|'qr_rotate'|'qr_revoke',payload:Record<string,unknown>)=>{
-   if(!gateway?.manageTable||actionPending)return;
+   if(!gateway?.manageTable||actionPending||refreshing||phase!=='ready')return;
    setActionPending(true);setActionMessage(null);
+   let committed=false;
    try{
     const result=await gateway.manageTable({requestId:crypto.randomUUID(),operation,payload});
     if(!result||typeof result!=='object'||Array.isArray(result))throw Error('invalid_table_management_result');
     const value=result as Record<string,unknown>;
+    committed=true;
     const nextId=value.tableId;
     const nextNumber=value.number;
     if(typeof nextId!=='string'||typeof nextNumber!=='number'||
       !Number.isSafeInteger(nextNumber)||nextNumber<1)throw Error('invalid_table_management_result');
-    if(!await refreshTables({id:nextId,number:nextNumber}))
-      throw Error('table_management_refresh_failed');
+    if(!await refreshTables({id:nextId,number:nextNumber})){
+      setQrPayload(null);
+      setActionMessage('Cambio confirmado en el servidor, pero no se pudo verificar la ficha actualizada. Actualiza la lista antes de otra operación; si era un QR nuevo, deberás rotarlo para obtener una nueva copia imprimible.');
+      return;
+    }
     // Only reveal the one-time QR AFTER the selected, authorized table is loaded.
     setQrPayload(typeof value.qrPayload==='string'?value.qrPayload:null);
     setActionMessage(operation==='create'?'Mesa creada en preparación. Imprime ahora su QR o rótalo después.':
      operation==='qr_rotate'?'QR rotado. La credencial anterior ya no autoriza acciones nuevas.':
      operation==='qr_revoke'?'QR revocado sin alterar pedidos ni cuentas históricas.':'Cambio confirmado y auditado.');
     if(operation==='create'){setCreateOpen(false);setCreateNumber('');setCreateDescription('');}
-   }catch{setActionMessage('No se aplicó el cambio. El estado persistido se conserva.');}
+   }catch{setQrPayload(null);setActionMessage(committed?
+     'La operación fue aceptada, pero la respuesta no pudo verificarse. Consulta el estado real antes de reintentar.':
+     'No se aplicó el cambio. El estado persistido se conserva.');}
    finally{setActionPending(false);}
   };
   const transitionOccupancy=async(target:TableOrderingState)=>{
@@ -251,12 +258,14 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
         eyebrow="Mesas y QR"
         title="Control de mesas"
         description="Administra preparación y ocupación como ejes separados, con credenciales QR revocables y auditoría."
-        actions={canManage?<button className="button button--primary" type="button" onClick={()=>setCreateOpen(value=>!value)}>
+        actions={canManage?<button className="button button--primary" type="button"
+          disabled={phase!=='ready'||refreshing||actionPending}
+          onClick={()=>setCreateOpen(value=>!value)}>
           <Icon name="plus" size={18}/> {createOpen?'Cancelar alta':'Crear mesa'}</button>:
           <LockedButton icon="plus">Crear mesa</LockedButton>}
       />
 
-      {createOpen&&canManage?<form className="panel management-inline-form" onSubmit={event=>{
+      {createOpen&&canManage&&phase==='ready'?<form className="panel management-inline-form" onSubmit={event=>{
        event.preventDefault();void manage('create',{number:Number(createNumber),capacity:Number(createCapacity),
         description:createDescription});}}>
        <div className="panel-heading"><div><span className="eyebrow">Alta segura</span><h2>Nueva mesa</h2>
