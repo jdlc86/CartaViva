@@ -65,3 +65,10 @@ En cada actualización añadir **una sección corta por hito o dictamen relevant
 ## 7. Apertura del registro de sesión 25 — 06-11-2026 (DOCUMENTAL)
 
 Se crea esta continuidad a partir de las evidencias y del estado GitHub verificados arriba. **No se ha implementado código funcional ni ejecutado una aceptación nueva por crearla.** El siguiente registro deberá corresponder a un hito real, no a un mensaje de progreso.
+
+
+## 8. Hito de conciliación histórica de las 13 divergencias — 06-11-2026
+
+Se terminó el **inventario y contraste documental/estático de las 13 referencias de PR aún no ancestrales**, sin cerrar ni fusionar ninguna. [Informe completo](../reviews/SABORA_HISTORICAL_FUNCTIONAL_RECONCILIATION_2026-11-06.md) y [tablero §23](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Hallazgos: la cadena #18→#22 es lineal y no cinco trabajos independientes; #14/#31/#40/#44 contienen ramas documentales; #4/#5/#8/#17/#22 exigen respetar las evoluciones del código y contratos posteriores. Los 13 títulos Node y 8 títulos Chromium históricos de H3 siguen presentes, pero su **paridad semántica no está totalmente demostrada**. Se preservó, como anexo histórico en la continuidad 22, la nota independiente de coste cero de #44 que faltaba literalmente en la versión evolucionada.
+
+**Clasificación:** auditoría **REALIZADA** en el alcance explícito; **NO** nueva prueba integral, cierre funcional, cierre de PR ni aprobación de producción. Último 5/5 CI funcional documentado: `380a4777`; los commits documentales posteriores no heredan sus resultados. **Siguiente paso**: aceptación integrada de preservación y UX por rol en el candidato actual, preparar propuesta trazable de cierre/conservación de PR sin ejecutarla; después hito completo de variantes independientes de cesta exigidas por RF. Mantener M1/F-R, Stripe test, caja, revisión visual y M6 como pendientes/bloqueados según tablero. Sin merge, VPS, Fleetia, Supabase operativo ni despliegue.
