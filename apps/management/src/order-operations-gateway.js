@@ -218,6 +218,9 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
        !data.items.every(x=>x&&UUID.test(x.intentId)&&typeof x.payerCode==='string'&&
         /^SB-[2-9A-HJ-NP-Y]{12}$/.test(x.payerCode)&&
         Number.isSafeInteger(x.totalCents)&&x.totalCents>0&&
+        Number.isSafeInteger(x.consumptionCents)&&x.consumptionCents>0&&
+        Number.isSafeInteger(x.tipCents)&&x.tipCents>=0&&
+        x.totalCents===x.consumptionCents+x.tipCents&&
         Array.isArray(x.rounds)&&x.rounds.length>0&&
         x.rounds.every(r=>r&&UUID.test(r.roundId)&&UUID.test(r.accountId)&&
           Number.isSafeInteger(r.amountCents)&&r.amountCents>0)))
@@ -229,6 +232,12 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
        throw Error('invalid_third_party_cash_operation');
       return mutation(send,`/api/v1/operations/third-party/cash/${intentId}/settle`,
        {received:true,correlationId});
+    },
+    refundCashTip({collectionId,claimId,proof,correlationId}={}){
+      if(!UUID.test(collectionId)||!UUID.test(claimId)||!(/^[0-9a-f]{64}$/).test(proof)||
+       !CORRELATION.test(correlationId))throw Error('invalid_cash_tip_refund_operation');
+      return mutation(send,`/api/v1/operations/tips/${collectionId}/refund`,
+       {claimId,proof,correlationId,handedOver:true});
     },
     refundThirdPartyCash({incidentId,claimId,proof,correlationId}={}){
       if(!UUID.test(incidentId)||!UUID.test(claimId)||!(/^[0-9a-f]{64}$/).test(proof)||

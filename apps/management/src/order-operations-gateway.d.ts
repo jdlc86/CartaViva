@@ -8,10 +8,11 @@ export type CashAccountSnapshot=Readonly<{version:1;nextAfter:string|null;items:
 export interface OrderOperationsGateway {
  listCashAccounts(input?:{after?:string|null;limit?:number}):Promise<CashAccountSnapshot>;
  closeCashAccount(input:{accountId:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
- listThirdPartyCashPending():Promise<Readonly<{items:readonly Readonly<{intentId:string;payerCode:string;totalCents:number;
+ listThirdPartyCashPending():Promise<Readonly<{items:readonly Readonly<{intentId:string;payerCode:string;totalCents:number;consumptionCents:number;tipCents:number;
   rounds:readonly Readonly<{roundId:string;accountId:string;amountCents:number}>[];createdAt:string}>[]}>>;
  settleThirdPartyCash(input:{intentId:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
  refundThirdPartyCash(input:{incidentId:string;claimId:string;proof:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
+ refundCashTip(input:{collectionId:string;claimId:string;proof:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
   listBoard(input?: {status?: OrderLineStatus | null; limit?: number; cursor?: OrderBoard['nextCursor']}): Promise<OrderBoard>;
   transitionLine(input: {lineId: string; targetStatus: OrderLineTarget; correlationId: string}): Promise<OrderTransition>;
   listHistory(input: {orderId: string; limit?: number}): Promise<OrderHistory>;
