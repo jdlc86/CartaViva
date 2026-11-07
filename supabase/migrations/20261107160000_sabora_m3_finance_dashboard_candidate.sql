@@ -25,18 +25,22 @@ CREATE POLICY finance_events_m3_read_candidate ON sabora.finance_provider_events
 CREATE FUNCTION sabora.append_finance_provider_event_candidate()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
 BEGIN
- IF TG_TABLE_NAME='payment_attempts' AND
-    NEW.state IN ('captured','refund_required') AND NEW.provider_charge_id IS NOT NULL
-    AND (OLD.state IS DISTINCT FROM NEW.state OR OLD.provider_charge_id IS DISTINCT FROM NEW.provider_charge_id)
- THEN
-  INSERT INTO sabora.finance_provider_events_candidate(kind,source_id,account_id,amount_cents)
-  VALUES('capture',NEW.id,NEW.account_id,NEW.amount_cents) ON CONFLICT DO NOTHING;
- ELSIF TG_TABLE_NAME='refund_attempts' AND NEW.state='succeeded'
-    AND OLD.state IS DISTINCT FROM NEW.state THEN
-  INSERT INTO sabora.finance_provider_events_candidate(kind,source_id,account_id,amount_cents)
-  SELECT 'refund',NEW.id,p.account_id,NEW.amount_cents
-  FROM sabora.payment_attempts p WHERE p.id=NEW.payment_attempt_id
-  ON CONFLICT DO NOTHING;
+ -- Different ledger tables have different rowtypes. Never evaluate
+ -- NEW.provider_charge_id on refund_attempts, even in an AND expression.
+ IF TG_TABLE_NAME='payment_attempts' THEN
+  IF NEW.state IN ('captured','refund_required') AND NEW.provider_charge_id IS NOT NULL
+     AND (OLD.state IS DISTINCT FROM NEW.state OR OLD.provider_charge_id IS DISTINCT FROM NEW.provider_charge_id)
+  THEN
+   INSERT INTO sabora.finance_provider_events_candidate(kind,source_id,account_id,amount_cents)
+   VALUES('capture',NEW.id,NEW.account_id,NEW.amount_cents) ON CONFLICT DO NOTHING;
+  END IF;
+ ELSIF TG_TABLE_NAME='refund_attempts' THEN
+  IF NEW.state='succeeded' AND OLD.state IS DISTINCT FROM NEW.state THEN
+   INSERT INTO sabora.finance_provider_events_candidate(kind,source_id,account_id,amount_cents)
+   SELECT 'refund',NEW.id,p.account_id,NEW.amount_cents
+   FROM sabora.payment_attempts p WHERE p.id=NEW.payment_attempt_id
+   ON CONFLICT DO NOTHING;
+  END IF;
  END IF;
  RETURN NEW;
 END;
