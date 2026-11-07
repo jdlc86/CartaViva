@@ -28,7 +28,8 @@ import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capabil
 import {registerThirdPartyCashHttp} from '../../apps/api/src/third-party-cash-http.mjs';
 import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
  TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
- TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL}
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,
+ TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL,TP_CASH_TIP_REFUND_SQL}
  from '../../apps/api/src/third-party-cash-repository.mjs';
 import {assertH6SqlCapabilities} from '../../apps/api/src/h6-sql-preflight.mjs';
 import {createTableQrCredential} from '../../apps/api/src/table-qr-credential.mjs';
@@ -145,7 +146,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const h6CustomerTx=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_h6_customer_runtime',
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
    READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,
-   TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL])});
+   TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
+   TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL])});
  // The immutable account choice is read through its own physical NOINHERIT
  // B3 role, not through the customer writer or a PG superuser test shortcut.
  const h6ReadTx=createRoleScopedPostgresTransaction({pool:policyReaderPool,
@@ -269,7 +271,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const operationsTx=createRoleScopedPostgresTransaction({pool:operationsPool,role:'sabora_h6_operations_runtime',
   allowedSql:new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,
    SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
-   TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL])});
+   TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,
+   TP_CASH_TIP_REFUND_SQL])});
  const operations=createH6OperationsRepository({withTransaction:operationsTx});
  const issueKitchen=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
   databaseRole:'sabora_h6_operations_ci'});
@@ -970,9 +973,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const tpApp=Fastify({logger:false});
  registerThirdPartyCashHttp(tpApp,{cookieAuth:payerCookie,
   forRoles:roles=>async request=>{
-   if(!roles.includes('waiter'))throw Error('invalid_m4_test_roles');
-   request.verifiedIdentity={userId:waiterId};
-   request.verifiedStaff={userId:waiterId,role:'waiter'};
+   const actorId=roles.includes('waiter')?waiterId:adminId;
+   const actorRole=roles.includes('waiter')?'waiter':'admin';
+   request.verifiedIdentity={userId:actorId};
+   request.verifiedStaff={userId:actorId,role:actorRole};
   },payer:payerRepo,operations:tpOps});
  await tpApp.ready();
  const payerUrl='/api/v1/customer/third-party/cash';
