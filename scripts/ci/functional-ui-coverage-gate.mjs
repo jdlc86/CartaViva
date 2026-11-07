@@ -97,7 +97,7 @@ export function auditFunctionalUi(root,{prior=null,requireAll=false,overrides={}
 function baseManifest(root,sha){
  if(!/^[a-f0-9]{40}$/i.test(sha||''))return null;
  try{
-  const raw=execFileSync('git',['show',sha+':'+COVERAGE_FILE],{cwd:root,encoding:'utf8'});
+  const raw=execFileSync('git',['show',sha+':'+COVERAGE_FILE],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','ignore']});
   return JSON.parse(raw);
  }catch{return null;} // initial rollout: base branch has no register
 }
