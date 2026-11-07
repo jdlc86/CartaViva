@@ -1,6 +1,7 @@
 import test from 'node:test';
 import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
 import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-production-http.mjs';
+import {createH6CustomerPaymentStateReader} from '../../apps/api/src/h6-customer-payment-state.mjs';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomBytes} from 'node:crypto';
@@ -161,14 +162,16 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   withH6Transaction:h6CustomerTx,withH6ReadTransaction:h6ReadTx,secretKey});
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
- let httpConfirmedOrder=null;
+ let httpConfirmedOrder=null,httpConfirmedVisitId=null;
  const customerHttp=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify')({logger:false});
  const h6CookieAuth=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
   verifyCustomerSession:async token=>token===customer.token?{
    customerId:customer.profile.id,publicId:customer.profile.public_id,
    alias:'Cliente H6',company:null}:null,
   revokeCustomerSession:async()=>false});
- await registerCustomerProductionFlowHttp(customerHttp,{cookieAuth:h6CookieAuth,flow});
+ const readPaymentState=createH6CustomerPaymentStateReader({withTransaction:h6CustomerTx});
+ await registerCustomerProductionFlowHttp(customerHttp,{cookieAuth:h6CookieAuth,
+  flow:Object.freeze({...flow,readPaymentState})});
  await customerHttp.ready();
  try{
   const headers={origin:'https://sabora.example','content-type':'application/json',
@@ -178,6 +181,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const visitResponse=await post('visits',{tableId,qrToken});
   assert.equal(visitResponse.statusCode,201,visitResponse.body);
   const hv=visitResponse.json();
+  httpConfirmedVisitId=hv.visitId;
   assert.deepEqual(hv.paymentPolicy,{requirePayAsOrdered:false,version:1});
   const quoteResponse=await post('quotes',{tableId,qrToken,visitId:hv.visitId,
    basketId:hv.basketId,lines:[{itemId,selection,quantity:1}]});
@@ -213,6 +217,24 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   const directRound=await h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
    [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.orderId]));
   assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
+  // Full H6 HTTP -> authenticated customer -> restricted PG17 reader.
+  // Persisted order != authorized or captured provider payment.
+  const pendingRead=await pwaTransport.paymentState({
+   tableId,visitId:hv.visitId,orderId:orderHttp.orderId});
+  assert.deepEqual(pendingRead,{orderId:orderHttp.orderId,
+   paymentMode:'pay_now',roundState:'awaiting_authorization'});
+  const scopeUrl='/api/v1/customer/orders/'+orderHttp.orderId+'/payment-state?tableId='+
+   tableId+'&visitId='+encodeURIComponent(hv.visitId);
+  const extraParam=await customerHttp.inject({method:'GET',
+   url:scopeUrl+'&accountId='+orderHttp.accountId,headers});
+  assert.equal(extraParam.statusCode,400);
+  const badVisit=await customerHttp.inject({method:'GET',
+   url:scopeUrl.replace(encodeURIComponent(hv.visitId),'foreign_visit_scope_0001'),headers});
+  assert.equal(badVisit.statusCode,403);
+  assert.ok(!badVisit.body.includes('authorization_key'));
+  const badSession=await customerHttp.inject({method:'GET',url:scopeUrl,
+   headers:{...headers,cookie:'__Secure-sabora_customer=foreign_customer_session_token_0001'}});
+  assert.equal(badSession.statusCode,401);
   await assert.rejects(h6CustomerTx(query=>query(READ_H6_ROUND_SQL,
    [hashCustomerSessionToken(customer.token),tableId,hv.visitId,orderHttp.roundId])),
   /customer_round_scope_forbidden/);
@@ -287,12 +309,20 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   orderId:httpConfirmedOrder.orderId,outcome:'authorized',
   providerIntentId:'pi_H6HttpRound01',captureBefore:new Date(Date.now()+86400000)});
  assert.equal(httpAuthorization.payment_state,'authorized');
+ const authorizedRead=await readPaymentState({customerSessionToken:customer.token,
+  tableId,visitId:httpConfirmedVisitId,orderId:httpConfirmedOrder.orderId});
+ assert.equal(authorizedRead.roundState,'grouping',
+  'only a recorded provider authorization advances the economic state');
  const httpCaptureRequest=await provider.requestCapture({
   orderId:httpConfirmedOrder.orderId,now:new Date(Date.now()+360000)});
  assert.equal(httpCaptureRequest.action,'capture');
  const httpCapture=await provider.recordCapture({orderId:httpConfirmedOrder.orderId,
   outcome:'captured',providerChargeId:'ch_H6HttpRound01'});
  assert.equal(httpCapture.dispatch_state,'requested');
+ const captureRead=await readPaymentState({customerSessionToken:customer.token,
+  tableId,visitId:httpConfirmedVisitId,orderId:httpConfirmedOrder.orderId});
+ assert.equal(captureRead.roundState,'dispatch_requested',
+  'only a recorded provider capture advances to kitchen dispatch');
  const httpDispatch=(await admin.query(`SELECT d.id,d.round_id,d.state,p.state AS payment_state
   FROM sabora.kitchen_dispatches d JOIN sabora.payment_attempts p ON p.round_id=d.round_id
   WHERE d.order_id=$1`,[httpConfirmedOrder.orderId])).rows;
