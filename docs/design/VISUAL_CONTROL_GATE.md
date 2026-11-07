@@ -1,35 +1,38 @@
-# Puerta de conformidad visual — procedimiento técnico (07-11-2026)
+# Control de completitud funcional e interfaz; aprobación visual al final (07-11-2026)
 
-**No es normativa nueva ni aprobación de diseño.** Fuentes: [contrato visual](../DESIGN_SYSTEM_CONTRACT.md) §§4,7,9,11,12,14, [pantalla cliente aprobada en composición](screens/SABORA_HOME_IMPLEMENTATION_V1.md), [requisitos de anuncios](../REQUISITOS_FUNCIONALES.md), [auditoría de estilo](APPROVED_VISUAL_STYLE_AUDIT_V1.md). Se respetan los estados APROBADO, PENDIENTE y PROPUESTA. Este procedimiento no reinterpreta RF/DV.
+> **Procedimiento de desarrollo y trazabilidad, no norma de producto ni nueva decisión estética.** Fuentes vinculantes: [RF](../REQUISITOS_FUNCIONALES.md), [NF](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [DV](../DESIGN_SYSTEM_CONTRACT.md), [inicio aprobado en composición](screens/SABORA_HOME_IMPLEMENTATION_V1.md) y [auditoría de estilo](APPROVED_VISUAL_STYLE_AUDIT_V1.md). Prioridad expresa actual del propietario: **funcionalidad operable con interfaz desde su implementación; refinamiento visual definitivo al final**.
 
-## Defecto que motiva el control
+## 1. Problema real y dictamen CV-014
 
-La pantalla histórica de octubre tenía **composición aprobada** pero no se conserva una **captura exacta aprobada**. El HTML histórico incluye controles e iconos provisionales que no deben confundirse con una imagen aprobada. La PWA React actual contiene una región de anuncios oculta; sus capturas Chromium no demuestran la conformidad con el flujo de comunicaciones ni la aceptación estética humana. El sistema de trabajo anterior permitía declarar avances visuales técnicamente verdes sin evidencias comparables contra una referencia autorizada.
+Se confunden tres artefactos diferentes: un prototipo HTML de anuncios creado en 2026-10-18, un requisito funcional RF aprobado y una PWA React realmente operable. El HTML de demostración tiene anuncios y rotación; **no** es el frontend actual. En la rama candidata, `apps/client/src/App.tsx` conserva `announcement-region` con `hidden`, `apps/management/src/main.tsx` carece de apartado Comunicaciones y no existe evidencia de circuito integral gestión/publicación/planificación→servidor/PG17→cliente. El tablero ya clasifica **CV-014 PENDIENTE**. No inventar que el backend completo existe, y no usar esta pantalla para afirmar M5 terminado.
 
-## Controles implementados en el candidato
+La decisión histórica de composición (campana y carrusel sobre «Nuestra carta») **sí** se preserva; iconos, fotos y captura exacta no están aprobados. No forzar iconos de demostración ni bloquear el desarrollo de un control funcional por no existir todavía PNG final.
 
-1. **Instrucciones persistentes:** AGENTS.md en raíz ordena al agente leer normativa, preservar la composición realmente aprobada y no usar maquetas/emoji provisionales como diseño final.
-2. **Registro de estado verificable:** APPROVAL_REGISTER.md y APPROVAL_REGISTER.json distinguen aprobación de dirección/composición frente a baseline PNG exacta; actualmente la captura exacta es PENDIENTE, no se inventa.
-3. **Control automático por PR:** el workflow Sabora visual contract governance inspecciona diff real entre SHA base y cabeza. Abarca archivos de PWA cliente, PWA gestión, componentes compartidos y cambios sensibles de políticas visuales. No permite evadir el análisis borrando o moviendo archivos.
-4. **Referencia de rama base obligatoria:** cada superficie UI cambiada requiere registro APPROVED_EXACT_BASELINE **anterior** al propio PR, PNG versionado en docs/design/baselines, digest SHA256 coincidente, fecha, autor y vínculo de aprobación. Una PR no puede introducir su propia imagen/registro y usarla para autovalidarse.
-5. **Evidencia real del mismo SHA:** lectura solo de GitHub Actions para confirmar éxito de Sabora client browser conformance o Sabora management browser visual smoke según superficie afectada, más el artefacto de captura no caducado. Una captura de otro commit o una simple etiqueta en el PR no son evidencia.
-6. **Aprobación humana auditada:** el propietario escribe **personalmente**, tras ver la comparativa y los artefactos, un comentario exacto en el PR. Para cliente: SABORA-VISUAL-APPROVED HEAD_SHA client-home; para gestión: SABORA-VISUAL-APPROVED HEAD_SHA management-shell; para ambos: SABORA-VISUAL-APPROVED HEAD_SHA client-home,management-shell; para una modificación solo de política: SABORA-VISUAL-GATE-APPROVED HEAD_SHA. El validador verifica GitHub usuario jdlc86 y SHA; un nuevo commit invalida el comentario.
-7. **Prohibición de firma delegada:** ningún agente/desarrollador debe escribir, simular ni publicar una aprobación humana, aunque pueda técnicamente publicar comentarios con la identidad vinculada. GitHub no diferencia criptográficamente a una persona de un agente que utiliza la **misma** cuenta; por ello la comprobación exige además inspección humana y protección de ramas.
+## 2. Primera puerta — soporte gráfico funcional obligatorio ahora
 
-## Cómo superar la puerta sin fingir una aprobación
+Se implementa `docs/design/FUNCTIONAL_UI_COVERAGE.json` y su control `scripts/ci/functional-ui-coverage-gate.mjs`, que se ejecuta en PR desde el workflow `Sabora functional UI coverage and deferred visual acceptance / functional-ui-gate`.
 
-- Recuperar la **imagen original** aprobada, o presentar una nueva referencia a la persona propietaria para que la apruebe explícitamente. No considerar aprobados los iconos del prototipo HTML.
-- Crear PR documental con capturas exactas por pantalla/viewport/estado y su hash; obtener aprobación humana, registrar dato aprobado y consolidarlo en la **rama base** antes de modificar la UI.
-- En la siguiente PR de UI conservar la estructura aprobada, adjuntar comparativa visual antes/después, capturas reproducibles, estados de catálogo, QR, anuncios (sin anuncio, anuncio con/sin imagen y error), móvil 390 y escritorio 1440 y los demás viewports aplicables, accesibilidad y test integrador. No reemplazar tests por minipruebas.
-- Esperar a que los **workflows Chromium del mismo HEAD** concluyan correctamente y el usuario revise capturas. Tras su comentario exacto, volver a ejecutar el workflow visual para comprobarlo. Un SUCCESS de CI por sí solo nunca acredita aprobación de producto.
-- **Si falta la imagen o la aprobación: BLOQUEADO.** No modificar la normativa ni reducir tests para conseguir verde.
+Cada módulo inventariado contiene estado, superficies de cliente/gestión, entrada visible en código producto, frontera API, escenario de prueba integrador y restricciones. Para registrar `CANDIDATO_TECNICO` se exige que el módulo tenga **entrada gráfica en todas sus superficies declaradas**, ruta de servidor y evidencia de navegador y PostgreSQL. Para registrar `FUNCIONALMENTE_VALIDADO` se exige además integración de gestión cuando corresponda y evidencia atribuible. Un módulo `PENDIENTE` conserva el bloqueo explícito; la comprobación normal permite seguir desarrollando otros hitos sin fingir que está cerrado. El modo `--release` **rechaza cualquier módulo pendiente**.
 
-## Lo que falta para que GitHub impida realmente la fusión
+El gate de texto **solo prueba coherencia y presencia de referencias**; no demuestra que los botones funcionen ni sustituye una ejecución real PG17/Fastify/JWT/HMAC/Chromium. La prueba integradora de cada hito debe **interactuar desde la PWA** (crear/publicar/consultar/actuar), comprobar persistencia/permisos/eventos y estados de error, no limitarse a comprobar que aparece un botón. GitHub Actions que prueben el SHA exacto y su resultado verificable siguen siendo necesarios.
 
-Este código puede **fallar un check**, pero GitHub no prohíbe fusionar una PR roja si no se configura la protección de las ramas de destino. Se requiere autorización y acción administrativa de la persona propietaria para activar **ruleset/branch protection** en ramas de integración destinatarias y, cuando proceda, main, exigiendo el status check Sabora visual contract governance / visual-contract-gate, los checks Chromium aplicables y evitando bypass administrativo.
+En todas las funcionalidades nuevas: documentar antes de cerrar el hito qué actor puede usarlas, desde qué sección, qué botón o acción inicia el flujo, qué resultado recibe, los casos vacío/error/caducidad y qué prueba atraviesa frontend→API→SQL→frontend. Si falta una sola cara requerida, **no marcar IMPLEMENTADO/VALIDADO** aunque backend y SQL estén escritos. No sustituir una función con un botón inerte o una simulación que simule éxito.
 
-**No se ha activado dicha protección.** Tampoco hay comparación automática píxel-a-píxel porque ninguna captura maestra ha sido aprobada: verificar existencia, hashes y resultados de Chromium es comprobable, pero la aceptación estética seguirá siendo un acto humano independiente. Producción NO-GO.
+### Inventario de deuda expresamente visible
 
-## Cierre documental y seguridad
+- `CV-014-comunicaciones-anuncios`: PENDIENTE, cliente oculto, sin editor visible ni ciclo servidor certificado.
+- `CV-014-reservas-anticipadas`: PENDIENTE de decisiones normativas abiertas e integración.
+- `CV-014-llamada-camarero`: PENDIENTE de recorrido compartido de sala y UI.
+- M4 Stripe sandbox y aprobaciones humanas siguen bloqueadas según tablero; el registro de cobertura no los declara resueltos.
 
-Este mecanismo no realiza deploy, merge, migraciones en Supabase operativo ni operaciones de VPS; no toca Fleetia. Las pruebas de regresión del validador usan repositorios Git temporales y datos simulados para el metadata check, no representan una aprobación visual real. Guardar estado implementado/probado/validado/aceptado por separado y enlazar el hito con tablero y continuidad sesión 29.
+## 3. Segunda puerta — estética final (aplazada, no eliminada)
+
+El validador `scripts/ci/visual-contract-gate.mjs` y su prueba anterior **se conservan**, pero no deben bloquear todas las PR de interfaz funcional antes de existir capturas maestras exactas. La aceptación final se invoca **de forma separada** mediante `visual-final-acceptance-gate`; exige primero `functional-ui-coverage-gate.mjs --release` sin módulos pendientes, después PNG baselines aprobadas en `APPROVAL_REGISTER.json` **antes de la PR**, SHA256, capturas Chromium de la misma revisión y declaración personal inequívoca del propietario. Un agente nunca firma en su nombre.
+
+Composición, dirección aprobada, legibilidad, semántica, estados y accesibilidad **se respetan ahora**. Tipografía definitiva, recursos fotográficos licenciados, ajuste de iconos, composición pixel-perfect, baselines finales y aceptación humana se revisan en la fase visual. **No modificar la normativa, crear aprobaciones inventadas ni tomar el HTML provisional como fuente visual definitiva**.
+
+## 4. Límites de aplicación y protección GitHub
+
+Crear el workflow/CI da verificación técnica, **no** protección obligatoria de fusión mientras no se configure un ruleset/branch protection sobre cada rama de destino. El check requerido inmediato debería ser `functional-ui-gate`; la puerta `visual-final-acceptance-gate` se exige en la candidatura final M6, después de cerrar los pendientes. Configurar protección y bypass necesita decisión/gestión del propietario; no declarar que ya existe.
+
+**Sin cambios de producción, VPS, Fleetia, Supabase operativo, Stripe externo o merges** derivados de este control. Cada hito completo actualiza [tablero](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y [continuidad de sesión 29](../handoffs/SESSION_29_HANDOFF_2026-11-07.md) con estado probado por SHA; pruebas aisladas sólo por diagnóstico o requisito crítico.
