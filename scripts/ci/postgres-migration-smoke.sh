@@ -123,11 +123,13 @@ begin
  -- FORCE RLS tables to the 44-table baseline; M3 adds four management,
  -- category and allergen relations. M3 finance adds one sealed immutable
  -- provider cashflow journal. Keep the exact count and names fail-closed.
- if v_count<>60 then raise exception 'Expected 60 FORCE RLS Sabora tables (including M4 third-party cash), got %',v_count; end if;
+ if v_count<>63 then raise exception 'Expected 63 FORCE RLS Sabora tables (including M4 cash tips), got %',v_count; end if;
  foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3','finance_provider_events_candidate',
  'third_party_cash_intents_candidate','third_party_cash_intent_rounds_candidate',
  'third_party_cash_round_funding_candidate','third_party_cash_refund_claims_candidate',
- 'third_party_cash_refunds_candidate'] loop
+ 'third_party_cash_refunds_candidate',
+ 'cash_tip_collections_candidate','cash_tip_refund_claims_candidate',
+ 'cash_tip_refunds_candidate'] loop
  if not exists (
   select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname=v_table

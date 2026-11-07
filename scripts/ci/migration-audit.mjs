@@ -112,6 +112,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'NOLOGIN H6 function owner, exact runtime RPC grants, PUBLIC/browser and direct runtime table access revoked',
   'five table creates, function/trigger metadata, deterministic original account and incident row locks',
   'append-only funding/refund records and new cash settlements; non-third-party economic history preserved; no backfill',
+  'inherited'),
+ '20261107200000_sabora_m4_cash_tips_candidate.sql':r(
+  'M4 voluntary cashier tip and original-payer refunds',
+  ['M4 payer-bound cash intentions','H6 staff capabilities and customer identity','M3 admin finance'],
+  'three FORCE RLS tip collection, claim and refund ledgers; cash-intent tip choice and server pricing; sealed read/refund RPCs; M3 separate tip metrics',
+  'NOLOGIN H6/M3 function owners, direct runtime and browser table access revoked, authenticated payer proof, ADMIN/ROOT authorized refund',
+  'three creates, existing SQL function replacement, account and claim locks; no network access',
+  'cash-only new collections/refunds, append-only originals, no automatic refund of consumption tips, no backfill',
   'inherited')};
 
 export function validateMigrationAudit(manifest,catalog=REVIEWED_MIGRATION_AUDIT){
