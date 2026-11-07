@@ -14,7 +14,7 @@ import {createRestrictedCustomerRegistration,REGISTER_CUSTOMER_SQL} from '../../
 import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
 import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
  LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL,READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,
- PERSIST_H6_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
+ READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,PERSIST_H6_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
@@ -41,12 +41,12 @@ const poolOptions={max:8,connectionTimeoutMillis:3000,idleTimeoutMillis:1000,
  options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'};
 const admin=new Pool({connectionString:url,...poolOptions});
 const loginUrl=(user,password)=>{const next=new URL(url);next.username=user;next.password=password;return next.toString();};
-let registrationPool,customerPool,providerPool,operationsPool;
+let registrationPool,customerPool,providerPool,operationsPool,policyReaderPool;
 test.after(async()=>{await Promise.allSettled([registrationPool?.end(),customerPool?.end(),
- providerPool?.end(),operationsPool?.end()]);await admin.end();});
+ providerPool?.end(),operationsPool?.end(),policyReaderPool?.end()]);await admin.end();});
 
 const passwords={registration:'h6-registration-ci-1',customer:'h6-customer-ci-2',
- provider:'h6-provider-ci-3',operations:'h6-operations-ci-4'};
+ provider:'h6-provider-ci-3',operations:'h6-operations-ci-4',reader:'h6-reader-ci-5'};
 const tableId='a6200000-0000-4000-8000-000000000001';
 const itemId='a6200000-0000-4000-8000-000000000002';
 const freeItemId='a6200000-0000-4000-8000-000000000006';
@@ -68,15 +68,20 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   CREATE ROLE sabora_h6_customer_ci LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${passwords.customer}';
   CREATE ROLE sabora_h6_provider_ci LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${passwords.provider}';
   CREATE ROLE sabora_h6_operations_ci LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${passwords.operations}';
+  CREATE ROLE sabora_h6_policy_reader_ci LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${passwords.reader}';
   GRANT sabora_customer_registration_runtime TO sabora_h6_registration_ci;
   GRANT sabora_customer_flow_runtime,sabora_h6_customer_runtime TO sabora_h6_customer_ci;
   GRANT sabora_h6_provider_runtime TO sabora_h6_provider_ci;
   GRANT sabora_h6_operations_runtime TO sabora_h6_operations_ci;
+  GRANT sabora_b3_h6_reader_runtime TO sabora_h6_policy_reader_ci WITH SET TRUE, INHERIT FALSE;
  `);
  registrationPool=new Pool({connectionString:loginUrl('sabora_h6_registration_ci',passwords.registration),...poolOptions});
  customerPool=new Pool({connectionString:loginUrl('sabora_h6_customer_ci',passwords.customer),...poolOptions});
  providerPool=new Pool({connectionString:loginUrl('sabora_h6_provider_ci',passwords.provider),...poolOptions});
  operationsPool=new Pool({connectionString:loginUrl('sabora_h6_operations_ci',passwords.operations),...poolOptions});
+ policyReaderPool=new Pool({connectionString:loginUrl('sabora_h6_policy_reader_ci',passwords.reader),...poolOptions});
+ await assert.rejects(policyReaderPool.query('SELECT * FROM sabora.customer_accounts'),/permission denied/);
+ await assert.rejects(policyReaderPool.query('SET ROLE sabora_h6_fn_owner'),/permission denied/);
 
  await assertH6SqlCapabilities({customerPool,providerPool,operationsPool,
   expectedCustomerLogin:'sabora_h6_customer_ci',expectedProviderLogin:'sabora_h6_provider_ci',
@@ -135,7 +140,14 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const h6CustomerTx=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_h6_customer_runtime',
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
    READ_CUSTOMER_EVENTS_H6_SQL])});
- const flow=createCustomerProductionFlow({withTransaction:flowTx,withH6Transaction:h6CustomerTx,secretKey});
+ // The immutable account choice is read through its own physical NOINHERIT
+ // B3 role, not through the customer writer or a PG superuser test shortcut.
+ const h6ReadTx=createRoleScopedPostgresTransaction({pool:policyReaderPool,
+  role:'sabora_b3_h6_reader_runtime',allowedSql:new Set([
+   READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,
+   READ_H6_ROUND_SQL,READ_H6_ORDER_REVISION_SQL])});
+ const flow=createCustomerProductionFlow({withTransaction:flowTx,
+  withH6Transaction:h6CustomerTx,withH6ReadTransaction:h6ReadTx,secretKey});
  // H6 HTTP adapter -> actual restricted PG17 -> durable round and dispatch.
  // This harness supplies identity; the full customer-session verifier is tested separately.
  let httpConfirmedOrder=null;
