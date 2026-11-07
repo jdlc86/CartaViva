@@ -1,0 +1,33 @@
+name: Sabora visual contract governance
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+jobs:
+  gate:
+    name: visual-contract-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Integrated Git/base-image/approval/browser-proof regression
+        run: node --test tests/visual-contract-gate.test.mjs
+      - name: Verify current PR against base-side visual approvals
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VISUAL_PR_NUMBER: ${{ github.event.pull_request.number }}
+          VISUAL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          VISUAL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci/visual-contract-gate.mjs
