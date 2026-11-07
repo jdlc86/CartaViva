@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {ConnectionNotice,EmptyState,ErrorState,LoadingState,PageHeader,StatusBadge} from '../components/Primitives';
 import type {CashAccount,CashAccountSnapshot,OrderOperationsGateway} from '../order-operations-gateway.js';
+import {ThirdPartyCashDesk} from './ThirdPartyCashDesk';
 
 const euro=(cents:number)=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(cents/100);
 const centsFromInput=(raw:string):number|null=>{
@@ -157,6 +158,7 @@ export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
       onClick={()=>void close()}>Solicitar cierre de cuenta</button>
    </div>:null}
   </section>:null}
+  <ThirdPartyCashDesk gateway={gateway}/>
   {message?<p className="honest-operational-note" role="status">{message}</p>:null}
   {pendingCash.current?<button type="button" className="button" disabled={busy}
     onClick={()=>void retryPending()}>Verificar de nuevo el mismo cobro (sin nueva clave)</button>:null}
