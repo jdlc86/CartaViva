@@ -112,30 +112,6 @@ REVOKE ALL ON FUNCTION sabora.third_party_round_eligible_candidate(uuid,uuid,uui
 GRANT EXECUTE ON FUNCTION sabora.third_party_round_eligible_candidate(uuid,uuid,uuid,uuid)
  TO sabora_h6_fn_owner;
 
-CREATE FUNCTION sabora.read_third_party_cash_debts_candidate(
- p_session_hash bytea,p_table_id uuid,p_visit_key text
-) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
-DECLARE v_payer uuid;v_session uuid;v_items jsonb;
-BEGIN
- SELECT payer_id,active_session_id INTO v_payer,v_session
-  FROM sabora.third_party_payer_scope_candidate(p_session_hash,p_table_id,p_visit_key);
- SELECT COALESCE(jsonb_agg(jsonb_build_object(
-  'roundId',q.round_id,'accountId',q.account_id,
-  'customerCode',q.public_id,'amountCents',q.amount_cents)
-  ORDER BY q.public_id,q.round_id),'[]'::jsonb) INTO v_items
- FROM (
-  SELECT r.id AS round_id,r.account_id,p.public_id,r.amount_cents
-  FROM sabora.order_rounds r
-  JOIN sabora.customer_accounts a ON a.id=r.account_id
-  JOIN sabora.customer_profiles p ON p.id=a.customer_id
-  JOIN sabora.customer_account_operational_bindings b ON b.account_id=a.id
-  WHERE b.table_id=p_table_id AND b.session_id=v_session AND a.customer_id<>v_payer
-   AND sabora.third_party_round_eligible_candidate(r.id,v_payer,p_table_id,v_session)
-  ORDER BY p.public_id,r.id LIMIT 50
- ) q;
- RETURN jsonb_build_object('version',1,'items',v_items);
-END; $fn$;
-;
 CREATE OR REPLACE FUNCTION sabora.read_third_party_cash_debts_candidate(
  p_session_hash bytea,p_table_id uuid,p_visit_key text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $fn$
