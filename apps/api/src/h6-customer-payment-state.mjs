@@ -1,7 +1,7 @@
 import {hashCustomerSessionToken} from './customer-session.mjs';
 import {READ_H6_ROUND_SQL} from './customer-production-flow.mjs';
 
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VISIT=/^[A-Za-z0-9_-]{16,128}$/;
 
 // Sealed existing SQL capability. No provider secret, authorization key or
