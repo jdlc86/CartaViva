@@ -221,6 +221,15 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
   // Full H6 HTTP -> authenticated customer -> restricted PG17 reader.
   // Persisted order != authorized or captured provider payment.
+  // Targeted diagnosis of a real PG17 authorization-scope failure.
+  // Emit shape/length only, never any customer, order or session credentials.
+  const scopedUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const scopedVisit=/^[A-Za-z0-9_-]{16,128}$/;
+  assert.ok(scopedUuid.test(tableId), 'payment-state table uuid syntax');
+  assert.ok(scopedUuid.test(orderHttp.orderId),
+   'payment-state order uuid syntax length='+String(orderHttp.orderId).length);
+  assert.ok(scopedVisit.test(hv.visitId),
+   'payment-state visit key syntax length='+String(hv.visitId).length);
   const directPending=await readPaymentState({customerSessionToken:customer.token,
    tableId,visitId:hv.visitId,orderId:orderHttp.orderId});
   assert.equal(directPending.roundState,'awaiting_authorization');
