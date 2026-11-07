@@ -961,6 +961,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    return user?{customerId:user.profile.id,publicId:user.profile.public_id,
     alias:'M4 autorizado',company:null}:null;
   },revokeCustomerSession:async()=>false});
+ const directDebts=await payerRepo.debts({customerSessionToken:tpA.token,
+  tableId,visitId:visitA.visitId});
+ assert.ok(directDebts.items.some(x=>x.roundId===b.order.roundId),
+  'direct role-scoped PostgreSQL debt reader must return B');
  const tpApp=Fastify({logger:false});
  registerThirdPartyCashHttp(tpApp,{cookieAuth:payerCookie,
   forRoles:roles=>async request=>{
