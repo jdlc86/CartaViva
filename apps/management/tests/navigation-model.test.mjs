@@ -7,7 +7,7 @@ import {
 } from '../src/navigation-model.js';
 
 test('every management area has a stable deep-link', () => {
-  assert.deepEqual(MANAGEMENT_AREAS, ['resumen', 'catalogo', 'mesas', 'comandas', 'equipo']);
+  assert.deepEqual(MANAGEMENT_AREAS, ['resumen', 'catalogo', 'mesas', 'comandas','caja', 'equipo']);
   for (const area of MANAGEMENT_AREAS) {
     assert.equal(parseManagementArea(toManagementHash(area)), area);
   }
