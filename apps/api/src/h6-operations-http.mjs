@@ -119,13 +119,22 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
  app.get('/api/v1/operations/cash/accounts',{preHandler:floor},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   reply.header('X-Content-Type-Options','nosniff');
-  const q=request.query??{};
-  if(!plain(q)||Reflect.ownKeys(q).some(k=>!['after','limit'].includes(k))||
-     (q.after!==undefined&&!UUID.test(q.after))||
-     (q.limit!==undefined&&(!/^[0-9]{1,2}$/.test(q.limit)||Number(q.limit)<1||
-       Number(q.limit)>50)))return reply.code(400).send({error:'invalid_h6_operation'});
+  // Only exact bounded query strings are accepted; never depend on a
+  // framework-specific query-object prototype or coerced number type.
+  let params;
+  try{params=new URL(request.raw.url,'http://sabora.invalid').searchParams;}
+  catch{return reply.code(400).send({error:'invalid_h6_operation'});}
+  const names=[...params.keys()];
+  if(names.some(key=>!['after','limit'].includes(key))||
+     params.getAll('after').length>1||params.getAll('limit').length>1)
+   return reply.code(400).send({error:'invalid_h6_operation'});
+  const after=params.get('after'),limitText=params.get('limit');
+  if((after!==null&&!UUID.test(after))||
+     (limitText!==null&&(!/^[0-9]{1,2}$/.test(limitText)||
+       Number(limitText)<1||Number(limitText)>50)))
+   return reply.code(400).send({error:'invalid_h6_operation'});
   try{return reply.code(200).send(await operations.readCashAccounts(verified(request),{
-   after:q.after??null,limit:q.limit===undefined?50:Number(q.limit)}));}
+   after,limit:limitText===null?50:Number(limitText)}));}
   catch(error){return failure(reply,error);}
  });
  app.post('/api/v1/operations/accounts/:accountId/cash-settlements',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
