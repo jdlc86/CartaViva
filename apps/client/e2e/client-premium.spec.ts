@@ -483,6 +483,7 @@ test('ambiguous confirmation is recovered by lookup without repeating the write'
  await expect(checkout.getByRole('alert')).toContainText('Confirmación pendiente de verificar');
  await page.route('**/api/v1/customer/orders/lookup',route=>route.fulfill({status:200,
   contentType:'application/json',body:JSON.stringify({status:'confirmed',orderId:'54000000-0000-4000-8000-000000000099',grouping:'new'})}));
+ await page.route(url=>url.pathname==='/api/v1/customer/orders/54000000-0000-4000-8000-000000000099/payment-state',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({orderId:'54000000-0000-4000-8000-000000000099',paymentMode:'pay_now',roundState:'grouping'})}));
  await checkout.getByRole('button',{name:'Consultar resultado del pedido'}).click();
  await expect(checkout.getByRole('status')).toContainText('Pedido confirmado');
  expect(confirmations).toHaveLength(1);
@@ -561,4 +562,65 @@ test('voluntary cash tips selector preserves consent, six choices and payer proo
  await expect(dlg).toContainText(collectionId);
  await expect(dlg).toContainText(claimId);
  await expect(dlg).toContainText(proof);
+});
+
+test('unverified Stripe action stays pending, reuses original order and verifies SQL state',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001',token='A'.repeat(43);
+ const orderId='53000000-0000-4000-8000-000000000078';
+ const accountId='51000000-0000-4000-8000-000000000001';
+ const roundId='52000000-0000-4000-8000-000000000079';
+ const quoteId='54000000-0000-4000-8000-000000000080';
+ let roundState='awaiting_authorization',reads=0;
+ const confirmations:unknown[]=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({
+  status:201,contentType:'application/json',
+  body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
+   expiresAt:'2026-12-07T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/quotes',route=>route.fulfill({
+  status:201,contentType:'application/json',
+  body:JSON.stringify({lines:[{quoteId,itemId:catalog[0].id,totalCents:1290,
+   expiresAt:'2026-12-07T22:00:00.000Z'}]})}));
+ await page.route('**/api/v1/customer/orders/confirm',route=>{
+  confirmations.push(route.request().postDataJSON());
+  return route.fulfill({status:201,contentType:'application/json',
+   body:JSON.stringify({status:'confirmed',orderId,grouping:'first',accountId,roundId,
+    amountCents:1290,paymentMode:'pay_now',roundState:'awaiting_authorization',
+    paymentState:'requires_action',requiresPaymentAction:true,
+    clientSecret:'pi_fake12345678_secret_browser_only'})});
+ });
+ await page.route(url=>url.pathname===`/api/v1/customer/orders/${orderId}/payment-state`,
+  route=>{reads++;return route.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({orderId,paymentMode:'pay_now',roundState})});});
+ await page.route('**/api/v1/customer/events**',route=>route.fulfill({status:200,
+  headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store'},body:''}));
+ await page.goto(`/qr/v1/SABORA/${tableId}#${token}`);
+ await page.getByRole('dialog',{name:'QR de mesa'}).getByRole('button',{name:'Cerrar'}).click();
+ await page.getByTestId('product-card').filter({hasText:'Arroz meloso'})
+  .getByRole('button',{name:/Añadir$/}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ let dialog=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await dialog.getByRole('button',{name:'Confirmar pedido'}).click();
+ await expect(dialog).toContainText('Pago pendiente de completar');
+ await expect(dialog).not.toContainText('Pedido confirmado');
+ await dialog.getByRole('button',{name:'Reintentar de forma segura'}).click();
+ await expect(dialog).toContainText('autorización sigue pendiente');
+ expect(confirmations).toHaveLength(1);
+ expect(reads).toBeGreaterThan(0);
+ await dialog.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByRole('button',{name:/Cesta: 1/}).click();
+ await page.getByRole('button',{name:'Revalidar y continuar'}).click();
+ dialog=page.getByRole('dialog',{name:'Confirmar pedido'});
+ await expect(dialog).toContainText('operación sigue pendiente');
+ expect(confirmations).toHaveLength(1);
+ roundState='grouping';
+ await dialog.getByRole('button',{name:'Reintentar de forma segura'}).click();
+ await expect(dialog).toContainText('Pedido confirmado');
+ await expect(dialog).toContainText('Autorización verificada en servidor');
+ expect(confirmations).toHaveLength(1);
+ expect(await page.evaluate(()=>Object.keys(localStorage).every(key=>
+  !key.toLowerCase().includes('stripe')&&!key.toLowerCase().includes('secret')))).toBe(true);
 });
