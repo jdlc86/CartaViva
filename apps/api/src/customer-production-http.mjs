@@ -13,7 +13,7 @@ const replyFailure=(reply,error)=>{
  const failure=code(error);
  if(['invalid_customer_flow_input','invalid_customer_visit_input','invalid_customer_revision_request'].includes(failure))
   return reply.code(400).send({error:'invalid_customer_request'});
- if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden']
+ if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden','customer_payment_scope_forbidden']
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
  if(failure==='customer_revision_scope_forbidden')
   return reply.code(403).send({error:'customer_context_forbidden'});
