@@ -206,6 +206,8 @@ BEGIN
    v_prev_from:=(v_month-interval '2 months') AT TIME ZONE v_zone;
  END CASE;
  v_prev_to:=v_from;
+ -- The trend follows the selected comparison month, not always today.
+ IF p_period='previousMonth' THEN v_month:=(v_month-interval '1 month')::date; END IF;
  v_month_from:=v_month::timestamp AT TIME ZONE v_zone;
  v_month_to:=(v_month+interval '1 month') AT TIME ZONE v_zone;
  -- No fake historical capture dates. A preexisting charge without its
