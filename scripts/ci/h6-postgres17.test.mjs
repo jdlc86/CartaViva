@@ -170,8 +170,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    alias:'Cliente H6',company:null}:null,
   revokeCustomerSession:async()=>false});
  const readPaymentState=createH6CustomerPaymentStateReader({withTransaction:h6CustomerTx});
+ let paymentReadInvoked=false;
+ const trackedPaymentRead=async args=>{paymentReadInvoked=true;return readPaymentState(args);};
  await registerCustomerProductionFlowHttp(customerHttp,{cookieAuth:h6CookieAuth,
-  flow:Object.freeze({...flow,readPaymentState})});
+  flow:Object.freeze({...flow,readPaymentState:trackedPaymentRead})});
  await customerHttp.ready();
  try{
   const headers={origin:'https://sabora.example','content-type':'application/json',
@@ -219,8 +221,15 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.equal(directRound.rows[0]?.round_id,orderHttp.roundId);
   // Full H6 HTTP -> authenticated customer -> restricted PG17 reader.
   // Persisted order != authorized or captured provider payment.
-  const pendingRead=await pwaTransport.paymentState({
+  const directPending=await readPaymentState({customerSessionToken:customer.token,
    tableId,visitId:hv.visitId,orderId:orderHttp.orderId});
+  assert.equal(directPending.roundState,'awaiting_authorization');
+  const pendingRead=await pwaTransport.paymentState({
+   tableId,visitId:hv.visitId,orderId:orderHttp.orderId}).catch(error=>{
+    throw Error('payment_state_http_gate:status='+error.status+
+     ':code='+error.message+':handlerReached='+paymentReadInvoked+
+     ':visitKeyLength='+hv.visitId.length+':orderUuidLength='+orderHttp.orderId.length);
+   });
   assert.deepEqual(pendingRead,{orderId:orderHttp.orderId,
    paymentMode:'pay_now',roundState:'awaiting_authorization'});
   const scopeUrl='/api/v1/customer/orders/'+orderHttp.orderId+'/payment-state?tableId='+
