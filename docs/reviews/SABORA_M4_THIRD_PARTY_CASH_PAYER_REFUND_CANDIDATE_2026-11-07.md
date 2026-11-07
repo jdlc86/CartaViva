@@ -33,3 +33,19 @@ Se ha añadido **un recorrido integrador** en [`scripts/ci/h6-postgres17.test.mj
 ## 5. Huella de actualización de la sesión 28
 
 Hito normativo previo: [revisión de carencias M4](SABORA_M4_TIPS_THIRD_PARTY_PAYMENT_INTEGRAL_BOUNDARY_2026-11-07.md) que corresponde al SHA `4c7778d0` **anterior a este código**. No presentar aquel diagnóstico estático histórico como estado actual. [Continuidad sesión 28](../handoffs/SESSION_28_HANDOFF_2026-11-07.md) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Mantener estados diferenciados: código incorporado ≠ prueba ejecutada ≠ prueba aprobada ≠ función aceptada.
+
+## 6. Cierre de aceptación técnica del candidato en el SHA funcional (07-11-2026)
+
+**Nuevo estado del SUBALCANCE DE EFECTIVO POR TERCERO: IMPLEMENTADO Y VALIDADO TÉCNICAMENTE EN CANDIDATO AISLADO.** SHA funcional inalterado `9a7490d411af9bf79de1f34f044643a72b60aef2` (los commits posteriores de este apartado son **solo documentación [skip ci]**). Evidencia contemporánea **5/5 workflows SUCCESS**:
+
+| Workflow en este SHA | Resultado verificable |
+| --- | --- |
+| [Sabora CI / H6](https://github.com/jdlc86/CartaViva/actions/runs/42392241313) | **SUCCESS**; bloque 1 contratos PASS; bloque 2A migraciones/roles/ACL PG17 PASS; bloque 2B real PG17/HMAC/concurrencia/Chromium PASS. Incluye el recorrido M4 integrado en `h6-postgres17.test.mjs` sin fallo. |
+| [Bootstrap Sabora lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42392241279) | **SUCCESS**; Node **1351/1351**, PG17 **51/51**, demás etapas de migración y compatibilidad satisfactorias, sin base operativa. |
+| [Cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241283) | **SUCCESS** (conformidad/smoke del cliente). |
+| [Gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241285) | **SUCCESS** (smoke visual automatizado de gestión). |
+| [PWA instalabilidad](https://github.com/jdlc86/CartaViva/actions/runs/42392241269) | **SUCCESS** de las dos aplicaciones. |
+
+**Qué permite afirmar:** el código SQL de autenticación del pagador, intención con consentimiento, imputaciones B/C, idempotencia de caja, cancelación posterior y devolución al pagador A se ejecutó bajo logins PostgreSQL restringidos y pasó el gate integrador PG17/Fastify. La migración, ACL y builds pasan. **Qué NO acredita:** revisión visual humana de las pantallas nuevas ni un clic Chromium completo del nuevo selector M4 específicamente; la entrega física de efectivo sigue siendo una atestación del personal; no hubo Stripe remoto, pago digital multi-cuenta ni reembolso bancario real. Por eso **F20/R03–R05, CV-008/CV-009 global y M4 siguen PARCIAL**; no declarar «pagos por terceros» globalmente cerrado. F28/R09 aceptación humana y M6 producción: **NO-GO**.
+
+No se ha hecho merge, release, despliegue, actualización de credenciales ni contacto con Fleetia, VPS, Stripe operativo o Supabase operativo.
