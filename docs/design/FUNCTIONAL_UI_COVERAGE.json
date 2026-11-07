@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Derivación operativa de NF/RF/DV y tablero vivo; nunca crea ni modifica requisitos",
+  "stage": "FUNCIONAL_PRIMERO",
+  "capabilities": [
+    {
+      "id": "CV-007-catalogo",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<ProductCard"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<CatalogView"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/m3-management-http.mjs",
+          "marker": "catalog"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "dynamic catalog"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/h6-postgres17.test.mjs",
+          "marker": "M3"
+        }
+      ],
+      "note": "Existencia y trazabilidad; el gate no reemplaza resultados de CI ni aceptación humana."
+    },
+    {
+      "id": "H6-caja-y-terceros",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<ThirdPartyCashPanel"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<CashView"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/third-party-cash-http.mjs",
+          "marker": "cash"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "third-party"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/h6-postgres17.test.mjs",
+          "marker": "third-party"
+        }
+      ],
+      "note": "Recorrido presencial candidato; no acreditar dinero físico, Stripe real ni aceptación global."
+    },
+    {
+      "id": "H6-checkout",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<CheckoutPanel"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/h6-customer-payment-flow.mjs",
+          "marker": "payment"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "H6 customer"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/h6-postgres17.test.mjs",
+          "marker": "payment"
+        }
+      ],
+      "note": "Stripe remoto/Elements no acreditados; no elevar a aceptación."
+    },
+    {
+      "id": "CV-014-comunicaciones-anuncios",
+      "status": "PENDIENTE",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [],
+      "api": [],
+      "evidence": [],
+      "blockers": [
+        "Sin franja cliente operativa: apps/client/src/App.tsx contiene announcement-region oculta",
+        "Sin editor/configuración de Comunicaciones en gestión",
+        "Sin circuito autenticado servidor/PG17 de publicación/programación y eventos",
+        "Sin recorrido integrador gestión→PG17/Fastify→cliente/Chromium"
+      ],
+      "note": "El HTML histórico es prototipo de demostración, NO implementación productiva. No atribuir prioridad visual o aprobación de ubicación no documentadas."
+    },
+    {
+      "id": "CV-014-reservas-anticipadas",
+      "status": "PENDIENTE",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [],
+      "api": [],
+      "evidence": [],
+      "blockers": [
+        "Requiere cerrar las decisiones pendientes RF y recorrido integral reserva→cocina→QR→pedido"
+      ],
+      "note": "No confundir cesta local y selección con reserva confirmada."
+    },
+    {
+      "id": "CV-014-llamada-camarero",
+      "status": "PENDIENTE",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [],
+      "api": [],
+      "evidence": [],
+      "blockers": [
+        "Falta acreditar recorrido cliente→aviso compartido sala→atención e idempotencia"
+      ],
+      "note": "No atribuir funcionalidad a una pantalla estática."
+    }
+  ]
+}
