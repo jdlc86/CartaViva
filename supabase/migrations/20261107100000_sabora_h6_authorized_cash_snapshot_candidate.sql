@@ -14,30 +14,29 @@ BEGIN
  IF p_key_id !~ '^[A-Za-z0-9_-]{8,64}$' OR p_database_role IS DISTINCT FROM session_user
    OR p_actor_user_id IS NULL OR p_staff_role NOT IN ('admin','waiter','kitchen','root')
    OR p_action NOT IN ('report_incident','resolve_incident','settle_cash','refund_cash',
-                      'ack_dispatch','read_events','read_cash_accounts','close_account')
+                      'ack_dispatch','read_events','close_account','set_catalog_sold_out','read_cash_accounts')
    OR p_target_id IS NULL OR p_correlation_id !~ '^[A-Za-z0-9_-]{8,128}$'
    OR p_issued_at_ms>v_now+5000 OR p_issued_at_ms<v_now-60000
    OR p_expires_at_ms<=v_now OR p_expires_at_ms>p_issued_at_ms+60000
    OR p_signature_hex !~ '^[0-9a-f]{64}$'
- THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501'; END IF;
+ THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501';END IF;
  SELECT k.hmac_key,k.expires_at INTO v_key,v_key_expiry
   FROM sabora.order_operation_signing_keys k WHERE k.key_id=p_key_id
-    AND k.disabled_at IS NULL AND k.not_before<=clock_timestamp()
-    AND k.expires_at>clock_timestamp() FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501'; END IF;
+   AND k.disabled_at IS NULL AND k.not_before<=clock_timestamp()
+   AND k.expires_at>clock_timestamp() FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501';END IF;
  SELECT m.role INTO v_role FROM sabora.staff_members m
   WHERE m.user_id=p_actor_user_id AND m.state='active' FOR UPDATE;
  IF NOT FOUND OR v_role IS DISTINCT FROM p_staff_role THEN
-   RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501';
- END IF;
+  RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501';END IF;
  v_payload:='h6-v1'||chr(10)||p_database_role||chr(10)||p_actor_user_id::text||chr(10)
   ||p_staff_role||chr(10)||p_action||chr(10)||p_target_id::text||chr(10)
   ||p_correlation_id||chr(10)||p_issued_at_ms::text||chr(10)||p_expires_at_ms::text;
  v_expected:=encode(extensions.hmac(convert_to(v_payload,'UTF8'),v_key,'sha256'),'hex');
  IF length(v_expected)<>length(p_signature_hex)
-   OR extensions.hmac(convert_to(v_expected,'UTF8'),convert_to('sabora-h6-capability-compare','UTF8'),'sha256')
-      <>extensions.hmac(convert_to(p_signature_hex,'UTF8'),convert_to('sabora-h6-capability-compare','UTF8'),'sha256')
- THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501'; END IF;
+  OR extensions.hmac(convert_to(v_expected,'UTF8'),convert_to('sabora-h6-capability-compare','UTF8'),'sha256')
+   <>extensions.hmac(convert_to(p_signature_hex,'UTF8'),convert_to('sabora-h6-capability-compare','UTF8'),'sha256')
+ THEN RAISE EXCEPTION 'invalid_h6_staff_capability' USING errcode='42501';END IF;
  RETURN v_role;
 END;
 $verify_staff$;
@@ -45,10 +44,9 @@ ALTER FUNCTION sabora.verify_h6_staff_capability_candidate(text,text,uuid,text,t
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.verify_h6_staff_capability_candidate(text,text,uuid,text,text,uuid,text,bigint,bigint,text)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
-  sabora_h6_operations_runtime,sabora_h6_provider_runtime;
+      sabora_h6_operations_runtime,sabora_h6_provider_runtime;
 GRANT EXECUTE ON FUNCTION sabora.verify_h6_staff_capability_candidate(text,text,uuid,text,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_fn_owner;
-
 
 GRANT SELECT(account_id,table_id,session_id,visit_key)
  ON sabora.customer_account_operational_bindings TO sabora_h6_fn_owner;
