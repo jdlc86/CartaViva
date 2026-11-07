@@ -1126,7 +1126,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
     "AND created_at<$2::timestamptz",[report.from,report.to])).rows[0];
    assert.equal(report.cashCollectedCents,Number(cash.amount),
     'normal cash consumption KPI must exclude separate staff tips');
-   await assert.rejects(repository.read({verifiedIdentity:{userId:waiterId},
+   assert.throws(()=>repository.read({verifiedIdentity:{userId:waiterId},
     verifiedStaff:{userId:waiterId,role:'waiter'}},{period:'today'}),
     /m3_management_forbidden/,'staff without ADMIN cannot inspect finance KPIs');
   }finally{await financePool.end();}
