@@ -117,3 +117,18 @@ Hito **de código funcional incorporado; validación todavía pendiente en este 
 **Evidencia diferenciada:** Chromium cliente prueba específica selector 390/1440; smoke de gestión e instalación PWA. [Integración PG17/Fastify/HMAC M4](../../scripts/ci/m4-cash-tips-integral-scenario.mjs) ejercita cobro propio/tercero, ausencia de doble cobro, autor original, devolución no automática, idempotencia de reembolso, SQL mínimos privilegios y dashboard económico firmado. Sabora CI: IN_PROGRESS (42402686386) · Bootstrap Sabora lockfile: IN_PROGRESS (42402686407) · Sabora CV-012 independent PWA installability: SUCCESS (42402686452) · Sabora management browser visual smoke: SUCCESS (42402686524) · Sabora client browser conformance: SUCCESS (42402686384). **Mientras H6/PG17 no estén en SUCCESS de este mismo SHA, hito técnico NO cerrado.**
 
 **Permanecen los bloqueos globales:** Stripe sandbox auténtico, propina digital, devolución por medio original digital, validación fiscal/laboral antes de cobros reales, aprobación visual humana F28/R09, arranque normal, merge/despliegue. F20/R03–R05 y M4 global PARCIAL/BLOQUEADO; producción NO-GO. VPS/Fleetia y Supabase operativo intactos.
+
+## 14. Cierre técnico verificado del hito de propinas presenciales M4 — 07-11-2026
+
+**Estado actualizado respecto al §13:** la implementación y sus pruebas integradoras ya han terminado correctamente en el SHA funcional [`2a0bb5a6dacc59c0f66c1024ee149c824a21c0ee`](https://github.com/jdlc86/CartaViva/commit/2a0bb5a6dacc59c0f66c1024ee149c824a21c0ee). **5/5 GitHub Actions SUCCESS sobre ese mismo SHA**, sin mezclar resultados de commits anteriores:
+
+- [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/42403158778): SUCCESS, incluidos H6 PostgreSQL17/Fastify/HMAC, escenario integrado de propinas en efectivo y validación de dashboard ADMIN.
+- [Bootstrap Sabora lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42403158793): SUCCESS; PG17 51/51 en el registro de ejecución, sin usar Supabase operativo.
+- [Cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42403158784): SUCCESS, con escenario específico de opciones, consentimiento, desglose y prueba de pagador.
+- [Gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42403158820): SUCCESS.
+- [Instalabilidad de ambas PWA](https://github.com/jdlc86/CartaViva/actions/runs/42403158746): SUCCESS.
+
+**Implementado y técnicamente validado en candidato aislado:** las seis opciones normativas (sin propina predeterminada), cálculo en servidor, separación de cobro de consumo y propina, acreditación del pagador original, idempotencia y prueba de devolución expresa a pagador, autorización ADMIN/ROOT para devolver, ausencia de devolución automática al cancelar consumo y lectura financiera ADMIN diferenciada. [Informe M4](../reviews/SABORA_M4_CASH_TIPS_INTEGRAL_CANDIDATE_2026-11-07.md) · [tablero §42](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
+**No equivale a cierre de M4 global ni GO de producción:** sin Stripe sandbox real para propina digital o pagos por tercero, sin devolución real a método digital original, sin aceptación visual humana F28/R09, sin evidencia de entrega física de efectivo, sin validación fiscal/laboral de puesta en servicio. **F20/R03–R05/M4 global PARCIAL/BLOQUEADO; M6 NO-GO.** PR #49 permanece Draft, sin merge ni despliegue. No se han modificado Fleetia, VPS ni Supabase operativo. Los apartados §13 y §41 del tablero describen un corte histórico anterior a la finalización de estos workflows.
+

@@ -27,3 +27,10 @@
 Esta implementación cierra solo el **candidato de propina en efectivo** una vez que las pruebas económicas realmente pasen. Quedan fuera: integración Stripe Payment Element/SDK en PWA real, tip digital cobrado/capturado con sandbox remoto autorizado, posible devolución al mismo método digital por proveedor, aceptación visual humana F28/R09, fiscalidad/trabajo validada y autorización de producción. **M4 global, F20/R03–R05, CV-008/CV-009 siguen PARCIAL/BLOQUEADO y M6 NO-GO**. Ninguna app fue desplegada ni actualizada contra infraestructura activa.
 
 [Continuidad sesión 28](../handoffs/SESSION_28_HANDOFF_2026-11-07.md) · [tablero vivo §41](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [informe pagos por terceros en efectivo](SABORA_M4_THIRD_PARTY_CASH_PAYER_REFUND_CANDIDATE_2026-11-07.md).
+
+## Cierre posterior de CI sobre el SHA funcional final — 07-11-2026
+
+La versión final de código de este hito es `2a0bb5a6dacc59c0f66c1024ee149c824a21c0ee`. Se han verificado **5/5 workflows SUCCESS** de este SHA: [H6 CI](https://github.com/jdlc86/CartaViva/actions/runs/42403158778), [Bootstrap PostgreSQL17](https://github.com/jdlc86/CartaViva/actions/runs/42403158793) (51/51), [Chromium cliente](https://github.com/jdlc86/CartaViva/actions/runs/42403158784), [Chromium gestión](https://github.com/jdlc86/CartaViva/actions/runs/42403158820) e [instalabilidad PWA](https://github.com/jdlc86/CartaViva/actions/runs/42403158746). Esta comprobación sustituye únicamente el estado **EN EJECUCIÓN** del corte anterior; no cambia la normativa ni amplía el alcance al proveedor Stripe real.
+
+**Resultado:** propinas en efectivo integradas y técnicamente validadas en candidato aislado; el cierre M4 global sigue PARCIAL/BLOQUEADO, y producción NO-GO. [Sesión 28 §14](../handoffs/SESSION_28_HANDOFF_2026-11-07.md) · [tablero §42](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
