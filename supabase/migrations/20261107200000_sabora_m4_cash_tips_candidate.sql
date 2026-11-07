@@ -343,7 +343,7 @@ BEGIN
   AND s.expires_at>clock_timestamp() FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'tip_payer_forbidden' USING errcode='42501'; END IF;
  SELECT * INTO v_collection FROM sabora.cash_tip_collections_candidate
- WHERE id=p_collection_id AND payer_customer_id=v_payer FOR SHARE;
+ WHERE id=p_collection_id AND payer_customer_id=v_payer;
  IF NOT FOUND OR EXISTS(SELECT 1 FROM sabora.cash_tip_refunds_candidate r
   WHERE r.collection_id=p_collection_id)
  THEN RAISE EXCEPTION 'tip_payer_forbidden' USING errcode='42501'; END IF;
@@ -394,7 +394,7 @@ BEGIN
   RETURN v_existing.result||jsonb_build_object('repeated',true);
  END IF;
  SELECT * INTO v_collection FROM sabora.cash_tip_collections_candidate
-  WHERE id=p_collection_id FOR SHARE;
+  WHERE id=p_collection_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'tip_refund_unavailable' USING errcode='23514'; END IF;
  IF EXISTS(SELECT 1 FROM sabora.cash_tip_refunds_candidate
   WHERE collection_id=p_collection_id) THEN
