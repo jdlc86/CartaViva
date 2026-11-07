@@ -1,4 +1,4 @@
-export const MANAGEMENT_AREAS = Object.freeze(['resumen', 'catalogo', 'mesas', 'comandas', 'equipo']);
+export const MANAGEMENT_AREAS = Object.freeze(['resumen', 'catalogo', 'mesas', 'comandas', 'caja', 'equipo']);
 
 export function parseManagementArea(hash) {
   if (typeof hash !== 'string') return 'resumen';
