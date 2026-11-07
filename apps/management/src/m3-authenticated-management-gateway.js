@@ -67,7 +67,13 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl
       (value.previousCollectedCents!==null&&!integer(value.previousCollectedCents))||
       (value.averageTicketCents!==null&&!integer(value.averageTicketCents))||
       !['complete','incomplete'].includes(value.historicalCoverage)||
-      typeof value.rankingComplete!=='boolean'||value.tipsAvailable!==false||
+      typeof value.rankingComplete!=='boolean'||
+      !((value.tipsAvailable===false&&value.tipsCents===null)||
+        (value.tipsAvailable===true&&Number.isSafeInteger(value.tipsCents)&&
+         Number.isSafeInteger(value.tipsCollectedCents)&&value.tipsCollectedCents>=0&&
+         Number.isSafeInteger(value.tipsRefundedCents)&&value.tipsRefundedCents>=0&&
+         value.tipsCents===value.tipsCollectedCents-value.tipsRefundedCents&&
+         value.tipsCoverage==='cash'))||
       !Array.isArray(value.dailySales)||value.dailySales.length>31||
       !value.dailySales.every(x=>plain(x)&&/^20[0-9]{2}-[01][0-9]-[0-3][0-9]$/.test(x.date)&&
         integer(x.netSalesCents))||

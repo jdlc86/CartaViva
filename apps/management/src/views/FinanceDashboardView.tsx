@@ -74,7 +74,7 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
    <section aria-label="Indicadores financieros del periodo seleccionado">
     <div className="metric-grid">
      <article className="metric-card"><span>Ventas netas · periodo</span><strong>{currency(snapshot.salesCents)}</strong><p>Consumo confirmado menos ajustes; sin propinas.</p><small>Vs. periodo anterior: {compare(snapshot.salesCents,snapshot.previousSalesCents)}</small></article>
-     <article className="metric-card"><span>Recaudación confirmada · periodo</span><strong>{money(snapshot.collectedCents)}</strong><p>Efectivo y capturas Stripe menos devoluciones realmente ejecutadas.</p><small>Vs. anterior: {compare(snapshot.collectedCents,snapshot.previousCollectedCents)}</small></article>
+     <article className="metric-card"><span>Recaudación confirmada · periodo</span><strong>{money(snapshot.collectedCents)}</strong><p>Solo consumo: efectivo y capturas Stripe menos devoluciones ejecutadas; propinas separadas.</p><small>Vs. anterior: {compare(snapshot.collectedCents,snapshot.previousCollectedCents)}</small></article>
      <article className="metric-card"><span>Saldo pendiente · actual</span><strong>{currency(snapshot.outstandingCents)}</strong><p>Deuda abierta exigible; nunca incluye autorizaciones como recaudación.</p></article>
      <article className="metric-card"><span>Pedidos con consumo · periodo</span><strong>{snapshot.ordersCount}</strong><p>Pedidos confirmados sin contabilizar reintentos.</p></article>
      <article className="metric-card"><span>Ticket medio · periodo</span><strong>{money(snapshot.averageTicketCents)}</strong><p>Por {snapshot.consumingAccounts} cuenta(s) con consumo; métrica operativa, no fiscal.</p></article>
@@ -113,7 +113,14 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
     <div className="finance-channels">
      <p><strong>Efectivo registrado:</strong> {currency(snapshot.cashCollectedCents)}</p>
      <p><strong>Tarjeta confirmada:</strong> {money(snapshot.stripeCollectedCents)}</p>
-     <p><strong>Propinas:</strong> Sin datos — el módulo de propinas sigue pendiente y no se imputa a ventas.</p>
+     {snapshot.tipsAvailable?
+     <>
+      <p><strong>Propinas recaudadas · efectivo:</strong> {currency(snapshot.tipsCollectedCents??0)}</p>
+      <p><strong>Devoluciones de propinas:</strong> {currency(snapshot.tipsRefundedCents??0)}</p>
+      <p><strong>Propinas netas · efectivo:</strong> {currency(snapshot.tipsCents??0)}</p>
+      <p className="privacy-copy">Las propinas no son ventas ni se distribuyen a empleados desde Sabora. La recaudación por Stripe no está incorporada a este indicador hasta validar el proveedor.</p>
+     </>:
+     <p><strong>Propinas:</strong> Sin datos verificables. No se imputan a ventas.</p>}
     </div>
    </section>
   </>:null}

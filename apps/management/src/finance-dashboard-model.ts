@@ -7,7 +7,9 @@ export type FinanceSnapshot=Readonly<{
  ordersCount:number;consumingAccounts:number;averageTicketCents:number|null;
  outstandingCents:number;cashCollectedCents:number;
  stripeCollectedCents:number|null;collectedCents:number|null;
- previousCollectedCents:number|null;tipsCents:null;tipsAvailable:false;
+ previousCollectedCents:number|null;
+ tipsCents:number|null;tipsAvailable:boolean;
+ tipsCollectedCents?:number;tipsRefundedCents?:number;tipsCoverage?:'cash';
  historicalCoverage:'complete'|'incomplete';rankingComplete:boolean;
  dailySales:ReadonlyArray<Readonly<{date:string;netSalesCents:number}>>;
  topItems:ReadonlyArray<Readonly<{itemId:string;name:string;units:number;netSalesCents:number}>>|null;
