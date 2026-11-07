@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,
- READ_H6_PAYMENT_POLICY_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
  from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,READ_TABLE_CHANGE_H6_SQL,
  READ_TABLE_CHANGE_H6_OUTBOX_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -160,12 +160,13 @@ function h6ReadPool({extraRole=false,directExecute=false,extraFunction=false,wro
    wrongOverload?'sabora.read_customer_round_h6_candidate(bytea,uuid,text)':
     'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
    'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+   'sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)',
    'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)',
    ...(extraFunction?['sabora.confirm_customer_round_h6_candidate(bytea,uuid)']:[])
   ]}]};
   if(['BEGIN','COMMIT','ROLLBACK','SET LOCAL ROLE sabora_b3_h6_reader_runtime'].includes(sql))return {rows:[]};
   if(sql===READ_H6_ROUND_SQL||sql===READ_H6_PAYMENT_POLICY_SQL||
-     sql===READ_H6_ORDER_REVISION_SQL)return {rows:[{round_id:requestId}]};
+     sql===READ_H6_ACCOUNT_PAYMENT_MODE_SQL||sql===READ_H6_ORDER_REVISION_SQL)return {rows:[{round_id:requestId}]};
   throw Error('unexpected_h6_read_sql');
  },release(){}};}};
 }
@@ -330,7 +331,7 @@ test('B3 verified factory passes only sealed transaction and denies legacy H6 SQ
 
 test('B3 H6 read capability allows only replay and policy queries',async()=>{
  assert.deepEqual(B3_H6_READ_SQL,[READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL,
-  READ_H6_ORDER_REVISION_SQL]);
+  READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL]);
  const h6=h6ReadPool();
  const withRead=createIsolatedB3H6ReadTransaction({h6ReadPool:h6});
  await assert.rejects(()=>withRead(query=>query(PERSIST_H6_TRANSFER_ORDER_SQL,[])),
@@ -339,8 +340,10 @@ test('B3 H6 read capability allows only replay and policy queries',async()=>{
   'SET LOCAL ROLE sabora_b3_h6_reader_runtime','ROLLBACK']);
  h6.calls.length=0;
  await withRead(query=>query(READ_H6_ROUND_SQL,[]));
+ await withRead(query=>query(READ_H6_ACCOUNT_PAYMENT_MODE_SQL,[]));
  assert.deepEqual(h6.calls.map(x=>x.sql),['BEGIN',
-  'SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_ROUND_SQL,'COMMIT']);
+  'SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_ROUND_SQL,'COMMIT',
+  'BEGIN','SET LOCAL ROLE sabora_b3_h6_reader_runtime',READ_H6_ACCOUNT_PAYMENT_MODE_SQL,'COMMIT']);
 });
 
 
