@@ -186,6 +186,34 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
       return mutation(send,`/api/v1/operations/incidents/${incidentId}/resolution`,
        {resolution,reason:reason.trim(),correlationId});
     },
+    async listCashAccounts({after=null,limit=50}={}){
+      if((after!==null&&!UUID.test(after))||!Number.isSafeInteger(limit)||limit<1||limit>50)
+        throw Error('invalid_h6_cash_request');
+      const query=new URLSearchParams({limit:String(limit)});
+      if(after)query.set('after',after);
+      const response=await send('/api/v1/operations/cash/accounts?'+query,{
+       method:'GET',cache:'no-store',redirect:'error',credentials:'omit',
+       headers:{Accept:'application/json'}});
+      const result=await json(response);
+      if(!result||result.version!==1||!Array.isArray(result.items)||
+         (result.nextAfter!==null&&!UUID.test(result.nextAfter))||
+         !result.items.every(value=>value&&UUID.test(value.accountId)&&
+          UUID.test(value.tableId)&&Number.isSafeInteger(value.tableNumber)&&
+          typeof value.customerCode==='string'&&/^SB-[2-9A-HJ-NP-Y]{12}$/.test(value.customerCode)&&
+          ['open','blocked'].includes(value.state)&&
+          ['pay_now','pay_at_end',null].includes(value.paymentMode)&&
+          Number.isSafeInteger(value.outstandingCents)&&value.outstandingCents>=0&&
+          Number.isSafeInteger(value.cashSettledCents)&&value.cashSettledCents>=0&&
+          typeof value.paymentUncertain==='boolean'&&typeof value.refundPending==='boolean'&&
+          typeof value.canSettle==='boolean'))
+       throw new OrderOperationsGatewayError('invalid_response');
+      return Object.freeze({version:1,nextAfter:result.nextAfter,
+       items:Object.freeze(result.items.map(value=>Object.freeze({...value})))});
+    },
+    closeCashAccount({accountId,correlationId}={}){
+     if(!UUID.test(accountId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
+     return mutation(send,`/api/v1/operations/accounts/${accountId}/close`,{correlationId});
+    },
     settleCash({accountId,amountCents,correlationId}={}) {
       if(!UUID.test(accountId)||!Number.isSafeInteger(amountCents)||amountCents<1||
         !CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
