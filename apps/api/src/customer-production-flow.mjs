@@ -23,6 +23,8 @@ export const PERSIST_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,rep
  )`;
 export const READ_H6_PAYMENT_POLICY_SQL=`SELECT require_pay_as_ordered,payment_policy_version
  FROM sabora.read_customer_payment_policy_h6_candidate($1::bytea,$2::uuid,$3::text)`;
+export const READ_H6_ACCOUNT_PAYMENT_MODE_SQL=`SELECT selected_payment_mode,require_pay_as_ordered,payment_policy_version
+ FROM sabora.read_customer_account_payment_mode_h6_candidate($1::bytea,$2::uuid,$3::text)`;
 export const READ_H6_ROUND_SQL=`SELECT account_id,round_id,amount_cents,effective_payment_mode,
  round_state,payment_attempt_id,authorization_key
  FROM sabora.read_customer_round_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid)`;
@@ -161,6 +163,20 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    ...(paymentPolicy?{paymentPolicy}:null)});
  };
 
+ const readPaymentPolicy=async({customerSessionToken,tableId,visitId}={})=>{
+  if(!h6||!TABLE_ID.test(tableId??'')||typeof visitId!=='string'||!KEY.test(visitId))
+   throw Error('invalid_customer_flow_input');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const row=await withH6Reader(async query=>one(await query(READ_H6_ACCOUNT_PAYMENT_MODE_SQL,
+   [sessionHash,tableId,visitId])));
+  const version=revision(row.payment_policy_version);
+  if(![null,'pay_now','pay_at_end'].includes(row.selected_payment_mode)||
+     typeof row.require_pay_as_ordered!=='boolean'||version===null)
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({selectedMode:row.selected_payment_mode,
+   requirePayAsOrdered:row.require_pay_as_ordered,version});
+ };
  const quote=async({customerSessionToken,...raw}={})=>{
   assertScope(raw);
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
@@ -411,5 +427,5 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
  };
 
  return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation,
-  ...(h6?{readOrderRevision,resubmitOrderRevision}:null)});
+  ...(h6?{readPaymentPolicy,readOrderRevision,resubmitOrderRevision}:null)});
 }

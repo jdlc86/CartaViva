@@ -71,6 +71,21 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
+  if(typeof flow.readPaymentPolicy==='function')scope.get('/payment-policy',async(request,reply)=>{
+   reply.header('Cache-Control','no-store');reply.header('X-Content-Type-Options','nosniff');
+   // Reject unknown, repeated and forged parameters before entering the SQL reader.
+   let params;
+   try{params=new URL(request.raw.url,'http://sabora.invalid').searchParams;}
+   catch{return reply.code(400).send({error:'invalid_customer_request'});}
+   const keys=[...params.keys()];
+   if(keys.length!==2||keys.some(k=>!['tableId','visitId'].includes(k))||
+      params.getAll('tableId').length!==1||params.getAll('visitId').length!==1)
+    return reply.code(400).send({error:'invalid_customer_request'});
+   try{return reply.code(200).send(await flow.readPaymentPolicy({
+    customerSessionToken:readCustomerCookie(request.headers.cookie),
+    tableId:params.get('tableId'),visitId:params.get('visitId')}));}
+   catch(error){return replyFailure(reply,error);}
+  });
   if(tableChange&&typeof tableChange.readState==='function'){
    scope.get('/table-change/state',async(request,reply)=>{
     reply.header('Cache-Control','no-store');

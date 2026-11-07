@@ -107,6 +107,18 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
      requirePayAsOrdered:value.paymentPolicy.requirePayAsOrdered as boolean,
      version:value.paymentPolicy.version as number})});
   },
+  async paymentPolicy(input:{tableId:string;visitId:string}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId))
+    throw Error('invalid_customer_payment_policy_transport');
+   const query=new URLSearchParams({tableId:input.tableId,visitId:input.visitId});
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/payment-policy?'+query,'GET');
+   if(![null,'pay_now','pay_at_end'].includes(value.selectedMode as string|null)||
+      typeof value.requirePayAsOrdered!=='boolean'||
+      !Number.isSafeInteger(value.version)||(value.version as number)<1)
+    throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+   return Object.freeze({selectedMode:value.selectedMode as 'pay_now'|'pay_at_end'|null,
+    requirePayAsOrdered:value.requirePayAsOrdered as boolean,version:value.version as number});
+  },
   async quote(input:Json){
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/quotes','POST',input);
    if(!Array.isArray(value.lines)||value.lines.length<1||value.lines.length>50||

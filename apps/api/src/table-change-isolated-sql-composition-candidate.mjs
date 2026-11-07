@@ -4,7 +4,7 @@ import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
 import {createCustomerProductionFlow,PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,
- READ_H6_PAYMENT_POLICY_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
  from './customer-production-flow.mjs';
 import {assertCustomerFlowSqlCapabilities} from './customer-production-sql-preflight.mjs';
 import {AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
@@ -26,6 +26,7 @@ export const B3_H6_READER_ROLE='sabora_b3_h6_reader_runtime';
 export const B3_H6_READER_SIGNATURES=Object.freeze([
  'sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
  'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+ 'sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)',
  'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)'
 ]);
 export const B3_H6_LOGIN_SURFACE_SQL=`SELECT
@@ -75,7 +76,7 @@ export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
    throw Error('invalid_b3_h6_login_surface');
   const functions=await client.query(B3_H6_READER_FUNCTION_SQL,[B3_H6_READER_ROLE]);
   const signatures=functions?.rows?.length===1?functions.rows[0].signatures:null;
-  if(!Array.isArray(signatures)||signatures.length!==3||
+  if(!Array.isArray(signatures)||signatures.length!==4||
      !B3_H6_READER_SIGNATURES.every(name=>signatures.includes(name)))
    throw Error('invalid_b3_h6_reader_function_surface');
   valid=true;
@@ -87,7 +88,7 @@ export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
 export const B3_CONFIRMATION_SQL=Object.freeze([
  PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL]);
 export const B3_H6_READ_SQL=Object.freeze([
- READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL,READ_H6_ORDER_REVISION_SQL]);
+ READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL]);
 
 export function createIsolatedB3H6ReadTransaction({h6ReadPool}={}){
  return createRoleScopedPostgresTransaction({pool:h6ReadPool,

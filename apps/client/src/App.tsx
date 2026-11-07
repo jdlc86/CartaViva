@@ -19,6 +19,8 @@ type CustomerIdentityState={status:'checking'|'guest'|'unavailable'}|{
 };
 type TableVisit=Readonly<{tableId:string;visitId:string;basketId:string;expiresAt:string;
  paymentPolicy:Readonly<{requirePayAsOrdered:boolean;version:number}>|null}>;
+type CheckoutPaymentPolicy=Readonly<{selectedMode:PaymentMode|null;
+ requirePayAsOrdered:boolean;version:number}>;
 type QuoteLine=Readonly<{quoteId:string;itemId:string;totalCents:number;expiresAt:string;lineKey:string;quantity:number;priceCents:number}>;
 type QrState='idle'|'pending'|'identity_required'|'authorizing'|'authorized'|
  'invalid'|'forbidden'|'unavailable'|'checking_change'|'change_prompt'|
@@ -110,6 +112,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [changeClock,setChangeClock]=useState(()=>Date.now());
  const [checkoutPhase,setCheckoutPhase]=useState<CheckoutPhase>('quoting');
  const [paymentMode,setPaymentMode]=useState<PaymentMode>('pay_now');
+ const [checkoutPaymentPolicy,setCheckoutPaymentPolicy]=useState<CheckoutPaymentPolicy|null>(null);
  const [quoteLines,setQuoteLines]=useState<readonly QuoteLine[]>([]);
  const [quotedTotal,setQuotedTotal]=useState(0);
  const [checkoutMessage,setCheckoutMessage]=useState<string|null>(null);
@@ -471,6 +474,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
    setOverlay('qr');setArea('qr');return;
   }
   setOverlay('checkout');setCheckoutPhase('quoting');setCheckoutMessage(null);setQuoteLines([]);
+  setCheckoutPaymentPolicy(null);
   checkoutRequestRef.current=`ui_${crypto.randomUUID().replaceAll('-','_')}`;
   acceptanceTokenRef.current=null;stripeClientSecretRef.current=null;
   try{
@@ -486,14 +490,26 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
    setQuoteLines(Object.freeze(quote.lines.map((line,index)=>Object.freeze({...line,
     lineKey:basketLineKey(basket[index]),quantity:basket[index].quantity,
     priceCents:basket[index].priceCents}))));setQuotedTotal(nextTotal);
-   setPaymentMode(tableVisit.paymentPolicy?.requirePayAsOrdered?'pay_now':paymentMode);
+   // A signed reader checks the *current* account after every quote. The
+   // previous device's choice, a refreshed QR or a table transfer never
+   // authorizes this browser to choose again.
+   const policy=flowContract==='h6'?await customerTransport.paymentPolicy({
+    tableId:tableVisit.tableId,visitId:tableVisit.visitId}):null;
+   if(flowContract==='h6'&&!policy)throw Error('payment_policy_unavailable');
+   setCheckoutPaymentPolicy(policy);
+   setPaymentMode(policy?.selectedMode??(policy?.requirePayAsOrdered||
+    tableVisit.paymentPolicy?.requirePayAsOrdered?'pay_now':paymentMode));
+   if(nextTotal>0&&policy?.selectedMode==='pay_at_end'&&policy.requirePayAsOrdered)
+    setCheckoutMessage(locale==='es'?
+     'La política de la mesa exige pago inmediato, pero tu cuenta mantiene «Pagar al terminar». Consulta al personal para conciliar antes de realizar otro pedido.':
+     'The table requires immediate payment, but your account remains set to pay at the end. Please consult staff before ordering again.');
    setCheckoutPhase('ready');
   }catch{
    setCheckoutPhase('error');setCheckoutMessage(locale==='es'?
     'No se pudo revalidar la selección. La cesta no se ha confirmado.':
     'The selection could not be revalidated. The basket was not confirmed.');
   }
- },[basket,identity.status,locale,paymentMode,tableVisit]);
+ },[basket,flowContract,identity.status,locale,paymentMode,tableVisit]);
 
  const reconcileCheckout=useCallback(async()=>{
   const credential=qrCredentialRef.current,requestKey=checkoutRequestRef.current;
@@ -522,7 +538,10 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
 
  const confirmCheckout=useCallback(async()=>{
   const credential=qrCredentialRef.current,requestKey=checkoutRequestRef.current;
-  if(!tableVisit||!credential||!requestKey||quoteLines.length!==basket.length)return;
+  if(!tableVisit||!credential||!requestKey||quoteLines.length!==basket.length||
+     (flowContract==='h6'&&(!checkoutPaymentPolicy||
+       (quotedTotal>0&&checkoutPaymentPolicy.selectedMode==='pay_at_end'&&
+        checkoutPaymentPolicy.requirePayAsOrdered))))return;
   const quotedRows=quoteLines.map(quote=>basket.find(line=>basketLineKey(line)===quote.lineKey));
   if(quotedRows.some((line,index)=>!line||
     line.itemId.toLowerCase()!==quoteLines[index].itemId.toLowerCase()||
@@ -536,7 +555,8 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   try{
    const result=await customerTransport.confirm({tableId:tableVisit.tableId,qrToken:credential.token,
     visitId:tableVisit.visitId,basketId:tableVisit.basketId,requestKey,
-    ...(flowContract==='h6'?{paymentMode:quotedTotal===0?null:paymentMode}:{}),
+    ...(flowContract==='h6'?{paymentMode:quotedTotal===0||
+     checkoutPaymentPolicy?.selectedMode!==null?null:paymentMode}:{}),
     lines:quoteLines.map((quote,index)=>({quoteId:quote.quoteId,itemId:quote.itemId,
      selection:quotedRows[index]!.selection,quantity:quotedRows[index]!.quantity})),
     ...(acceptanceTokenRef.current?{acceptanceToken:acceptanceTokenRef.current}:null)});
@@ -594,7 +614,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
      'No se confirmó el pedido. Puedes reintentar sin duplicarlo.':
      'The order was not confirmed. You can retry without duplicating it.'));
   }
- },[basket,confirmStripePayment,flowContract,locale,paymentMode,quoteLines,quotedTotal,tableVisit]);
+ },[basket,checkoutPaymentPolicy,confirmStripePayment,flowContract,locale,paymentMode,quoteLines,quotedTotal,tableVisit]);
 
  const resubmitRevision=useCallback(async()=>{
   const credential=qrCredentialRef.current,requestKey=revisionRequestRef.current;
@@ -772,7 +792,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     <span className="qr-error" role="alert">{locale==='es'?'Esta instalación aún no tiene configurado su código de restaurante.':'This installation does not have its restaurant code configured yet.'}</span>}
    <p className="privacy-copy">{locale==='es'?'El token no se guarda en el historial ni en el almacenamiento del navegador. El QR identifica contexto de mesa; no acredita presencia física ni permite ver cuentas ajenas.':'The token is not kept in browser history or storage. The QR identifies table context; it does not prove physical presence or grant access to other accounts.'}</p></div></Modal>:null}
   {overlay==='cart'?<Modal title={copy.selection} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="basket-lines">{basket.length?basket.map(line=>{const item=items.find(value=>value.id.toLowerCase()===line.itemId.toLowerCase());const currentPrice=item?currentCatalogUnitPrice(item,line):null;const changed=currentPrice===null||currentPrice!==line.priceCents;const lineKey=basketLineKey(line);const variant=item?basketSelectionDescription(item,line.selection):'';return <article key={lineKey}><div className="basket-line-main"><h3>{line.name}</h3>{variant?<p className="privacy-copy">{variant}</p>:null}<p>{formatPrice(line.priceCents,locale==='es'?'es-ES':'en-IE')} · {item?(item.available?(locale==='es'?'Disponible':'Available'):(locale==='es'?'Agotado: retira el plato antes de pedir':'Sold out: remove this dish before ordering')):(locale==='es'?'Plato retirado de la carta: retíralo antes de pedir':'Dish no longer published: remove before ordering')}</p>{item&&item.available&&changed&&currentPrice!==null?<p className="basket-price-notice" role="status">{locale==='es'?'El precio ha cambiado a ':'The price has changed to '}{formatPrice(currentPrice,locale==='es'?'es-ES':'en-IE')}<button type="button" onClick={()=>acceptPrice(line.itemId,lineKey)}>{locale==='es'?'Aceptar nuevo precio':'Accept new price'}</button></p>:null}<div className="basket-line-actions"><button type="button" onClick={()=>removeLine(line.itemId,lineKey)}>{locale==='es'?'Retirar de la cesta':'Remove from basket'}</button>{item&&item.available?<button type="button" onClick={()=>openDetail(item,line)}>{locale==='es'?'Editar detalles':'Edit details'}</button>:null}</div></div>{item?<div className="quantity-control"><button type="button" onClick={()=>updateQuantity(item,-1,lineKey)} aria-label={`${locale==='es'?'Quitar una unidad de':'Remove one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="minus"/></button><strong>{line.quantity}</strong><button type="button" disabled={!item.available} onClick={()=>updateQuantity(item,1,lineKey)} aria-label={`${locale==='es'?'Añadir una unidad de':'Add one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="plus"/></button></div>:null}</article>}):<EmptyState>{locale==='es'?'Tu selección está vacía.':'Your selection is empty.'}</EmptyState>}</div>{basket.length?<><div className="basket-total"><span>Total {locale==='es'?'informativo':'for reference'}</span><strong>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</strong></div>{issues.length>0?<div className="prose-card" role="status" aria-live="polite"><h3>{locale==='es'?'Selección pendiente de revisión':'Selection needs review'}</h3><p>{locale==='es'?`${issues.length} plato(s) requieren una decisión antes de continuar.`:`${issues.length} dish(es) need your decision before continuing.`}</p><ul>{issueCounts.soldOut>0?<li>{locale==='es'?`${issueCounts.soldOut} agotado(s)`: `${issueCounts.soldOut} sold out`}</li>:null}{issueCounts.unpublished>0?<li>{locale==='es'?`${issueCounts.unpublished} retirado(s)`: `${issueCounts.unpublished} unpublished`}</li>:null}{issueCounts.priceChanged>0?<li>{locale==='es'?`${issueCounts.priceChanged} con precio actualizado`: `${issueCounts.priceChanged} with updated prices`}</li>:null}</ul></div>:null}<div className="basket-actions"><button type="button" disabled>{locale==='es'?'Reserva no disponible':'Reservation unavailable'}</button><button className="primary-action" type="button" disabled={!canRequestTableOrder} onClick={()=>{if(tableVisit)void prepareCheckout();else {setOverlay('qr');setArea('qr');}}}>{tableVisit?(locale==='es'?'Revalidar y continuar':'Revalidate and continue'):(locale==='es'?'Validar mesa para pedir':'Validate table to order')}</button></div>{!canRequestTableOrder?<p role="status" className="privacy-copy">{catalog.status!=='ready'?(locale==='es'?'Espera a que se cargue la carta para revisar la selección.':'Wait for the menu to load before reviewing your selection.'):(locale==='es'?'Revisa los platos agotados, retirados o con cambios de precio. Retira los no disponibles o acepta expresamente los nuevos precios.':'Review sold-out, unpublished or repriced dishes. Remove unavailable dishes or expressly accept the updated configured price.')}</p>:null}<p className="privacy-copy">{locale==='es'?'El servidor revalida la cesta antes de elegir pago. Las reservas permanecen en un circuito separado.':'The server revalidates the basket before payment choice. Reservations remain in a separate flow.'}</p></>:null}</Modal>:null}
-  {overlay==='checkout'?<Modal title={locale==='es'?'Confirmar pedido':'Confirm order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><CheckoutPanel locale={locale} totalCents={quotedTotal} phase={checkoutPhase} paymentMode={paymentMode} requirePayAsOrdered={tableVisit?.paymentPolicy?.requirePayAsOrdered??false} paymentsEnabled={flowContract==='h6'} message={checkoutMessage} onPaymentMode={setPaymentMode} onConfirm={()=>void confirmCheckout()} onRetry={()=>{if(checkoutPhase==='uncertain')void reconcileCheckout();else if(quoteLines.length&&checkoutRequestRef.current)void confirmCheckout();else void prepareCheckout();}}/></Modal>:null}
+  {overlay==='checkout'?<Modal title={locale==='es'?'Confirmar pedido':'Confirm order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><CheckoutPanel locale={locale} totalCents={quotedTotal} phase={checkoutPhase} paymentMode={paymentMode} requirePayAsOrdered={checkoutPaymentPolicy?.requirePayAsOrdered??tableVisit?.paymentPolicy?.requirePayAsOrdered??false} fixedPaymentMode={checkoutPaymentPolicy?.selectedMode??null} policyConflict={quotedTotal>0&&checkoutPaymentPolicy?.selectedMode==='pay_at_end'&&checkoutPaymentPolicy.requirePayAsOrdered} paymentsEnabled={flowContract==='h6'} message={checkoutMessage} onPaymentMode={setPaymentMode} onConfirm={()=>void confirmCheckout()} onRetry={()=>{if(checkoutPhase==='uncertain')void reconcileCheckout();else if(checkoutPhase==='error')void prepareCheckout();else if(quoteLines.length&&checkoutRequestRef.current)void confirmCheckout();else void prepareCheckout();}}/></Modal>:null}
   {overlay==='revision'?<Modal title={locale==='es'?'Corregir pedido':'Correct order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="revision-correction" aria-busy={revisionPhase==='loading'||revisionPhase==='submitting'}><span className="eyebrow">{locale==='es'?'REVISIÓN NECESARIA':'REVISION REQUIRED'}</span><p>{locale==='es'?'El snapshot original se conserva. Solo las líneas señaladas necesitan una alternativa antes del despacho.':'The original snapshot is preserved. Only the marked lines need an alternative before dispatch.'}</p>{pendingRevision?<ul>{pendingRevision.lines.map(line=><li key={line.lineNumber}><div><strong>{line.itemName}</strong><span>{line.quantity} × {formatPrice(line.totalCents,locale==='es'?'es-ES':'en-IE')}</span></div>{line.affected?<label><span>{locale==='es'?'Alternativa disponible':'Available alternative'}</span><select aria-label={`${locale==='es'?'Alternativa para':'Alternative for'} ${line.itemName}`} value={revisionSelections[line.lineNumber]??''} onChange={event=>{revisionPreparedRef.current=null;revisionAcceptanceTokenRef.current=null;setRevisionChanges([]);setRevisionSelections(current=>Object.freeze({...current,[line.lineNumber]:event.target.value}));}}><option value="">{locale==='es'?'Seleccionar…':'Select…'}</option>{catalog.status==='ready'?catalog.items.filter(item=>item.available&&!(item.options??[]).some(group=>group.required)).map(item=><option key={item.id} value={item.id}>{item.name} · {formatPrice(item.priceCents,locale==='es'?'es-ES':'en-IE')}</option>):null}</select></label>:<span className="revision-preserved">{locale==='es'?'Se conserva sin cambios':'Preserved unchanged'}</span>}</li>)}</ul>:null}{revisionChanges.length?<div className="revision-price-review" role="status"><strong>{locale==='es'?'Revisión económica':'Economic review'}</strong>{revisionChanges.map(change=><p key={change.lineNumber}>{change.previousItemName}: {formatPrice(change.previousTotalCents,locale==='es'?'es-ES':'en-IE')} → {change.currentItemName}: {formatPrice(change.currentTotalCents,locale==='es'?'es-ES':'en-IE')} <b>({change.differenceCents>=0?'+':''}{formatPrice(change.differenceCents,locale==='es'?'es-ES':'en-IE')})</b></p>)}</div>:null}{revisionMessage?<p className="honest-status" role="status">{revisionMessage}</p>:null}<button className="button button--primary" type="button" disabled={!pendingRevision||revisionPhase==='loading'||revisionPhase==='submitting'} onClick={()=>void resubmitRevision()}>{revisionPhase==='submitting'?(locale==='es'?'Reenviando…':'Resubmitting…'):(locale==='es'?'Reenviar pedido':'Resubmit order')}</button><p className="privacy-copy">{locale==='es'?'No se crea una segunda cuenta ni un segundo pedido. Con pago inmediato, cualquier cambio de importe queda bloqueado hasta conciliación segura.':'No second account or order is created. With pay-now, any amount change remains blocked until safe reconciliation.'}</p></div></Modal>:null}
   {detail?<Modal title={detail.name} onClose={closeDetail} closeLabel={locale==='es'?'Cerrar':'Close'}>
    <div className="detail-visual">{detail.imageUrl?<img src={detail.imageUrl} alt=""/>:<><Icon name="leaf"/><span>{locale==='es'?'Imagen pendiente de activo autorizado':'Image awaiting an approved asset'}</span></>}</div>
