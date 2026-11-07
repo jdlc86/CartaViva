@@ -12,3 +12,7 @@
 **Regla de honestidad:** una dirección de estilo aprobada no constituye captura maestra exacta; tampoco un resultado Playwright, un HTML de ejemplo ni una imagen reconstruida. Ningún campo APPROVED_EXACT_BASELINE se rellena por deducción del agente.
 
 Para desbloquear una pantalla, obtener una imagen concreta **aprobada explícitamente por el propietario**. Versionar PNG, estado, viewport, fuente y SHA256; registrar URL de evidencia de aprobación, autor y fecha. El registro de baseline debe estar ya incorporado a la **rama base** antes de presentar una PR que cambie esa pantalla. Requisitos de revisión: [VISUAL_CONTROL_GATE](VISUAL_CONTROL_GATE.md).
+
+## Secuencia de aceptación aprobada para el desarrollo — 07-11-2026
+
+La fase vigente prioriza **soporte gráfico funcional**: controles utilizables y trazados a API/SQL, no fotografías, iconos definitivos o cierre de baselines de píxeles. La ausencia actual de una captura exacta **no bloquea** la implementación funcional ni autoriza declarar la estética aprobada. Véanse [control funcional](FUNCTIONAL_UI_COVERAGE.json) y [procedimiento de dos puertas](VISUAL_CONTROL_GATE.md). El registro de PNG solo será condición de la candidatura visual final; los estados históricos de aprobación no se han cambiado.
