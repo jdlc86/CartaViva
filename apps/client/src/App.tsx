@@ -138,6 +138,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const checkoutRequestRef=useRef<string|null>(null);
  const acceptanceTokenRef=useRef<string|null>(null);
  const stripeClientSecretRef=useRef<string|null>(null);
+ const pendingPaymentOrderRef=useRef<string|null>(null);
  const revisionRequestRef=useRef<string|null>(null);
  const revisionAcceptanceTokenRef=useRef<string|null>(null);
  const revisionPreparedRef=useRef<readonly RevisionReplacement[]|null>(null);
@@ -373,17 +374,24 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     setEventFeedConnected(true);
     setEventFeedNotice(null);
     setCustomerEvents(current=>Object.freeze([...current.slice(-49),event]));
-    if(event.type==='sabora.payment.requires_action')setCheckoutPhase('payment_action');
-    if(event.type==='sabora.payment.authorized'){
-     setCheckoutPhase('confirmed');setBasket(Object.freeze([]));
-     checkoutRequestRef.current=null;acceptanceTokenRef.current=null;stripeClientSecretRef.current=null;
-    }
-    if(event.type==='sabora.payment.authorization_unknown'||event.type==='sabora.payment.capture_unknown'){
-     setCheckoutPhase('error');setCheckoutMessage(locale==='es'?
-      'El resultado del proveedor es incierto. No intentes otro medio de pago; pide ayuda al personal.':
-      'The provider result is uncertain. Do not try another payment method; ask staff for help.');
-    }
-    if(event.type==='sabora.kitchen.dispatch_acknowledged')setEventFeedNotice(locale==='es'?
+    if(pendingPaymentOrderRef.current===eventScope.orderId&&
+        event.payload?.orderId===eventScope.orderId){
+      if(event.type==='sabora.payment.requires_action')setCheckoutPhase('payment_action');
+      if(event.type==='sabora.payment.authorized'){
+       setCheckoutPhase('confirmed');setBasket(Object.freeze([]));
+       checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
+       stripeClientSecretRef.current=null;pendingPaymentOrderRef.current=null;
+       setCheckoutMessage(locale==='es'?
+        'La autorización está acreditada en servidor; cobro y cocina siguen su propio proceso.':
+        'Authorization is verified by the server; capture and kitchen dispatch follow separately.');
+      }
+      if(['sabora.payment.authorization_unknown','sabora.payment.capture_unknown'].includes(event.type)){
+       setCheckoutPhase('uncertain');setCheckoutMessage(locale==='es'?
+        'El resultado del proveedor es incierto. No repitas el cargo ni cambies de medio.':
+        'The provider result is uncertain. Do not repeat the charge or switch methods.');
+      }
+     }
+     if(event.type==='sabora.kitchen.dispatch_acknowledged')setEventFeedNotice(locale==='es'?
      'Cocina ha recibido un pedido.':'Kitchen has received an order.');
     if(event.type==='sabora.order.revision_invalidated'&&
        event.payload.orderId===eventScope.orderId){
@@ -470,6 +478,13 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[openCart,openDetail,updateQuantity]);
 
  const prepareCheckout=useCallback(async()=>{
+  if(pendingPaymentOrderRef.current){
+   setOverlay('checkout');setCheckoutPhase('payment_action');
+   setCheckoutMessage(locale==='es'?
+    'Esta operación sigue pendiente. Consulta su estado antes de crear otro pedido.':
+    'This payment is pending. Check its state before creating another order.');
+   return;
+  }
   const credential=qrCredentialRef.current;
   if(!tableVisit||!credential||identity.status!=='authenticated'){
    setOverlay('qr');setArea('qr');return;
@@ -512,6 +527,61 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   }
  },[basket,flowContract,identity.status,locale,paymentMode,tableVisit]);
 
+ const refreshPaymentState=useCallback(async(orderId:string)=>{
+  if(!tableVisit||pendingPaymentOrderRef.current!==orderId)return;
+  setCheckoutPhase('confirming');
+  try{
+   const state=await customerTransport.paymentState({
+    tableId:tableVisit.tableId,visitId:tableVisit.visitId,orderId});
+   if(pendingPaymentOrderRef.current!==orderId)return;
+   if(state.paymentMode!=='pay_now')throw Error('invalid_payment_mode');
+   if(['grouping','capture_requested','captured','dispatch_requested',
+       'kitchen_acknowledged'].includes(state.roundState)){
+    setBasket(Object.freeze([]));checkoutRequestRef.current=null;
+    acceptanceTokenRef.current=null;stripeClientSecretRef.current=null;
+    pendingPaymentOrderRef.current=null;setCheckoutPhase('confirmed');
+    setCheckoutMessage(locale==='es'?
+     'Autorización verificada en servidor. El cargo y el envío a cocina se acreditan separadamente.':
+     'Authorization verified by the server. Capture and kitchen dispatch are separate.');
+   }else if(['payment_unknown','compensation_required'].includes(state.roundState)){
+    setCheckoutPhase('uncertain');setCheckoutMessage(locale==='es'?
+     'Pago incierto. No crees otro cargo ni cambies de medio; consulta al personal.':
+     'Payment status uncertain. Do not create another charge or switch methods; ask staff.');
+   }else if(['payment_failed','cancelled'].includes(state.roundState)){
+    setCheckoutPhase('error');setCheckoutMessage(locale==='es'?
+     'El servidor registra una incidencia económica. Consulta al personal antes de volver a pedir.':
+     'The server recorded a payment issue. Ask staff before trying again.');
+   }else{
+    setCheckoutPhase('payment_action');setCheckoutMessage(locale==='es'?
+     'La autorización sigue pendiente en el servidor. No hay cobro acreditado.':
+     'Authorization is still pending at the server. No capture has been verified.');
+   }
+  }catch{
+   if(pendingPaymentOrderRef.current!==orderId)return;
+   setCheckoutPhase('uncertain');setCheckoutMessage(locale==='es'?
+    'No se pudo consultar el estado. Se conserva el pedido original; solicita ayuda.':
+    'Unable to check the state. The original order is preserved; ask staff.');
+  }
+ },[locale,tableVisit]);
+
+ const retryPaymentAction=useCallback(async()=>{
+  const orderId=pendingPaymentOrderRef.current;
+  if(!orderId)return;
+  await refreshPaymentState(orderId);
+  if(pendingPaymentOrderRef.current!==orderId||
+     !stripeClientSecretRef.current||!confirmStripePayment)return;
+  setCheckoutPhase('confirming');
+  try{
+   await confirmStripePayment(stripeClientSecretRef.current);
+   await refreshPaymentState(orderId);
+  }catch{
+   if(pendingPaymentOrderRef.current!==orderId)return;
+   setCheckoutPhase('payment_action');setCheckoutMessage(locale==='es'?
+    'La autenticación sigue pendiente. Se reutiliza la misma operación, sin crear otra.':
+    'Authentication remains pending. The same operation is reused, not recreated.');
+  }
+ },[confirmStripePayment,locale,refreshPaymentState]);
+
  const reconcileCheckout=useCallback(async()=>{
   const credential=qrCredentialRef.current,requestKey=checkoutRequestRef.current;
   if(!tableVisit||!credential||!requestKey)return;
@@ -538,6 +608,9 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[locale,tableVisit]);
 
  const confirmCheckout=useCallback(async()=>{
+  if(pendingPaymentOrderRef.current){
+   await refreshPaymentState(pendingPaymentOrderRef.current);return;
+  }
   const credential=qrCredentialRef.current,requestKey=checkoutRequestRef.current;
   if(!tableVisit||!credential||!requestKey||quoteLines.length!==basket.length||
      (flowContract==='h6'&&(!checkoutPaymentPolicy||
@@ -564,29 +637,28 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
    if(typeof result.accountId==='string'&&typeof result.roundId==='string')
     setEventScope({accountId:result.accountId,roundId:result.roundId,orderId:result.orderId});
    if(result.requiresPaymentAction===true&&typeof result.clientSecret==='string'){
+    pendingPaymentOrderRef.current=result.orderId;
     stripeClientSecretRef.current=result.clientSecret;
+    // Browser SCA is not proof of a provider charge or kitchen dispatch.
     if(confirmStripePayment){
      try{await confirmStripePayment(result.clientSecret);
-      setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
-      stripeClientSecretRef.current=null;
-      setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
-       'La autenticación del pago se completó; el estado definitivo llegará por el canal seguro.':
-       'Payment authentication completed; final state will arrive through the secure channel.');}
+      await refreshPaymentState(result.orderId);}
      catch{setCheckoutPhase('payment_action');setCheckoutMessage(locale==='es'?
-      'Stripe no confirmó la acción. Reintenta con la misma operación; no se creará un cobro nuevo.':
-      'Stripe did not confirm the action. Retry the same operation; no new charge will be created.');}
+      'Stripe no acreditó la autorización. Consulta o reintenta la misma operación.':
+      'Stripe authorization was not verified. Check or retry the same operation.');}
     }else{
      setCheckoutPhase('payment_action');setCheckoutMessage(locale==='es'?
-      'Esta compilación no tiene conectado el componente autorizado de Stripe. El pedido queda pendiente, sin inventar un pago correcto.':
-      'This build has no authorized Stripe component connected. The order remains pending without inventing payment success.');
+      'Esta compilación no tiene integrado Stripe autorizado. El pedido sigue pendiente; no se crea otro cargo.':
+      'This build has no authorized Stripe integration. The order remains pending; no new charge is created.');
     }
    }else if(result.paymentMode==='pay_now'&&
-     ['awaiting_authorization','payment_unknown'].includes(result.roundState??'')){
-    // A persisted order is not proof of a completed Stripe payment or dispatch.
-    setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
-    setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
-     'Pedido registrado; la autorización de Stripe sigue pendiente. No se ha confirmado ningún cobro ni envío a cocina. Consulta Notificaciones para conocer el estado.':
-     'Order recorded; Stripe authorization is still pending. No charge or kitchen dispatch has been confirmed. Check Notifications for its status.');
+     !['grouping','capture_requested','captured','dispatch_requested','kitchen_acknowledged'].includes(result.roundState??'')){
+    pendingPaymentOrderRef.current=result.orderId;
+    setCheckoutPhase(result.roundState==='payment_unknown'?'uncertain':
+      result.roundState==='payment_failed'?'error':'payment_action');
+    setCheckoutMessage(locale==='es'?
+     'Pedido registrado; el estado económico no está acreditado. Consulta su estado, sin crear otro pedido.':
+     'Order registered; the economic state is not verified. Check its status without another order.');
    }else{
     setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
     setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
@@ -615,7 +687,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
      'No se confirmó el pedido. Puedes reintentar sin duplicarlo.':
      'The order was not confirmed. You can retry without duplicating it.'));
   }
- },[basket,checkoutPaymentPolicy,confirmStripePayment,flowContract,locale,paymentMode,quoteLines,quotedTotal,tableVisit]);
+ },[basket,checkoutPaymentPolicy,confirmStripePayment,flowContract,locale,paymentMode,quoteLines,quotedTotal,refreshPaymentState,tableVisit]);
 
  const resubmitRevision=useCallback(async()=>{
   const credential=qrCredentialRef.current,requestKey=revisionRequestRef.current;
@@ -794,7 +866,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
    <p className="privacy-copy">{locale==='es'?'El token no se guarda en el historial ni en el almacenamiento del navegador. El QR identifica contexto de mesa; no acredita presencia física ni permite ver cuentas ajenas.':'The token is not kept in browser history or storage. The QR identifies table context; it does not prove physical presence or grant access to other accounts.'}</p></div></Modal>:null}
   {overlay==='cart'?<Modal title={copy.selection} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="basket-lines">{basket.length?basket.map(line=>{const item=items.find(value=>value.id.toLowerCase()===line.itemId.toLowerCase());const currentPrice=item?currentCatalogUnitPrice(item,line):null;const changed=currentPrice===null||currentPrice!==line.priceCents;const lineKey=basketLineKey(line);const variant=item?basketSelectionDescription(item,line.selection):'';return <article key={lineKey}><div className="basket-line-main"><h3>{line.name}</h3>{variant?<p className="privacy-copy">{variant}</p>:null}<p>{formatPrice(line.priceCents,locale==='es'?'es-ES':'en-IE')} · {item?(item.available?(locale==='es'?'Disponible':'Available'):(locale==='es'?'Agotado: retira el plato antes de pedir':'Sold out: remove this dish before ordering')):(locale==='es'?'Plato retirado de la carta: retíralo antes de pedir':'Dish no longer published: remove before ordering')}</p>{item&&item.available&&changed&&currentPrice!==null?<p className="basket-price-notice" role="status">{locale==='es'?'El precio ha cambiado a ':'The price has changed to '}{formatPrice(currentPrice,locale==='es'?'es-ES':'en-IE')}<button type="button" onClick={()=>acceptPrice(line.itemId,lineKey)}>{locale==='es'?'Aceptar nuevo precio':'Accept new price'}</button></p>:null}<div className="basket-line-actions"><button type="button" onClick={()=>removeLine(line.itemId,lineKey)}>{locale==='es'?'Retirar de la cesta':'Remove from basket'}</button>{item&&item.available?<button type="button" onClick={()=>openDetail(item,line)}>{locale==='es'?'Editar detalles':'Edit details'}</button>:null}</div></div>{item?<div className="quantity-control"><button type="button" onClick={()=>updateQuantity(item,-1,lineKey)} aria-label={`${locale==='es'?'Quitar una unidad de':'Remove one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="minus"/></button><strong>{line.quantity}</strong><button type="button" disabled={!item.available} onClick={()=>updateQuantity(item,1,lineKey)} aria-label={`${locale==='es'?'Añadir una unidad de':'Add one unit of'} ${item.name}${variant?' · '+variant:''}`}><Icon name="plus"/></button></div>:null}</article>}):<EmptyState>{locale==='es'?'Tu selección está vacía.':'Your selection is empty.'}</EmptyState>}</div>{basket.length?<><div className="basket-total"><span>Total {locale==='es'?'informativo':'for reference'}</span><strong>{formatPrice(total,locale==='es'?'es-ES':'en-IE')}</strong></div>{issues.length>0?<div className="prose-card" role="status" aria-live="polite"><h3>{locale==='es'?'Selección pendiente de revisión':'Selection needs review'}</h3><p>{locale==='es'?`${issues.length} plato(s) requieren una decisión antes de continuar.`:`${issues.length} dish(es) need your decision before continuing.`}</p><ul>{issueCounts.soldOut>0?<li>{locale==='es'?`${issueCounts.soldOut} agotado(s)`: `${issueCounts.soldOut} sold out`}</li>:null}{issueCounts.unpublished>0?<li>{locale==='es'?`${issueCounts.unpublished} retirado(s)`: `${issueCounts.unpublished} unpublished`}</li>:null}{issueCounts.priceChanged>0?<li>{locale==='es'?`${issueCounts.priceChanged} con precio actualizado`: `${issueCounts.priceChanged} with updated prices`}</li>:null}</ul></div>:null}<div className="basket-actions"><button type="button" disabled>{locale==='es'?'Reserva no disponible':'Reservation unavailable'}</button><button className="primary-action" type="button" disabled={!canRequestTableOrder} onClick={()=>{if(tableVisit)void prepareCheckout();else {setOverlay('qr');setArea('qr');}}}>{tableVisit?(locale==='es'?'Revalidar y continuar':'Revalidate and continue'):(locale==='es'?'Validar mesa para pedir':'Validate table to order')}</button></div>{!canRequestTableOrder?<p role="status" className="privacy-copy">{catalog.status!=='ready'?(locale==='es'?'Espera a que se cargue la carta para revisar la selección.':'Wait for the menu to load before reviewing your selection.'):(locale==='es'?'Revisa los platos agotados, retirados o con cambios de precio. Retira los no disponibles o acepta expresamente los nuevos precios.':'Review sold-out, unpublished or repriced dishes. Remove unavailable dishes or expressly accept the updated configured price.')}</p>:null}<p className="privacy-copy">{locale==='es'?'El servidor revalida la cesta antes de elegir pago. Las reservas permanecen en un circuito separado.':'The server revalidates the basket before payment choice. Reservations remain in a separate flow.'}</p></>:null}</Modal>:null}
   {overlay==='pay-others'&&tableVisit?<Modal title={locale==='es'?'Pagar deudas ajenas':'Pay another diner’s debt'} onClose={closeOverlay}><ThirdPartyCashPanel locale={locale} tableId={tableVisit.tableId} visitId={tableVisit.visitId} transport={customerTransport}/></Modal>:null}
-  {overlay==='checkout'?<Modal title={locale==='es'?'Confirmar pedido':'Confirm order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><CheckoutPanel locale={locale} totalCents={quotedTotal} phase={checkoutPhase} paymentMode={paymentMode} requirePayAsOrdered={checkoutPaymentPolicy?.requirePayAsOrdered??tableVisit?.paymentPolicy?.requirePayAsOrdered??false} fixedPaymentMode={checkoutPaymentPolicy?.selectedMode??null} policyConflict={quotedTotal>0&&checkoutPaymentPolicy?.selectedMode==='pay_at_end'&&checkoutPaymentPolicy.requirePayAsOrdered} paymentsEnabled={flowContract==='h6'} message={checkoutMessage} onPaymentMode={setPaymentMode} onConfirm={()=>void confirmCheckout()} onRetry={()=>{if(checkoutPhase==='uncertain')void reconcileCheckout();else if(checkoutPhase==='error')void prepareCheckout();else if(quoteLines.length&&checkoutRequestRef.current)void confirmCheckout();else void prepareCheckout();}}/></Modal>:null}
+  {overlay==='checkout'?<Modal title={locale==='es'?'Confirmar pedido':'Confirm order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><CheckoutPanel locale={locale} totalCents={quotedTotal} phase={checkoutPhase} paymentMode={paymentMode} requirePayAsOrdered={checkoutPaymentPolicy?.requirePayAsOrdered??tableVisit?.paymentPolicy?.requirePayAsOrdered??false} fixedPaymentMode={checkoutPaymentPolicy?.selectedMode??null} policyConflict={quotedTotal>0&&checkoutPaymentPolicy?.selectedMode==='pay_at_end'&&checkoutPaymentPolicy.requirePayAsOrdered} paymentsEnabled={flowContract==='h6'} message={checkoutMessage} onPaymentMode={setPaymentMode} onConfirm={()=>void confirmCheckout()} onRetry={()=>{if(pendingPaymentOrderRef.current){if(checkoutPhase==='payment_action')void retryPaymentAction();else void refreshPaymentState(pendingPaymentOrderRef.current);}else if(checkoutPhase==='uncertain')void reconcileCheckout();else if(checkoutPhase==='error')void prepareCheckout();else if(quoteLines.length&&checkoutRequestRef.current)void confirmCheckout();else void prepareCheckout();}}/></Modal>:null}
   {overlay==='revision'?<Modal title={locale==='es'?'Corregir pedido':'Correct order'} onClose={closeOverlay} closeLabel={locale==='es'?'Cerrar':'Close'}><div className="revision-correction" aria-busy={revisionPhase==='loading'||revisionPhase==='submitting'}><span className="eyebrow">{locale==='es'?'REVISIÓN NECESARIA':'REVISION REQUIRED'}</span><p>{locale==='es'?'El snapshot original se conserva. Solo las líneas señaladas necesitan una alternativa antes del despacho.':'The original snapshot is preserved. Only the marked lines need an alternative before dispatch.'}</p>{pendingRevision?<ul>{pendingRevision.lines.map(line=><li key={line.lineNumber}><div><strong>{line.itemName}</strong><span>{line.quantity} × {formatPrice(line.totalCents,locale==='es'?'es-ES':'en-IE')}</span></div>{line.affected?<label><span>{locale==='es'?'Alternativa disponible':'Available alternative'}</span><select aria-label={`${locale==='es'?'Alternativa para':'Alternative for'} ${line.itemName}`} value={revisionSelections[line.lineNumber]??''} onChange={event=>{revisionPreparedRef.current=null;revisionAcceptanceTokenRef.current=null;setRevisionChanges([]);setRevisionSelections(current=>Object.freeze({...current,[line.lineNumber]:event.target.value}));}}><option value="">{locale==='es'?'Seleccionar…':'Select…'}</option>{catalog.status==='ready'?catalog.items.filter(item=>item.available&&!(item.options??[]).some(group=>group.required)).map(item=><option key={item.id} value={item.id}>{item.name} · {formatPrice(item.priceCents,locale==='es'?'es-ES':'en-IE')}</option>):null}</select></label>:<span className="revision-preserved">{locale==='es'?'Se conserva sin cambios':'Preserved unchanged'}</span>}</li>)}</ul>:null}{revisionChanges.length?<div className="revision-price-review" role="status"><strong>{locale==='es'?'Revisión económica':'Economic review'}</strong>{revisionChanges.map(change=><p key={change.lineNumber}>{change.previousItemName}: {formatPrice(change.previousTotalCents,locale==='es'?'es-ES':'en-IE')} → {change.currentItemName}: {formatPrice(change.currentTotalCents,locale==='es'?'es-ES':'en-IE')} <b>({change.differenceCents>=0?'+':''}{formatPrice(change.differenceCents,locale==='es'?'es-ES':'en-IE')})</b></p>)}</div>:null}{revisionMessage?<p className="honest-status" role="status">{revisionMessage}</p>:null}<button className="button button--primary" type="button" disabled={!pendingRevision||revisionPhase==='loading'||revisionPhase==='submitting'} onClick={()=>void resubmitRevision()}>{revisionPhase==='submitting'?(locale==='es'?'Reenviando…':'Resubmitting…'):(locale==='es'?'Reenviar pedido':'Resubmit order')}</button><p className="privacy-copy">{locale==='es'?'No se crea una segunda cuenta ni un segundo pedido. Con pago inmediato, cualquier cambio de importe queda bloqueado hasta conciliación segura.':'No second account or order is created. With pay-now, any amount change remains blocked until safe reconciliation.'}</p></div></Modal>:null}
   {detail?<Modal title={detail.name} onClose={closeDetail} closeLabel={locale==='es'?'Cerrar':'Close'}>
    <div className="detail-visual">{detail.imageUrl?<img src={detail.imageUrl} alt=""/>:<><Icon name="leaf"/><span>{locale==='es'?'Imagen pendiente de activo autorizado':'Image awaiting an approved asset'}</span></>}</div>
