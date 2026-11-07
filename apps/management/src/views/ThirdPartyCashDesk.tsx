@@ -71,7 +71,7 @@ export function ThirdPartyCashDesk({gateway}:{gateway:OrderOperationsGateway}){
   {phase==='ready'?<div className="cash-account-grid">
    {intents.map(intent=><button type="button" key={intent.intentId}
     className={intent.intentId===selected?'cash-account-card cash-account-card--active':'cash-account-card'}
-    disabled={busy||Boolean(cashPending.current)&&cashPending.current.intentId!==intent.intentId}
+    disabled={busy||(cashPending.current!==null&&cashPending.current.intentId!==intent.intentId)}
     onClick={()=>{setSelected(intent.intentId);setReceipt(false);}}>
     <strong>{intent.payerCode} · {euro(intent.totalCents)}</strong>
     <small>{intent.rounds.length} consumiciones asignadas · solicitud {intent.intentId}</small>

@@ -25,6 +25,11 @@ import {createH6OperationsRepository,ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  createH6CustomerEventRepository}
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
+import {registerThirdPartyCashHttp} from '../../apps/api/src/third-party-cash-http.mjs';
+import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
+ TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL}
+ from '../../apps/api/src/third-party-cash-repository.mjs';
 import {assertH6SqlCapabilities} from '../../apps/api/src/h6-sql-preflight.mjs';
 import {createTableQrCredential} from '../../apps/api/src/table-qr-credential.mjs';
 import {parseTableQrPayload} from '../../packages/contracts/src/index.js';
@@ -925,6 +930,157 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.deepEqual(cashRefunds.map(value=>value.repeated).sort(),[false,true]);
  assert.equal((await admin.query(`SELECT count(*)::integer AS n FROM sabora.cash_settlements
   WHERE incident_id=$1 AND kind='refund'`,[cashIncident.incidentId])).rows[0].n,1);
+
+
+ // M4: one continuous real PostgreSQL 17 + Fastify path. Authenticated A
+ // voluntarily pays B/C's exact unpaid rounds; signed cashier records cash;
+ // later cancellation of B must refund A without consuming B's new debt.
+ const tpA=await register({alias:'M4 Pagador original',company:null});
+ const tpB=await register({alias:'M4 Beneficiario B',company:null});
+ const tpC=await register({alias:'M4 Beneficiario C',company:null});
+ const visitA=await flow.authorizeVisit({customerSessionToken:tpA.token,tableId,qrToken});
+ const tpOrder=async(person,suffix)=>{
+  const v=await flow.authorizeVisit({customerSessionToken:person.token,tableId,qrToken});
+  const q=await flow.quote({customerSessionToken:person.token,tableId,qrToken,
+   visitId:v.visitId,basketId:v.basketId,lines:[{itemId,selection,quantity:1}]});
+  const order=await flow.confirm({customerSessionToken:person.token,tableId,qrToken,
+   visitId:v.visitId,basketId:v.basketId,requestKey:'m4_beneficiary_round_'+suffix+'_0001',
+   paymentMode:'pay_at_end',lines:[{quoteId:q.lines[0].quoteId,itemId,selection,quantity:1}]});
+  assert.equal(order.paymentMode,'pay_at_end');
+  assert.equal(order.amountCents,2400);
+  return {v,order};
+ };
+ const b=await tpOrder(tpB,'b'),c=await tpOrder(tpC,'c');
+ const payerRepo=createThirdPartyCashCustomerRepository({withTransaction:h6CustomerTx});
+ const tpOps=createThirdPartyCashOperations({withTransaction:operationsTx,
+  issueCapability:issueKitchen});
+ const scopes=new Map([[tpA.token,tpA],[tpB.token,tpB],[tpC.token,tpC]]);
+ const payerCookie=createCustomerCookieAuth({allowedOrigin:'https://sabora.example',
+  verifyCustomerSession:async token=>{
+   const user=scopes.get(token);
+   return user?{customerId:user.profile.id,publicId:user.profile.public_id,
+    alias:'M4 autorizado',company:null}:null;
+  },revokeCustomerSession:async()=>false});
+ const tpApp=Fastify({logger:false});
+ registerThirdPartyCashHttp(tpApp,{cookieAuth:payerCookie,
+  forRoles:roles=>async request=>{
+   if(!roles.includes('waiter'))throw Error('invalid_m4_test_roles');
+   request.verifiedIdentity={userId:waiterId};
+   request.verifiedStaff={userId:waiterId,role:'waiter'};
+  },payer:payerRepo,operations:tpOps});
+ await tpApp.ready();
+ const payerUrl='/api/v1/customer/third-party/cash';
+ const customerPost=(token,path,payload)=>tpApp.inject({method:'POST',url:path,
+  headers:{origin:'https://sabora.example','content-type':'application/json',
+   cookie:'__Secure-sabora_customer='+token},payload});
+ const staffPost=(path,payload)=>tpApp.inject({method:'POST',url:path,
+  headers:{'content-type':'application/json'},payload});
+ try{
+  const debts=await customerPost(tpA.token,payerUrl+'/debts',
+   {tableId,visitId:visitA.visitId});
+  assert.equal(debts.statusCode,200,debts.body);
+  assert.ok(debts.json().items.some(x=>x.roundId===b.order.roundId));
+  assert.ok(debts.json().items.some(x=>x.roundId===c.order.roundId));
+  assert.ok(!debts.json().items.some(x=>x.roundId===order.roundId));
+  await assert.rejects(payerRepo.debts({customerSessionToken:tpA.token,
+   tableId,visitId:'not_an_authorized_visit_123'}),/third_party_scope_forbidden/);
+  const chosen=[{roundId:b.order.roundId,amountCents:2400},
+   {roundId:c.order.roundId,amountCents:2400}];
+  const base={tableId,visitId:visitA.visitId,consent:true,
+   rounds:chosen,requestKey:'m4_original_payer_multi_0001'};
+  const noConsent=await customerPost(tpA.token,payerUrl+'/intents',
+   {...base,consent:false});
+  assert.equal(noConsent.statusCode,400);
+  const wrongAmount=await customerPost(tpA.token,payerUrl+'/intents',
+   {...base,rounds:[{roundId:b.order.roundId,amountCents:2399}],
+    requestKey:'m4_wrong_amount_0001'});
+  assert.equal(wrongAmount.statusCode,409,wrongAmount.body);
+  const create=await customerPost(tpA.token,payerUrl+'/intents',base);
+  assert.equal(create.statusCode,201,create.body);
+  const intent=create.json();
+  assert.equal(intent.totalCents,4800);
+  assert.equal(intent.state,'pending');
+  const replay=await customerPost(tpA.token,payerUrl+'/intents',base);
+  assert.equal(replay.statusCode,200,replay.body);
+  assert.equal(replay.json().intentId,intent.intentId);
+  const changed=await customerPost(tpA.token,payerUrl+'/intents',
+   {...base,rounds:[chosen[0]]});
+  assert.equal(changed.statusCode,409,changed.body);
+  const pending=(await tpApp.inject({method:'GET',
+   url:'/api/v1/operations/third-party/cash/pending'})).json();
+  assert.ok(pending.items.some(x=>x.intentId===intent.intentId));
+  const cashUrl='/api/v1/operations/third-party/cash/'+intent.intentId+'/settle';
+  const paid=await Promise.all([
+   staffPost(cashUrl,{correlationId:'m4_staff_cash_once_0001',received:true}),
+   staffPost(cashUrl,{correlationId:'m4_staff_cash_once_0001',received:true})]);
+  assert.deepEqual(paid.map(x=>x.statusCode),[201,201]);
+  assert.deepEqual(paid.map(x=>x.json().repeated).sort(),[false,true]);
+  const accounting=(await admin.query('SELECT f.round_id,i.payer_customer_id,cs.amount_cents '+
+   'FROM sabora.third_party_cash_round_funding_candidate f '+
+   'JOIN sabora.third_party_cash_intents_candidate i ON i.id=f.intent_id '+
+   'JOIN sabora.cash_settlements cs ON cs.id=f.cash_settlement_id '+
+   'WHERE i.id=$1',[intent.intentId])).rows;
+  assert.equal(accounting.length,2);
+  assert.ok(accounting.every(x=>x.payer_customer_id===tpA.profile.id&&x.amount_cents==='2400'));
+  assert.deepEqual((await admin.query('SELECT outstanding_cents FROM sabora.customer_accounts '+
+   'WHERE id=ANY($1::uuid[])',[[b.order.accountId,c.order.accountId]])).rows
+   .map(x=>x.outstanding_cents),['0','0']);
+  // B orders again AFTER A paid the earlier round. Its new debt is not A's.
+  const bLater=await tpOrder(tpB,'b_later');
+  assert.equal(bLater.order.accountId,b.order.accountId);
+  assert.equal((await admin.query('SELECT outstanding_cents FROM sabora.customer_accounts '+
+   'WHERE id=$1',[b.order.accountId])).rows[0].outstanding_cents,'2400');
+  const incident=await operations.reportIncident({
+   roundId:b.order.roundId,lineId:null,origin:'waiter_restaurant',
+   reason:'Servicio financiado por tercero no prestado',affectedCents:500,
+   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'report_incident',
+    targetId:b.order.roundId,correlationId:'m4_report_refund_origin_0001'})});
+  assert.equal(incident.state,'cash_refund_due');
+  assert.equal((await admin.query('SELECT outstanding_cents FROM sabora.customer_accounts '+
+   'WHERE id=$1',[b.order.accountId])).rows[0].outstanding_cents,'2400');
+  await assert.rejects(operations.refundCash({incidentId:incident.incidentId,
+   capability:issueKitchen({actorId:waiterId,staffRole:'waiter',action:'refund_cash',
+    targetId:incident.incidentId,correlationId:'m4_legacy_refund_forbidden_0001'})}),
+   /third_party_payer_proof_required/);
+  assert.deepEqual((await payerRepo.refunds({customerSessionToken:tpB.token})).items,[]);
+  const refundable=await payerRepo.refunds({customerSessionToken:tpA.token});
+  assert.ok(refundable.items.some(x=>x.incidentId===incident.incidentId&&x.amountCents===500));
+  await assert.rejects(payerRepo.issueRefundProof({customerSessionToken:tpB.token,
+   incidentId:incident.incidentId}),/third_party_refund_unavailable/);
+  const code=await customerPost(tpA.token,payerUrl+'/refunds/'+incident.incidentId+'/proof',{});
+  assert.equal(code.statusCode,201,code.body);
+  const proof=code.json();
+  assert.equal(proof.amountCents,500);
+  const refundUrl='/api/v1/operations/third-party/refunds/'+incident.incidentId;
+  const wrong=await staffPost(refundUrl,{claimId:proof.claimId,proof:'0'.repeat(64),
+   correlationId:'m4_wrong_proof_rejected_0001',handedOver:true});
+  assert.equal(wrong.statusCode,403,wrong.body);
+  const refundBody={claimId:proof.claimId,proof:proof.proof,
+   correlationId:'m4_correct_payer_refund_0001',handedOver:true};
+  const refunded=await Promise.all([staffPost(refundUrl,refundBody),staffPost(refundUrl,refundBody)]);
+  assert.deepEqual(refunded.map(x=>x.statusCode),[201,201]);
+  assert.deepEqual(refunded.map(x=>x.json().repeated).sort(),[false,true]);
+  const payment=(await admin.query('SELECT r.original_payer_customer_id,r.amount_cents, '+
+   'cs.kind,cs.incident_id FROM sabora.third_party_cash_refunds_candidate r '+
+   'JOIN sabora.cash_settlements cs ON cs.id=r.cash_settlement_id '+
+   'WHERE r.incident_id=$1',[incident.incidentId])).rows;
+  assert.equal(payment.length,1);
+  assert.equal(payment[0].original_payer_customer_id,tpA.profile.id);
+  assert.equal(payment[0].amount_cents,'500');
+  assert.equal(payment[0].kind,'refund');
+  assert.equal(payment[0].incident_id,incident.incidentId);
+  assert.equal((await admin.query('SELECT outstanding_cents FROM sabora.customer_accounts '+
+   'WHERE id=$1',[b.order.accountId])).rows[0].outstanding_cents,'2400');
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.event_outbox '+
+   "WHERE account_id=ANY($1::uuid[]) AND event_type='sabora.account.third_party_cash_paid'",
+   [[b.order.accountId,c.order.accountId]])).rows[0].n,2);
+  assert.ok(!(await payerRepo.refunds({customerSessionToken:tpA.token})).items
+   .some(x=>x.incidentId===incident.incidentId));
+ }finally{await tpApp.close();}
+ await assert.rejects(customerPool.query('SELECT * FROM sabora.third_party_cash_refunds_candidate'),
+  /permission denied/);
+ await assert.rejects(operationsPool.query('SELECT * FROM sabora.third_party_cash_intents_candidate'),
+  /permission denied/);
 
  // H6 ZERO-COST MULTI-DINER FULL STACK. This is one continuous business
  // scenario on genuine PG17: a Chromium customer confirms a free round via
