@@ -36,8 +36,8 @@
         },
         {
           "kind": "postgres17",
-          "path": "scripts/ci/h6-postgres17.test.mjs",
-          "marker": "M3"
+          "path": "scripts/ci/catalog-postgres17-driver-integration.test.mjs",
+          "marker": "PG17 catalog writer transaction persists first/grouped/late kitchen projections"
         }
       ],
       "note": "Existencia y trazabilidad; el gate no reemplaza resultados de CI ni aceptación humana."
