@@ -8,6 +8,8 @@ export const OCCUPANCY_M3_TABLE_SQL=
  `SELECT sabora.transition_table_occupancy_m3_candidate($1::jsonb,$2) AS result`;
 export const READ_M3_CATALOG_SQL=
  `SELECT sabora.read_admin_catalog_m3_candidate($1::jsonb) AS result`;
+export const READ_M3_FINANCE_SQL=
+ `SELECT sabora.read_admin_finance_dashboard_candidate($1::jsonb,$2::text,$3::text,$4::text) AS result`;
 export const MANAGE_M3_CATALOG_SQL=
  `SELECT sabora.manage_catalog_m3_candidate($1::jsonb,$2,$3) AS result`;
 
@@ -100,6 +102,29 @@ export function createM3CatalogRepository({withTransaction,issueCapability,newId
    const capability=signed(issueCapability,actor,action,requestId,body);
    return withTransaction(async query=>one(await query(MANAGE_M3_CATALOG_SQL,
     [capability,operation,body])));
+  }
+ });
+}
+
+export function createM3FinanceRepository({withTransaction,issueCapability,newId=randomUUID,
+ timeZone=null}={}){
+ if(typeof withTransaction!=='function'||typeof issueCapability!=='function'||typeof newId!=='function'||
+    (timeZone!==null&&(typeof timeZone!=='string'||timeZone.length<1||timeZone.length>80)))
+  throw Error('invalid_m3_finance_repository');
+ return Object.freeze({
+  read(verified,{period='today',month=null}={}){
+   const actor=identity(verified);
+   if(!['admin','root'].includes(actor.staffRole))throw Error('m3_management_forbidden');
+   if(!['today','last7','thisMonth','previousMonth'].includes(period)||
+      (month!==null&&(!/^20[0-9]{2}-(0[1-9]|1[0-2])$/.test(month)||period!=='thisMonth')))
+    throw Error('invalid_m3_finance_period');
+   if(timeZone===null)throw Error('m3_finance_timezone_unconfigured');
+   const requestId=newId();
+   if(!UUID.test(requestId))throw Error('invalid_m3_finance_capability');
+   const body=`finance:${period}:${month??''}:${timeZone}`;
+   const capability=signed(issueCapability,actor,'finance.read',requestId,body);
+   return withTransaction(async query=>one(await query(READ_M3_FINANCE_SQL,
+    [capability,period,month,timeZone])));
   }
  });
 }

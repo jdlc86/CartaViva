@@ -7639,7 +7639,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
-   issueCatalogCapability:m3CatalogIssuer,qr:{
+   issueCatalogCapability:m3CatalogIssuer,dashboardTimeZone:'Europe/Madrid',qr:{
     secret:'sabora_m3_disposable_qr_derivation_secret_32_bytes_minimum',
     origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}}});
   assert.equal(m3.app.server.listening,true,'verified H6 candidate must have a real loopback listener');
@@ -7662,6 +7662,33 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    };
    const management=createM3AuthenticatedManagementGateway({getAccessToken:async()=>jwtAdmin,
     fetchImpl:m3Fetch});
+   const financePath='/api/v1/admin/finance/dashboard?period=today';
+   assert.equal((await m3.app.inject({method:'GET',url:financePath})).statusCode,401,
+    'anonymous staff must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',url:financePath,
+    headers:{authorization:'Bearer '+jwtWaiter}})).statusCode,403,
+    'waiter must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',url:financePath,
+    headers:{authorization:'Bearer '+jwtKitchen}})).statusCode,403,
+    'kitchen must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',
+    url:'/api/v1/admin/finance/dashboard?period=invalid',
+    headers:{authorization:'Bearer '+jwtAdmin}})).statusCode,400);
+   const financeBefore=await management.readFinancialDashboard({period:'today'});
+   assert.equal(financeBefore.status,'ready');
+   assert.equal(financeBefore.timeZone,'Europe/Madrid');
+   assert.ok(financeBefore.dailySales.length>=28&&financeBefore.dailySales.length<=31);
+   assert.equal(financeBefore.tipsAvailable,false);
+   assert.equal(financeBefore.tipsCents,null);
+   assert.equal(financeBefore.version,1);
+   const monthWindow=await management.readFinancialDashboard({period:'thisMonth'});
+   assert.equal(monthWindow.period,'thisMonth');
+   assert.equal((await management.readFinancialDashboard({period:'previousMonth'})).period,
+    'previousMonth');
+   if(financeBefore.historicalCoverage==='incomplete'){
+    assert.equal(financeBefore.collectedCents,null);
+    assert.equal(financeBefore.stripeCollectedCents,null);
+   }
    const m3Operations=createAuthenticatedOrderOperationsGateway({getAccessToken:async()=>jwtAdmin,
     fetchImpl:m3Fetch,reconnectDelayMs:100});
    const createRequest='b0a00000-0000-4000-8000-000000000314';
@@ -7806,6 +7833,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     lines:[{quoteId:m3Quote.lines[0].quoteId,itemId,
      selection:{options:{salsa:['suave']},extras:['trufa']},quantity:1}]};
    const m3Confirmed=await m3Customer.confirm(m3Confirmation);
+   const financeAfter=await management.readFinancialDashboard({period:'today'});
+   assert.ok(financeAfter.ordersCount>=financeBefore.ordersCount,
+     'server financial query must retain confirmed H6 orders without retries');
+   assert.ok(Number.isSafeInteger(financeAfter.salesCents));
+   assert.ok(Number.isSafeInteger(financeAfter.outstandingCents)&&financeAfter.outstandingCents>=0);
+   assert.ok(financeAfter.dailySales.every(item=>Number.isSafeInteger(item.netSalesCents)));
+   if(!financeAfter.rankingComplete)assert.equal(financeAfter.topItems,null,
+    'unknown product identity must not fabricate a top-10');
    const m3Replayed=await m3Customer.confirm(m3Confirmation);
    assert.equal(m3Replayed.status,'replayed');assert.equal(m3Replayed.orderId,m3Confirmed.orderId);
    const line=(await admin.query(`SELECT category FROM sabora.order_lines
@@ -8033,6 +8068,27 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-catalog-mobile.png')});
     await m3StaffPage.setViewportSize({width:1440,height:900});
 
+    // The same authenticated M3 PWA renders server finances only for ADMIN.
+    await m3StaffPage.goto('https://gestion.sabora.example/#configuracion');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true});
+    },jwtAdmin);
+    await m3StaffPage.getByRole('link',{name:/Configuración/}).waitFor({timeout:30000});
+    await m3StaffPage.getByRole('heading',{name:'Dashboard financiero'}).waitFor({timeout:30000});
+    await m3StaffPage.getByText('Ventas netas · periodo').waitFor({timeout:30000});
+    await m3StaffPage.getByRole('button',{name:'Últimos 7 días'}).click();
+    await m3StaffPage.getByText('Cobros').first().waitFor({timeout:20000});
+    for(const width of [390,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     assert.equal(await m3StaffPage.evaluate(()=>
+      document.documentElement.scrollWidth>document.documentElement.clientWidth+2),false,
+      'finance dashboard overflows at '+width);
+     await m3StaffPage.screenshot({
+      path:m3Join(m3Evidence,'finance-dashboard-admin-'+width+'.png'),fullPage:true});
+    }
     await m3StaffPage.goto('https://gestion.sabora.example/#mesas');
     await m3StaffPage.evaluate(async jwt=>{
      const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
@@ -8299,6 +8355,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
     assert.equal(await m3StaffPage.getByRole('button',{name:'Crear mesa'}).count(),0,
      'waiter cannot see admin table creation');
+    assert.equal(await m3StaffPage.getByRole('link',{name:/Configuración/}).count(),0,
+     'waiter never sees administrative finance navigation');
     assert.equal(await m3StaffPage.getByRole('button',{name:'Rotar QR'}).count(),0,
      'waiter cannot see admin QR rotation');
     assert.equal(await m3StaffPage.locator('.detail-block__heading')

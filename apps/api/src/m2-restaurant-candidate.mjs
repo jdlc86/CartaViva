@@ -59,7 +59,7 @@ import {assertM3TablesCapability,assertM3CatalogCapability,
  M3_TABLES_ROLE,M3_CATALOG_ROLE} from './m3-runtime-capabilities.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
- MANAGE_M3_CATALOG_SQL} from './m3-management-repository.mjs';
+ MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
 
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
@@ -239,17 +239,20 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
-  let m3Tables,m3Catalog;
+  let m3Tables,m3Catalog,m3Finance;
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
      OCCUPANCY_M3_TABLE_SQL])});
    const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
-    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL])});
+    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
    m3Tables=createM3TablesRepository({withTransaction:tablesTx,
     issueCapability:management.issueTablesCapability});
    m3Catalog=createM3CatalogRepository({withTransaction:catalogTx,
     issueCapability:management.issueCatalogCapability});
+   m3Finance=createM3FinanceRepository({withTransaction:catalogTx,
+    issueCapability:management.issueCatalogCapability,
+    timeZone:management.dashboardTimeZone??null});
   }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
@@ -275,7 +278,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
-   catalog:m3Catalog,qr:management.qr,observeFailure});
+   catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({
