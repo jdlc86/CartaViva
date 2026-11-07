@@ -7472,7 +7472,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        secure:true,httpOnly:true,sameSite:'Lax'}]);
       await blockedContext.addInitScript(id=>localStorage.setItem(
        'sabora.client.selection.v1',JSON.stringify([{
-        itemId:id,name:'Plato de integración',priceCents:700,quantity:1
+        itemId:id,name:'Plato de integración',priceCents:600,quantity:1
        }])), 'b0a00000-0000-4000-8000-000000000331');
       const blockedPage=await blockedContext.newPage();
       blockedPage.on('pageerror',error=>naturalErrors.push(error.message));
