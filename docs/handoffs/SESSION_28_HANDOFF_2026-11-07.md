@@ -73,3 +73,13 @@ El enlace relativo `../tracking/SABORA_LIVE_PROJECT_TRACKER.md` es obligatorio p
 Se crea esta continuidad como relevo de la sesión 27, incorporando el cierre técnico del dashboard ADMIN con **5/5 SUCCESS de `4c88b496`**, los candidatos ya verificados de caja y modalidad fija, y los bloqueos remanentes de Stripe sandbox, terceros/propinas, aprobación visual y arranque seguro. **No se realiza código funcional nuevo, prueba nueva, merge ni despliegue mediante esta apertura.** El estado global permanece **NO-GO de producción**.
 
 **Próximo registro:** solo tras un hito integral realmente verificado o una decisión externa que desbloquee la ruta crítica.
+
+## 9. Revisión de frontera M4: propinas y pago por terceros — 07-11-2026
+
+**Revisión arquitectónica y de seguridad terminada; NO se ha implementado todavía el bloque económico.** Véase el [informe íntegro de alcance, límites y aceptación](../reviews/SABORA_M4_TIPS_THIRD_PARTY_PAYMENT_INTEGRAL_BOUNDARY_2026-11-07.md) y el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Se han inspeccionado las normas aprobadas y los contratos reales de `customer_accounts`, `cash_settlements`, `payment_attempts`, `refund_attempts`, HTTP H6, `CashView` y `CheckoutPanel`.
+
+**Brecha crítica verificable:** el cobro de efectivo actual se atribuye a la cuenta beneficiaria y al **empleado registrador**, pero **no** preserva una intención firmemente autenticada del **pagador tercero**, el reparto durable entre varias cuentas ni el origen al que reembolsar. Un campo `payerId` o un selector aislado de propina no satisfacen NF/RF. Las seis opciones de propina, la no preselección positiva, los importes en céntimos, las devoluciones expresas y la separación de ventas/propinas están decididas en normativa, pero **su implementación no existe todavía en esta frontera**.
+
+**Siguiente hito funcional completo:** autorización del pagador cliente → selección estrictamente acotada de deudas de varias cuentas → tip calculada/validada por servidor → intento durable e idempotente → cobro autenticado/captura verificable → asignaciones transaccionales y eventos → devolución al pagador original → dashboard sin doble conteo, todo en PG17/Fastify/Chromium/2 PWA. Si no hay autorización de Stripe sandbox, cerrar únicamente el subalcance aislado verificable, sin presentar una simulación como pago real; aprobación humana de UI/F28/R09 permanece independiente.
+
+**Estado del relevo:** revisión documental versionada; **cero nuevas pruebas o código económico de tercero/propina**, sin promociones de F20/R03–R05, producción **NO-GO**, sin merge/deploy/Fleetia/VPS/Supabase operativo. Registrar el SHA funcional de cualquier implementación futura solo tras CI integral del **mismo SHA**.
