@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "screens": {
+    "client-home": {
+      "status": "PENDING_EXACT_BASELINE",
+      "note": "Composición/dirección aprobada 18-10-2026; imagen exacta del chat y captura maestra PNG no recuperadas ni aprobadas. El HTML histórico usa iconos provisionales."
+    },
+    "management-shell": {
+      "status": "PENDING_EXACT_BASELINE",
+      "note": "No existe una captura maestra exacta de gestión aprobada en las fuentes verificadas."
+    }
+  }
+}
