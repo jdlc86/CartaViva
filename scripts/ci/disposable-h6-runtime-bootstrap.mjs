@@ -33,9 +33,18 @@ export async function startDisposableM3Runtime({options,environment=process.env}
 
  let candidate;
  try{
+  // An injected marker is not a payment sandbox. Replace the adapter
+  // unconditionally with an inert, fail-closed provider: no authorization,
+  // capture, refund, release or retrieval can contact Stripe during this
+  // disposable acceptance. The real provider is NEVER invoked or retained.
+  const paymentDisabled=()=>{throw Error('disposable_h6_payment_provider_disabled');};
+  const noProvider=Object.freeze({authorize:paymentDisabled,capture:paymentDisabled,
+   release:paymentDisabled,refund:paymentDisabled,retrieve:paymentDisabled});
+  const isolatedOptions={...options,h6:{...options.h6,stripe:noProvider},
+   enableDeferredDispatch:false};
   // Internal factory checks 18 unique, least-privileged physical logins and
   // all exact SQL capability grants before it registers an HTTP route.
-  candidate=await createM3RestaurantCandidate(options);
+  candidate=await createM3RestaurantCandidate(isolatedOptions);
   if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
   // The factory permits only loopback. Port 0 eliminates fixed host binds.
   const origin=await candidate.listen({host:'127.0.0.1',port:0});
@@ -64,6 +73,6 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   if(candidate)try{await candidate.close();}catch{}
   // Never serialize SQL credentials, HMAC material or provider internals.
   if(error?.message==='disposable_m3_bootstrap_required')throw error;
-  throw Error('disposable_m3_bootstrap_failed',{cause:error});
+  throw Error('disposable_m3_bootstrap_failed');
  }
 }
