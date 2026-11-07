@@ -4289,6 +4289,85 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
+     // F20: same full PG17/Fastify customer-to-staff scenario, now including
+     // management PWA cashier, authorized read and actual signed cash receipt.
+     const noCashAccess=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts'});
+     assert.equal(noCashAccess.statusCode,401,'anonymous cashier access prohibited');
+     const kitchenCashAccess=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts',
+      headers:{authorization:'Bearer '+jwtKitchen}});
+     assert.equal(kitchenCashAccess.statusCode,403,'kitchen cannot access financial accounts');
+     const authorizedCash=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts?limit=50',
+      headers:ciVerifiedStaffHeaders()});
+     assert.equal(authorizedCash.statusCode,200,authorizedCash.body);
+     const cashierAccount=authorizedCash.json().items.find(a=>a.accountId===uiCashDiner.account);
+     assert.ok(cashierAccount,'account discovery must use signed PG17, not PWA seed');
+     assert.equal(cashierAccount.customerCode,uiCashDiner.publicId);
+     assert.equal(cashierAccount.outstandingCents,800);
+     assert.equal(cashierAccount.canSettle,true);
+     assert.ok(!authorizedCash.body.includes('provider_intent_id'));
+     const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+     const {createServer:createCashVite}=await import(
+      pathToFileURL(cashierRequire.resolve('vite')).href);
+     let cashierVite,cashierBrowser,cashierContext;
+     try{
+      const apiPort=http.server.address()?.port;
+      assert.ok(Number.isSafeInteger(apiPort)&&apiPort>0);
+      cashierVite=await createCashVite({
+       root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+       mode:'test',logLevel:'error',
+       server:{host:'127.0.0.1',port:0,strictPort:false,
+        proxy:{'/api':{target:'http://127.0.0.1:'+apiPort,changeOrigin:false}}}
+      });
+      await cashierVite.listen();
+      const uiPort=cashierVite.httpServer?.address()?.port;
+      assert.ok(Number.isSafeInteger(uiPort)&&uiPort>0);
+      cashierBrowser=await chromium.launch({headless:true});
+      cashierContext=await cashierBrowser.newContext({viewport:{width:390,height:844},
+       reducedMotion:'reduce',serviceWorkers:'block'});
+      const cashierPage=await cashierContext.newPage();
+      const cashierErrors=[];
+      cashierPage.on('pageerror',error=>cashierErrors.push(error.message));
+      await cashierPage.goto('http://127.0.0.1:'+uiPort+'/#caja');
+      await cashierPage.evaluate(async token=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       window.__disposeCashCi=mountAuthenticatedManagementApp({
+        element:document.getElementById('root'),getAccessToken:async()=>token
+       });
+      },jwtWaiter);
+      await cashierPage.getByRole('heading',{name:'Caja por comensal'}).waitFor({timeout:30000});
+      const card=cashierPage.locator('.cash-account-card').filter({hasText:uiCashDiner.publicId});
+      await card.waitFor({timeout:30000});
+      assert.match(await card.innerText(),/8,00/);
+      await card.click();
+      await cashierPage.getByLabel('Importe recibido en efectivo (EUR)').fill('3,00');
+      await cashierPage.getByLabel(/Confirmo que he recibido físicamente este importe/).check();
+      const receipt=cashierPage.waitForResponse(resp=>
+       new URL(resp.url()).pathname.endsWith('/cash-settlements')&&resp.status()===201,
+       {timeout:30000});
+      await cashierPage.getByRole('button',{name:'Registrar cobro en efectivo'}).click();
+      await receipt;
+      await cashierPage.locator('.cash-account-card').filter({
+       hasText:uiCashDiner.publicId}).getByText(/Saldo: 5,00/).waitFor({timeout:30000});
+      assert.deepEqual(cashierErrors,[],'full cashier PWA must not log JS errors');
+      const stored=(await admin.query(`SELECT outstanding_cents,cash_settled_cents
+       FROM sabora.customer_accounts WHERE id=$1`,[uiCashDiner.account])).rows[0];
+      assert.equal(stored.outstanding_cents,'500');
+      assert.equal(stored.cash_settled_cents,'300');
+      assert.equal((await admin.query(`SELECT count(*)::int AS n
+       FROM sabora.cash_settlements WHERE account_id=$1 AND kind='payment'`,
+       [uiCashDiner.account])).rows[0].n,1);
+      const {mkdir:mkdirCash}=await import('node:fs/promises');
+      const {join:joinCash}=await import('node:path');
+      const evidence=joinCash(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+      await mkdirCash(evidence,{recursive:true});
+      await cashierPage.screenshot({path:joinCash(evidence,'f20-cash-verified-pg17-mobile-390.png'),
+       fullPage:true});
+     }finally{
+      await cashierContext?.close();await cashierBrowser?.close();await cashierVite?.close();
+     }
      // Before A->D, a waiter performs an actual 300-cent partial receipt over
      // signed Fastify/PG17. Concurrent replay and overpayment must not mutate
      // the same account a second time. The old direct cash insert is gone.
