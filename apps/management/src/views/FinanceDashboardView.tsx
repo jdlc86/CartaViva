@@ -2,8 +2,8 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {EmptyState,ErrorState,LoadingState,PageHeader,SnapshotToolbar,StatusBadge} from '../components/Primitives';
 import type {FinanceDashboardGateway,FinancePeriod,FinanceSnapshot} from '../finance-dashboard-model';
 
-const currency=value=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(value/100);
-const money=value=>value===null?'Sin datos':currency(value);
+const currency=(value:number)=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(value/100);
+const money=(value:number|null)=>value===null?'Sin datos':currency(value);
 const label:Record<FinancePeriod,string>={
  today:'Hoy',last7:'Últimos 7 días',thisMonth:'Este mes',previousMonth:'Mes anterior'
 };

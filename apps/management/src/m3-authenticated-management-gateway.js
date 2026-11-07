@@ -46,7 +46,7 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl
    return send(`/api/v1/admin/tables/${tableId}/occupancy`,{method:'POST',
     body:{requestId,target,pauseUntil},signal});
   },
-  readFinancialDashboard({period='today',month=null,signal}={}){
+  async readFinancialDashboard({period='today',month=null,signal}={}){
    if(!['today','last7','thisMonth','previousMonth'].includes(period)||
        (month!==null&&(!/^20[0-9]{2}-(0[1-9]|1[0-2])$/.test(month)||period!=='thisMonth')))
     throw Error('invalid_finance_period');
