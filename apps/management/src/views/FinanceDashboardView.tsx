@@ -63,7 +63,15 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
    {snapshot.historicalCoverage==='incomplete'?<div className="connection-notice connection-notice--warning" role="status">
     <p><strong>Recaudación digital histórica no verificable.</strong> Existen cobros o devoluciones anteriores sin fecha inmutable de confirmación. La recaudación total y su comparación permanecen en «Sin datos»; no se calculan cifras aproximadas.</p>
    </div>:null}
-   <section aria-label="Indicadores financieros">
+   <section aria-label="Indicadores diarios y mensuales">
+    <div className="metric-grid">
+     <article className="metric-card"><span>Ventas netas · hoy</span><strong>{currency(snapshot.todaySalesCents)}</strong><p>Consumo confirmado neto de ajustes de hoy, sin propinas.</p></article>
+     <article className="metric-card"><span>Ventas netas · mes actual</span><strong>{currency(snapshot.monthSalesCents)}</strong><p>Consumo confirmado neto de ajustes del mes en el huso del restaurante.</p></article>
+     <article className="metric-card"><span>Recaudación · hoy</span><strong>{money(snapshot.todayCollectedCents)}</strong><p>Solo cobros confirmados menos devoluciones ejecutadas.</p></article>
+     <article className="metric-card"><span>Recaudación · mes actual</span><strong>{money(snapshot.monthCollectedCents)}</strong><p>Sin anticipar autorizaciones ni eventos inciertos.</p></article>
+    </div>
+   </section>
+   <section aria-label="Indicadores financieros del periodo seleccionado">
     <div className="metric-grid">
      <article className="metric-card"><span>Ventas netas · periodo</span><strong>{currency(snapshot.salesCents)}</strong><p>Consumo confirmado menos ajustes; sin propinas.</p><small>Vs. periodo anterior: {compare(snapshot.salesCents,snapshot.previousSalesCents)}</small></article>
      <article className="metric-card"><span>Recaudación confirmada · periodo</span><strong>{money(snapshot.collectedCents)}</strong><p>Efectivo y capturas Stripe menos devoluciones realmente ejecutadas.</p><small>Vs. anterior: {compare(snapshot.collectedCents,snapshot.previousCollectedCents)}</small></article>

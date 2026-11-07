@@ -60,7 +60,7 @@ CREATE TRIGGER finance_event_no_truncate_candidate
  FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_h6_history_mutation();
 
 -- Sealed M3 catalog login continues to expose ONLY exact RPCs.
-CREATE FUNCTION sabora.verify_management_capability_m3(p_capability jsonb,p_body text)
+CREATE OR REPLACE FUNCTION sabora.verify_management_capability_m3(p_capability jsonb,p_body text)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=pg_catalog,pg_temp AS $verify_management$
 DECLARE v_key bytea;v_role text;v_payload text;v_expected text;v_now bigint;
@@ -160,9 +160,11 @@ DECLARE
  v_day date;v_month date;v_from timestamptz;v_to timestamptz;
  v_prev_from timestamptz;v_prev_to timestamptz;
  v_month_from timestamptz;v_month_to timestamptz;
- v_zone text;v_sales bigint;v_prev_sales bigint;
+ v_zone text;v_sales bigint;v_prev_sales bigint;v_today_sales bigint;v_month_sales bigint;
+ v_day_from timestamptz;v_day_to timestamptz;v_current_month_from timestamptz;v_current_month_to timestamptz;
  v_orders bigint;v_accounts bigint;v_pending bigint;v_cash bigint;v_card bigint;
  v_tips bigint:=0;v_cash_prev bigint;v_card_prev bigint;
+ v_today_cash bigint;v_month_cash bigint;v_today_card bigint;v_month_card bigint;
  v_trend jsonb;v_top jsonb;v_gaps bigint;v_ranking_gaps bigint;
 BEGIN
  v_role:=sabora.verify_management_capability_m3(p_capability,
@@ -179,6 +181,10 @@ BEGIN
  v_zone:=p_time_zone;
  v_day:=(v_asof AT TIME ZONE v_zone)::date;
  v_month:=date_trunc('month',v_day::timestamp)::date;
+ v_day_from:=v_day::timestamp AT TIME ZONE v_zone;
+ v_day_to:=(v_day+1)::timestamp AT TIME ZONE v_zone;
+ v_current_month_from:=v_month::timestamp AT TIME ZONE v_zone;
+ v_current_month_to:=(v_month+interval '1 month') AT TIME ZONE v_zone;
  IF p_month IS NOT NULL THEN
   v_month:=to_date(p_month||'-01','YYYY-MM-DD');
   IF v_month>date_trunc('month',v_day::timestamp)::date
@@ -228,13 +234,15 @@ BEGIN
      AND i.state IN('adjusted','refund_due','cash_refund_due','resolved')
  )
  SELECT coalesce(sum(amount) FILTER(WHERE at>=v_from AND at<v_to),0)::bigint,
-  coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint
- INTO v_sales,v_prev_sales FROM movements;
- SELECT count(DISTINCT r.order_id),count(DISTINCT r.account_id)
+  coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint,
+  coalesce(sum(amount) FILTER(WHERE at>=v_day_from AND at<v_day_to),0)::bigint,
+  coalesce(sum(amount) FILTER(WHERE at>=v_current_month_from AND at<v_current_month_to),0)::bigint
+ INTO v_sales,v_prev_sales,v_today_sales,v_month_sales FROM movements;
+ SELECT count(DISTINCT r.order_id),count(DISTINCT r.account_id) FILTER(WHERE r.amount_cents>0)
  INTO v_orders,v_accounts FROM sabora.order_rounds r
  JOIN sabora.orders o ON o.id=r.order_id
  WHERE o.confirmed_at>=v_from AND o.confirmed_at<v_to
-   AND r.state NOT IN('cancelled','payment_failed') AND r.amount_cents>0;
+   AND r.state NOT IN('cancelled','payment_failed');
  SELECT coalesce(sum(outstanding_cents),0)::bigint INTO v_pending
  FROM sabora.customer_accounts WHERE state IN('open','blocked');
  WITH movements AS (
@@ -242,15 +250,19 @@ BEGIN
    CASE WHEN kind='payment' THEN c.amount_cents ELSE -c.amount_cents END AS amount
   FROM sabora.cash_settlements c
  ) SELECT coalesce(sum(amount) FILTER(WHERE at>=v_from AND at<v_to),0)::bigint,
-   coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint
- INTO v_cash,v_cash_prev FROM movements;
+   coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint,
+   coalesce(sum(amount) FILTER(WHERE at>=v_day_from AND at<v_day_to),0)::bigint,
+   coalesce(sum(amount) FILTER(WHERE at>=v_current_month_from AND at<v_current_month_to),0)::bigint
+ INTO v_cash,v_cash_prev,v_today_cash,v_month_cash FROM movements;
  WITH movements AS (
  SELECT e.confirmed_at AS at,
    CASE WHEN e.kind='capture' THEN e.amount_cents ELSE -e.amount_cents END AS amount
  FROM sabora.finance_provider_events_candidate e
  ) SELECT coalesce(sum(amount) FILTER(WHERE at>=v_from AND at<v_to),0)::bigint,
-   coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint
- INTO v_card,v_card_prev FROM movements;
+   coalesce(sum(amount) FILTER(WHERE at>=v_prev_from AND at<v_prev_to),0)::bigint,
+   coalesce(sum(amount) FILTER(WHERE at>=v_day_from AND at<v_day_to),0)::bigint,
+   coalesce(sum(amount) FILTER(WHERE at>=v_current_month_from AND at<v_current_month_to),0)::bigint
+ INTO v_card,v_card_prev,v_today_card,v_month_card FROM movements;
  WITH days AS (
   SELECT generate_series(v_month::timestamp,
    (v_month+interval '1 month'-interval '1 day')::timestamp,
@@ -325,6 +337,9 @@ BEGIN
   'asOf',v_asof,'period',p_period,'month',to_char(v_month,'YYYY-MM'),
   'from',v_from,'to',v_to,
   'salesCents',v_sales,'previousSalesCents',v_prev_sales,
+  'todaySalesCents',v_today_sales,'monthSalesCents',v_month_sales,
+  'todayCollectedCents',CASE WHEN v_gaps=0 THEN v_today_cash+v_today_card ELSE NULL END,
+  'monthCollectedCents',CASE WHEN v_gaps=0 THEN v_month_cash+v_month_card ELSE NULL END,
   'ordersCount',v_orders,'consumingAccounts',v_accounts,
   'averageTicketCents',CASE WHEN v_accounts>0 THEN round(v_sales::numeric/v_accounts)::bigint ELSE NULL END,
   'outstandingCents',v_pending,

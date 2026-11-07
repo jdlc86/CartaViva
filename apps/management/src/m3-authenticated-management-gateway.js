@@ -58,9 +58,11 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl
       typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||
       !['today','last7','thisMonth','previousMonth'].includes(value.period)||
       !/^20[0-9]{2}-(0[1-9]|1[0-2])$/.test(value.month??'')||
-      ![value.salesCents,value.previousSalesCents,value.ordersCount,
+      ![value.salesCents,value.previousSalesCents,value.todaySalesCents,value.monthSalesCents,value.ordersCount,
         value.consumingAccounts,value.outstandingCents,value.cashCollectedCents].every(integer)||
       (value.collectedCents!==null&&!integer(value.collectedCents))||
+      (value.todayCollectedCents!==null&&!integer(value.todayCollectedCents))||
+      (value.monthCollectedCents!==null&&!integer(value.monthCollectedCents))||
       (value.stripeCollectedCents!==null&&!integer(value.stripeCollectedCents))||
       (value.previousCollectedCents!==null&&!integer(value.previousCollectedCents))||
       (value.averageTicketCents!==null&&!integer(value.averageTicketCents))||

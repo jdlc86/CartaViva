@@ -7678,6 +7678,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.equal(financeBefore.status,'ready');
    assert.equal(financeBefore.timeZone,'Europe/Madrid');
    assert.ok(financeBefore.dailySales.length>=28&&financeBefore.dailySales.length<=31);
+   assert.ok(Number.isSafeInteger(financeBefore.todaySalesCents));
+   assert.ok(Number.isSafeInteger(financeBefore.monthSalesCents));
+   assert.ok(financeBefore.todayCollectedCents===null||Number.isSafeInteger(financeBefore.todayCollectedCents));
    assert.equal(financeBefore.tipsAvailable,false);
    assert.equal(financeBefore.tipsCents,null);
    assert.equal(financeBefore.version,1);
