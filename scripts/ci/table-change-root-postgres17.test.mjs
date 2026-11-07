@@ -5092,11 +5092,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        assert.equal(postReplay.rounds,2);
        assert.equal(postReplay.payments,scenario.attempts);
        assert.equal(postReplay.cash,scenario.cash);
-       await page.getByText('Pedido confirmado').waitFor({timeout:20000});
+       // The real PWA must not promote an unverified pay-now order
+       // into confirmed payment before the provider has authorized it.
        if(mode==='pay_now'){
-        await page.getByText(/la autorización de Stripe sigue pendiente/).waitFor();
-        await page.getByText(/No se ha confirmado ningún cobro ni envío a cocina/).waitFor();
+        await page.getByText('Pago pendiente de completar').waitFor({timeout:20000});
+        await page.getByText(/Pedido registrado; el estado económico no está acreditado/).waitFor();
+        assert.equal(await page.getByText('Pedido confirmado').count(),0,
+         'an unverified pay-now order must stay explicitly pending');
        }else{
+        await page.getByText('Pedido confirmado').waitFor({timeout:20000});
         await page.getByText(/El envío a cocina respetará la ventana/).waitFor();
        }
        await page.screenshot({path:join(evidence,
