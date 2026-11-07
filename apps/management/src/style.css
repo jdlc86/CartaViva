@@ -572,3 +572,18 @@ p { line-height: 1.55; }
   .order-history li { grid-template-columns: minmax(0, 1fr); gap: var(--cv-space-1); }
 }
 
+
+/* Caja H6 candidata: composición táctil dentro del estilo aprobado de gestión. */
+.cash-account-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin:16px 0;}
+.cash-account-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:100%;min-height:112px;
+ padding:16px;border:1px solid var(--border, #d9dfd9);border-radius:14px;background:var(--surface, #fff);
+ color:inherit;text-align:left;cursor:pointer;}
+.cash-account-card--active{outline:2px solid var(--brand, #216246);outline-offset:1px;}
+.cash-account-card:focus-visible{outline:3px solid var(--brand, #216246);outline-offset:2px;}
+.cash-account-card .badge{white-space:normal;}
+.cash-capture-controls,.cash-close-controls{display:grid;gap:14px;margin-top:16px;}
+.cash-capture-controls label{display:flex;gap:9px;align-items:center;flex-wrap:wrap;}
+.cash-capture-controls label:first-child{display:grid;justify-items:start;}
+.cash-capture-controls input[inputmode=decimal]{width:min(100%,240px);min-height:44px;}
+.cash-capture-controls .button,.cash-close-controls .button{min-height:44px;justify-self:start;}
+@media(max-width:600px){.cash-account-grid{grid-template-columns:1fr;}.cash-capture-controls .button{width:100%;}}
