@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CORRELATION=/^[A-Za-z0-9_-]{8,128}$/;
 const context=value=>{
@@ -38,6 +39,13 @@ export function createH6OperationsCoordinator({repository,issueCapability}={}){
   resolveIncident(verified,{incidentId,resolution,reason,correlationId}={}){
    const bound=capability(verified,'resolve_incident',incidentId,correlationId);
    return repository.resolveIncident({incidentId,resolution,reason,capability:bound.capability});
+  },
+  readCashAccounts(verified,{after=null,limit=50}={}){
+   if(typeof repository.readCashAccounts!=='function')throw Error('h6_cash_snapshot_unavailable');
+   const {actorId,role}=context(verified);
+   const cap=issueCapability({actorId,staffRole:role,action:'read_cash_accounts',
+    targetId:actorId,correlationId:'cash_read_'+randomUUID().replaceAll('-','_')});
+   return repository.readCashAccounts({after,limit,capability:cap});
   },
   settleCash(verified,{accountId,amountCents,correlationId}={}){
    const bound=capability(verified,'settle_cash',accountId,correlationId);
