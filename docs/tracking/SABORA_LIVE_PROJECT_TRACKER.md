@@ -418,3 +418,11 @@ Correcciones del recorrido de CI: TS/async, verificador SQL ya existente, tabla 
 
 **Estado:** subalcance propinas en efectivo IMPLEMENTADO + PROBADO + VALIDADO TÉCNICAMENTE EN CANDIDATO AISLADO. **No validado:** Stripe real de terceros y propina digital, devolución a método de origen digital, aceptación visual humana, entrega física del dinero, criterios fiscales/laborales operativos. **M4 global / F20/R03–R05 PARCIAL/BLOQUEADO; M6 NO-GO.** PR #49 Draft, sin merge ni despliegue.
 
+## 43. H6 — lectura cliente de estado económico seguro y SCA sin éxito fingido (07-11-2026)
+
+[Informe H6 de consulta autorizada](../reviews/SABORA_H6_PAYMENT_AUTH_STATE_CANDIDATE_2026-11-07.md) · [continuidad 28 §15](../handoffs/SESSION_28_HANDOFF_2026-11-07.md). **Código candidato SHA `79ef87bac0395dae9dda5ae017e32d0fc97cc281`:** flujo GET `/api/v1/customer/orders/:orderId/payment-state` no-store, identidad cookie/mesa/visita/orden, SQL H6 preexistente sin acceso directo a tablas ni a cuentas ajenas; respuesta mínima; PWA que no convierte una finalización de Stripe.js ni la persistencia de un pedido en cobro/acreditación, guarda identidad de tentativa pendiente y exige lectura SQL antes de reintentar. Test integrado PG17/Fastify/login restringido/roles y Chromium UI de reintentos sin segundo pedido.
+
+**CI del mismo SHA en este corte:** [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/42408539732) — **FAILURE**; [Bootstrap Sabora lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42408539817) — **FAILURE**; [Sabora client browser conformance](https://github.com/jdlc86/CartaViva/actions/runs/42408539806) — **SUCCESS**; [Sabora management browser visual smoke](https://github.com/jdlc86/CartaViva/actions/runs/42408539740) — **SUCCESS**; [Sabora CV-012 independent PWA installability](https://github.com/jdlc86/CartaViva/actions/runs/42408539744) — **SUCCESS**. No atribuir a este SHA el 5/5 anterior de propinas presenciales; no certificación funcional sin gate terminado.
+
+**Pendiente bloqueante:** proveedor Stripe sandbox auténtico y conexión Stripe Elements/SCA en arranque real, multi-cuenta digital, propinas y refunds a método original, aprobación visual humana. M4 / F20/R03–R05 PARCIAL/BLOQUEADO; F28/R09 bloqueado; M6 producción NO-GO. No se ha tocado Fleetia/VPS/Supabase operativo ni realizado merge/despliegue.
+
