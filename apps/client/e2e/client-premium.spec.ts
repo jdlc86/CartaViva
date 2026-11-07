@@ -491,3 +491,74 @@ test('ambiguous confirmation is recovered by lookup without repeating the write'
  await checkout.getByRole('button',{name:'Cerrar'}).click();
  await expect(page.getByRole('button',{name:/Cesta: 0/})).toBeVisible();
 });
+
+
+test('voluntary cash tips selector preserves consent, six choices and payer proof',async({page})=>{
+ const tableId='ca710000-0000-4000-8000-000000000001';
+ const round1='62000000-0000-4000-8000-000000000001';
+ const round2='62000000-0000-4000-8000-000000000002';
+ const collectionId='64000000-0000-4000-8000-000000000001';
+ const claimId='65000000-0000-4000-8000-000000000001';
+ const proof='a'.repeat(64);
+ const submitted:unknown[]=[];
+ await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
+ await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,contentType:'application/json',
+  body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
+   expiresAt:'2026-12-07T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
+ await page.route('**/api/v1/customer/third-party/cash/debts',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({version:1,items:[
+   {roundId:round1,accountId:'63000000-0000-4000-8000-000000000001',
+    customerCode:'SB-23456789ABCD',amountCents:2400},
+   {roundId:round2,accountId:'63000000-0000-4000-8000-000000000002',
+    customerCode:'SB-23456789ABCE',amountCents:2400}
+  ]})}));
+ await page.route('**/api/v1/customer/third-party/cash/intents',route=>{
+  submitted.push(route.request().postDataJSON());
+  return route.fulfill({status:201,contentType:'application/json',
+   body:JSON.stringify({version:1,intentId:'66000000-0000-4000-8000-000000000001',
+    consumptionCents:4800,tipCents:240,totalCents:5040,tipOption:'percent5',
+    state:'pending',repeated:false})});
+ });
+ await page.route('**/api/v1/customer/third-party/cash/tips',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({version:1,items:[{collectionId,tipCents:240,
+   collectedAt:'2026-11-07T14:00:00.000Z'}]})}));
+ await page.route('**/api/v1/customer/third-party/cash/tips/'+collectionId+'/proof',
+  route=>route.fulfill({status:201,contentType:'application/json',
+   body:JSON.stringify({version:1,collectionId,claimId,proof,tipCents:240,
+    expiresAt:'2026-11-07T23:00:00.000Z'})}));
+ await page.goto('/qr/v1/SABORA/'+tableId+'#'+'A'.repeat(43));
+ const qr=page.getByRole('dialog',{name:'QR de mesa'});
+ await expect(qr).toContainText('Mesa verificada');
+ await qr.getByRole('button',{name:'Pagar consumos y propinas en caja'}).click();
+ const dlg=page.getByRole('dialog',{name:'Pagar deudas ajenas'});
+ await expect(dlg).toBeVisible();
+ await dlg.getByRole('button',{name:'Consultar importes autorizados'}).click();
+ const consumer=dlg.getByRole('group',{name:'Selecciona consumos de esta mesa'});
+ await expect(consumer.getByRole('checkbox')).toHaveCount(2);
+ await consumer.getByRole('checkbox').first().check();
+ await consumer.getByRole('checkbox').last().check();
+ const tips=dlg.getByRole('group',{name:/Elige una opción/});
+ await expect(tips.getByRole('radio')).toHaveCount(6);
+ await expect(tips.getByRole('radio',{name:/Sin propina/})).toBeChecked();
+ await expect(dlg.getByRole('button',{name:'Registrar intención de pago en caja'})).toBeDisabled();
+ await tips.getByRole('radio',{name:/5 %/}).check();
+ await expect(tips.getByRole('radio',{name:/Sin propina/})).not.toBeChecked();
+ await expect(dlg).toContainText('2,40');
+ await dlg.getByRole('checkbox',{name:/Consiento expresamente/}).check();
+ await dlg.getByRole('button',{name:'Registrar intención de pago en caja'}).click();
+ await expect(dlg).toContainText('50,40');
+ expect(submitted).toHaveLength(1);
+ expect(submitted[0]).toMatchObject({tableId,visitId:'visit_h6_12345678',
+  consent:true,tipOption:'percent5',rounds:[
+   {roundId:round1,amountCents:2400},{roundId:round2,amountCents:2400}
+  ]});
+ expect((submitted[0] as Record<string,unknown>).requestKey).toMatch(/^[A-Za-z0-9_-]{16,128}$/);
+ await dlg.getByRole('button',{name:'Consultar mis propinas recaudadas'}).click();
+ await expect(dlg.getByRole('button',{name:'Solicitar prueba para devolución'})).toBeVisible();
+ await dlg.getByRole('button',{name:'Solicitar prueba para devolución'}).click();
+ await expect(dlg).toContainText(collectionId);
+ await expect(dlg).toContainText(claimId);
+ await expect(dlg).toContainText(proof);
+});
