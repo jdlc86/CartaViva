@@ -26,7 +26,7 @@ const CONFLICT=new Set(['dispatch_not_acknowledgeable','cash_settlement_conflict
 const INPUT=new Set(['invalid_h6_operation','invalid_h6_account_close','invalid_h6_dispatch_request','invalid_h6_incident_request',
  'invalid_h6_incident_resolution','invalid_h6_cash_settlement','invalid_h6_cash_refund',
  'invalid_incident_request','invalid_incident_resolution','invalid_cash_settlement','invalid_pickup_operation',
- 'invalid_catalog_availability_operation']);
+ 'invalid_catalog_availability_operation','invalid_h6_cash_snapshot']);
 const failure=(reply,error)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(FORBIDDEN.has(code))return reply.code(403).send({error:'forbidden'});
@@ -116,6 +116,18 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
     itemId,soldOut:body.soldOut,correlationId:body.correlationId}));}
    catch(error){return failure(reply,error);}
   });
+ app.get('/api/v1/operations/cash/accounts',{preHandler:floor},async(request,reply)=>{
+  reply.header('Cache-Control','no-store');
+  reply.header('X-Content-Type-Options','nosniff');
+  const q=request.query??{};
+  if(!plain(q)||Reflect.ownKeys(q).some(k=>!['after','limit'].includes(k))||
+     (q.after!==undefined&&!UUID.test(q.after))||
+     (q.limit!==undefined&&(!/^[0-9]{1,2}$/.test(q.limit)||Number(q.limit)<1||
+       Number(q.limit)>50)))return reply.code(400).send({error:'invalid_h6_operation'});
+  try{return reply.code(200).send(await operations.readCashAccounts(verified(request),{
+   after:q.after??null,limit:q.limit===undefined?50:Number(q.limit)}));}
+  catch(error){return failure(reply,error);}
+ });
  app.post('/api/v1/operations/accounts/:accountId/cash-settlements',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
   const body=request.body;
   if(!UUID.test(request.params?.accountId??'')||!exact(body,['amountCents','correlationId'])||
