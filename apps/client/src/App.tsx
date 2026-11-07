@@ -528,12 +528,12 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  },[basket,flowContract,identity.status,locale,paymentMode,tableVisit]);
 
  const refreshPaymentState=useCallback(async(orderId:string)=>{
-  if(!tableVisit||pendingPaymentOrderRef.current!==orderId)return;
+  if(!tableVisit||pendingPaymentOrderRef.current!==orderId)return false;
   setCheckoutPhase('confirming');
   try{
    const state=await customerTransport.paymentState({
     tableId:tableVisit.tableId,visitId:tableVisit.visitId,orderId});
-   if(pendingPaymentOrderRef.current!==orderId)return;
+   if(pendingPaymentOrderRef.current!==orderId)return false;
    if(state.paymentMode!=='pay_now')throw Error('invalid_payment_mode');
    if(['grouping','capture_requested','captured','dispatch_requested',
        'kitchen_acknowledged'].includes(state.roundState)){
@@ -555,20 +555,23 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     setCheckoutPhase('payment_action');setCheckoutMessage(locale==='es'?
      'La autorización sigue pendiente en el servidor. No hay cobro acreditado.':
      'Authorization is still pending at the server. No capture has been verified.');
+    return true;
    }
+   return false;
   }catch{
-   if(pendingPaymentOrderRef.current!==orderId)return;
+   if(pendingPaymentOrderRef.current!==orderId)return false;
    setCheckoutPhase('uncertain');setCheckoutMessage(locale==='es'?
     'No se pudo consultar el estado. Se conserva el pedido original; solicita ayuda.':
     'Unable to check the state. The original order is preserved; ask staff.');
+   return false;
   }
  },[locale,tableVisit]);
 
  const retryPaymentAction=useCallback(async()=>{
   const orderId=pendingPaymentOrderRef.current;
   if(!orderId)return;
-  await refreshPaymentState(orderId);
-  if(pendingPaymentOrderRef.current!==orderId||
+  const safeToRetry=await refreshPaymentState(orderId);
+  if(safeToRetry!==true||pendingPaymentOrderRef.current!==orderId||
      !stripeClientSecretRef.current||!confirmStripePayment)return;
   setCheckoutPhase('confirming');
   try{
