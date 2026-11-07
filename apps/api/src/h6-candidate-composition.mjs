@@ -17,15 +17,21 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
  from './h6-provider-repository.mjs';
 import {assertH6SqlCapabilities} from './h6-sql-preflight.mjs';
+import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
+ TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL} from './third-party-cash-repository.mjs';
+import {registerThirdPartyCashHttp} from './third-party-cash-http.mjs';
 
-const customerSql=new Set([READ_CUSTOMER_EVENTS_H6_SQL]);
+const customerSql=new Set([READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,
+ TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL]);
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL]);
+ MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL]);
 
 // Explicitly dormant composition: it opens only the injected LISTEN connection,
 // never reads environment variables, creates credentials, starts a worker or
@@ -56,6 +62,9 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
  const operations=createH6OperationsCoordinator({repository:operationsRepository,
   issueCapability:issueStaffCapability});
+ const thirdPartyPayer=createThirdPartyCashCustomerRepository({withTransaction:customerTx});
+ const thirdPartyOperations=createThirdPartyCashOperations({withTransaction:operationsTx,
+  issueCapability:issueStaffCapability});
  let scheduler=null;
  const notifier=await createPostgresH6OutboxNotifier({
   pool:notifierPool,
@@ -72,6 +81,8 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  try{
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
   registerH6OperationsHttp(app,{forRoles,operations});
+  registerThirdPartyCashHttp(app,{cookieAuth,forRoles,payer:thirdPartyPayer,
+   operations:thirdPartyOperations});
   registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscribeCommitted:notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles,events:operationsRepository,
@@ -86,7 +97,7 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
    await scheduler.start();
   }
  }catch(error){await scheduler?.close();await notifier.close();throw error;}
- return Object.freeze({provider,payments,operations,
+ return Object.freeze({provider,payments,operations,thirdPartyPayer,thirdPartyOperations,
   close:async()=>{await scheduler?.close();await notifier.close();}});
 
 }

@@ -3,7 +3,9 @@ const CAPABILITIES=Object.freeze({
  sabora_h6_customer_runtime:Object.freeze([
   'confirm_customer_round_h6_candidate','read_customer_payment_policy_h6_candidate',
   'read_customer_round_h6_candidate','read_customer_event_backlog_h6_candidate',
-  'read_customer_order_revision_h6_candidate','resubmit_customer_order_revision_h6_candidate'
+  'read_customer_order_revision_h6_candidate','resubmit_customer_order_revision_h6_candidate',
+  'read_third_party_cash_debts_candidate','create_third_party_cash_intent_candidate',
+  'read_third_party_cash_refunds_candidate','issue_third_party_cash_refund_proof_candidate'
  ]),
  sabora_h6_provider_runtime:Object.freeze([
   'record_h6_authorization_outcome_candidate','request_h6_capture_dispatch_candidate',
@@ -17,7 +19,8 @@ const CAPABILITIES=Object.freeze({
   'resolve_h6_incident_authorized_candidate','settle_h6_account_cash_authorized_candidate',
   'refund_h6_cash_authorized_candidate','read_staff_event_backlog_h6_candidate',
   'manage_pickup_task_h6_candidate','set_catalog_sold_out_h6_candidate',
-  'read_h6_cash_accounts_candidate'
+  'read_h6_cash_accounts_candidate','read_third_party_cash_pending_candidate',
+  'settle_third_party_cash_candidate','refund_third_party_cash_candidate'
  ])
 });
 const ROLES=Object.freeze(Object.keys(CAPABILITIES));
