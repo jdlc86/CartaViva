@@ -26,6 +26,8 @@ import {createH6OperationsRepository,ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerThirdPartyCashHttp} from '../../apps/api/src/third-party-cash-http.mjs';
+import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
+import {createM3FinanceRepository,READ_M3_FINANCE_SQL} from '../../apps/api/src/m3-management-repository.mjs';
 import {runCashTipsIntegralScenario} from './m4-cash-tips-integral-scenario.mjs';
 import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
  TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
@@ -1089,6 +1091,47 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    .some(x=>x.incidentId===incident.incidentId));
   await runCashTipsIntegralScenario({payerRepo,tpA,tpB,b,bLater,tableId,
    payerUrl,customerPost,staffPost,admin,customerPool,operationsPool});
+
+  // Validate the same consumed cash-tip economic records in a real ADMIN
+  // dashboard query, with a distinct least-privilege physical PG17 login.
+  const financeLogin='sabora_m4_finance_ci';
+  const financePassword='m4-finance-disposable-pg17-only';
+  await admin.query("CREATE ROLE sabora_m4_finance_ci LOGIN NOINHERIT NOBYPASSRLS "+
+   "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD 'm4-finance-disposable-pg17-only'");
+  await admin.query("GRANT sabora_m3_catalog_runtime TO sabora_m4_finance_ci "+
+   "WITH SET TRUE, INHERIT FALSE");
+  const financePool=new Pool({connectionString:loginUrl(financeLogin,financePassword),...poolOptions});
+  try{
+   await assert.rejects(financePool.query('SELECT * FROM sabora.cash_tip_collections_candidate'),
+    /permission denied/,'dashboard login cannot read payer/tip collection rows');
+   const financeTx=createRoleScopedPostgresTransaction({pool:financePool,
+    role:'sabora_m3_catalog_runtime',allowedSql:new Set([READ_M3_FINANCE_SQL])});
+   const issueFinance=createM3ManagementCapabilityIssuer({keyId,secret:signingSecret,
+    databaseRole:financeLogin});
+   const repository=createM3FinanceRepository({withTransaction:financeTx,
+    issueCapability:issueFinance,timeZone:'Europe/Madrid'});
+   const authorizedAdmin={verifiedIdentity:{userId:adminId},
+    verifiedStaff:{userId:adminId,role:'admin'}};
+   const report=await repository.read(authorizedAdmin,{period:'today'});
+   assert.equal(report.tipsAvailable,true);
+   assert.equal(report.tipsCoverage,'cash');
+   assert.equal(report.tipsCollectedCents,120);
+   assert.equal(report.tipsRefundedCents,120);
+   assert.equal(report.tipsCents,0,
+    'one cash tip refunded once is not outstanding or restaurant income');
+   assert.equal(report.historicalCoverage,'complete');
+   const cash=(await admin.query(
+    "SELECT coalesce(sum(CASE WHEN kind='payment' THEN amount_cents ELSE -amount_cents END),0)::bigint "+
+    "AS amount FROM sabora.cash_settlements WHERE created_at>=$1::timestamptz "+
+    "AND created_at<$2::timestamptz",[report.from,report.to])).rows[0];
+   assert.equal(report.cashCollectedCents,Number(cash.amount),
+    'normal cash consumption KPI must exclude separate staff tips');
+   await assert.rejects(repository.read({verifiedIdentity:{userId:waiterId},
+    verifiedStaff:{userId:waiterId,role:'waiter'}},{period:'today'}),
+    /m3_management_forbidden/,'staff without ADMIN cannot inspect finance KPIs');
+  }finally{await financePool.end();}
+
+
  }finally{await tpApp.close();}
  await assert.rejects(customerPool.query('SELECT * FROM sabora.third_party_cash_refunds_candidate'),
   /permission denied/);
