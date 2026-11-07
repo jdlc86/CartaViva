@@ -144,7 +144,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    LOOKUP_ATTEMPT_SQL,PREPARE_CONFIRMATION_SQL])});
  const h6CustomerTx=createRoleScopedPostgresTransaction({pool:customerPool,role:'sabora_h6_customer_runtime',
   allowedSql:new Set([READ_H6_PAYMENT_POLICY_SQL,READ_H6_ROUND_SQL,PERSIST_H6_ORDER_SQL,
-   READ_CUSTOMER_EVENTS_H6_SQL])});
+   READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,
+   TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL])});
  // The immutable account choice is read through its own physical NOINHERIT
  // B3 role, not through the customer writer or a PG superuser test shortcut.
  const h6ReadTx=createRoleScopedPostgresTransaction({pool:policyReaderPool,
@@ -267,7 +268,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const provider=createH6ProviderRepository({withTransaction:providerTx});
  const operationsTx=createRoleScopedPostgresTransaction({pool:operationsPool,role:'sabora_h6_operations_runtime',
   allowedSql:new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,
-   SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL])});
+   SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+   TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL])});
  const operations=createH6OperationsRepository({withTransaction:operationsTx});
  const issueKitchen=createH6StaffCapabilityIssuer({keyId,secret:signingSecret,
   databaseRole:'sabora_h6_operations_ci'});
