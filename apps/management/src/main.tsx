@@ -14,6 +14,7 @@ import type {M3CatalogGateway} from './m3-catalog-management-model.js';
 import {createM3AuthenticatedManagementGateway,type M3AuthenticatedManagementGateway} from './m3-authenticated-management-gateway.js';
 import {CatalogView} from './views/CatalogView';
 import {OrdersView} from './views/OrdersView';
+import {CashView} from './views/CashView';
 import {SummaryView} from './views/SummaryView';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
@@ -26,6 +27,7 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
   {id:'catalogo', label: 'Catálogo', detail: 'Carta e imágenes', icon: 'catalog'},
   {id:'mesas', label: 'Mesas y QR', detail: 'Accesos de mesa', icon: 'tables'},
   {id:'comandas', label: 'Comandas', detail: 'Cocina y sala', icon: 'orders'},
+  {id:'caja', label: 'Caja', detail: 'Cobros y cuentas', icon: 'tables'},
   {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
 ];
 
@@ -86,6 +88,7 @@ export function ManagementApp({
     : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
+    : area === 'caja' ? <CashView gateway={operationsGateway}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
 
   return (
