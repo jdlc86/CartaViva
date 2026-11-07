@@ -176,18 +176,53 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    })))});
   },
   async createThirdPartyCashIntent(input:{tableId:string;visitId:string;consent:true;
-   rounds:readonly {roundId:string;amountCents:number}[];requestKey:string}){
+   rounds:readonly {roundId:string;amountCents:number}[];requestKey:string;
+   tipOption?:'none'|'percent5'|'percent10'|'fixed100'|'fixed200'|'fixed500'}){
    if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||input.consent!==true||
     !KEY.test(input.requestKey)||input.rounds.length<1||input.rounds.length>10||
-    !input.rounds.every(x=>UUID.test(x.roundId)&&Number.isSafeInteger(x.amountCents)&&x.amountCents>0))
+    !input.rounds.every(x=>UUID.test(x.roundId)&&Number.isSafeInteger(x.amountCents)&&x.amountCents>0)||
+    (input.tipOption!==undefined&&!['none','percent5','percent10','fixed100','fixed200','fixed500'].includes(input.tipOption)))
     throw Error('invalid_third_party_transport');
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/intents','POST',input);
    if(value.version!==1||!UUID.test(value.intentId as string)||
     !['pending','paid'].includes(value.state as string)||typeof value.repeated!=='boolean'||
-    !Number.isSafeInteger(value.totalCents)||(value.totalCents as number)<=0)
+    !Number.isSafeInteger(value.totalCents)||(value.totalCents as number)<=0||
+    (input.tipOption!==undefined&&
+     (!Number.isSafeInteger(value.tipCents)||(value.tipCents as number)<0||
+      !Number.isSafeInteger(value.consumptionCents)||(value.consumptionCents as number)<=0||
+      (value.consumptionCents as number)+(value.tipCents as number)!==value.totalCents||
+      value.tipOption!==input.tipOption)))
     throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
    return Object.freeze({intentId:value.intentId as string,
-    totalCents:value.totalCents as number,state:value.state as 'pending'|'paid'});
+    totalCents:value.totalCents as number,
+    consumptionCents:input.tipOption!==undefined?value.consumptionCents as number:value.totalCents as number,
+    tipCents:input.tipOption!==undefined?value.tipCents as number:0,
+    state:value.state as 'pending'|'paid'});
+  },
+  async myCashTips(){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/tips','GET');
+   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
+      !value.items.every(x=>plain(x)&&UUID.test(x.collectionId as string)&&
+       Number.isSafeInteger(x.tipCents)&&(x.tipCents as number)>0&&
+       typeof x.collectedAt==='string'&&Number.isFinite(Date.parse(x.collectedAt))))
+    throw new CustomerFlowTransportError('tip_refund_unavailable',503);
+   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
+    collectionId:x.collectionId as string,tipCents:x.tipCents as number,
+    collectedAt:x.collectedAt as string
+   })))});
+  },
+  async cashTipRefundProof(collectionId:string){
+   if(!UUID.test(collectionId))throw Error('invalid_tip_scope');
+   const value=await jsonRequest(fetchImpl,
+    `/api/v1/customer/third-party/cash/tips/${collectionId}/proof`,'POST',{});
+   if(value.version!==1||value.collectionId!==collectionId||
+    !UUID.test(value.claimId as string)||!(/^[0-9a-f]{64}$/).test(value.proof as string)||
+    !Number.isSafeInteger(value.tipCents)||(value.tipCents as number)<=0||
+    typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt)))
+    throw new CustomerFlowTransportError('tip_refund_unavailable',503);
+   return Object.freeze({collectionId,claimId:value.claimId as string,
+    proof:value.proof as string,tipCents:value.tipCents as number,
+    expiresAt:value.expiresAt as string});
   },
   async thirdPartyCashRefunds(){
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/refunds','GET');
