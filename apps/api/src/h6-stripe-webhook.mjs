@@ -35,12 +35,16 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  const object=event?.data?.object;
  // Strict single-restaurant environment check is opt-in for the isolated
  // provider composition; the historic signature-only callers are unchanged.
+ const expectedObjectType=event?.type?.startsWith('payment_intent.')?'payment_intent':
+  event?.type==='charge.refunded'?'charge':'refund';
+ const expectedIdPrefix=expectedObjectType==='payment_intent'?'pi_':
+  expectedObjectType==='charge'?'ch_':'re_';
  if(expectedLivemode!==null &&
     (event?.livemode!==expectedLivemode||event?.account!==undefined&&event.account!==null||
-     event?.object!=='event'||object?.object!==(
-      event?.type?.startsWith('payment_intent.')?'payment_intent':'refund') ))
+     event?.object!=='event'||object?.object!==expectedObjectType))
   throw Error('invalid_stripe_webhook_payload');
  if(!EVENT.test(event?.id??'')||!TYPES.has(event?.type)||!OBJECT.test(object?.id??'')||
+    !object.id.startsWith(expectedIdPrefix)||
     !Number.isSafeInteger(event?.created)||event.created<1)
   throw Error('invalid_stripe_webhook_payload');
  let providerChargeId=null;

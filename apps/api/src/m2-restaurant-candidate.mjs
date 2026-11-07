@@ -36,6 +36,7 @@ import {registerOrderOperationsHttp} from './order-operations-http.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
+import {registerH6StripeWebhookHttp} from './h6-stripe-webhook-http.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
  RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
@@ -215,6 +216,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    role:M2_H4_OPERATIONS_ROLE,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
     READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const provider=createH6ProviderRepository({withTransaction:providerTx});
+  // Signed ingress is optional and restricted to test-mode webhooks.
+  // server.mjs remains health-only; no route is exposed by default.
+  if(h6.webhook!==undefined&&h6.webhook!==null)
+   registerH6StripeWebhookHttp(app,{secret:h6.webhook.secret,providerRepository:provider});
   const payments=createH6PaymentOrchestrator({stripe:h6.stripe,repository:provider});
   const flow=createH6CustomerPaymentFlow({flow:b3.flow,payments});
   const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});

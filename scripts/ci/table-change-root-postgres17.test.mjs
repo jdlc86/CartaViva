@@ -30,6 +30,7 @@ import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  READ_STAFF_EVENTS_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL}
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
+import {registerH6StripeWebhookHttp} from '../../apps/api/src/h6-stripe-webhook-http.mjs';
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
@@ -3154,6 +3155,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // Seventh sealed cash RPC and the staff decision/queue now share the
    // same verified RS256 JWT and live PostgreSQL membership checks. The
    // tenth login can read only user_id/role/state and never payment tables.
+   // F20: real Fastify raw-body ingress and least-privileged PG17 provider
+   // login in the existing comprehensive E2E; never Stripe network.
+   registerH6StripeWebhookHttp(http,{
+    secret:signedStripeSecret,providerRepository:h6Provider
+   });
+   const signedStripeHttp=(event,options={})=>{
+    const signed=signStripeEvent(event,options);
+    return http.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
+     headers:{'content-type':'application/json',
+      'stripe-signature':signed.signatureHeader},payload:signed.rawBody});
+   };
    registerH6OperationsHttp(http,{
     operations:Object.freeze({...cashOperations,
      acknowledgeDispatch:providerStaff.acknowledgeDispatch,
@@ -5024,18 +5036,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          type:'payment_intent.succeeded',
          data:{object:{object:'payment_intent',id:providerIntentId,
           latest_charge:providerChargeId,status:'succeeded'}}};
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
-         secret:randomBytes(32)})),/invalid_stripe_webhook_signature/);
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
-         timestamp:Math.floor(Date.now()/1000)-601})),/invalid_stripe_webhook_signature/);
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent({
-         ...successEvent,livemode:true})),/invalid_stripe_webhook_payload/);
-        const applied=await verifiedStripeWebhook(signStripeEvent(successEvent));
-        assert.equal(applied.outcome,'applied');
-        assert.equal(applied.repeated,false);
+        assert.equal((await signedStripeHttp(successEvent,{
+         secret:randomBytes(32)})).statusCode,400,
+         'invalid Stripe HMAC must not reach SQL');
+        assert.equal((await signedStripeHttp(successEvent,{
+         timestamp:Math.floor(Date.now()/1000)-601})).statusCode,400,
+         'expired signature must not reach SQL');
+        assert.equal((await signedStripeHttp({...successEvent,livemode:true})).statusCode,400,
+         'live Stripe mode cannot enter sandbox');
+        const appliedHttp=await signedStripeHttp(successEvent);
+        assert.equal(appliedHttp.statusCode,200);
+        assert.deepEqual(appliedHttp.json(),{received:true},
+         'HTTP must not expose payment IDs or SQL ledger outcomes');
         const replayEvent=await verifiedStripeWebhook(signStripeEvent(successEvent));
         assert.equal(replayEvent.outcome,'applied');
-        assert.equal(replayEvent.repeated,true);
+        assert.equal(replayEvent.repeated,true,
+         'signed HTTP delivery must persist exactly once');
         const failedLate=await verifiedStripeWebhook(signStripeEvent({
          ...successEvent,id:'evt_F20StaleFailedAfterCaptured01',
          type:'payment_intent.payment_failed',
@@ -5105,18 +5121,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           metadata:{sabora_refund_attempt_id:refundId.id}}}};
         // Even an otherwise correctly signed refund event cannot settle an
         // incident if it references another charge: binding is checked in SQL.
-        const misbound=await verifiedStripeWebhook(signStripeEvent({
+        const misboundHttp=await signedStripeHttp({
          ...refundEvent,id:'evt_F20WrongOriginalCharge001',
          data:{object:{...refundEvent.data.object,
-          charge:'ch_F20OtherAccountWrongCharge01'}}}));
-        assert.equal(misbound.outcome,'ignored');
+          charge:'ch_F20OtherAccountWrongCharge01'}}});
+        assert.equal(misboundHttp.statusCode,200,
+         'SQL ignores signed events with a wrong original charge');
         assert.equal((await admin.query(`SELECT state FROM sabora.refund_attempts
          WHERE id=$1`,[refundId.id])).rows[0].state,'unknown');
-        const refundDone=await verifiedStripeWebhook(signStripeEvent(refundEvent));
-        assert.equal(refundDone.outcome,'applied');
-        assert.equal(refundDone.repeated,false);
+        const refundHttp=await signedStripeHttp(refundEvent);
+        assert.equal(refundHttp.statusCode,200);
+        assert.deepEqual(refundHttp.json(),{received:true});
         const refundReplay=await verifiedStripeWebhook(signStripeEvent(refundEvent));
-        assert.equal(refundReplay.repeated,true);
+        assert.equal(refundReplay.outcome,'applied');
+        assert.equal(refundReplay.repeated,true,
+         'signed HTTP refund must persist before the duplicate');
         const final=(await admin.query(`SELECT f.state AS refund_state,
          f.amount_cents,f.provider_refund_id,i.state AS incident_state,
          r.account_id FROM sabora.refund_attempts f
@@ -7353,6 +7372,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     eventPool:pools[12],notifierPool:pools[8],expectedProviderLogin:specs[7].login,
     expectedOperationsLogin:specs[8].login,expectedCloseLogin:specs[10].login,
     expectedEventLogin:specs[12].login,stripe:dormantStripe,
+    webhook:Object.freeze({secret:signedStripeSecret}),
     issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
   };
   const m2=await createM2RestaurantCandidate(m2Options);
@@ -7363,6 +7383,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     status:'ok',service:'sabora-m2-candidate',mode:'opt-in'});
    assert.deepEqual((await m2.app.inject('/ready')).json(),{
     status:'ready',service:'sabora-m2-candidate',mode:'opt-in'});
+   assert.equal((await m2.app.inject({method:'POST',
+    url:'/api/v1/provider/stripe/webhook',
+    headers:{'content-type':'application/json'},payload:Buffer.from('{}')})).statusCode,400,
+    'M2 candidate must mount and protect signed webhook route');
    const peer=peers[0],cookie='__Secure-sabora_customer='+peer.token;
    const fetchImpl=async(path,init={})=>{
     const response=await m2.app.inject({method:init.method??'GET',url:path,
@@ -7442,6 +7466,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'postgresql://postgres:sabora_ci_ephemeral_only@db.remote.invalid/postgres'}}),
    /disposable_m3_bootstrap_required/);
   const m3=await startDisposableM3Runtime({options:{...m2Options,
+   h6:{...m2Options.h6,webhook:undefined},
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,

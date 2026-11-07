@@ -28,7 +28,8 @@ export async function startDisposableM3Runtime({options,environment=process.env}
     options.management?.qr?.origin!=='https://sabora.example'||
     options.management?.qr?.restaurantCode!=='SABORA_CI'||
     options.h6?.stripe?.testOnlyDisabled!==true||
-    !Object.isFrozen(options.h6.stripe))
+    !Object.isFrozen(options.h6.stripe)||
+    options.h6.webhook!==undefined)
   throw invalid();
 
  let candidate;

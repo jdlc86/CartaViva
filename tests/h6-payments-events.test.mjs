@@ -6,6 +6,7 @@ import {createH6StaffCapabilityIssuer} from '../apps/api/src/h6-staff-capability
 import {registerH6OperationsHttp} from '../apps/api/src/h6-operations-http.mjs';
 import {createH6StripeAdapter,StripeAmbiguousResultError} from '../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6StripeWebhookHandler,verifyH6StripeWebhook} from '../apps/api/src/h6-stripe-webhook.mjs';
+import {registerH6StripeWebhookHttp} from '../apps/api/src/h6-stripe-webhook-http.mjs';
 import {createH6PaymentOrchestrator} from '../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6CustomerPaymentFlow} from '../apps/api/src/h6-customer-payment-flow.mjs';
 
@@ -147,6 +148,44 @@ test('Stripe webhook verifies the unmodified body, age and any valid v1 signatur
   /invalid_stripe_webhook_signature/);
  assert.throws(()=>verifyH6StripeWebhook({rawBody,signatureHeader:`t=${timestamp},v1=${valid}`,
   secret,nowMs:(timestamp+301)*1000}),/invalid_stripe_webhook_signature/);
+});
+
+test('sandbox Stripe HTTP ingress verifies raw HMAC, test mode and SQL failure',async t=>{
+ const app=Fastify({logger:false});
+ t.after(()=>app.close());
+ const secret='whsec_candidate_0123456789abcdef',now=Date.UTC(2026,10,7,8,0,0);
+ const received=[];let fail=false;
+ registerH6StripeWebhookHttp(app,{secret,clock:()=>now,providerRepository:{
+  ingestWebhook:async event=>{if(fail)throw Error('sql_down');received.push(event);return {outcome:'applied'};}
+ }});
+ app.post('/api/v1/test-json-check',async request=>({ok:request.body?.ok===true}));
+ await app.ready();
+ const event={id:'evt_SandboxHttpSafe001',object:'event',livemode:false,
+  created:Math.floor(now/1000),type:'charge.refunded',
+  data:{object:{object:'charge',id:'ch_12345678'}}};
+ const raw=Buffer.from(JSON.stringify(event));
+ const sign=(value=raw,key=secret)=>
+  't='+Math.floor(now/1000)+',v1='+createHmac('sha256',key)
+   .update(String(Math.floor(now/1000))+'.').update(value).digest('hex');
+ const post=(payload=raw,signatureHeader=sign())=>app.inject({method:'POST',
+  url:'/api/v1/provider/stripe/webhook',payload,
+  headers:{'content-type':'application/json','stripe-signature':signatureHeader}});
+ assert.equal((await post(raw,sign(raw,'whsec_other_0123456789abcdef'))).statusCode,400);
+ assert.equal((await post(Buffer.from(raw.toString().replace('charge.refunded','refund.updated')))).statusCode,400);
+ assert.equal(received.length,0);
+ const result=await post();
+ assert.equal(result.statusCode,200);
+ assert.deepEqual(result.json(),{received:true});
+ assert.equal(received.length,1);
+ assert.equal(received[0].eventType,'charge.refunded');
+ assert.equal((await post()).statusCode,200);
+ assert.equal(received.length,2,'durable deduplication belongs to SQL ledger');
+ fail=true;
+ assert.equal((await post()).statusCode,503,'SQL failure cannot be acknowledged');
+ assert.equal((await app.inject({method:'POST',url:'/api/v1/test-json-check',
+  payload:{ok:true}})).json().ok,true,'JSON parser must remain scoped');
+ const liveBody=Buffer.from(JSON.stringify({...event,livemode:true}));
+ assert.equal((await post(liveBody,sign(liveBody))).statusCode,400);
 });
 
 test('Stripe capturable webhook preserves the provider authorization deadline',()=>{
