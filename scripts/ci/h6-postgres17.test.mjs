@@ -26,6 +26,7 @@ import {createH6OperationsRepository,ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StaffCapabilityIssuer} from '../../apps/api/src/h6-staff-capability.mjs';
 import {registerThirdPartyCashHttp} from '../../apps/api/src/third-party-cash-http.mjs';
+import {runCashTipsIntegralScenario} from './m4-cash-tips-integral-scenario.mjs';
 import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
  TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
  TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,
@@ -1086,6 +1087,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    [[b.order.accountId,c.order.accountId]])).rows[0].n,2);
   assert.ok(!(await payerRepo.refunds({customerSessionToken:tpA.token})).items
    .some(x=>x.incidentId===incident.incidentId));
+  await runCashTipsIntegralScenario({payerRepo,tpA,tpB,b,bLater,tableId,
+   payerUrl,customerPost,staffPost,admin,customerPool,operationsPool});
  }finally{await tpApp.close();}
  await assert.rejects(customerPool.query('SELECT * FROM sabora.third_party_cash_refunds_candidate'),
   /permission denied/);
