@@ -6,6 +6,7 @@ export function createH6CustomerPaymentFlow({flow,payments}={}){
  return Object.freeze({
   authorizeVisit:flow.authorizeVisit,
   quote:flow.quote,
+  ...(typeof flow.readPaymentPolicy==='function'?{readPaymentPolicy:flow.readPaymentPolicy}:null),
   ...(typeof flow.lookupConfirmation==='function'?{lookupConfirmation:flow.lookupConfirmation}:null),
   ...(typeof flow.readOrderRevision==='function'?{readOrderRevision:flow.readOrderRevision}:null),
   async confirm(input){

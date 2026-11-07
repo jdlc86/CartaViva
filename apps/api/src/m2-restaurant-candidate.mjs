@@ -36,6 +36,7 @@ import {registerOrderOperationsHttp} from './order-operations-http.mjs';
 import {assertH6RuntimeIdentity} from './h6-sql-preflight.mjs';
 import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
+import {registerH6StripeWebhookHttp} from './h6-stripe-webhook-http.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
  RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
@@ -44,7 +45,7 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_
 import {createH6OperationsRepository,createH6CustomerEventRepository,ACK_DISPATCH_H6_SQL,
  REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,
  READ_STAFF_EVENTS_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
- SET_CATALOG_SOLD_OUT_H6_SQL,CLOSE_ACCOUNT_H6_SQL}
+ SET_CATALOG_SOLD_OUT_H6_SQL,CLOSE_ACCOUNT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL}
  from './h6-operations-repository.mjs';
 import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
 import {registerH6OperationsHttp} from './h6-operations-http.mjs';
@@ -58,7 +59,7 @@ import {assertM3TablesCapability,assertM3CatalogCapability,
  M3_TABLES_ROLE,M3_CATALOG_ROLE} from './m3-runtime-capabilities.mjs';
 import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
- MANAGE_M3_CATALOG_SQL} from './m3-management-repository.mjs';
+ MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
 
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
@@ -67,7 +68,7 @@ const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL]);
+ MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL]);
 
 function sameIdentity(a,b){
  if(a===b)return true;
@@ -215,6 +216,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    role:M2_H4_OPERATIONS_ROLE,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
     READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const provider=createH6ProviderRepository({withTransaction:providerTx});
+  // Signed ingress is optional and restricted to test-mode webhooks.
+  // server.mjs remains health-only; no route is exposed by default.
+  if(h6.webhook!==undefined&&h6.webhook!==null)
+   registerH6StripeWebhookHttp(app,{secret:h6.webhook.secret,providerRepository:provider});
   const payments=createH6PaymentOrchestrator({stripe:h6.stripe,repository:provider});
   const flow=createH6CustomerPaymentFlow({flow:b3.flow,payments});
   const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
@@ -234,17 +239,20 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
-  let m3Tables,m3Catalog;
+  let m3Tables,m3Catalog,m3Finance;
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
      OCCUPANCY_M3_TABLE_SQL])});
    const catalogTx=createRoleScopedPostgresTransaction({pool:management.catalogPool,
-    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL])});
+    role:M3_CATALOG_ROLE,allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
    m3Tables=createM3TablesRepository({withTransaction:tablesTx,
     issueCapability:management.issueTablesCapability});
    m3Catalog=createM3CatalogRepository({withTransaction:catalogTx,
     issueCapability:management.issueCatalogCapability});
+   m3Finance=createM3FinanceRepository({withTransaction:catalogTx,
+    issueCapability:management.issueCatalogCapability,
+    timeZone:management.dashboardTimeZone??null});
   }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
@@ -270,7 +278,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
-   catalog:m3Catalog,qr:management.qr,observeFailure});
+   catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({

@@ -10,7 +10,8 @@ export const M3_TABLES_SIGNATURES=Object.freeze([
 ]);
 export const M3_CATALOG_SIGNATURES=Object.freeze([
  'sabora.manage_catalog_m3_candidate(jsonb,text,text)',
- 'sabora.read_admin_catalog_m3_candidate(jsonb)'
+ 'sabora.read_admin_catalog_m3_candidate(jsonb)',
+ 'sabora.read_admin_finance_dashboard_candidate(jsonb,text,text,text)'
 ]);
 
 const rejected=stage=>Object.assign(Error('invalid_m3_runtime_capability:'+stage),

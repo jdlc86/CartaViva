@@ -16,7 +16,8 @@ const CAPABILITIES=Object.freeze({
   'acknowledge_kitchen_dispatch_h6_candidate','report_h6_incident_authorized_candidate',
   'resolve_h6_incident_authorized_candidate','settle_h6_account_cash_authorized_candidate',
   'refund_h6_cash_authorized_candidate','read_staff_event_backlog_h6_candidate',
-  'manage_pickup_task_h6_candidate','set_catalog_sold_out_h6_candidate'
+  'manage_pickup_task_h6_candidate','set_catalog_sold_out_h6_candidate',
+  'read_h6_cash_accounts_candidate'
  ])
 });
 const ROLES=Object.freeze(Object.keys(CAPABILITIES));

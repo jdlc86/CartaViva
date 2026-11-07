@@ -13,7 +13,7 @@ const javascript=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKin
 const module={exports:{}};
 const localRequire=value=>value==='./catalog'?catalogModule.exports:require(value);
 new Function('module','exports','require',javascript)(module,module.exports,localRequire);
-const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,configureBasketLine,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal}=module.exports;
+const {CLIENT_BASKET_STORAGE_KEY,CLIENT_PREFERENCES_STORAGE_KEY,loadClientPreferences,saveClientPreferences,loadBasket,saveBasket,changeBasket,configureBasketLine,reconcileBasket,basketIssues,removeBasketLine,acceptBasketPrice,basketQuantity,basketTotal,basketLineKey}=module.exports;
 const id='11111111-1111-4111-8111-111111111111';
 const item={id,name:'Arroz meloso',category:'Primeros',priceCents:1290,available:true,allergens:['Apio']};
 const selection=()=>({options:{},extras:[]});
@@ -200,4 +200,37 @@ test('device sync uses only local selection and preferences keys and rejects mal
  assert.equal(changeBasket(existing,{...item,id:123},1),existing);
  assert.equal(saveBasket(storage(),[{...existing[0],itemId:null}]),false);
  assert.deepEqual(basketIssues(existing,[{...item,id:null}]),[{itemId:id,reason:'unpublished'}]);
+});
+
+test('one dish retains independent configured variants from local storage through edit, repricing and checkout totals',()=>{
+ const configured={...item,options:[{id:'sauce',name:'Salsa',required:true,maxSelections:1,values:[
+  {id:'suave',name:'Suave',priceCents:0,available:true,allergens:[]},
+  {id:'picante',name:'Picante',priceCents:200,available:true,allergens:[]}
+ ]}],extras:[{id:'pan',name:'Pan',priceCents:100,available:true,allergens:[]}]};
+ const suave={options:{sauce:['suave']},extras:[]};
+ const picante={options:{sauce:['picante']},extras:['pan']};
+ const first=configureBasketLine([],configured,suave,2);
+ const variants=configureBasketLine(first,configured,picante,1);
+ assert.equal(variants.length,2);
+ assert.equal(basketQuantity(variants),3);
+ assert.equal(basketTotal(variants),2*1290+1590);
+ assert.notEqual(basketLineKey(variants[0]),basketLineKey(variants[1]));
+ const target=storage();
+ assert.equal(saveBasket(target,variants),true);
+ assert.deepEqual(loadBasket(target),variants);
+ const bumped=changeBasket(variants,configured,1,basketLineKey(variants[1]));
+ assert.deepEqual(bumped.map(line=>line.quantity),[2,2]);
+ const stale=[...bumped.slice(0,1),{...bumped[1],priceCents:1300}];
+ assert.deepEqual(basketIssues(stale,[configured]),[{itemId:id,reason:'price_changed'}]);
+ const accepted=acceptBasketPrice(stale,[configured],id,basketLineKey(stale[1]));
+ assert.deepEqual(accepted.map(line=>line.priceCents),[1290,1590]);
+ const edited=configureBasketLine(accepted,configured,picante,3,basketLineKey(accepted[0]));
+ assert.equal(edited.length,1,'editing onto matching variant merges only equal configurations');
+ assert.equal(edited[0].quantity,5);
+ assert.equal(removeBasketLine(variants,id,basketLineKey(variants[0])).length,1);
+ assert.equal(removeBasketLine(variants,id,basketLineKey(variants[0]))[0].priceCents,1590);
+ assert.equal(basketLineKey({itemId:id,selection:{options:{sauce:['picante']},extras:['pan']}}),
+  basketLineKey({itemId:id.toUpperCase(),selection:{options:{sauce:['picante'],unused:[]},extras:['pan']}}));
+ assert.equal(saveBasket(storage(),[variants[0],{...variants[0]}]),false,
+  'even with two variants enabled the same exact configuration must not be duplicated');
 });

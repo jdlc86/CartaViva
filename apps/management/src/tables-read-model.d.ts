@@ -14,10 +14,18 @@ export type AdminTable = Readonly<{
   revision?: number;
 }>;
 
+export type TableManagementPermissions=Readonly<{
+  configure:boolean;
+  qr:boolean;
+  readiness:boolean;
+  occupancy:boolean;
+}>;
+
 export type AdminTablesPage = Readonly<{
   version: 1 | 2;
   items: readonly AdminTable[];
   nextAfterNumber: number | null;
+  permissions:TableManagementPermissions|null;
 }>;
 
 export type AdminTablesPageRequest = Readonly<{

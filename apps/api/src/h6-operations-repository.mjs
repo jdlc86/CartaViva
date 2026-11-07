@@ -13,6 +13,8 @@ export const RESOLVE_INCIDENT_H6_SQL=`SELECT sabora.resolve_h6_incident_authoriz
  $9::bigint,$10::bigint,$11::text) AS result`;
 export const SETTLE_CASH_H6_SQL=`SELECT sabora.settle_h6_account_cash_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::bigint,$7::text,$8::bigint,$9::bigint,$10::text) AS result`;
+export const READ_CASH_ACCOUNTS_H6_SQL=`SELECT sabora.read_h6_cash_accounts_candidate(
+ $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text,$9::uuid,$10::integer) AS result`;
 export const REFUND_CASH_H6_SQL=`SELECT sabora.refund_h6_cash_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::bigint,$8::bigint,$9::text) AS result`;
 export const CLOSE_ACCOUNT_H6_SQL=`SELECT sabora.close_h6_account_authorized_candidate(
@@ -108,6 +110,13 @@ export function createH6OperationsRepository({withTransaction}={}){
    const head=capability(cap,'resolve_incident',incidentId);
    return withTransaction(query=>one(query(RESOLVE_INCIDENT_H6_SQL,[...head,incidentId,
     resolution,reason.trim(),...tail(cap)])));
+  },
+  readCashAccounts:({after=null,limit=50,capability:cap}={})=>{
+   if((after!==null&&!UUID.test(after))||!Number.isSafeInteger(limit)||limit<1||limit>50)
+    throw Error('invalid_h6_cash_snapshot');
+   const head=capability(cap,'read_cash_accounts',cap.actorId);
+   return withTransaction(query=>one(query(READ_CASH_ACCOUNTS_H6_SQL,
+    [...head,...tail(cap),after,limit])));
   },
   settleCash:({accountId,amountCents,capability:cap}={})=>{
    if(!UUID.test(accountId??'')||!Number.isSafeInteger(amountCents)||amountCents<1)

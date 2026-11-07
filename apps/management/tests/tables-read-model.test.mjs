@@ -36,10 +36,31 @@ test('validates the documented versioned table page and preserves only the allow
       qrVersion: 1, qrEnabled: true, revision: 1})],
     nextAfterNumber: null,
   });
+  assert.equal(managed.permissions,null,'legacy projections cannot grant mutations');
   assert.deepEqual(managed.items[0], {
     ...table(3), readinessState: 'EN_PREPARACION', pauseUntil: null,
     qrVersion: 1, qrEnabled: true, revision: 1,
   });
+});
+
+test('verified table action projections are exact and legacy reads stay non-authorizing',()=>{
+ const admin=validateAdminTablesPage({version:2,items:[],nextAfterNumber:null,
+   permissions:{configure:true,qr:true,readiness:true,occupancy:true}});
+ const waiter=validateAdminTablesPage({version:2,items:[],nextAfterNumber:null,
+   permissions:{configure:false,qr:false,readiness:true,occupancy:true}});
+ assert.equal(admin.permissions.configure,true);
+ assert.equal(waiter.permissions.configure,false);
+ assert.equal(waiter.permissions.readiness,true);
+ assert.ok(Object.isFrozen(waiter.permissions));
+ for(const permissions of [
+  {configure:true,qr:false,readiness:true,occupancy:true},
+  {configure:'admin',qr:true,readiness:true,occupancy:true},
+  {configure:false,qr:false,readiness:true,occupancy:true,role:'admin'},
+  {configure:false,qr:false,readiness:false,occupancy:true}
+ ]){
+  assert.throws(()=>validateAdminTablesPage({version:2,items:[],nextAfterNumber:null,
+   permissions}),/invalid_admin_tables_page/);
+ }
 });
 
 test('fails closed for extra fields, hostile descriptors and inconsistent cursors', () => {

@@ -9,6 +9,18 @@ const catalog=[
 ];
 
 test.beforeEach(async({page})=>{
+ // UI-only fixture for initial/free-only accounts. The authoritative fixed
+ // mode is validated by the full PG17/HTTP/Chromium I49 integration.
+ // Use an exact pathname predicate: query arguments must not affect fixture
+ // routing; unexpected network responses remain visible to the full browser run.
+ await page.route(url=>url.pathname==='/api/v1/customer/payment-policy',
+  route=>route.fulfill({status:200,contentType:'application/json',
+   body:JSON.stringify({selectedMode:null,requirePayAsOrdered:false,version:1})}));
+ page.on('response',response=>{
+  const pathname=new URL(response.url()).pathname;
+  if(['/api/v1/customer/payment-policy','/api/v1/customer/quotes'].includes(pathname)
+     &&!response.ok())console.warn('client flow fixture HTTP failure',pathname,response.status());
+ });
  await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
  await page.route('**/api/v1/customer/session',route=>route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'unauthorized'})}));
  // Earlier H6 browser fixtures have no confirmed account. A sealed read-only
@@ -280,8 +292,10 @@ test('H3 selection review resolves mixed catalog incidents before allowing QR in
  await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeDisabled();
  await dialog.getByRole('button',{name:'Aceptar nuevo precio'}).click();
  await expect(dialog).toContainText('2 plato(s) requieren una decisión');
- await dialog.getByRole('button',{name:'Retirar de la cesta'}).first().click();
- await dialog.getByRole('button',{name:'Retirar de la cesta'}).click();
+ await dialog.locator('.basket-lines article').filter({hasText:'Berenjena asada'})
+  .getByRole('button',{name:'Retirar de la cesta'}).click();
+ await dialog.locator('.basket-lines article').filter({hasText:'Tarta de limón'})
+  .getByRole('button',{name:'Retirar de la cesta'}).click();
  await expect(dialog.getByRole('button',{name:'Validar mesa para pedir'})).toBeEnabled();
  await dialog.getByRole('button',{name:'Validar mesa para pedir'}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');

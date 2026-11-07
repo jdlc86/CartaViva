@@ -1,7 +1,13 @@
 import type {OrderBoard, OrderHistory, OrderLineStatus, OrderLineTarget, OrderTransition} from './order-operations-model.js';
 export type OrderOperationsSender = (path: string, init: RequestInit) => Promise<Response>;
 export type H6OperationEvent = Readonly<{id: number; type: string; payload: Readonly<Record<string, unknown>>; createdAt: string}>;
+export type CashAccount=Readonly<{accountId:string;tableId:string;tableNumber:number;
+ customerCode:string;state:'open'|'blocked';paymentMode:'pay_now'|'pay_at_end'|null;
+ outstandingCents:number;cashSettledCents:number;paymentUncertain:boolean;refundPending:boolean;canSettle:boolean}>;
+export type CashAccountSnapshot=Readonly<{version:1;nextAfter:string|null;items:readonly CashAccount[]}>;
 export interface OrderOperationsGateway {
+ listCashAccounts(input?:{after?:string|null;limit?:number}):Promise<CashAccountSnapshot>;
+ closeCashAccount(input:{accountId:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
   listBoard(input?: {status?: OrderLineStatus | null; limit?: number; cursor?: OrderBoard['nextCursor']}): Promise<OrderBoard>;
   transitionLine(input: {lineId: string; targetStatus: OrderLineTarget; correlationId: string}): Promise<OrderTransition>;
   listHistory(input: {orderId: string; limit?: number}): Promise<OrderHistory>;

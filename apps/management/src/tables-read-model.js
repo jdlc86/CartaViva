@@ -30,11 +30,23 @@ function assertPageRequest({afterNumber, limit}) {
 
 export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE_PAGE_SIZE} = {}) {
   assertPageRequest({afterNumber, limit});
-  if (!isDataRecord(payload, ['version', 'items', 'nextAfterNumber']) ||
+  const hasPermissions=payload!==null&&typeof payload==='object'&&!Array.isArray(payload)&&
+    Object.hasOwn(payload,'permissions');
+  if (!isDataRecord(payload,hasPermissions
+      ? ['version','items','nextAfterNumber','permissions']
+      : ['version','items','nextAfterNumber']) ||
       ![1,2].includes(payload.version) || !Array.isArray(payload.items) || payload.items.length > limit) {
     throw new Error('invalid_admin_tables_page');
   }
 
+  const permissions=hasPermissions?payload.permissions:null;
+  if(hasPermissions&&(payload.version!==2||
+     !isDataRecord(permissions,['configure','qr','readiness','occupancy'])||
+     typeof permissions.configure!=='boolean'||typeof permissions.qr!=='boolean'||
+     typeof permissions.readiness!=='boolean'||typeof permissions.occupancy!=='boolean'||
+     permissions.configure!==permissions.qr||
+     permissions.readiness!==true||permissions.occupancy!==true))
+    throw Error('invalid_admin_tables_page');
   const ids = new Set();
   const numbers = new Set();
   const items = payload.items.map((item, index) => {
@@ -79,6 +91,9 @@ export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE
     version: payload.version,
     items: Object.freeze(items),
     nextAfterNumber,
+    permissions:permissions===null?null:Object.freeze({
+      configure:permissions.configure,qr:permissions.qr,
+      readiness:permissions.readiness,occupancy:permissions.occupancy}),
   });
 }
 

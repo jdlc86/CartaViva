@@ -121,9 +121,10 @@ begin
  where n.nspname='sabora' and c.relkind='r' and c.relrowsecurity and c.relforcerowsecurity;
  -- Table-change, line-delivery and immutable-revision candidates add six
  -- FORCE RLS tables to the 44-table baseline; M3 adds four management,
- -- category and allergen relations. Keep the exact count and names fail-closed.
- if v_count<>54 then raise exception 'Expected 54 FORCE RLS Sabora tables (including M3 management), got %',v_count; end if;
- foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3'] loop
+ -- category and allergen relations. M3 finance adds one sealed immutable
+ -- provider cashflow journal. Keep the exact count and names fail-closed.
+ if v_count<>55 then raise exception 'Expected 55 FORCE RLS Sabora tables (including M3 finance), got %',v_count; end if;
+ foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3','finance_provider_events_candidate'] loop
  if not exists (
   select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname=v_table

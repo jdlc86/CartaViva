@@ -23,6 +23,8 @@ export const PERSIST_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,rep
  )`;
 export const READ_H6_PAYMENT_POLICY_SQL=`SELECT require_pay_as_ordered,payment_policy_version
  FROM sabora.read_customer_payment_policy_h6_candidate($1::bytea,$2::uuid,$3::text)`;
+export const READ_H6_ACCOUNT_PAYMENT_MODE_SQL=`SELECT selected_payment_mode,require_pay_as_ordered,payment_policy_version
+ FROM sabora.read_customer_account_payment_mode_h6_candidate($1::bytea,$2::uuid,$3::text)`;
 export const READ_H6_ROUND_SQL=`SELECT account_id,round_id,amount_cents,effective_payment_mode,
  round_state,payment_attempt_id,authorization_key
  FROM sabora.read_customer_round_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid)`;
@@ -82,14 +84,21 @@ function assertScope(input,{request=false,h6=false}={}){
     !Array.isArray(input.lines)||input.lines.length<1||input.lines.length>50)
   throw Error('invalid_customer_flow_input');
  const seen=new Set();
+ const seenQuotes=new Set();
  for(const line of input.lines){
   const allowed=request?['quoteId','itemId','selection','quantity']:['itemId','selection','quantity'];
   if(!strictObject(line,allowed)||!UUID.test(line.itemId)||
      (request&&!UUID.test(line.quoteId))||!plain(line.selection)||
      !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>20||
-     Buffer.byteLength(JSON.stringify(line.selection),'utf8')>8192||seen.has(line.itemId.toLowerCase()))
+     Buffer.byteLength(JSON.stringify(line.selection),'utf8')>8192)
     throw Error('invalid_customer_flow_input');
-  seen.add(line.itemId.toLowerCase());
+  // Several configured variants of the same item must survive from quote to
+  // SQL. Reject exact repeated configurations and replayed quote identities.
+  const variant=canonical([line.itemId.toLowerCase(),line.selection]);
+  if(seen.has(variant)||(request&&seenQuotes.has(line.quoteId)))
+   throw Error('invalid_customer_flow_input');
+  seen.add(variant);
+  if(request)seenQuotes.add(line.quoteId);
  }
  if(request&&input.acceptanceToken!==undefined&&
     (typeof input.acceptanceToken!=='string'||input.acceptanceToken.length>256))
@@ -154,6 +163,20 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    ...(paymentPolicy?{paymentPolicy}:null)});
  };
 
+ const readPaymentPolicy=async({customerSessionToken,tableId,visitId}={})=>{
+  if(!h6||!TABLE_ID.test(tableId??'')||typeof visitId!=='string'||!KEY.test(visitId))
+   throw Error('invalid_customer_flow_input');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const row=await withH6Reader(async query=>one(await query(READ_H6_ACCOUNT_PAYMENT_MODE_SQL,
+   [sessionHash,tableId,visitId])));
+  const version=revision(row.payment_policy_version);
+  if(![null,'pay_now','pay_at_end'].includes(row.selected_payment_mode)||
+     typeof row.require_pay_as_ordered!=='boolean'||version===null)
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({selectedMode:row.selected_payment_mode,
+   requirePayAsOrdered:row.require_pay_as_ordered,version});
+ };
  const quote=async({customerSessionToken,...raw}={})=>{
   assertScope(raw);
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
@@ -404,5 +427,5 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
  };
 
  return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation,
-  ...(h6?{readOrderRevision,resubmitOrderRevision}:null)});
+  ...(h6?{readPaymentPolicy,readOrderRevision,resubmitOrderRevision}:null)});
 }

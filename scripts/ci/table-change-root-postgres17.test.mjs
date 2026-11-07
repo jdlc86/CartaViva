@@ -10,7 +10,7 @@ import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-pro
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createH6OperationsRepository,createH6CustomerEventRepository,
- SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
  READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
@@ -30,6 +30,7 @@ import {ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  READ_STAFF_EVENTS_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL}
  from '../../apps/api/src/h6-operations-repository.mjs';
 import {createH6StripeWebhookHandler} from '../../apps/api/src/h6-stripe-webhook.mjs';
+import {registerH6StripeWebhookHttp} from '../../apps/api/src/h6-stripe-webhook-http.mjs';
 import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
 import {createH6PaymentOrchestrator} from '../../apps/api/src/h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from '../../apps/api/src/h6-deferred-dispatch-scheduler.mjs';
@@ -43,7 +44,7 @@ import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-p
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
-import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {startDisposableM3Runtime} from './disposable-h6-runtime-bootstrap.mjs';
 import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
 import {assertM2CustomerEventCapability} from '../../apps/api/src/m2-runtime-capabilities.mjs';
@@ -2668,6 +2669,7 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
    {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_combined_reader',
     functions:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
      'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+    'sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)',
      'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)']},
    {role:'sabora_customer_flow_runtime',login:'sabora_b3_combined_basket',functions:[]}
   ];
@@ -2708,6 +2710,12 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
 
 
 test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey',async()=>{
+ const expectFixedMode=async(page,mode)=>{
+  const name=mode==='pay_now'?'Pagar ahora':'Pagar al terminar';
+  await page.getByText('Modalidad ya fijada en tu cuenta: '+name).waitFor({timeout:25000});
+  assert.equal(await page.getByRole('radio',{name:/Pagar ahora|Pagar al terminar/}).count(),0,
+   'already selected payment mode is not offered in subsequent rounds');
+ };
  const priorB3Flag=process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
  process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE='isolated_pg17';
  const suffix=process.pid.toString(36);
@@ -2724,6 +2732,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_physical_reader_'+suffix,
    signatures:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
     'sabora.read_customer_payment_policy_h6_candidate(bytea,uuid,text)',
+    'sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)',
     'sabora.read_customer_order_revision_h6_candidate(bytea,uuid,text,uuid)']},
   {role:'sabora_customer_flow_runtime',login:'sabora_b3_physical_basket_'+suffix,
    signatures:[]},
@@ -2945,7 +2954,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
     REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
-    SET_CATALOG_SOLD_OUT_H6_SQL])});
+    SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL])});
   const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
@@ -3106,6 +3115,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   };
   // Fresh table: unlike the historical A/D fixtures, this customer has no
   // account, order, visit or first_confirmed_at before the browser checks out.
+  const uiCashDiner={
+   customer:'b0a00000-0000-4000-8000-000000000461',
+   account:'b0a00000-0000-4000-8000-000000000462',
+   order:'b0a00000-0000-4000-8000-000000000463',
+   round:'b0a00000-0000-4000-8000-000000000464',
+   token:'p'.repeat(42)+'s',publicId:'SB-YWYWYWYWYWYW',
+   alias:'Comensal de caja PWA',visitKey:'b3_cash_ui_account_0461_integral',
+   balance:800,mode:'pay_at_end',historicAmount:800
+  };
   const naturalGroupingDiner={
    customer:'b0a00000-0000-4000-8000-000000000451',
    token:'o'.repeat(42)+'s',publicId:'SB-XYXYXYXYXYXY',
@@ -3119,7 +3137,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      return;
     }
     const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
-     postConsumeSessionDiner,postConsumeQrDiner,payNowDiner,cashHistoryDiner,
+     postConsumeSessionDiner,postConsumeQrDiner,payNowDiner,cashHistoryDiner,uiCashDiner,
      naturalGroupingDiner].find(row=>
      request.headers.cookie==='__Secure-sabora_customer='+row.token);
     if(peer){
@@ -3154,11 +3172,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    // Seventh sealed cash RPC and the staff decision/queue now share the
    // same verified RS256 JWT and live PostgreSQL membership checks. The
    // tenth login can read only user_id/role/state and never payment tables.
+   // F20: real Fastify raw-body ingress and least-privileged PG17 provider
+   // login in the existing comprehensive E2E; never Stripe network.
+   registerH6StripeWebhookHttp(http,{
+    secret:signedStripeSecret,providerRepository:h6Provider
+   });
+   const signedStripeHttp=(event,options={})=>{
+    const signed=signStripeEvent(event,options);
+    return http.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
+     headers:{'content-type':'application/json',
+      'stripe-signature':signed.signatureHeader},payload:signed.rawBody});
+   };
    registerH6OperationsHttp(http,{
     operations:Object.freeze({...cashOperations,
      acknowledgeDispatch:providerStaff.acknowledgeDispatch,
      managePickup:providerStaff.managePickup,
      setCatalogSoldOut:providerStaff.setCatalogSoldOut,
+     readCashAccounts:providerStaff.readCashAccounts,
      closeAccount:closeOperations.closeAccount}),
     forRoles:ciStaffRoles
    });
@@ -4056,7 +4086,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        {name:'Continuar con el pedido'}).click();
       assert.equal((await quotePromise).status(),201,
        scenario.name+': real quote prepared while authorized');
-      await customerPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await expectFixedMode(customerPage,'pay_at_end');
       await customerPage.getByRole('button',
        {name:'Confirmar pedido'}).waitFor({timeout:20000});
       await scenario.breakDestination();
@@ -4100,7 +4130,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       'b3-customer-pg17-qr-mobile.png'),fullPage:true});
      await customerPage.getByRole('button',
       {name:'Continuar con el pedido'}).click();
-     await customerPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+     await expectFixedMode(customerPage,'pay_at_end');
      const confirmedResponsePromise=customerPage.waitForResponse(response=>
       new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
       {timeout:20000});
@@ -4157,7 +4187,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        await otherPage.goto(origin+'/qr/v1/SABORA/'+peerTable+'#'+qrToken);
        await otherPage.getByText('Mesa verificada').waitFor({timeout:20000});
        await otherPage.getByRole('button',{name:'Continuar con el pedido'}).click();
-       await otherPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+       await expectFixedMode(otherPage,'pay_at_end');
        const resultPromise=otherPage.waitForResponse(response=>
         new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
         {timeout:20000});
@@ -4194,7 +4224,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query('BEGIN');
       for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner,
        postConsumeSessionDiner,postConsumeQrDiner,
-       payNowDiner,cashHistoryDiner]){
+       payNowDiner,cashHistoryDiner,uiCashDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
        [diner.customer,diner.publicId,diner.alias]);
@@ -4267,6 +4297,99 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
+     // F20: same full PG17/Fastify customer-to-staff scenario, now including
+     // management PWA cashier, authorized read and actual signed cash receipt.
+     const noCashAccess=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts'});
+     assert.equal(noCashAccess.statusCode,401,'anonymous cashier access prohibited');
+     const kitchenCashAccess=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts',
+      headers:{authorization:'Bearer '+jwtKitchen}});
+     assert.equal(kitchenCashAccess.statusCode,403,'kitchen cannot access financial accounts');
+     const directCashSnapshot=await providerStaff.readCashAccounts({
+      verifiedIdentity:{userId:'b0a00000-0000-4000-8000-000000000307'},
+      verifiedStaff:{userId:'b0a00000-0000-4000-8000-000000000307',role:'waiter'}
+     },{limit:50});
+     assert.ok(directCashSnapshot.items.some(a=>a.accountId===uiCashDiner.account),
+      'sealed staff RPC must first prove the cashier scope in real PG17');
+     const authorizedCash=await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts?limit=50',
+      headers:ciVerifiedStaffHeaders()});
+     assert.equal(authorizedCash.statusCode,200,authorizedCash.body);
+     const cashierAccount=authorizedCash.json().items.find(a=>a.accountId===uiCashDiner.account);
+     assert.ok(cashierAccount,'account discovery must use signed PG17, not PWA seed');
+     assert.equal(cashierAccount.customerCode,uiCashDiner.publicId);
+     assert.equal(cashierAccount.outstandingCents,800);
+     assert.equal(cashierAccount.canSettle,true);
+     const digitalAccount=authorizedCash.json().items.find(a=>a.accountId===payNowDiner.account);
+     assert.ok(digitalAccount);
+     assert.equal(digitalAccount.canSettle,false,
+      'a pay-now account cannot be presented as collectible by cash');
+     assert.equal((await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts?limit=51',
+      headers:ciVerifiedStaffHeaders()})).statusCode,400,
+      'cash list never permits an unbounded scan');
+     assert.ok(!authorizedCash.body.includes('provider_intent_id'));
+     const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+     const {createServer:createCashVite}=await import(
+      pathToFileURL(cashierRequire.resolve('vite')).href);
+     let cashierVite,cashierBrowser,cashierContext;
+     try{
+      const apiPort=http.server.address()?.port;
+      assert.ok(Number.isSafeInteger(apiPort)&&apiPort>0);
+      cashierVite=await createCashVite({
+       root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+       mode:'test',logLevel:'error',
+       server:{host:'127.0.0.1',port:0,strictPort:false,
+        proxy:{'/api':{target:'http://127.0.0.1:'+apiPort,changeOrigin:false}}}
+      });
+      await cashierVite.listen();
+      const uiPort=cashierVite.httpServer?.address()?.port;
+      assert.ok(Number.isSafeInteger(uiPort)&&uiPort>0);
+      cashierBrowser=await chromium.launch({headless:true});
+      cashierContext=await cashierBrowser.newContext({viewport:{width:390,height:844},
+       reducedMotion:'reduce',serviceWorkers:'block'});
+      const cashierPage=await cashierContext.newPage();
+      const cashierErrors=[];
+      cashierPage.on('pageerror',error=>cashierErrors.push(error.message));
+      await cashierPage.goto('http://127.0.0.1:'+uiPort+'/#caja');
+      await cashierPage.evaluate(async token=>{
+       const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+       window.__disposeCashCi=mountAuthenticatedManagementApp({
+        element:document.getElementById('root'),getAccessToken:async()=>token
+       });
+      },jwtWaiter);
+      await cashierPage.getByRole('heading',{name:'Caja por comensal'}).waitFor({timeout:30000});
+      const card=cashierPage.locator('.cash-account-card').filter({hasText:uiCashDiner.publicId});
+      await card.waitFor({timeout:30000});
+      assert.match(await card.innerText(),/8,00/);
+      await card.click();
+      await cashierPage.getByLabel('Importe recibido en efectivo (EUR)').fill('3,00');
+      await cashierPage.getByLabel(/Confirmo que he recibido físicamente este importe/).check();
+      const receipt=cashierPage.waitForResponse(resp=>
+       new URL(resp.url()).pathname.endsWith('/cash-settlements')&&resp.status()===201,
+       {timeout:30000});
+      await cashierPage.getByRole('button',{name:'Registrar cobro en efectivo'}).click();
+      await receipt;
+      await cashierPage.locator('.cash-account-card').filter({
+       hasText:uiCashDiner.publicId}).getByText(/Saldo: 5,00/).waitFor({timeout:30000});
+      assert.deepEqual(cashierErrors,[],'full cashier PWA must not log JS errors');
+      const stored=(await admin.query(`SELECT outstanding_cents,cash_settled_cents
+       FROM sabora.customer_accounts WHERE id=$1`,[uiCashDiner.account])).rows[0];
+      assert.equal(stored.outstanding_cents,'500');
+      assert.equal(stored.cash_settled_cents,'300');
+      assert.equal((await admin.query(`SELECT count(*)::int AS n
+       FROM sabora.cash_settlements WHERE account_id=$1 AND kind='payment'`,
+       [uiCashDiner.account])).rows[0].n,1);
+      const {mkdir:mkdirCash}=await import('node:fs/promises');
+      const {join:joinCash}=await import('node:path');
+      const evidence=joinCash(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
+      await mkdirCash(evidence,{recursive:true});
+      await cashierPage.screenshot({path:joinCash(evidence,'f20-cash-verified-pg17-mobile-390.png'),
+       fullPage:true});
+     }finally{
+      await cashierContext?.close();await cashierBrowser?.close();await cashierVite?.close();
+     }
      // Before A->D, a waiter performs an actual 300-cent partial receipt over
      // signed Fastify/PG17. Concurrent replay and overpayment must not mutate
      // the same account a second time. The old direct cash insert is gone.
@@ -4297,6 +4420,20 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       [cashHistoryDiner.account])).rows[0].n,1);
      cashHistoryDiner.balance=900;
      cashHistoryDiner.cashSettled=300;
+     // Scoped, server-authoritative mode read under a customer cookie.
+     const modeQuery=new URLSearchParams({tableId:httpFixture.sourceTable,
+      visitId:cashHistoryDiner.visitKey});
+     const modeUrl='/api/v1/customer/payment-policy?'+modeQuery;
+     assert.equal((await http.inject({method:'GET',url:modeUrl})).statusCode,401);
+     assert.equal((await http.inject({method:'GET',url:modeUrl+'&visitId=duplicate',
+      headers:{cookie:'__Secure-sabora_customer='+cashHistoryDiner.token}})).statusCode,400);
+     const savedMode=await http.inject({method:'GET',url:modeUrl,
+      headers:{cookie:'__Secure-sabora_customer='+cashHistoryDiner.token}});
+     assert.equal(savedMode.statusCode,200,savedMode.body);
+     assert.equal(savedMode.json().selectedMode,'pay_at_end');
+     assert.equal(savedMode.json().requirePayAsOrdered,false);
+     assert.equal((await http.inject({method:'GET',url:modeUrl,
+      headers:{cookie:'__Secure-sabora_customer='+payNowDiner.token}})).statusCode,403);
      const raceRequest=await http.inject({method:'POST',
       url:'/api/v1/customer/table-change/requests',
       headers:{cookie:'__Secure-sabora_customer='+rival.token,
@@ -4360,8 +4497,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        await contenderPage.getByText('Mesa verificada').waitFor({timeout:20000});
        await contenderPage.getByRole('button',
         {name:'Continuar con el pedido'}).click();
-       await contenderPage.getByRole('radio',
-        {name:/Pagar al terminar/}).check();
+       await expectFixedMode(contenderPage,'pay_at_end');
        await contenderPage.getByRole('button',
         {name:'Confirmar pedido'}).waitFor({timeout:20000});
        rivalPages.push({...contender,page:contenderPage,
@@ -4495,7 +4631,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await rollbackPage.getByText('Mesa verificada').waitFor({timeout:20000});
       await rollbackPage.getByRole('button',
        {name:'Continuar con el pedido'}).click();
-      await rollbackPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await expectFixedMode(rollbackPage,'pay_at_end');
       await rollbackPage.getByRole('button',
        {name:'Confirmar pedido'}).waitFor({timeout:20000});
       // A temporary trigger intercepts kitchen_dispatches, which the
@@ -4682,7 +4818,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        {name:'Continuar con la mesa escaneada'}).click();
       await page.getByText('Mesa verificada').waitFor({timeout:20000});
       await page.getByRole('button',{name:'Continuar con el pedido'}).click();
-      await page.getByRole('radio',{name:mode==='pay_now'?/Pagar ahora/:/Pagar al terminar/}).check();
+      await expectFixedMode(page,mode);
       await page.getByRole('button',{name:'Confirmar pedido'}).waitFor({timeout:20000});
       return page;
      };
@@ -5024,18 +5160,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          type:'payment_intent.succeeded',
          data:{object:{object:'payment_intent',id:providerIntentId,
           latest_charge:providerChargeId,status:'succeeded'}}};
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
-         secret:randomBytes(32)})),/invalid_stripe_webhook_signature/);
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent(successEvent,{
-         timestamp:Math.floor(Date.now()/1000)-601})),/invalid_stripe_webhook_signature/);
-        await assert.rejects(()=>verifiedStripeWebhook(signStripeEvent({
-         ...successEvent,livemode:true})),/invalid_stripe_webhook_payload/);
-        const applied=await verifiedStripeWebhook(signStripeEvent(successEvent));
-        assert.equal(applied.outcome,'applied');
-        assert.equal(applied.repeated,false);
+        assert.equal((await signedStripeHttp(successEvent,{
+         secret:randomBytes(32)})).statusCode,400,
+         'invalid Stripe HMAC must not reach SQL');
+        assert.equal((await signedStripeHttp(successEvent,{
+         timestamp:Math.floor(Date.now()/1000)-601})).statusCode,400,
+         'expired signature must not reach SQL');
+        assert.equal((await signedStripeHttp({...successEvent,livemode:true})).statusCode,400,
+         'live Stripe mode cannot enter sandbox');
+        const appliedHttp=await signedStripeHttp(successEvent);
+        assert.equal(appliedHttp.statusCode,200);
+        assert.deepEqual(appliedHttp.json(),{received:true},
+         'HTTP must not expose payment IDs or SQL ledger outcomes');
         const replayEvent=await verifiedStripeWebhook(signStripeEvent(successEvent));
         assert.equal(replayEvent.outcome,'applied');
-        assert.equal(replayEvent.repeated,true);
+        assert.equal(replayEvent.repeated,true,
+         'signed HTTP delivery must persist exactly once');
         const failedLate=await verifiedStripeWebhook(signStripeEvent({
          ...successEvent,id:'evt_F20StaleFailedAfterCaptured01',
          type:'payment_intent.payment_failed',
@@ -5105,18 +5245,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           metadata:{sabora_refund_attempt_id:refundId.id}}}};
         // Even an otherwise correctly signed refund event cannot settle an
         // incident if it references another charge: binding is checked in SQL.
-        const misbound=await verifiedStripeWebhook(signStripeEvent({
+        const misboundHttp=await signedStripeHttp({
          ...refundEvent,id:'evt_F20WrongOriginalCharge001',
          data:{object:{...refundEvent.data.object,
-          charge:'ch_F20OtherAccountWrongCharge01'}}}));
-        assert.equal(misbound.outcome,'ignored');
+          charge:'ch_F20OtherAccountWrongCharge01'}}});
+        assert.equal(misboundHttp.statusCode,200,
+         'SQL ignores signed events with a wrong original charge');
         assert.equal((await admin.query(`SELECT state FROM sabora.refund_attempts
          WHERE id=$1`,[refundId.id])).rows[0].state,'unknown');
-        const refundDone=await verifiedStripeWebhook(signStripeEvent(refundEvent));
-        assert.equal(refundDone.outcome,'applied');
-        assert.equal(refundDone.repeated,false);
+        const refundHttp=await signedStripeHttp(refundEvent);
+        assert.equal(refundHttp.statusCode,200);
+        assert.deepEqual(refundHttp.json(),{received:true});
         const refundReplay=await verifiedStripeWebhook(signStripeEvent(refundEvent));
-        assert.equal(refundReplay.repeated,true);
+        assert.equal(refundReplay.outcome,'applied');
+        assert.equal(refundReplay.repeated,true,
+         'signed HTTP refund must persist before the duplicate');
         const final=(await admin.query(`SELECT f.state AS refund_state,
          f.amount_cents,f.provider_refund_id,i.state AS incident_state,
          r.account_id FROM sabora.refund_attempts f
@@ -6772,7 +6915,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await grantedPage.getByText('Mesa verificada').waitFor({timeout:20000});
       await grantedPage.getByRole('button',
        {name:'Continuar con el pedido'}).click();
-      await grantedPage.getByRole('radio',{name:/Pagar al terminar/}).check();
+      await expectFixedMode(grantedPage,'pay_at_end');
       let confirmedBody=null;
       grantedPage.on('request',request=>{
        if(new URL(request.url()).pathname==='/api/v1/customer/orders/confirm')
@@ -6990,7 +7133,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         ':pageErrors='+JSON.stringify(naturalErrors),{cause:error});
       }
       await page.getByRole('button',{name:'Continuar con el pedido'}).click();
-      await page.getByRole('radio',{name:/Pagar al terminar/}).check();
+      if(step==='first'){
+       await page.getByRole('radio',{name:/Pagar al terminar/}).check();
+      }else await expectFixedMode(page,'pay_at_end');
       const confirmation=page.waitForResponse(response=>
        new URL(response.url()).pathname==='/api/v1/customer/orders/confirm',
        {timeout:20000});
@@ -7302,6 +7447,49 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      [first.accountId,dispatches.map(row=>row.id)])).rows[0];
     assert.deepEqual(final,{received:3,requested_events:3,debt:'2000',attempts:0},
      'five-minute scheduling must preserve all three orders and account ledger');
+    // Explicit nonretroactive conflict after a positive pay-at-end round.
+    await admin.query(`UPDATE sabora.dining_tables SET
+     require_pay_as_ordered=true,payment_policy_version=payment_policy_version+1
+     WHERE id=$1`,[httpFixture.naturalTable]);
+    try{
+     const policyVisit=await http.inject({method:'POST',url:'/api/v1/customer/visits',
+      headers:{cookie:'__Secure-sabora_customer='+naturalGroupingDiner.token,
+       'content-type':'application/json'},
+      payload:{tableId:httpFixture.naturalTable,qrToken:freshQr}});
+     assert.equal(policyVisit.statusCode,201,policyVisit.body);
+     const policy=await http.inject({method:'GET',
+      url:'/api/v1/customer/payment-policy?'+new URLSearchParams({
+       tableId:httpFixture.naturalTable,visitId:policyVisit.json().visitId}),
+      headers:{cookie:'__Secure-sabora_customer='+naturalGroupingDiner.token}});
+     assert.equal(policy.statusCode,200,policy.body);
+     assert.equal(policy.json().selectedMode,'pay_at_end');
+     assert.equal(policy.json().requirePayAsOrdered,true);
+     const blockedContext=await browser.newContext({viewport:{width:390,height:844},
+      reducedMotion:'reduce',serviceWorkers:'block'});
+     try{
+      await blockedContext.addCookies([{name:'__Secure-sabora_customer',
+       value:naturalGroupingDiner.token,domain:'127.0.0.1',path:'/',
+       secure:true,httpOnly:true,sameSite:'Lax'}]);
+      await blockedContext.addInitScript(id=>localStorage.setItem(
+       'sabora.client.selection.v1',JSON.stringify([{
+        itemId:id,name:'Plato de integración',priceCents:600,quantity:1
+       }])), 'b0a00000-0000-4000-8000-000000000331');
+      const blockedPage=await blockedContext.newPage();
+      blockedPage.on('pageerror',error=>naturalErrors.push(error.message));
+      await blockedPage.goto(origin+'/qr/v1/SABORA/'+httpFixture.naturalTable+'#'+freshQr);
+      await blockedPage.getByText('Mesa verificada').waitFor({timeout:20000});
+      await blockedPage.getByRole('button',{name:'Continuar con el pedido'}).click();
+      await blockedPage.getByText(/La mesa exige pagar ahora, pero esta cuenta/).waitFor({timeout:20000});
+      assert.equal(await blockedPage.getByRole('button',{name:'Confirmar pedido'}).isDisabled(),true);
+      assert.equal(await blockedPage.getByRole('radio',{name:/Pagar al terminar/}).count(),0);
+      await blockedPage.screenshot({path:join(evidence,
+       'f20-fixed-mode-policy-conflict-mobile.png'),fullPage:true});
+     }finally{await blockedContext.close();}
+     assert.equal((await admin.query(`SELECT payment_mode FROM sabora.customer_accounts
+      WHERE id=$1`,[first.accountId])).rows[0].payment_mode,'pay_at_end');
+    }finally{await admin.query(`UPDATE sabora.dining_tables SET
+     require_pay_as_ordered=false,payment_policy_version=payment_policy_version+1
+     WHERE id=$1`,[httpFixture.naturalTable]);}
     assert.deepEqual(naturalErrors,[]);
    }finally{
     for(const scheduler of schedulers)await scheduler.close();
@@ -7326,6 +7514,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   await admin.query(`UPDATE sabora.catalog_items SET sold_out=false,withdrawn_at=NULL
    WHERE id='b0a00000-0000-4000-8000-000000000330'`);
   const dormantStripe=Object.freeze({
+   testOnlyDisabled:true,
    authorize:async()=>{throw Error('unexpected_m2_provider_call');},
    capture:async()=>{throw Error('unexpected_m2_provider_call');},
    release:async()=>{throw Error('unexpected_m2_provider_call');},
@@ -7352,6 +7541,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     eventPool:pools[12],notifierPool:pools[8],expectedProviderLogin:specs[7].login,
     expectedOperationsLogin:specs[8].login,expectedCloseLogin:specs[10].login,
     expectedEventLogin:specs[12].login,stripe:dormantStripe,
+    webhook:Object.freeze({secret:signedStripeSecret}),
     issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
   };
   const m2=await createM2RestaurantCandidate(m2Options);
@@ -7362,6 +7552,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     status:'ok',service:'sabora-m2-candidate',mode:'opt-in'});
    assert.deepEqual((await m2.app.inject('/ready')).json(),{
     status:'ready',service:'sabora-m2-candidate',mode:'opt-in'});
+   assert.equal((await m2.app.inject({method:'POST',
+    url:'/api/v1/provider/stripe/webhook',
+    headers:{'content-type':'application/json'},payload:Buffer.from('{}')})).statusCode,400,
+    'M2 candidate must mount and protect signed webhook route');
    const peer=peers[0],cookie='__Secure-sabora_customer='+peer.token;
    const fetchImpl=async(path,init={})=>{
     const response=await m2.app.inject({method:init.method??'GET',url:path,
@@ -7429,13 +7623,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // least-privileged SQL logins. This is one integrated PG17/API acceptance,
   // not an administrative superuser substitute.
   const m3Failures=[];
-  const m3=await createM3RestaurantCandidate({...m2Options,
+  // Refuse a production process or non-local database BEFORE constructing
+  // the fully opted-in H6/M3 candidate. No other service is affected.
+  await assert.rejects(
+   startDisposableM3Runtime({options:{},environment:{
+    ...process.env,GITHUB_ACTIONS:'false'}}),
+   /disposable_m3_bootstrap_required/);
+  await assert.rejects(
+   startDisposableM3Runtime({options:{},environment:{
+    ...process.env,SABORA_CI_PG_URL:
+     'postgresql://postgres:sabora_ci_ephemeral_only@db.remote.invalid/postgres'}}),
+   /disposable_m3_bootstrap_required/);
+  const m3=await startDisposableM3Runtime({options:{...m2Options,
+   h6:{...m2Options.h6,webhook:undefined},
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
-   issueCatalogCapability:m3CatalogIssuer,qr:{
+   issueCatalogCapability:m3CatalogIssuer,dashboardTimeZone:'Europe/Madrid',qr:{
     secret:'sabora_m3_disposable_qr_derivation_secret_32_bytes_minimum',
-    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}});
+    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}}});
+  assert.equal(m3.app.server.listening,true,'verified H6 candidate must have a real loopback listener');
   try{
    assert.deepEqual((await m3.app.inject('/health')).json(),{
     status:'ok',service:'sabora-m3-candidate',mode:'opt-in'});
@@ -7455,6 +7662,36 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    };
    const management=createM3AuthenticatedManagementGateway({getAccessToken:async()=>jwtAdmin,
     fetchImpl:m3Fetch});
+   const financePath='/api/v1/admin/finance/dashboard?period=today';
+   assert.equal((await m3.app.inject({method:'GET',url:financePath})).statusCode,401,
+    'anonymous staff must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',url:financePath,
+    headers:{authorization:'Bearer '+jwtWaiter}})).statusCode,403,
+    'waiter must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',url:financePath,
+    headers:{authorization:'Bearer '+jwtKitchen}})).statusCode,403,
+    'kitchen must not read finance');
+   assert.equal((await m3.app.inject({method:'GET',
+    url:'/api/v1/admin/finance/dashboard?period=invalid',
+    headers:{authorization:'Bearer '+jwtAdmin}})).statusCode,400);
+   const financeBefore=await management.readFinancialDashboard({period:'today'});
+   assert.equal(financeBefore.status,'ready');
+   assert.equal(financeBefore.timeZone,'Europe/Madrid');
+   assert.ok(financeBefore.dailySales.length>=28&&financeBefore.dailySales.length<=31);
+   assert.ok(Number.isSafeInteger(financeBefore.todaySalesCents));
+   assert.ok(Number.isSafeInteger(financeBefore.monthSalesCents));
+   assert.ok(financeBefore.todayCollectedCents===null||Number.isSafeInteger(financeBefore.todayCollectedCents));
+   assert.equal(financeBefore.tipsAvailable,false);
+   assert.equal(financeBefore.tipsCents,null);
+   assert.equal(financeBefore.version,1);
+   const monthWindow=await management.readFinancialDashboard({period:'thisMonth'});
+   assert.equal(monthWindow.period,'thisMonth');
+   assert.equal((await management.readFinancialDashboard({period:'previousMonth'})).period,
+    'previousMonth');
+   if(financeBefore.historicalCoverage==='incomplete'){
+    assert.equal(financeBefore.collectedCents,null);
+    assert.equal(financeBefore.stripeCollectedCents,null);
+   }
    const m3Operations=createAuthenticatedOrderOperationsGateway({getAccessToken:async()=>jwtAdmin,
     fetchImpl:m3Fetch,reconnectDelayMs:100});
    const createRequest='b0a00000-0000-4000-8000-000000000314';
@@ -7512,6 +7749,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     VALUES($1,'waiter','active')`,[readinessWaiterId]);
    const waiterManagement=createM3AuthenticatedManagementGateway({
     getAccessToken:async()=>staffJwt(readinessWaiterId),fetchImpl:m3Fetch});
+   // Verify effective permissions from authenticated Fastify and real PG17.
+   const adminTablePage=await management.listTables({afterNumber:0,limit:24});
+   const waiterTablePage=await waiterManagement.listTables({afterNumber:0,limit:24});
+   assert.deepEqual(adminTablePage.permissions,
+    {configure:true,qr:true,readiness:true,occupancy:true});
+   assert.deepEqual(waiterTablePage.permissions,
+    {configure:false,qr:false,readiness:true,occupancy:true});
    await assert.rejects(waiterManagement.manageTable({requestId:randomUUID(),
     operation:'qr_revoke',payload:{tableId:current.tableId,
      expectedRevision:current.revision}}),/m3_management_forbidden/,
@@ -7592,6 +7836,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     lines:[{quoteId:m3Quote.lines[0].quoteId,itemId,
      selection:{options:{salsa:['suave']},extras:['trufa']},quantity:1}]};
    const m3Confirmed=await m3Customer.confirm(m3Confirmation);
+   const financeAfter=await management.readFinancialDashboard({period:'today'});
+   assert.ok(financeAfter.ordersCount>=financeBefore.ordersCount,
+     'server financial query must retain confirmed H6 orders without retries');
+   assert.ok(Number.isSafeInteger(financeAfter.salesCents));
+   assert.ok(Number.isSafeInteger(financeAfter.outstandingCents)&&financeAfter.outstandingCents>=0);
+   assert.ok(financeAfter.dailySales.every(item=>Number.isSafeInteger(item.netSalesCents)));
+   if(!financeAfter.rankingComplete)assert.equal(financeAfter.topItems,null,
+    'unknown product identity must not fabricate a top-10');
    const m3Replayed=await m3Customer.confirm(m3Confirmation);
    assert.equal(m3Replayed.status,'replayed');assert.equal(m3Replayed.orderId,m3Confirmed.orderId);
    const line=(await admin.query(`SELECT category FROM sabora.order_lines
@@ -7705,10 +7957,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const m3Evidence=m3Join(process.env.RUNNER_TEMP,'sabora-m3-browser-acceptance');
    await m3Mkdir(m3Evidence,{recursive:true});
    try{
-    await m3.app.listen({host:'127.0.0.1',port:0});
+    assert.equal(m3.app.server.listening,true);
     await m3ClientVite.listen();
     await m3ManagementVite.listen();
-    const m3BackendOrigin='http://127.0.0.1:'+m3.app.server.address().port;
+    const m3BackendOrigin=m3.origin;
+    assert.match(m3BackendOrigin,/^http:\/\/127\.0\.0\.1:[0-9]+$/);
     const m3ClientOrigin='http://127.0.0.1:'+m3ClientVite.httpServer.address().port;
     const m3ManagementOrigin='http://127.0.0.1:'+m3ManagementVite.httpServer.address().port;
     const mapActualHttp=async(context,publicHost,frontendOrigin)=>{
@@ -7818,6 +8071,27 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-catalog-mobile.png')});
     await m3StaffPage.setViewportSize({width:1440,height:900});
 
+    // The same authenticated M3 PWA renders server finances only for ADMIN.
+    await m3StaffPage.goto('https://gestion.sabora.example/#configuracion');
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true});
+    },jwtAdmin);
+    await m3StaffPage.getByRole('link',{name:/Configuración/}).waitFor({timeout:30000});
+    await m3StaffPage.getByRole('heading',{name:'Dashboard financiero'}).waitFor({timeout:30000});
+    await m3StaffPage.getByText('Ventas netas · periodo').waitFor({timeout:30000});
+    await m3StaffPage.getByRole('button',{name:'Últimos 7 días'}).click();
+    await m3StaffPage.getByText('Cobros').first().waitFor({timeout:20000});
+    for(const width of [390,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     assert.equal(await m3StaffPage.evaluate(()=>
+      document.documentElement.scrollWidth>document.documentElement.clientWidth+2),false,
+      'finance dashboard overflows at '+width);
+     await m3StaffPage.screenshot({
+      path:m3Join(m3Evidence,'finance-dashboard-admin-'+width+'.png'),fullPage:true});
+    }
     await m3StaffPage.goto('https://gestion.sabora.example/#mesas');
     await m3StaffPage.evaluate(async jwt=>{
      const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
@@ -7915,9 +8189,28 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .filter({hasText:'Brunch de cortesía M3'});
     await browserCard.waitFor({timeout:20000});
     await browserCard.getByRole('button',{name:/Añadir$/}).click();
+    // The QR is a full document navigation. A synthetic click resolving is
+    // not proof that React committed its asynchronous localStorage effect.
+    // Observe the exact configured row persisted before crossing that boundary.
+    await m3CustomerPage.getByRole('button',{name:/Cesta: 1/})
+     .waitFor({timeout:20000});
+    await m3CustomerPage.waitForFunction(itemId=>{
+     try{
+      const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null');
+      return Array.isArray(lines)&&lines.length===1&&lines[0].itemId===itemId&&
+       lines[0].quantity===1&&lines[0].priceCents===0&&
+       Array.isArray(lines[0].selection?.extras);
+     }catch{return false;}
+    },browserItemId,{timeout:20000});
     await m3CustomerPage.goto(browserTable.qrPayload);
     await m3CustomerPage.getByText('Mesa verificada')
      .waitFor({timeout:20000});
+    const persistedSelection=await m3CustomerPage.evaluate(()=>
+     JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null'));
+    assert.equal(persistedSelection?.length,1,
+     'full QR navigation must retain the previously persisted basket row');
+    assert.equal(persistedSelection[0].itemId,browserItemId,
+     'the browser QR must preserve the exact published dish selection');
     await m3CustomerPage.getByRole('button',{name:'Continuar con el pedido'})
      .click();
     const checkout=m3CustomerPage.getByRole('dialog',{name:'Confirmar pedido'});
@@ -7991,6 +8284,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'signed kitchen transitions must leave durable pickup without inventing physical delivery');
 
 
+    // Keep the transactional close on the newly created table: a role switch
+    // deliberately replaces the component tree and resets selectedId.
+    assert.equal(await m3StaffPage.locator('#table-detail-title').textContent(),
+     'Mesa 915','the economic closure must target the created browser table');
     // Only the post-commit management GET is fault-injected. The write,
     // H6 settlement and account ledger still execute in real PG17.
     let injectedCloseReadFailures=0;
@@ -8047,6 +8344,51 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .getByRole('button',{name:'CERRADA'}).isDisabled(),true,
      'the refreshed PWA must show the real closed state');
     assert.equal(closePostCount,1,'read recovery must not repeat table closure');
+    // After settlement and read recovery, verify the identity transition
+    // without changing the table selected for the economic transaction.
+    // Role switch in the SAME real PG17/Fastify/Chromium M3 acceptance journey.
+    // A waiter sees operational actions, not administrative edit/QR controls.
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },staffJwt(readinessWaiterId));
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
+    assert.equal(await m3StaffPage.getByRole('button',{name:'Crear mesa'}).count(),0,
+     'waiter cannot see admin table creation');
+    assert.equal(await m3StaffPage.getByRole('link',{name:/Configuración/}).count(),0,
+     'waiter never sees administrative finance navigation');
+    assert.equal(await m3StaffPage.getByRole('button',{name:'Rotar QR'}).count(),0,
+     'waiter cannot see admin QR rotation');
+    assert.equal(await m3StaffPage.locator('.detail-block__heading')
+     .filter({hasText:'Ficha administrativa'}).count(),0,
+     'waiter cannot edit administrative table fields');
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button').count(),3);
+    assert.equal(await m3StaffPage.locator('[aria-label="Cambiar estado de la mesa"] button').count(),3);
+    assert.ok(await m3StaffPage.locator('[aria-label="Cambiar preparación de la mesa"] button:not([disabled])').count()>0,
+     'waiter retains operational preparation controls');
+    for(const width of [360,390,430,768,1024,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     if(width===390||width===1440)
+      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-waiter-'+width+'.png')});
+    }
+    await m3StaffPage.evaluate(async jwt=>{
+     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
+     window.__saboraCiDispose=mountAuthenticatedManagementApp({
+      element:document.getElementById('root'),getAccessToken:async()=>jwt,
+      enableM3Management:true
+     });
+    },jwtAdmin);
+    await m3StaffPage.getByText(/[0-9]+ cargadas/).first().waitFor({timeout:20000});
+    await m3StaffPage.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
+    for(const width of [360,390,430,768,1024,1440]){
+     await m3StaffPage.setViewportSize({width,height:900});
+     if(width===390||width===1440)
+      await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-admin-'+width+'.png')});
+    }
+
     assert.deepEqual(m3BrowserErrors,[]);
     m3BrowserClosing=true;
     await m3CustomerContext.close();

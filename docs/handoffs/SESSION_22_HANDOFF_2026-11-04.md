@@ -143,3 +143,16 @@ El informe verificable es [`docs/reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOS
 
 **Queda** CV-003 (matriz F01–F28/R01–R10 y dos omisiones Node), pantalla de caja/mesa/gestión, Stripe sandbox real, diseño visual humano y bootstrap de producción. **NO-GO de producción**, sin merges ni operaciones sobre VPS, Fleetia o Supabase operativo.
 
+---
+
+## Anexo de preservación documental — PR #44 (06-11-2026)
+
+> **Fuente histórica, NO normativa ni estado vigente:** se recupera literalmente la actualización final sobre coste cero que seguía existiendo en el HEAD `43a8acaf` del PR #44 y que no constaba como sección en esta versión evolucionada del handoff 22. La información anterior permanece por trazabilidad, **no** anula evidencias más recientes de los PR #45–#49. Consultar [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y [continuidad de sesión 25](SESSION_25_HANDOFF_2026-11-06.md).
+
+## Actualización 2026-11-05 — auditoría independiente de coste cero (sin nueva implementación)
+
+- **Tablero vivo:** [CV-001/CV-002/CV-003](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). **Informe de revisión:** [CV-001 independiente](../reviews/SABORA_H6_ZERO_COST_INDEPENDENT_REVIEW_2026-11-05.md).
+- **SHA verificado previo:** `ec111577d41b025cb708185c2fff6a2fd67aaeac`, PR #44 Draft. Los cuatro workflows del SHA **SUCCESS** (Sabora CI `41993131391`, bootstrap `41993131465`, cliente `41993131381`, gestión `41993131475`). El gate de enlace obligatorio a continuidad mostró `continuity_tracker_links_ok documents=25` en el job de CI.
+- **Decisión normativa contrastada, no inventada:** el contrato consolidado, §Pagos, exige cierre automático de cuenta de coste cero **solo al terminar la ocupación**. CV-002 queda resuelto documentalmente; caducidad de autorización individual no dispara autocierre. La migración de Codex responde a ese evento `ordering_state='closed'`.
+- **Distinción de evidencias:** pruebas SQL de coste cero 4/4, H6 2/2, regresión 51/51, Node 1175 PASS/2 SKIP y Playwright 36/36 corresponden al candidato anterior. La revisión actual **no** ha ejecutado una nueva prueba PG17/HTTP/Chromium de autocierre orgánico; CV-001 y la aceptación H6 global **siguen abiertos**. Ninguna prueba se acredita al nuevo commit documental por herencia.
+- **Siguiente unidad integral:** ejecutar y corregir dentro de un mismo recorrido la transición cliente→pedido gratuito→cocina/recogida durable→cierre mesa firmado desde gestión→cuenta/evento/revocación, con segundo comensal y caso negativo de obligaciones pendientes; luego regresión y matriz F/R. Sin despliegue, merge, Supabase operativo, VPS ni Fleetia.

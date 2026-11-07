@@ -40,6 +40,12 @@ const projectTablesPage=page=>{
  });
  return {version:2,items,nextAfterNumber:page.nextAfterNumber};
 };
+const verifiedTablePermissions=request=>{
+ const role=request.verifiedStaff?.role;
+ if(!['admin','root','waiter'].includes(role))throw Error('m3_management_forbidden');
+ const administrative=role==='admin'||role==='root';
+ return {configure:administrative,qr:administrative,readiness:true,occupancy:true};
+};
 const failure=(reply,error,kind,observeFailure)=>{
  const code=typeof error?.message==='string'?error.message:'';
  if(['m3_management_forbidden','staff_not_authorized'].includes(code))
@@ -54,7 +60,7 @@ const failure=(reply,error,kind,observeFailure)=>{
 const deriveEntropy=(secret,operation,requestId)=>createHmac('sha256',secret)
  .update(`sabora-qr-v1\0${operation}\0${requestId}`,'utf8').digest();
 
-export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observeFailure=()=>{}}={}){
+export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=null,qr,observeFailure=()=>{}}={}){
  if(!app||typeof app.get!=='function'||typeof app.post!=='function'||
     typeof forRoles!=='function'||!tables||!catalog||!qr||typeof observeFailure!=='function'||
     typeof qr.secret!=='string'||Buffer.byteLength(qr.secret,'utf8')<32||
@@ -74,9 +80,12 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
   if(!queryRecord(query)||Object.keys(query).some(k=>!['afterNumber','limit'].includes(k))||
      Object.values(query).some(v=>typeof v!=='string'||!/^(0|[1-9][0-9]*)$/.test(v)))
    return reply.code(400).send({error:'invalid_tables_request'});
-  try{return reply.code(200).send(projectTablesPage(await tables.read(verified(request),{
-   afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
-   limit:query.limit===undefined?50:Number(query.limit)})));}
+  try{
+   const page=projectTablesPage(await tables.read(verified(request),{
+    afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
+    limit:query.limit===undefined?50:Number(query.limit)}));
+   return reply.code(200).send({...page,permissions:verifiedTablePermissions(request)});
+  }
   catch(error){return failure(reply,error,'tables',observeFailure);}
  });
  app.post('/api/v1/admin/tables/actions',{preHandler:floor,bodyLimit:16_384},async(request,reply)=>{
@@ -116,6 +125,19 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,qr,observe
     tableId:request.params.tableId,...request.body}));}
    catch(error){return failure(reply,error,'tables',observeFailure);}
   });
+ app.get('/api/v1/admin/finance/dashboard',{preHandler:admin},async(request,reply)=>{
+  reply.header('Cache-Control','no-store');
+  reply.header('X-Content-Type-Options','nosniff');
+  const q=request.query??{};
+  if(!queryRecord(q)||Object.keys(q).some(k=>!['period','month'].includes(k))||
+      typeof q.period!=='string'||!['today','last7','thisMonth','previousMonth'].includes(q.period)||
+      (q.month!==undefined&&(typeof q.month!=='string'||!/^20[0-9]{2}-(0[1-9]|1[0-2])$/.test(q.month)||
+       q.period!=='thisMonth')))return reply.code(400).send({error:'invalid_finance_request'});
+  if(!finance)return reply.code(503).send({error:'finance_unavailable'});
+  try{return reply.code(200).send(await finance.read(verified(request),{period:q.period,
+   month:q.month??null}));}
+  catch(error){return failure(reply,error,'finance',observeFailure);}
+ });
  app.get('/api/v1/admin/catalog',{preHandler:admin},async(request,reply)=>{
   reply.header('Cache-Control','no-store');
   try{return reply.code(200).send(await catalog.read(verified(request)));}
