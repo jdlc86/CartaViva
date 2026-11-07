@@ -1,7 +1,7 @@
 // Explicit, CI-only launch boundary for the *complete* M3/H3-H6 candidate.
 // The live server.mjs remains health-only. This bootstrap never provisions
 // roles, reads operational secrets, deploys, or contacts an external database.
-// All 18 physical SQL logins must pass the existing M2/M3 live preflights.
+// All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
 import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
@@ -42,7 +42,7 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    release:paymentDisabled,refund:paymentDisabled,retrieve:paymentDisabled});
   const isolatedOptions={...options,h6:{...options.h6,stripe:noProvider},
    enableDeferredDispatch:false};
-  // Internal factory checks 18 unique, least-privileged physical logins and
+  // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
   candidate=await createM3RestaurantCandidate(isolatedOptions);
   if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
