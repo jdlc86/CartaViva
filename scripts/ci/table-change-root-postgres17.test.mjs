@@ -43,7 +43,7 @@ import {assertPendingReaderCapabilities} from '../../apps/api/src/table-change-p
 import {createCustomerFlowTransport} from '../../apps/client/src/customer-flow-transport.ts';
 import {createAuthenticatedOrderOperationsGateway} from '../../apps/management/src/order-operations-authenticated-gateway.js';
 import {createM2RestaurantCandidate} from '../../apps/api/src/m2-restaurant-candidate.mjs';
-import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {startDisposableM3Runtime} from './disposable-h6-runtime-bootstrap.mjs';
 import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
 import {assertM2CustomerEventCapability} from '../../apps/api/src/m2-runtime-capabilities.mjs';
@@ -7326,6 +7326,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   await admin.query(`UPDATE sabora.catalog_items SET sold_out=false,withdrawn_at=NULL
    WHERE id='b0a00000-0000-4000-8000-000000000330'`);
   const dormantStripe=Object.freeze({
+   testOnlyDisabled:true,
    authorize:async()=>{throw Error('unexpected_m2_provider_call');},
    capture:async()=>{throw Error('unexpected_m2_provider_call');},
    release:async()=>{throw Error('unexpected_m2_provider_call');},
@@ -7429,13 +7430,25 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // least-privileged SQL logins. This is one integrated PG17/API acceptance,
   // not an administrative superuser substitute.
   const m3Failures=[];
-  const m3=await createM3RestaurantCandidate({...m2Options,
+  // Refuse a production process or non-local database BEFORE constructing
+  // the fully opted-in H6/M3 candidate. No other service is affected.
+  await assert.rejects(
+   startDisposableM3Runtime({options:{},environment:{
+    ...process.env,GITHUB_ACTIONS:'false'}}),
+   /disposable_m3_bootstrap_required/);
+  await assert.rejects(
+   startDisposableM3Runtime({options:{},environment:{
+    ...process.env,SABORA_CI_PG_URL:
+     'postgresql://postgres:sabora_ci_ephemeral_only@db.remote.invalid/postgres'}}),
+   /disposable_m3_bootstrap_required/);
+  const m3=await startDisposableM3Runtime({options:{...m2Options,
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
    issueCatalogCapability:m3CatalogIssuer,qr:{
     secret:'sabora_m3_disposable_qr_derivation_secret_32_bytes_minimum',
-    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}});
+    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}}}});
+  assert.equal(m3.app.server.listening,true,'verified H6 candidate must have a real loopback listener');
   try{
    assert.deepEqual((await m3.app.inject('/health')).json(),{
     status:'ok',service:'sabora-m3-candidate',mode:'opt-in'});
@@ -7712,10 +7725,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const m3Evidence=m3Join(process.env.RUNNER_TEMP,'sabora-m3-browser-acceptance');
    await m3Mkdir(m3Evidence,{recursive:true});
    try{
-    await m3.app.listen({host:'127.0.0.1',port:0});
+    assert.equal(m3.app.server.listening,true);
     await m3ClientVite.listen();
     await m3ManagementVite.listen();
-    const m3BackendOrigin='http://127.0.0.1:'+m3.app.server.address().port;
+    const m3BackendOrigin=m3.origin;
+    assert.match(m3BackendOrigin,/^http:\/\/127\.0\.0\.1:[0-9]+$/);
     const m3ClientOrigin='http://127.0.0.1:'+m3ClientVite.httpServer.address().port;
     const m3ManagementOrigin='http://127.0.0.1:'+m3ManagementVite.httpServer.address().port;
     const mapActualHttp=async(context,publicHost,frontendOrigin)=>{
