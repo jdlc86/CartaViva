@@ -4307,6 +4307,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      assert.equal(cashierAccount.customerCode,uiCashDiner.publicId);
      assert.equal(cashierAccount.outstandingCents,800);
      assert.equal(cashierAccount.canSettle,true);
+     const digitalAccount=authorizedCash.json().items.find(a=>a.accountId===payNowDiner.account);
+     assert.ok(digitalAccount);
+     assert.equal(digitalAccount.canSettle,false,
+      'a pay-now account cannot be presented as collectible by cash');
+     assert.equal((await http.inject({method:'GET',
+      url:'/api/v1/operations/cash/accounts?limit=51',
+      headers:ciVerifiedStaffHeaders()})).statusCode,400,
+      'cash list never permits an unbounded scan');
      assert.ok(!authorizedCash.body.includes('provider_intent_id'));
      const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer:createCashVite}=await import(
