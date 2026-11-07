@@ -55,7 +55,7 @@ BEGIN
    SELECT 1 FROM sabora.customer_table_change_requests q
    WHERE q.account_id=v_account_id AND q.customer_id=v_customer_id
      AND q.status='approved' AND q.source_table_id=v_bound_table
-     AND q.visit_key=v_bound_visit_key AND q.requesting_session_hash=p_session_hash
+     AND q.visit_key=v_bound_visit_key
   ) THEN
    RAISE EXCEPTION 'table_change_approval_required' USING errcode='23514'; END IF;
  END IF;
