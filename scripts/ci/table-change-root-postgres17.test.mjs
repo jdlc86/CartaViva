@@ -4298,6 +4298,12 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       url:'/api/v1/operations/cash/accounts',
       headers:{authorization:'Bearer '+jwtKitchen}});
      assert.equal(kitchenCashAccess.statusCode,403,'kitchen cannot access financial accounts');
+     const directCashSnapshot=await providerStaff.readCashAccounts({
+      verifiedIdentity:{userId:'b0a00000-0000-4000-8000-000000000307'},
+      verifiedStaff:{userId:'b0a00000-0000-4000-8000-000000000307',role:'waiter'}
+     },{limit:50});
+     assert.ok(directCashSnapshot.items.some(a=>a.accountId===uiCashDiner.account),
+      'sealed staff RPC must first prove the cashier scope in real PG17');
      const authorizedCash=await http.inject({method:'GET',
       url:'/api/v1/operations/cash/accounts?limit=50',
       headers:ciVerifiedStaffHeaders()});
