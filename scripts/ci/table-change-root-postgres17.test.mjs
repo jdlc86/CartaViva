@@ -10,7 +10,7 @@ import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-pro
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createH6OperationsRepository,createH6CustomerEventRepository,
- SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
  READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
@@ -2946,7 +2946,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
     REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
-    SET_CATALOG_SOLD_OUT_H6_SQL])});
+    SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL])});
   const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
    secret:cashSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
@@ -3107,6 +3107,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   };
   // Fresh table: unlike the historical A/D fixtures, this customer has no
   // account, order, visit or first_confirmed_at before the browser checks out.
+  const uiCashDiner={
+   customer:'b0a00000-0000-4000-8000-000000000461',
+   account:'b0a00000-0000-4000-8000-000000000462',
+   order:'b0a00000-0000-4000-8000-000000000463',
+   round:'b0a00000-0000-4000-8000-000000000464',
+   token:'p'.repeat(42)+'s',publicId:'SB-YWYWYWYWYWYW',
+   alias:'Comensal de caja PWA',visitKey:'b3_cash_ui_account_0461_integral',
+   balance:800,mode:'pay_at_end',historicAmount:800
+  };
   const naturalGroupingDiner={
    customer:'b0a00000-0000-4000-8000-000000000451',
    token:'o'.repeat(42)+'s',publicId:'SB-XYXYXYXYXYXY',
@@ -3120,7 +3129,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      return;
     }
     const peer=[...peers,rival,rollbackDiner,rotatedDiner,revokedDiner,
-     postConsumeSessionDiner,postConsumeQrDiner,payNowDiner,cashHistoryDiner,
+     postConsumeSessionDiner,postConsumeQrDiner,payNowDiner,cashHistoryDiner,uiCashDiner,
      naturalGroupingDiner].find(row=>
      request.headers.cookie==='__Secure-sabora_customer='+row.token);
     if(peer){
@@ -3171,6 +3180,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      acknowledgeDispatch:providerStaff.acknowledgeDispatch,
      managePickup:providerStaff.managePickup,
      setCatalogSoldOut:providerStaff.setCatalogSoldOut,
+     readCashAccounts:providerStaff.readCashAccounts,
      closeAccount:closeOperations.closeAccount}),
     forRoles:ciStaffRoles
    });
@@ -4206,7 +4216,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       await raceFixture.query('BEGIN');
       for(const diner of [rival,rollbackDiner,rotatedDiner,revokedDiner,
        postConsumeSessionDiner,postConsumeQrDiner,
-       payNowDiner,cashHistoryDiner]){
+       payNowDiner,cashHistoryDiner,uiCashDiner]){
       await raceFixture.query(`INSERT INTO sabora.customer_profiles
        (id,public_id,alias) VALUES($1,$2,$3)`,
        [diner.customer,diner.publicId,diner.alias]);
