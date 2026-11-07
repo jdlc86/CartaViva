@@ -337,3 +337,11 @@ Git tras la reconciliación: **42 PR Draft**, **28 ancestros, 13 divergentes y #
 
 
 **Relevo de próxima sesión (solo documental, 07-11-2026):** [continuidad operativa de sesión 27](../handoffs/SESSION_27_HANDOFF_2026-11-07.md), conectada al presente tablero y a la matriz F/R. Recoge el último SHA funcional **`478df342` con 5/5 CI**, la distinción entre webhook firmado **candidato técnico** y Stripe sandbox/caja **no aceptados**, y los bloqueos de diseño/operación. No supone un nuevo test, cambio de requisito, cierre de F20 ni aprobación de producción.
+
+## 31. Revisión integral de pagos, caja y brechas contra normativa — 07-11-2026
+
+**Hito AUDITORÍA, no código ni validación de cobro:** [informe completo F20/R03–R05 — inventario EC-01 a EC-13](../reviews/SABORA_F20_R03_R05_INTEGRAL_PAYMENTS_CASH_GAP_REVIEW_2026-11-07.md), [matriz H6 §46](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md) y [sesión 27 §8](../handoffs/SESSION_27_HANDOFF_2026-11-07.md). **HEAD examinado `ce278b3e` (solo documental desde `478df342`)**. El SHA funcional `478df342` conservaba **5/5 CI SUCCESS**, PG17 51/51, Node 1.351/1.351; **ningún test nuevo se ejecutó en esta auditoría**.
+
+**Resultado de contraste RF/NF/DV versus cliente/Fastify/gestión/SQL/tests:** H6 tiene ledger, idempotencia, webhooks firmados y cobro/devolución en efectivo por rutas segregadas **candidatas**, pero la PWA cliente no conecta el componente Stripe, **no hay vista integral de caja en gestión** pese a existir `settleCash` en el gateway, el cliente vuelve a ofrecer modalidad en rondas positivas posteriores, faltan propinas y asignaciones de pago por terceros y el dashboard financiero sigue sin origen de datos. **Stripe sandbox remoto nunca probado.** Clasificadas dependencias B0/B1 y propuesta de bloque integral de caja+modalidad seguido de validación Stripe auténtica; se exige diseño aprobado/aceptación humana y cierre explícito de propinas/terceros.
+
+**Estado INALTERADO:** F20/R03–R05 **PARCIAL/BLOQUEADO**, F28/R09 **BLOQUEADO**, F12/R08 **CANDIDATO OPT-IN** y producción **NO-GO**. Se documentó un diagnóstico, no se elevó ninguna fila F/R a CERRADO. No merge, despliegue ni acceso a Fleetia/VPS/Supabase operativo.
