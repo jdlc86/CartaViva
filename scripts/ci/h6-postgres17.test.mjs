@@ -941,8 +941,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const tpB=await register({alias:'M4 Beneficiario B',company:null});
  const tpC=await register({alias:'M4 Beneficiario C',company:null});
  const visitA=await flow.authorizeVisit({customerSessionToken:tpA.token,tableId,qrToken});
- const tpOrder=async(person,suffix)=>{
-  const v=await flow.authorizeVisit({customerSessionToken:person.token,tableId,qrToken});
+ const tpOrder=async(person,suffix,existingVisit=null)=>{
+  const v=existingVisit??await flow.authorizeVisit({customerSessionToken:person.token,tableId,qrToken});
   const q=await flow.quote({customerSessionToken:person.token,tableId,qrToken,
    visitId:v.visitId,basketId:v.basketId,lines:[{itemId,selection,quantity:1}]});
   const order=await flow.confirm({customerSessionToken:person.token,tableId,qrToken,
@@ -1032,7 +1032,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    'WHERE id=ANY($1::uuid[])',[[b.order.accountId,c.order.accountId]])).rows
    .map(x=>x.outstanding_cents),['0','0']);
   // B orders again AFTER A paid the earlier round. Its new debt is not A's.
-  const bLater=await tpOrder(tpB,'b_later');
+  const bLater=await tpOrder(tpB,'b_later',b.v);
   assert.equal(bLater.order.accountId,b.order.accountId);
   assert.equal((await admin.query('SELECT outstanding_cents FROM sabora.customer_accounts '+
    'WHERE id=$1',[b.order.accountId])).rows[0].outstanding_cents,'2400');
