@@ -2710,6 +2710,12 @@ test('PG17 B3 combined five-identity preflight accepts only independently scoped
 
 
 test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey',async()=>{
+ const expectFixedMode=async(page,mode)=>{
+  const name=mode==='pay_now'?'Pagar ahora':'Pagar al terminar';
+  await page.getByText('Modalidad ya fijada en tu cuenta: '+name).waitFor({timeout:25000});
+  assert.equal(await page.getByRole('radio',{name:/Pagar ahora|Pagar al terminar/}).count(),0,
+   'already selected payment mode is not offered in subsequent rounds');
+ };
  const priorB3Flag=process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE;
  process.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE='isolated_pg17';
  const suffix=process.pid.toString(36);
@@ -4046,12 +4052,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        FROM sabora.orders WHERE table_id=$1`,
        [httpFixture.blockedTable])).rows[0].total,0,
        label+': no destination order written');
-     };
-     const expectFixedMode=async(page,mode)=>{
-      const name=mode==='pay_now'?'Pagar ahora':'Pagar al terminar';
-      await page.getByText('Modalidad ya fijada en tu cuenta: '+name).waitFor({timeout:25000});
-      assert.equal(await page.getByRole('radio',{name:/Pagar ahora|Pagar al terminar/}).count(),0,
-       'already selected payment mode is not offered in subsequent rounds');
      };
      const brokenDestinationCases=[
       {name:'QR revocado después de cotizar',token:qrToken,breakDestination:async()=>{
