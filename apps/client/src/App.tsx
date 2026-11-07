@@ -591,6 +591,11 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     tableId:tableVisit.tableId,qrToken:credential.token,visitId:tableVisit.visitId,
     basketId:tableVisit.basketId,requestKey});
    if(result.status==='confirmed'){
+    if(flowContract==='h6'&&quotedTotal>0&&
+       (checkoutPaymentPolicy?.selectedMode??paymentMode)==='pay_now'){
+     pendingPaymentOrderRef.current=result.orderId;
+     await refreshPaymentState(result.orderId);return;
+    }
     setBasket(Object.freeze([]));checkoutRequestRef.current=null;acceptanceTokenRef.current=null;
     setCheckoutPhase('confirmed');setCheckoutMessage(locale==='es'?
      'Pedido recuperado sin duplicarlo. La confirmación del pedido no acredita el pago ni el despacho a cocina; consulta su estado con el personal si está pendiente.':
@@ -605,7 +610,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
     'No es posible verificar el pedido ahora. No se reenviará automáticamente.':
     'Unable to verify the order now. It will not be automatically resubmitted.');
   }
- },[locale,tableVisit]);
+ },[checkoutPaymentPolicy,flowContract,locale,paymentMode,quotedTotal,refreshPaymentState,tableVisit]);
 
  const confirmCheckout=useCallback(async()=>{
   if(pendingPaymentOrderRef.current){
