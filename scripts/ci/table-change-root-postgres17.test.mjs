@@ -7681,8 +7681,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.ok(Number.isSafeInteger(financeBefore.todaySalesCents));
    assert.ok(Number.isSafeInteger(financeBefore.monthSalesCents));
    assert.ok(financeBefore.todayCollectedCents===null||Number.isSafeInteger(financeBefore.todayCollectedCents));
-   assert.equal(financeBefore.tipsAvailable,false);
-   assert.equal(financeBefore.tipsCents,null);
+   // M4 exposes only actual CASH tip collection/refund, not digital revenue
+   // and never employee distribution. The old M3 "tips unavailable" contract
+   // was correct only before the append-only cash tips migration.
+   assert.equal(financeBefore.tipsAvailable,true);
+   assert.equal(financeBefore.tipsCoverage,'cash');
+   assert.ok(Number.isSafeInteger(financeBefore.tipsCollectedCents));
+   assert.ok(Number.isSafeInteger(financeBefore.tipsRefundedCents));
+   assert.ok(financeBefore.tipsCollectedCents>=0);
+   assert.ok(financeBefore.tipsRefundedCents>=0);
+   assert.equal(financeBefore.tipsCents,
+    financeBefore.tipsCollectedCents-financeBefore.tipsRefundedCents);
    assert.equal(financeBefore.version,1);
    const monthWindow=await management.readFinancialDashboard({period:'thisMonth'});
    assert.equal(monthWindow.period,'thisMonth');
