@@ -162,6 +162,56 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     clientSecret:value.clientSecret as string|undefined
    });
   },
+  async thirdPartyCashDebts(input:{tableId:string;visitId:string}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId))throw Error('invalid_third_party_transport');
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/debts','POST',input);
+   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
+    !value.items.every(x=>plain(x)&&UUID.test(x.roundId as string)&&
+     UUID.test(x.accountId as string)&&PUBLIC_ID.test(x.customerCode as string)&&
+     Number.isSafeInteger(x.amountCents)&&(x.amountCents as number)>0))
+    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
+   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
+    roundId:x.roundId as string,accountId:x.accountId as string,
+    customerCode:x.customerCode as string,amountCents:x.amountCents as number
+   })))});
+  },
+  async createThirdPartyCashIntent(input:{tableId:string;visitId:string;consent:true;
+   rounds:readonly {roundId:string;amountCents:number}[];requestKey:string}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||input.consent!==true||
+    !KEY.test(input.requestKey)||input.rounds.length<1||input.rounds.length>10||
+    !input.rounds.every(x=>UUID.test(x.roundId)&&Number.isSafeInteger(x.amountCents)&&x.amountCents>0))
+    throw Error('invalid_third_party_transport');
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/intents','POST',input);
+   if(value.version!==1||!UUID.test(value.intentId as string)||
+    !['pending','paid'].includes(value.state as string)||typeof value.repeated!=='boolean'||
+    !Number.isSafeInteger(value.totalCents)||(value.totalCents as number)<=0)
+    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
+   return Object.freeze({intentId:value.intentId as string,
+    totalCents:value.totalCents as number,state:value.state as 'pending'|'paid'});
+  },
+  async thirdPartyCashRefunds(){
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/refunds','GET');
+   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
+    !value.items.every(x=>plain(x)&&UUID.test(x.incidentId as string)&&
+     Number.isSafeInteger(x.amountCents)&&(x.amountCents as number)>0))
+    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
+   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
+    incidentId:x.incidentId as string,amountCents:x.amountCents as number
+   })))});
+  },
+  async thirdPartyCashRefundProof(incidentId:string){
+   if(!UUID.test(incidentId))throw Error('invalid_third_party_transport');
+   const value=await jsonRequest(fetchImpl,
+    `/api/v1/customer/third-party/cash/refunds/${incidentId}/proof`,'POST',{});
+   if(value.version!==1||value.incidentId!==incidentId||
+    !UUID.test(value.claimId as string)||!(/^[0-9a-f]{64}$/).test(value.proof as string)||
+    !Number.isSafeInteger(value.amountCents)||(value.amountCents as number)<=0||
+    typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt)))
+    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
+   return Object.freeze({claimId:value.claimId as string,incidentId,
+    amountCents:value.amountCents as number,proof:value.proof as string,
+    expiresAt:value.expiresAt as string});
+  },
   async readOrderRevision(input:{tableId:string;visitId:string;orderId:string}){
    if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||!UUID.test(input.orderId))
     throw Error('invalid_customer_revision_transport');

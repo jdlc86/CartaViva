@@ -210,6 +210,32 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
       return Object.freeze({version:1,nextAfter:result.nextAfter,
        items:Object.freeze(result.items.map(value=>Object.freeze({...value})))});
     },
+    async listThirdPartyCashPending(){
+      const response=await send('/api/v1/operations/third-party/cash/pending',{
+       method:'GET',cache:'no-store',redirect:'error',credentials:'omit',headers:{Accept:'application/json'}});
+      const data=await json(response);
+      if(data?.version!==1||!Array.isArray(data.items)||data.items.length>50||
+       !data.items.every(x=>x&&UUID.test(x.intentId)&&typeof x.payerCode==='string'&&
+        /^SB-[2-9A-HJ-NP-Y]{12}$/.test(x.payerCode)&&
+        Number.isSafeInteger(x.totalCents)&&x.totalCents>0&&
+        Array.isArray(x.rounds)&&x.rounds.length>0&&
+        x.rounds.every(r=>r&&UUID.test(r.roundId)&&UUID.test(r.accountId)&&
+          Number.isSafeInteger(r.amountCents)&&r.amountCents>0)))
+       throw new OrderOperationsGatewayError('invalid_response');
+      return Object.freeze({items:Object.freeze(data.items.map(x=>Object.freeze(x)))});
+    },
+    settleThirdPartyCash({intentId,correlationId}={}){
+      if(!UUID.test(intentId)||!CORRELATION.test(correlationId))
+       throw Error('invalid_third_party_cash_operation');
+      return mutation(send,`/api/v1/operations/third-party/cash/${intentId}/settle`,
+       {received:true,correlationId});
+    },
+    refundThirdPartyCash({incidentId,claimId,proof,correlationId}={}){
+      if(!UUID.test(incidentId)||!UUID.test(claimId)||!(/^[0-9a-f]{64}$/).test(proof)||
+       !CORRELATION.test(correlationId))throw Error('invalid_third_party_cash_operation');
+      return mutation(send,`/api/v1/operations/third-party/refunds/${incidentId}`,
+       {claimId,proof,correlationId,handedOver:true});
+    },
     closeCashAccount({accountId,correlationId}={}){
      if(!UUID.test(accountId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
      return mutation(send,`/api/v1/operations/accounts/${accountId}/close`,{correlationId});
