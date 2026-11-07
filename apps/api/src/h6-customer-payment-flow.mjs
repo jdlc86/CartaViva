@@ -1,4 +1,4 @@
-export function createH6CustomerPaymentFlow({flow,payments}={}){
+export function createH6CustomerPaymentFlow({flow,payments,readPaymentState=null}={}){
  if(!flow||typeof flow.authorizeVisit!=='function'||typeof flow.quote!=='function'||
     typeof flow.confirm!=='function'||!payments||typeof payments.authorize!=='function'||
     (typeof flow.resubmitOrderRevision==='function'&&typeof payments.captureOrDispatch!=='function'))
@@ -6,6 +6,7 @@ export function createH6CustomerPaymentFlow({flow,payments}={}){
  return Object.freeze({
   authorizeVisit:flow.authorizeVisit,
   quote:flow.quote,
+  ...(typeof readPaymentState==='function'?{readPaymentState}:null),
   ...(typeof flow.readPaymentPolicy==='function'?{readPaymentPolicy:flow.readPaymentPolicy}:null),
   ...(typeof flow.lookupConfirmation==='function'?{lookupConfirmation:flow.lookupConfirmation}:null),
   ...(typeof flow.readOrderRevision==='function'?{readOrderRevision:flow.readOrderRevision}:null),

@@ -11,9 +11,11 @@ const code=error=>{
 };
 const replyFailure=(reply,error)=>{
  const failure=code(error);
- if(['invalid_customer_flow_input','invalid_customer_visit_input','invalid_customer_revision_request'].includes(failure))
+ if(['invalid_customer_flow_input','invalid_customer_visit_input','invalid_customer_revision_request',
+      'invalid_customer_payment_state_scope'].includes(failure))
   return reply.code(400).send({error:'invalid_customer_request'});
- if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden','customer_payment_scope_forbidden']
+ if(['customer_session_forbidden','customer_table_forbidden','customer_order_context_forbidden','customer_payment_scope_forbidden',
+      'customer_round_scope_forbidden']
     .includes(failure))return reply.code(403).send({error:'customer_context_forbidden'});
  if(failure==='customer_revision_scope_forbidden')
   return reply.code(403).send({error:'customer_context_forbidden'});
@@ -154,7 +156,22 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     return reply.code(201).send(result);
    }catch(error){return replyFailure(reply,error);}
   });
-  if(typeof flow.lookupConfirmation==='function')scope.post('/orders/lookup',{bodyLimit:4096},async(request,reply)=>{
+  if(typeof flow.readPaymentState==='function')scope.get('/orders/:orderId/payment-state',async(request,reply)=>{
+    reply.header('Cache-Control','no-store');reply.header('X-Content-Type-Options','nosniff');
+    let params;
+    try{params=new URL(request.raw.url,'http://sabora.invalid').searchParams;}
+    catch{return reply.code(400).send({error:'invalid_customer_request'});}
+    const keys=[...params.keys()];
+    if(keys.length!==2||keys.some(k=>!['tableId','visitId'].includes(k))||
+       params.getAll('tableId').length!==1||params.getAll('visitId').length!==1)
+     return reply.code(400).send({error:'invalid_customer_request'});
+    try{return reply.code(200).send(await flow.readPaymentState({
+     customerSessionToken:readCustomerCookie(request.headers.cookie),
+     tableId:params.get('tableId'),visitId:params.get('visitId'),
+     orderId:request.params?.orderId}));}
+    catch(error){return replyFailure(reply,error);}
+   });
+   if(typeof flow.lookupConfirmation==='function')scope.post('/orders/lookup',{bodyLimit:4096},async(request,reply)=>{
    if(!json(request))return reply.code(415).send({error:'unsupported_media_type'});
    try{
     const result=await flow.lookupConfirmation({...request.body,

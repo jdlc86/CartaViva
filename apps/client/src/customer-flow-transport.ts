@@ -131,7 +131,23 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     expiresAt:line.expiresAt as string
    })))});
   },
-  async lookupConfirmation(input:{tableId:string;qrToken:string;visitId:string;
+  async paymentState(input:{tableId:string;visitId:string;orderId:string}){
+    if(!UUID.test(input.tableId)||!UUID.test(input.orderId)||!KEY.test(input.visitId))
+     throw Error('invalid_customer_payment_state_transport');
+    const params=new URLSearchParams({tableId:input.tableId,visitId:input.visitId});
+    const value=await jsonRequest(fetchImpl,
+     `/api/v1/customer/orders/${input.orderId}/payment-state?${params}`,'GET');
+    if(value.orderId!==input.orderId||
+       ![null,'pay_now','pay_at_end'].includes(value.paymentMode as never)||
+       !['free_grouping','awaiting_authorization','grouping','payment_unknown',
+         'capture_requested','captured','dispatch_requested','kitchen_acknowledged',
+         'payment_failed','cancelled','compensation_required'].includes(value.roundState as string))
+     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
+    return Object.freeze({orderId:input.orderId,
+     paymentMode:value.paymentMode as 'pay_now'|'pay_at_end'|null,
+     roundState:value.roundState as string});
+   },
+   async lookupConfirmation(input:{tableId:string;qrToken:string;visitId:string;
    basketId:string;requestKey:string}){
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/orders/lookup','POST',input);
    if(value.status==='not_found')return Object.freeze({status:'not_found' as const});

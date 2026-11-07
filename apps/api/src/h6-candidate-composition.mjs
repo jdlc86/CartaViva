@@ -1,6 +1,8 @@
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
 import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
+import {createH6CustomerPaymentStateReader} from './h6-customer-payment-state.mjs';
+import {READ_H6_ROUND_SQL} from './customer-production-flow.mjs';
 import {registerH6CustomerEventStreamHttp,registerH6StaffEventStreamHttp,
  createPostgresH6OutboxNotifier} from './h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
@@ -23,7 +25,7 @@ import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
  TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL,TP_CASH_TIP_REFUND_SQL} from './third-party-cash-repository.mjs';
 import {registerThirdPartyCashHttp} from './third-party-cash-http.mjs';
 
-const customerSql=new Set([READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,
+const customerSql=new Set([READ_H6_ROUND_SQL,READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,
  TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
  TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL]);
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
@@ -59,7 +61,8 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  const provider=createH6ProviderRepository({withTransaction:providerTx});
  const payments=createH6PaymentOrchestrator({stripe,repository:provider,
   ...(clock===undefined?{}:{clock})});
- const flow=createH6CustomerPaymentFlow({flow:customerFlow,payments});
+ const flow=createH6CustomerPaymentFlow({flow:customerFlow,payments,
+  readPaymentState:createH6CustomerPaymentStateReader({withTransaction:customerTx})});
  const events=createH6CustomerEventRepository({withTransaction:customerTx});
  const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
  const operations=createH6OperationsCoordinator({repository:operationsRepository,
