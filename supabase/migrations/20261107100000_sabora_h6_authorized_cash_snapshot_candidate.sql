@@ -99,7 +99,8 @@ BEGIN
   'canSettle',state='open' AND payment_mode='pay_at_end'
     AND outstanding_cents>0 AND NOT payment_uncertain
  ) ORDER BY id) FILTER(WHERE ordinal<=p_limit),'[]'::jsonb),
- COALESCE(bool_or(ordinal>p_limit),false),max(id) FILTER(WHERE ordinal<=p_limit)
+ COALESCE(bool_or(ordinal>p_limit),false),
+ (array_agg(id ORDER BY id DESC) FILTER(WHERE ordinal<=p_limit))[1]
  INTO v_items,v_more,v_last FROM numbered;
  IF floor(extract(epoch FROM clock_timestamp())*1000)::bigint>=p_expires_at_ms THEN
   RAISE EXCEPTION 'expired_h6_staff_capability' USING errcode='42501'; END IF;
