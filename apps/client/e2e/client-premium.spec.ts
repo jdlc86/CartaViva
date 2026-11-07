@@ -9,6 +9,12 @@ const catalog=[
 ];
 
 test.beforeEach(async({page})=>{
+ // UI-only fixture for initial/free-only accounts. The authoritative fixed
+ // mode is validated by the full PG17/HTTP/Chromium I49 integration.
+ await page.route('**/api/v1/customer/payment-policy**',route=>route.fulfill({
+  status:200,contentType:'application/json',
+  body:JSON.stringify({selectedMode:null,requirePayAsOrdered:false,version:1})
+ }));
  await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
  await page.route('**/api/v1/customer/session',route=>route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'unauthorized'})}));
  // Earlier H6 browser fixtures have no confirmed account. A sealed read-only
