@@ -141,3 +141,22 @@ La solución no da por completado CV-014 entero: reservas anticipadas y llamada 
 - **Referencias persistentes:** [tablero vivo §46](../tracking/SABORA_LIVE_PROJECT_TRACKER.md); [matriz interfaz/función](../design/FUNCTIONAL_UI_COVERAGE.json); [informe CV-014](../reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md); [normativa funcional](../REQUISITOS_FUNCIONALES.md). Documentos de continuidad y seguimiento informan, **no reinterpretan normas**.
 
 **Límites invariables:** nada de merges/despliegues, bases operativas, secretos Stripe, ni cambios en Fleetia, VPS compartido u otros proyectos sin autorización expresa e aislamiento completo; no fingir validación humana.
+
+## 12. 08-11-2026 — B3 recuperado técnicamente: 6/6 Actions del mismo SHA; causa del fallo previo no atribuida
+
+**Hito técnico verificado en GitHub:** commit funcional **`41d2451409fbd7f9c23041a285357fcff38d1cef`** en [PR #51 Draft](https://github.com/jdlc86/CartaViva/pull/51). **6/6 workflows COMPLETED/SUCCESS, todos asociados a ese SHA**:
+
+| Workflow | Resultado | Ejecución |
+| --- | --- | --- |
+| Bootstrap PostgreSQL 17 / controlador Node / dos PWA y B3 | **SUCCESS**; test B3 `ok 49`, batería **51/51 PASS** | [#42468335478](https://github.com/jdlc86/CartaViva/actions/runs/42468335478) |
+| Aceptación consolidada H6, regresión, configuración y artefactos | **SUCCESS** | [#42468335561](https://github.com/jdlc86/CartaViva/actions/runs/42468335561) |
+| Chromium cliente | **SUCCESS** | [#42468335464](https://github.com/jdlc86/CartaViva/actions/runs/42468335464) |
+| Chromium gestión | **SUCCESS** | [#42468335655](https://github.com/jdlc86/CartaViva/actions/runs/42468335655) |
+| Independencia/instalación de las dos PWA | **SUCCESS** | [#42468335480](https://github.com/jdlc86/CartaViva/actions/runs/42468335480) |
+| Puerta de completitud funcional ↔ UI | **SUCCESS** | [#42468335460](https://github.com/jdlc86/CartaViva/actions/runs/42468335460) |
+
+**Diagnóstico y corrección protegida:** el SHA `ba3b2437` falló una vez en B3 por timeout de 20 s esperando `Cesta: 1` después de pulsar Añadir, con migraciones PG17 ya verdes; el escenario había pasado anteriormente en `92927048`. Se introdujo en `f49f1ea7` captura y diagnóstico **solo al fallar** (estado React/cesta/localStorage, producto servidor y errores Chromium), manteniendo intacta la aserción y el recorrido completo. En [Bootstrap #42467419305](https://github.com/jdlc86/CartaViva/actions/runs/42467419305), B3 volvió a pasar sin modificar la lógica de cesta/mesa. Se observó, además, que el nuevo `CommunicationsBar` abría un EventSource aun si el endpoint CV-014 no existía en un runtime legado. El SHA `41d24514` lo corrige: **si la proyección GET responde 404, el cliente oculta la banda y NO inicia/reintenta SSE**; para errores temporales no se desactiva la recuperación. Se añadió prueba de contrato Chromium con GET 404 y aserción en el propio B3 sobre la ausencia de SSE, manteniendo la confirmación gráfica `Cesta: 1` y persistencia de la cesta. **El segundo Bootstrap y los seis workflows pasaron.**
+
+**Causalidad y alcance (obligatorio):** el origen preciso del fallo intermitente previo **no se ha demostrado**; no afirmar que estaba causado por SSE, por limitaciones de GitHub ni por la cesta. Se ha corregido una interferencia potencial verificable y se ha acreditado recuperación técnica integral en dos rondas consecutivas de B3, la última con el nuevo guard. No se han omitido pruebas, reintentado clicks, ampliado el timeout de la aserción ni debilitado contratos de cambio de mesa. **No equivalen a aceptación de cliente real, estética F28/R09 ni preparación de producción.**
+
+**Continuidad:** M5/CV-014 comunicaciones sigue **CANDIDATO TÉCNICO** con el circuito gráfico funcional implementado en PR #51; reservas anticipadas y llamada al camarero siguen PENDIENTES, así como Stripe sandbox/M4 y recuperación operativa/M6. Consultar [tablero §48](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), [informe de comunicaciones](../reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md), [matriz funcional ↔ UI](../design/FUNCTIONAL_UI_COVERAGE.json) y documentos normativos. No se ha fusionado ni desplegado nada, ni se ha modificado Supabase operativo, VPS ni Fleetia. Los posteriores commits de documentación `[skip ci]` **no son nuevos SHAs funcionalmente probados**.
