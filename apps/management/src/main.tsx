@@ -5,6 +5,7 @@ import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
 import {createManagementSessionFence} from './management-session-fence.js';
+import {createAuthenticatedOwnershipGovernanceGateway,type OwnershipGovernanceGateway} from './ownership-governance-gateway.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
@@ -43,6 +44,7 @@ export function ManagementApp({
   staffGateway,
   staffDirectoryGateway,
   financeGateway,
+  ownershipGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
   tableChangeGateway?: TableChangeQueueGateway;
@@ -52,6 +54,7 @@ export function ManagementApp({
   staffGateway?: StaffManagementGateway;
   staffDirectoryGateway?: StaffDirectoryGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
+  ownershipGateway?: OwnershipGovernanceGateway;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
@@ -113,7 +116,7 @@ export function ManagementApp({
     : area === 'caja' ? <CashView gateway={operationsGateway}/>
     : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
         financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
-    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway}/>;
 
   return (
     <div className="management-shell">
@@ -200,6 +203,7 @@ function renderManagement(
   gateway?: OrderOperationsGateway,
   tableChangeGateway?: TableChangeQueueGateway,
   managementGateway?:M3AuthenticatedManagementGateway,
+  ownershipGateway?:OwnershipGovernanceGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -214,7 +218,8 @@ function renderManagement(
   flushSync(() => managementRoot!.render(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
-      catalogManagementGateway={managementGateway} financeGateway={managementGateway}/></React.StrictMode>,
+      catalogManagementGateway={managementGateway} financeGateway={managementGateway}
+      ownershipGateway={ownershipGateway}/></React.StrictMode>,
   ));
 }
 
@@ -225,6 +230,7 @@ export function mountAuthenticatedManagementApp({
   reconnectDelayMs,
   enableTableChangeQueue = false,
   enableM3Management = false,
+  enableOwnershipGovernance = false,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
@@ -234,6 +240,8 @@ export function mountAuthenticatedManagementApp({
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
   enableM3Management?:boolean;
+  /** Opt-in only after isolated ownership runtime/SQL preflight succeeds. */
+  enableOwnershipGovernance?:boolean;
 }) {
   if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
     throw Error('invalid_management_bootstrap');
@@ -242,9 +250,11 @@ export function mountAuthenticatedManagementApp({
     getAccessToken, fetchImpl, reconnectDelayMs,
   });
   const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
+  const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({getAccessToken,fetchImpl}):undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
+    ownershipGateway?.revoke();
     throw Error('management_root_already_mounted');
   }
   const disposeSession = managementSessionFence.replace(operationsGateway);
@@ -254,7 +264,7 @@ export function mountAuthenticatedManagementApp({
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway,m3Gateway);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
@@ -262,6 +272,7 @@ export function mountAuthenticatedManagementApp({
     const current = managementSessionFence.isCurrent(operationsGateway);
     disposeSession();
     m3Gateway?.revoke();
+    ownershipGateway?.revoke();
     if (current && managementElement === element) renderManagement(element);
   };
 }
