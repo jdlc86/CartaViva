@@ -80,7 +80,10 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
   assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
   assert.match(main, /window\.addEventListener\('popstate'/);
-  assert.match(main, /if \(element\) renderManagement\(element\)/);
+  assert.match(main, /renderManagement\\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway\\)/);
+  assert.match(main, /enableOwnershipGovernance = false/);
+  assert.match(main, /ownershipGateway\\?\\.revoke\\(\\)/);
+  assert.match(main, /ownershipGateway=\\{ownershipGateway\\}/);
   assert.match(main, /mountAuthenticatedManagementApp/);
   assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway\)/);
   assert.match(tables, /gateway\?: AdminTablesGateway/);
