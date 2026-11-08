@@ -120,7 +120,15 @@ export const REVIEWED_MIGRATION_AUDIT={
   'NOLOGIN H6/M3 function owners, direct runtime and browser table access revoked, authenticated payer proof, ADMIN/ROOT authorized refund',
   'three creates, existing SQL function replacement, account and claim locks; no network access',
   'cash-only new collections/refunds, append-only originals, no automatic refund of consumption tips, no backfill',
-  'inherited')};
+  'inherited'),
+ '20261108070000_sabora_m5_communications_candidate.sql':r(
+  'M5 CV-014 scheduled internal restaurant communications',
+  ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],
+  'three FORCE RLS communication/dedup/audit ledgers; signed admin read/write RPC; public only-active read RPC; durable scheduling with next boundary; pg_notify on commit',
+  'NOLOGIN owner and two isolated NOLOGIN runtimes; no public/anon/authenticated direct table grants; admin/root SQL role check, signed body and request id; runtime RPC-only',
+  'three table and index creates; M3 verification function replacement extends action allowlist; row lock on one notice and idempotency key; no backfill',
+  'one restaurant new private drafts, approved publication snapshot and append-only audit/receipt; no external network operation, no legacy ledger rewrite',
+  'extensions.digest')};
 
 export function validateMigrationAudit(manifest,catalog=REVIEWED_MIGRATION_AUDIT){
  const names=new Set(manifest.map(item=>item.name));
