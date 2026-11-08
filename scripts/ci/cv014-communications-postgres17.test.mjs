@@ -36,6 +36,7 @@ const DEFAULT_PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC
 const APP_ADMIN_TOKEN='sabora_ci_admin_token_allowed_for_pg17';
 const APP_WAITER_TOKEN='sabora_ci_waiter_token_must_fail_pg17';
 const APP_OTHER_ADMIN_TOKEN='sabora_ci_other_admin_with_valid_role_but_no_ownership';
+const APP_ROOT_TOKEN='sabora_ci_root_governance_read_only';
 const after=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitHttp(url,deadline=30_000){
  for(let i=0;i<150;i++){
@@ -117,6 +118,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const forRoles=roles=>async(request,reply)=>{
    const value=request.headers.authorization;
    const role=value==='Bearer '+APP_ADMIN_TOKEN||value==='Bearer '+APP_OTHER_ADMIN_TOKEN?'admin':
+    value==='Bearer '+APP_ROOT_TOKEN?'root':
     value==='Bearer '+APP_WAITER_TOKEN?'waiter':null;
    if(!role||!roles.includes(role)){reply.code(403).send({error:'forbidden'});return;}
    const person=value==='Bearer '+APP_OTHER_ADMIN_TOKEN?otherAdminId:actorId;
@@ -137,6 +139,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const rejected=await post('save',{id:null,revision:null,draft:draft()},
    randomUUID(),APP_OTHER_ADMIN_TOKEN);
   assert.equal(rejected.status,403,'active but nonowner ADMIN cannot publish communications');
+  const rootDenied=await post('save',{id:null,revision:null,draft:draft()},
+   randomUUID(),APP_ROOT_TOKEN);
+  assert.equal(rootDenied.status,403,'ROOT has read/governance access, not communications write');
   assert.equal((await getPublic()).items.length,0,'nonowner never affects public notices');
   assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.comms_receipts_m5 WHERE actor_id=$1',[otherAdminId])).rows[0].n,0,
    'nonowner denial cannot persist a receipt');
