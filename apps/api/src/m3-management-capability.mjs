@@ -7,7 +7,8 @@ const STAFF=new Set(['admin','root','waiter']);
 const ACTIONS=new Set(['tables.read','table.create','table.update','table.readiness',
  'table.qr_rotate','table.qr_revoke','table.occupancy','catalog.read',
  'catalog.category_create','catalog.category_reorder','catalog.category_visibility',
- 'catalog.item_save','catalog.item_publish','catalog.item_withdraw','finance.read']);
+ 'catalog.item_save','catalog.item_publish','catalog.item_withdraw','finance.read',
+ 'comms.read','comms.manage']);
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
 const hash=body=>createHash('sha256').update(body,'utf8').digest('hex');
