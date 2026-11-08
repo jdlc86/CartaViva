@@ -634,3 +634,6 @@ p { line-height: 1.55; }
 .communications-item h4{margin:0}
 .communications-item small{overflow-wrap:anywhere}
 @media(max-width:540px){.communications-editor,.communications-item{padding:14px}}
+.communications-format-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.communications-format-actions button{min-width:44px;min-height:44px;border:1px solid #aab9ac;border-radius:9px;background:#fff;color:#146B57;font:inherit;cursor:pointer}
+.communications-format-actions button:focus-visible{outline:3px solid #155EEF;outline-offset:2px}
