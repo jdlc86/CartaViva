@@ -8038,6 +8038,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
 
     await m3StaffPage.getByRole('button',{name:'Nuevo plato'}).click();
     const editor=m3StaffPage.locator('.catalog-editor-form');
+    // Regression B3: the previous selected Bocado M3 has compulsory Salsa,
+    // Trufa, a 20% discount and allergens. A new dish must start with NONE
+    // of those; the reset must complete within the click itself (no effect race).
+    assert.equal(await editor.getByLabel('Nombre',{exact:true}).inputValue(),'',
+     'new item must synchronously clear the previous name');
+    assert.equal(await editor.getByLabel('Nombre del extra').count(),0,
+     'new item must not inherit previous item extras');
+    assert.equal(await editor.getByLabel('Nombre del grupo').count(),0,
+     'new item must not inherit compulsory option groups');
+    assert.equal(await editor.locator('fieldset').filter({hasText:'Descuento del plato y extras'})
+     .locator('select').inputValue(),'none',
+     'new item must not inherit a previous item discount');
+    assert.equal(await editor.locator('fieldset').filter({hasText:'Declaración de alérgenos'})
+     .locator('input[type=checkbox]:checked').count(),0,
+     'new item must not inherit verified allergens');
     await editor.getByLabel('Nombre',{exact:true}).fill('Brunch de cortesía M3');
     await editor.getByLabel('Descripción').fill('Publicado en Chromium desde gestión');
     await editor.getByLabel('Categoría').selectOption({label:'BRUNCH E2E'});
@@ -8065,6 +8080,17 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      .find(row=>row.id===browserItemId);
     assert.equal(browserPublished?.category,'BRUNCH E2E');
     assert.equal(browserPublished?.priceCents,0);
+    // Validate the durable/publicly visible snapshot, not just the form;
+    // stale editor modifiers made B3's Añadir open a detail dialog instead
+    // of incrementing the customer's basket in the failed CI artifact.
+    assert.equal(browserPublished?.extras?.length??0,0,
+     'published new dish must have no inherited extras');
+    assert.equal(browserPublished?.options?.length??0,0,
+     'published new dish must have no inherited mandatory options');
+    assert.equal(browserPublished?.discount??null,null,
+     'published new dish must have no inherited discount');
+    assert.deepEqual(browserPublished?.allergenDeclaration?.ids??[],[],
+     'published new dish must have no inherited allergen choices');
     await m3StaffPage.screenshot({path:m3Join(m3Evidence,'management-published.png'),fullPage:true});
     // The actual desktop screenshot previously exposed a numeric sort input
     // squeezed into the 42px category icon column. Assert legible hit targets
