@@ -8023,6 +8023,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     },jwtAdmin);
     await m3StaffPage.getByRole('heading',{name:'Editor de carta'})
      .waitFor({timeout:20000});
+    const unsavedCatalogDescription='B3 prueba: cambio local sin guardar durante refresco de categorías';
+    const existingEditor=m3StaffPage.locator('.catalog-editor-form');
+    await existingEditor.getByLabel('Descripción').fill(unsavedCatalogDescription);
     await m3StaffPage.getByRole('textbox',{name:'Nombre de nueva categoría'})
      .fill('BRUNCH E2E');
     await m3StaffPage.getByRole('spinbutton',{name:'Orden de nueva categoría'})
@@ -8035,6 +8038,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     const createdCategoryResponse=await createdCategoryHttp;
     assert.equal(createdCategoryResponse.status(),200,await createdCategoryResponse.text());
     await m3StaffPage.getByText('BRUNCH E2E').first().waitFor({timeout:20000});
+    assert.equal(await existingEditor.getByLabel('Descripción').inputValue(),
+     unsavedCatalogDescription,
+     'category creation must preserve unsaved fields of selected existing article');
 
     await m3StaffPage.getByRole('button',{name:'Nuevo plato'}).click();
     const editor=m3StaffPage.locator('.catalog-editor-form');
@@ -8042,7 +8048,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // Trufa, a 20% discount and allergens. A new dish must start with NONE
     // of those; the reset must complete within the click itself (no effect race).
     assert.equal(await editor.getByLabel('Nombre',{exact:true}).inputValue(),'',
-     'new item must synchronously clear the previous name');
+     'new item must clear the previous name in the same interaction');
+    assert.equal(await editor.getByLabel('Descripción').inputValue(),'',
+     'new item must not inherit unsaved description from the previous article');
     assert.equal(await editor.getByLabel('Nombre del extra').count(),0,
      'new item must not inherit previous item extras');
     assert.equal(await editor.getByLabel('Nombre del grupo').count(),0,
