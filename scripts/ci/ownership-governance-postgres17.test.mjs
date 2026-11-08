@@ -54,7 +54,13 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   await assert.rejects(pools[0].query(OWNERSHIP_SQL,['{}','force','{}']),/permission denied/);
   const withTransaction=createRoleScopedPostgresTransaction({pool:pools[0],role:OWNERSHIP_ROLE,
    allowedSql:new Set([OWNERSHIP_SQL])});
-  const issueCapability=createOwnershipCapabilityIssuer({keyId,secret,databaseRole:login});
+  const configuredIssuer=createOwnershipCapabilityIssuer({keyId,secret,databaseRole:login});
+  let latestIssued=null;
+  const issueCapability=parameters=>{
+   const cap=configuredIssuer(parameters);
+   latestIssued={cap,body:parameters.body};
+   return cap;
+  };
   const repo=createOwnershipGovernanceRepository({withTransaction,issueCapability});
   const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const issuer='https://sabora-ci-ownership.test/auth/v1';
@@ -152,8 +158,604 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    signedRead=await repo.read({
     verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
   }catch(cause){
+   const checks=(await admin.query(`WITH i AS
+    (SELECT $1::jsonb AS c,$2::text AS body,$3::text AS db,
+      floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS clock_ms)
+    SELECT
+      jsonb_typeof(c) IS DISTINCT FROM 'object' AS bad_type,
+      (SELECT count(*) FROM jsonb_object_keys(c))<>10 AS bad_count,
+      EXISTS(SELECT 1 FROM jsonb_object_keys(c) k(key) WHERE k.key NOT IN
+       ('keyId','databaseRole','actorId','staffRole','action','requestId',
+        'bodyHashHex','issuedAtMs','expiresAtMs','signatureHex')) AS bad_fields,
+      (c->>'keyId') !~ '^[A-Za-z0-9_-]{8,64}
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_key,
+      (c->>'databaseRole') IS DISTINCT FROM db AS bad_login,
+      (c->>'actorId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_actor,
+      (c->>'staffRole') NOT IN ('admin','root') AS bad_role,
+      (c->>'action') IS DISTINCT FROM 'ownership.read' AS bad_action,
+      (c->>'requestId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_request,
+      octet_length(convert_to(body,'UTF8'))>4096 AS bad_size,
+      (c->>'bodyHashHex') IS DISTINCT FROM
+       encode(extensions.digest(convert_to(body,'UTF8'),'sha256'),'hex') AS bad_hash,
+      (c->>'issuedAtMs') !~ '^(0|[1-9][0-9]*)
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_issued_format,
+      (c->>'expiresAtMs') !~ '^(0|[1-9][0-9]*)
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_expiry_format,
+      (c->>'issuedAtMs')::bigint>clock_ms+5000 AS bad_future,
+      (c->>'issuedAtMs')::bigint<clock_ms-60000 AS bad_old,
+      (c->>'expiresAtMs')::bigint<=clock_ms AS bad_expired,
+      (c->>'expiresAtMs')::bigint>(c->>'issuedAtMs')::bigint+60000 AS bad_ttl,
+      (c->>'signatureHex') !~ '^[0-9a-f]{64}
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+ AS bad_sig_format
+    FROM i`,[JSON.stringify(latestIssued.cap),latestIssued.body,login])).rows[0];
    throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
-    ':'+String(cause?.message??'unknown'),{cause});
+    ':'+String(cause?.message??'unknown')+':flags='+JSON.stringify(checks),{cause});
   }
   assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
   const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
