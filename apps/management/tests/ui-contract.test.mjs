@@ -85,7 +85,7 @@ test('navigation is deep-linkable and read transports remain injected and discon
   assert.match(main, /ownershipGateway\\?\\.revoke\\(\\)/);
   assert.match(main, /ownershipGateway=\\{ownershipGateway\\}/);
   assert.match(main, /mountAuthenticatedManagementApp/);
-  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway\)/);
+  assert.match(main, /if \\(element\\) renderManagement\\(element\\)/);
   assert.match(tables, /gateway\?: AdminTablesGateway/);
   assert.match(catalog, /gateway\?: AdminCatalogGateway/);
   assert.match(tables, /No se conserva una respuesta parcial/);
