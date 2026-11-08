@@ -24,7 +24,15 @@ export function createAuthenticatedOwnershipGovernanceGateway({getAccessToken,
    ...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',credentials:'omit',signal:controller.signal});
   if(revoked||generation!==epoch)throw new OwnershipGovernanceGatewayError('session_revoked',403);
   let data;
-  try{data=await response.json();}catch{throw new OwnershipGovernanceGatewayError('unavailable',503);}
+  try{data=await response.json();}catch{
+   if(revoked||generation!==epoch)
+    throw new OwnershipGovernanceGatewayError('session_revoked',403);
+   throw new OwnershipGovernanceGatewayError('unavailable',503);
+  }
+  // A transport may finish decoding a buffered body after AbortController
+  // fires. Never deliver that previous employee's projection or result.
+  if(revoked||generation!==epoch)
+   throw new OwnershipGovernanceGatewayError('session_revoked',403);
   if(!response.ok){
    const code=['forbidden','ownership_conflict','invalid_ownership_request','ownership_unavailable']
     .includes(data?.error)?data.error:'unavailable';

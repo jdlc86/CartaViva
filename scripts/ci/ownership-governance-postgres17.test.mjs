@@ -328,6 +328,45 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
   assert.equal((await read(root)).json().ownerUserId,a,
    'late disposer may not revoke the replacement ROOT session');
+  // RV-04: real JWT -> Fastify -> signed PG17 read, but the browser response
+  // has a buffered JSON body that resolves after the old employee was revoked.
+  // AbortSignal alone cannot fence the delayed decode.
+  const delayed=await page.evaluate(async({oldToken,newToken})=>{
+   const {createAuthenticatedOwnershipGovernanceGateway}=await import(
+    '/src/ownership-governance-gateway.js');
+   let releaseBody,enteredBody;
+   const bodyHold=new Promise(resolve=>{releaseBody=resolve;});
+   const bodyEntered=new Promise(resolve=>{enteredBody=resolve;});
+   const oldGateway=createAuthenticatedOwnershipGovernanceGateway({
+    getAccessToken:async()=>oldToken,
+    fetchImpl:async(url,options)=>{
+     const response=await fetch(url,options);
+     return {ok:response.ok,status:response.status,async json(){
+      // Parse a real authenticated response, but delay its completion.
+      const value=await response.json();
+      enteredBody();
+      await bodyHold;
+      return value;
+     }};
+    }
+   });
+   const oldRead=oldGateway.read().then(
+    value=>({outcome:'resolved',ownerUserId:value.ownerUserId}),
+    error=>({outcome:'rejected',code:error.code??error.message}));
+   await bodyEntered;
+   oldGateway.revoke();
+   const nextGateway=createAuthenticatedOwnershipGovernanceGateway({
+    getAccessToken:async()=>newToken,fetchImpl:fetch});
+   const fresh=await nextGateway.read();
+   releaseBody();
+   const stale=await oldRead;
+   nextGateway.revoke();
+   return {stale,freshOwner:fresh.ownerUserId};
+  },{oldToken:jwt(owner),newToken:jwt(root)});
+  assert.deepEqual(delayed.stale,{outcome:'rejected',code:'session_revoked'},
+   'decoded body from a revoked employee must never escape the gateway');
+  assert.equal(delayed.freshOwner,a,
+   'new authenticated identity retains its authorized signed read');
  }finally{
   await browser?.close().catch(()=>{});
   await vite?.close().catch(()=>{});
