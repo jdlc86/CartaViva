@@ -7655,6 +7655,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const adminId='b0a00000-0000-4000-8000-000000000313';
    await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
     VALUES($1,'admin','active') ON CONFLICT(user_id) DO UPDATE SET role='admin',state='active'`,[adminId]);
+   // A staff ADMIN role alone is not a catalog/QR writer. This disposable
+   // acceptance fixture explicitly binds the singleton administrative owner.
+   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[adminId]);
    const jwtAdmin=staffJwt(adminId);
    const m3Fetch=async(path,options={})=>{
     const response=await m3.app.inject({method:options.method??'GET',url:path,
