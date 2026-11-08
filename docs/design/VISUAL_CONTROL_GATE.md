@@ -20,7 +20,7 @@ En todas las funcionalidades nuevas: documentar antes de cerrar el hito qué act
 
 ### Inventario de deuda expresamente visible
 
-- `CV-014-comunicaciones-anuncios`: PENDIENTE, cliente oculto, sin editor visible ni ciclo servidor certificado.
+- `CV-014-comunicaciones-anuncios`: **CANDIDATO_TECNICO PR #51**, interfaz cliente y gestión + servidor, roles + PG17, prueba integradora Chromium del SHA `92927048`; controles y pruebas revisados en el SHA real del PR. Faltan aceptación humana y puerta final, sin afirmación de producción.
 - `CV-014-reservas-anticipadas`: PENDIENTE de decisiones normativas abiertas e integración.
 - `CV-014-llamada-camarero`: PENDIENTE de recorrido compartido de sala y UI.
 - M4 Stripe sandbox y aprobaciones humanas siguen bloqueadas según tablero; el registro de cobertura no los declara resueltos.
