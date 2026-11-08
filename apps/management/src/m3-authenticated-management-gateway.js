@@ -90,6 +90,24 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl
    return send('/api/v1/admin/catalog/actions',{method:'POST',
     body:{requestId,operation,payload},signal});
   },
+  async readCommunications({signal}={}){
+   const value=await send('/api/v1/admin/communications',{signal});
+   if(value.version!==1||!Array.isArray(value.items)||value.items.length>500||
+    !value.items.every(x=>plain(x)&&UUID.test(x.id??'')&&
+      ['draft','published','paused','withdrawn'].includes(x.state)&&
+      Number.isSafeInteger(x.revision)&&x.revision>=1&&plain(x.draft)))
+    throw Error('invalid_m5_communications_projection');
+   return Object.freeze(value);
+  },
+  manageCommunication({requestId,operation,payload,signal}={}){
+   if(!UUID.test(requestId??'')||
+    !['save','publish','pause','resume','withdraw'].includes(operation)||
+    !plain(payload)||!['id','revision','draft'].every(x=>Object.hasOwn(payload,x))||
+    Object.keys(payload).length!==3)
+     throw Error('invalid_m5_comms_request');
+   return send('/api/v1/admin/communications/actions',{method:'POST',
+     body:{requestId,operation,payload},signal});
+  },
   revoke(){controller.abort();}
  });
 }
