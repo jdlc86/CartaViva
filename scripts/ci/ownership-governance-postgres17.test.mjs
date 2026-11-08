@@ -77,6 +77,41 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    'select role, state from sabora.staff_members where user_id = $1',[b])).rows[0];
   assert.deepEqual(membership,{role:'admin',state:'active'},
    'independent staff reader must see durable membership');
+  // Diagnostic assertions stay inside the disposable PG17 integration:
+  // check signed payload, durable signer eligibility and owner-only RLS
+  // without exposing any key, token, signature or SQL table to browsers.
+  const diagnosticBody='ownership.read';
+  const diagnosticRequest=randomUUID();
+  const diagnosticCapability=issueCapability({actorId:b,staffRole:'admin',
+   action:'ownership.read',requestId:diagnosticRequest,body:diagnosticBody});
+  const signedMessage=['sabora-ownership-v1',login,b,'admin','ownership.read',
+   diagnosticRequest,diagnosticCapability.bodyHashHex,
+   String(diagnosticCapability.issuedAtMs),String(diagnosticCapability.expiresAtMs)].join('\\n');
+  const diagnostic=(await admin.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp()
+       AND expires_at>clock_timestamp()) AS eligible_keys,
+    (SELECT count(*)::integer FROM sabora.staff_members
+      WHERE user_id=$2 AND role='admin' AND state='active') AS active_members,
+    (SELECT encode(extensions.hmac(convert_to($3,'UTF8'),hmac_key,'sha256'),'hex')
+       FROM sabora.order_operation_signing_keys WHERE key_id=$1)=$4 AS signature_matches`,
+   [keyId,b,signedMessage,diagnosticCapability.signatureHex])).rows[0];
+  assert.deepEqual(diagnostic,{eligible_keys:1,active_members:1,signature_matches:true},
+   'signed issuer and durable PG17 signer input must agree');
+  const privileged=await admin.connect();
+  try{
+   await privileged.query('BEGIN');
+   await privileged.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const policy=(await privileged.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS owner_rows,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp()
+       AND expires_at>clock_timestamp()) AS key_rows,
+    (SELECT count(*)::integer FROM sabora.staff_members
+      WHERE user_id=$2 AND state='active') AS staff_rows`,[keyId,b])).rows[0];
+   assert.deepEqual(policy,{owner_rows:1,key_rows:1,staff_rows:1},
+    'sealed owner must see only the eligible durable identities under FORCE RLS');
+  }finally{await privileged.query('ROLLBACK').catch(()=>{});privileged.release();}
   let signedRead;
   try{
    signedRead=await repo.read({
