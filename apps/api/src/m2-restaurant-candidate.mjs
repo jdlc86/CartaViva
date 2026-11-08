@@ -61,6 +61,9 @@ import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
  MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
+import {OWNERSHIP_ROLE,OWNERSHIP_SQL,assertOwnershipRuntimeIdentity,
+ createOwnershipGovernanceRepository,registerOwnershipGovernanceHttp}
+ from './ownership-governance-candidate.mjs';
 import {M5_COMMS_ADMIN_ROLE,M5_COMMS_PUBLIC_ROLE,READ_M5_COMMS_ADMIN_SQL,
  MANAGE_M5_COMMS_SQL,READ_M5_COMMS_PUBLIC_SQL,
  assertM5CommunicationsCapability,createM5CommunicationsRepositories,
@@ -124,7 +127,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
         typeof management.communications!=='object'||!management.communications||
         typeof management.communications.expectedAdminLogin!=='string'||
         typeof management.communications.expectedPublicLogin!=='string'||
-        typeof management.communications.issueCapability!=='function'))))||
+        typeof management.communications.issueCapability!=='function'))||
+       (management.ownership!==undefined&&(
+        !management.ownership||typeof management.ownership!=='object'||
+        typeof management.ownership.expectedLogin!=='string'||
+        typeof management.ownership.issueCapability!=='function'))))||
      !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
    throw Error('invalid_m2_restaurant_candidate');
 
@@ -141,6 +148,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(management){
    capabilityPools.push(management.tablesPool,management.catalogPool);
    logins.push(management.expectedTablesLogin,management.expectedCatalogLogin);
+   if(management.ownership){
+    capabilityPools.push(management.ownership.pool);
+    logins.push(management.ownership.expectedLogin);
+   }
    if(management.communications){
     capabilityPools.push(management.communications.adminPool,management.communications.publicPool);
     logins.push(management.communications.expectedAdminLogin,
@@ -191,6 +202,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      expectedLogin:management.expectedTablesLogin});
     await assertM3CatalogCapability({pool:management.catalogPool,
      expectedLogin:management.expectedCatalogLogin});
+    if(management.ownership){
+     await assertOwnershipRuntimeIdentity({pool:management.ownership.pool,
+      expectedLogin:management.ownership.expectedLogin});
+    }
     if(management.communications){
      await assertM5CommunicationsCapability({pool:management.communications.adminPool,
       expectedLogin:management.communications.expectedAdminLogin,kind:'admin'});
@@ -259,7 +274,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
-  let m3Tables,m3Catalog,m3Finance,m5Communications;
+  let m3Tables,m3Catalog,m3Finance,m5Communications,ownershipGovernance;
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
@@ -273,6 +288,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    m3Finance=createM3FinanceRepository({withTransaction:catalogTx,
     issueCapability:management.issueCatalogCapability,
     timeZone:management.dashboardTimeZone??null});
+   if(management.ownership){
+    const ownershipTx=createRoleScopedPostgresTransaction({
+     pool:management.ownership.pool,role:OWNERSHIP_ROLE,
+     allowedSql:new Set([OWNERSHIP_SQL])});
+    ownershipGovernance=createOwnershipGovernanceRepository({
+     withTransaction:ownershipTx,issueCapability:management.ownership.issueCapability});
+   }
    if(management.communications){
     const adminCommsTx=createRoleScopedPostgresTransaction({
      pool:management.communications.adminPool,role:M5_COMMS_ADMIN_ROLE,
@@ -310,6 +332,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    heartbeatMs:eventHeartbeatMs});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
    catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
+  if(ownershipGovernance)registerOwnershipGovernanceHttp(app,{
+   forRoles:oneGuard,repository:ownershipGovernance});
   if(m5Communications){
    announcementStream=await createM5CommunicationsStream({
     pool:management.communications.publicPool,
