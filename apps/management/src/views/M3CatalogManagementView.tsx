@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice,EmptyState,ErrorState,LoadingState,PageHeader,StatusBadge} from '../components/Primitives';
 import {catalogDraftFromForm,loadM3ManagementCatalog,type M3CatalogGateway,
@@ -35,7 +35,9 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
   if(!active)return;setCatalog(value);setSelectedId(value.items[0]?.id??null);setPhase('ready');
  }).catch(()=>active&&setPhase('error'));return()=>{active=false};},[gateway,reload]);
  const selected=catalog?.items.find(item=>item.id===selectedId)??null;
- useEffect(()=>{
+ // Selection hydration must complete before an input becomes interactable;
+ // a passive effect can restore stale values after the next user action.
+ useLayoutEffect(()=>{
   // New-item initialization happens in the button's own event handler.
   // A post-render effect can otherwise race with fast typing and preserve
   // the previous item's modifiers in a newly published draft (B3 evidence).
