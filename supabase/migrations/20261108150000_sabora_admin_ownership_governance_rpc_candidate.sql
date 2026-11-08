@@ -233,7 +233,7 @@ BEGIN
    IF v_actor IS DISTINCT FROM v_creator THEN
     RAISE EXCEPTION 'ownership_forbidden' USING ERRCODE='42501'; END IF;
   ELSIF v_actor IS DISTINCT FROM
-    CASE WHEN v_kind='request' THEN v_owner ELSE v_to END THEN
+    (CASE WHEN v_kind='request' THEN v_owner ELSE v_to END) THEN
     RAISE EXCEPTION 'ownership_forbidden' USING ERRCODE='42501';
   END IF;
  END IF;
