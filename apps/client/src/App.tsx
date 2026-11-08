@@ -9,6 +9,7 @@ import {ProductCard} from './components/ProductCard';
 import {TableQrScanner} from './components/TableQrScanner';
 import {CheckoutPanel,type CheckoutPhase,type PaymentMode} from './components/CheckoutPanel';
 import {ThirdPartyCashPanel} from './components/ThirdPartyCashPanel';
+import {CommunicationsBar} from './components/CommunicationsBar';
 import {createCustomerFlowTransport,CustomerFlowTransportError} from './customer-flow-transport';
 import {subscribeCustomerEvents,type CustomerEvent} from './customer-event-stream';
 import {subscribeCustomerTableChange} from './customer-table-change-events';
@@ -808,7 +809,7 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
   <div className={`search-panel${searchOpen?' open':''}`} aria-hidden={!searchOpen}><label htmlFor="catalog-search">{copy.search}</label><div><Icon name="search"/><input ref={searchRef} id="catalog-search" type="search" value={query} maxLength={100} placeholder={copy.search} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Escape')setSearchOpen(false);}}/></div></div>
   <main id="main-content" className="client-main">
    {area==='home'?<>
-    <div className="announcement-region" aria-label={locale==='es'?'Anuncios vigentes':'Current announcements'} hidden/>
+    <CommunicationsBar locale={locale}/>
     <section className="menu-intro" aria-labelledby="menu-title"><span className="eyebrow">{copy.kicker}</span><h1 id="menu-title">{copy.menu}</h1><p className="editorial-line">{copy.hero}</p><p>{copy.intro}</p></section>
     {catalog.status==='ready'?<>
      <nav className="category-tabs" aria-label={locale==='es'?'Categorías de la carta':'Menu categories'}>{categories.map(item=><button key={item} type="button" aria-pressed={category===item} onClick={()=>setCategory(item)}>{item==='Todos'?copy.all:item}</button>)}</nav>
