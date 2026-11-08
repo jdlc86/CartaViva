@@ -131,6 +131,38 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
     [b])).rows[0];
    assert.equal(lockedStaff?.role,'admin');
   }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  // Validate the actual restricted SQL execution path, not a mock issuer.
+  // The valid actor + key still must not authenticate an altered NULL HMAC or
+  // NULL signed timestamp, even under SQL three-valued logic.
+  const manageBody=JSON.stringify({action:'request',proposalId:null,
+   targetUserId:null,reason:null});
+  const baseForged=issueCapability({actorId:b,staffRole:'admin',
+   action:'ownership.manage',requestId:randomUUID(),body:manageBody});
+  const invalidCaps=[
+   ['null_signature',{...baseForged,signatureHex:null}],
+   ['missing_signature',Object.fromEntries(Object.entries(baseForged)
+     .filter(([key])=>key!=='signatureHex'))],
+   ['null_issued_at',{...baseForged,issuedAtMs:null}],
+   ['null_expiry',{...baseForged,expiresAtMs:null}],
+   ['wrong_signature',{...baseForged,signatureHex:'0'.repeat(64)}],
+   ['null_staff_role',{...baseForged,staffRole:null}],
+   ['string_expiry',{...baseForged,expiresAtMs:String(baseForged.expiresAtMs)}]
+  ];
+  for(const [kind,cap] of invalidCaps){
+   await assert.rejects(
+    withTransaction(query=>query(OWNERSHIP_SQL,
+     [JSON.stringify(cap),'request',manageBody])),
+    cause=>cause?.code==='42501',
+    'sealed SQL must reject '+kind+' without recording a governance action');
+  }
+  const forbiddenAudit=(await admin.query(
+   'SELECT count(*)::integer AS count FROM sabora.admin_ownership_audit WHERE correlation_id=$1',
+   [baseForged.requestId])).rows[0].count;
+  const forbiddenProposals=(await admin.query(
+   'SELECT count(*)::integer AS count FROM sabora.admin_ownership_proposals WHERE correlation_id=$1',
+   [baseForged.requestId])).rows[0].count;
+  assert.equal(forbiddenAudit,0,'forged signed action must not persist audit');
+  assert.equal(forbiddenProposals,0,'forged signed action must not persist proposal');
   let signedRead;
   try{
    signedRead=await repo.read({

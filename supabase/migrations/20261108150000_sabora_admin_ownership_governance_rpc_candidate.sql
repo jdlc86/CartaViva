@@ -110,6 +110,19 @@ BEGIN
   OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_capability) k(key) WHERE k.key NOT IN
    ('keyId','databaseRole','actorId','staffRole','action','requestId',
     'bodyHashHex','issuedAtMs','expiresAtMs','signatureHex'))
+  -- Reject null/ill-typed signed fields before they reach an IF condition:
+  -- SQL IF NULL silently skips its rejection branch.
+  OR p_action IS NULL
+  OR jsonb_typeof(p_capability->'keyId') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'databaseRole') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'actorId') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'staffRole') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'action') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'requestId') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'bodyHashHex') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(p_capability->'issuedAtMs') IS DISTINCT FROM 'number'
+  OR jsonb_typeof(p_capability->'expiresAtMs') IS DISTINCT FROM 'number'
+  OR jsonb_typeof(p_capability->'signatureHex') IS DISTINCT FROM 'string'
   OR p_capability->>'keyId' !~ '^[A-Za-z0-9_-]{8,64}$'
   OR p_capability->>'databaseRole' IS DISTINCT FROM session_user
   OR p_capability->>'actorId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
@@ -146,10 +159,11 @@ BEGIN
   ||(p_capability->>'bodyHashHex')||chr(10)||(p_capability->>'issuedAtMs')||chr(10)
   ||(p_capability->>'expiresAtMs');
  v_signature:=encode(extensions.hmac(convert_to(v_payload,'UTF8'),v_key,'sha256'),'hex');
- IF length(v_signature)<>length(p_capability->>'signatureHex')
+ IF v_signature IS NULL OR p_capability->>'signatureHex' IS NULL
+  OR length(v_signature) IS DISTINCT FROM length(p_capability->>'signatureHex')
   OR extensions.hmac(convert_to(v_signature,'UTF8'),
      convert_to('sabora-ownership-compare','UTF8'),'sha256')
-    <>extensions.hmac(convert_to(p_capability->>'signatureHex','UTF8'),
+    IS DISTINCT FROM extensions.hmac(convert_to(p_capability->>'signatureHex','UTF8'),
      convert_to('sabora-ownership-compare','UTF8'),'sha256') THEN
   RAISE EXCEPTION 'invalid_ownership_capability' USING ERRCODE='42501'; END IF;
 
