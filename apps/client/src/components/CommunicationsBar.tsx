@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {Modal} from './Modal';
 
 export type PublishedAnnouncement=Readonly<{
@@ -6,6 +6,15 @@ export type PublishedAnnouncement=Readonly<{
 }>;
 const IMAGE=/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMAGE_DATA=175_000;
+/** Restricted inline markup is rendered as React text nodes; never interpret HTML. */
+const formattedText=(body:string):ReactNode[]=>
+ body.split(/(\\*\\*[^*\\n]+\\*\\*|_[^_\\n]+_)/g).map((part,i)=>
+  part.startsWith('**')&&part.endsWith('**')?
+   <strong key={i}>{part.slice(2,-2)}</strong>:
+  part.startsWith('_')&&part.endsWith('_')?
+   <em key={i}>{part.slice(1,-1)}</em>:
+   part);
+
 export function parsePublicCommunications(value:unknown):readonly PublishedAnnouncement[]{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid_public_comms');
  const envelope=value as {version?:unknown;items?:unknown};
@@ -85,7 +94,7 @@ export function CommunicationsBar({locale}:{locale:'es'|'en'}){
   {detail?<Modal title={detail.title} onClose={()=>setSelectedId(null)}>
    <div className="announcement-details">
     {detail.image?<img src={detail.image} alt={detail.title} decoding="async"/>:null}
-    <p>{detail.body}</p>
+    <p>{formattedText(detail.body)}</p>
    </div>
   </Modal>:null}
  </section>;
