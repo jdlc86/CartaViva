@@ -205,6 +205,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   assert.match(formattedBody,/\*\*negrita\*\*/,
    'bold toolbar must insert actual markup before publication');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
+  assert.equal(await messageEditor.inputValue(),formattedBody,
+   'editing the banner emoji must never replace the selected bold message text');
+  assert.equal(await manager.getByLabel('Emoji para la banda').inputValue(),'🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
   await manager.getByLabel('Hora desde').fill('00:00');
   await manager.getByLabel('Hora hasta').fill('23:59');

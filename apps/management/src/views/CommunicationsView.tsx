@@ -40,8 +40,10 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
   const fragment=before+text+after;
   if(draft.body.length-(end-start)+fragment.length>1200)return;
   setDraft(d=>({...d,body:d.body.slice(0,start)+fragment+d.body.slice(end)}));
-  requestAnimationFrame(()=>{input?.focus();input?.setSelectionRange(start+before.length,
-   start+before.length+text.length);});
+  // Restore focus and selection synchronously: a deferred frame can steal
+  // focus from the next input and replace selected message text with its value.
+  input?.focus();
+  input?.setSelectionRange(start+before.length,start+before.length+text.length);
  };
  const load=async()=>{
   if(!gateway){setItems([]);setLoading(false);setFailed(true);
