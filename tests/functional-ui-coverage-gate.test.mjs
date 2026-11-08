@@ -12,10 +12,9 @@ const realRead=path=>{try{return readFileSync(join(root,path),'utf8');}catch{ret
 test('integral functional coverage: candidate interfaces and scenarios exist, CV-014 gaps are not misreported as complete',()=>{
  const report=auditFunctionalUi(root);
  assert.deepEqual(report.errors,[]);
- assert.equal(report.gaps.length,3);
- assert(report.gaps.some(x=>x.id==='CV-014-comunicaciones-anuncios'));
- assert(report.gaps.find(x=>x.id==='CV-014-comunicaciones-anuncios').missing
-  .some(x=>x.includes('oculta')));
+ assert.equal(report.gaps.length,2);
+ assert(!report.gaps.some(x=>x.id==='CV-014-comunicaciones-anuncios'));
+ assert(manifest.capabilities.find(x=>x.id==='CV-014-comunicaciones-anuncios').status==='CANDIDATO_TECNICO');
 });
 
 test('promoting announcements requires visible client UI, management UI, server boundary and real integration proof',()=>{
@@ -50,6 +49,7 @@ test('regression: a candidate losing its button/entrypoint or scenario is reject
 
 test('final acceptance cannot silently pass while announcements, reservations or waiter call are pending',()=>{
  const report=auditFunctionalUi(root,{requireAll:true});
- for(const id of ['CV-014-comunicaciones-anuncios','CV-014-reservas-anticipadas','CV-014-llamada-camarero'])
+ for(const id of ['CV-014-reservas-anticipadas','CV-014-llamada-camarero'])
   assert(report.errors.includes('functional_ui_not_ready:'+id));
+ assert(!report.errors.includes('functional_ui_not_ready:CV-014-comunicaciones-anuncios'));
 });
