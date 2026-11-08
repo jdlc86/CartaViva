@@ -41,6 +41,7 @@ export function CommunicationsBar({locale}:{locale:'es'|'en'}){
  const requestNumber=useRef(0);
  useEffect(()=>{
   let mounted=true;
+  let stream:EventSource|null=null;
   const controller=new AbortController();
   const read=async()=>{
    const revision=++requestNumber.current;
@@ -48,23 +49,37 @@ export function CommunicationsBar({locale}:{locale:'es'|'en'}){
     const response=await fetch('/api/v1/public/communications',{
      credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal,
      headers:{Accept:'application/json'}});
+    // A legacy composition may not install CV-014. HTTP 404 is a stable
+    // unsupported capability, not a streaming outage to reconnect forever.
+    if(response.status===404){
+     if(mounted&&revision===requestNumber.current){setItems([]);setSelectedId(null);}
+     stream?.close();stream=null;
+     return false;
+    }
     if(!response.ok||!response.headers.get('content-type')?.startsWith('application/json'))
      throw Error('unavailable');
     const value=parsePublicCommunications(await response.json());
     if(mounted&&revision===requestNumber.current)setItems(value);
+    return true;
    }catch{
     if(mounted&&revision===requestNumber.current){setItems([]);setSelectedId(null);}
+    // Transient network/5xx failures still permit SSE reconnect.
+    return true;
    }
   };
-  void read();
-  if(typeof EventSource==='undefined')return()=>{mounted=false;controller.abort();};
-  const stream=new EventSource('/api/v1/public/communications/events',{withCredentials:false});
   const change=()=>{void read();};
   const unavailable=()=>{if(mounted){setItems([]);setSelectedId(null);}};
-  stream.addEventListener('changed',change);
-  stream.addEventListener('error',unavailable);
+  const start=async()=>{
+   const supported=await read();
+   if(!mounted||!supported||typeof EventSource==='undefined')return;
+   stream=new EventSource('/api/v1/public/communications/events',{withCredentials:false});
+   stream.addEventListener('changed',change);
+   stream.addEventListener('error',unavailable);
+  };
+  void start();
   return()=>{mounted=false;requestNumber.current++;controller.abort();
-   stream.removeEventListener('changed',change);stream.removeEventListener('error',unavailable);stream.close();};
+   stream?.removeEventListener('changed',change);stream?.removeEventListener('error',unavailable);
+   stream?.close();stream=null;};
  },[]);
  useEffect(()=>{
   setIndex(i=>items.length?i%items.length:0);
