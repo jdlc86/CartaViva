@@ -1,8 +1,9 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import type {OwnershipGovernanceGateway,OwnershipAction,OwnershipProjection} from '../ownership-governance-gateway.js';
+import type {OwnershipGovernanceGateway,OwnershipAction,OwnershipProjection,OwnershipEligibleAdmin} from '../ownership-governance-gateway.js';
 import {ConnectionNotice} from '../components/Primitives';
 
-const label=(id:string|null)=>id?('…'+id.slice(-12)):'Sin titular';
+const identified=(entry:OwnershipEligibleAdmin)=>Boolean(entry.givenName?.trim()&&
+ entry.familyName?.trim()&&entry.operationalDisplayId?.trim());
 const message=(code:string)=>code==='forbidden'?
  'No tienes la titularidad vigente o permisos para esta acción. Consulta el estado actualizado.':
  code==='ownership_conflict'?
@@ -25,7 +26,12 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
   try{const next=await gateway.read();
    if(id!==generation.current)return;
    if(!next||!Array.isArray(next.eligibleAdmins)||!Array.isArray(next.proposals)||
-      !Array.isArray(next.notifications)||!next.actorUserId)throw Error('bad_projection');
+      !Array.isArray(next.notifications)||!next.actorUserId||
+       !next.eligibleAdmins.every(e=>e&&typeof e.userId==='string'&&
+        (e.givenName===null||typeof e.givenName==='string')&&
+        (e.familyName===null||typeof e.familyName==='string')&&
+        (e.operationalDisplayId===null||typeof e.operationalDisplayId==='string')))
+      throw Error('bad_projection');
    setSnapshot(next);
   }catch{if(id===generation.current){setSnapshot(null);
    setError('No se pudo comprobar la titularidad actual; no se permiten decisiones.');}}
@@ -54,8 +60,16 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
    setError(message(code));
   }finally{setBusy(false);}
  };
- const isOwner=snapshot?.role==='admin'&&snapshot.isOwner;
- const selectable=snapshot?.eligibleAdmins.filter(id=>id!==snapshot.ownerUserId)??[];
+ const identityLabel=(id:string|null)=>{
+    if(!id)return 'Sin titular';
+    const person=snapshot?.eligibleAdmins.find(e=>e.userId===id);
+    return person&&identified(person)?
+      person.givenName+' '+person.familyName+' · '+person.operationalDisplayId:
+      'Identidad no acreditada';
+  };
+  const isOwner=snapshot?.role==='admin'&&snapshot.isOwner;
+  const selectable=snapshot?.eligibleAdmins.filter(e=>
+    e.userId!==snapshot.ownerUserId&&identified(e))??[];
  return <section className="panel" aria-labelledby="ownership-title">
   <div className="panel-heading"><div><span className="eyebrow">Gobierno de accesos</span>
    <h2 id="ownership-title">Titularidad de escritura</h2></div></div>
@@ -63,7 +77,7 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
   {!gateway?<ConnectionNotice>Necesitas una sesión verificada y el canal de titularidad activado expresamente para gestionar estos permisos.</ConnectionNotice>:null}
   {gateway?<div className="view-stack">
    <p role="status">{loading?'Comprobando titularidad…':
-    snapshot?'Titular: '+label(snapshot.ownerUserId)+(snapshot.isOwner?' (tu cuenta)':''):
+    snapshot?'Titular: '+identityLabel(snapshot.ownerUserId)+(snapshot.isOwner?' (tu cuenta)':''):
      'No existe titularidad comprobada.'}</p>
    <button type="button" disabled={busy} onClick={()=>void refresh()}>Actualizar estado y avisos</button>
    {error?<p className="field-error" role="alert">{error}</p>:null}
@@ -75,15 +89,17 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
     {(isOwner||snapshot.role==='root')?<div className="view-stack">
      <label>{snapshot.role==='root'?'ADMIN destinatario de reasignación':'ADMIN destinatario de cesión'}
       <select value={target} onChange={e=>{setTarget(e.target.value);setRetry(null);}}>
-       <option value="">Selecciona un ADMIN activo</option>
-       {selectable.map(id=><option key={id} value={id}>{label(id)}</option>)}
+       <option value="">Selecciona un ADMIN activo identificado</option>
+       {selectable.map(person=><option key={person.userId} value={person.userId}>
+        {identityLabel(person.userId)}</option>)}
       </select>
      </label>
-     {snapshot.role==='root'?<label>Motivo obligatorio
+     {selectable.length===0?<p role="status">No hay ADMIN activos con identidad verificada para esta decisión.</p>:null}
+      {snapshot.role==='root'?<label>Motivo obligatorio
       <textarea value={reason} maxLength={1000} required
        onChange={e=>{setReason(e.target.value);setRetry(null);}}/>
      </label>:null}
-     <button type="button" disabled={busy||!selectable.includes(target)||
+     <button type="button" disabled={busy||!selectable.some(person=>person.userId===target)||
       (snapshot.role==='root'&&!reason.trim())}
       onClick={()=>void perform(snapshot.role==='root'?'force':'offer')}>
       {snapshot.role==='root'?'Reasignar forzosamente':'Ofrecer cesión'}</button>
@@ -97,7 +113,7 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
         (p.kind==='request'?p.toOwnerId:p.fromOwnerId)===snapshot.actorUserId;
        return <div key={p.id} className="panel">
         <p><strong>{p.kind==='request'?'Solicitud':'Oferta'}</strong>:
-         {label(p.fromOwnerId)} → {label(p.toOwnerId)}</p>
+         {identityLabel(p.fromOwnerId)} → {identityLabel(p.toOwnerId)}</p>
         {canDecide?<>
          <button type="button" disabled={busy} onClick={()=>void perform('accept',p.id)}>Aceptar</button>
          <button type="button" disabled={busy} onClick={()=>void perform('reject',p.id)}>Rechazar</button>
@@ -109,7 +125,7 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
     <div className="view-stack"><h3>Avisos de titularidad</h3>
      {snapshot.notifications.length===0?<p>Sin avisos.</p>:
       snapshot.notifications.map(n=><p key={n.id}>{n.action}:
-       {label(n.previousOwnerId)} → {label(n.nextOwnerId)}</p>)}
+       {identityLabel(n.previousOwnerId)} → {identityLabel(n.nextOwnerId)}</p>)}
     </div>
    </>:null}
   </div>:null}

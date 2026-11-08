@@ -3,8 +3,10 @@ export interface OwnershipProposal {id:string;kind:'request'|'offer';fromOwnerId
  toOwnerId:string;status:string;createdAt:string;}
 export interface OwnershipNotice {id:string;action:string;previousOwnerId:string|null;
  nextOwnerId:string|null;createdAt:string;}
+export interface OwnershipEligibleAdmin {userId:string;givenName:string|null;
+ familyName:string|null;operationalDisplayId:string|null;}
 export interface OwnershipProjection {actorUserId:string;ownerUserId:string|null;role:'root'|'admin';
- isOwner:boolean;eligibleAdmins:string[];proposals:OwnershipProposal[];
+ isOwner:boolean;eligibleAdmins:OwnershipEligibleAdmin[];proposals:OwnershipProposal[];
  notifications:OwnershipNotice[];}
 export interface OwnershipGovernanceGateway {
  read():Promise<OwnershipProjection>;

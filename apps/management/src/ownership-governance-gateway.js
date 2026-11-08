@@ -11,6 +11,7 @@ export function createAuthenticatedOwnershipGovernanceGateway({getAccessToken,
  if(typeof getAccessToken!=='function'||typeof fetchImpl!=='function')
   throw Error('invalid_ownership_gateway');
  let epoch=0,revoked=false;
+ const controller=new AbortController();
  const send=async(method,url,body)=>{
   if(revoked)throw new OwnershipGovernanceGatewayError('session_revoked',403);
   const generation=epoch;
@@ -20,7 +21,7 @@ export function createAuthenticatedOwnershipGovernanceGateway({getAccessToken,
    throw new OwnershipGovernanceGatewayError('session_unavailable',403);
   const response=await fetchImpl(url,{method,headers:{
    authorization:'Bearer '+token,...(body?{'content-type':'application/json'}:{})},
-   ...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',credentials:'omit'});
+   ...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',credentials:'omit',signal:controller.signal});
   if(revoked||generation!==epoch)throw new OwnershipGovernanceGatewayError('session_revoked',403);
   let data;
   try{data=await response.json();}catch{throw new OwnershipGovernanceGatewayError('unavailable',503);}
@@ -44,6 +45,6 @@ export function createAuthenticatedOwnershipGovernanceGateway({getAccessToken,
    return send('POST','/api/v1/admin/ownership/actions',{
     requestId,action,proposalId,targetUserId,reason});
   },
-  revoke(){revoked=true;epoch++;}
+  revoke(){if(!revoked){revoked=true;epoch++;controller.abort();}}
  });
 }

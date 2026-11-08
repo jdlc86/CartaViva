@@ -257,7 +257,14 @@ export function mountAuthenticatedManagementApp({
     ownershipGateway?.revoke();
     throw Error('management_root_already_mounted');
   }
-  const disposeSession = managementSessionFence.replace(operationsGateway);
+  // All capability gateways belong to one verified employee session.
+  // Replacement revokes each of them, even when the old disposer is late.
+  const sessionChannel={revoke(){
+    operationsGateway.revoke();
+    m3Gateway?.revoke();
+    ownershipGateway?.revoke();
+  }};
+  const disposeSession = managementSessionFence.replace(sessionChannel);
   // The default preview and authenticated operation mount keep the queue
   // disconnected; a verified B3 host must explicitly enable its gateway.
   const queueGateway: TableChangeQueueGateway | undefined = enableTableChangeQueue
@@ -269,10 +276,8 @@ export function mountAuthenticatedManagementApp({
   return () => {
     if (disposed) return;
     disposed = true;
-    const current = managementSessionFence.isCurrent(operationsGateway);
+    const current = managementSessionFence.isCurrent(sessionChannel);
     disposeSession();
-    m3Gateway?.revoke();
-    ownershipGateway?.revoke();
     if (current && managementElement === element) renderManagement(element);
   };
 }

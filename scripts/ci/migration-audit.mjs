@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql':r(
+  'ADMIN ownership eligible-recipient verified identity (RV-02)',
+  ['active ADMIN staff','staff_enrollments verified display identity','signed ownership governance RPC'],
+  'forward-only governance RPC projection with six-column active-ADMIN enrollment reader policy',
+  'sealed NOLOGIN ownership function owner only: active ADMIN name/surname/display identifier, runtime still exact signed RPC and no direct table access',
+  'function catalog and policy locks; existing ownership singleton FOR UPDATE unchanged',
+  'no backfill or write; returns only active ADMIN identities, no email or other staff fields',
+  'inherited'),
  '20261108170000_sabora_staff_identity_directory_null_signature_hardening_candidate.sql':r(
   'ADMIN staff lifecycle and directory SQL capability fail-closed hardening',
   ['staff lifecycle identity wrapper','staff directory write and read RPCs','staff_lifecycle_signing_keys'],

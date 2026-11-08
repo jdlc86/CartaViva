@@ -35,6 +35,19 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   let root=(await admin.query("SELECT user_id FROM sabora.staff_members WHERE role='root' AND state='active'")).rows[0]?.user_id;
   if(!root){root=randomUUID();await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[root]);}
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active')",[a,b,c]);
+  // Real human identities already defined by the staff enrollment contract.
+  for(const [user,given,family,code] of [[a,'Alicia','Molina','Z9A'],
+    [b,'Bruno','Romero','Z9B'],[c,'Clara','Rivera','Z9C']]){
+   const stamp=new Date().toISOString();
+   await admin.query(`INSERT INTO sabora.staff_enrollments(
+     id,invitee_email_hash,requested_role,state,auth_user_id,invite_token_hash,
+     credential_evidence_hash,created_by,created_at,last_invited_at,accepted_at,
+     credential_registered_at,activated_at,updated_at,given_name,family_name,
+     employee_code,operational_display_id)
+     VALUES($1,$2,'admin','active',$3,$4,$5,$6,$7,$7,$7,$7,$7,$7,$8,$9,$10,$11)`,
+     [randomUUID(),randomBytes(32),user,randomBytes(32),randomBytes(32),root,
+      stamp,given,family,code,given[0].toUpperCase()+family[0].toUpperCase()+'-'+code]);
+  }
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[a]);
   await admin.query("INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')",[keyId,secret]);
   for(const name of [login,staffLogin])
@@ -183,6 +196,13 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   const original=await read(b);assert.equal(original.statusCode,200,original.body);
   assert.equal(original.json().ownerUserId,a);
   assert.equal(original.json().actorUserId,b);
+  const identities=original.json().eligibleAdmins;
+  assert(identities.some(x=>x.userId===a&&x.givenName==='Alicia'&&
+    x.familyName==='Molina'&&x.operationalDisplayId==='AM-Z9A'));
+  assert(identities.some(x=>x.userId===b&&x.givenName==='Bruno'&&
+    x.familyName==='Romero'&&x.operationalDisplayId==='BR-Z9B'));
+  assert(identities.every(x=>!('email' in x)),
+    'recipient lookup must never expose contacts');
   const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
   assert.equal(req.statusCode,200,req.body);
   const proposalId=req.json().proposalId;assert(proposalId);
@@ -251,11 +271,63 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
     enableOwnershipGovernance:true});
   },jwt(owner));
   await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
-  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByText('Titular: '+(owner===b?'Bruno Romero · BR-Z9B':'Clara Rivera · CR-Z9C')+' (tu cuenta)').waitFor({timeout:20000});
+  const recipientOptions=await page.getByLabel('ADMIN destinatario de cesión')
+    .locator('option').allTextContents();
+  assert(recipientOptions.some(x=>x.includes('Alicia Molina · AM-Z9A')));
+  assert(!recipientOptions.some(x=>x.includes(a.slice(-12))),
+    'ownership recipient cannot be a bare UUID suffix');
   await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
   await page.getByRole('button',{name:'Ofrecer cesión'}).click();
   await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+  // Full PWA session replacement: A's deferred token must not send a new
+  // governance action after ROOT takes over, even without calling A's disposer.
+  await page.evaluate(async ownerToken=>{
+   const host=await import('/src/main.tsx');
+   window.ownershipClose();
+   window.holdOwnershipToken=false;
+   window.oldOwnershipPosts=0;
+   window.oldOwnershipTokenPending=false;
+   window.oldOwnershipWait=new Promise(resolve=>window.releaseOwnershipToken=resolve);
+   window.oldOwnershipDispose=host.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),
+    getAccessToken:async()=>{
+     if(window.holdOwnershipToken){
+      window.holdOwnershipToken=false;window.oldOwnershipTokenPending=true;
+      await window.oldOwnershipWait;
+     }
+     return ownerToken;
+    },
+    fetchImpl:(url,options)=>{
+     if(String(url).includes('/api/v1/admin/ownership/actions'))window.oldOwnershipPosts++;
+     return fetch(url,options);
+    },enableOwnershipGovernance:true
+   });
+  },jwt(owner));
+  await page.getByLabel('ADMIN destinatario de cesión').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.evaluate(()=>{window.holdOwnershipToken=true;});
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.waitForFunction(()=>window.oldOwnershipTokenPending===true,null,{timeout:20000});
+  await page.evaluate(async rootToken=>{
+   const host=await import('/src/main.tsx');
+   window.newOwnershipDispose=host.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),
+    getAccessToken:async()=>rootToken,enableOwnershipGovernance:true
+   });
+   window.releaseOwnershipToken();
+  },jwt(root));
+  await page.getByLabel('ADMIN destinatario de reasignación').waitFor({timeout:20000});
+  await page.evaluate(()=>window.oldOwnershipDispose());
+  assert.equal(await page.evaluate(()=>window.oldOwnershipPosts),0,
+   'stale session must not send a delayed ownership mutation');
+  await page.getByLabel('ADMIN destinatario de reasignación').selectOption(a);
+  await page.getByLabel('Motivo obligatorio').fill('Recuperación auditada tras cambio de sesión');
+  await page.getByRole('button',{name:'Reasignar forzosamente'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await read(root)).json().ownerUserId,a,
+   'late disposer may not revoke the replacement ROOT session');
  }finally{
   await browser?.close().catch(()=>{});
   await vite?.close().catch(()=>{});
