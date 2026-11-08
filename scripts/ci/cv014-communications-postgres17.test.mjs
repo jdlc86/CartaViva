@@ -205,6 +205,10 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
   await customer.locator('.announcement-details img').waitFor();
   assert.equal((await customer.locator('.announcement-details img').getAttribute('src')||'').startsWith('data:image/png;base64,'),true);
+  const evidenceDir=join(process.env.RUNNER_TEMP||'/tmp','sabora-cv014-browser');
+  mkdirSync(evidenceDir,{recursive:true});
+  await customer.screenshot({path:join(evidenceDir,'cliente-anuncio-detalle-con-imagen-390.png'),fullPage:true});
+  await manager.screenshot({path:join(evidenceDir,'gestion-anuncio-publicado-1440.png'),fullPage:true});
   await customer.getByRole('button',{name:'Cerrar'}).click();
 
   // Staff pause and withdraw must remove public projection without client polling.
