@@ -116,21 +116,47 @@
     },
     {
       "id": "CV-014-comunicaciones-anuncios",
-      "status": "PENDIENTE",
+      "status": "CANDIDATO_TECNICO",
       "surfaces": [
         "client",
         "management"
       ],
-      "ui": [],
-      "api": [],
-      "evidence": [],
-      "blockers": [
-        "Sin franja cliente operativa: apps/client/src/App.tsx contiene announcement-region oculta",
-        "Sin editor/configuración de Comunicaciones en gestión",
-        "Sin circuito autenticado servidor/PG17 de publicación/programación y eventos",
-        "Sin recorrido integrador gestión→PG17/Fastify→cliente/Chromium"
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<CommunicationsBar locale={locale}/>"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<ConfigurationView gateway={financeGateway??null}"
+        }
       ],
-      "note": "El HTML histórico es prototipo de demostración, NO implementación productiva. No atribuir prioridad visual o aprobación de ubicación no documentadas."
+      "api": [
+        {
+          "path": "apps/api/src/m5-communications.mjs",
+          "marker": "registerM5CommunicationsHttp"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "await customer.getByRole('button',{name:/Abrir anuncio:"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "getByRole('button',{name:'Guardar borrador'}).click()"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "assertM5CommunicationsCapability({pool:"
+        }
+      ],
+      "note": "Recorrido candidato aislado de anuncios con PG17 real, Fastify firmada y ambas PWA Chromium; CI del SHA 929270485e91200741aac3fbfaf39f8e859f365e pasó bootstrap PG17/Node-driver. No equivale a aprobación humana, activación productiva o validación de cambios posteriores."
     },
     {
       "id": "CV-014-reservas-anticipadas",
