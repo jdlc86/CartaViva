@@ -211,18 +211,17 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.screenshot({path:join(evidenceDir,'gestion-anuncio-publicado-1440.png'),fullPage:true});
   await customer.getByRole('button',{name:'Cerrar'}).click();
 
-  // Staff pause and withdraw must remove public projection without client polling.
-  const live=(await repositories.readAdmin(verified)).items.find(a=>a.id===photo.id);
-  assert(live);
-  const paused=await post('pause',{id:live.id,revision:live.revision,draft:null});
-  assert.equal(paused.status,200);
-  assert.equal((await getPublic()).items.length,1);
-  const pausedVersion=(await repositories.readAdmin(verified)).items.find(a=>a.id===photo.id);
-  await post('resume',{id:photo.id,revision:pausedVersion.revision,draft:null});
-  assert.equal((await getPublic()).items.length,2);
-  const resumedVersion=(await repositories.readAdmin(verified)).items.find(a=>a.id===photo.id);
-  await post('withdraw',{id:photo.id,revision:resumedVersion.revision,draft:null});
-  assert.equal((await getPublic()).items.length,1);
+  // Exercise actual management buttons, not SQL-only or synthetic HTTP actions.
+  const photoCard=manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'});
+  await photoCard.getByRole('button',{name:'Pausar'}).click();
+  await manager.getByText('Anuncio pausado.',{exact:false}).waitFor();
+  assert.equal((await getPublic()).items.length,1,'paused notice must disappear');
+  await photoCard.getByRole('button',{name:'Reactivar'}).click();
+  await manager.getByText('Anuncio reactivado.',{exact:false}).waitFor();
+  assert.equal((await getPublic()).items.length,2,'resumed notice is public again');
+  await photoCard.getByRole('button',{name:'Retirar'}).click();
+  await manager.getByText('Anuncio retirado.',{exact:false}).waitFor();
+  assert.equal((await getPublic()).items.length,1,'withdrawn notice cannot be visible');
   const record=(await admin.query('SELECT count(*)::integer AS n FROM sabora.comms_audit_m5 WHERE announcement_id=$1',
    [photo.id])).rows[0];
   assert.equal(record.n,5,'save/publish/pause/resume/withdraw must write five durable audit entries');
