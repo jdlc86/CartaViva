@@ -57,7 +57,10 @@ CREATE POLICY ownership_rpc_audit_insert ON sabora.admin_ownership_audit FOR INS
 CREATE TABLE sabora.admin_ownership_notifications (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  recipient_user_id uuid NOT NULL REFERENCES sabora.staff_members(user_id),
- correlation_id uuid NOT NULL REFERENCES sabora.admin_ownership_audit(correlation_id),
+ -- Notices are written after the audited transition in the SAME transaction.
+ -- Deliberately avoid an FK to the append-only audit table: it would change
+ -- the audit TRUNCATE integrity-gate behavior used by existing PG17 checks.
+ correlation_id uuid NOT NULL,
  action text NOT NULL CHECK(action IN
   ('request','offer','accept','reject','cancel','force_transfer')),
  previous_owner_id uuid,
