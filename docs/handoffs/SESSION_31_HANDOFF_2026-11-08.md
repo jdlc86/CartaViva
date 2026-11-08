@@ -102,3 +102,18 @@ Se inspeccionaron logs de Bootstrap y H6: pruebas PostgreSQL 17 de firmas nulas,
 **Estado de CI en esta anotación: en ejecución; NO atribuir éxito a RV-01/RV-02 todavía.** Workflows del nuevo SHA: [Bootstrap PG17 #42526384882](https://github.com/jdlc86/CartaViva/actions/runs/42526384882), [H6 #42526384924](https://github.com/jdlc86/CartaViva/actions/runs/42526384924), [CV-012 #42526384885](https://github.com/jdlc86/CartaViva/actions/runs/42526384885), [gestión Chromium #42526384961](https://github.com/jdlc86/CartaViva/actions/runs/42526384961), [cliente Chromium #42526384972](https://github.com/jdlc86/CartaViva/actions/runs/42526384972) y [funcional↔UI #42526384955](https://github.com/jdlc86/CartaViva/actions/runs/42526384955). No trasladar 6/6 del SHA anterior; comprobar/corregir y repetir la batería completa si alguna ejecución falla.
 
 PR #52 **Draft / NO-GO**, revisión [#5819709942](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5819709942) aún sin nueva aprobación. Permanecen F28/R09, M4 Stripe real, CV-014 reservas/llamar camarero y M6. No se han tocado Fleetia, VPS ni Supabase operativo.
+
+## 8. Resultado final CI RV-01/RV-02: 6/6 success sobre un único SHA funcional — 08-11-2026
+
+**Cierre de la ejecución que estaba pendiente en §7.** SHA funcional [`1dcd7c9199c6a0d8323f778f62499b77a392f5f1`](https://github.com/jdlc86/CartaViva/commit/1dcd7c9199c6a0d8323f778f62499b77a392f5f1) terminó con **6/6 workflows GitHub Actions `completed/success`**, verificados directamente, sin reutilizar resultados del SHA anterior:
+
+- [Bootstrap PG17 + migraciones y regresión JWT/HMAC/Fastify/Chromium titularidad #42526384882](https://github.com/jdlc86/CartaViva/actions/runs/42526384882): **SUCCESS**; logs de job `generate-lockfile`, test real `PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfer, ROOT force and stale writer denial` **1/1 PASS, 0 FAIL**. Incluye RV-01 (cambio A→ROOT y operación diferida) y RV-02 (identidad humana de destinatario y ausencia de divulgación de email).
+- [H6 integral #42526384924](https://github.com/jdlc86/CartaViva/actions/runs/42526384924): **SUCCESS**; job `validate`, regresión consolidada sobre el mismo SHA.
+- [Instalación separada dos PWA #42526384885](https://github.com/jdlc86/CartaViva/actions/runs/42526384885): **SUCCESS**.
+- [Chromium PWA gestión #42526384961](https://github.com/jdlc86/CartaViva/actions/runs/42526384961): **SUCCESS**.
+- [Chromium PWA cliente #42526384972](https://github.com/jdlc86/CartaViva/actions/runs/42526384972): **SUCCESS**.
+- [Puerta funcional ↔ UI #42526384955](https://github.com/jdlc86/CartaViva/actions/runs/42526384955): **SUCCESS**. La aceptación visual final explícita sigue diferida, no se convierte en aprobación humana.
+
+**Distinción:** RV-01/RV-02 están **implementados y pasan la validación automatizada integral** de los escenarios indicados. La revisión formal anterior [#5819709942](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5819709942) permanece `COMMENTED`, no es una nueva aprobación `APPROVE`, y no acredita revisión externa ni pentest. Para cerrar la puerta formal falta cotejo de código frente a la revisión y registro de su resultado, sin fusión implícita.
+
+**HEAD documental al comprobar:** `d7f2b60b0fe3fb57e481578c3b4209a7d7f44e9c`, dos commits posteriores al SHA funcional, únicamente en este handoff y tablero. Este nuevo registro `[skip ci]` tampoco es un SHA funcional probado. PR #52 sigue abierto Draft, no fusionado. No se tocó Supabase operativo, Fleetia ni el VPS; M4, M6, CV-014 restante y F28/R09 siguen NO-GO.
