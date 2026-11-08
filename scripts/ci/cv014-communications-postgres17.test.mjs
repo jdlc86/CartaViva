@@ -35,6 +35,7 @@ const admin=new Pool({connectionString:url,max:3,connectionTimeoutMillis:3000,
 const DEFAULT_PNG=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO/afnsAAAAASUVORK5CYII=','base64');
 const APP_ADMIN_TOKEN='sabora_ci_admin_token_allowed_for_pg17';
 const APP_WAITER_TOKEN='sabora_ci_waiter_token_must_fail_pg17';
+const APP_OTHER_ADMIN_TOKEN='sabora_ci_other_admin_with_valid_role_but_no_ownership';
 const after=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitHttp(url,deadline=30_000){
  for(let i=0;i<150;i++){
@@ -59,18 +60,19 @@ function draft({title='Menú especial del día',startDate=null,image=null}={}){
    .toISOString().slice(0,10),endDate:null,weekdays:[],startTime:'00:00',
    endTime:'23:59',timeZone:'UTC'}};
 }
-async function cleanupSql({logins,actorId,keyId}){
- await admin.query('DELETE FROM sabora.comms_audit_m5 WHERE actor_id=$1',[actorId]).catch(()=>{});
- await admin.query('DELETE FROM sabora.comms_receipts_m5 WHERE actor_id=$1',[actorId]).catch(()=>{});
- await admin.query('DELETE FROM sabora.comms_announcements_m5 WHERE actor_id=$1',[actorId]).catch(()=>{});
- await admin.query('DELETE FROM sabora.staff_members WHERE user_id=$1',[actorId]).catch(()=>{});
+async function cleanupSql({logins,actorId,otherAdminId,keyId}){
+ await admin.query('DELETE FROM sabora.comms_audit_m5 WHERE actor_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
+ await admin.query('DELETE FROM sabora.comms_receipts_m5 WHERE actor_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
+ await admin.query('DELETE FROM sabora.comms_announcements_m5 WHERE actor_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
+ await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
+ await admin.query('DELETE FROM sabora.staff_members WHERE user_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
  await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',[keyId]).catch(()=>{});
  for(const login of logins){await admin.query('DROP OWNED BY '+login).catch(()=>{});
   await admin.query('DROP ROLE IF EXISTS '+login).catch(()=>{});}
 }
 test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → published notices, scheduling, roles, events and audit', 
  {timeout:180_000},async()=>{
- const actorId=randomUUID(),runSuffix=process.pid.toString(36);
+ const actorId=randomUUID(),otherAdminId=randomUUID(),runSuffix=process.pid.toString(36);
  const adminLogin='sabora_cv014_admin_'+runSuffix,publicLogin='sabora_cv014_public_'+runSuffix;
  const password='sabora_ci_comms_'+randomBytes(16).toString('hex');
  const keyId='comms_ci_'+runSuffix+'_key';
@@ -86,7 +88,8 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await admin.query(`INSERT INTO sabora.order_operation_signing_keys
    (key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',
    clock_timestamp()+interval '1 hour')`,[keyId,secret]);
-  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active')",[actorId]);
+  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active')",[actorId,otherAdminId]);
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[actorId]);
   const direct=await admin.query(`SELECT
    has_table_privilege($1,'sabora.comms_announcements_m5','SELECT') AS admin_table,
    has_table_privilege($2,'sabora.comms_announcements_m5','SELECT') AS public_table,
@@ -113,10 +116,11 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   stream=await createM5CommunicationsStream({pool:publicPool,readPublic:repositories.readPublic});
   const forRoles=roles=>async(request,reply)=>{
    const value=request.headers.authorization;
-   const role=value==='Bearer '+APP_ADMIN_TOKEN?'admin':
+   const role=value==='Bearer '+APP_ADMIN_TOKEN||value==='Bearer '+APP_OTHER_ADMIN_TOKEN?'admin':
     value==='Bearer '+APP_WAITER_TOKEN?'waiter':null;
    if(!role||!roles.includes(role)){reply.code(403).send({error:'forbidden'});return;}
-   request.verifiedIdentity={userId:actorId};request.verifiedStaff={userId:actorId,role};
+   const person=value==='Bearer '+APP_OTHER_ADMIN_TOKEN?otherAdminId:actorId;
+   request.verifiedIdentity={userId:person};request.verifiedStaff={userId:person,role};
   };
   app=Fastify({logger:false,trustProxy:false});
   registerM5CommunicationsHttp(app,{forRoles,repositories,stream});
@@ -130,6 +134,12 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   assert.deepEqual((await getPublic()).items,[]);
   const blocked=await post('save',{id:null,revision:null,draft:draft()},randomUUID(),APP_WAITER_TOKEN);
   assert.equal(blocked.status,403,'waiter must never publish communications');
+  const rejected=await post('save',{id:null,revision:null,draft:draft()},
+   randomUUID(),APP_OTHER_ADMIN_TOKEN);
+  assert.equal(rejected.status,403,'active but nonowner ADMIN cannot publish communications');
+  assert.equal((await getPublic()).items.length,0,'nonowner never affects public notices');
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.comms_receipts_m5 WHERE actor_id=$1',[otherAdminId])).rows[0].n,0,
+   'nonowner denial cannot persist a receipt');
 
   const saveRequestId=randomUUID();
   const created=await (await post('save',{id:null,revision:null,draft:draft()},saveRequestId)).json();
@@ -239,7 +249,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   if(stream)await stream.close().catch(()=>{});
   if(adminPool)await adminPool.end().catch(()=>{});
   if(publicPool)await publicPool.end().catch(()=>{});
-  await cleanupSql({logins:logged,actorId,keyId});
+  await cleanupSql({logins:logged,actorId,otherAdminId,keyId});
  }
 });
 test.after(async()=>{await admin.end();});
