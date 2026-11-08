@@ -76,8 +76,10 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
    }
    await refresh();
    setMessage(success);
-  }catch{
-   setMessage(committed
+  }catch(error){
+   setMessage(error instanceof Error&&error.message==='m3_management_forbidden'
+    ?'Solo el administrador titular puede modificar el catálogo. Los cambios no se han guardado.'
+    :committed
     ?'El servidor confirmó el cambio, pero no se pudo actualizar el catálogo. Recarga antes de repetir la operación.'
     :'No se pudo confirmar el cambio. Comprueba el estado del catálogo antes de reintentarlo.');
   }finally{setPending(false);}
