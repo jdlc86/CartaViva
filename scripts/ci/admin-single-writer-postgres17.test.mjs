@@ -122,9 +122,19 @@ test('PG17 single ADMIN writer: signed catalog/table/comms, root denied, transfe
    actorId:rootId,staffRole:'root',action:'comms.read',requestId:randomUUID(),body:readCommsBody});
   assert(Array.isArray((await run(logins[2],READ_M5_COMMS_ADMIN_SQL,[JSON.stringify(readCommsCap)])).rows[0].result.items));
   // In-flight/replayed capabilities must not remain authorized after transfer.
-  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[otherId]);
-  await assert.rejects(invoke(cases[0],ownerId,'admin'),
-   error=>error?.code==='42501'&&/m3_management_forbidden/.test(error?.message??''));
+  const governor=await admin.connect();
+  try{
+   await governor.query('BEGIN');
+   // Hold the owner-transfer row lock while a formerly valid signer starts
+   // its mutation. FOR SHARE must wait, then check the NEW committed owner.
+   await governor.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[otherId]);
+   const deniedAfterTransfer=assert.rejects(invoke(cases[0],ownerId,'admin'),
+    error=>error?.code==='42501'&&/m3_management_forbidden/.test(error?.message??''),
+    'a signed old-owner mutation must not pass through an in-flight transfer');
+   await governor.query('COMMIT');
+   await deniedAfterTransfer;
+  }catch(error){await governor.query('ROLLBACK').catch(()=>{});throw error;}
+  finally{governor.release();}
   assert.equal((await invoke(cases[0],otherId,'admin')).rows.length,1,
    'the new singleton ADMIN owner gains access without changing grants');
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE singleton');
