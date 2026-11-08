@@ -130,3 +130,15 @@ PR #52 **Draft / NO-GO**, revisión [#5819709942](https://github.com/jdlc86/Cart
 **Siguiente hito integral:** corregir RV-03 + RV-04 sin ampliar privilegios, completar el recorrido PG17 real + JWT/HMAC + Fastify + Chromium con ADMIN activo sin inscripción válida / respuesta JSON diferida, y repetir H6 y 6 workflows del mismo nuevo SHA. Después reabrir revisión formal; no autoaprobar. PR #52 Draft, no merge ni despliegue; preservar F28/R09, M4, M6, aislamiento Fleetia/VPS/Supabase operativo.
 
 **Nota histórica:** el §7 decía CI pendiente y el §8 lo actualiza con CI 6/6; este §9 añade el dictamen posterior sin anular las pruebas ya ejecutadas. Los commits de seguimiento `[skip ci]` no equivalen a nueva validación.
+
+## 10. Rectificación normativa de RV-03: el servidor enruta la solicitud — 08-11-2026
+
+La precisión del propietario motivó una comprobación estricta de la **fuente normativa**, no un cambio inventado en el protocolo. **Contrato obligatorio:** [`ADMIN_WRITE_OWNERSHIP_V1.md`](../security/ADMIN_WRITE_OWNERSHIP_V1.md), «Operaciones de titularidad» punto 1: la solicitud se dirige **automáticamente desde el servidor** al ADMIN titular vigente; el ADMIN solicitante no elige destinatario. [`SABORA_OWNERSHIP_OPERATION_CONTRACT.md`](../security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md): en `request` el titular actual es decisor, el ADMIN solicitante es el posible nuevo titular.
+
+**SQL verificado, migración `20261108180000`:** `request` rechaza `targetUserId` informado, bloquea el singleton `FOR UPDATE`, resuelve `v_from=v_owner` y `v_to=v_actor`; al aceptar, comprueba el estado de la propuesta, propietario vigente y ADMIN activo beneficiario. La PWA llama a `perform('request')` sin elegir destinatario. No hay defecto acreditado de enrutamiento de solicitudes.
+
+**Rectificación formal en GitHub:** [comentario de revisión #5820055796](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5820055796). **RV-03 queda DESCARTADO como defecto bloqueante de contrato**: la segunda revisión (§9) confundió una mejora razonable de identificación visual con una nueva condición normativa para aceptar solicitudes. Los contratos consultados no exigen bloquear a un ADMIN activo porque no tenga ficha visible de nombre/código. No implementar denegación basada en esa ausencia sin decisión expresa; mantener la legibilidad de perfiles legacy como observación UX no bloqueante. La revisión histórica §9 se conserva para trazabilidad, pero su calificación de RV-03 se entiende **sustituida por esta rectificación**.
+
+**RV-04 continúa como observación técnica pendiente**: completar la comprobación `revoked/epoch` tras `await response.json()` en el gateway de titularidad y demostrar el resultado con respuesta tardía de la sesión anterior. Evitar convertir este endurecimiento en cambios del contrato de solicitud.
+
+**Sin código nuevo ni pruebas adicionales en esta rectificación.** RV-01 y el recorrido nominal RV-02 conservan 6/6 workflows del SHA funcional `1dcd7c91`; la aceptación humana F28/R09, M4, M6 y autorización de merge/despliegue siguen pendientes. PR #52 Draft.
