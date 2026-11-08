@@ -7936,15 +7936,15 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(waiterCapability),'update',capabilityBody])),
     /m3_management_forbidden/,'waiter signed capability must be rejected as an unauthorized admin write');
-   const suspendedCapability=m3TablesIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
+   const suspendedCapability=m3TablesIssuer({actorId:nonOwnerAdminId,staffRole:'admin',action:'table.update',
     requestId:randomUUID(),body:capabilityBody});
-   await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[adminId]);
+   await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[nonOwnerAdminId]);
    try{
     await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
      connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
       [JSON.stringify(suspendedCapability),'update',capabilityBody])),
      /invalid_m3_management_capability/,'suspension must invalidate an already issued capability');
-   }finally{await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1",[adminId]);}
+   }finally{await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1",[nonOwnerAdminId]);}
    await assert.rejects(underRole(connections[17],'sabora_m3_catalog_runtime',()=>
     connections[17].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(validCapability),'update',capabilityBody])),/permission denied/,
