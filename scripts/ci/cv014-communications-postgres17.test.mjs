@@ -217,7 +217,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   assert.equal((await getPublic()).items.length,1);
   const record=(await admin.query('SELECT count(*)::integer AS n FROM sabora.comms_audit_m5 WHERE announcement_id=$1',
    [photo.id])).rows[0];
-  assert.equal(record.n,4,'save/publish/pause/resume/withdraw? actual count checked below');
+  assert.equal(record.n,5,'save/publish/pause/resume/withdraw must write five durable audit entries');
   const screenshots=join(process.env.RUNNER_TEMP||'/tmp','sabora-cv014-browser');
   mkdirSync(screenshots,{recursive:true});
   await customer.screenshot({path:join(screenshots,'cliente-anuncios-390.png'),fullPage:true});
