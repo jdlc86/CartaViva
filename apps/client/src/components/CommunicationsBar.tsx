@@ -8,7 +8,7 @@ const IMAGE=/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_IMAGE_DATA=175_000;
 /** Restricted inline markup is rendered as React text nodes; never interpret HTML. */
 const formattedText=(body:string):ReactNode[]=>
- body.split(/(\\*\\*[^*\\n]+\\*\\*|_[^_\\n]+_)/g).map((part,i)=>
+ body.split(/(\*\*[^*\n]+\*\*|_[^_\n]+_)/g).map((part,i)=>
   part.startsWith('**')&&part.endsWith('**')?
    <strong key={i}>{part.slice(2,-2)}</strong>:
   part.startsWith('_')&&part.endsWith('_')?
