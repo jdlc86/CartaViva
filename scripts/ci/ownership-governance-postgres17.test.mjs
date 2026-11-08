@@ -86,7 +86,7 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    action:'ownership.read',requestId:diagnosticRequest,body:diagnosticBody});
   const signedMessage=['sabora-ownership-v1',login,b,'admin','ownership.read',
    diagnosticRequest,diagnosticCapability.bodyHashHex,
-   String(diagnosticCapability.issuedAtMs),String(diagnosticCapability.expiresAtMs)].join('\\n');
+   String(diagnosticCapability.issuedAtMs),String(diagnosticCapability.expiresAtMs)].join('\n');
   const diagnostic=(await admin.query(`SELECT
     (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
       WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp()
