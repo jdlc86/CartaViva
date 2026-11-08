@@ -111,3 +111,33 @@ Continuidad de la prioridad «funcionalidad primero, con botones reales». En [P
 **Evidencia confirmada del SHA anterior `929270485e91200741aac3fbfaf39f8e859f365e`:** [Bootstrap PG17 + Node driver + dos PWA Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42460735464) SUCCESS; [cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42460735384), [gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42460735363), [dos PWA instalables](https://github.com/jdlc86/CartaViva/actions/runs/42460735403), [interfaz funcional](https://github.com/jdlc86/CartaViva/actions/runs/42460735415) SUCCESS. CI H6 de ese SHA se consultó aún en ejecución. **No heredar ese resultado a nuevos commits sin repetir pruebas.** Nuevo informe detallado: [SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08](../reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md).
 
 La solución no da por completado CV-014 entero: reservas anticipadas y llamada a camarero siguen pendientes, así como los demás módulos M5 y diseño humano F28/R09. No se han hecho merges, despliegues ni operaciones productivas o sobre Fleetia. **Siguiente acción técnica:** cerrar resultados integradores del HEAD efectivo, corregir si fallan, y registrar SHA/CI del mismo commit. No inventar aceptación humana ni modificar normas para obtener verde.
+
+## 11. 08-11-2026 — comprobación de CI del HEAD: 5/6 PASS, bloqueo B3 pendiente
+
+**Corte verificado en GitHub el 08-11-2026, PR [#51 Draft](https://github.com/jdlc86/CartaViva/pull/51):** rama `feat/sabora-cv014-communications-full-flow-20261108`, base `feat/sabora-visual-contract-governance-20261107` (PR #50 también Draft); **último SHA de código `ba3b243751cbbc60f3d53fdf1f9f3f278d480751`**. PR OPEN/Draft, no fusionado; ninguna intervención sobre producción, Fleetia, VPS ni Supabase operativo. Los commits documentales posteriores no deben presentarse como SHA funcional nuevamente probado.
+
+### Resultado exacto de GitHub Actions para `ba3b2437`
+
+| Workflow | Resultado verificado | Run |
+| --- | --- | --- |
+| Sabora CI (aceptación consolidada H6) | **SUCCESS** | [#42461987746](https://github.com/jdlc86/CartaViva/actions/runs/42461987746) |
+| PWA cliente Chromium | **SUCCESS** | [#42461987797](https://github.com/jdlc86/CartaViva/actions/runs/42461987797) |
+| PWA gestión Chromium | **SUCCESS** | [#42461987879](https://github.com/jdlc86/CartaViva/actions/runs/42461987879) |
+| Instalabilidad PWA independientes | **SUCCESS** | [#42461987812](https://github.com/jdlc86/CartaViva/actions/runs/42461987812) |
+| Puerta cobertura funcional ↔ interfaz | **SUCCESS** | [#42461987952](https://github.com/jdlc86/CartaViva/actions/runs/42461987952) |
+| Bootstrap Sabora lockfile (cadena PG17 y driver) | **FAILURE** | [#42461987932](https://github.com/jdlc86/CartaViva/actions/runs/42461987932) |
+
+**No declarar 6/6 ni hito cerrado.** En Bootstrap, la fase `Test Sabora migration in disposable PostgreSQL 17` terminó **SUCCESS**; el fallo fue **después**, en `Exercise real Node pg driver against disposable loopback-only PostgreSQL 17`, que ejecuta una batería integradora mayor. La prueba que falla está identificada en el log del job **#128673060344**:
+
+- Escenario: `PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey` (`scripts/ci/table-change-root-postgres17.test.mjs:2712`; localización del `waitFor` en **línea 8209**).
+- Error: **`locator.waitFor: Timeout 20000ms exceeded`** al buscar botón accesible `getByRole('button', { name: /Cesta: 1/ })`; duración observada de ese escenario **408950 ms**. No atribuirlo automáticamente a anuncios, Chromium, limitación de crédito o intermitencia sin una causa demostrada.
+- Otras pruebas del job superaron numerosas comprobaciones de PG17; su verde parcial no anula el fallo final. Anteriormente, en `ea0939cb`, las migraciones fallaron por SQL `CASE` en el límite de cuerpo HMAC para imágenes (`Expected 66 FORCE RLS ... got 63` como efecto de migración no aplicada). Se corrigió en **`ba3b2437`**: nueva ejecución confirma que **ese fallo de sintaxis/migración ya no se reproduce**. No confundir ambos defectos.
+
+### Estado de producto, controles y próximos pasos
+
+- **Implementado en PR #51:** editor administrativo y controles reales de Comunicaciones (borrador/edición/programación/publicación/pausa/reanudación/retirada), autorización firmada, proyección PostgreSQL 17, anuncios vigentes y detalle en la PWA cliente, avisos SSE y prueba integrada de dos PWA. Estado del subalcance `CV-014-comunicaciones-anuncios`: **CANDIDATO TÉCNICO**, con evidencias parciales en el SHA actual y prueba PG17/Chromium anterior **[SUCCESS #42460735464](https://github.com/jdlc86/CartaViva/actions/runs/42460735464)** para `929270485e91200741aac3fbfaf39f8e859f365e`. **No equivale a aceptación del producto o despliegue.**
+- **Persisten pendientes:** recuperar/validar exactitud visual al final conforme al contrato aprobado, aceptación humana F28/R09, reservas anticipadas y llamada a camarero (otros subalcances CV-014), además de los bloqueos económicos M4 y operativos M6. El `functional-ui-gate` no sustituye una prueba completa de interacción real.
+- **Siguiente trabajo integral prioritario:** reproducir y diagnosticar el fallo B3 a partir de sus evidencias completas (traza Chromium/estado de sesión, cesta, navegación, peticiones, estado SQL, eventos, condiciones del escenario, ventanas de espera). Determinar si es regresión funcional o problema de coordinación/fixture, **sin borrar, saltar ni relajar aserciones ni sustituir la prueba larga por micropruebas como metodología**; corregir la causa y ejecutar de nuevo la cadena integral PostgreSQL 17 + Fastify + ambas PWA en **un mismo SHA**, más regresión y comprobación de los **seis** workflows. No atribuir al nuevo commit resultados de otro SHA.
+- **Referencias persistentes:** [tablero vivo §46](../tracking/SABORA_LIVE_PROJECT_TRACKER.md); [matriz interfaz/función](../design/FUNCTIONAL_UI_COVERAGE.json); [informe CV-014](../reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md); [normativa funcional](../REQUISITOS_FUNCIONALES.md). Documentos de continuidad y seguimiento informan, **no reinterpretan normas**.
+
+**Límites invariables:** nada de merges/despliegues, bases operativas, secretos Stripe, ni cambios en Fleetia, VPS compartido u otros proyectos sin autorización expresa e aislamiento completo; no fingir validación humana.
