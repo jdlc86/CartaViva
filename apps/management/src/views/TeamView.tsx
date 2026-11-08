@@ -4,6 +4,8 @@ import type {StaffManagementGateway, StaffMaintenanceResult, StaffInvitationResu
 import {StaffManagementGatewayError} from '../staff-management-gateway.js';
 import type {StaffDirectoryGateway, StaffDirectoryMember, StaffOwnProfile} from '../staff-directory-gateway.js';
 import {Icon} from '../components/Icon';
+import {OwnershipPanel} from './OwnershipPanel';
+import type {OwnershipGovernanceGateway} from '../ownership-governance-gateway.js';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
 
 const roleCards=[
@@ -18,7 +20,7 @@ const roleLabel={admin:'Administración',waiter:'Sala',kitchen:'Cocina'} as cons
 const stateLabel={invited:'Invitación pendiente',accepted:'Invitación aceptada',registered:'Credencial registrada',
  active:'Activo',suspended:'Suspendido',revoked:'Revocado'} as const;
 
-export function TeamView({gateway,directoryGateway}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway}){
+export function TeamView({gateway,directoryGateway,ownershipGateway}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway;ownershipGateway?:OwnershipGovernanceGateway}){
  const [givenName,setGivenName]=useState('');const [familyName,setFamilyName]=useState('');
  const [email,setEmail]=useState('');const [role,setRole]=useState<'admin'|'waiter'|'kitchen'>('waiter');
  const [pending,setPending]=useState(false);const [error,setError]=useState<string|null>(null);
@@ -74,6 +76,7 @@ export function TeamView({gateway,directoryGateway}:{gateway?:StaffManagementGat
   finally{setPending(false);}};
 
  return <div className="view-stack">
+  <OwnershipPanel gateway={ownershipGateway}/>
   <PageHeader eyebrow="Equipo" title="Personal y accesos"
    description="Alta trazable, identidad operativa compacta y recuperación global controlada."
    actions={gateway||directoryGateway?<StatusBadge tone="brand">Lectura y acciones separadas por capacidad</StatusBadge>:
