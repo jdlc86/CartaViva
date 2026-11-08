@@ -71,3 +71,9 @@ Conservar el historial de fallos sin presentar correcciones provisionales como c
 - La información del handoff se mantiene en el tiempo para contexto, pero **nunca reemplaza los contratos normativos**. Cada entrada posterior debe indicar archivo/SHA, qué se implementó, qué CI se ejecutó, límites de la validación y qué sigue pendiente.
 
 **Enlaces de navegación:** [PR #52](https://github.com/jdlc86/CartaViva/pull/52) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [sesión 29](SESSION_29_HANDOFF_2026-11-07.md) · [informe técnico de gobierno](../reviews/SABORA_ADMIN_OWNERSHIP_GOVERNANCE_INTEGRAL_CANDIDATE_2026-11-08.md).
+
+## 8. 08-11-2026 — auditoría independiente de seguridad PR #52 (hito en curso)
+
+Después del 6/6 de `bea0851c`, la revisión independiente del código normativo y SQL encontró **cuatro incidencias** que el CI anterior no cubría: HMAC/caducidad nulos aceptables por semántica SQL `IF NULL` en (i) gobierno de titularidad, (ii) verificador compartido M3/M5, (iii) identidad/directorio del personal; además (iv) el lock del destinatario se obtenía después de la propuesta, cuando la normativa exige staff ordenado antes de propuesta. **Se han corregido en código candidato**, con nuevas pruebas negativas en PostgreSQL 17 y sin tocar migraciones históricas, producción ni Fleetia.
+
+**SHA funcional nuevo bajo verificación:** `d7dfa98307fcf7bc9b2d41bf91c63c9ca620d7f1`. **No heredar el 6/6 anterior**: la cadena nueva PostgreSQL 17/H6/Chromium aún debe completarse y corregirse si falla. La auditoría distingue un control SQL objetivamente incompleto de una explotación HTTP real **no acreditada**. [Informe detallado](../reviews/SABORA_ADMIN_OWNERSHIP_INDEPENDENT_SECURITY_AUDIT_2026-11-08.md) · [tablero §57](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). PR #52 Draft, no merge ni despliegue.
