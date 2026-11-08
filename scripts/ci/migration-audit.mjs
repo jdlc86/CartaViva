@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261108150000_sabora_admin_ownership_governance_rpc_candidate.sql':r(
+  'ADMIN ownership government and ROOT forced recovery',
+  ['admin_write_ownership','admin_ownership_proposals','admin_ownership_audit','staff_members','M3/M5 owner locks'],
+  'two sealed NOLOGIN roles; signed ownership read/decision function; append-only recipient notices',
+  'one exact EXECUTE capability and isolated physical login; no browser or generic writer SQL table access; FORCE RLS and per-column grants',
+  'ownership singleton exclusive lock before signing key, staff and proposal; M3/M5 SHARE writers serialize with transfer; transactional notices and audit',
+  'request/offer/accept/reject/cancel/ROOT force with original owner recorded, replay by exact signed correlation; no business ledger rewrites',
+  'extensions.digest/sha256 and extensions.hmac'),
  '20261108070000_sabora_m5_communications_candidate.sql':r(
   'M5 CV-014 scheduled internal restaurant communications',
   ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],
