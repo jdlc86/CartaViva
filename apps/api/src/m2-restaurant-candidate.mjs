@@ -61,6 +61,10 @@ import {createM3TablesRepository,createM3CatalogRepository,READ_M3_TABLES_SQL,
  MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,READ_M3_CATALOG_SQL,
  MANAGE_M3_CATALOG_SQL,createM3FinanceRepository,READ_M3_FINANCE_SQL} from './m3-management-repository.mjs';
 import {registerM3ManagementHttp} from './m3-management-http.mjs';
+import {M5_COMMS_ADMIN_ROLE,M5_COMMS_PUBLIC_ROLE,READ_M5_COMMS_ADMIN_SQL,
+ MANAGE_M5_COMMS_SQL,READ_M5_COMMS_PUBLIC_SQL,
+ assertM5CommunicationsCapability,createM5CommunicationsRepositories,
+ registerM5CommunicationsHttp,createM5CommunicationsStream} from './m5-communications.mjs';
 
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
@@ -96,10 +100,10 @@ const staffGuard=forRoles=>roles=>{
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
  management=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
  const app=Fastify({logger:false,trustProxy:false});
- let tableNotifier,h6Notifier,scheduler,closed=false,operational=false;
+ let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
-  await Promise.allSettled([scheduler?.close(),tableNotifier?.close(),h6Notifier?.close()]);
+  await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
  };
  try{
   if(!customer||!tableChange||!staff||!h4||!h6||
@@ -115,7 +119,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
        typeof management.issueTablesCapability!=='function'||
        typeof management.issueCatalogCapability!=='function'||
        typeof management.qr?.secret!=='string'||typeof management.qr?.origin!=='string'||
-       typeof management.qr?.restaurantCode!=='string'))||
+       typeof management.qr?.restaurantCode!=='string'||
+       (management.communications!==undefined&&(
+        typeof management.communications!=='object'||!management.communications||
+        typeof management.communications.expectedAdminLogin!=='string'||
+        typeof management.communications.expectedPublicLogin!=='string'||
+        typeof management.communications.issueCapability!=='function'))))||
      !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
    throw Error('invalid_m2_restaurant_candidate');
 
@@ -132,6 +141,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(management){
    capabilityPools.push(management.tablesPool,management.catalogPool);
    logins.push(management.expectedTablesLogin,management.expectedCatalogLogin);
+   if(management.communications){
+    capabilityPools.push(management.communications.adminPool,management.communications.publicPool);
+    logins.push(management.communications.expectedAdminLogin,
+     management.communications.expectedPublicLogin);
+   }
   }
   if(!uniqueCapabilities(capabilityPools,logins)||
      typeof tableChange.notificationPool?.connect!=='function'||
@@ -177,6 +191,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      expectedLogin:management.expectedTablesLogin});
     await assertM3CatalogCapability({pool:management.catalogPool,
      expectedLogin:management.expectedCatalogLogin});
+    if(management.communications){
+     await assertM5CommunicationsCapability({pool:management.communications.adminPool,
+      expectedLogin:management.communications.expectedAdminLogin,kind:'admin'});
+     await assertM5CommunicationsCapability({pool:management.communications.publicPool,
+      expectedLogin:management.communications.expectedPublicLogin,kind:'public'});
+    }
    }
    return true;
   };
@@ -239,7 +259,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
    issueTransitionCapability:h4.issueTransitionCapability,
    issueReadCapability:h4.issueReadCapability});
-  let m3Tables,m3Catalog,m3Finance;
+  let m3Tables,m3Catalog,m3Finance,m5Communications;
   if(management){
    const tablesTx=createRoleScopedPostgresTransaction({pool:management.tablesPool,
     role:M3_TABLES_ROLE,allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,
@@ -253,6 +273,17 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    m3Finance=createM3FinanceRepository({withTransaction:catalogTx,
     issueCapability:management.issueCatalogCapability,
     timeZone:management.dashboardTimeZone??null});
+   if(management.communications){
+    const adminCommsTx=createRoleScopedPostgresTransaction({
+     pool:management.communications.adminPool,role:M5_COMMS_ADMIN_ROLE,
+     allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL])});
+    const publicCommsTx=createRoleScopedPostgresTransaction({
+     pool:management.communications.publicPool,role:M5_COMMS_PUBLIC_ROLE,
+     allowedSql:new Set([READ_M5_COMMS_PUBLIC_SQL])});
+    m5Communications=createM5CommunicationsRepositories({
+     adminTx:adminCommsTx,publicTx:publicCommsTx,
+     issueCapability:management.communications.issueCapability});
+   }
   }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
@@ -279,6 +310,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    heartbeatMs:eventHeartbeatMs});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
    catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
+  if(m5Communications){
+   announcementStream=await createM5CommunicationsStream({
+    pool:management.communications.publicPool,
+    readPublic:m5Communications.readPublic,onFailure:observeFailure});
+   registerM5CommunicationsHttp(app,{forRoles:oneGuard,
+    repositories:m5Communications,stream:announcementStream,observeFailure});
+  }
 
   if(enableDeferredDispatch){
    scheduler=createH6DeferredDispatchScheduler({
