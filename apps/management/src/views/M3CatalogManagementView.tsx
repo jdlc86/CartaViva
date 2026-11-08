@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice,EmptyState,ErrorState,LoadingState,PageHeader,StatusBadge} from '../components/Primitives';
 import {catalogDraftFromForm,loadM3ManagementCatalog,type M3CatalogGateway,
@@ -24,6 +24,10 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  const [reload,setReload]=useState(0);const [pending,setPending]=useState(false);
  const [message,setMessage]=useState<string|null>(null);const [selectedId,setSelectedId]=useState<string|null>(null);
  const [newItem,setNewItem]=useState(false);const [form,setForm]=useState(emptyForm);
+ // Rehydrate from the server when switching product/revision, not whenever
+ // category metadata refreshes. Otherwise an unrelated admin mutation can
+ // silently replace a locally edited but unsaved draft.
+ const hydratedDraftKeyRef=useRef<string|null>(null);
  const [categoryName,setCategoryName]=useState('');const [categorySort,setCategorySort]=useState('600');
  const refresh=async()=>{const value=await loadM3ManagementCatalog(gateway);setCatalog(value);setPhase('ready');
   setSelectedId(current=>value.items.some(item=>item.id===current)?current:value.items[0]?.id??null);};
@@ -37,6 +41,9 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
   // the previous item's modifiers in a newly published draft (B3 evidence).
   // Category refreshes must not reset an in-progress new-item form.
   if(newItem)return;
+  const draftKey=selected?`${selected.id}:${selected.draftRevision}`:null;
+  if(hydratedDraftKeyRef.current===draftKey)return;
+  hydratedDraftKeyRef.current=draftKey;
   const draft=selected?.draft;if(!draft){setForm(emptyForm());return;}
   const declaration=draft.allergenDeclaration as Record<string,unknown>|undefined;
   const discount=draft.discount as Record<string,unknown>|null|undefined;
@@ -119,6 +126,7 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
       // Clear every editable field as a single user action, BEFORE any fast
       // Playwright/user input can reach the next render. Do not inherit
       // allergens, discount, optional extras or required option groups.
+      hydratedDraftKeyRef.current=null;
       setForm({...emptyForm(),categoryId});
       setNewItem(true);setSelectedId(null);
     }}><Icon name="plus" size={18}/> Nuevo plato</button>}/>
