@@ -90,6 +90,13 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
   assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
   assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
   const again=await post(b,'request');
   assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
   assert.equal((await read(b)).json().ownerUserId,b);
@@ -97,6 +104,11 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    'old ADMIN cannot continue writing with its existing JWT');
   const offer=await post(b,'offer',{targetUserId:c});
   assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
   const offer2=await post(b,'offer',{targetUserId:c});
   assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
   assert.equal((await read(c)).json().ownerUserId,c);
