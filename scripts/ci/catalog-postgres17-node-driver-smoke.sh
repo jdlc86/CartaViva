@@ -13,6 +13,7 @@ node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/order-operations-read-postgres17.test.mjs
 node --check scripts/ci/m3-management-postgres17.test.mjs
+node --check scripts/ci/cv014-communications-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
 node --check scripts/ci/staff-display-id-postgres17.test.mjs
 node --check scripts/ci/staff-directory-postgres17.test.mjs
