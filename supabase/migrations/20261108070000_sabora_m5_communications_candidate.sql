@@ -136,7 +136,7 @@ BEGIN
   OR jsonb_typeof(p->'body')<>'string' OR length(btrim(p->>'body')) NOT BETWEEN 1 AND 1200
   OR regexp_replace(p->>'body',E'[\\n\\r\\t]','','g')~'[[:cntrl:]]'
   OR jsonb_typeof(p->'emoji')<>'string' OR length(p->>'emoji')>12
-  OR p->>'priority' NOT IN ('ALTA','BAJA') THEN
+  OR p->>'priority' IS NULL OR p->>'priority' NOT IN ('ALTA','BAJA') THEN
   RAISE EXCEPTION 'invalid_comms_content' USING errcode='22023'; END IF;
  IF p->'image' <> 'null'::jsonb THEN
   IF jsonb_typeof(p->'image')<>'string'
@@ -157,7 +157,8 @@ BEGIN
   ('mode','startDate','endDate','weekdays','startTime','endTime','timeZone'))
  THEN RAISE EXCEPTION 'invalid_comms_schedule' USING errcode='22023';END IF;
  v_mode:=s->>'mode';
- IF v_mode NOT IN ('once','daily','weekly') OR
+ IF v_mode IS NULL OR v_mode NOT IN ('once','daily','weekly') OR
+   (s->>'startDate') IS NULL OR (s->>'startTime') IS NULL OR (s->>'endTime') IS NULL OR
    (s->>'startDate') !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' OR
    (s->'endDate'<>'null'::jsonb AND
     (s->>'endDate') !~ '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$') OR
