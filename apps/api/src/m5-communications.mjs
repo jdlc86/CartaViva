@@ -57,6 +57,14 @@ export function validateM5AnnouncementDraft(draft){
    draft.imageLicense.trim().length<5||draft.imageLicense.length>240||
    Buffer.from(draft.image.split(',')[1],'base64').length>MAX_IMAGE_BYTES)
     throw bad('invalid_comms_image');
+  const raw=Buffer.from(draft.image.split(',')[1],'base64');
+  const kind=draft.image.slice(5,draft.image.indexOf(';'));
+  const png=kind==='image/png'&&raw.subarray(0,8).equals(
+   Buffer.from('89504e470d0a1a0a','hex'));
+  const jpeg=kind==='image/jpeg'&&raw.subarray(0,3).equals(Buffer.from('ffd8ff','hex'));
+  const webp=kind==='image/webp'&&raw.subarray(0,4).toString('ascii')==='RIFF'&&
+    raw.subarray(8,12).toString('ascii')==='WEBP';
+  if(!png&&!jpeg&&!webp)throw bad('invalid_comms_image_signature');
  }
  const schedule=draft.schedule;
  if(!fields(schedule,['mode','startDate','endDate','weekdays','startTime','endTime','timeZone'])||
