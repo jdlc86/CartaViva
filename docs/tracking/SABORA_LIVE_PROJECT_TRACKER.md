@@ -570,3 +570,12 @@ Causa de la regresión: validación UUID de cuatro grupos en el lector H6, corre
 - **RV-02 (alto):** el selector para ofrecer cesión o reasignar forzosamente muestra solo sufijos UUID de ADMIN elegibles. Se requiere una selección humana inequívoca derivada de proyección autorizada de identidad; no inventar permisos ni revelar datos del directorio fuera del contrato. Validar titular y ROOT en Chromium.
 - **Evidencia vigente:** SEC-01–SEC-04 en `d7dfa983` con 6/6 GitHub Actions PASS. Estos resultados no cubren RV-01/02. El HEAD previo `fe0a5e09` tenía solo dos commits documentales adicionales. **Ningún código corregido ni pruebas nuevas de RV-01/RV-02 en este registro.**
 - **Siguiente cierre:** implementación de ambos requisitos en un hito coherente + recorrido PG17/Fastify/JWT/HMAC/Chromium de cambio de identidad y cesión a destinatario identificable; regresión H6 y CI 6/6 sobre el nuevo SHA; nueva revisión. Sin merge/despliegue, sin Supabase operativo, VPS ni Fleetia.
+
+## 60. Relevo operativo a sesión 31 — 08-11-2026
+
+**Documento de arranque:** [continuidad de la sesión 31](../handoffs/SESSION_31_HANDOFF_2026-11-08.md), enlazada con [sesión 30 §§8–10](../handoffs/SESSION_30_HANDOFF_2026-11-08.md) y [revisión GitHub #5819709942](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5819709942).
+
+- **Estado de partida:** PR #50/#51/#52 abiertos Draft, sin merge. Hito SEC-01–04 técnicamente validado en SHA funcional `d7dfa983` (6/6 workflows sobre el **mismo SHA**). Cuatro commits documentales hasta `c2685bea`; la creación del relevo y este seguimiento son nuevos cambios exclusivamente documentales `[skip ci]`, **no nuevas validaciones**.
+- **Revisión formal de PR #52: CAMBIOS REQUERIDOS / NO APROBADO**. GitHub muestra `COMMENTED` de la misma cuenta autora, no aprobación externa ni evento `REQUEST_CHANGES`.
+- **RV-01 alto:** reemplazo de sesión A→B no revoca automáticamente gateways de ownership y M3 anteriores. **RV-02 alto:** selector de destinatario solo identifica con sufijo UUID, no identidad humana inequívoca. **Ambos permanecen sin corregir ni validar**.
+- **Próximo hito indivisible:** corregir RV-01+RV-02 conforme a contratos, validar integradamente PG17/JWT/HMAC/Fastify/Chromium y regresión H6, obtener CI 6/6 para **nuevo SHA funcional**, registrar una nueva revisión; ninguna fusión/despliegue sin autorización expresa. F28/R09, M4, CV-014 reservas/llamada y M6 siguen pendientes.
