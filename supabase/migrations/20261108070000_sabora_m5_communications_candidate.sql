@@ -341,7 +341,7 @@ starts AS (
    e.time_until,e.mode,e.weekdays,e.candidate_day,
    ((e.candidate_day::timestamp+e.time_from) AT TIME ZONE e.tz) AS a,
    ((e.candidate_day::timestamp+e.time_until) AT TIME ZONE e.tz) AS b
- FROM (SELECT eligible.*,eligible.published_snapshot AS p FROM eligible) e
+ FROM eligible e
 ),
 current_items AS (
  SELECT DISTINCT ON(id) id,p FROM starts
