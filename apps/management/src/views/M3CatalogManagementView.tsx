@@ -32,7 +32,11 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  }).catch(()=>active&&setPhase('error'));return()=>{active=false};},[gateway,reload]);
  const selected=catalog?.items.find(item=>item.id===selectedId)??null;
  useEffect(()=>{
-  if(newItem){setForm(value=>({...emptyForm(),categoryId:value.categoryId||catalog?.categories.find(c=>!c.hidden)?.id||''}));return;}
+  // New-item initialization happens in the button's own event handler.
+  // A post-render effect can otherwise race with fast typing and preserve
+  // the previous item's modifiers in a newly published draft (B3 evidence).
+  // Category refreshes must not reset an in-progress new-item form.
+  if(newItem)return;
   const draft=selected?.draft;if(!draft){setForm(emptyForm());return;}
   const declaration=draft.allergenDeclaration as Record<string,unknown>|undefined;
   const discount=draft.discount as Record<string,unknown>|null|undefined;
@@ -56,8 +60,11 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
   try{
    const result=await gateway.manageCatalog({requestId:crypto.randomUUID(),operation,payload});
    committed=true;
-   if(result&&typeof result==='object'&&'itemId' in result&&typeof result.itemId==='string')setSelectedId(result.itemId);
-   setNewItem(false);
+   if(operation==='item_save'){
+    if(result&&typeof result==='object'&&'itemId' in result&&typeof result.itemId==='string')
+     setSelectedId(result.itemId);
+    setNewItem(false);
+   }
    await refresh();
    setMessage(success);
   }catch{
@@ -106,7 +113,15 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  if(phase==='error'||!catalog)return <ErrorState title="Editor no disponible" description="No se recibió una proyección administrativa válida." onRetry={()=>setReload(v=>v+1)}/>;
  return <div className="view-stack">
   <PageHeader eyebrow="Catálogo" title="Editor de carta" description="Borrador y publicación explícita, categorías dinámicas y precios calculados en céntimos."
-   actions={<button className="button button--primary" type="button" onClick={()=>{setNewItem(true);setSelectedId(null)}}><Icon name="plus" size={18}/> Nuevo plato</button>}/>
+   actions={<button className="button button--primary" type="button" onClick={()=>{
+      const categoryId=catalog.categories.find(c=>!c.hidden&&c.id===form.categoryId)?.id
+       ??catalog.categories.find(c=>!c.hidden)?.id??'';
+      // Clear every editable field as a single user action, BEFORE any fast
+      // Playwright/user input can reach the next render. Do not inherit
+      // allergens, discount, optional extras or required option groups.
+      setForm({...emptyForm(),categoryId});
+      setNewItem(true);setSelectedId(null);
+    }}><Icon name="plus" size={18}/> Nuevo plato</button>}/>
   <ConnectionNotice title="Editor transaccional conectado." tone="brand">Los clientes solo reciben snapshots publicados. No hay sondeo periódico ni publicación automática.</ConnectionNotice>
   {message?<p className="honest-operational-note" role="status">{message}</p>:null}
   <section className="panel catalog-categories">
