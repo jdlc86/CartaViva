@@ -27,7 +27,7 @@ export function createM3ManagementCapabilityIssuer({keyId,secret,databaseRole,
      !['actorId','staffRole','action','requestId','body'].every(name=>Object.hasOwn(input,name))||
      !UUID.test(input.actorId)||!STAFF.has(input.staffRole)||!ACTIONS.has(input.action)||
      !UUID.test(input.requestId)||typeof input.body!=='string'||
-     Buffer.byteLength(input.body,'utf8')>65_536)
+     Buffer.byteLength(input.body,'utf8')>(input.action==='comms.manage'?200_000:65_536))
    throw Error('invalid_m3_management_capability_input');
   const issuedAtMs=clock(),expiresAtMs=issuedAtMs+ttlMs;
   if(!Number.isSafeInteger(issuedAtMs)||issuedAtMs<0||!Number.isSafeInteger(expiresAtMs))
