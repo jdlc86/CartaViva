@@ -34,4 +34,9 @@ function manifestPlugin():Plugin{
   }
  };
 }
-export default defineConfig({base,plugins:[react(),manifestPlugin()]});
+const testTarget=process.env.GITHUB_ACTIONS==='true'&&
+ /^http:\/\/127\.0\.0\.1:[0-9]{1,5}$/.test(process.env.SABORA_CI_COMMS_API??'')?
+ process.env.SABORA_CI_COMMS_API:null;
+export default defineConfig({base,plugins:[react(),manifestPlugin()],
+ ...(testTarget?{server:{proxy:{'/api':testTarget}}}:{}),
+});
