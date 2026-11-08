@@ -33,7 +33,8 @@ BEGIN
      'comms.read','comms.manage')
   OR (p_capability->>'requestId') !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   OR (p_capability->>'bodyHashHex') !~ '^[0-9a-f]{64}$'
-  OR p_body IS NULL OR octet_length(convert_to(p_body,'UTF8'))>65536
+  OR p_body IS NULL OR octet_length(convert_to(p_body,'UTF8'))>
+    CASE WHEN p_capability->>'action'='comms.manage' THEN 200000 ELSE 65536 END
   OR encode(extensions.digest(convert_to(p_body,'UTF8'),'sha256'),'hex')
       IS DISTINCT FROM p_capability->>'bodyHashHex'
   OR (p_capability->>'issuedAtMs') !~ '^(0|[1-9][0-9]*)$'
