@@ -94,7 +94,16 @@ const waitForScope=async(page,path)=>{
    return registrations.some(reg=>new URL(reg.scope).pathname===expected&&reg.active);
   },path,{timeout:35000});
  }catch(cause){throw Error(await diagnostics('activation'),{cause});}
- await page.reload({waitUntil:'load'});
+ // Test the next real navigation after installation, not a CDP reload that
+ // can race activation/clients.claim and leave an otherwise ready SW uncontrolled.
+ await page.evaluate(async expected=>{
+  const registration=await navigator.serviceWorker.ready;
+  if(new URL(registration.scope).pathname!==expected)
+   throw Error('cv012_unexpected_active_scope');
+ },path);
+ const destination=new URL(page.url());
+ destination.searchParams.set('cv012-installed','1');
+ await page.goto(destination.toString(),{waitUntil:'load'});
  try{
   await page.waitForFunction(expected=>
    navigator.serviceWorker.controller&&
