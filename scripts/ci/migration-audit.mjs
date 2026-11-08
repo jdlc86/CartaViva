@@ -121,6 +121,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'three creates, existing SQL function replacement, account and claim locks; no network access',
   'cash-only new collections/refunds, append-only originals, no automatic refund of consumption tips, no backfill',
   'inherited'),
+ '20261108121000_sabora_m3_m5_admin_single_writer_candidate.sql':r(
+  'M3/M5 single administrative writer entitlement',
+  ['admin_write_ownership singleton','M3 signed staff verifier','M3 catalog/table RPCs','M5 communications RPC'],
+  'replace existing HMAC verifier with owner-row FOR SHARE gate for mutating actions; singleton-only RLS and SELECT/UPDATE(singleton) grants',
+  'sealed M3 NOLOGIN function owner only; no browser/login/runtime direct ownership access or additional EXECUTE; ROOT barred from configuration, waiter operational table actions preserved',
+  'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
+  'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
+  'inherited'),
  '20261108070000_sabora_m5_communications_candidate.sql':r(
   'M5 CV-014 scheduled internal restaurant communications',
   ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],
