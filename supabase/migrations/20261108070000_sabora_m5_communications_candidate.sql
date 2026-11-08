@@ -132,7 +132,7 @@ BEGIN
  IF jsonb_typeof(p->'title')<>'string' OR length(btrim(p->>'title')) NOT BETWEEN 1 AND 120
   OR (p->>'title')~'[[:cntrl:]]'
   OR jsonb_typeof(p->'body')<>'string' OR length(btrim(p->>'body')) NOT BETWEEN 1 AND 1200
-  OR (p->>'body')~'[^\x09\x0A\x0D\x20-\x7E\x80-\xFF]' -- UTF-8 controls are not a UI field
+  OR regexp_replace(p->>'body',E'[\\n\\r\\t]','','g')~'[[:cntrl:]]'
   OR jsonb_typeof(p->'emoji')<>'string' OR length(p->>'emoji')>12
   OR p->>'priority' NOT IN ('ALTA','BAJA') THEN
   RAISE EXCEPTION 'invalid_comms_content' USING errcode='22023'; END IF;
@@ -298,8 +298,8 @@ RETURNS jsonb LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,
 WITH now_clock AS (SELECT clock_timestamp() AS ts),
 snapshots AS (
  SELECT a.id,a.published_snapshot p,n.ts,
-  (n.ts AT TIME ZONE a.published_snapshot->'schedule'->>'timeZone')::date AS day_local,
-  (n.ts AT TIME ZONE a.published_snapshot->'schedule'->>'timeZone')::time AS time_local,
+  (n.ts AT TIME ZONE (a.published_snapshot->'schedule'->>'timeZone'))::date AS day_local,
+  (n.ts AT TIME ZONE (a.published_snapshot->'schedule'->>'timeZone'))::time AS time_local,
   (a.published_snapshot->'schedule'->>'startDate')::date AS first_day,
   nullif(a.published_snapshot->'schedule'->>'endDate','')::date AS last_day,
   (a.published_snapshot->'schedule'->>'startTime')::time AS time_from,
