@@ -27,7 +27,12 @@ test('promoting announcements requires visible client UI, management UI, server 
  assert(missing.errors.includes('missing_visible_ui_entrypoint:CV-014-comunicaciones-anuncios:management'));
  assert(missing.errors.includes('missing_server_boundary:CV-014-comunicaciones-anuncios'));
  assert(missing.errors.includes('missing_integration_layer:CV-014-comunicaciones-anuncios:postgres17'));
- assert(missing.errors.includes('announcements_still_hidden_in_client'));
+ assert(!missing.errors.includes('announcements_still_hidden_in_client'));
+ assert(realRead('apps/client/src/App.tsx').includes('<CommunicationsBar'));
+ const forbidden=inspectFunctionalUi({manifest:candidate,
+  read:path=>path==='apps/client/src/App.tsx'?
+   '<div className="announcement-region" aria-label="Anuncios vigentes" hidden/>':realRead(path)});
+ assert(forbidden.errors.includes('announcements_still_hidden_in_client'));
 });
 
 test('regression: a candidate losing its button/entrypoint or scenario is rejected, and a tracked capability cannot disappear',()=>{
