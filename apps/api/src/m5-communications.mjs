@@ -74,6 +74,8 @@ export function validateM5AnnouncementDraft(draft){
   (schedule.mode!=='weekly'&&schedule.weekdays.length!==0)||
   (schedule.mode==='once'&&schedule.endDate!==schedule.startDate))
    throw bad('invalid_comms_schedule');
+ try{new Intl.DateTimeFormat('en-GB',{timeZone:schedule.timeZone});}
+ catch{throw bad('invalid_comms_schedule');}
  if(!Number.isFinite(Date.parse(schedule.startDate+'T12:00:00Z'))||
   new Date(schedule.startDate+'T12:00:00Z').toISOString().slice(0,10)!==schedule.startDate)
    throw bad('invalid_comms_schedule');
