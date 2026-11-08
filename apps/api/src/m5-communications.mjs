@@ -191,6 +191,10 @@ export function registerM5CommunicationsHttp(app,{forRoles,repositories,stream,o
    if(!fields(b,['requestId','operation','payload'])||!UUID.test(b.requestId??'')||
      !ACTIONS.has(b.operation)||!isRecord(b.payload))
     return reply.code(400).send({error:'invalid_comms_request'});
+   // ROOT remains a governance/read actor, not the singleton ADMIN writer.
+   // The signed SQL verifier additionally checks owner identity transactionally.
+   if(request.verifiedStaff?.role!=='admin')
+    return reply.code(403).send({error:'forbidden'});
    try{return reply.code(200).send(await repositories.manage({
     verifiedIdentity:request.verifiedIdentity,verifiedStaff:request.verifiedStaff},b));}
    catch(e){try{observeFailure(e);}catch{}return sendError(reply,e);}
