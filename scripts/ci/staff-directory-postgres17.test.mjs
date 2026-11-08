@@ -115,6 +115,36 @@ test('PG17 directory runtime has one RPC, FORCE RLS and no direct or escalated a
   await assert.rejects(directoryPool.query(statement),/permission denied|must be able to SET ROLE/);
 });
 
+test('PG17 staff identity and directory SQL reject NULL signed capabilities without writes or disclosures',async()=>{
+ sequence++;
+ const enrollmentId=randomUUID(),email=`unsigned-${sequence}@example.invalid`;
+ const forged=issueLifecycle({actorId:ownerId,action:'invite',enrollmentId,
+  subjectUserId:null,requestedRole:'waiter',inviteeEmailHashHex:digest(email),
+  inviteTokenHashHex:digest('unsigned-private-invite'),
+  credentialEvidenceHashHex:null,reason:null,givenName:'Prueba',
+  familyName:'Firma nula',inviteeEmail:email,
+  correlationId:`unsigned_staff_invite_${String(sequence).padStart(6,'0')}`});
+ await assert.rejects(lifecyclePool.query(lifecycleSql,
+  lifecycleArgs({...forged,signatureHex:null})),
+  error=>error?.code==='42501'&&/invalid_staff_directory_write_capability/.test(error.message),
+  'unsigned invitation must be rejected by the actual sealed SQL wrapper');
+ const noWrites=(await admin.query(`SELECT
+  (SELECT count(*)::integer FROM sabora.staff_enrollments WHERE id=$1) AS enrollment,
+  (SELECT count(*)::integer FROM sabora.staff_directory_contacts WHERE email=$2) AS contact`,
+  [enrollmentId,email])).rows[0];
+ assert.deepEqual(noWrites,{enrollment:0,contact:0});
+ const readCap=directoryCapability(ownerId,'admin','admin_list');
+ const sqlRead=`SELECT * FROM sabora.read_staff_directory_authorized_candidate(
+  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::uuid,
+  $7::text,$8::integer,$9::integer,$10::bigint,$11::bigint,$12::text)`;
+ const values=[readCap.keyId,readCap.databaseRole,readCap.actorId,readCap.staffRole,
+  readCap.operation,readCap.targetEnrollmentId,readCap.search,readCap.cursor,
+  readCap.limit,readCap.issuedAtMs,readCap.expiresAtMs,null];
+ await assert.rejects(directoryPool.query(sqlRead,values),
+  error=>error?.code==='42501'&&/invalid_staff_directory_read_capability/.test(error.message),
+  'restricted directory SQL must reject NULL HMAC even for an active ADMIN');
+});
+
 test('PG17 invitation contact is atomic, idempotent and rejects contradictory replay',async()=>{
  const first=await invite({email:'julia@example.invalid',givenName:'Julia',familyName:'García López'});
  assert.deepEqual((await admin.query(`SELECT email FROM sabora.staff_directory_contacts WHERE enrollment_id=$1`,

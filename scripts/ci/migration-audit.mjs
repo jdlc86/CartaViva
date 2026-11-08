@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261108170000_sabora_staff_identity_directory_null_signature_hardening_candidate.sql':r(
+  'ADMIN staff lifecycle and directory SQL capability fail-closed hardening',
+  ['staff lifecycle identity wrapper','staff directory write and read RPCs','staff_lifecycle_signing_keys'],
+  'three CREATE OR REPLACE signed SQL functions with explicit nonnull signatures and null-safe HMAC byte comparisons',
+  'SECURITY DEFINER owners, RPC grants and existing RLS/LOGIN privileges unchanged; no SQL bypass grants',
+  'function-catalog replacement; staff governance row locks and employee code allocation order unchanged',
+  'no data rewrite; rejects unsigned invitation/identity modification and unauthorized directory disclosure',
+  'inherited'),
  '20261108160000_sabora_m3_m5_signed_capability_null_hardening_candidate.sql':r(
   'M3/M5 capability HMAC NULL fail-closed repair',
   ['M3/M5 shared signed verifier','M3 and M5 writer grants/RLS unchanged'],
