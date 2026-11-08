@@ -27,6 +27,7 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
  const password=`sabora_m3_table_password_${suffix}`;
  const keyId=`m3_pg17_${suffix}_key`;
  const actorId='d1a00000-0000-4000-8000-000000000001';
+ const otherAdminId='d1a00000-0000-4000-8000-000000000011';
  const requestId='d1a00000-0000-4000-8000-000000000002';
  const secret=Buffer.alloc(32,7);
  const loginUrl=new URL(url);loginUrl.username=login;loginUrl.password=password;
@@ -38,7 +39,8 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
     key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',
     clock_timestamp()+interval '1 hour')`,[keyId,secret]);
   await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
-    VALUES($1,'admin','active')`,[actorId]);
+    VALUES($1,'admin','active'),($2,'admin','active')`,[actorId,otherAdminId]);
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[actorId]);
   const objectIds=(await admin.query(`SELECT
    'sabora.manage_table_m3_candidate(jsonb,text,text)'::regprocedure::oid AS function_oid,
    'sabora.dining_tables'::regclass::oid AS table_oid`)).rows[0];
@@ -104,6 +106,24 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
      qrToken:Buffer.alloc(32,2).toString('base64url')}};
    const committed=await repository.manage(verified,committedInput);
    assert.equal(committed.replayed,false);
+   const otherVerified={verifiedIdentity:{userId:otherAdminId},
+    verifiedStaff:{userId:otherAdminId,role:'admin'}};
+   const otherPayload={...committedInput.payload,number:9915};
+   const otherRequestId='d1a00000-0000-4000-8000-000000000012';
+   const otherCapability=issue({actorId:otherAdminId,staffRole:'admin',
+    action:'table.create',requestId:otherRequestId,body:JSON.stringify(otherPayload)});
+   await assert.rejects(repository.manage(otherVerified,{requestId:otherRequestId,
+    operation:'create',payload:otherPayload}),
+    error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
+   await assert.rejects(withTransaction(query=>query(MANAGE_M3_TABLE_SQL,
+    [JSON.stringify(otherCapability),'create',JSON.stringify(otherPayload)])),
+    error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
+   assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE number=9915')).rows[0].n,0);
+   // Transfer changes authority, including replay, immediately.
+   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[otherAdminId]);
+   await assert.rejects(repository.manage(verified,committedInput),
+    error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
+   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[actorId]);
    assert.equal((await repository.manage(verified,committedInput)).replayed,true);
    await assert.rejects(repository.manage(verified,{...committedInput,
     payload:{...committedInput.payload,number:9914}}),
@@ -129,7 +149,8 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
    [{tables:0,receipts:0,audit:0}]);
  }finally{
   if(runtime)await runtime.end();
-  await admin.query('DELETE FROM sabora.staff_members WHERE user_id=$1',[actorId]).catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=$1',[actorId]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.staff_members WHERE user_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
   await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',[keyId]).catch(()=>{});
   await admin.query(`DROP OWNED BY ${login}`).catch(()=>{});
   await admin.query(`DROP ROLE IF EXISTS ${login}`).catch(()=>{});
