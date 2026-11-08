@@ -98,6 +98,7 @@ DECLARE v_now bigint;v_key bytea;v_signature text;v_payload text;
  v_request uuid;v_body jsonb;v_proposal uuid;v_kind text;v_status text;
  v_from uuid;v_to uuid;v_creator uuid;v_reason text;v_new_owner uuid;v_next_status text;
  v_audit_action text;v_record jsonb;v_result jsonb;
+ v_proposal_target uuid;
 BEGIN
  -- Singleton first: a concurrent transfer cannot invalidate a write between
  -- authorization and COMMIT, nor authorize two concurrent ADMIN owners.
@@ -150,7 +151,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'invalid_ownership_capability' USING ERRCODE='42501'; END IF;
  v_actor:=(p_capability->>'actorId')::uuid;
  SELECT role INTO v_role FROM sabora.staff_members WHERE user_id=v_actor
-  AND state='active' FOR UPDATE;
+  AND state='active';
  IF NOT FOUND OR v_role IS DISTINCT FROM p_capability->>'staffRole' THEN
   RAISE EXCEPTION 'invalid_ownership_capability' USING ERRCODE='42501'; END IF;
  v_payload:='sabora-ownership-v1'||chr(10)||(p_capability->>'databaseRole')||chr(10)
@@ -217,6 +218,23 @@ BEGIN
   OR (p_action IN ('request','offer') AND v_body->>'reason' IS NOT NULL)
   THEN RAISE EXCEPTION 'invalid_ownership_request' USING ERRCODE='22023'; END IF;
 
+ -- Contractual lock order: singleton, staff members sorted by UUID,
+ -- then proposal. Read the recipient without a proposal lock only to build
+ -- the bounded staff lock set; the proposal is rechecked FOR UPDATE below.
+ -- The singleton already prevents supported concurrent ownership decisions.
+ IF p_action IN ('accept','reject','cancel') THEN
+  SELECT to_owner_id INTO v_proposal_target FROM sabora.admin_ownership_proposals
+   WHERE id=v_proposal;
+ END IF;
+ PERFORM m.user_id FROM sabora.staff_members m
+  WHERE m.user_id=ANY(ARRAY[v_actor,v_owner,v_target,v_proposal_target])
+  ORDER BY m.user_id FOR UPDATE;
+ -- Revalidate actor membership under the staff locks before any replay/write.
+ SELECT role INTO v_role FROM sabora.staff_members WHERE user_id=v_actor
+  AND state='active';
+ IF NOT FOUND OR v_role IS DISTINCT FROM p_capability->>'staffRole' THEN
+  RAISE EXCEPTION 'invalid_ownership_capability' USING ERRCODE='42501';
+ END IF;
  v_request:=(p_capability->>'requestId')::uuid;
  v_record:=jsonb_build_object('actorUserId',v_actor,'action',p_action,'body',v_body);
  SELECT request_payload,result_payload INTO v_payload,v_result
