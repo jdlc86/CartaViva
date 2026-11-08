@@ -154,7 +154,7 @@ BEGIN
   IF p_body<>'ownership.read' THEN
    RAISE EXCEPTION 'invalid_ownership_request' USING ERRCODE='22023'; END IF;
   RETURN jsonb_build_object(
-   'ownerUserId',v_owner,'role',v_role,'isOwner',v_role='admin' AND v_actor=v_owner,
+   'actorUserId',v_actor,'ownerUserId',v_owner,'role',v_role,'isOwner',v_role='admin' AND v_actor=v_owner,
    'eligibleAdmins',(SELECT coalesce(jsonb_agg(m.user_id ORDER BY m.user_id),'[]'::jsonb)
      FROM sabora.staff_members m WHERE m.role='admin' AND m.state='active'),
    'proposals',(SELECT coalesce(jsonb_agg(
