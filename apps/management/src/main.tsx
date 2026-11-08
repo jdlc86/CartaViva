@@ -17,6 +17,7 @@ import {OrdersView} from './views/OrdersView';
 import {CashView} from './views/CashView';
 import {SummaryView} from './views/SummaryView';
 import {FinanceDashboardView} from './views/FinanceDashboardView';
+import {ConfigurationView} from './views/ConfigurationView';
 import {TablesView} from './views/TablesView';
 import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
 import {TeamView} from './views/TeamView';
@@ -29,7 +30,7 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
   {id:'mesas', label: 'Mesas y QR', detail: 'Accesos de mesa', icon: 'tables'},
   {id:'comandas', label: 'Comandas', detail: 'Cocina y sala', icon: 'orders'},
   {id:'caja', label: 'Caja', detail: 'Cobros y cuentas', icon: 'tables'},
-  {id:'configuracion', label:'Configuración',detail:'Indicadores financieros',icon:'overview'},
+  {id:'configuracion', label:'Configuración',detail:'Comunicaciones y finanzas',icon:'overview'},
   {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
 ];
 
@@ -54,12 +55,20 @@ export function ManagementApp({
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
+  const [commsAllowed,setCommsAllowed]=useState(false);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
    if(financeGateway)void financeGateway.readFinancialDashboard({period:'today'})
      .then(()=>{if(active)setFinanceAllowed(true);})
      .catch(()=>{if(active)setFinanceAllowed(false);});
+   return()=>{active=false;};
+  },[financeGateway]);
+  useEffect(()=>{
+   let active=true;setCommsAllowed(false);
+   if(financeGateway)void financeGateway.readCommunications()
+     .then(()=>{if(active)setCommsAllowed(true);})
+     .catch(()=>{if(active)setCommsAllowed(false);});
    return()=>{active=false;};
   },[financeGateway]);
   const contentRef = useRef<HTMLElement>(null);
@@ -102,9 +111,8 @@ export function ManagementApp({
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : area === 'caja' ? <CashView gateway={operationsGateway}/>
-    : area === 'configuracion' ? (financeAllowed&&financeGateway?
-       <FinanceDashboardView gateway={financeGateway}/>:
-       <SummaryView/>)
+    : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
+        financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
     : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
 
   return (
@@ -130,7 +138,7 @@ export function ManagementApp({
             <strong>Administración</strong>
           </div>
           <nav className="management-nav" aria-label="Áreas de gestión">
-            {sections.filter(section=>section.id!=='configuracion'||financeAllowed).map((section) => (
+            {sections.filter(section=>section.id!=='configuracion'||financeAllowed||commsAllowed).map((section) => (
               <a
                 key={section.id}
                 className={area === section.id ? 'management-tab management-tab--active' : 'management-tab'}
