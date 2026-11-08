@@ -8205,8 +8205,31 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // The QR is a full document navigation. A synthetic click resolving is
     // not proof that React committed its asynchronous localStorage effect.
     // Observe the exact configured row persisted before crossing that boundary.
-    await m3CustomerPage.getByRole('button',{name:/Cesta: 1/})
-     .waitFor({timeout:20000});
+    try{
+     await m3CustomerPage.getByRole('button',{name:/Cesta: 1/})
+      .waitFor({timeout:20000});
+    }catch(cause){
+     // This is still an unconditional functional assertion, not a retry or a
+     // weaker substitute. Preserve actual Chromium state when the basket UI
+     // fails so subsequent sessions can diagnose the failing layer.
+     const actualClient=await m3CustomerPage.evaluate(()=>{
+      const byRole=Array.from(document.querySelectorAll('button')).filter(button=>
+       button.closest('header')||button.closest('[data-testid="product-card"]'))
+       .map(button=>({label:button.getAttribute('aria-label'),text:button.textContent?.trim(),
+        disabled:button.disabled})).slice(0,30);
+      const basket=localStorage.getItem('sabora.client.selection.v1');
+      return {basket,buttons:byRole,dialogs:Array.from(document.querySelectorAll('[role="dialog"]'))
+       .map(dialog=>dialog.textContent?.slice(0,320)),url:location.pathname,
+       pageTitle:document.title};
+     });
+     const publishedItem=(await m3.app.inject('/api/v1/catalog')).json()
+      .find(item=>item.id===browserItemId);
+     await m3CustomerPage.screenshot({
+      path:m3Join(m3Evidence,'customer-b3-basket-failure.png'),fullPage:true});
+     throw Error('b3_customer_cart_not_updated_after_real_add_click:'+JSON.stringify({
+      actualClient,productText:await browserCard.innerText(),publishedItem,
+      browserErrors:m3BrowserErrors.slice(-12)}),{cause});
+    }
     await m3CustomerPage.waitForFunction(itemId=>{
      try{
       const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null');
