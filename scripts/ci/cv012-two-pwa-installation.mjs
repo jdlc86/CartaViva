@@ -68,15 +68,39 @@ const listen=async(server)=>{
  return 'http://127.0.0.1:'+server.address().port;
 };
 const waitForScope=async(page,path)=>{
- await page.waitForFunction(async expected=>{
-  const registrations=await navigator.serviceWorker.getRegistrations();
-  return registrations.some(reg=>new URL(reg.scope).pathname===expected&&reg.active);
- },path,{timeout:35000});
+ // A failure here must identify the lifecycle boundary, not only time out.
+ // Never log browser storage, HTTP headers, credentials or QR material.
+ const diagnostics=async phase=>{
+  const state=await page.evaluate(async expected=>{
+   const regs=await navigator.serviceWorker.getRegistrations();
+   const swPath=expected==='/'?'/sw.js':'/gestion/sw.js';
+   let scriptStatus=null;
+   try{scriptStatus=(await fetch(swPath,{cache:'no-store',credentials:'omit'})).status;}
+   catch{scriptStatus='network_error';}
+   return {
+    secureContext:isSecureContext,scriptStatus,
+    scopes:regs.map(r=>({scope:new URL(r.scope).pathname,
+     installing:r.installing?.state??null,waiting:r.waiting?.state??null,
+     active:r.active?.state??null})),
+    controller:navigator.serviceWorker.controller?
+     new URL(navigator.serviceWorker.controller.scriptURL).pathname:null
+   };
+  },path);
+  return 'cv012_service_worker_'+phase+':'+JSON.stringify(state);
+ };
+ try{
+  await page.waitForFunction(async expected=>{
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   return registrations.some(reg=>new URL(reg.scope).pathname===expected&&reg.active);
+  },path,{timeout:35000});
+ }catch(cause){throw Error(await diagnostics('activation'),{cause});}
  await page.reload({waitUntil:'load'});
- await page.waitForFunction(expected=>
-  navigator.serviceWorker.controller&&
-  new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
-  path==='/'?'/sw.js':'/gestion/sw.js',{timeout:35000});
+ try{
+  await page.waitForFunction(expected=>
+   navigator.serviceWorker.controller&&
+   new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
+   path==='/'?'/sw.js':'/gestion/sw.js',{timeout:35000});
+ }catch(cause){throw Error(await diagnostics('control'),{cause});}
 };
 const inventory=page=>page.evaluate(async()=>{
  const names=await caches.keys();
