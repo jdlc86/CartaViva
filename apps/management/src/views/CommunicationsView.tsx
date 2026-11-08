@@ -1,4 +1,4 @@
-import {useEffect,useState,type ChangeEvent,type FormEvent} from 'react';
+import {useEffect,useRef,useState,type ChangeEvent,type FormEvent} from 'react';
 import type {M5CommunicationsGateway,M5CommunicationDraft,M5CommunicationRecord} from '../m5-communications-model';
 
 const DAYS=[['L',1],['M',2],['X',3],['J',4],['V',5],['S',6],['D',7]] as const;
@@ -32,6 +32,17 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('');
  const [failed,setFailed]=useState(false);
+ const bodyInput=useRef<HTMLTextAreaElement>(null);
+ const insertAtCursor=(before:string,after:string='',fallback:string='')=>{
+  const input=bodyInput.current;
+  const start=input?.selectionStart??draft.body.length,end=input?.selectionEnd??start;
+  const text=draft.body.slice(start,end)||fallback;
+  const fragment=before+text+after;
+  if(draft.body.length-(end-start)+fragment.length>1200)return;
+  setDraft(d=>({...d,body:d.body.slice(0,start)+fragment+d.body.slice(end)}));
+  requestAnimationFrame(()=>{input?.focus();input?.setSelectionRange(start+before.length,
+   start+before.length+text.length);});
+ };
  const load=async()=>{
   if(!gateway){setItems([]);setLoading(false);setFailed(true);
    setMessage('Comunicaciones no habilitadas en este entorno.');return;}
@@ -99,8 +110,15 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
    <label>Título (máx. 120)
     <input required maxLength={120} value={draft.title}
      onChange={e=>setDraft(d=>({...d,title:e.target.value}))}/></label>
+   <div className="communications-format-actions" role="toolbar" aria-label="Formato básico del mensaje">
+    <button type="button" disabled={busy} onClick={()=>insertAtCursor('**','**','negrita')}>Negrita</button>
+    <button type="button" disabled={busy} onClick={()=>insertAtCursor('_','_','cursiva')}>Cursiva</button>
+    {['🥘','🌿','🎉','📣'].map(emoji=><button type="button" key={emoji}
+     aria-label={'Insertar '+emoji} disabled={busy}
+     onClick={()=>insertAtCursor(emoji)}>{emoji}</button>)}
+   </div>
    <label>Mensaje (admite saltos de línea y emojis)
-    <textarea required rows={4} maxLength={1200} value={draft.body}
+    <textarea ref={bodyInput} required rows={4} maxLength={1200} value={draft.body}
      onChange={e=>setDraft(d=>({...d,body:e.target.value}))}/></label>
    <div className="communications-grid">
     <label>Emoji para la banda
