@@ -177,3 +177,20 @@ La solución no da por completado CV-014 entero: reservas anticipadas y llamada 
 
 
 **Corte de validación B3 corregido — SHA `24b0f8ee50162dcfe42c767170c4a0263c1025f9`:** [Bootstrap PostgreSQL 17 #42475077004](https://github.com/jdlc86/CartaViva/actions/runs/42475077004) **SUCCESS**, incluidas migración PG17 real y test B3 completo **`ok 49` / 51 de 51 PASS**, con las nuevas comprobaciones de formulario limpio/publicación sin modificadores. Además: [cliente Chromium #42475077072](https://github.com/jdlc86/CartaViva/actions/runs/42475077072), [gestión Chromium #42475077041](https://github.com/jdlc86/CartaViva/actions/runs/42475077041), [dos PWA #42475076983](https://github.com/jdlc86/CartaViva/actions/runs/42475076983) y [puerta funcional #42475076960](https://github.com/jdlc86/CartaViva/actions/runs/42475076960) **SUCCESS**. **[CI H6 consolidada #42475076963](https://github.com/jdlc86/CartaViva/actions/runs/42475076963) seguía EN EJECUCIÓN** en esta consulta. Por tanto, **5/6 concluidas en verde, NO afirmar 6/6** ni trasladar la evidencia a los SHAs documentales `[skip ci]` posteriores. No fusionar ni desplegar sin nueva comprobación final y autorización.
+
+## 14. 08-11-2026 — cierre técnico de la corrección causal B3: 6/6 CI en el mismo SHA
+
+**Ejecución FINAL comprobada en GitHub para el SHA funcional `24b0f8ee50162dcfe42c767170c4a0263c1025f9`: 6/6 workflows `completed/success`.** Esta sección **sustituye el estado provisional 5/6 «H6 en ejecución» de §13**, que se conserva únicamente como registro cronológico.
+
+| Validación | Resultado | Evidencia |
+| --- | --- | --- |
+| Bootstrap PostgreSQL 17 / Node driver / dos PWA Chromium / B3 | **SUCCESS**, **51/51 PASS**, subtest B3 `ok 49`; incluye formulario limpio y snapshot publicado sin extras/opciones heredadas | [#42475077004](https://github.com/jdlc86/CartaViva/actions/runs/42475077004) |
+| Aceptación consolidada H6 (regresión larga) | **SUCCESS** | [#42475076963](https://github.com/jdlc86/CartaViva/actions/runs/42475076963) |
+| Chromium cliente | **SUCCESS** | [#42475077072](https://github.com/jdlc86/CartaViva/actions/runs/42475077072) |
+| Chromium gestión | **SUCCESS** | [#42475077041](https://github.com/jdlc86/CartaViva/actions/runs/42475077041) |
+| Instalabilidad/aislamiento dos PWA | **SUCCESS** | [#42475076983](https://github.com/jdlc86/CartaViva/actions/runs/42475076983) |
+| Cobertura funcional ↔ UI | **SUCCESS** | [#42475076960](https://github.com/jdlc86/CartaViva/actions/runs/42475076960) |
+
+**Diagnóstico cerrado al nivel de defecto demostrable:** captura del fallo anterior acreditó que el nuevo «Brunch» heredó los modificadores de «Bocado M3»; el cliente abrió el editor de variantes por contrato y nunca incrementó `Cesta: 1`. La limpieza tardía en `useEffect` no garantizaba un formulario nuevo vacío antes del siguiente gesto. El parche limpia sincrónicamente en «Nuevo plato», y el escenario B3 completo comprueba **interfaz y proyección persistida** sin herencias antes de continuar con la operación económica. **No fue necesario modificar las reglas SQL de cambio de mesa ni la cesta, relajar tiempos de espera, suprimir pruebas o declarar el SSE como causa.**
+
+**Alcance del cierre:** estabilidad técnica de este defecto y de la regresión sobre `24b0f8ee` en GitHub Actions aislado; no equivale a validación de usuario real, aceptación humana F28/R09, cierre global CV-014/M5, Stripe operativo/M4, recuperación/M6 ni GO de producción. El HEAD posterior de la rama incluye documentación `[skip ci]`, **no atribuirle ejecución distinta**. PR #51 sigue Draft/sin merge; producción, Supabase operativo, Fleetia y VPS intactos. [Tablero §50](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) e [informe causal](../reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md) recogen el mismo corte.
