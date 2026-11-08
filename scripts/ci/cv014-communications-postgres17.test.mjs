@@ -231,7 +231,8 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
    .waitFor({timeout:28_000});
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
   await customer.locator('.announcement-details img').waitFor();
-  await customer.locator('.announcement-details strong').getByText('negrita').waitFor();
+  // Match the STRONG itself, not nonexistent descendants of the STRONG.
+  await customer.locator('.announcement-details strong').filter({hasText:'negrita'}).waitFor();
   assert.equal((await customer.locator('.announcement-details img').getAttribute('src')||'').startsWith('data:image/png;base64,'),true);
   const evidenceDir=join(process.env.RUNNER_TEMP||'/tmp','sabora-cv014-browser');
   mkdirSync(evidenceDir,{recursive:true});
