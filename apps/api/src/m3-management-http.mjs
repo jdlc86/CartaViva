@@ -43,7 +43,9 @@ const projectTablesPage=page=>{
 const verifiedTablePermissions=request=>{
  const role=request.verifiedStaff?.role;
  if(!['admin','root','waiter'].includes(role))throw Error('m3_management_forbidden');
- const administrative=role==='admin'||role==='root';
+ // ROOT can inspect the administrative projection but cannot own routine
+ // configuration writes; DB revalidates the unique owner ADMIN.
+ const administrative=role==='admin';
  return {configure:administrative,qr:administrative,readiness:true,occupancy:true};
 };
 const failure=(reply,error,kind,observeFailure)=>{
@@ -95,7 +97,8 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=nu
   const {requestId,operation}=request.body;
   // Ordinary table-management staff may set readiness but cannot mutate
   // administrative fields or QR credentials (SQL repeats this check).
-  if(operation!=='readiness'&&!['admin','root'].includes(request.verifiedStaff?.role))
+  if(request.verifiedStaff?.role==='root'||
+    (operation!=='readiness'&&request.verifiedStaff?.role!=='admin'))
    return reply.code(403).send({error:'forbidden'});
   let payload={...request.body.payload},entropy,token;
   if(operation==='create'||operation==='qr_rotate'){
@@ -121,6 +124,8 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=nu
       !['open','paused','closed'].includes(request.body.target)||
       (request.body.pauseUntil!==null&&typeof request.body.pauseUntil!=='string'))
     return reply.code(400).send({error:'invalid_tables_request'});
+   if(request.verifiedStaff?.role==='root')
+    return reply.code(403).send({error:'forbidden'});
    try{return reply.code(200).send(await tables.occupancy(verified(request),{
     tableId:request.params.tableId,...request.body}));}
    catch(error){return failure(reply,error,'tables',observeFailure);}
@@ -147,6 +152,8 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=nu
   if(!exact(request.body,['requestId','operation','payload'])||!UUID.test(request.body.requestId??'')||
      typeof request.body.operation!=='string'||!plain(request.body.payload))
    return reply.code(400).send({error:'invalid_catalog_request'});
+  if(request.verifiedStaff?.role!=='admin')
+   return reply.code(403).send({error:'forbidden'});
   try{return reply.code(200).send(await catalog.manage(verified(request),request.body));}
   catch(error){return failure(reply,error,'catalog',observeFailure);}
  });
