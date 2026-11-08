@@ -137,6 +137,7 @@ BEGIN
   OR jsonb_typeof(p->'body')<>'string' OR length(btrim(p->>'body')) NOT BETWEEN 1 AND 1200
   OR regexp_replace(p->>'body',E'[\\n\\r\\t]','','g')~'[[:cntrl:]]'
   OR jsonb_typeof(p->'emoji')<>'string' OR length(p->>'emoji')>12
+  OR (p->>'emoji')~'[[:cntrl:]]'
   OR p->>'priority' IS NULL OR p->>'priority' NOT IN ('ALTA','BAJA') THEN
   RAISE EXCEPTION 'invalid_comms_content' USING errcode='22023'; END IF;
  IF p->'image' <> 'null'::jsonb THEN
