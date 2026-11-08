@@ -262,7 +262,12 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
      operation==='qr_rotate'?'QR rotado. La credencial anterior ya no autoriza acciones nuevas.':
      operation==='qr_revoke'?'QR revocado sin alterar pedidos ni cuentas históricas.':'Cambio confirmado y auditado.');
     if(operation==='create'){setCreateOpen(false);setCreateNumber('');setCreateDescription('');}
-    }catch{
+    }catch(error){
+    if(error instanceof Error&&error.message==='m3_management_forbidden'){
+     setMutationRequiresRefresh(false);setQrPayload(null);
+     setActionMessage('No tienes autorización de escritura administrativa. Solo el administrador titular puede configurar mesas y QR.');
+     return;
+    }
     setMutationRequiresRefresh(true);
     setQrPayload(null);
     setActionMessage(committed?
@@ -285,7 +290,12 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
       return;
     }
     setActionMessage('Ocupación actualizada con la política económica vigente.');
-   }catch{
+   }catch(error){
+    if(error instanceof Error&&error.message==='m3_management_forbidden'){
+     setMutationRequiresRefresh(false);
+     setActionMessage('No tienes permiso para cambiar la ocupación de esta mesa.');
+     return;
+    }
     setMutationRequiresRefresh(true);
     setActionMessage(committed?
      'El servidor confirmó la ocupación, pero la lectura no pudo verificarse. Actualiza la lectura.':
