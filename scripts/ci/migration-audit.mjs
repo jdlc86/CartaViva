@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261108160000_sabora_m3_m5_signed_capability_null_hardening_candidate.sql':r(
+  'M3/M5 capability HMAC NULL fail-closed repair',
+  ['M3/M5 shared signed verifier','M3 and M5 writer grants/RLS unchanged'],
+  'replaces shared verifier body to reject absent/NULL/ill-typed capability fields and NULL HMAC comparisons',
+  'retains existing NOLOGIN function owner and exact grants, no new runtime, login or browser SQL privileges',
+  'CREATE OR REPLACE function catalog change; existing owner singleton and keyring/staff lock order preserved',
+  'no data rewrite; prevents unsigned administrative mutation across catalog, tables and communications',
+  'inherited'),
  '20261108150000_sabora_admin_ownership_governance_rpc_candidate.sql':r(
   'ADMIN ownership government and ROOT forced recovery',
   ['admin_write_ownership','admin_ownership_proposals','admin_ownership_audit','staff_members','M3/M5 owner locks'],
