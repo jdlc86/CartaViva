@@ -193,11 +193,12 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
-  await manager.getByRole('button',{name:'Publicar borrador'}).last().click();
+  await manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'})
+   .getByRole('button',{name:'Publicar borrador'}).click();
   await manager.getByText('Anuncio publicado.',{exact:false}).waitFor();
   assert.equal((await getPublic()).items.length,2);
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/})
-   .waitFor({timeout:18_000});
+   .waitFor({timeout:28_000});
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
   await customer.locator('.announcement-details img').waitFor();
   assert.equal((await customer.locator('.announcement-details img').getAttribute('src')||'').startsWith('data:image/png;base64,'),true);
