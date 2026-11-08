@@ -64,7 +64,8 @@ test('premium client flow keeps dynamic catalog, favorites and selection without
  await page.getByRole('button',{name:'QR',exact:true}).click();
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  await page.screenshot({path:testInfo.outputPath(`client-qr-${testInfo.project.name}.png`),fullPage:true});
- expect([...new Set(apiRequests)].sort()).toEqual(['/api/v1/catalog','/api/v1/customer/session']);
+ expect([...new Set(apiRequests)].sort()).toEqual(['/api/v1/catalog','/api/v1/customer/session',
+  '/api/v1/public/communications','/api/v1/public/communications/events']);
 });
 
 test('identity registration uses same-origin HttpOnly session contract without exposing credentials',async({page})=>{
