@@ -606,3 +606,31 @@ p { line-height: 1.55; }
 .finance-channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;font-size:.85rem;}
 .finance-channels p{margin:0;}
 @media(max-width:600px){.finance-month{margin-inline-start:0;}.finance-trend{gap:1px;padding-inline:2px;}.finance-trend-day small{font-size:.55rem;}.finance-snapshot-time{flex-direction:column;}}
+
+/* CV-014 communications editor uses existing management spacing and colors. */
+.configuration-tabs,.communications-actions,.communications-heading{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.configuration-tabs{margin:12px 0 22px}
+.configuration-tabs button[aria-pressed=true]{border-color:var(--brand,#146B57);background:var(--brand,#146B57);color:white}
+.communications-management{max-width:1080px}
+.communications-editor,.communications-item{display:grid;gap:14px;margin:15px 0;padding:20px;
+ border:1px solid #d5ddd6;border-radius:16px;background:#fff}
+.communications-editor label{display:grid;gap:6px;font-weight:600}
+.communications-editor input:not([type=checkbox]),.communications-editor select,
+.communications-editor textarea{min-height:44px;width:100%;padding:10px 12px;border:1px solid #aab9ac;
+ border-radius:9px;background:#fff;font:inherit}
+.communications-editor textarea{resize:vertical}
+.communications-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.communications-weekdays{display:flex;gap:16px;flex-wrap:wrap}
+.communications-weekdays label{display:flex;align-items:center;gap:5px}
+.communications-preview{border-left:4px solid #146B57;background:#e7f2eb;padding:14px;border-radius:10px}
+.communications-preview p{white-space:pre-line}
+.communications-image-selected img{display:block;width:min(100%,240px);max-height:180px;object-fit:contain}
+.communications-actions button,.communications-heading button,.configuration-tabs button{min-height:44px;
+ padding:9px 14px;border:1px solid #146B57;background:#fff;color:#146B57;border-radius:9px;cursor:pointer}
+.communications-actions button:first-child{background:#146B57;color:white}
+.communications-actions button:disabled,.communications-heading button:disabled{opacity:.55;cursor:not-allowed}
+.communications-items{display:grid;gap:10px;margin-top:20px}
+.communications-item{margin:0;white-space:normal;min-width:0}
+.communications-item h4{margin:0}
+.communications-item small{overflow-wrap:anywhere}
+@media(max-width:540px){.communications-editor,.communications-item{padding:14px}}
