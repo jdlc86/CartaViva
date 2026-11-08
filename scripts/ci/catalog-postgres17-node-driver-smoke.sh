@@ -75,6 +75,8 @@ node --test scripts/ci/m3-management-postgres17.test.mjs
 npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false pg@8.16.3 playwright@1.56.1 >/dev/null
 timeout --signal=TERM --kill-after=15s 180s "$tmp/node_modules/.bin/playwright" install chromium
 export SABORA_CI_PLAYWRIGHT_MODULE="$tmp/node_modules/playwright/index.mjs"
+# CV-014 end-to-end: restricted SQL login -> Fastify -> both real PWAs and SSE.
+node --test scripts/ci/cv014-communications-postgres17.test.mjs
 node --test scripts/ci/order-operations-read-postgres17.test.mjs
 node --test scripts/ci/staff-display-id-postgres17.test.mjs
 node --test scripts/ci/staff-directory-postgres17.test.mjs
