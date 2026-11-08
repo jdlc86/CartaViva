@@ -81,7 +81,7 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   // without exposing a key, token or signature in logs or HTTP responses.
   const signedProbe=issueCapability({actorId:b,staffRole:'admin',
    action:'ownership.read',requestId:randomUUID(),body:'ownership.read'});
-  const probe=(await admin.query(\`WITH cap AS (SELECT $1::jsonb AS c)
+  const probe=(await admin.query(`WITH cap AS (SELECT $1::jsonb AS c)
    SELECT
     (c->>'databaseRole'=$2) AS audience,
     (c->>'staffRole'='admin') AS staff_role,
@@ -100,7 +100,7 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
      floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
     (c->>'expiresAtMs')::bigint >
      floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
-   FROM cap\`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
   assert(Object.values(probe).every(v=>v===true),
    'signed governance input invalid: '+
    Object.keys(probe).filter(k=>probe[k]!==true).join(','));
@@ -108,13 +108,13 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   try{
    await sealed.query('BEGIN');
    await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
-   const rows=(await sealed.query(\`SELECT
+   const rows=(await sealed.query(`SELECT
     (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
     (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
       AND role='admin' AND state='active') AS staff,
     (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
       WHERE key_id=$2 AND disabled_at IS NULL
-       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring\`,
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
     [b,keyId])).rows[0];
    assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
     'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
