@@ -113,8 +113,8 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
     <input required maxLength={120} value={draft.title}
      onChange={e=>setDraft(d=>({...d,title:e.target.value}))}/></label>
    <div className="communications-format-actions" role="toolbar" aria-label="Formato básico del mensaje">
-    <button type="button" disabled={busy} onClick={()=>insertAtCursor('**','**','negrita')}>Negrita</button>
-    <button type="button" disabled={busy} onClick={()=>insertAtCursor('_','_','cursiva')}>Cursiva</button>
+    <button type="button" disabled={busy} onMouseDown={e=>e.preventDefault()} onClick={()=>insertAtCursor('**','**','negrita')}>Negrita</button>
+    <button type="button" disabled={busy} onMouseDown={e=>e.preventDefault()} onClick={()=>insertAtCursor('_','_','cursiva')}>Cursiva</button>
     {['🥘','🌿','🎉','📣'].map(emoji=><button type="button" key={emoji}
      aria-label={'Insertar '+emoji} disabled={busy}
      onClick={()=>insertAtCursor(emoji)}>{emoji}</button>)}

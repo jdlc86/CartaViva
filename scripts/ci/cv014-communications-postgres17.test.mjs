@@ -201,8 +201,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   // Explicitly collapse selection before formatting, as a real user would.
   await messageEditor.press('End');
   await manager.getByRole('button',{name:'Negrita'}).click();
-  assert.match(await messageEditor.inputValue(),new RegExp('negrita'),
-   'bold toolbar must persist selected formatting before publication');
+  const formattedBody=await messageEditor.inputValue();
+  assert.match(formattedBody,/\\*\\*negrita\\*\\*/,
+   'bold toolbar must insert actual markup before publication');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
   await manager.getByLabel('Hora desde').fill('00:00');
@@ -217,10 +218,15 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
+  assert.equal(photo.draft.body,formattedBody,
+   'draft must persist exactly the formatted browser message');
   await manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'})
    .getByRole('button',{name:'Publicar borrador'}).click();
   await manager.getByText('Anuncio publicado.',{exact:false}).waitFor();
-  assert.equal((await getPublic()).items.length,2);
+  const publishedAnnouncements=(await getPublic()).items;
+  assert.equal(publishedAnnouncements.length,2);
+  assert.equal(publishedAnnouncements.find(a=>a.title==='Oferta de la tarde')?.body,
+   formattedBody,'public projection must retain formatted text without stripping markup');
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/})
    .waitFor({timeout:28_000});
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
