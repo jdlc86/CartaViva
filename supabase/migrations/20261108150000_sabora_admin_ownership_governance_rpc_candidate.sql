@@ -113,7 +113,7 @@ BEGIN
   OR p_capability->>'staffRole' NOT IN ('admin','root')
   OR p_action NOT IN ('read','request','offer','accept','reject','cancel','force')
   OR p_capability->>'action' IS DISTINCT FROM
-   CASE WHEN p_action='read' THEN 'ownership.read' ELSE 'ownership.manage' END
+   (CASE WHEN p_action='read' THEN 'ownership.read' ELSE 'ownership.manage' END)
   OR p_capability->>'requestId' !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   OR p_body IS NULL OR octet_length(convert_to(p_body,'UTF8'))>4096
   OR p_capability->>'bodyHashHex' IS DISTINCT FROM
@@ -168,7 +168,7 @@ BEGIN
       jsonb_build_object('id',n.id,'action',n.action,
         'previousOwnerId',n.previous_owner_id,'nextOwnerId',n.next_owner_id,
         'createdAt',n.created_at) ORDER BY n.created_at DESC),'[]'::jsonb)
-     FROM (SELECT * FROM sabora.admin_ownership_notifications
+     FROM (SELECT id,recipient_user_id,action,previous_owner_id,next_owner_id,created_at FROM sabora.admin_ownership_notifications
       WHERE recipient_user_id=v_actor ORDER BY created_at DESC LIMIT 20) n)
   );
  END IF;
