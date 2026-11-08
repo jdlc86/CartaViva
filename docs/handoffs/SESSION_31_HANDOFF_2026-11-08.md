@@ -154,3 +154,18 @@ La precisión del propietario motivó una comprobación estricta de la **fuente 
 **Estado de validación al registrar: CI del nuevo SHA EN EJECUCIÓN, todavía no afirmar PASS.** Workflows de [CI H6 #42532910370](https://github.com/jdlc86/CartaViva/actions/runs/42532910370), [Bootstrap PG17/Chromium #42532910424](https://github.com/jdlc86/CartaViva/actions/runs/42532910424), [cliente Chromium #42532910371](https://github.com/jdlc86/CartaViva/actions/runs/42532910371), [gestión Chromium #42532910369](https://github.com/jdlc86/CartaViva/actions/runs/42532910369), [dos PWA #42532910422](https://github.com/jdlc86/CartaViva/actions/runs/42532910422) y [puerta funcional UI #42532910414](https://github.com/jdlc86/CartaViva/actions/runs/42532910414). Este último terminó SUCCESS en comprobación preliminar; verificar 6/6 **sobre `20e75bd6`**. Documentos `[skip ci]` no equivalen a código probado.
 
 **Próxima puerta:** inspeccionar logs de prueba integrada RV-04, corregir y ejecutar de nuevo si falla, y registrar el cierre exacto por SHA y nueva revisión técnica. Permanecen pendientes aprobación visual humana F28/R09, M4 Stripe real, M6 y restantes CV-014. Ninguna operación sobre Fleetia, VPS o Supabase operativo.
+
+## 12. RV-04 validado: seis workflows correctos sobre el mismo SHA funcional — 08-11-2026
+
+**Actualización del estado provisional del §11:** el commit funcional [`20e75bd6ad34cf45012131bb50803c32c6f780ec`](https://github.com/jdlc86/CartaViva/commit/20e75bd6ad34cf45012131bb50803c32c6f780ec) terminó con **6/6 workflows `completed/success`**, verificados en GitHub (y no heredados de `1dcd7c91`):
+
+- [Bootstrap PostgreSQL 17 #42532910424](https://github.com/jdlc86/CartaViva/actions/runs/42532910424): **SUCCESS**. Registro del job `generate-lockfile` #128890871173: escenario integrado `PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfer, ROOT force and stale writer denial` **1/1 PASS, 0 FAIL**, incluyendo la nueva verificación de la decodificación JSON tardía de RV-04 dentro de ese escenario.
+- [H6 integral #42532910370](https://github.com/jdlc86/CartaViva/actions/runs/42532910370): **SUCCESS** (job `validate` #128890871187).
+- [PWA cliente Chromium #42532910371](https://github.com/jdlc86/CartaViva/actions/runs/42532910371): **SUCCESS**.
+- [PWA gestión Chromium #42532910369](https://github.com/jdlc86/CartaViva/actions/runs/42532910369): **SUCCESS**.
+- [Instalación independiente de ambas PWA #42532910422](https://github.com/jdlc86/CartaViva/actions/runs/42532910422): **SUCCESS**.
+- [Cobertura funcional↔UI #42532910414](https://github.com/jdlc86/CartaViva/actions/runs/42532910414): **SUCCESS**; aceptación final visual humana no acreditada.
+
+**Conclusión de evidencia:** RV-04 **implementado y validado en la batería integrada automatizada**. En `ownership-governance-gateway.js` la época se comprueba después de decodificar JSON y se distingue `session_revoked` cuando el abortado ocurre durante esa espera; E2E demuestra que una respuesta antigua demorada no se entrega y que la identidad siguiente conserva su lectura firmada legítima. RV-03 sigue retirado como bloqueo contractual según §10; la solicitud sigue enrutada al titular por el **servidor**.
+
+**No declarar aprobado el PR solo por CI:** falta una revisión formal posterior a RV-04, y la conexión `jdlc86` es la misma cuenta autora. PR #52 sigue Draft, sin merge, sin despliegue; F28/R09 humana, M4, M6 y restantes CV-014 continúan sin GO. Los commits documentales con `[skip ci]` posteriores no añaden cambios funcionales ni validaciones nuevas.
