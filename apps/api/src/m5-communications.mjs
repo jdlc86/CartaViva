@@ -46,7 +46,7 @@ export function validateM5AnnouncementDraft(draft){
   /[\u0000-\u001f\u007f]/u.test(draft.title)||
   typeof draft.body!=='string'||draft.body.trim().length<1||draft.body.length>1200||
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(draft.body)||
-  typeof draft.emoji!=='string'||draft.emoji.length>12||
+  typeof draft.emoji!=='string'||draft.emoji.length>12||/[\u0000-\u001f\u007f]/u.test(draft.emoji)||
   !['ALTA','BAJA'].includes(draft.priority))throw bad('invalid_comms_content');
  if(draft.image===null){
   if(draft.imageLicense!==null)throw bad('invalid_comms_image_license');
