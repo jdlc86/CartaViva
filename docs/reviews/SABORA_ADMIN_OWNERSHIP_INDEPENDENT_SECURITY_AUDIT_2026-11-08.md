@@ -36,3 +36,20 @@ Revisados directamente: rutas y composición Fastify opt-in, verificador JWT/mem
 **Decisión provisional: REVISIÓN DE SEGURIDAD CON REMEDIACIÓN EN CURSO / NO-GO.** Después del 6/6 final, el código podrá considerarse **técnicamente candidato** para revisión humana/independiente y decisión explícita de PR/merge; no es GO productivo. F28/R09 visual, CV-014 reservas/llamada camarero, M4 Stripe test y M6 operación continúan pendientes. Sin merge ni despliegue.
 
 [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [continuidad sesión 30](../handoffs/SESSION_30_HANDOFF_2026-11-08.md) · [informe funcional previo PR #52](SABORA_ADMIN_OWNERSHIP_GOVERNANCE_INTEGRAL_CANDIDATE_2026-11-08.md).
+
+## 5. Cierre técnico de las remediaciones SEC-01 a SEC-04 — mismo SHA, seis pruebas verdes
+
+**Actualización que sustituye la situación provisional de §4:** las seis ejecuciones de GitHub Actions del **SHA FUNCIONAL** [`d7dfa98307fcf7bc9b2d41bf91c63c9ca620d7f1`](https://github.com/jdlc86/CartaViva/commit/d7dfa98307fcf7bc9b2d41bf91c63c9ca620d7f1) han concluido `completed/success`. No extrapolar el CI a los commits documentales posteriores.
+
+| Comprobación, mismo SHA funcional | Resultado y referencia |
+| --- | --- |
+| [Bootstrap PostgreSQL 17 y Node driver](https://github.com/jdlc86/CartaViva/actions/runs/42521463148) | **SUCCESS**; migraciones aplicadas, rechazo HMAC nulo de personal/directorio, M3/M5 escritor único y recorrido JWT/HMAC/Fastify/Chromium de cesión; subtests protegidos `ok` en los logs |
+| [H6 consolidado](https://github.com/jdlc86/CartaViva/actions/runs/42521463167) | **SUCCESS**; Bloque 1 contratos, Bloque 2A PG17/RLS/privilegios y Bloque 2B PG17/HMAC/concurrencia/Chromium, todos `PASS` |
+| [CV-012 dos PWA](https://github.com/jdlc86/CartaViva/actions/runs/42521463163) | **SUCCESS** |
+| [Navegador gestión](https://github.com/jdlc86/CartaViva/actions/runs/42521463175) | **SUCCESS** |
+| [Navegador cliente](https://github.com/jdlc86/CartaViva/actions/runs/42521463189) | **SUCCESS** |
+| [Control funcional↔UI](https://github.com/jdlc86/CartaViva/actions/runs/42521463203) | **SUCCESS** |
+
+**Comprobación específica de nuevos escenarios de seguridad en los registros del Bootstrap:** `PG17 staff identity and directory SQL reject NULL signed capabilities without writes or disclosures` → `ok 2`; `PG17 single ADMIN writer: signed catalog/table/comms, root denied, transfer/replay fence, no side effects` → `ok 1`; `PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfer, ROOT force and stale writer denial` → `ok 1`. Los resultados H6 confirman que el bloque 2B de regresión sigue pasando con el nuevo SQL.
+
+**Decisión auditora limitada:** SEC-01 a SEC-04 corregidos en código y **técnicamente validados por el CI integrado aislado**; la auditoría crítica de código de este alcance ha concluido. **No se certifica pentest externo, auditoría independiente de terceros, aprobación visual humana F28/R09, funcionamiento de Stripe real, operación M6 ni GO productivo**. Mantener PR #52 **Draft**, sin merge, despliegue, migraciones Supabase operativas ni modificación de Fleetia/VPS. Pasar a revisión externa/humana y decisión expresa según la normativa.
