@@ -76,8 +76,10 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
    if(operation==='save'){setEditing(null);setDraft(emptyDraft());}
    else if(editing?.id===target?.id)setEditing(null);
   }catch(error){
-   setFailed(true);setMessage(error instanceof Error&&error.message==='m3_management_conflict'?
-    'Otro gestor cambió el anuncio. Actualiza la lista y revisa antes de reintentar.':
+   setFailed(true);setMessage(error instanceof Error&&error.message==='m3_management_forbidden'?
+    'Solo el administrador titular puede modificar Comunicaciones. No se ha guardado ni publicado nada.':
+    error instanceof Error&&error.message==='m3_management_conflict'?
+    'La revisión del anuncio cambió. Actualiza la lista y revisa antes de reintentar.':
     'No se pudo aplicar la operación. No se ha confirmado ningún cambio.');
   }finally{setBusy(false);}
  };
