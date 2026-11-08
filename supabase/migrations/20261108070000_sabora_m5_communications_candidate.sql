@@ -147,13 +147,13 @@ BEGIN
    OR octet_length(decode(split_part(p->>'image',',',2),'base64'))>131072
   THEN RAISE EXCEPTION 'invalid_comms_image' USING errcode='22023'; END IF;
   IF NOT (
-   (left(p->>'image',14)='data:image/png;' AND
+   (left(p->>'image',15)='data:image/png;' AND
     encode(substring(decode(split_part(p->>'image',',',2),'base64') FROM 1 FOR 8),'hex')
       ='89504e470d0a1a0a')
-   OR (left(p->>'image',15)='data:image/jpeg;' AND
+   OR (left(p->>'image',16)='data:image/jpeg;' AND
     encode(substring(decode(split_part(p->>'image',',',2),'base64') FROM 1 FOR 3),'hex')
       ='ffd8ff')
-   OR (left(p->>'image',15)='data:image/webp;' AND
+   OR (left(p->>'image',16)='data:image/webp;' AND
     encode(substring(decode(split_part(p->>'image',',',2),'base64') FROM 1 FOR 4),'hex')
       ='52494646' AND
     encode(substring(decode(split_part(p->>'image',',',2),'base64') FROM 9 FOR 4),'hex')
