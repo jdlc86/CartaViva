@@ -22,6 +22,11 @@ test.beforeEach(async({page})=>{
      &&!response.ok())console.warn('client flow fixture HTTP failure',pathname,response.status());
  });
  await page.route('**/api/v1/catalog',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(catalog)}));
+ // An old H6 runtime has no communications module. Browser must not start
+ // an unbounded EventSource reconnect loop on the explicit HTTP 404.
+ await page.route('**/api/v1/public/communications',route=>route.fulfill({
+  status:404,contentType:'application/json',body:JSON.stringify({error:'not_installed'})
+ }));
  await page.route('**/api/v1/customer/session',route=>route.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'unauthorized'})}));
  // Earlier H6 browser fixtures have no confirmed account. A sealed read-only
  // state projection must say unbound before those visits may be authorized.
@@ -65,7 +70,8 @@ test('premium client flow keeps dynamic catalog, favorites and selection without
  await expect(page.getByRole('dialog',{name:'QR de mesa'})).toContainText('comprobará identidad');
  await page.screenshot({path:testInfo.outputPath(`client-qr-${testInfo.project.name}.png`),fullPage:true});
  expect([...new Set(apiRequests)].sort()).toEqual(['/api/v1/catalog','/api/v1/customer/session',
-  '/api/v1/public/communications','/api/v1/public/communications/events']);
+  '/api/v1/public/communications']);
+ expect(apiRequests.includes('/api/v1/public/communications/events')).toBe(false);
 });
 
 test('identity registration uses same-origin HttpOnly session contract without exposing credentials',async({page})=>{
