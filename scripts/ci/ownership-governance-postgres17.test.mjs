@@ -27,14 +27,14 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   staffLogin='sabora_owner_staff_'+suffix,keyId='ownership_ci_'+suffix;
  const password='sabora_governance_ci_'+randomBytes(16).toString('hex');
  const admin=new Pool({connectionString:target,max:3});
- const [a,b,c]=[randomUUID(),randomUUID(),randomUUID()];
+ const [a,b,c,d]=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];
  const secret=randomBytes(32),pools=[];
- let api,vite,browser,originalOwner=null;
+ let api,vite,browser,shortApi,originalOwner=null;
  try{
   originalOwner=(await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id;
   let root=(await admin.query("SELECT user_id FROM sabora.staff_members WHERE role='root' AND state='active'")).rows[0]?.user_id;
   if(!root){root=randomUUID();await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[root]);}
-  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active')",[a,b,c]);
+  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active'),($4,'admin','active')",[a,b,c,d]);
   // Real human identities already defined by the staff enrollment contract.
   for(const [user,given,family,code] of [[a,'Alicia','Molina','Z9A'],
     [b,'Bruno','Romero','Z9B'],[c,'Clara','Rivera','Z9C']]){
@@ -203,6 +203,10 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
     x.familyName==='Romero'&&x.operationalDisplayId==='BR-Z9B'));
   assert(identities.every(x=>!('email' in x)),
     'recipient lookup must never expose contacts');
+  const legacy=identities.find(x=>x.userId===d);
+  assert(legacy&&legacy.givenName===null&&legacy.familyName===null&&
+   legacy.operationalDisplayId===null,
+   'real SQL must include active legacy ADMIN without enrollment metadata');
   const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
   assert.equal(req.statusCode,200,req.body);
   const proposalId=req.json().proposalId;assert(proposalId);
@@ -281,6 +285,18 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   await page.getByRole('button',{name:'Ofrecer cesión'}).click();
   await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
   assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+  // RF-01: current owner can offer to an active legacy ADMIN whose human
+  // details were never added to the later enrollment record.
+  const legacyOfferLabel=await page.getByLabel('ADMIN destinatario de cesión')
+   .locator('option[value="'+d+'"]').textContent();
+  assert.equal(legacyOfferLabel,'ADMIN activo sin ficha operativa · ID completo '+d);
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(d);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query(
+   "SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",
+   [owner,d])).rows[0].n,1,'signed offer to legacy ADMIN must persist');
+
   // Full PWA session replacement: A's deferred token must not send a new
   // governance action after ROOT takes over, even without calling A's disposer.
   await page.evaluate(async ownerToken=>{
@@ -367,9 +383,74 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    'decoded body from a revoked employee must never escape the gateway');
   assert.equal(delayed.freshOwner,a,
    'new authenticated identity retains its authorized signed read');
+
+  // RF-01: ROOT can recover ownership to an active legacy ADMIN with full,
+  // unambiguous server identity even when no name/display code is available.
+  const rootChoice=await page.getByLabel('ADMIN destinatario de reasignación')
+   .locator('option[value="'+d+'"]').textContent();
+  assert.equal(rootChoice,'ADMIN activo sin ficha operativa · ID completo '+d);
+  await page.getByLabel('ADMIN destinatario de reasignación').selectOption(d);
+  await page.getByLabel('Motivo obligatorio').fill('Recuperación de ADMIN activo sin ficha histórica');
+  await page.getByRole('button',{name:'Reasignar forzosamente'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await read(root)).json().ownerUserId,d);
+  assert((await read(d)).json().notifications.some(x=>x.action==='force_transfer'),
+   'legacy ADMIN receives the durable recovery notification');
+
+  // RF-02: signed capability is initially valid but expires while the
+  // actual restricted PostgreSQL call awaits a staff FOR UPDATE row lock.
+  // Verify that neither ownership, proposals, audit nor notices change.
+  const shortIssuer=createOwnershipCapabilityIssuer({
+   keyId,secret,databaseRole:login,ttlMs:1000});
+  shortApi=Fastify({logger:false,trustProxy:false});
+  registerOwnershipGovernanceHttp(shortApi,{forRoles,
+   repository:createOwnershipGovernanceRepository({
+    withTransaction,issueCapability:shortIssuer})});
+  await shortApi.ready();
+  const blockedRequestId=randomUUID();
+  const locker=await admin.connect();
+  let blockedResponse;
+  try{
+   await locker.query('BEGIN');
+   await locker.query('SELECT user_id FROM sabora.staff_members WHERE user_id=$1 FOR UPDATE',[b]);
+   blockedResponse=shortApi.inject({method:'POST',
+    url:'/api/v1/admin/ownership/actions',
+    headers:{authorization:'Bearer '+jwt(b)},
+    payload:{requestId:blockedRequestId,action:'request',
+     proposalId:null,targetUserId:null,reason:null}}).then(value=>value);
+   let waiting=false;
+   for(let tries=0;tries<50;tries++){
+    const status=await admin.query(`SELECT EXISTS(
+     SELECT 1 FROM pg_stat_activity WHERE usename=$1
+      AND wait_event_type='Lock'
+      AND query LIKE '%admin_ownership_action_candidate%'
+    ) AS blocked`,[login]);
+    if(status.rows[0].blocked){waiting=true;break;}
+    await new Promise(resolve=>setTimeout(resolve,40));
+   }
+   assert.equal(waiting,true,
+    'real signed ownership call must be observed waiting on PostgreSQL');
+   await new Promise(resolve=>setTimeout(resolve,1400));
+  }finally{
+   await locker.query('ROLLBACK').catch(()=>{});
+   locker.release();
+  }
+  const denied=await blockedResponse;
+  assert.equal(denied.statusCode,403,denied.body);
+  assert.equal(denied.json().error,'forbidden');
+  const unchanged=(await admin.query(`SELECT
+   (SELECT count(*)::integer FROM sabora.admin_ownership_audit WHERE correlation_id=$1) AS audit,
+   (SELECT count(*)::integer FROM sabora.admin_ownership_proposals WHERE correlation_id=$1) AS proposals,
+   (SELECT count(*)::integer FROM sabora.admin_ownership_notifications WHERE correlation_id=$1) AS notices`,
+   [blockedRequestId])).rows[0];
+  assert.deepEqual(unchanged,{audit:0,proposals:0,notices:0},
+   'expiry after lock wait must not persist a governance decision');
+  assert.equal((await read(root)).json().ownerUserId,d,
+   'expired authorization cannot transfer the current owner');
  }finally{
   await browser?.close().catch(()=>{});
   await vite?.close().catch(()=>{});
+  await shortApi?.close().catch(()=>{});
   await api?.close().catch(()=>{});
   for(const pool of pools)await pool.end().catch(()=>{});
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});

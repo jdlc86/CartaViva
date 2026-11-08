@@ -4,6 +4,11 @@ import {ConnectionNotice} from '../components/Primitives';
 
 const identified=(entry:OwnershipEligibleAdmin)=>Boolean(entry.givenName?.trim()&&
  entry.familyName?.trim()&&entry.operationalDisplayId?.trim());
+// Administrative eligibility is determined by durable staff membership. Do not
+// require a newer enrollment record from an existing, active ADMIN.
+const identityText=(entry:OwnershipEligibleAdmin)=>identified(entry)
+ ? entry.givenName+' '+entry.familyName+' · '+entry.operationalDisplayId
+ : 'ADMIN activo sin ficha operativa · ID completo '+entry.userId;
 const message=(code:string)=>code==='forbidden'?
  'No tienes la titularidad vigente o permisos para esta acción. Consulta el estado actualizado.':
  code==='ownership_conflict'?
@@ -63,13 +68,11 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
  const identityLabel=(id:string|null)=>{
     if(!id)return 'Sin titular';
     const person=snapshot?.eligibleAdmins.find(e=>e.userId===id);
-    return person&&identified(person)?
-      person.givenName+' '+person.familyName+' · '+person.operationalDisplayId:
-      'Identidad no acreditada';
+    return person?identityText(person):'Identidad no disponible';
   };
   const isOwner=snapshot?.role==='admin'&&snapshot.isOwner;
   const selectable=snapshot?.eligibleAdmins.filter(e=>
-    e.userId!==snapshot.ownerUserId&&identified(e))??[];
+    e.userId!==snapshot.ownerUserId)??[];
  return <section className="panel" aria-labelledby="ownership-title">
   <div className="panel-heading"><div><span className="eyebrow">Gobierno de accesos</span>
    <h2 id="ownership-title">Titularidad de escritura</h2></div></div>
@@ -89,12 +92,14 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
     {(isOwner||snapshot.role==='root')?<div className="view-stack">
      <label>{snapshot.role==='root'?'ADMIN destinatario de reasignación':'ADMIN destinatario de cesión'}
       <select value={target} onChange={e=>{setTarget(e.target.value);setRetry(null);}}>
-       <option value="">Selecciona un ADMIN activo identificado</option>
+       <option value="">Selecciona un ADMIN activo</option>
        {selectable.map(person=><option key={person.userId} value={person.userId}>
         {identityLabel(person.userId)}</option>)}
       </select>
      </label>
-     {selectable.length===0?<p role="status">No hay ADMIN activos con identidad verificada para esta decisión.</p>:null}
+     {selectable.some(person=>!identified(person))?
+      <p className="field-help">Los ADMIN activos sin ficha operativa se muestran con su identificador completo facilitado por el servidor. Comprueba el destinatario antes de continuar.</p>:null}
+     {selectable.length===0?<p role="status">No hay otros ADMIN activos elegibles para esta decisión.</p>:null}
       {snapshot.role==='root'?<label>Motivo obligatorio
       <textarea value={reason} maxLength={1000} required
        onChange={e=>{setReason(e.target.value);setRetry(null);}}/>

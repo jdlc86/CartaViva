@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261109010000_sabora_ownership_post_lock_expiry_candidate.sql':r(
+  'ADMIN ownership post-lock signed capability expiry (RF-02)',
+  ['signed ADMIN ownership governance RPC','staff and proposal row locks','HMAC keyring expiry'],
+  'forward-only CREATE OR REPLACE SECURITY DEFINER RPC; signed/key clock rechecks after staff and final row locks',
+  'same NOLOGIN function owner and exact EXECUTE; no new SQL grants, RLS widening or runtime table access',
+  'catalog replacement only; existing singleton/staff/proposal row locking unchanged',
+  'no existing rows rewritten; rejects expired operations without proposal, owner change, audit or notice',
+  'inherited'),
  '20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql':r(
   'ADMIN ownership eligible-recipient verified identity (RV-02)',
   ['active ADMIN staff','staff_enrollments verified display identity','signed ownership governance RPC'],
