@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {createM3ManagementCapabilityIssuer} from '../apps/api/src/m3-management-capability.mjs';
 import {createRequire} from 'node:module';
 import {validateM5AnnouncementDraft,createM5CommunicationsRepositories,
  registerM5CommunicationsHttp,createM5CommunicationsStream} from '../apps/api/src/m5-communications.mjs';
@@ -23,6 +24,18 @@ test('content + schedule boundaries preserve optional images, weekdays and IANA 
   draft({body:'<iframe>\0<script>'}),
   draft({schedule:{...draft().schedule,weekdays:[1,1]}})
  ])assert.throws(()=>validateM5AnnouncementDraft(wrong),/invalid_comms/);
+});
+
+test('signed body size grows only for comms image upload; unrelated management stays at 64 KiB',()=>{
+ const issue=createM3ManagementCapabilityIssuer({
+  keyId:'sabora_cv014_blob_key',secret:Buffer.alloc(32,42),databaseRole:'sabora_cv014_admin_test'});
+ const bigBody='a'.repeat(170000);
+ assert.equal(issue({actorId:actor,staffRole:'admin',action:'comms.manage',
+  requestId:randomUUID(),body:bigBody}).action,'comms.manage');
+ assert.throws(()=>issue({actorId:actor,staffRole:'admin',action:'catalog.item_save',
+  requestId:randomUUID(),body:bigBody}),/invalid_m3_management_capability_input/);
+ assert.throws(()=>issue({actorId:actor,staffRole:'admin',action:'comms.manage',
+  requestId:randomUUID(),body:'a'.repeat(200001)}),/invalid_m3_management_capability_input/);
 });
 
 test('one signed Fastify HTTP request traverses role gate → scoped repo, while waiter cannot mutate',async()=>{
