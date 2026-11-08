@@ -83,6 +83,860 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    action:'ownership.read',requestId:randomUUID(),body:'ownership.read'});
   const probe=(await admin.query(`WITH cap AS (SELECT $1::jsonb AS c)
    SELECT
+    (jsonb_typeof(c)='object') AS capability_object,
+    ((SELECT count(*) FROM jsonb_object_keys(c))=10) AS exact_fields,
+    (NOT EXISTS (SELECT 1 FROM jsonb_object_keys(c) k(key) WHERE k.key NOT IN
+     ('keyId','databaseRole','actorId','staffRole','action','requestId',
+      'bodyHashHex','issuedAtMs','expiresAtMs','signatureHex'))) AS allowed_fields,
+    (c->>'keyId' ~ '^[A-Za-z0-9_-]{8,64}
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+   // Exercise the exact row-lock forms used in the SECURITY DEFINER RPC.
+   // A plain SELECT is insufficient to prove a locked row is RLS-visible.
+   const lockedOwner=(await sealed.query(
+    'SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton FOR UPDATE')).rows[0];
+   assert.equal(lockedOwner?.owner_user_id,a,'ownership singleton must be lockable');
+   const lockedKey=(await sealed.query(
+    'SELECT key_id FROM sabora.order_operation_signing_keys WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp() AND expires_at>clock_timestamp() FOR SHARE',
+    [keyId])).rows[0];
+   assert.equal(lockedKey?.key_id,keyId,'signer row must remain visible under FOR SHARE');
+   const lockedStaff=(await sealed.query(
+    "SELECT role FROM sabora.staff_members WHERE user_id=$1 AND state='active' FOR UPDATE",
+    [b])).rows[0];
+   assert.equal(lockedStaff?.role,'admin','actor must remain lockable under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS key_format,
+    (c->>'actorId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS actor_format,
+    (c->>'requestId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS request_format,
+    (c->>'signatureHex' ~ '^[0-9a-f]{64}
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS signature_format,
+    (c->>'issuedAtMs' ~ '^(0|[1-9][0-9]*)
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS issued_format,
+    (c->>'expiresAtMs' ~ '^(0|[1-9][0-9]*)
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const post=(id,action,props={})=>api.inject({method:'POST',
+   url:'/api/v1/admin/ownership/actions',headers:{authorization:'Bearer '+jwt(id)},
+   payload:{requestId:props.requestId??randomUUID(),action,
+    proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
+    reason:props.reason??null}});
+  assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  const original=await read(b);assert.equal(original.statusCode,200,original.body);
+  assert.equal(original.json().ownerUserId,a);
+  assert.equal(original.json().actorUserId,b);
+  const correlation=randomUUID(),req=await post(b,'request',{requestId:correlation});
+  assert.equal(req.statusCode,200,req.body);
+  const proposalId=req.json().proposalId;assert(proposalId);
+  assert.equal((await post(b,'request',{requestId:correlation})).json().replayed,true);
+  assert((await read(a)).json().proposals.some(p=>p.id===proposalId));
+  assert.equal((await post(b,'accept',{proposalId})).statusCode,403);
+  assert.equal((await post(a,'reject',{proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  const cancelledRequest=await post(b,'request');
+  assert.equal(cancelledRequest.statusCode,200,cancelledRequest.body);
+  assert.equal((await post(c,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,403,
+   'unrelated ADMIN cannot cancel another actor request');
+  assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
+  assert.equal((await read(a)).json().ownerUserId,a,
+   'cancellation does not transfer ownership');
+  const again=await post(b,'request');
+  assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
+   'old ADMIN cannot continue writing with its existing JWT');
+  const offer=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'reject',{proposalId:offer.json().proposalId})).statusCode,200);
+  const cancelledOffer=await post(b,'offer',{targetUserId:c});
+  assert.equal(cancelledOffer.statusCode,200,cancelledOffer.body);
+  assert.equal((await post(b,'cancel',{proposalId:cancelledOffer.json().proposalId})).statusCode,200);
+  assert.equal((await read(b)).json().ownerUserId,b,
+   'offer cancellation does not transfer ownership');
+  const offer2=await post(b,'offer',{targetUserId:c});
+  assert.equal((await post(c,'accept',{proposalId:offer2.json().proposalId})).statusCode,200);
+  assert.equal((await read(c)).json().ownerUserId,c);
+  assert.equal((await post(root,'offer',{targetUserId:b})).statusCode,403);
+  assert.equal((await post(root,'force',{targetUserId:a,reason:''})).statusCode,400);
+  const forced=await post(root,'force',{targetUserId:a,reason:'Recuperación integral aislada'});
+  assert.equal(forced.statusCode,200,forced.body);
+  assert.equal((await read(a)).json().ownerUserId,a);
+  assert((await read(c)).json().notifications.some(n=>n.action==='force_transfer'));
+  const audit=(await admin.query("SELECT reason FROM sabora.admin_ownership_audit WHERE actor_user_id=$1 AND action='force_transfer' ORDER BY id DESC LIMIT 1",[root])).rows[0];
+  assert.equal(audit.reason,'Recuperación integral aislada');
+  const offerB=await post(a,'offer',{targetUserId:b});
+  const offerC=await post(a,'offer',{targetUserId:c});
+  const competing=await Promise.all([
+   post(b,'accept',{proposalId:offerB.json().proposalId}),
+   post(c,'accept',{proposalId:offerC.json().proposalId})
+  ]);
+  assert.deepEqual(competing.map(r=>r.statusCode).sort(),[200,409]);
+  const owner=(await read(root)).json().ownerUserId;
+  assert([b,c].includes(owner));
+  assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.admin_write_ownership WHERE singleton')).rows[0].n,1);
+
+  // REAL PWA Chromium with Vite -> Fastify authenticated proxy -> PG17.
+  const apiUrl=await api.listen({host:'127.0.0.1',port:0});
+  const managementRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
+  const {createServer}=await import(pathToFileURL(managementRequire.resolve('vite')).href);
+  vite=await createServer({root:fileURLToPath(new URL('../../apps/management/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
+    proxy:{'/api':apiUrl}}});
+  await vite.listen();
+  const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+  browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage();
+  await page.goto(vite.resolvedUrls.local[0]+'#equipo');
+  await page.evaluate(async token=>{
+   const app=await import('/src/main.tsx');
+   window.ownershipClose=app.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true});
+  },jwt(owner));
+  await page.getByRole('heading',{name:'Titularidad de escritura'}).waitFor({timeout:20000});
+  await page.getByText('Titular: …'+owner.slice(-12)+' (tu cuenta)').waitFor({timeout:20000});
+  await page.getByLabel('ADMIN destinatario de cesión').selectOption(a);
+  await page.getByRole('button',{name:'Ofrecer cesión'}).click();
+  await page.getByText('La decisión se ha registrado con auditoría.').waitFor({timeout:20000});
+  assert.equal((await admin.query("SELECT count(*)::integer AS n FROM sabora.admin_ownership_proposals WHERE kind='offer' AND from_owner_id=$1 AND to_owner_id=$2 AND status='pending'",[owner,a])).rows[0].n,1);
+ }finally{
+  await browser?.close().catch(()=>{});
+  await vite?.close().catch(()=>{});
+  await api?.close().catch(()=>{});
+  for(const pool of pools)await pool.end().catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[originalOwner]).catch(()=>{});
+  await admin.end().catch(()=>{});
+ }
+});
+) AS expires_format,
+    ((c->>'issuedAtMs')::bigint <= floor(extract(epoch FROM clock_timestamp())*1000)::bigint+5000) AS issued_not_future,
+    ((c->>'expiresAtMs')::bigint <= (c->>'issuedAtMs')::bigint+60000) AS ttl_bounded,
     (c->>'databaseRole'=$2) AS audience,
     (c->>'staffRole'='admin') AS staff_role,
     (c->>'action'='ownership.read') AS action,
