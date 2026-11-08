@@ -103,15 +103,50 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    await privileged.query('BEGIN');
    await privileged.query('SET LOCAL ROLE sabora_ownership_fn_owner');
    const policy=(await privileged.query(`SELECT
-    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS owner_rows,
-    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
-      WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp()
-       AND expires_at>clock_timestamp()) AS key_rows,
-    (SELECT count(*)::integer FROM sabora.staff_members
-      WHERE user_id=$2 AND state='active') AS staff_rows`,[keyId,b])).rows[0];
+    (SELECT count(*)::integer FROM
+      (SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton FOR UPDATE) q) AS owner_rows,
+    (SELECT count(*)::integer FROM
+      (SELECT hmac_key FROM sabora.order_operation_signing_keys
+       WHERE key_id=$1 AND disabled_at IS NULL AND not_before<=clock_timestamp()
+        AND expires_at>clock_timestamp() FOR SHARE) q) AS key_rows,
+    (SELECT count(*)::integer FROM
+      (SELECT role FROM sabora.staff_members
+       WHERE user_id=$2 AND state='active' FOR UPDATE) q) AS staff_rows`,[keyId,b])).rows[0];
    assert.deepEqual(policy,{owner_rows:1,key_rows:1,staff_rows:1},
     'sealed owner must see only the eligible durable identities under FORCE RLS');
   }finally{await privileged.query('ROLLBACK').catch(()=>{});privileged.release();}
+  const physical=await pools[0].connect();
+  try{
+   await physical.query('BEGIN');
+   await physical.query('SET LOCAL ROLE '+OWNERSHIP_ROLE);
+   assert.deepEqual((await physical.query(
+    'SELECT session_user AS login, current_user AS capability')).rows[0],
+    {login,capability:OWNERSHIP_ROLE});
+  }finally{await physical.query('ROLLBACK').catch(()=>{});physical.release();}
+  const sqlSigning=(await admin.query(`WITH cap AS (SELECT $1::jsonb AS c)
+   SELECT
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(cap.c->>'databaseRole')||chr(10)||
+      (cap.c->>'actorId')||chr(10)||(cap.c->>'staffRole')||chr(10)||
+      (cap.c->>'action')||chr(10)||(cap.c->>'requestId')||chr(10)||
+      (cap.c->>'bodyHashHex')||chr(10)||(cap.c->>'issuedAtMs')||chr(10)||
+      (cap.c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$2)
+     =cap.c->>'signatureHex' AS sql_signature_matches,
+    (SELECT count(*) FROM jsonb_object_keys(cap.c))::integer AS fields,
+    (cap.c->>'databaseRole'=$3) AS audience,
+    (cap.c->>'action'='ownership.read') AS allowed_action,
+    (cap.c->>'bodyHashHex'=encode(extensions.digest(
+      convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (cap.c->>'issuedAtMs')::bigint<=
+      floor(extract(epoch FROM clock_timestamp())*1000)::bigint+5000 AS issued_in_range,
+    (cap.c->>'expiresAtMs')::bigint>
+      floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap`,[JSON.stringify(diagnosticCapability),keyId,login])).rows[0];
+  assert.deepEqual(sqlSigning,{sql_signature_matches:true,fields:10,
+   audience:true,allowed_action:true,body_hash:true,
+   issued_in_range:true,unexpired:true},
+   'signed PostgreSQL verifier must reconstruct and accept every capability field');
   let signedRead;
   try{
    signedRead=await repo.read({
