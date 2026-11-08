@@ -196,8 +196,13 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.getByRole('link',{name:/Configuración/}).click();
   await manager.getByRole('heading',{name:'Comunicaciones'}).waitFor();
   await manager.getByLabel('Título (máx. 120)').fill('Oferta de la tarde');
-  await manager.getByLabel('Mensaje (admite saltos de línea y emojis)').fill('Prueba integral de anuncio con fotografía ');
+  const messageEditor=manager.getByLabel('Mensaje (admite saltos de línea y emojis)');
+  await messageEditor.fill('Prueba integral de anuncio con fotografía ');
+  // Explicitly collapse selection before formatting, as a real user would.
+  await messageEditor.press('End');
   await manager.getByRole('button',{name:'Negrita'}).click();
+  assert.match(await messageEditor.inputValue(),new RegExp('negrita'),
+   'bold toolbar must persist selected formatting before publication');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
   await manager.getByLabel('Hora desde').fill('00:00');

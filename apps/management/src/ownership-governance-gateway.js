@@ -20,7 +20,7 @@ export function createAuthenticatedOwnershipGovernanceGateway({getAccessToken,
    throw new OwnershipGovernanceGatewayError('session_unavailable',403);
   const response=await fetchImpl(url,{method,headers:{
    authorization:'Bearer '+token,...(body?{'content-type':'application/json'}:{})},
-   ...(body?{body:JSON.stringify(body)}:{}),cache:'no-store'});
+   ...(body?{body:JSON.stringify(body)}:{}),cache:'no-store',credentials:'omit'});
   if(revoked||generation!==epoch)throw new OwnershipGovernanceGatewayError('session_revoked',403);
   let data;
   try{data=await response.json();}catch{throw new OwnershipGovernanceGatewayError('unavailable',503);}
