@@ -183,6 +183,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.getByLabel('Título (máx. 120)').fill('Oferta de la tarde');
   await manager.getByLabel('Mensaje (admite saltos de línea y emojis)').fill('Prueba integral de anuncio con fotografía');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
+  // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
+  await manager.getByLabel('Hora desde').fill('00:00');
+  await manager.getByLabel('Hora hasta').fill('23:59');
   await manager.getByLabel('Fotografía opcional (propia o con licencia; máximo 128 KiB)')
    .setInputFiles({name:'anuncio.png',mimeType:'image/png',buffer:DEFAULT_PNG});
   await manager.getByLabel('Procedencia y licencia de la imagen')
