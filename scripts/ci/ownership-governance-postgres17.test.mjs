@@ -77,6 +77,48 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    'select role, state from sabora.staff_members where user_id = $1',[b])).rows[0];
   assert.deepEqual(membership,{role:'admin',state:'active'},
    'independent staff reader must see durable membership');
+  // Critical integration diagnostic: check exact signer and RLS preconditions
+  // without exposing a key, token or signature in logs or HTTP responses.
+  const signedProbe=issueCapability({actorId:b,staffRole:'admin',
+   action:'ownership.read',requestId:randomUUID(),body:'ownership.read'});
+  const probe=(await admin.query(\`WITH cap AS (SELECT $1::jsonb AS c)
+   SELECT
+    (c->>'databaseRole'=$2) AS audience,
+    (c->>'staffRole'='admin') AS staff_role,
+    (c->>'action'='ownership.read') AS action,
+    (c->>'bodyHashHex'=encode(extensions.digest(
+     convert_to('ownership.read','UTF8'),'sha256'),'hex')) AS body_hash,
+    (SELECT encode(extensions.hmac(convert_to(
+      'sabora-ownership-v1'||chr(10)||(c->>'databaseRole')||chr(10)||
+      (c->>'actorId')||chr(10)||(c->>'staffRole')||chr(10)||
+      (c->>'action')||chr(10)||(c->>'requestId')||chr(10)||
+      (c->>'bodyHashHex')||chr(10)||(c->>'issuedAtMs')||chr(10)||
+      (c->>'expiresAtMs'),'UTF8'),hmac_key,'sha256'),'hex')
+     FROM sabora.order_operation_signing_keys WHERE key_id=$3)
+     =c->>'signatureHex' AS signature,
+    (c->>'issuedAtMs')::bigint >=
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint-60000 AS issued_fresh,
+    (c->>'expiresAtMs')::bigint >
+     floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS unexpired
+   FROM cap\`,[JSON.stringify(signedProbe),login,keyId])).rows[0];
+  assert(Object.values(probe).every(v=>v===true),
+   'signed governance input invalid: '+
+   Object.keys(probe).filter(k=>probe[k]!==true).join(','));
+  const sealed=await admin.connect();
+  try{
+   await sealed.query('BEGIN');
+   await sealed.query('SET LOCAL ROLE sabora_ownership_fn_owner');
+   const rows=(await sealed.query(\`SELECT
+    (SELECT count(*)::integer FROM sabora.admin_write_ownership WHERE singleton) AS ownership,
+    (SELECT count(*)::integer FROM sabora.staff_members WHERE user_id=$1
+      AND role='admin' AND state='active') AS staff,
+    (SELECT count(*)::integer FROM sabora.order_operation_signing_keys
+      WHERE key_id=$2 AND disabled_at IS NULL
+       AND not_before<=clock_timestamp() AND expires_at>clock_timestamp()) AS keyring\`,
+    [b,keyId])).rows[0];
+   assert.deepEqual(rows,{ownership:1,staff:1,keyring:1},
+    'sealed governance principal must see active staff, keyring and owner under FORCE RLS');
+  }finally{await sealed.query('ROLLBACK').catch(()=>{});sealed.release();}
   let signedRead;
   try{
    signedRead=await repo.read({
