@@ -130,7 +130,7 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
     <label>Repetición
      <select value={draft.schedule.mode} onChange={e=>setDraft(d=>({...d,
       schedule:{...d.schedule,mode:e.target.value as 'once'|'daily'|'weekly',
-       endDate:e.target.value==='once'?d.schedule.startDate:d.schedule.endDate,
+       endDate:e.target.value==='once'?d.schedule.startDate:(d.schedule.mode==='once'?null:d.schedule.endDate),
        weekdays:e.target.value==='weekly'?[1,2,3,4,5,6,7]:[]}}))}>
       <option value="once">Una fecha</option><option value="daily">Cada día</option>
       <option value="weekly">Días de la semana</option></select></label>
