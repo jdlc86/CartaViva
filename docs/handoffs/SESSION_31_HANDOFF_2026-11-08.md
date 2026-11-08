@@ -89,3 +89,16 @@ Se inspeccionaron logs de Bootstrap y H6: pruebas PostgreSQL 17 de firmas nulas,
 **Punto de arranque inequívoco:** revisión formal #5819709942 sobre PR #52 **no aprobada por RV-01 y RV-02**; último funcional validado `d7dfa983`, seis workflows correctos *solo para las correcciones anteriores*; preparar cierre íntegro de ambas observaciones antes de plantear aprobación/merge.
 
 **Navegación:** [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [sesión 30](SESSION_30_HANDOFF_2026-11-08.md) · [PR #52](https://github.com/jdlc86/CartaViva/pull/52) · [revisión #5819709942](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5819709942).
+
+## 7. Sesión 31 — implementación candidata RV-01 y RV-02, bajo CI
+
+**Commit funcional:** [`1dcd7c9199c6a0d8323f778f62499b77a392f5f1`](https://github.com/jdlc86/CartaViva/commit/1dcd7c9199c6a0d8323f778f62499b77a392f5f1). Se modificaron **nueve archivos** del PR #52, sin fusionar ni desplegar:
+
+- **RV-01:** `main.tsx` registra un único `sessionChannel` que revoca en conjunto `operationsGateway`, `m3Gateway` y `ownershipGateway` cuando otra identidad lo sustituye; el último gateway usa también `AbortController` y epoch. Se añadió regresión de cercado a la suite de gestión.
+- **RV-02:** migración **incremental** `20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql` aporta al RPC firmado existente solo nombre, apellidos y código operativo del ADMIN activo, desde `staff_enrollments` y política SELECT restringida al propietario SQL sellado; no concede SQL directo a runtime, no divulga email, no altera mutaciones, contratos ni migraciones históricas. `OwnershipPanel.tsx` excluye destinatarios sin identidad acreditada de la selección.
+- **Recorrido integrado ampliado:** `ownership-governance-postgres17.test.mjs` genera personal real de fixture en PostgreSQL 17, verifica los destinatarios identificables, cesión y reasignación ROOT, ausencia de divulgación de email, sustitución A→ROOT con petición de credencial pendiente, rechazo de POST antiguo y disposer tardío sin revocar ROOT.
+- Registro de migración actualizado en `scripts/ci/migration-audit.mjs`. La migración sigue siendo **candidata**; no se aplicó en Supabase operativo.
+
+**Estado de CI en esta anotación: en ejecución; NO atribuir éxito a RV-01/RV-02 todavía.** Workflows del nuevo SHA: [Bootstrap PG17 #42526384882](https://github.com/jdlc86/CartaViva/actions/runs/42526384882), [H6 #42526384924](https://github.com/jdlc86/CartaViva/actions/runs/42526384924), [CV-012 #42526384885](https://github.com/jdlc86/CartaViva/actions/runs/42526384885), [gestión Chromium #42526384961](https://github.com/jdlc86/CartaViva/actions/runs/42526384961), [cliente Chromium #42526384972](https://github.com/jdlc86/CartaViva/actions/runs/42526384972) y [funcional↔UI #42526384955](https://github.com/jdlc86/CartaViva/actions/runs/42526384955). No trasladar 6/6 del SHA anterior; comprobar/corregir y repetir la batería completa si alguna ejecución falla.
+
+PR #52 **Draft / NO-GO**, revisión [#5819709942](https://github.com/jdlc86/CartaViva/pull/52#pullrequestreview-5819709942) aún sin nueva aprobación. Permanecen F28/R09, M4 Stripe real, CV-014 reservas/llamar camarero y M6. No se han tocado Fleetia, VPS ni Supabase operativo.
