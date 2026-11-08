@@ -181,7 +181,8 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.getByRole('link',{name:/Configuración/}).click();
   await manager.getByRole('heading',{name:'Comunicaciones'}).waitFor();
   await manager.getByLabel('Título (máx. 120)').fill('Oferta de la tarde');
-  await manager.getByLabel('Mensaje (admite saltos de línea y emojis)').fill('Prueba integral de anuncio con fotografía');
+  await manager.getByLabel('Mensaje (admite saltos de línea y emojis)').fill('Prueba integral de anuncio con fotografía ');
+  await manager.getByRole('button',{name:'Negrita'}).click();
   await manager.getByLabel('Emoji para la banda').fill('🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
   await manager.getByLabel('Hora desde').fill('00:00');
@@ -204,6 +205,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
    .waitFor({timeout:28_000});
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
   await customer.locator('.announcement-details img').waitFor();
+  await customer.locator('.announcement-details strong').getByText('negrita').waitFor();
   assert.equal((await customer.locator('.announcement-details img').getAttribute('src')||'').startsWith('data:image/png;base64,'),true);
   const evidenceDir=join(process.env.RUNNER_TEMP||'/tmp','sabora-cv014-browser');
   mkdirSync(evidenceDir,{recursive:true});
