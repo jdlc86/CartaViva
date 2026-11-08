@@ -8193,7 +8193,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      secure:true,httpOnly:true,sameSite:'Lax'}]);
     const m3CustomerPage=await m3CustomerContext.newPage();
     m3CustomerPage.on('pageerror',error=>m3BrowserErrors.push('customer: '+error.message));
+    let unsupportedCommsEventSources=0;
+    m3CustomerPage.on('request',request=>{
+     if(new URL(request.url()).pathname==='/api/v1/public/communications/events')
+      unsupportedCommsEventSources++;
+    });
+    const absentCommunications=m3CustomerPage.waitForResponse(response=>
+     new URL(response.url()).pathname==='/api/v1/public/communications',{timeout:20000});
     await m3CustomerPage.goto('https://sabora.example/');
+    assert.equal((await absentCommunications).status(),404,
+     'B3 legacy composition must not provide the opt-in communications module');
     assert.equal(await m3CustomerPage.evaluate(async()=>{
      const {configuredRestaurantCode}=await import('/src/table-qr.ts');
      return configuredRestaurantCode();
@@ -8230,6 +8239,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       actualClient,productText:await browserCard.innerText(),publishedItem,
       browserErrors:m3BrowserErrors.slice(-12)}),{cause});
     }
+    assert.equal(unsupportedCommsEventSources,0,
+     'legacy B3 customer must not open an unbounded announcements SSE stream when API is absent');
     await m3CustomerPage.waitForFunction(itemId=>{
      try{
       const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')??'null');
