@@ -71,6 +71,21 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    for(const hook of staffRoles(roles)){await hook(request,reply);if(reply.sent)return;}
   };
   registerOwnershipGovernanceHttp(api,{forRoles,repository:repo});await api.ready();
+  // This is not an isolated substitute test: it pinpoints whether a failed
+  // full-stack HTTP authorization came from DB/HMAC or verified membership.
+  const membership=(await pools[1].query(
+   'select role, state from sabora.staff_members where user_id = $1',[b])).rows[0];
+  assert.deepEqual(membership,{role:'admin',state:'active'},
+   'independent staff reader must see durable membership');
+  let signedRead;
+  try{
+   signedRead=await repo.read({
+    verifiedIdentity:{userId:b},verifiedStaff:{userId:b,role:'admin'}});
+  }catch(cause){
+   throw new Error('signed_ownership_rpc_preflight:'+String(cause?.code??'none')+
+    ':'+String(cause?.message??'unknown'),{cause});
+  }
+  assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
   const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
    headers:{authorization:'Bearer '+jwt(id)}});
   const post=(id,action,props={})=>api.inject({method:'POST',
