@@ -5,6 +5,8 @@ CREATE ROLE sabora_m5_comms_fn_owner NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER N
 CREATE ROLE sabora_m5_comms_admin_runtime NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
 CREATE ROLE sabora_m5_comms_public_runtime NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
 GRANT USAGE ON SCHEMA sabora TO sabora_m5_comms_fn_owner,sabora_m5_comms_admin_runtime,sabora_m5_comms_public_runtime;
+GRANT USAGE ON SCHEMA extensions TO sabora_m5_comms_fn_owner;
+GRANT EXECUTE ON FUNCTION extensions.digest(bytea,text) TO sabora_m5_comms_fn_owner;
 
 -- Existing M3 signer and revocation semantics, expanding ONLY the allowed actions;
 -- same HMAC/caller SQL LOGIN, active staff row, TTL and body-digest verification.
