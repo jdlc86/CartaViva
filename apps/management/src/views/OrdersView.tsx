@@ -42,13 +42,6 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
   const [callBusy,setCallBusy]=useState<string|null>(null);
   const [callError,setCallError]=useState<string|null>(null);
-  const [callReminderNumber,setCallReminderNumber]=useState(1);
-  // A local reminder while the floor PWA is visible, never HTTP/database polling.
-  useEffect(()=>{
-    if(!gateway?.listWaiterCalls||waiterCalls.length===0)return;
-    const reminder=setInterval(()=>setCallReminderNumber(n=>n+1),60000);
-    return()=>clearInterval(reminder);
-  },[gateway,waiterCalls.length]);
   const callReadEpoch=useRef(0);
   const callAttempts=useRef(new Map<string,string>());
   const loadWaiterCalls=useCallback(async()=>{
@@ -336,7 +329,7 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
          </div>
          {callError?<p className="field-error" role="alert">{callError}</p>:null}
          {waiterCalls.length?<>
-          <p role="alert" className="field-error">Llamadas pendientes de atender: {waiterCalls.length}. Recordatorio de sala {callReminderNumber}.</p>
+          <p role="alert" className="field-error">Llamadas pendientes de atender: {waiterCalls.length}. Este aviso se mantiene visible hasta que un camarero registre su atención.</p>
           <div className="order-board" aria-live="polite">
            {waiterCalls.map(call=><article className="order-card" key={call.id}>
             <header className="order-card__header">
