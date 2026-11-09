@@ -73,12 +73,32 @@ const waitForScope=async(page,path)=>{
  // 'activating'. Reloading at that point races activate/clients.claim(), so
  // Chromium can load a document that is never controlled by that worker.
  // Require the *correct* script and completed activation before navigation.
- await page.waitForFunction(async({scope,script})=>{
-  const registrations=await navigator.serviceWorker.getRegistrations();
-  return registrations.some(reg=>new URL(reg.scope).pathname===scope&&
-   reg.active?.state==='activated'&&
-   new URL(reg.active.scriptURL).pathname===script);
- },{scope:path,script:expectedScript},{timeout:35000});
+ try{
+  await page.waitForFunction(async({scope,script})=>{
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   return registrations.some(reg=>new URL(reg.scope).pathname===scope&&
+    reg.active?.state==='activated'&&
+    new URL(reg.active.scriptURL).pathname===script);
+  },{scope:path,script:expectedScript},{timeout:35000});
+ }catch(error){
+  // Diagnostic only public paths and lifecycle states. Never log cookies,
+  // tokens, request headers, private storage or QR URL fragments.
+  const diagnostic=await page.evaluate(async expected=>{
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   let scriptStatus=null;
+   try{scriptStatus=(await fetch(expected,{cache:'no-store',credentials:'omit'})).status;}
+   catch{scriptStatus='network_error';}
+   return {scriptStatus,secureContext:isSecureContext,
+    registrations:registrations.map(reg=>({
+     scope:new URL(reg.scope).pathname,
+     installing:reg.installing?.state??null,
+     waiting:reg.waiting?.state??null,
+     active:reg.active?.state??null
+    }))};
+  },expectedScript).catch(()=>({inspection:'unavailable'}));
+  throw new Error('cv012_service_worker_activation_missing: '+
+   JSON.stringify({path,expectedScript,diagnostic}),{cause:error});
+ }
  // Keep the original strong assertion: a service-worker registration alone
  // does not prove that the actual page navigation is controlled.
  await page.reload({waitUntil:'load'});

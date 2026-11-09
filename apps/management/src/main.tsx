@@ -5,6 +5,7 @@ import type {AdminCatalogGateway} from './catalog-read-model';
 import type {OrderOperationsGateway} from './order-operations-gateway.js';
 import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
 import {createManagementSessionFence} from './management-session-fence.js';
+import {createAuthenticatedOwnershipGovernanceGateway,type OwnershipGovernanceGateway} from './ownership-governance-gateway.js';
 import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
@@ -43,6 +44,7 @@ export function ManagementApp({
   staffGateway,
   staffDirectoryGateway,
   financeGateway,
+  ownershipGateway,
 }: {
   tablesGateway?: AdminTablesGateway;
   tableChangeGateway?: TableChangeQueueGateway;
@@ -52,6 +54,7 @@ export function ManagementApp({
   staffGateway?: StaffManagementGateway;
   staffDirectoryGateway?: StaffDirectoryGateway;
   financeGateway?: M3AuthenticatedManagementGateway;
+  ownershipGateway?: OwnershipGovernanceGateway;
 }) {
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
@@ -113,7 +116,7 @@ export function ManagementApp({
     : area === 'caja' ? <CashView gateway={operationsGateway}/>
     : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
         financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
-    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway}/>;
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway}/>;
 
   return (
     <div className="management-shell">
@@ -200,6 +203,7 @@ function renderManagement(
   gateway?: OrderOperationsGateway,
   tableChangeGateway?: TableChangeQueueGateway,
   managementGateway?:M3AuthenticatedManagementGateway,
+  ownershipGateway?:OwnershipGovernanceGateway,
 ) {
   if (managementRoot && managementElement !== element) {
     throw Error('management_root_already_mounted');
@@ -214,7 +218,8 @@ function renderManagement(
   flushSync(() => managementRoot!.render(
     <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
       tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
-      catalogManagementGateway={managementGateway} financeGateway={managementGateway}/></React.StrictMode>,
+      catalogManagementGateway={managementGateway} financeGateway={managementGateway}
+      ownershipGateway={ownershipGateway}/></React.StrictMode>,
   ));
 }
 
@@ -226,6 +231,7 @@ export function mountAuthenticatedManagementApp({
   enableTableChangeQueue = false,
   enableM3Management = false,
   enableWaiterCalls = false,
+  enableOwnershipGovernance = false,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
@@ -235,6 +241,8 @@ export function mountAuthenticatedManagementApp({
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
   enableM3Management?:boolean;
+  /** Opt-in only after isolated ownership runtime/SQL preflight succeeds. */
+  enableOwnershipGovernance?:boolean;
   /** Only after waiter-call SQL identity preflight succeeds. */
   enableWaiterCalls?:boolean;
 }) {
@@ -245,26 +253,34 @@ export function mountAuthenticatedManagementApp({
     getAccessToken, fetchImpl, reconnectDelayMs, enableWaiterCalls,
   });
   const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
+  const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({getAccessToken,fetchImpl}):undefined;
   if (managementRoot && managementElement !== element) {
     operationsGateway.revoke();
     m3Gateway?.revoke();
+    ownershipGateway?.revoke();
     throw Error('management_root_already_mounted');
   }
-  const disposeSession = managementSessionFence.replace(operationsGateway);
+  // All capability gateways belong to one verified employee session.
+  // Replacement revokes each of them, even when the old disposer is late.
+  const sessionChannel={revoke(){
+    operationsGateway.revoke();
+    m3Gateway?.revoke();
+    ownershipGateway?.revoke();
+  }};
+  const disposeSession = managementSessionFence.replace(sessionChannel);
   // The default preview and authenticated operation mount keep the queue
   // disconnected; a verified B3 host must explicitly enable its gateway.
   const queueGateway: TableChangeQueueGateway | undefined = enableTableChangeQueue
     ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
        decideTableChange: operationsGateway.decideTableChange}
     : undefined;
-  renderManagement(element, operationsGateway, queueGateway,m3Gateway);
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway);
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
-    const current = managementSessionFence.isCurrent(operationsGateway);
+    const current = managementSessionFence.isCurrent(sessionChannel);
     disposeSession();
-    m3Gateway?.revoke();
     if (current && managementElement === element) renderManagement(element);
   };
 }

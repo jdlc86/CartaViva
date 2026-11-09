@@ -4,6 +4,8 @@ import type {StaffManagementGateway, StaffMaintenanceResult, StaffInvitationResu
 import {StaffManagementGatewayError} from '../staff-management-gateway.js';
 import type {StaffDirectoryGateway, StaffDirectoryMember, StaffOwnProfile} from '../staff-directory-gateway.js';
 import {Icon} from '../components/Icon';
+import {OwnershipPanel} from './OwnershipPanel';
+import type {OwnershipGovernanceGateway} from '../ownership-governance-gateway.js';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
 
 const roleCards=[
@@ -18,7 +20,7 @@ const roleLabel={admin:'Administración',waiter:'Sala',kitchen:'Cocina'} as cons
 const stateLabel={invited:'Invitación pendiente',accepted:'Invitación aceptada',registered:'Credencial registrada',
  active:'Activo',suspended:'Suspendido',revoked:'Revocado'} as const;
 
-export function TeamView({gateway,directoryGateway}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway}){
+export function TeamView({gateway,directoryGateway,ownershipGateway}:{gateway?:StaffManagementGateway;directoryGateway?:StaffDirectoryGateway;ownershipGateway?:OwnershipGovernanceGateway}){
  const [givenName,setGivenName]=useState('');const [familyName,setFamilyName]=useState('');
  const [email,setEmail]=useState('');const [role,setRole]=useState<'admin'|'waiter'|'kitchen'>('waiter');
  const [pending,setPending]=useState(false);const [error,setError]=useState<string|null>(null);
@@ -74,6 +76,7 @@ export function TeamView({gateway,directoryGateway}:{gateway?:StaffManagementGat
   finally{setPending(false);}};
 
  return <div className="view-stack">
+  <OwnershipPanel gateway={ownershipGateway}/>
   <PageHeader eyebrow="Equipo" title="Personal y accesos"
    description="Alta trazable, identidad operativa compacta y recuperación global controlada."
    actions={gateway||directoryGateway?<StatusBadge tone="brand">Lectura y acciones separadas por capacidad</StatusBadge>:
@@ -93,7 +96,7 @@ export function TeamView({gateway,directoryGateway}:{gateway?:StaffManagementGat
    {invited?<div className="staff-enrollment__result" role="status"><Icon name="check" size={20}/><div><strong>{invited.givenName} {invited.familyName}</strong><span>Identificador operativo <b>{invited.operationalDisplayId}</b> · código {invited.employeeCode}</span></div></div>:null}
   </section>:null}
 
-  <section className="governance-card panel" aria-labelledby="ownership-title"><div className="governance-card__icon"><Icon name="lock" size={24}/></div><div><span className="eyebrow">Gobierno administrativo</span><h2 id="ownership-title">Titularidad de escritura</h2><p>El titular actual se revalida en la misma transacción de cada operación.</p></div><div className="governance-card__status"><span>Titular actual</span><strong>{gateway?'Sesión administrativa verificada':'Sin datos conectados'}</strong><LockedButton>Gestionar titularidad</LockedButton></div></section>
+  {!ownershipGateway?<section className="governance-card panel" aria-labelledby="ownership-title"><div className="governance-card__icon"><Icon name="lock" size={24}/></div><div><span className="eyebrow">Gobierno administrativo</span><h2 id="ownership-title">Titularidad de escritura</h2><p>El titular actual se revalida en la misma transacción de cada operación.</p></div><div className="governance-card__status"><span>Titular actual</span><strong>{gateway?'Sesión administrativa verificada':'Sin datos conectados'}</strong><LockedButton>Gestionar titularidad</LockedButton></div></section>:null}
   <section aria-labelledby="roles-title"><div className="section-heading"><div><span className="eyebrow">Modelo de acceso</span><h2 id="roles-title">Roles documentados</h2></div></div><div className="role-grid">{roleCards.map(item=><article className="role-card" key={item.title}><div className="role-card__heading"><h3>{item.title}</h3><StatusBadge>{item.badge}</StatusBadge></div><p>{item.description}</p></article>)}</div></section>
   <section className="panel own-staff-profile" aria-labelledby="own-profile-title">
    <div className="panel-heading"><div><span className="eyebrow">Datos propios</span><h2 id="own-profile-title">Mi ficha operativa</h2></div></div>

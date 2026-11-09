@@ -14,6 +14,7 @@ node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/order-operations-read-postgres17.test.mjs
 node --check scripts/ci/m3-management-postgres17.test.mjs
 node --check scripts/ci/admin-single-writer-postgres17.test.mjs
+node --check scripts/ci/ownership-governance-postgres17.test.mjs
 node --check scripts/ci/cv014-communications-postgres17.test.mjs
 node --check scripts/ci/waiter-calls-postgres17.test.mjs
 node --check scripts/ci/staff-lifecycle-postgres17.test.mjs
@@ -91,3 +92,4 @@ node --test scripts/ci/table-change-root-postgres17.test.mjs
 node --test scripts/ci/zero-cost-account-postgres17.test.mjs
 # Last: root cannot be deleted under governance; disposable container is removed.
 node --test scripts/ci/admin-single-writer-postgres17.test.mjs
+node --test scripts/ci/ownership-governance-postgres17.test.mjs

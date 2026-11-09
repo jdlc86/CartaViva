@@ -122,15 +122,18 @@ begin
  -- Table-change, line-delivery and immutable-revision candidates add six
  -- FORCE RLS tables to the 44-table baseline; M3 adds four management,
  -- category and allergen relations. M3 finance adds one sealed immutable
- -- provider cashflow journal, plus three sealed CV-014 communications tables. Keep the exact count and names fail-closed.
- if v_count<>68 then raise exception 'Expected 68 FORCE RLS Sabora tables (including two CV-014 waiter-call ledgers), got %',v_count; end if;
+ -- provider cashflow journal, three sealed CV-014 communications tables,
+ -- one ADMIN ownership notices ledger and two waiter-call ledgers.
+ -- All three additions must remain FORCE RLS; keep exact count/names fail-closed.
+ if v_count<>69 then raise exception 'Expected 69 FORCE RLS Sabora tables (including ADMIN ownership notices and two waiter-call ledgers), got %',v_count; end if;
  foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3','finance_provider_events_candidate',
  'third_party_cash_intents_candidate','third_party_cash_intent_rounds_candidate',
  'third_party_cash_round_funding_candidate','third_party_cash_refund_claims_candidate',
  'third_party_cash_refunds_candidate',
  'cash_tip_collections_candidate','cash_tip_refund_claims_candidate',
  'cash_tip_refunds_candidate',
- 'comms_announcements_m5','comms_receipts_m5','comms_audit_m5'] loop
+ 'comms_announcements_m5','comms_receipts_m5','comms_audit_m5',
+ 'admin_ownership_notifications','waiter_calls','waiter_call_events'] loop
  if not exists (
   select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
   where n.nspname='sabora' and c.relname=v_table

@@ -102,6 +102,31 @@ test('PG17 single ADMIN writer: signed catalog/table/comms, root denied, transfe
    assert.deepEqual(surfaces,{owner_read:false,owner_write:false,verifier_call:false},
     'physical login must not inspect ownership or bypass the sealed signer');
   }
+  // Security-critical negative coverage on every administrative writer RPC.
+  // A complete valid actor/key/body with a NULL/missing HMAC or NULL signed
+  // clock used to pass the original PG17 PL/pgSQL IF NULL predicate.
+  for(const c of cases){
+   const body=JSON.stringify(c.payload);
+   const capability=signer(c.item)({actorId:ownerId,staffRole:'admin',
+    action:c.action,requestId:randomUUID(),body});
+   const malformed=[
+    ['null_signature',{...capability,signatureHex:null}],
+    ['missing_signature',Object.fromEntries(Object.entries(capability)
+      .filter(([key])=>key!=='signatureHex'))],
+    ['null_issued_at',{...capability,issuedAtMs:null}],
+    ['null_expiry',{...capability,expiresAtMs:null}],
+    ['string_expiry',{...capability,expiresAtMs:String(capability.expiresAtMs)}],
+    ['wrong_signature',{...capability,signatureHex:'0'.repeat(64)}]
+   ];
+   for(const [kind,forged] of malformed){
+    await assert.rejects(
+     run(c.item,c.sql,[JSON.stringify(forged),c.op,body]),
+     error=>error?.code==='42501'&&/invalid_m3_management_capability/.test(error.message),
+     'shared M3/M5 verifier must reject '+kind+' for '+c.action);
+   }
+  }
+  assert.deepEqual(await counts(),baseline,
+   'tampered HMAC requests must not persist M3/M5 receipts or audit');
   for(const c of cases){
    const positive=await invoke(c,ownerId,'admin');
    assert.equal(positive.rows.length,1,'current ADMIN owner must be able to write');

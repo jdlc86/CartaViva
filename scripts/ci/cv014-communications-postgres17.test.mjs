@@ -223,6 +223,8 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
+  assert.equal(photo.draft.body,await formattedEditor.inputValue(),
+   'draft must persist the entire formatted browser message exactly');
   assert.match(photo.draft.body,/\*\*negrita\*\*/,
    'PostgreSQL persisted draft must preserve bold markup');
   await manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'})
@@ -230,6 +232,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.getByText('Anuncio publicado.',{exact:false}).waitFor();
   const publicAnnouncementsAfterPublish=(await getPublic()).items;
   assert.equal(publicAnnouncementsAfterPublish.length,2);
+  assert.equal(publicAnnouncementsAfterPublish.find(item=>item.title==='Oferta de la tarde')?.body,
+   await formattedEditor.inputValue(),
+   'published projection must preserve formatted browser message exactly');
   assert.match(publicAnnouncementsAfterPublish.find(item=>item.title==='Oferta de la tarde')?.body??'',
    /\*\*negrita\*\*/,
    'published payload must preserve bold markup before Chromium render');

@@ -8,7 +8,10 @@ test('management bootstrap resets React identity tree synchronously on every mou
   assert.match(source,/const key = \+\+managementRenderGeneration/);
   assert.match(source,/flushSync\(\(\) => managementRoot!\.render\(/);
   assert.match(source,/<ManagementApp key=\{key\} operationsGateway=\{gateway\}/);
-  assert.match(source,/managementSessionFence\.replace\(operationsGateway\)/);
+  assert.match(source,/managementSessionFence\.replace\(sessionChannel\)/);
+  assert.match(source,/operationsGateway\.revoke\(\)/);
+  assert.match(source,/m3Gateway\?\.revoke\(\)/);
+  assert.match(source,/ownershipGateway\?\.revoke\(\)/);
   assert.match(source,/if \(current && managementElement === element\) renderManagement\(element\)/);
 });
 
