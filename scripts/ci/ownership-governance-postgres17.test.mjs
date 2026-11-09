@@ -2,10 +2,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {randomUUID,randomBytes,generateKeyPairSync,sign} from 'node:crypto';
+import {randomUUID,randomBytes,generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
+import {createCustomerCookieAuth} from '../../apps/api/src/customer-cookie-session-candidate.mjs';
+import {createCustomerSessionVerifier} from '../../apps/api/src/customer-session-verifier.mjs';
+import {hashCustomerSessionToken} from '../../apps/api/src/customer-session.mjs';
+import {assertWaiterCallRuntimeIdentity,createWaiterCallStaffIssuer,
+ createWaiterCallComposition,registerWaiterCallHttp,
+ WAITER_CALL_CUSTOMER_ROLE,WAITER_CALL_STAFF_ROLE}
+ from '../../apps/api/src/waiter-call-candidate.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
 import {OWNERSHIP_ROLE,OWNERSHIP_SQL,createOwnershipCapabilityIssuer,
  assertOwnershipRuntimeIdentity,createOwnershipGovernanceRepository,
@@ -21,20 +28,37 @@ if(uri.protocol!=='postgresql:'||uri.hostname!=='127.0.0.1'||uri.username!=='pos
 const {Pool}=createRequire(import.meta.url)(mod);
 const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
 
-test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfer, ROOT force and stale writer denial',
+test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PWAs, transfer, ROOT force and stale writer denial',
  {timeout:180_000},async()=>{
  const suffix=process.pid.toString(36),login='sabora_owner_sql_'+suffix,
   staffLogin='sabora_owner_staff_'+suffix,keyId='ownership_ci_'+suffix;
+ const customerLogin='sabora_dual_customer_'+suffix,
+  waiterLogin='sabora_dual_waiter_'+suffix;
+ const customerId=randomUUID(),waiterId=randomUUID(),tableId=randomUUID();
+ const customerToken=randomBytes(32).toString('base64url');
+ const qrToken=randomBytes(32).toString('base64url');
+ const visitKey='DUAL'+randomBytes(12).toString('hex');
+ const clientOrigin='http://127.0.0.1:4178';
  const password='sabora_governance_ci_'+randomBytes(16).toString('hex');
  const admin=new Pool({connectionString:target,max:3});
  const [a,b,c,d]=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];
  const secret=randomBytes(32),pools=[];
- let api,vite,browser,shortApi,originalOwner=null;
+ let api,vite,clientVite,browser,clientContext,shortApi,originalOwner=null;
  try{
   originalOwner=(await admin.query('SELECT owner_user_id FROM sabora.admin_write_ownership WHERE singleton')).rows[0].owner_user_id;
   let root=(await admin.query("SELECT user_id FROM sabora.staff_members WHERE role='root' AND state='active'")).rows[0]?.user_id;
   if(!root){root=randomUUID();await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[root]);}
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active'),($4,'admin','active')",[a,b,c,d]);
+  await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')",[waiterId]);
+  const publicId='SB-'+Array.from(randomBytes(12),v=>'23456789ABCDEFGHJKLMNPQRSTUVWXY'[v%32]).join('');
+  await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Integración')",[customerId,publicId]);
+  await admin.query("INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '2 hours')",
+   [customerId,hashCustomerSessionToken(customerToken)]);
+  await admin.query("INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,ordering_state,readiness_state) VALUES($1,9713,4,$2,'paused','LISTA')",
+   [tableId,createHash('sha256').update(qrToken).digest()]);
+  const tableSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',[tableId])).rows[0].session_id;
+  await admin.query("INSERT INTO sabora.customer_table_visits(table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,granted_at,expires_at) VALUES($1,$2,$3,$4,$3,1,clock_timestamp()-interval '2 hours',clock_timestamp()-interval '1 hour')",
+   [tableId,tableSession,customerId,visitKey]);
   // Real human identities already defined by the staff enrollment contract.
   for(const [user,given,family,code] of [[a,'Alicia','Molina','Z9A'],
     [b,'Bruno','Romero','Z9B'],[c,'Clara','Rivera','Z9C']]){
@@ -50,18 +74,26 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   }
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[a]);
   await admin.query("INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')",[keyId,secret]);
-  for(const name of [login,staffLogin])
+  for(const name of [login,staffLogin,customerLogin,waiterLogin])
    await admin.query('CREATE ROLE '+name+" LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
   await admin.query('GRANT '+OWNERSHIP_ROLE+' TO '+login+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+WAITER_CALL_CUSTOMER_ROLE+' TO '+customerLogin+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+WAITER_CALL_STAFF_ROLE+' TO '+waiterLogin+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+staffLogin);
   await admin.query('GRANT SELECT(user_id,role,state) ON sabora.staff_members TO '+staffLogin);
   await admin.query('CREATE POLICY ci_owner_staff_'+suffix+' ON sabora.staff_members FOR SELECT TO '+staffLogin+' USING(true)');
-  for(const name of [login,staffLogin]){
+  for(const name of [login,staffLogin,customerLogin,waiterLogin]){
    const url=new URL(target);url.username=name;url.password=password;
    pools.push(new Pool({connectionString:url.toString(),max:3,connectionTimeoutMillis:3000,
     options:'-c statement_timeout=15000'}));
   }
   await assertOwnershipRuntimeIdentity({pool:pools[0],expectedLogin:login});
+  await assertWaiterCallRuntimeIdentity({pool:pools[2],expectedLogin:customerLogin,kind:'customer'});
+  await assertWaiterCallRuntimeIdentity({pool:pools[3],expectedLogin:waiterLogin,kind:'staff'});
+  await assert.rejects(pools[2].query('SELECT * FROM sabora.waiter_calls'),/permission denied/);
+  await assert.rejects(pools[3].query('SELECT * FROM sabora.waiter_call_events'),/permission denied/);
+  await assert.rejects(pools[2].query(OWNERSHIP_SQL,['{}','read','{}']),/permission denied/);
+  await assert.rejects(pools[0].query('SELECT * FROM sabora.waiter_calls'),/permission denied/);
   await assert.rejects(pools[0].query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[b]),
    /permission denied/);
   await assert.rejects(pools[0].query(OWNERSHIP_SQL,['{}','force','{}']),/permission denied/);
@@ -69,6 +101,10 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    allowedSql:new Set([OWNERSHIP_SQL])});
   const issueCapability=createOwnershipCapabilityIssuer({keyId,secret,databaseRole:login});
   const repo=createOwnershipGovernanceRepository({withTransaction,issueCapability});
+  const callRepository=createWaiterCallComposition({
+   customerPool:pools[2],staffPool:pools[3],
+   issueStaffCapability:createWaiterCallStaffIssuer({
+    keyId,secret,databaseRole:waiterLogin})});
   const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
   const issuer='https://sabora-ci-ownership.test/auth/v1';
   const jwk={...publicKey.export({format:'jwk'}),alg:'RS256',kid:'ownership-ci-'+suffix,use:'sig'};
@@ -83,7 +119,23 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   const forRoles=roles=>async(request,reply)=>{
    for(const hook of staffRoles(roles)){await hook(request,reply);if(reply.sent)return;}
   };
-  registerOwnershipGovernanceHttp(api,{forRoles,repository:repo});await api.ready();
+  const cookieAuth=createCustomerCookieAuth({
+   verifyCustomerSession:createCustomerSessionVerifier({
+    query:(sql,params)=>admin.query(sql,params)}),
+   revokeCustomerSession:async()=>false,allowedOrigin:clientOrigin});
+  registerOwnershipGovernanceHttp(api,{forRoles,repository:repo});
+  registerWaiterCallHttp(api,{cookieAuth,forRoles,repository:callRepository});
+  api.get('/api/v1/customer/session',{preHandler:cookieAuth.authenticate},
+   async request=>({authenticated:true,publicId:request.customerIdentity.publicId,
+    alias:request.customerIdentity.alias,company:request.customerIdentity.company}));
+  // The QR link is only a test fixture. Both security-sensitive actions
+  // continue to use signed SQL and the real durable PG17 visit and RLS.
+  api.post('/api/v1/customer/visits',{preHandler:cookieAuth.authenticate},
+   async(request,reply)=>request.body?.tableId===tableId&&request.body?.qrToken===qrToken
+    ?reply.code(201).send({tableId,visitId:visitKey,
+     basketId:'CI_DUAL_BASKET_1234567890',expiresAt:new Date(Date.now()+3600000).toISOString()})
+    :reply.code(403).send({error:'customer_context_forbidden'}));
+  await api.ready();
   // This is not an isolated substitute test: it pinpoints whether a failed
   // full-stack HTTP authorization came from DB/HMAC or verified membership.
   const membership=(await pools[1].query(
@@ -185,6 +237,21 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
     ':'+String(cause?.message??'unknown'),{cause});
   }
   assert.equal(signedRead.ownerUserId,a,'signed SQL self-projection must precede HTTP');
+  const readCall=(token=customerToken)=>api.inject({method:'GET',
+   url:'/api/v1/customer/waiter-calls?tableId='+tableId,
+   headers:{cookie:'__Secure-sabora_customer='+token}});
+  const makeCall=(requestId=randomUUID())=>api.inject({method:'POST',
+   url:'/api/v1/customer/waiter-calls',headers:{
+    cookie:'__Secure-sabora_customer='+customerToken,
+    origin:clientOrigin,'content-type':'application/json'},
+   payload:{tableId,requestId}});
+  const waiterBoard=()=>api.inject({method:'GET',
+   url:'/api/v1/operations/waiter-calls',
+   headers:{authorization:'Bearer '+jwt(waiterId)}});
+  const attendCall=(callId,requestId=randomUUID())=>api.inject({
+   method:'POST',url:'/api/v1/operations/waiter-calls/'+callId+'/attend',
+   headers:{authorization:'Bearer '+jwt(waiterId)},
+   payload:{requestId}});
   const read=id=>api.inject({method:'GET',url:'/api/v1/admin/ownership',
    headers:{authorization:'Bearer '+jwt(id)}});
   const post=(id,action,props={})=>api.inject({method:'POST',
@@ -193,6 +260,17 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
     proposalId:props.proposalId??null,targetUserId:props.targetUserId??null,
     reason:props.reason??null}});
   assert.equal((await api.inject('/api/v1/admin/ownership')).statusCode,401);
+  assert.equal((await api.inject('/api/v1/customer/waiter-calls?tableId='+tableId)).statusCode,401);
+  assert.equal((await read(waiterId)).statusCode,403,
+   'a waiter cannot read ADMIN ownership just because both modules share Fastify');
+  assert.equal((await api.inject({method:'GET',url:'/api/v1/operations/waiter-calls',
+   headers:{authorization:'Bearer '+jwt(b)}})).statusCode,403,
+   'an ADMIN owner cannot acquire waiter duties from shared Fastify');
+  assert.equal((await readCall()).json().state,'none');
+  const firstCall=await makeCall();assert.equal(firstCall.statusCode,200,firstCall.body);
+  assert.equal(firstCall.json().state,'pending');
+  const initialCallId=firstCall.json().id;
+  assert.equal((await waiterBoard()).json().items[0].id,initialCallId);
   const original=await read(b);assert.equal(original.statusCode,200,original.body);
   assert.equal(original.json().ownerUserId,a);
   assert.equal(original.json().actorUserId,b);
@@ -222,9 +300,17 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   assert.equal((await post(b,'cancel',{proposalId:cancelledRequest.json().proposalId})).statusCode,200);
   assert.equal((await read(a)).json().ownerUserId,a,
    'cancellation does not transfer ownership');
+  assert.equal((await readCall()).json().state,'pending',
+   'changing ADMIN proposals does not cancel an unrelated waiter call');
   const again=await post(b,'request');
   assert.equal((await post(a,'accept',{proposalId:again.json().proposalId})).statusCode,200);
   assert.equal((await read(b)).json().ownerUserId,b);
+  assert.equal((await waiterBoard()).json().items[0].id,initialCallId,
+   'ADMIN ownership transfer cannot invalidate waiter room duties');
+  const attended=await attendCall(initialCallId);
+  assert.equal(attended.statusCode,200,attended.body);
+  assert.equal(attended.json().state,'attended');
+  assert.equal((await readCall()).json().state,'none');
   assert.equal((await post(a,'offer',{targetUserId:c})).statusCode,403,
    'old ADMIN cannot continue writing with its existing JWT');
   const offer=await post(b,'offer',{targetUserId:c});
@@ -264,8 +350,16 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
    mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
     proxy:{'/api':apiUrl}}});
   await vite.listen();
+  clientVite=await createServer({root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:4178,strictPort:true,
+    hmr:false,proxy:{'/api':apiUrl}}});
+  await clientVite.listen();
   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
   browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  clientContext=await browser.newContext({serviceWorkers:'block'});
+  await clientContext.addCookies([{name:'__Secure-sabora_customer',
+   value:customerToken,domain:'127.0.0.1',path:'/api/v1/customer',
+   secure:true,httpOnly:true,sameSite:'Strict'}]);
   const page=await browser.newPage();
   await page.goto(vite.resolvedUrls.local[0]+'#equipo');
   await page.evaluate(async token=>{
@@ -397,6 +491,43 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   assert((await read(d)).json().notifications.some(x=>x.action==='force_transfer'),
    'legacy ADMIN receives the durable recovery notification');
 
+  // Integration gate: one Fastify, one PG17, two independent Chromium PWAs,
+  // ADMIN ownership governance and waiter calls simultaneously registered.
+  // A second call must remain usable after ownership changes and ROOT recovery.
+  const client=await clientContext.newPage();
+  await client.setViewportSize({width:390,height:844});
+  await client.goto(clientOrigin+'/qr/v1/SABORA/'+tableId+'#'+qrToken);
+  await client.getByRole('button',{name:'Llamar al camarero'}).waitFor({timeout:20000});
+  await client.getByRole('button',{name:'Llamar al camarero'}).click();
+  await client.getByText('Camarero solicitado.',{exact:false}).waitFor({timeout:15000});
+  const pending=await waiterBoard();assert.equal(pending.statusCode,200,pending.body);
+  assert.equal(pending.json().items.length,1);
+  const pendingCallId=pending.json().items[0].id;
+  const waiterPage=await browser.newPage();
+  await waiterPage.goto(vite.resolvedUrls.local[0]);
+  await waiterPage.evaluate(async token=>{
+   const host=await import('/src/main.tsx');
+   window.dualDispose=host.mountAuthenticatedManagementApp({
+    element:document.getElementById('root'),getAccessToken:async()=>token,
+    enableOwnershipGovernance:true,enableWaiterCalls:true});
+  },jwt(waiterId));
+  await waiterPage.getByRole('link',{name:/Comandas/}).click();
+  await waiterPage.getByRole('button',{name:'Sala'}).click();
+  await waiterPage.getByRole('button',{name:'Marcar atendida'}).waitFor({timeout:15000});
+  await waiterPage.getByRole('button',{name:'Marcar atendida'}).click();
+  await waiterPage.getByText('No hay llamadas pendientes confirmadas.').waitFor({timeout:15000});
+  const persisted=(await admin.query('SELECT event,count(*)::integer AS n FROM sabora.waiter_call_events WHERE call_id=$1 GROUP BY event ORDER BY event',[pendingCallId])).rows;
+  assert.deepEqual(persisted,[{event:'attended',n:1},{event:'requested',n:1}]);
+  assert.equal((await read(root)).json().ownerUserId,d,
+   'waiter attendance cannot change ADMIN ROOT-governed ownership');
+  assert.equal((await read(waiterId)).statusCode,403,
+   'enabling both UI modules must not reveal ADMIN governance to a waiter');
+  assert.equal((await api.inject({method:'GET',url:'/api/v1/operations/waiter-calls',
+   headers:{authorization:'Bearer '+jwt(d)}})).statusCode,403,
+   'an ADMIN remains barred from waiter calls even after ROOT reassignment');
+  await client.getByRole('button',{name:'Consultar llamada'}).click();
+  await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:15000});
+
   // RF-02: signed capability is initially valid but expires while the
   // actual restricted PostgreSQL call awaits a staff FOR UPDATE row lock.
   // Verify that neither ownership, proposals, audit nor notices change.
@@ -448,7 +579,9 @@ test('PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfe
   assert.equal((await read(root)).json().ownerUserId,d,
    'expired authorization cannot transfer the current owner');
  }finally{
+  await clientContext?.close().catch(()=>{});
   await browser?.close().catch(()=>{});
+  await clientVite?.close().catch(()=>{});
   await vite?.close().catch(()=>{});
   await shortApi?.close().catch(()=>{});
   await api?.close().catch(()=>{});
