@@ -200,3 +200,20 @@ La precisión del propietario motivó una comprobación estricta de la **fuente 
 **EVIDENCIA TODAVÍA NO CERRADA**: nueva batería del SHA funcional `12c2371e` iniciada automáticamente: [Bootstrap PG17 #42537660195](https://github.com/jdlc86/CartaViva/actions/runs/42537660195), [H6 #42537660214](https://github.com/jdlc86/CartaViva/actions/runs/42537660214), [cliente #42537660140](https://github.com/jdlc86/CartaViva/actions/runs/42537660140), [gestión #42537660201](https://github.com/jdlc86/CartaViva/actions/runs/42537660201), [dos PWA #42537660268](https://github.com/jdlc86/CartaViva/actions/runs/42537660268) y [funcional/UI #42537660110](https://github.com/jdlc86/CartaViva/actions/runs/42537660110). Solo el último tenía SUCCESS al registrar; **no atribuir 6/6 hasta verificar los seis**. Si falla, diagnosticar y corregir íntegramente antes de dictamen.
 
 Siguientes puertas: inspección de logs de migración y E2E, H6 y seis workflows sobre mismo SHA; revisión formal posterior y aprobación independiente. Permanecen F28/R09 humana, M4 Stripe real, M6 y CV-014 restante NO-GO. No modificar Fleetia, VPS ni Supabase operativo; sin merge/despliegue.
+
+## 15. RF-01/RF-02: seis workflows correctos y cierre técnico automatizado — 09-11-2026
+
+**Actualización que sustituye el CI pendiente de §14:** el commit funcional [`12c2371e6899811fe56416eed089f2a29d2fa0ba`](https://github.com/jdlc86/CartaViva/commit/12c2371e6899811fe56416eed089f2a29d2fa0ba) ha terminado con **6/6 GitHub Actions `completed/success`** sobre ese mismo SHA, sin reutilizar el 6/6 del commit `20e75bd6` anterior.
+
+| Workflows comprobados en GitHub | Resultado |
+| --- | --- |
+| [Bootstrap PG17 + driver Node #42537660195](https://github.com/jdlc86/CartaViva/actions/runs/42537660195) | **SUCCESS**. Job #128905443164: migración nueva aplicada en PostgreSQL 17 desechable; escenario `PG17 JWT/HMAC Fastify and management Chromium: ownership requests, transfer, ROOT force and stale writer denial` **1/1 PASS, 0 FAIL**. El escenario incluye ADMIN legacy en cesión/recuperación y capacidad HMAC real que caduca tras esperar lock de personal; confirma 403, ausencia de auditoría/propuesta/aviso y conservación de titular. |
+| [Sabora CI / H6 #42537660214](https://github.com/jdlc86/CartaViva/actions/runs/42537660214) | **SUCCESS**. Job `validate` #128905443295: logs verifican `PASS Block 1`, `PASS Block 2A` y `PASS Block 2B: real PostgreSQL 17, HMAC, concurrency and Chromium E2E`. |
+| [Chromium cliente #42537660140](https://github.com/jdlc86/CartaViva/actions/runs/42537660140) | **SUCCESS** |
+| [Chromium gestión #42537660201](https://github.com/jdlc86/CartaViva/actions/runs/42537660201) | **SUCCESS** |
+| [CV-012 dos PWA #42537660268](https://github.com/jdlc86/CartaViva/actions/runs/42537660268) | **SUCCESS** |
+| [Puerta funcional↔UI #42537660110](https://github.com/jdlc86/CartaViva/actions/runs/42537660110) | **SUCCESS**; la aceptación visual final humana continúa diferida, no se deduce del workflow. |
+
+**Dictamen técnico acotado:** RF-01 y RF-02 **implementados y validados en integración automatizada**; no hay fallo nuevo demostrado en esta batería. RF-01 no cambia que `request` la dirija el servidor al titular actual; en `offer/force`, los ADMIN legacy activos permanecen elegibles por su identidad completa, aunque no tengan ficha operativa nominal. RF-02 verifica la revalidación HMAC/key expiry después del lock, sin efectos durables de una autorización caducada. Todo el código del hito está en el SHA funcional señalado; cualquier commit `[skip ci]` posterior solo añade evidencia documental.
+
+**Puertas restantes:** nueva revisión formal del PR #52 sobre este código (las revisiones anteriores siguen `COMMENTED` y no son un `APPROVE` externo), autorización explícita antes de merge, migraciones operativas o despliegue; F28/R09 visual humana, M4 Stripe real, M6 y CV-014 restante siguen NO-GO. No se modificó Fleetia, VPS, Supabase operativo ni otro proyecto del servidor.
