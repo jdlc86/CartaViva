@@ -228,9 +228,9 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'})
    .getByRole('button',{name:'Publicar borrador'}).click();
   await manager.getByText('Anuncio publicado.',{exact:false}).waitFor();
-  const published=(await getPublic()).items;
-  assert.equal(published.length,2);
-  assert.match(published.find(item=>item.title==='Oferta de la tarde')?.body??'',
+  const publicAnnouncementsAfterPublish=(await getPublic()).items;
+  assert.equal(publicAnnouncementsAfterPublish.length,2);
+  assert.match(publicAnnouncementsAfterPublish.find(item=>item.title==='Oferta de la tarde')?.body??'',
    /\*\*negrita\*\*/,
    'published payload must preserve bold markup before Chromium render');
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/})
