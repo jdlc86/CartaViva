@@ -50,6 +50,10 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
  const [loginC,loginS,loginR]=logins;
  const [customerId,otherId,waiterA,waiterB,kitchen]=Array.from({length:5},()=>randomUUID());
  const tableId=randomUUID(),visitKey='CV014'+randomBytes(12).toString('hex');
+ const alphabet='23456789ABCDEFGHJKLMNPQRSTUVWXY';
+ const publicCode=()=>'SB-'+Array.from(randomBytes(12),byte=>alphabet[byte%alphabet.length]).join('');
+ const customerPublicId=publicCode(),otherCustomerPublicId=publicCode();
+ if(otherCustomerPublicId===customerPublicId)throw Error('ci_public_id_collision');
  const cookieToken=randomBytes(32).toString('base64url');
  const otherToken=randomBytes(32).toString('base64url');
  const qrToken=randomBytes(32).toString('base64url');
@@ -58,7 +62,8 @@ test('CV-014 PG17 + cookie + JWT/HMAC + Fastify + Chromium: one waiter call per 
  const pools=[],processes=[];let api,browser;
  try{
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active'),($2,'waiter','active'),($3,'kitchen','active')",[waiterA,waiterB,kitchen]);
-  await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,'SB-23456789ABCD','Uno'),($2,'SB-23456789ABCE','Dos')",[customerId,otherId]);
+  await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Uno'),($3,$4,'Dos')",
+   [customerId,customerPublicId,otherId,otherCustomerPublicId]);
   await admin.query("INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '2 hours'),($3,$4,clock_timestamp()+interval '2 hours')",
    [customerId,hashCustomerSessionToken(cookieToken),otherId,hashCustomerSessionToken(otherToken)]);
   await admin.query("INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,ordering_state,readiness_state) VALUES($1,9911,4,$2,'paused','LISTA')",
