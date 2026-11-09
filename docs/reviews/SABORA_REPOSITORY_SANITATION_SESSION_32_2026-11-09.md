@@ -243,3 +243,74 @@ Comparación directa con base compartida **#51**, SHA `bd57464d7924562794d9fe3dd
 **S1:** genealogía completada 46/46; cinco frentes históricos comparados de nuevo (76 rutas, 0 ausentes, 19 idénticas y 57 evolucionadas). Se registra clasificación semántica por familia, pero **no** equivalencia absoluta de los cambios ni aceptación visual humana. Contrato CV-019 variantes sí tiene implementación y pruebas posteriores a la fotografía de 06-11; no restaurar diagnóstico desfasado como brecha vigente.
 
 **S2:** **candidato conjunto creado en rama aislada**; no fusionado en `main`. **S3:** primer SHA `f95a49a2` falló H6/Bootstrap por la aserción de lectura del editor tras guardado, introducida al combinar los E2E; cuatro puertas PWA/UI verdes. Reparación causal `03d1e61f`, conserva aserciones fuertes y seis workflows en nueva ejecución, **resultado aún no cerrado** en esta nota. **S4 sin autorizar**. Verificaciones PG17 y corrección pertenecen exclusivamente a GitHub Actions/PR #54; sin recursos operativos, VPS, Fleetia ni Supabase real.
+
+## 10. Cierre automatizado S3 y registro propuesto S4 por cada PR — 09-11-2026
+
+> **Esta sección es la fotografía vigente del estado de saneamiento**; los apartados 1–9 contienen antecedentes y cortes anteriores. El inventario original 46/46 se amplió por la creación del **PR #54**, por lo que ahora existen **47 PR abiertos, todos Draft**. No se modificó ninguna base, estado o aprobación de PR por elaborar esta tabla.
+
+### S3 — Candidatura combinada validada técnicamente en CI
+
+- **Rama exclusivamente candidata:** `integration/sabora-s32-admin-waiter-sanitization-20261109`, [PR #54 Draft](https://github.com/jdlc86/CartaViva/pull/54) con base en #53, nunca `main`.
+- **Último commit funcional realmente probado:** `03d1e61faa8857396ed051c91e5c36c314a2b2f9`. Los commits documentales posteriores `[skip ci]` **no** acreditan nueva ejecución funcional.
+- **Seis de seis workflows GitHub Actions `completed/success` sobre ese mismo SHA:** [Bootstrap PG17 #42704557734](https://github.com/jdlc86/CartaViva/actions/runs/42704557734), [H6 consolidado #42704557652](https://github.com/jdlc86/CartaViva/actions/runs/42704557652), [Chromium cliente #42704557672](https://github.com/jdlc86/CartaViva/actions/runs/42704557672), [Chromium gestión #42704557786](https://github.com/jdlc86/CartaViva/actions/runs/42704557786), [CV-012 dos PWA #42704557793](https://github.com/jdlc86/CartaViva/actions/runs/42704557793), [cobertura funcional/UI #42704557673](https://github.com/jdlc86/CartaViva/actions/runs/42704557673).
+- **Evidencia de logs:** Bootstrap `pnpm test` **1365/1365**, PostgreSQL 17 real con migraciones y roles aislados, E2E anuncios CV-014 y llamada a sala **PASS**, E2E de gobierno ADMIN JWT/HMAC/Fastify/Chromium **PASS**; H6 consolidado **bloques 1, 2A, 2B PASS**, compilaciones cliente/gestión/API y smoke Docker aislado correctos. El job `visual-final-acceptance-gate` fue **`skipped`**: el workflow global en verde no significa aprobación visual humana.
+- **Incidencia y cierre:** el commit inicial `f95a49a2` falló H6/Bootstrap porque el test de anuncios consultaba el formulario **después** de que se limpiara al guardar. El código de producto no perdió el cuerpo publicado. Se corrigió en `03d1e61f` capturando `formattedBody` antes del envío y manteniendo igualdad exacta con borrador y proyección. La batería completa se repitió, **sin eliminar aserciones**.
+- **Dictamen S3:** **CERRADO EN ALCANCE DE VALIDACIÓN AUTOMATIZADA DEL CANDIDATO COMBINADO**, no certificación independiente ni producto operativo. Las pruebas E2E de titularidad y llamadas se ejecutaron en la misma candidatura/runner PG17, pero sus recorridos están organizados por suites independientes. **No afirmar** que se probó un único montaje de Fastify con todos los opt-in de ambos activos simultáneamente si no consta ese escenario específico.
+
+### S4 — Registro de tratamiento de los 47 PR (PROPUESTA, SIN CIERRES NI FUSIONES)
+
+**Agrupación verificada por la genealogía 46/46 previa y los dos padres de #54:** **33 HEAD ancestrales** de la candidatura, **5 ramas funcionales divergentes** (#4/#5/#8/#17/#22), **4 PR divergentes de una misma cadena H3** (#18–#21), **4 PR documentales divergentes** (#14/#31/#40/#44), y el **PR #54 como referencia**. Total **33+5+4+4+1=47**. Los cinco PR funcionales fueron cotejados por 76 rutas (19 blobs iguales, 57 evolucionados, ninguno ausente); esto no sustituye una aceptación semántica integral.
+
+| PR abierto | Clase y tratamiento preliminar | Acción permitida ahora |
+| --- | --- | --- |
+| [#1](https://github.com/jdlc86/CartaViva/pull/1) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#2](https://github.com/jdlc86/CartaViva/pull/2) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#4](https://github.com/jdlc86/CartaViva/pull/4) | divergencia funcional: revisión semántica pendiente | No restaurar código viejo; completar diferencia contractual/funcional pendiente |
+| [#5](https://github.com/jdlc86/CartaViva/pull/5) | divergencia funcional: revisión semántica pendiente | No restaurar código viejo; completar diferencia contractual/funcional pendiente |
+| [#7](https://github.com/jdlc86/CartaViva/pull/7) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#8](https://github.com/jdlc86/CartaViva/pull/8) | divergencia funcional: revisión semántica pendiente | No restaurar código viejo; completar diferencia contractual/funcional pendiente |
+| [#10](https://github.com/jdlc86/CartaViva/pull/10) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#11](https://github.com/jdlc86/CartaViva/pull/11) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#12](https://github.com/jdlc86/CartaViva/pull/12) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#13](https://github.com/jdlc86/CartaViva/pull/13) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#14](https://github.com/jdlc86/CartaViva/pull/14) | divergencia documental: preservar procedencia | Confirmar documento preservado; cierre individual solo con evidencia |
+| [#15](https://github.com/jdlc86/CartaViva/pull/15) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#16](https://github.com/jdlc86/CartaViva/pull/16) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#17](https://github.com/jdlc86/CartaViva/pull/17) | divergencia funcional: revisión semántica pendiente | No restaurar código viejo; completar diferencia contractual/funcional pendiente |
+| [#18](https://github.com/jdlc86/CartaViva/pull/18) | H3: ancestro de #22; cotejar como una cadena | No cerrar por nombre de PR; reconciliar con expediente #22 |
+| [#19](https://github.com/jdlc86/CartaViva/pull/19) | H3: ancestro de #22; cotejar como una cadena | No cerrar por nombre de PR; reconciliar con expediente #22 |
+| [#20](https://github.com/jdlc86/CartaViva/pull/20) | H3: ancestro de #22; cotejar como una cadena | No cerrar por nombre de PR; reconciliar con expediente #22 |
+| [#21](https://github.com/jdlc86/CartaViva/pull/21) | H3: ancestro de #22; cotejar como una cadena | No cerrar por nombre de PR; reconciliar con expediente #22 |
+| [#22](https://github.com/jdlc86/CartaViva/pull/22) | divergencia funcional: revisión semántica pendiente | No restaurar código viejo; completar diferencia contractual/funcional pendiente |
+| [#23](https://github.com/jdlc86/CartaViva/pull/23) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#24](https://github.com/jdlc86/CartaViva/pull/24) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#25](https://github.com/jdlc86/CartaViva/pull/25) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#26](https://github.com/jdlc86/CartaViva/pull/26) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#27](https://github.com/jdlc86/CartaViva/pull/27) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#28](https://github.com/jdlc86/CartaViva/pull/28) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#29](https://github.com/jdlc86/CartaViva/pull/29) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#30](https://github.com/jdlc86/CartaViva/pull/30) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#31](https://github.com/jdlc86/CartaViva/pull/31) | divergencia documental: preservar procedencia | Confirmar documento preservado; cierre individual solo con evidencia |
+| [#32](https://github.com/jdlc86/CartaViva/pull/32) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#34](https://github.com/jdlc86/CartaViva/pull/34) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#36](https://github.com/jdlc86/CartaViva/pull/36) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#38](https://github.com/jdlc86/CartaViva/pull/38) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#40](https://github.com/jdlc86/CartaViva/pull/40) | divergencia documental: preservar procedencia | Confirmar documento preservado; cierre individual solo con evidencia |
+| [#41](https://github.com/jdlc86/CartaViva/pull/41) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#42](https://github.com/jdlc86/CartaViva/pull/42) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#43](https://github.com/jdlc86/CartaViva/pull/43) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#44](https://github.com/jdlc86/CartaViva/pull/44) | divergencia documental: preservar procedencia | Confirmar documento preservado; cierre individual solo con evidencia |
+| [#45](https://github.com/jdlc86/CartaViva/pull/45) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#46](https://github.com/jdlc86/CartaViva/pull/46) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#47](https://github.com/jdlc86/CartaViva/pull/47) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#48](https://github.com/jdlc86/CartaViva/pull/48) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#49](https://github.com/jdlc86/CartaViva/pull/49) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#50](https://github.com/jdlc86/CartaViva/pull/50) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#51](https://github.com/jdlc86/CartaViva/pull/51) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#52](https://github.com/jdlc86/CartaViva/pull/52) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#53](https://github.com/jdlc86/CartaViva/pull/53) | HEAD ancestro del candidato #54 (no equivale a cierre aprobado) | Mantener abierto hasta decisión documentada de absorción/sustitución |
+| [#54](https://github.com/jdlc86/CartaViva/pull/54) | candidato combinado S3 (mantener Draft) | Revisión independiente, aceptación técnica y autorización antes de fusionar |
+
+**Criterios explícitos para decidir cierres o fusiones en una fase posterior:** (a) existencia de contrato normativo y evidencia por requisito; (b) demostrar que las contribuciones originales están preservadas o superadas **por comportamiento**, no solo por ancestralidad; (c) resguardar trazabilidad histórica de CI y migraciones; (d) revisar el delta de los cinco legados y la cadena H3; (e) identificar revisión independiente de #52/#54, aceptación humana visual F28/R09 y puertas M4/M6 **separadas**; (f) pedir autorización expresa para fusionar en `main`, cerrar PR o cambiar protección de rama. Los conflictos `dirty` históricos de #10/#11/#45 con sus propias bases no acreditan defectos del candidato integrado.
+
+**Estado de S4:** **PROPUESTA COMPLETA 47/47**, no ejecutada. Ningún PR ha sido cerrado, fusionado, cambiado de base ni eliminado; las 47 siguen Draft. `main` permanece sin cambios y la protección de `main` sigue siendo una cuestión de gobierno a tratar con autorización, no un defecto corregido. **Producción NO-GO.**
