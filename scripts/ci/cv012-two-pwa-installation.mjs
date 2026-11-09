@@ -68,15 +68,42 @@ const listen=async(server)=>{
  return 'http://127.0.0.1:'+server.address().port;
 };
 const waitForScope=async(page,path)=>{
- await page.waitForFunction(async expected=>{
+ const expectedScript=path==='/'?'/sw.js':'/gestion/sw.js';
+ // A registration may already expose reg.active while its state is still
+ // 'activating'. Reloading at that point races activate/clients.claim(), so
+ // Chromium can load a document that is never controlled by that worker.
+ // Require the *correct* script and completed activation before navigation.
+ await page.waitForFunction(async({scope,script})=>{
   const registrations=await navigator.serviceWorker.getRegistrations();
-  return registrations.some(reg=>new URL(reg.scope).pathname===expected&&reg.active);
- },path,{timeout:35000});
+  return registrations.some(reg=>new URL(reg.scope).pathname===scope&&
+   reg.active?.state==='activated'&&
+   new URL(reg.active.scriptURL).pathname===script);
+ },{scope:path,script:expectedScript},{timeout:35000});
+ // Keep the original strong assertion: a service-worker registration alone
+ // does not prove that the actual page navigation is controlled.
  await page.reload({waitUntil:'load'});
- await page.waitForFunction(expected=>
-  navigator.serviceWorker.controller&&
-  new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
-  path==='/'?'/sw.js':'/gestion/sw.js',{timeout:35000});
+ try{
+  await page.waitForFunction(expected=>
+   navigator.serviceWorker.controller&&
+   new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
+   expectedScript,{timeout:35000});
+ }catch(error){
+  // Safe diagnostics: only public worker paths/states, never cookies or URLs
+  // with QR fragments. This is not a fallback that turns failures into PASS.
+  const diagnostic=await page.evaluate(async()=>{
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   return {documentPath:location.pathname,
+    controllerPath:navigator.serviceWorker.controller?
+     new URL(navigator.serviceWorker.controller.scriptURL).pathname:null,
+    registrations:registrations.map(reg=>({
+     scope:new URL(reg.scope).pathname,
+     active:reg.active?{
+      path:new URL(reg.active.scriptURL).pathname,state:reg.active.state}:null
+    }))};
+  }).catch(()=>({inspection:'unavailable'}));
+  throw new Error('cv012_service_worker_control_missing: '+
+   JSON.stringify({path,expectedScript,diagnostic}),{cause:error});
+ }
 };
 const inventory=page=>page.evaluate(async()=>{
  const names=await caches.keys();
