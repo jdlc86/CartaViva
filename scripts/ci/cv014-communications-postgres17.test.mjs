@@ -207,7 +207,8 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
    input.setSelectionRange(input.value.length,input.value.length);
   });
   await manager.getByRole('button',{name:'Negrita'}).click();
-  assert.match(await formattedEditor.inputValue(),/\*\*negrita\*\*/,
+  const formattedBody=await formattedEditor.inputValue();
+  assert.match(formattedBody,/\*\*negrita\*\*/,
    'rich-text toolbar must insert bold markup at the intended cursor');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
@@ -223,7 +224,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
-  assert.equal(photo.draft.body,await formattedEditor.inputValue(),
+  assert.equal(photo.draft.body,formattedBody,
    'draft must persist the entire formatted browser message exactly');
   assert.match(photo.draft.body,/\*\*negrita\*\*/,
    'PostgreSQL persisted draft must preserve bold markup');
@@ -233,7 +234,7 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const publicAnnouncementsAfterPublish=(await getPublic()).items;
   assert.equal(publicAnnouncementsAfterPublish.length,2);
   assert.equal(publicAnnouncementsAfterPublish.find(item=>item.title==='Oferta de la tarde')?.body,
-   await formattedEditor.inputValue(),
+   formattedBody,
    'published projection must preserve formatted browser message exactly');
   assert.match(publicAnnouncementsAfterPublish.find(item=>item.title==='Oferta de la tarde')?.body??'',
    /\*\*negrita\*\*/,
