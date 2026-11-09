@@ -42,6 +42,13 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
   const [callBusy,setCallBusy]=useState<string|null>(null);
   const [callError,setCallError]=useState<string|null>(null);
+  const [callReminderNumber,setCallReminderNumber]=useState(1);
+  // A local reminder while the floor PWA is visible, never HTTP/database polling.
+  useEffect(()=>{
+    if(!gateway?.listWaiterCalls||waiterCalls.length===0)return;
+    const reminder=setInterval(()=>setCallReminderNumber(n=>n+1),60000);
+    return()=>clearInterval(reminder);
+  },[gateway,waiterCalls.length]);
   const callReadEpoch=useRef(0);
   const callAttempts=useRef(new Map<string,string>());
   const loadWaiterCalls=useCallback(async()=>{
@@ -328,16 +335,24 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
            Actualizar llamadas</button>
          </div>
          {callError?<p className="field-error" role="alert">{callError}</p>:null}
-         {waiterCalls.length?
-           <ul aria-live="polite">{waiterCalls.map(call=><li key={call.id}>
-            <strong>Mesa {call.tableNumber}</strong> · Pendiente desde {new Date(call.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}
-            <button className="button button--primary" type="button"
-             disabled={callBusy!==null||!gateway.attendWaiterCall}
-             onClick={()=>void attendWaiterCall(call.id)}>
-              {callBusy===call.id?'Registrando…':'Marcar atendida'}
-            </button>
-           </li>)}</ul>:
-           <p role="status">No hay llamadas pendientes confirmadas.</p>}
+         {waiterCalls.length?<>
+          <p role="alert" className="field-error">Llamadas pendientes de atender: {waiterCalls.length}. Recordatorio de sala {callReminderNumber}.</p>
+          <div className="order-board" aria-live="polite">
+           {waiterCalls.map(call=><article className="order-card" key={call.id}>
+            <header className="order-card__header">
+             <div><span>Mesa {call.tableNumber}</span>
+              <strong>Solicitud de atención pendiente</strong>
+              <p>Desde {new Date(call.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}</p>
+             </div>
+             <button className="button button--primary" type="button"
+              disabled={callBusy!==null||!gateway.attendWaiterCall}
+              onClick={()=>void attendWaiterCall(call.id)}>
+               {callBusy===call.id?'Registrando…':'Marcar atendida'}
+             </button>
+            </header>
+           </article>)}
+          </div>
+         </>:<p role="status">No hay llamadas pendientes confirmadas.</p>}
          <p className="honest-operational-note">Cada llamada permanece visible hasta marcarla como atendida. Los avisos se actualizan mediante eventos durables, sin sondeo periódico.</p>
         </section>:null}
 

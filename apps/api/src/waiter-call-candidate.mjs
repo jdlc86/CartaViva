@@ -18,7 +18,7 @@ const STAFF_RPC='sabora.waiter_call_staff_candidate(jsonb,text,uuid)';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
 const KEY=/^[A-Za-z0-9_-]{8,64}$/;
-const STAFF_ROLES=new Set(['waiter','admin','root']);
+const STAFF_ROLES=new Set(['waiter']);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const fail=code=>Object.assign(Error(code),{code});
 const exact=(body,fields)=>plain(body)&&Object.keys(body).length===fields.length&&
@@ -164,7 +164,7 @@ export function registerWaiterCallHttp(app,{cookieAuth,forRoles,repository}={}){
    catch(e){return failure(reply,e);}
   });
  },{prefix:'/api/v1/customer'});
- const guard=forRoles(['waiter','admin','root']);
+ const guard=forRoles(['waiter']);
  app.get('/api/v1/operations/waiter-calls',{preHandler:guard},async(request,reply)=>{
   headers(reply);
   if(!exact(request.query,[]))return reply.code(400).send({error:'invalid_waiter_call_request'});

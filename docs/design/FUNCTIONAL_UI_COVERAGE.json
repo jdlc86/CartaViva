@@ -175,18 +175,47 @@
     },
     {
       "id": "CV-014-llamada-camarero",
-      "status": "PENDIENTE",
+      "status": "CANDIDATO_TECNICO",
       "surfaces": [
         "client",
         "management"
       ],
-      "ui": [],
-      "api": [],
-      "evidence": [],
-      "blockers": [
-        "Falta acreditar recorrido cliente→aviso compartido sala→atención e idempotencia"
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "Llamar al camarero"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/OrdersView.tsx",
+          "marker": "Marcar atendida"
+        }
       ],
-      "note": "No atribuir funcionalidad a una pantalla estática."
+      "api": [
+        {
+          "path": "apps/api/src/waiter-call-candidate.mjs",
+          "marker": "registerWaiterCallHttp"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "assert.deepEqual(audit"
+        },
+        {
+          "kind": "browser-client",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "client.getByRole('button',{name:'Llamar al camarero'})"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "manager.getByRole('button',{name:'Marcar atendida'})"
+        }
+      ],
+      "note": "Código candidato con llamadas por mesa y visita actual, roles SQL mínimos, JWT/HMAC, auditoría y outbox; evaluación real PG17/Chromium exigida antes de cierre técnico. No acredita aprobación visual humana, recordatorios fuera de la PWA, ocupación física ni activación de producción."
     }
   ]
 }

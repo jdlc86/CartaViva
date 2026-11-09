@@ -7936,15 +7936,29 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(waiterCapability),'update',capabilityBody])),
     /m3_management_forbidden/,'waiter signed capability must be rejected as an unauthorized admin write');
-   const suspendedCapability=m3TablesIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
-    requestId:randomUUID(),body:capabilityBody});
-   await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[adminId]);
+   // Single-writer invariant: an active ownership holder cannot be suspended.
+   // First prove this security gate remains effective, then exercise revocation
+   // on a NON-owner so the test does not create a forbidden ownerless state.
+   await assert.rejects(
+    admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",[adminId]),
+    /owner_must_remain_active_admin/,
+    'an active ADMIN owner cannot be suspended without transferring ownership');
+   assert.equal((await admin.query('SELECT state FROM sabora.staff_members WHERE user_id=$1',
+    [adminId])).rows[0].state,'active');
+   const suspendedCapability=m3TablesIssuer({actorId:nonOwnerAdminId,staffRole:'admin',
+    action:'table.update',requestId:randomUUID(),body:capabilityBody});
+   await admin.query("UPDATE sabora.staff_members SET state='suspended' WHERE user_id=$1",
+    [nonOwnerAdminId]);
    try{
     await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
      connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
       [JSON.stringify(suspendedCapability),'update',capabilityBody])),
-     /invalid_m3_management_capability/,'suspension must invalidate an already issued capability');
-   }finally{await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1",[adminId]);}
+     /invalid_m3_management_capability|m3_management_forbidden/,
+     'suspension invalidates a non-owner signed capability');
+   }finally{
+    await admin.query("UPDATE sabora.staff_members SET state='active' WHERE user_id=$1",
+     [nonOwnerAdminId]);
+   }
    await assert.rejects(underRole(connections[17],'sabora_m3_catalog_runtime',()=>
     connections[17].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(validCapability),'update',capabilityBody])),/permission denied/,

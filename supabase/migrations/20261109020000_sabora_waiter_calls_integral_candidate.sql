@@ -260,7 +260,7 @@ BEGIN
  v_actor:=(p_capability->>'actorId')::uuid;
  SELECT role INTO v_role FROM sabora.staff_members WHERE user_id=v_actor AND state='active';
  IF NOT FOUND OR v_role IS DISTINCT FROM p_capability->>'staffRole'
-   OR v_role NOT IN ('waiter','admin','root') THEN
+   OR v_role IS DISTINCT FROM 'waiter' THEN
   RAISE EXCEPTION 'waiter_call_forbidden' USING ERRCODE='42501';
  END IF;
  v_payload:='sabora-waiter-call-v1'||chr(10)||(p_capability->>'databaseRole')||chr(10)
