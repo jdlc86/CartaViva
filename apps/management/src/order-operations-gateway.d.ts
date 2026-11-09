@@ -5,7 +5,10 @@ export type CashAccount=Readonly<{accountId:string;tableId:string;tableNumber:nu
  customerCode:string;state:'open'|'blocked';paymentMode:'pay_now'|'pay_at_end'|null;
  outstandingCents:number;cashSettledCents:number;paymentUncertain:boolean;refundPending:boolean;canSettle:boolean}>;
 export type CashAccountSnapshot=Readonly<{version:1;nextAfter:string|null;items:readonly CashAccount[]}>;
+export type PendingWaiterCall=Readonly<{id:string;tableNumber:number;createdAt:string}>;
 export interface OrderOperationsGateway {
+ listWaiterCalls?():Promise<readonly PendingWaiterCall[]>;
+ attendWaiterCall?(input:{callId:string;requestId:string}):Promise<Readonly<Record<string,unknown>>>;
  listCashAccounts(input?:{after?:string|null;limit?:number}):Promise<CashAccountSnapshot>;
  closeCashAccount(input:{accountId:string;correlationId:string}):Promise<Readonly<Record<string,unknown>>>;
  listThirdPartyCashPending():Promise<Readonly<{items:readonly Readonly<{intentId:string;payerCode:string;totalCents:number;consumptionCents:number;tipCents:number;

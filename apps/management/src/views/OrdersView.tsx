@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
-import {OrderOperationsGatewayError, type H6OperationEvent, type OrderOperationsGateway} from '../order-operations-gateway.js';
+import {OrderOperationsGatewayError, type H6OperationEvent, type OrderOperationsGateway, type PendingWaiterCall} from '../order-operations-gateway.js';
 import {
   groupOrderBoard,
   nextOrderLineAction,
@@ -39,6 +39,36 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const transitionAttempts = useRef(new Map<string, {targetStatus: string; correlationId: string}>());
   const pickupAttempts = useRef(new Map<string, {action: string; correlationId: string}>());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
+  const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
+  const [callBusy,setCallBusy]=useState<string|null>(null);
+  const [callError,setCallError]=useState<string|null>(null);
+  const callReadEpoch=useRef(0);
+  const callAttempts=useRef(new Map<string,string>());
+  const loadWaiterCalls=useCallback(async()=>{
+    const epoch=++callReadEpoch.current;
+    if(!gateway?.listWaiterCalls){setWaiterCalls([]);return;}
+    try{
+      const items=await gateway.listWaiterCalls();
+      if(epoch===callReadEpoch.current){setWaiterCalls(items);setCallError(null);}
+    }catch{
+      if(epoch===callReadEpoch.current){
+        setWaiterCalls([]);setCallError('No se pudo comprobar la lista de llamadas; no se presentan datos obsoletos.');
+      }
+    }
+  },[gateway]);
+  useEffect(()=>{void loadWaiterCalls();return()=>{callReadEpoch.current++;};},[loadWaiterCalls]);
+  const attendWaiterCall=async(callId:string)=>{
+    if(!gateway?.attendWaiterCall||callBusy)return;
+    const requestId=callAttempts.current.get(callId)??crypto.randomUUID();
+    callAttempts.current.set(callId,requestId);
+    setCallBusy(callId);
+    try{
+      await gateway.attendWaiterCall({callId,requestId});
+      callAttempts.current.delete(callId);
+      await loadWaiterCalls();
+    }catch{setCallError('La atención no se ha confirmado. Consulta el estado antes de reintentar.');}
+    finally{setCallBusy(null);}
+  };
   const [phase, setPhase] = useState<LoadState>(gateway ? 'loading' : 'idle');
   const [board, setBoard] = useState<OrderBoard | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -114,11 +144,12 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
         setEventState('connected');
         setOperationEvents((current) => [...current.filter((item) => item.id !== event.id), event].slice(-200));
         void load();
+        if(event.type.startsWith('sabora.waiter_call.'))void loadWaiterCalls();
       },
-      onResync: () => { setOperationEvents([]); void load(); },
+      onResync: () => { setOperationEvents([]); void load();void loadWaiterCalls(); },
       onUnavailable: () => setEventState('unavailable'),
     });
-  }, [gateway, load]);
+  }, [gateway, load, loadWaiterCalls]);
 
   const items = useMemo(() => board?.items.filter((line) => visibleInWorkspace(line, workspace)) ?? [],
     [board, workspace]);
@@ -287,6 +318,28 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
           </button>
         ))}
       </div>
+
+      {workspace==='floor'&&gateway?.listWaiterCalls?
+        <section className="orders-workspace panel" aria-label="Llamadas al camarero">
+         <div className="panel-heading">
+          <div><span className="eyebrow">Atención en mesa</span>
+           <h2>Llamadas al camarero</h2></div>
+          <button className="filter-button" type="button" onClick={()=>void loadWaiterCalls()}>
+           Actualizar llamadas</button>
+         </div>
+         {callError?<p className="field-error" role="alert">{callError}</p>:null}
+         {waiterCalls.length?
+           <ul aria-live="polite">{waiterCalls.map(call=><li key={call.id}>
+            <strong>Mesa {call.tableNumber}</strong> · Pendiente desde {new Date(call.createdAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}
+            <button className="button button--primary" type="button"
+             disabled={callBusy!==null||!gateway.attendWaiterCall}
+             onClick={()=>void attendWaiterCall(call.id)}>
+              {callBusy===call.id?'Registrando…':'Marcar atendida'}
+            </button>
+           </li>)}</ul>:
+           <p role="status">No hay llamadas pendientes confirmadas.</p>}
+         <p className="honest-operational-note">Cada llamada permanece visible hasta marcarla como atendida. Los avisos se actualizan mediante eventos durables, sin sondeo periódico.</p>
+        </section>:null}
 
       <section className="orders-workspace panel" aria-labelledby="orders-workspace-title" aria-busy={phase === 'loading'}>
         <div className="panel-heading">

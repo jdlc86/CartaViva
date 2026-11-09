@@ -123,7 +123,7 @@ begin
  -- FORCE RLS tables to the 44-table baseline; M3 adds four management,
  -- category and allergen relations. M3 finance adds one sealed immutable
  -- provider cashflow journal, plus three sealed CV-014 communications tables. Keep the exact count and names fail-closed.
- if v_count<>66 then raise exception 'Expected 66 FORCE RLS Sabora tables (including M4 cash tips), got %',v_count; end if;
+ if v_count<>68 then raise exception 'Expected 68 FORCE RLS Sabora tables (including two CV-014 waiter-call ledgers), got %',v_count; end if;
  foreach v_table in array array['customer_table_change_requests','customer_account_operational_bindings','order_round_delivery_destinations','order_line_delivery_destinations','order_revisions','order_revision_requests','management_mutation_receipts_m3','management_audit_m3','catalog_categories_m3','catalog_allergen_taxonomy_m3','finance_provider_events_candidate',
  'third_party_cash_intents_candidate','third_party_cash_intent_rounds_candidate',
  'third_party_cash_round_funding_candidate','third_party_cash_refund_claims_candidate',

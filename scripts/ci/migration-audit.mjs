@@ -129,6 +129,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'ownership row SHARE lock before signing key and staff lock, avoiding owner-transfer lock inversion; policy and function DDL; read-only role checks no lock',
   'no data rewrite or owner transfer; fail-closed when no active ADMIN owner; existing receipts, audit and public projections unchanged',
   'inherited'),
+ '20261109020000_sabora_waiter_calls_integral_candidate.sql':r(
+  'CV-014 waiter call durable per-table service request',
+  ['table occupancy and customer authenticated session','staff durable role','H6 event outbox'],
+  'two FORCE RLS ledgers with one pending call index, customer and signed staff RPCs, immutable transition audit, transactional waiter outbox events',
+  'NOLOGIN owner and distinct customer/staff runtimes, each with only an exact RPC EXECUTE and no direct table access; no public/browser grants',
+  'create tables/functions/index/policies and row locking on current dining table then pending call for serialized requests',
+  'new private service-call receipts and append-only audit; no change to orders, account balances, payments or historical table visits',
+  'inherited'),
  '20261108070000_sabora_m5_communications_candidate.sql':r(
   'M5 CV-014 scheduled internal restaurant communications',
   ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],

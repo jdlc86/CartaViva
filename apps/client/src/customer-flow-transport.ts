@@ -56,6 +56,32 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
    if(typeof value.revoked!=='boolean')throw new CustomerFlowTransportError('customer_flow_unavailable',503);
    return value.revoked;
   },
+  async readWaiterCall(tableId:string){
+   if(!UUID.test(tableId))throw Error('invalid_waiter_call_transport');
+   const value=await jsonRequest(fetchImpl,
+    '/api/v1/customer/waiter-calls?'+new URLSearchParams({tableId}),'GET');
+   if(value.version!==1||!['none','pending','attended'].includes(value.state as string)||
+      (value.id!==null&&!UUID.test(value.id as string))||
+      ((value.state==='none')!==(value.id===null))||
+      !Number.isSafeInteger(value.tableNumber)||typeof value.repeated!=='boolean')
+    throw new CustomerFlowTransportError('waiter_call_unavailable',503);
+   return Object.freeze({id:value.id as string|null,
+    state:value.state as 'none'|'pending'|'attended',
+    tableNumber:value.tableNumber as number});
+  },
+  async requestWaiterCall(tableId:string,requestId:string){
+   if(!UUID.test(tableId)||!UUID.test(requestId))
+    throw Error('invalid_waiter_call_transport');
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/waiter-calls','POST',
+    {tableId,requestId});
+   if(value.version!==1||!UUID.test(value.id as string)||
+      !['pending','attended'].includes(value.state as string)||
+      !Number.isSafeInteger(value.tableNumber)||typeof value.repeated!=='boolean')
+    throw new CustomerFlowTransportError('waiter_call_unavailable',503);
+   return Object.freeze({id:value.id as string,
+    state:value.state as 'pending'|'attended',
+    tableNumber:value.tableNumber as number,repeated:value.repeated});
+  },
   async tableChangeState(){
    const value=await jsonRequest(fetchImpl,'/api/v1/customer/table-change/state','GET');
    if(!['unbound','bound','pending','approved','rejected'].includes(value.state as string)||

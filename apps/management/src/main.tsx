@@ -225,6 +225,7 @@ export function mountAuthenticatedManagementApp({
   reconnectDelayMs,
   enableTableChangeQueue = false,
   enableM3Management = false,
+  enableWaiterCalls = false,
 }: {
   element: HTMLElement;
   getAccessToken: () => Promise<string>;
@@ -234,12 +235,14 @@ export function mountAuthenticatedManagementApp({
   enableTableChangeQueue?: boolean;
   /** Opt-in only after both M3 SQL capability preflights succeed. */
   enableM3Management?:boolean;
+  /** Only after waiter-call SQL identity preflight succeeds. */
+  enableWaiterCalls?:boolean;
 }) {
   if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
     throw Error('invalid_management_bootstrap');
   }
   const operationsGateway = createAuthenticatedOrderOperationsGateway({
-    getAccessToken, fetchImpl, reconnectDelayMs,
+    getAccessToken, fetchImpl, reconnectDelayMs, enableWaiterCalls,
   });
   const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
   if (managementRoot && managementElement !== element) {

@@ -12,6 +12,9 @@ const initialTableQr=consumeInitialTableQr();
  // The new warning is enabled only by the disposable PG17 acceptance harness.
 const b3VerifiedTest=import.meta.env.MODE==='test'&&
  import.meta.env.VITE_SABORA_ENABLE_B3_TABLE_CHANGE==='isolated_pg17';
+const waiterCallsVerifiedTest=import.meta.env.MODE==='test'&&
+ import.meta.env.VITE_SABORA_ENABLE_WAITER_CALLS==='isolated_pg17';
 createRoot(root).render(<React.StrictMode><SaboraClientApp
- initialTableQr={initialTableQr} enableTableChangeFlow={b3VerifiedTest}/></React.StrictMode>);
+ initialTableQr={initialTableQr} enableTableChangeFlow={b3VerifiedTest}
+ enableWaiterCalls={waiterCallsVerifiedTest}/></React.StrictMode>);
 registerClientServiceWorker();

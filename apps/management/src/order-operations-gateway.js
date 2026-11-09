@@ -123,6 +123,24 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
   if (typeof send !== 'function'||!Number.isSafeInteger(reconnectDelayMs)||reconnectDelayMs<100||reconnectDelayMs>30000)
     throw Error('invalid_order_operations_sender');
   return Object.freeze({
+    async listWaiterCalls(){
+      const response=await send('/api/v1/operations/waiter-calls',{
+       method:'GET',cache:'no-store',redirect:'error',credentials:'omit',
+       headers:{Accept:'application/json'}});
+      const value=await json(response);
+      if(value?.version!==1||!Array.isArray(value.items)||value.items.length>100||
+       !value.items.every(call=>call&&UUID.test(call.id)&&
+        Number.isSafeInteger(call.tableNumber)&&call.tableNumber>0&&
+        typeof call.createdAt==='string'&&Number.isFinite(Date.parse(call.createdAt))))
+       throw new OrderOperationsGatewayError('invalid_response');
+      return Object.freeze(value.items.map(call=>Object.freeze({
+       id:call.id,tableNumber:call.tableNumber,createdAt:call.createdAt})));
+    },
+    attendWaiterCall({callId,requestId}={}){
+     if(!UUID.test(callId??'')||!UUID.test(requestId??''))
+      throw Error('invalid_waiter_call_operation');
+     return mutation(send,`/api/v1/operations/waiter-calls/${callId}/attend`,{requestId});
+    },
     async listBoard({status = null, limit = 100, cursor = null} = {}) {
       const parameters = new URLSearchParams();
       if (status !== null) parameters.set('status', status);

@@ -79,12 +79,14 @@ function EmptyState({children}:Readonly<{children:string}>){
 }
 
 export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
- flowContract='h6',enableTableChangeFlow=false}:Readonly<{
+ flowContract='h6',enableTableChangeFlow=false,enableWaiterCalls=false}:Readonly<{
  initialTableQr?:InitialTableQr;
  confirmStripePayment?:((clientSecret:string)=>Promise<void>)|null;
  flowContract?:'h6'|'h3-candidate';
  /** Opt-in only for the verified isolated B3 composition, never default H6. */
  enableTableChangeFlow?:boolean;
+ /** Available only after runtime PG17 security preflight succeeds. */
+ enableWaiterCalls?:boolean;
 }>){
  const [initial]=useState(()=>loadClientPreferences(localStorage));
  const [locale,setLocale]=useState<Locale>(initial.locale);
@@ -109,6 +111,9 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const [identityBusy,setIdentityBusy]=useState(false);
  const [qrState,setQrState]=useState<QrState>(initialTableQr?.status==='valid'?'pending':initialTableQr?'invalid':'idle');
  const [tableVisit,setTableVisit]=useState<TableVisit|null>(null);
+ const [waiterCallState,setWaiterCallState]=useState<'none'|'pending'|'attended'|'loading'|'unavailable'>('none');
+ const [waiterCallBusy,setWaiterCallBusy]=useState(false);
+ const waiterCallRequestRef=useRef<string|null>(null);
  const [tableChangeState,setTableChangeState]=useState<TableChangeState|null>(null);
  const [tableChangeNotice,setTableChangeNotice]=useState<'approved'|'rejected'|null>(null);
  const [changeClock,setChangeClock]=useState(()=>Date.now());
@@ -146,6 +151,40 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
  const catalogRef=useRef<CatalogState>(catalog);
  useEffect(()=>{catalogRef.current=catalog;},[catalog]);
  const copy=text[locale];
+ useEffect(()=>{
+  if(!enableWaiterCalls||!tableVisit||identity.status!=='authenticated'){
+   setWaiterCallState('none');waiterCallRequestRef.current=null;return;
+  }
+  let current=true;
+  setWaiterCallState('loading');
+  void customerTransport.readWaiterCall(tableVisit.tableId).then(receipt=>{
+   if(current)setWaiterCallState(receipt.state);
+  }).catch(()=>{if(current)setWaiterCallState('unavailable');});
+  return()=>{current=false;};
+ },[enableWaiterCalls,tableVisit?.tableId,identity.status]);
+
+ const requestWaiterCall=useCallback(async()=>{
+  if(!enableWaiterCalls||!tableVisit||waiterCallBusy||
+     waiterCallState==='pending'||identity.status!=='authenticated')return;
+  const id=waiterCallRequestRef.current??crypto.randomUUID();
+  waiterCallRequestRef.current=id;
+  setWaiterCallBusy(true);
+  try{
+   const result=await customerTransport.requestWaiterCall(tableVisit.tableId,id);
+   setWaiterCallState(result.state);waiterCallRequestRef.current=null;
+  }catch{setWaiterCallState('unavailable');}
+  finally{setWaiterCallBusy(false);}
+ },[enableWaiterCalls,tableVisit,waiterCallBusy,waiterCallState,identity.status]);
+
+ const refreshWaiterCall=useCallback(async()=>{
+  if(!enableWaiterCalls||!tableVisit||waiterCallBusy)return;
+  setWaiterCallBusy(true);
+  try{
+   const receipt=await customerTransport.readWaiterCall(tableVisit.tableId);
+   setWaiterCallState(receipt.state);
+  }catch{setWaiterCallState('unavailable');}
+  finally{setWaiterCallBusy(false);}
+ },[enableWaiterCalls,tableVisit,waiterCallBusy]);
 
  const authorizeTable=useCallback((credential:TableQrCredential)=>{
   if(qrAuthorizationRef.current)return qrAuthorizationRef.current;
@@ -864,7 +903,21 @@ export function SaboraClientApp({initialTableQr=null,confirmStripePayment=null,
        <button type="button" onClick={cancelChangePrompt}>Cancelar</button>
       </div>
     </div>:
-    qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}{flowContract==='h6'?<button type="button" onClick={()=>setOverlay('pay-others')}>{locale==='es'?'Pagar consumos y propinas en caja':'Pay consumption and tips at the cashier'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}> {locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
+    qrState==='authorized'&&tableVisit?<><div className="qr-success" role="status"><Icon name="check"/><div><strong>{locale==='es'?'Mesa verificada':'Table verified'}</strong><span>{locale==='es'?`Autorización válida hasta ${new Date(tableVisit.expiresAt).toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})}.`:`Authorization valid until ${new Date(tableVisit.expiresAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}.`}</span></div></div>{enableWaiterCalls?<div className="table-change-client-notice" role="group" aria-label="Llamada al camarero">
+     <strong>{locale==='es'?'Atención en mesa':'Table service'}</strong>
+     <p role="status">{waiterCallState==='pending'?
+      (locale==='es'?'Camarero solicitado. Una única llamada pendiente por mesa.':'A waiter has been called. Only one pending call per table.'):
+      waiterCallState==='attended'?(locale==='es'?'La última llamada ha sido atendida.':'Your previous call was attended.'):
+      waiterCallState==='unavailable'?(locale==='es'?'No podemos confirmar la llamada. Comprueba el estado antes de repetirla.':'We cannot confirm your call. Check status before trying again.'):
+      waiterCallState==='loading'?(locale==='es'?'Comprobando llamada…':'Checking call…'):
+      (locale==='es'?'Puedes avisar a sala sin escribir un motivo.':'You can call floor staff without entering a reason.')}</p>
+     <button className="primary-action" type="button"
+      disabled={waiterCallBusy||waiterCallState==='pending'||waiterCallState==='loading'}
+      onClick={()=>void requestWaiterCall()}>
+      {locale==='es'?'Llamar al camarero':'Call a waiter'}</button>
+     <button type="button" disabled={waiterCallBusy} onClick={()=>void refreshWaiterCall()}>
+      {locale==='es'?'Consultar llamada':'Check call'}</button>
+    </div>:null}{basket.length&&issues.length===0?<button className="primary-action" type="button" onClick={()=>void prepareCheckout()}>{locale==='es'?'Continuar con el pedido':'Continue with order'}</button>:null}{flowContract==='h6'?<button type="button" onClick={()=>setOverlay('pay-others')}>{locale==='es'?'Pagar consumos y propinas en caja':'Pay consumption and tips at the cashier'}</button>:null}<button type="button" onClick={()=>{qrCredentialRef.current=null;setTableVisit(null);setQrState('idle');}}> {locale==='es'?'Escanear de nuevo':'Scan again'}</button></>:
     qrState==='authorizing'?<span className="honest-status" role="status">{locale==='es'?'Validando mesa y visita…':'Validating table and visit…'}</span>:
     qrState==='identity_required'?<><span className="honest-status" role="status">{locale==='es'?'Crea tu identidad segura para validar esta mesa. El QR queda pendiente solo en memoria.':'Create your secure identity to validate this table. The QR remains pending in memory only.'}</span><button className="primary-action" type="button" onClick={()=>{setOverlay(null);setArea('settings');}}>{locale==='es'?'Crear identidad':'Create identity'}</button></>:
     qrState==='invalid'?<><span className="qr-error" role="alert">{locale==='es'?'Este QR no cumple el contrato seguro de Sabora o pertenece a otra instalación.':'This QR does not meet Sabora’s secure contract or belongs to another installation.'}</span><button type="button" onClick={()=>setQrState('idle')}>{locale==='es'?'Intentar otro QR':'Try another QR'}</button></>:

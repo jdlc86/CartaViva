@@ -4,7 +4,7 @@ import {createTableChangeDecisionGateway} from './table-change-decision-gateway.
 // Explicit opt-in transport. The host authentication layer owns token
 // acquisition and renewal; never persist credentials in browser storage.
 export function createAuthenticatedOrderOperationsGateway({
-  getAccessToken, fetchImpl = globalThis.fetch, reconnectDelayMs,
+  getAccessToken, fetchImpl = globalThis.fetch, reconnectDelayMs, enableWaiterCalls=false,
 } = {}) {
   if (typeof getAccessToken !== 'function' || typeof fetchImpl !== 'function') {
     throw Error('invalid_order_operations_auth_transport');
@@ -54,6 +54,7 @@ export function createAuthenticatedOrderOperationsGateway({
   const subscriptions = new Set();
   return Object.freeze({
     ...gateway,
+    ...(enableWaiterCalls?{}:{listWaiterCalls:undefined,attendWaiterCall:undefined}),
     decideTableChange: tableChangeDecisions.decide,
     listPendingTableChanges: tableChangeDecisions.listPending,
     subscribeEvents(callbacks) {

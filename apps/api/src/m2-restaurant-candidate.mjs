@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
+import {assertWaiterCallRuntimeIdentity,createWaiterCallComposition,registerWaiterCallHttp}
+ from './waiter-call-candidate.mjs';
 import {assertCustomerProductionSqlCapabilities} from './customer-production-sql-preflight.mjs';
 import {assertIsolatedCustomerPoolIdentities} from './isolated-pool-identity-preflight.mjs';
 import {assertIsolatedCustomerSqlCapabilities} from './isolated-customer-sql-capabilities-preflight.mjs';
@@ -98,7 +100,7 @@ const staffGuard=forRoles=>roles=>{
 // Separate opt-in assembly. It owns Fastify/listeners/scheduler, but never
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
- management=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
+ management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
  const app=Fastify({logger:false,trustProxy:false});
  let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
  const closeServices=async()=>{
@@ -125,6 +127,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
         typeof management.communications.expectedAdminLogin!=='string'||
         typeof management.communications.expectedPublicLogin!=='string'||
         typeof management.communications.issueCapability!=='function'))))||
+     (waiterCalls!==null&&(!waiterCalls||typeof waiterCalls!=='object'||
+      typeof waiterCalls.customerPool?.connect!=='function'||
+      typeof waiterCalls.staffPool?.connect!=='function'||
+      typeof waiterCalls.expectedCustomerLogin!=='string'||
+      typeof waiterCalls.expectedStaffLogin!=='string'||
+      typeof waiterCalls.issueStaffCapability!=='function'))||
      !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
    throw Error('invalid_m2_restaurant_candidate');
 
@@ -147,12 +155,22 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      management.communications.expectedPublicLogin);
    }
   }
+  if(waiterCalls){
+   capabilityPools.push(waiterCalls.customerPool,waiterCalls.staffPool);
+   logins.push(waiterCalls.expectedCustomerLogin,waiterCalls.expectedStaffLogin);
+  }
   if(!uniqueCapabilities(capabilityPools,logins)||
      typeof tableChange.notificationPool?.connect!=='function'||
      typeof h6.notifierPool?.connect!=='function')
    throw Error('m2_restaurant_candidate_isolation_required');
 
   const preflight=async()=>{
+   if(waiterCalls){
+    await assertWaiterCallRuntimeIdentity({pool:waiterCalls.customerPool,
+     expectedLogin:waiterCalls.expectedCustomerLogin,kind:'customer'});
+    await assertWaiterCallRuntimeIdentity({pool:waiterCalls.staffPool,
+     expectedLogin:waiterCalls.expectedStaffLogin,kind:'staff'});
+   }
    await assertCustomerProductionSqlCapabilities({
     registrationPool:customer.registrationPool,sessionPool:customer.sessionPool,
     flowPool:customer.flowPool,expectedRegistrationLogin:customer.expectedRegistrationLogin,
@@ -308,6 +326,10 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
    issueCapability:h6.issueStaffCapability,subscribeCommitted:h6Notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
+  if(waiterCalls)registerWaiterCallHttp(app,{cookieAuth,forRoles:oneGuard,
+   repository:createWaiterCallComposition({
+    customerPool:waiterCalls.customerPool,staffPool:waiterCalls.staffPool,
+    issueStaffCapability:waiterCalls.issueStaffCapability})});
   if(management)registerM3ManagementHttp(app,{forRoles:oneGuard,tables:m3Tables,
    catalog:m3Catalog,finance:m3Finance,qr:management.qr,observeFailure});
   if(m5Communications){
