@@ -118,17 +118,17 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 3. [Cierre delimitado de estabilización 06-11](SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md): candidato #49 sin conflictos, **5/5** workflows sobre SHA `0402e63a82c23e80470f59f0da2bc39fd5aa43c0`, inventario/decisiones propuestos, y declaración explícita: `ESTABILIZACIÓN_TÉCNICA_DE_CANDIDATO = CERRADA_EN_ALCANCE`, `RECONCILIACIÓN_ADMINISTRATIVA_DE_PR = PENDIENTE`, `MERGE_MAIN = NO_AUTORIZADO`.
 4. [Tablero vivo §§15–24](../tracking/SABORA_LIVE_PROJECT_TRACKER.md): además de los puntos anteriores, informa de la recuperación de **tres documentos ausentes** después de revisar los árboles completos de 42 HEAD; última batería integradora #49 con Node/PG17/Chromium, y vuelta acordada a la matriz. Preservar el historial sin recrear sus auditorías.
 
-**Cambio concreto del S1 actual:** el **censo estático previo 42/42 ya se hizo**. Desde entonces se añadieron **cuatro PR #50–#53**, por lo que falta contrastar su genealogía y diferencias actuales; para las antiguas, solo **actualizar lo que haya cambiado y cerrar los puntos de paridad no demostrados**, especialmente evolución SQL/roles, UX y comportamiento. Las cinco `dirty` actuales no significan que no se resolviera un conflicto anterior específico (#48/#49): son evaluaciones diferentes contra bases diferentes y fechas distintas.
+**Actualización posterior que sustituye la tarea de genealogía S1:** ya se compararon **los 46 HEAD de PR abiertos** frente a #53; resultado **31 ancestros, 14 divergentes y #53 idéntico**, con 46/46 resultados GitHub. Faltan únicamente las diferencias **semánticas** de las familias históricas #4/#5/#8/#17/#22 y la combinación nueva #52, además de revisión documental de #14/#31/#40/#44. La cadena #18–#21 pertenece a la familia #22; no reabrir las comparaciones de los 42 como un trabajo nuevo. Ver §8.
 
 **Cambio concreto de S2/S3:** hubo integración real de rama/CI para #49, y validación aislada de #52 y #53. Lo que **no** existe es un candidato común actual #52+#53 validado como conjunto, ni equivalencia de todos los deltas no ancestrales, ni integración a `main`. Las suites y logs previos deben reutilizarse como línea base, y ejecutar de nuevo únicamente al cambiar el candidato funcional integrado, sin rebajar gates.
 
 ## 4. Hitos completos de saneamiento propuestos
 
-### Hito S1 — Actualización del censo histórico y cierre de paridad pendiente (PARCIAL PREEXISTENTE)
+### Hito S1 — Genealogía 46/46 completada; pendiente paridad funcional de las divergencias
 
-**Entrada:** 46 PR y documentos normativos. Para cada PR: HEAD, base y SHA de base, relación de ancestros con rama integradora, delta exclusivo, archivos, migraciones SQL, requisitos afectados, tests y resultados de CI del mismo SHA, revisiones pendientes y evidencia de reemplazo. Reusar [auditoría 26-10](GITHUB_PR_GLOBAL_HEALTH_AUDIT_2026-10-26.md), corregir su fotografía histórica.
+**Entrada ya contrastada:** 46 PR, base/HEAD y ancestralidad actual frente a #53; inventario/conciliación de 42 PR del 06-11 reutilizados. **Trabajo pendiente:** actualizar solamente las diferencias de comportamiento no acreditadas por los informes previos, con especial atención a #4/#5/#8/#17/#22, documentación histórica divergente y al PR #52 paralelo. Reutilizar tests e informes existentes; no repetir inspección exhaustiva de cada PR ancestral por inercia.
 
-**Salida exigida:** matriz **46/46**, clasificados sin atajos en `contribución pendiente`, `contribución incorporada por ancestro`, `equivalente demostrado`, `superado con evidencia`, `conflicto por resolver`, o `sin evidencia suficiente`. Una clasificación de PR como redundante necesita comparación de código y contratos **más** recorrido funcional relevante, no solo árboles/blob/commits ni la existencia de una rama descendiente. Registrar una decisión por PR; no cerrarlos aún.
+**Salida parcial realizada:** la clasificación **de genealogía** es 46/46; eso no significa equivalencia de funcionalidad. **Salida pendiente:** dictamen explícito y verificable por cada familia divergente, con requisitos, delta exclusivo, pruebas representativas, lo que queda sin probar y propuesta de tratamiento del PR original. No cerrar PR por mero parentesco ni por coincidencia textual de tests. Mantener trazabilidad de los 46 registros.
 
 ### Hito S2 — Consolidación final sin perder normativa ni funcionalidades (PARCIAL HISTÓRICO; INTEGRACIÓN ACTUAL NO VALIDADA)
 
@@ -157,7 +157,7 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 | Riesgo | Severidad de gestión | Evidencia / siguiente comprobación |
 | --- | --- | --- |
 | 46 PR Draft y grafo largo sin `main` integrado | Alta | Censo y reconciliación S1/S2; no equivale a defectos de runtime |
-| #45 `dirty` en cadena de base de candidaturas recientes | Alta | Resolver causa con comparación base/HEAD y regresión; no confundir con `unstable` |
+| #45 `dirty` frente a su propia base (pero **ancestro del #53**) | Riesgo de gobierno, no bloqueo probado | Examinar al decidir cerrar/fusionar esa base; no inferir pérdida o conflicto del candidato #53 |
 | #52 / #53 ramas hermanas | Alta | Ensayo combinado antes de cualquier decisión de integración |
 | `main` con `protected=false` | Alta | Propuesta de reglas y checks con autorización; endpoint de protección 403 |
 | #2/#43 con diferencias acumuladas muy grandes | Alta | Comparaciones de linaje, deltas funcionales y migraciones; no rebase destructivo por estética |
@@ -176,10 +176,62 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 | Hito | Estado | Prueba o decisión pendiente |
 | --- | --- | --- |
 | Diagnóstico inicial 46 PR y estados GitHub | **HECHO, corte temporal** | Revalidar en el inicio de S1 |
-| S1 matriz de equivalencia 46/46 | **PARCIAL: 42/42 inventariados y clasificados estáticamente el 06-11; no equivalencia final** | Actualizar #50–#53 y reconciliar la paridad semántica pendiente, sin repetir el censo histórico |
+| S1 genealogía 46/46 | **REALIZADO**: 31 ancestros, 14 divergentes y #53 propio, comparaciones directas 09-11 | **Paridad semántica aún abierta** para seis frentes; no interpretar ancestralidad como aceptación |
 | S2 consolidación candidata aislada | **PARCIAL HISTÓRICO**: #48→#49 reparado y probado; **candidato final no construido** | Integrar solo deltas pendientes, incluidas las ramas hermanas #52/#53, con revisión de conflictos |
 | S3 prueba end-to-end combinada | **PARCIAL HISTÓRICO**: #49 5/5 y #52/#53 6/6 por separado; **conjunto no probado** | SHA integrado tras S2 y batería conjunta real |
 | S4 fusión/cierre de PR | **NO AUTORIZADO** | S1–S3, revisión y autorización explícita |
 | Producción / Supabase / VPS | **NO-GO** | Autorización operativa separada |
 
-**Próxima acción técnica recomendada:** reutilizar íntegro el **inventario histórico 42/42** y sus comparaciones, actualizar únicamente las **cuatro PR nuevas #50–#53**, revalidar la evidencia de los 13 divergentes (en particular #4/#5/#8/#17/#22 y cadena H3), resolver las cinco `dirty` y cuatro `unstable` actuales **solo donde siga existiendo un problema real**, y completar la matriz de paridad que antes quedó pendiente; después, preparar la integración final. No reconstruir desde cero el saneamiento ya realizado. El hito CV-013 de Excel permanece condicionado por su normativa y no se debe utilizar para eludir la estabilización de Git.
+**Próxima acción técnica recomendada:** cerrar el **dictamen de paridad únicamente para las familias divergentes con código** (#4/#5/#8/#17/#22) reutilizando las pruebas y normas existentes; conciliar #52 con #53 en rama aislada tras comprobar sus nueve rutas compartidas y migraciones; ejecutar una aceptación integral sobre el SHA combinado. No perseguir los `dirty/unstable` históricos de PR ya ancestrales como defectos actuales sin causa comprobada. Mantener sin cambios `main`, Fleetia, VPS y Supabase operativo. El hito CV-013 de Excel permanece condicionado por su normativa y no se debe utilizar para eludir la estabilización de Git.
+
+## 8. Reevaluación mediante continuidades 20–23, 25 y 27–32 y comparaciones Git 46/46 — 09-11-2026
+
+**Esta sección es la lectura vigente del saneamiento** y corrige los diagnósticos genéricos anteriores. Se han leído los handoffs de las sesiones **20, 21, 22, 23, 25, 27, 28, 29, 30, 31 y 32**, contrastándolos con los informes de estabilización de 06-11 y con `compare_commits` de **cada uno de los 46 HEAD abiertos** contra el HEAD del PR #53 `39de23f2f0d470a5ab7d769d2080cfbf05c35c69` (cambio documental respecto al SHA de funcionamiento `92f8482a`). Las sesiones **24 y 26 no tienen continuidad propia en esta secuencia**; no inventar su contenido. Los resultados de Git son por **ancestralidad**, no por equivalencia de comportamiento.
+
+### 8.1 Resultado exhaustivo de genealogía actualizado
+
+| Situación respecto a HEAD #53 | Total | PR |
+| --- | ---: | --- |
+| **HEAD ancestro** (`ahead`, `behind=0` al comparar HEAD→#53) | **31** | #1, #2, #7, #10, #11, #12, #13, #15, #16, #23–#30, #32, #34, #36, #38, #41–#43, #45–#51 |
+| **HEAD divergente** (`ahead>0`, `behind>0`) | **14** | **#4, #5, #8, #14, #17, #18, #19, #20, #21, #22, #31, #40, #44, #52** |
+| **HEAD de referencia** | **1** | #53 |
+| **TOTAL** | **46** | Lista API de PR abiertos a 09-11-2026 |
+
+**Corrección de riesgo esencial:** #10, #11 y #45 están `dirty` con su **base declarada** pero son **ancestros de #53**, así que no son automáticamente bloqueos de la rama candidata ni cambios perdidos. Los restantes `dirty` #4 y #8 sí divergen. Los `unstable` #47 y #51 son ancestros de #53; #5 y #40 son divergentes. Un estado `unstable` no prueba por sí solo un fallo del producto actual. No solucionar el contador de PR cambiando bases arbitrariamente.
+
+Las **14 divergencias** se agrupan sin duplicar trabajo:
+
+- **Cinco familias con diferencias de código históricas:** **#4 cocina/sala, #5 gestión, #8 vinculación de actor SQL, #17 lectura HTTP y #22 cesta/configuración**. Los informes del 06-11 ya compararon rutas, blobs, contratos y escenarios; la **paridad semántica total no estaba demostrada**, por lo que solo se debe verificar lo que quedó sin evidencia frente al código actual.
+- **Cuatro PR de la cadena H3 que confluyen en #22:** #18, #19, #20 y #21; se conservan como procedencia, no cuatro funcionalidades adicionales a reconstruir.
+- **Cuatro divergencias de documentos históricos:** #14 (continuidad 11), #31 (encargo H6), #40 (continuidad 15) y #44 (continuidad 22, revisión coste cero y tablero). Las comparaciones de commits únicos respecto de `merge-base` muestran rutas documentales; sus documentos ya fueron objeto de recuperación/preservación histórica, que debe contrastarse sin copiar normas obsoletas.
+- **Una rama funcional reciente no incorporada al candidato:** **#52 gobierno de titularidad ADMIN**; HEAD propio no ancestro de #53. Revisión independiente pendiente, no confundir con los cinco legados.
+
+**#48 ya es ancestro de #53**; el conflicto histórico #48→#49 se resolvió de verdad el 06-11. El antiguo inventario 28/13/#49 y esta nueva clasificación 31/14/#53 no se contradicen: son dos fotografías de referencia y fecha diferentes.
+
+### 8.2 Riesgo concreto de combinación #52 y #53
+
+Comparación directa con base compartida **#51**, SHA `bd57464d7924562794d9fe3dd8e9fcb69131fcb4`:
+
+- **#52:** 78 commits por delante de #51 y **33 archivos cambiados**. Último SHA funcional probado `12c2371e` (6/6 CI) y HEAD posterior `c602c923` documental.
+- **#53:** 22 commits por delante de #51 y **25 archivos cambiados** (incluida actualización documental posterior a código `92f8482a`, 6/6 CI). **Ambas ramas divergen**: la comparación #52→#53 tiene `ahead=22, behind=78`.
+- **Nueve rutas modificadas en ambas:** `apps/api/src/m2-restaurant-candidate.mjs`, `apps/management/src/main.tsx`, `docs/tracking/SABORA_LIVE_PROJECT_TRACKER.md`, `scripts/ci/catalog-postgres17-node-driver-smoke.sh`, `scripts/ci/cv012-two-pwa-installation.mjs`, `scripts/ci/cv014-communications-postgres17.test.mjs`, `scripts/ci/migration-audit.mjs`, `scripts/ci/postgres-migration-smoke.sh` y `scripts/ci/table-change-root-postgres17.test.mjs`.
+
+**Interpretación:** el solapamiento de archivos es riesgo de coordinación **no prueba de conflicto de texto**. Antes de combinar, comprobar semántica de composición opt-in, cercado de sesión, identidad SQL, migraciones forward-only, pruebas largas y roles. No aplicar automáticamente el contenido de una rama sobre otra ni usar CI verde separado como validación conjunta.
+
+### 8.3 Estado sanitario corregido y alcance de próximas acciones
+
+| Dimensión | Evaluación |
+| --- | --- |
+| Estabilidad técnica del **candidato histórico #49** | **CERRADA EN ALCANCE** el 06-11, 5/5 CI; no repetir |
+| Historia y preservación de **42 PR** anteriores | **CENSADA Y RECONCILIADA ESTÁTICAMENTE**; pendientes semánticos específicos |
+| Genealogía **46 PR** actual | **COMPLETADA 46/46** respecto de #53, sin pruebas nuevas |
+| Calidad/ejecución actual de **#53** | Candidato funcional **6/6** en `92f8482a`, no aptitud de producción |
+| Calidad/ejecución actual de **#52** | Candidato funcional **6/6** en `12c2371e`, falta decisión independiente |
+| Paridad histórica de #4/#5/#8/#17/#22 | **PENDIENTE DE CIERRE SEMÁNTICO**, sin demostrar pérdida efectiva |
+| Rama combinada **#52 + #53** | **NO CONSTRUIDA / NO PROBADA** |
+| Integración de PR a `main` / reducción de 46 Draft | **PENDIENTE DE DECISIÓN Y AUTORIZACIÓN**; `main` `protected=false` |
+| Producto, aceptación visual humana, Stripe sandbox real, M6 y producción | **NO-GO independientes** |
+
+**Orden de saneamiento reformulado:** (a) cerrar por equivalencia semántica o brecha demostrada las cinco familias históricas, sin recertificar los 31 ancestros de forma individual; (b) preparar **un único candidato de integración #52+#53** en rama aislada autorizada del propio repo y preservar ambas normativas; (c) ejecutar **una batería completa PG17/JWT/HMAC/Fastify/Chromium/H6/ambas PWA** en el mismo nuevo SHA, revisar causas si falla y repetir; (d) producir expediente de decisiones PR a PR y solicitar autorización **antes** de cerrar/fusionar o proteger `main`. Las revisiones de Codex/tercero no se suplantan con comentarios del autor.
+
+**Advertencia de metodología:** el cierre técnico previo permitía regresar a la matriz y seguir desarrollando hitos completos. La deuda administrativa de PR no invalida los 6/6 de un SHA funcional ni exige inmovilizar todo el producto; sí desaconseja ampliar ramas paralelas sin una ruta clara de integración. CV-013 sigue dependiente de decisiones normativas de atribución/privacidad; no usarlo para eludir ni para ampliar arbitrariamente el saneamiento.
