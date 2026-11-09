@@ -58,8 +58,8 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   await admin.query("INSERT INTO sabora.dining_tables(id,number,capacity,qr_token_hash,ordering_state,readiness_state) VALUES($1,9713,4,$2,'paused','LISTA')",
    [tableId,createHash('sha256').update(qrToken).digest()]);
   const tableSession=(await admin.query('SELECT session_id FROM sabora.dining_tables WHERE id=$1',[tableId])).rows[0].session_id;
-  await admin.query("INSERT INTO sabora.customer_table_visits(table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,granted_at,expires_at) VALUES($1,$2,$3,$4,$3,1,clock_timestamp()-interval '2 hours',clock_timestamp()-interval '1 hour')",
-   [tableId,tableSession,customerId,visitKey]);
+  await admin.query("INSERT INTO sabora.customer_table_visits(table_id,session_id,customer_id,visit_key,actor_id,authorized_qr_version,granted_at,expires_at) VALUES($1,$2,$3,$4,$5,1,clock_timestamp()-interval '2 hours',clock_timestamp()-interval '1 hour')",
+   [tableId,tableSession,customerId,visitKey,customerId]);
   // Real human identities already defined by the staff enrollment contract.
   for(const [user,given,family,code] of [[a,'Alicia','Molina','Z9A'],
     [b,'Bruno','Romero','Z9B'],[c,'Clara','Rivera','Z9C']]){
