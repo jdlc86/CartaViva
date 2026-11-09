@@ -196,8 +196,19 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   await manager.getByRole('link',{name:/Configuración/}).click();
   await manager.getByRole('heading',{name:'Comunicaciones'}).waitFor();
   await manager.getByLabel('Título (máx. 120)').fill('Oferta de la tarde');
-  await manager.getByLabel('Mensaje (admite saltos de línea y emojis)').fill('Prueba integral de anuncio con fotografía ');
+  const formattedEditor=manager.getByLabel('Mensaje (admite saltos de línea y emojis)');
+  await formattedEditor.fill('Prueba integral de anuncio con fotografía ');
+  // The toolbar wraps the selection when one exists. Playwright .fill() may
+  // leave a selection whose position is not a user-intended caret. Collapse
+  // it explicitly: this scenario verifies insertion of "negrita", not a
+  // different and legitimate "bold the selected paragraph" operation.
+  await formattedEditor.evaluate(input=>{
+   input.focus();
+   input.setSelectionRange(input.value.length,input.value.length);
+  });
   await manager.getByRole('button',{name:'Negrita'}).click();
+  assert.match(await formattedEditor.inputValue(),/\*\*negrita\*\*/,
+   'rich-text toolbar must insert bold markup at the intended cursor');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
   // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
   await manager.getByLabel('Hora desde').fill('00:00');
@@ -212,10 +223,16 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
+  assert.match(photo.draft.body,/\*\*negrita\*\*/,
+   'PostgreSQL persisted draft must preserve bold markup');
   await manager.locator('.communications-item').filter({hasText:'Oferta de la tarde'})
    .getByRole('button',{name:'Publicar borrador'}).click();
   await manager.getByText('Anuncio publicado.',{exact:false}).waitFor();
-  assert.equal((await getPublic()).items.length,2);
+  const published=(await getPublic()).items;
+  assert.equal(published.length,2);
+  assert.match(published.find(item=>item.title==='Oferta de la tarde')?.body??'',
+   /\*\*negrita\*\*/,
+   'published payload must preserve bold markup before Chromium render');
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/})
    .waitFor({timeout:28_000});
   await customer.getByRole('button',{name:/Abrir anuncio: Oferta de la tarde/}).click();
