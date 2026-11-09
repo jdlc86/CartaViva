@@ -3,9 +3,19 @@
 > **DOCUMENTO DE CONTINUIDAD Y CONTEXTO. NO ES NORMATIVA, APROBACIÓN DE CÓDIGO, ACEPTACIÓN VISUAL NI AUTORIZACIÓN DE PRODUCCIÓN.** Los contratos normativos versionados del repositorio prevalecen ante discrepancias. Esta continuidad relata un corte temporal contrastado en GitHub; una ejecución CI acredita únicamente el commit y escenario probados.
 >
 > **Tablero vivo obligatorio:** [SABORA_LIVE_PROJECT_TRACKER.md](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), especialmente §§55–59. **Matriz funcional ↔ PWA:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json). **Continuidad previa histórica (PR #52, otra rama):** [sesión 31](https://github.com/jdlc86/CartaViva/blob/feat/sabora-admin-ownership-end-to-end-20261108/docs/handoffs/SESSION_31_HANDOFF_2026-11-08.md). La sesión 31 no está en la rama de PR #53 porque esta se creó directamente desde la base del PR #51; no fusionar ramas para copiar la continuidad.
-> **Plan específico de saneamiento del repositorio (solo sesión 32):** [SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md). Censo de 46 PR, conflictos, topología, pruebas y plan S1–S4; no confundir la publicación del plan con una consolidación ya ejecutada.
+> **Plan específico de saneamiento del repositorio (solo sesión 32):** [SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md), §10 para la propuesta vigente de **47 PR**; el censo original de 46 PR y su genealogía se conservan como evidencia histórica. No confundir validación automática, cierre administrativo ni autorización de producción.
 
-## 1. Estado vigente y rama de trabajo
+## Estado ejecutivo actualizado — cierre automatizado S3 (09-11-2026)
+
+**Corte GitHub comprobado:** [PR #54 Draft](https://github.com/jdlc86/CartaViva/pull/54), rama `integration/sabora-s32-admin-waiter-sanitization-20261109`, base #53; integra ambas líneas #52/#53 con commit de dos padres. **SHA funcional probado `03d1e61faa8857396ed051c91e5c36c314a2b2f9`: 6/6 workflows GitHub Actions `completed/success`** (Bootstrap PG17, H6, Chromium cliente, Chromium gestión, instalación de ambas PWA, cobertura funcional/UI). Los commits posteriores a ese SHA solo afectan `docs/` y llevan `[skip ci]`; las evidencias no deben trasladarse ficticiamente al HEAD documental. [Informe detallado §6](../reviews/SABORA_S32_SEMANTIC_RECONCILIATION_AND_COMBINED_CANDIDATE_2026-11-09.md).
+
+**Inventario administrativo:** **47 PR abiertos, 47 Draft**, propuesta S4 de tratamiento individual 47/47 [en el plan §10](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md). No se ha cerrado, fusionado ni rebajado ninguno. `main` permanece en `42b46358a76162445fa9e0b20e7b87dd0a640b5b`, con `protected=false` según la API; esta condición exige una decisión de gobierno, no intervención unilateral.
+
+**Puertas abiertas:** revisión independiente del código y de titularidad, aceptación visual humana F28/R09 (**gate visual `skipped`**), conciliación semántica pendiente de cinco familias históricas, verificación explícita de simultaneidad de ambos módulos en el mismo host si se exige, Stripe sandbox real M4 y seguridad/operación M6. **S3 cerrado solo dentro del alcance del CI del candidato aislado; S4 sigue como propuesta sin ejecutar; producción NO-GO.** No tocar Fleetia/VPS/Supabase operativo, ni `main` sin autorización.
+
+---
+
+## 1. Estado al inicio de la sesión (histórico; consultar estado ejecutivo vigente)
 
 - Repositorio único autorizado: [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva).
 - **Hito recién cerrado en automatización aislada:** [PR #53 — CV-014 llamada al camarero](https://github.com/jdlc86/CartaViva/pull/53), rama `feat/sabora-cv014-waiter-calls-integral-20261109`, base `feat/sabora-cv014-communications-full-flow-20261108` del PR #51. PR **abierto Draft, sin merge ni despliegue**.
