@@ -98,15 +98,39 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 
 **Alerta estructural:** el número de PR y un HEAD con CI verde no permiten inferir que la cadena completa pase su validación cuando se integra con una rama hermana. La ausencia de un merge a `main` es un **riesgo de integración**, no una demostración de fallo del producto.
 
+## 3 bis. Trabajo de integración y saneamiento YA REALIZADO — revisión de las últimas seis continuidades (09-11-2026)
+
+**Rectificación del plan original:** la formulación inicial «S1 NO INICIADO» omitía trabajo sustancial ejecutado entre las sesiones 23 y 25 y recordado expresamente por las continuidades **27–32**. No debe repetirse. La última revisión de esas seis continuidades comprueba lo siguiente:
+
+| Continuidad | Evidencia útil para saneamiento | Límite |
+| --- | --- | --- |
+| [Sesión 27](../handoffs/SESSION_27_HANDOFF_2026-11-07.md), §§2–3.A | Reconoce **estabilización técnica previa** y permiso metodológico para retomar matriz; 42 PR Draft históricos y clasificación existente | Declara expresamente que la equivalencia histórica completa **no** está acreditada |
+| [Sesión 28](../handoffs/SESSION_28_HANDOFF_2026-11-07.md), §§2–3 | Reutiliza candidato #49 sobre #48 y pruebas reales del mismo SHA, sin abrir integración a `main` | CI funcional no equivale a cierre de historia Git |
+| [Sesión 29](../handoffs/SESSION_29_HANDOFF_2026-11-07.md), §§2–3/9–19 | Trabajo integrado sobre la línea descendiente, recuperación de regresiones B3, revisión de controles por ámbito y ampliación de CI | Cambios de producto en rama candidata; no hay decisión de fusión de los PR históricos |
+| [Sesión 30](https://github.com/jdlc86/CartaViva/blob/feat/sabora-admin-ownership-end-to-end-20261108/docs/handoffs/SESSION_30_HANDOFF_2026-11-08.md), §§2–4, 8–10 | Gobierno ADMIN integrado y revisiones de seguridad dentro de **#52** | Otra rama; no es conciliación de #52 con #53 |
+| [Sesión 31](https://github.com/jdlc86/CartaViva/blob/feat/sabora-admin-ownership-end-to-end-20261108/docs/handoffs/SESSION_31_HANDOFF_2026-11-08.md), §§14–16 | Correcciones RF-01/RF-02, PostgreSQL17/Fastify/Chromium y **6/6** #52 | Revisión independiente final y combinación con #53 aún pendientes |
+| [Sesión 32](../handoffs/SESSION_32_HANDOFF_2026-11-09.md), §§1–3, 7–8 | #53 **6/6** para llamadas y CV-012; auditoría de matriz y censo actualizado 46 PR | No integración cruzada #52/#53, no `main` |
+
+### Expedientes previos obligatorios (no duplicar)
+
+1. [Grafo/inventario de 42 PR](SABORA_REPOSITORY_STABILIZATION_GRAPH_2026-11-06.md): censo completo, **28 HEAD ancestros, 13 divergentes y #49 candidato**, archivos comparados y resolución histórica del conflicto #48→#49 mediante commit de dos padres `65b0ead2` sin alterar árbol; después se ejecutó un candidato limpio. Su fotografía es histórica, no descripción actual de 46 PR.
+2. [Conciliación histórica funcional](SABORA_HISTORICAL_FUNCTIONAL_RECONCILIATION_2026-11-06.md): examinó **las 13 ramas divergentes**. En #4/#5/#8/#17/#22 verificó paths y retención de pruebas (76 entradas, 22 blobs exactos, 54 evolucionados, 0 rutas faltantes) y explicó cadenas/documents #18–#21, #14/#31/#40/#44. **No certificó paridad semántica completa** de los 54 evolucionados.
+3. [Cierre delimitado de estabilización 06-11](SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md): candidato #49 sin conflictos, **5/5** workflows sobre SHA `0402e63a82c23e80470f59f0da2bc39fd5aa43c0`, inventario/decisiones propuestos, y declaración explícita: `ESTABILIZACIÓN_TÉCNICA_DE_CANDIDATO = CERRADA_EN_ALCANCE`, `RECONCILIACIÓN_ADMINISTRATIVA_DE_PR = PENDIENTE`, `MERGE_MAIN = NO_AUTORIZADO`.
+4. [Tablero vivo §§15–24](../tracking/SABORA_LIVE_PROJECT_TRACKER.md): además de los puntos anteriores, informa de la recuperación de **tres documentos ausentes** después de revisar los árboles completos de 42 HEAD; última batería integradora #49 con Node/PG17/Chromium, y vuelta acordada a la matriz. Preservar el historial sin recrear sus auditorías.
+
+**Cambio concreto del S1 actual:** el **censo estático previo 42/42 ya se hizo**. Desde entonces se añadieron **cuatro PR #50–#53**, por lo que falta contrastar su genealogía y diferencias actuales; para las antiguas, solo **actualizar lo que haya cambiado y cerrar los puntos de paridad no demostrados**, especialmente evolución SQL/roles, UX y comportamiento. Las cinco `dirty` actuales no significan que no se resolviera un conflicto anterior específico (#48/#49): son evaluaciones diferentes contra bases diferentes y fechas distintas.
+
+**Cambio concreto de S2/S3:** hubo integración real de rama/CI para #49, y validación aislada de #52 y #53. Lo que **no** existe es un candidato común actual #52+#53 validado como conjunto, ni equivalencia de todos los deltas no ancestrales, ni integración a `main`. Las suites y logs previos deben reutilizarse como línea base, y ejecutar de nuevo únicamente al cambiar el candidato funcional integrado, sin rebajar gates.
+
 ## 4. Hitos completos de saneamiento propuestos
 
-### Hito S1 — Censo conciliado y matriz de equivalencia por comportamiento (NO INICIADO)
+### Hito S1 — Actualización del censo histórico y cierre de paridad pendiente (PARCIAL PREEXISTENTE)
 
 **Entrada:** 46 PR y documentos normativos. Para cada PR: HEAD, base y SHA de base, relación de ancestros con rama integradora, delta exclusivo, archivos, migraciones SQL, requisitos afectados, tests y resultados de CI del mismo SHA, revisiones pendientes y evidencia de reemplazo. Reusar [auditoría 26-10](GITHUB_PR_GLOBAL_HEALTH_AUDIT_2026-10-26.md), corregir su fotografía histórica.
 
 **Salida exigida:** matriz **46/46**, clasificados sin atajos en `contribución pendiente`, `contribución incorporada por ancestro`, `equivalente demostrado`, `superado con evidencia`, `conflicto por resolver`, o `sin evidencia suficiente`. Una clasificación de PR como redundante necesita comparación de código y contratos **más** recorrido funcional relevante, no solo árboles/blob/commits ni la existencia de una rama descendiente. Registrar una decisión por PR; no cerrarlos aún.
 
-### Hito S2 — Candidato de consolidación sin perder normativa ni funcionalidades (NO INICIADO)
+### Hito S2 — Consolidación final sin perder normativa ni funcionalidades (PARCIAL HISTÓRICO; INTEGRACIÓN ACTUAL NO VALIDADA)
 
 **Entrada:** S1 y lista causal de conflictos y checks reales. Resolver en una **rama candidata aislada del mismo repositorio** los conflictos y deltas necesarios, con orden y trazabilidad explícitos. Priorizar los puntos de seguridad y negocio: identidad SQL, RLS/actor firmado, escritor único ADMIN, transición de cocina/sala, órdenes/deuda individual, cambio de mesa H6, terceros pagadores/refund, mesa/QR, gestión catálogo, comunicaciones, PWA y notificaciones.
 
@@ -114,7 +138,7 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 
 **Salida exigida:** un único candidato coherente, inventario de decisiones de conflictos/deltas, historial de commits trazable, ausencia de pérdidas demostrada por contratos y tests; revisión formal de código de cambios nuevos.
 
-### Hito S3 — Aceptación integrada del candidato consolidado (NO INICIADO)
+### Hito S3 — Aceptación integrada del candidato consolidado (EVIDENCIA HISTÓRICA; PENDIENTE LA COMBINACIÓN FINAL)
 
 **Prueba integradora, no micropruebas como método:** PostgreSQL 17 **desechable**, migraciones forward-only en orden y controles de privilegios, sesiones y JWT/HMAC, Fastify, RLS real, concurrencia, Stripe **simulado** donde aún no exista entorno sandbox autorizado, Chromium con ambas PWA, comprobaciones de instalación/ámbitos/caché, H6/B3, gobierno ADMIN y llamada al camarero combinados, UI funcional y regresiones. Corregir el defecto concreto identificado y repetir la batería completa en el **mismo SHA**. Evidencia de 6/6 o de todos los gates aplicables al candidato: nombres, run IDs, SHA, logs de la operación y fallos no encubiertos.
 
@@ -152,10 +176,10 @@ Ramas laterales que **no se pueden descartar automáticamente**: #4/#5 respecto 
 | Hito | Estado | Prueba o decisión pendiente |
 | --- | --- | --- |
 | Diagnóstico inicial 46 PR y estados GitHub | **HECHO, corte temporal** | Revalidar en el inicio de S1 |
-| S1 matriz de equivalencia 46/46 | **NO INICIADO** | Ancestralidad, diferencias, contratos y evidencia |
-| S2 consolidación candidata aislada | **NO INICIADO** | S1 completo y decisiones de conflicto |
-| S3 prueba end-to-end combinada | **NO INICIADO** | SHA integrado tras S2 |
+| S1 matriz de equivalencia 46/46 | **PARCIAL: 42/42 inventariados y clasificados estáticamente el 06-11; no equivalencia final** | Actualizar #50–#53 y reconciliar la paridad semántica pendiente, sin repetir el censo histórico |
+| S2 consolidación candidata aislada | **PARCIAL HISTÓRICO**: #48→#49 reparado y probado; **candidato final no construido** | Integrar solo deltas pendientes, incluidas las ramas hermanas #52/#53, con revisión de conflictos |
+| S3 prueba end-to-end combinada | **PARCIAL HISTÓRICO**: #49 5/5 y #52/#53 6/6 por separado; **conjunto no probado** | SHA integrado tras S2 y batería conjunta real |
 | S4 fusión/cierre de PR | **NO AUTORIZADO** | S1–S3, revisión y autorización explícita |
 | Producción / Supabase / VPS | **NO-GO** | Autorización operativa separada |
 
-**Próxima acción técnica recomendada:** S1 completo, empezando por el grafo de bases y las cinco `dirty`/cuatro `unstable`, sin perder deltas de ramas laterales; publicar la matriz 46/46 y, solo entonces, construir el candidato de saneamiento S2. El hito CV-013 de Excel permanece condicionado por su normativa y no se debe utilizar para eludir la estabilización de Git.
+**Próxima acción técnica recomendada:** reutilizar íntegro el **inventario histórico 42/42** y sus comparaciones, actualizar únicamente las **cuatro PR nuevas #50–#53**, revalidar la evidencia de los 13 divergentes (en particular #4/#5/#8/#17/#22 y cadena H3), resolver las cinco `dirty` y cuatro `unstable` actuales **solo donde siga existiendo un problema real**, y completar la matriz de paridad que antes quedó pendiente; después, preparar la integración final. No reconstruir desde cero el saneamiento ya realizado. El hito CV-013 de Excel permanece condicionado por su normativa y no se debe utilizar para eludir la estabilización de Git.
