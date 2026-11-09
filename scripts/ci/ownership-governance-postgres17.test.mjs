@@ -50,7 +50,8 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   if(!root){root=randomUUID();await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'root','active')",[root]);}
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'admin','active'),($2,'admin','active'),($3,'admin','active'),($4,'admin','active')",[a,b,c,d]);
   await admin.query("INSERT INTO sabora.staff_members(user_id,role,state) VALUES($1,'waiter','active')",[waiterId]);
-  const publicId='SB-'+Array.from(randomBytes(12),v=>'23456789ABCDEFGHJKLMNPQRSTUVWXY'[v%32]).join('');
+  const alphabet='23456789ABCDEFGHJKLMNPQRSTUVWXY';
+  const publicId='SB-'+Array.from(randomBytes(12),v=>alphabet[v%alphabet.length]).join('');
   await admin.query("INSERT INTO sabora.customer_profiles(id,public_id,alias) VALUES($1,$2,'Integración')",[customerId,publicId]);
   await admin.query("INSERT INTO sabora.customer_sessions(customer_id,token_hash,expires_at) VALUES($1,$2,clock_timestamp()+interval '2 hours')",
    [customerId,hashCustomerSessionToken(customerToken)]);
