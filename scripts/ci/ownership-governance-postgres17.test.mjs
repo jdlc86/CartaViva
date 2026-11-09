@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {spawn} from 'node:child_process';
 import {randomUUID,randomBytes,generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
@@ -351,10 +352,23 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:0,hmr:false,
     proxy:{'/api':apiUrl}}});
   await vite.listen();
-  clientVite=await createServer({root:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
-   mode:'test',logLevel:'error',server:{host:'127.0.0.1',port:4178,strictPort:true,
-    hmr:false,proxy:{'/api':apiUrl}}});
-  await clientVite.listen();
+  // The existing CV-014 full-stack journey enables client calling only
+  // through its isolated Vite mode. Reuse that exact child-process boot,
+  // not a generic Vite instance whose feature stays disabled.
+  clientVite=spawn('pnpm',['exec','vite','--mode','test','--host','127.0.0.1',
+   '--port','4178','--strictPort'],{
+   cwd:fileURLToPath(new URL('../../apps/client/',import.meta.url)),
+   env:{...process.env,SABORA_CI_COMMS_API:apiUrl,
+    VITE_SABORA_ENABLE_WAITER_CALLS:'isolated_pg17'},
+   stdio:'ignore'});
+  let clientReady=false;
+  for(let attempt=0;attempt<120;attempt++){
+   try{const response=await fetch(clientOrigin+'/');if(response.ok){clientReady=true;break;}}
+   catch{}
+   if(clientVite.exitCode!==null)break;
+   await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  assert.equal(clientReady,true,'isolated CV-014 client Vite is unavailable');
   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
   browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   clientContext=await browser.newContext({serviceWorkers:'block'});
@@ -582,7 +596,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
  }finally{
   await clientContext?.close().catch(()=>{});
   await browser?.close().catch(()=>{});
-  await clientVite?.close().catch(()=>{});
+  clientVite?.kill('SIGTERM');
   await vite?.close().catch(()=>{});
   await shortApi?.close().catch(()=>{});
   await api?.close().catch(()=>{});
