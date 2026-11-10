@@ -198,6 +198,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Siguiente hito:** revisar las nueve divergencias en una matriz semántica final, priorizando en un solo bloque #18–#22 (incidencias y sincronización H3), luego #5 (lectores/gestión M3), #4 (operación sala/cocina), #8 (frontera HMAC SQL), #17 (rechazo GET); tomar decisiones de cerrar/retener por prueba real de contrato, no por conteo administrativo.
 
+## 4 quindecies. S34-14 — auditoría en bloque de nueve PR divergentes frente a `main` (10-11-2026)
+
+**Expediente ampliado y versionado (apartado 9):** [conciliación post-merge de los nueve PR](../reviews/SABORA_S34_NINE_DIVERGENT_FUNCTIONAL_RECONCILIATION_2026-11-10.md#9-s34-14--conciliación-post-merge-frente-a-main-10-11-2026). Se reconsultó `main@f7248f2cf79a8e87006373f8ca5f58c829a267d5`, los HEAD, patches y árboles recursivos de **#4/#5/#8/#17/#18/#19/#20/#21/#22**, todos no truncados. Son **88 entradas de rutas contabilizadas por PR: 19 blobs idénticos, 69 evolucionados, 0 rutas ausentes**; el solapamiento H3 impide sumar 88 como archivos únicos. **9/9 divergen genealógicamente de `main`**, a diferencia de los 32 ancestros cerrados; presencia de ruta no demuestra paridad.
+
+**Resolución propuesta, aún sin cierres:** #18–#22 candidatos a decisión **conjunta** de cierre histórico sin merge, con H3 real y tests existentes preservados pero escenarios SQL de incidencias/sincronización no unificados; #5 posible sustitución por M3, con obligaciones de mesas/visual separadas; #17 candidato a cierre documental por control GET conservado; #4 retenido por distinguir `picked_up` legado de claim/cancel H6, y #8 retenido por frontera de seguridad HMAC/SQL. La propuesta **no** concede cierre automático ni indica que las pruebas antiguas sean semánticamente idénticas.
+
+**CI revalidada:** [Sabora CI push post-merge #42842459366](https://github.com/jdlc86/CartaViva/actions/runs/42842459366) = `completed/success` sobre **`a91867fb`**. La matriz 6/6 del candidato corresponde al SHA probado `d49ee05b`; **no se ejecutaron suites nuevas** para este análisis ni para los commits documentales. 0 cambios de API/PWA/SQL/tests, 0 fusiones/cierres de los nueve, 0 revisiones externas; S4 global continúa **pendiente**.
+
+**Próximo bloque de desarrollo:** contrastar primero el hueco real de catálogo/variantes H3 bajo agotado/retirada/opción invalidada, y el ciclo H6 `claimPickup/cancelPickup/correctReady`, reutilizando los E2E PostgreSQL 17/Chromium ya existentes antes de ampliar su cobertura. La decisión administrativa sobre estos nueve PR requiere autorización expresa; no crear PR adicionales por defecto. Sin despliegue ni alteración de Supabase operativo, VPS o Fleetia.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
