@@ -1,0 +1,4668 @@
+{
+  "schemaVersion": 1,
+  "description": "Reproducible complete Git tree comparison for CartaViva main integration review; all entries are Git blob SHAs, not SQL SHA-256 checksums or independent approval.",
+  "comparison": {
+    "baseRef": "main",
+    "baseCommit": "42b46358a76162445fa9e0b20e7b87dd0a640b5b",
+    "candidateRef": "integration/sabora-s32-admin-waiter-sanitization-20261109",
+    "candidateCommit": "e2b078abec100b1cd9ac770ca373bb40176a506d",
+    "treeTruncated": false
+  },
+  "counts": {
+    "added": 926,
+    "modified": 3,
+    "removed": 0,
+    "total": 929
+  },
+  "meaning": "Snapshot at the exact candidateCommit; subsequent documentation commits are intentionally outside this manifest. Recompute against a frozen final head before approval. GitHub compare API first 300 files is insufficient.",
+  "files": [
+    {
+      "status": "added",
+      "path": ".dockerignore",
+      "headGitBlobSha": "8c3615d65188a20e7c73763970e395130a32a12a"
+    },
+    {
+      "status": "added",
+      "path": ".env.example",
+      "headGitBlobSha": "3244c8fe86177516fd77f4f702f8ceb1cbd21b6f"
+    },
+    {
+      "status": "added",
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "headGitBlobSha": "9acde17e873615f6f2019b734116d5edd3a7eda6"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/bootstrap-lockfile.yml",
+      "headGitBlobSha": "91014422d087260c722f620960598f343fcdff15"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/ci.yml",
+      "headGitBlobSha": "c1e048992a23381e3e1ce677d5e435aa2d4792ed"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/client-browser-conformance.yml",
+      "headGitBlobSha": "049a2998910f64cb4e16aa9b3d92720d9947198d"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/cv012-pwa-installability.yml",
+      "headGitBlobSha": "c36ae64efb9a32fd03cbf2a7dbb871a585209bee"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/management-browser-visual-smoke.yml",
+      "headGitBlobSha": "902b1ae747b4bcb46cf6b7f883ccc138303cf9ff"
+    },
+    {
+      "status": "added",
+      "path": ".github/workflows/visual-contract-gate.yml",
+      "headGitBlobSha": "1891ffba86410dad9ba27adc747cc9bc075a40dc"
+    },
+    {
+      "status": "added",
+      "path": ".gitignore",
+      "headGitBlobSha": "5899c110f6fa325d9099ef9e90b906789aae634b"
+    },
+    {
+      "status": "added",
+      "path": "AGENTS.md",
+      "headGitBlobSha": "6265786afa1e7aff94739538a6faba21f3edaeff"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/package.json",
+      "headGitBlobSha": "3e432a75531a6f6acf572ebab344d726e36e2893"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/admin-read-projection-candidate.mjs",
+      "headGitBlobSha": "0b7b7564f03a851042a6503a4cb12f42d7123cf1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/admin-tables-read-composition.mjs",
+      "headGitBlobSha": "d2304d7d7533f4041e6c736779c6a8824b08a376"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/admin-tables-read-route.mjs",
+      "headGitBlobSha": "c8abcf17785b7a10241ee3207a4ebb8a4bdb9a92"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/admin-tables-reader-query.mjs",
+      "headGitBlobSha": "dc825699924f7a47d535366b48f7be9acf7c4ac4"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/api-runtime-config.mjs",
+      "headGitBlobSha": "f2dab12168881c7b2f4fc44f91ad3517d3be1167"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/auth-hook.mjs",
+      "headGitBlobSha": "5d76d4c287e26d9db954ac67bbeb0d60b2748cd3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/auth.mjs",
+      "headGitBlobSha": "1fa60546b96e38b658dbed3cba9cbb5f98a604b3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/authenticated-staff-table-transitions.mjs",
+      "headGitBlobSha": "4ac37dcd46bb2d7fa04b2ad36de7e78eb7438892"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-confirmation-attempt-writer.mjs",
+      "headGitBlobSha": "b42a862bd36924fbbad1344fc7e29bd953413e10"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-confirmation-coordinator.mjs",
+      "headGitBlobSha": "c73dedb57303a6f749e1273526c6b65d9f7e7270"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-confirmation-decision.mjs",
+      "headGitBlobSha": "3bdb0161ab2e6bd37b77523c03faf6ee46dfbcf9"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-confirmation-read-repository.mjs",
+      "headGitBlobSha": "c2e4c4aafe3cacce8944cc132fa563216865d416"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-confirmation-repository.mjs",
+      "headGitBlobSha": "1071aa97ed939ef4d38a7749dc6a89865a0d6316"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-displayed-quote-binding.mjs",
+      "headGitBlobSha": "e4d04dcdf6689dc6371c87080e3b5ca84b156dfb"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-economic-modifiers.mjs",
+      "headGitBlobSha": "2b693490d753e04ec28e932c7956083e1e49f7c6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-http-route.mjs",
+      "headGitBlobSha": "4b81d8a2ce71e7f1a29d91f8230f5e224ffc2f16"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-line-evidence.mjs",
+      "headGitBlobSha": "4fec659b44682ebc9c90be44c331ff91acee5bc1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-order-confirmation-candidate.mjs",
+      "headGitBlobSha": "d75be873a247c708970e3565002221f0b306e6d7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-order-writer.mjs",
+      "headGitBlobSha": "98dc811e47b7aa3f1fc155e5bc042e023163fdfe"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-pool-config.mjs",
+      "headGitBlobSha": "689964ebbdd04d81202446b1c3cfdb11e12d6d86"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-pricing.mjs",
+      "headGitBlobSha": "a1ea2f220150d70197dc4abee225fab6997a5a28"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-publication.mjs",
+      "headGitBlobSha": "7c6eaea2c11b6d207c606328480c7caa6954707b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-quote-insert-repository.mjs",
+      "headGitBlobSha": "a862aa84acd7b3af5d234f19774b389d4d456119"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-quote-issuer.mjs",
+      "headGitBlobSha": "4413ed83b8027a6f60e304aa3a4697632e260e53"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-quote-repository.mjs",
+      "headGitBlobSha": "8283c3de88793286a806080c6bfae72546f89f9b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-reader-query.mjs",
+      "headGitBlobSha": "b03dddda46ea72ea9f73cd5238051bcab5ce45b1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-reprice-acceptance.mjs",
+      "headGitBlobSha": "32135c16d55465be32a27b458b70d75f5f48fb7e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-reprice-gate.mjs",
+      "headGitBlobSha": "ab3b6b8e50229cdc2f000041678cdffc938df5bc"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-scoped-query.mjs",
+      "headGitBlobSha": "7ee7554658044a23035f7302ee711bd2631bfedd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-selection-quote.mjs",
+      "headGitBlobSha": "16d571e604bcd05d36d960363f6c57a2d26b4bbf"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-table-qr-verifier.mjs",
+      "headGitBlobSha": "bf7539a8aa338f68d28d35589e60726d2954821f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/catalog-visit-context-repository.mjs",
+      "headGitBlobSha": "2edef28a4557f241dce038daf83c4878820d8c15"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-basket-acceptance.mjs",
+      "headGitBlobSha": "4e5f6d53a8f4e83f71f2d41246d75e893e6ade98"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-cookie-session-candidate.mjs",
+      "headGitBlobSha": "0ecd9a939fc64be6acfe2b8fe7d73931303bca7b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-http-hooks.mjs",
+      "headGitBlobSha": "c6f0a2e9b3d807cfd277e9bf0ac5075278cdcab0"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-http-security.mjs",
+      "headGitBlobSha": "76edc0b8edb35e7f5a856391b680d732ecefd203"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-id.mjs",
+      "headGitBlobSha": "dcaf98caa90b856bbbc980200731f0d972bd1aa8"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-order-confirmation-http-candidate.mjs",
+      "headGitBlobSha": "0ba443c7c8bb19a41c16187a765a1514dcde4587"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-order-confirmation-pool-composition-candidate.mjs",
+      "headGitBlobSha": "22d09513d33bbac85a0183189a61ee8281c0a67b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-origin.mjs",
+      "headGitBlobSha": "46401e4c469ca696c2aa03e2e2412ed69e8be051"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-app.mjs",
+      "headGitBlobSha": "c7a4c420d987b5f926d9af9adfe234cad6944b78"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-app.test.mjs",
+      "headGitBlobSha": "609ce666a9c25b825646dd8f2db6f28f7c663b15"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-composition.mjs",
+      "headGitBlobSha": "04d5338edaff762f47adea799537eb93c7cfd0f7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-flow.mjs",
+      "headGitBlobSha": "b16338a150ce0faf9e9cb84aa25270ea3bb649f7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-http.mjs",
+      "headGitBlobSha": "24ee1b39d108c0c8216dcf93c1c3af387bc7fe56"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-registration.mjs",
+      "headGitBlobSha": "17522a25743e1fd9fd9a281c7aec577c60eb66be"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-production-sql-preflight.mjs",
+      "headGitBlobSha": "3a566bcf9d1820d7af2566a30ad586278680d53a"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-profile-writer.mjs",
+      "headGitBlobSha": "067cd8c660a4097841122b4e54d45ef630b2ee33"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-profile.mjs",
+      "headGitBlobSha": "9cd7e186013f01fc01b1a8cc868a421cbc12c727"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-protected-hook.mjs",
+      "headGitBlobSha": "db1ef523f1d0d6f03ee028303c64798a87535829"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-registration-http-candidate.mjs",
+      "headGitBlobSha": "4507e4d7adf883539e3bf8d2f540448470ff5a7e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-registration.mjs",
+      "headGitBlobSha": "8549bef7419c511538ed645d73e323fb91813e6e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-routes-composition.mjs",
+      "headGitBlobSha": "4a66e47bd37dc1e4850946201697f440a1df0b8f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-pool-config.mjs",
+      "headGitBlobSha": "0bcba72eb0bc56e5301b99f153a12f5cb8f5c447"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-query-boundary.mjs",
+      "headGitBlobSha": "67cf0722543fad9277d681334b4252a6927fe35e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-revoker.mjs",
+      "headGitBlobSha": "0cc248e69fde47e89b8f1d43fd2aabe8186d67d5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-rpc-integration.test.mjs",
+      "headGitBlobSha": "a0765fd5f6be10b1f01fd4a09d91bfdf8c4319e0"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-runtime.mjs",
+      "headGitBlobSha": "ab2698999546bc96c7a828e3c4cb920fa4e90cdf"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-scoped-query.mjs",
+      "headGitBlobSha": "56e147d740d20d5d7bc6305f1df57e73a95582ab"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session-verifier.mjs",
+      "headGitBlobSha": "56a54966e4c9c7fa0cccbeac50f52f58018f0cf7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/customer-session.mjs",
+      "headGitBlobSha": "833bd17fb3a69a1adbe3e2f36a9768bea80ac1be"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/domain.mjs",
+      "headGitBlobSha": "4e1b9efbe282a43e6cc2c91f4275f2fdc27d7567"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h4-h6-integrated-candidate.mjs",
+      "headGitBlobSha": "d3dfd101b3258ca3fe46e1ae19dd73d0c949305b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-candidate-composition.mjs",
+      "headGitBlobSha": "89880eec2b2fa5f36acfae191fa9b19ac5272525"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-customer-payment-flow.mjs",
+      "headGitBlobSha": "59d1391ddb2863bbf9a40105984a22ae25ffb28d"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-customer-payment-state.mjs",
+      "headGitBlobSha": "88bd3643ab8987fafa53f96ce65f019924df2022"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-deferred-dispatch-scheduler.mjs",
+      "headGitBlobSha": "c12132fb5df5c0f3cedbc7d9f25792054596d0c6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-event-stream.mjs",
+      "headGitBlobSha": "115808183ddac5d951c5c487ef1a916ec0b1fa9f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-operations-coordinator.mjs",
+      "headGitBlobSha": "525fd0078d03d276bb47aebb4803b940ed16cb09"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-operations-http.mjs",
+      "headGitBlobSha": "52ac9b75f46cf62c14e7179ed918d8fc2cc424b1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-operations-repository.mjs",
+      "headGitBlobSha": "096dedab325ac2733dc8c94fec6edb414ba8761e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-payment-orchestrator.mjs",
+      "headGitBlobSha": "0e5168549e1ba3c0d63d23486a3b603f7d97b8d5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-provider-repository.mjs",
+      "headGitBlobSha": "4dbd6b4291cb2cd57509db241b03a6693545b1f4"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-sql-preflight.mjs",
+      "headGitBlobSha": "260bcb60ddce1305703be6ed241bb9587f0af55e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-staff-capability.mjs",
+      "headGitBlobSha": "a6ed4ba7f696e31e6df367f2f4237c076e2c52b6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-stripe-adapter.mjs",
+      "headGitBlobSha": "b77d5fa6a707c6d3fae8b924678b93bf8b0f4e51"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-stripe-webhook-http.mjs",
+      "headGitBlobSha": "c67ce73fc75ad250fe986ece4d4a753ac5d983b2"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/h6-stripe-webhook.mjs",
+      "headGitBlobSha": "c1ffa58592256dac4ba6f449bef9a682380b0694"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/image-studio-policy.mjs",
+      "headGitBlobSha": "1da8a331de12aae34631673b3551aa22cc253420"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/image-studio-policy.test.mjs",
+      "headGitBlobSha": "5fa2b3271cba5f3f4c9a3b398292c1808b194ec8"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/isolated-customer-composition-candidate.mjs",
+      "headGitBlobSha": "936096c94444dccab51162e9d6b50bc8257dbda5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/isolated-customer-readiness-candidate.mjs",
+      "headGitBlobSha": "8280c5e4b0b35c904e97023e926ad955d9e2cb48"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/isolated-customer-sql-capabilities-preflight.mjs",
+      "headGitBlobSha": "bc5b19df02f933eaac4e710e3b26b532091a5751"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/isolated-pool-identity-preflight.mjs",
+      "headGitBlobSha": "046d075b78af6b3dc5e1cf91a7404d97cd1798d9"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/jwks.mjs",
+      "headGitBlobSha": "2173927ce66a514a6175b29b108b04b7b5071a9f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m2-restaurant-candidate.mjs",
+      "headGitBlobSha": "3c034611412d9a82bb8caf76b01d6389690704c1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m2-runtime-capabilities.mjs",
+      "headGitBlobSha": "4caf8e0948920d926b93f9bc183db31b3592fa85"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m3-management-capability.mjs",
+      "headGitBlobSha": "88102d68f872a409f3b14ffe7ee2da3217db72bb"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m3-management-http.mjs",
+      "headGitBlobSha": "3d2d9b513a06eac5fe0ba3250e2e39f70a048086"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m3-management-repository.mjs",
+      "headGitBlobSha": "6e1fab16251c3bcc2701c95a29c7f930182019ac"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m3-restaurant-candidate.mjs",
+      "headGitBlobSha": "64569542bd82323dff8ac147208870f32c07d8ab"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m3-runtime-capabilities.mjs",
+      "headGitBlobSha": "248faace8545e9462094d433a52c58964d46f5b5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/m5-communications.mjs",
+      "headGitBlobSha": "9fade4d604d4e0a30cbd57a51da398e154326bbb"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operation-capability.mjs",
+      "headGitBlobSha": "c95b3439b78e605915e1385f5352203e7724baf6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operation-read-capability.mjs",
+      "headGitBlobSha": "9109b4e823ec4b55d75df0f22c8e4a2c4d9dd8be"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-candidate-app.mjs",
+      "headGitBlobSha": "a8a5912ce978597075689e302ba79d565e0de6d9"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-composition.mjs",
+      "headGitBlobSha": "2e17c207c722981f5bcccb577df848152b43f624"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-coordinator.mjs",
+      "headGitBlobSha": "30b62e9bbb13cfb579124fb2f2918d1251843f4e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-http.mjs",
+      "headGitBlobSha": "db89430d8933a9e71ce77980f5fc575cf94a657b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-identity-preflight.mjs",
+      "headGitBlobSha": "b8b0d70a2917d2fbcdf915e85d4e6533342cd545"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-input-boundary.test.mjs",
+      "headGitBlobSha": "fd703c3c5e0c37c984dbce429ae2b3eaff3611ad"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-login-expiry.test.mjs",
+      "headGitBlobSha": "b9378d6ad5e00a0b9dcee15b4769a51a4b8c74bd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-membership-boundary.test.mjs",
+      "headGitBlobSha": "0ff6b1f754d17334f159978657e1be8d5611c4b8"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/order-operations-repository.mjs",
+      "headGitBlobSha": "129735ffa852211c5d2455e69d21140dab10d6b6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/ownership-governance-candidate.mjs",
+      "headGitBlobSha": "d7a9cd0dc9f6bc9f58a751e3d6ee0d9cdd7cd9ab"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/ownership-transition-policy.mjs",
+      "headGitBlobSha": "ec7114fb3bdc34dec99e18fee6afc711d1422d77"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/ownership-workflow.mjs",
+      "headGitBlobSha": "bf42f8cd7ed8432165bf97491a03c66d4eb6faf0"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/pilot-activation-gate.mjs",
+      "headGitBlobSha": "9b2b4332a247e1b45f8ccf5c7417a5e71eca131b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/pilot-activation-gate.test.mjs",
+      "headGitBlobSha": "59a06151d97f40eaf76c7af48b414837a73092f1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/pilot-activation-runtime.test.mjs",
+      "headGitBlobSha": "31527c9d51ea652d4fa671e83cc5ca0894df6bf2"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/pinned-rs256-staff-bearer-verifier.mjs",
+      "headGitBlobSha": "aa7ad6921e93b169a2340a155e16af2d3fb7b4e2"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/postgres-owner-lookup.mjs",
+      "headGitBlobSha": "d24b97a931e2f8ef3609875fa206a9a120434b1c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/postgres-protected-route-hooks.mjs",
+      "headGitBlobSha": "833827fa32f7cd85bf9e095648070e5d06678ef1"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/postgres-staff-lookup.mjs",
+      "headGitBlobSha": "63ddcc0e1e0c581c6af595429a3cafc9b5c832b0"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/postgres-transaction.mjs",
+      "headGitBlobSha": "679aa928223e3c3731383f374a7e4fbe28da5396"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/production-secret-policy.mjs",
+      "headGitBlobSha": "e7d13ddefbe7c0b94eb5cea65a2da4441cfaa4b3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/protected-route-hooks.mjs",
+      "headGitBlobSha": "75ca26c03ae5c1af0aafdea7b5be9c45f2d1c7bf"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/restaurant-flow-candidate-app.mjs",
+      "headGitBlobSha": "842c83010ae0d4939074b193664bcd64cfabae7f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/restaurant-flow-candidate-app.success.test.mjs",
+      "headGitBlobSha": "21da2a57dfd1ab89797543306821c17a65766887"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/restaurant-flow-candidate-app.test.mjs",
+      "headGitBlobSha": "7a7bd57289ac7ac65ed4f61e15284b2aa0b9a3d7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/role-scoped-postgres.mjs",
+      "headGitBlobSha": "d66824e6836e4a4f19b7fe0b1913db5336b35b4e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/safe-staff-reader-query.mjs",
+      "headGitBlobSha": "54f8b1269342b56b76cff4ca32451e3f76ffdaf3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/server.mjs",
+      "headGitBlobSha": "43777a3278e215b519a4bb45d447f7e1d9eeed28"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-authorization-runtime.mjs",
+      "headGitBlobSha": "ed007c763a2823b1bbbe5c4610a9eb153063ce33"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-authorization.mjs",
+      "headGitBlobSha": "a12f8fc6bb9b66458d7038bc4a678ae46b1284cb"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-code-maintenance-candidate.mjs",
+      "headGitBlobSha": "86b1776fe9b335df49500f36074b724ac47d9af5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-contact-reconciliation-plan.mjs",
+      "headGitBlobSha": "503961271928a99bacd8b9afdc632057ba960c35"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-custody-approval-authority-candidate.mjs",
+      "headGitBlobSha": "43dcb2de46978b2b7768f949b9d232a7ac023281"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-custody-authenticated-grant-issuer-candidate.mjs",
+      "headGitBlobSha": "3e60d89368751a522c6fa63fc71cf0edffa9bc6e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-custody-maintenance-candidate.mjs",
+      "headGitBlobSha": "52a72e0c036a7b4d546611ed45e3c46c4b0c11e7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-custody-nonce-consumer-candidate.mjs",
+      "headGitBlobSha": "a42bf0a4f312ded7d4b55fa331175da3220e6ba4"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-capability.mjs",
+      "headGitBlobSha": "22f63a009618d1d67d87bd0963143ccce626a2dd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-composition.mjs",
+      "headGitBlobSha": "37be6539971f60f4df2e8adf845ebc6409ca8e67"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-coordinator.mjs",
+      "headGitBlobSha": "71989bed124847452c83e55a2fb7df17b36e846c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-http-candidate.mjs",
+      "headGitBlobSha": "d1ed2143b08bb6302fe5fda377704ff5cff5e934"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-identity-preflight.mjs",
+      "headGitBlobSha": "47e2085967d0b7c27f79c7bcdc59836ef038e33c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-directory-repository.mjs",
+      "headGitBlobSha": "b486799bb992a031ce266fcfc20d26f6c9c22c83"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-claim-candidate.mjs",
+      "headGitBlobSha": "d1a78ec7a0a52c8e02d001c1daafe84c249f0a62"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-claim-recovery-candidate.mjs",
+      "headGitBlobSha": "a1b098de9b398fcfc6891a25b736a59b56cc2759"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-claim-recovery-restricted-candidate.mjs",
+      "headGitBlobSha": "1e0da2c9843ef5c1c0c6959756b5519c1926413b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-custody-coordinator-candidate.mjs",
+      "headGitBlobSha": "ff99ad51443c26fa6c1672d4df5ed9d42d01158e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-delivery-outcome-candidate.mjs",
+      "headGitBlobSha": "51ad12542ec210aa7aabea19e05f44b0323c5cdf"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-delivery-policy.mjs",
+      "headGitBlobSha": "6b19a8b3be7a3cae2a17ddc06dbe175e4618173f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-dispatch-envelope-reader-candidate.mjs",
+      "headGitBlobSha": "cbbf48c2909596e585ff4c4f30623c3b33c15e51"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-dispatch-guard.mjs",
+      "headGitBlobSha": "ca53ddf70398518439acfb47f4f8b72d20dc2978"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-enqueue-candidate.mjs",
+      "headGitBlobSha": "9de6d45eeb896e50fee1ac85927e023d7bfaf8a4"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-enqueue-identity-preflight.mjs",
+      "headGitBlobSha": "4c24045206b251f02aee06716d140b2eed7d456b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-envelope-candidate.mjs",
+      "headGitBlobSha": "679f703112ff6c7e36aedfd1f85e33dca8577046"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-keyring-candidate.mjs",
+      "headGitBlobSha": "45ceb4197266892df0c08c4b5f4a06520f33c348"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-outbox-repository-candidate.mjs",
+      "headGitBlobSha": "481fcf62992af9a4ab38b22034a138160119e854"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-invitation-reconciliation-candidate.mjs",
+      "headGitBlobSha": "428478f4ab2b0d01f2aba07ff27f7c8c33f694f8"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-capability.mjs",
+      "headGitBlobSha": "eb6c626b744f4347aed99f80b28c42eed605883e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-composition.mjs",
+      "headGitBlobSha": "604ba7cb69108cb3f46750f5c3e6f80246e12331"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-coordinator.mjs",
+      "headGitBlobSha": "fb83d6279dad3493e09397bfae4daa0a809374c3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-http-candidate.mjs",
+      "headGitBlobSha": "2df986fad4c4bdd898d2c2569a5395feb1117e75"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-identity-preflight.mjs",
+      "headGitBlobSha": "47c8eb68ea43dcb2c9f247b049609d41c7258a3a"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-lifecycle-repository.mjs",
+      "headGitBlobSha": "494ede9ba50a6c2d572c02002170df1bd421197a"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-pool-config.mjs",
+      "headGitBlobSha": "3a23f8b0069130404b959310ad3a43849e8d298f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-pool-lifecycle.mjs",
+      "headGitBlobSha": "fd2f2902e8df406d45adf7829203b0d509135a64"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-pool-observer.mjs",
+      "headGitBlobSha": "f84576e5a6ae43c16bc380be6f13a3678b2ba8b9"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-protected-hooks-from-pool.mjs",
+      "headGitBlobSha": "fc179f5ed5cba46bca74f1921f7abe6c3ce6a85c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-reader-query.mjs",
+      "headGitBlobSha": "c17611226f55b2edfe5d57543268f343ae6eed44"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-session-resolver.mjs",
+      "headGitBlobSha": "70e303085b1d6c9fb11e5001cda00cc3109039cb"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/staff-table-transition-coordinator.mjs",
+      "headGitBlobSha": "1d7c6a5ac170d3b80564b4b589eb7c0df65a7cfa"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-b3-confirmation-preflight-candidate.mjs",
+      "headGitBlobSha": "1b3740849ad554a672ad740298153a5b492db08d"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-b3-confirmation-preflight-candidate.test.mjs",
+      "headGitBlobSha": "353daf606c1ca8cd339a26e6abce88e31fb0b907"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-b3-http-composition-candidate.mjs",
+      "headGitBlobSha": "23410d38e75b1181effeed906b731ea58c81fea0"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-h6-contract.test.mjs",
+      "headGitBlobSha": "db1bb3b9a0dbc6b30f4aa7a575f8ec572e8514be"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-h6-cross-table-guard.test.mjs",
+      "headGitBlobSha": "80c518b09def16bd9ee48855cd9af7f9408b8168"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-h6-schema-compatibility.test.mjs",
+      "headGitBlobSha": "c6f897baef636f66e0788584b5b0cf13bae80c54"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-http-candidate.mjs",
+      "headGitBlobSha": "10c88ec7ee8d79eabfe0ea3670c71ccbe973df90"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-http-candidate.test.mjs",
+      "headGitBlobSha": "50a1a77726363ccb5deea6f31848240c0677628f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-http-cross-role-contract.test.mjs",
+      "headGitBlobSha": "33241bcd32f177c3c03790f87a24e495ee91e74b"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-isolated-sql-composition-candidate.mjs",
+      "headGitBlobSha": "b129eb4a09aa8e7df6303e8e2e9fe6f62112d1d7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-isolated-sql-composition-candidate.test.mjs",
+      "headGitBlobSha": "d8590318aa2dc8613227feb2482dee69fe36555f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-isolated-sql-preflight-candidate.mjs",
+      "headGitBlobSha": "b24f6b8ee3df879ede680de27fd1604d183680b7"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-isolated-sql-preflight-candidate.test.mjs",
+      "headGitBlobSha": "756e647ae316a328fa364e7e7dfc0b587d611e82"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-http-candidate.test.mjs",
+      "headGitBlobSha": "6f329e166a3b37f8be292fb220fe23c953e9e457"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-http-composition-candidate.mjs",
+      "headGitBlobSha": "ca92327ce6f708805e4a3931a4d38936779866f9"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-http-composition-candidate.test.mjs",
+      "headGitBlobSha": "eade90df762b091a4eb4901a27f72636bb473ffd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-reader-candidate.mjs",
+      "headGitBlobSha": "e035bf25cb00593ac7adc73ed46a8f7a24264c89"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-reader-candidate.test.mjs",
+      "headGitBlobSha": "c3f38656cffbfad23f2e2fc98ca9e0c2f1ab5ef6"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-reader-preflight-candidate.mjs",
+      "headGitBlobSha": "116f0cf3f3d4ae1072e65afec2d9315fefb0693e"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-pending-reader-preflight-candidate.test.mjs",
+      "headGitBlobSha": "faa5a24e1ed1b0964d19809c79224646c5c699cd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-policy.mjs",
+      "headGitBlobSha": "50b8724006afe1d7a1f9af710b42d8711ce82868"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-policy.test.mjs",
+      "headGitBlobSha": "f8a4797501c1cffcb2eed99fa4ae470c3911edff"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-postgres-store.mjs",
+      "headGitBlobSha": "2c51ab233574067aaa2238d7fea2ccab746745d2"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-postgres-store.test.mjs",
+      "headGitBlobSha": "d43039ce4ed15feb7dd952036984a88517f566c5"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-sealed-rpc-candidate.mjs",
+      "headGitBlobSha": "82b6dbf4f7301f7049ba900609a6b3baa34220d4"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-sealed-rpc-candidate.test.mjs",
+      "headGitBlobSha": "af67c377e4001575f732ca4efd0899f2fde88c7f"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-sealed-rpc-http-integration.test.mjs",
+      "headGitBlobSha": "a8e69b3e25ce64562141fb233696eab35fae7163"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-sealed-rpc-migration-contract.test.mjs",
+      "headGitBlobSha": "e35c20c619dc44998396fe4b7f1e230863575aae"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-service-postgres-integration.test.mjs",
+      "headGitBlobSha": "46770ecc1136d2cb4190c9f7a33c5488289a6623"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-service.mjs",
+      "headGitBlobSha": "24f3123272e31aeaf6f3297b21a1b0d5e90fab0d"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-service.test.mjs",
+      "headGitBlobSha": "1ee83d67875ad34ec1f6e01be2c483c97dea6616"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-change-state-stream-candidate.mjs",
+      "headGitBlobSha": "244e9f309249653b24ffb69ef6056fd644eff73d"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/table-qr-credential.mjs",
+      "headGitBlobSha": "adb9aefc4c9e8865486917ddcc9743b1d857562c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/third-party-cash-http.mjs",
+      "headGitBlobSha": "a049f23d4da742804d014d3981b8cd11ae9a1499"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/third-party-cash-repository.mjs",
+      "headGitBlobSha": "1b2f69dc33a7cf478b0595ab21f80c16eb3a34cd"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/transactional-admin-write.mjs",
+      "headGitBlobSha": "c67d87a1b7221a8f50fb8532cdcc0576d4758b0c"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/verified-admin-catalog-reader.mjs",
+      "headGitBlobSha": "c22a21f94cf016ccd13c532b1f1446b112ddbca3"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/verified-admin-table-reader.mjs",
+      "headGitBlobSha": "9bd81a011e3efb588cda68ad08d11f9342f68609"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/verified-customer-api-candidate.mjs",
+      "headGitBlobSha": "f06f2ed2db4afbb4cc5d6a445b61ec5dc8e88232"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/verified-isolated-customer-composition-candidate.mjs",
+      "headGitBlobSha": "13fe18449a9211c81205ca060e16229f433eedc8"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/verified-staff-session-resolver.mjs",
+      "headGitBlobSha": "1d2ea869e50045b7ed2a8e680f24cd6774b57450"
+    },
+    {
+      "status": "added",
+      "path": "apps/api/src/waiter-call-candidate.mjs",
+      "headGitBlobSha": "ce7b64b1e58e949a22fb64e3084ae3d4915351c0"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/candidate.html",
+      "headGitBlobSha": "36d48b96cbf63025406c659e2255baa42e9ae7f4"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/e2e/client-premium.spec.ts",
+      "headGitBlobSha": "8df35119fe3df0107fcd1d7bddf714fadd6478d6"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/index.html",
+      "headGitBlobSha": "036cd2b888b99fb8651e3bfb1bd150a2dfd8368b"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/package.json",
+      "headGitBlobSha": "b17e50112c45aab130e02acb6d282f9667bf2e94"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/playwright.config.ts",
+      "headGitBlobSha": "33305e291face2adea60e28719fff46c01f541d2"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/brand/sabora-logo-outline-v3.svg",
+      "headGitBlobSha": "fdfaa6a233cba5f39295c5622128013fbfaf457f"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/icons/sabora-mark-192.png",
+      "headGitBlobSha": "efe6f8be33099fd010402f99ab648bac3d7d6ec2"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/icons/sabora-mark-512.png",
+      "headGitBlobSha": "1bbfefe4a1c6f129314ea97bbfa7c62ac48733be"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/icons/sabora-mark.svg",
+      "headGitBlobSha": "4c8d4d9791f69b39e1c133a9c853e1ee449eef9b"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/manifest.webmanifest",
+      "headGitBlobSha": "25f9cec4b5711a3db5eaae64b07dd80acce4863e"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/offline.html",
+      "headGitBlobSha": "10fd1d81a5ddad697a5701ce63ed24ff5b1900ac"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/public/sw.js",
+      "headGitBlobSha": "424071cd57aed7580cc9082c777fa02841531172"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/App.tsx",
+      "headGitBlobSha": "c75c52553d1a20c35a03afa84c53ea47918fccd9"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/candidate-main.tsx",
+      "headGitBlobSha": "c5cf8626b4e8fa2526d6a1624f192f1df5754efa"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/catalog-loader.ts",
+      "headGitBlobSha": "78bb1516b9877d52d925f550987820d2cad568c1"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/catalog.ts",
+      "headGitBlobSha": "b0eb905ab104fa7ced69f01d91e15b048d9bc8ca"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/client-state.ts",
+      "headGitBlobSha": "5c620276f259ba0b87ec38f4f0330292039c2461"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/BottomNav.tsx",
+      "headGitBlobSha": "86a3ee1b9b17c0f99320c61dcb689554196a0e9b"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/CheckoutPanel.tsx",
+      "headGitBlobSha": "407506fd77ea79cb83f02c652b12921665c85c99"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/CommunicationsBar.tsx",
+      "headGitBlobSha": "fe76921547a012b2ccbd7e5924806f32077b48a2"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/Icon.tsx",
+      "headGitBlobSha": "5d7454b9fa9088f56ae20a74e32b3405aa1d364b"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/Modal.tsx",
+      "headGitBlobSha": "33a6ea343b9e1e9ad210b322ae9e91dddc2f2d80"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/ProductCard.tsx",
+      "headGitBlobSha": "e78347f9feb3a3e90526950d8f70ea56a1c6667c"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/TableQrScanner.tsx",
+      "headGitBlobSha": "bd66bf4f6af4135399bf6abc3a77349be1d5df64"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/components/ThirdPartyCashPanel.tsx",
+      "headGitBlobSha": "5e9e624356540202c659992358dc668a5af61908"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/customer-event-stream.ts",
+      "headGitBlobSha": "591087cefa18de0a75259721607f4c91952ab4e1"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/customer-flow-transport.ts",
+      "headGitBlobSha": "6d925a402f5a976117061007acfc3d095910836d"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/customer-order-transport.ts",
+      "headGitBlobSha": "7cf549b3fdab2a72926525fe5c207a9934e649ca"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/customer-table-change-events.ts",
+      "headGitBlobSha": "2e6cec46bbdcdd3b1ce8b011f663183e30da5015"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/main.tsx",
+      "headGitBlobSha": "7704cc93af610127de8667e4fab2106953bdf688"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/order-confirmation-transport.ts",
+      "headGitBlobSha": "923fe20e241028a1531a1cb29ecffa448805cbfe"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/pwa.ts",
+      "headGitBlobSha": "c7e3435bddb2bbc76dab94cf6f6e023c132b1905"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/style.css",
+      "headGitBlobSha": "f8a1b74ee0365520e5449bdb09adbbac831e228f"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/src/table-qr.ts",
+      "headGitBlobSha": "a9e320ce634cea39f852f518ee1d6579e0ea95a7"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/tsconfig.json",
+      "headGitBlobSha": "a83ae5bde0f220507afc9a9c5be6fd6b1e8b1ced"
+    },
+    {
+      "status": "added",
+      "path": "apps/client/vite.config.ts",
+      "headGitBlobSha": "58ee5fb46fedc5ec85c36bfedf1fb7fa62ed1b48"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/docs/screenshots/estudio-mobile-390.png",
+      "headGitBlobSha": "da947cd83be13829a8dde11a8266c1cd909bd656"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/docs/screenshots/mesas-desktop-1440.png",
+      "headGitBlobSha": "630c72e594cddb798e5b9cee32a830a18f9532c7"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/index.html",
+      "headGitBlobSha": "e7fe627c156e9d22388770ece396840983790e22"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/package.json",
+      "headGitBlobSha": "9ff01ab4f6f08cee7d0ffc3d6a0b23903007c865"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/public/icons/sabora-mark-192.png",
+      "headGitBlobSha": "efe6f8be33099fd010402f99ab648bac3d7d6ec2"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/public/icons/sabora-mark-512.png",
+      "headGitBlobSha": "1bbfefe4a1c6f129314ea97bbfa7c62ac48733be"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/public/offline.html",
+      "headGitBlobSha": "662afd0338bbd5a78caf63fad7e100c3a4f7a192"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/public/sabora-logo.svg",
+      "headGitBlobSha": "0dad443e3d23001f09673142e62926da456f7727"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/public/sw.js",
+      "headGitBlobSha": "5e4e58d42b47fa22f72cb91185aa9889ee64c340"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/catalog-read-model.d.ts",
+      "headGitBlobSha": "89b21378be7a7d31ec36a90d0da2f7e0f6355339"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/catalog-read-model.js",
+      "headGitBlobSha": "9643fc18b023cc1c368df6cc5a8d24c0a37ef2dd"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/components/Icon.tsx",
+      "headGitBlobSha": "1776015c8df8524729e8694f2485d721b7fde262"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/components/Primitives.tsx",
+      "headGitBlobSha": "f63bbffd1139889f19f6a798c9b6c7bca778841d"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/components/TableQrOneTime.tsx",
+      "headGitBlobSha": "37239f22c86a94459eb0ae10f63c29b41302f13e"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/finance-dashboard-model.ts",
+      "headGitBlobSha": "c834421e80ab8499aaafd09510435220ecc6d2a1"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/image-preview-lifecycle.d.ts",
+      "headGitBlobSha": "8e7095908548599f5a7ebd390eed33fd4d22fd87"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/image-preview-lifecycle.js",
+      "headGitBlobSha": "af3cf354538e60221d2c9d32075823866fbefd9b"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/image-studio-model.d.ts",
+      "headGitBlobSha": "3da2503127c7daf8dd2320776e5b89ff3800f068"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/image-studio-model.js",
+      "headGitBlobSha": "73c0e207910925e3a18e3ceba488355e44afcfeb"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/latest-read-task.d.ts",
+      "headGitBlobSha": "aec0e78ba6534b2a64496b47948756c53bfe56d3"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/latest-read-task.js",
+      "headGitBlobSha": "975d3d4b47eb6095a81e0f93b66a33734e0f5d86"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/m3-authenticated-management-gateway.d.ts",
+      "headGitBlobSha": "152a5177a8af48a7cc098c359204c73663a2b0f4"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/m3-authenticated-management-gateway.js",
+      "headGitBlobSha": "32269d1e7cfcbd85f968813c8a0b91670e7899cd"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/m3-catalog-management-model.d.ts",
+      "headGitBlobSha": "f4b66eb870a62c35e4c41809fb052b5b19f735b3"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/m3-catalog-management-model.js",
+      "headGitBlobSha": "51a53270bc76c6196fc8bc38f96b3ddd353bd3ce"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/m5-communications-model.ts",
+      "headGitBlobSha": "64ebaacc80cb1329644474729b5234d83f9325ac"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/main.tsx",
+      "headGitBlobSha": "9d89ad353154a53849aadacbdbaffd8741292497"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/management-session-fence.d.ts",
+      "headGitBlobSha": "b055ca5d3d5d1882bceb5283349af6175397b34f"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/management-session-fence.js",
+      "headGitBlobSha": "697adfac1ccaa0e8e78371f16d7220bee7980e9e"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/navigation-model.d.ts",
+      "headGitBlobSha": "e3662abfcd54c87bb4bcbc4b30dca99928016d72"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/navigation-model.js",
+      "headGitBlobSha": "30179ffcebec37129977086c1511a5a3daa1b57b"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-authenticated-gateway.d.ts",
+      "headGitBlobSha": "3c19803c959894242ce28dc8c2f5d78154ec366e"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-authenticated-gateway.js",
+      "headGitBlobSha": "fc6d3a5ce41b008ea05e1965c696223ba946d864"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-gateway.d.ts",
+      "headGitBlobSha": "3de547ad5a760ea7790f0370f1dda34fae49edbf"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-gateway.js",
+      "headGitBlobSha": "0e6fa1ede63f1355c7ce4fee0b0b70bc84a52f40"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-model.d.ts",
+      "headGitBlobSha": "4858048d4ce3b7b6821c87950390e174985dacdd"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/order-operations-model.js",
+      "headGitBlobSha": "d19b5e066141d51e134da34c29612ac65cf01f58"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/ownership-governance-gateway.d.ts",
+      "headGitBlobSha": "08d99f0ee003920ead36321ab31f1a5473eb6f39"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/ownership-governance-gateway.js",
+      "headGitBlobSha": "9a75b98a07e58a4e912b9b58276e58518301c3c9"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/pwa.ts",
+      "headGitBlobSha": "30ce4267f0efcebc603fe225cac509343f8263db"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/staff-directory-gateway.d.ts",
+      "headGitBlobSha": "2787184e344eb8d0102c8405d8d8a2f693703d73"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/staff-directory-gateway.js",
+      "headGitBlobSha": "9e368f15be376df14ea43f31a34b126ac14ca138"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/staff-management-gateway.d.ts",
+      "headGitBlobSha": "e79e22f9d24fc22b26ea108b925b4eba482cda98"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/staff-management-gateway.js",
+      "headGitBlobSha": "d79e912193bf3fe0bbd91b0acb3cdbbb14b92cbb"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/style.css",
+      "headGitBlobSha": "2d26303386ef8bfafa6084f146157f273280ab54"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/table-change-decision-gateway.js",
+      "headGitBlobSha": "d1907901c5c9952217cc559a426cf2b3f3cd7662"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/tables-read-model.d.ts",
+      "headGitBlobSha": "793073b243c9e7fa589bb4f6d7bd0498f55e9ff3"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/tables-read-model.js",
+      "headGitBlobSha": "7efcecde7d809fb159b651e5cf565554ab1d1565"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/CashView.tsx",
+      "headGitBlobSha": "c4e8b70bbc443d97a088ec8852eb3ba0399d3af0"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/CatalogView.tsx",
+      "headGitBlobSha": "ae9aeeef7fbe65ec203d8b815542577685f4e77c"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/CommunicationsView.tsx",
+      "headGitBlobSha": "b94e0a017f4ef5dadb41ddb4eea25875cf323d2f"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/ConfigurationView.tsx",
+      "headGitBlobSha": "69a7b783bbc4b8238bfbc0cbbb8352a671cc6637"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/FinanceDashboardView.tsx",
+      "headGitBlobSha": "bbd2f1f02a6e7e833f1ffaa0c575b1e652cd5ca4"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/ImageStudio.tsx",
+      "headGitBlobSha": "62c32792a453e7132e1ed1d9ea7101381f97cd9c"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/M3CatalogManagementView.tsx",
+      "headGitBlobSha": "118f8a366d058c7b359b8d731588f9a68497f237"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/OrdersView.tsx",
+      "headGitBlobSha": "3bd9cb66e3b4e57f496e37708e86fb9ad1363885"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/OwnershipPanel.tsx",
+      "headGitBlobSha": "1eadacfdb57b2f82fb6e60e06480d1723dcf840b"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/SummaryView.tsx",
+      "headGitBlobSha": "9d24d627e53830699243e3bad0d5ae78968dae36"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/TableChangeRequestsPanel.tsx",
+      "headGitBlobSha": "4b73523b691d830f9db960573eb577f0ece1defb"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/TablesView.tsx",
+      "headGitBlobSha": "ff69018e1bf76f0391cc4989e00e452ca295a240"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/TeamView.tsx",
+      "headGitBlobSha": "69cca8650125822393fdb73eb586a2967bee3c8b"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/src/views/ThirdPartyCashDesk.tsx",
+      "headGitBlobSha": "4f9525b50911ebe7eaf30192ade4565f9c142026"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/catalog-read-model.test.mjs",
+      "headGitBlobSha": "c6bb0521e9e61e39b982b7a7820f2b0db05d3b15"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/image-studio-behavior.test.mjs",
+      "headGitBlobSha": "b473c5e75e9f411ecfea8cce0356c230657b9d95"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/latest-read-task.test.mjs",
+      "headGitBlobSha": "10e518100ff5ed4184f80b175f7a8a3d221532ea"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/m3-management.test.mjs",
+      "headGitBlobSha": "a5699187f0fb7f0ea413aee9d95663e46906355e"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/management-bootstrap-identity-isolation.test.mjs",
+      "headGitBlobSha": "8d29e6f1755463c51cfc63cd16495dbca43c029c"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/management-session-fence.test.mjs",
+      "headGitBlobSha": "725eb0fba423170e3753b2dbb0a41e109b624b51"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/navigation-model.test.mjs",
+      "headGitBlobSha": "fe4942ca5e88772e66d845a68f4ab5af68fb3f0c"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/order-operations-authenticated-gateway.test.mjs",
+      "headGitBlobSha": "4635d3a7a908bdcf196707c4bae608c1bbad9ed4"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/order-operations-behavior.test.mjs",
+      "headGitBlobSha": "a97e60168eab0547448c8bb587497ad557406d45"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/staff-directory-behavior.test.mjs",
+      "headGitBlobSha": "0f76f552ab84ad09003619ab9d8cac8f58581a29"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/tables-read-model.test.mjs",
+      "headGitBlobSha": "1d0950ffa9f7a2bb0519480088aac950c9f27170"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tests/ui-contract.test.mjs",
+      "headGitBlobSha": "b23473060b83b6075bb7f98395f9f7334f5cdfd0"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/tsconfig.json",
+      "headGitBlobSha": "a83ae5bde0f220507afc9a9c5be6fd6b1e8b1ced"
+    },
+    {
+      "status": "added",
+      "path": "apps/management/vite.config.ts",
+      "headGitBlobSha": "d0cc38034fac46e501488265f3d88a4d7a3c50e9"
+    },
+    {
+      "status": "added",
+      "path": "deploy/compose.sabora.yml",
+      "headGitBlobSha": "bb29640272ae3f0878f70c7b035362376f7a6cac"
+    },
+    {
+      "status": "added",
+      "path": "deploy/Dockerfile.api",
+      "headGitBlobSha": "e095edce5da8af343efebec3baf4173554a764cb"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/CARTAVIVA_DIRECTORY_INDEPENDENT_PWAS.md",
+      "headGitBlobSha": "b6f078fa5fe6b5775fa0300289f6804688a03200"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/CARTAVIVA_PROJECT_BOUNDARY.md",
+      "headGitBlobSha": "93ef7bc6f9bdcdf10eaa6ff34163ea47d49f54e7"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_ADMIN_PARALLEL_CODEX_WORK_ORDER.md",
+      "headGitBlobSha": "8ea6dffbd6e3d8efeb090cd01f211f97adf22f71"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_AI_IMAGE_STUDIO_GOOGLE.md",
+      "headGitBlobSha": "9aab40089537c015be72ea033a520646e5ca8d2f"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_CATALOG_PUBLICATION_GATE.md",
+      "headGitBlobSha": "78f22c039357901aa3d2638b63d6d49bd5c22a20"
+    },
+    {
+      "status": "modified",
+      "path": "docs/architecture/SABORA_CONTRACT_CONSISTENCY_V1.md",
+      "baseGitBlobSha": "3ac4e4f32eef00d786bf69a1fa896e270dc1401b",
+      "headGitBlobSha": "ff7c00acb1380452fd7af4581e388e579ca26d9d"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_CUSTOMER_IDENTITY_CONTRACT.md",
+      "headGitBlobSha": "71f7e870dd152e8b07334eccf951413f1b40f51d"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_CUSTOMER_SESSION_SQL_PRIVILEGES.md",
+      "headGitBlobSha": "9e8dea5985b219a481ddecd88de49a59066a024d"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_ECONOMIC_PUBLICATION_IMPLEMENTATION_PLAN.md",
+      "headGitBlobSha": "5ac334955ac1f248a4d18d0f0d44753dbe6e5870"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md",
+      "headGitBlobSha": "7206c8a5d4e5f19983c3783ce9f7b5d4d81524d9"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_H6_EVENTS_PAYMENTS_OPERATIONS_CANDIDATE.md",
+      "headGitBlobSha": "149f8738a17772ac803730ab5caefb7874277ad4"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_INTEGRATION_PR4_PR5_READINESS.md",
+      "headGitBlobSha": "714026f3d8ebef3817e6dfed3681893fb6266a28"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_KITCHEN_WAITER_OPERATIONS_GATE.md",
+      "headGitBlobSha": "98e65822231f5ccccad177f285e402cdd4d65fb1"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_ORDER_KITCHEN_INTEGRATION_BOUNDARY.md",
+      "headGitBlobSha": "b7badf1a173c5bbc1ef6ea08aea8692a3767d3ae"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md",
+      "headGitBlobSha": "785a4d57c9ad0b67aac8c7c30f2b854c93af2f2c"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_ROOT_OWNERSHIP_TRANSACTION_DESIGN.md",
+      "headGitBlobSha": "cb84b5ab362523d30afbfbc1c4fb7824bd5e9698"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_TABLE_QR_PAYLOAD_CONTRACT_V1.md",
+      "headGitBlobSha": "c1ecf1a5be5751c0ebf3be3dcf1d21ea5c90b2a8"
+    },
+    {
+      "status": "added",
+      "path": "docs/architecture/SABORA_TECHNICAL_ROADMAP_INFRASTRUCTURE_V1.md",
+      "headGitBlobSha": "4350630e68885e02a0a2ba27a03e8dee31adbf1c"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/CODEX_DESKTOP_H4_H6_INTEGRATION_2026-10-29.md",
+      "headGitBlobSha": "6977d1ca8e6e722e6a33277480ab7db55cce20e8"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/CODEX_DESKTOP_PRODUCTION_CONFIG_SECRETS_2026-10-29.md",
+      "headGitBlobSha": "5f37a48a00b8bb4034d8a16ac2691e12e1a8b6cf"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/CODEX_SABORA_H6_TABLE_CHANGE_ROOT_REFACTOR_2026-10-30.md",
+      "headGitBlobSha": "1e885334232034fd0e510617d0d093581a4b7fd6"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/CODEX_SABORA_SESSION23_INTEGRAL_M2_M3_EXECUTION_2026-11-05.md",
+      "headGitBlobSha": "9e7892e2a7229f3f3ddd4e5f56530faa14129760"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/CODEX_SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_2026-11-04.md",
+      "headGitBlobSha": "fe86289e5ae74bbbe7dbccc4cddc6ebdab00d5a8"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_BLOCK_02_QR_OPERATIONS_2026-10-30.md",
+      "headGitBlobSha": "f1205590c763d5ae8f751fb1bf5a46be4f6c2404"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_CODEX_BLOCK_01_FULL_STACK_2026-10-29.md",
+      "headGitBlobSha": "bad07720634631267b7dd3b976c84c79fbd161c9"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_FIRST_PILOT_FIVE_BLOCKS_2026-10-29.md",
+      "headGitBlobSha": "073621736d3d4b6a46e13c04e00636e698be39c0"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_NEXT_MILESTONE_PROPOSAL_2026-10-29.md",
+      "headGitBlobSha": "04b122daea6643695148fb35ec2c3c3bd48e7289"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_P2_MIGRATION_RECOVERY_PREPARATION_2026-10-29.md",
+      "headGitBlobSha": "d890b34b35e37b11ec48a3a92030471762a4d078"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_P3_CODEX_FIVE_BLOCKS_2026-10-29.md",
+      "headGitBlobSha": "a673ca07598157b8c8b287d8ff1cc0e250b64411"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md",
+      "headGitBlobSha": "0f2fe5fc06f7c20c287f1f5e34ed943630ae4105"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_TABLE_CHANGE_B0_DEPENDENCY_INVENTORY_2026-10-30.md",
+      "headGitBlobSha": "447141fa49fc46cbad01ef9733bf94eed67cd4d6"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_TABLE_CHANGE_ROOT_CAUSE_INTEGRATION_AUDIT_2026-10-30.md",
+      "headGitBlobSha": "29049cf87c394ce8f098da2fb5a08d74e3ab021b"
+    },
+    {
+      "status": "added",
+      "path": "docs/assignments/SABORA_TABLE_TRANSFER_IMPLEMENTATION_2026-10-30.md",
+      "headGitBlobSha": "c2043674b3b5b8cdffb8e4772c801c7a58f778f5"
+    },
+    {
+      "status": "added",
+      "path": "docs/audits/SABORA_IMPLEMENTATION_CONTRACT_AUDIT_20261020.md",
+      "headGitBlobSha": "2fd317c4fc3cd6099a866225da108beaf6d88b3b"
+    },
+    {
+      "status": "added",
+      "path": "docs/audits/SABORA_REMEDIATION_20261020.md",
+      "headGitBlobSha": "3db1ac6af0ecc08d096ca5bee6bfe3cc2c44f584"
+    },
+    {
+      "status": "added",
+      "path": "docs/audits/SABORA_SINGLE_RESTAURANT_SCOPE_20261020.md",
+      "headGitBlobSha": "f2324be236410adfe8c97e6f9780376a3c99855d"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/CODEX_ACTOR_BINDING_SECURITY_REVIEW_20261024.md",
+      "headGitBlobSha": "dc5c039a7ec456473cf4df27a12d1e7c2aa15b97"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/CODEX_H3_H4_H5_INTEGRATION_2026-10-26.md",
+      "headGitBlobSha": "00c0915b713e1208da60ca5e3fdc3b48aacb4a6d"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/CODEX_HITOS_1_2_3_CONTINUITY_2026-10-26.md",
+      "headGitBlobSha": "a36de26331ef78a115f978ca05bd32b4bceeb56a"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_02_HANDOFF.md",
+      "headGitBlobSha": "78a1bfddfe5acfddc07f121227f6a9a6a5943ece"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_03_HANDOFF.md",
+      "headGitBlobSha": "a40693996d93fe5770a950fe8201c46c5abc7746"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_04_HANDOFF.md",
+      "headGitBlobSha": "6e511fb21441d5f302128ec0ba6fc29e2c42b1ae"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_05_HANDOFF.md",
+      "headGitBlobSha": "aa98154467e793aacb859f7cade0df4be6bc4ca5"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_06_HANDOFF.md",
+      "headGitBlobSha": "b21eeb4805447670cdf030ce48ce66561ffd75bc"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_07_HANDOFF.md",
+      "headGitBlobSha": "57c8a8d55edc0750e79981659a32de09696290e7"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_08_HANDOFF.md",
+      "headGitBlobSha": "9f16f9914beff98baf5ba1f5540bbf32daeee8c2"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_09_HANDOFF.md",
+      "headGitBlobSha": "f02e94e83ad852177f5398d87781de0b8411cbf8"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_10_HANDOFF.md",
+      "headGitBlobSha": "3f58f1027806bb25609e46e2f07f7682fa67fcfa"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_10_HITO_1_IDENTITY_HANDOFF.md",
+      "headGitBlobSha": "c522457d770f1c8b44c045cc8a33ad3d5ed674e2"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_10_HITO_1_INTEGRATION.md",
+      "headGitBlobSha": "7dd7a279339169f51fbcd911d5d3c56a68ee59f1"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_11_HANDOFF.md",
+      "headGitBlobSha": "203028a3cfc777d39ad1a75e0139271357bdfe84"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_12_HANDOFF.md",
+      "headGitBlobSha": "368ac346395518023dea2e93547caac3e715a75a"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_12_PRODUCTION_READINESS_CODEX_2026-10-26.md",
+      "headGitBlobSha": "c0fc06ffb85821cf155b8febc6142fc1649a80e2"
+    },
+    {
+      "status": "added",
+      "path": "docs/continuity/SESSION_13_H6_FULL_CODEX_BRIEF_2026-10-27.md",
+      "headGitBlobSha": "6354c52c4d104db4e6bd31134d017c5dbee74934"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/APPROVAL_REGISTER.json",
+      "headGitBlobSha": "3100ea2ccd6f8f9279631bdc72a98a30f0bc8772"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/APPROVAL_REGISTER.md",
+      "headGitBlobSha": "421c15def083dfde7c5cb8f73aae958f0c74aaec"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/FUNCTIONAL_UI_COVERAGE.json",
+      "headGitBlobSha": "bc349c447cd850c20885f973e1c3ceb2ccbcc5ae"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/references/sabora-client-premium-v2-lab.html",
+      "headGitBlobSha": "6727196f6861247566d1b08d0ae84bcb5780d5d3"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/SABORA_ADMIN_UI_CODEX_HANDOFF.md",
+      "headGitBlobSha": "451dae60d227f48e24e82938c7ebfb228f8b6732"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/SABORA_VISUAL_REFERENCE_EVOLVING_2026-10-26.md",
+      "headGitBlobSha": "2970c20af5b4ee065e628fde83938331dc68eebd"
+    },
+    {
+      "status": "added",
+      "path": "docs/design/VISUAL_CONTROL_GATE.md",
+      "headGitBlobSha": "6aa95ca12241b68531f0e507b0047c6f14122545"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_14_HANDOFF_2026-10-30.md",
+      "headGitBlobSha": "dd12a343d1292f4ab8b4547a6311fabe56a9f413"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_15_HANDOFF_2026-10-30.md",
+      "headGitBlobSha": "846212fc4f444e130cdccb0399e866e11403e361"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_16_HANDOFF_2026-10-31.md",
+      "headGitBlobSha": "c970efd147f7450bdf2d8c42ac5bbb3b342826a5"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_17_HANDOFF_2026-10-31.md",
+      "headGitBlobSha": "a4d19a21a452174c9c18f97238be5bbbe47e63c7"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_18_HANDOFF_2026-11-01.md",
+      "headGitBlobSha": "b99bf0e50a0c0916711ffd75055c12ced482bccb"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_19_HANDOFF_2026-11-02.md",
+      "headGitBlobSha": "903991831c697d1f7fb63b8aedb8330f6fe3c6cd"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_20_HANDOFF_2026-11-02.md",
+      "headGitBlobSha": "4bc5bcfcc3718e90bdf386792e145f6467686431"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_21_HANDOFF_2026-11-03.md",
+      "headGitBlobSha": "23b216c2627d8be442e6aaf5717c0c61997d2160"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_22_HANDOFF_2026-11-04.md",
+      "headGitBlobSha": "cfdb4985d34542aa8b285aa41c2c34d1fb70d3b4"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_23_HANDOFF_2026-11-05.md",
+      "headGitBlobSha": "69a676dc88095f24e391d2fb388a320d3021141f"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_25_HANDOFF_2026-11-06.md",
+      "headGitBlobSha": "0e2f5c260af3b5f0a490a351e3c3226dc8633482"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_27_HANDOFF_2026-11-07.md",
+      "headGitBlobSha": "1a624bf2e3e7f58a04a853a5a56cdb0f51c99553"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_28_HANDOFF_2026-11-07.md",
+      "headGitBlobSha": "70c1a74b3eab45f581d57f6b99e2689bc6abd406"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_29_HANDOFF_2026-11-07.md",
+      "headGitBlobSha": "7a49f2cbf4d29498f2bcd884b2853ecfaad310b8"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_30_HANDOFF_2026-11-08.md",
+      "headGitBlobSha": "f3b7b43f0869be864ee901db3f28c06e3bf35959"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_31_HANDOFF_2026-11-08.md",
+      "headGitBlobSha": "25c7b51ff62c86b2736a51f4d99c9b1f610b6512"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_32_HANDOFF_2026-11-09.md",
+      "headGitBlobSha": "f79507656f737592cdfb4ee8fae7a9a4276756c3"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_33_HANDOFF_2026-11-10.md",
+      "headGitBlobSha": "47600a4a61ba4be47b63a0e405383504d38d4086"
+    },
+    {
+      "status": "added",
+      "path": "docs/handoffs/SESSION_34_HANDOFF_2026-11-10.md",
+      "headGitBlobSha": "1914e362e9784845161450e97b172125d8090e8d"
+    },
+    {
+      "status": "added",
+      "path": "docs/ideas-candidatas/README.md",
+      "headGitBlobSha": "777c29c27ba63bcb9983510152ef404b1a11335b"
+    },
+    {
+      "status": "modified",
+      "path": "docs/REQUISITOS_FUNCIONALES.md",
+      "baseGitBlobSha": "12fb54dbf6322759356aabd56d17696848b2b27c",
+      "headGitBlobSha": "b7118d0f8c9e812d2a6f016fd923eca048c2adde"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/GITHUB_PR_GLOBAL_HEALTH_AUDIT_2026-10-26.md",
+      "headGitBlobSha": "7224f2c85653bc4c0c2142a641f242eddc9d40e1"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/PR13_CODEX_CORRECTION_AUDIT_BRIEF.md",
+      "headGitBlobSha": "94fb481f5cd12156768df0f28855c8f9cf82880b"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/PR13_CODEX_CORRECTION_AUDIT_REPORT.md",
+      "headGitBlobSha": "e39c6756768e9203ec86fc621e874bb544180da4"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/PR13_INDEPENDENT_REVIEW_CLOSURE_2026-10-26.md",
+      "headGitBlobSha": "1144fea4a226bc084d35c1194a4d964b3e7a82db"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ACTIVATION_PREFLIGHT_CI_EVIDENCE_2026-10-28.md",
+      "headGitBlobSha": "31228fdddaecef88921299fda01da13bb1d816ce"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ADMIN_OWNERSHIP_GOVERNANCE_INTEGRAL_CANDIDATE_2026-11-08.md",
+      "headGitBlobSha": "bb49b9b19faa2a58d90a9094bd23ad5645eb40c2"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ADMIN_OWNERSHIP_INDEPENDENT_SECURITY_AUDIT_2026-11-08.md",
+      "headGitBlobSha": "ff935a781d2de0ab44ea6d481e1ae68a3307a816"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ADMIN_SINGLE_WRITER_M3_M5_SECURITY_CANDIDATE_2026-11-08.md",
+      "headGitBlobSha": "d3d33b0f09ae7b1827ecd483a2addd9017cd9234"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_BLOCK_01_FULL_STACK_CLOSURE_2026-10-30.md",
+      "headGitBlobSha": "1b6fb2845172ee3f698a3d9d65bdc2f68b80834b"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_CLIENT_HITOS_1_2_3_IMPLEMENTATION_2026-10-26.md",
+      "headGitBlobSha": "ba90823273715588fbe226bd74d1044364be155e"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_CV014_COMMUNICATIONS_FUNCTIONAL_CANDIDATE_2026-11-08.md",
+      "headGitBlobSha": "881575dd2935b22cb2ddb1888232cef67e80ae97"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_DESKTOP_H4_H6_INTEGRATION_REPORT_2026-10-29.md",
+      "headGitBlobSha": "3c318fe358ab3b42d93918a48308cb95d6397a03"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_F20_R03_R05_INTEGRAL_PAYMENTS_CASH_GAP_REVIEW_2026-11-07.md",
+      "headGitBlobSha": "7a13e34fc8884d960d2ea5187394bb5cfde123c5"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_FIRST_PILOT_READINESS_INVENTORY_2026-10-29.md",
+      "headGitBlobSha": "f79e7572191060f1ce34878b6021869f07db67c4"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_GITHUB_CONSOLIDATION_AUDIT_2026-10-28.md",
+      "headGitBlobSha": "d3bbb9a339e00036e19edbce085507e8d40e085b"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_BASKET_INCIDENCES_2026-10-26.md",
+      "headGitBlobSha": "2e5af7d36f3b294cd5dcc41fb21e1d2daed95152"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_CLIENT_SELECTION_INTEGRITY_2026-10-26.md",
+      "headGitBlobSha": "54b7abb66022b5c82d2a24935ddf65f3b98c2160"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_COOKIE_SESSION_BRIDGE_2026-10-26.md",
+      "headGitBlobSha": "be4594848e4c11d690a23297cc45583b98a3a926"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_CUSTOMER_AUTH_BOUNDARY_2026-10-26.md",
+      "headGitBlobSha": "1ddbe4e082f802cb4ad8633e3503054d88b3875f"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_CUSTOMER_ROUTE_GATE_2026-10-26.md",
+      "headGitBlobSha": "0c869f856c36afe4f6568bc89e59dd69d9f1a0a3"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_CUSTOMER_SESSION_BOUNDARY_HARDENING_2026-10-26.md",
+      "headGitBlobSha": "6d54915da5ac419be08dd8a4ce4724eec68bf56f"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_CUSTOMER_SESSION_LIFECYCLE_2026-10-26.md",
+      "headGitBlobSha": "0f80db9b5df5a91d96e2f5d7b124bf2e6fc1a456"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_DEVICE_SYNC_2026-10-26.md",
+      "headGitBlobSha": "4a0e4b35a1c61d1738f484f689644d7f017a3401"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_H4_H5_INTEGRATION_REPORT_2026-10-26.md",
+      "headGitBlobSha": "83a289540459d3e5dcef890a50e9ca9a8997e59d"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_PRICE_CHANGE_CONSENT_2026-10-26.md",
+      "headGitBlobSha": "112ca43581f4c1a7165b2e90211975c72fb7ad54"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_REGISTRATION_HTTP_CANDIDATE_2026-10-26.md",
+      "headGitBlobSha": "321496d07fd45240ea281cbcb6442cf13857e986"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H3_SELECTION_REVIEW_2026-10-26.md",
+      "headGitBlobSha": "574e4e1e4a8cdfc978e078c6ebf6b374b54e84ed"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H4_HTTP_READ_VALIDATION_2026-10-26.md",
+      "headGitBlobSha": "b75eb324eee2e9b41b23e4b7dda5ed52530a330f"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_ACCOUNT_CLOSURE_FULL_STACK_IMPLEMENTATION_GATE_2026-11-03.md",
+      "headGitBlobSha": "04cf21fbdcb22ed3b248a98eb62855c473b00dd3"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_AUTOMATED_ACCEPTANCE_GATE_2026-10-31.md",
+      "headGitBlobSha": "1a3cb503920a39b5cfc383b10f2ef16ce34ec176"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_B2_DELIVERY_PICKUP_BOARD_CANDIDATE_2026-10-31.md",
+      "headGitBlobSha": "b4ed85d5736c1daaa9b4145156f6d49914ffa75e"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_CASHIER_PG17_INTEGRATION_CANDIDATE_2026-11-07.md",
+      "headGitBlobSha": "6ddbf9f8d242030d06e358a533aa6f30b51a5ba3"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_DISPOSABLE_RUNTIME_BOOTSTRAP_ACCEPTANCE_2026-11-07.md",
+      "headGitBlobSha": "c0afd9d6ae6862288ba6cbe99eb96f86ec2dd16a"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_FUNCTIONAL_ACCEPTANCE_ACT_2026-11-07.md",
+      "headGitBlobSha": "ace2c31f532a0470dde613fa66d99531c04a2589"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_INDEPENDENT_INTEGRAL_ACCEPTANCE_REVIEW_2026-11-06.md",
+      "headGitBlobSha": "8eba2f76a089d6c4cf2674c2d6e1b77ce76ca9b9"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_INDEPENDENT_ZERO_COST_ACCEPTANCE_2026-11-05.md",
+      "headGitBlobSha": "e078a69a2c6e421788743f54e54375ad2a4042d9"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_INTEGRATION_REPORT_2026-10-27.md",
+      "headGitBlobSha": "81291e5aabdfdac841fb23056cdb6847103eb612"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_PAYMENT_AUTH_STATE_CANDIDATE_2026-11-07.md",
+      "headGitBlobSha": "5a3cbc7f25010a7d58d17a51eeb48f56d2761c73"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_REPLAY_503_FIX_2026-10-30.md",
+      "headGitBlobSha": "47537f05af3b619758a015aac13ade6877cda1b4"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_STRIPE_WEBHOOK_HTTP_INGRESS_2026-11-07.md",
+      "headGitBlobSha": "a8ab5c631d12708f75eb2cb17cf2433b9f172e05"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_TABLE_CHANGE_BLOCK_B_PROGRESS_2026-10-30.md",
+      "headGitBlobSha": "e0ed85deffbfdee7d8448dbb2a27a3bb36d6c8ab"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_TABLE_CHANGE_ROOT_BLOCK_A_2026-10-30.md",
+      "headGitBlobSha": "9bd872b6d2321babc0ffbb5e0ebfb4d176d7f6c0"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_ZERO_COST_ACCOUNT_LIFECYCLE_2026-11-05.md",
+      "headGitBlobSha": "898e8dc945fc9f00abf85c0db06db5b5cdf0199d"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_H6_ZERO_COST_INDEPENDENT_REVIEW_2026-11-05.md",
+      "headGitBlobSha": "00161331933b571537566bbaee18b8ac6a4f7284"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_HISTORICAL_FUNCTIONAL_RECONCILIATION_2026-11-06.md",
+      "headGitBlobSha": "a1e866f78eb6d51f24b8a3905ae15fe260e06414"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_INTEGRATION_ACTIVATION_READINESS_PLAN_2026-10-28.md",
+      "headGitBlobSha": "0f29003b2e3102642559670466b5418fa8ed08d4"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_INTEGRATION_DEPENDENCY_MATRIX_2026-10-28.md",
+      "headGitBlobSha": "1f5924766dd5e7719f546c60894ac6d497dcb6f5"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ISSUE39_HISTORICAL_CONTACT_NORMATIVE_GAP_2026-10-28.md",
+      "headGitBlobSha": "7933de6a0f95ebe6c690bd85b61ce2e01cb6fd34"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_ISSUE39_INTEGRATION_PROGRESS_2026-10-28.md",
+      "headGitBlobSha": "eb116717b87ae3c9e5a52f4805945603b1f1cdf0"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_LIVE_REQUIREMENTS_MATRIX_INTEGRAL_AUDIT_2026-11-09.md",
+      "headGitBlobSha": "060d7517b5cbffea069b6daea780851a595cedf5"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_M3_ADMIN_FINANCE_DASHBOARD_CANDIDATE_2026-11-07.md",
+      "headGitBlobSha": "f23c7eb748a8cca4b6abb05c27692d84fef9af8d"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_M4_CASH_TIPS_INTEGRAL_CANDIDATE_2026-11-07.md",
+      "headGitBlobSha": "17199d4ab69a0916bc3a032eb816dc80abc9ece4"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_M4_THIRD_PARTY_CASH_PAYER_REFUND_CANDIDATE_2026-11-07.md",
+      "headGitBlobSha": "d4d87f264bf19eeb24127745bb4101b37a1612ee"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_M4_TIPS_THIRD_PARTY_PAYMENT_INTEGRAL_BOUNDARY_2026-11-07.md",
+      "headGitBlobSha": "0924c52f1994cb0e6cc21bef814b74e891b9f58a"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_P1_PRODUCTION_CONFIG_SECRETS_REPORT_2026-10-29.md",
+      "headGitBlobSha": "aa0194a3c17201b03b5c78ee147e2cd177d3f0ea"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_P2_MIGRATION_RECOVERY_CLOSURE_2026-10-29.md",
+      "headGitBlobSha": "72f51c9efde295d2a514058e6278e3f8de2bfae2"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_P3_FINAL_AUDIT_2026-10-29.md",
+      "headGitBlobSha": "d664f8c6e33ec94aedd73ea66ee97ff80a092a23"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_P3_FIVE_BLOCKS_TRACKING_2026-10-29.md",
+      "headGitBlobSha": "00eb827f3ecd72059a9cb08519724b206b8aae8d"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_P3_FUNCTIONAL_VALIDATION_2026-10-29.md",
+      "headGitBlobSha": "53acfd51e349417df767bee76d83e481528d8180"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_PICKUP_CLAIM_CANCEL_REPORT_2026-10-27.md",
+      "headGitBlobSha": "7214ff5e20b87b6220b74b4209ae7669e5f3f526"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_PRODUCTION_READINESS_RC1_2026-10-26.md",
+      "headGitBlobSha": "2ef4fa44b90ba8561f9d0b721f0f05285dd00922"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md",
+      "headGitBlobSha": "0b47ffba1d827d0469d09ea1262d463d273755e9"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_REPOSITORY_STABILIZATION_CLOSURE_2026-11-06.md",
+      "headGitBlobSha": "40982839fce6c56efe2bf3d5c81f6c00ef79cf46"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_REPOSITORY_STABILIZATION_GRAPH_2026-11-06.md",
+      "headGitBlobSha": "bcb40b8fda3be54a083f2de6a8feb6fa8d366be2"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S32_S4_VERIFIED_PR_DISPOSITION_2026-11-10.md",
+      "headGitBlobSha": "0d442f0ce374240e3e73e3ecfadad7b9351a1975"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S32_SEMANTIC_RECONCILIATION_AND_COMBINED_CANDIDATE_2026-11-09.md",
+      "headGitBlobSha": "07cd5963547efd8347f8cb77c5eb8840b1ec1eee"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md",
+      "headGitBlobSha": "167fd0af4a70f0f7b23d08bf5bf949ec21f6bb4c"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md",
+      "headGitBlobSha": "c7a1dfbda9213cf6569c75e99aea468aeeeb606f"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S34_NINE_DIVERGENT_FUNCTIONAL_RECONCILIATION_2026-11-10.md",
+      "headGitBlobSha": "153ac8e1b1efb0d8ac01da20180ddf8656b6b1fb"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md",
+      "headGitBlobSha": "7db1fb72f70a0524969ca4992013360a13103330"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_SESSION23_M2_CANDIDATE_REPORT_2026-11-05.md",
+      "headGitBlobSha": "fb9d5060bdd09fa070c7824af01b06a6623a6ced"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_SESSION23_M2_INTEGRATION_PLAN_2026-11-05.md",
+      "headGitBlobSha": "20ac31eed64e3a4a6692edd45d33c180d64c2a26"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_SESSION23_M3_INDEPENDENT_ACCEPTANCE_2026-11-06.md",
+      "headGitBlobSha": "6b375aa1ec9efbe6015a68704c880e18297df02b"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_SESSION23_M3_INTEGRATION_PLAN_2026-11-05.md",
+      "headGitBlobSha": "90de49d74a26a3ad7467b892f2d0639a361f8071"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_STAFF_DIRECTORY_ISSUE37_REPORT_2026-10-28.md",
+      "headGitBlobSha": "af889c539eaaaa2f9a7e2739bd6364c74dcf325b"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_STAFF_DISPLAY_ID_ISSUE35_REPORT_2026-10-28.md",
+      "headGitBlobSha": "f767364e8c558a36961f1f51cd5c6b03e25b5790"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_TABLE_CHANGE_FINAL_INTEGRAL_CLOSURE_REPORT_2026-11-04.md",
+      "headGitBlobSha": "09c927bda4ba72ce0d848e4663eae002a47a4364"
+    },
+    {
+      "status": "added",
+      "path": "docs/reviews/SABORA_TABLE_TRANSFER_B0_ATOMICITY_DEPENDENCIES_2026-10-31.md",
+      "headGitBlobSha": "70b81a5d4c10d7bd7bf4769e56e11aace4771227"
+    },
+    {
+      "status": "added",
+      "path": "docs/runbooks/SABORA_ACTIVATION_CANDIDATE_RUNBOOK_2026-10-28.md",
+      "headGitBlobSha": "7d40503ded11bd8af7bb76d07e0e84877d60e455"
+    },
+    {
+      "status": "added",
+      "path": "docs/runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md",
+      "headGitBlobSha": "59e18630d35899a8212c80203f32d19addca931f"
+    },
+    {
+      "status": "added",
+      "path": "docs/runbooks/SABORA_P3_ISOLATED_LIFECYCLE_RUNBOOK_2026-10-29.md",
+      "headGitBlobSha": "52de90663fc6006771374e597c871ad3743c807e"
+    },
+    {
+      "status": "added",
+      "path": "docs/runbooks/SABORA_P3_RECOVERY_CONTINUITY_RUNBOOK_2026-10-29.md",
+      "headGitBlobSha": "02f5b332e05bbd25d094862ac58e9c248b9a014b"
+    },
+    {
+      "status": "added",
+      "path": "docs/SABORA_AUTHORIZATION_GATE.md",
+      "headGitBlobSha": "a75bc506d30fd8bf391d10fe78cc94f920887736"
+    },
+    {
+      "status": "modified",
+      "path": "docs/security/ADMIN_WRITE_OWNERSHIP_V1.md",
+      "baseGitBlobSha": "4ea5b36467d4dc1c7a58f73f6529ecddc23d7df4",
+      "headGitBlobSha": "3eb6721bb2477668fbf05203f8684f1b08c35e7b"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/CARTAVIVA_FLEETIA_ISOLATION_AUDIT_20261025.md",
+      "headGitBlobSha": "5c3dfab14faa3590f7a17fd97c861268e7a34ae4"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md",
+      "headGitBlobSha": "a408266b99c24d52e044b32ca882cfaa66adb39a"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_MIGRATION_AUDIT_P2_2026-10-29.md",
+      "headGitBlobSha": "c9a3599098a756e9bfe68b7d11a82888a5e45a27"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_OPERATIONAL_ACTOR_BINDING_DECISION_GATE.md",
+      "headGitBlobSha": "17c1a9cb561ce8af124ecead63ae84514fbc3de0"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_ORDER_OPERATIONS_SQL_ACCESS_INVENTORY.md",
+      "headGitBlobSha": "5e431943b507b6a735f8717353f0deb9e5ec6223"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md",
+      "headGitBlobSha": "0df72739357b3826137a8807b30e15b11656d542"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_P0_ACTOR_SQL_BINDING_CODEX_EXECUTION_PLAN.md",
+      "headGitBlobSha": "e3cdf83a64094fbd51d5f0116c818de14b5d5286"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md",
+      "headGitBlobSha": "763cbd7d46cc006b47b41709725dbb1808ef707b"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_P3_OPERATIONAL_SECURITY_INVENTORY_2026-10-29.md",
+      "headGitBlobSha": "506e47a2ed3a8520448fa4bf344566088dc33a47"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_PRODUCTION_CONFIG_SECRETS_CANDIDATE_V1.md",
+      "headGitBlobSha": "d97e4a2c833cc47e79e4ae49d7c6c5ff5d9ac5ca"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_SQL_ADMIN_IDENTITY_CONTRACT.md",
+      "headGitBlobSha": "dce611c0d4489e930964177c639f2ef9425ad73b"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_SQL_WRITER_BOUNDARY_DESIGN.md",
+      "headGitBlobSha": "e6b4616d427f23dc6c9060c024979c881a5ced7e"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_STAFF_DIRECTORY_READ_CONTRACT_V1.md",
+      "headGitBlobSha": "e039438aed1ba87e49f7536b115a8c1a7e07c0d0"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_STAFF_IDENTITY_LIFECYCLE_V1.md",
+      "headGitBlobSha": "f3d6e51da18214e5eef9cd62c63cc3a41a1c363d"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SABORA_STAFF_INVITATION_DELIVERY_DECISION_GATE.md",
+      "headGitBlobSha": "22372bc8e07d18a01b012a7a0871cc0d88642b6f"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SESSION_04_WRITER_AUDIT_GATE.md",
+      "headGitBlobSha": "0adad974f692c20a0eeca6dd6e2dbd5e980e6a7c"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SESSION_05_ORDER_WRITER_CANDIDATE_GATE.md",
+      "headGitBlobSha": "b15cba9341e4aba55dd77f053e5b2b910acced28"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/SESSION_05_ORDER_WRITER_COMPATIBILITY_AUDIT.md",
+      "headGitBlobSha": "18ca6e0a78f47102d67c5e605df120d91f0de405"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/README_PG17_VERIFICATION.md",
+      "headGitBlobSha": "eaeda25b129943c7116768455a489e94f76fc6c8"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_custody_approval_nonce_pg17.sql",
+      "headGitBlobSha": "66989aaf1b95e9900ecf0ff0fa8d0c41329b504b"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_claim_recovery_pg17.sql",
+      "headGitBlobSha": "9f745c9d903ac6129d8df4104b3b393a59d8fa41"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_custody_pg17.sql",
+      "headGitBlobSha": "8f0c64790ff3ac22e8488e9c9bca4534c3c65e35"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_custody_purge_pg17.sql",
+      "headGitBlobSha": "d1a8c516ec16b05d68d92061a062a95aac86cd71"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_custody_restricted_pg17.sql",
+      "headGitBlobSha": "545f3b354ca1503334f5f1b1573e55c195fa8dfb"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_dispatch_envelope_pg17.sql",
+      "headGitBlobSha": "d60109e59d6760752e15846c0ee2a0dabbd6d7a2"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/sql-candidates/staff_invitation_outbox_schema_pg17.sql",
+      "headGitBlobSha": "59c5bd243d64a0e2663e631b6a1f154e1e5765a1"
+    },
+    {
+      "status": "added",
+      "path": "docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql",
+      "headGitBlobSha": "d19fd998d488d6b242bf1b1c7e3f5549256e25e3"
+    },
+    {
+      "status": "added",
+      "path": "docs/tracking/SABORA_LIVE_PROJECT_TRACKER.md",
+      "headGitBlobSha": "a3d6c0e94d7e1cd7fb72d5d42ef4561c4c909134"
+    },
+    {
+      "status": "added",
+      "path": "package.json",
+      "headGitBlobSha": "65c3035d253b2114ccf37007cab64eeaef8c5209"
+    },
+    {
+      "status": "added",
+      "path": "packages/contracts/package.json",
+      "headGitBlobSha": "cbd74e8631061561ce7535959b264ae7aa67a3ff"
+    },
+    {
+      "status": "added",
+      "path": "packages/contracts/src/index.d.ts",
+      "headGitBlobSha": "45e339a7e3e19e5af47cda1e50e97dfdf5feee6b"
+    },
+    {
+      "status": "added",
+      "path": "packages/contracts/src/index.js",
+      "headGitBlobSha": "020018894bb3f2a4f6d96b1e553ace05214ba155"
+    },
+    {
+      "status": "added",
+      "path": "packages/contracts/src/table-qr.js",
+      "headGitBlobSha": "a754c4f5cda7cdd8909ba4f038206e35694a63eb"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-authorized-confirmation.mjs",
+      "headGitBlobSha": "88dc181e2deded9472e071807be0767336b817fa"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-authorized-request.mjs",
+      "headGitBlobSha": "79b016ae946e62db4f293010e55b81e4ce138708"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-confirmation-flow.mjs",
+      "headGitBlobSha": "ce290f1d8d03c919091d2693b8fc46addb92e8cf"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-confirmation-mount.mjs",
+      "headGitBlobSha": "9edc0d04783abdb648d6d6f7f5abc69551f242d8"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-confirmation-transport.mjs",
+      "headGitBlobSha": "8b113b837d731e5051c42c4ee9bb5789679f8161"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/customer-request-key-registry.mjs",
+      "headGitBlobSha": "ecd001a813b78fad54a5d7b903537323dc2b23f6"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/repricing-consent-panel.mjs",
+      "headGitBlobSha": "661bd3570cb5aa2e2cda29c41b6a4e81663485c2"
+    },
+    {
+      "status": "added",
+      "path": "packages/customer-consent/src/repricing-consent.mjs",
+      "headGitBlobSha": "07d9bf71bb4279776d3e9a0023d750f8c0b9cf42"
+    },
+    {
+      "status": "added",
+      "path": "pnpm-lock.yaml",
+      "headGitBlobSha": "95a1fd5a0cf1557f41b92f17c7d0d6cd817957ce"
+    },
+    {
+      "status": "added",
+      "path": "pnpm-workspace.yaml",
+      "headGitBlobSha": "3ff5faaaf5f139c707e338e7e89e51606e9e0ace"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/activation-readiness-preflight.mjs",
+      "headGitBlobSha": "ab185d920100211d41f506aa3a1d7207db383b07"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-ownership-concurrency-smoke.sh",
+      "headGitBlobSha": "76d2235022275c51a74342268ba1b127545d1060"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-ownership-lifecycle-smoke.sh",
+      "headGitBlobSha": "bc5c81240cdc38b3f112c91817d8b64a841b6a4d"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-single-writer-postgres17.test.mjs",
+      "headGitBlobSha": "de9735023be1f8052ebb7b7914ce2979fb7a5fb3"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-tables-reader-effective-access-smoke.sql",
+      "headGitBlobSha": "e3a4617045b97f29c9c0ae4e8237661d107c1252"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-tables-reader-effective-smoke.sql",
+      "headGitBlobSha": "43c368015dd56e687852752713eebc2a49214dbc"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/admin-tables-reader-grants-smoke.sql",
+      "headGitBlobSha": "3f5bf51e9813a22503ad46987c696635074d9379"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/b3-h6-reader-role-smoke.sql",
+      "headGitBlobSha": "ea6e68488f3f78bce4a152c7cf954096b56cbdfe"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-confirmation-activation-gate-mutations.sh",
+      "headGitBlobSha": "5c418b87c10c2c2b7ee99166d3c786f5854e13ab"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-confirmation-activation-gate.sql",
+      "headGitBlobSha": "f32c8910496ae48e872124449cae4fa1a533f4b0"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-confirmation-atomicity-smoke.sql",
+      "headGitBlobSha": "7c47c7fd0cb9c2881bc5a7d11a1db4dd360a09e5"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-confirmation-idempotency-concurrency-smoke.sh",
+      "headGitBlobSha": "36901723dc50d1f7727b23052bbe53950e995dfc"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-confirmation-kitchen-durability-smoke.sql",
+      "headGitBlobSha": "114009e09a0e4347a3913eb7e4b0499e503863e9"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-economic-parity.mjs",
+      "headGitBlobSha": "5a6a381c97fd3e169fe6ebcb80d045b821a8a58d"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-identity-compatibility-smoke.sql",
+      "headGitBlobSha": "19ec39b5f2088b9e40e474bf0c10d58195ebb32b"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-table-state-gate-smoke.sql",
+      "headGitBlobSha": "6310c2881c74a111621c89217e15ebe95ab2e64c"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-close-concurrency-smoke.sh",
+      "headGitBlobSha": "e489e9012e4acd4e1d8f1749a10ed30a79a735f3"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-close-first-concurrency-smoke.sh",
+      "headGitBlobSha": "b99db5cb862d4ef3a16b0e549c4f05d2751bd17e"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-close-rollback-concurrency-smoke.sh",
+      "headGitBlobSha": "4719c154ecbb32c1d6f83cd16f5128fdfb7b6698"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-configurable-window-smoke.sql",
+      "headGitBlobSha": "1524b7f6a1ccd0f16fc025210d531ec69679d3ec"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-double-first-concurrency-smoke.sh",
+      "headGitBlobSha": "6d62638464e54fa826357033c202bb4cbeeb4f52"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-order-writer-sql-smoke.sql",
+      "headGitBlobSha": "208a47a3f29ecf1b3b8f0849fb9de0265ae391a7"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-postgres17-driver-integration.test.mjs",
+      "headGitBlobSha": "ed4518164793935d858b3c43ab6bbd4403e0c3ff"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-postgres17-node-driver-smoke.sh",
+      "headGitBlobSha": "7f09caa42dc74dcee745d4127956b0dd1c5cf5e2"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-profile-confirmation-concurrency-smoke.sh",
+      "headGitBlobSha": "b9243ac99f9ce052a9086ec448d85a48c70c7d52"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-quote-concurrency-smoke.sh",
+      "headGitBlobSha": "96016e71485ebd797bb2cbf79303f9036a6f9042"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-quote-ledger-smoke.sql",
+      "headGitBlobSha": "5b29c37451e2e6c73a3464a2761af4e7734e4b69"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-reader-login-smoke.sh",
+      "headGitBlobSha": "354aff3c687061b2595781830d78844bf7b3355b"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-close-concurrency-smoke.sh",
+      "headGitBlobSha": "d681cf20763adb619715777d50e1f27cf2f061e0"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-close-order-lock-smoke.sh",
+      "headGitBlobSha": "4c5c4206393884d6a23207309732df14c7bef430"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-occupancy-boundary-smoke.sql",
+      "headGitBlobSha": "1d47cdfce02a7c3d504aafea0a807adb14cc9b90"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-ordering-audit-smoke.sql",
+      "headGitBlobSha": "30cf5e6b9585655dcc78ce23299d5ad73f64febc"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-ordering-lifecycle-smoke.sql",
+      "headGitBlobSha": "f1fc42a37c62e7c12b54c094f10a2a5eafc6de57"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-table-staff-transition-smoke.sql",
+      "headGitBlobSha": "a5c1fdeac956dc91c2a6f979f886bcfb4187a896"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/catalog-visit-ledger-smoke.sql",
+      "headGitBlobSha": "2706b905c7df95d209f9fc6dc264cd53af014bf7"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/continuity-tracker-links-gate.mjs",
+      "headGitBlobSha": "0e90af69e9b7a71af4ba7b8c8e18fafb57dac190"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-id-concurrency-smoke.sh",
+      "headGitBlobSha": "a55ca2fd2d6ec1aa817e43c696ef886a8ff40f85"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-production-postgres17.test.mjs",
+      "headGitBlobSha": "dca83159f097c0d24951f45bc57c985d0c1537ef"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-runtime-activation-gate-mutations.sh",
+      "headGitBlobSha": "c3f9dd054765ff0e869cfb832c765a87c1420d8d"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-runtime-activation-gate.sql",
+      "headGitBlobSha": "7c08fe91a46e95856abaae570f1bba1605908048"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-concurrency-fixture.sql",
+      "headGitBlobSha": "f77fcdfb337559b0615a1e9f7691f8f6525bbe22"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-concurrency-lint.sh",
+      "headGitBlobSha": "ed3b923e1c8fba82087b4ecc0e2a2fb92527a7d2"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-concurrency-smoke.sh",
+      "headGitBlobSha": "ce810751cae8a7a149fffca7e5838a47666ff4c7"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-login-fixture.sql",
+      "headGitBlobSha": "c47571741fe932084c5455ec88175e1c56e320de"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-login-rpc-smoke.sql",
+      "headGitBlobSha": "fceee69a0e96e8355cf9c5b8434f25c66d77c570"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-login-smoke.sh",
+      "headGitBlobSha": "b1284b32492a6e50f0a5a34fc717531b90bf1d7b"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-privileges-hardening.sql",
+      "headGitBlobSha": "0b5bbd958398596bd839ca373c8681dbb76bccc8"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-privileges-negative.sql",
+      "headGitBlobSha": "eb76c031f5748172a6786714146660eccb0a69b2"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-privileges-positive.sql",
+      "headGitBlobSha": "29fa2372210685e8a5042daf223512a50fe1188a"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-rpc-concurrency-fixture.sql",
+      "headGitBlobSha": "08a552976deb674d421644e199c92161d7f43e67"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-rpc-concurrency-smoke.sh",
+      "headGitBlobSha": "b17629fefee8812cac5c7d3b4e2a31d577e39369"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-rpc-edge-smoke.sql",
+      "headGitBlobSha": "5a7ead11a7e7c6709070f2baafd24e4e00f60532"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-sql-lint.sh",
+      "headGitBlobSha": "c3a2b46d70deb0d4fa975ad1cfa37356228ba55f"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-verification.sql",
+      "headGitBlobSha": "319192eae381d09f7c9c91ffa79309027be904f7"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/customer-session-versioned-rpc-smoke.sql",
+      "headGitBlobSha": "fbefdd72c9ad4e757a6358c74c42cfc234522076"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/cv012-two-pwa-installation.mjs",
+      "headGitBlobSha": "23c432a6e595ca411c0bb7795b1b55bb2068b532"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+      "headGitBlobSha": "4926434a9a21a6d921946e502d56bbc4c8bbac38"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/deployment-isolation-contract.mjs",
+      "headGitBlobSha": "acc8ad89db75b3022b20bfbfb1f940db90367b5a"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/disposable-h6-runtime-bootstrap.mjs",
+      "headGitBlobSha": "9e9583551bee15fdb10b2d2943810d09682928d9"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/disposable-pg-module-path.mjs",
+      "headGitBlobSha": "345584e1e5efaa8c78baeb25b7726c0778fdf798"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/functional-ui-coverage-gate.mjs",
+      "headGitBlobSha": "85c0cb177924bbcc39107b2e7971a245e9308a4f"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/functional-validation-contract.mjs",
+      "headGitBlobSha": "dbf2b1d3dc28124d1c3c3c0afe726b599eafa8d0"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/h4-h6-candidate.test.mjs",
+      "headGitBlobSha": "9171262fe26e807b5d672dd6892bb20db9f1a8ff"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/h6-acceptance-gate.sh",
+      "headGitBlobSha": "91f6ffd4b82843fc1a746807ac183055eb3053f4"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/h6-failure-diagnostics.mjs",
+      "headGitBlobSha": "8a01b470d1b4ac8b432f4bfc43db9a34ac70a2aa"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/h6-postgres17.test.mjs",
+      "headGitBlobSha": "3c168441c9d99cae5a00bf9175ebcda72d842fba"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/m3-management-postgres17.test.mjs",
+      "headGitBlobSha": "551aa1debc540fe93d79fe5e99a117be24af3461"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/m4-cash-tips-integral-scenario.mjs",
+      "headGitBlobSha": "442a73afca84206b82666616ec559e928631c7e4"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/management-authenticated-browser-smoke.mjs",
+      "headGitBlobSha": "01df626f7563e782ac1fd5380e1255575712ba04"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/management-browser-visual-smoke.sh",
+      "headGitBlobSha": "86077db04f91e4dd8c541ff74aa881b21e781ca0"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-audit.mjs",
+      "headGitBlobSha": "99d0a7f3ca915c134d21c0cfbdc71587227ad407"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-audit.test.mjs",
+      "headGitBlobSha": "bfef983689c4e044d5cc574d6dbb2311dc1401d1"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-manifest.mjs",
+      "headGitBlobSha": "3e29781273fc16344336d331c552a4c7bc5b2aa5"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-manifest.test.mjs",
+      "headGitBlobSha": "92588cba840d42c9c2146fc8cdac4b26e188c514"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-postgres17-compatibility.test.mjs",
+      "headGitBlobSha": "0d5849bd71b8769cb122b9c0124a6b1779d65bcb"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-preflight.mjs",
+      "headGitBlobSha": "9cb39e3ce4cdec730f5199bcfc597ebadb7dee50"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-preflight.test.mjs",
+      "headGitBlobSha": "506332e80a8f9774473aa04ebc20fb7a05d99726"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-risk-inventory.mjs",
+      "headGitBlobSha": "fdf98b3e1ccc825c86207247e648f9d099a79d2e"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/migration-risk-inventory.test.mjs",
+      "headGitBlobSha": "c4110c1028e60662ad8d9ded35a487ef4cf1f078"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/operational-security-inventory.mjs",
+      "headGitBlobSha": "bf2dee362e8806d6ef08de583620377a141da2e7"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/order-operations-grants-smoke.sql",
+      "headGitBlobSha": "4efc5a2f2c6034764881ba9e5020798fc8ab7357"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/order-operations-identity-postgres17.test.mjs",
+      "headGitBlobSha": "1d992c9ff5396f5b5b833a0a7718b429e2bbe677"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/order-operations-login-denial-smoke.sh",
+      "headGitBlobSha": "a8e4d98d0f358c0016f835565b284126a82b9764"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/order-operations-postgres17-integration.test.mjs",
+      "headGitBlobSha": "26e7e27dcec0f5276ffcefb0f5f349f42526dd70"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/order-operations-read-postgres17.test.mjs",
+      "headGitBlobSha": "d0b94b7fc24a5df196c12b02421954f83cd7f577"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/ownership-governance-postgres17.test.mjs",
+      "headGitBlobSha": "611fc63f1649e88023cc6e32cf258efc8242f198"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/postgres-migration-chain-smoke.sh",
+      "headGitBlobSha": "7c42ce7f762f943c8d6125d1bd5f566b18fc90a8"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/postgres-migration-failure-smoke.sh",
+      "headGitBlobSha": "934ef8e6425cdebb4d35ee7661bff5ae8355bc8f"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/postgres-migration-harness-contract.test.mjs",
+      "headGitBlobSha": "82249b558958d97a69290a396e2cb9fcb33b163c"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/postgres-migration-smoke.sh",
+      "headGitBlobSha": "25ac781d760f7b54293c45b1cf674296e95343ff"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/postgres-recovery-smoke.sh",
+      "headGitBlobSha": "e79be58b18008748b68487066eb021c91b07fc1b"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/production-config-secrets-gate.mjs",
+      "headGitBlobSha": "dfe4a124838e8c6deb7d0c260f8c11dd1b80aad5"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/recovery-continuity-contract.mjs",
+      "headGitBlobSha": "167f2fb8967cb90f45f39e8b766a3532a51f5a09"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/staff-directory-postgres17.test.mjs",
+      "headGitBlobSha": "41b746abf3540a2f2f27c647eacdb2f4dc4deb7f"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/staff-display-id-postgres17.test.mjs",
+      "headGitBlobSha": "786cd060a0c5e0aafe4e57c81a23ba4b682644aa"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/staff-invitation-outbox-postgres17.test.mjs",
+      "headGitBlobSha": "0c9441bd65338cafbefcac68330aeb5de9833592"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/staff-lifecycle-postgres17.test.mjs",
+      "headGitBlobSha": "0445d2aa4dadb4c71ab59490787dc3b65587237f"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/staff-transition-activation-gate.sql",
+      "headGitBlobSha": "34a247d27c527d05c7cd575c0fba84aad7b19ba5"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/table-change-root-postgres17.test.mjs",
+      "headGitBlobSha": "db4d94b3f98a3c475d997b4471cac7622cdb0c8a"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/visual-contract-gate.mjs",
+      "headGitBlobSha": "35ed09e10b69e1ad19d051a039c794d765689531"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+      "headGitBlobSha": "0b80a73ceff4704a6654dd61d80129bfe406b943"
+    },
+    {
+      "status": "added",
+      "path": "scripts/ci/zero-cost-account-postgres17.test.mjs",
+      "headGitBlobSha": "4c7909796b19be442d325faeda6b4a00856e2c0c"
+    },
+    {
+      "status": "added",
+      "path": "supabase/directory/20261020_directory_installations.sql",
+      "headGitBlobSha": "515bcd9c11e3f29af7b3a9155b429df9fa65935f"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020140000_sabora_order_core.sql",
+      "headGitBlobSha": "c29a7d63dc0aa5e749898fe6f3e6ed3dfd9da141"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020150000_sabora_order_transaction.sql",
+      "headGitBlobSha": "c3b55b18f407b99c4f839dba425b3b8e75e26d1e"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020160000_sabora_qr_rotation.sql",
+      "headGitBlobSha": "4e38d7d1f72a3d3d5f3d621b562f91fbe34132dd"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020170000_sabora_order_lifecycle.sql",
+      "headGitBlobSha": "6a8ca2a49690bf65b5875f815a250f50296ab3b8"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020180000_sabora_order_lines_pickup.sql",
+      "headGitBlobSha": "66f92bc1165c28022d8de7c1a40234fb1df5c2ae"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020190000_sabora_staff_access_state.sql",
+      "headGitBlobSha": "8b4a2e71f10545ffe17eefefb953007a8a6e5516"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020200000_sabora_staff_reader.sql",
+      "headGitBlobSha": "95c94ef5e13f712207f8c8ecfa8e689712783eea"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020210000_sabora_root_admin_owner.sql",
+      "headGitBlobSha": "e97beb0f073289400d38a7cd0c60f8bc1c63b35c"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020220000_sabora_ownership_proposals_audit.sql",
+      "headGitBlobSha": "3dc2961ef4d9f57e9ec236127e59add27abd533d"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020230000_sabora_ownership_idempotency.sql",
+      "headGitBlobSha": "9c10d5db46f421164f30a1b70f66aee74fb00736"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020240000_sabora_ownership_hardening.sql",
+      "headGitBlobSha": "f848bba24497aed133019020930aaede74743290"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020250000_sabora_dormant_admin_writer.sql",
+      "headGitBlobSha": "5b2ab3e034f1d7cfde5064f899c39340f6f43c0b"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020260000_sabora_writer_future_acl.sql",
+      "headGitBlobSha": "f55f9834ba55963f21b8d455cb1e22d4b096448f"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261020270000_sabora_default_function_execute.sql",
+      "headGitBlobSha": "65880ef023e8ae486322835056f89127e71ead6c"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021010000_sabora_customer_profiles.sql",
+      "headGitBlobSha": "e49e0d98b537532c9ce657869f0fd3a59dfe2b5a"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021020000_sabora_customer_sessions.sql",
+      "headGitBlobSha": "050988818b68daf8b4f527d9832caf5ec5933fd6"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021030000_sabora_customer_session_restricted_rpcs.sql",
+      "headGitBlobSha": "f540de0aa91bd57d3132c6ac426fd311ebe88b3a"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021180000_sabora_catalog_publication_foundation.sql",
+      "headGitBlobSha": "0078381f89494ce4d82c938b301d413b35d78e05"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021190000_sabora_catalog_publication_guard.sql",
+      "headGitBlobSha": "222d137e154fb0216b71df3b78a55e7c00e93fc2"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021200000_sabora_catalog_reader.sql",
+      "headGitBlobSha": "3ef965c02999a1101d3cb9b6f094e465e67f33ca"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021210000_sabora_catalog_economic_candidate.sql",
+      "headGitBlobSha": "5dd35b8b1fbc59a18e838c72992bdd0f81e7a73e"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021220000_sabora_catalog_quote_ledger_candidate.sql",
+      "headGitBlobSha": "1fba92507ff82a76c9ec167e60055022a0b68691"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021230000_sabora_catalog_ledger_append_only_candidate.sql",
+      "headGitBlobSha": "c2a961bfe1d14b14745b5d9102c463af57fd175b"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021240000_sabora_customer_table_visits_candidate.sql",
+      "headGitBlobSha": "e421ddad3f5742bc7d124932f1632934b6f56e23"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021250000_sabora_table_ordering_lifecycle_candidate.sql",
+      "headGitBlobSha": "33c39145fab32b776b043e4b173fad2cd1383223"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021260000_sabora_table_occupancy_boundary_candidate.sql",
+      "headGitBlobSha": "324ca8f3363aed9e49aaadda80c2fd4f9b739c38"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021270000_sabora_table_staff_transitions_candidate.sql",
+      "headGitBlobSha": "bdbb96ebd32427c013633fc97491edc21d77e902"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021280000_sabora_table_ordering_audit_candidate.sql",
+      "headGitBlobSha": "039426b443f231f4fe13a76c9c8019d06985cbde"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261021290000_sabora_table_ordering_audit_truncate_guard_candidate.sql",
+      "headGitBlobSha": "808ff6e85412d04b69f68f739c5225c371298430"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261022120000_sabora_order_identity_compatibility_candidate.sql",
+      "headGitBlobSha": "caad8a7680e822c194dba8246870a8da3a0bbc83"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261022130000_sabora_order_identity_contract_alignment_candidate.sql",
+      "headGitBlobSha": "f6d9cb2631dfdba3ca382776e12511cad1f996f5"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261023010000_sabora_admin_tables_reader_candidate.sql",
+      "headGitBlobSha": "bd8f1166bbc6a8340b7cb04c8a1bbb0dc0e68ddf"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261023225024_sabora_kitchen_waiter_operations_candidate.sql",
+      "headGitBlobSha": "e0b466c2efe2200d7da2b9b21e09a27c619c5fe4"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql",
+      "headGitBlobSha": "542427164a8f51e6c944a8580ba34ef464bbbd59"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261025081318_staff_identity_lifecycle_candidate.sql",
+      "headGitBlobSha": "00c12ce62a1db4e059dc487588641d24a2467021"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261026120000_sabora_order_operations_read_capability_candidate.sql",
+      "headGitBlobSha": "3692bc2a0ab777148e83cc3f928c442244d70fa3"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261026222958_sabora_production_customer_flow_candidate.sql",
+      "headGitBlobSha": "b696718cbce7a26bce5539ffde5912e2714920d5"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261027072924_sabora_table_qr_payload_v1.sql",
+      "headGitBlobSha": "a823c0de28925178d445a4a387e6770d8f7f52b0"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261027122858_sabora_h6_events_payments_operations_candidate.sql",
+      "headGitBlobSha": "cb9688a8c8d10442077f056c7ff9b534c12bc98a"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261027190334_sabora_pickup_claim_cancel_candidate.sql",
+      "headGitBlobSha": "48785a5baaf1a5bccec01f071a1b7132b47a87c9"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261027225805_sabora_staff_display_id_candidate.sql",
+      "headGitBlobSha": "e47fa37213dd60cea2913fa78a49ae20c426f578"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261028120000_sabora_staff_directory_read_candidate.sql",
+      "headGitBlobSha": "ed655d3cec4334bec56e34560f996b7bc5c25570"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030091748_sabora_h6_customer_round_replay_rls_fix.sql",
+      "headGitBlobSha": "6b9292ca4600aa74bb3815f67994a88ca36a5131"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030124000_sabora_table_change_candidate.sql",
+      "headGitBlobSha": "aab0f571786adbc94bdb7e553afeb92bff488ffc"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030143000_sabora_h6_cross_table_account_guard_candidate.sql",
+      "headGitBlobSha": "d886317b5c45c8241605cead8b01c95edd05c287"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030160000_sabora_h6_operational_binding_foundation_candidate.sql",
+      "headGitBlobSha": "13a0a82eca950a4fb03b30b07950a9edac7ec3da"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030170000_sabora_h6_historical_round_reader_candidate.sql",
+      "headGitBlobSha": "1a5e1589842bbdd77a9180837a1f81ae564a687c"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030180000_sabora_h6_confirm_projection_atomic_candidate.sql",
+      "headGitBlobSha": "388e870f0c0d95e0fb747cc115b1deb155b4a1c4"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030190000_sabora_h6_table_change_request_decision_candidate.sql",
+      "headGitBlobSha": "c024df856d45a805e1cb7950e95c52fe9c4670f5"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030200000_sabora_h6_delivery_account_integrity_candidate.sql",
+      "headGitBlobSha": "1e2eae2a9c91b5bcb1637055155ccaaca4987681"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030210000_sabora_h6_table_change_decision_lock_order_candidate.sql",
+      "headGitBlobSha": "b50369a02b7c0f8880b067970e1074e395b41356"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030220000_sabora_h6_line_delivery_destination_foundation_candidate.sql",
+      "headGitBlobSha": "3be5a19a51e86d1e33f98ad10aac0eee275a8505"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261030230000_sabora_h6_line_delivery_confirm_lifecycle_candidate.sql",
+      "headGitBlobSha": "19c344d4bbf42992c00de01a21b5020fd67beb3e"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031000000_sabora_h6_atomic_grant_consume_candidate.sql",
+      "headGitBlobSha": "eeb758e99ca24c2b623bee38661c728a0de73c64"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031010000_sabora_h6_transfer_confirmation_integration_candidate.sql",
+      "headGitBlobSha": "2550644149d6c1774c38e35fb27192da3ea3b705"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031020000_sabora_h6_decision_lock_order_fix_candidate.sql",
+      "headGitBlobSha": "dbe303bf85b0ded0219bd9a073dd0fff3a0ccb64"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031030000_sabora_h6_transfer_binding_null_safety_candidate.sql",
+      "headGitBlobSha": "d8d5dd2d78bf285af8372764837baf25288b4e01"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031040000_sabora_h6_transfer_order_ownership_fix_candidate.sql",
+      "headGitBlobSha": "123566f06499991870ce088d072770edafe85488"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031050000_sabora_h6_transfer_order_identifier_privilege_candidate.sql",
+      "headGitBlobSha": "8b38c660c9e32179ea97719ffa2c550330cd945f"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031060000_sabora_h6_transfer_customer_identity_privilege_candidate.sql",
+      "headGitBlobSha": "1f574a4015a57c9ec97ec1805d719d748f10c284"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031070000_sabora_h6_transfer_session_lock_order_candidate.sql",
+      "headGitBlobSha": "bfb0ce2c411733666a7b1a27fd4758d772dd5d15"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031080000_sabora_h6_delivery_board_reader_candidate.sql",
+      "headGitBlobSha": "923c0d4efb206b41b88cfdcd531e27638dc4bd89"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031090000_sabora_h6_delivery_board_pickup_contract_candidate.sql",
+      "headGitBlobSha": "db0bf7598b1711462bea2e41980c924dd9270f64"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031100000_sabora_h6_delivery_pickup_event_destination_candidate.sql",
+      "headGitBlobSha": "f0501ce78bc14c21a5f26fc3d0bbcbaa0eaeb591"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031110000_sabora_h6_pickup_effective_destination_authorization_candidate.sql",
+      "headGitBlobSha": "15316581950f68219a331c0b9c5eff100f4947df"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031190000_sabora_h6_table_change_resolved_request_candidate.sql",
+      "headGitBlobSha": "d6ec270bc6e4a21728627a08d1ffbf0c8c95ee81"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261031200000_sabora_h6_resolved_request_uuid_aggregate_fix_candidate.sql",
+      "headGitBlobSha": "04372953d7b5c6b84b4c4e60996f2f6b9596ae94"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261101010000_sabora_h6_transfer_missing_binding_guard_candidate.sql",
+      "headGitBlobSha": "d802936421ceca6f59e1f3495b9a39f426cae688"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261101020000_sabora_h6_transfer_destination_open_guard_candidate.sql",
+      "headGitBlobSha": "df799b6a0915981364ceb3020062c69a72b0500d"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102010000_sabora_h6_original_confirmation_lock_order_candidate.sql",
+      "headGitBlobSha": "88f16f3935f54a3c66bce8ba71dfd4895b2350e7"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102120000_sabora_h6_pending_staff_projection_candidate.sql",
+      "headGitBlobSha": "d0b690908bbf20551c7e425845ff5ea939a79935"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102130000_sabora_h6_pending_reader_role_candidate.sql",
+      "headGitBlobSha": "6fcfee12406eb20f8440aae110c6e6e0debd7bab"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102160000_sabora_h6_customer_table_change_state_candidate.sql",
+      "headGitBlobSha": "580405904f6b9b271112239e36ef1c8d2c5feb65"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102170000_sabora_h6_table_change_committed_notification_candidate.sql",
+      "headGitBlobSha": "a5681728fa4d1489bd8bd3c8a0f230ac7be3faa1"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102180000_sabora_h6_table_change_durable_outbox_candidate.sql",
+      "headGitBlobSha": "ef27623f7fbab3de68a776a6136584504aa4d81d"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261102200000_sabora_h6_same_table_rescan_binding_candidate.sql",
+      "headGitBlobSha": "f2e753cadb5f165b9084a4d5a6d4a9cb0f2cf52f"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261103010000_sabora_h6_partial_cash_account_continuity_candidate.sql",
+      "headGitBlobSha": "25185fadd3e2499cd2c1954714a0ae51cb1d8d08"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261103020000_sabora_h6_live_economic_event_destination_candidate.sql",
+      "headGitBlobSha": "706500d28575bba6618c1447bbb03f6998a0e935"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261103210000_sabora_h6_explicit_account_close_candidate.sql",
+      "headGitBlobSha": "ce94e93f191d0f82200cbcc037b3113325193ef4"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261103220000_sabora_h6_delivery_board_reader_acl_candidate.sql",
+      "headGitBlobSha": "9eaf8c0055aa6797415c49a98b2b91bec9adc0d9"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261103230000_sabora_h6_deferred_dispatch_schedule_candidate.sql",
+      "headGitBlobSha": "db9020b2c5bbf6ef047943ee9933165751954cd0"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261104094055_sabora_h6_order_revision_correction_candidate.sql",
+      "headGitBlobSha": "7ffe60d21fa12f8ff8c21b6e5b55f3c99951e678"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261105070000_sabora_h6_zero_cost_account_auto_close_candidate.sql",
+      "headGitBlobSha": "e0cd828249d0efc2396bd7d9ac86a93dcf5f1672"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261105130000_sabora_m2_h3_h6_runtime_capabilities_candidate.sql",
+      "headGitBlobSha": "4fa9c63ed78efbfd391b976d001699035296cb61"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261105150000_sabora_m3_management_candidate.sql",
+      "headGitBlobSha": "f8c88ce1c6073aff039342daeb0c168913ef82ef"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261107100000_sabora_h6_authorized_cash_snapshot_candidate.sql",
+      "headGitBlobSha": "3c8cd966d89dd247ccff4af45cabfc0f75380e7f"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261107130000_sabora_h6_fixed_payment_mode_reader_candidate.sql",
+      "headGitBlobSha": "7980cd1e9ed666716b4f84a58a62631053f2f55b"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261107160000_sabora_m3_finance_dashboard_candidate.sql",
+      "headGitBlobSha": "a89a62ebac951aa7d992a1feb1d142268e20d41c"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql",
+      "headGitBlobSha": "3005503ebda5be90ab4e2472b6af4bd576b3ece4"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261107200000_sabora_m4_cash_tips_candidate.sql",
+      "headGitBlobSha": "2fac72d2b745583ee51bff68e3f40e28f83534a6"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108070000_sabora_m5_communications_candidate.sql",
+      "headGitBlobSha": "1340f8405c2bc1b3454714b4b4605635a0cf4990"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108121000_sabora_m3_m5_admin_single_writer_candidate.sql",
+      "headGitBlobSha": "2c1695671add4eec82f3217e2bb0a78dc73ba8cb"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108150000_sabora_admin_ownership_governance_rpc_candidate.sql",
+      "headGitBlobSha": "3060126a8eb0e6057ff9c9db9989dd6bd118aa39"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108160000_sabora_m3_m5_signed_capability_null_hardening_candidate.sql",
+      "headGitBlobSha": "8de64d20fcb635f170bf8f8c513cc01aee580827"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108170000_sabora_staff_identity_directory_null_signature_hardening_candidate.sql",
+      "headGitBlobSha": "f9e751318beebeee198bffb25a32d91886950ad6"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql",
+      "headGitBlobSha": "aa4be49f8b1f7ef31387b9c4291acf1696ded62b"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261109010000_sabora_ownership_post_lock_expiry_candidate.sql",
+      "headGitBlobSha": "698246a921a2f9eb1bcc79019a9b01d82b9dde4d"
+    },
+    {
+      "status": "added",
+      "path": "supabase/migrations/20261109020000_sabora_waiter_calls_integral_candidate.sql",
+      "headGitBlobSha": "da5266c72f17f6846aee3fce620df3925fef17ee"
+    },
+    {
+      "status": "added",
+      "path": "tests/activation-readiness-preflight.test.mjs",
+      "headGitBlobSha": "ebfa09b169a48bbec31ef71ee7915d8a43228bac"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-read-projection-candidate.test.mjs",
+      "headGitBlobSha": "1cb817ae28e09f12b7c12e08bedacdee5db6a6f4"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-read-composition.test.mjs",
+      "headGitBlobSha": "62ec6bba36c8697227751a8edbada413fa52ccb7"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-read-http-integration.test.mjs",
+      "headGitBlobSha": "f0f41759e8e58785c0f251c99799f6d26ffbfe5d"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-read-http-malformed.test.mjs",
+      "headGitBlobSha": "db818b5073f49508e1ce30c2df118f1ea84c48c2"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-read-http-pagination.test.mjs",
+      "headGitBlobSha": "cb593bee8e29c5256ba030ea3711323fd26d30aa"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-read-route.test.mjs",
+      "headGitBlobSha": "acb3d46fcba944eee13b3fbdc2624fa37a1c8ea3"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-tables-reader-query.test.mjs",
+      "headGitBlobSha": "553bdd0af7ec78391679478f46c0e8d34fd96a33"
+    },
+    {
+      "status": "added",
+      "path": "tests/admin-write-transaction-integration.test.mjs",
+      "headGitBlobSha": "56040ad259eeb6d4908036baa3bf8ce222ac156d"
+    },
+    {
+      "status": "added",
+      "path": "tests/api-contract.test.mjs",
+      "headGitBlobSha": "4f0bc6c03e64045a025a67572c818d16d10ac3ed"
+    },
+    {
+      "status": "added",
+      "path": "tests/api-exposure-guard.test.mjs",
+      "headGitBlobSha": "08f093067affd22577fafc6a771ca83c8f66922e"
+    },
+    {
+      "status": "added",
+      "path": "tests/auth-hook.test.mjs",
+      "headGitBlobSha": "dcc22df545ac58dabf124b1a9d67f20c440b3539"
+    },
+    {
+      "status": "added",
+      "path": "tests/auth-verifier.test.mjs",
+      "headGitBlobSha": "8808c30683381f4cd238a0607d360f91eb3637d9"
+    },
+    {
+      "status": "added",
+      "path": "tests/authenticated-staff-table-transitions.test.mjs",
+      "headGitBlobSha": "f09e9b2767ce8b3c08d61183ba83764aa8c794d3"
+    },
+    {
+      "status": "added",
+      "path": "tests/bootstrap-lockfile.test.mjs",
+      "headGitBlobSha": "37472e65294bc902229b7bb58615da5378546369"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-atomicity-fixtures.test.mjs",
+      "headGitBlobSha": "a8d40fa7e928d29c22d9ed013e4d4ef290ee3fe3"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-attempt-writer.test.mjs",
+      "headGitBlobSha": "7a4ca46cc9b1ecd7311d554de1108052deca2b1e"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-candidate-runtime.test.mjs",
+      "headGitBlobSha": "d2350258618024fb71176396cb080f2b80bff3e1"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-composed-flow.test.mjs",
+      "headGitBlobSha": "a41a082bf4082062ab75f9398e38053ffb927f1e"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-context-revocation.test.mjs",
+      "headGitBlobSha": "fd645c16dc0e87e6c6ff1459eb79e1a3472467a0"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-coordinator.test.mjs",
+      "headGitBlobSha": "91dcf59d65bc1c57be48d8e631b3fe9dbdfd0a74"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-decision.test.mjs",
+      "headGitBlobSha": "28f9af555d938f7bf8b930223fc2fe73940bf085"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-pool-end-to-end.test.mjs",
+      "headGitBlobSha": "09615c7e19ee8dc362beedbf8878f04e1edb864b"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-read-repository.test.mjs",
+      "headGitBlobSha": "940722f5bf2f87d32f6129513031ceeec90f1a2c"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-repository-acceptance.test.mjs",
+      "headGitBlobSha": "09fca62d3178b75a355327b2219bb57efc80a4d0"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-confirmation-repository.test.mjs",
+      "headGitBlobSha": "e42159aafa23a49eb4562e6c9899f55b1f615eaa"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-displayed-quote-binding.test.mjs",
+      "headGitBlobSha": "ca080546f2b153bd830d2c7d72bd336b2606e379"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-economic-modifiers.test.mjs",
+      "headGitBlobSha": "0a7420a6099a81c2c18cbd970b63681b4f9b8dc7"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-http-fastify-integration.test.mjs",
+      "headGitBlobSha": "da15eb543d340e06489175b1925b3f52a7c29e7f"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-http-route.test.mjs",
+      "headGitBlobSha": "20512374f7cc2ee7781de7d63498585e10864497"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-line-evidence.test.mjs",
+      "headGitBlobSha": "2d3f2e286863e1d534a271f1f0ef7a88178c2c11"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-order-confirmation-candidate.test.mjs",
+      "headGitBlobSha": "255a50c86bf4f346dd6aa76d31d69669d34f26a4"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-order-confirmation-pool-candidate.test.mjs",
+      "headGitBlobSha": "8b699b365ff5007164fe08b53599520499516dc3"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-order-writer.test.mjs",
+      "headGitBlobSha": "c158f8bc9d882dd9eb06e3be16108b8ab07d1c74"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-pool-config.test.mjs",
+      "headGitBlobSha": "99572ac770f631aec22872169884428355e6e7d7"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-pricing.test.mjs",
+      "headGitBlobSha": "aa6627cc123b18e34dd51bb0644d6fb48610085f"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-publication.test.mjs",
+      "headGitBlobSha": "001b227561149b7e1eb1a5ca829753cdcb4124b0"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-quote-insert-repository.test.mjs",
+      "headGitBlobSha": "7d08994f5478d24973f0a3e2792a7ed56ce6e442"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-quote-issuer.test.mjs",
+      "headGitBlobSha": "688f40bd4e40b14a46438b84de33654606125ef9"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-quote-repository.test.mjs",
+      "headGitBlobSha": "1c77743db728e0c04b724fbb71cb9d05e2d124be"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-reader-query.test.mjs",
+      "headGitBlobSha": "74dab769bb85ab60aa69b21b995135ed5fea0f4c"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-reprice-acceptance.test.mjs",
+      "headGitBlobSha": "064099e464c809f5212e570b282164f5293a5fa1"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-reprice-gate.test.mjs",
+      "headGitBlobSha": "8564cde8a50138402afb9ae24070b394a810c140"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-scoped-query.test.mjs",
+      "headGitBlobSha": "d85e6e95fa40e3eb1e20abccdbb7e736abba786d"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-selection-quote.test.mjs",
+      "headGitBlobSha": "720acbfdb09764fd70746aa510b9b9a4a1737f03"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-table-qr-verifier.test.mjs",
+      "headGitBlobSha": "727e52b02dd2a8883b5647d7235e7577dac1d89e"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-visit-context-malformed-row.test.mjs",
+      "headGitBlobSha": "45d7a218c99981fd237fe809779c06d25aaff9a2"
+    },
+    {
+      "status": "added",
+      "path": "tests/catalog-visit-context-repository.test.mjs",
+      "headGitBlobSha": "75b6562e7d21a5cc239ce9d1ca7fa5fd1139aa68"
+    },
+    {
+      "status": "added",
+      "path": "tests/ci-order.test.mjs",
+      "headGitBlobSha": "cebb6362aef0d4fd25908fa3f7e9e507ea283549"
+    },
+    {
+      "status": "added",
+      "path": "tests/client-catalog-loader.test.mjs",
+      "headGitBlobSha": "df1e62552887aa7e12d4cf46d08e8ff4c4c79121"
+    },
+    {
+      "status": "added",
+      "path": "tests/client-catalog.test.mjs",
+      "headGitBlobSha": "d60d283061dd241743fa6f3c329c5d560b7f9960"
+    },
+    {
+      "status": "added",
+      "path": "tests/client-customer-flow-transport.test.mjs",
+      "headGitBlobSha": "f81aa7759e2b11be605c79049a92e2b469ed7205"
+    },
+    {
+      "status": "added",
+      "path": "tests/client-premium-contract.test.mjs",
+      "headGitBlobSha": "b1e3f1b444687cbff412afb8687bc5339b7b87e3"
+    },
+    {
+      "status": "added",
+      "path": "tests/client-state.test.mjs",
+      "headGitBlobSha": "f2152e02c558540b9131e9979d0669b10569566f"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-authorized-confirmation.test.mjs",
+      "headGitBlobSha": "9793774f02075b278fd8dd2d3fcea182ffa801f5"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-authorized-request.test.mjs",
+      "headGitBlobSha": "93dd0834ed1821b618590a17acfc7205c9cf4a22"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-confirmation-flow.test.mjs",
+      "headGitBlobSha": "f778d8a7e7bf4194195943d17431eb644fed0d2b"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-confirmation-kitchen-handoff.test.mjs",
+      "headGitBlobSha": "95d3ca1c7d8ba86fa27b05758ce645f1185f3234"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-confirmation-mount.test.mjs",
+      "headGitBlobSha": "cfbf2b2eba901afc77d55f5d4efdeb3fa667f5bf"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-confirmation-transport.test.mjs",
+      "headGitBlobSha": "184ec399a71584188aca3deb0a2d8bc26a006d18"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-cookie-session-candidate.test.mjs",
+      "headGitBlobSha": "b3f6381f23aff61f39a2bc542e1b6e9f909dd4b6"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-http-hooks.test.mjs",
+      "headGitBlobSha": "08c6993994f287fa07a2afe896677d2d6bddab83"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-http-security.test.mjs",
+      "headGitBlobSha": "7d67320b6464ec1910112529c5796d16f8b22dd4"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-id.test.mjs",
+      "headGitBlobSha": "30254260925a7f2b55b9b076d7df04245c0f6281"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-order-confirmation-full-sql-chain.test.mjs",
+      "headGitBlobSha": "ef77e4270088a5209c5502dc9dee849de7f824ef"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-order-confirmation-http-candidate.test.mjs",
+      "headGitBlobSha": "95de81a1f2eaf13bc3abbe64133cef86cfef32e3"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-order-confirmation-pool-composition-candidate.test.mjs",
+      "headGitBlobSha": "cba0e26988cffca7f7de99362f7d32734d39a887"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-order-confirmation-transport.test.mjs",
+      "headGitBlobSha": "53e839440f2254fce7d962497e95e748ad8e6ec3"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-production-flow.test.mjs",
+      "headGitBlobSha": "da3aaa879e83dfff84c33f6b5428fc6d5018629c"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-production-http.test.mjs",
+      "headGitBlobSha": "d26e99012548e233d0e5da6c0cbf0f07af4450e0"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-production-sql-preflight.test.mjs",
+      "headGitBlobSha": "33c7fb7f8cf05ad58cbf4ca24b7d35b00fb9611e"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-profile-writer.test.mjs",
+      "headGitBlobSha": "e003cd72304eb291783e1192890a3caebeba4024"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-profile.test.mjs",
+      "headGitBlobSha": "0dad23d21f6af5418a3cb55eb24e118f23080ca2"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-profiles-sql.test.mjs",
+      "headGitBlobSha": "b3c350e4b5f6db493f3e949960bfe2c188d2bcca"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-protected-hook.test.mjs",
+      "headGitBlobSha": "db2108f7d70db9e8f2749ed0e168a309f0d1a7b3"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-registration-http-candidate.test.mjs",
+      "headGitBlobSha": "dd1d11ed1cc7c6e0b0ae24cb777ea626262fd597"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-registration.test.mjs",
+      "headGitBlobSha": "d7570775113361c3568814f89e6bbc84360c890f"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-repricing-consent-controller.test.mjs",
+      "headGitBlobSha": "241be107e661ef851400d5414244a11d460e2ed1"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-repricing-consent-panel.test.mjs",
+      "headGitBlobSha": "9f7e06cdfef41211a4562f68c7855668e981c7e7"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-request-key-registry.test.mjs",
+      "headGitBlobSha": "33b250dda621ea5dae9b7b052acacbbb79d80d85"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-routes-composition.test.mjs",
+      "headGitBlobSha": "b0cced7451c0533a3723e5d86519cf78031ac434"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-lifecycle-http.test.mjs",
+      "headGitBlobSha": "aa11c686aafdb0774a400960a1ef60936e98a3e0"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-query-boundary.test.mjs",
+      "headGitBlobSha": "eb9c673162eb91a2e01032f3ac4feb71df449db0"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-revoker.test.mjs",
+      "headGitBlobSha": "a31a2913a9b6052823aa26612f72473f0325a20e"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-runtime.test.mjs",
+      "headGitBlobSha": "9c66ee17e1f0f0e78fbf9055ba9e5ac6cae99848"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-scoped-query-failures.test.mjs",
+      "headGitBlobSha": "fce9d235f39e275b7abbbda2de565b24f99f60be"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-scoped-query.test.mjs",
+      "headGitBlobSha": "c357e360c9a8fc0753a85e9d3ea940f5ea0ca830"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session-verifier.test.mjs",
+      "headGitBlobSha": "9cdda05d631212e02a5651b2bb5796b3bf70b119"
+    },
+    {
+      "status": "added",
+      "path": "tests/customer-session.test.mjs",
+      "headGitBlobSha": "5f9026caa1c553b3a683d1a842f1d1ee20503f4f"
+    },
+    {
+      "status": "added",
+      "path": "tests/cv014-communications-contract.test.mjs",
+      "headGitBlobSha": "16d1b2ca6b67779cd536c8718b9cb62f2c1d5476"
+    },
+    {
+      "status": "added",
+      "path": "tests/deployment-gate.test.mjs",
+      "headGitBlobSha": "2d3de254c6b07997e6790c388dafa926c5d6e580"
+    },
+    {
+      "status": "added",
+      "path": "tests/deployment-isolation-contract.test.mjs",
+      "headGitBlobSha": "2a652d85423a4930208df601bf8c5f0b13d5fab4"
+    },
+    {
+      "status": "added",
+      "path": "tests/functional-ui-coverage-gate.test.mjs",
+      "headGitBlobSha": "c23bad26f2e1bd1f90108ab3f97be7b93fb5c217"
+    },
+    {
+      "status": "added",
+      "path": "tests/functional-validation-contract.test.mjs",
+      "headGitBlobSha": "c157133f8f314dd3d70beefd61925c1d4db7f3bd"
+    },
+    {
+      "status": "added",
+      "path": "tests/h6-payments-events.test.mjs",
+      "headGitBlobSha": "17a2435de2006aa98e6459687c8b442017abc2a7"
+    },
+    {
+      "status": "added",
+      "path": "tests/isolated-customer-composition-candidate.test.mjs",
+      "headGitBlobSha": "faab42cb4a259cfe8948b1ea60908cde4995bef9"
+    },
+    {
+      "status": "added",
+      "path": "tests/isolated-customer-sql-capabilities-preflight.test.mjs",
+      "headGitBlobSha": "22d38db2b691942724037d21e18ca393df9a8acc"
+    },
+    {
+      "status": "added",
+      "path": "tests/isolated-pool-identity-preflight.test.mjs",
+      "headGitBlobSha": "5171f84f5170c70afe852e1b5bffbf13ff245f4a"
+    },
+    {
+      "status": "added",
+      "path": "tests/jwks-provider.test.mjs",
+      "headGitBlobSha": "1dcfed310ed084fdc338a7c9d17b37f62dc3d953"
+    },
+    {
+      "status": "added",
+      "path": "tests/m3-management-capability.test.mjs",
+      "headGitBlobSha": "04ac7aa800a8046eea2f151974feeea59dc026bb"
+    },
+    {
+      "status": "added",
+      "path": "tests/management-scaffold.test.mjs",
+      "headGitBlobSha": "754621810f6e421d552c53db8d65c68c24c3f5d8"
+    },
+    {
+      "status": "added",
+      "path": "tests/management-table-change-decision-gateway.test.mjs",
+      "headGitBlobSha": "0a2a4e2b9375c4113964f69e8f20da458f0913aa"
+    },
+    {
+      "status": "added",
+      "path": "tests/operational-security-inventory.test.mjs",
+      "headGitBlobSha": "804294cc8241634959521e72b113e3da45cf0f84"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-domain.test.mjs",
+      "headGitBlobSha": "e176c4aa1389e954ba5be0426e22ebca380bf2f5"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-identity-compatibility-candidate.test.mjs",
+      "headGitBlobSha": "f7a852eaf2f4274918cbf57806d05ef125659e6e"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-lifecycle-domain.test.mjs",
+      "headGitBlobSha": "739ae6547b06bc6d0715adfc60c12ed102b1f251"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-lifecycle-sql.test.mjs",
+      "headGitBlobSha": "71f3a48ee17e8c34d112dc984bfc64f056252b42"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-lines-pickup-sql.test.mjs",
+      "headGitBlobSha": "3a61eed071a25991fff4ce3038e4b41ff8c48b69"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operation-capability.test.mjs",
+      "headGitBlobSha": "adec334d7e255678f21d9b946c173410f5b323db"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operation-read-capability.test.mjs",
+      "headGitBlobSha": "2ff532109019ef8d4d453bb8ebc3b0746777a8b3"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-activation-gate.test.mjs",
+      "headGitBlobSha": "e7333503a0c234173800603d8f24528b1eae4948"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-candidate-app.test.mjs",
+      "headGitBlobSha": "088c3dcfb4f538ec7294566bddc300197f1ad5f5"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-composition.test.mjs",
+      "headGitBlobSha": "705f36f4789c0130d56525e989919cbdf8401041"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-http-lifecycle-acceptance.test.mjs",
+      "headGitBlobSha": "5bea52ce87832d07948aa3f67eb160b2933d6f46"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-identity-preflight.test.mjs",
+      "headGitBlobSha": "b4f981a7f178abf9339b3ac74469dcc85d75e0b7"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-read-sql.test.mjs",
+      "headGitBlobSha": "c14a426ef0f8040f4c4ae2f20634f64c393615ef"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-sql.test.mjs",
+      "headGitBlobSha": "ddf39bb21ebc47e7a3124f9c9b85219d71e030ee"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations-transition-only-http.test.mjs",
+      "headGitBlobSha": "01eef2241b21e92ab86991818f7928f1f4f47ff9"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-operations.test.mjs",
+      "headGitBlobSha": "7ebb0f07f75cce146dc3fc87824ac0edb8e35d5f"
+    },
+    {
+      "status": "added",
+      "path": "tests/order-transaction-sql.test.mjs",
+      "headGitBlobSha": "ce89e9ed179a88c50f386128d0d965a78cd2e1f7"
+    },
+    {
+      "status": "added",
+      "path": "tests/ownership-denial-matrix.test.mjs",
+      "headGitBlobSha": "57512395c7d218b4f293984d681a50f76e64037b"
+    },
+    {
+      "status": "added",
+      "path": "tests/ownership-transition-policy.test.mjs",
+      "headGitBlobSha": "f0e4d8682a2a3c1b355f93910bd46ae9ea52d125"
+    },
+    {
+      "status": "added",
+      "path": "tests/ownership-workflow.test.mjs",
+      "headGitBlobSha": "38d8f2c449524acd78b6c1bb68bc463eee184200"
+    },
+    {
+      "status": "added",
+      "path": "tests/pinned-rs256-staff-bearer-verifier.test.mjs",
+      "headGitBlobSha": "23d0da9cc39517d3e50330acece03a49c5a7532e"
+    },
+    {
+      "status": "added",
+      "path": "tests/postgres-owner-lookup.test.mjs",
+      "headGitBlobSha": "33bdc52f141cb8612fdf280fd597d84298c109f1"
+    },
+    {
+      "status": "added",
+      "path": "tests/postgres-protected-route-hooks.test.mjs",
+      "headGitBlobSha": "e2d348c7f560a1590cc8476e74bdc4415667655c"
+    },
+    {
+      "status": "added",
+      "path": "tests/postgres-staff-lookup.test.mjs",
+      "headGitBlobSha": "d450240926b70106e734bacebc623527d17c4aa1"
+    },
+    {
+      "status": "added",
+      "path": "tests/postgres-transaction-undefined-bindings.test.mjs",
+      "headGitBlobSha": "f4fe117ca40dccc44e415cb2bc146a0b756afe3a"
+    },
+    {
+      "status": "added",
+      "path": "tests/postgres-transaction.test.mjs",
+      "headGitBlobSha": "33e3107e10d403a1fe513c09f91eaaff5a036910"
+    },
+    {
+      "status": "added",
+      "path": "tests/production-config-secrets.test.mjs",
+      "headGitBlobSha": "d6c9ec25cadf30f7bbbbbfd34e48c443ad3ff2c5"
+    },
+    {
+      "status": "added",
+      "path": "tests/protected-route-hooks.test.mjs",
+      "headGitBlobSha": "10d478b8e0c5072e69f2c316a67d507c174f217b"
+    },
+    {
+      "status": "added",
+      "path": "tests/recovery-continuity-contract.test.mjs",
+      "headGitBlobSha": "44df2dff56757c0887eb66069ed0bf8cc087f971"
+    },
+    {
+      "status": "added",
+      "path": "tests/release-preflight.test.mjs",
+      "headGitBlobSha": "cb7a6e6afb5b3f0a057d479046aa2bda436ffc20"
+    },
+    {
+      "status": "added",
+      "path": "tests/safe-staff-reader-query.test.mjs",
+      "headGitBlobSha": "f0d19a11965966b1f91f5219f58226ccc8e1759d"
+    },
+    {
+      "status": "added",
+      "path": "tests/sql-schema.test.mjs",
+      "headGitBlobSha": "8adb74c1944e0db9dd5c348b85465581d6e91761"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-authorization-runtime.test.mjs",
+      "headGitBlobSha": "294f8e56839303957afd0d91de9b865f2ee4b017"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-authorization.test.mjs",
+      "headGitBlobSha": "a778a0fbca970fc5017ae6face502d15b02dc0bf"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-contact-reconciliation-plan.test.mjs",
+      "headGitBlobSha": "df904b4f12303c5995a54bb76c3cf96e5569fdb1"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-custody-approval-authority-candidate.test.mjs",
+      "headGitBlobSha": "4489fa5f41ca9b3a26cded39b1105adcd444a9d2"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-custody-authenticated-grant-issuer-candidate.test.mjs",
+      "headGitBlobSha": "d39f0059144534170d6b761ecb6a7f3e3e9e54e9"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-custody-maintenance-candidate.test.mjs",
+      "headGitBlobSha": "815916c52f66da0f168b09ae676bd16ec74bd0d2"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-directory-composition.test.mjs",
+      "headGitBlobSha": "3714927e3f48e6e1ddf1cb3715806b6ffe65bdbc"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-directory-historical-contact-contract.test.mjs",
+      "headGitBlobSha": "453e4b1475855ca4f8442e98180fac6208f207d2"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-directory-identity-preflight.test.mjs",
+      "headGitBlobSha": "58e5b822578fa20789bca16599a82b5aac01bb9a"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-directory.test.mjs",
+      "headGitBlobSha": "8a22faa5c3720ae0545a31b2889879227eb3664f"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-display-id.test.mjs",
+      "headGitBlobSha": "6e70e4f0bf3c2224ddbae7e122b9ddab0ec76244"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-claim-candidate.test.mjs",
+      "headGitBlobSha": "7494c2f89c54d922ae8266f1a1cca0e676238d01"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-claim-race-candidate.test.mjs",
+      "headGitBlobSha": "2fe8e29611a9691caa60c184e7285e7d18b7f878"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-claim-recovery-candidate.test.mjs",
+      "headGitBlobSha": "cf50c86f4697f84d34a01e1f32758ca4a31a7502"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-delivery-outcome-candidate.test.mjs",
+      "headGitBlobSha": "826815d0a441a7f23eecda1682a73683d929b2b9"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-delivery-policy.test.mjs",
+      "headGitBlobSha": "321db2a5e0154ef30f56e79dd851b88c95b0eb69"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-dispatch-guard.test.mjs",
+      "headGitBlobSha": "a204e16fa65b20ecc01bec7d402f00e4a9b96ea3"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-dispatch-sql-candidate.test.mjs",
+      "headGitBlobSha": "034fec498e84bd1bb61fcfdf4ad0f5c3af890a9e"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-enqueue-candidate.test.mjs",
+      "headGitBlobSha": "9e57838a20ff0df1c4198c77a0969266171acf7b"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-enqueue-identity-preflight.test.mjs",
+      "headGitBlobSha": "2db566a0c0f07384805ff139f4f6242edc5eb6f0"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-envelope-candidate.test.mjs",
+      "headGitBlobSha": "74f37dda107c813db1a397e911f54183b62aafa2"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-keyring-candidate.test.mjs",
+      "headGitBlobSha": "8a577f96279d1dbd3daf2d54fb83e65d88575309"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-outbox-boundary.test.mjs",
+      "headGitBlobSha": "78213a1bb5ab47586feb9c9ccdb69e0f639a0a09"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-outbox-repository-candidate.test.mjs",
+      "headGitBlobSha": "599d43c81ab47ec4ec864ad3a029aa49950b6864"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-outbox-schema-contract.test.mjs",
+      "headGitBlobSha": "2c554619540430a084e144fb0de682397af81387"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-invitation-reconciliation-candidate.test.mjs",
+      "headGitBlobSha": "211c5b33c580b9c37572f28553515b2ddd81e0b2"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-capability.test.mjs",
+      "headGitBlobSha": "6e7cb3b56bda52270f800cb8181a783ed8387332"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-composition.test.mjs",
+      "headGitBlobSha": "ba8f3cadc41f0415fe070663b7d1b5f4c29bef55"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-coordinator.test.mjs",
+      "headGitBlobSha": "bf5d2ff5343aedcb36b68db698db3cbddbffb33f"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-http-candidate.test.mjs",
+      "headGitBlobSha": "3d07edb2057fc40855616047dcc5eca5289aab51"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-identity-preflight.test.mjs",
+      "headGitBlobSha": "b5017529588cc99d2d2605820d2456e888501766"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-repository.test.mjs",
+      "headGitBlobSha": "02ce0f5582184bc2e680a9e9e684448366efc4bb"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-lifecycle-sql.test.mjs",
+      "headGitBlobSha": "c6e1311db936f1d862053d97701beb551af41c3d"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-pool-config.test.mjs",
+      "headGitBlobSha": "1996894b72ae27d738fd004fd172c9e9558431ed"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-pool-lifecycle.test.mjs",
+      "headGitBlobSha": "80c3afb11b7206a293645268afd64248b53dde02"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-pool-observer.test.mjs",
+      "headGitBlobSha": "20c37de8fb6abe6692293aceeb833e593cc9c65e"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-protected-hooks-from-pool.test.mjs",
+      "headGitBlobSha": "003afab1eab78c543e7c0e3959591ee314ad641b"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-reader-query.test.mjs",
+      "headGitBlobSha": "ff094fdf3d94f7a9a2a171f7b701c77904bd70bd"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-session-resolver.test.mjs",
+      "headGitBlobSha": "d367ba0541f73eab5f533aac5c0540d280fbb489"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-table-transition-coordinator.test.mjs",
+      "headGitBlobSha": "e66d7ff8c266a15956dbb70a61d67170bb2e1892"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-transition-input-boundary.test.mjs",
+      "headGitBlobSha": "428f2104d9f05ff14918493e74ad7c875bd97240"
+    },
+    {
+      "status": "added",
+      "path": "tests/staff-transition-transaction-boundary.test.mjs",
+      "headGitBlobSha": "71bd8a6f2eed47118987a2234d5d3adcbf3d6d1e"
+    },
+    {
+      "status": "added",
+      "path": "tests/structure.test.mjs",
+      "headGitBlobSha": "4d4aabc2906d4879273e890b382e3c46a358dc3a"
+    },
+    {
+      "status": "added",
+      "path": "tests/table-qr-contract.test.mjs",
+      "headGitBlobSha": "abd5e8d35a27ea2c14b0b0e3fae40089dc69b853"
+    },
+    {
+      "status": "added",
+      "path": "tests/transactional-admin-write.test.mjs",
+      "headGitBlobSha": "c2f2e72f192f9cc1f9e0d5d44ea70b180d04f5be"
+    },
+    {
+      "status": "added",
+      "path": "tests/verified-admin-catalog-reader.test.mjs",
+      "headGitBlobSha": "c5b8ed9b82ac64412ca992c0545dacc2edbd05b9"
+    },
+    {
+      "status": "added",
+      "path": "tests/verified-admin-table-reader.test.mjs",
+      "headGitBlobSha": "6d8bd7b34af0fc93db77ed8ee2be09a885f49d82"
+    },
+    {
+      "status": "added",
+      "path": "tests/verified-customer-api-candidate.test.mjs",
+      "headGitBlobSha": "cb5e91557128ec9e54b80127f894ea0bb2c78099"
+    },
+    {
+      "status": "added",
+      "path": "tests/verified-isolated-customer-composition-candidate.test.mjs",
+      "headGitBlobSha": "8ddddb93b177ff39311857db1223f582604550db"
+    },
+    {
+      "status": "added",
+      "path": "tests/verified-staff-session-resolver.test.mjs",
+      "headGitBlobSha": "324ded873f3320a159f39d64baf1c6504d4648da"
+    },
+    {
+      "status": "added",
+      "path": "tests/visual-contract-gate.test.mjs",
+      "headGitBlobSha": "3b5bb49c552d6af57bf8533582478fa03a3e939a"
+    },
+    {
+      "status": "added",
+      "path": "tests/visual-contract-reference.test.mjs",
+      "headGitBlobSha": "5b6e9135e7dd2572a2e32f5d4390dab69369193c"
+    }
+  ]
+}
