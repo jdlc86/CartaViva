@@ -136,6 +136,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Dictamen:** prioridad inmediata es integración segura de código y simplificación de PR, **no preparación productiva completa**. Sin merge, cierre, retarget, cambio de protección, ejecución de pruebas o despliegue nuevos en esta aclaración. Cualquier cambio de base/fusión sigue sujeto a autorización propia y confirmación GitHub.
 
+## 4 nonies. S34-8 — PR #54 retargeteado a `main`, mismo candidato sin merge (10-11-2026)
+
+**Actuación real sobre GitHub:** [PR #54](https://github.com/jdlc86/CartaViva/pull/54) cambió **su base de #53 a `main`** mediante actualización de metadatos, conservando **el mismo HEAD funcional y documental**, sin cherry-pick, rebase, force-push ni PR nuevo. GitHub reevalúa **`mergeable=true`, `mergeable_state=clean`**. El PR sigue **Draft**; `main` sigue sin commits nuevos en `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. **No se ha fusionado.**
+
+**Alcance real de revisión desde `main`:** GitHub presenta 4.357 commits/931 rutas en el HEAD documental `ec0c17d7730e37eae1efbd222df093e5422ca555`; el árbol completo cotejado tiene **928 archivos añadidos, 3 existentes modificados y 0 eliminados**. La revisión anterior de [manifiesto congelado](../reviews/SABORA_S34_MAIN_INTEGRATION_FILE_MANIFEST_2026-11-10.json) continúa siendo válida para los **929 archivos y SHA de su fotografía**, no para el HEAD documental móvil. Desde el último SHA de código/CI `782974063bebe39fd423363eb2f806bc6b8acef9` hasta `ec0c17d...`, el árbol muestra exclusivamente **8 rutas documentales** distintas (4 nuevas y 4 modificadas), ninguna de API, PWA, SQL ni tests.
+
+**Actualización de preflight:** [SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md), apartado de **estado vigente posterior al corte**, prevalece sobre los apartados históricos que dicen «base #53» o «retarget pendiente». La descripción del [PR #54](https://github.com/jdlc86/CartaViva/pull/54) se ha actualizado sin borrar las notas históricas.
+
+**Próxima puerta de pruebas:** ejecutar y examinar los seis workflows de GitHub Actions **sobre la rama con base `main` y su HEAD actualizado**, no suponer que el retarget por sí mismo reejecuta CI. **Revisión independiente y decisión de merge aún pendientes**; la ausencia declarada de usuarios y producción no bloquea el merge por Stripe/PITR/estética final, pero tampoco elimina los requisitos de seguridad SQL, contratos, integridad de integración y aprobación de cambios de `main`. S4 **NO FINALIZADO**. No se ha cerrado ningún PR, aplicado SQL en Supabase ni tocado VPS o Fleetia.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
