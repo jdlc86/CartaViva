@@ -981,3 +981,11 @@ Se contrastaron `merge-base..HEAD` de las cuatro divergencias documentales: **#1
 
 **Propuesta para decisión posterior, sin cierre ejecutado:** ocho candidatos históricos a **cerrar sin merge** como sustituidos por `main`: #18–#22, #5, #17, #4. **Retener #8** por falta de revisión independiente de seguridad HMAC/SQL, salvo aceptación específica de riesgo. Se requiere decisión expresa de cierre administrativo; no reutilizar permiso antiguo de 32 ancestros. **Censo: nueve PR abiertos**. Sin despliegue, migración Supabase operativa ni intervención en VPS/Fleetia.
 
+## 89. S35 — cierre ejecutado del lote de ocho PR divergentes (10-11-2026)
+
+**Acción administrativa verificada:** [PR #4](https://github.com/jdlc86/CartaViva/pull/4), [#5](https://github.com/jdlc86/CartaViva/pull/5), [#17](https://github.com/jdlc86/CartaViva/pull/17), [#18](https://github.com/jdlc86/CartaViva/pull/18), [#19](https://github.com/jdlc86/CartaViva/pull/19), [#20](https://github.com/jdlc86/CartaViva/pull/20), [#21](https://github.com/jdlc86/CartaViva/pull/21) y [#22](https://github.com/jdlc86/CartaViva/pull/22) **cerrados sin merge ni borrado de ramas** (`state=closed; merged=false` individualmente), con comentario justificativo y trazabilidad en cada conversación.
+
+**Censo GitHub posterior:** exactamente **un PR abierto, [#8 Draft](https://github.com/jdlc86/CartaViva/pull/8)**. El hito de saneamiento de ocho PR sustituidos está finalizado; **S4 global sigue NO FINALIZADO** por el dictamen independiente de seguridad HMAC/actor SQL y decisión sobre #8. Cierre administrativo no equivale a prueba funcional nueva, aprobación humana ni producción.
+
+**Fuente documental:** [S35-3 en la continuidad activa](../handoffs/SESSION_35_HANDOFF_2026-11-10.md) y [dictamen S35 actualizado](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md). La [CI post-merge de #55 en `main` #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) estaba `in_progress` al último corte; la CI del PR #55 había completado los tres workflows con SUCCESS sobre el SHA de pruebas. No se modificaron código, Supabase operativo, VPS ni Fleetia.
+
