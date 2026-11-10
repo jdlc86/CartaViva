@@ -155,6 +155,17 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 **Próximo bloque:** resolver la revisión de seguridad de #8 sin denominar «revisión independiente» a un análisis propio; cerrar su alcance y riesgo documentados, después evaluar un saneamiento S4 definitivo. Además verificar CI post-merge con SHA exacto.
 
+
+### S35-4 — preflight de seguridad del único PR abierto #8 y rectificación probatoria (10-11-2026)
+
+**Auditoría técnica adicional, no independiente:** se releyeron [#8](https://github.com/jdlc86/CartaViva/pull/8), sus dos comentarios, las revisiones formales registradas (ninguna) y los blobs originales frente a `main`. El [dictamen S35 §6](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md#6-preflight-técnico-específico-del-único-pr-pendiente-8--s35-4-10-11-2026) conserva el detalle, rutas, versiones y límites.
+
+**Rectificación necesaria:** la documentación histórica del **candidato original de #8 sí afirma que se hizo una revisión independiente** y que corrigió dos hallazgos: uso inseguro de `NULL` SQL y validación tardía del rol owner. El comentario del PR registra CI positiva del SHA antiguo `8818366c...`. No hay `APPROVED` formal en GitHub para ese PR. **No significa que nunca hubo revisión**; la que falta para decidir #8 es una evaluación independiente **del código vigente en `main`**, donde el emisor HMAC conserva exactamente el blob, pero migración SQL, preflight, repositorio y pruebas PG17 son versiones evolucionadas. No extrapolar revisión de un candidato histórico a otra versión sin examinar cambios.
+
+**Evidencia actual, sin pruebas nuevas:** el SQL sigue con firma HMAC y `session_user`, rechazo `NULL`, comparación `IS DISTINCT FROM`, vencimiento revalidado tras locks y control de owners; el test PG17 actual prueba falsificación, revocación, carreras y denegación SQL. La semántica `picked_up` legada solo existe tras un contrato histórico y la ruta pública candidata monta `legacyPickupDisabled:true`; debe comprobarse cualquier otro acceso al wrapper para no rehabilitar ese estado por privilegios. Seguridad independiente, claves operativas/rotación y activación son controles distintos.
+
+**Estado:** [#8](https://github.com/jdlc86/CartaViva/pull/8) sigue el **único PR abierto**, Draft, sin merge ni cierre; ocho PR históricos ya cerrados sin merge y con comentarios de justificación. No se hizo revisión externa nueva ni se ejecutaron migraciones o despliegues. **S4 global NO FINALIZADO** hasta decisión y evidencia de seguridad aplicable a `main`.
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
