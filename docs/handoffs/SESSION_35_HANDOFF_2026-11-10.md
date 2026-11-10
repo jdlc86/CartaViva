@@ -131,6 +131,30 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 **Acciones:** documento S35 de conciliación creado, ningún PR divergente cerrado, ninguna modificación adicional de runtime/SQL. La nueva [CI push de `main` #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) sigue pendiente de cierre concluyente en este corte, en SHA `b41713d8`. Continuidad activa **35**; sesión 34 inalterada. Ninguna operación en Supabase operativo, VPS o Fleetia.
 
+
+### S35-3 — cierre administrativo en lote de ocho PR históricos, sin merge (10-11-2026)
+
+**Decisión de ejecución:** continuación expresa del usuario inmediatamente después de la propuesta documentada de cerrar **ocho candidatos**, manteniendo #8 sin cerrar. Antes de actuar se reconsultaron GitHub y la CI del merge, se verificaron los mismos HEAD históricos y su divergencia frente a `main`. La diferencia Git no se trató como un permiso automático: la base funcional fue [el dictamen S35](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md) y los ensayos PG17/Chromium ya confirmados.
+
+**Operaciones realizadas y verificadas:** se publicó **un comentario razonado en cada PR**, con enlace al dictamen S35, al merge #55 y al [Bootstrap PG17 #42900656103](https://github.com/jdlc86/CartaViva/actions/runs/42900656103), así como el alcance y las pruebas específicas de la sustitución. A continuación se cerraron por GitHub, **sin merge individual ni borrado de ramas**:
+
+| PR | Familia sustituida | Resultado confirmado |
+| --- | --- | --- |
+| [#4](https://github.com/jdlc86/CartaViva/pull/4) | Recogida sala/cocina histórica → H6 actual | `closed / merged=false` |
+| [#5](https://github.com/jdlc86/CartaViva/pull/5) | M3 mesas/catálogo | `closed / merged=false` |
+| [#17](https://github.com/jdlc86/CartaViva/pull/17) | Validación HTTP de lecturas/cursor | `closed / merged=false` |
+| [#18](https://github.com/jdlc86/CartaViva/pull/18) | Integridad de selección H3 | `closed / merged=false` |
+| [#19](https://github.com/jdlc86/CartaViva/pull/19) | Incidencias de cesta H3 | `closed / merged=false` |
+| [#20](https://github.com/jdlc86/CartaViva/pull/20) | Precios/consentimientos H3 | `closed / merged=false` |
+| [#21](https://github.com/jdlc86/CartaViva/pull/21) | Revisión de incidencias H3 | `closed / merged=false` |
+| [#22](https://github.com/jdlc86/CartaViva/pull/22) | Multitab/variantes H3 | `closed / merged=false` |
+
+**Verificación independiente del resultado administrativo (lectura GitHub posterior al cierre):** el listado `pulls?state=open` contiene **únicamente [#8](https://github.com/jdlc86/CartaViva/pull/8)**, Draft, HEAD `8818366c79893a8fd78dee6a089fd990a71a9c52`. No se ejecutó ningún merge en estos ocho. **Se redujeron nueve PR abiertos a uno**. S4 histórico está saneado en 8/9, pero **S4 global NO FINALIZADO** hasta dictamen/decisión #8; ningún check funcional nuevo se infiere del cierre de PR.
+
+**CI relacionada, estado al corte:** [Sabora CI push post-merge #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) en `b41713d8` aún `in_progress`; no atribuir `SUCCESS` hasta leer GitHub. El `main` reconsultado tras los commits de documentación era `cb2c44bc32edf8cf3518c5804a4cee73a5b006b3`. Sin modificaciones de runtime, SQL, UI, secretos, Supabase operativo, VPS o Fleetia.
+
+**Próximo bloque:** resolver la revisión de seguridad de #8 sin denominar «revisión independiente» a un análisis propio; cerrar su alcance y riesgo documentados, después evaluar un saneamiento S4 definitivo. Además verificar CI post-merge con SHA exacto.
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
