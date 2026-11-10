@@ -4,6 +4,16 @@
 
 **PR:** [#54 Draft](https://github.com/jdlc86/CartaViva/pull/54) · **base actual:** [#53](https://github.com/jdlc86/CartaViva/pull/53), rama `feat/sabora-cv014-waiter-calls-integral-20261109` · **ramal candidato:** `integration/sabora-s32-admin-waiter-sanitization-20261109` · **continuidad:** [S34](../handoffs/SESSION_34_HANDOFF_2026-11-10.md) · **saneamiento de PR:** [matriz S34](SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md).
 
+## Estado vigente posterior al corte original — PR #54 retargeteado a `main` (10-11-2026)
+
+**La base de [#54](https://github.com/jdlc86/CartaViva/pull/54) ES AHORA `main`, no #53.** El cambio de base **sí se ha ejecutado** en GitHub en la sesión 34, manteniendo la misma rama y sin fusionar código. La plataforma ha recalculado `mergeable=true`, `mergeable_state=clean`, **4.357 commits y 931 archivos cambiados** frente al `main` fijo `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. Estos resultados se aplican al HEAD documental `ec0c17d7730e37eae1efbd222df093e5422ca555` inmediatamente tras el retarget; los siguientes commits de documentación aumentan el conteo, sin modificar el código de aplicación.
+
+**No interpretar las afirmaciones históricas de §§1–8 «base #53», «no se ha retargeteado» y «se requiere autorización para cambiar la base» como descripción vigente.** Se conservaron para trazabilidad de la preparación anterior. La **decisión de fusionar a `main` permanece separada y sin ejecutar**, así como cualquier cierre de PR.
+
+**Control diferencial después de la última CI funcional:** comparación directa de árboles Git de `782974063bebe39fd423363eb2f806bc6b8acef9` y `ec0c17d7730e37eae1efbd222df093e5422ca555` (ambos `truncated=false`) muestra **4 documentos añadidos y 4 documentos modificados; 0 cambios no documentales**. La CI 6/6 del SHA funcional es evidencia útil, pero **se requiere ejecución sobre el último HEAD del PR ya dirigido a `main`** antes de decidir una integración. Los árboles del corte actual de la integración muestran 928 archivos añadidos + 3 modificados + 0 eliminados. El manifiesto congelado anterior contiene 929 rutas y se preserva como fotografía válida de su SHA, no como manifest mutable del HEAD nuevo.
+
+**Alcance de aprobación:** el usuario ha indicado continuar el proceso de integración de desarrollo. No se convierte un retarget en aprobación de merge, aprobación independiente ni permiso para tocar Supabase, Fleetia o VPS. No existen usuarios ni servicio productivo activo según el usuario; las puertas de producción quedan separadas de la integración de desarrollo.
+
 ## 1. Evidencia reproducible — no confundir diff del PR y diff a `main`
 
 | Comprobación | Resultado exacto |
