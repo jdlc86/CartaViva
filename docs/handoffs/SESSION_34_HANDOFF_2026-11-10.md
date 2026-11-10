@@ -154,6 +154,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Resultado:** se cierra la puerta de **CI automatizada de integración del candidato con base `main`** en el SHA ensayado; continúa **NO-GO administrativo** por revisión independiente y autorización de fusión aún no resueltas. La aceptación visual, Stripe real, backup/PITR/RTO/RPO productivo y despliegue son hitos posteriores dada la ausencia actual de usuarios y producción activa declarada por el propietario. **No se lanzan suites redundantes ni nuevos PR.** No tocar Supabase operativo, VPS o Fleetia. Los commits documentales `[skip ci]` posteriores a `d49ee05b` no heredan una CI propia.
 
+## 4 undecies. S34-10 — #54 pasa a Ready for Review y se cierra el cotejo técnico preparatorio (10-11-2026)
+
+**Operación GitHub realizada:** [PR #54](https://github.com/jdlc86/CartaViva/pull/54) **deja de estar Draft y queda Ready for Review**, con base `main`, sin merge ni cambio en la rama principal. Se corrigió el título/descripción del PR para mostrar el estado de revisión y solicitar una revisión de seguridad distinta de la autoevaluación. **No se ha recibido ni falsamente declarado una revisión independiente.** Última CI en SHA `d49ee05b103620ce30cfc976fa62182cc9d954df`: **6/6 SUCCESS** (§4 decies); commits posteriores son exclusivamente documentales `[skip ci]`.
+
+**Cotejo focalizado de garantías conservadas:** [preflight §10](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md) documenta rutas actuales exactas: titularidad ADMIN revalidada bajo el lock transaccional sin bypass ROOT; RPC SQL firmada y caducidad posterior a locks; consultas H4 estrictas; deshabilitación de la transición antigua `picked_up` desde el ensamblador M2/H6; editor M3 autenticado de categorías dinámicas; conservación de incidencias/consentimiento por variante de H3 y escucha `storage`. **La revisión manual acotada no acredita equivalencia total de nueve ramas antiguas ni constituye aprobación independiente.**
+
+**Documentos normativos alineados en su estado, sin reescribir las reglas:** adendas técnicas en [single writer](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md) y [operación de titularidad](../security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md) indican qué HTTP/SQL candidato se implementó y probó realmente en PG17. Los estados históricos del 20 de octubre quedan como historial, no como descripción de las rutas actuales. No autoriza crear logins SQL operativos ni desplegar.
+
+**Decisión pendiente:** revisión/aceptación de las diferencias críticas o decisión explícita del propietario sobre riesgo residual y fusión de desarrollo; 33 PR ancestrales fuera de `main` y nueve divergentes conservan estado. Los gates de producción (Stripe remoto, PITR/RTO/RPO, estética final) no bloquean este merge de código mientras sigan inactivos, conforme a la aclaración del propietario. **S4 administrativo NO FINALIZADO**. Sin merge/cierre adicional, cambios en main, Supabase, Fleetia ni VPS.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
