@@ -84,6 +84,14 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Gobierno:** sin cambios en `main`, sin merge/cierre de PR, sin Supabase operativo/VPS/Fleetia. S4 pendiente. Ante un fallo, revisar causa y corregir antes de considerar aceptado el bloque; no reducir aserciones ni sustituir SQL/HTTP reales por mocks.
 
+## 4 quater. S34-3 — prueba integrada M3→H3/H4 PASS en Bootstrap PG17, otros gates pendientes (10-11-2026)
+
+**Expediente específico de evidencia:** [SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md](../reviews/SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md). La primera CI de `ff7d68bd` confirmó publicación M3 real pero **falló** en una aserción de IDs de opciones codificados a mano; [Bootstrap #42819553040](https://github.com/jdlc86/CartaViva/actions/runs/42819553040) y [H6 #42819553152](https://github.com/jdlc86/CartaViva/actions/runs/42819553152) registraron FAILURE. El nuevo commit de **pruebas, no producto** [`782974063bebe39fd423363eb2f806bc6b8acef9`](https://github.com/jdlc86/CartaViva/commit/782974063bebe39fd423363eb2f806bc6b8acef9) recupera identificadores de grupo y opciones de la publicación HTTP y coteja su igualdad hasta el pedido y SQL. Además comprueba la nueva publicación ADMIN de precio 14→15 EUR mientras el cliente conserva dos variantes, aceptación individual sin fusión de líneas, cotización y confirmación persistida e idempotencia.
+
+**Ejecución verificada sobre ese SHA:** [Bootstrap PG17 #42820426039](https://github.com/jdlc86/CartaViva/actions/runs/42820426039) **SUCCESS**, incluyendo el E2E conectado de un Fastify y dos PWA/PG17; [gestión #42820426063](https://github.com/jdlc86/CartaViva/actions/runs/42820426063), [UI #42820426019](https://github.com/jdlc86/CartaViva/actions/runs/42820426019), [CV-012 #42820425999](https://github.com/jdlc86/CartaViva/actions/runs/42820425999) **SUCCESS**; [cliente Chromium #42820426047](https://github.com/jdlc86/CartaViva/actions/runs/42820426047) **SUCCESS en repetición puntual del mismo job**, después de fallo inicial por timeout durante instalación de Chromium, antes de pruebas. **H6 consolidado #42820425977 estaba en ejecución** al emitir este corte: **5/6 completos y un pendiente**; no anunciar 6/6. El primer fallo del harness no se encubre ni se rebajaron contratos.
+
+**Alcance:** la brecha probatoria M3→H3/H4 queda **satisfecha dentro del E2E Bootstrap conectado de `78297406`**, no certificación global del runtime M3–H6 ni aprobación visual humana F28/R09. S4 administrativo no finalizado; ningún cierre adicional, merge, despliegue o intervención en `main`, Supabase operativo, VPS o Fleetia.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
