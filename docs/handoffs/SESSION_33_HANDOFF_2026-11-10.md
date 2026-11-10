@@ -5,6 +5,8 @@
 > **Tablero vivo obligatorio:** [SABORA_LIVE_PROJECT_TRACKER.md](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). **Matriz funcional/UI:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json). **Sesión anterior:** [continuidad 32](SESSION_32_HANDOFF_2026-11-09.md). **Plan vivo S1–S4:** [saneamiento sesión 32](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md). **Dictamen individual S4:** [47 PR](../reviews/SABORA_S32_S4_VERIFIED_PR_DISPOSITION_2026-11-10.md).
 >
 > **Seguimiento específico de sesión 33:** [SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md](../reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md) (creado y actualizado con hallazgos contrastados). No convertir propuestas en ejecución.
+>
+> **Continuidad siguiente:** [sesión 34 — apertura y próximos hitos](SESSION_34_HANDOFF_2026-11-10.md). La sesión 33 queda como registro histórico de sus cierres; consultar S34 para trabajar sobre el estado posterior.
 
 ## 1. Punto de partida verificado (2026-11-10)
 
