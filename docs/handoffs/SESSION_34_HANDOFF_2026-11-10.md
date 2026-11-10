@@ -164,6 +164,18 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Decisión pendiente:** revisión/aceptación de las diferencias críticas o decisión explícita del propietario sobre riesgo residual y fusión de desarrollo; 33 PR ancestrales fuera de `main` y nueve divergentes conservan estado. Los gates de producción (Stripe remoto, PITR/RTO/RPO, estética final) no bloquean este merge de código mientras sigan inactivos, conforme a la aclaración del propietario. **S4 administrativo NO FINALIZADO**. Sin merge/cierre adicional, cambios en main, Supabase, Fleetia ni VPS.
 
+## 4 duodecies. S34-11 — merge de desarrollo #54 a `main` autorizado y realizado (10-11-2026)
+
+**Acción autorizada y ejecutada, no solo propuesta:** el propietario aceptó expresamente la integración de #54 a `main` sin esperar revisión independiente, **solo para código de desarrollo**. Se usó `merge_method=merge` y `expected_head_sha=9c03ed0a25320f7502a18854b1b31bfd4e771bf4`; GitHub respondió `merged=true`. [PR #54](https://github.com/jdlc86/CartaViva/pull/54) está `closed/merged=true`. **Commit de integración:** [`a91867fbacb9319d16496b04a5fe237739c31837`](https://github.com/jdlc86/CartaViva/commit/a91867fbacb9319d16496b04a5fe237739c31837), con padres `main` viejo `42b46358a76162445fa9e0b20e7b87dd0a640b5b` y HEAD de #54 `9c03ed0...`.
+
+**Verificación de contenido en `main`:** se releyeron ambos árboles Git recursivos de `a91867fb` y `9c03ed0`, ambos no truncados, y el contenido fue **idéntico (949 rutas de archivo/blobs y SHA iguales)**. En el paso posterior de la documentación pueden aparecer nuevos commits `[skip ci]` en `main`: no confundir el SHA de esos commits con el del merge funcional.
+
+**Evidencia de pruebas:** 6/6 workflows `SUCCESS` en commit `d49ee05b103620ce30cfc976fa62182cc9d954df` cuando #54 ya tenía base `main`; desde ese commit probado hasta `9c03ed0` únicamente cinco archivos de documentación cambiaron, ninguno de runtime/tests/SQL. **No afirmar CI nueva de `a91867fb` ni de adendas posteriores**, a menos que GitHub la muestre; no se ejecutó evaluación independiente. El propietario conocía y aceptó esa excepción.
+
+**Backlog tras operación:** GitHub informó **41 PR abiertos**, frente a 43 anteriores: #54 fusionado, [#1](https://github.com/jdlc86/CartaViva/pull/1) marcado `merged=true` automáticamente por GitHub, **sin cierre manual**. Quedan 32 ancestrales redundantes como solicitudes individuales y nueve divergentes #4/#5/#8/#17/#18–#22. El expediente [preflight S34 §11](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md) registra la distinción. **No cerrar por defecto los nueve divergentes** y no confundir contenido de main con estado de sus PR.
+
+**Estado actual:** **HITO de integración de código de desarrollo a main CERRADO**, **S4 de saneamiento de los 41 PR restante**, no completado. Sin despliegue, sin aplicar migraciones/crear roles en Supabase operativo, sin reiniciar ni alterar VPS o Fleetia; aceptación visual y puertas de explotación siguen separadas. Próximo hito: reconsultar GitHub Actions de `main`, verificar propagación del merge a los PR ancestrales y resolver cierres con criterio individual y autorización según gobierno del proyecto.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
