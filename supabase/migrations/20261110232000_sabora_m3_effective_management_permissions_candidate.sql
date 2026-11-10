@@ -43,4 +43,37 @@ REVOKE ALL ON FUNCTION sabora.read_admin_tables_m3_candidate(jsonb,integer,integ
   sabora_m3_catalog_runtime;
 GRANT EXECUTE ON FUNCTION sabora.read_admin_tables_m3_candidate(jsonb,integer,integer)
  TO sabora_m3_tables_runtime;
+-- M5 has its own signed read capability. It must not depend on a table
+-- gateway being mounted; the cross-module projection stays least-privileged.
+GRANT SELECT(singleton,owner_user_id),UPDATE(singleton)
+ ON sabora.admin_write_ownership TO sabora_m5_comms_fn_owner;
+CREATE POLICY m5_comms_owner_lookup_read
+ ON sabora.admin_write_ownership FOR SELECT TO sabora_m5_comms_fn_owner
+ USING(singleton);
+CREATE POLICY m5_comms_owner_lookup_lock
+ ON sabora.admin_write_ownership FOR UPDATE TO sabora_m5_comms_fn_owner
+ USING(singleton) WITH CHECK(singleton);
+CREATE OR REPLACE FUNCTION sabora.read_admin_communications_m5(p_capability jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $admin_read$
+DECLARE v_role text;v_items jsonb;v_admin_writer boolean:=false;
+BEGIN
+ v_role:=sabora.verify_management_capability_m3(p_capability,'comms.read');
+ IF p_capability->>'action'<>'comms.read' OR v_role NOT IN ('admin','root')
+ THEN RAISE EXCEPTION 'm3_management_forbidden' USING errcode='42501';END IF;
+ IF v_role='admin' THEN
+  SELECT COALESCE(o.owner_user_id=(p_capability->>'actorId')::uuid,false)
+   INTO v_admin_writer FROM sabora.admin_write_ownership o WHERE o.singleton FOR SHARE;
+  v_admin_writer:=COALESCE(v_admin_writer,false);
+ END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',id,'state',state,'revision',revision,
+  'draft',draft,'published',published_snapshot,'updatedAt',updated_at)
+  ORDER BY updated_at DESC,id), '[]'::jsonb) INTO v_items
+ FROM sabora.comms_announcements_m5;
+ RETURN jsonb_build_object('version',1,'items',v_items,
+  'permissions',jsonb_build_object('manage',v_admin_writer));
+END;
+$admin_read$;
+ALTER FUNCTION sabora.read_admin_communications_m5(jsonb) OWNER TO sabora_m5_comms_fn_owner;
+REVOKE ALL ON FUNCTION sabora.read_admin_communications_m5(jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION sabora.read_admin_communications_m5(jsonb) TO sabora_m5_comms_admin_runtime;
 COMMIT;

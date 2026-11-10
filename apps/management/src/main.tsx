@@ -68,7 +68,16 @@ export function ManagementApp({
    const refresh=()=>{
     const current=++revision;
     setCanWriteAdmin(false);
-    if(!tablesGateway||!['catalogo','configuracion'].includes(area))return;
+    if(area==='configuracion'&&financeGateway){
+     // M5 can be installed separately from M3; its own signed SQL read
+     // returns the effective ADMIN writer without relying on table RPCs.
+     void financeGateway.readCommunications()
+      .then(page=>{if(active&&current===revision)
+       setCanWriteAdmin(page.permissions?.manage===true);})
+      .catch(()=>{if(active&&current===revision)setCanWriteAdmin(false);});
+     return;
+    }
+    if(!tablesGateway||area!=='catalogo')return;
     void tablesGateway.listTables({afterNumber:0,limit:1})
      .then(page=>{
       const verified=validateAdminTablesPage(page,{afterNumber:0,limit:1});
@@ -81,7 +90,7 @@ export function ManagementApp({
    document.addEventListener('visibilitychange',visible);
    return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
     document.removeEventListener('visibilitychange',visible);};
-  },[tablesGateway,area,ownershipRevision]);
+  },[tablesGateway,financeGateway,area,ownershipRevision]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
