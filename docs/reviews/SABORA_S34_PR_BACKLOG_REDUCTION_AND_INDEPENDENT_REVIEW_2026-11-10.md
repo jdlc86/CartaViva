@@ -92,3 +92,15 @@ La **revisión tiene que ser de un tercero/agente distinto del autor**, con evid
 **Ejecutado:** censo y clasificación documental de 43 PR abiertos, matriz nominativa de 33 redundantes como PR separados, prioridad de los nueve divergentes y paquete verificable para revisión independiente. **No ejecutado:** review por un tercero, aprobación externa, cierre/merge/rebase/retarget, modificación de código de producto o pruebas, despliegue o cambio de `main`, VPS, Supabase operativo o Fleetia.
 
 **Dictamen S4:** reducción recomendada del *backlog administrativo* potencial de **42 PR secundarios** si todo el trabajo se reconcilia y se integra correctamente; **NO afirma que 42 puedan cerrarse hoy**. La capacidad de pasar de 43 PR a uno solo depende de decisiones, pruebas y del destino de integración. **Estado actual: 43 abiertos, S4 NO-GO**.
+
+## 6. Resultado posterior a la integración y saneamiento de los 32 PR (S34-13, 10-11-2026)
+
+> **ESTADO ACTUAL, prevalece sobre el inventario histórico S34-5 anterior:** el propietario autorizó tanto el merge de #54 como, **posteriormente y por separado**, el cierre de los 32 PR ancestros. Ambos actos ya se ejecutaron. La clasificación inicial de «43 abiertos» se conserva arriba como fotografía histórica, no como estado presente.
+
+- [PR #54](https://github.com/jdlc86/CartaViva/pull/54) se fusionó en `main` mediante el merge commit `a91867fbacb9319d16496b04a5fe237739c31837`; los árboles del candidato y del merge coincidieron 949/949. [PR #1](https://github.com/jdlc86/CartaViva/pull/1) fue marcado `merged` automáticamente por GitHub.
+- Los 32 PR de §2 que continuaban abiertos fueron revalidados **uno a uno** contra `main@9ced23b7759d6748f787dd786d6339405b6b21d4`: cada `HEAD` era ancestro con `behind_by=0`, `merge_base_commit.sha=HEAD`. El propietario ordenó su saneamiento, y GitHub confirmó 32 transiciones a `closed,merged=false`, sin fusionar individualmente ni borrar ramas. **[Acta nominativa, verificación y CI final](SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md#13-s34-13--cierre-ejecutado-de-32-pr-ancestrales-verificados-10-11-2026)**.
+- La API devolvió **exactamente nueve PR abiertos**: #4, #5, #8, #17, #18, #19, #20, #21 y #22. Las nueve divergencias no se tocaron y **no se consideran automáticamente absorbidas**.
+- [CI `push` de merge a `main` #42842459366](https://github.com/jdlc86/CartaViva/actions/runs/42842459366) concluyó `completed/success` en el SHA `a91867fb`; las escrituras documentales siguientes llevan `[skip ci]`. No se atribuye aprobación visual ni operativa.
+- **S4 familiar ancestral TERMINADO; S4 global continúa por nueve divergencias.** Siguiente hito: cotejo semántico integrador de #18–#22 y revisión de #4/#5/#8/#17 antes de cualquier nueva disposición de PR.
+
+No hubo deploy, migración en Supabase operativo ni operaciones sobre VPS/Fleetia.
