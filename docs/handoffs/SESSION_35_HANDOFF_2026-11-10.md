@@ -166,6 +166,15 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 **Estado:** [#8](https://github.com/jdlc86/CartaViva/pull/8) sigue el **único PR abierto**, Draft, sin merge ni cierre; ocho PR históricos ya cerrados sin merge y con comentarios de justificación. No se hizo revisión externa nueva ni se ejecutaron migraciones o despliegues. **S4 global NO FINALIZADO** hasta decisión y evidencia de seguridad aplicable a `main`.
 
+
+### S35-5 — CI de `main` posterior al merge #55: SUCCESS (10-11-2026)
+
+**Resultado definitivo, reconsultado en GitHub:** [Sabora CI push #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) sobre `b41713d8318622f204cf96162d03a6eaa6454a76` figura **`completed / success`**, con job `validate` `completed / success` y ninguna etapa con `failure`. La ejecución terminó según GitHub el **2026-11-10 21:56:57 UTC**. Es una verificación **post-merge** separada de las tres ejecuciones SUCCESS que habían validado el HEAD del PR #55.
+
+**Comparación de alcance:** `compare(b41713d8... → d9205f59...)` = `ahead`, `behind=0`, **10 commits únicamente documentales**, con tres rutas tocadas: continuidad S35, dictamen S35 y tablero vivo. Ningún cambio de aplicación/SQL/UI desde el merge. Los commits documentales posteriores `[skip ci]` **no tienen ejecución CI propia** y no la requieren para atribuir al código funcional probado el resultado anterior.
+
+**Cierre de fotografía S35:** código de desarrollo de #55 integrado y validado después del merge, ocho PR históricos cerrados sin merge ni borrado de ramas, **único PR abierto #8**. S4 pendiente únicamente del dictamen y decisión de seguridad del estado actual. Esta validación no sustituye aceptación visual final, revisión independiente actual, Stripe remoto, claves operativas/recuperación ni despliegue. Sin cambios en Supabase operativo, VPS o Fleetia.
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
