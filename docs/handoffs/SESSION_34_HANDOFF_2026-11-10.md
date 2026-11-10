@@ -102,6 +102,18 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Siguiente decisión técnica/administrativa:** utilizar la nueva evidencia conectada para actualizar el dictamen de equivalencia de las familias #5 y #18–#22; conservar #4/#8/#17 a la espera de revisión independiente de sus diferencias y políticas H4/H6, y preparar revisión independiente del PR #54 antes de solicitar autorización específica para saneamiento de PR o integración en `main`. No reabrir S1/S3 ni crear otra batería redundante.
 
+## 4 sexies. S34-5 — dictamen de redundancias de 43 PR y paquete de revisión independiente (10-11-2026)
+
+**Expediente nuevo:** [SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md](../reviews/SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md), con identificación **nominal y enlaces a los 43 PR abiertos**, clasificación verificable y preguntas formales para la revisión independiente de [#54](https://github.com/jdlc86/CartaViva/pull/54).
+
+**Conclusión sobre PR innecesarios:** **33 PR ancestrales** ya forman parte del historial de #54 y **sobran como 33 vías de integración separadas**, pero **todavía no son prescindibles desde el punto de vista de la custodia del código**, porque ni #54 ni su base #53 están integrados en `main`. **No cerrar antes** de una incorporación completa y autorizada en la rama de destino; el cierre no fusiona código. Identificados por bloques: #1/#2/#7/#10–#13/#15/#16 (9); #23–#30 (8); #32/#34/#36/#38/#41–#43/#45/#46 (9); #47–#53 (7).
+
+**Nueve divergentes:** la familia **#18–#22 (cinco PR)** es la primera candidata a cierre conjunto **condicionado** a dictamen de paridad semántica independiente y permiso específico: su lógica principal de cesta, variantes, consentimiento, QR y persistencia está respaldada por los [6/6 workflows de `78297406`](../reviews/SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md), pero agotado/retirado, sincronización entre pestañas y todos los casos de borde no se deben dar por demostrados solo con ese E2E. **#5** probable sustitución **parcial** del catálogo por M3, pendiente de mesas/roles/visual. **#4/#8/#17** retenidos: semántica cocina/sala y límites críticos de seguridad. **#54** sigue siendo necesario como candidato único; su base es **#53**, no `main`.
+
+**Estado reconsultado:** 43 abiertos/Draft, **0 reviews** de #54, `main` `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. Última CI funcional **6/6** exclusivamente en `782974063bebe39fd423363eb2f806bc6b8acef9`, sin pruebas nuevas por esta adenda documental. **Ningún PR cerrado/mergeado/retargeteado o rama borrada en S34-5**. S4 aún **NO FINALIZADO**.
+
+**Hito siguiente:** revisión de un actor independiente (no autoaprobación), con análisis exhaustivo de diff a `main`, gobierno ADMIN/ROOT, seguridad SQL, nueve divergencias, montaje global y conformidad visual; solo tras resultado favorable y autorización específica definir vía de integración y simplificar el backlog. El documento es un paquete listo para entregar al revisor, **no una revisión realizada**. No tocar producción, Supabase operativo, VPS ni Fleetia.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
