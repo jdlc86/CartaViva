@@ -64,6 +64,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Límites operativos:** no tocar **Fleetia** ni recursos de terceros, aunque compartan VPS; no desplegar, parar, reiniciar, eliminar ni migrar en VPS/Supabase operativo. Cualquier despliegue requiere autorización expresa y aislamiento completo, sin afectar ni depender de contenedores ajenos. Ninguna operación sobre `main`, cierres adicionales o configuración de protección queda autorizada por esta continuidad.
 
+## 4 bis. Dictamen S34-1 — conciliación documentada de nueve PR divergentes (10-11-2026)
+
+**Expediente nuevo y trazable:** [SABORA_S34_NINE_DIVERGENT_FUNCTIONAL_RECONCILIATION_2026-11-10.md](../reviews/SABORA_S34_NINE_DIVERGENT_FUNCTIONAL_RECONCILIATION_2026-11-10.md). Audita individualmente #4/#5/#8/#17/#18/#19/#20/#21/#22 mediante HEAD, archivos/patches exclusivos, contratos, código montado en #54 y cotejo nominal de suites antiguas/actuales. **Los nueve están dictaminados en alcance estático, no acreditados para cierre administrativo.**
+
+**Evidencia adicional objetiva:** #17 conserva **25/25** títulos Node; #8 tiene test de capacidad de actor con **SHA idéntico, 3/3**; #5 conserva **12/12** títulos de tests de catálogo/mesas/navegación; la cadena #18→#22 conserva respectivamente **9/9, 10/10, 11/11, 12/12 y 13/13** títulos Node, y #22 **8/8** títulos E2E Chromium. #4 conserva **6/7** títulos Node de operaciones y **5/6** de gestión; los nombres cambiados corresponden a responsabilidades/semánticas evolucionadas, cuya equivalencia total requiere cotejo del nuevo modelo «Voy a recoger»/«Cancelo». Títulos preservados **no** equivalen a aserciones idénticas o aceptación HTTP/SQL real.
+
+**No confundir brechas:** la edición de dos variantes de un plato está implementada hoy mediante `basketLineKey` y testeada localmente, subsanando la brecha histórica descrita en la revisión del 06-11. M3 categorías adicionales tiene **PG17 2/2 PASS** histórico, pero **no** existe en la evidencia revisada un solo recorrido completo ADMIN→Fastify→PWA gestión→SQL→PWA cliente. El E2E H3 Chromium inspeccionado incluye mocks de catálogo. No reabrir la whitelist del lector `CatalogReadView` legado como defecto M3 autenticado.
+
+**Estado administrativo:** **43 PR abiertos/Draft al corte previo**, incluidos los nueve; no se cerró ninguno nuevo. **0 pruebas nuevas ejecutadas en S34-1; 0 modificaciones funcionales; 0 revisiones independientes nuevas.** Último **6/6** continúa estrictamente en SHA `b1419e86` de S33. S4 **NO FINALIZADO**. El próximo bloque integrador deberá unir autorización M3/categoría nueva, selección variante y confirmación real con sus límites de operación H4/H6, reutilizando suites existentes sin multiplicar microtests.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
