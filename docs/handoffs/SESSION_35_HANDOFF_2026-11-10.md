@@ -107,6 +107,17 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 **Siguiente hito:** revisión final del alcance del PR #55 ya probado, decidir integración de desarrollo de manera explícita y resolver la matriz semántica de nueve PR en bloques completos; **S4 sigue NO FINALIZADO**.
 
+
+### S35-1 — integración de desarrollo del PR #55 en `main` (10-11-2026)
+
+**Autorización y ámbito:** el propietario indicó «Okkk adelante» para la evaluación/integración del PR #55 y la continuación de la conciliación. Se confirmó **antes del merge**: PR abierto/Draft, un único commit `7b6cd8d5db390d36b9302181b64a7fc2a0ed87c4`, un archivo modificado `scripts/ci/customer-production-postgres17.test.mjs` (**+55/−0**), `mergeable_state=clean`, y 3/3 workflows `completed/success` sobre el HEAD, incluyendo recorrido PG17/HTTP/dos PWA/Chromium **1/1 PASS** de retirada/restauración H3. `main` avanzó solo con cuatro commits documentales no contenidos en la rama desde su base, y el cotejo `compare(main,...HEAD)` mostró **una única ruta de código diferente** y ningún conflicto; no se alteraron runtime/SQL/UI.
+
+**Acciones realmente ejecutadas:** #55 pasó de Draft a Ready for Review, y se fusionó con el método `merge` preservador de historial y `expected_head_sha=7b6cd8d5...`. Resultado GitHub [#55 merged](https://github.com/jdlc86/CartaViva/pull/55), [commit `b41713d8318622f204cf96162d03a6eaa6454a76`](https://github.com/jdlc86/CartaViva/commit/b41713d8318622f204cf96162d03a6eaa6454a76); la rama anterior es ancestro directo: `compare(base=7b6cd8d5...,head=b41713d8...)` devolvió `status=ahead`, `behind_by=0`, `merge_base=7b6cd8d5...`. `main` reconsultado en ese SHA. Censo posterior: **nueve PR abiertos**, #4/#5/#8/#17/#18–#22; **#55 cerrado por merge**. Ninguno de los nueve fue cerrado o fusionado.
+
+**Nueva ejecución de `main`**: [Sabora CI push #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) disparada sobre `b41713d8`, **`in_progress` en el primer corte**; no declararla PASS hasta observar su final. Las tres pruebas históricas ya verdes del PR corresponden solo a `7b6cd8d5`.
+
+**Gobierno:** no se hizo revisión independiente aprobatoria ni aceptación visual humana final; la integración es únicamente de código de desarrollo. No se usaron recursos de Supabase operativo, no se desplegó, y no se actuó sobre el VPS ni Fleetia. La resolución administrativa de los **nueve PR divergentes** queda separada y requiere dictamen semántico verificable, no suposición de genealogía o autorización retrospectiva del merge de #55.
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
