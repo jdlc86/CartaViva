@@ -126,6 +126,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Estado de sesión:** evaluación técnica de preparación **COMPLETADA Y DOCUMENTADA** para facilitar revisión; integración real en `main`, revisión externa y producción **NO-GO**. Se han actualizado solo expedientes en la rama candidata, sin tocar Fleetia/VPS/Supabase operativo.
 
+## 4 octies. S34-7 — aclaración de entorno sin usuarios ni producción activa (10-11-2026)
+
+**Declaración expresa del propietario:** actualmente **no hay usuarios ni escenario de producción activo** en CartaViva/Sabora. Es una aclaración de alcance comunicada por el usuario, **no** evidencia independiente de que Supabase carezca de registros o de que cualquier recurso pueda modificarse. **Se mantienen intactos Supabase operativo, VPS y Fleetia**.
+
+**Rectificación de prioridades para S4:** consultar [preflight formal §8 — puertas diferenciadas](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md). La integración de código de **desarrollo** en `main` debe resolverse con contraste normativo, seguridad SQL/ADMIN/ROOT, conciliación de nueve divergentes, diffs completos, revisión independiente según gobierno pendiente, autorización específica y CI PG17/Chromium del SHA/base correcto. **No exigir para esa integración** Stripe remoto, RTO/RPO/PITR de datos productivos, runbook de restauración productivo de 98 migraciones, aceptación visual final F28/R09 ni despliegue. Son **puertas posteriores de activación**, mientras esas funciones permanezcan inactivas/fail-closed donde corresponda. Esto es coherente con [AGENTS.md](../../AGENTS.md), que prioriza recorridos funcionales y no declara aprobación estética anticipada.
+
+**Riesgos que no desaparecen:** `main` sin protección; #54 Draft con base #53 en lugar de `main`; 33 PR ancestrales no incorporados a `main` y nueve divergentes; cero reviews independientes; 98 migraciones no implican permiso de aplicación en Supabase. Sin usuarios, el riesgo de migración de datos productivos existente se reduce, pero el de seguridad/funcionalidad del código a integrar sigue vigente.
+
+**Dictamen:** prioridad inmediata es integración segura de código y simplificación de PR, **no preparación productiva completa**. Sin merge, cierre, retarget, cambio de protección, ejecución de pruebas o despliegue nuevos en esta aclaración. Cualquier cambio de base/fusión sigue sujeto a autorización propia y confirmación GitHub.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
