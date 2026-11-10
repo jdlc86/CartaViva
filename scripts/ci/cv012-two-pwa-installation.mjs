@@ -99,9 +99,14 @@ const waitForScope=async(page,path)=>{
   throw new Error('cv012_service_worker_activation_missing: '+
    JSON.stringify({path,expectedScript,diagnostic}),{cause:error});
  }
- // Keep the original strong assertion: a service-worker registration alone
- // does not prove that the actual page navigation is controlled.
- await page.reload({waitUntil:'load'});
+ // A Playwright/CDP reload can bypass service-worker interception. Exercise
+ // a real same-scope document navigation as an installed PWA would, rather than
+ // confusing that hard-reload path with an uncontrolled application.
+ // The new document must still have the exact expected controller; registration
+ // and activation alone must never be counted as sufficient.
+ const next=new URL(page.url());
+ next.searchParams.set('cv012-control-check','1');
+ await page.goto(next.href,{waitUntil:'load'});
  try{
   await page.waitForFunction(expected=>
    navigator.serviceWorker.controller&&
