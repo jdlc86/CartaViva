@@ -995,3 +995,9 @@ Se contrastaron `merge-base..HEAD` de las cuatro divergencias documentales: **#1
 
 **Preflight propio de esta sesión, sin suplantar independencia:** [expediente S35 §6](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md) y [continuidad S35-4](../handoffs/SESSION_35_HANDOFF_2026-11-10.md) detallan evidencias y superficies a evaluar: secretos/HMAC, roles mínimos/grants/RLS tras locks, revocación y tiempos, ruta SQL legacy `picked_up` frente al H6 moderno, y política de activación. **Único PR abierto sigue #8 Draft.** Sin tests nuevos, review externa nueva, cierre, migración ni despliegue. S4 pendiente de decisión informada.
 
+## 91. S35 — CI de `main` post-merge #55 verificada con éxito (10-11-2026)
+
+**Validación de GitHub reconsultada:** [Sabora CI #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) del push/merge `b41713d8318622f204cf96162d03a6eaa6454a76` = `completed/success`; job `validate` también `completed/success`, sin pasos con fallo. Los tres workflows del PR #55 ya habían acabado en SUCCESS sobre `7b6cd8d5...`; la CI sobre `main` es **evidencia adicional real**, no una extrapolación. Los 10 commits posteriores al merge comparados hasta `d9205f59...` solo modificaron tres archivos documentales (continuidad S35, expediente S35, tablero), no el código funcional.
+
+**Hito administrativo de sesión 35:** ocho PR divergentes cerrados sin merge individual, **solo #8 Draft abierto**. [Continuidad S35-5](../handoffs/SESSION_35_HANDOFF_2026-11-10.md) y [dictamen S35 §6](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md). **S4 NO FINALIZADO** hasta verificar de forma independiente la versión de seguridad actual y decidir #8. Siguen pendientes aprobación visual humana y otras puertas de activación; sin despliegue ni intervención en Fleetia/VPS/Supabase operativo.
+
