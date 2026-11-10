@@ -66,3 +66,29 @@
 **Ejecuciones GitHub del SHA funcional exacto:** [Bootstrap PG17 #42778149335](https://github.com/jdlc86/CartaViva/actions/runs/42778149335), [H6 #42778149625](https://github.com/jdlc86/CartaViva/actions/runs/42778149625), [cliente #42778149337](https://github.com/jdlc86/CartaViva/actions/runs/42778149337), [gestión #42778149256](https://github.com/jdlc86/CartaViva/actions/runs/42778149256), [PWA independientes #42778149579](https://github.com/jdlc86/CartaViva/actions/runs/42778149579), [UI funcional #42778149302](https://github.com/jdlc86/CartaViva/actions/runs/42778149302). **Al registrar: ejecución conjunta no cerrada; no atribuir 6/6 a este SHA hasta comprobar todos los estados y logs**. Bootstrap estaba recorriendo migraciones PG17, H6 en aceptación consolidada. Hay ya SUCCESS en UI/PWA/gestión.
 
 **Alcance de aceptación que se pretende:** SQL PG17 real+capacidad+autorización+publicación+proyección pública; **NO** incluye control real JWT/Fastify y dos navegadores conectados a la nueva categoría ni validación visual. Si esa última puerta es imprescindible para resolver #5, documentar un recorrido M3 HTTP/PWA completo antes de declarar equivalencia final. La aprobación independiente y S4 administrativos permanecen separadas.
+
+## 8. Inventario exhaustivo de árboles frente a `main` y deltas normativos (sesión 33)
+
+**Método:** se recuperaron `git/trees/main?recursive=1` y `git/trees/integration/sabora-s32-admin-waiter-sanitization-20261109?recursive=1`, ambos con `truncated=false`. Se compararon por ruta y SHA **todos los blobs**, no el recorte de 300 de `compare_commits`. Corte del árbol candidato **después del primer commit de prueba M3 y los primeros documentos S33**; antes del ajuste posterior de la aserción, que afecta contenido de un archivo existente y no altera las cuentas de rutas.
+
+| Métrica | Resultado Git verificado |
+| --- | ---: |
+| Entradas totales de árbol en `main` (incluye carpetas) | 30 |
+| Blobs (archivos) en `main` | 21 |
+| Entradas de árbol de #54 (incluye carpetas) | 994 |
+| Blobs (archivos) en #54 | 943 |
+| Nuevos blobs/rutas de archivos respecto a `main` | **922** |
+| Blobs modificados en rutas ya presentes en `main` | **3** |
+| Archivos borrados respecto a `main` | **0** |
+| Migraciones SQL nuevas bajo `supabase/migrations/` | **98** |
+| Workflows de GitHub Actions nuevos | **6** |
+
+**Los tres archivos comunes modificados son contratos normativos; no son meros cambios cosméticos:**
+
+1. `docs/REQUISITOS_FUNCIONALES.md`: se sustituye una antigua frase que asociaba identidad de cliente a empresa y número de empleado por las reglas de alias, número ID generado por Sabora, empresa opcional y persistencia segura/passkey opcional. Diff de líneas: 1 retirada, 2 añadidas.
+2. `docs/architecture/SABORA_CONTRACT_CONSISTENCY_V1.md`: se sustituye un pendiente de alcance de pago por el contrato de **cuentas de coste cero** (05-11-2026), más un pendiente residual para mesas con múltiples pagadores/caja. Diff de líneas: 1 retirada, 3 añadidas contando línea en blanco.
+3. `docs/security/ADMIN_WRITE_OWNERSHIP_V1.md`: se elimina la duda histórica sobre bypass ordinario de ROOT y se añade una sección vinculante que establece **ROOT como gobierno, no escritor ordinario**, y prohibición de asumir titularidad. Diff: 1 retirada y 11 líneas añadidas, incluida separación.
+
+**Precaución de gobierno:** los tres contenidos constan versionados en la rama candidata; este contraste **no prueba por sí solo el procedimiento histórico de aprobación** de tales cambios ni da permiso para reescribir la normativa. Antes de llevar a `main`, cotejar autoría y aceptación normativa con los contratos vigentes, sin fabricar consensos desde este expediente. Las 98 migraciones **no** son 98 operaciones ejecutadas en Supabase: solo archivos del árbol candidato, cuyo orden, idempotencia, rollback y alcance deben figurar en el acta de integración. La comparación de rutas **no certifica** equivalencia funcional o permiso de desplegar.
+
+**Conclusión técnica para S4:** queda resuelta la insuficiencia del inventario de archivos del API `compare_commits`, con conteo exhaustivo de rutas y tres deltas normativos identificados; **permanece pendiente** revisión independiente de contenido, migraciones/operación, prueba final del SHA y autorización concreta de las acciones sobre PR y `main`.
