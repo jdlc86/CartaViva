@@ -25,9 +25,9 @@ Composición **CI-only**: la misma instancia Fastify registra rutas reales H3/H4
 | Gestión Chromium | [#42820426063](https://github.com/jdlc86/CartaViva/actions/runs/42820426063) | **SUCCESS** |
 | Instalación independiente CV-012 | [#42820425999](https://github.com/jdlc86/CartaViva/actions/runs/42820425999) | **SUCCESS** |
 | Cobertura funcional/UI | [#42820426019](https://github.com/jdlc86/CartaViva/actions/runs/42820426019) | **SUCCESS** |
-| H6 consolidado | [#42820425977](https://github.com/jdlc86/CartaViva/actions/runs/42820425977) | **EN EJECUCIÓN en el corte de este documento**. Verificar conclusión real y actualizar, nunca inferir 6/6 |
+| H6 consolidado | [#42820425977](https://github.com/jdlc86/CartaViva/actions/runs/42820425977) | **SUCCESS**: Block 1 contratos/servicio; Block 2A PG17/migraciones/privilegios; Block 2B PG17 real/HMAC/concurrencia/Chromium |
 
-**Prueba integrada M3→cliente y persistencia = PASS dentro del alcance de Bootstrap**; **ronda total de seis workflows = 5/6 SUCCESS y 1 pendiente**, no aún 6/6. El SHA funcional previo `b1419e86` alcanzó 6/6 en sesión 33, pero es histórico y no sustituye la nueva prueba.
+**Prueba integrada M3→cliente y persistencia = PASS dentro del alcance de Bootstrap**; **ronda total = 6/6 workflows `completed/success` en el SHA exacto `782974063bebe39fd423363eb2f806bc6b8acef9`**, con repetición puntual del job de cliente después del timeout inicial de instalación Chromium. El SHA funcional previo `b1419e86` fue una validación histórica de sesión 33, pero no sustituye el recorrido nuevo.
 
 ## 4. Puertas que permanecen abiertas, independientemente de la CI
 
@@ -37,3 +37,11 @@ Composición **CI-only**: la misma instancia Fastify registra rutas reales H3/H4
 - **43 PR Draft abiertos en el último corte**; no se cerró/fusionó ninguno durante S34. `main` permanece fuera del alcance; ninguna migración en Supabase operativo, ningún VPS, ningún contenedor Fleetia ni despliegue.
 
 _Este documento se debe actualizar solo tras comprobar una nueva conclusión de workflow o un hito real, sin atribuir CI a commits documentales `[skip ci]`._
+
+## 5. Cierre final de S34-2 — 6/6 GitHub Actions verificados el 10-11-2026
+
+**Reconsulta exacta de los seis workflow runs sobre `782974063bebe39fd423363eb2f806bc6b8acef9`: todos `completed/success`.** El job [H6 #42820425977](https://github.com/jdlc86/CartaViva/actions/runs/42820425977), `129844276056`, emite en sus logs los tres hitos explícitos: `[H6] PASS Block 1: normative, contract and service tests`; `PASS Block 2A: isolated PostgreSQL 17 migration and privilege gates`; `PASS Block 2B: real PostgreSQL 17, HMAC, concurrency and Chromium E2E`. [Bootstrap PG17 #42820426039](https://github.com/jdlc86/CartaViva/actions/runs/42820426039), job `129844276686`, contiene `# S34 M3 owner PWA -> restricted PG17 -> public HTTP publication PASS`, seguido del subtest H3/H4 conectado **1/1 PASS**. Los otros cuatro workflows concluyeron correctamente en el mismo SHA; el job cliente fue correcto en el segundo intento, tras agotar 180 s instalando Chromium en el primero.
+
+**Resultado cerrado exclusivamente en automatización:** se ha demostrado una ruta integrada concreta **ADMIN titular → gestión Chromium → Fastify / capability SQL / PG17 desechable → publicación HTTP → cliente Chromium (dos variantes + consentimiento por línea tras cambio de precio) → cotización/confirmación → evidencia económica e idempotencia → cocina H4**. Se mantienen los controles originales de accesibilidad y tamaños responsivos del mismo test. La integración corresponde al harness restringido H3/H4+M3 catálogo y **no** al runtime completo H3–H6 ni a dispositivos físicos.
+
+**Gobierno final revalidado:** [PR #54](https://github.com/jdlc86/CartaViva/pull/54) sigue Draft, sin reviews; **43 PR abiertos y todos Draft**; `main` en `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. El saneamiento administrativo S4, la equivalencia semántica y revisión independiente de las ramas históricas, la aceptación visual humana F28/R09, Stripe remoto M4, M6 y el resto de puertas operativas siguen **NO-GO**. **Sin merge, cierre de PR, despliegue, operación Supabase productivo, VPS ni Fleetia**. Los commits documentales `[skip ci]` posteriores no tienen batería propia y no se acreditan como probados por inferencia.
