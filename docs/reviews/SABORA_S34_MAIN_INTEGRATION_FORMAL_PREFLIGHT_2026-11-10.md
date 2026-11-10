@@ -147,3 +147,24 @@ _El documento fija una fotografía reproducible; antes de cualquier actuación d
 **Secuencia eficiente recomendada para cerrar S4:** realizar revisión independiente de los contratos de seguridad y nueve divergencias (o registrar explícitamente su falta), fijar la vía única hacia `main` en PR #54 sin PR adicionales innecesarios, obtener autorización específica para retarget/merge, revalidar suites del SHA/base, integrar, confirmar el árbol de destino y solo entonces proponer saneamiento de ancestros. **Visual final, proveedores y recuperación productiva siguen como hitos posteriores**, no como excusa para prolongar indefinidamente la estabilización del repositorio.
 
 **Acciones por esta aclaración:** solo documentación y reordenación de puertas; sin nuevas pruebas, cambios de seguridad, reglas GitHub, PR, retarget, merge, cambios en `main`, Supabase, VPS o Fleetia.
+
+## 9. Resultado final de CI sobre PR #54 con base `main` — S34-9 (10-11-2026)
+
+**Puerta S3 del candidato reorientado: PASS automatizado.** La consulta directa de los seis `actions/runs` de GitHub ha confirmado **seis workflow runs `completed/success`, primera ejecución cada uno, todos en el mismo SHA `d49ee05b103620ce30cfc976fa62182cc9d954df`**, que es el commit que provocó CI tras apuntar [#54](https://github.com/jdlc86/CartaViva/pull/54) a **`main`**. Al consultar el PR, su HEAD seguía siendo exactamente `d49ee05b`, su base `main`, `mergeable_state=clean`, Draft y sin reviews. No se mezclan resultados de `78297406` ni de ramas antiguas.
+
+| Workflow y enlace | Run ID | Resultado exacto |
+| --- | --- | --- |
+| [Bootstrap lockfile, PG17, Node driver, Docker Sabora](https://github.com/jdlc86/CartaViva/actions/runs/42836528469) | `42836528469` | **SUCCESS**: PG17 real desechable, Docker aislado |
+| [H6 consolidado, PG17, HMAC, concurrencia y Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42836528459) | `42836528459` | **SUCCESS**: etapa de aceptación consolidada |
+| [PWA cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42836528305) | `42836528305` | **SUCCESS** |
+| [PWA gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42836528322) | `42836528322` | **SUCCESS** |
+| [Independencia e instalabilidad CV-012](https://github.com/jdlc86/CartaViva/actions/runs/42836528449) | `42836528449` | **SUCCESS** |
+| [Cobertura funcional/UI](https://github.com/jdlc86/CartaViva/actions/runs/42836528481) | `42836528481` | **SUCCESS**; el job separado `visual-final-acceptance-gate` sigue **SKIPPED** por ser de aceptación humana y `workflow_dispatch` |
+
+**Verificación técnica adicional en Github:** el job H6 `129900098271` tiene `success` en su etapa «H6 consolidated acceptance (contracts + disposable PG17 + Chromium)» y Docker en red aislada. El job Bootstrap `129900098922` presenta `success` en cadena PG17, driver PG real, imágenes y contenedor aislado. La CI de esta ronda **no falló ni necesitó repetición**. La finalidad de este control es validar código ya implementado en destino de PR `main`, **no** certificar un entorno desplegado.
+
+**Confrontación de nueve divergencias:** los HEAD históricos #4, #5, #8, #17, #18, #19, #20, #21 y #22 siguen **diverged** al compararlos con `d49ee05b`, con commits exclusivos en cada lado. No se ha demostrado paridad semántica global solo por un `6/6`. Mantener propuestas de [expediente S34 por PR](SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md): #18–#22 candidatos en bloque a conciliación, #5 con rutas de mesas/visual pendientes, #4/#8/#17 críticos de operación/seguridad. **Ninguno debe cerrarse solo con CI verde.** Los 33 ancestros no están en `main` todavía.
+
+**Puertas restantes para el merge de desarrollo, separadas de producción:** revisión crítica de contratos y de diferencias de seguridad/cocina/sala, revisión independiente externa **aún 0 reviews**, autorización de integrar en `main` y verificación del SHA final. `main` continúa en `42b46358a76162445fa9e0b20e7b87dd0a640b5b` y sin protección; el retarget no fusiona código. El usuario ha declarado ausencia de usuarios/producción activa, por lo que Stripe remoto, backup/RTO/PITR productivo y visual final **no son prerequisitos de este merge de desarrollo**, pero siguen bloqueando sus propias activaciones. No hubo operación en Supabase, VPS ni Fleetia.
+
+**Dictamen actualizado:** **GO técnico de CI para solicitar revisión/decisión de merge de desarrollo de #54, NO merge realizado, NO aprobación independiente**. Si se modifica código del candidato, volver a validar su SHA. Los commits exclusivamente documentales posteriores con `[skip ci]` no tienen nuevas ejecuciones y no se describirán como ensayados.
