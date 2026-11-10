@@ -36,3 +36,12 @@ Ninguna acción permite a ROOT convertirse en titular. Un ADMIN no titular no pu
 5. Diseño y autorización independientes para rutas HTTP, secretos y despliegue.
 
 No tocar Supabase operativo, VPS ni Fleetia con este contrato.
+
+## Adenda de implementación candidata posterior — S34 (2026-11-10)
+
+**Sin cambio de la matriz normativa de acciones y locks.** La frase histórica «la identidad `sabora_admin_writer` actual no tiene permisos y no puede ejecutar este workflow» continúa siendo correcta para ese **rol histórico específico**. La nueva implementación no lo promueve ni concede privilegios de tabla al navegador: utiliza un rol SQL **distinto** `sabora_ownership_runtime`, un login aislado en PG17 de prueba y una única RPC firmada `sabora.admin_ownership_action_candidate(jsonb,text,text)`.
+
+El flujo opt-in actual pasa por `apps/api/src/ownership-governance-candidate.mjs` y `apps/api/src/m2-restaurant-candidate.mjs`; comprueba login SQL de mínimos privilegios, identidad administrativa autenticada y HMAC antes de la transición; los locks/revalidaciones y auditoría se ejecutan en PostgreSQL. `20261109010000_sabora_ownership_post_lock_expiry_candidate.sql` añade una segunda comprobación de caducidad de la capacidad tras esperas por locks. `scripts/ci/ownership-governance-postgres17.test.mjs` ejercita una transacción real de solicitud/cesión/ROOT y denegación de escritor obsoleto en PostgreSQL 17 desechable. La ronda [Bootstrap #42836528469](https://github.com/jdlc86/CartaViva/actions/runs/42836528469) y [CI H6 #42836528459](https://github.com/jdlc86/CartaViva/actions/runs/42836528459) finalizaron **SUCCESS** sobre el SHA `d49ee05b103620ce30cfc976fa62182cc9d954df` del PR #54 ya dirigido a `main`.
+
+**Puertas sin saltar:** los logins SQL operativos, secretos, identidad y bootstrap ROOT del destino, autorización de migraciones, revisión independiente y cualquier despliegue siguen sometidos a sus contratos propios; no se ha dado permiso para activar producción ni para tocar Supabase/Fleetia/VPS. **Esta adenda documenta código y pruebas realmente existentes, sin otorgar autorización nueva.** [Preflight de integración S34](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md).
+
