@@ -213,7 +213,7 @@ test('PG17 M3 dynamic category authorizes, publishes, hides and restores real pu
   assert.equal((await repo.manage(verified,create)).replayed,true);
   await assert.rejects(repo.manage(verified,{...create,
    payload:{...create.payload,name:'Cambiado'}}),/management_idempotency_conflict/);
-  await assert.rejects(repo.manage(asWaiter,{requestId:ids[1],
+  assert.throws(()=>repo.manage(asWaiter,{requestId:ids[1],
    operation:'category_create',payload:{categoryId:'d1c00000-0000-4000-8000-00000000000c',
     name:'NO PERMITIDA',sortOrder:700}}),/invalid_m3_catalog_request|m3_management_forbidden/);
   await assert.rejects(repo.manage(asOther,{requestId:ids[1],
