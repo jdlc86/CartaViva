@@ -978,6 +978,11 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    assert.equal(newPublicDish[0].category,categoryName);
    assert.deepEqual(newPublicDish[0].options[0].values.map(value=>value.name),
     ['Suave','Picante']);
+   const selectionGroupId=newPublicDish[0].options[0].id;
+   const [mildOptionId,spicyOptionId]=newPublicDish[0].options[0].values.map(v=>v.id);
+   assert.ok(selectionGroupId&&mildOptionId&&spicyOptionId&&mildOptionId!==spicyOptionId,
+    'the authoritative published modifier identifiers must be unique');
+   const expectedSelections=[[mildOptionId],[spicyOptionId]];
    assert.equal((await admin.query(
     'SELECT count(*)::integer AS n FROM sabora.catalog_items WHERE id=$1 AND published_snapshot IS NOT NULL',
     [m3ItemId])).rows[0].n,1);
@@ -1008,6 +1013,39 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await detail.getByRole('button',{name:'Guardar en la selección'}).click();
    await variantCart.getByText('Salsa: Suave').waitFor();
    assert.equal(await rows.count(),2);
+   // M3 ADMIN publishes a new price while two independently configured
+   // variants remain selected on the customer device. No silent repricing.
+   await clientPage.waitForFunction(()=>{
+    const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]');
+    return lines.length===2&&lines.reduce((n,line)=>n+line.quantity,0)===3;
+   });
+   await editor.getByLabel('Precio EUR').fill('15,00');
+   await editor.getByRole('button',{name:'Guardar borrador'}).click();
+   await managementPage.getByText('Borrador guardado. La versión pública no ha cambiado.')
+    .waitFor({timeout:15000});
+   await editor.getByRole('button',{name:'Publicar',exact:true}).click();
+   await managementPage.getByText('Nueva versión publicada.').waitFor({timeout:15000});
+   const repricedPublished=(await restaurantApp.inject('/api/v1/catalog'))
+    .json().find(item=>item.id===m3ItemId);
+   assert.equal(repricedPublished?.priceCents,1500,
+    'the authorized M3 price change must reach the public SQL reader');
+   await clientPage.goto(clientOrigin+'/candidate.html');
+   await clientPage.getByRole('heading',{name:'Nuestra carta'}).waitFor({timeout:15000});
+   await clientPage.goto(`${clientOrigin}/qr/v1/SABORA/${tableId}#${qrToken}`);
+   const repricedQr=clientPage.getByRole('dialog',{name:'QR de mesa'});
+   await repricedQr.getByText('Mesa verificada').waitFor({timeout:15000});
+   await repricedQr.getByRole('button',{name:'Cerrar'}).click();
+   await clientPage.getByRole('button',{name:'Cesta: 3'}).click();
+   const acceptReprice=variantCart.getByRole('button',{name:'Aceptar nuevo precio'});
+   assert.equal(await acceptReprice.count(),2,
+    'both variants require a distinct consent after M3 repricing');
+   await acceptReprice.first().click();
+   assert.equal(await acceptReprice.count(),1,
+    'consent for the first configuration cannot update the second');
+   await acceptReprice.first().click();
+   assert.equal(await acceptReprice.count(),0);
+   assert.equal(await rows.count(),2,
+    'explicit price consent must not merge separately configured lines');
    // F28/R09 visual usability gate inside the same REAL PG17/Chromium order:
    // both configured variants must expose designed, touch-sized actions.
    const inspectBasketPresentation=async viewport=>{
@@ -1048,13 +1086,15 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    const quoteResponse=await quoteResponsePromise;
    assert.equal(quoteResponse.status(),201,await quoteResponse.text());
    assert.deepEqual(quoteRequest.lines.map(line=>line.itemId),[m3ItemId,m3ItemId]);
-   assert.deepEqual(quoteRequest.lines.map(line=>line.selection.options.sauce),
-    [['suave'],['picante']]);
+   assert.deepEqual(quoteRequest.lines.map(line=>Object.keys(line.selection.options)),
+    [[selectionGroupId],[selectionGroupId]]);
+   assert.deepEqual(quoteRequest.lines.map(line=>line.selection.options[selectionGroupId]),
+    expectedSelections);
    assert.deepEqual(quoteRequest.lines.map(line=>line.quantity),[2,1]);
    const quoteRows=(await quoteResponse.json()).lines;
    assert.equal(quoteRows.length,2);
    assert.notEqual(quoteRows[0].quoteId,quoteRows[1].quoteId);
-   assert.deepEqual(quoteRows.map(line=>line.totalCents),[2800,1600]);
+   assert.deepEqual(quoteRows.map(line=>line.totalCents),[3000,1700]);
    const variantCheckout=clientPage.getByRole('dialog',{name:'Confirmar pedido'});
    await variantCheckout.getByText('Total confirmado por el servidor').waitFor();
    const confirmRequestPromise=clientPage.waitForRequest(request=>
@@ -1064,8 +1104,10 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await variantCheckout.getByText('Pedido confirmado').waitFor({timeout:15000});
    assert.deepEqual(variantBody.lines.map(line=>line.quoteId),
     quoteRows.map(line=>line.quoteId));
-   assert.deepEqual(variantBody.lines.map(line=>line.selection.options.sauce),
-    [['suave'],['picante']]);
+   assert.deepEqual(variantBody.lines.map(line=>Object.keys(line.selection.options)),
+    [[selectionGroupId],[selectionGroupId]]);
+   assert.deepEqual(variantBody.lines.map(line=>line.selection.options[selectionGroupId]),
+    expectedSelections);
    assert.deepEqual(variantBody.lines.map(line=>line.quantity),[2,1]);
    const variantOrder=(await admin.query(`SELECT id FROM sabora.orders
     WHERE customer_alias='Cliente navegador' ORDER BY confirmed_at DESC LIMIT 1`)).rows[0];
@@ -1079,9 +1121,9 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     WHERE o.id=$1 ORDER BY l.line_number`,[variantOrder.id])).rows;
    assert.equal(confirmedVariants.length,2,'two distinct economic snapshots must be immutable');
    assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.selected.map(v=>v.id)),
-    [['suave'],['picante']]);
+    expectedSelections);
    assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.quantity),[2,1]);
-   assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.totalCents),[2800,1600]);
+   assert.deepEqual(confirmedVariants.map(row=>row.economic_evidence.totalCents),[3000,1700]);
    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.order_lines WHERE order_id=$1',
     [variantOrder.id])).rows[0].n,2);
 
