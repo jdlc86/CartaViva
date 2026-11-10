@@ -191,33 +191,3 @@ Tras consentimiento específico del propietario para **cerrar sin fusionar únic
 **Verificación posterior:** REST `pulls?state=open` = **43**, `draft=true` para los 43. PR #54 abierto Draft sobre #53, sin integración en `main`. HEAD de `main` = `42b46358a76162445fa9e0b20e7b87dd0a640b5b` sin cambio. Los 43 restantes incluyen **33 PR ancestrales solo dentro de #54 Draft**, **9 divergentes funcionales/H3** (#4/#5/#8/#17/#18/#19/#20/#21/#22) y **el candidato #54**. No se cerró ni fusionó ninguno de ellos. No se ha alterado ninguna rama histórica ni realizado despliegue, migración o cambio operativo de Supabase/VPS/Fleetia.
 
 **Alcance terminado:** cierre administrativo trazable de exactamente cuatro casos, autorizado y efectuado. **S4 global NO CERRADO:** los nueve divergentes siguen necesitando verificación de equivalencia conforme a normativa; los 33 ancestros aún no son historia integrada en `main`; revisión independiente y autorización expresa para merge/integración siguen pendientes. Ninguna CI se ejecutó por este cierre; los `6/6` de §15 son del SHA funcional `b1419e86`, no de la documentación `[skip ci]` posterior.
-
-## 17. S4 — ejecución autorizada y verificación independiente de estados GitHub (2026-11-10)
-
-El propietario autorizó expresamente **únicamente el cierre sin merge de #14/#31/#40/#44**, conforme al dictamen particular de §16; no se extrapoló esa autorización. Se verificó primero que cada PR seguía abierto, Draft, `merged=false` y en su SHA histórico; se publicó una motivación trazable en el hilo propio de cada uno; solo entonces se aplicó `state=closed` sin modificar base, HEAD, archivo, rama o `main`.
-
-| PR | HEAD histórico preservado | Comentario de cierre | Estado verificado |
-| --- | --- | --- | --- |
-| [#14](https://github.com/jdlc86/CartaViva/pull/14) | `613df3d38a854e1faa890ab67e9bc05aeefc5d56` | [Motivación](https://github.com/jdlc86/CartaViva/pull/14#issuecomment-6767149030) | `closed`, `merged=false` |
-| [#31](https://github.com/jdlc86/CartaViva/pull/31) | `86ba45425d4dae12771fae394fc621819dd57502` | [Motivación](https://github.com/jdlc86/CartaViva/pull/31#issuecomment-6767150921) | `closed`, `merged=false` |
-| [#40](https://github.com/jdlc86/CartaViva/pull/40) | `03e874dff4b4fe3c2084e7cc962fb90a03c1615b` | [Motivación](https://github.com/jdlc86/CartaViva/pull/40#issuecomment-6767152570) | `closed`, `merged=false` |
-| [#44](https://github.com/jdlc86/CartaViva/pull/44) | `43a8acaf95baeeffae8625cc9068b30c6dbf3bb0` | [Motivación](https://github.com/jdlc86/CartaViva/pull/44#issuecomment-6767154427) | `closed`, `merged=false` |
-
-**Balance posterior obtenido directamente de GitHub:** **43 abiertos, 43 Draft** frente a 47/47 del corte anterior. Composición auditable: **33** HEADs ancestrales del candidato #54 (incluidos #52 y #53), **9** divergentes funcionales/H3 (#4/#5/#8/#17/#18/#19/#20/#21/#22) y **1** candidato #54. Los cuatro documentales ya cerrados no se contabilizan como ancestros ni autorizan que los 43 restantes se cierren en bloque. `main=42b46358a76162445fa9e0b20e7b87dd0a640b5b` invariable; #54 permanece `open/draft`, base #53. No se ha solicitado ni emitido aprobación independiente de terceros.
-
-**Resultado y límite:** la *puerta documental administrativa de S4* está **ejecutada y verificada para cuatro PR**; **S4 global no concluido**. Permanecen pendientes de dictamen los nueve funcionales/H3, la integración y revisión de 33 ancestros del Draft en destino autorizado, requisitos visuales/operativos y autorización expresa por operación adicional. La antigua declaración de §§1–16 «47 abiertos / cuatro cierres propuestos» es **foto histórica**, sustituida para el estado actual por este §17. Cero merges, cambios operativos o despliegues. La batería 6/6 se acreditó solo en el commit funcional `b1419e863f960993bcb1e0728cf8aa4c646c5464`; actualizaciones documentales `[skip ci]` no incorporan nueva ejecución.
-
-## 17. Ejecución y verificación de la decisión S4-A sobre cuatro PR documentales
-
-**Consentimiento explícito recibido el 10-11-2026** para cerrar, **sin fusionar**, solo #14, #31, #40 y #44. Tras comparar previamente `merge-base..HEAD` (un commit exclusivo de documentación en cada caso) y comprobar la preservación literal/evolutiva en #54, GitHub confirma los cuatro como **`closed`, `merged=false`**, con SHA de HEAD sin variación:
-
-| PR | HEAD histórico | Resultado GitHub | Trazabilidad de cierre |
-| --- | --- | --- | --- |
-| [#14](https://github.com/jdlc86/CartaViva/pull/14) | `613df3d38a85` | CLOSED, NOT MERGED | [comentario de cierre](https://github.com/jdlc86/CartaViva/pull/14#issuecomment-6767149030) |
-| [#31](https://github.com/jdlc86/CartaViva/pull/31) | `86ba45425d4d` | CLOSED, NOT MERGED | [comentario de cierre](https://github.com/jdlc86/CartaViva/pull/31#issuecomment-6767150921) |
-| [#40](https://github.com/jdlc86/CartaViva/pull/40) | `03e874dff4b4` | CLOSED, NOT MERGED | [comentario de cierre](https://github.com/jdlc86/CartaViva/pull/40#issuecomment-6767152570) |
-| [#44](https://github.com/jdlc86/CartaViva/pull/44) | `43a8acaf95ba` | CLOSED, NOT MERGED | [comentario de cierre](https://github.com/jdlc86/CartaViva/pull/44#issuecomment-6767154427) |
-
-**Poscondiciones consultadas:** `GET pulls?state=open` = **43**, todos **Draft**; [#54](https://github.com/jdlc86/CartaViva/pull/54) `open/draft` con base #53, `main=42b46358a76162445fa9e0b20e7b87dd0a640b5b` sin cambios. Se consultó directamente el archivo histórico propio de las cuatro ramas por referencia GitHub y todas permanecen accesibles. Ninguno de estos cierres hizo merge, cherry-pick, retarget, rebase, borrado de rama, cambio de normativa, despliegue ni operación en Supabase operativo o VPS/Fleetia. Los comentarios son rastros de decisión, **no revisiones independientes de código**.
-
-**Advertencia para lectores anteriores:** las afirmaciones temporales de §§1, 4, 13, 15 y 16 que decían «47 abiertos» / «cierres pendientes» documentan **cortes previos a la autorización**; el estado final de la sesión es **43 abiertos / 4 cerrados sin merge**. El resto de S4 NO está finalizado: #4/#5/#8/#17/#18/#19/#20/#21/#22 requieren validación semántica; 33 HEAD ancestros esperan integración revisada o resolución específica; #54 sigue candidato. Conservar las puertas de revisión independiente/visual, M3 extremo a extremo, seguridad M6 y autorización de `main` como condiciones separadas. CI 6/6 de `b1419e86` no acredita los futuros cambios.
