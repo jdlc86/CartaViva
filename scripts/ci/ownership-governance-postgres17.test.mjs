@@ -594,14 +594,15 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   await client.getByRole('button',{name:'Consultar llamada'}).click();
   await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:15000});
 
-  // H35-P1: same PG17 and JWT session, effective read projection across
+  // H35-P1: d is the live owner at this point (ROOT just recovered to d);
+  // same PG17 and JWT session, effective read projection across
   // ADMIN owner, non-owner, ROOT and waiter. No UUID/secret owner leaks in M3.
   const tableRead=async id=>api.inject({method:'GET',url:'/api/v1/admin/tables?limit=1',
    headers:{authorization:'Bearer '+jwt(id)}});
   const expectedWriter={configure:true,qr:true,readiness:true,occupancy:true};
   const expectedReadOnly={configure:false,qr:false,readiness:false,occupancy:false};
   const expectedWaiter={configure:false,qr:false,readiness:true,occupancy:true};
-  for(const [user,permissions] of [[owner,expectedWriter],[a,expectedReadOnly],
+  for(const [user,permissions] of [[d,expectedWriter],[a,expectedReadOnly],
    [root,expectedReadOnly],[waiterId,expectedWaiter]]){
    const response=await tableRead(user);
    assert.equal(response.statusCode,200,response.body);
@@ -610,7 +611,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   }
   const oldWriterBrowser=await browser.newPage();
   const nextWriterBrowser=await browser.newPage();
-  for(const [tab,actor] of [[oldWriterBrowser,owner],[nextWriterBrowser,a]]){
+  for(const [tab,actor] of [[oldWriterBrowser,d],[nextWriterBrowser,a]]){
    await tab.goto(vite.resolvedUrls.local[0]+'#mesas');
    await tab.evaluate(async token=>{
     const host=await import('/src/main.tsx');
@@ -638,7 +639,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   const takeover=await post(root,'force',{targetUserId:a,
    reason:'Verificación del cambio efectivo de permisos de gestión'});
   assert.equal(takeover.statusCode,200,takeover.body);
-  assert.deepEqual((await tableRead(owner)).json().permissions,expectedReadOnly);
+  assert.deepEqual((await tableRead(d)).json().permissions,expectedReadOnly);
   assert.deepEqual((await tableRead(a)).json().permissions,expectedWriter);
   await oldWriterBrowser.bringToFront();
   await oldWriterBrowser.getByRole('link',{name:/Mesas/}).click();
@@ -650,7 +651,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   // A revoked owner's old JWT cannot perform a real table mutation.
   const deniedOldWriter=await api.inject({method:'POST',
    url:'/api/v1/admin/tables/actions',
-   headers:{authorization:'Bearer '+jwt(owner)},
+   headers:{authorization:'Bearer '+jwt(d)},
    payload:{requestId:randomUUID(),operation:'create',payload:{
     number:9799,capacity:4,description:'No creada por propietario anterior'}}});
   assert.equal(deniedOldWriter.statusCode,403,deniedOldWriter.body);
@@ -658,7 +659,7 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    'SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE number=9799')).rows[0].n,0);
   // Restore exact previous ownership before the remainder of the integrated
   // governance/dual-PWA test; do not rewrite orders or waiter-call history.
-  const restore=await post(root,'force',{targetUserId:owner,
+  const restore=await post(root,'force',{targetUserId:d,
    reason:'Restitución del titular del escenario integral'});
   assert.equal(restore.statusCode,200,restore.body);
   await oldWriterBrowser.close();await nextWriterBrowser.close();
