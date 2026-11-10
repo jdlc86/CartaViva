@@ -118,6 +118,19 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 **Gobierno:** no se hizo revisión independiente aprobatoria ni aceptación visual humana final; la integración es únicamente de código de desarrollo. No se usaron recursos de Supabase operativo, no se desplegó, y no se actuó sobre el VPS ni Fleetia. La resolución administrativa de los **nueve PR divergentes** queda separada y requiere dictamen semántico verificable, no suposición de genealogía o autorización retrospectiva del merge de #55.
 
+
+### S35-2 — conciliación semántica integrada de nueve PR y propuesta administrativa (10-11-2026)
+
+**Informe nuevo, versionado:** [SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md). Se revalidaron directamente los HEAD de los **nueve PR Draft abiertos** (números #4/#5/#8/#17/#18–#22) tras el merge de #55, se consultaron las rutas efectivamente montadas y se cotejaron las suites integradoras existentes con los **logs reales de [Bootstrap PG17 #42900656103](https://github.com/jdlc86/CartaViva/actions/runs/42900656103)** en el commit `7b6cd8d5`. No se lanzaron suites nuevas para rehacer pruebas ya existentes.
+
+**Nueva evidencia específica de H6:** [`scripts/ci/order-operations-read-postgres17.test.mjs`](../../scripts/ci/order-operations-read-postgres17.test.mjs), subtest `ok 8 - Chromium + real JWT + one Fastify listener closes H4 ready, H6 pickup and durable SSE`, recorre **PWA gestión Chromium → JWT → Fastify real → PostgreSQL 17**, con claim/cancel desde botones «Voy a recoger»/«Cancelo», ID compacto del camarero, SSE, carrera entre dos camareros (HTTP 200/409), replay idempotente y denegación de rol. [`scripts/ci/h6-postgres17.test.mjs`](../../scripts/ci/h6-postgres17.test.mjs) añade pruebas de exclusividad, renuncia sin cancelar pedido/pago y corrección de cocina solo tras liberar tarea. Esto reduce una incertidumbre sobre #4 que antes figuraba como no integrada; **no acredita aprobación visual final**.
+
+**Otras evidencias explícitas de logs:** `ok 1` M3 mesas (roles mínimos, rollback, replay y paginación), `ok 2` M3 categorías dinámicas publicadas/ocultadas/restauradas, `ok 6` SQL incapaz de suplantar actor mediante UUID/GUC/rol/RPC antigua y `ok 3` lectura SQL incapaz de ampliar permisos, burlar expiración o reutilizar actor. El #55 añade la retirada/restauración de un producto en una PWA real con la cesta H3 bloqueada y dos variantes conservadas.
+
+**Propuesta de lote único**, todavía **sin autorización específica de cierre ni acción de cierre**: #18/#19/#20/#21/#22 (H3), #5 (M3), #17 (validación HTTP GET) y #4 (cocina/sala sustituida por H6 vigente) como **ocho candidatos a cerrar sin merge** al estar sustituidas sus obligaciones históricas; conservar **#8 abierto** hasta revisión independiente de la frontera HMAC/actor SQL, o aceptación explícita y documentada del riesgo residual. El dictamen **no confunde** pruebas con garantía total, ni equivalencia semántica con ancestro Git, ni cierre documental con aceptación visual/activación.
+
+**Acciones:** documento S35 de conciliación creado, ningún PR divergente cerrado, ninguna modificación adicional de runtime/SQL. La nueva [CI push de `main` #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) sigue pendiente de cierre concluyente en este corte, en SHA `b41713d8`. Continuidad activa **35**; sesión 34 inalterada. Ninguna operación en Supabase operativo, VPS o Fleetia.
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
