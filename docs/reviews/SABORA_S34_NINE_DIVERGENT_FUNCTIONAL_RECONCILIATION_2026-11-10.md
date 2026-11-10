@@ -114,3 +114,19 @@ Para convertir la evidencia actual en aceptación de escenarios **sin microprueb
 - **Pruebas ejecutadas en este hito S34:** **ninguna**. Se verificaron mediante lectura documental y de código las pruebas existentes. **Última CI ajena a este hito:** 6/6 SUCCESS en `b1419e86`, no en el commit documental de este informe.
 - **Validación independiente:** ninguna nueva; #54 sigue sin revisión independiente aprobatoria. **Producción:** no autorizada.
 - **Escritura realizada por S34:** solo documentación de auditoría/continuidad/seguimiento en rama del PR #54. No modificar `main`, ni migrar/desplegar Supabase operativo o VPS compartido; **Fleetia y sus contenedores permanecen fuera de alcance**.
+
+## 9. Nueva prueba conectada posterior al dictamen estático — actualización probatoria S34-2 (10-11-2026)
+
+**Prevalece para el estado de evidencia sobre las cautelas históricas de §§2–7:** [aceptación integral conectada M3→H3→H4](SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md) completó **6/6 workflows GitHub Actions SUCCESS** sobre el SHA funcional `782974063bebe39fd423363eb2f806bc6b8acef9`. En [Bootstrap PG17 #42820426039](https://github.com/jdlc86/CartaViva/actions/runs/42820426039) el E2E real muestra 1/1 PASS, con una PWA ADMIN titular que crea categoría adicional y publica plato con opciones vía SQL firmado, la otra PWA que lo consume por HTTP, dos variantes y consentimiento de precio por cada una, cotización y pedido real con evidencia económica inmutable e idempotencia, y dos líneas de cocina. [H6 #42820425977](https://github.com/jdlc86/CartaViva/actions/runs/42820425977) acredita bloques 1/2A/2B completos. La repetición del job cliente también terminó SUCCESS; primer intento falló únicamente instalando Chromium antes de tests.
+
+**Impacto en los nueve dictámenes:**
+
+| PR | Evidencia añadida | Nueva clasificación probatoria (no decisión de cierre) |
+| --- | --- | --- |
+| #5 | Categoría nueva realmente creada/publicada desde PWA M3 y leída después por PWA cliente sobre un mismo Fastify/PG17 | **Brecha específica de circuito de catálogo adicional CERRADA EN CI**; equivalencia integral de gestión y visual humana siguen pendientes |
+| #18–#22 | Escenario conectado de dos variantes, precios, edición, consentimiento individual, QR, cotización y confirmación con instantáneas económicas y cocina | **Brecha específica H3 de variantes/pedido real CERRADA EN CI**; no asumir equivalencia absoluta de todos los escenarios históricos o aprobación visual |
+| #4 | Dos líneas independientes aparecen en PWA de cocina, además de controles H4/H6 previos | **Evidencia parcial reforzada**; versión H6 «Voy a recoger»/«Cancelo», concurrencia y equivalencia total mantienen revisión independiente |
+| #8 | H6 PG17/HMAC/concurrencia PASS en el mismo SHA; capacidades actor SQL históricas preservadas | **Evidencia reforzada**; sigue sin revisión independiente de seguridad |
+| #17 | H4 HTTP en recorrido conectado y suites previas intactas | **Evidencia reforzada**; no convierte 25 títulos nominales en pruebas de paridad total |
+
+**Límite administrativo NO alterado:** S4 sigue **NO FINALIZADO**, 9/9 PR con decisión propuesta de **retener hasta revisión independiente/decisión específica**, 33 PR ancestros solo dentro de #54 Draft. Ningún cierre nuevo ni merge a `main`, que sigue en `42b46358a76162445fa9e0b20e7b87dd0a640b5b`; 43 Draft abiertos. Hito técnico conectado ≠ aprobación visual F28/R09, composición completa M3–H6, Stripe remoto M4, M6, producción o autorización de cierre. Este informe actualiza solo la **evidencia de equivalencia**, no reescribe contratos normativos ni da permiso de despliegue.
