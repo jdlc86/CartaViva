@@ -186,6 +186,18 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Estado:** S34 integración código a `main` completada, **saneamiento de 41 PR por cerrar**, 32 con trazabilidad verificada y nueve bajo conciliación. Sin despliegue ni migraciones operativas, sin tocar Fleetia/VPS/Supabase operativo.
 
+## 4 quattuordecies. S34-13 — saneamiento de 32 PR ancestrales ejecutado (10-11-2026)
+
+**Resultado final y auditoría nominativa:** [preflight S34 §13 — acta de cierre de 32 PR](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md). Tras la autorización explícita «Adelante con los 32 PR» del propietario, los **32 HEAD de PR** se compararon nuevamente contra `main@9ced23b7759d6748f787dd786d6339405b6b21d4`: cada comparación devolvió `status=ahead`, `behind_by=0` y `merge_base_commit.sha` idéntico al HEAD del PR. El contenido ya estaba incorporado en el merge #54 `a91867fbacb9319d16496b04a5fe237739c31837`.
+
+**Acciones GitHub reales:** se ejecutaron cierres `state=closed` **sin merge** en cuatro lotes de ocho, con respuesta `merged=false` en **32/32**: #2/#7/#10/#11/#12/#13/#15/#16; #23–#30; #32/#34/#36/#38/#41/#42/#43/#45/#46; #47–#53. No se borraron ramas ni se modificó el código. La comprobación final de PR abiertos devolvió **nueve y solo nueve: #4/#5/#8/#17/#18/#19/#20/#21/#22**. Quedan pendientes por seguridad/semántica; no se les atribuye equivalencia ni autorización de cierre.
+
+**CI posterior al merge verificada:** [Sabora CI #42842459366](https://github.com/jdlc86/CartaViva/actions/runs/42842459366), disparada por `push` del merge commit `a91867fb`, terminó `completed/success`. La matriz de seis workflows del PR estaba también verde en `d49ee05b`, pero **el éxito post-merge sí pertenece a `a91867fb`**. Los posteriores commits de documentos `[skip ci]` no son nuevas pruebas.
+
+**Estado:** saneamiento **de la familia ancestral CERRADO** (41→9 PR abiertos); **S4 global abierto solo por nueve divergencias**. No hay producción activa ni usuarios según propietario; no se hicieron despliegues, migraciones Supabase operativas, intervenciones VPS/Fleetia, cierres de nueve divergentes, force-pushes ni merges adicionales.
+
+**Siguiente hito:** revisar las nueve divergencias en una matriz semántica final, priorizando en un solo bloque #18–#22 (incidencias y sincronización H3), luego #5 (lectores/gestión M3), #4 (operación sala/cocina), #8 (frontera HMAC SQL), #17 (rechazo GET); tomar decisiones de cerrar/retener por prueba real de contrato, no por conteo administrativo.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
