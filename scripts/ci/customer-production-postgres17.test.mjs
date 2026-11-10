@@ -3,8 +3,14 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {mkdirSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {generateKeyPairSync,randomBytes,sign as signJwt} from 'node:crypto';
-import {createVerifiedRestaurantFlowCandidate} from '../../apps/api/src/restaurant-flow-candidate-app.mjs';
+import {generateKeyPairSync,randomBytes,randomUUID,sign as signJwt} from 'node:crypto';
+import {registerVerifiedCustomerProductionApp} from '../../apps/api/src/customer-production-app.mjs';
+import {registerVerifiedRestrictedOrderOperationsFromPools} from '../../apps/api/src/order-operations-composition.mjs';
+import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {registerM3ManagementHttp} from '../../apps/api/src/m3-management-http.mjs';
+import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
+import {createM3CatalogRepository,READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL}
+ from '../../apps/api/src/m3-management-repository.mjs';
 import {createPostgresTransaction} from '../../apps/api/src/postgres-transaction.mjs';
 import {createOrderOperationsCoordinator} from '../../apps/api/src/order-operations-coordinator.mjs';
 import {registerOrderOperationsHttp} from '../../apps/api/src/order-operations-http.mjs';
@@ -33,6 +39,7 @@ if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||parsed.pathname!
  throw Error('unsafe_pg17_harness_target');
 const require=createRequire(import.meta.url);
 const {Pool}=require(modulePath);
+const Fastify=createRequire(new URL('../../apps/api/package.json',import.meta.url))('fastify');
 const poolOptions={max:5,connectionTimeoutMillis:3000,idleTimeoutMillis:1000,
  options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'};
 const admin=new Pool({connectionString:url,...poolOptions});
@@ -45,12 +52,14 @@ const flowPassword='ci-flow-only-73';
 const catalogPassword='ci-catalog-only-70';
 const staffPassword='ci-staff-only-74';
 const operationsPassword='ci-operations-only-75';
+const m3CatalogPassword='ci-m3-catalog-only-76';
 const catalogRole='sabora_customer_catalog_ci';
 const registrationRole='sabora_customer_registration_ci';
 const sessionRole='sabora_customer_session_ci';
 const flowRole='sabora_customer_flow_ci';
 const staffRole='sabora_customer_staff_ci';
 const operationsRole='sabora_customer_operations_ci';
+const m3CatalogRole='sabora_customer_m3_catalog_ci';
 const clientOrigin='http://127.0.0.1:4179';
 const authIssuer='https://ci.full-stack.sabora.invalid/auth/v1';
 const authKeyId='ci-full-stack-auth-key';
@@ -58,12 +67,13 @@ const operationKeyId='ci_h3_h4_full_stack_key_971001';
 const operationSecret=randomBytes(32);
 const kitchenId='ca710000-0000-4000-8000-000000000011';
 const waiterId='ca710000-0000-4000-8000-000000000012';
+const adminId='ca710000-0000-4000-8000-000000000013';
 const {privateKey:authPrivateKey,publicKey:authPublicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const authJwk=Object.freeze({...authPublicKey.export({format:'jwk'}),kid:authKeyId,alg:'RS256',use:'sig'});
-let catalogReaderPool,registrationPool,sessionPool,flowPool,staffPool,operationsPool,restaurantApp;
+let catalogReaderPool,registrationPool,sessionPool,flowPool,staffPool,operationsPool,m3CatalogPool,restaurantApp;
 test.after(async()=>{await restaurantApp?.close().catch(()=>{});await Promise.allSettled([
  catalogReaderPool?.end(),registrationPool?.end(),sessionPool?.end(),flowPool?.end(),
- staffPool?.end(),operationsPool?.end()]);await admin.end();});
+ staffPool?.end(),operationsPool?.end(),m3CatalogPool?.end()]);await admin.end();});
 
 function bearer(userId,overrides={}){
  const now=Math.floor(Date.now()/1000);
@@ -100,6 +110,9 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${staffPassword}';
   CREATE ROLE ${operationsRole} LOGIN NOINHERIT NOBYPASSRLS
     NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${operationsPassword}';
+  CREATE ROLE ${m3CatalogRole} LOGIN NOINHERIT NOBYPASSRLS
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '${m3CatalogPassword}';
+  GRANT sabora_m3_catalog_runtime TO ${m3CatalogRole} WITH SET TRUE, INHERIT FALSE;
   GRANT sabora_catalog_reader TO ${catalogRole};
   GRANT USAGE ON SCHEMA sabora TO ${catalogRole};
   GRANT sabora_customer_registration_runtime TO ${registrationRole};
@@ -121,14 +134,15 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  flowPool=new Pool({connectionString:loginUrl(flowRole,flowPassword),...poolOptions});
  staffPool=new Pool({connectionString:loginUrl(staffRole,staffPassword),...poolOptions});
  operationsPool=new Pool({connectionString:loginUrl(operationsRole,operationsPassword),...poolOptions});
+ m3CatalogPool=new Pool({connectionString:loginUrl(m3CatalogRole,m3CatalogPassword),...poolOptions});
  await assertCustomerProductionSqlCapabilities({registrationPool,sessionPool,flowPool,
   expectedRegistrationLogin:registrationRole,
   expectedSessionLogin:sessionRole,expectedFlowLogin:flowRole});
 
  const roles=await admin.query(`SELECT rolname,rolinherit,rolsuper,rolbypassrls
   FROM pg_roles WHERE rolname=ANY($1::text[]) ORDER BY rolname`,[[
-   catalogRole,flowRole,registrationRole,sessionRole,staffRole,operationsRole]]);
- assert.equal(roles.rows.length,6);
+   catalogRole,flowRole,registrationRole,sessionRole,staffRole,operationsRole,m3CatalogRole]]);
+ assert.equal(roles.rows.length,7);
  assert.ok(roles.rows.every(row=>!row.rolinherit&&!row.rolsuper&&!row.rolbypassrls));
  await assert.rejects(flowPool.query('SELECT * FROM sabora.customer_profiles'),
   /permission denied/);
@@ -143,7 +157,8 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    VALUES ($1,decode($2,'hex'),clock_timestamp()-interval '1 minute',
     clock_timestamp()+interval '1 hour')`,[operationKeyId,operationSecret.toString('hex')]);
  await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
-   VALUES ($1,'kitchen','active'),($2,'waiter','active')`,[kitchenId,waiterId]);
+   VALUES ($1,'kitchen','active'),($2,'waiter','active'),($3,'admin','active')`,[kitchenId,waiterId,adminId]);
+ await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[adminId]);
 
  const snapshotA={name:'Arroz de temporada',category:'Primeros',priceCents:1400,
   allergens:[],options:[],extras:[],discount:null};
@@ -164,18 +179,42 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
  // HTTP acceptance on the same restricted PG17 principals: real registration
  // sets an HttpOnly cookie, then the client visits a QR, quotes and confirms.
  let clientPwaConfirmedOrderId=null;
- restaurantApp=await createVerifiedRestaurantFlowCandidate({
-  customer:{catalogReaderPool,registrationPool,sessionPool,flowPool,
-   allowedOrigin:clientOrigin,secretKey,expectedCatalogLogin:catalogRole,
-   expectedRegistrationLogin:registrationRole,expectedSessionLogin:sessionRole,
-   expectedFlowLogin:flowRole},
-  operations:{staffPool,operationsPool,staffRole,operationsRole,
-   issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
-   issueTransitionCapability:createOrderOperationCapabilityIssuer({
-    keyId:operationKeyId,secret:operationSecret,databaseRole:operationsRole}),
-   issueReadCapability:createOrderOperationReadCapabilityIssuer({
-    keyId:operationKeyId,secret:operationSecret,databaseRole:operationsRole})}
- });
+ // One CI-only Fastify: real H3/H4/M3 routes, seven distinct restricted SQL
+ // principals, one disposable PostgreSQL 17. No operational server change.
+ const customerOptions={catalogReaderPool,registrationPool,sessionPool,flowPool,
+  allowedOrigin:clientOrigin,secretKey,expectedCatalogLogin:catalogRole,
+  expectedRegistrationLogin:registrationRole,expectedSessionLogin:sessionRole,
+  expectedFlowLogin:flowRole};
+ const operationsOptions={staffPool,operationsPool,staffRole,operationsRole,
+  issuer:authIssuer,getTrustedKeys:async()=>[authJwk],
+  issueTransitionCapability:createOrderOperationCapabilityIssuer({
+   keyId:operationKeyId,secret:operationSecret,databaseRole:operationsRole}),
+  issueReadCapability:createOrderOperationReadCapabilityIssuer({
+   keyId:operationKeyId,secret:operationSecret,databaseRole:operationsRole})};
+ const m3Issuer=createM3ManagementCapabilityIssuer({
+  keyId:operationKeyId,secret:operationSecret,databaseRole:m3CatalogRole});
+ const m3Tx=createRoleScopedPostgresTransaction({pool:m3CatalogPool,
+  role:'sabora_m3_catalog_runtime',
+  allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL])});
+ const m3Catalog=createM3CatalogRepository({withTransaction:m3Tx,
+  issueCapability:m3Issuer,newId:randomUUID});
+ restaurantApp=Fastify({logger:false,trustProxy:false});
+ await registerVerifiedCustomerProductionApp(restaurantApp,customerOptions);
+ await registerVerifiedRestrictedOrderOperationsFromPools(restaurantApp,operationsOptions);
+ const staffAuth=createStaffProtectedHooksFromPool({pool:staffPool,issuer:authIssuer,
+  getTrustedKeys:async()=>[authJwk]});
+ const forRoles=roles=>async(request,reply)=>{
+  for(const hook of staffAuth(roles)){await hook(request,reply);if(reply.sent)return;}
+ };
+ // Catalog-only acceptance: table route mutations cannot execute here.
+ // Tables use their own real SQL integration suite.
+ const unavailable=async()=>{throw Error('unavailable_m3_tables_in_catalog_gate');};
+ registerM3ManagementHttp(restaurantApp,{forRoles,
+  tables:Object.freeze({read:unavailable,manage:unavailable,occupancy:unavailable}),
+  catalog:m3Catalog,
+  qr:{secret:'sabora-ci-disposable-m3-qr-secret-2026-inert',
+   origin:clientOrigin,restaurantCode:'SABORA',allowInsecureLoopback:true}});
+ await restaurantApp.ready();
  const customerHttp=restaurantApp;
  {
   const catalog=await customerHttp.inject('/api/v1/catalog');
@@ -807,14 +846,15 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     if(pathname.startsWith('/api/'))requests.push({surface:'management',method:request.method(),pathname});
    });
    await managementPage.goto(managementOrigin+'/#comandas');
-   const mountManagement=actor=>managementPage.evaluate(async token=>{
+   const mountManagement=(actor,enableM3Management=false)=>managementPage.evaluate(async({token,enableM3Management})=>{
     if(typeof window.__block01Dispose==='function')window.__block01Dispose();
     const {mountAuthenticatedManagementApp}=await import('/src/main.tsx');
     window.__block01Dispose=mountAuthenticatedManagementApp({
      element:document.getElementById('root'),getAccessToken:async()=>token,
-     fetchImpl:window.fetch.bind(window),reconnectDelayMs:30_000
+     fetchImpl:window.fetch.bind(window),reconnectDelayMs:30_000,
+     enableM3Management
     });
-   },bearer(actor));
+   },{token:bearer(actor),enableM3Management});
    await mountManagement(kitchenId);
    const kitchenCard=managementPage.locator('.order-card').filter({hasText:'Cliente navegador'});
    await kitchenCard.getByRole('button',{name:'Iniciar preparación'}).waitFor({timeout:15_000});
@@ -893,19 +933,55 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    assert.ok(requests.filter(value=>value.pathname==='/api/v1/operations/events').length<=3,
     'H4 candidate may attempt SSE once per each of three mounted staff sessions but must not poll business state');
 
-   // H3 full-stack variant milestone. Update only the disposable PG17 catalog
-   // after the original H3/H4 round. The same two real PWAs must now process
-   // two distinct configured lines of the SAME published dish without
-   // collapsing quantities, quotes, prices, order snapshots or kitchen rows.
-   const variantSnapshot={...snapshotA,options:[{
-    id:'sauce',name:'Salsa',required:true,maxSelections:1,values:[
-     {id:'suave',name:'Suave',priceCents:0,available:true,allergens:[]},
-     {id:'picante',name:'Picante',priceCents:200,available:true,allergens:[]}
-    ]
-   }]};
-   await admin.query(`UPDATE sabora.catalog_items SET draft=$2::jsonb,
-     draft_revision=2,published_snapshot=$2::jsonb,published_revision=2,
-     published_at=clock_timestamp() WHERE id=$1`,[itemA,JSON.stringify(variantSnapshot)]);
+   // S34 end-to-end: the ADMIN owner publishes a dynamic category and
+   // configured dish via the real management PWA, SQL capability and Fastify.
+   // The same listener then serves the public customer PWA and confirms it.
+   await managementPage.goto(managementOrigin+'/#catalogo');
+   await mountManagement(adminId,true);
+   await managementPage.getByRole('heading',{name:'Editor de carta'}).waitFor({timeout:15000});
+   const deniedM3=await restaurantApp.inject({method:'POST',
+    url:'/api/v1/admin/catalog/actions',
+    headers:{authorization:'Bearer '+bearer(waiterId)},
+    payload:{requestId:randomUUID(),operation:'category_create',
+     payload:{categoryId:randomUUID(),name:'NO_PERMITIDA_S34',sortOrder:800}}});
+   assert.equal(deniedM3.statusCode,403,'waiter cannot write ADMIN catalog');
+   const categoryName='ESPECIALES_S34',dishName='S34 Plato de temporada';
+   await managementPage.getByLabel('Nombre de nueva categoría').fill(categoryName);
+   await managementPage.getByRole('button',{name:'Añadir',exact:true}).click();
+   await managementPage.getByText('Categoría creada.').waitFor({timeout:15000});
+   await managementPage.getByRole('button',{name:'Nuevo plato'}).click();
+   const editor=managementPage.locator('.catalog-editor-form');
+   await editor.getByLabel('Nombre',{exact:true}).fill(dishName);
+   await editor.getByLabel('Categoría').selectOption({label:categoryName});
+   await editor.getByLabel('Precio EUR').fill('14,00');
+   await editor.getByRole('group',{name:'Declaración de alérgenos'})
+    .locator('select').selectOption('VERIFICADA');
+   await editor.getByRole('button',{name:'Añadir grupo'}).click();
+   await editor.getByLabel('Nombre del grupo').fill('Salsa');
+   await editor.getByRole('checkbox',{name:'Obligatorio'}).check();
+   await editor.getByRole('button',{name:'Añadir opción'}).click();
+   await editor.getByRole('button',{name:'Añadir opción'}).click();
+   await editor.getByLabel('Nombre de opción').nth(0).fill('Suave');
+   await editor.getByLabel('Precio de opción').nth(0).fill('0,00');
+   await editor.getByLabel('Nombre de opción').nth(1).fill('Picante');
+   await editor.getByLabel('Precio de opción').nth(1).fill('2,00');
+   await editor.getByRole('button',{name:'Guardar borrador'}).click();
+   await managementPage.getByText('Borrador guardado. La versión pública no ha cambiado.')
+    .waitFor({timeout:15000});
+   await editor.getByRole('button',{name:'Publicar',exact:true}).click();
+   await managementPage.getByText('Nueva versión publicada.').waitFor({timeout:15000});
+   const m3Response=await restaurantApp.inject('/api/v1/catalog');
+   assert.equal(m3Response.statusCode,200,m3Response.body);
+   const newPublicDish=m3Response.json().filter(item=>item.name===dishName);
+   assert.equal(newPublicDish.length,1,'published M3 dish reaches public HTTP');
+   const m3ItemId=newPublicDish[0].id;
+   assert.equal(newPublicDish[0].category,categoryName);
+   assert.deepEqual(newPublicDish[0].options[0].values.map(value=>value.name),
+    ['Suave','Picante']);
+   assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.catalog_items WHERE id=$1 AND published_snapshot IS NOT NULL',
+    [m3ItemId])).rows[0].n,1);
+   console.log('S34 M3 owner PWA -> restricted PG17 -> public HTTP publication PASS');
    await clientPage.goto(clientOrigin+'/candidate.html');
    await clientPage.getByRole('heading',{name:'Nuestra carta'}).waitFor({timeout:15000});
    await clientPage.goto(`${clientOrigin}/qr/v1/SABORA/${tableId}#${qrToken}`);
@@ -913,13 +989,13 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    await variantQr.getByText('Mesa verificada').waitFor({timeout:15000});
    await variantQr.getByRole('button',{name:'Cerrar'}).click();
    const dish=clientPage.locator('[data-testid="product-card"]')
-    .filter({hasText:'Arroz de temporada'});
+    .filter({hasText:dishName});
    await dish.getByRole('button',{name:'Ver detalle'}).click();
-   let detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   let detail=clientPage.getByRole('dialog',{name:dishName});
    await detail.getByRole('checkbox',{name:/Suave/}).check();
    await detail.getByRole('button',{name:'Guardar en la selección'}).click();
    await dish.getByRole('button',{name:'Ver detalle'}).click();
-   detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   detail=clientPage.getByRole('dialog',{name:dishName});
    await detail.getByRole('checkbox',{name:/Picante/}).check();
    await detail.getByRole('button',{name:'Guardar en la selección'}).click();
    await clientPage.getByRole('button',{name:'Cesta: 2'}).click();
@@ -927,7 +1003,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    const rows=variantCart.locator('.basket-lines article');
    assert.equal(await rows.count(),2,'two distinct configurations must remain separate in the PWA');
    await rows.filter({hasText:'Salsa: Suave'}).getByRole('button',{name:'Editar detalles'}).click();
-   detail=clientPage.getByRole('dialog',{name:'Arroz de temporada'});
+   detail=clientPage.getByRole('dialog',{name:dishName});
    await detail.getByRole('spinbutton',{name:'Cantidad'}).fill('2');
    await detail.getByRole('button',{name:'Guardar en la selección'}).click();
    await variantCart.getByText('Salsa: Suave').waitFor();
@@ -971,7 +1047,7 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
    const quoteRequest=(await quoteRequestPromise).postDataJSON();
    const quoteResponse=await quoteResponsePromise;
    assert.equal(quoteResponse.status(),201,await quoteResponse.text());
-   assert.deepEqual(quoteRequest.lines.map(line=>line.itemId),[itemA,itemA]);
+   assert.deepEqual(quoteRequest.lines.map(line=>line.itemId),[m3ItemId,m3ItemId]);
    assert.deepEqual(quoteRequest.lines.map(line=>line.selection.options.sauce),
     [['suave'],['picante']]);
    assert.deepEqual(quoteRequest.lines.map(line=>line.quantity),[2,1]);
@@ -1024,9 +1100,10 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     [variantOrder.id])).rows[0].n,2);
 
    // H4 operations must see BOTH variant lines, not a flattened itemId.
+   await managementPage.goto(managementOrigin+'/#comandas');
    await mountManagement(kitchenId);
    const variantKitchen=managementPage.locator('.order-card')
-    .filter({hasText:'Cliente navegador'}).filter({hasText:'Arroz de temporada'});
+    .filter({hasText:'Cliente navegador'}).filter({hasText:dishName});
    await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).first()
     .waitFor({timeout:15000});
    assert.equal(await variantKitchen.getByRole('button',{name:'Iniciar preparación'}).count(),2);
