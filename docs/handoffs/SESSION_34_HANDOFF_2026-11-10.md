@@ -208,6 +208,14 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Próximo bloque de desarrollo:** contrastar primero el hueco real de catálogo/variantes H3 bajo agotado/retirada/opción invalidada, y el ciclo H6 `claimPickup/cancelPickup/correctReady`, reutilizando los E2E PostgreSQL 17/Chromium ya existentes antes de ampliar su cobertura. La decisión administrativa sobre estos nueve PR requiere autorización expresa; no crear PR adicionales por defecto. Sin despliegue ni alteración de Supabase operativo, VPS o Fleetia.
 
+## 4 sexdecies. S34-15 — ampliación integradora M3→H3 en PR #55 Draft (10-11-2026)
+
+**Cambio real de test, sin código producto:** [PR #55 Draft](https://github.com/jdlc86/CartaViva/pull/55), rama `integration/sabora-s34-postmerge-h3-incidence-20261110`, commit [`7b6cd8d5db390d36b9302181b64a7fc2a0ed87c4`](https://github.com/jdlc86/CartaViva/commit/7b6cd8d5db390d36b9302181b64a7fc2a0ed87c4), base `main`. Se amplió **un test integrador existente**, `scripts/ci/customer-production-postgres17.test.mjs`: tras publicar un plato dinámico con dos opciones, ADMIN lo **retira vía PWA de gestión → HTTP → SQL PG17**; el catálogo público ya no lo devuelve; el cliente conserva dos variantes locales, bloquea checkout sin crear cotización/pedido; ADMIN **republica** el mismo borrador y el cliente recupera dos variantes antes del test preexistente de cambio de precio, consentimiento individual, quote/confirm, replay y cocina. El diff = **1 archivo de test, 55 líneas añadidas, 0 eliminadas**.
+
+**Ejecución CI iniciada, no declarada aprobada en esta fotografía:** [Sabora CI #42900656064](https://github.com/jdlc86/CartaViva/actions/runs/42900656064) y [Bootstrap PG17 #42900656103](https://github.com/jdlc86/CartaViva/actions/runs/42900656103) estaban en curso; [funcional/UI #42900656026](https://github.com/jdlc86/CartaViva/actions/runs/42900656026) finalizó `success`, aceptación visual humana final `skipped`. No trasladar los antiguos 6/6 a este commit. Obtener resultado y logs específicos del escenario antes de clasificarlo PASS.
+
+**Límites:** la ampliación protege retirada/restauración en el mismo harness M3/H3/H4; **no** prueba de manera integral H6 `claimPickup/cancelPickup` ni corrige por sí sola las nueve divergencias. No hay merge, cierre de los nueve, aprobación independiente ni despliegue. S4 global sigue abierto; VPS, Supabase operativo y Fleetia no se tocaron.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
