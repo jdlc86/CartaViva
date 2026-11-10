@@ -971,3 +971,13 @@ Se contrastaron `merge-base..HEAD` de las cuatro divergencias documentales: **#1
 
 **Corte Git de apertura:** `main@7891b3050181134a958b06de008e81e38f6a4788` antes de crear S35; **10 PR abiertos:** nueve divergentes #4/#5/#8/#17/#18–#22 y #55 Draft/base `main`, `mergeable_state=clean` en consulta GitHub. No hay merge de #55, cierre de nueve, modificación funcional, desplegado ni acceso al VPS/Supabase operativo/Fleetia. S4 **NO FINALIZADO**. Próximos hitos y nuevas evidencias deben registrarse en **S35**, no en S34.
 
+## 88. S35 — merge verificado de #55 y dictamen único de los nueve PR divergentes (10-11-2026)
+
+**Continuidad única activa:** [sesión 35, hitos S35-1 y S35-2](../handoffs/SESSION_35_HANDOFF_2026-11-10.md). **Evidencia detallada:** [SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md](../reviews/SABORA_S35_POSTMERGE_NINE_PR_DISPOSITION_2026-11-10.md). La sesión 34 permanece histórica.
+
+**Integración ejecutada y comprobada:** [PR #55](https://github.com/jdlc86/CartaViva/pull/55) `merged=true`; merge commit [`b41713d8318622f204cf96162d03a6eaa6454a76`](https://github.com/jdlc86/CartaViva/commit/b41713d8318622f204cf96162d03a6eaa6454a76). El único cambio de la rama: `scripts/ci/customer-production-postgres17.test.mjs` (+55/−0) para retirada/restauración real M3→H3. `merge-base` confirma que el HEAD probado `7b6cd8d5` es ancestro de `main`. **CI previa del PR: 3/3 workflows SUCCESS**, con prueba conectada PG17/Chromium **1/1 PASS**; nueva [CI push en `main` #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) `in_progress` al corte inicial, resultado pendiente de comprobar.
+
+**Resultado nuevo de auditoría en bloque:** las nueve ramas históricas siguen `open`, todas divergentes. El log Bootstrap en el SHA probado incluye `ok 8` para **Chromium/JWT/Fastify/PG17/SSE con botones reales H6 «Voy a recoger»/«Cancelo» y carrera 200/409**, `ok 1` para PG17 mesas M3, `ok 2` para categorías M3, `ok 6` para SQL contra suplantación y `ok 3` para lector SQL con capacidad. Los casos H3 de variantes, precio, retirada y bloqueo también pasaron en el circuito conectado #55. Esta evidencia mejora el dictamen de #4, sin validar visual humano ni seguridad independiente.
+
+**Propuesta para decisión posterior, sin cierre ejecutado:** ocho candidatos históricos a **cerrar sin merge** como sustituidos por `main`: #18–#22, #5, #17, #4. **Retener #8** por falta de revisión independiente de seguridad HMAC/SQL, salvo aceptación específica de riesgo. Se requiere decisión expresa de cierre administrativo; no reutilizar permiso antiguo de 32 ancestros. **Censo: nueve PR abiertos**. Sin despliegue, migración Supabase operativa ni intervención en VPS/Fleetia.
+
