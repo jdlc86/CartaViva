@@ -176,6 +176,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Estado actual:** **HITO de integración de código de desarrollo a main CERRADO**, **S4 de saneamiento de los 41 PR restante**, no completado. Sin despliegue, sin aplicar migraciones/crear roles en Supabase operativo, sin reiniciar ni alterar VPS o Fleetia; aceptación visual y puertas de explotación siguen separadas. Próximo hito: reconsultar GitHub Actions de `main`, verificar propagación del merge a los PR ancestrales y resolver cierres con criterio individual y autorización según gobierno del proyecto.
 
+## 4 tredecies. S34-12 — 32 PR ancestrales comprobados individualmente dentro de `main` (10-11-2026)
+
+**Control post-merge ejecutado:** el [preflight de integración §12](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md) contiene prueba de genealogía de los **32/32 PR abiertos que eran ancestros** del candidato: #2/#7/#10/#11/#12/#13/#15/#16, #23–#30, #32/#34/#36/#38/#41/#42/#43/#45/#46, #47–#53. Cada HEAD se obtuvo de GitHub y se comparó directamente con `main` en commit [`a91867fb`](https://github.com/jdlc86/CartaViva/commit/a91867fbacb9319d16496b04a5fe237739c31837); **32/32 `status=ahead`, `behind_by=0`, `merge_base=HEAD PR`**. Es comprobación real de integración de su historial, no similitud funcional. [#1](https://github.com/jdlc86/CartaViva/pull/1) ya figura merged automáticamente junto con #54.
+
+**Resultado administrativo preparado, sin ejecutar cierres:** quedan **41 PR abiertos**, de los cuales **32 son redundantes como vías de integración** porque su HEAD ya es ancestro de `main`; los otros **nueve #4/#5/#8/#17/#18–#22 divergen** y requieren decisión específica sobre diferencias normativas/semánticas. No cerrar automáticamente ninguno por este cotejo: la autorización anterior del usuario alcanzó el **merge del #54**, no un cierre masivo adicional.
+
+**CI post-merge:** el `push` de `main@a91867fb` lanzó [Sabora CI #42842459366](https://github.com/jdlc86/CartaViva/actions/runs/42842459366), que aparecía **`in_progress`** al consultar. No se ha declarado aprobada; la CI anterior 6/6 sobre `d49ee05b` sí está acreditada y no pertenece al SHA de merge. Las adendas documentales de este hito en `main` llevan `[skip ci]` y no modifican código de ejecución.
+
+**Estado:** S34 integración código a `main` completada, **saneamiento de 41 PR por cerrar**, 32 con trazabilidad verificada y nueve bajo conciliación. Sin despliegue ni migraciones operativas, sin tocar Fleetia/VPS/Supabase operativo.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
