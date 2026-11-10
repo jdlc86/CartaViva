@@ -16,6 +16,15 @@ const r=(domain,dependencies,objects,permissions,lockImpact,dataImpact,pgcrypto=
  ({...defaults,domain,dependencies,objects,permissions,lockImpact,dataImpact,pgcrypto});
 
 export const REVIEWED_MIGRATION_AUDIT={
+ '20261110232000_sabora_m3_effective_management_permissions_candidate.sql':r(
+  'M3 signed administrative read permissions bound to live singleton writer',
+  ['sabora.read_admin_tables_m3_candidate','sabora.verify_management_capability_m3',
+   'sabora.admin_write_ownership singleton and enforced RLS'],
+  'CREATE OR REPLACE existing restricted table-reader RPC; exact returned permissions',
+  'unchanged NOLOGIN function owner and execute allowlist; owner UUID never exposed; no new RLS grants',
+  'shared ownership row lock serializes signed read with concurrent transfer, table pagination unchanged',
+  'no persisted business rows changed; prevents ADMIN non-owner/ROOT false-positive write controls',
+  'inherited'),
  '20261020140000_sabora_order_core.sql':r('orders',[],['schema sabora','restaurant_settings','staff_members','dining_tables','orders','order_idempotency'],'FORCE RLS; browser roles revoked','access_exclusive_create','schema only'),
  '20261020150000_sabora_order_transaction.sql':r('orders',['order core'],'confirm_order function','function EXECUTE revoked from public/browser','catalog update on first order','order and idempotency rows'),
  '20261020160000_sabora_qr_rotation.sql':r('tables',['dining_tables'],'rotate_table_qr function','function EXECUTE revoked from public/browser','row lock on one table','QR version/token metadata'),
