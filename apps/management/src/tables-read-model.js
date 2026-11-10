@@ -45,7 +45,8 @@ export function validateAdminTablesPage(payload, {afterNumber = 0, limit = TABLE
      typeof permissions.configure!=='boolean'||typeof permissions.qr!=='boolean'||
      typeof permissions.readiness!=='boolean'||typeof permissions.occupancy!=='boolean'||
      permissions.configure!==permissions.qr||
-     permissions.readiness!==true||permissions.occupancy!==true))
+     (permissions.configure&&(!permissions.readiness||!permissions.occupancy))||
+     permissions.readiness!==permissions.occupancy))
     throw Error('invalid_admin_tables_page');
   const ids = new Set();
   const numbers = new Set();

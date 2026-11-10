@@ -106,6 +106,9 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
      qrToken:Buffer.alloc(32,2).toString('base64url')}};
    const committed=await repository.manage(verified,committedInput);
    assert.equal(committed.replayed,false);
+   const initialPermissions=await repository.read(verified,{afterNumber:0,limit:1});
+   assert.deepEqual(initialPermissions.permissions,{configure:true,qr:true,
+    readiness:true,occupancy:true});
    const otherVerified={verifiedIdentity:{userId:otherAdminId},
     verifiedStaff:{userId:otherAdminId,role:'admin'}};
    const otherPayload={...committedInput.payload,number:9915};
@@ -120,7 +123,16 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
     error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
    assert.equal((await admin.query('SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE number=9915')).rows[0].n,0);
    // Transfer changes authority, including replay, immediately.
+   const otherRead=await repository.read(otherVerified,{afterNumber:0,limit:1});
+   assert.deepEqual(otherRead.permissions,{configure:false,qr:false,
+    readiness:false,occupancy:false});
    await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[otherAdminId]);
+   const revokedProjection=await repository.read(verified,{afterNumber:0,limit:1});
+   const nextProjection=await repository.read(otherVerified,{afterNumber:0,limit:1});
+   assert.deepEqual(revokedProjection.permissions,{configure:false,qr:false,
+    readiness:false,occupancy:false});
+   assert.deepEqual(nextProjection.permissions,{configure:true,qr:true,
+    readiness:true,occupancy:true});
    await assert.rejects(repository.manage(verified,committedInput),
     error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
    await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[actorId]);

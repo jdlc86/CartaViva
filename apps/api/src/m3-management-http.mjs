@@ -27,10 +27,17 @@ const verified=request=>({verifiedIdentity:request.verifiedIdentity,verifiedStaf
 const TABLE_PAGE_FIELDS=['tableId','number','capacity','description','readinessState',
  'orderingState','pauseUntil','qrVersion','qrEnabled','revision'];
 const projectTablesPage=page=>{
- if(!exact(page,['version','items','nextAfterNumber'])||page.version!==2||
+ if(!exact(page,['version','items','nextAfterNumber','permissions'])||page.version!==2||
     !Array.isArray(page.items)||page.items.length>100||
     (page.nextAfterNumber!==null&&(!Number.isSafeInteger(page.nextAfterNumber)||
       page.nextAfterNumber<1)))
+  throw Error('m3_tables_projection_unavailable');
+ const permissions=page.permissions;
+ if(!exact(permissions,['configure','qr','readiness','occupancy'])||
+    !['configure','qr','readiness','occupancy'].every(key=>typeof permissions[key]==='boolean')||
+    permissions.configure!==permissions.qr||
+    (permissions.configure&&(!permissions.readiness||!permissions.occupancy))||
+    permissions.readiness!==permissions.occupancy)
   throw Error('m3_tables_projection_unavailable');
  const items=page.items.map(value=>{
   if(!exact(value,TABLE_PAGE_FIELDS)||!UUID.test(value.tableId))
@@ -38,15 +45,9 @@ const projectTablesPage=page=>{
   const {tableId,...fields}=value;
   return {id:tableId,...fields};
  });
- return {version:2,items,nextAfterNumber:page.nextAfterNumber};
-};
-const verifiedTablePermissions=request=>{
- const role=request.verifiedStaff?.role;
- if(!['admin','root','waiter'].includes(role))throw Error('m3_management_forbidden');
- // ROOT can inspect the administrative projection but cannot own routine
- // configuration writes; DB revalidates the unique owner ADMIN.
- const administrative=role==='admin';
- return {configure:administrative,qr:administrative,readiness:true,occupancy:true};
+ return {version:2,items,nextAfterNumber:page.nextAfterNumber,
+  permissions:{configure:permissions.configure,qr:permissions.qr,
+   readiness:permissions.readiness,occupancy:permissions.occupancy}};
 };
 const failure=(reply,error,kind,observeFailure)=>{
  const code=typeof error?.message==='string'?error.message:'';
@@ -86,7 +87,7 @@ export function registerM3ManagementHttp(app,{forRoles,tables,catalog,finance=nu
    const page=projectTablesPage(await tables.read(verified(request),{
     afterNumber:query.afterNumber===undefined?0:Number(query.afterNumber),
     limit:query.limit===undefined?50:Number(query.limit)}));
-   return reply.code(200).send({...page,permissions:verifiedTablePermissions(request)});
+   return reply.code(200).send(page);
   }
   catch(error){return failure(reply,error,'tables',observeFailure);}
  });

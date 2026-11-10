@@ -123,7 +123,8 @@ test('M3 HTTP accepts hardened Fastify pagination and rejects ambiguous query in
   request.verifiedIdentity={userId:actorId};
   request.verifiedStaff={userId:actorId,role:'admin'};
  },tables:{read:async(_verified,page)=>{reads.push(page);
-  return {version:2,items:[],nextAfterNumber:null};}},catalog:{},
+  return {version:2,items:[],nextAfterNumber:null,
+   permissions:{configure:true,qr:true,readiness:true,occupancy:true}};}},catalog:{},
  qr:{secret:'m3_http_test_secret_at_least_32_bytes',origin:'https://sabora.example',
   restaurantCode:'SABORA_CI'}});
  try{
