@@ -201,3 +201,23 @@ _El documento fija una fotografía reproducible; antes de cualquier actuación d
 **CI y riesgos delimitados:** seis workflows del SHA `d49ee05b103620ce30cfc976fa62182cc9d954df` del PR apuntando a `main` dieron `SUCCESS` (§9). Un cotejo de árboles entre ese SHA probado y el HEAD exacto fusionado `9c03ed0` reveló solo **cinco rutas de documentación modificadas**, sin cambios en aplicaciones, SQL, workflows ni tests. Esto respalda funcionalmente el contenido integrado, pero **no es una ejecución CI del merge commit**; no atribuir a este SHA prueba inexistente. La aprobación independiente seguía ausente y se omitió por decisión consciente del propietario, no porque el repositorio la hubiera satisfecho.
 
 **Hito realmente alcanzado:** **integración de desarrollo a main COMPLETADA**; **saneamiento administrativo de 41 PR NO FINALIZADO**; activación de producción y verificación visual definitiva pendientes por separado. `main` sigue sin protecciones GitHub según lectura previa; definirlas es decisión posterior. No se ejecutaron migrations de Supabase operativo ni cambios en Docker/VPS/Fleetia. Esta actualización documental posterior al merge no crea una nueva validación de runtime.
+
+## 12. Post-merge: comprobación de los 32 PR ancestrales (S34-12, 10-11-2026)
+
+**Comprobación específica, no inferencia:** tras [fusionar #54](https://github.com/jdlc86/CartaViva/pull/54), se reconsultaron GitHub y **los HEAD actuales de los 32 PR que permanecen abiertos** en el conjunto previamente clasificado como ancestro. Para cada PR se invocó `compare_commits` con **base = SHA exacto del HEAD de ese PR** y **head = `a91867fbacb9319d16496b04a5fe237739c31837`** (`main` tras integración). Todos devolvieron `status=ahead`, `behind_by=0` y **`merge_base_commit.sha = HEAD del propio PR`**, lo que acredita que **32/32 HEAD son ancestros del merge de `main`**, incluidos #52 y #53. Esta comprobación no altera ningún PR ni depende del truncamiento de archivos del diff.
+
+| Grupo | Números verificados individualmente | Resultado |
+| --- | --- | --- |
+| Base y primeras funciones | #2, #7, #10, #11, #12, #13, #15, #16 | **8/8** `HEAD ⊆ main@a91867fb` |
+| H3 y cliente | #23, #24, #25, #26, #27, #28, #29, #30 | **8/8** |
+| H6/sala/cocina | #32, #34, #36, #38, #41, #42, #43, #45, #46 | **9/9** |
+| M2/M3/gestión y gobierno | #47, #48, #49, #50, #51, #52, #53 | **7/7** |
+| **Total** | **32 PR abiertos con HEAD incorporado a main** | **32/32** |
+
+Además, **#1 fue marcado como merged automáticamente por GitHub**, y [#54](https://github.com/jdlc86/CartaViva/pull/54) `merged=true`. No quedan pendientes otras ramas **ancestrales con commits exclusivos** según la consulta; por contra, los nueve PR #4/#5/#8/#17/#18–#22 permanecen clasificados como **divergentes**, no se atribuyen a este recuento ni se recomienda cerrarlos por simple genealogía.
+
+**Disposición preparada:** los **32 PR anteriores son administrativamente redundantes como propuestas de integración del código que YA está en `main`**, y podrían cerrarse **sin hacer merges individuales, sin borrar ramas y sin perder sus commits**, cada uno enlazando a la integración `a91867fb`. Queda pendiente la **autorización específica para ejecutar cierres**; aceptar el merge de #54 no se reinterpretó como permiso para cerrar indiscriminadamente PR secundarios. El procedimiento preferente es registrar una sola disposición auditable de los 32, verificar su estado y preservar los nueve divergentes hasta conciliación semántica formal.
+
+**CI posterior a la fusión:** GitHub inició automáticamente [Sabora CI sobre `main@a91867fb`](https://github.com/jdlc86/CartaViva/actions/runs/42842459366) con evento `push`. En la consulta de este hito figuraba `status=in_progress` y `conclusion=null`, por lo que **NO se declara éxito, fallo ni aceptación hasta que termine**. La CI anterior (6/6) pertenece a `d49ee05b`, no a este merge commit. Las adendas `[skip ci]` de documentación en `main` son posteriores, con SHA propio y sin nuevas pruebas de runtime.
+
+**Estado de saneamiento:** integración completa en `main` y genealogía de 32/32 verificadas; 41 PR aún abiertos (32 redundantes genealógicos + 9 divergentes); **cierre administrativo pendiente**, **sin despliegue, sin migraciones a Supabase operativo ni intervención en Fleetia/VPS**.
