@@ -1,0 +1,38 @@
+# Sabora / CartaViva — continuidad operativa de la sesión 33 (2026-11-10)
+
+> **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA.** La fuente de verdad son los contratos normativos versionados en GitHub. Este documento no equivale a aceptación visual, revisión independiente, autorización para cerrar o fusionar PR, ni permiso de despliegue.
+>
+> **Tablero vivo obligatorio:** [SABORA_LIVE_PROJECT_TRACKER.md](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). **Matriz funcional/UI:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json). **Sesión anterior:** [continuidad 32](SESSION_32_HANDOFF_2026-11-09.md). **Plan vivo S1–S4:** [saneamiento sesión 32](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md). **Dictamen individual S4:** [47 PR](../reviews/SABORA_S32_S4_VERIFIED_PR_DISPOSITION_2026-11-10.md).
+>
+> **Seguimiento específico de sesión 33:** [SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md](../reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md) (crear/actualizar únicamente con hallazgos contrastados). No convertir propuestas en ejecución.
+
+## 1. Punto de partida verificado (2026-11-10)
+
+- **Repositorio exclusivo:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva); PR [#54 Draft](https://github.com/jdlc86/CartaViva/pull/54), rama `integration/sabora-s32-admin-waiter-sanitization-20261109`, base `feat/sabora-cv014-waiter-calls-integral-20261109` (#53), **no `main`**. HEAD antes del documento: `082f502f826bad114f2390c76c8f3f2d83e19e13`.
+- Consulta GitHub directa: **47 PR abiertos y 47 Draft**; [#54 sin revisiones](https://github.com/jdlc86/CartaViva/pull/54), `main` en `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. Los datos son un corte, no una garantía futura.
+- **S1:** genealogía comprobada; paridad histórica total de cinco familias de código (#4/#5/#8/#17/#22) no acreditada. **S2:** #52+#53 integrados en candidato aislado #54. **S3 ampliado:** 6/6 workflows GitHub Actions SUCCESS en el último SHA **funcional** `5c31354e2fcededa4e3a78a33c2582cde6f2f742`, incluidos PG17 desechable, JWT/HMAC, un Fastify común con titularidad ADMIN y llamada a camarero y dos PWA Chromium. El conjunto de todos los opt-in de `createM2RestaurantCandidate` no queda certificado.
+- **S4:** existe dictamen motivado **47/47**, pero no se ha ejecutado ningún cierre, merge, retargeting, rebase o borrado de PR; ninguno se presume autorizado. Cuatro divergencias documentales (#14/#31/#40/#44) tienen preservación histórica verificada. Las ramas ancestrales de #54 **no están en `main`**.
+- **Riesgo ya rectificado:** el selector de categorías fijo pertenece a `CatalogReadView` legado; no demostrar un fallo del M3 autenticado por la mera existencia de ese componente. M3 conectado usa categorías dinámicas. Falta comprobar evidencia efectiva end-to-end del requisito de categorías adicionales con identidad y permisos reales.
+- **Puertas independientes NO-GO:** revisión independiente de #52/#54 (sin `APPROVED` de tercero), aceptación humana visual F28/R09, Stripe sandbox remoto M4, seguridad/operación/recuperación M6, CV-013 atribución y privacidad, reservas CV-014 sin política normativa completa, piloto y producción. **No desplegar** ni intervenir en Supabase operativo/VPS/Fleetia.
+
+## 2. Objetivo de sesión 33: culminar la fase técnica verificable de saneamiento
+
+1. **Evitar repetir S1–S3 ya superados:** reutilizar genealogía, logs CI, informe semántico y pruebas. Verificar deltas reales pendientes de #4/#5/#8/#17/#22 y cadena H3 (#18–#21) contra contratos y candidato #54; distinguir conservación de ruta de equivalencia funcional.
+2. **M3 catálogo:** confirmar el circuito autenticado efectivamente montado, las categorías configurables, persistencia SQL, autorización, proyección y recorrido UI. Reutilizar pruebas integradoras reales; si falta evidencia, declarar límite y diseñar una única verificación integrada representativa, no micropruebas.
+3. **S4 administrativo:** actualizar expediente de disposiciones 47/47 solo con resultados verificados y emitir una **propuesta concreta y reversible** de acciones, dejando separados casos documentales, candidatos ancestrales, divergentes y #54. **No ejecutar cierres o fusiones de PR** sin autorización expresa específica.
+4. **Gobierno de integración:** preparar revisión independiente y decisión explícita para `main`, incluida estrategia de rollback y cuidado con la rama no protegida, sin modificar protección ni desplegar.
+5. Al cerrar **hitos significativos**, actualizar esta continuidad, el expediente S33 y el tablero vivo; registrar SHA y evidencia exacta, sin imputar CI a commits `[skip ci]`.
+
+## 3. Normativa obligatoria y límites
+
+- [Requisitos funcionales](../REQUISITOS_FUNCIONALES.md), [contrato funcional consolidado](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [contrato de diseño](../DESIGN_SYSTEM_CONTRACT.md), [auditoría visual](../design/APPROVED_VISUAL_STYLE_AUDIT_V1.md), [matriz funcional/UI](../design/FUNCTIONAL_UI_COVERAGE.json).
+- [Contrato ROOT/ADMIN escritor único](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md) y [operación de titularidad](../security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md): solicitud al titular actual resuelta por servidor; no inventar selección de destinatario.
+- **Un restaurante Sabora.** Dos PWA independientes. Bloques funcionales completos y pruebas integradoras; focales solo para diagnóstico o un requisito crítico.
+- No tocar recursos ajenos: **Fleetia es independiente**, incluso cuando comparte VPS. Ningún despliegue, reinicio, parada, borrado o migración operativa por inferencia de esta continuidad.
+- Distinguir `implementado`, `probado`, `validado por persona independiente` y `autorizado para producción` en todos los informes.
+
+## 4. Registro vivo de hitos sesión 33
+
+**Apertura documental:** sesión 33 creada sobre la misma rama de trabajo del PR #54 para evitar multiplicar PR. En este punto no hay cambios funcionales ni nuevas pruebas. Estado S4: **en análisis, sin actuaciones administrativas autorizadas**.
+
+_Añadir aquí solo cierres de hitos con evidencia verificable. No sobrescribir el estado histórico de sesión 32._
