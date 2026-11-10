@@ -1,0 +1,72 @@
+name: Sabora functional UI coverage and deferred visual acceptance
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number for final visual acceptance only'
+        required: true
+        type: string
+      base_sha:
+        description: 'Immutable 40-char PR base SHA'
+        required: true
+        type: string
+      head_sha:
+        description: 'Immutable 40-char PR head SHA'
+        required: true
+        type: string
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+jobs:
+  functional-ui:
+    name: functional-ui-gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run integration regression of feature-to-UI coverage
+        run: node --test tests/functional-ui-coverage-gate.test.mjs
+      - name: Verify candidate controls, API paths, and integration evidence; list pending
+        env:
+          FUNCTIONAL_UI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/functional-ui-coverage-gate.mjs
+  visual-final:
+    name: visual-final-acceptance-gate
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject incomplete functional UI before final visual acceptance
+        run: |
+          node --test tests/functional-ui-coverage-gate.test.mjs
+          node scripts/ci/functional-ui-coverage-gate.mjs --release
+      - name: Verify final exact baselines, same-SHA Chromium artifacts and owner approval
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VISUAL_PR_NUMBER: ${{ inputs.pr_number }}
+          VISUAL_BASE_SHA: ${{ inputs.base_sha }}
+          VISUAL_HEAD_SHA: ${{ inputs.head_sha }}
+        run: |
+          node --test tests/visual-contract-gate.test.mjs
+          node scripts/ci/visual-contract-gate.mjs

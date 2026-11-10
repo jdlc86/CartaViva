@@ -1,0 +1,292 @@
+import React, {useEffect, useRef, useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
+import type {AdminCatalogGateway} from './catalog-read-model';
+import type {OrderOperationsGateway} from './order-operations-gateway.js';
+import {createAuthenticatedOrderOperationsGateway} from './order-operations-authenticated-gateway.js';
+import {createManagementSessionFence} from './management-session-fence.js';
+import {createAuthenticatedOwnershipGovernanceGateway,type OwnershipGovernanceGateway} from './ownership-governance-gateway.js';
+import type {StaffManagementGateway} from './staff-management-gateway.js';
+import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
+import {Icon, type IconName} from './components/Icon';
+import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
+import type {AdminTablesGateway} from './tables-read-model';
+import type {M3CatalogGateway} from './m3-catalog-management-model.js';
+import {createM3AuthenticatedManagementGateway,type M3AuthenticatedManagementGateway} from './m3-authenticated-management-gateway.js';
+import {CatalogView} from './views/CatalogView';
+import {OrdersView} from './views/OrdersView';
+import {CashView} from './views/CashView';
+import {SummaryView} from './views/SummaryView';
+import {FinanceDashboardView} from './views/FinanceDashboardView';
+import {ConfigurationView} from './views/ConfigurationView';
+import {TablesView} from './views/TablesView';
+import type {TableChangeQueueGateway} from './views/TableChangeRequestsPanel';
+import {TeamView} from './views/TeamView';
+import {registerManagementServiceWorker} from './pwa';
+import './style.css';
+
+const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string; icon: IconName}> = [
+  {id:'resumen', label: 'Resumen', detail: 'Estado general', icon: 'overview'},
+  {id:'catalogo', label: 'Catálogo', detail: 'Carta e imágenes', icon: 'catalog'},
+  {id:'mesas', label: 'Mesas y QR', detail: 'Accesos de mesa', icon: 'tables'},
+  {id:'comandas', label: 'Comandas', detail: 'Cocina y sala', icon: 'orders'},
+  {id:'caja', label: 'Caja', detail: 'Cobros y cuentas', icon: 'tables'},
+  {id:'configuracion', label:'Configuración',detail:'Comunicaciones y finanzas',icon:'overview'},
+  {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
+];
+
+export function ManagementApp({
+  tablesGateway,
+  tableChangeGateway,
+  catalogGateway,
+  catalogManagementGateway,
+  operationsGateway,
+  staffGateway,
+  staffDirectoryGateway,
+  financeGateway,
+  ownershipGateway,
+}: {
+  tablesGateway?: AdminTablesGateway;
+  tableChangeGateway?: TableChangeQueueGateway;
+  catalogGateway?: AdminCatalogGateway;
+  catalogManagementGateway?:M3CatalogGateway;
+  operationsGateway?: OrderOperationsGateway;
+  staffGateway?: StaffManagementGateway;
+  staffDirectoryGateway?: StaffDirectoryGateway;
+  financeGateway?: M3AuthenticatedManagementGateway;
+  ownershipGateway?: OwnershipGovernanceGateway;
+}) {
+  const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
+  const [financeAllowed,setFinanceAllowed]=useState(false);
+  const [commsAllowed,setCommsAllowed]=useState(false);
+  useEffect(()=>{
+   let active=true;
+   setFinanceAllowed(false);
+   if(financeGateway)void financeGateway.readFinancialDashboard({period:'today'})
+     .then(()=>{if(active)setFinanceAllowed(true);})
+     .catch(()=>{if(active)setFinanceAllowed(false);});
+   return()=>{active=false;};
+  },[financeGateway]);
+  useEffect(()=>{
+   let active=true;setCommsAllowed(false);
+   if(financeGateway)void financeGateway.readCommunications()
+     .then(()=>{if(active)setCommsAllowed(true);})
+     .catch(()=>{if(active)setCommsAllowed(false);});
+   return()=>{active=false;};
+  },[financeGateway]);
+  const contentRef = useRef<HTMLElement>(null);
+  const focusAfterNavigation = useRef(false);
+  const hasReadProjection = Boolean(tablesGateway || catalogGateway || catalogManagementGateway || staffDirectoryGateway);
+  const hasOperationalChannel = Boolean(operationsGateway);
+  const activeSection = sections.find((section) => section.id === area) ?? sections[0];
+
+  useEffect(() => {
+    const syncFromLocation = () => {
+      focusAfterNavigation.current = true;
+      setArea(parseManagementArea(window.location.hash));
+      window.scrollTo({top: 0, behavior: 'auto'});
+    };
+    window.addEventListener('popstate', syncFromLocation);
+    window.addEventListener('hashchange', syncFromLocation);
+    return () => {
+      window.removeEventListener('popstate', syncFromLocation);
+      window.removeEventListener('hashchange', syncFromLocation);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!focusAfterNavigation.current) return;
+    focusAfterNavigation.current = false;
+    const frame = window.requestAnimationFrame(() => contentRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [area]);
+
+  const selectArea = (nextArea: ManagementArea) => {
+    const nextHash = toManagementHash(nextArea);
+    if (window.location.hash !== nextHash) window.history.pushState(null, '', nextHash);
+    focusAfterNavigation.current = true;
+    setArea(nextArea);
+    window.scrollTo({top: 0, behavior: 'auto'});
+  };
+
+  const activeView = area === 'resumen' ? <SummaryView/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
+    : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
+    : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
+    : area === 'caja' ? <CashView gateway={operationsGateway}/>
+    : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
+        financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway}/>;
+
+  return (
+    <div className="management-shell">
+      <header className="management-header">
+        <button className="brand-lockup brand-lockup--button" type="button" aria-label="Ir al resumen" onClick={() => selectArea('resumen')}>
+          <img src={`${import.meta.env.BASE_URL}sabora-logo.svg`} alt="Sabora by Allaiso"/>
+          <span className="brand-lockup__copy"><span>Gestión</span><small>Un restaurante · Una instalación</small></span>
+        </button>
+        <div className="header-status">
+          <span className="status-dot" aria-hidden="true"/>
+          <span>{hasOperationalChannel ? 'Canal de cocina y sala conectado'
+            : hasReadProjection ? 'Proyecciones en solo lectura' : 'Sin acceso a datos'}</span>
+          <strong>{hasOperationalChannel ? 'OPERACIÓN RESTRINGIDA'
+            : hasReadProjection ? 'LECTURA PARCIAL' : 'NO OPERATIVA'}</strong>
+        </div>
+      </header>
+
+      <div className="management-layout">
+        <aside className="management-sidebar">
+          <div className="sidebar-heading">
+            <span className="eyebrow">Espacio de trabajo</span>
+            <strong>Administración</strong>
+          </div>
+          <nav className="management-nav" aria-label="Áreas de gestión">
+            {sections.filter(section=>section.id!=='configuracion'||financeAllowed||commsAllowed).map((section) => (
+              <a
+                key={section.id}
+                className={area === section.id ? 'management-tab management-tab--active' : 'management-tab'}
+                aria-current={area === section.id ? 'page' : undefined}
+                href={toManagementHash(section.id)}
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  selectArea(section.id);
+                }}
+              >
+                <span className="management-tab__icon"><Icon name={section.icon} size={20}/></span>
+                <span><strong>{section.label}</strong><small>{section.detail}</small></span>
+                <Icon name="chevron" size={17}/>
+              </a>
+            ))}
+          </nav>
+          <div className="sidebar-security">
+            <Icon name="lock" size={19}/>
+            <p><strong>{hasOperationalChannel ? 'Canal operativo limitado por rol.' : 'Acceso administrativo no habilitado.'}</strong>
+              <span>{hasOperationalChannel
+                ? 'Solo preparación, aviso de recogida e historial autorizados.'
+                : 'Las acciones requieren sesión, permisos y contratos backend.'}</span></p>
+          </div>
+        </aside>
+
+        <main className="management-main">
+          <span className="visually-hidden" aria-live="polite">Área activa: {activeSection.label}</span>
+          <section
+            aria-label={`Área ${activeSection.label}`}
+            className="management-detail"
+            ref={contentRef}
+            tabIndex={-1}
+          >
+            {activeView}
+          </section>
+        </main>
+      </div>
+
+      <footer className="management-footer">
+        <span>SABORA · Una experiencia CartaViva</span>
+        <span>{hasOperationalChannel
+          ? 'Canal restringido · Entrega y cancelación bloqueadas'
+          : 'Modo de diseño seguro · Sin operaciones conectadas'}</span>
+      </footer>
+    </div>
+  );
+}
+
+// An authenticated host must explicitly mount this application after verifying
+// staff identity. The default preview never reads browser credentials.
+let managementRoot: ReturnType<typeof createRoot> | null = null;
+let managementElement: HTMLElement | null = null;
+const managementSessionFence = createManagementSessionFence();
+let managementRenderGeneration = 0;
+
+function renderManagement(
+  element: HTMLElement,
+  gateway?: OrderOperationsGateway,
+  tableChangeGateway?: TableChangeQueueGateway,
+  managementGateway?:M3AuthenticatedManagementGateway,
+  ownershipGateway?:OwnershipGovernanceGateway,
+) {
+  if (managementRoot && managementElement !== element) {
+    throw Error('management_root_already_mounted');
+  }
+  if (!managementRoot) {
+    managementRoot = createRoot(element);
+    managementElement = element;
+  }
+  // Force a new component tree on every identity transition: no previous
+  // employee's board, history, incident draft or SSE state may survive.
+  const key = ++managementRenderGeneration;
+  flushSync(() => managementRoot!.render(
+    <React.StrictMode><ManagementApp key={key} operationsGateway={gateway}
+      tableChangeGateway={tableChangeGateway} tablesGateway={managementGateway}
+      catalogManagementGateway={managementGateway} financeGateway={managementGateway}
+      ownershipGateway={ownershipGateway}/></React.StrictMode>,
+  ));
+}
+
+export function mountAuthenticatedManagementApp({
+  element,
+  getAccessToken,
+  fetchImpl,
+  reconnectDelayMs,
+  enableTableChangeQueue = false,
+  enableM3Management = false,
+  enableWaiterCalls = false,
+  enableOwnershipGovernance = false,
+}: {
+  element: HTMLElement;
+  getAccessToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+  reconnectDelayMs?: number;
+  /** Opt-in only after the server's six isolated SQL logins pass preflight. */
+  enableTableChangeQueue?: boolean;
+  /** Opt-in only after both M3 SQL capability preflights succeed. */
+  enableM3Management?:boolean;
+  /** Opt-in only after isolated ownership runtime/SQL preflight succeeds. */
+  enableOwnershipGovernance?:boolean;
+  /** Only after waiter-call SQL identity preflight succeeds. */
+  enableWaiterCalls?:boolean;
+}) {
+  if (!(element instanceof HTMLElement) || typeof getAccessToken !== 'function') {
+    throw Error('invalid_management_bootstrap');
+  }
+  const operationsGateway = createAuthenticatedOrderOperationsGateway({
+    getAccessToken, fetchImpl, reconnectDelayMs, enableWaiterCalls,
+  });
+  const m3Gateway=enableM3Management?createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl}):undefined;
+  const ownershipGateway=enableOwnershipGovernance?createAuthenticatedOwnershipGovernanceGateway({getAccessToken,fetchImpl}):undefined;
+  if (managementRoot && managementElement !== element) {
+    operationsGateway.revoke();
+    m3Gateway?.revoke();
+    ownershipGateway?.revoke();
+    throw Error('management_root_already_mounted');
+  }
+  // All capability gateways belong to one verified employee session.
+  // Replacement revokes each of them, even when the old disposer is late.
+  const sessionChannel={revoke(){
+    operationsGateway.revoke();
+    m3Gateway?.revoke();
+    ownershipGateway?.revoke();
+  }};
+  const disposeSession = managementSessionFence.replace(sessionChannel);
+  // The default preview and authenticated operation mount keep the queue
+  // disconnected; a verified B3 host must explicitly enable its gateway.
+  const queueGateway: TableChangeQueueGateway | undefined = enableTableChangeQueue
+    ? {listPendingTableChanges: operationsGateway.listPendingTableChanges,
+       decideTableChange: operationsGateway.decideTableChange}
+    : undefined;
+  renderManagement(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway);
+  let disposed = false;
+  return () => {
+    if (disposed) return;
+    disposed = true;
+    const current = managementSessionFence.isCurrent(sessionChannel);
+    disposeSession();
+    if (current && managementElement === element) renderManagement(element);
+  };
+}
+
+if (typeof document !== 'undefined') {
+  const element = document.getElementById('root');
+  if (element) renderManagement(element);
+}
+registerManagementServiceWorker();

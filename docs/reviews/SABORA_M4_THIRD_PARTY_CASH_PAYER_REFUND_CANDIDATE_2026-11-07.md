@@ -1,0 +1,51 @@
+# Sabora M4 — candidato integrado de pago presencial por tercero y devolución al pagador original (07-11-2026)
+
+> **Estado a fecha de este commit: IMPLEMENTADO EN RAMA CANDIDATA, PRUEBAS ECONÓMICAS PG17 EN EJECUCIÓN, NO VALIDADO FUNCIONALMENTE, PRODUCCIÓN NO-GO.** Este informe no sustituye decisiones funcionales ni declara pagos reales. La referencia normativa sigue siendo [SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), en particular §§ «Cancelación y ajuste económico», «Pagos», «Seguridad y conciliación», «Sesiones QR» y pruebas de aceptación 1, 5, 11, 18. Es un único restaurante; nunca se han usado Fleetia, VPS, Supabase operativo ni Stripe externo para este bloque.
+
+## 1. Qué se implementó realmente
+
+- **PostgreSQL 17, nueva migración candidata única:** [20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql](../../supabase/migrations/20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql). Cinco tablas separadas con FORCE RLS, propiedad NOLOGIN, revocación de SQL directo al navegador y roles runtime, grants EXECUTE solo para las funciones necesarias: intención de pagador, asignación por ronda/cuenta, registro de financiación con vínculo al recibo original, prueba de identidad para devolución y devolución al pagador original. Estados de intención `pending/paid`; no se da por pagada la solicitud antes de recibir efectivo.
+- **Frontera de cuenta:** solo se ofrecen rondas de terceros de importe positivo, modalidad ya fijada `pay_at_end`, bajo misma mesa/sesión activa y sin liquidación previa ambigua ni incidencia pendiente. Es una restricción técnica deliberadamente **fail-closed** en este candidato, no una modificación de la política funcional global ni un pago Stripe. La selección admite hasta diez rondas, exactamente el importe comprobado por servidor; no acepta inventar porcentajes, métodos o deuda desde el navegador.
+- **Doble cobro:** locks transaccionales de cuentas, comparación server-side de deuda, unicidad de `round_id` financiado y de la clave idempotente del pagador y acción de personal. Un solo acto presencial puede imputarse a varias cuentas, pero cada recibo se registra en la cuenta beneficiaria correcta; la identidad del pagador queda vinculada a todas las asignaciones por la intención.
+- **Devolución:** la función económica H6 original se conserva para rondas ordinarias; se trata por separado una ronda pagada por tercero para evitar usar el saldo de pedidos posteriores del beneficiario como sustituto del importe a devolver. La vía histórica `refundCash` queda **bloqueada** para estas rondas sin atribución. El pagador original accede con su sesión a una prueba aleatoria de duración limitada; personal HMAC autorizado verifica código e incidencia antes de registrar la entrega presencial. Se conserva la referencia al pagador, intención, asignación, incidencia, recibo y operador.
+- **Notificación y cuentas:** los pagos confirmados dejan evento durable al beneficiario en el destino operativo actual, sin cambiar autor de consumo, dueño de cuenta ni cerrar automáticamente la cuenta. La devolución es otra operación append-only; no se reescriben los recibos históricos.
+
+## 2. Integración API y las dos PWA
+
+- [Repositorio cliente/operaciones](../../apps/api/src/third-party-cash-repository.mjs): RPCs exactas bajo los logins restringidos preexistentes.
+- [Rutas HTTP](../../apps/api/src/third-party-cash-http.mjs): cliente autenticado con cookie/same-origin para consultar las deudas seleccionables, crear intención con consentimiento y consultar/solicitar prueba de devolución; personal activo (waiter/admin/root) con HMAC para revisar intención, registrar recepción física y devolución.
+- [Composición H6 opt-in](../../apps/api/src/h6-candidate-composition.mjs) y [preflight](../../apps/api/src/h6-sql-preflight.mjs): solo dentro del runtime aislado autorizado, sin activar `apps/api/src/server.mjs` de producción ni nuevos logins operativos.
+- [PWA cliente](../../apps/client/src/components/ThirdPartyCashPanel.tsx) y [transporte](../../apps/client/src/customer-flow-transport.ts): selección explícita sin importes manuales, sin autorización automática por QR, con aviso «intención NO cobrada», conservación de la misma clave ante incertidumbre y prueba temporal del pagador para devolución.
+- [PWA gestión](../../apps/management/src/views/ThirdPartyCashDesk.tsx), [Caja](../../apps/management/src/views/CashView.tsx) y [gateway](../../apps/management/src/order-operations-gateway.js): recibo físico atestiguado por personal, reintento con correlación original y acreditación de devolución mediante prueba del pagador; separado del cobro ordinario.
+
+## 3. Evidencia y alcance exactos de prueba
+
+Se ha añadido **un recorrido integrador** en [`scripts/ci/h6-postgres17.test.mjs`](../../scripts/ci/h6-postgres17.test.mjs) sobre PostgreSQL17 real, Fastify, autenticaciones de cliente y HMAC de personal con SQL de mínimos privilegios. Escenario A paga rondas completas de B y C, con consentimiento, selección, intent idempotente, cobro concurrente, B vuelve a pedir, cancelación parcial de consumo financiado por A, denegación del reembolso ordinario sin prueba, denegación de prueba a B, devolución confirmada a A sin deducir la nueva deuda de B, duplicación impedida y eventos a beneficiarios. No son pruebas unitarias sueltas; forma parte del gate H6 existente.
+
+- **Confirmado técnicamente hasta ahora:** H6 Block 1 (normas/contratos), H6 Block 2A (migraciones PG17/RLS/ACL) en ejecución anterior de este candidato; compilación PWA cliente/gestión e instalabilidad en verde en SHA funcional `9a7490d411af9bf79de1f34f044643a72b60aef2`.
+- **En curso, no afirmar PASS aún:** [H6 CI](https://github.com/jdlc86/CartaViva/actions/runs/42392241313) y [bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42392241279) de ese SHA. Las demás comprobaciones: [cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241283), [gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241285), [instalabilidad](https://github.com/jdlc86/CartaViva/actions/runs/42392241269).
+- **No ejecutado/validado:** cobro real de terceros Stripe sandbox, transferencia bancaria real, entrega física de dinero verificable por CI, aprobación visual humana ni operación sobre infraestructura activa. El registro presencial acredita una **atestación del personal** y una prueba emitida por la identidad del pagador, no una entrega física comprobable mediante software.
+
+## 4. Pendientes sin reinterpretar normativa
+
+**F20/R03–R05, CV-008/CV-009 y M4 permanecen PARCIAL/BLOQUEADO; M6 NO-GO.** Este candidato cubre la variante presencial bajo las restricciones técnicas indicadas, **no** el caso Stripe de pago de varias cuentas con un cargo y devolución al método original, las propinas ni toda la aceptación humana F28/R09. No se simula un proveedor externo para declararlo válido. Faltan consolidar el resultado de la aceptación económica PG17, comprobar por revisión que el flujo visual sigue la interfaz aprobada y cerrar el resto del circuito con las capacidades reales del proveedor autorizado.
+
+## 5. Huella de actualización de la sesión 28
+
+Hito normativo previo: [revisión de carencias M4](SABORA_M4_TIPS_THIRD_PARTY_PAYMENT_INTEGRAL_BOUNDARY_2026-11-07.md) que corresponde al SHA `4c7778d0` **anterior a este código**. No presentar aquel diagnóstico estático histórico como estado actual. [Continuidad sesión 28](../handoffs/SESSION_28_HANDOFF_2026-11-07.md) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Mantener estados diferenciados: código incorporado ≠ prueba ejecutada ≠ prueba aprobada ≠ función aceptada.
+
+## 6. Cierre de aceptación técnica del candidato en el SHA funcional (07-11-2026)
+
+**Nuevo estado del SUBALCANCE DE EFECTIVO POR TERCERO: IMPLEMENTADO Y VALIDADO TÉCNICAMENTE EN CANDIDATO AISLADO.** SHA funcional inalterado `9a7490d411af9bf79de1f34f044643a72b60aef2` (los commits posteriores de este apartado son **solo documentación [skip ci]**). Evidencia contemporánea **5/5 workflows SUCCESS**:
+
+| Workflow en este SHA | Resultado verificable |
+| --- | --- |
+| [Sabora CI / H6](https://github.com/jdlc86/CartaViva/actions/runs/42392241313) | **SUCCESS**; bloque 1 contratos PASS; bloque 2A migraciones/roles/ACL PG17 PASS; bloque 2B real PG17/HMAC/concurrencia/Chromium PASS. Incluye el recorrido M4 integrado en `h6-postgres17.test.mjs` sin fallo. |
+| [Bootstrap Sabora lockfile](https://github.com/jdlc86/CartaViva/actions/runs/42392241279) | **SUCCESS**; Node **1351/1351**, PG17 **51/51**, demás etapas de migración y compatibilidad satisfactorias, sin base operativa. |
+| [Cliente Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241283) | **SUCCESS** (conformidad/smoke del cliente). |
+| [Gestión Chromium](https://github.com/jdlc86/CartaViva/actions/runs/42392241285) | **SUCCESS** (smoke visual automatizado de gestión). |
+| [PWA instalabilidad](https://github.com/jdlc86/CartaViva/actions/runs/42392241269) | **SUCCESS** de las dos aplicaciones. |
+
+**Qué permite afirmar:** el código SQL de autenticación del pagador, intención con consentimiento, imputaciones B/C, idempotencia de caja, cancelación posterior y devolución al pagador A se ejecutó bajo logins PostgreSQL restringidos y pasó el gate integrador PG17/Fastify. La migración, ACL y builds pasan. **Qué NO acredita:** revisión visual humana de las pantallas nuevas ni un clic Chromium completo del nuevo selector M4 específicamente; la entrega física de efectivo sigue siendo una atestación del personal; no hubo Stripe remoto, pago digital multi-cuenta ni reembolso bancario real. Por eso **F20/R03–R05, CV-008/CV-009 global y M4 siguen PARCIAL**; no declarar «pagos por terceros» globalmente cerrado. F28/R09 aceptación humana y M6 producción: **NO-GO**.
+
+No se ha hecho merge, release, despliegue, actualización de credenciales ni contacto con Fleetia, VPS, Stripe operativo o Supabase operativo.

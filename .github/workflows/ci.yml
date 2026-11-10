@@ -1,0 +1,102 @@
+name: Sabora CI
+on:
+  pull_request:
+  push:
+    branches: [main, integration/sabora-hito1-identity-staff]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require genuine pnpm lockfile
+        run: |
+          test -s pnpm-lock.yaml || {
+            echo 'ERROR: generate pnpm-lock.yaml using pnpm install before CI'
+            exit 1
+          }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require live tracker link in every continuity document
+        run: node scripts/ci/continuity-tracker-links-gate.mjs
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      # Consolidated entrypoint executes pnpm test and
+      # catalog-postgres17-node-driver-smoke.sh; the downstream functional
+      # validation command is executed separately in the production gate.
+      - name: H6 consolidated acceptance (contracts + disposable PG17 + Chromium)
+        env:
+          # One canonical CI execution observes the real 300-second grouping
+          # window; the bootstrap job runs its other full regressions without
+          # duplicating this five-minute wall-clock wait.
+          SABORA_CI_F21_FULL_WINDOW: 'true'
+        run: bash scripts/ci/h6-acceptance-gate.sh
+      - name: Publish consolidated H6 acceptance logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-h6-acceptance-logs
+          path: ${{ runner.temp }}/sabora-h6-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Publish Block 1 full-stack browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-block-01-full-stack-browser
+          path: ${{ runner.temp }}/sabora-block-01-browser/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Publish M3 real PG17 and Chromium journey screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-m3-pg17-two-pwa-browser
+          path: ${{ runner.temp }}/sabora-m3-browser-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Publish CV-014 real PG17 and two-PWA Chromium screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-cv014-communications-pg17-two-pwa
+          path: ${{ runner.temp }}/sabora-cv014-browser/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Build
+        run: pnpm build
+      - name: Gate production configuration, isolation and frontend artifacts
+        run: |
+          node scripts/ci/deployment-isolation-contract.mjs
+          node scripts/ci/operational-security-inventory.mjs
+          node scripts/ci/recovery-continuity-contract.mjs
+          node scripts/ci/functional-validation-contract.mjs
+          node scripts/ci/production-config-secrets-gate.mjs
+      - name: Validate Docker Compose
+        run: docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
+      - name: Build isolated Sabora API image
+        run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
+      - name: Smoke-test API container without host port or shared network
+        run: |
+          docker run --rm --network none --entrypoint node sabora-api:ci --check src/server.mjs
+          docker image inspect sabora-api:ci --format '{{.Config.User}}' | grep -Fx sabora
+      - name: Exercise live API health inside isolated container
+        run: |
+          id=$(docker run -d --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+            -e SABORA_API_HOST=127.0.0.1 -e SABORA_API_PORT=4100 -e SABORA_API_MODE=health-only sabora-api:ci)
+          trap 'docker rm -f "$id" >/dev/null 2>&1 || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec "$id" node -e "fetch('http://127.0.0.1:4100/health').then(async r => { const body=await r.json(); process.exit(r.ok && body.service==='sabora-api' ? 0 : 1) }).catch(()=>process.exit(1))"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$id"
+          exit 1

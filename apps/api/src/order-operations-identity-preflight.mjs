@@ -1,0 +1,357 @@
+// Explicit opt-in startup gate. Never provisions users, grants or connections.
+const ROLE_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+
+function validateRole(role) {
+  if (typeof role !== 'string' || !ROLE_NAME.test(role) ||
+      role === 'postgres' || role === 'anon' || role === 'authenticated' ||
+      role === 'service_role' || role === 'public') {
+    throw Error('invalid_order_operations_sql_identity');
+  }
+  return role;
+}
+
+async function inspect(pool, expectedRole, {
+  allowAuthorizedTransition = false,
+  allowAuthorizedReads = false,
+  allowStaffReader = false,
+  allowH6DeliveryBoard = false,
+} = {}) {
+  if (!pool || typeof pool.connect !== 'function') throw Error('invalid_order_operations_sql_pool');
+  const client = await pool.connect();
+  if (!client || typeof client.query !== 'function' || typeof client.release !== 'function') {
+    if (typeof client?.release === 'function') {
+      try { client.release(Error('invalid_order_operations_sql_client')); }
+      catch { /* Preserve malformed-client failure. */ }
+    }
+    throw Error('invalid_order_operations_sql_client');
+  }
+  let discard = null;
+  try {
+    const result = await client.query(
+      `SELECT current_user::text AS current_role,
+              session_user::text AS session_role,
+              role.rolsuper AS superuser,
+              role.rolbypassrls AS bypass_rls,
+              role.rolcanlogin AS can_login,
+              role.rolinherit AS inherits_roles,
+              role.rolcreaterole AS can_create_role,
+              role.rolcreatedb AS can_create_db,
+              role.rolreplication AS can_replicate,
+              role.rolconnlimit AS connection_limit,
+              role.rolvaliduntil AS password_valid_until,
+              has_schema_privilege(current_user, 'sabora', 'USAGE') AS schema_usage,
+              has_schema_privilege(current_user, 'sabora', 'CREATE') AS schema_create,
+              has_database_privilege(current_user, current_database(), 'CREATE') AS database_create,
+              (has_column_privilege(current_user, 'sabora.staff_members', 'user_id', 'SELECT')
+               AND has_column_privilege(current_user, 'sabora.staff_members', 'role', 'SELECT')
+               AND has_column_privilege(current_user, 'sabora.staff_members', 'state', 'SELECT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'SELECT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'INSERT')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'UPDATE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'DELETE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'TRUNCATE')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'REFERENCES')
+               AND NOT has_table_privilege(current_user, 'sabora.staff_members', 'TRIGGER')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'INSERT')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'UPDATE')
+               AND NOT has_any_column_privilege(current_user, 'sabora.staff_members', 'REFERENCES')
+               AND NOT EXISTS (
+                 SELECT 1 FROM pg_catalog.pg_attribute attribute
+                 WHERE attribute.attrelid = 'sabora.staff_members'::regclass
+                   AND attribute.attnum > 0 AND NOT attribute.attisdropped
+                   AND attribute.attname NOT IN ('user_id', 'role', 'state')
+                   AND has_column_privilege(current_user, 'sabora.staff_members', attribute.attname, 'SELECT')
+               )) AS staff_reader_exact_columns,
+
+              has_function_privilege(current_user,
+                'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)',
+                'EXECUTE') AS candidate_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)',
+                'EXECUTE') AS authorized_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)',
+                'EXECUTE') AS authorized_board_rpc_execute,
+              has_function_privilege(current_user,
+                'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)',
+                'EXECUTE') AS authorized_history_rpc_execute,
+              COALESCE(has_function_privilege(current_user,
+                to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'),
+                'EXECUTE'),false) AS h6_delivery_board_rpc_execute,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
+              ) AS h6_delivery_board_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
+              ) AS h6_delivery_board_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  to_regprocedure('sabora.read_order_operations_delivery_pickup_board_h6_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)')
+              ) AS h6_delivery_board_search_path_locked,
+              (SELECT count(*)::integer
+                 FROM unnest(ARRAY[
+                   'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure,
+                   'sabora.transition_order_line(uuid,uuid,text)'::regprocedure,
+                   'sabora.transition_order_status(uuid,uuid,text,text)'::regprocedure,
+                   'sabora.transition_table_ordering_candidate(uuid,uuid,text,timestamptz)'::regprocedure
+                 ]) unsafe_actor_rpc
+                WHERE has_function_privilege(current_user, unsafe_actor_rpc, 'EXECUTE')
+              ) AS unsafe_actor_rpc_execute,
+              (SELECT count(*)::integer FROM pg_catalog.pg_class resource
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relkind IN ('r','p','v','m','f')
+                  AND (has_table_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_table_privilege(current_user, resource.oid, 'INSERT')
+                    OR has_table_privilege(current_user, resource.oid, 'UPDATE')
+                    OR has_table_privilege(current_user, resource.oid, 'DELETE')
+                    OR has_table_privilege(current_user, resource.oid, 'TRUNCATE')
+                    OR has_table_privilege(current_user, resource.oid, 'REFERENCES')
+                    OR has_table_privilege(current_user, resource.oid, 'TRIGGER')
+                    OR has_any_column_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_any_column_privilege(current_user, resource.oid, 'INSERT')
+                    OR has_any_column_privilege(current_user, resource.oid, 'UPDATE')
+                    OR has_any_column_privilege(current_user, resource.oid, 'REFERENCES')))
+                AS accessible_private_tables,
+              (SELECT count(*)::integer FROM pg_catalog.pg_class resource
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relkind = 'S'
+                  AND (has_sequence_privilege(current_user, resource.oid, 'USAGE')
+                    OR has_sequence_privilege(current_user, resource.oid, 'SELECT')
+                    OR has_sequence_privilege(current_user, resource.oid, 'UPDATE')))
+                AS accessible_private_sequences,
+              (SELECT count(*)::integer FROM pg_catalog.pg_proc routine
+                JOIN pg_catalog.pg_namespace ns ON ns.oid = routine.pronamespace
+                WHERE ns.nspname = 'sabora'
+                  AND routine.prosecdef
+                  AND has_function_privilege(current_user, routine.oid, 'EXECUTE'))
+                AS accessible_private_definer_routines,
+              (SELECT NOT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_idempotent_candidate(uuid,uuid,text,text)'::regprocedure
+              ) AS candidate_is_invoker,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.transition_order_line_authorized_candidate(text,text,uuid,uuid,text,text,bigint,bigint,text)'::regprocedure
+              ) AS authorized_search_path_locked,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_board_authorized_candidate(text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_board_search_path_locked,
+              (SELECT routine.prosecdef
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_is_definer,
+              (SELECT owner.rolname
+                 FROM pg_catalog.pg_proc routine
+                 JOIN pg_catalog.pg_roles owner ON owner.oid = routine.proowner
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_owner,
+              (SELECT routine.proconfig =
+                    ARRAY['search_path=pg_catalog, pg_temp']::text[]
+                 FROM pg_catalog.pg_proc routine
+                WHERE routine.oid =
+                  'sabora.read_order_operations_history_authorized_candidate(text,text,uuid,text,uuid,integer,bigint,bigint,text)'::regprocedure
+              ) AS authorized_history_search_path_locked,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_class resource
+                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relname = 'order_line_transition_requests'
+                  AND resource.relkind IN ('r','p')
+                  AND resource.relrowsecurity
+                  AND resource.relforcerowsecurity
+              ) AS forced_rls_transition_requests,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_class resource
+                 JOIN pg_catalog.pg_namespace ns ON ns.oid = resource.relnamespace
+                WHERE ns.nspname = 'sabora'
+                  AND resource.relname = 'order_operation_signing_keys'
+                  AND resource.relkind IN ('r','p')
+                  AND resource.relrowsecurity
+                  AND resource.relforcerowsecurity
+              ) AS forced_rls_signing_keys,
+              (SELECT owner.rolcanlogin = false
+                      AND owner.rolsuper = false
+                      AND owner.rolbypassrls = false
+                      AND owner.rolinherit = false
+                      AND owner.rolcreaterole = false
+                      AND owner.rolcreatedb = false
+                      AND owner.rolreplication = false
+                 FROM pg_catalog.pg_roles owner
+                WHERE owner.rolname = 'sabora_order_operations_fn_owner'
+              ) AS authorized_owner_is_sealed,
+              (SELECT count(*)::integer
+                 FROM pg_catalog.pg_auth_members membership
+                 JOIN pg_catalog.pg_roles owner
+                   ON owner.oid = membership.roleid
+                    OR owner.oid = membership.member
+                WHERE owner.rolname = 'sabora_order_operations_fn_owner'
+              ) AS authorized_owner_memberships,
+              EXISTS (
+                SELECT 1 FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.roleid = role.oid
+              ) AS has_role_grantees,
+              EXISTS (
+                SELECT 1 FROM pg_catalog.pg_auth_members membership
+                 WHERE membership.member = role.oid
+              ) AS has_role_memberships
+         FROM pg_catalog.pg_roles role
+        WHERE role.rolname = current_user`
+    );
+    if (!Array.isArray(result?.rows) || result.rows.length !== 1) {
+      throw Error('order_operations_sql_identity_rejected');
+    }
+    const row = result.rows[0];
+    if (row.current_role !== expectedRole || row.session_role !== expectedRole ||
+        row.superuser !== false || row.bypass_rls !== false || row.can_login !== true ||
+        row.inherits_roles !== false || row.can_create_role !== false ||
+        row.can_create_db !== false || row.can_replicate !== false ||
+        row.has_role_memberships !== false || row.has_role_grantees !== false ||
+        row.schema_usage !== true || row.schema_create !== false ||
+        row.database_create !== false ||
+        row.candidate_rpc_execute !== false ||
+        row.unsafe_actor_rpc_execute !== 0 ||
+        row.authorized_rpc_execute !== allowAuthorizedTransition ||
+        row.authorized_board_rpc_execute !== allowAuthorizedReads ||
+        row.authorized_history_rpc_execute !== allowAuthorizedReads ||
+        (allowH6DeliveryBoard && (
+          row.h6_delivery_board_rpc_execute !== true ||
+          row.h6_delivery_board_is_definer !== true ||
+          row.h6_delivery_board_owner !== 'sabora_order_operations_fn_owner' ||
+          row.h6_delivery_board_search_path_locked !== true)) ||
+        row.candidate_is_invoker !== true ||
+        row.authorized_is_definer !== true ||
+        row.authorized_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_search_path_locked !== true ||
+        row.authorized_board_is_definer !== true ||
+        row.authorized_board_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_board_search_path_locked !== true ||
+        row.authorized_history_is_definer !== true ||
+        row.authorized_history_owner !== 'sabora_order_operations_fn_owner' ||
+        row.authorized_history_search_path_locked !== true ||
+        row.authorized_owner_is_sealed !== true ||
+        row.authorized_owner_memberships !== 0 ||
+        row.forced_rls_transition_requests !== 1 ||
+        row.forced_rls_signing_keys !== 1 ||
+        !Number.isSafeInteger(row.accessible_private_tables) ||
+        row.accessible_private_tables !== (allowStaffReader ? 1 : 0) ||
+        (allowStaffReader && row.staff_reader_exact_columns !== true) ||
+        row.accessible_private_sequences !== 0 ||
+        !Number.isSafeInteger(row.accessible_private_sequences) ||
+        row.accessible_private_definer_routines !==
+          ((allowAuthorizedTransition ? 1 : 0) + (allowAuthorizedReads ? 2 : 0) +
+           (allowH6DeliveryBoard ? 1 : 0)) ||
+        !Number.isSafeInteger(row.accessible_private_definer_routines) ||
+        !Number.isSafeInteger(row.connection_limit) || row.connection_limit === 0 || row.connection_limit < -1 ||
+        (row.password_valid_until !== null &&
+          (!(row.password_valid_until instanceof Date) ||
+            !Number.isFinite(row.password_valid_until.getTime()) ||
+            row.password_valid_until.getTime() <= Date.now()))) {
+      throw Error('order_operations_sql_identity_rejected');
+    }
+    return Object.freeze({role: expectedRole});
+  } catch (error) {
+    discard = error;
+    throw error;
+  } finally {
+    try { client.release(discard); }
+    catch (releaseError) {
+      if (!discard) throw releaseError;
+      if (discard && typeof discard === 'object') {
+        try { discard.releaseError = releaseError; }
+        catch { /* Preserve immutable SQL errors. */ }
+      }
+    }
+  }
+}
+
+export async function preflightOrderOperationsIdentities({
+  staffPool, operationsPool, staffRole, operationsRole,
+} = {}) {
+  validateRole(staffRole);
+  validateRole(operationsRole);
+  if (staffRole === operationsRole || !staffPool || !operationsPool ||
+      staffPool === operationsPool) throw Error('invalid_order_operations_pool_isolation');
+  // Both roles must be separate, non-superuser, non-BYPASSRLS LOGIN identities.
+  // This is a prerequisite, not a replacement for explicit table grants/RLS.
+  const staff = await inspect(staffPool, staffRole);
+  const operations = await inspect(operationsPool, operationsRole);
+  return Object.freeze({staff, operations});
+}
+
+// Candidate-only positive gate for the mutation principal. It is deliberately
+// separate from route registration: board/history still have no approved SQL
+// read boundary, so the normal composition keeps requiring a fully closed
+// operations login and remains impossible to activate accidentally.
+export async function preflightOrderTransitionIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {allowAuthorizedTransition: true});
+}
+
+// Complete candidate gate for the operational principal. The LOGIN may execute
+// only the actor-bound transition, board and history wrappers and still has no
+// direct private relation, column, sequence, keyring or role privileges.
+export async function preflightOrderOperationsRuntimeIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {
+    allowAuthorizedTransition: true,
+    allowAuthorizedReads: true,
+  });
+}
+
+// Staff-only SQL gate for transition-only registration. Does not authorize
+// the mutation RPC and cannot substitute for staff HTTP cryptographic auth.
+export async function preflightOrderTransitionStaffIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {allowStaffReader: true});
+}
+
+// H6/B2 candidate is intentionally separate from the H4 gate. Runtime
+// registration must fail closed if the H6 function is missing, unsealed,
+// executable by an unexpected role or if any private table becomes readable.
+export async function preflightOrderOperationsH6DeliveryIdentity({pool, role} = {}) {
+  const expectedRole = validateRole(role);
+  return inspect(pool, expectedRole, {
+    allowAuthorizedTransition: true,
+    allowAuthorizedReads: true,
+    allowH6DeliveryBoard: true,
+  });
+}

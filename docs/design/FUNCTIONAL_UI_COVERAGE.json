@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Derivación operativa de NF/RF/DV y tablero vivo; nunca crea ni modifica requisitos",
+  "stage": "FUNCIONAL_PRIMERO",
+  "capabilities": [
+    {
+      "id": "CV-007-catalogo",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<ProductCard"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<CatalogView"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/m3-management-http.mjs",
+          "marker": "catalog"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "dynamic catalog"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/catalog-postgres17-driver-integration.test.mjs",
+          "marker": "PG17 catalog writer transaction persists first/grouped/late kitchen projections"
+        }
+      ],
+      "note": "Existencia y trazabilidad; el gate no reemplaza resultados de CI ni aceptación humana."
+    },
+    {
+      "id": "H6-caja-y-terceros",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<ThirdPartyCashPanel"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<CashView"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/third-party-cash-http.mjs",
+          "marker": "cash"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "third-party"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/h6-postgres17.test.mjs",
+          "marker": "third-party"
+        }
+      ],
+      "note": "Recorrido presencial candidato; no acreditar dinero físico, Stripe real ni aceptación global."
+    },
+    {
+      "id": "H6-checkout",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<CheckoutPanel"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/h6-customer-payment-flow.mjs",
+          "marker": "payment"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "apps/client/e2e/client-premium.spec.ts",
+          "marker": "H6 customer"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/h6-postgres17.test.mjs",
+          "marker": "payment"
+        }
+      ],
+      "note": "Stripe remoto/Elements no acreditados; no elevar a aceptación."
+    },
+    {
+      "id": "CV-014-comunicaciones-anuncios",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "<CommunicationsBar locale={locale}/>"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/main.tsx",
+          "marker": "<ConfigurationView gateway={financeGateway??null}"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/m5-communications.mjs",
+          "marker": "registerM5CommunicationsHttp"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "browser-client",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "await customer.getByRole('button',{name:/Abrir anuncio:"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "getByRole('button',{name:'Guardar borrador'}).click()"
+        },
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/cv014-communications-postgres17.test.mjs",
+          "marker": "assertM5CommunicationsCapability({pool:"
+        }
+      ],
+      "note": "Recorrido candidato aislado de anuncios con PG17 real, Fastify firmada y ambas PWA Chromium; CI del SHA 929270485e91200741aac3fbfaf39f8e859f365e pasó bootstrap PG17/Node-driver. No equivale a aprobación humana, activación productiva o validación de cambios posteriores."
+    },
+    {
+      "id": "CV-014-reservas-anticipadas",
+      "status": "PENDIENTE",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [],
+      "api": [],
+      "evidence": [],
+      "blockers": [
+        "Requiere cerrar las decisiones pendientes RF y recorrido integral reserva→cocina→QR→pedido"
+      ],
+      "note": "No confundir cesta local y selección con reserva confirmada."
+    },
+    {
+      "id": "CV-014-llamada-camarero",
+      "status": "CANDIDATO_TECNICO",
+      "surfaces": [
+        "client",
+        "management"
+      ],
+      "ui": [
+        {
+          "surface": "client",
+          "path": "apps/client/src/App.tsx",
+          "marker": "Llamar al camarero"
+        },
+        {
+          "surface": "management",
+          "path": "apps/management/src/views/OrdersView.tsx",
+          "marker": "Marcar atendida"
+        }
+      ],
+      "api": [
+        {
+          "path": "apps/api/src/waiter-call-candidate.mjs",
+          "marker": "registerWaiterCallHttp"
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "postgres17",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "assert.deepEqual(audit"
+        },
+        {
+          "kind": "browser-client",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "client.getByRole('button',{name:'Llamar al camarero'})"
+        },
+        {
+          "kind": "browser-management",
+          "path": "scripts/ci/waiter-calls-postgres17.test.mjs",
+          "marker": "manager.getByRole('button',{name:'Marcar atendida'})"
+        }
+      ],
+      "note": "Código candidato con llamadas por mesa y visita actual, roles SQL mínimos, JWT/HMAC, auditoría y outbox; evaluación real PG17/Chromium exigida antes de cierre técnico. No acredita aprobación visual humana, recordatorios fuera de la PWA, ocupación física ni activación de producción."
+    }
+  ]
+}

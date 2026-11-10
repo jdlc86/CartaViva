@@ -1,0 +1,431 @@
+import {createHash,randomUUID} from 'node:crypto';
+import {hashCustomerSessionToken} from './customer-session.mjs';
+import {buildCatalogLineEvidence} from './catalog-line-evidence.mjs';
+import {assertDisplayedQuoteMatchesConfirmation} from './catalog-displayed-quote-binding.mjs';
+import {issueCustomerBasketAcceptance,verifyCustomerBasketAcceptance} from './customer-basket-acceptance.mjs';
+
+export const AUTHORIZE_VISIT_SQL=`SELECT table_id,session_id,visit_key,basket_id,expires_at
+ FROM sabora.authorize_customer_visit_candidate($1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::timestamptz)`;
+export const PREPARE_QUOTE_SQL=`SELECT customer_id,actor_id,session_id,customer_alias,customer_identifier,
+ published_revision,published_snapshot,available
+ FROM sabora.prepare_customer_quote_candidate($1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid)`;
+export const INSERT_QUOTE_SQL=`SELECT sabora.insert_customer_quote_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::uuid,$8::bigint,$9::jsonb,$10::timestamptz
+ ) AS quote_id`;
+export const LOOKUP_ATTEMPT_SQL=`SELECT customer_id,actor_id,session_id,customer_alias,customer_identifier,
+ request_fingerprint,order_id,"grouping"
+ FROM sabora.lookup_customer_order_attempt_candidate($1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text)`;
+export const PREPARE_CONFIRMATION_SQL=`SELECT published_revision,published_snapshot,available,quote_evidence,quote_expires_at
+ FROM sabora.prepare_customer_confirmation_line_candidate($1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::uuid)`;
+export const PERSIST_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,repeated
+ FROM sabora.persist_customer_order_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean
+ )`;
+export const READ_H6_PAYMENT_POLICY_SQL=`SELECT require_pay_as_ordered,payment_policy_version
+ FROM sabora.read_customer_payment_policy_h6_candidate($1::bytea,$2::uuid,$3::text)`;
+export const READ_H6_ACCOUNT_PAYMENT_MODE_SQL=`SELECT selected_payment_mode,require_pay_as_ordered,payment_policy_version
+ FROM sabora.read_customer_account_payment_mode_h6_candidate($1::bytea,$2::uuid,$3::text)`;
+export const READ_H6_ROUND_SQL=`SELECT account_id,round_id,amount_cents,effective_payment_mode,
+ round_state,payment_attempt_id,authorization_key
+ FROM sabora.read_customer_round_h6_candidate($1::bytea,$2::uuid,$3::text,$4::uuid)`;
+export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,repeated,
+ account_id,round_id,amount_cents,effective_payment_mode,round_state,payment_attempt_id,authorization_key
+ FROM sabora.confirm_customer_round_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
+ )`;
+export const READ_H6_ORDER_REVISION_SQL=`SELECT sabora.read_customer_order_revision_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::uuid) AS result`;
+export const RESUBMIT_H6_ORDER_REVISION_SQL=`SELECT sabora.resubmit_customer_order_revision_h6_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::uuid,$7::integer,$8::text,$9::jsonb,$10::boolean
+ ) AS result`;
+
+// B3 candidate-only confirmation entrypoint. Production remains pinned to
+// PERSIST_H6_ORDER_SQL; no runtime EXECUTE is granted to this function.
+export const PERSIST_H6_TRANSFER_ORDER_SQL=PERSIST_H6_ORDER_SQL.replace(
+ 'sabora.confirm_customer_round_h6_candidate(',
+ 'sabora.confirm_customer_round_h6_transfer_integration_candidate(');
+
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TABLE_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const KEY=/^[A-Za-z0-9_-]{16,128}$/;
+const QR_TOKEN=/^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
+const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
+ (Object.getPrototypeOf(value)===Object.prototype||Object.getPrototypeOf(value)===null);
+const revision=value=>{
+ const number=typeof value==='string'&&/^[1-9][0-9]*$/.test(value)?Number(value):value;
+ return Number.isSafeInteger(number)&&number>0?number:null;
+};
+const strictObject=(value,allowed)=>plain(value)&&Reflect.ownKeys(value).every(key=>
+ typeof key==='string'&&allowed.includes(key)&&Object.getOwnPropertyDescriptor(value,key)?.enumerable&&
+ Object.hasOwn(Object.getOwnPropertyDescriptor(value,key),'value'));
+const canonical=value=>{
+ if(Array.isArray(value))return `[${value.map(canonical).join(',')}]`;
+ if(plain(value))return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+ if(value===null||typeof value==='string'||typeof value==='boolean'||Number.isSafeInteger(value))
+  return JSON.stringify(value);
+ throw Error('invalid_customer_flow_input');
+};
+const digest=value=>createHash('sha256').update(canonical(value)).digest();
+const equal=(a,b)=>canonical(a)===canonical(b);
+const economicEvidence=value=>plain(value)?Object.freeze({
+ basePriceCents:value.basePriceCents,selected:value.selected,discount:value.discount,
+ unitSubtotalCents:value.unitSubtotalCents,unitDiscountCents:value.unitDiscountCents,
+ subtotalCents:value.subtotalCents,discountCents:value.discountCents,totalCents:value.totalCents
+}):null;
+
+function assertScope(input,{request=false,h6=false}={}){
+ if(!strictObject(input,request?
+  (h6?['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken','paymentMode']:
+   ['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken']):
+  ['tableId','qrToken','visitId','basketId','lines'])||
+    !TABLE_ID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken)||
+    !KEY.test(input.visitId)||!KEY.test(input.basketId)||
+    (request&&!KEY.test(input.requestKey))||
+    !Array.isArray(input.lines)||input.lines.length<1||input.lines.length>50)
+  throw Error('invalid_customer_flow_input');
+ const seen=new Set();
+ const seenQuotes=new Set();
+ for(const line of input.lines){
+  const allowed=request?['quoteId','itemId','selection','quantity']:['itemId','selection','quantity'];
+  if(!strictObject(line,allowed)||!UUID.test(line.itemId)||
+     (request&&!UUID.test(line.quoteId))||!plain(line.selection)||
+     !Number.isSafeInteger(line.quantity)||line.quantity<1||line.quantity>20||
+     Buffer.byteLength(JSON.stringify(line.selection),'utf8')>8192)
+    throw Error('invalid_customer_flow_input');
+  // Several configured variants of the same item must survive from quote to
+  // SQL. Reject exact repeated configurations and replayed quote identities.
+  const variant=canonical([line.itemId.toLowerCase(),line.selection]);
+  if(seen.has(variant)||(request&&seenQuotes.has(line.quoteId)))
+   throw Error('invalid_customer_flow_input');
+  seen.add(variant);
+  if(request)seenQuotes.add(line.quoteId);
+ }
+ if(request&&input.acceptanceToken!==undefined&&
+    (typeof input.acceptanceToken!=='string'||input.acceptanceToken.length>256))
+  throw Error('invalid_customer_flow_input');
+ if(request&&h6&&input.paymentMode!==undefined&&input.paymentMode!==null&&
+    !['pay_now','pay_at_end'].includes(input.paymentMode))throw Error('invalid_customer_flow_input');
+}
+
+const one=result=>{
+ if(!result||!Array.isArray(result.rows)||result.rows.length!==1||!plain(result.rows[0]))
+  throw Error('invalid_customer_flow_result');
+ return result.rows[0];
+};
+// A zero-row authenticated context is an expected denial after QR rotation,
+// table closure, visit expiry or session revocation. Keep backend shape/SQL
+// failures as unavailable, never reinterpret them as a successful empty order.
+const confirmationContextRow=result=>{
+ if(result&&Array.isArray(result.rows)&&result.rows.length===0)
+  throw Error('customer_order_context_forbidden');
+ return one(result);
+};
+
+export function createCustomerProductionFlow({withTransaction,secretKey,clock=Date.now,
+ newId=randomUUID,visitTtlSeconds=4*60*60,quoteTtlSeconds=10*60,
+ withH6Transaction=null,withH6ReadTransaction=null,
+ h6ConfirmationSql=PERSIST_H6_ORDER_SQL}={}){
+ if(typeof withTransaction!=='function'||typeof secretKey!=='string'||
+    Buffer.byteLength(secretKey,'utf8')<32||typeof clock!=='function'||typeof newId!=='function'||
+    !Number.isSafeInteger(visitTtlSeconds)||visitTtlSeconds<60||visitTtlSeconds>86400||
+    !Number.isSafeInteger(quoteTtlSeconds)||quoteTtlSeconds<60||quoteTtlSeconds>1800||
+    (withH6Transaction!==null&&typeof withH6Transaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6ReadTransaction!=='function')||
+    (withH6ReadTransaction!==null&&typeof withH6Transaction!=='function')||
+    ![PERSIST_H6_ORDER_SQL,PERSIST_H6_TRANSFER_ORDER_SQL].includes(h6ConfirmationSql))
+  throw Error('invalid_customer_production_flow');
+ const h6=typeof withH6Transaction==='function';
+ const withH6Reader=withH6ReadTransaction??withH6Transaction;
+
+ const authorizeVisit=async({customerSessionToken,tableId,qrToken}={})=>{
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash||!TABLE_ID.test(tableId??'')||typeof qrToken!=='string'||
+     !QR_TOKEN.test(qrToken))throw Error('invalid_customer_visit_input');
+  const visitId=newId(),basketId=newId(),now=clock();
+  if(!UUID.test(visitId)||!UUID.test(basketId)||!Number.isSafeInteger(now)||now<0)
+   throw Error('invalid_customer_production_flow');
+  const expiresAt=new Date(now+visitTtlSeconds*1000);
+  const row=await withTransaction(async query=>one(await query(AUTHORIZE_VISIT_SQL,
+   [sessionHash,tableId,qrToken,visitId,basketId,expiresAt])));
+  if(!UUID.test(row.table_id)||row.table_id.toLowerCase()!==tableId.toLowerCase()||
+     !UUID.test(row.session_id)||row.visit_key!==visitId||row.basket_id!==basketId)
+   throw Error('invalid_customer_flow_result');
+  let paymentPolicy=null;
+  if(h6){
+   const policy=await withH6Reader(async query=>one(await query(READ_H6_PAYMENT_POLICY_SQL,
+    [sessionHash,tableId,visitId])));
+   const version=revision(policy.payment_policy_version);
+   if(typeof policy.require_pay_as_ordered!=='boolean'||version===null)
+    throw Error('invalid_customer_flow_result');
+   paymentPolicy=Object.freeze({requirePayAsOrdered:policy.require_pay_as_ordered,version});
+  }
+  return Object.freeze({tableId:row.table_id,visitId,basketId,expiresAt:expiresAt.toISOString(),
+   ...(paymentPolicy?{paymentPolicy}:null)});
+ };
+
+ const readPaymentPolicy=async({customerSessionToken,tableId,visitId}={})=>{
+  if(!h6||!TABLE_ID.test(tableId??'')||typeof visitId!=='string'||!KEY.test(visitId))
+   throw Error('invalid_customer_flow_input');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const row=await withH6Reader(async query=>one(await query(READ_H6_ACCOUNT_PAYMENT_MODE_SQL,
+   [sessionHash,tableId,visitId])));
+  const version=revision(row.payment_policy_version);
+  if(![null,'pay_now','pay_at_end'].includes(row.selected_payment_mode)||
+     typeof row.require_pay_as_ordered!=='boolean'||version===null)
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({selectedMode:row.selected_payment_mode,
+   requirePayAsOrdered:row.require_pay_as_ordered,version});
+ };
+ const quote=async({customerSessionToken,...raw}={})=>{
+  assertScope(raw);
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const now=clock();
+  if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
+  return withTransaction(async query=>{
+   const quoted=[];
+   for(const line of raw.lines){
+    const prepared=one(await query(PREPARE_QUOTE_SQL,[sessionHash,raw.tableId,raw.qrToken,
+     raw.visitId,raw.basketId,line.itemId]));
+    const publishedRevision=revision(prepared.published_revision);
+    if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot))
+     throw Error('customer_quote_unavailable');
+    const evidence=buildCatalogLineEvidence({itemId:line.itemId,publishedRevision,
+     snapshot:prepared.published_snapshot,selection:line.selection,quantity:line.quantity});
+    const quoteId=newId(),expiresAt=new Date(now+quoteTtlSeconds*1000);
+    if(!UUID.test(quoteId))throw Error('invalid_customer_production_flow');
+    const inserted=one(await query(INSERT_QUOTE_SQL,[sessionHash,raw.tableId,raw.qrToken,
+     raw.visitId,raw.basketId,quoteId,line.itemId,publishedRevision,evidence,expiresAt]));
+    if(inserted.quote_id!==quoteId)throw Error('invalid_customer_flow_result');
+    quoted.push(Object.freeze({quoteId,itemId:line.itemId,expiresAt:expiresAt.toISOString(),
+     totalCents:evidence.totalCents,publishedRevision}));
+   }
+   return Object.freeze({lines:Object.freeze(quoted)});
+  });
+ };
+
+ const confirm=async({customerSessionToken,...raw}={})=>{
+  assertScope(raw,{request:true,h6});
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const paymentMode=h6?(raw.paymentMode??null):undefined;
+  const fingerprint=digest({schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
+   basketId:raw.basketId,requestKey:raw.requestKey,lines:raw.lines,
+   ...(h6?{paymentMode}:null)});
+  const now=clock();
+  if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
+  const prepared=await withTransaction(async query=>{
+   const attempt=confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,[sessionHash,raw.tableId,raw.qrToken,
+    raw.visitId,raw.basketId,raw.requestKey]));
+   if(attempt.order_id!==null&&attempt.order_id!==undefined){
+    if(!Buffer.isBuffer(attempt.request_fingerprint)||
+       attempt.request_fingerprint.length!==fingerprint.length||
+       !attempt.request_fingerprint.equals(fingerprint))throw Error('customer_order_idempotency_conflict');
+    if(!UUID.test(attempt.order_id))throw Error('invalid_customer_flow_result');
+    if(h6)return Object.freeze({kind:'h6_replay',orderId:attempt.order_id,grouping:attempt.grouping});
+    return Object.freeze({kind:'complete',value:Object.freeze({status:'replayed',
+     orderId:attempt.order_id,grouping:attempt.grouping})});
+   }
+   const current=[];
+   let repriced=false;
+   const changes=[];
+   for(const line of raw.lines){
+    const prepared=confirmationContextRow(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,raw.tableId,raw.qrToken,
+     raw.visitId,raw.basketId,line.itemId,line.quoteId]));
+    const publishedRevision=revision(prepared.published_revision);
+    if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot)||
+       !plain(prepared.quote_evidence))throw Error('customer_order_confirmation_conflict');
+    const evidence=buildCatalogLineEvidence({itemId:line.itemId,publishedRevision,
+     snapshot:prepared.published_snapshot,selection:line.selection,quantity:line.quantity});
+    assertDisplayedQuoteMatchesConfirmation({previous:{
+     evidence:prepared.quote_evidence,
+     publishedRevision:prepared.quote_evidence.publishedRevision,
+     subtotalCents:prepared.quote_evidence.subtotalCents,
+     discountCents:prepared.quote_evidence.discountCents,
+     totalCents:prepared.quote_evidence.totalCents
+    },currentEvidence:evidence});
+    const changed=!equal(prepared.quote_evidence,evidence);
+    repriced||=changed;
+    if(changed)changes.push(Object.freeze({itemId:line.itemId,
+     previousTotalCents:prepared.quote_evidence.totalCents,
+     currentTotalCents:evidence.totalCents,
+     previousPublishedRevision:prepared.quote_evidence.publishedRevision,
+     currentPublishedRevision:evidence.publishedRevision}));
+    current.push(Object.freeze({quoteId:line.quoteId,itemId:line.itemId,evidence}));
+   }
+   const acceptanceContext={schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
+    basketId:raw.basketId,requestKey:raw.requestKey,lines:current,
+    ...(h6?{paymentMode}:null)};
+   if(repriced&&!verifyCustomerBasketAcceptance({token:raw.acceptanceToken,secretKey,
+      context:acceptanceContext,nowMs:now})){
+    const acceptance=issueCustomerBasketAcceptance({secretKey,context:acceptanceContext,nowMs:now});
+    return Object.freeze({kind:'complete',value:Object.freeze({status:'acceptance_required',
+     changes:Object.freeze(changes),acceptance})});
+   }
+   const orderId=newId(),batchId=newId();
+   if(!UUID.test(orderId)||!UUID.test(batchId))throw Error('invalid_customer_production_flow');
+   if(h6)return Object.freeze({kind:'h6_persist',orderId,batchId,current,repriced});
+   const persisted=one(await query(PERSIST_ORDER_SQL,[sessionHash,raw.tableId,raw.qrToken,
+    raw.visitId,raw.basketId,raw.requestKey,fingerprint,batchId,orderId,JSON.stringify(current),repriced]));
+   if(!UUID.test(persisted.persisted_order_id)||typeof persisted.repeated!=='boolean')
+    throw Error('invalid_customer_flow_result');
+   return Object.freeze({kind:'complete',value:Object.freeze({status:persisted.repeated?'replayed':'confirmed',
+    orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping})});
+  });
+  if(prepared.kind==='complete')return prepared.value;
+  const h6Row=await (prepared.kind==='h6_replay'?withH6Reader:withH6Transaction)(async query=>one(await query(
+   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
+   prepared.kind==='h6_replay'?
+    [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
+    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
+     fingerprint,prepared.batchId,prepared.orderId,JSON.stringify(prepared.current),prepared.repriced,paymentMode]
+  )));
+  const persistedOrderId=prepared.kind==='h6_replay'?prepared.orderId:h6Row.persisted_order_id;
+  const amount=typeof h6Row.amount_cents==='string'&&/^[0-9]+$/.test(h6Row.amount_cents)?
+   Number(h6Row.amount_cents):h6Row.amount_cents;
+  if(!UUID.test(persistedOrderId)||!UUID.test(h6Row.account_id)||!UUID.test(h6Row.round_id)||
+     !Number.isSafeInteger(amount)||amount<0||typeof h6Row.round_state!=='string'||
+     (h6Row.payment_attempt_id!==null&&!UUID.test(h6Row.payment_attempt_id))||
+     (h6Row.authorization_key!==null&&typeof h6Row.authorization_key!=='string'))
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({status:prepared.kind==='h6_replay'||h6Row.repeated?'replayed':'confirmed',
+   orderId:persistedOrderId,grouping:prepared.grouping??h6Row.persisted_grouping,
+   accountId:h6Row.account_id,roundId:h6Row.round_id,amountCents:amount,
+   paymentMode:h6Row.effective_payment_mode,roundState:h6Row.round_state,
+   paymentAttemptId:h6Row.payment_attempt_id,authorizationKey:h6Row.authorization_key});
+ };
+
+ const lookupConfirmation=async({customerSessionToken,...raw}={})=>{
+  if(!strictObject(raw,['tableId','qrToken','visitId','basketId','requestKey'])||
+   !TABLE_ID.test(raw.tableId)||typeof raw.qrToken!=='string'||!QR_TOKEN.test(raw.qrToken)||
+   !KEY.test(raw.visitId)||!KEY.test(raw.basketId)||!KEY.test(raw.requestKey))
+   throw Error('invalid_customer_flow_input');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_flow_input');
+  const attempt=await withTransaction(async query=>confirmationContextRow(await query(LOOKUP_ATTEMPT_SQL,
+   [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey])));
+  if(attempt.order_id===null||attempt.order_id===undefined)
+   return Object.freeze({status:'not_found'});
+  if(!UUID.test(attempt.order_id)||typeof attempt.grouping!=='string')
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({status:'confirmed',orderId:attempt.order_id,grouping:attempt.grouping});
+ };
+
+ const readOrderRevision=async({customerSessionToken,...raw}={})=>{
+  if(!h6||!strictObject(raw,['tableId','visitId','orderId'])||
+     !TABLE_ID.test(raw.tableId)||!KEY.test(raw.visitId)||!UUID.test(raw.orderId))
+   throw Error('invalid_customer_revision_request');
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_revision_request');
+  const row=await withH6Reader(async query=>one(await query(READ_H6_ORDER_REVISION_SQL,
+   [sessionHash,raw.tableId,raw.visitId,raw.orderId])));
+  const value=row.result;
+  if(!plain(value)||value.version!==1||value.orderId?.toLowerCase()!==raw.orderId.toLowerCase()||
+     !UUID.test(value.roundId)||!Number.isSafeInteger(value.revisionNumber)||value.revisionNumber<1||
+     !['current','invalidated','dispatch_requested','acknowledged','failed','compensation_required'].includes(value.state)||
+     !Number.isSafeInteger(value.amountCents)||value.amountCents<0||!Array.isArray(value.lines)||
+     !value.lines.every(line=>plain(line)&&Number.isSafeInteger(line.lineNumber)&&line.lineNumber>0&&
+       UUID.test(line.itemId)&&typeof line.itemName==='string'&&line.itemName.trim()&&
+       Number.isSafeInteger(line.quantity)&&line.quantity>0&&Number.isSafeInteger(line.totalCents)&&
+       line.totalCents>=0&&typeof line.affected==='boolean'&&plain(line.evidence)))
+   throw Error('invalid_customer_flow_result');
+  return Object.freeze({...value,lines:Object.freeze(value.lines.map(line=>Object.freeze({...line,
+   evidence:Object.freeze({...line.evidence})})))});
+ };
+
+ const resubmitOrderRevision=async({customerSessionToken,...raw}={})=>{
+  if(!h6||!strictObject(raw,['tableId','qrToken','visitId','basketId','orderId',
+     'expectedRevision','requestKey','replacements','acceptanceToken'])||
+     !TABLE_ID.test(raw.tableId)||typeof raw.qrToken!=='string'||!QR_TOKEN.test(raw.qrToken)||
+     !KEY.test(raw.visitId)||!KEY.test(raw.basketId)||!UUID.test(raw.orderId)||
+     !Number.isSafeInteger(raw.expectedRevision)||raw.expectedRevision<1||!KEY.test(raw.requestKey)||
+     !Array.isArray(raw.replacements)||raw.replacements.length<1||raw.replacements.length>50||
+     (raw.acceptanceToken!==undefined&&
+      (typeof raw.acceptanceToken!=='string'||raw.acceptanceToken.length>256)))
+   throw Error('invalid_customer_revision_request');
+  const seen=new Set();
+  for(const replacement of raw.replacements){
+   if(!strictObject(replacement,['lineNumber','quoteId','itemId','selection','quantity'])||
+      !Number.isSafeInteger(replacement.lineNumber)||replacement.lineNumber<1||seen.has(replacement.lineNumber)||
+      !UUID.test(replacement.quoteId)||!UUID.test(replacement.itemId)||!plain(replacement.selection)||
+      !Number.isSafeInteger(replacement.quantity)||replacement.quantity<1||replacement.quantity>20)
+    throw Error('invalid_customer_revision_request');
+   seen.add(replacement.lineNumber);
+  }
+  const sessionHash=hashCustomerSessionToken(customerSessionToken);
+  if(!sessionHash)throw Error('invalid_customer_revision_request');
+  const revisionState=await readOrderRevision({customerSessionToken,tableId:raw.tableId,
+   visitId:raw.visitId,orderId:raw.orderId});
+  const correctable=revisionState.revisionNumber===raw.expectedRevision&&
+   revisionState.state==='invalidated';
+  const affected=correctable?revisionState.lines.filter(line=>line.affected):[];
+  if(correctable&&(affected.length!==raw.replacements.length||
+     raw.replacements.some(replacement=>!affected.some(line=>line.lineNumber===replacement.lineNumber))))
+   throw Error('invalid_customer_revision_request');
+  const current=await withTransaction(async query=>{
+   const result=[];
+   for(const replacement of raw.replacements){
+    const prepared=confirmationContextRow(await query(PREPARE_CONFIRMATION_SQL,[sessionHash,
+     raw.tableId,raw.qrToken,raw.visitId,raw.basketId,replacement.itemId,replacement.quoteId]));
+    const publishedRevision=revision(prepared.published_revision);
+    if(prepared.available!==true||publishedRevision===null||!plain(prepared.published_snapshot)||
+       !plain(prepared.quote_evidence))throw Error('revision_quote_invalid');
+    const evidence=buildCatalogLineEvidence({itemId:replacement.itemId,publishedRevision,
+     snapshot:prepared.published_snapshot,selection:replacement.selection,quantity:replacement.quantity});
+    assertDisplayedQuoteMatchesConfirmation({previous:{evidence:prepared.quote_evidence,
+     publishedRevision:prepared.quote_evidence.publishedRevision,
+     subtotalCents:prepared.quote_evidence.subtotalCents,
+     discountCents:prepared.quote_evidence.discountCents,
+     totalCents:prepared.quote_evidence.totalCents},currentEvidence:evidence});
+    result.push(Object.freeze({lineNumber:replacement.lineNumber,quoteId:replacement.quoteId,
+     itemId:replacement.itemId,evidence}));
+   }
+   return Object.freeze(result);
+  });
+  const persistRevision=async acceptedEconomicChange=>{
+   const row=await withH6Transaction(async query=>one(await query(RESUBMIT_H6_ORDER_REVISION_SQL,
+    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.orderId,
+     raw.expectedRevision,raw.requestKey,JSON.stringify(current),acceptedEconomicChange])));
+   const value=row.result;
+   if(!plain(value)||value.version!==1||value.orderId?.toLowerCase()!==raw.orderId.toLowerCase()||
+      !UUID.test(value.roundId)||!UUID.test(value.dispatchId)||
+      !Number.isSafeInteger(value.revisionNumber)||value.revisionNumber!==raw.expectedRevision+1||
+      !Number.isSafeInteger(value.amountCents)||!Number.isSafeInteger(value.differenceCents)||
+      typeof value.state!=='string'||typeof value.dispatchState!=='string'||
+      typeof value.captureRequired!=='boolean'||typeof value.repeated!=='boolean')
+    throw Error('invalid_customer_flow_result');
+   return Object.freeze({status:'resubmitted',...value});
+  };
+  // A concurrent request may have committed after the read above.  Let the
+  // durable SQL request ledger decide exact replay versus stale/conflicting
+  // input. Replays repeat the original token-presence bit but never authorize
+  // a new economic mutation; a missing/different ledger row still fails SQL.
+  if(!correctable)return persistRevision(raw.acceptanceToken!==undefined);
+  const changes=current.map(replacement=>{
+   const previous=affected.find(line=>line.lineNumber===replacement.lineNumber);
+   const previousTotal=previous.totalCents,currentTotal=replacement.evidence.totalCents;
+   return Object.freeze({lineNumber:replacement.lineNumber,itemId:replacement.itemId,
+    previousItemName:previous.itemName,currentItemName:replacement.evidence.itemName,
+    previousTotalCents:previousTotal,currentTotalCents:currentTotal,
+    differenceCents:currentTotal-previousTotal});
+  });
+  const economicChanged=current.some(replacement=>{
+   const previous=affected.find(line=>line.lineNumber===replacement.lineNumber);
+   return !equal(economicEvidence(previous.evidence),economicEvidence(replacement.evidence));
+  });
+  const acceptanceContext={schemaVersion:3,tableId:raw.tableId,visitId:raw.visitId,
+   basketId:raw.basketId,orderId:raw.orderId,expectedRevision:raw.expectedRevision,
+   requestKey:raw.requestKey,replacements:current};
+  const now=clock();
+  if(economicChanged&&!verifyCustomerBasketAcceptance({token:raw.acceptanceToken,
+     secretKey,context:acceptanceContext,nowMs:now})){
+   const acceptance=issueCustomerBasketAcceptance({secretKey,context:acceptanceContext,nowMs:now});
+   return Object.freeze({status:'acceptance_required',changes:Object.freeze(changes),acceptance});
+  }
+  return persistRevision(economicChanged);
+ };
+
+ return Object.freeze({authorizeVisit,quote,confirm,lookupConfirmation,
+  ...(h6?{readPaymentPolicy,readOrderRevision,resubmitOrderRevision}:null)});
+}

@@ -1,0 +1,169 @@
+# CartaViva / Sabora — Inventario verificable de integración y estabilización Git (06-11-2026)
+
+**Naturaleza:** informe de auditoría y control de ramas, **no normativa**. Los documentos funcionales, técnicos y visuales normativos de GitHub prevalecen sobre este informe y sobre cualquier handoff. Prohibido interpretar este inventario como autorización de merge, despliegue, migración operativa o intervención en Fleetia. Repositorio examinado exclusivamente: `jdlc86/CartaViva`.
+
+## Alcance comprobado
+
+- Fuente: API de GitHub, lista completa de PR abiertos, ramas base/HEAD, comparaciones de commits (ancestry) y árboles Git recursivos. **42 PR abiertos, todos Draft**, en la observación realizada el 06-11-2026. `main` = `42b46358a76162445fa9e0b20e7b87dd0a640b5b`.
+- La candidata consolidada corresponde al PR #49 `feat/sabora-cv012-independent-pwas-20261106`, basado en el PR #48. El SHA funcional `d075e735b53d20722183e32ebefbfd291fd74475` pasó cinco workflows del mismo SHA: [CI H6](https://github.com/jdlc86/CartaViva/actions/runs/42229103103), [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42229103099), [Chromium cliente](https://github.com/jdlc86/CartaViva/actions/runs/42229103205), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/42229103106), [CV-012](https://github.com/jdlc86/CartaViva/actions/runs/42229103118). Bootstrap: 1.348/1.348 Node PASS, 51/51 PG17 PASS, 4/4 coste cero PASS, cero SKIP en esos bloques.
+- `d18707587aa9aa9d820b8f0dd0b02bae68044345` fue actualización **exclusivamente documental**, sin CI propio.
+- La corrección integrada M3 de proyección de permisos servidor→PWA `a4229f1dca1a26c37b087da58996b2b320d5c2b8` está **implementada, pero todavía SIN CI observado al redactar este inventario**. No atribuirle resultados verdes de `d075e735`.
+
+## Topología real de los 42 PR (PR hijo → PR base)
+
+La lista es **topología declarada de GitHub**, no garantía de que la rama base actual sea ancestro exacto de cada HEAD. Una rama puede haber avanzado después de crearse el PR.
+
+```text
+main <- #1 <- #2 <- #7 <- #13 <- #14 <- #15 <- #16
+#2 <- #4, #5
+#7 <- #8, #10, #11 <- #12
+#16 <- #17, #18 <- #19 <- #20 <- #21 <- #22
+#16 <- #23 <- #24 <- #25 <- #26 <- #27 <- #28
+#28 <- #31
+#28 <- #29 <- #30 <- #32 <- #34 <- #36 <- #38 <- #40
+#40 <- #41, #42 <- #43 <- #44 <- #45 <- #46 <- #47 <- #48 <- #49
+```
+
+**Diez ramas terminales** de este grafo: #4, #5, #8, #10, #12, #17, #22, #31, #41, #49. Entre las nueve terminales históricas, las HEAD de **#10, #12 y #41** son ancestros Git del candidato #49; las de **#4, #5, #8, #17, #22 y #31** presentan divergencia de commits. El hecho de que #10/#12/#41 sean ancestros no autoriza a cerrar sus PR sin comprobar además sus bases, revisiones y documentación.
+
+## Ramas históricas terminales con commits no ancestrales
+
+| PR | Commits propios respecto al ancestro pertinente | Ámbito de sus archivos de cambio | Tratamiento seguro |
+| --- | ---: | --- | --- |
+| #4 | 4 | cocina, sala, SQL de operaciones, gestión y CI | conciliar contenido vigente; no incorporar ciegamente permisos SQL antiguos |
+| #5 | 11 | modelo de lectura y presentación de gestión | contrastar con M3 vigente y diseño aprobado |
+| #8 | 2 | actor SQL y capacidades firmadas | conservar controles actuales; revisar cambios conceptuales |
+| #17 | 4 | lectura H4 y validación de consultas HTTP | cotejar contrato y tests actuales |
+| #22 | 32 | cesta, selección cliente, consentimiento de precio y sincronización entre pestañas | revisión funcional prioritaria: riesgo de divergencia de UX |
+| #31 | 1 | encargo H6 documental | preservar decisiones sin elevar el encargo a norma |
+
+De manera adicional, las ramas intermedias #14, #40 y #44 contienen commits documentales no ancestrales (uno cada una según comparación), y otras ramas históricas tienen bases desfasadas. Mantener registro explícito antes de cerrar o retargetear PR.
+
+## Inventario de archivos y alcance de la evidencia
+
+La comparación de árboles completos de las **diez ramas terminales** muestra que todos los **paths** de archivos presentes en ellas aparecen también en #49: no hay un archivo completo ausente. En la instantánea observada, el candidato tenía **859 blobs**; las nueve ramas históricas tenían entre 377 y 718 archivos cada una y contenidos diferentes en numerosos blobs.
+
+**Este dato NO acredita equivalencia de código**: archivos con igual ruta y hash diferente pueden contener una implementación posterior correcta, una regresión o un cambio exclusivo perdido. Para declarar redundante cada rama hace falta comprobar diff semántico respecto al ancestro común, normativa afectada y evidencias integradas. En particular, las 32 confirmaciones exclusivas de #22 no se dan por absorbidas solo por compartir rutas.
+
+## Gate de estabilización, no plan de desarrollo funcional
+
+1. **Conservar el trabajo:** no cerrar masivamente PR, eliminar ramas, forzar referencias, fusionar con `main` ni modificar documentos normativos. El PR #49 se mantiene Draft como candidato técnico; no crear PR adicionales mientras dure este saneamiento.
+2. **No confundir dos integraciones:** el contenido de siete archivos M3 de #48 se transfirió a #49 con hashes idénticos y sin solapamiento de rutas propias de CV-012, pero el historial de #48 y #49 **continúa divergente**. Un snapshot equivalente no es un merge de ramas.
+3. **Calidad central:** mantener los 1.348 tests Node ampliados, PG17 real con migraciones, API autenticada, concurrencia, Chromium y los cinco workflows sobre **un único SHA**. Las pruebas de permisos M3 recién añadidas deberán aprobar la misma puerta completa y no alterar SQL de producción ni la instalación de Fleetia.
+4. **Compatibilidad funcional:** resolver presentación por rol de gestión a partir de identidad verificada en servidor y control real de operaciones en PG17; documentar aprobaciones visuales que siguen pendientes sin inventar capturas aprobadas.
+5. **Ramas históricas:** conciliar cambios exclusivos con un registro rama→requisito→implementación actual→prueba del SHA final, especialmente #22; clasificar cada PR como preservado/pendiente/sustituido **con evidencia**, antes de solicitar autorización de cierre o merge.
+6. **Separación de estados:** implementación, pruebas ejecutadas y aceptación humana/operativa son tres columnas diferentes. `server.mjs` continúa `health-only`; M1/F/R, Stripe sandbox, caja, aprobación visual, M6, recuperación e infraestructura operativa continúan NO-GO.
+
+**Diagnóstico a esta fecha:** la candidatura M3+CV-012 cuenta con una base técnica CI válida en `d075e735`. La revisión de 42 PR y diferencias ancestrales **no está cerrada semánticamente**, y la nueva corrección M3 queda en validación. No hay permiso de despliegue ni de modificación del VPS/Supabase/Fleetia.
+
+## Conciliación semántica de las seis ramas terminales divergentes — 06-11-2026
+
+**Corte auditado:** #49 = `aba9eb4b65cd3b546a8afffa2ef05b5d4658a218`; fuentes: comparaciones GitHub base común→HEAD histórica, hashes de blobs y lectura de contratos, código y nombres de pruebas. **Resultado de auditoría documental/estática, NO validación runtime de la HEAD actual.** Las seis HEAD históricas no son ancestros de #49. No hay rutas enteras ausentes, pero sí blobs distintos, por lo que ninguna PR queda automáticamente redundante.
+
+| Terminal | Commits propios no ancestrales | Conciliación concreta y evidencia inspeccionada | Clasificación prudente |
+| --- | ---: | --- | --- |
+| [#22](https://github.com/jdlc86/CartaViva/pull/22) | 32 | Nueve rutas cambiadas respecto del ancestro `353e5160`: `App.tsx`, `client-state.ts`, E2E, test Node y cinco informes. Los **cinco informes** tienen SHA de blob **idéntico** en #49. Los **13 casos con nombre** de `tests/client-state.test.mjs` y los **ocho casos originales** de `apps/client/e2e/client-premium.spec.ts` siguen presentes por nombre; el candidato incluye 18 escenarios E2E y modelo de `selection` (opciones/extras), más la gestión histórica de incidencias, consentimiento explícito de precio y eventos `storage`. Los hashes del código/test difieren: NO afirmar paridad semántica integral ni equivalencia de comportamiento por mera coincidencia de nombres. | **CONTRATOS HISTÓRICOS LOCALIZADOS; PARIDAD FINAL PENDIENTE DE CI DEL SHA ACTUAL Y ACEPTACIÓN**, no cerrar PR |
+| [#8](https://github.com/jdlc86/CartaViva/pull/8) | 2 | `apps/api/src/order-operation-capability.mjs` y `tests/order-operation-capability.test.mjs` coinciden **byte a byte en blob SHA** con #49; otros contratos de seguridad/SQL han evolucionado. Mantener la garantía actor/SQL verificado y no restablecer migraciones antiguas. | **NÚCLEO DE CAPACIDAD PRESERVADO**, auditoría de límites globales pendiente |
+| [#17](https://github.com/jdlc86/CartaViva/pull/17) | 4 | El informe `SABORA_H4_HTTP_READ_VALIDATION_2026-10-26.md` coincide por SHA, y las rutas `order-operations-http.mjs` y `tests/order-operations.test.mjs` están presentes con blobs posteriores distintos. La cobertura actual de lecturas H4 debe comprobarse sobre el mismo SHA que el resto de la API. | **FUENTE HISTÓRICA PRESERVADA; CONTRATO H4 EN VALIDACIÓN**, no cerrar |
+| [#5](https://github.com/jdlc86/CartaViva/pull/5) | 11 | Sus 20 rutas exclusivas (modelos, navegación, lectura de mesas/catálogo, UI y pruebas) siguen presentes; la nueva interfaz M3 admite mutaciones autorizadas y proyección por rol. **No** confundir nueva implementación con aprobación visual de todos los estados. | **SUPERPOSICIÓN EVOLUTIVA CON M3; SEMÁNTICA Y VISUAL PENDIENTES** |
+| [#4](https://github.com/jdlc86/CartaViva/pull/4) | 4 | Sus 23 rutas (cocina/sala, API, SQL y CI) existen en #49; los modelos de operación han evolucionado y los accesos se sellaron con capacidades y RLS. Reintroducir directamente su SQL/roles anteriores podría contradecir las restricciones actuales. | **FUNCIONALIDAD EVOLUCIONADA, NO AUTORIZADO REAPLICAR COMMITS** |
+| [#31](https://github.com/jdlc86/CartaViva/pull/31) | 1 | Documento `docs/continuity/SESSION_13_H6_FULL_CODEX_BRIEF_2026-10-27.md` presente con blob distinto y longitud superior en el candidato: contenido histórico disponible, pero comparación de alcance y precedencia normativa obligatoria. Es un encargo/continuidad, **no normativa**. | **CONTEXTO PRESERVADO COMO DOCUMENTO; NO CIERRE AUTOMÁTICO** |
+
+**Interpretación de números:** `32,2,4,11,4,1` son commits no ancestrales en seis terminales, no cantidad de defectos ni commits obligatorios a aplicar. Los cinco documentos idénticos de #22 son los de cesta/incidencias, integridad de selección, sincronización, consentimiento y revisión. Para la rama #22, la revisión del `App.tsx` nuevo identifica revalidación y confirmación económica en servidor; no se vuelve a tomar el precio local como autoridad de cobro.
+
+### Estado de la corrección de permisos M3
+
+Se inspeccionó el commit `a4229f1dca1a26c37b087da58996b2b320d5c2b8`: Fastify deriva `configure/qr/readiness/occupancy` de `request.verifiedStaff.role`; camarero puede preparar/cambiar ocupación y no configurar/rotar QR, administrador sí. El modelo PWA rechaza proyecciones extra o contradictorias; al cambiar permisos invalida snapshots. La prueba integradora existente en `scripts/ci/table-change-root-postgres17.test.mjs` recorre **PG17 + Fastify + Chromium**, alterna sesión de camarero y administrador, comprueba controles operativos/administrativos y recorre seis anchos (360/390/430/768/1024/1440). **Implementación comprobada por inspección, ejecución del cambio todavía no acreditada en GitHub Actions**; no atribuirle los 5/5 del SHA anterior `d075e735`.
+
+### Decisión de saneamiento
+
+**No hacer merge, rebase, force push, cierre masivo, borrado de ramas ni apertura de PR nuevo.** Conservar las seis terminales históricas y las diferencias intermedias documentales (#14, #40, #44) hasta disponer de evidencia de comportamiento en un único SHA candidato, revisión humana donde proceda y una decisión explícita de estrategia de integración. El avance verificable en este apartado es **la conciliación de contenido y riesgos**, no el cierre de los 42 PR.
+
+**Puerta siguiente:** comprobar CI H6 consolidada sobre el candidato actual que incorpora `a4229f1d` (en particular recorrido PG17/Fastify/Chromium de roles M3), más pruebas cliente pertinentes y artefactos. Un commit exclusivamente documental no debe heredar automáticamente evidencia de su ancestro. Se mantiene `server.mjs` en `health-only`, producción **NO-GO**, y prohibición absoluta de tocar Fleetia, VPS o Supabase operativo sin autorización.
+## Clasificación exhaustiva de ancestralidad de los 42 PR — 06-11-2026
+
+Se comparó **cada una** de las 42 ramas HEAD de PR abiertos contra el candidato #49 `94f2b9446f3686b2b1f563bb8f0e2c3b9578da86` utilizando la API GitHub Compare. La relación de ancestro es de **historia Git**, no certificado de equivalencia funcional, aprobación de producto o integración en `main`.
+
+| Relación Git HEAD histórica → candidato | PR | Total |
+| --- | --- | ---: |
+| HEAD ancestro exacto del candidato (behind = 0 al comparar HEAD→candidato) | #1, #2, #7, #10, #11, #12, #13, #15, #16, #23, #24, #25, #26, #27, #28, #29, #30, #32, #34, #36, #38, #41, #42, #43, #45, #46, #47 | **27** |
+| HEAD no ancestro; contiene commits propios no presentes en historial de #49 | #4, #5, #8, #14, #17, #18, #19, #20, #21, #22, #31, #40, #44, #48 | **14** |
+| Misma HEAD que el candidato | #49 | **1** |
+
+**Los 14 PR divergentes no son 14 líneas de trabajo independientes:**
+
+- **Familia H3 (#18–#22):** #18 es ancestro de #22 por 21 commits; #19 por 17, #20 por 11 y #21 por 7. Todos esos cambios exclusivos deben conciliarse bajo la auditoría semántica conjunta de #22, **sin declarar cuatro PR ya absorbidos**. Contra #49 presentan, respectivamente, 11/15/21/25/32 commits no ancestrales (los números se superponen y **no** se deben sumar).
+- **Seis terminales históricas independientes de #49:** #4 (4 commits), #5 (11), #8 (2), #17 (4), #22 (32), #31 (1). Su conservación/alcance está detallado en la sección precedente; ninguna se cierra.
+- **Ramas documentales intermedias:** #14 (1), #40 (1) y #44 (1) tienen historial divergente. Su reconciliación documental es independiente de la normativa y se debe comprobar sin sobrescribir documentos posteriores.
+- **PR #48 (8 commits no ancestrales):** la incorporación de siete archivos desde su HEAD `ead7633b` a #49 fue por igualdad de blobs, no un merge; el PR aún presenta historia divergente frente a #49. No declararlo fusionado.
+- **Otros 27 PR ancestros:** su historia es alcanzable desde #49, pero permanecen abiertos, Draft y con bases propias; Git no ha efectuado un merge a `main`. Cerrar o rebasar requiere decisión explícita después de verificar normativa, aprobación y plan de preservación.
+
+**Regla de salida:** preparar un único dictamen de integración sobre SHA funcional validado, luego proponer qué PR retener, reorientar o cerrar sin ejecutarlo sin autorización. La documentación de este inventario es un hito de **conocimiento verificado del grafo**, no de saneamiento completado. Sigue faltando CI del cambio `a4229f1d`, revisión de divergencias en contenido y aceptación visual/operativa. `main` y producción **NO-GO**.
+
+## Comprobación de preservación H3 y bloqueo del gate M3 — 06-11-2026
+
+**Ámbito:** comparación estática de la rama histórica #22 (HEAD `4fc4f623ca046100399c3d729c5fa9f70fa5c363`) con el candidato existente del PR #49; no se han ejecutado pruebas nuevas del código M3 corregido.
+
+**Preservación verificable de los escenarios H3 originales:** de los 13 casos Node de `tests/client-state.test.mjs` se conserva el nombre de los 13 y la misma cantidad de puntos de aserción por caso. De las **61 líneas con llamada de aserción**, 57 coinciden literalmente; las cuatro líneas cambiadas corresponden a expectativas de estructura de cesta con `selection`. De los ocho escenarios originales de `apps/client/e2e/client-premium.spec.ts` se mantienen los ocho nombres y cantidad de aserciones por caso, y el archivo actual tiene 18 escenarios; **29 de las 36 líneas de comprobación históricas** coinciden literalmente. Las diferencias restantes incluyen textos del flujo QR, solicitudes API y la forma serializada de la selección. **No inferir paridad semántica de código ni aceptación de producto** a partir de texto de aserciones, nombres o CI anterior. Los cinco informes históricos H3 siguen con blobs idénticos en el candidato.
+
+**Brecha normativa independiente de este saneamiento:** `docs/REQUISITOS_FUNCIONALES.md`, sección «Contrato funcional: configuración única del plato y edición desde el carrito» (18-10-2026), exige varias líneas del mismo producto con personalizaciones diferentes. En el modelo actual `apps/client/src/client-state.ts`, `configureBasketLine` encuentra la línea por `itemId` y la reemplaza, y `changeBasket` también agrupa por `itemId`. Por inspección **esa distinción aún no está implementada**, ni se afirma como regresión causada por el PR #22. La propia sección normativa indica que quedan implementación y diseño visual final pendientes. Mantener **PENDIENTE**; no intentar cerrar este requisito por tests de cesta que solo usan una variante.
+
+**Bloqueo verificable de ejecución CI:** último SHA funcional con 5/5 workflows SUCCESS = `d075e735b53d20722183e32ebefbfd291fd74475`. La corrección de permisos M3 de `a4229f1dca1a26c37b087da58996b2b320d5c2b8` aún NO tiene ejecución propia visible. Para intentar validar sin mutar código se creó `9fef3f6e47c44b29df716a6b3672b9a7a0244f5d` como **commit vacío con árbol idéntico** al anterior: GitHub informa **cero workflow runs y cero check runs** para ese SHA. La última ejecución del PR #49 sigue siendo la de `d075e735`; se verificó que los cinco workflows residen en ramas candidatas, no en el `main` actual. **No se conoce la causa raíz de que GitHub Actions no inicie ejecuciones nuevas.** La integración automática está bloqueada por ejecución, no por un fallo acreditado de test. La conexión GitHub disponible no expone una operación para despachar workflows nuevos; reejecutar un job antiguo no probaría el árbol corregido. No alterar triggers, crear ramas/PR ni modificar `main` de forma especulativa para forzar CI.
+
+**Orden de salida:** resolver la capacidad de ejecución CI con diagnóstico autorizado y evidencia del nuevo SHA funcional; completar las comprobaciones integradoras de M3 por rol y la auditoría semántica de #22; mantener los 42 PR Draft hasta decisión de integración separada. Candidatura funcional pendiente de nuevo CI, producción NO-GO. No hay cambios en Fleetia, VPS ni Supabase operativo.
+
+## Resolución comprobada PR #48 → #49 y validación integral — 06-11-2026
+
+**Hito técnico de estabilización, no cierre de requisitos ni autorización de despliegue.** Esta sección actualiza la fotografía anterior de conflicto/CI pendiente; prevalece siempre la documentación normativa.
+
+### Causa reproducida y corrección Git
+
+El PR #49 tenía base #48, pero su HEAD no incorporaba ocho commits posteriores de #48 por ancestralidad. La API de GitHub informó `mergeable=false`, `mergeable_state=dirty` y **cero runs nuevos** tras `a4229f1d` y los commits documentales. Se comprobaron los siete paths modificados por #48 respecto del ancestro compartido `dab86474`: tres blobs ya idénticos; la prueba PG17 y la continuidad contenían todas las líneas de #48 con adiciones; `TablesView.tsx` reemplazaba intencionadamente `canManage` por capacidades verificadas según rol; el tablero marcaba CV-012 como candidato CI en lugar de pendiente. Ningún cambio de #48 requería sobrescribir el árbol candidato.
+
+El commit de **reconciliación de historia en la rama del PR #49**, `65b0ead2e52a03ef738c939f3cd2d50b1052b7aa`, registró como segundo padre el HEAD de #48 `ead7633bd9796324de88bb024583ad16944941e8`, conservando **exactamente el mismo SHA de árbol** de archivos que el HEAD #49 previo. No se hizo merge del PR a `main`, rebase, force push, cambio de ficheros, VPS, Supabase operativo ni Fleetia. GitHub pasó a `mergeable=true`, y **los cinco workflows del PR se reactivaron inmediatamente**. La cuenta/importe de GitHub Actions no es accesible desde esta conexión; sí se acredita que no había un bloqueo de ejecución por saldo agotado en ese momento.
+
+### Fallos reales de la primera ejecución y corrección
+
+La primera corrida `65b0ead2` dio gestión y CV-012 SUCCESS. El workflow cliente falló **antes de Playwright**, al agotar el límite de 180 s durante descarga externa de fuente Ubuntu `fonts-ipafont-gothic`; el segundo intento del **mismo workflow/SHA**, sin cambiar código ni dependencias, finalizó SUCCESS. No había fallo de app en ese intento.
+
+Los workflows Bootstrap y CI H6 sí encontraron el **mismo fallo del E2E completo**: 50/51 PG17 PASS y el caso 49 `PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey` falló por `page.waitForResponse: Timeout 20000ms` durante cierre de la mesa 915. La revisión de `scripts/ci/table-change-root-postgres17.test.mjs` frente a `apps/management/src/main.tsx` demostró que el test alternaba sesión administrador→camarero→administrador **antes del cierre**, y el remontaje React reemplazaba intencionadamente el árbol, reseteando la mesa seleccionada. El E2E intentaba entonces cerrar 915 sin volver a seleccionarla. **No** se atribuyó falsamente el fallo a SQL, HMAC, Stripe o permisos reales.
+
+La corrección de la **misma prueba integrada**, sin tests aislados añadidos, es `380a4777cad82ee359cc487b58a9f030b62596c3`: se verifica expresamente que 915 está seleccionada antes del cierre con su fallo GET posterior inyectado y recuperación segura; **después** se ejercita cambio de rol administrador/camarero con sus controles y seis viewports. No se modificaron runtime, migraciones, permisos, SQL, normative F/R ni escenarios eliminados.
+
+### Puerta integral: cinco workflows SUCCESS sobre el mismo SHA funcional `380a4777`
+
+| Workflow | Resultado y evidencia |
+| --- | --- |
+| [Sabora CI H6 #42253454494](https://github.com/jdlc86/CartaViva/actions/runs/42253454494) | **SUCCESS**: contratos H6, integración PG17/Fastify/HMAC/concurrencia, recorrido real Chromium, compilación y aislamiento |
+| [Bootstrap Sabora PG17 #42253454770](https://github.com/jdlc86/CartaViva/actions/runs/42253454770) | **SUCCESS**: 1.349/1.349 Node, 51/51 PG17 con caso 49 ahora PASS, 4/4 coste cero, 0 fallos y 0 SKIP en estos bloques; Compose/imagen |
+| [Cliente Chromium #42253454758](https://github.com/jdlc86/CartaViva/actions/runs/42253454758) | **SUCCESS** |
+| [Gestión Chromium #42253454543](https://github.com/jdlc86/CartaViva/actions/runs/42253454543) | **SUCCESS** |
+| [CV-012 dos PWA #42253454564](https://github.com/jdlc86/CartaViva/actions/runs/42253454564) | **SUCCESS**: ámbitos SW/cachés públicos/offline/segregación |
+
+Se verificó al terminar que el PR #49 sigue **Draft**, base #48, GitHub devuelve `mergeable=true`, `mergeable_state=clean`; #48 es ahora **ancestro Git** de #49, con `behind=0` (19 commits adelante en #49). `main` permanece `42b46358a76162445fa9e0b20e7b87dd0a640b5b`; #48 permanece `ead7633b`. La anterior clasificación de 42 PR **27 ancestros, 14 divergentes y #49** debe actualizarse a **28 ancestros, 13 divergentes y #49**, exclusivamente porque #48 ya es ancestro; el resto de la auditoría histórica mantiene su alcance y ningún PR fue cerrado.
+
+**Dictamen:** conflicto Git **RESUELTO**; gate completo de código M3 + CV-012 **VALIDADO AUTOMÁTICAMENTE** en `380a4777`, incluida la corrección de roles M3 de `a4229f1d`. No es aprobación de aspecto humano, instalación real en iOS/Android, cierre de 42 PR, paridad semántica de las ramas históricas divergentes, aceptación total F01–F28/R01–R10, solución de la deuda normativa de personalizaciones de cesta, pago Stripe sandbox, caja, M6 o activación operativa. `server.mjs` sigue `health-only`. Producción **NO-GO**. La actualización documental posterior no hereda pruebas de un SHA distinto.
+
+## Recuperación de tres artefactos documentales ausentes — auditoría de árboles de 42 PR (06-11-2026)
+
+**Control de integridad ampliado:** tras completar la auditoría de historia Git (28 HEAD ancestros, 13 divergentes y #49), se consultaron por Git Trees **los 42 HEAD de PR Draft**, no solamente las diez ramas terminales. Frente al candidato #49 `e5ecc52fba6698fc797d648a7a08f37892557abd`, la unión de rutas de archivos de esos 42 HEAD reveló **tres rutas que faltaban**. No se detectaron otros paths ausentes en ese conjunto. Esta comprobación es de **presencia de rutas y hashes**, no de equivalencia semántica de los cientos de archivos con blobs diferentes.
+
+| Rama de origen | Ruta ausente en #49 antes de la recuperación | Recuperación |
+| --- | --- | --- |
+| [PR #14](https://github.com/jdlc86/CartaViva/pull/14) | `docs/continuity/SESSION_11_HANDOFF.md` | Texto histórico íntegro del HEAD `613df3d3`, con único pie añadido de clasificación y enlace al tablero vivo exigido por CI |
+| [PR #40](https://github.com/jdlc86/CartaViva/pull/40) | `docs/handoffs/SESSION_15_HANDOFF_2026-10-30.md` | Texto histórico íntegro del HEAD `03e874df`, con único pie de clasificación y enlace al tablero vivo exigido por CI |
+| [PR #44](https://github.com/jdlc86/CartaViva/pull/44) | `docs/reviews/SABORA_H6_ZERO_COST_INDEPENDENT_REVIEW_2026-11-05.md` | Blob original `00161331933b571537566bbaee18b8ac6a4f7284` sin modificaciones; revisión histórica de CV-001/CV-002 |
+
+**Causa de la omisión en el primer inventario:** se había mirado la cobertura de archivos de ramas *terminales*; las tres rutas eran exclusivas de HEAD *intermedios* no ancestrales. La anterior afirmación «ninguna ruta ausente» solo era cierta para esas diez terminales, no para los 42 PR. Corregido el perímetro de auditoría, **sin afirmar que los 13 historiales divergentes están integrados**.
+
+**Seguridad y precedencia:** los dos handoffs se marcan como históricos y NO normativos; el informe de coste cero ya declara precedencia de RF/NF/DV y matriz F/R. Restaurar estos archivos no autoriza reabrir viejas decisiones ni cambiar los estados del tablero. En particular, CV-001 y la operativa de coste cero permanecen sujetas al contrato normativo vigente y la aceptación integral; la revisión histórica no sustituye el E2E nuevo. El control `scripts/ci/continuity-tracker-links-gate.mjs` requiere el enlace literal `../tracking/SABORA_LIVE_PROJECT_TRACKER.md` en cada handoff, incluido el recuperado.
+
+**Evidencia CI delimitada:** el código funcional del PR #49 no cambia. La última ejecución integrada válida sigue siendo el SHA `380a4777cad82ee359cc487b58a9f030b62596c3` con **5/5 workflows SUCCESS**, Node 1.349/1.349, PostgreSQL 17 51/51 y coste cero 4/4. Esta restauración documental no recibe automáticamente esas pruebas y no es aceptación de producto. Ningún merge a `main`, cierre de PR, deploy, Supabase operativo, VPS o Fleetia.
+
+## Conciliación funcional de cinco ramas históricas (06-11-2026)
+
+[Informe de contraste código/SQL/pruebas #4, #5, #8, #17 y #22](SABORA_HISTORICAL_FUNCTIONAL_RECONCILIATION_2026-11-06.md). Se verificaron los archivos modificados desde cada ancestro compartido: **23, 20, 21, 3 y 9 paths**, respectivamente; suma de comparaciones **76 entradas** (rutas potencialmente repetidas), **22 blobs idénticos**, **54 blobs evolucionados**, **0 paths ausentes**. La revisión no equivale a paridad total de estas ramas con #49.
+
+Hallazgos principales: #4 cambió revalidación directa de pertenencia Node por capacidad y validación SQL, y `Cancelo` pasó normativamente a renuncia de asignación; #5 conserva íntegros modelos básicos de lectura/navegación pero habilita operaciones M3 por rol; #8 conserva capacidad HMAC, con comprobación SQL nueva de caducidad **después del lock**; #17 conserva validaciones escalares HTTP y añade veto a pickup legado; #22 mantiene 13/13 casos Node y 8/8 Chromium históricos (aserciones adaptadas a nuevos modelos), pero el requisito de variantes independientes de plato sigue **pendiente**. Estas diferencias no justifican sobrescribir código nuevo con cherry-picks antiguos.
+
+**Dictamen:** conciliación estática y argumentada **completada en alcance**, ramas divergentes **NO integradas/NO cerradas**, equivalencia semántica total **NO demostrada**. Última aceptación funcional real: 5/5 workflows SUCCESS del SHA `380a4777`; esta actualización documental no es otra ejecución ni autorización de producción.

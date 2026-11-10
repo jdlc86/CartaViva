@@ -1,0 +1,89 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createH4H6IntegratedCandidate} from '../../apps/api/src/h4-h6-integrated-candidate.mjs';
+
+const pool=()=>({connect:async()=>{},query:async()=>{}});
+const h4=()=>({staffPool:pool(),operationsPool:pool()});
+const h6=()=>({customerPool:pool(),providerPool:pool(),operationsPool:pool(),notifierPool:pool()});
+
+test('integrated H4/H6 candidate rejects missing and aliased SQL identities before startup',async()=>{
+ await assert.rejects(createH4H6IntegratedCandidate(),/invalid_h4_h6_candidate_isolation/);
+ const cases=[
+  ({a,b})=>{b.operationsPool=a.operationsPool;},
+  ({a,b})=>{b.operationsPool=a.staffPool;},
+  ({a,b})=>{b.providerPool=b.customerPool;},
+  ({a,b})=>{b.operationsPool=b.customerPool;},
+  ({a,b})=>{b.operationsPool=b.providerPool;},
+  ({a,b})=>{b.customerPool=a.staffPool;},
+  ({a,b})=>{b.providerPool=a.staffPool;},
+  ({a,b})=>{b.customerPool=a.operationsPool;},
+  ({a,b})=>{b.providerPool=a.operationsPool;},
+  ({a,b})=>{b.forRoles=()=>[];},
+  ({a,b})=>{b.notifierPool=a.staffPool;},
+  ({a,b})=>{b.notifierPool=a.operationsPool;},
+  ({a,b})=>{b.notifierPool=b.customerPool;},
+  ({a,b})=>{b.notifierPool=b.providerPool;},
+  ({a,b})=>{delete b.customerPool;},
+  ({a,b})=>{delete b.providerPool;},
+  ({a,b})=>{delete b.notifierPool;},
+  ({a,b})=>{delete a.staffPool;},
+  ({a,b})=>{delete a.operationsPool;},
+  ({a,b})=>{a.staffPool={};},
+  ({a,b})=>{b.operationsPool={};},
+  ({a,b})=>{b.notifierPool={};},
+ ];
+ for(const change of cases){
+  const a=h4(),b=h6();change({a,b});
+  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+   /invalid_h4_h6_candidate_isolation/);
+ }
+});
+
+// A failed preflight must not start Fastify, register H6, or open the notifier.
+test('integrated H4/H6 rejects malformed dependencies before any SQL connection',async()=>{
+ let connects=0;
+ const tracked=()=>({connect:async()=>{connects++;throw Error('unexpected_sql_connection');},query:async()=>{throw Error('unexpected_sql_query');}});
+ const a={staffPool:tracked(),operationsPool:tracked()};
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),notifierPool:tracked()};
+ b.notifierPool=a.operationsPool;
+ await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),/invalid_h4_h6_candidate_isolation/);
+ assert.equal(connects,0);
+});
+
+test('integrated candidate rejects SQL identity aliasing even with separate pool objects',async()=>{
+ for(const credential of ['user','connectionString']){
+  const a=h4(),b=h6();
+  a.staffPool.options={[credential]:'same-login'};
+  b.operationsPool.options={[credential]:'same-login'};
+  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+   /invalid_h4_h6_candidate_isolation/);
+  const c=h4(),d=h6();
+  d.customerPool.options={[credential]:'same-login'};
+  d.providerPool.options={[credential]:'same-login'};
+  await assert.rejects(createH4H6IntegratedCandidate({h4:c,h6:d}),
+   /invalid_h4_h6_candidate_isolation/);
+ }
+});
+
+test('integrated H4/H6 never registers H6 when H4 cryptographic configuration is invalid',async()=>{
+ let opened=0;
+ const tracked=()=>({connect:async()=>{opened++;throw Error('unexpected_connection');},
+  query:async()=>{opened++;throw Error('unexpected_query');}});
+ const a={staffPool:tracked(),operationsPool:tracked(),
+  staffRole:'sabora_staff_reader_runtime',operationsRole:'sabora_order_operations_runtime',
+  issueTransitionCapability:()=>({})};
+ const b={customerPool:tracked(),providerPool:tracked(),operationsPool:tracked(),notifierPool:tracked(),
+  cookieAuth:{},customerFlow:{},stripe:{},issueStaffCapability:()=>({})};
+ await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+  /invalid_auth_config/);
+ assert.equal(opened,0,'invalid H4 issuer must abort before any SQL preflight or H6 notifier');
+});
+
+test('integrated H4/H6 refuses H6 shadow authentication before SQL',async()=>{
+ for(const key of ['issuer','getTrustedKeys','verify','staffPool','staffRole','observe']){
+  const a=h4(),b=h6();
+  b[key]=key==='staffPool'?pool():()=>true;
+  await assert.rejects(createH4H6IntegratedCandidate({h4:a,h6:b}),
+   /invalid_h4_h6_staff_auth_override/);
+ }
+});

@@ -1,0 +1,49 @@
+import { readCustomerSessionPoolConfig } from './customer-session-pool-config.mjs';
+import { createCustomerSessionScopedQuery } from './customer-session-scoped-query.mjs';
+import { createCustomerSessionVerifier } from './customer-session-verifier.mjs';
+import { createCustomerSessionRevoker } from './customer-session-revoker.mjs';
+
+// Not wired into server.mjs. Driver injection avoids accidental connections.
+export function createCustomerSessionRuntime({ Pool, env } = {}) {
+  if (typeof Pool !== 'function') throw Error('invalid_customer_session_driver');
+  const config = readCustomerSessionPoolConfig(env);
+  let pool = null;
+  let closed = false;
+  let closing = null;
+  return Object.freeze({
+    open() {
+      if (closed || closing) throw Error('customer_session_runtime_closed');
+      if (pool) return pool;
+      // Never retry a failed constructor on this lifecycle.
+      closed = true;
+      const candidate = new Pool(config);
+      if (!candidate || typeof candidate.connect !== 'function' || typeof candidate.end !== 'function') {
+        closed = true;
+        if (candidate && typeof candidate.end === 'function') {
+          Promise.resolve().then(() => candidate.end()).catch(() => {});
+        }
+        throw Error('invalid_customer_session_pool');
+      }
+      pool = candidate;
+      closed = false;
+      return pool;
+    },
+    createOperations() {
+      const activePool = this.open();
+      const query = createCustomerSessionScopedQuery({pool:activePool});
+      return Object.freeze({
+        verify: createCustomerSessionVerifier({query}),
+        revoke: createCustomerSessionRevoker({query})
+      });
+    },
+    async close() {
+      closed = true;
+      if (closing) return closing;
+      const activePool = pool;
+      pool = null;
+      if (!activePool) return;
+      closing = Promise.resolve().then(() => activePool.end());
+      return closing;
+    }
+  });
+}

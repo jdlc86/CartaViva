@@ -26,7 +26,6 @@ Estado: decisión funcional del usuario; implementación pendiente. Inspiración
 
 ## Alcance pendiente de definición
 - Matriz exacta de recursos protegidos por titularidad (carta, precios, empleados, configuración, mesas, etc.).
-- Si el ROOT puede escribir recursos administrativos ordinarios sin ostentar titularidad; **no asumir excepción implícita**.
 - Ámbito de titularidad: restaurante único vs organización multirrestaurante.
 - Política de caducidad, conflictos y notificaciones; semántica de ofertas pendientes.
 - Diseño de endpoints, tablas, RLS, pruebas concurrentes y pruebas de aceptación.
@@ -88,3 +87,14 @@ Se adopta el modelo funcional de Fleetia como referencia a adaptar y verificar e
 - Mantener trazabilidad entre requisito, mecanismo de referencia, decisión de adaptación, implementación y pruebas. Revisar cambios de seguridad antes de desplegar.
 
 **Estado:** decisión de metodología aprobada; no implica que los módulos estén ya implementados en CartaViva.
+
+## Rectificación vinculante: ROOT es gobierno, no escritor ordinario (2026-10-20)
+
+La redacción anterior que permitía a ROOT «asumir para sí» la titularidad queda superada por `SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md`, por el esquema vigente y por el contrato de la primera sesión Codex Desktop:
+
+- La fila singleton solo puede referenciar a un `admin` activo.
+- ROOT puede reasignar forzosamente la titularidad a un ADMIN activo, con motivo, correlación y auditoría, pero no puede ocuparla.
+- ROOT no tiene bypass de escritura administrativa ordinaria. El gate no transaccional fue retirado y `transactional-admin-write.mjs` lo rechaza en ese plano.
+- Las operaciones excepcionales de ROOT viven en el workflow de gobierno y no reciben un callback SQL genérico de mutación de negocio.
+
+Esta rectificación conserva el principio de escritor único efectivo y resuelve la contradicción entre la sección histórica «ROOT puede forzar titularidad» y la arquitectura implementada.

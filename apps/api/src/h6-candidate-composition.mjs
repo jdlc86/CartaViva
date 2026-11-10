@@ -1,0 +1,108 @@
+import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
+import {registerCustomerProductionFlowHttp} from './customer-production-http.mjs';
+import {createH6CustomerPaymentFlow} from './h6-customer-payment-flow.mjs';
+import {createH6CustomerPaymentStateReader} from './h6-customer-payment-state.mjs';
+import {READ_H6_ROUND_SQL} from './customer-production-flow.mjs';
+import {registerH6CustomerEventStreamHttp,registerH6StaffEventStreamHttp,
+ createPostgresH6OutboxNotifier} from './h6-event-stream.mjs';
+import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
+import {registerH6OperationsHttp} from './h6-operations-http.mjs';
+import {createH6CustomerEventRepository,createH6OperationsRepository,ACK_DISPATCH_H6_SQL,
+ REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL} from './h6-operations-repository.mjs';
+import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
+import {createH6DeferredDispatchScheduler} from './h6-deferred-dispatch-scheduler.mjs';
+import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+ LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+ RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
+ RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
+ from './h6-provider-repository.mjs';
+import {assertH6SqlCapabilities} from './h6-sql-preflight.mjs';
+import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
+ TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,
+ TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL,TP_CASH_TIP_REFUND_SQL} from './third-party-cash-repository.mjs';
+import {registerThirdPartyCashHttp} from './third-party-cash-http.mjs';
+
+const customerSql=new Set([READ_H6_ROUND_SQL,READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,
+ TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
+ TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL]);
+const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
+ LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
+ RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
+ RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
+const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
+ RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
+ TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,TP_CASH_TIP_REFUND_SQL]);
+
+// Explicitly dormant composition: it opens only the injected LISTEN connection,
+// never reads environment variables, creates credentials, starts a worker or
+// imports server.mjs. The approved bootstrap must first provide authenticated
+// HTTP hooks and the already-preflighted H3 customer flow.
+export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerFlow,stripe,
+ customerPool,providerPool,operationsPool,notifierPool=operationsPool,
+ expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin,issueStaffCapability,
+ clock,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeDispatchFailure=()=>{}}={}){
+ if(!app||!cookieAuth||typeof forRoles!=='function'||!customerFlow||!stripe||
+    typeof issueStaffCapability!=='function'||!notifierPool||typeof notifierPool.connect!=='function'||
+    !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000||
+    typeof enableDeferredDispatch!=='boolean'||typeof observeDispatchFailure!=='function')
+  throw Error('invalid_h6_candidate_composition');
+ await assertH6SqlCapabilities({customerPool,providerPool,operationsPool,
+  expectedCustomerLogin,expectedProviderLogin,expectedOperationsLogin});
+ const customerTx=createRoleScopedPostgresTransaction({pool:customerPool,
+  role:'sabora_h6_customer_runtime',allowedSql:customerSql});
+ const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,
+  role:'sabora_h6_provider_runtime',allowedSql:providerSql});
+ const operationsTx=createRoleScopedPostgresTransaction({pool:operationsPool,
+  role:'sabora_h6_operations_runtime',allowedSql:operationsSql});
+ const provider=createH6ProviderRepository({withTransaction:providerTx});
+ const payments=createH6PaymentOrchestrator({stripe,repository:provider,
+  ...(clock===undefined?{}:{clock})});
+ const flow=createH6CustomerPaymentFlow({flow:customerFlow,payments,
+  readPaymentState:createH6CustomerPaymentStateReader({withTransaction:customerTx})});
+ const events=createH6CustomerEventRepository({withTransaction:customerTx});
+ const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
+ const operations=createH6OperationsCoordinator({repository:operationsRepository,
+  issueCapability:issueStaffCapability});
+ const thirdPartyPayer=createThirdPartyCashCustomerRepository({withTransaction:customerTx});
+ const thirdPartyOperations=createThirdPartyCashOperations({withTransaction:operationsTx,
+  issueCapability:issueStaffCapability});
+ let scheduler=null;
+ const notifier=await createPostgresH6OutboxNotifier({
+  pool:notifierPool,
+  onLost:error=>{
+   if(!enableDeferredDispatch)return;
+   // The callback observes a sanitized, fail-closed signal; never restart
+   // workers behind the operator's back or spawn a replacement process.
+   try{observeDispatchFailure(error);}catch{}
+   if(scheduler)void scheduler.close().catch(closeError=>{
+    try{observeDispatchFailure(closeError);}catch{}
+   });
+  }
+ });
+ try{
+  registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
+  registerH6OperationsHttp(app,{forRoles,operations});
+  registerThirdPartyCashHttp(app,{cookieAuth,forRoles,payer:thirdPartyPayer,
+   operations:thirdPartyOperations});
+  registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscribeCommitted:notifier.subscribe,
+   heartbeatMs:eventHeartbeatMs});
+  registerH6StaffEventStreamHttp(app,{forRoles,events:operationsRepository,
+   issueCapability:issueStaffCapability,subscribeCommitted:notifier.subscribe,
+   heartbeatMs:eventHeartbeatMs});
+  if(enableDeferredDispatch){
+   scheduler=createH6DeferredDispatchScheduler({
+    listSchedulable:options=>provider.listSchedulable(options),
+    dispatchDue:({orderId})=>payments.captureOrDispatch({orderId,serverDue:true}),
+    subscribeCommitted:notifier.subscribe,onFailure:observeDispatchFailure
+   });
+   await scheduler.start();
+  }
+ }catch(error){await scheduler?.close();await notifier.close();throw error;}
+ return Object.freeze({provider,payments,operations,thirdPartyPayer,thirdPartyOperations,
+  close:async()=>{await scheduler?.close();await notifier.close();}});
+
+}

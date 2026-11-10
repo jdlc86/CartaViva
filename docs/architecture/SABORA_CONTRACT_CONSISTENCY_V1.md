@@ -141,7 +141,9 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 
 **Matiz de importe cero:** no cobrar ni abrir operación Stripe cuando el importe a pagar sea exactamente cero; distinguir importe final calculado de precio individual de platos, descuentos y extras. Una sesión de cuenta en caja ya elegida mantiene esa modalidad aunque se añadan pedidos gratuitos.
 
-**Pendiente de concretar:** alcance de bloqueo de modalidad para «Pagar ahora» en pedidos posteriores (el usuario solo ha exigido expresamente persistencia para «Pagar al terminar»); qué hacer si una sesión inicialmente gratuita añade después un pedido de pago; tratamiento de mesas con varios clientes/pagadores y política de caja. No inferir cambios de modalidad sin consentimiento.
+**Cierre de coste cero aprobado (05-11-2026):** una cuenta que solo contenga rondas gratuitas permanece abierta durante la visita. No se cierra al confirmar la primera cortesía ni al alcanzar `ready`. Si aparece el primer pedido positivo, reutiliza la cuenta y muestra entonces la elección admitida por la política de mesa; la ausencia previa de modalidad no es un cambio de modalidad. Al terminar la ocupación, el sistema puede cerrar la cuenta sin actor humano solo si todo su historial es de importe cero y las rondas, líneas, tareas e incidencias están resueltas de forma durable. `ready` y «Voy a recoger» son evidencia operativa, no entrega física. Saldo cero por pago, devolución o ajuste de una ronda positiva no convierte la cuenta en coste cero.
+
+**Pendiente de concretar:** tratamiento de mesas con varios clientes/pagadores y política de caja compartida. No inferir cambios de modalidad sin consentimiento.
 
 ## Pago obligatorio por mesa (18-10-2026)
 

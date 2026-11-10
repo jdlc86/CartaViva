@@ -1,0 +1,27 @@
+# Sabora — gobierno de titularidad administrativa integrado (candidatura 08-11-2026)
+
+> **Evidencia de implementación y prueba, no contrato normativo, aceptación humana ni autorización de despliegue.** Trabajo exclusivo de `jdlc86/CartaViva`, [PR #52 Draft](https://github.com/jdlc86/CartaViva/pull/52), apilado sobre PR #51. No fusionado.
+
+## Normativa prevalente
+- [ROOT y ADMIN escritor único](../architecture/SABORA_ROOT_ADMIN_SINGLE_WRITER_CONTRACT.md).
+- [Titularidad y rectificación vinculante de ROOT](../security/ADMIN_WRITE_OWNERSHIP_V1.md): ROOT puede reasignar a ADMIN activo, no ocupar la titularidad ni escribir configuración ordinaria.
+- [Operaciones de titularidad](../security/SABORA_OWNERSHIP_OPERATION_CONTRACT.md) y [matriz de recursos](../security/SABORA_ADMIN_RESOURCE_PERMISSION_MATRIX.md).
+- [Hitos y pruebas integradoras](../architecture/SABORA_TECHNICAL_ROADMAP_INFRASTRUCTURE_V1.md). Este informe no redefine autorizaciones ni caducidades de propuestas.
+
+## Implementación candidata y fronteras
+1. **Gobierno completo**: solicitudes ADMIN no titular → titular; ofertas titular → otro ADMIN activo; aceptación, rechazo, cancelación por actores legitimados; reasignación obligatoriamente motivada por ROOT a ADMIN activo. ROOT no es escritor. Falta de titular deniega escrituras ordinarias y ROOT puede hacer bootstrap de titular con reasignación autorizada.
+2. **BD y permisos**: `20261108150000_sabora_admin_ownership_governance_rpc_candidate.sql` incorpora función `sabora.admin_ownership_action_candidate` con identidad física `session_user`, cuerpo SHA256, HMAC vigente, usuario activo y rol verificado; singleton `FOR UPDATE`, staff y propuestas bloqueados dentro de la misma transacción. Escritor y propietario de función `NOLOGIN/NOINHERIT/NOBYPASSRLS`, ACL exacta de función y columnas, RLS forzada. **No crea login operativo** ni concede escritura a navegador o al writer genérico.
+3. **Durabilidad**: propuestas y auditoría append-only existentes; nueva bandeja durable `admin_ownership_notifications` con restricciones, RLS y protección de mutaciones; inserción posterior al asiento de auditoría en la misma transacción. Sin FK adicional de notificación hacia auditoría para no perturbar la prueba de rechazo `TRUNCATE` de dicha tabla: la coherencia se garantiza en el procedimiento transaccional sellado y los grants mínimos.
+4. **API**: `ownership-governance-candidate.mjs` emite capacidades firmadas con audiencia separada; exige sesión/JWT realmente verificada, rol y estado actual; rutas GET y POST de titularidad se montan únicamente mediante `management.ownership` opt-in y preflight de LOGIN SQL independiente/exact one RPC. `server.mjs` health-only no cambia.
+5. **Gestión**: `OwnershipPanel.tsx` en Equipo y gateway autenticado sin persistir token ni atribuir autoridad al estado UI. Ofrece solicitudes, cesiones, decisiones y recuperación ROOT, motivo obligatorio, avisos y actualización explícita. Al cambiar de titular, capacidades antiguas de M3/M5 y ciclo administrativo se vuelven inválidas en SQL aunque el JWT continúe vivo. Los avisos persistidos se consultan manualmente; **no se acredita push en tiempo real**.
+6. **Alcance administrativo**: M3 mesas/QR/catálogo y M5 comunicaciones quedan bajo verificador de titular único de PR #51; personal, invitaciones y recuperación de código tienen verificadores propietarios anteriores contrastados. Las mutaciones específicas de cocina, sala, clientes, pagos y caja mantienen los controles de su flujo normativo, no obtienen el privilegio genérico de configuración. No confundir esta candidatura con una auditoría cerrada de cada futuro recurso.
+
+## Prueba integradora incorporada
+`scripts/ci/ownership-governance-postgres17.test.mjs` se ejecuta al final de `catalog-postgres17-node-driver-smoke.sh` en PostgreSQL 17 efímero. Crea logins SQL mínimos separados, firma JWT RS256 y HMAC, recorre Fastify real y PWA gestión Chromium real mediante proxy local, comprueba asignación, solicitud, rechazo, cancelaciones, aceptación, ofertas, reasignación ROOT, reintentos iguales y conflictos, antigua sesión sin permiso, auditaría, avisos, ausencia de bypass SQL y dos aceptaciones concurrentes con exactamente una ganadora. La suite B3/H6 continúa separadamente en el **mismo SHA**. El inventario de migraciones y la aserción de 67 tablas FORCE RLS reconocen los nuevos objetos.
+
+## Estado verificable y puerta de cierre
+**Código candidato versionado en PR #52.** Los primeros CI localizaron: (a) aserción histórica que suspendía al titular vigente, reorientada a ADMIN no titular sin relajar denegación; (b) ambigüedades de sintaxis CASE en PL/pgSQL, corregidas; (c) ampliación exacta de FORCE RLS de 66 a 67 tablas, con nombre nuevo; (d) FK de avisos que obstruía la prueba heredada de inmutabilidad de audit, retirada sin separar la transacción. Ningún resultado anterior se hereda como validación final. **Pendiente confirmar íntegramente Bootstrap PG17/Node+Chromium y H6 consolidado para el último SHA funcional, junto a PWA y cobertura.** No hay GO de merge ni producción.
+
+**Puertas externas:** aceptación humana de diseño F28/R09, habilitación segura de identidades/secretos y revisión independiente, recuperación/operación M6, Stripe sandbox M4 y autorización expresa para cualquier despliegue. No se ha tocado Supabase operativo, VPS ni Fleetia.
+
+[Seguimiento vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [Continuidad sesión 29](../handoffs/SESSION_29_HANDOFF_2026-11-07.md).

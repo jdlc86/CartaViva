@@ -1,0 +1,197 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readdirSync, readFileSync} from 'node:fs';
+import {extname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const sourceRoot = fileURLToPath(new URL('../src/', import.meta.url));
+
+function readSources(directory) {
+  return readdirSync(directory, {withFileTypes: true}).flatMap((entry) => {
+    const absolute = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return readSources(absolute);
+    if (!['.tsx', '.css', '.js'].includes(extname(entry.name))) return [];
+    return [{path: absolute, source: readFileSync(absolute, 'utf8')}];
+  });
+}
+
+const sources = readSources(sourceRoot);
+const combined = sources.map((file) => file.source).join('\n');
+const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+
+test('all contracted management workspaces are represented without operational fixtures', () => {
+  for (const label of ['Resumen', 'Catálogo', 'Mesas y QR', 'Comandas', 'Equipo']) {
+    assert.match(combined, new RegExp(label));
+  }
+  assert.match(combined, /Sin mesas conectadas/);
+  assert.match(combined, /Sin catálogo conectado/);
+  assert.match(combined, /Sin personal conectado/);
+  assert.match(combined, /no se simulan comandas ni tiempos/i);
+});
+
+test('management keeps network access inside the injected authenticated operations boundary', () => {
+  const transport = readFileSync(new URL('../src/order-operations-authenticated-gateway.js', import.meta.url), 'utf8');
+  const managementTransport = readFileSync(new URL('../src/m3-authenticated-management-gateway.js', import.meta.url), 'utf8');
+  const qrRenderer = readFileSync(new URL('../src/components/TableQrOneTime.tsx', import.meta.url), 'utf8');
+  const defaultPreview = sources.filter(({path}) => !path.endsWith('order-operations-authenticated-gateway.js') &&
+    !path.endsWith('order-operations-gateway.js') &&
+    !path.endsWith('m3-authenticated-management-gateway.js') && !path.endsWith('main.tsx'))
+    .map(({source}) => source).join('\n');
+  assert.doesNotMatch(defaultPreview, /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b|\bEventSource\b/);
+  assert.match(transport, /getAccessToken/);
+  assert.match(transport, /fetchImpl/);
+  assert.match(transport, /credentials:\s*'omit'/);
+  assert.match(transport, /revoke/);
+  assert.match(managementTransport, /getAccessToken/);
+  assert.match(managementTransport, /fetchImpl/);
+  assert.match(managementTransport, /credentials:'omit'/);
+  assert.match(managementTransport, /revoke/);
+  assert.doesNotMatch(combined, /\blocalStorage\b|\bsessionStorage\b|document\.cookie/);
+  assert.doesNotMatch(combined, /googleapis\.com|generativelanguage|aiplatform|AIza[0-9A-Za-z_-]+/i);
+  assert.doesNotMatch(combined, /data:image\/[^;]+;base64/i);
+  assert.match(qrRenderer, /QRCode\.toCanvas/);
+  assert.doesNotMatch(qrRenderer, /toDataURL|localStorage|sessionStorage/);
+  assert.match(qrRenderer, /clearRect/);
+  assert.doesNotMatch(combined, /\bsetInterval\s*\(/);
+});
+
+test('connected reads refresh explicitly, cancel stale work and preserve the visible snapshot on refresh failure', () => {
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
+  const primitives = readFileSync(new URL('../src/components/Primitives.tsx', import.meta.url), 'utf8');
+
+  for (const view of [tables, catalog]) {
+    assert.match(view, /createLatestReadTaskController/);
+    assert.match(view, /readController\.start\(\)/);
+    assert.match(view, /readController\.cancel\(\)/);
+    assert.match(view, /setRefreshError\(true\)/);
+    assert.match(view, /<SnapshotToolbar/);
+  }
+  assert.match(primitives, /Última lectura conservada/);
+  assert.match(primitives, /no se aplicó una respuesta parcial/);
+  assert.match(primitives, /aria-live=\{refreshFailed \? undefined : 'polite'\}/);
+  assert.match(primitives, /disabled=\{refreshing\}/);
+});
+
+test('navigation is deep-linkable and read transports remain injected and disconnected by default', () => {
+  const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
+  assert.match(main, /href=\{toManagementHash\(section\.id\)\}/);
+  assert.match(main, /aria-current=\{area === section\.id \? 'page'/);
+  assert.match(main, /window\.addEventListener\('popstate'/);
+  assert.match(main, /renderManagement\(element, operationsGateway, queueGateway,m3Gateway,ownershipGateway\)/);
+  assert.match(main, /enableOwnershipGovernance = false/);
+  assert.match(main, /ownershipGateway\?\.revoke\(\)/);
+  assert.match(main, /ownershipGateway=\{ownershipGateway\}/);
+  assert.match(main, /mountAuthenticatedManagementApp/);
+  assert.match(main, /if \(element\) renderManagement\(element\)/);
+  assert.match(tables, /gateway\?: AdminTablesGateway/);
+  assert.match(catalog, /gateway\?: AdminCatalogGateway/);
+  assert.match(tables, /No se conserva una respuesta parcial/);
+  assert.match(catalog, /No se conserva una respuesta parcial/);
+  assert.match(tables, /no existe sondeo automático/i);
+  assert.match(catalog, /sólo se reintenta por acción explícita/i);
+  assert.match(main, /hasOperationalChannel = Boolean\(operationsGateway\)/);
+  assert.match(main, /OPERACIÓN RESTRINGIDA/);
+  assert.match(main, /Entrega y cancelación bloqueadas/);
+});
+
+test('tables keep the disconnected lock and expose mutations only through the injected M3 gateway', () => {
+  const tables = readFileSync(new URL('../src/views/TablesView.tsx', import.meta.url), 'utf8');
+  for (const state of ['disconnected', 'loading', 'ready', 'error']) {
+    assert.match(tables, new RegExp(`'${state}'`));
+  }
+  for (const label of ['ABIERTA', 'PAUSADA', 'CERRADA']) assert.match(tables, new RegExp(label));
+  assert.match(tables, /Cargar más mesas/);
+  assert.match(tables, /Filtrar mesas cargadas/);
+  assert.match(tables, /canConfigure/);
+  assert.match(tables, /canReadiness/);
+  assert.match(tables, /canOccupancy/);
+  assert.match(tables, /tablePermissions/);
+  assert.match(tables, /gateway\.manageTable/);
+  assert.match(tables, /gateway\.transitionOccupancy/);
+  assert.match(tables, /<LockedButton icon="plus">Crear mesa<\/LockedButton>/);
+  assert.match(tables, /<LockedButton>Rotar QR<\/LockedButton>/);
+  assert.match(tables, /La lectura no expone secretos QR/);
+});
+
+test('catalog preserves legacy read-only mode and opts into M3 writes through its management gateway', () => {
+  const catalog = readFileSync(new URL('../src/views/CatalogView.tsx', import.meta.url), 'utf8');
+  const model = readFileSync(new URL('../src/catalog-read-model.js', import.meta.url), 'utf8');
+  for (const state of ['disconnected', 'loading', 'ready', 'error']) {
+    assert.match(catalog, new RegExp(`'${state}'`));
+  }
+  assert.match(model, /scope !== 'published'/);
+  assert.match(model, /\['version', 'scope', 'items'\]/);
+  assert.match(catalog, /No se conserva una respuesta parcial/);
+  assert.match(catalog, /Imagen no incluida en la proyección v1/);
+  assert.match(catalog, /No permite deducir ni modificar el borrador editorial/);
+  assert.match(catalog, /<LockedButton>Guardar borrador<\/LockedButton>/);
+  assert.match(catalog, /<LockedButton icon="check">Publicar cambios<\/LockedButton>/);
+  assert.match(catalog, /if\(managementGateway\)return <M3CatalogManagementView/);
+  const management = readFileSync(new URL('../src/views/M3CatalogManagementView.tsx', import.meta.url), 'utf8');
+  assert.match(management, /gateway\.manageCatalog/);
+  assert.match(management, /Guardar borrador/);
+  assert.match(management, /Publicar/);
+});
+
+test('privileged actions use the shared disabled control', () => {
+  const primitives = readFileSync(new URL('../src/components/Primitives.tsx', import.meta.url), 'utf8');
+  assert.match(primitives, /button className="button button--locked" type="button" disabled/);
+
+  for (const action of [
+    'Rotar QR',
+    'Revocar QR',
+    'Guardar borrador',
+    'Publicar cambios',
+    'Mejorar con Google',
+    'Rechazar resultado',
+    'Aprobar versión',
+    'Aplicar al plato',
+    'Preparar publicación',
+    'Publicar en catálogo',
+    'Cambiar estado',
+    'Registrar incidencia',
+    'Gestionar titularidad',
+    'Activar acceso',
+    'Suspender acceso',
+  ]) {
+    assert.match(combined, new RegExp(`<LockedButton[^>]*>${action}<\\/LockedButton>`));
+  }
+});
+
+test('image studio is local-only and exposes the three approved review ratios', () => {
+  const studio = readFileSync(new URL('../src/views/ImageStudio.tsx', import.meta.url), 'utf8');
+  const model = readFileSync(new URL('../src/image-studio-model.js', import.meta.url), 'utf8');
+  const lifecycle = readFileSync(new URL('../src/image-preview-lifecycle.js', import.meta.url), 'utf8');
+  assert.match(studio, /type="file"/);
+  assert.match(lifecycle, /createObjectURL/);
+  assert.match(lifecycle, /revokeObjectURL/);
+  assert.match(studio, /Sólo preparación local/);
+  for (const ratio of ['5:4', '4:3', '1:1']) assert.match(model, new RegExp(ratio));
+  for (const control of ['Iluminación', 'Encuadre', 'Fondo', 'Presentación']) assert.match(model, new RegExp(control));
+  for (const state of ['Cargando', 'Error', 'Rechazada', 'Aprobada']) assert.match(studio, new RegExp(state));
+});
+
+test('approved visual tokens, responsive gates and accessibility motion rule remain present', () => {
+  for (const token of ['#F8F7F4', '#FFFFFF', '#202622', '#146B57', '#D98B45']) {
+    assert.match(css, new RegExp(token, 'i'));
+  }
+  assert.match(css, /button \{ min-height: 44px; \}/);
+  assert.match(css, /\.badge--warning \{[^}]*var\(--cv-warning\) 5%, var\(--cv-surface\)/,
+    'small warning badges must keep WCAG AA contrast over their tinted surface');
+  assert.match(css, /\.header-status \{[^}]*var\(--cv-warning\) 5%, var\(--cv-surface\)/,
+    'the compact restricted-operation label must keep WCAG AA contrast');
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /@media \(max-width: 900px\)/);
+  assert.match(css, /@media \(max-width: 460px\)/);
+  assert.match(css, /\.management-nav \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); overflow-x: visible; \}/);
+  assert.match(css, /\.management-tab \{ display: flex; min-width: 0;/);
+  assert.equal(css.match(/\.role-grid \{ display: grid;/g)?.length, 1,
+    'a late duplicate base rule must not override the mobile one-column role grid');
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.role-grid \{ grid-template-columns: 1fr; \}/);
+  assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.order-history li \{ grid-template-columns: minmax\(0, 1fr\)/,
+    'operational history must collapse its fixed desktop columns on mobile');
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
