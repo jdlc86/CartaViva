@@ -74,6 +74,16 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Estado administrativo:** **43 PR abiertos/Draft al corte previo**, incluidos los nueve; no se cerró ninguno nuevo. **0 pruebas nuevas ejecutadas en S34-1; 0 modificaciones funcionales; 0 revisiones independientes nuevas.** Último **6/6** continúa estrictamente en SHA `b1419e86` de S33. S4 **NO FINALIZADO**. El próximo bloque integrador deberá unir autorización M3/categoría nueva, selección variante y confirmación real con sus límites de operación H4/H6, reutilizando suites existentes sin multiplicar microtests.
 
+## 4 ter. S34-2 — integración M3→H3 implementada en CI; resultado de aceptación en curso (10-11-2026)
+
+**Commit de pruebas integradoras (no cambio del código producto):** [`ff7d68bd431eac707a83bb729fc23e164ec5b92e`](https://github.com/jdlc86/CartaViva/commit/ff7d68bd431eac707a83bb729fc23e164ec5b92e) sobre la rama del [PR #54](https://github.com/jdlc86/CartaViva/pull/54). Se amplió el recorrido **existente** [`scripts/ci/customer-production-postgres17.test.mjs`](../../scripts/ci/customer-production-postgres17.test.mjs), evitando duplicar el harness H3/H4 de variantes que ya confirmaba pedidos contra SQL real.
+
+**Alcance implementado:** siete logins SQL restringidos y distintos sobre PostgreSQL 17 desechable; único Fastify con H3 registro/QR/cotización/confirmación, H4 operaciones y M3 catálogo firmado, todo sin alterar `server.mjs` ni abrir endpoints operativos. La PWA de gestión montada con JWT de ADMIN titular crea categoría dinámica y plato con opciones Suave/Picante, guarda borrador y publica; el lector público real debe devolver el snapshot, luego la PWA cliente conserva dos variantes y confirma el pedido por HTTP hasta las instantáneas económicas SQL y su idempotencia. La prueba exige denegación a camarero. **Las rutas M3 de tablas quedan deshabilitadas en este harness específico**; sus suites PG17 propias se mantienen. No equiparar este harness de H3/H4 con el runtime completo `createM3RestaurantCandidate` M3–H6.
+
+**Batería automática iniciada exactamente sobre `ff7d68bd`:** [Bootstrap PG17 #42819553040](https://github.com/jdlc86/CartaViva/actions/runs/42819553040), [H6 #42819553152](https://github.com/jdlc86/CartaViva/actions/runs/42819553152), [cliente #42819553071](https://github.com/jdlc86/CartaViva/actions/runs/42819553071), [gestión #42819553070](https://github.com/jdlc86/CartaViva/actions/runs/42819553070), [CV-012 #42819553064](https://github.com/jdlc86/CartaViva/actions/runs/42819553064), [cobertura UI #42819553109](https://github.com/jdlc86/CartaViva/actions/runs/42819553109). En el primer corte gestión, CV-012 y cobertura UI eran SUCCESS; las otras estaban en curso. **No se declara 6/6 ni PASS del nuevo escenario antes de los logs.** La batería anterior 6/6 sigue siendo de `b1419e86` y no se traslada al nuevo SHA.
+
+**Gobierno:** sin cambios en `main`, sin merge/cierre de PR, sin Supabase operativo/VPS/Fleetia. S4 pendiente. Ante un fallo, revisar causa y corregir antes de considerar aceptado el bloque; no reducir aserciones ni sustituir SQL/HTTP reales por mocks.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
