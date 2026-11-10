@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
-import {createM3TablesRepository,MANAGE_M3_TABLE_SQL,READ_M3_TABLES_SQL} from
+import {createM3TablesRepository,createM3CatalogRepository,MANAGE_M3_TABLE_SQL,READ_M3_TABLES_SQL,READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL} from
  '../../apps/api/src/m3-management-repository.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 
@@ -151,6 +151,119 @@ test('PG17 M3 tables preserve least privilege, rollback, replay and pagination',
   if(runtime)await runtime.end();
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=$1',[actorId]).catch(()=>{});
   await admin.query('DELETE FROM sabora.staff_members WHERE user_id=ANY($1::uuid[])',[[actorId,otherAdminId]]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',[keyId]).catch(()=>{});
+  await admin.query(`DROP OWNED BY ${login}`).catch(()=>{});
+  await admin.query(`DROP ROLE IF EXISTS ${login}`).catch(()=>{});
+ }
+});
+
+
+test('PG17 M3 dynamic category authorizes, publishes, hides and restores real public snapshot',async()=>{
+ const suffix=process.pid.toString(36);
+ const login=`sabora_m3_catalog_test_${suffix}`;
+ const password=`sabora_m3_catalog_password_${suffix}`;
+ const keyId=`m3_catalog_${suffix}_key`;
+ const adminId='d1c00000-0000-4000-8000-000000000001';
+ const otherAdminId='d1c00000-0000-4000-8000-000000000002';
+ const waiterId='d1c00000-0000-4000-8000-000000000003';
+ const categoryId='d1c00000-0000-4000-8000-000000000004';
+ const itemId='d1c00000-0000-4000-8000-000000000005';
+ const ids=['d1c00000-0000-4000-8000-000000000006',
+  'd1c00000-0000-4000-8000-000000000007',
+  'd1c00000-0000-4000-8000-000000000008',
+  'd1c00000-0000-4000-8000-000000000009',
+  'd1c00000-0000-4000-8000-00000000000a',
+  'd1c00000-0000-4000-8000-00000000000b'];
+ const secret=Buffer.alloc(32,11);
+ const loginUrl=new URL(url);loginUrl.username=login;loginUrl.password=password;
+ let runtime;
+ try{
+  await admin.query(`CREATE ROLE ${login} LOGIN NOINHERIT PASSWORD '${password}'`);
+  await admin.query(`GRANT sabora_m3_catalog_runtime TO ${login} WITH SET TRUE, INHERIT FALSE`);
+  await admin.query(`INSERT INTO sabora.order_operation_signing_keys
+   (key_id,hmac_key,not_before,expires_at)
+   VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
+   [keyId,secret]);
+  await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
+   VALUES($1,'admin','active'),($2,'admin','active'),($3,'waiter','active')`,
+   [adminId,otherAdminId,waiterId]);
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[adminId]);
+  runtime=new Pool({connectionString:loginUrl.toString(),max:2,connectionTimeoutMillis:3000,
+   options:'-c statement_timeout=5000'});
+  const issuer=createM3ManagementCapabilityIssuer({keyId,secret,databaseRole:login});
+  const withTransaction=createRoleScopedPostgresTransaction({pool:runtime,
+   role:'sabora_m3_catalog_runtime',
+   allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL])});
+  const repo=createM3CatalogRepository({withTransaction,issueCapability:issuer,
+   newId:()=>ids[0]});
+  const verified={verifiedIdentity:{userId:adminId},
+   verifiedStaff:{userId:adminId,role:'admin'}};
+  const asOther={verifiedIdentity:{userId:otherAdminId},
+   verifiedStaff:{userId:otherAdminId,role:'admin'}};
+  const asWaiter={verifiedIdentity:{userId:waiterId},
+   verifiedStaff:{userId:waiterId,role:'waiter'}};
+  const initial=await repo.read(verified);
+  assert.deepEqual(initial.categories.filter(c=>c.mandatory).map(c=>c.name),
+   ['ENTRANTE','PRIMERO','SEGUNDO','POSTRE','BEBIDA']);
+  const create={requestId:ids[0],operation:'category_create',
+   payload:{categoryId,name:'ESPECIALES',sortOrder:600}};
+  const category=await repo.manage(verified,create);
+  assert.equal(category.name,'ESPECIALES');
+  assert.equal(category.replayed,false);
+  assert.equal((await repo.manage(verified,create)).replayed,true);
+  await assert.rejects(repo.manage(verified,{...create,
+   payload:{...create.payload,name:'Cambiado'}}),/management_idempotency_conflict/);
+  await assert.rejects(repo.manage(asWaiter,{requestId:ids[1],
+   operation:'category_create',payload:{categoryId:'d1c00000-0000-4000-8000-00000000000c',
+    name:'NO PERMITIDA',sortOrder:700}}),/invalid_m3_catalog_request|m3_management_forbidden/);
+  await assert.rejects(repo.manage(asOther,{requestId:ids[1],
+   operation:'category_create',payload:{categoryId:'d1c00000-0000-4000-8000-00000000000c',
+    name:'NO PERMITIDA',sortOrder:700}}),
+    error=>error?.code==='42501'&&/m3_management_forbidden/.test(error.message));
+  assert.ok((await repo.read(verified)).categories.some(c=>c.id===categoryId&&c.name==='ESPECIALES'));
+  const draft={name:'Plato de temporada',description:'Categoría configurable',
+   imageUrl:null,priceCents:0,allergenIds:[],allergenStatus:'VERIFICADA',
+   options:[],extras:[],discount:null};
+  const saved=await repo.manage(verified,{requestId:ids[1],operation:'item_save',
+   payload:{itemId,categoryId,expectedRevision:0,draft}});
+  assert.equal(saved.categoryId,categoryId);
+  assert.equal(saved.draft.category,'ESPECIALES');
+  const published=await repo.manage(verified,{requestId:ids[2],operation:'item_publish',
+   payload:{itemId,expectedRevision:saved.draftRevision}});
+  assert.equal(published.publishedSnapshot.category,'ESPECIALES');
+  const publicRead=()=>admin.query(
+   'SELECT id,published_snapshot FROM sabora.read_published_catalog() WHERE id=$1',[itemId]);
+  assert.equal((await publicRead()).rows[0].published_snapshot.categoryId,categoryId);
+  const hide=await repo.manage(verified,{requestId:ids[3],operation:'category_visibility',
+   payload:{categoryId,expectedRevision:category.revision,hidden:true}});
+  assert.equal(hide.hidden,true);
+  assert.equal((await publicRead()).rows.length,0,
+   'hidden category must not leak published products into public catalog');
+  const restore=await repo.manage(verified,{requestId:ids[4],operation:'category_visibility',
+   payload:{categoryId,expectedRevision:hide.revision,hidden:false}});
+  assert.equal(restore.hidden,false);
+  assert.equal((await publicRead()).rows.length,1);
+  const ordering=await repo.manage(verified,{requestId:ids[5],operation:'category_reorder',
+   payload:{categoryId,expectedRevision:restore.revision,sortOrder:150}});
+  assert.equal(ordering.sortOrder,150);
+  assert.ok((await repo.read(verified)).categories.some(c=>c.id===categoryId&&c.sortOrder===150));
+  const restricted=await runtime.connect();
+  try{
+   await assert.rejects(restricted.query('SELECT * FROM sabora.catalog_categories_m3'),
+    error=>error?.code==='42501');
+  }finally{restricted.release();}
+  const audits=(await admin.query(`SELECT count(*)::integer AS n
+   FROM sabora.management_audit_m3 WHERE request_id=ANY($1::uuid[])`,[ids])).rows[0].n;
+  assert.equal(audits,6,'all six lifecycle changes must have durable audit records');
+ }finally{
+  if(runtime)await runtime.end();
+  await admin.query('DELETE FROM sabora.catalog_items WHERE id=$1',[itemId]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.catalog_categories_m3 WHERE id=$1',[categoryId]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.management_audit_m3 WHERE request_id=ANY($1::uuid[])',[ids]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.management_mutation_receipts_m3 WHERE request_id=ANY($1::uuid[])',[ids]).catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=$1',[adminId]).catch(()=>{});
+  await admin.query('DELETE FROM sabora.staff_members WHERE user_id=ANY($1::uuid[])',
+   [[adminId,otherAdminId,waiterId]]).catch(()=>{});
   await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',[keyId]).catch(()=>{});
   await admin.query(`DROP OWNED BY ${login}`).catch(()=>{});
   await admin.query(`DROP ROLE IF EXISTS ${login}`).catch(()=>{});
