@@ -146,6 +146,14 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Próxima puerta de pruebas:** ejecutar y examinar los seis workflows de GitHub Actions **sobre la rama con base `main` y su HEAD actualizado**, no suponer que el retarget por sí mismo reejecuta CI. **Revisión independiente y decisión de merge aún pendientes**; la ausencia declarada de usuarios y producción no bloquea el merge por Stripe/PITR/estética final, pero tampoco elimina los requisitos de seguridad SQL, contratos, integridad de integración y aprobación de cambios de `main`. S4 **NO FINALIZADO**. No se ha cerrado ningún PR, aplicado SQL en Supabase ni tocado VPS o Fleetia.
 
+## 4 decies. S34-9 — seis workflows `SUCCESS` en PR #54 apuntando a `main` (10-11-2026)
+
+**Hito técnico confirmado:** [preflight formal §9, resultados originales y límites](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md). Las **seis ejecuciones del commit `d49ee05b103620ce30cfc976fa62182cc9d954df`**, posteriores al retarget de [PR #54](https://github.com/jdlc86/CartaViva/pull/54) a `main`, están `completed/success`: [Bootstrap PG17](https://github.com/jdlc86/CartaViva/actions/runs/42836528469), [H6](https://github.com/jdlc86/CartaViva/actions/runs/42836528459), [cliente](https://github.com/jdlc86/CartaViva/actions/runs/42836528305), [gestión](https://github.com/jdlc86/CartaViva/actions/runs/42836528322), [CV-012](https://github.com/jdlc86/CartaViva/actions/runs/42836528449), [cobertura funcional/UI](https://github.com/jdlc86/CartaViva/actions/runs/42836528481). Los jobs de migración/driver PG17 y de integración H6 registran **SUCCESS**; puerta visual humana final **SKIPPED intencionadamente**, no aprobada.
+
+**PR actual:** #54 sigue Draft con base `main`, `mergeable_state=clean`; 0 reviews independientes. `main` permanece `42b46358a76162445fa9e0b20e7b87dd0a640b5b`. Comparaciones directas con HEAD antiguos confirman que **nueve PR (#4/#5/#8/#17/#18–#22) siguen divergentes**, por lo que un 6/6 no permite cerrarlos automáticamente; 33 ancestros continúan fuera de `main`. **Sin merge/cierre** por este hito.
+
+**Resultado:** se cierra la puerta de **CI automatizada de integración del candidato con base `main`** en el SHA ensayado; continúa **NO-GO administrativo** por revisión independiente y autorización de fusión aún no resueltas. La aceptación visual, Stripe real, backup/PITR/RTO/RPO productivo y despliegue son hitos posteriores dada la ausencia actual de usuarios y producción activa declarada por el propietario. **No se lanzan suites redundantes ni nuevos PR.** No tocar Supabase operativo, VPS o Fleetia. Los commits documentales `[skip ci]` posteriores a `d49ee05b` no heredan una CI propia.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
