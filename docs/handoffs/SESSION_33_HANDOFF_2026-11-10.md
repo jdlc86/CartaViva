@@ -4,7 +4,7 @@
 >
 > **Tablero vivo obligatorio:** [SABORA_LIVE_PROJECT_TRACKER.md](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). **Matriz funcional/UI:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json). **Sesión anterior:** [continuidad 32](SESSION_32_HANDOFF_2026-11-09.md). **Plan vivo S1–S4:** [saneamiento sesión 32](../reviews/SABORA_REPOSITORY_SANITATION_SESSION_32_2026-11-09.md). **Dictamen individual S4:** [47 PR](../reviews/SABORA_S32_S4_VERIFIED_PR_DISPOSITION_2026-11-10.md).
 >
-> **Seguimiento específico de sesión 33:** [SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md](../reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md) (crear/actualizar únicamente con hallazgos contrastados). No convertir propuestas en ejecución.
+> **Seguimiento específico de sesión 33:** [SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md](../reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md) (creado y actualizado con hallazgos contrastados). No convertir propuestas en ejecución.
 
 ## 1. Punto de partida verificado (2026-11-10)
 
@@ -36,3 +36,15 @@
 **Apertura documental:** sesión 33 creada sobre la misma rama de trabajo del PR #54 para evitar multiplicar PR. En este punto no hay cambios funcionales ni nuevas pruebas. Estado S4: **en análisis, sin actuaciones administrativas autorizadas**.
 
 _Añadir aquí solo cierres de hitos con evidencia verificable. No sobrescribir el estado histórico de sesión 32._
+
+## 5. Hito S33-1 — investigación de paridad y preparación S4 registrada (10-11-2026)
+
+**Informe de evidencia publicado:** [SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md](../reviews/SABORA_S33_S4_COMPLETION_EVIDENCE_2026-11-10.md); [tablero vivo §67](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) actualizado. No se repitieron 47 auditorías ni la batería 6/6, ya acreditadas en el alcance de S32.
+
+**Resultados contrastados:** 47 PR abiertos/47 Draft, #54 base #53, `main` sin avanzar. M3 autenticado está enrutado al editor dinámico y SQL `catalog_categories_m3`, no al lector legado de whitelist fija; las suites PG17/Chromium revisadas no demuestran un único circuito integral de publicación de categoría adicional con autorización ADMIN hasta cliente e histórico. La variante H3 local dispone de `basketLineKey` y tests de precio/edición, sin que ello certifique toda la equivalencia histórica. Los cuatro PR documentales #14/#31/#40/#44 tienen conservación ya demostrada en S32 y quedan **listos para solicitar una decisión explícita**; no se cerraron.
+
+**Riesgo Git cuantificado ahora:** comparación `main…#54` devuelve **4293 commits ahead, 0 behind**, con merge-base = HEAD de `main` `42b46358a76162445fa9e0b20e7b87dd0a640b5b`, y la API limita su listado a **300 archivos**. Ninguna fusión debe usar ese recorte como auditoría completa del árbol. Necesario un plan autorizado con inventario exhaustivo, rollback y revisión independiente.
+
+**Cambios efectivos S33:** archivos documentales y enlace en tablero dentro de la rama del PR #54; **ningún cambio funcional, nueva CI, merge, cierre de PR ni despliegue**. Último SHA funcional realmente probado mantiene `5c31354e`, 6/6 GitHub Actions de sesión 32. **S4 administración sigue NO FINALIZADA**, con gates de normativa, revisión independiente, autorización de PR y producción separados.
+
+**Próxima intervención razonable:** cerrar la brecha de evidencia M3 como **un recorrido integrado único** si no hay aceptación ya existente equivalente, evaluar las cinco familias históricas conforme al expediente S33 y obtener revisión independiente y autorización explícita antes de ejecutar el tratamiento de PR. No reabrir cuestiones técnicas resueltas por inercia ni inventar políticas.
