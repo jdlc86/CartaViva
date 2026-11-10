@@ -12,7 +12,7 @@
 - **Preflight y acta de integración/cierre:** [SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md), §§11–13.
 - **Prueba M3→H3 previa:** [SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md](../reviews/SABORA_S34_M3_H3_CONNECTED_ACCEPTANCE_2026-11-10.md).
 - **Matriz funcional/UI:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json).
-- **PR integral actual:** [#55 Draft](https://github.com/jdlc86/CartaViva/pull/55), únicamente de pruebas.
+- **PR integral de pruebas ya fusionado:** [#55 merged](https://github.com/jdlc86/CartaViva/pull/55), solo pruebas (véase S35-1/S35-5). **PR abiertos actualmente: 0** (S35-6).
 - **CI de ese PR:** [Bootstrap PG17 #42900656103](https://github.com/jdlc86/CartaViva/actions/runs/42900656103) · [Sabora CI #42900656064](https://github.com/jdlc86/CartaViva/actions/runs/42900656064) · [cobertura/UI #42900656026](https://github.com/jdlc86/CartaViva/actions/runs/42900656026).
 
 ### Precedencia normativa — no inventar ni reinterpretar
@@ -73,7 +73,7 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 - Nueve PR históricos siguen **`diverged`** frente a `main`; en la auditoría S34-14 sus **88 menciones de archivos por PR** se distribuyen en **19 blobs idénticos, 69 evolucionados, ninguna ruta desaparecida**. Eso no demuestra paridad semántica ni que sus HEAD sean ancestros.
 - Sin revisión independiente aprobatoria ni aceptación visual humana final F28/R09. Stripe remoto M4, CV-013, CV-014 pendiente normativo, recuperación M6/PITR y despliegue son puertas de activación posteriores, no pretexto para bloquear el desarrollo de código sin usuarios.
 
-## 4. Bloque grande prioritario de sesión 35 — cerrar un hito funcional, no multiplicar correcciones
+## 4. Bloque de arranque histórico de sesión 35 — reemplazado por la decisión post-S4 S35-7
 
 **B35-A: culminación del circuito integrado existente y resolución de disposición de los nueve PR.** Evitar abrir un PR por cada asunto. La secuencia lógica es:
 
@@ -189,6 +189,19 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 **Operaciones prohibidas/no realizadas:** no se lanzó CI nueva por este cierre documental, no se cambió código aplicativo, SQL ni normas, no se otorgaron claves o grants operativos, no se accedió a Supabase operativo y no se tocó el VPS compartido ni Fleetia. Desde esta sesión solo actualizar **la continuidad 35** y el tablero con futuros hitos; no reabrir ramas antiguas sin necesidad contractual concreta.
 
 **Próximo bloque de valor:** reordenar la hoja de ruta técnica post-saneamiento con sus gates separados (seguridad independiente actual, conformidad visual frente a referencia aprobada, pruebas integrales restantes y preparación de activación) y cerrar hitos completos, no abrir nuevos PR únicamente para representar pruebas ya existentes.
+
+
+### S35-7 — revisión integral post-saneamiento y elección del siguiente bloque funcional (10-11-2026)
+
+**Evidencia documentada y versionada:** [SABORA_S35_POST_S4_PRODUCT_READINESS_2026-11-10.md](../reviews/SABORA_S35_POST_S4_PRODUCT_READINESS_2026-11-10.md). Se consultaron de nuevo GitHub (`main@9d7d7fa385726566bf197cd6d0c68638932cbc71` al comenzar el corte, árbol recursivo `truncated=false` con **952 blobs**, **0 PR abiertos**) y las ejecuciones [3/3 #55](https://github.com/jdlc86/CartaViva/pull/55) más [CI push #42907471778](https://github.com/jdlc86/CartaViva/actions/runs/42907471778) `completed/success` del SHA de merge `b41713d8`. Los commits documentales posteriores **no son ensayos funcionales nuevos**.
+
+**Matriz de ejecución actual contrastada:** [F/R §40](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md) sigue siendo la fuente de trazabilidad de 38 filas; F20 y R03–R05 dependen de Stripe sandbox real, F28/R09 de aceptación visual humana. M2/M3 tienen circuitos completos **opt-in** de PG17+Fastify+dos PWA; `apps/api/src/server.mjs` **continúa health-only**. CV-014 anuncios (con imagen opcional) y llamada a sala disponen de candidato funcional, pero reservas anticipadas exigen decisiones temporales/límites no cerradas en RF; CV-013 Excel necesita política empresarial/retención, y M6 seguridad externa e infraestructura autorizada. No inventar estas condiciones ni llamar «CERRADO» a una fila por haber saneado GitHub.
+
+**Hallazgo nuevo concreto para programación:** `apps/api/src/m3-management-http.mjs` devuelve `verifiedTablePermissions` **por rol, no por titularidad** (`configure/qr=true` para un ADMIN no titular, `readiness/occupancy=true` para ROOT), y `apps/management/src/views/TablesView.tsx` habilita la interfaz conforme a esa proyección. PostgreSQL, mediante `verify_management_capability_m3` de la migración `20261108121000...`, **niega** escrituras administrativas a ADMIN no titular/ROOT y solo exceptúa acciones operativas de camarero. **Brecha observable de veracidad UI/autorización representada; no se ha probado bypass de SQL ni realizado un E2E nuevo.** Los tests actuales sí cubren denegación SQL y transferencia, pero no la coherencia UI con el titular vigente.
+
+**Siguiente bloque íntegro H35-P1 seleccionado, todavía no implementado:** capacidades efectivas calculadas en frontera servidor/SQL con titular durable actual, aplicadas a PWA gestión Mesas/QR, Catálogo y Configuración/anuncios; transferencia ADMIN A→B, revocación del permiso viejo y recuperación por evento; roles ROOT/camarero, reintentos, auditoría y fallos sin escritura parcial. Validación **en una sola suite PG17 desechable + JWT/HMAC + Fastify + PWA gestión/cliente Chromium**, seguridad SQL y diseño aprobado. No crear tests diminutos o PR por cada pantalla. La normativa de único escritor y prohibición de polling sigue siendo la autoridad.
+
+**Actualización ejecutada de seguimiento:** el [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) ya abre con **estado S35 vigente** en lugar del encabezado histórico engañoso «#54 Draft/47 PR abiertos» y enlaza informe post-S4 y hito H35-P1. El histórico permanece identificable como antecedente. Se publicó el informe, pero **no hubo cambios de código, migraciones, interfaz ni ejecución de pruebas en este hito documental**. S4 administrativo finalizado; **H35-P1 por desarrollar**, seguridad independiente, aceptación humana y activación por resolver. Sin operación de Supabase operativo, VPS, Fleetia o despliegues.
 
 ---
 
