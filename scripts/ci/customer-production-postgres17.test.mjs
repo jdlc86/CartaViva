@@ -1019,6 +1019,61 @@ test('real PG17 and Chromium complete the restricted H3/H4 full-stack flow',asyn
     const lines=JSON.parse(localStorage.getItem('sabora.client.selection.v1')||'[]');
     return lines.length===2&&lines.reduce((n,line)=>n+line.quantity,0)===3;
    });
+   // S34 post-merge H3 incident acceptance: the SAME ADMIN PWA withdraws
+   // the published M3 dish while both configurations remain in local basket.
+   // The public SQL-backed catalog must remove it and the real customer PWA
+   // must refuse checkout without silently dropping either variant.
+   const quotesBeforeWithdrawal=requests.filter(value=>value.surface==='client'&&
+    value.method==='POST'&&value.pathname==='/api/v1/customer/quotes').length;
+   const ordersBeforeWithdrawal=(await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.orders WHERE customer_alias=$1',
+    ['Cliente navegador'])).rows[0].n;
+   await editor.getByRole('button',{name:'Retirar',exact:true}).click();
+   await managementPage.getByText('Plato retirado del catálogo público.')
+    .waitFor({timeout:15000});
+   const withdrawnCatalog=await restaurantApp.inject('/api/v1/catalog');
+   assert.equal(withdrawnCatalog.statusCode,200,withdrawnCatalog.body);
+   assert.equal(withdrawnCatalog.json().some(item=>item.id===m3ItemId),false,
+    'withdrawn M3 item must not leak through the public SQL catalog');
+   await clientPage.goto(clientOrigin+'/candidate.html');
+   await clientPage.getByRole('heading',{name:'Nuestra carta'}).waitFor({timeout:15000});
+   await clientPage.getByRole('button',{name:'Cesta: 3'}).click();
+   const withdrawnBasket=clientPage.getByRole('dialog',{name:'Tu selección'});
+   await withdrawnBasket.getByText('Plato retirado de la carta: retíralo antes de pedir')
+    .first().waitFor({timeout:15000});
+   assert.equal(await withdrawnBasket.locator('.basket-lines article').count(),2,
+    'withdrawal must retain both variants for an explicit user decision');
+   assert.equal(await withdrawnBasket.getByRole('button',
+    {name:'Validar mesa para pedir'}).isDisabled(),true,
+    'unpublished selections must block the actual PWA checkout');
+   assert.equal(requests.filter(value=>value.surface==='client'&&
+    value.method==='POST'&&value.pathname==='/api/v1/customer/quotes').length,
+    quotesBeforeWithdrawal,'the blocked PWA must not issue a new quote');
+   assert.equal((await admin.query(
+    'SELECT count(*)::integer AS n FROM sabora.orders WHERE customer_alias=$1',
+    ['Cliente navegador'])).rows[0].n,ordersBeforeWithdrawal,
+    'withdrawal cannot create an unintended order');
+
+   // Re-publish the SAME persisted draft through the ADMIN HTTP/SQL contract.
+   // This must clear only the incident, never accept a later price change.
+   await editor.getByRole('button',{name:'Publicar',exact:true}).click();
+   await managementPage.getByText('Nueva versión publicada.').waitFor({timeout:15000});
+   const restoredCatalog=await restaurantApp.inject('/api/v1/catalog');
+   assert.equal(restoredCatalog.statusCode,200,restoredCatalog.body);
+   assert.equal(restoredCatalog.json().filter(item=>item.id===m3ItemId).length,1,
+    'restored M3 item must reappear exactly once');
+   await clientPage.goto(clientOrigin+'/candidate.html');
+   await clientPage.getByRole('heading',{name:'Nuestra carta'}).waitFor({timeout:15000});
+   await clientPage.getByRole('button',{name:'Cesta: 3'}).click();
+   const restoredBasket=clientPage.getByRole('dialog',{name:'Tu selección'});
+   await restoredBasket.getByRole('button',{name:'Validar mesa para pedir'})
+    .waitFor({timeout:15000});
+   assert.equal(await restoredBasket.getByRole('button',
+    {name:'Validar mesa para pedir'}).isEnabled(),true);
+   assert.equal(await restoredBasket.locator('.basket-lines article').count(),2,
+    'catalog recovery must not merge two separate variants');
+   console.log('S34 published withdrawal -> H3 blocked -> ADMIN restore PASS');
+
    await editor.getByLabel('Precio EUR').fill('15,00');
    await editor.getByRole('button',{name:'Guardar borrador'}).click();
    await managementPage.getByText('Borrador guardado. La versión pública no ha cambiado.')
