@@ -114,6 +114,18 @@ La siguiente fase **no** consiste en cerrar los 43 PR por volumen, sino en resol
 
 **Hito siguiente:** revisión de un actor independiente (no autoaprobación), con análisis exhaustivo de diff a `main`, gobierno ADMIN/ROOT, seguridad SQL, nueve divergencias, montaje global y conformidad visual; solo tras resultado favorable y autorización específica definir vía de integración y simplificar el backlog. El documento es un paquete listo para entregar al revisor, **no una revisión realizada**. No tocar producción, Supabase operativo, VPS ni Fleetia.
 
+## 4 septies. S34-6 — preflight formal del candidato a `main` y comprobación cruzada (10-11-2026)
+
+**Preflight formal para revisión externa:** [SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md](../reviews/SABORA_S34_MAIN_INTEGRATION_FORMAL_PREFLIGHT_2026-11-10.md) · **manifiesto de archivos con SHA de blobs:** [SABORA_S34_MAIN_INTEGRATION_FILE_MANIFEST_2026-11-10.json](../reviews/SABORA_S34_MAIN_INTEGRATION_FILE_MANIFEST_2026-11-10.json) · **clasificación de 43 PR:** [SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md](../reviews/SABORA_S34_PR_BACKLOG_REDUCTION_AND_INDEPENDENT_REVIEW_2026-11-10.md). Son **documentos de preparación de la revisión**, no una aprobación externa.
+
+**Evidencia nueva contrastada:** comparación completa y no truncada de árboles Git congelados: `main` `42b46358a76162445fa9e0b20e7b87dd0a640b5b` frente a #54 `e2b078abec100b1cd9ac770ca373bb40176a506d`; **4.349 commits ahead/0 behind, 929 archivos alterados: 926 añadidos, 3 modificados, 0 eliminados; 98 migraciones y 6 workflows nuevos**. El manifiesto se releyó y se **recalculó independientemente de su creación** contra los blobs de ambos árboles: **929/929 rutas, estados y SHA correctos**, sin omisiones, extras, discrepancias ni duplicados. El registro de auditoría SQL y el árbol coinciden **98/98 nombres**, 0 omisiones/duplicados.
+
+**Riesgos que bloquean la integración ahora:** el PR #54 continúa Draft sobre **#53, no `main`**; `main` carece de protección efectiva y el repositorio no tiene rulesets activos (consulta de solo lectura); **0 reviews independientes** sobre #54. Su CI acreditada **6/6 SUCCESS** es del SHA funcional `782974063bebe39fd423363eb2f806bc6b8acef9`, no de los commits documentales nuevos. El runbook P2 describe **42 migraciones**, no las 98 actuales; sin ensayo de recuperación productiva, RTO/RPO o validación de PITR. El gate visual final F28/R09 sigue sin aceptación humana; M4, M6 y resto de puertas no son GO.
+
+**Procedimiento propuesto y condicionado:** conservar #54 como candidato único; congelar SHA; revisión independiente de las **929 rutas frente a `main`**, seguridad SQL/ADMIN/ROOT y nueve divergencias; obtener decisión administrativa sobre protecciones y, **por separado**, autorización para apuntar #54 a `main` (sin fuerza/rebase); revalidar diff/CI del SHA resultante; solicitar después autorización específica de merge de código; verificar código incorporado antes de cerrar, con decisión individual, los 33 ancestros; despliegue/migraciones en otro hito y con aislamiento total. **No se ha ejecutado retarget, merge, cierre, cambios de protección ni deploy.**
+
+**Estado de sesión:** evaluación técnica de preparación **COMPLETADA Y DOCUMENTADA** para facilitar revisión; integración real en `main`, revisión externa y producción **NO-GO**. Se han actualizado solo expedientes en la rama candidata, sin tocar Fleetia/VPS/Supabase operativo.
+
 ## 5. Disciplina de ejecución y registro de hitos S34
 
 1. Antes de cada actuación administrativa o conclusión de CI, revalidar HEAD, base, estado de PR y SHA exacto del ensayo. Evitar convertir fotografías históricas en estado actual.
