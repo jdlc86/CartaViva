@@ -10,7 +10,7 @@ import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
-import type {AdminTablesGateway} from './tables-read-model';
+import {validateAdminTablesPage,type AdminTablesGateway} from './tables-read-model';
 import type {M3CatalogGateway} from './m3-catalog-management-model.js';
 import {createM3AuthenticatedManagementGateway,type M3AuthenticatedManagementGateway} from './m3-authenticated-management-gateway.js';
 import {CatalogView} from './views/CatalogView';
@@ -59,6 +59,29 @@ export function ManagementApp({
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
   const [commsAllowed,setCommsAllowed]=useState(false);
+  const [canWriteAdmin,setCanWriteAdmin]=useState(false);
+  const [ownershipRevision,setOwnershipRevision]=useState(0);
+  // Effective permissions come from a signed PG17 read, never the JWT role.
+  // Refresh on navigation, foreground and explicit governance decisions.
+  useEffect(()=>{
+   let active=true,revision=0;
+   const refresh=()=>{
+    const current=++revision;
+    setCanWriteAdmin(false);
+    if(!tablesGateway||!['catalogo','configuracion'].includes(area))return;
+    void tablesGateway.listTables({afterNumber:0,limit:1})
+     .then(page=>{
+      const verified=validateAdminTablesPage(page,{afterNumber:0,limit:1});
+      if(active&&current===revision)setCanWriteAdmin(verified.permissions?.configure===true);
+     }).catch(()=>{if(active&&current===revision)setCanWriteAdmin(false);});
+   };
+   refresh();
+   const visible=()=>{if(document.visibilityState==='visible')refresh();};
+   window.addEventListener('focus',refresh);
+   document.addEventListener('visibilitychange',visible);
+   return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
+    document.removeEventListener('visibilitychange',visible);};
+  },[tablesGateway,area,ownershipRevision]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -110,13 +133,13 @@ export function ManagementApp({
   };
 
   const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway} canWriteAdmin={canWriteAdmin}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : area === 'caja' ? <CashView gateway={operationsGateway}/>
     : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
-        financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
-    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway}/>;
+        financeAllowed={financeAllowed} commsAllowed={commsAllowed} canWriteAdmin={canWriteAdmin}/>
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway} onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
   return (
     <div className="management-shell">

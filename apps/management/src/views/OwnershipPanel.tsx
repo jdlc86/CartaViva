@@ -17,7 +17,7 @@ const message=(code:string)=>code==='forbidden'?
 type Intent={action:OwnershipAction;proposalId:string|null;targetUserId:string|null;
  reason:string|null;requestId:string};
 
-export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
+export function OwnershipPanel({gateway,onOwnershipChanged}:{gateway?:OwnershipGovernanceGateway;onOwnershipChanged?:()=>void}){
  const [snapshot,setSnapshot]=useState<OwnershipProjection|null>(null);
  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
@@ -59,6 +59,7 @@ export function OwnershipPanel({gateway}:{gateway?:OwnershipGovernanceGateway}){
    setNotice(result.replayed?'La operación ya estaba registrada.':
     'La decisión se ha registrado con auditoría.');
    await refresh();
+   onOwnershipChanged?.();
   }catch(failure){
    const code=failure&&typeof failure==='object'&&'code'in failure?
     String((failure as {code:unknown}).code):'unavailable';

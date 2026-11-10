@@ -24,7 +24,7 @@ const isScheduleValid=(d:M5CommunicationDraft)=>{
  (s.mode!=='once'||s.endDate===s.startDate)&&
  (d.image===null||Boolean(d.imageLicense?.trim()));
 };
-export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|null}){
+export function CommunicationsView({gateway,canWriteAdmin=false}:{gateway:M5CommunicationsGateway|null;canWriteAdmin?:boolean}){
  const [items,setItems]=useState<readonly M5CommunicationRecord[]>([]);
  const [editing,setEditing]=useState<{id:string;revision:number}|null>(null);
  const [draft,setDraft]=useState<M5CommunicationDraft>(emptyDraft);
@@ -58,7 +58,7 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
  useEffect(()=>{void load();},[gateway]);
  const mutate=async(operation:'save'|'publish'|'pause'|'resume'|'withdraw',
   item?:M5CommunicationRecord)=>{
-  if(!gateway||busy)return;
+  if(!gateway||busy||!canWriteAdmin)return;
   const target=item??(editing?items.find(x=>x.id===editing.id):undefined);
   if(operation!=='save'&&!target)return;
   if(operation==='save'&&!isScheduleValid(draft)){
@@ -104,6 +104,19 @@ export function CommunicationsView({gateway}:{gateway:M5CommunicationsGateway|nu
   setDraft(structuredClone(item.draft));setMessage('Editando borrador. Guardar no modifica la versión pública hasta publicar.');
  };
  const form=(e:FormEvent)=>{e.preventDefault();void mutate('save');};
+ if(!canWriteAdmin)return <section className="communications-management" aria-labelledby="comms-title">
+  <div className="section-title"><h2 id="comms-title">Comunicaciones · Consulta</h2>
+   <p>La escritura requiere la titularidad ADMIN vigente, comprobada en servidor.</p></div>
+  <div className="communications-items">
+   <button type="button" onClick={()=>void load()}>Actualizar consulta</button>
+   {loading?<p role="status">Consultando anuncios…</p>:
+    failed?<p role="alert">No se pudo consultar Comunicaciones.</p>:
+    !items.length?<p>No hay anuncios creados.</p>:
+    items.map(item=><article className="communications-item" key={item.id}>
+     <h3>{item.draft.emoji} {item.draft.title}</h3>
+     <p>{item.state} · Versión {item.revision}</p></article>)}
+  </div>
+ </section>;
  return <section className="communications-management" aria-labelledby="comms-title">
   <div className="section-title"><span className="eyebrow">Configuración</span>
    <h2 id="comms-title">Comunicaciones</h2>

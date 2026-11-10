@@ -18,7 +18,7 @@ const emptyForm=()=>({name:'',description:'',imageUrl:'',categoryId:'',price:'0,
  allergenIds:[] as number[],allergenStatus:'PENDIENTE_DE_VERIFICAR',
  discountType:'none',discountValue:'',extras:[] as Extra[],options:[] as OptionGroup[]});
 
-export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3CatalogGateway;operationsGateway?:OrderOperationsGateway}){
+export function M3CatalogManagementView({gateway,operationsGateway,canWriteAdmin=false}:{gateway:M3CatalogGateway;operationsGateway?:OrderOperationsGateway;canWriteAdmin?:boolean}){
  const [catalog,setCatalog]=useState<M3ManagementCatalog|null>(null);
  const [phase,setPhase]=useState<'loading'|'ready'|'error'>('loading');
  const [reload,setReload]=useState(0);const [pending,setPending]=useState(false);
@@ -64,7 +64,7 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
      price:euro(x.priceCents),available:x.available===true})):[]})):[]});
  },[catalog?.categories,newItem,selected]);
  const mutate=async(operation:string,payload:Record<string,unknown>,success:string)=>{
-  if(pending)return;setPending(true);setMessage(null);
+  if(pending||!canWriteAdmin)return;setPending(true);setMessage(null);
   let committed=false;
   try{
    const result=await gateway.manageCatalog({requestId:crypto.randomUUID(),operation,payload});
@@ -122,6 +122,17 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  const published=useMemo(()=>catalog?.items.filter(item=>item.publishedSnapshot&&!item.withdrawn)??[],[catalog]);
  if(phase==='loading')return <LoadingState title="Cargando editor" description="Leyendo borradores y publicaciones con autorización administrativa."/>;
  if(phase==='error'||!catalog)return <ErrorState title="Editor no disponible" description="No se recibió una proyección administrativa válida." onRetry={()=>setReload(v=>v+1)}/>;
+ if(!canWriteAdmin)return <div className="view-stack">
+  <PageHeader eyebrow="Catálogo" title="Carta en consulta" description="El editor requiere la titularidad administrativa vigente."/>
+  <ConnectionNotice title="Solo lectura">No eres el ADMIN titular verificado, o no se pudo comprobar la titularidad. Cocina y sala conservan sus permisos independientes.</ConnectionNotice>
+  <section className="panel" aria-label="Catálogo administrativo en consulta">
+   <ul className="catalog-list">{catalog.items.map(item=><li key={item.id}>
+    <div className="catalog-list-item"><strong>{String(item.draft.name??'Borrador sin nombre')}</strong>
+     <StatusBadge tone={item.withdrawn?'warning':item.publishedRevision?'brand':'neutral'}>
+      {item.withdrawn?'RETIRADO':item.publishedRevision?'PUBLICADO':'BORRADOR'}
+     </StatusBadge></div></li>)}</ul>
+  </section>
+ </div>;
  return <div className="view-stack">
   <PageHeader eyebrow="Catálogo" title="Editor de carta" description="Borrador y publicación explícita, categorías dinámicas y precios calculados en céntimos."
    actions={<button className="button button--primary" type="button" onClick={()=>{
