@@ -96,6 +96,19 @@
 **Estado:** preflight y corrección implementados; PR #56 continúa Draft, no fusionado; H35-P1 **no cerrado** hasta comprobar el E2E nuevo y CI integradora. No se aplicaron migraciones a Supabase operativo ni se intervino en VPS, Fleetia, secretos o proveedores reales.
 
 
+
+### S36-2 — verificación definitiva de CI del PR #56 y frontera de primera prueba operativa (11-11-2026)
+
+**GitHub reconsultado:** único PR abierto [#56 Draft](https://github.com/jdlc86/CartaViva/pull/56), **sin merge**; HEAD exacto `ba0530f4531e30afa70322d4b967ee49037be2ba`. Las **seis** ejecuciones del mismo SHA constan `completed/success`: [Bootstrap PG17 #43067975140](https://github.com/jdlc86/CartaViva/actions/runs/43067975140), [Sabora CI #43067974953](https://github.com/jdlc86/CartaViva/actions/runs/43067974953), [gestión #43067974907](https://github.com/jdlc86/CartaViva/actions/runs/43067974907), [cliente #43067974930](https://github.com/jdlc86/CartaViva/actions/runs/43067974930), [CV-012 #43067975008](https://github.com/jdlc86/CartaViva/actions/runs/43067975008) y [cobertura/UI #43067975055](https://github.com/jdlc86/CartaViva/actions/runs/43067975055). Los dos jobs largos terminaron también `completed/success`.
+
+**Logs integradores realmente leídos:** Bootstrap `generate-lockfile` job `130687911324` muestra `ok 1 - PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PWAs, transfer, ROOT force and stale writer denial` tras incorporar la regresión S36 del rechazo 403 y revocación de Comunicaciones; el subtest del outbox que antiguamente falló aparece `ok 22 - PG17 fenced dispatch emits canonical envelopes for boundary and long tokens`. Sabora CI job `130687909513` confirma `[H6] PASS Block 2B: real PostgreSQL 17, HMAC, concurrency and Chromium E2E`. **La causa del `40P01` histórico no está certificada**, aunque se ha demostrado la ejecución positiva de esa misma prueba en la nueva ronda.
+
+**Conclusión acotada:** H35-P1 es **candidato integrado técnicamente probado en PR #56, no fusionado ni desplegado**; falta dictamen de merge conforme a permisos, integración autorizada y comprobación CI post-merge. Ningún test de GitHub equivale a configuración real de Supabase, aceptación estética o recuperación operativa.
+
+**Priorización para la primera prueba en el entorno operativo con datos ficticios (no aceptación general):** el bloqueo principal sigue siendo `apps/api/src/server.mjs` con solo `/health` y `/ready`, con `api-runtime-config.mjs` que rechaza modos operativos y secretos; hay composiciones H3–H6 probadas como candidatas opt-in pero **no existe el arranque real certificado**. Quedan la integración por proceso, credenciales/roles SQL exclusivos y firma/JWKS, aplicación segura de migraciones a Sabora, dominio/TLS, despliegue Sabora-only aislado de Fleetia, backups/restauración, observabilidad, dispositivos/QR y recorrido completo real. Dependencias de Stripe remoto, reservas, Excel, Gemini y estética humana deben quedar explícitamente fuera de la aceptación de un smoke acotado si no se validan; no darlas por resueltas ni reinterpretar la normativa. Un despliegue a VPS o intervención en Supabase operativo requiere autorización expresa y preflight de aislamiento.
+
+**Acción documental:** se actualiza la continuidad 36 con CI final y límites probatorios; **no** se ejecutó merge, migración real, configuración de secretos, servidor, despliegue ni modificación de Fleetia.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
