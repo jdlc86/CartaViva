@@ -1,5 +1,7 @@
 # Sabora / CartaViva — continuidad operativa de la sesión 35 (2026-11-10)
 
+> **ARCHIVADA PARA NUEVOS HITOS (11-11-2026).** La continuidad operativa vigente es [**sesión 36**](SESSION_36_HANDOFF_2026-11-11.md), que recoge el estado definitivo de CI del PR #56 y el siguiente bloque. Los registros S35-0 a S35-10 se conservan como historia de las evidencias de sus respectivos SHA.
+
 > **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA.** Su propósito es preservar el contexto, los SHA y el siguiente bloque de ejecución. La fuente de verdad normativa son los contratos versionados en este repositorio. No supone aprobación de equivalencia funcional, revisión independiente, aceptación estética, autorización de merge, cierre de PR, migración ni despliegue. Los resultados de CI se atribuyen **solo a los SHA exactos ensayados**. **Este es el documento vivo de continuidad a partir de la sesión 35**: los nuevos hitos relevantes se añaden aquí, sin continuar ampliando la sesión 34.
 
 ## 1. Navegación y fuentes obligatorias
@@ -276,4 +278,4 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 
 ---
 
-_Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
+_Este documento fue la continuidad activa de la sesión 35; [sesión 36](SESSION_36_HANDOFF_2026-11-11.md) es la vigente. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
