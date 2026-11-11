@@ -10,7 +10,7 @@ import type {StaffManagementGateway} from './staff-management-gateway.js';
 import type {StaffDirectoryGateway} from './staff-directory-gateway.js';
 import {Icon, type IconName} from './components/Icon';
 import {parseManagementArea, toManagementHash, type ManagementArea} from './navigation-model';
-import {validateAdminTablesPage,type AdminTablesGateway} from './tables-read-model';
+import type {AdminTablesGateway} from './tables-read-model';
 import type {M3CatalogGateway} from './m3-catalog-management-model.js';
 import {createM3AuthenticatedManagementGateway,type M3AuthenticatedManagementGateway} from './m3-authenticated-management-gateway.js';
 import {CatalogView} from './views/CatalogView';
@@ -77,12 +77,8 @@ export function ManagementApp({
       .catch(()=>{if(active&&current===revision)setCanWriteAdmin(false);});
      return;
     }
-    if(!tablesGateway||area!=='catalogo')return;
-    void tablesGateway.listTables({afterNumber:0,limit:1})
-     .then(page=>{
-      const verified=validateAdminTablesPage(page,{afterNumber:0,limit:1});
-      if(active&&current===revision)setCanWriteAdmin(verified.permissions?.configure===true);
-     }).catch(()=>{if(active&&current===revision)setCanWriteAdmin(false);});
+    // Catalog's own signed SQL read carries its independent manage flag.
+    // It does not require the optional M3 tables composition.
    };
    refresh();
    const visible=()=>{if(document.visibilityState==='visible')refresh();};
@@ -90,7 +86,7 @@ export function ManagementApp({
    document.addEventListener('visibilitychange',visible);
    return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
     document.removeEventListener('visibilitychange',visible);};
-  },[tablesGateway,financeGateway,area,ownershipRevision]);
+  },[financeGateway,area,ownershipRevision]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -142,7 +138,7 @@ export function ManagementApp({
   };
 
   const activeView = area === 'resumen' ? <SummaryView/>
-    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway} canWriteAdmin={canWriteAdmin}/>
+    : area === 'catalogo' ? <CatalogView gateway={catalogGateway} managementGateway={catalogManagementGateway} operationsGateway={operationsGateway}/>
     : area === 'mesas' ? <TablesView gateway={tablesGateway} tableChangeGateway={tableChangeGateway}/>
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : area === 'caja' ? <CashView gateway={operationsGateway}/>

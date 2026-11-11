@@ -41,11 +41,10 @@ type CatalogReadProps = Readonly<{
   onAvailability: (item: AdminPublishedCatalogItem) => void;
 }>;
 
-export function CatalogView({gateway,managementGateway,operationsGateway,canWriteAdmin=false}: {
+export function CatalogView({gateway,managementGateway,operationsGateway}: {
   gateway?: AdminCatalogGateway;managementGateway?:M3CatalogGateway;operationsGateway?: OrderOperationsGateway;
-  canWriteAdmin?:boolean;
 }) {
-  if(managementGateway)return <M3CatalogManagementView gateway={managementGateway} operationsGateway={operationsGateway} canWriteAdmin={canWriteAdmin}/>;
+  if(managementGateway)return <M3CatalogManagementView gateway={managementGateway} operationsGateway={operationsGateway}/>;
   return <CatalogReadView gateway={gateway} operationsGateway={operationsGateway}/>;
 }
 

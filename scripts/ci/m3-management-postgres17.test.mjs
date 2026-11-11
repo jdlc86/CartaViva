@@ -215,6 +215,10 @@ test('PG17 M3 dynamic category authorizes, publishes, hides and restores real pu
   const asWaiter={verifiedIdentity:{userId:waiterId},
    verifiedStaff:{userId:waiterId,role:'waiter'}};
   const initial=await repo.read(verified);
+  assert.deepEqual(initial.permissions,{manage:true},
+   'current writer can edit catalog independently of tables runtime');
+  assert.deepEqual((await repo.read(asOther)).permissions,{manage:false},
+   'other ADMIN has read-only catalog even with valid role');
   assert.deepEqual(initial.categories.filter(c=>c.mandatory).map(c=>c.name),
    ['ENTRANTE','PRIMERO','SEGUNDO','POSTRE','BEBIDA']);
   const create={requestId:ids[0],operation:'category_create',
@@ -259,6 +263,14 @@ test('PG17 M3 dynamic category authorizes, publishes, hides and restores real pu
    payload:{categoryId,expectedRevision:restore.revision,sortOrder:150}});
   assert.equal(ordering.sortOrder,150);
   assert.ok((await repo.read(verified)).categories.some(c=>c.id===categoryId&&c.sortOrder===150));
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[otherAdminId]);
+  assert.deepEqual((await repo.read(verified)).permissions,{manage:false},
+   'old ADMIN loses signed catalog writer permission after transfer');
+  assert.deepEqual((await repo.read(asOther)).permissions,{manage:true},
+   'new ADMIN gains signed catalog writer permission without tables gateway');
+  await assert.rejects(repo.manage(verified,{requestId:ids[1],operation:'category_create',
+   payload:{categoryId:'d1c00000-0000-4000-8000-00000000000c',
+    name:'NO PERMITIDA',sortOrder:700}}),error=>error?.code==='42501');
   const restricted=await runtime.connect();
   try{
    await assert.rejects(restricted.query('SELECT * FROM sabora.catalog_categories_m3'),
@@ -273,7 +285,7 @@ test('PG17 M3 dynamic category authorizes, publishes, hides and restores real pu
   await admin.query('DELETE FROM sabora.catalog_categories_m3 WHERE id=$1',[categoryId]).catch(()=>{});
   await admin.query('DELETE FROM sabora.management_audit_m3 WHERE request_id=ANY($1::uuid[])',[ids]).catch(()=>{});
   await admin.query('DELETE FROM sabora.management_mutation_receipts_m3 WHERE request_id=ANY($1::uuid[])',[ids]).catch(()=>{});
-  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=$1',[adminId]).catch(()=>{});
+  await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=NULL WHERE owner_user_id=ANY($1::uuid[])',[[adminId,otherAdminId]]).catch(()=>{});
   await admin.query('DELETE FROM sabora.staff_members WHERE user_id=ANY($1::uuid[])',
    [[adminId,otherAdminId,waiterId]]).catch(()=>{});
   await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',[keyId]).catch(()=>{});

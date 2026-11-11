@@ -18,8 +18,9 @@ const emptyForm=()=>({name:'',description:'',imageUrl:'',categoryId:'',price:'0,
  allergenIds:[] as number[],allergenStatus:'PENDIENTE_DE_VERIFICAR',
  discountType:'none',discountValue:'',extras:[] as Extra[],options:[] as OptionGroup[]});
 
-export function M3CatalogManagementView({gateway,operationsGateway,canWriteAdmin=false}:{gateway:M3CatalogGateway;operationsGateway?:OrderOperationsGateway;canWriteAdmin?:boolean}){
+export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3CatalogGateway;operationsGateway?:OrderOperationsGateway}){
  const [catalog,setCatalog]=useState<M3ManagementCatalog|null>(null);
+ const canWriteAdmin=catalog?.permissions.manage===true;
  const [phase,setPhase]=useState<'loading'|'ready'|'error'>('loading');
  const [reload,setReload]=useState(0);const [pending,setPending]=useState(false);
  const [message,setMessage]=useState<string|null>(null);const [selectedId,setSelectedId]=useState<string|null>(null);
@@ -34,6 +35,16 @@ export function M3CatalogManagementView({gateway,operationsGateway,canWriteAdmin
  useEffect(()=>{let active=true;setPhase('loading');void loadM3ManagementCatalog(gateway).then(value=>{
   if(!active)return;setCatalog(value);setSelectedId(value.items[0]?.id??null);setPhase('ready');
  }).catch(()=>active&&setPhase('error'));return()=>{active=false};},[gateway,reload]);
+ // No polling. Foreground/focus prompts a fresh signed authorization
+ // projection when another ADMIN may have acquired ownership.
+ useEffect(()=>{
+  const onFocus=()=>setReload(v=>v+1);
+  const onVisible=()=>{if(document.visibilityState==='visible')onFocus();};
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>{window.removeEventListener('focus',onFocus);
+   document.removeEventListener('visibilitychange',onVisible);};
+ },[]);
  const selected=catalog?.items.find(item=>item.id===selectedId)??null;
  // Selection hydration must complete before an input becomes interactable;
  // a passive effect can restore stale values after the next user action.
@@ -77,6 +88,12 @@ export function M3CatalogManagementView({gateway,operationsGateway,canWriteAdmin
    await refresh();
    setMessage(success);
   }catch(error){
+   if(error instanceof Error&&error.message==='m3_management_forbidden'){
+    // The server rejected an old actor. Immediately withdraw the stale
+    // edit controls; the next signed read decides current ownership.
+    setCatalog(previous=>previous?Object.freeze({...previous,
+     permissions:Object.freeze({manage:false})}):previous);
+   }
    setMessage(error instanceof Error&&error.message==='m3_management_forbidden'
     ?'Solo el administrador titular puede modificar el catálogo. Los cambios no se han guardado.'
     :committed

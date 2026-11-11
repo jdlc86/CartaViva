@@ -4,7 +4,8 @@ export type M3CatalogItem=Readonly<{id:string;categoryId:string|null;draft:Reado
  draftRevision:number;publishedRevision:number|null;publishedSnapshot:Readonly<Record<string,unknown>>|null;
  publishedAt:string|null;withdrawn:boolean;soldOut:boolean}>;
 export type M3ManagementCatalog=Readonly<{version:2;scope:'administrative';categories:readonly M3CatalogCategory[];
- items:readonly M3CatalogItem[];allergenTaxonomyVersion:1;allergens:readonly M3Allergen[]}>;
+ items:readonly M3CatalogItem[];allergenTaxonomyVersion:1;allergens:readonly M3Allergen[];
+ permissions:Readonly<{manage:boolean}>}>;
 export type M3CatalogGateway=Readonly<{
  readManagementCatalog(request?:Readonly<{signal?:AbortSignal}>):Promise<unknown>;
  manageCatalog(request:Readonly<{requestId:string;operation:string;payload:Readonly<Record<string,unknown>>;signal?:AbortSignal}>):Promise<unknown>;
