@@ -171,6 +171,17 @@
 
 **Plan de ejecución S36-8:** inspeccionar los elementos reales de observabilidad y recuperación en el repositorio y distinguir ausencias de piezas ya implementadas; entregar **un bloque integrador** de instrumentos, pruebas y runbooks con enlaces/versiones y actualización de matriz de seguimiento. **Estado inicial:** metodología aprobada/registrada, implementación y validación adicionales pendientes de evidencia. No existe permiso implícito para merge, migraciones en Supabase, despliegue ni operar el VPS.
 
+
+### S36-9 — instrumentación operativa y diagnóstico seguros en PR #56 (11-11-2026)
+
+**Implementación versionada en el mismo PR #56, sin crear otro PR:** commit [`8534e0b8`](https://github.com/jdlc86/CartaViva/commit/8534e0b8fc5acbe5a3c6278ea7fb44a2ffb814d5) sobre rama `feat/sabora-s35-effective-admin-write-permissions-20261110`. El nuevo HEAD reemplaza la evidencia verde del SHA anterior `ba0530f4`; **NO reutilizar 6/6 de la versión anterior como prueba de esta nueva versión**. Se lanzaron automáticamente seis workflows del nuevo SHA, observados inicialmente `in_progress` y pendientes de dictamen final.
+
+**Archivos concretos del bloque CV-011:** nuevo `apps/api/src/operational-observability.mjs`, `server.mjs` con logging Fastify crudo desactivado y hooks HTTP estructurados con `x-sabora-request-id` generado en servidor (no refleja cabeceras del cliente), `scripts/ops/sabora-diagnostics-summary.mjs` de lectura de STDIN por única vez, `tests/operational-observability.test.mjs`, `tests/operational-diagnostics-summary.test.mjs`, build de API con `node --check`, y [runbook de observabilidad e incidentes](../runbooks/SABORA_OBSERVABILITY_INCIDENT_RESPONSE_V1.md).
+
+**Garantías candidatas:** eventos JSON de lista cerrada (sin URL/query/body/header/IP/QR/JWT/actor/errores SQL); categorías/latencias acotadas, métricas internas sin endpoint público, ráfaga 3 HTTP 5xx/60s con **emisión de alerta al log** disparada por eventos (sin polling), tolerancia a fallo del sink; análisis agregado únicamente de logs Sabora sin mostrar líneas/secretos. Se mantienen `/health`, `/ready` y `health-only` sin activación automática de H3–H6 ni inyección de credenciales. El runbook **reutiliza** recuperación P2/P3 y lifecycle Compose Sabora-only en lugar de duplicarlos.
+
+**Alcance y pendientes:** instrumentación operativa de base **implementada en rama, no fusionada ni desplegada**; los tests de GitHub deben cerrar y se necesita validación integral del nuevo SHA. Esto **no** aporta aún readiness SQL/JWKS H3–H6, observabilidad end-to-end de restaurante desplegado, notificación de alertas externa, plan backup/PITR operativo, RTO/RPO aprobado ni aceptación visual humana. Esos son componentes restantes del hito de primera activación CV-005/CV-010/CV-011/M6. Ninguna escritura SQL real, despliegue VPS, operación Fleetia, secreto ni merge se realizó.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
