@@ -147,6 +147,17 @@
 
 **Operaciones efectuadas:** solo consultas de metadatos y `SELECT` sin mutación, y actualización documental de este hito. **No** hubo `CREATE ROLE`, `CREATE SCHEMA`, migraciones, DDL/DML, operación en VPS/Fleetia, despliegue ni manipulación de secretos.
 
+
+### S36-7 — preflight integral de migraciones y credenciales (11-11-2026)
+
+**Hito documental/inspección de solo lectura realizado:** [informe de instalación PostgreSQL y custodia de secretos](../reviews/SABORA_S36_SUPABASE_DATABASE_ACTIVATION_PREFLIGHT_2026-11-11.md). El corte exacto de GitHub contiene **98 migraciones y 98 registros de auditoría en `main`** frente a **99 migraciones y 99 registros de auditoría en el candidato PR #56**, sin nombres omitidos ni sobrantes. La migración exclusiva #56 es `20261110232000_sabora_m3_effective_management_permissions_candidate.sql`; el PR permanece como rama no fusionada según el último estado comprobado. No confundir CI desechable 6/6 del SHA `ba0530f4` con ejecución sobre Supabase operativo.
+
+**Preflight real sin mutación de Supabase:** un `SELECT` sobre `byhvmumqivmunkmomhup` devuelve `current_user=postgres`, PG **17.11**, `rolcreaterole=true`, `rolsuper=false`, `pgcrypto=1.3` disponible/instalada; no existen `sabora_migration_meta` ni `supabase_migrations.schema_migrations`. La consulta anterior S36-6 ya acreditó ausencia del esquema `sabora` y de los tres logins. Estas comprobaciones permiten **identificar incompatibilidades a revisar**, pero no garantizan que las migraciones probadas como superusuario en Docker funcionen con el rol `postgres` no superusuario de Supabase.
+
+**Hallazgo normativo/operativo importante:** `docs/security/STAFF_READER_LOGIN_PROVISIONING_DRAFT.sql` prohíbe expresamente aplicarse en Supabase; el login de sesiones del cliente se crea en un fixture CI también **prohibido en producción**. Se preserva la diferencia `INHERIT` de lector de personal vs `NOINHERIT` y `SET ROLE` de catálogo/sesión. Las **tres contraseñas que tiene el propietario no equivalen a roles creados**; faltan los demás logins/secretos de H3–H6 y el bootstrap operativo de `server.mjs`.
+
+**Próximas puertas, no ejecutadas:** autorización e integración #56 + CI post-merge; manifiesto checksum exacto; validación de compatibilidad Supabase/propietarios/roles; PG17 aislado con recorrido completo; procedimiento Sabora-only de aplicación/recuperación de migraciones; gestor de secretos y roles mínimos; autorización específica de cambios en Supabase operativo y VPS sin tocar Fleetia. **Estado: preparación inspeccionada, instalación NO-GO**. Sin SQL de escritura, creación de roles, aplicación de migraciones, despliegue ni cambios de secretos.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
