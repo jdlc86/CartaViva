@@ -639,11 +639,34 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   await nextWriterBrowser.getByRole('heading',{name:'Comunicaciones · Consulta'}).waitFor({timeout:20000});
   assert.equal(await nextWriterBrowser.getByRole('button',{name:'Guardar borrador'}).count(),0);
 
+  // S36: keep an old ADMIN's Communications editor open and already hydrated
+  // while ROOT transfers ownership through the same restricted PG17 backend.
+  // Its stale form must receive SQL 403, save nothing and immediately lose
+  // edit controls even without a focus/navigation event or client polling.
+  await oldWriterBrowser.bringToFront();
+  await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).waitFor({timeout:20000});
+  const staleNoticeTitle='S36 borrador prohibido tras cesión';
+  await oldWriterBrowser.getByLabel('Título (máx. 120)').fill(staleNoticeTitle);
+  await oldWriterBrowser.getByLabel('Mensaje (admite saltos de línea y emojis)')
+   .fill('No se debe almacenar tras retirar la titularidad administrativa.');
+  await oldWriterBrowser.getByLabel('Emoji para la banda').fill('🌿');
+  const staleNoticeRows=async()=>Number((await admin.query(
+   "SELECT count(*)::integer AS n FROM sabora.comms_announcements_m5 WHERE draft->>'title'=$1",
+   [staleNoticeTitle])).rows[0].n);
+  assert.equal(await staleNoticeRows(),0);
+
   // ROOT takes ownership from the current ADMIN to A. No polling or
   // fabricated client role: page focus/navigation triggers a signed re-read.
   const takeover=await post(root,'force',{targetUserId:a,
    reason:'Verificación del cambio efectivo de permisos de gestión'});
   assert.equal(takeover.statusCode,200,takeover.body);
+  await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).click();
+  await oldWriterBrowser.getByRole('heading',{name:'Comunicaciones · Consulta'})
+   .waitFor({timeout:20000});
+  assert.equal(await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).count(),0,
+   'SQL 403 must withdraw stale Communications editing in the same foreground tab');
+  assert.equal(await staleNoticeRows(),0,
+   'revoked owner must not persist even a draft while stale UI was visible');
   assert.deepEqual((await tableRead(d)).json().permissions,expectedReadOnly);
   assert.deepEqual((await tableRead(a)).json().permissions,expectedWriter);
   await oldWriterBrowser.bringToFront();
