@@ -82,6 +82,20 @@
 
 **Siguiente hito:** B36-A, preflight técnico integral y decisión de integración del PR #56, sin considerar `main` actualizado hasta que GitHub confirme un merge autorizado.
 
+
+### S36-1 — preflight completo de H35-P1 y revocación de Comunicaciones tras 403 (11-11-2026)
+
+**Informe integral versionado:** [SABORA_S36_PR56_INTEGRATION_PREFLIGHT_2026-11-11.md](../reviews/SABORA_S36_PR56_INTEGRATION_PREFLIGHT_2026-11-11.md). Se cotejaron normas de escritor único, ROOT, cesión con destinatario resuelto en servidor, implementación SQL/API/PWA y la comparación de commits de la rama del [PR #56](https://github.com/jdlc86/CartaViva/pull/56) contra `main`. La diferencia exclusiva de `main` en ese cotejo constó **solo de tres rutas documentales** (sesiones 35/36 y tablero), no de un cambio funcional, pero debe reconsultarse antes del merge. La API devolvió `mergeable=true` en la segunda lectura; no significa autorización.
+
+**Hallazgo real y corrección en el mismo PR:** la PWA de Comunicaciones conservaba controles de edición tras un `403` del servidor por titularidad caducada, hasta un refresco por foco/navegación. El backend SQL continuaba rechazando escrituras: no se demostró bypass. [Commit `f4e9d877`](https://github.com/jdlc86/CartaViva/commit/f4e9d8777e46e30642ab98890103fa7469907242) retira inmediatamente el editor en la misma pestaña y solo deja rehabilitarlo con permiso revalidado, sin polling ni concesión por rol. [Commit `ba0530f4`](https://github.com/jdlc86/CartaViva/commit/ba0530f4531e30afa70322d4b967ee49037be2ba) amplía **el escenario integrado existente** PG17/JWT/HMAC/Fastify/Chromium: el titular antiguo intenta guardar un borrador M5 tras cesión ROOT→ADMIN A, debe recibir 403, perder la edición sin cambiar de pantalla y no insertar una fila SQL. **Código implementado y prueba añadida, pendiente de resultado final de CI del mismo SHA**.
+
+**Outbox ya comprobado realmente:** la batería Bootstrap anterior [#43000775447](https://github.com/jdlc86/CartaViva/actions/runs/43000775447), SHA `27dc70f0`, sí corrió `staff-invitation-outbox-postgres17.test.mjs` y dejó `ok 22` en el mismo test de sobres de despacho que anteriormente sufrió `40P01`; también `ok 23/24/25`. Esto descarta que el éxito se debiese a que el test no se ejecutó, **no certifica corrección causal ni ausencia futura del interbloqueo**.
+
+**CI nueva al corte documental:** seis workflows del HEAD **`ba0530f4531e30afa70322d4b967ee49037be2ba`** iniciados: [Bootstrap #43067975140](https://github.com/jdlc86/CartaViva/actions/runs/43067975140), [Sabora CI #43067974953](https://github.com/jdlc86/CartaViva/actions/runs/43067974953), [gestión #43067974907](https://github.com/jdlc86/CartaViva/actions/runs/43067974907), [cliente #43067974930](https://github.com/jdlc86/CartaViva/actions/runs/43067974930), [CV-012 #43067975008](https://github.com/jdlc86/CartaViva/actions/runs/43067975008), [cobertura #43067975055](https://github.com/jdlc86/CartaViva/actions/runs/43067975055). **Cuatro workflows rápidos completaron `success`**, Bootstrap y Sabora CI continuaban `in_progress`. **No anunciar 6/6 ni hito cerrado antes de observar su conclusión.**
+
+**Estado:** preflight y corrección implementados; PR #56 continúa Draft, no fusionado; H35-P1 **no cerrado** hasta comprobar el E2E nuevo y CI integradora. No se aplicaron migraciones a Supabase operativo ni se intervino en VPS, Fleetia, secretos o proveedores reales.
+
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
