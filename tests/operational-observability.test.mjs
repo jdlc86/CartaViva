@@ -84,3 +84,22 @@ test('M2 H3-H6 opt-in rejects incomplete observer before any SQL dependencies ar
     /invalid_m2_candidate_observability/,
   );
 });
+
+test('dependency readiness and event loss diagnostics remain sanitized and bounded', () => {
+  const records = [];
+  const d = createSaboraObservability({ emit: value => records.push(value) });
+  d.recordOperation({ component: 'database', operation: 'check', outcome: 'success', durationMs: 23 });
+  d.recordOperation({ component: 'database', operation: 'check', outcome: 'failure', durationMs: Infinity });
+  d.dependencyFailure('database');
+  d.dependencyFailure('events');
+  assert.deepEqual(records.map(x => [x.event, x.component, x.operation ?? null, x.outcome ?? null]), [
+    ['operation', 'database', 'check', 'success'],
+    ['operation', 'database', 'check', 'failure'],
+    ['dependency_failed', 'database', null, null],
+    ['dependency_failed', 'events', null, null],
+  ]);
+  assert.equal(d.snapshot().operations, 2);
+  assert.equal(d.snapshot().operationFailures, 1);
+  assert.equal(d.snapshot().requests, 0);
+  assert.doesNotMatch(JSON.stringify(records), /password|token|stack|connectionString|query/i);
+});

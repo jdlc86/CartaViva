@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 // bodies, exceptions, actor IDs, table IDs or database connection details.
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const COMPONENTS = new Set(['catalog', 'customer_session', 'staff', 'kitchen', 'waiter', 'payments', 'events', 'governance', 'database']);
-const OPERATIONS = new Set(['read', 'write', 'confirm', 'transition', 'deliver', 'dispatch', 'refund', 'authorize', 'connect']);
+const OPERATIONS = new Set(['read', 'write', 'confirm', 'transition', 'deliver', 'dispatch', 'refund', 'authorize', 'connect', 'check']);
 const OUTCOMES = new Set(['success', 'failure', 'denied', 'retry']);
 const safeRoute = value => value === '/health' || value === '/ready' ? value : 'other';
 const safeMillis = value => Number.isFinite(value) ? Math.min(600000, Math.max(0, Math.round(value))) : 0;

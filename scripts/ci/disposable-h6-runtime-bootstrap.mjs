@@ -72,14 +72,23 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   // E2E on the real SQL-backed candidate must emit sanitized, low-cardinality
   // HTTP telemetry without ever logging request headers, cookies or raw URLs.
   const summary=diagnostics.snapshot();
-  const allowed=new Set(['schema','source','service','level','event','at','requestId',
-   'route','method','statusClass','durationMs']);
+  const httpFields=new Set(['schema','source','service','level','event','at',
+   'requestId','route','method','statusClass','durationMs']);
+  const operationFields=new Set(['schema','source','service','level','event','at',
+   'component','operation','outcome','durationMs']);
+  const safeHttp=diagnosticEvents.filter(v=>v.event==='http_request');
+  const safeOps=diagnosticEvents.filter(v=>v.event==='operation');
   if(summary.requests<4||summary.byRoute['/health']<1||
      summary.byRoute['/ready']<1||summary.byRoute.other<2||
-     !diagnosticEvents.some(v=>v.event==='http_request'&&v.statusClass==='4xx')||
-     diagnosticEvents.some(v=>v.event!=='http_request'||
-       v.route!== '/health'&&v.route!=='/ready'&&v.route!=='other'||
-       Object.keys(v).some(key=>!allowed.has(key))))throw invalid();
+     !safeHttp.some(v=>v.statusClass==='4xx')||
+     !safeOps.some(v=>v.component==='database'&&v.operation==='check'&&
+       v.outcome==='success')||
+     diagnosticEvents.some(v=>v.event==='http_request'?
+       ((v.route!=='/health'&&v.route!=='/ready'&&v.route!=='other')||
+        Object.keys(v).some(key=>!httpFields.has(key))):
+       (v.event!=='operation'||v.component!=='database'||v.operation!=='check'||
+        v.outcome!=='success'||Object.keys(v).some(key=>!operationFields.has(key)))))
+     throw invalid();
   return Object.freeze({
    app:candidate.app,mode:candidate.mode,origin,
    close:()=>candidate.close()

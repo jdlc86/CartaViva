@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import {performance} from 'node:perf_hooks';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertWaiterCallRuntimeIdentity,createWaiterCallComposition,registerWaiterCallHttp}
  from './waiter-call-candidate.mjs';
@@ -106,6 +107,14 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
  management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
  observeFailure=()=>{},observability=null}={}){
  const app=Fastify({logger:false,trustProxy:false});
+ // Telemetry must never receive arbitrary provider/SQL exception details.
+ const reportDependencyFailure=component=>{
+  try{observability?.dependencyFailure(component);}catch{}
+ };
+ const reportReadiness=(outcome,started)=>{
+  try{observability?.recordOperation({component:'database',
+   operation:'check',outcome,durationMs:performance.now()-started});}catch{}
+ };
  let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
@@ -116,7 +125,9 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   // Never creates an external connection, new route or secret.
   if(observability!==null){
    if(typeof observability?.onRequest!=='function'||
-      typeof observability?.onResponse!=='function')
+      typeof observability?.onResponse!=='function'||
+      typeof observability?.dependencyFailure!=='function'||
+      typeof observability?.recordOperation!=='function')
     throw Error('invalid_m2_candidate_observability');
    app.addHook('onRequest',observability.onRequest);
    app.addHook('onResponse',observability.onResponse);
@@ -339,7 +350,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
    expectedLogin:tableChange.expectedOperationsLogin});
   h6Notifier=await createPostgresH6OutboxNotifier({pool:h6.notifierPool,onLost:error=>{
-   operational=false;try{observeFailure(error);}catch{}
+   operational=false;reportDependencyFailure('events');
+   try{observeFailure(error);}catch{}
    if(scheduler)void scheduler.close().catch(()=>{});
   }});
 
@@ -389,9 +401,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
   app.get('/ready',async(_request,reply)=>{
    reply.header('Cache-Control','no-store');
-   if(!operational)return reply.code(503).send({status:'unavailable'});
+   if(!operational){reportDependencyFailure('events');
+    return reply.code(503).send({status:'unavailable'});}
+   const started=performance.now();
    try{await preflight();}
-   catch{return reply.code(503).send({status:'unavailable'});}
+   catch{reportReadiness('failure',started);reportDependencyFailure('database');
+    return reply.code(503).send({status:'unavailable'});}
+   reportReadiness('success',started);
    return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
