@@ -191,6 +191,13 @@
 
 **Frontera residual esencial:** en código hay observabilidad de HTTP health-only y **ensayo de la composición H3–H6/M3**; la observabilidad sobre una instancia real, conexión de eventos SQL/HMAC/outbox/Stripe, envío efectivo de alertas, readiness dependiente del proveedor, backup/restore/PITR real, RTO/RPO y aceptación humana siguen **pendientes**. No se efectuaron cambios en Supabase operativo, VPS, Fleetia ni secretos del propietario.
 
+
+### S36-11 — bloqueo de conectividad saliente del Compose actual (11-11-2026)
+
+**Hallazgo de infraestructura importante para la primera activación, deducido de código y contrato vigentes (NO probado en VPS):** `deploy/compose.sabora.yml` ofrece hoy **únicamente** la red `sabora_private` con `internal: true`, y la API activa **solo** en `health-only`. Es apropiado para la prueba aislada actual, pero **no proporciona por sí mismo el acceso saliente necesario a Supabase PostgreSQL/Auth/JWKS, Stripe de prueba y eventual receptor externo de alertas**. No asumir que basta con instalar contraseñas o abrir las rutas: la configuración no soporta todavía la conectividad segura de un restaurante operativo. La integración PG17 en GitHub Actions utiliza un laboratorio distinto y no certifica egress del Compose.
+
+**Puerta CV-005/CV-010/CV-011 antes del deploy:** diseñar y probar exclusivamente **conectividad Sabora-only saliente, TLS verificado, segmentación, DNS, firewall y límites** sin unir redes/volúmenes/sockets/servicios con Fleetia, sin reinicios globales, sin desactivar la restricción para todos los proyectos. Mantener `127.0.0.1` para el ingreso proxied, identidad SQL por proceso, secretos privados, comprobación real de readiness y paradas/reversiones propias. Cualquier plan requiere revisión normativa/infraestructural y autorización expresa; **no se ha modificado Compose ni VPS** en esta sesión. Este hallazgo no invalida las pruebas de observabilidad, pero impide afirmar que el stack actual esté listo para desplegar la API funcional.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
