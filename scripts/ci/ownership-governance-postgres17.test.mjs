@@ -621,6 +621,11 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    },jwt(actor));
   }
   await oldWriterBrowser.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
+  // The notice also renders during the initial fail-closed loading state;
+  // its disabled placeholder must not be mistaken for a granted action.
+  // Await the actual SQL-backed page before asserting non-owner affordances.
+  await nextWriterBrowser.getByRole('region',{name:'Estado de la lectura de mesas'})
+   .waitFor({timeout:20000});
   await nextWriterBrowser.getByText('Proyección de mesas en modo consulta.').waitFor({timeout:20000});
   assert.equal(await nextWriterBrowser.getByRole('button',{name:'Crear mesa'}).count(),0);
   await oldWriterBrowser.getByRole('link',{name:/Catálogo/}).click();
@@ -643,6 +648,8 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   assert.deepEqual((await tableRead(a)).json().permissions,expectedWriter);
   await oldWriterBrowser.bringToFront();
   await oldWriterBrowser.getByRole('link',{name:/Mesas/}).click();
+  await oldWriterBrowser.getByRole('region',{name:'Estado de la lectura de mesas'})
+   .waitFor({timeout:20000});
   await oldWriterBrowser.getByText('Proyección de mesas en modo consulta.').waitFor({timeout:20000});
   assert.equal(await oldWriterBrowser.getByRole('button',{name:'Crear mesa'}).count(),0);
   await nextWriterBrowser.bringToFront();
