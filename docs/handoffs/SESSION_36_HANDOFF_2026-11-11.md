@@ -207,6 +207,17 @@
 
 **Estado de entrega:** código y runbook de observabilidad versionados y laboratorio permanente codificado en [contrato normativo de método](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md); la cobertura técnica completa del SHA aún espera conclusión del último workflow. La infraestructura real permanece sin activar: `health-only`, 99 SQL candidatas no aplicadas, logins/secretos privados no provisionados, egress de Compose no diseñado/validado, alertas externas no conectadas y PITR/restauración real sin acreditar. No fusionar ni desplegar por este corte intermedio. Ninguna acción sobre Fleetia, VPS, secretos ni SQL operativo.
 
+
+### S36-13 — CI íntegra 6/6 PASS de observabilidad y laboratorio (11-11-2026)
+
+**Cierre de validación técnica del mismo HEAD `517225848bafb2731be315fae0cc147da31a44dc` de [PR #56](https://github.com/jdlc86/CartaViva/pull/56):** los **seis workflows distintos** constan **`completed/success`**: [Bootstrap PG17 #43112618375](https://github.com/jdlc86/CartaViva/actions/runs/43112618375), [Sabora CI/H6 #43112618317](https://github.com/jdlc86/CartaViva/actions/runs/43112618317), [cliente Chromium #43112618238](https://github.com/jdlc86/CartaViva/actions/runs/43112618238), [gestión Chromium #43112618284](https://github.com/jdlc86/CartaViva/actions/runs/43112618284), [CV-012 #43112618234](https://github.com/jdlc86/CartaViva/actions/runs/43112618234) y [cobertura/UI #43112618246](https://github.com/jdlc86/CartaViva/actions/runs/43112618246). No mezclar duplicados de UI disparados por cambios de descripción del PR con los seis jobs canónicos.
+
+**Log verificable del job H6 #130832319426:** `[H6] PASS Block 1: normative, contract and service tests`, `[H6] PASS Block 2A: isolated PostgreSQL 17 migration and privilege gates`, `[H6] PASS Block 2B: real PostgreSQL 17, HMAC, concurrency and Chromium E2E`. También finalizan success los pasos `Build` (incluye `node --check src/operational-observability.mjs`), `Gate production configuration, isolation and frontend artifacts`, `Validate Docker Compose`, `Build isolated Sabora API image` y `Exercise live API health inside isolated container`. El script de H6 incluye la suite `pnpm test`; el PASS del bloque 1 acredita la batería del SHA con los tests de observabilidad incorporados. **No confundir prueba de laboratorio con ejecución en Supabase.**
+
+**Estado por capas:** contrato permanente de metodología [V1](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md) y runbook de observabilidad/incidentes publicados; implementación HTTP y ensayo opt-in M2/M3 H3–H6 **candidatos probados en CI 6/6**, PR **Draft aún sin merge**, infraestructura operativa **sin despliegue**. No hay aún pipeline de alertas externas probado, readiness H3–H6 de proceso real, conexión a Supabase, roles/login, PITR/recuperación operativa, RTO/RPO aprobados ni inspección visual humana. El bloqueo egress del Compose `internal: true` permanece (S36-11). No se han instalado secretos ni ejecutado SQL de escritura ni acciones en VPS/Fleetia.
+
+**Resultado:** hito de instrumentación y metodología **candidato técnico VALIDADO EN LABORATORIO**; **NO-GO de primera activación real** mientras CV-005/CV-010/CV-011/M6 no esté cerrado y autorizado con aislamiento Sabora-only.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
