@@ -103,7 +103,8 @@ const staffGuard=forRoles=>roles=>{
 // Separate opt-in assembly. It owns Fastify/listeners/scheduler, but never
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
- management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,observeFailure=()=>{}}={}){
+ management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
+ observeFailure=()=>{},observability=null}={}){
  const app=Fastify({logger:false,trustProxy:false});
  let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
  const closeServices=async()=>{
@@ -111,6 +112,15 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
  };
  try{
+  // Explicit diagnostics injection for the full H3-H6/M3 HTTP composition.
+  // Never creates an external connection, new route or secret.
+  if(observability!==null){
+   if(typeof observability?.onRequest!=='function'||
+      typeof observability?.onResponse!=='function')
+    throw Error('invalid_m2_candidate_observability');
+   app.addHook('onRequest',observability.onRequest);
+   app.addHook('onResponse',observability.onResponse);
+  }
   if(!customer||!tableChange||!staff||!h4||!h6||
      typeof customer.allowedOrigin!=='string'||typeof customer.secretKey!=='string'||
      Buffer.byteLength(customer.secretKey,'utf8')<32||

@@ -15,7 +15,7 @@
 - Sustituyen el logging HTTP por defecto de Fastify por eventos JSON **con campos elegidos de una lista cerrada**; Fastify ya no imprime ruta cruda, query, IP, user agent ni cabeceras por defecto.
 - Generan en el servidor `x-sabora-request-id` **aleatorio** para cada solicitud; jamás aceptan el valor de la cabecera aportada por el cliente como identidad verificable.
 - Evento HTTP `http_request`: `schema=1`, `source=sabora_observability`, `service=sabora-api`, `at`, `level`, `requestId`, `route` (solo `/health`, `/ready` u `other`), `method` enumerado, `statusClass` y `durationMs` acotado.
-- Eventos `operation` (componente/operación/resultado enumerados, duraciones), `dependency_failed`, `lifecycle` y `alert`. **La extensión de operaciones H3–H6 permanece disponible por inyección, pero NO está conectada a su bootstrap real.**
+- Eventos `operation` (componente/operación/resultado enumerados, duraciones), `dependency_failed`, `lifecycle` y `alert`. **La instrumentación HTTP también se conecta por inyección al candidato integrado M2/M3 de laboratorio**, cuyo bootstrap GitHub Actions verifica HTTP real + PostgreSQL 17 con los tres tipos de rutas sanitizadas; **no** está conectada a un bootstrap de producción operativo. La instrumentación específica de operaciones SQL/outbox/Stripe y de las dos PWA sigue pendiente.
 - Un umbral **basado en eventos** (3 HTTP 5xx en 60 segundos) emite `alert: http_5xx_burst` como registro estructurado; no instala sondeo recurrente ni envía mensajes a un proveedor. Un sink de diagnóstico que falla **no altera la operación**.
 - `snapshot()` ofrece contadores internos y bandas de duración sin endpoints nuevos. No existe `/metrics`, `/debug` o visualizador HTTP público. `/health` y `/ready` siguen indicando **solo disponibilidad del proceso health-only**, no preparación del restaurante ni conectividad SQL.
 
@@ -67,6 +67,7 @@ La instrumentación emite `alert` al log, pero **no existe todavía receptor ext
 
 - `tests/operational-observability.test.mjs`: Fastify real con inyección HTTP, correlación, no fuga de valores inyectados en URL/cabeceras, cardinalidad/errores, aislamiento de fallos del sink y ráfaga 5xx sin polling.
 - `tests/operational-diagnostics-summary.test.mjs`: resumen solo de eventos Sabora, no eco de secretos ni líneas de otros proyectos.
+- `scripts/ci/disposable-h6-runtime-bootstrap.mjs` (preflight H3–H6/M3 PG17): conecta observador opt-in antes de escuchar, ejecuta HTTP real `/health`, `/ready`, catálogo y denegación a personal no autorizado, y comprueba telemetría tipada sin campos crudos. `tests/operational-observability.test.mjs` también exige rechazo temprano de observadores incompletos.
 - Suites preexistentes `tests/api-exposure-guard.test.mjs`, `tests/production-config-secrets.test.mjs`, `tests/deployment-isolation-contract.test.mjs`, `tests/recovery-continuity-contract.test.mjs` mantienen la puerta health-only, cero rutas operativas y aislamiento.
 - El comando `pnpm test` incluye automáticamente `tests/*.test.mjs`, y los seis workflows actuales de PR prueban los sistemas existentes. **Solo marcar PASS de CI cuando el nuevo SHA realmente concluya correctamente.**
 

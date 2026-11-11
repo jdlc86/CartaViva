@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSaboraObservability } from '../apps/api/src/operational-observability.mjs';
 import { createApiApp } from '../apps/api/src/server.mjs';
+import { createM2RestaurantCandidate } from '../apps/api/src/m2-restaurant-candidate.mjs';
 
 const secret = 'DO_NOT_ECHO_MY_SECRET_XYZ_123456789';
 
@@ -75,4 +76,11 @@ test('emitter faults do not affect HTTP responses and burst alerts are event-dri
   }
   assert.equal(monitor.snapshot().alerts, 2);
   assert.equal(alerts.filter(x => x.event === 'alert').length, 2);
+});
+
+test('M2 H3-H6 opt-in rejects incomplete observer before any SQL dependencies are opened', async () => {
+  await assert.rejects(
+    createM2RestaurantCandidate({ observability: { onRequest() {} } }),
+    /invalid_m2_candidate_observability/,
+  );
 });

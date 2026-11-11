@@ -3,6 +3,7 @@
 // roles, reads operational secrets, deploys, or contacts an external database.
 // All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
 import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const invalid=()=>Error('disposable_m3_bootstrap_required');
@@ -41,7 +42,9 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   const paymentDisabled=()=>{throw Error('disposable_h6_payment_provider_disabled');};
   const noProvider=Object.freeze({authorize:paymentDisabled,capture:paymentDisabled,
    release:paymentDisabled,refund:paymentDisabled,retrieve:paymentDisabled});
-  const isolatedOptions={...options,h6:{...options.h6,stripe:noProvider},
+  const diagnosticEvents=[];
+  const diagnostics=createSaboraObservability({emit:record=>diagnosticEvents.push(record)});
+  const isolatedOptions={...options,observability:diagnostics,h6:{...options.h6,stripe:noProvider},
    enableDeferredDispatch:false};
   // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
@@ -66,6 +69,17 @@ export async function startDisposableM3Runtime({options,environment=process.env}
      healthJson.service!=='sabora-m3-candidate'||
      readyJson.service!=='sabora-m3-candidate'||
      !Array.isArray(catalogJson))throw invalid();
+  // E2E on the real SQL-backed candidate must emit sanitized, low-cardinality
+  // HTTP telemetry without ever logging request headers, cookies or raw URLs.
+  const summary=diagnostics.snapshot();
+  const allowed=new Set(['schema','source','service','level','event','at','requestId',
+   'route','method','statusClass','durationMs']);
+  if(summary.requests<4||summary.byRoute['/health']<1||
+     summary.byRoute['/ready']<1||summary.byRoute.other<2||
+     !diagnosticEvents.some(v=>v.event==='http_request'&&v.statusClass==='4xx')||
+     diagnosticEvents.some(v=>v.event!=='http_request'||
+       v.route!== '/health'&&v.route!=='/ready'&&v.route!=='other'||
+       Object.keys(v).some(key=>!allowed.has(key))))throw invalid();
   return Object.freeze({
    app:candidate.app,mode:candidate.mode,origin,
    close:()=>candidate.close()
