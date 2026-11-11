@@ -218,6 +218,15 @@
 
 **Resultado:** hito de instrumentación y metodología **candidato técnico VALIDADO EN LABORATORIO**; **NO-GO de primera activación real** mientras CV-005/CV-010/CV-011/M6 no esté cerrado y autorizado con aislamiento Sabora-only.
 
+
+### S36-11 — CI integradora completa de observabilidad (12-11-2026)
+
+**Comprobación directa de GitHub Actions sobre el HEAD exacto [`517225848bafb2731be315fae0cc147da31a44dc`](https://github.com/jdlc86/CartaViva/commit/517225848bafb2731be315fae0cc147da31a44dc): los **seis workflows distintos** terminaron `completed/success`.** [Sabora CI PG17/H6/Chromium #43112618317](https://github.com/jdlc86/CartaViva/actions/runs/43112618317), [Bootstrap PG17/driver/Docker #43112618375](https://github.com/jdlc86/CartaViva/actions/runs/43112618375), [cliente #43112618238](https://github.com/jdlc86/CartaViva/actions/runs/43112618238), [gestión #43112618284](https://github.com/jdlc86/CartaViva/actions/runs/43112618284), [PWA instalabilidad #43112618234](https://github.com/jdlc86/CartaViva/actions/runs/43112618234) y [matriz UI #43112618246](https://github.com/jdlc86/CartaViva/actions/runs/43112618246). Ambos jobs PG17 terminaron `success`; sus pasos incluyen cadena de migraciones PG17 real desechable, prueba Node pg driver, aceptación H6 + Chromium y build/health de imagen aislada.
+
+**Resultado acotado:** código de observabilidad segura y correlación en API health-only y observador opt-in en candidato H3–H6/M3 **implementados y probados integradamente en rama**, sin merge ni despliegue. El workflow visual automatizado no valida F28/R09 humano. No confundir estado verde del CI con logs/alertas de VPS, backup/PITR de Supabase ni funcionamiento del arranque real, que sigue `health-only`.
+
+**PR #56:** continúa **Draft**, `mergeable=true`, único PR abierto según último corte; no se autorizó ni ejecutó merge. Siguiente hito: conectar indicadores de dependencias/operaciones de la composición opt-in y proteger regresión con PG17, definir receptor de alertas y validación de recuperación Sabora-only antes del GO; completar CV-005/CV-010/CV-011, manteniendo el laboratorio como herramienta permanente.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
