@@ -109,6 +109,15 @@
 
 **Acción documental:** se actualiza la continuidad 36 con CI final y límites probatorios; **no** se ejecutó merge, migración real, configuración de secretos, servidor, despliegue ni modificación de Fleetia.
 
+
+### S36-3 — comprobación cruzada de matrices CV-001–CV-019 y F01–F28/R01–R10 (11-11-2026)
+
+**Verificación concluida en alcance documental:** [informe integrado S36](../reviews/SABORA_S36_LIVE_MATRIX_REVALIDATION_2026-11-11.md). Se contrastaron **19 IDs CV**, **28 F**, **10 R** y la [matriz UI funcional](../design/FUNCTIONAL_UI_COVERAGE.json) con los contratos NF/RF/DV, el estado real de GitHub, el HEAD/CI de PR #56, `server.mjs` y `api-runtime-config.mjs`. Se preservan las fuentes históricas de prueba: [§40 y nuevo §52 F/R](../assignments/SABORA_TABLE_CHANGE_AUDIT_ROADMAP_ACCEPTANCE_2026-10-30.md) y [auditoría CV del 09-11](../reviews/SABORA_LIVE_REQUIREMENTS_MATRIX_INTEGRAL_AUDIT_2026-11-09.md), marcada ahora como corte histórico para evitar reproducir su cifra obsoleta de 46 PR abiertos. El [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) corrige expresamente CV-004: saneamiento S4 completado, **solo #56 Draft** y ninguna fusión del HEAD funcional.
+
+**Clasificación de aceptación sin cambios artificiales:** F01–F19/F21–F27 **26 candidatos** (F12 opt-in), F20 **parcial/bloqueado Stripe**, F28 **bloqueado visual**; R01/R02/R06/R07/R08 **5 candidatos** (R08 opt-in), R03–R05 **3 parciales**, R09 **bloqueado**, R10 **candidato técnico** con nueva CI **6/6 PASS del PR #56 SHA `ba0530f4`**, no `main` post-merge. La primera prueba operativa con datos ficticios aún depende principalmente del **arranque CV-005/F12/R08** más CV-010/CV-011 (roles/secretos, migraciones, recuperación y aislamiento VPS), dominio/TLS, autorización y ensayo real. El informe S36 documenta aparte las puertas de aceptación integral de Stripe, Excel empresarial, reservas, Gemini y diseño.
+
+**No realizado por esta auditoría:** nuevos tests, revisión independiente, corrección del interbloqueo `40P01`, modificación de código, cambios de normas, merge, migraciones en Supabase operativo o intervención en VPS/Fleetia. Los cambios son exclusivamente documentales con `[skip ci]`. **No declarar GO/aceptación global** por este contraste.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
