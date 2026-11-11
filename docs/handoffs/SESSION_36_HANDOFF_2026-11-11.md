@@ -161,6 +161,8 @@
 
 ### S36-8 — metodología permanente de desarrollo, depuración y observabilidad (11-11-2026)
 
+**Contrato normativo permanente derivado de esta decisión del propietario:** [SABORA_VALIDATION_OBSERVABILITY_METHOD_V1](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). La presente continuidad registra contexto; el contrato de ingeniería/validación conserva la regla estable entre sesiones y se subordina a los contratos funcionales, visuales y de seguridad ya aprobados.
+
 **DECISIÓN DEL PROPIETARIO — METODOLOGÍA OBLIGATORIA DE TRABAJO, REGISTRADA ANTES DE IMPLEMENTAR:**
 
 1. **Laboratorio permanente, no desechado tras migrar.** Mantener GitHub Actions y PostgreSQL 17 **desechable, aislado, reproducible y sin secretos operativos** para regresión integradora, SQL/RLS/grants, HMAC/JWT, concurrencia, migraciones, idempotencia, resiliencia, dos PWA y Playwright/Chromium. Conservar capacidad de reconstruir, interrumpir y reanudar ensayos sin afectar datos reales ni VPS. El laboratorio es una **herramienta de diagnóstico y defensa contractual**, no un entorno de producto aceptado.
