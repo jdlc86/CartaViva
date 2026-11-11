@@ -118,6 +118,15 @@
 
 **No realizado por esta auditoría:** nuevos tests, revisión independiente, corrección del interbloqueo `40P01`, modificación de código, cambios de normas, merge, migraciones en Supabase operativo o intervención en VPS/Fleetia. Los cambios son exclusivamente documentales con `[skip ci]`. **No declarar GO/aceptación global** por este contraste.
 
+
+### S36-4 — preparación de credenciales y bloqueo Supabase INACTIVE (11-11-2026)
+
+**Dato aportado por el propietario:** confirma haber guardado en custodia privada tres contraseñas distintas para los logins documentados `sabora_staff_reader_login`, `sabora_catalog_login` y `sabora_customer_session_login`. **No se recibieron, leyeron, almacenaron ni versionaron sus valores**; no hay evidencia de creación de usuarios SQL, asignación de contraseñas, gestor de secretos seleccionado ni inyección efectiva al runtime. Estado: **preparadas fuera del repositorio; NO provisionadas / NO activadas**.
+
+**Comprobación externa de solo lectura:** el conector de Supabase, usando la cuenta «RESTAURANTE» y la referencia del proyecto normativamente identificado `byhvmumqivmunkmomhup`, devuelve `name=restaurante`, PostgreSQL `17.11.0.003`, `status=INACTIVE`. **No se deduce sin confirmación de panel la causa de la inactividad**; en Supabase puede requerir reanudación del proyecto. No se ejecutó SQL, migración, restauración, reinicio ni cambio de configuración. El siguiente paso comunicado al propietario es abrir el panel específico y, si presenta `Resume project`, reanudarlo y verificar estado activo.
+
+**Secuencia posterior, no ejecutada:** conciliar migraciones normativas y grants para cada login de mínimo privilegio, comprobar su existencia sin exponer contraseñas, elegir custodia/inyección por proceso, integrar arranque CV-005 con fallo cerrado, comprobar SQL/roles/negativas en PG17 desechable y solo entonces evaluar aprovisionamiento autorizado en Supabase operativo. El proceso ordinario sigue `health-only` y **rechaza** los secretos SQL en ese modo. No mezclar identidades, proyectos ni secretos Fleetia; no usar `service_role` en PWA.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
