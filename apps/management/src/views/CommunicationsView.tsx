@@ -32,6 +32,10 @@ export function CommunicationsView({gateway,canWriteAdmin=false}:{gateway:M5Comm
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState('');
  const [failed,setFailed]=useState(false);
+ // A 403 proves the current signed read is stale; hide all editing until
+ // a fresh ownership projection is obtained on focus/navigation/recovery.
+ const [writeDenied,setWriteDenied]=useState(false);
+ useEffect(()=>setWriteDenied(false),[canWriteAdmin]);
  const bodyInput=useRef<HTMLTextAreaElement>(null);
  const insertAtCursor=(before:string,after:string='',fallback:string='')=>{
   const input=bodyInput.current;
@@ -58,7 +62,7 @@ export function CommunicationsView({gateway,canWriteAdmin=false}:{gateway:M5Comm
  useEffect(()=>{void load();},[gateway]);
  const mutate=async(operation:'save'|'publish'|'pause'|'resume'|'withdraw',
   item?:M5CommunicationRecord)=>{
-  if(!gateway||busy||!canWriteAdmin)return;
+  if(!gateway||busy||!canWriteAdmin||writeDenied)return;
   const target=item??(editing?items.find(x=>x.id===editing.id):undefined);
   if(operation!=='save'&&!target)return;
   if(operation==='save'&&!isScheduleValid(draft)){
@@ -75,9 +79,12 @@ export function CommunicationsView({gateway,canWriteAdmin=false}:{gateway:M5Comm
     operation==='resume'?'Anuncio reactivado.':'Anuncio retirado.');
    const next=await gateway.readCommunications();
    setItems(next.items);
+   if(next.permissions?.manage===false)setWriteDenied(true);
    if(operation==='save'){setEditing(null);setDraft(emptyDraft());}
    else if(editing?.id===target?.id)setEditing(null);
   }catch(error){
+   if(error instanceof Error&&error.message==='m3_management_forbidden')
+    setWriteDenied(true);
    setFailed(true);setMessage(error instanceof Error&&error.message==='m3_management_forbidden'?
     'Solo el administrador titular puede modificar Comunicaciones. No se ha guardado ni publicado nada.':
     error instanceof Error&&error.message==='m3_management_conflict'?
@@ -104,7 +111,7 @@ export function CommunicationsView({gateway,canWriteAdmin=false}:{gateway:M5Comm
   setDraft(structuredClone(item.draft));setMessage('Editando borrador. Guardar no modifica la versión pública hasta publicar.');
  };
  const form=(e:FormEvent)=>{e.preventDefault();void mutate('save');};
- if(!canWriteAdmin)return <section className="communications-management" aria-labelledby="comms-title">
+ if(!canWriteAdmin||writeDenied)return <section className="communications-management" aria-labelledby="comms-title">
   <div className="section-title"><h2 id="comms-title">Comunicaciones · Consulta</h2>
    <p>La escritura requiere la titularidad ADMIN vigente, comprobada en servidor.</p></div>
   <div className="communications-items">
