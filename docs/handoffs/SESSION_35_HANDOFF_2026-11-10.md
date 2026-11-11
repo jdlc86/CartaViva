@@ -222,6 +222,36 @@ El test corresponde al [run Bootstrap #42900656103](https://github.com/jdlc86/Ca
 **Pendiente para llamar al hito candidato técnicamente validado:** verificar logs completos de PG17 con la prueba nueva y la regresión CV-014, tres roles y cambio de titularidad; comprobar CI 6/6 del mismo SHA, corregir fallos dentro del **mismo PR**, sin abrir PR redundantes. La convalidación visual humana, seguridad independiente y activación siguen siendo puertas separadas. No se ha usado Supabase operativo, desplegado en VPS, modificado Fleetia ni consumido Stripe real.
 
 
+
+### S35-9 — comprobación de CI final del PR #56 (11-11-2026)
+
+**Corte contrastado directamente con GitHub, corrige la afirmación temporal «CI en curso» de S35-8.** Único PR abierto: [#56 Draft](https://github.com/jdlc86/CartaViva/pull/56), no fusionado y no desplegado. HEAD del PR y último SHA sometido a seis workflows: **`d60b68afe74a6abe3da0971f171d78f6ba42b4ab`**, ocho commits de implementación/corrección. En la consulta el `main` era **`88106b10a0f048035a087bcbc637cce6633dd6c0`**; la rama del PR estaba **8 commits por delante y 1 por detrás** de `main` (`compare` = `diverged`). No asumir que el SHA del PR esté en `main`, ni rebasar/mergear antes de validar.
+
+**Estado definitivo de las seis ejecuciones del mismo HEAD `d60b68a`:**
+
+| Workflow | Run | Estado |
+| --- | --- | --- |
+| Sabora functional UI coverage and deferred visual acceptance | [#42919142562](https://github.com/jdlc86/CartaViva/actions/runs/42919142562) | **SUCCESS** |
+| Sabora CV-012 independent PWA installability | [#42919142508](https://github.com/jdlc86/CartaViva/actions/runs/42919142508) | **SUCCESS** |
+| Sabora management browser visual smoke | [#42919142474](https://github.com/jdlc86/CartaViva/actions/runs/42919142474) | **SUCCESS** |
+| Sabora client browser conformance | [#42919142441](https://github.com/jdlc86/CartaViva/actions/runs/42919142441) | **SUCCESS** |
+| Sabora CI — H6 consolidated acceptance | [#42919142494](https://github.com/jdlc86/CartaViva/actions/runs/42919142494), job `130189235350` | **FAILURE** |
+| Bootstrap Sabora lockfile — «Exercise real Node pg driver against disposable loopback-only PostgreSQL 17» | [#42919142482](https://github.com/jdlc86/CartaViva/actions/runs/42919142482), job `130189235117` | **FAILURE** |
+
+**Diagnóstico observado en los logs, sin atribuir causa no probada:** ambos workflows rojos llegan al **mismo escenario conectado** `scripts/ci/cv014-communications-postgres17.test.mjs`, test «CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → published notices, scheduling, roles, events and audit», **línea 235**. Tras guardar un borrador desde la PWA ADMIN y publicar expresamente, la prueba consulta la proyección pública y exige **2 anuncios**, pero devuelve **1**: `AssertionError: 1 !== 2` (`expected:2, actual:1`). En el test consta la validación previa de un borrador duradero y del cuerpo formateado; **el fallo se manifiesta en la proyección pública posterior a la publicación**, sin demostrar todavía si la raíz está en programación/horario, consulta, refresco, permisos, datos de preparación o regresión. No es correcto declararlo meramente «fallo de CI», ni afirmar que el componente de titularidad ya está probado de extremo a extremo. El job Bootstrap ha ejecutado previamente otras suites PG17 con PASS, pero su resultado global sigue siendo FAILURE.
+
+**Qué se ha implementado frente a qué se ha validado:**
+- **Implementado en rama**: migración SQL versionada de permisos efectivos vinculados al titular ADMIN; API de mesas fail-closed; propagación a las PWA de gestión de Mesas/QR, Catálogo y Comunicaciones; invalidación tras navegación/foco/cesión; integración ampliada de PG17/JWT/HMAC/Fastify y Chromium en el test de titularidad; registro de la migración en inventario auditado y compatibilidad de runner de Playwright con Ubuntu 24.04. **Esto no equivale a validación funcional íntegra.**
+- **Pruebas realmente terminadas PASS**: cuatro workflows del mismo SHA, entre ellos instalación de dos PWA, smoke visual automatizado, conformidad de cliente y cobertura funcional automatizada. No es aprobación humana del aspecto visual.
+- **Pruebas realmente terminadas FAIL**: dos gates integradores, ambos cortados por CV-014 en la comprobación 1/2 de anuncios publicados; por tanto **NO-GO** para dar por terminado H35-P1, revisar formalmente para merge o integrar en `main`. No atribuirle 6/6 ni esconder el escenario fallido.
+
+**Secuencia de commits del PR, contrastada con GitHub:** `563a2af900c6` (SQL/API/mesas), `d04c3986dbe2` (vistas gestión), `e7b0815154c7` (auditoría y runner), `f50707f3ed2c` (escenario integral de titularidad), `d558dc2c542a` (independencia de M5), `088eeeba5a0c` (tipos M5), `4bf5294bd5e4` (reconciliación ROOT recuperado), `d60b68afe74a` (orden de locks de titularidad antes de clave/empleado). **Último trabajo de código verificado: `d60b68a`; esta actualización es solo documental en `main`.**
+
+**Siguiente paso operativo — un solo bloque, no micro-PRs:** diagnosticar el recorrido real CV-014 completo **publicación→proyección pública→PWA cliente**, corregir el defecto en la **misma rama y PR #56** sin falsear la aserción ni introducir anuncios de prueba adicionales para que pase; reejecutar y comprobar los **seis workflows sobre un único SHA final** incluyendo el test de titularidad. Solo entonces evaluar `merge` con evidencia y contrato normativo. Mantener revisión independiente de seguridad y aprobación visual humana como puertas separadas. No se modificaron Supabase operativo, servidores VPS ni Fleetia; ningún despliegue fue realizado o autorizado en este corte.
+
+**Estado S35-9: continuidad actualizada; H35-P1 IMPLEMENTADO EN RAMA, NO VALIDADO, PR DRAFT, CI 4 SUCCESS / 2 FAILURE.**
+
+
 ---
 
 _Este documento es la continuidad activa desde la sesión 35. La [sesión 34](SESSION_34_HANDOFF_2026-11-10.md) queda como antecedente histórico y no debe recibir los nuevos hitos de trabajo._
