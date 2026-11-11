@@ -2,7 +2,7 @@
 
 > **ARCHIVADA PARA NUEVOS HITOS (11-11-2026).** La continuidad operativa vigente es [**sesión 36**](SESSION_36_HANDOFF_2026-11-11.md), que recoge el estado definitivo de CI del PR #56 y el siguiente bloque. Los registros S35-0 a S35-10 se conservan como historia de las evidencias de sus respectivos SHA.
 
-> **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA.** Su propósito es preservar el contexto, los SHA y el siguiente bloque de ejecución. La fuente de verdad normativa son los contratos versionados en este repositorio. No supone aprobación de equivalencia funcional, revisión independiente, aceptación estética, autorización de merge, cierre de PR, migración ni despliegue. Los resultados de CI se atribuyen **solo a los SHA exactos ensayados**. **Este es el documento vivo de continuidad a partir de la sesión 35**: los nuevos hitos relevantes se añaden aquí, sin continuar ampliando la sesión 34.
+> **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA.** Su propósito es preservar el contexto, los SHA y el siguiente bloque de ejecución. La fuente de verdad normativa son los contratos versionados en este repositorio. No supone aprobación de equivalencia funcional, revisión independiente, aceptación estética, autorización de merge, cierre de PR, migración ni despliegue. Los resultados de CI se atribuyen **solo a los SHA exactos ensayados**. **Este documento fue la continuidad viva de la sesión 35**: sus hitos se registraron aquí hasta la apertura de la [sesión 36](SESSION_36_HANDOFF_2026-11-11.md), donde se documentan los avances posteriores.
 
 ## 1. Navegación y fuentes obligatorias
 
