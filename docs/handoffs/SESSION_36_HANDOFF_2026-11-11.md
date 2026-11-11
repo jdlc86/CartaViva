@@ -136,6 +136,17 @@
 
 **Alcance exacto de esta actualización:** registro documental del estado comunicado por el propietario, **sin ejecutar reactivaciones, SQL, despliegues, cambios de secretos, merge o intervención en VPS/Fleetia**. Se mantiene la prohibición de acceso o modificación de recursos ajenos.
 
+
+### S36-6 — reactivación Supabase comprobada y preflight SQL de solo lectura (11-11-2026)
+
+**Comprobaciones realizadas en el proyecto exacto `byhvmumqivmunkmomhup`, cuenta conectada RESTAURANTE:** `get_project` devuelve `status=ACTIVE_HEALTHY`, región `eu-central-1`, motor PostgreSQL `17.11.0.003` y nombre `restaurante`. El anterior bloqueo `INACTIVE` de S36-4/S36-5 **queda resuelto en la comprobación del proveedor**. No atribuir la reactivación al asistente: fue iniciada por el propietario en su panel.
+
+**Conectividad y estructura realmente observadas mediante un único `SELECT` read-only sobre el proyecto correcto:** `current_setting('server_version')='17.11'`, `current_database()='postgres'`; `to_regnamespace('sabora') IS NOT NULL` devuelve **false**; y `to_regrole(...)` devuelve **false** para los tres roles `sabora_staff_reader_login`, `sabora_catalog_login`, `sabora_customer_session_login`. Se acreditó **conectividad SQL real**, pero **la estructura Sabora no está aplicada** y estas tres identidades SQL no existen. La consulta **no inspeccionó** otros roles ni los secretos; no hay inferencia de compatibilidad total de la cadena de migraciones.
+
+**Consecuencia operativa:** no intentar asignar contraseñas a roles inexistentes, no usar el superusuario PostgreSQL como runtime ni confundir `ACTIVE_HEALTHY` con Sabora desplegada. Preparar revisión de migraciones y roles mínimos desde normativa y HEAD GitHub, ensayar la cadena íntegra en PG17 desechable y obtener autorización específica antes de aplicar cambios a Supabase operativo. Las tres contraseñas aportadas permanecen en custodia privada del propietario, **no introducidas ni transmitidas**. El arranque estándar de API sigue `health-only` y PR #56 continúa no fusionado según el último corte de GitHub.
+
+**Operaciones efectuadas:** solo consultas de metadatos y `SELECT` sin mutación, y actualización documental de este hito. **No** hubo `CREATE ROLE`, `CREATE SCHEMA`, migraciones, DDL/DML, operación en VPS/Fleetia, despliegue ni manipulación de secretos.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
