@@ -227,6 +227,17 @@
 
 **PR #56:** continúa **Draft**, `mergeable=true`, único PR abierto según último corte; no se autorizó ni ejecutó merge. Siguiente hito: conectar indicadores de dependencias/operaciones de la composición opt-in y proteger regresión con PG17, definir receptor de alertas y validación de recuperación Sabora-only antes del GO; completar CV-005/CV-010/CV-011, manteniendo el laboratorio como herramienta permanente.
 
+
+### S36-12 — readiness SQL y pérdida del notificador instrumentados en H3–H6/M3 (12-11-2026)
+
+**Commit de implementación del mismo [PR #56 Draft](https://github.com/jdlc86/CartaViva/pull/56): [`ac0d22fd`](https://github.com/jdlc86/CartaViva/commit/ac0d22fd9d37f47fe974aaf704589b2443f8cd3f), ahora HEAD de la rama.** El bloque implementa una capacidad esencial faltante en observabilidad: el candidato integrado `createM2RestaurantCandidate` emite diagnósticos **estructurados, acotados y sin errores crudos** cuando la validación SQL de `/ready` falla (HTTP 503), cuando pasa, y cuando se pierde el notificador H6 de eventos, que invalida readiness. Las señales de aplicación son `database/check/success|failure` y `dependency_failed:database|events`; su emisión no depende de la disponibilidad del sink y no crea rutas públicas ni nuevas conexiones.
+
+**Prueba integradora modificada:** `scripts/ci/disposable-h6-runtime-bootstrap.mjs` exige un evento real `database/check/success` generado por el recorrido PostgreSQL 17/JWT/HMAC/Fastify/2 PWA del candidato, además de los registros HTTP con claves permitidas. Los tests del observador comprueban clasificación, fallos de dependencias y rechazo de datos arbitrarios. El [runbook de observabilidad](https://github.com/jdlc86/CartaViva/blob/feat/sabora-s35-effective-admin-write-permissions-20261110/docs/runbooks/SABORA_OBSERVABILITY_INCIDENT_RESPONSE_V1.md) documenta la distinción liveness/readiness y los límites probatorios.
+
+**CI:** seis workflows automáticos activados sobre `ac0d22fd` ([Sabora CI #43119668191](https://github.com/jdlc86/CartaViva/actions/runs/43119668191), [Bootstrap PG17 #43119668150](https://github.com/jdlc86/CartaViva/actions/runs/43119668150), [cliente #43119668166](https://github.com/jdlc86/CartaViva/actions/runs/43119668166), [PWA #43119668096](https://github.com/jdlc86/CartaViva/actions/runs/43119668096), [gestión #43119668179](https://github.com/jdlc86/CartaViva/actions/runs/43119668179), [UI #43119668138](https://github.com/jdlc86/CartaViva/actions/runs/43119668138)). Al registrar este bloque están en progreso/cola; el 6/6 **consolidado S36-11 corresponde al SHA anterior `51722584`**, y no certifica todavía estas señales adicionales.
+
+**Pendiente fundamental:** cuando exista arranque productivo CV-005, inyectar este observador con custodia real, supervisión/alertas externas configuradas, métricas de operación H3–H6 y dos PWA, pruebas de fallo y alertas, backup/restore/PITR y validación en móvil. Sin merge, despliegue, escritura en Supabase operativo ni modificación de VPS/Fleetia.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
