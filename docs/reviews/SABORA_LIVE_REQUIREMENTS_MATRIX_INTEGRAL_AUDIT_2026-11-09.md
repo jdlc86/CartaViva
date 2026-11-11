@@ -1,5 +1,7 @@
 # Sabora / CartaViva — auditoría integral de la matriz viva y siguiente hito (09-11-2026)
 
+> **CORTE HISTÓRICO:** el censo de 46 PR abiertos y el estado de #53 pertenecen al 09-11, **no son actuales**. La [verificación cruzada de sesión 36 (11-11)](SABORA_S36_LIVE_MATRIX_REVALIDATION_2026-11-11.md) contrasta los **19 CV**, las 28 F y 10 R, confirma **un solo PR abierto (#56)** y documenta sus **6/6 CI** sobre SHA candidato. El contenido original inferior se preserva como evidencia temporal, no normativa.
+
 > **INFORME DE CONTRASTE, NO NORMATIVA NI ACTA DE ACEPTACIÓN.** La fuente de requisitos es la documentación normativa versionada de GitHub. Este informe compara contratos, código, CI y estado de PR en un corte temporal, sin ejecutar tests adicionales ni modificar funcionalidad.
 >
 > **Tablero vivo:** [SABORA_LIVE_PROJECT_TRACKER](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), §60. **Continuidad vigente:** [sesión 32](../handoffs/SESSION_32_HANDOFF_2026-11-09.md). **Matriz funcional↔UI:** [FUNCTIONAL_UI_COVERAGE.json](../design/FUNCTIONAL_UI_COVERAGE.json).
