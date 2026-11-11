@@ -182,6 +182,15 @@
 
 **Alcance y pendientes:** instrumentación operativa de base **implementada en rama, no fusionada ni desplegada**; los tests de GitHub deben cerrar y se necesita validación integral del nuevo SHA. Esto **no** aporta aún readiness SQL/JWKS H3–H6, observabilidad end-to-end de restaurante desplegado, notificación de alertas externa, plan backup/PITR operativo, RTO/RPO aprobado ni aceptación visual humana. Esos son componentes restantes del hito de primera activación CV-005/CV-010/CV-011/M6. Ninguna escritura SQL real, despliegue VPS, operación Fleetia, secreto ni merge se realizó.
 
+
+### S36-10 — observabilidad de laboratorio H3–H6/M3 integrada en el mismo PR #56 (11-11-2026)
+
+**Segundo commit de la misma entrega, no un PR nuevo:** [`51722584`](https://github.com/jdlc86/CartaViva/commit/517225848bafb2731be315fae0cc147da31a44dc) es el **HEAD vigente de PR #56**. Extiende el bloque S36-9: `createM2RestaurantCandidate` permite inyectar un observador seguro con hooks Fastify de petición/respuesta; rechaza observadores incompletos antes de activar dependencias SQL. `scripts/ci/disposable-h6-runtime-bootstrap.mjs` inyecta el observador **solo en laboratorio CI desechable**, ejerce HTTP real de salud, readiness, catálogo y denegación sobre el candidato PG17 de 17 identidades SQL, y exige eventos de campos y rutas enumerados (sin volcar cabeceras, QR, cookies, identidad o SQL). Se añadió test negativo y se amplió el [runbook de observabilidad](../runbooks/SABORA_OBSERVABILITY_INCIDENT_RESPONSE_V1.md). No requiere nuevos secretos ni rutas productivas.
+
+**Evidencia disponible al publicar este apartado:** los seis workflows del SHA `51722584` se han iniciado; inicialmente cinco `in_progress` y uno `success` (cobertura/UI). **No marcar 6/6 hasta comprobar todos**. Los PASS históricos de `ba0530f4` y las ejecuciones de `8534e0b8` tampoco certifican `51722584`. [PR #56](https://github.com/jdlc86/CartaViva/pull/56) permanece Draft, sin fusión ni despliegue.
+
+**Frontera residual esencial:** en código hay observabilidad de HTTP health-only y **ensayo de la composición H3–H6/M3**; la observabilidad sobre una instancia real, conexión de eventos SQL/HMAC/outbox/Stripe, envío efectivo de alertas, readiness dependiente del proveedor, backup/restore/PITR real, RTO/RPO y aceptación humana siguen **pendientes**. No se efectuaron cambios en Supabase operativo, VPS, Fleetia ni secretos del propietario.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
