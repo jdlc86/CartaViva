@@ -127,6 +127,15 @@
 
 **Secuencia posterior, no ejecutada:** conciliar migraciones normativas y grants para cada login de mínimo privilegio, comprobar su existencia sin exponer contraseñas, elegir custodia/inyección por proceso, integrar arranque CV-005 con fallo cerrado, comprobar SQL/roles/negativas en PG17 desechable y solo entonces evaluar aprovisionamiento autorizado en Supabase operativo. El proceso ordinario sigue `health-only` y **rechaza** los secretos SQL en ese modo. No mezclar identidades, proyectos ni secretos Fleetia; no usar `service_role` en PWA.
 
+
+### S36-5 — restauración de Supabase en curso, pendiente de verificación (11-11-2026)
+
+**Confirmación del propietario:** la operación de reactivación/restauración del proyecto Supabase de Sabora `byhvmumqivmunkmomhup` **está en proceso**. Este dato reemplaza la instrucción anterior de iniciar la reactivación, pero **NO acredita que haya concluido ni que PostgreSQL esté disponible**. El último estado comprobado mediante lectura del conector era `INACTIVE` (S36-4); no se declara `ACTIVE` ni se deduce operatividad hasta nueva consulta explícita y conexión verificada.
+
+**Credenciales:** las tres contraseñas preparadas por el propietario continúan bajo custodia privada; no se compartieron ni aprovisionaron. **Siguientes comprobaciones una vez reactivado:** consultar estado del proyecto, validar conectividad PostgreSQL 17/TLS sin exponer secretos, cotejar migraciones y roles mínimos normativos antes de cualquier operación DDL o asignación de contraseña, y avanzar CV-005/CV-010/CV-011 con pruebas PG17 aisladas. No asumir que hay tablas o roles operativos instalados por el mero hecho de reactivar el proyecto.
+
+**Alcance exacto de esta actualización:** registro documental del estado comunicado por el propietario, **sin ejecutar reactivaciones, SQL, despliegues, cambios de secretos, merge o intervención en VPS/Fleetia**. Se mantiene la prohibición de acceso o modificación de recursos ajenos.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
