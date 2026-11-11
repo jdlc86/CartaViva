@@ -200,6 +200,13 @@
 
 **Puerta CV-005/CV-010/CV-011 antes del deploy:** diseñar y probar exclusivamente **conectividad Sabora-only saliente, TLS verificado, segmentación, DNS, firewall y límites** sin unir redes/volúmenes/sockets/servicios con Fleetia, sin reinicios globales, sin desactivar la restricción para todos los proyectos. Mantener `127.0.0.1` para el ingreso proxied, identidad SQL por proceso, secretos privados, comprobación real de readiness y paradas/reversiones propias. Cualquier plan requiere revisión normativa/infraestructural y autorización expresa; **no se ha modificado Compose ni VPS** en esta sesión. Este hallazgo no invalida las pruebas de observabilidad, pero impide afirmar que el stack actual esté listo para desplegar la API funcional.
 
+
+### S36-12 — verificación intermedia de CI de observabilidad (11-11-2026)
+
+**HEAD efectivo de PR #56:** [`517225848bafb2731be315fae0cc147da31a44dc`](https://github.com/jdlc86/CartaViva/commit/517225848bafb2731be315fae0cc147da31a44dc). A fecha de consulta se han observado **5 de los 6 workflows distintos de ese SHA `completed/success`**: [Bootstrap Sabora PG17 #43112618375](https://github.com/jdlc86/CartaViva/actions/runs/43112618375), [cliente Chromium #43112618238](https://github.com/jdlc86/CartaViva/actions/runs/43112618238), [gestión Chromium #43112618284](https://github.com/jdlc86/CartaViva/actions/runs/43112618284), [PWA CV-012 #43112618234](https://github.com/jdlc86/CartaViva/actions/runs/43112618234) y [UI/cobertura #43112618246](https://github.com/jdlc86/CartaViva/actions/runs/43112618246). El sexto, **[Sabora CI / H6 #43112618317](https://github.com/jdlc86/CartaViva/actions/runs/43112618317)**, seguía `in_progress` en su ensayo integrador PostgreSQL 17/Chromium. Este corte **no autoriza declarar 6/6**; no mezclarlo con runs duplicadas por ediciones de PR ni con evidencia de SHA previos.
+
+**Estado de entrega:** código y runbook de observabilidad versionados y laboratorio permanente codificado en [contrato normativo de método](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md); la cobertura técnica completa del SHA aún espera conclusión del último workflow. La infraestructura real permanece sin activar: `health-only`, 99 SQL candidatas no aplicadas, logins/secretos privados no provisionados, egress de Compose no diseñado/validado, alertas externas no conectadas y PITR/restauración real sin acreditar. No fusionar ni desplegar por este corte intermedio. Ninguna acción sobre Fleetia, VPS, secretos ni SQL operativo.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
