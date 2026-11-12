@@ -317,6 +317,7 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
     databaseRole:login('waiterCalls.staffPool')});
   }
   options.enableDeferredDispatch=false;
+  options.requireTrustedKeysOnReadiness=true;
   options.observability=observability;
   options.observeFailure=observeFailure;
   return Object.freeze({options,listener:config.listener,summary:validated.summary,close});
