@@ -38,3 +38,16 @@ Para evitar asumir que PostgreSQL 17 impide siempre a un `CREATEROLE` revocar su
 ## Comparación real del mismo guard SQL con dos procedencias del propietario
 
 El ensayo ampliado extrae exclusivamente el `DO $role$ ... $role$;` original de `20261024190000_sabora_order_operation_actor_capability_candidate.sql` y lo ejecuta contra dos estados en PostgreSQL 17 aislado: (1) propietario creado por LOGIN `CREATEROLE` sin superusuario, donde debe bloquear cualquier membresía automática; (2) propietario creado por superusuario **únicamente del fixture desechable**, sin membresías, donde debe aceptar las mismas comprobaciones. Se verifican ambos caminos y se mantiene el NO-GO explícito para la instalación real, ya que Supabase `postgres` es `NOSUPERUSER` y la cadena de 99 migraciones sigue necesitando una solución al `SET ROLE`, `CREATE` y ACL. **Que el guard positivo pase no significa que la cadena funcione ni que Supabase permita ese aprovisionamiento.** La ejecución del nuevo SHA debe confirmar ambas ramas antes de actualizar el resultado.
+
+## Resultado observado y criterio de cierre del ensayo (12-11-2026)
+
+El [run GitHub Actions #43189804961](https://github.com/jdlc86/CartaViva/actions/runs/43189804961) sobre el SHA de código **`e89bc88cb02db9a6dfd76eb32a06b89fae4a8e74`** terminó `completed/failure` **por el NO-GO contractual esperado**, después de comprobar en PostgreSQL 17 real desechable, sin redes ni credenciales operativas, las siguientes señales:
+
+- `sabora_nonsuperuser_role_preflight_ok`: LOGIN administrativo no-superusuario, `NOBYPASSRLS`, `CREATEROLE` acreditado.
+- `sabora_nonsuperuser_self_revocation_unavailable`: imposible retirar con ese principal su membresía automática del rol desechable creado.
+- `sabora_nonsuperuser_sealed_owner_provenance_verified`: **la misma guarda SQL original** rechazó el rol propietario creado por el LOGIN no-superusuario y aceptó uno creado **solo por el superusuario del fixture** sin membresías. El ensayo usa el código SQL exacto del archivo versionado, no una reconstrucción simplificada.
+- `sabora_nonsuperuser_provider_no_go:automatic_createrole_membership_conflicts_with_sealed_owner`: la ruta ordinaria de migración no cumple las invariantes y permanece cerrada.
+
+La prueba de aislamiento/contrato terminó PASS. El workflow de cobertura UI [#43189804933](https://github.com/jdlc86/CartaViva/actions/runs/43189804933) terminó SUCCESS. Los dos integradores H6 y Bootstrap del mismo SHA estaban todavía en ejecución en el último corte y **no constituyen evidencia de PASS hasta que terminen**; su eventual éxito no resolvería la incompatibilidad. **No hay 99 migraciones ensayadas con éxito en Supabase ni bajo ese principal.**
+
+**Resultado del bloque:** diagnóstico contractual completo y reproducible, **NO-GO para instalación**. No se autoriza ni presume una cuenta elevada para el proveedor. Todo diseño de despliegue que requiera rol superusuario debe documentar expresamente que el `postgres` de Supabase Sabora `17.11` es `NOSUPERUSER` (aunque el preflight read-only mostró `BYPASSRLS`, que nunca debe emplearse en runtime). Solo el DBA/seguridad y una decisión/procedimiento normativo revisado podrán desbloquear el modelo de creación/propiedad de funciones. No se tocaron migraciones históricas, esquema Sabora operativo, roles/contraseñas reales, VPS ni Fleetia.
