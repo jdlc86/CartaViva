@@ -2,6 +2,11 @@
 -- Candidate only. It creates no LOGIN, secret, worker, endpoint activation or
 -- production migration. Historical picked_up rows remain untouched.
 BEGIN;
+-- CV-005: the first permission change below targets a function owned by
+-- sabora_h6_fn_owner, prior to any new function ownership transfer. PostgreSQL
+-- 17 requires the migrator's scoped inheritable membership already here.
+-- The grant is issued by this DBA and revoked before this transaction commits.
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 
 ALTER TABLE sabora.pickup_notifications
   ADD COLUMN invalidated_at timestamptz,
