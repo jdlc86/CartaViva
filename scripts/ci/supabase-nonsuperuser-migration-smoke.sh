@@ -57,14 +57,26 @@ if [[ "$role_check" != 'expected|f|f|t|t' ]]; then
 fi
 echo 'sabora_nonsuperuser_role_preflight_ok'
 
-log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$$.log"
+# PostgreSQL >=16 CREATEROLE creates ADMIN TRUE / SET FALSE memberships.
+# A function's ownership transfer requires SET TRUE. Restrict the opt-in to
+# each migration connection; never enable it for the running API or globally.
+# This is an explicit provider precondition, not a superuser workaround.
+migration_pgoptions='-c createrole_self_grant=set'
+migration_setting="$(docker exec -e PGOPTIONS="$migration_pgoptions" "$container" \
+  psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -Atqc \
+  'SHOW createrole_self_grant')"
+[[ "$migration_setting" == set ]] || {
+  echo 'sabora_nonsuperuser_role_creation_mode_unavailable' >&2; exit 1;
+}
+log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
 count=0
 while IFS= read -r name; do
   [[ "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
     echo 'sabora_nonsuperuser_invalid_migration_name' >&2; exit 1;
   }
-  if ! docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 \
-      -U "$operator" -d "$database" < "supabase/migrations/$name" > "$log" 2>&1; then
+  if ! docker exec -i -e PGOPTIONS="$migration_pgoptions" "$container" \
+      psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+      < "supabase/migrations/$name" > "$log" 2>&1; then
     echo "sabora_nonsuperuser_migration_blocked:$name" >&2
     # The fixture contains no operational identities or credentials.
     grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
@@ -75,11 +87,24 @@ done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\
 [[ "$count" -gt 1 ]] || { echo 'sabora_nonsuperuser_empty_chain' >&2; exit 1; }
 
 # No skipped RLS tables, no unexpected browser schema access or elevation.
-test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
-  "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-   WHERE n.nspname='sabora' AND c.relkind='r'
-     AND c.relrowsecurity AND c.relforcerowsecurity")" -eq 69 || {
+# Detect unprotected *extra* tables as well as missing FORCE RLS.
+rls_counts="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*),count(*) FILTER (WHERE c.relrowsecurity AND c.relforcerowsecurity)
+   FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='sabora' AND c.relkind='r'")"
+[[ "$rls_counts" == '69|69' ]] || {
   echo 'sabora_nonsuperuser_force_rls_mismatch' >&2; exit 1;
+}
+# No application capability role may acquire LOGIN, SUPERUSER, BYPASSRLS,
+# CREATEDB or CREATEROLE as a by-product of the migration.
+escalated_roles="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_roles
+   WHERE left(rolname, 7) = 'sabora_' AND rolname <> '$operator'
+     AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole)")"
+[[ "$escalated_roles" == 0 ]] || {
+  echo 'sabora_nonsuperuser_application_role_escalation' >&2; exit 1;
 }
 test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
   "SELECT NOT has_schema_privilege('anon','sabora','USAGE')

@@ -57,9 +57,15 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
   'supabase/migrations/$name',
   'sabora_nonsuperuser_migration_blocked:$name',
   'sabora_nonsuperuser_force_rls_mismatch',
+  'sabora_nonsuperuser_application_role_escalation',
+  'createrole_self_grant=set',
+  'sabora_nonsuperuser_role_creation_mode_unavailable',
   'sabora_nonsuperuser_pg17_migration_chain_ok:',
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
+ assert.match(providerCompat,/PGOPTIONS="\$migration_pgoptions"/);
+ assert.match(providerCompat,/rls_counts.*69\|69/s);
+ assert.match(providerCompat,/rolcanlogin OR rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
  assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
  assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);

@@ -37,3 +37,11 @@ Se añade en la rama de desarrollo CV-005:
 - Antes de operar el VPS compartido se exige autorización **independiente**, recursos exclusivos Sabora y ausencia de interferencias con Fleetia; no existe GO de despliegue por fusionar código.
 
 **No realizado:** migración Supabase, DDL/roles/contraseñas reales, backup/restore operativo, merge de este nuevo trabajo, despliegue ni operación del VPS.
+
+## Diagnóstico reproducido en CI (12-11-2026)
+
+En [workflow #43184585309](https://github.com/jdlc86/CartaViva/actions/runs/43184585309), el LOGIN descartable superó el preflight con `NOSUPERUSER` y `NOBYPASSRLS`, pero la ejecución se detuvo en `20261021030000_sabora_customer_session_restricted_rpcs.sql`: `must be able to SET ROLE "sabora_customer_session_fn_owner"`. Es una incompatibilidad **concreta** entre la cadena sin opciones de sesión y la semántica PostgreSQL 17, no una falla de credenciales reales. La [documentación de PostgreSQL 17](https://www.postgresql.org/docs/17/role-attributes.html) establece que un CREATEROLE no superusuario obtiene automáticamente `ADMIN TRUE`, `SET FALSE` e `INHERIT FALSE` sobre los roles que crea.
+
+**Corrección candidata en el mismo PR:** utilizar exclusivamente para cada **sesión de migración** `PGOPTIONS=-c createrole_self_grant=set`, verificando su disponibilidad antes de ejecutarla; este valor hace explícita la capacidad de cambio de propietario necesaria. **No se altera el SQL de las 99 migraciones históricas, no se concede SUPERUSER, no se modifica ningún rol operativo y no se activa ese ajuste en la API.** El ensayo sigue siendo un fixture PostgreSQL 17 desechable, no Supabase. Se añaden comprobaciones de que **todas** las tablas Sabora están en FORCE RLS y los roles de capacidad carecen de LOGIN/superpoderes. Las pruebas de la siguiente ejecución determinarán si quedan nuevos bloqueos; **no declarar PASS antes de observarla**.
+
+**Puerta específica del proveedor aún abierta:** antes de migrar Supabase con `postgres` no superusuario, acreditar que `createrole_self_grant` está permitido y funciona con su configuración y roles existentes, con evidencia read-only y un plan de migración/rollback autorizado. No aplicar este modo a conexiones runtime ni interpretar un PASS en Docker como permiso de migración real.
