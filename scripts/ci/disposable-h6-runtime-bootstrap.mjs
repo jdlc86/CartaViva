@@ -86,6 +86,7 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    'requestId','route','method','statusClass','durationMs']);
   const operationFields=new Set(['schema','source','service','level','event','at',
    'component','operation','outcome','durationMs']);
+  const lifecycleFields=new Set(['schema','source','service','level','event','at','code']);
   const safeHttp=diagnosticEvents.filter(v=>v.event==='http_request');
   const safeOps=diagnosticEvents.filter(v=>v.event==='operation');
   if(summary.requests<4||summary.byRoute['/health']<1||
@@ -95,9 +96,11 @@ export async function startDisposableM3Runtime({options,environment=process.env}
        v.outcome==='success')||
      diagnosticEvents.some(v=>v.event==='http_request'?
        ((v.route!=='/health'&&v.route!=='/ready'&&v.route!=='other')||
-        Object.keys(v).some(key=>!httpFields.has(key))):
-       (v.event!=='operation'||v.component!=='database'||v.operation!=='check'||
-        v.outcome!=='success'||Object.keys(v).some(key=>!operationFields.has(key)))))
+        Object.keys(v).some(key=>!httpFields.has(key))):v.event==='operation'?
+       (v.component!=='database'||v.operation!=='check'||v.outcome!=='success'||
+        Object.keys(v).some(key=>!operationFields.has(key))):
+       (v.event!=='lifecycle'||v.code!=='started_operational_candidate'||
+        Object.keys(v).some(key=>!lifecycleFields.has(key)))))
      throw invalid();
   return Object.freeze({
    app:candidate.app,mode:candidate.mode,origin,
