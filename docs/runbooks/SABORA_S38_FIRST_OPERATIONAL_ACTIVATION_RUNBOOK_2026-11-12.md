@@ -34,10 +34,14 @@ health-only y registrar el bloqueo. No editar banderas para eludirlo.
 2. Ejecutar lockfile, gates, PG17, HTTP y dos PWA Chromium en fixture desechable.
    Exigir negativas de identidad duplicada/privilegiada, CA/SNI/destino, secreto
    placeholder, JWKS, readiness, notifier, sink, corrupción y cierre parcial.
-3. Renderizar `compose.sabora-operational.yml` únicamente con rutas de ficheros
-   temporales no sensibles. Confirmar: API sólo en red interna; gateway único en
-   red de salida; ingress `127.0.0.1`; gateway sin puerto; usuario no-root,
-   read-only, `cap_drop`, límites y logs acotados.
+3. Renderizar `compose.sabora-operational.yml` con `--project-name sabora` y
+   rutas de ficheros temporales no sensibles. Confirmar: API sólo en red
+   interna, gateway único en red de salida, ingress `127.0.0.1`, sin puerto
+   público del gateway, usuario no-root, read-only, `cap_drop`, límites y logs
+   acotados. **Ambos servicios deben montar EL MISMO fichero de política de
+   egress Sabora en solo lectura.** El preflight compara exactamente destinos,
+   puertos y protocolos de SQL/JWKS entre manifiesto y gateway; cualquier
+   diferencia es STOP antes de leer secretos.
 4. Ensayar parada y re-arranque del servicio Sabora nombrado. No usar `down`,
    prune, Docker socket, redes externas, nombres globales ni operaciones sobre
    contenedores ajenos.
@@ -81,8 +85,14 @@ health-only; no se permite `sslmode=require` sin identidad ni TLS permisivo.
 
 ## 4. Bootstrap y smoke controlado
 
-1. Arrancar únicamente el proyecto Compose `sabora` con archivo explícito `deploy/compose.sabora-operational.yml` y sus
-   dos servicios, sin compartir red, volumen, socket o nombre con otro proyecto.
+1. Tras autorización específica y comprobar que no hay otro arranque Sabora
+   simultáneo, conmutar **solo el servicio `api` del proyecto `sabora`** desde
+   el Compose health-only al Compose operativo, incorporando únicamente el
+   servicio `sabora-egress`. Utilizar siempre `--project-name sabora`,
+   `--file deploy/compose.sabora-operational.yml` y nombres explícitos de
+   servicio, sin operaciones globales ni comandos sin ámbito. Ambos Compose
+   representan **modos alternativos del mismo proyecto**, no instalaciones
+   concurrentes; comprobar que no se intenta ocupar el puerto 4100 dos veces.
 2. Verificar que no existe listener útil hasta completar JWKS y todos los
    preflights SQL/ACL/roles/eventos. `/health` sólo acredita proceso vivo.
 3. Exigir `/ready=200` y después recorrer con datos ficticios: QR/carta/visita,
