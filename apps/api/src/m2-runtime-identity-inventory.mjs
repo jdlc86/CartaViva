@@ -71,7 +71,7 @@ export function validateM2RuntimeSqlIdentities(options={}){
  for(const spec of requirements){
   const pool=read(options,spec.poolPath);
   const login=read(options,spec.loginPath);
-  if(!pool||typeof pool.connect!=='function'||!LOGIN.test(login??''))throw invalid();
+  if(!pool||typeof pool.connect!=='function'||typeof login!=='string'||!LOGIN.test(login))throw invalid();
   const entry={pool,login};
   if(entries.some(existing=>existing.login===login||duplicateIdentity(existing,entry)))
    throw invalid();

@@ -65,6 +65,12 @@ test('runtime refuses reused SQL logins, shared connection identities and absent
  assert.throws(()=>validateM2RuntimeSqlIdentities(options),/m2_restaurant_candidate_isolation_required/);
 });
 
+test('an object masquerading as a LOGIN string is rejected before SQL',()=>{
+ const {options}=make();
+ options.customer.expectedCatalogLogin={toString:()=> 'sabora_capability_0'};
+ assert.throws(()=>validateM2RuntimeSqlIdentities(options),/m2_restaurant_candidate_isolation_required/);
+});
+
 test('inventory rejects inconsistent flags and never leaks injected secrets in errors',()=>{
  assert.throws(()=>describeM2RuntimeSqlSlots({management:false,ownership:true}),/m2_restaurant_candidate_isolation_required/);
  const {options}=make();
