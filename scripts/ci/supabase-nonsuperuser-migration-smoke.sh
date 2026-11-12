@@ -21,8 +21,11 @@ docker run -d --name "$container" --network none \
   echo 'sabora_nonsuperuser_network_isolation_failed' >&2; exit 1;
 }
 ready=false
-for attempt in $(seq 1 40); do
-  if docker exec "$container" psql -X -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then
+for attempt in $(seq 1 60); do
+  # The official Postgres image first starts a *temporary* init server and
+  # shuts it down. Avoid treating that transient socket as readiness.
+  if docker logs "$container" 2>&1 | grep -q 'PostgreSQL init process complete' &&
+     docker exec "$container" psql -X -U postgres -d postgres -Atqc 'select 1' >/dev/null 2>&1; then
     ready=true; break
   fi
   sleep 1
