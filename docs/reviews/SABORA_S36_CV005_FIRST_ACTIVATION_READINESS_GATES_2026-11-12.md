@@ -58,4 +58,28 @@ Son **declaraciones de control interno**, no pruebas firmadas ni sustitutos de e
 - **Validación real:** no existe todavía. Nadie debe confundir `/health` en 200 o una CI verde con restaurante desplegado, permisos correctos en Supabase, alertas recepcionadas, backup restaurado o aceptación humana.
 - **Decisión:** la preparación puede proseguir **sin permiso de escritura en la infraestructura operativa**. Para pasar a migración/despliegue hay una puerta de aprobación independiente y explícita; no la sustituye el mensaje genérico «continúa».
 
+
+## 6. Inventario determinista de identidades SQL que exige el ensamblaje
+
+Se incorporó el contrato **reutilizable por el arranque opt-in y por GitHub Actions** `apps/api/src/m2-runtime-identity-inventory.mjs`. Su función `validateM2RuntimeSqlIdentities(options)` coteja todas las parejas `pool/expectedLogin` contra la estructura de dependencia inyectada y rechaza **antes de hacer queries o registrar rutas** las identidades duplicadas, pools reutilizados, logins inválidos y falta de los dos pools de notificación. Devuelve **únicamente rutas lógicas y contadores**, nunca contraseñas, usernames, URLs de conexión ni CA. No abre conexiones, no crea roles ni lee variables de entorno.
+
+| Bloque de capacidad | Pool y expectedLogin exactos (propiedades del contrato de código) | Número |
+| --- | --- | ---: |
+| Cliente y carta | `customer.catalogReaderPool / expectedCatalogLogin`; `customer.registrationPool / expectedRegistrationLogin`; `customer.sessionPool / expectedSessionLogin`; `customer.flowPool / expectedFlowLogin` | 4 |
+| Cambio de mesa | `tableChange.customerPool / expectedCustomerLogin`; `operationsPool / expectedOperationsLogin`; `confirmationPool / expectedConfirmationLogin`; `h6ReadPool / expectedH6ReadLogin`; `pendingPool / expectedPendingLogin` | 5 |
+| Identidad del personal | `staff.pool / expectedLogin` | 1 |
+| Cocina/sala H4 | `h4.operationsPool / expectedOperationsLogin` | 1 |
+| H6 economía y eventos | `h6.providerPool / expectedProviderLogin`; `operationsPool / expectedOperationsLogin`; `closePool / expectedCloseLogin`; `eventPool / expectedEventLogin` | 4 |
+| **Subtotal base H3–H6** | Todas las capacidades anteriores | **15** |
+| Gestión M3 mínima | `management.tablesPool / expectedTablesLogin`; `catalogPool / expectedCatalogLogin` | **+2 = 17** |
+| Gobierno titularidad | `management.ownership.pool / expectedLogin` | +1 |
+| Comunicaciones M5 | `management.communications.adminPool / expectedAdminLogin`; `publicPool / expectedPublicLogin` | +2 |
+| Llamar camarero | `waiterCalls.customerPool / expectedCustomerLogin`; `staffPool / expectedStaffLogin` | +2 |
+| **Configuración completa opcional** | M3 + gobierno + M5 + llamadas al camarero | **22** |
+| Notificadores dedicados | `tableChange.notificationPool` y `h6.notifierPool` | **2 pools adicionales**, sin `expectedLogin` independiente en el contrato actual; verificar sus permisos/identidades reales en la puerta operativa |
+
+**Advertencia de interpretación:** los nombres de las *propiedades* de este cuadro son los ya implementados, **no** nombres nuevos de variables de entorno ni SQL `LOGIN` que se deban crear manualmente. La relación final entre cada conexión, rol SQL `NOLOGIN`, login físico, secreto, emisor y política TLS/rotación debe derivarse de las migraciones normativas y de los checks reales del proveedor **antes de provisionar**. No basta un `postgres` común ni tres contraseñas para habilitar 17–22 capacidades.
+
+**Evidencia automatizada:** `tests/m2-runtime-identity-inventory.test.mjs` comprueba 15/17/22, unicidad/negativas, obligatoriedad de los dos notificadores y no divulgación de DSN; `scripts/ci/disposable-h6-runtime-bootstrap.mjs` ejerce la misma función **dentro de la aceptación integrada real PG17 y Fastify**, además de todas las comprobaciones SQL de privilegios ya existentes. La suite debe completarse verde en el SHA que contenga estos cambios. Su resultado jamás equivale a logins operativos instalados ni a la aprobación de un contrato de inyección de secretos.
+
 [Continuidad S36](../handoffs/SESSION_36_HANDOFF_2026-11-11.md) · [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) · [Preflight Supabase](SABORA_S36_SUPABASE_DATABASE_ACTIVATION_PREFLIGHT_2026-11-11.md).

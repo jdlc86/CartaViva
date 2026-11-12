@@ -3,6 +3,7 @@
 // roles, reads operational secrets, deploys, or contacts an external database.
 // All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
 import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {validateM2RuntimeSqlIdentities} from '../../apps/api/src/m2-runtime-identity-inventory.mjs';
 import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
@@ -48,6 +49,14 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    enableDeferredDispatch:false};
   // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
+  // Exercise the *same* identity inventory as the HTTP assembly in the
+  // disposable PG17 end-to-end acceptance. No login names are emitted.
+  const inventory=validateM2RuntimeSqlIdentities(isolatedOptions);
+  const expected=17+(isolatedOptions.management?.ownership?1:0)+
+   (isolatedOptions.management?.communications?2:0)+
+   (isolatedOptions.waiterCalls?2:0);
+  if(inventory.capabilityCount!==expected||inventory.notifierCount!==2)
+   throw invalid();
   candidate=await createM3RestaurantCandidate(isolatedOptions);
   if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
   // The factory permits only loopback. Port 0 eliminates fixed host binds.

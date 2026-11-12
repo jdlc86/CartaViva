@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import {performance} from 'node:perf_hooks';
 import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
+import {validateM2RuntimeSqlIdentities} from './m2-runtime-identity-inventory.mjs';
 import {assertWaiterCallRuntimeIdentity,createWaiterCallComposition,registerWaiterCallHttp}
  from './waiter-call-candidate.mjs';
 import {assertCustomerProductionSqlCapabilities} from './customer-production-sql-preflight.mjs';
@@ -80,18 +81,6 @@ const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
  RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
  MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL]);
 
-function sameIdentity(a,b){
- if(a===b)return true;
- const x=a?.options??{},y=b?.options??{};
- return Boolean((x.user&&x.user===y.user)||
-  (x.connectionString&&x.connectionString===y.connectionString));
-}
-function uniqueCapabilities(pools,logins){
- return pools.every(pool=>pool&&typeof pool.connect==='function')&&
-  pools.every((pool,index)=>!pools.slice(index+1).some(other=>sameIdentity(pool,other)))&&
-  logins.every(login=>typeof login==='string'&&/^[a-z][a-z0-9_]{0,62}$/.test(login))&&
-  new Set(logins).size===logins.length;
-}
 const staffGuard=forRoles=>roles=>{
  const hooks=forRoles(roles);
  if(!Array.isArray(hooks)||hooks.some(hook=>typeof hook!=='function'))
@@ -164,37 +153,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
    throw Error('invalid_m2_restaurant_candidate');
 
-  const capabilityPools=[customer.catalogReaderPool,customer.registrationPool,
-   customer.sessionPool,customer.flowPool,tableChange.customerPool,tableChange.operationsPool,
-   tableChange.confirmationPool,tableChange.h6ReadPool,tableChange.pendingPool,staff.pool,
-   h4.operationsPool,h6.providerPool,h6.operationsPool,h6.closePool,h6.eventPool];
-  const logins=[customer.expectedCatalogLogin,customer.expectedRegistrationLogin,
-   customer.expectedSessionLogin,customer.expectedFlowLogin,tableChange.expectedCustomerLogin,
-   tableChange.expectedOperationsLogin,tableChange.expectedConfirmationLogin,
-   tableChange.expectedH6ReadLogin,tableChange.expectedPendingLogin,staff.expectedLogin,
-   h4.expectedOperationsLogin,h6.expectedProviderLogin,h6.expectedOperationsLogin,
-   h6.expectedCloseLogin,h6.expectedEventLogin];
-  if(management){
-   capabilityPools.push(management.tablesPool,management.catalogPool);
-   logins.push(management.expectedTablesLogin,management.expectedCatalogLogin);
-   if(management.ownership){
-    capabilityPools.push(management.ownership.pool);
-    logins.push(management.ownership.expectedLogin);
-   }
-   if(management.communications){
-    capabilityPools.push(management.communications.adminPool,management.communications.publicPool);
-    logins.push(management.communications.expectedAdminLogin,
-     management.communications.expectedPublicLogin);
-   }
-  }
-  if(waiterCalls){
-   capabilityPools.push(waiterCalls.customerPool,waiterCalls.staffPool);
-   logins.push(waiterCalls.expectedCustomerLogin,waiterCalls.expectedStaffLogin);
-  }
-  if(!uniqueCapabilities(capabilityPools,logins)||
-     typeof tableChange.notificationPool?.connect!=='function'||
-     typeof h6.notifierPool?.connect!=='function')
-   throw Error('m2_restaurant_candidate_isolation_required');
+  // The canonical SQL slot inventory is validated before any query/HTTP route.
+  // It has no environment access and reports only generic denial on conflict.
+  validateM2RuntimeSqlIdentities({
+   customer,tableChange,staff,h4,h6,management,waiterCalls
+  });
 
   const preflight=async()=>{
    if(waiterCalls){
