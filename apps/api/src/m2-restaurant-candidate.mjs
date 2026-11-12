@@ -94,7 +94,7 @@ const staffGuard=forRoles=>roles=>{
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
  management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
- observeFailure=()=>{},observability=null}={}){
+ observeFailure=()=>{},observability=null,requireTrustedKeysOnReadiness=false}={}){
  const app=Fastify({logger:false,trustProxy:false});
  // Telemetry must never receive arbitrary provider/SQL exception details.
  const reportDependencyFailure=component=>{
@@ -150,7 +150,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
       typeof waiterCalls.expectedCustomerLogin!=='string'||
       typeof waiterCalls.expectedStaffLogin!=='string'||
       typeof waiterCalls.issueStaffCapability!=='function'))||
-     !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
+     !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000||
+     typeof requireTrustedKeysOnReadiness!=='boolean')
    throw Error('invalid_m2_restaurant_candidate');
 
   // The canonical SQL slot inventory is validated before any query/HTTP route.
@@ -375,7 +376,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(!operational){reportDependencyFailure('events');
     return reply.code(503).send({status:'unavailable'});}
    const started=performance.now();
-   try{await preflight();}
+   try{
+    if(requireTrustedKeysOnReadiness){
+     const keys=await staff.getTrustedKeys();
+     if(!Array.isArray(keys)||keys.length===0)throw Error('jwks_unavailable');
+    }
+    await preflight();
+   }
    catch{reportReadiness('failure',started);reportDependencyFailure('database');
     return reply.code(503).send({status:'unavailable'});}
    reportReadiness('success',started);
