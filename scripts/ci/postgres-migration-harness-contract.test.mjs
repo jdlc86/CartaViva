@@ -212,3 +212,36 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
  assert.equal(protectedCount,54,'52 original versions plus M2 and M3-M5 transaction scopes');
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
 });
+
+
+const CV005_REPLACED_EXISTING_FUNCTIONS = {
+ '20261108160000_sabora_m3_m5_signed_capability_null_hardening_candidate.sql':[
+  'verify_management_capability_m3'],
+ '20261108170000_sabora_staff_identity_directory_null_signature_hardening_candidate.sql':[
+  'transition_staff_lifecycle_with_identity_candidate',
+  'transition_staff_lifecycle_with_directory_candidate',
+  'read_staff_directory_authorized_candidate'],
+ '20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql':[
+  'admin_ownership_action_candidate'],
+ '20261109010000_sabora_ownership_post_lock_expiry_candidate.sql':[
+  'admin_ownership_action_candidate']
+};
+test('PG17 redefinitions require a fail-closed, explicitly named owner fence in each migration transaction',()=>{
+ for(const [file,names] of Object.entries(CV005_REPLACED_EXISTING_FUNCTIONS)){
+  const sql=readFileSync(new URL('../../supabase/migrations/'+file,import.meta.url),'utf8');
+  const begin=sql.indexOf('BEGIN;');
+  const firstReplacement=sql.search(/CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+sabora\\./i);
+  const before=sql.indexOf('DO $cv005_exact_fn_owner_scope$');
+  const after=sql.indexOf('DO $cv005_exact_fn_owner_release$');
+  const commit=sql.lastIndexOf('COMMIT;');
+  assert.ok(begin>=0&&before>begin&&before<firstReplacement,file+': owner scope must precede replacement');
+  assert.ok(after>firstReplacement&&after<commit,file+': owner scope release must precede COMMIT');
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,file);
+  assert.ok(sql.includes('cv005_provider_bootstrap_membership_missing'),file);
+  assert.ok(sql.includes('cv005_unsafe_existing_fn_owner'),file);
+  assert.ok(sql.includes('m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)'),file);
+  assert.ok(sql.includes('NOT m.set_option AND NOT m.inherit_option'),file);
+  const actual=[...sql.matchAll(/CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+sabora\\.([a-z_0-9]+)/gi)].map(m=>m[1]).sort();
+  assert.deepEqual(actual,names.slice().sort(),file+': every replaced function must appear in scoped inventory');
+ }
+});
