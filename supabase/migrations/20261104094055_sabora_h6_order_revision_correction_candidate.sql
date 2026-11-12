@@ -140,8 +140,6 @@ BEGIN
  RETURN NEW;
 END;
 $seed_revision$;
--- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.seed_order_revision_h6_candidate() OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.seed_order_revision_h6_candidate()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
@@ -983,5 +981,4 @@ CREATE TRIGGER h6_bind_dispatch_event_revision
  BEFORE INSERT ON sabora.event_outbox FOR EACH ROW
  EXECUTE FUNCTION sabora.bind_dispatch_event_revision_h6_candidate();
 
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

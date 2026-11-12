@@ -1,59 +1,33 @@
-# Sabora / CartaViva — CV-005: ensayo integral de migraciones con administrador sin superusuario (12-11-2026)
+# CV-005 · Dictamen de compatibilidad PG17 CREATEROLE sin superusuario (12-11-2026)
 
-**Tipo:** informe técnico de un ensayo nuevo; no es normativa, aprobación de migración, ni validación del proveedor. Se conserva la [metodología permanente](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md): el laboratorio PostgreSQL 17/CI no desaparece tras desplegar, y el entorno real solo se toca con autorización específica. [Autorización](../SABORA_AUTHORIZATION_GATE.md), [aislamiento de proyectos](../architecture/CARTAVIVA_PROJECT_BOUNDARY.md), [runbook P2](../runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md) y [continuidad 36](../handoffs/SESSION_36_HANDOFF_2026-11-11.md) prevalecen cuando corresponda.
+**Naturaleza:** diagnóstico técnico de bloqueo crítico de primera migración, no modificación de normativa ni autorización operativa. [Contrato normativo de validación](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), [puerta de autorización](../SABORA_AUTHORIZATION_GATE.md), [seguridad del actor SQL](../security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md), [informe de continuidad 36](../handoffs/SESSION_36_HANDOFF_2026-11-11.md).
 
-## Motivo y evidencia comprobada
+## Objetivo y evidencias trazables
 
-El [PR #56](https://github.com/jdlc86/CartaViva/pull/56) se fusionó en `main` (SHA `7dcf90df`) y [CI post-merge #43177964808](https://github.com/jdlc86/CartaViva/actions/runs/43177964808) terminó `completed/success`. La cadena versionada `supabase/migrations` consta de **99 migraciones** auditadas, y el laboratorio existente prueba aplicación/reanudación y 69 tablas con FORCE RLS. **Limitación:** hasta ahora las aplica el usuario `postgres` **superusuario** de un contenedor PostgreSQL 17 estándar.
+La base **Sabora solamente** observada en la sesión 36 tiene PostgreSQL 17.11 y cuenta `postgres` con `CREATEROLE`, pero **NO SUPERUSER**. Las **99 migraciones** de `main` habían pasado en el laboratorio con superusuario: eso **no** acredita compatibilidad con el proveedor. El [PR #57](https://github.com/jdlc86/CartaViva/pull/57) inició un segundo laboratorio `postgres:17-alpine` aislado `--network none`, sin secretos, para ejecutar la cadena como un LOGIN desechable `NOSUPERUSER/NOBYPASSRLS/CREATEROLE`.
 
-En el Supabase real **exclusivo de Sabora** `byhvmumqivmunkmomhup`, las consultas read-only anteriores observaron PostgreSQL **17.11** y `current_user=postgres` con `rolcreaterole=true`, `rolsuper=false`. El contraste no es cosmético: `CREATE ROLE`, `ALTER OWNER TO`, `SET ROLE`, ownership/CREATE del schema y funciones `SECURITY DEFINER` pueden comportarse de otro modo. [Roles superusuario en Supabase](https://supabase.com/docs/guides/database/postgres/roles-superuser) y [requisitos CREATE bajo SET ROLE](https://supabase.com/kb/troubleshooting/resolving-permission-denied-for-database-postgres-during-migrations-78f33a) describen diferencias reales. **No suponer que un PG17 con superusuario representa a Supabase PG17.11.**
+Se reprodujeron sucesivamente:
+1. [Run #43184585309](https://github.com/jdlc86/CartaViva/actions/runs/43184585309): `SET ROLE sabora_customer_session_fn_owner` no permitido en migración `20261021030000` al cambiar dueño de función.
+2. [Run #43185379839](https://github.com/jdlc86/CartaViva/actions/runs/43185379839): con `createrole_self_grant=set`, `permission denied for schema sabora` al transferir propiedad; el nuevo owner necesitaría `CREATE` durante esa operación.
+3. [Run #43185863218](https://github.com/jdlc86/CartaViva/actions/runs/43185863218): conceder `CREATE` temporal en la migración permite llegar a la ACL, que falla `permission denied for function verify_customer_session_hash` por falta de herencia del owner.
+4. [Run #43186040203](https://github.com/jdlc86/CartaViva/actions/runs/43186040203): habilitar `createrole_self_grant=set,inherit` supera esas barreras, pero la migración `20261024190000_sabora_order_operation_actor_capability_candidate.sql` rechaza la **membresía automática** en `sabora_order_operations_fn_owner` con `unsafe_sabora_order_operations_fn_owner_membership`. Esa guarda exige que el propietario sellado no tenga membresías entrantes ni salientes; **no puede rebajarse incidentalmente**.
 
-## Implementación candidata sin tocar Supabase
+La [documentación oficial PostgreSQL 17](https://www.postgresql.org/docs/17/role-attributes.html) explica que un usuario no superusuario con `CREATEROLE` recibe automáticamente `ADMIN TRUE / SET FALSE / INHERIT FALSE` sobre el rol recién creado, en un grant del bootstrap superuser que ese usuario no puede revocar o alterar. Por tanto, **no existe base para afirmar que las 99 migraciones pueden instalarse tal cual con ese operador y sin revisión de la guarda de propiedad sellada**.
 
-Se añade en la rama de desarrollo CV-005:
+## Decisión técnica: NO-GO sin relajar seguridad
 
-- `scripts/ci/supabase-nonsuperuser-migration-smoke.sh`: crea **un contenedor Docker efímero `postgres:17-alpine` con `--network none`**, restringido por entorno de GitHub Actions. No abre puertos, no acepta DATABASE_URL, no accede a Supabase ni a VPS, y elimina exclusivamente su contenedor de nombre generado bajo su propio `trap`.
-- El **fixture** crea por superusuario local únicamente `anon`, `authenticated` y un LOGIN desechable **CREATEROLE, INHERIT, NOSUPERUSER, NOBYPASSRLS, NOREPLICATION**. Su base aparte pertenece al operador de CI; `pgcrypto` 1.3 se instala en esquema `extensions` para simular la extensión previamente instalada en Supabase.
-- **Las 99 migraciones, en orden del repositorio y sin omisiones manuales, se ejecutan como ese LOGIN no superusuario, nunca como el superusuario del contenedor.** Si hay un bloqueo, se informa del archivo exacto y del mensaje PostgreSQL; el job falla. Si pasa toda la cadena, se comprueban las **69 tablas FORCE RLS**, la ausencia de USAGE público de Sabora y la ausencia de elevación del operador.
-- `.github/workflows/supabase-nonsuperuser-compatibility.yml`: nuevo **job específico complementario**; no vuelve a ejecutar H6, Chromium, dos PWA ni las largas baterías de negocio existentes. Se activa ante cambios SQL/contrato de ensayo y puede relanzarse manualmente.
-- `scripts/ci/postgres-migration-harness-contract.test.mjs`: añade el control negativo de aislamiento del nuevo script/CI; no permite destinos externos, puertos publicados, secretos o podas globales.
+El intento exploratorio de añadir `CREATE` a 14 migraciones históricas y activar `set,inherit` en la sesión migratoria **se descarta**: no resuelve el contrato de NO MEMBRESÍA y alteraría 14 checksums de una cadena versionada. **Los 14 archivos quedan restaurados byte a byte desde `main` en el candidato**, y el laboratorio conserva como puerta negativa la comprobación real de membresía automática. El gate debe **fallar explícitamente** con `sabora_nonsuperuser_provider_no_go`, no marcar la cadena como aprobada.
 
-## Qué acredita y qué no
+### Condiciones de desbloqueo sin interpretación de normas
 
-| Resultado | Interpretación |
-| --- | --- |
-| **PASS del job nuevo** | La cadena de 99 archivos funciona **en un PostgreSQL 17 desechable** bajo una cuenta CREATEROLE que no es superusuario; guardas RLS básicas intactas |
-| **FAIL** | Brecha real de portabilidad/permiso (o problema de fixture) que debe diagnosticarse en el mismo hito; **NO-GO** de migración hasta resolver |
-| **PASS de todos los CI** | No sustituye la compatibilidad exacta del proveedor con `supautils`, pgcrypto/ownership específicos, conexiones TLS, roles preexistentes ni comprobación tras instalación |
-| **Instalación operativa autorizada** | Exige backup lógico verificable + restauración, SHA/checksums y ledger completos, credenciales y secrets aprobados, permisos SQL exactos, impacto/aislamiento y autorización del propietario |
+El propietario y revisión de seguridad/DBA deben definir y aprobar una de estas vías **antes de DDL real**:
+- Provisionamiento de propietarios `NOLOGIN` sellados mediante un mecanismo privilegiado del proveedor capaz de respetar la guarda de ausencia de membresías y permitir asignaciones de ownership, con pruebas de roles y SQL equivalentes al contrato vigente.
+- Una **decisión normativa explícita**, revisada independientemente, que resuelva la incompatibilidad de pertenencia del administrador de migraciones sin permitir membresía runtime ni ampliar las capacidades del actor. No modificar la guarda por conveniencia de CI.
 
-**Estado en el momento de crear este informe:** código del ensayo propuesto, aún **sin resultado verificado**. Actualizar el apartado de seguimiento únicamente con el estado real del SHA y workflow. Si falla, no darlo como éxito ni rebajar requisitos de seguridad para mantener una CI verde.
+Ambas requieren preflight específico Supabase PG17.11, roles preexistentes, 99 huellas de migración del SHA, copia lógica cifrada/restauración ensayada en plan Free, y autorización separada para Supabase. No hay camino acreditado hacia despliegue VPS hasta cerrar CV-005, CV-010 y CV-011.
 
-## Puertas de primera activación todavía abiertas
+## Evidencia y límites
 
-- En Supabase Free no se presuponen PITR ni backup automático. Necesita dump lógico Sabora-only cifrado **realmente restaurado y ensayado**, más recuperación de roles/secretos conforme a P2/P3, antes de tocar las 99 migraciones.
-- 15/17/22 capacidades SQL + conexiones de notificación: no confundir slots lógicos con LOGIN instalados ni sustituirlos por la conexión `postgres`. Tres contraseñas del propietario siguen bajo su custodia.
-- El proceso desplegable `server.mjs` sigue `health-only`, con `/ready=503`; falta la composición operativa CV-005 con autenticación, dependencias, redes TLS, eventos/observabilidad y alertas externas, sin introducir contratos de secretos no aprobados.
-- Antes de operar el VPS compartido se exige autorización **independiente**, recursos exclusivos Sabora y ausencia de interferencias con Fleetia; no existe GO de despliegue por fusionar código.
+El laboratorio **no tocó Supabase operativo, secretos, datos reales, VPS ni Fleetia**. Un resultado negativo de este gate no contradice las suites integradoras H6/Chromium aprobadas con el superusuario de Docker; revela una diferencia real de privilegios. Mantener el PR #57 Draft/NO-GO, sin integración mientras el contrato no tenga solución probada. No se ha realizado migración, backup real, bootstrap operativo ni aceptación visual.
 
-**No realizado:** migración Supabase, DDL/roles/contraseñas reales, backup/restore operativo, merge de este nuevo trabajo, despliegue ni operación del VPS.
-
-## Diagnóstico reproducido en CI (12-11-2026)
-
-En [workflow #43184585309](https://github.com/jdlc86/CartaViva/actions/runs/43184585309), el LOGIN descartable superó el preflight con `NOSUPERUSER` y `NOBYPASSRLS`, pero la ejecución se detuvo en `20261021030000_sabora_customer_session_restricted_rpcs.sql`: `must be able to SET ROLE "sabora_customer_session_fn_owner"`. Es una incompatibilidad **concreta** entre la cadena sin opciones de sesión y la semántica PostgreSQL 17, no una falla de credenciales reales. La [documentación de PostgreSQL 17](https://www.postgresql.org/docs/17/role-attributes.html) establece que un CREATEROLE no superusuario obtiene automáticamente `ADMIN TRUE`, `SET FALSE` e `INHERIT FALSE` sobre los roles que crea.
-
-**Corrección candidata en el mismo PR:** utilizar exclusivamente para cada **sesión de migración** `PGOPTIONS=-c createrole_self_grant=set`, verificando su disponibilidad antes de ejecutarla; este valor hace explícita la capacidad de cambio de propietario necesaria. **No se altera el SQL de las 99 migraciones históricas, no se concede SUPERUSER, no se modifica ningún rol operativo y no se activa ese ajuste en la API.** El ensayo sigue siendo un fixture PostgreSQL 17 desechable, no Supabase. Se añaden comprobaciones de que **todas** las tablas Sabora están en FORCE RLS y los roles de capacidad carecen de LOGIN/superpoderes. Las pruebas de la siguiente ejecución determinarán si quedan nuevos bloqueos; **no declarar PASS antes de observarla**.
-
-**Puerta específica del proveedor aún abierta:** antes de migrar Supabase con `postgres` no superusuario, acreditar que `createrole_self_grant` está permitido y funciona con su configuración y roles existentes, con evidencia read-only y un plan de migración/rollback autorizado. No aplicar este modo a conexiones runtime ni interpretar un PASS en Docker como permiso de migración real.
-
-## Corrección del segundo bloqueo: CREATE de esquema para destino OWNER (12-11-2026)
-
-El [workflow PG17 #43185379839](https://github.com/jdlc86/CartaViva/actions/runs/43185379839) probó que el modo de sesión `createrole_self_grant=set` supera la restricción de `SET ROLE`, pero PostgreSQL rechazó `ALTER FUNCTION OWNER TO sabora_customer_session_fn_owner` con `permission denied for schema sabora`. El propietario futuro de una función debe disponer de `CREATE` sobre su esquema para el cambio de titularidad. **No se puede dar por compatible la cadena sin atender ambas comprobaciones.**
-
-Se reparan **14 migraciones existentes** que efectúan `ALTER FUNCTION ... OWNER TO`, exclusivamente para la primera instalación todavía no aplicada: cada archivo posee `BEGIN/COMMIT`, habilita `CREATE` sobre `sabora` al/los rol(es) `fn_owner` implicados **solo durante la transacción**, y lo revoca antes del `COMMIT`. Ningún LOGIN, SUPERUSER, BYPASSRLS, concesión permanente de esquema, ruta API o secreto adicional. Este cambio **modifica los checksums de esos archivos**; no sería apropiado aplicarlo retroactivamente a instalaciones que ya los hubiesen registrado. En el Supabase Sabora observado no existe aún ledger/esquema; antes de una intervención real volver a contrastar ese dato, las 99 huellas del SHA aprobado y el plan de restauración.
-
-Además del ensayo PG17 real desechable, una prueba contractual recorre los 14 archivos y exige coincidencia exacta de GRANT/REVOKE dentro del mismo BEGIN/COMMIT. Se debe comprobar la CI de un mismo HEAD después de este cambio, no los PASS históricos de otros SHA.
-
-### Necesidad adicional de INHERIT para ACL de funciones
-
-La [CI #43185863218](https://github.com/jdlc86/CartaViva/actions/runs/43185863218), después de las concesiones transitorias de `CREATE`, avanzó hasta `REVOKE ALL ON FUNCTION` y obtuvo `permission denied for function verify_customer_session_hash`. El administrador de migración ya había cedido la titularidad al rol limitado; PostgreSQL exige que pueda ejercer sus privilegios de propietario para cerrar la ACL. El ensayo ahora requiere explícitamente `createrole_self_grant=set,inherit` **solo en las sesiones de migración**. Este ajuste confiere al administrador temporal acceso heredado a los roles creados, de modo que **no es inocuo para un operador que se reutilice como runtime**: está prohibido utilizar el LOGIN de migración en la API y será necesario inventariar/revisar la pertenencia de roles tras la instalación del proveedor. Se conserva `NOSUPERUSER` y `NOBYPASSRLS`, y el ensayo final seguirá comprobando que los roles de aplicación no adquirieron privilegios elevados. La aceptación depende de nueva CI y del preflight específico de Supabase real, sin DDL operativo.
+**Estado del último SHA:** la puerta negativa está implementada; verificar el run nuevo de GitHub antes de declarar también confirmada su señal específica.

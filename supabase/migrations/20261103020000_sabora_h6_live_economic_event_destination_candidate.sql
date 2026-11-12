@@ -118,8 +118,6 @@ BEGIN
     v_dispatch.id,v_dispatch.dispatch_key,'capture',v_repeated;
 END;
 $request_capture$;
--- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.request_h6_capture_dispatch_candidate(uuid,timestamptz) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.request_h6_capture_dispatch_candidate(uuid,timestamptz)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
@@ -564,5 +562,4 @@ REVOKE ALL ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,tex
 GRANT USAGE ON SCHEMA sabora TO sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

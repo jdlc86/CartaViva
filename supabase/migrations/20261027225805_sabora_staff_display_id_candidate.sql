@@ -507,8 +507,6 @@ BEGIN
  RETURN NEW;
 END;
 $pickup_identity$;
--- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.bind_pickup_claimed_display_id_candidate() OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.bind_pickup_claimed_display_id_candidate()
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
@@ -631,5 +629,4 @@ COMMENT ON FUNCTION sabora.maintain_staff_employee_codes_authorized_candidate(
 COMMENT ON TABLE sabora.staff_employee_code_events IS
  'Append-only assignment/release evidence retained when a code returns to the pool.';
 
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

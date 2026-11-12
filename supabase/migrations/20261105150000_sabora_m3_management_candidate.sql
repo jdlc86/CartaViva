@@ -967,8 +967,6 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $read_public
  ORDER BY coalesce(c.sort_order,10001),i.published_at DESC,i.id
  LIMIT 500
 $read_public_catalog$;
--- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_catalog_fn_owner;
 ALTER FUNCTION sabora.read_published_catalog() OWNER TO sabora_catalog_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_published_catalog()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_customer_session_runtime,
@@ -1180,5 +1178,4 @@ CREATE TRIGGER order_line_dynamic_category_m3
  BEFORE INSERT ON sabora.order_lines FOR EACH ROW
  EXECUTE FUNCTION sabora.restore_dynamic_order_line_category_m3();
 
-REVOKE CREATE ON SCHEMA sabora FROM sabora_catalog_fn_owner;
 COMMIT;
