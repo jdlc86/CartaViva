@@ -165,3 +165,36 @@ Este candidato se subordinó al
 [secretos candidato](../security/SABORA_PRODUCTION_CONFIG_SECRETS_CANDIDATE_V1.md),
 [runbooks P2/P3](../runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md)
 y [puerta S36](SABORA_S36_CV005_FIRST_ACTIVATION_READINESS_GATES_2026-11-12.md).
+
+## 6. S38 — saneamiento tras revisión cruzada con CV-005
+
+El cierre inicial descrito arriba correspondía al SHA `b825b78e`. La
+[revisión técnica cruzada de #57/#58](SABORA_S38_CV005_BLOCK2_CROSS_PR_TECHNICAL_REVIEW_2026-11-12.md)
+identificó y corrigió **dentro de este mismo PR** cuatro problemas de
+integración del candidato, sin tocar el SQL de #57:
+
+1. **No publicar HTTP antes de un readiness positivo:** `operational-runtime.mjs`
+   comprueba JWKS, preflight de la fábrica y `app.inject('/ready')=200`
+   **antes** de `listen`. Prueba de operación pendiente, negativa y positiva,
+   con cierre de recursos y socket todavía cerrado.
+2. **Paridad exacta de red:** la API lee el MISMO fichero de política de egress
+   (montaje read-only de ambos servicios) y compara cada puerto, host y
+   protocolo SQL/JWKS con su manifiesto **antes de resolver secretos**. El
+   contrato admite que 17/22 pools SQL distintos compartan un puerto de
+   túnel si apuntan al mismo destino, pero rechaza destinos extra o drift.
+   Pruebas de contrato y ensamblaje desde archivos con 17 pools simulados;
+   **no son una prueba TLS real contra Supabase**.
+3. **Alcance Docker normativo:** ambos Compose son modos alternativos de
+   proyecto `sabora`, **nunca dos stacks simultáneos**. Actualizados
+   Compose, el gate de aislamiento, CI y runbook. Ningún acceso al VPS.
+4. **JWKS en readiness activo:** el modo operativo requiere nueva verificación
+   de claves confiables (con la caché del contrato vigente), y clasifica
+   indisponibilidad como dependencia `staff` saneada; `/ready` 503 y
+   `/health` 200. El harness PG17 real incorpora prueba de caída temporal
+   de JWKS y recuperación.
+
+**Estado probatorio de esta sección:** cambios de código y pruebas
+**implementados**; solo serán **pruebas ejecutadas del hito revisado**
+cuando las Actions del nuevo HEAD terminen. Los resultados verdes de
+`b825b78e` siguen siendo válidos únicamente para ese SHA. No hay
+validación de proveedor, revisión DBA externa, aceptación visual ni GO.
