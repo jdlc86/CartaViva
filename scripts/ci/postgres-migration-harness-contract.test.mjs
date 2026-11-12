@@ -213,7 +213,9 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
  assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
  assert.match(providerCompat,/scope_matrix/, 'inspect all browser/DBA privilege facts');
- assert.match(providerCompat,/'f\|f\|f\|f'/, 'fail if any forbidden privilege is true');
+ assert.match(providerCompat,/'f\\|f\\|f\\|t'/, 'fixture DBA has observed privilege profile');
+ assert.match(providerCompat,/sabora_provider_runtime_attributes_unsafe/, 'runtime NOBYPASSRLS gate still required');
+ assert.match(providerCompat,/sabora_provider_runtime_owner_escalation/, 'runtime cannot assume owner');
 });
 
 
