@@ -58,19 +58,66 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
   'sabora_nonsuperuser_migration_blocked:$name',
   'sabora_nonsuperuser_force_rls_mismatch',
   'sabora_nonsuperuser_pg17_migration_chain_ok:',
-  'sabora_nonsuperuser_provider_no_go:automatic_createrole_membership_conflicts_with_sealed_owner',
+
   'sabora_ci_membership_probe',
-  'sabora_nonsuperuser_self_revocation_observed',
-  'sabora_nonsuperuser_self_revocation_unavailable',
-  'sabora_nonsuperuser_sealed_owner_provenance_verified',
-  'sabora_nonsuperuser_sealed_owner_negative_guard_bypassed',
+  'sabora_nonsuperuser_runtime_role_boundary_verified',
+  'sabora_nonsuperuser_bootstrap_membership_confirmed',
+  'sabora_nonsuperuser_incomplete_chain:',
+
+
+
+
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
  assert.match(providerCompat,/20261024190000_sabora_order_operation_actor_capability_candidate.sql/);
- assert.match(providerCompat,/sealed_memberships/);
+ assert.match(providerCompat,/unsafe_memberships/);
+ assert.match(providerCompat,/unsafe_role_attrs/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
  assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
  assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);
  assert.match(providerWorkflow,/bash scripts\/ci\/supabase-nonsuperuser-migration-smoke\.sh/);
  assert.doesNotMatch(providerWorkflow,/secrets\.|SUPABASE_DB_|DATABASE_URL/);
+});
+
+const PG17_OWNER_MIGRATIONS = [
+ '20261021030000_sabora_customer_session_restricted_rpcs.sql',
+ '20261021200000_sabora_catalog_reader.sql',
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027190334_sabora_pickup_claim_cancel_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261030190000_sabora_h6_table_change_request_decision_candidate.sql',
+ '20261031020000_sabora_h6_decision_lock_order_fix_candidate.sql',
+ '20261103020000_sabora_h6_live_economic_event_destination_candidate.sql',
+ '20261104094055_sabora_h6_order_revision_correction_candidate.sql',
+ '20261105150000_sabora_m3_management_candidate.sql',
+ '20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql',
+ '20261107200000_sabora_m4_cash_tips_candidate.sql',
+ '20261108070000_sabora_m5_communications_candidate.sql',
+ '20261110232000_sabora_m3_effective_management_permissions_candidate.sql'
+];
+test('PG17 candidate owner transfers are scoped to the original migration transaction',()=>{
+ for(const name of PG17_OWNER_MIGRATIONS) {
+  const sql=readFileSync(new URL('../../supabase/migrations/'+name,import.meta.url),'utf8');
+  const grants=[...sql.matchAll(/^GRANT CREATE ON SCHEMA sabora TO (sabora_\w+);$/gm)].map(x=>x[1]);
+  const memberships=[...sql.matchAll(/^GRANT (sabora_\w+) TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;$/gm)].map(x=>x[1]);
+  const revokes=[...sql.matchAll(/^REVOKE (sabora_\w+) FROM CURRENT_USER;$/gm)].map(x=>x[1]);
+  const schemaRevokes=[...sql.matchAll(/^REVOKE CREATE ON SCHEMA sabora FROM (sabora_\w+);$/gm)].map(x=>x[1]);
+  assert.ok(grants.length>0,name+': no scoped owner grants');
+  assert.deepEqual(grants,memberships,name);
+  assert.deepEqual(grants,revokes,name);
+  assert.deepEqual(grants,schemaRevokes,name);
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('GRANT CREATE ON SCHEMA sabora'),name);
+  assert.ok(sql.lastIndexOf('COMMIT;')>sql.lastIndexOf('REVOKE CREATE ON SCHEMA sabora'),name);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+ }
+});
+test('HMAC-bound owner retains negative policy for all runtime and unexpected members',()=>{
+ const sql=readFileSync(new URL('../../supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql',import.meta.url),'utf8');
+ for(const code of [
+  'unsafe_sabora_order_operations_fn_owner_membership',
+  'AND grantor.rolsuper AND membership.admin_option',
+  'NOT membership.inherit_option AND NOT membership.set_option',
+  'member.rolname = current_user::text',
+ ])assert.ok(sql.includes(code),code);
 });
