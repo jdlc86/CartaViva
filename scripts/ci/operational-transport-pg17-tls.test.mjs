@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {randomBytes,generateKeyPairSync} from 'node:crypto';
 import net from 'node:net';
@@ -10,6 +11,10 @@ import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createSaboraEgressGateway} from '../../apps/api/src/sabora-egress-gateway.mjs';
 import {createGatewayJwksFetch} from '../../apps/api/src/gateway-jwks-fetch.mjs';
 import {createSupabaseJwksProvider} from '../../apps/api/src/jwks.mjs';
+import {startOperationalServerFromFiles} from '../../apps/api/src/operational-server.mjs';
+import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.mjs';
+import {describeOperationalSqlContract} from '../../apps/api/src/operational-activation-manifest.mjs';
+import {PILOT_ACTIVATION_REQUIREMENTS} from '../../apps/api/src/pilot-activation-gate.mjs';
 
 // Every upstream socket below is redirected to the runner's loopback by an
 // explicit injected test connector. Fake public DNS is NEVER used for network
@@ -121,6 +126,123 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
   const keys=await getKeys();
   assert.equal(keys.length,1);
   assert.equal(keys[0].kid,'sabora-ci-local-trusted-key');
+  // Full file-based operational bootstrap, this time backed by 17 DISTINCT
+  // real restricted PostgreSQL LOGINs, encrypted PgWire through this gateway
+  // and an actual trusted JWKS HTTPS response. PWA browser journeys remain
+  // separately covered by the existing H6 PG17/Chromium acceptance.
+  const fixtureDir=await mkdtemp(join(process.env.RUNNER_TEMP,'sabora-operational-api-'));
+  const createdLogins=[];
+  let apiRuntime=null,keyInserted=false;
+  const capabilityKey=randomBytes(24).toString('base64url'); // exact 32 byte HMAC
+  const customerKey=randomBytes(32).toString('base64url');
+  const qrKey=randomBytes(32).toString('base64url');
+  const keyId='sabora_ci_tls_2026';
+  try{
+   const secretsDir=join(fixtureDir,'secrets');
+   await mkdir(secretsDir);
+   await writeFile(join(secretsDir,'trusted_ca'),certificate,{mode:0o600});
+   for(const [ref,value] of [
+    ['capability_hmac',capabilityKey],
+    ['customer_hmac',customerKey],['qr_hmac',qrKey]
+   ])await writeFile(join(secretsDir,ref),value,{mode:0o600});
+   const slots={};
+   const contract=describeOperationalSqlContract();
+   assert.equal(contract.capabilityCount,17);
+   for(const [index,item] of contract.slots.entries()){
+    const login='sabora_ci_operational_'+process.pid+'_'+String(index).padStart(2,'0');
+    const password=randomBytes(27).toString('base64url');
+    await admin.query('CREATE ROLE '+login+
+     " LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB"+
+     " NOREPLICATION PASSWORD '"+password+"'");
+    createdLogins.push(login);
+    await admin.query('GRANT '+item.capabilityRole+' TO '+login+
+     ' WITH SET TRUE, INHERIT FALSE');
+    const passwordRef='sql_password_'+String(index).padStart(2,'0');
+    await writeFile(join(secretsDir,passwordRef),password,{mode:0o600});
+    slots[item.poolPath]={login,serverName:actorCertificate,port:5432,
+     database:'postgres',mode:'direct',passwordRef,caRef:'trusted_ca',
+     connectHost:'sabora-egress',connectPort:sqlGatewayPort};
+   }
+   await admin.query(`INSERT INTO sabora.order_operation_signing_keys(
+    key_id,hmac_key,not_before,expires_at) VALUES(
+    $1,$2,clock_timestamp()-interval '1 minute',
+    clock_timestamp()+interval '1 hour')`,
+    [keyId,Buffer.from(capabilityKey,'utf8')]);
+   keyInserted=true;
+   const manifest={
+    schemaVersion:1,stage:'production',restaurantCode:'SABORA_CI',
+    listener:{host:'0.0.0.0',port:4100,exposure:'container_private'},
+    origins:{client:'https://menu.sabora.es',management:'https://gestion.sabora.es'},
+    auth:{issuer,connectHost:'sabora-egress',connectPort:authGatewayPort},
+    features:{ownership:false,communications:false,waiterCalls:false},
+    network:{allowedTlsHosts:[actorCertificate,'project.supabase.co'],
+     egressGatewayHost:'sabora-egress'},
+    database:{slots,notifiers:{
+     'tableChange.notificationPool':{credentialSlot:'tableChange.operationsPool',
+      dedicatedPool:true},
+     'h6.notifierPool':{credentialSlot:'h6.operationsPool',
+      dedicatedPool:true},
+    }},
+    signing:{keyId,capabilitySecretRef:'capability_hmac',
+     customerSecretRef:'customer_hmac',qrSecretRef:'qr_hmac'},
+    // The following are ONLY fixture self-reports in an isolated runner.
+    // They do not provide operational authorization or external validation.
+    activationEvidence:Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(k=>[k,true])),
+   };
+   const manifestFile=join(fixtureDir,'activation.json');
+   const policyFile=join(fixtureDir,'egress-policy.json');
+   await writeFile(manifestFile,JSON.stringify(manifest),{mode:0o600});
+   await writeFile(policyFile,JSON.stringify(gw.policy),{mode:0o600});
+   class OnlyCiLoopbackPool extends Pool{
+    constructor(options){
+     assert.equal(options.host,'sabora-egress');
+     assert.equal(options.ssl?.rejectUnauthorized,true);
+     assert.equal(options.ssl?.servername,actorCertificate);
+     // This substitution simulates Docker DNS only on an ephemeral runner;
+     // actual TLS, gateway, PostgreSQL role and SQL remain real.
+     super({...options,host:'127.0.0.1'});
+    }
+   }
+   apiRuntime=await startOperationalServerFromFiles({
+    env:{NODE_ENV:'production',SABORA_OPERATIONAL_MANIFEST_FILE:manifestFile,
+     SABORA_OPERATIONAL_SECRETS_DIR:secretsDir,
+     SABORA_OPERATIONAL_EGRESS_POLICY_FILE:policyFile},
+    Pool:OnlyCiLoopbackPool,fetchImpl:trustedFetch,
+    startRuntime:({options,resources,observability})=>
+     startOperationalM3Runtime({options,resources,observability,
+      listener:{host:'127.0.0.1',port:0}})
+   });
+   assert.equal(apiRuntime.summary.capabilityCount,17);
+   assert.equal(apiRuntime.mode,'operational-h3-h6-m3-candidate');
+   const request=path=>fetch(apiRuntime.origin+path,{signal:AbortSignal.timeout(10_000)});
+   const [health,ready,catalog,unauthorized]=await Promise.all([
+    request('/health'),request('/ready'),request('/api/v1/catalog'),
+    request('/api/v1/operations/table-change/pending'),
+   ]);
+   assert.equal(health.status,200);assert.equal(ready.status,200);
+   assert.equal(catalog.status,200);
+   assert.ok([401,403].includes(unauthorized.status));
+   // Removing a critical role while the API is listening must make the
+   // real PostgreSQL preflight return 503, not fabricate readiness.
+   const catalogLogin=slots['customer.catalogReaderPool'].login;
+   await admin.query('REVOKE sabora_catalog_reader FROM '+catalogLogin);
+   const unready=await request('/ready');
+   assert.equal(unready.status,503);
+   await admin.query('GRANT sabora_catalog_reader TO '+catalogLogin+
+    ' WITH SET TRUE, INHERIT FALSE');
+   const recovered=await request('/ready');
+   assert.equal(recovered.status,200);
+  }finally{
+   await apiRuntime?.close().catch(()=>{});
+   if(keyInserted)
+    await admin.query('DELETE FROM sabora.order_operation_signing_keys WHERE key_id=$1',
+     [keyId]).catch(()=>{});
+   for(const login of createdLogins.reverse()){
+    await admin.query('DROP OWNED BY '+login).catch(()=>{});
+    await admin.query('DROP ROLE IF EXISTS '+login).catch(()=>{});
+   }
+   await rm(fixtureDir,{recursive:true,force:true});
+  }
   // A wrong server hostname is rejected by the gateway or certificate.
   const bad=new Pool({host:'127.0.0.1',port:sqlGatewayPort,database:'postgres',
    user:pgLogin,password:pass,
