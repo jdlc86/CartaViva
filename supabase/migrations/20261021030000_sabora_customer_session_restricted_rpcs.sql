@@ -31,7 +31,7 @@ $cv005_early_owner_scope$;
 
 
 CREATE ROLE sabora_customer_session_runtime NOLOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
-CREATE ROLE sabora_customer_session_fn_owner NOLOGIN NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE ROLE sabora_customer_session_fn_owner NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE;
 GRANT USAGE ON SCHEMA sabora TO sabora_customer_session_fn_owner;
 GRANT SELECT ON sabora.customer_sessions, sabora.customer_profiles TO sabora_customer_session_fn_owner;
 GRANT UPDATE(revoked_at) ON sabora.customer_sessions TO sabora_customer_session_fn_owner;
