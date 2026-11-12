@@ -317,22 +317,7 @@ REVOKE ALL ON SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_h6_fn_owner;
--- Release only the grants issued by this transaction's current DBA.
--- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
-DO $cv005_release$
-DECLARE candidate_role name;
-BEGIN
- FOR candidate_role IN
-  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
-   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
-  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
-    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
-    AND left(roles.rolname,7)='sabora_'
- LOOP
-  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
- END LOOP;
-END;
-$cv005_release$;
+
 GRANT USAGE ON SCHEMA sabora,extensions TO sabora_h6_fn_owner;
 GRANT USAGE,SELECT ON SEQUENCE sabora.event_outbox_id_seq TO sabora_h6_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_h6_fn_owner;
@@ -1672,4 +1657,22 @@ COMMENT ON FUNCTION sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,t
 
 REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+
+-- Release only the grants issued by this transaction's current DBA.
+-- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
+DO $cv005_release$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
+   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
+  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
+ END LOOP;
+END;
+$cv005_release$;
+
 COMMIT;
