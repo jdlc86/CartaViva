@@ -43,10 +43,19 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database
 CREATE SCHEMA extensions AUTHORIZATION sabora_ci_migration_operator;
 CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
 SQL
-role_check="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
-  "SELECT (NOT rolsuper AND NOT rolbypassrls AND rolcreaterole AND rolcanlogin)
-   FROM pg_roles WHERE rolname=current_user")"
-[[ "$role_check" == t ]] || { echo 'sabora_nonsuperuser_role_preflight_failed' >&2; exit 1; }
+# Diagnose the fixture with public, boolean role attributes only. This must be
+# the effective session role, not a SELECT about a separately created account.
+# The evidence never includes passwords, URLs or operational identity names.
+role_check="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT CASE WHEN current_user = '$operator' THEN 'expected' ELSE 'unexpected' END,
+          rolsuper, rolbypassrls, rolcreaterole, rolcanlogin
+   FROM pg_roles WHERE rolname = current_user")"
+if [[ "$role_check" != 'expected|f|f|t|t' ]]; then
+  echo "sabora_nonsuperuser_role_preflight_failed:${role_check:-empty}" >&2
+  exit 1
+fi
+echo 'sabora_nonsuperuser_role_preflight_ok'
 
 log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$$.log"
 count=0
