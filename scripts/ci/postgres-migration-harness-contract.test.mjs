@@ -186,3 +186,28 @@ test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()
   assert.ok(sql.indexOf('DO $cv005_release$')<sql.lastIndexOf('COMMIT;'),name);
  }
 });
+
+test('all 52 provider-adapted versions preserve one transaction and restore installer owner roles',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const files=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(files.length,99,'full chain inventory');
+ let protectedCount=0;
+ for (const name of files) {
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  if (!sql.includes('DO $cv005_early_owner_scope$')) continue;
+  protectedCount++;
+  for (const part of [
+   '$cv005_early_owner_release$;',
+   'cv005_unsafe_existing_fn_owner',
+   "left(r.rolname,7)='sabora_'",
+   "right(r.rolname,9)='_fn_owner'",
+   'GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',
+   'REVOKE %I FROM CURRENT_USER'
+  ]) assert.ok(sql.includes(part),name+': missing '+part);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('DO $cv005_early_owner_scope$'),name);
+  assert.ok(sql.indexOf('DO $cv005_early_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
+ }
+ assert.equal(protectedCount,52,'all old candidate versions covered');
+ assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
+});

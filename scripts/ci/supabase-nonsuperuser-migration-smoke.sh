@@ -105,6 +105,19 @@ while IFS= read -r name; do
     grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
     exit 1
   fi
+  # Runtime/owner membership must be clean after EACH committed version.
+  committed_unsafe="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+    -U "$operator" -d "$database" -Atqc \
+    "SELECT count(*) FROM pg_catalog.pg_auth_members m
+     JOIN pg_catalog.pg_roles g ON g.oid=m.roleid
+     JOIN pg_catalog.pg_roles member ON member.oid=m.member
+     JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
+     WHERE (left(g.rolname,7)='sabora_' OR left(member.rolname,7)='sabora_')
+       AND NOT (left(g.rolname,7)='sabora_' AND member.rolname=current_user::text
+        AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option)")"
+  if [[ "$committed_unsafe" != 0 ]]; then
+    echo "sabora_nonsuperuser_postcommit_membership_leak:$name" >&2; exit 1
+  fi
   ((count+=1))
 done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
 [[ "$count" -eq 99 ]] || { echo "sabora_nonsuperuser_incomplete_chain:$count" >&2; exit 1; }
