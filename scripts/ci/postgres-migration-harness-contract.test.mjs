@@ -58,7 +58,7 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
   'sabora_nonsuperuser_migration_blocked:$name',
   'sabora_nonsuperuser_force_rls_mismatch',
   'sabora_nonsuperuser_application_role_escalation',
-  'createrole_self_grant=set',
+  'createrole_self_grant=set,inherit',
   'sabora_nonsuperuser_role_creation_mode_unavailable',
   'sabora_nonsuperuser_pg17_migration_chain_ok:',
  ])assert.ok(providerCompat.includes(required),required);

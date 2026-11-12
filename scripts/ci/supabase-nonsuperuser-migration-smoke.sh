@@ -61,11 +61,14 @@ echo 'sabora_nonsuperuser_role_preflight_ok'
 # A function's ownership transfer requires SET TRUE. Restrict the opt-in to
 # each migration connection; never enable it for the running API or globally.
 # This is an explicit provider precondition, not a superuser workaround.
-migration_pgoptions='-c createrole_self_grant=set'
+migration_pgoptions='-c createrole_self_grant=set,inherit'
 migration_setting="$(docker exec -e PGOPTIONS="$migration_pgoptions" "$container" \
   psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -Atqc \
   'SHOW createrole_self_grant')"
-[[ "$migration_setting" == set ]] || {
+migration_setting_normalized="${migration_setting//[[:space:]]/}"
+migration_setting_normalized="${migration_setting_normalized,,}"
+[[ "$migration_setting_normalized" == 'set,inherit' ||
+   "$migration_setting_normalized" == 'inherit,set' ]] || {
   echo 'sabora_nonsuperuser_role_creation_mode_unavailable' >&2; exit 1;
 }
 log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
