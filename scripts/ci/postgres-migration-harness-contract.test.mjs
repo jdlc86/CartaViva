@@ -230,7 +230,7 @@ test('PG17 redefinitions require a fail-closed, explicitly named owner fence in 
  for(const [file,names] of Object.entries(CV005_REPLACED_EXISTING_FUNCTIONS)){
   const sql=readFileSync(new URL('../../supabase/migrations/'+file,import.meta.url),'utf8');
   const begin=sql.indexOf('BEGIN;');
-  const firstReplacement=sql.search(/CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+sabora\\./i);
+  const firstReplacement=sql.search(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+sabora\./i);
   const before=sql.indexOf('DO $cv005_exact_fn_owner_scope$');
   const after=sql.indexOf('DO $cv005_exact_fn_owner_release$');
   const commit=sql.lastIndexOf('COMMIT;');
@@ -241,7 +241,7 @@ test('PG17 redefinitions require a fail-closed, explicitly named owner fence in 
   assert.ok(sql.includes('cv005_unsafe_existing_fn_owner'),file);
   assert.ok(sql.includes('m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)'),file);
   assert.ok(sql.includes('NOT m.set_option AND NOT m.inherit_option'),file);
-  const actual=[...sql.matchAll(/CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+sabora\\.([a-z_0-9]+)/gi)].map(m=>m[1]).sort();
+  const actual=[...sql.matchAll(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+sabora\.([a-z_0-9]+)/gi)].map(m=>m[1]).sort();
   assert.deepEqual(actual,names.slice().sort(),file+': every replaced function must appear in scoped inventory');
  }
 });
