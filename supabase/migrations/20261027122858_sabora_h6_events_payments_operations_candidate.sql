@@ -371,6 +371,9 @@ BEGIN
   RETURN v_id;
 END;
 $emit$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
@@ -1619,4 +1622,6 @@ COMMENT ON TABLE sabora.event_outbox IS
 COMMENT ON FUNCTION sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer) IS
  'One-shot authorized replay, maximum 100 events. It is invoked on connect/reconnect or a committed-event signal, never by periodic business polling.';
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

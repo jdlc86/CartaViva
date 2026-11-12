@@ -18,10 +18,15 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $read$
  ORDER BY c.published_at DESC,c.id
  LIMIT 500
 $read$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_catalog_fn_owner;
+GRANT sabora_catalog_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_published_catalog() OWNER TO sabora_catalog_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_published_catalog()
  FROM PUBLIC, anon, authenticated, sabora_admin_writer, sabora_customer_session_runtime;
 GRANT USAGE ON SCHEMA sabora TO sabora_catalog_reader;
 GRANT EXECUTE ON FUNCTION sabora.read_published_catalog() TO sabora_catalog_reader;
 -- No login or role membership is provided. A reviewed API connection is required.
+REVOKE sabora_catalog_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_catalog_fn_owner;
 COMMIT;

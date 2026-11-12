@@ -190,6 +190,9 @@ BEGIN
     'kitchen','kitchen',p_event_type,p_task_id,p_task_version,v_payload);
 END;
 $pickup_events$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   uuid,uuid,uuid,text,bigint,uuid,uuid,text,text
 ) OWNER TO sabora_h6_fn_owner;
@@ -546,4 +549,6 @@ COMMENT ON TABLE sabora.pickup_tasks IS
 COMMENT ON TABLE sabora.pickup_task_events IS
  'Append-only pickup assignment audit; cancellation releases only the assignment.';
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

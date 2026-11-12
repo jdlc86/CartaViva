@@ -37,12 +37,21 @@ BEGIN
   IF EXISTS (
     SELECT 1
       FROM pg_catalog.pg_auth_members membership
-      JOIN pg_catalog.pg_roles granted
-        ON granted.oid = membership.roleid
-      JOIN pg_catalog.pg_roles member
-        ON member.oid = membership.member
-     WHERE granted.rolname = 'sabora_order_operations_fn_owner'
-        OR member.rolname = 'sabora_order_operations_fn_owner'
+      JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
+      JOIN pg_catalog.pg_roles member ON member.oid = membership.member
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+     WHERE (granted.rolname = 'sabora_order_operations_fn_owner'
+        OR member.rolname = 'sabora_order_operations_fn_owner')
+       -- CANDIDATE: permit only provider-generated DBA administrative
+       -- membership. It cannot SET/INHERIT this owner, and must never be
+       -- a login used by the application. Any other membership is unsafe.
+       AND NOT (
+         granted.rolname = 'sabora_order_operations_fn_owner'
+         AND member.rolname = current_user::text
+         AND grantor.rolsuper AND membership.admin_option
+         AND NOT membership.inherit_option AND NOT membership.set_option
+         AND member.rolcreaterole AND NOT member.rolsuper
+       )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_order_operations_fn_owner_membership'
       USING errcode = '0P000';
@@ -392,6 +401,9 @@ BEGIN
 END;
 $authorized_operation$;
 
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.transition_order_line_authorized_candidate(
   text,text,uuid,uuid,text,text,bigint,bigint,text
 ) OWNER TO sabora_order_operations_fn_owner;
@@ -405,4 +417,6 @@ COMMENT ON FUNCTION sabora.transition_order_line_authorized_candidate(
 COMMENT ON TABLE sabora.order_operation_signing_keys IS
   'Empty candidate keyring. Key material requires separate privileged provisioning and never belongs to a runtime SQL login.';
 
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

@@ -507,6 +507,9 @@ BEGIN
  RETURN NEW;
 END;
 $pickup_identity$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.bind_pickup_claimed_display_id_candidate() OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.bind_pickup_claimed_display_id_candidate()
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
@@ -629,4 +632,6 @@ COMMENT ON FUNCTION sabora.maintain_staff_employee_codes_authorized_candidate(
 COMMENT ON TABLE sabora.staff_employee_code_events IS
  'Append-only assignment/release evidence retained when a code returns to the pool.';
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;
