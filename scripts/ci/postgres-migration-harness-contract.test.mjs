@@ -51,13 +51,14 @@ const providerWorkflow=readFileSync(new URL('../../.github/workflows/supabase-no
 test('non-superuser Supabase compatibility harness is isolated and exercises the full ordered chain',()=>{
  for(const required of [
   'GITHUB_ACTIONS','GITHUB_RUN_ID','RUNNER_TEMP','--network none',
-  'NOSUPERUSER NOBYPASSRLS NOREPLICATION','CREATEROLE',
+  'NOSUPERUSER BYPASSRLS NOREPLICATION','CREATEROLE',
   'node scripts/ci/migration-audit.mjs',
   "docker inspect -f '{{.HostConfig.NetworkMode}}'",
   'supabase/migrations/$name',
   'sabora_nonsuperuser_migration_blocked:$name',
   'sabora_nonsuperuser_force_rls_mismatch',
   'sabora_nonsuperuser_pg17_migration_chain_ok:',
+  'sabora_provider_restricted_runtime_denied',
 
   'sabora_ci_membership_probe',
   'sabora_nonsuperuser_runtime_role_boundary_verified',

@@ -38,7 +38,9 @@ docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
 CREATE ROLE sabora_ci_migration_operator LOGIN CREATEROLE INHERIT
-  NOSUPERUSER NOBYPASSRLS NOREPLICATION;
+  NOSUPERUSER BYPASSRLS NOREPLICATION;
+CREATE ROLE cv005_ci_restricted_probe LOGIN NOINHERIT NOSUPERUSER
+  NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
 SQL
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
   -c "CREATE DATABASE $database OWNER $operator" >/dev/null
@@ -54,7 +56,7 @@ role_check="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
   "SELECT CASE WHEN current_user = '$operator' THEN 'expected' ELSE 'unexpected' END,
           rolsuper, rolbypassrls, rolcreaterole, rolcanlogin
    FROM pg_roles WHERE rolname = current_user")"
-if [[ "$role_check" != 'expected|f|f|t|t' ]]; then
+if [[ "$role_check" != 'expected|f|t|t|t' ]]; then
   echo "sabora_nonsuperuser_role_preflight_failed:${role_check:-empty}" >&2
   exit 1
 fi
@@ -159,9 +161,28 @@ test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
 test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
   "SELECT NOT has_schema_privilege('anon','sabora','USAGE')
      AND NOT has_schema_privilege('authenticated','sabora','USAGE')
-     AND (SELECT NOT rolsuper AND NOT rolbypassrls
+     AND (SELECT NOT rolsuper AND rolbypassrls
        FROM pg_roles WHERE rolname=current_user)")" = t || {
   echo 'sabora_nonsuperuser_privilege_boundary_failed' >&2; exit 1;
 }
+# Prove the runtime boundary with a distinct real LOGIN, not with the DBA.
+runtime_attributes="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U cv005_ci_restricted_probe -d "$database" -Atqc \
+  "SELECT rolsuper,rolbypassrls,rolcreaterole,rolcanlogin
+   FROM pg_catalog.pg_roles WHERE rolname=current_user")"
+[[ "$runtime_attributes" == 'f|f|f|t' ]] || {
+  echo 'sabora_provider_runtime_attributes_unsafe' >&2; exit 1
+}
+if docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U cv005_ci_restricted_probe -d "$database" -c \
+  'SET ROLE sabora_h6_fn_owner' >/dev/null 2>&1; then
+  echo 'sabora_provider_runtime_owner_escalation' >&2; exit 1
+fi
+if docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U cv005_ci_restricted_probe -d "$database" -c \
+  'SELECT * FROM sabora.orders LIMIT 1' >/dev/null 2>&1; then
+  echo 'sabora_provider_runtime_direct_table_read' >&2; exit 1
+fi
+echo 'sabora_provider_restricted_runtime_denied'
 rm -f "$log"
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
