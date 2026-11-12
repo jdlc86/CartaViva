@@ -33,6 +33,7 @@ export function createFileSecretResolver(directory){
 export async function startOperationalServerFromFiles({env=process.env,Pool=pg.Pool,
  fetchImpl,startRuntime=startOperationalM3Runtime,
  observability=createSaboraObservability()}={}){
+ let resources=null;
  try{
   const manifestPath=env.SABORA_OPERATIONAL_MANIFEST_FILE;
   const secretsDirectory=env.SABORA_OPERATIONAL_SECRETS_DIR;
@@ -50,12 +51,17 @@ export async function startOperationalServerFromFiles({env=process.env,Pool=pg.P
   if(manifest?.stage!=='production')throw generic();
   validateOperationalEgressBinding(manifest,policy);
   assertPilotActivation(manifest.activationEvidence);
-  const resources=await materializeOperationalM3Options({manifest,Pool,
+  resources=await materializeOperationalM3Options({manifest,Pool,
    resolveSecret:createFileSecretResolver(secretsDirectory),fetchImpl,observability});
   const runtime=await startRuntime({options:resources.options,
    listener:resources.listener,resources,observability});
   return Object.freeze({...runtime,summary:resources.summary});
- }catch{throw generic();}
+ }catch{
+  // Also cover failures at the file/bootstrap boundary BEFORE an injected
+  // runtime assumes ownership. Pool.close() is idempotent by contract.
+  try{await resources?.close();}catch{}
+  throw generic();
+ }
 }
 
 const main=process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url;
