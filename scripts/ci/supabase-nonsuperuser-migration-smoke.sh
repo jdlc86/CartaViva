@@ -161,8 +161,8 @@ test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
 # Negative scope assertion, one boolean per condition; never print credentials.
 # A successful migration chain is not security-approved if browser roles or
 # the fixture DBA can bypass this boundary.
-scope_matrix="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \\
-  -U "$operator" -d "$database" -Atqc \\
+scope_matrix="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
   "SELECT has_schema_privilege('anon','sabora','USAGE'),
           has_schema_privilege('authenticated','sabora','USAGE'),
           rolsuper,rolbypassrls
