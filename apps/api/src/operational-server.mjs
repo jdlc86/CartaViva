@@ -31,12 +31,14 @@ export function createFileSecretResolver(directory){
 }
 
 export async function startOperationalServerFromFiles({env=process.env,Pool=pg.Pool,
- fetchImpl,observability=createSaboraObservability()}={}){
+ fetchImpl,startRuntime=startOperationalM3Runtime,
+ observability=createSaboraObservability()}={}){
  try{
   const manifestPath=env.SABORA_OPERATIONAL_MANIFEST_FILE;
   const secretsDirectory=env.SABORA_OPERATIONAL_SECRETS_DIR;
   const policyPath=env.SABORA_OPERATIONAL_EGRESS_POLICY_FILE;
-  if(env.NODE_ENV!=='production'||typeof manifestPath!=='string'||!isAbsolute(manifestPath)||
+  if(typeof startRuntime!=='function'||env.NODE_ENV!=='production'||
+     typeof manifestPath!=='string'||!isAbsolute(manifestPath)||
      typeof secretsDirectory!=='string'||!isAbsolute(secretsDirectory)||
      typeof policyPath!=='string'||!isAbsolute(policyPath))throw generic();
   // Read both Sabora-only configuration files BEFORE looking up even one
@@ -50,7 +52,7 @@ export async function startOperationalServerFromFiles({env=process.env,Pool=pg.P
   assertPilotActivation(manifest.activationEvidence);
   const resources=await materializeOperationalM3Options({manifest,Pool,
    resolveSecret:createFileSecretResolver(secretsDirectory),fetchImpl,observability});
-  const runtime=await startOperationalM3Runtime({options:resources.options,
+  const runtime=await startRuntime({options:resources.options,
    listener:resources.listener,resources,observability});
   return Object.freeze({...runtime,summary:resources.summary});
  }catch{throw generic();}
