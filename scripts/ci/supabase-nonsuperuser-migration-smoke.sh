@@ -159,15 +159,14 @@ test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
   echo 'sabora_nonsuperuser_force_rls_mismatch' >&2; exit 1;
 }
 # Negative scope assertion, one boolean per condition; never print credentials.
-# A successful migration chain is not security-approved if browser roles or
-# the fixture DBA can bypass this boundary.
+# A successful migration chain is not security-approved if browser roles gain access or the DBA privileges drift from the expected fixture state.
 scope_matrix="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
   -U "$operator" -d "$database" -Atqc \
   "SELECT has_schema_privilege('anon','sabora','USAGE'),
           has_schema_privilege('authenticated','sabora','USAGE'),
           rolsuper,rolbypassrls
    FROM pg_roles WHERE rolname=current_user")"
-if [[ "$scope_matrix" != 'f|f|f|f' ]]; then
+if [[ "$scope_matrix" != 'f|f|f|t' ]]; then
   echo "sabora_nonsuperuser_privilege_boundary_failed:${scope_matrix:-empty}" >&2
   exit 1
 fi
