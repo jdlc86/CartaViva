@@ -469,6 +469,8 @@ BEGIN
  RETURN 'resolved';
 END;
 $incident_effect$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.apply_h6_incident_economic_effect_candidate(uuid) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.apply_h6_incident_economic_effect_candidate(uuid)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
@@ -654,4 +656,5 @@ REVOKE ALL ON FUNCTION sabora.refund_third_party_cash_candidate(text,text,uuid,t
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,sabora_h6_provider_runtime;
 GRANT EXECUTE ON FUNCTION sabora.refund_third_party_cash_candidate(text,text,uuid,text,uuid,uuid,text,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

@@ -72,3 +72,34 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
  assert.match(providerWorkflow,/bash scripts\/ci\/supabase-nonsuperuser-migration-smoke\.sh/);
  assert.doesNotMatch(providerWorkflow,/secrets\.|SUPABASE_DB_|DATABASE_URL/);
 });
+
+const ownershipMigrationFiles=[
+  "20261021030000_sabora_customer_session_restricted_rpcs.sql",
+  "20261021200000_sabora_catalog_reader.sql",
+  "20261027122858_sabora_h6_events_payments_operations_candidate.sql",
+  "20261027190334_sabora_pickup_claim_cancel_candidate.sql",
+  "20261027225805_sabora_staff_display_id_candidate.sql",
+  "20261030190000_sabora_h6_table_change_request_decision_candidate.sql",
+  "20261031020000_sabora_h6_decision_lock_order_fix_candidate.sql",
+  "20261103020000_sabora_h6_live_economic_event_destination_candidate.sql",
+  "20261104094055_sabora_h6_order_revision_correction_candidate.sql",
+  "20261105150000_sabora_m3_management_candidate.sql",
+  "20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql",
+  "20261107200000_sabora_m4_cash_tips_candidate.sql",
+  "20261108070000_sabora_m5_communications_candidate.sql",
+  "20261110232000_sabora_m3_effective_management_permissions_candidate.sql"
+];
+test('owner-transfer migrations keep temporary schema CREATE within one transaction',()=>{
+ for(const name of ownershipMigrationFiles){
+  const sql=readFileSync(new URL('../../supabase/migrations/'+name,import.meta.url),'utf8');
+  const grants=[...sql.matchAll(/^GRANT CREATE ON SCHEMA sabora TO (sabora_\w+);$/gm)].map(x=>x[1]);
+  const revokes=[...sql.matchAll(/^REVOKE CREATE ON SCHEMA sabora FROM (sabora_\w+);$/gm)].map(x=>x[1]);
+  const owners=[...sql.matchAll(/^ALTER FUNCTION .* OWNER TO (sabora_\w+);$/gm)].map(x=>x[1]);
+  assert.ok(owners.length,name+': functions');
+  assert.deepEqual(grants,revokes,name+': CREATE cannot remain granted');
+  assert.deepEqual(new Set(grants),new Set(owners),name+': all function owners scoped');
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf(grants.map(x=>'GRANT CREATE ON SCHEMA sabora TO '+x+';')[0]),name);
+  assert.ok(sql.lastIndexOf('COMMIT;')>sql.lastIndexOf('REVOKE CREATE ON SCHEMA sabora FROM '+revokes.at(-1)+';'),name);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+ }
+});

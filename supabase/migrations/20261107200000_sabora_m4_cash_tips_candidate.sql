@@ -325,6 +325,8 @@ BEGIN
   ORDER BY col.collected_at DESC,col.id LIMIT 50) c;
  RETURN jsonb_build_object('version',1,'items',v_items);
 END; $fn$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.read_my_cash_tips_candidate(bytea) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_my_cash_tips_candidate(bytea)
  FROM PUBLIC,anon,authenticated,sabora_h6_provider_runtime,sabora_h6_operations_runtime;
@@ -639,4 +641,5 @@ BEGIN
 END;
 $read$;
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

@@ -685,6 +685,8 @@ BEGIN
     v_dispatch.id,v_dispatch.dispatch_key,'capture',v_repeated;
 END;
 $request_capture$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.request_h6_capture_dispatch_candidate(uuid,timestamptz) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.request_h6_capture_dispatch_candidate(uuid,timestamptz)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
@@ -1619,4 +1621,5 @@ COMMENT ON TABLE sabora.event_outbox IS
 COMMENT ON FUNCTION sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer) IS
  'One-shot authorized replay, maximum 100 events. It is invoked on connect/reconnect or a committed-event signal, never by periodic business polling.';
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

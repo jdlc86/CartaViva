@@ -74,6 +74,8 @@ BEGIN
   'permissions',jsonb_build_object('manage',v_admin_writer));
 END;
 $admin_read$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m5_comms_fn_owner;
 ALTER FUNCTION sabora.read_admin_communications_m5(jsonb) OWNER TO sabora_m5_comms_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_admin_communications_m5(jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION sabora.read_admin_communications_m5(jsonb) TO sabora_m5_comms_admin_runtime;
@@ -121,4 +123,5 @@ REVOKE ALL ON FUNCTION sabora.read_admin_catalog_m3_candidate(jsonb)
 GRANT EXECUTE ON FUNCTION sabora.read_admin_catalog_m3_candidate(jsonb)
  TO sabora_m3_catalog_runtime;
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m5_comms_fn_owner;
 COMMIT;

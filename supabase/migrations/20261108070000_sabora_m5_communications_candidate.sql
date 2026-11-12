@@ -204,6 +204,8 @@ EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_tex
  RAISE EXCEPTION 'invalid_comms_schedule' USING errcode='22023';
 END;
 $validate$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m5_comms_fn_owner;
 ALTER FUNCTION sabora.validate_announcement_draft_m5(jsonb) OWNER TO sabora_m5_comms_fn_owner;
 REVOKE ALL ON FUNCTION sabora.validate_announcement_draft_m5(jsonb) FROM PUBLIC,anon,authenticated;
 
@@ -369,4 +371,5 @@ GRANT EXECUTE ON FUNCTION sabora.read_public_communications_m5() TO sabora_m5_co
 
 -- Fail-closed technical constraints: no direct relations/data-API grants to runtime/browser roles.
 COMMENT ON TABLE sabora.comms_announcements_m5 IS 'CV-014 candidate: versioned private drafts and sealed published projections, one Sabora restaurant';
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m5_comms_fn_owner;
 COMMIT;

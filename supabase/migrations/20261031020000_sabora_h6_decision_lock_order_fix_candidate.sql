@@ -41,8 +41,11 @@ BEGIN
  RETURN CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END;
 END;
 $decision$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,
  sabora_h6_operations_runtime,sabora_h6_provider_runtime;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

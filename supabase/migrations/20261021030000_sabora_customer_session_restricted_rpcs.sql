@@ -23,6 +23,8 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $verify$
  AND s.revoked_at IS NULL AND s.expires_at>now()
  LIMIT 1
 $verify$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_session_fn_owner;
 ALTER FUNCTION sabora.verify_customer_session_hash(bytea) OWNER TO sabora_customer_session_fn_owner;
 CREATE FUNCTION sabora.revoke_customer_session_hash(p_hash bytea)
 RETURNS boolean LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $revoke$
@@ -41,4 +43,5 @@ GRANT EXECUTE ON FUNCTION sabora.revoke_customer_session_hash(bytea) TO sabora_c
 -- Intentionally NO LOGIN, NO role membership and NO browser grants.
 -- The application must not use this capability until a dedicated restricted
 -- connection identity, backend query contract and negative tests are reviewed.
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_session_fn_owner;
 COMMIT;

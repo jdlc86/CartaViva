@@ -239,6 +239,8 @@ BEGIN
   RETURN NEW;
 END;
 $ready_task$;
+-- PostgreSQL 17 non-superuser: temporary CREATE for function ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.create_or_rearm_pickup_task_candidate() OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.create_or_rearm_pickup_task_candidate()
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,
@@ -546,4 +548,5 @@ COMMENT ON TABLE sabora.pickup_tasks IS
 COMMENT ON TABLE sabora.pickup_task_events IS
  'Append-only pickup assignment audit; cancellation releases only the assignment.';
 
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;
