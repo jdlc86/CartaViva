@@ -11,6 +11,7 @@ import {createOwnershipCapabilityIssuer} from './ownership-governance-candidate.
 import {createWaiterCallStaffIssuer} from './waiter-call-candidate.mjs';
 import {hashCustomerSessionToken} from './customer-session.mjs';
 import {createGatewayJwksFetch} from './gateway-jwks-fetch.mjs';
+import {validateSaboraEgressPolicy} from './sabora-egress-gateway.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from './pilot-activation-gate.mjs';
 
 const LOGIN=/^[a-z][a-z0-9_]{2,62}$/;
@@ -165,6 +166,41 @@ export function validateOperationalActivationManifest(manifest){
   contract,summary:Object.freeze({schemaVersion:1,stage:manifest.stage,
    capabilityCount:contract.capabilityCount,notifierCount:contract.notifierCount,
    slots:Object.freeze(required),tlsHostCount:allowed.length})});
+}
+
+// The API and the gateway consume separately mounted configuration files.
+// Both must describe precisely the SAME outbound connections before any
+// credentials are loaded or network listeners are opened. Every app identity
+// may reuse one gateway port for a shared PostgreSQL server, but no additional
+// destination or mismatched protocol is allowed.
+export function validateOperationalEgressBinding(manifest,policy){
+ const validated=validateOperationalActivationManifest(manifest);
+ if(validated.summary.stage!=='production')throw invalid();
+ let gateway;
+ try{gateway=validateSaboraEgressPolicy(policy);}catch{throw invalid();}
+ const expected=new Map();
+ const include=(listenPort,host,port,protocol)=>{
+  const item={listenPort,host,port,protocol};
+  const previous=expected.get(listenPort);
+  if(previous&&(previous.host!==host||previous.port!==port||
+     previous.protocol!==protocol))throw invalid();
+  expected.set(listenPort,item);
+ };
+ for(const item of validated.contract.slots){
+  const slot=validated.manifest.database.slots[item.poolPath];
+  include(slot.connectPort,slot.serverName,slot.port,'postgres_tls');
+ }
+ const issuer=new URL(validated.manifest.auth.issuer);
+ include(validated.manifest.auth.connectPort,issuer.hostname,443,'tls');
+ if(gateway.targets.length!==expected.size)throw invalid();
+ for(const target of gateway.targets){
+  const item=expected.get(target.listenPort);
+  if(!item||target.host!==item.host||target.port!==item.port||
+     target.protocol!==item.protocol)throw invalid();
+ }
+ return Object.freeze({targetCount:expected.size,
+  capabilityCount:validated.summary.capabilityCount,
+  notifierCount:validated.summary.notifierCount});
 }
 
 function setPath(target,path,value){
