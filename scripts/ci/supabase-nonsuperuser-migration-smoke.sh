@@ -107,7 +107,7 @@ fi
 # neither path certifies the complete 99-migration provider installation.
 guard_sql="$RUNNER_TEMP/sabora-sealed-owner-guard-$GITHUB_RUN_ID-$.sql"
 guard_log="$RUNNER_TEMP/sabora-sealed-owner-result-$GITHUB_RUN_ID-$.log"
-awk '/^DO \\$role\\$/ {active=1} active {print} active && /^\\$role\\$;$/ {exit}' \
+awk '$0 == "DO $role$" {active=1} active {print} active && $0 == "$role$;" {exit}' \
   supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql \
   > "$guard_sql"
 if ! grep -Fqx '$role$;' "$guard_sql"; then
