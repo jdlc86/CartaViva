@@ -44,7 +44,7 @@ CREATE SCHEMA extensions AUTHORIZATION sabora_ci_migration_operator;
 CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
 SQL
 role_check="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
-  "SELECT (NOT rolsuper AND NOT rolbypassrls AND rolcreaterole AND rolcanlogin)::text
+  "SELECT (NOT rolsuper AND NOT rolbypassrls AND rolcreaterole AND rolcanlogin)
    FROM pg_roles WHERE rolname=current_user")"
 [[ "$role_check" == t ]] || { echo 'sabora_nonsuperuser_role_preflight_failed' >&2; exit 1; }
 
