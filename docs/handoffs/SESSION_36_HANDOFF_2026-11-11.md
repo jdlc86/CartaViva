@@ -238,6 +238,15 @@
 
 **Pendiente fundamental:** cuando exista arranque productivo CV-005, inyectar este observador con custodia real, supervisión/alertas externas configuradas, métricas de operación H3–H6 y dos PWA, pruebas de fallo y alertas, backup/restore/PITR y validación en móvil. Sin merge, despliegue, escritura en Supabase operativo ni modificación de VPS/Fleetia.
 
+
+### S36-13 — cierre de CI 6/6 del HEAD de observabilidad (12-11-2026)
+
+**Reconsulta directa del SHA exacto `ac0d22fd9d37f47fe974aaf704589b2443f8cd3f`: seis workflows distintos `completed/success`, cero pendientes y cero fallidos.** [Sabora CI #43119668191](https://github.com/jdlc86/CartaViva/actions/runs/43119668191), [Bootstrap PG17 #43119668150](https://github.com/jdlc86/CartaViva/actions/runs/43119668150), [cliente #43119668166](https://github.com/jdlc86/CartaViva/actions/runs/43119668166), [gestión #43119668179](https://github.com/jdlc86/CartaViva/actions/runs/43119668179), [PWA #43119668096](https://github.com/jdlc86/CartaViva/actions/runs/43119668096) y [cobertura/UI #43120002269](https://github.com/jdlc86/CartaViva/actions/runs/43120002269).
+
+**Pasos de CI realmente comprobados:** Sabora CI acredita H6 consolidado PG17 + Chromium, build, puertas de seguridad/aislamiento y health de contenedor aislado; Bootstrap acredita cadena de migraciones en PG17 desechable, driver Node PostgreSQL y build/health. Los workflows visuales de cliente y gestión finalizaron en `success`. Estas pruebas cubren la regresión del código de correlación, diagnósticos seguros de `/ready` y caída de notificador del candidato H3–H6/M3; **no son evidencias de alerta externa, recuperación real en Supabase, API operativa desplegada ni aceptación visual humana**.
+
+**GitHub PR #56 comprobado:** `open`, `draft=true`, `merged=false`, HEAD anterior, `mergeable=true` en la última consulta. Bloque de implementación/CI candidato S36 **sin fallos pendientes**; no se ejecutó merge, migración operativa, VPS ni despliegue. El siguiente hito operativo sigue CV-005/CV-010/CV-011: bootstrap de todos los servicios con credenciales mínimas e inyección segura, recuperación/observabilidad en instalación real y posterior inspección visual, conforme a normativa y autorización específica.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
