@@ -37,18 +37,10 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_auth_members m
     JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
     JOIN pg_catalog.pg_roles member ON member.oid=m.member
-    JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
-    WHERE (granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
+    WHERE granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
       'sabora_h6_provider_runtime','sabora_h6_fn_owner')
        OR member.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
-         'sabora_h6_provider_runtime','sabora_h6_fn_owner'))
-      AND NOT (
-        granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
-          'sabora_h6_provider_runtime','sabora_h6_fn_owner')
-        AND member.rolname=current_user::text AND grantor.rolsuper
-        AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option
-        AND member.rolcreaterole AND NOT member.rolsuper
-      )
+         'sabora_h6_provider_runtime','sabora_h6_fn_owner')
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_h6_role_membership' USING errcode='0P000';
   END IF;
@@ -289,35 +281,10 @@ REVOKE ALL ON FUNCTION sabora.notify_h6_outbox_after_commit() FROM PUBLIC,anon,a
 CREATE TRIGGER h6_outbox_notify AFTER INSERT ON sabora.event_outbox
  FOR EACH ROW EXECUTE FUNCTION sabora.notify_h6_outbox_after_commit();
 
--- CV-005 CANDIDATE: the DBA can administer roles it created but must not
--- retain SET/INHERIT at COMMIT. Grant ownership of existing Sabora objects
--- only while the legacy global REVOKE executes; no runtime LOGIN involved.
-DO $cv005_scope$
-DECLARE candidate_role name;
-BEGIN
- FOR candidate_role IN
-  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_roles roles
-  WHERE roles.oid IN (
-   SELECT p.proowner FROM pg_catalog.pg_proc p
-    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='sabora'
-   UNION
-   SELECT c.relowner FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname='sabora'
-  )
-  AND roles.rolname<>current_user::text
-  AND left(roles.rolname,7)='sabora_'
- LOOP
-  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',candidate_role);
- END LOOP;
-END;
-$cv005_scope$;
 REVOKE ALL ON SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_h6_fn_owner;
-
 GRANT USAGE ON SCHEMA sabora,extensions TO sabora_h6_fn_owner;
 GRANT USAGE,SELECT ON SEQUENCE sabora.event_outbox_id_seq TO sabora_h6_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_h6_fn_owner;
@@ -404,9 +371,6 @@ BEGIN
   RETURN v_id;
 END;
 $emit$;
--- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
@@ -1654,25 +1618,5 @@ COMMENT ON TABLE sabora.event_outbox IS
  'H6 seven-day logical replay window; expired rows are excluded. Physical pruning requires a separately authorized maintenance procedure.';
 COMMENT ON FUNCTION sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer) IS
  'One-shot authorized replay, maximum 100 events. It is invoked on connect/reconnect or a committed-event signal, never by periodic business polling.';
-
-REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
-
--- Release only the grants issued by this transaction's current DBA.
--- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
-DO $cv005_release$
-DECLARE candidate_role name;
-BEGIN
- FOR candidate_role IN
-  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
-   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
-  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
-    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
-    AND left(roles.rolname,7)='sabora_'
- LOOP
-  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
- END LOOP;
-END;
-$cv005_release$;
 
 COMMIT;

@@ -204,9 +204,6 @@ EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow OR invalid_tex
  RAISE EXCEPTION 'invalid_comms_schedule' USING errcode='22023';
 END;
 $validate$;
--- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
-GRANT CREATE ON SCHEMA sabora TO sabora_m5_comms_fn_owner;
-GRANT sabora_m5_comms_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.validate_announcement_draft_m5(jsonb) OWNER TO sabora_m5_comms_fn_owner;
 REVOKE ALL ON FUNCTION sabora.validate_announcement_draft_m5(jsonb) FROM PUBLIC,anon,authenticated;
 
@@ -372,6 +369,4 @@ GRANT EXECUTE ON FUNCTION sabora.read_public_communications_m5() TO sabora_m5_co
 
 -- Fail-closed technical constraints: no direct relations/data-API grants to runtime/browser roles.
 COMMENT ON TABLE sabora.comms_announcements_m5 IS 'CV-014 candidate: versioned private drafts and sealed published projections, one Sabora restaurant';
-REVOKE sabora_m5_comms_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_m5_comms_fn_owner;
 COMMIT;

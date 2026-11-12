@@ -129,9 +129,6 @@ BEGIN
  IF NOT FOUND THEN
    RAISE EXCEPTION 'third_party_scope_forbidden' USING errcode='42501'; END IF;
 END; $fn$;
--- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.third_party_payer_scope_candidate(bytea,uuid,text)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.third_party_payer_scope_candidate(bytea,uuid,text)
@@ -657,6 +654,4 @@ REVOKE ALL ON FUNCTION sabora.refund_third_party_cash_candidate(text,text,uuid,t
  FROM PUBLIC,anon,authenticated,sabora_h6_customer_runtime,sabora_h6_provider_runtime;
 GRANT EXECUTE ON FUNCTION sabora.refund_third_party_cash_candidate(text,text,uuid,text,uuid,uuid,text,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
-REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

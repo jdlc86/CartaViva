@@ -28,9 +28,6 @@ BEGIN
  RETURN NEW;
 END;
 $project$;
--- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.project_table_change_decision_to_h6_outbox_candidate()
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.project_table_change_decision_to_h6_outbox_candidate()
@@ -109,6 +106,4 @@ REVOKE ALL ON FUNCTION sabora.read_customer_table_change_outbox_h6_candidate(byt
 -- No grant is made to the candidate runtime role, which is deliberately not
 -- installed in normal production. The disposable CI login receives only this
 -- exact function after independent role and RLS preflight.
-REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

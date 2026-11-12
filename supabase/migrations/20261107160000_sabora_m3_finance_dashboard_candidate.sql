@@ -45,9 +45,6 @@ BEGIN
  RETURN NEW;
 END;
 $fn$;
--- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.append_finance_provider_event_candidate()
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.append_finance_provider_event_candidate()
@@ -128,9 +125,6 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501';
 END;
 $verify_management$;
--- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
-GRANT CREATE ON SCHEMA sabora TO sabora_m3_management_fn_owner;
-GRANT sabora_m3_management_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.verify_management_capability_m3(jsonb,text)
  OWNER TO sabora_m3_management_fn_owner;
 REVOKE ALL ON FUNCTION sabora.verify_management_capability_m3(jsonb,text)
@@ -372,8 +366,4 @@ REVOKE ALL ON FUNCTION sabora.read_admin_finance_dashboard_candidate(jsonb,text,
    sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.read_admin_finance_dashboard_candidate(jsonb,text,text,text)
  TO sabora_m3_catalog_runtime;
-REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
-REVOKE sabora_m3_management_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_m3_management_fn_owner;
 COMMIT;

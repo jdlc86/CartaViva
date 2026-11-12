@@ -107,9 +107,6 @@ BEGIN
 END;
 $decision$;
 
--- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
-GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.request_customer_table_change_h6_candidate(bytea,uuid) OWNER TO sabora_h6_fn_owner;
 ALTER FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.request_customer_table_change_h6_candidate(bytea,uuid) FROM PUBLIC,anon,authenticated;
@@ -117,6 +114,4 @@ REVOKE ALL ON FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uui
 -- Deliberately no runtime EXECUTE on the staff decision function until the
 -- authenticated staff principal is derived by a trusted API boundary.
 -- The customer request function is likewise not exposed until its API is wired.
-REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
-REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;
