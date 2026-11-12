@@ -25,3 +25,11 @@ Además: probar íntegramente las 99 versiones en PG17 sin superusuario (no solo
 ## Decisión pendiente
 
 **Opción A:** aprobar explícitamente la excepción administrativa anterior, limitada a migraciones y al DBA, tras revisar su riesgo. **Opción B:** rechazarla y exigir a Supabase un mecanismo privilegiado capaz de crear roles sin membresía automática, con evidencia y aprobación. No confundir un laboratorio PG17 superusuario con la instalación Supabase real. Hasta la decisión, `CV-005` sigue NO-GO.
+
+## S37-7 — Advertencia de seguridad demostrada en PG17 (12-11-2026)
+
+El [ensayo integrado #43202505656](https://github.com/jdlc86/CartaViva/actions/runs/43202505656) prueba bajo PostgreSQL 17 real que el DBA no-superusuario, por mantener `ADMIN TRUE` sobre un owner recién creado, **puede concederse otra vez `SET TRUE` y asumir el rol**. Una identidad SQL runtime separada y `NOCREATEROLE` no puede hacerlo; ambas fronteras fueron ejercidas, no solo inspeccionadas. El valor `SET FALSE` en la membresía automática **no protege al owner frente a un DBA que conserva ADMIN**.
+
+Por tanto, la opción A **no preserva literalmente la propiedad «sin membresías»** ni puede aprobarse como un simple retoque de SQL. Requiere una decisión explícita de aceptar el administrador de migraciones como autoridad de confianza y su custodia/auditoría, además de una revisión independiente de seguridad y de la instalación completa (99 SQL, RLS, HMAC, ACL, recuperación, logins operativos aislados). La opción B conserva la normativa, pero depende de una intervención privilegiada de Supabase que actualmente no está demostrada. El [preflight read-only](../../scripts/ci/sabora-pg17-owner-admission.sql) retorna NO-GO en el proyecto Supabase operativo, no instala nada ni autoriza un bypass.
+
+**Estado:** estas opciones siguen pendientes; el ensayo de seguridad que certifica un NO-GO pasó, pero el despliegue sigue expresamente bloqueado.
