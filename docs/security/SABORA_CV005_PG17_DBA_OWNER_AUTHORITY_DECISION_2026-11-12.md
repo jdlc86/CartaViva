@@ -29,3 +29,9 @@ No es aceptable sustituir estas garantías con un script que obvie, salte o rees
 5. Para VPS, aprobación expresa e aislamiento total del proyecto Fleetia y terceros; no se autoriza ejecutar ni reiniciar contenedores ajenos.
 
 **Decisión de producto aprobada:** opción A para el **diseño**. **NO-GO actual:** pruebas completas de instalación, seguridad independiente, SQL operativo, merge y despliegue. Los resultados CI verdes acreditarán únicamente la etapa de laboratorio realmente ejecutada.
+
+## Alcance de la misma membresía automática en roles de capacidad runtime NOLOGIN
+
+El mismo mecanismo de PostgreSQL 17 se aplica a **todo rol Sabora creado por el instalador `CREATEROLE`**, incluso los roles de capacidad `NOLOGIN` cuya única finalidad es obtener `EXECUTE` sobre RPC. La opción A autoriza **exclusivamente** el grant automático de bootstrap al DBA, con `ADMIN TRUE / SET FALSE / INHERIT FALSE`, también sobre esas capacidades. No autoriza membresía de un rol runtime dentro de un propietario SQL, ningún `LOGIN` runtime miembro de un owner, ni `SET/INHERIT` de ningún rol de aplicación hacia otro. Las guardas deben comprobar **ambos extremos** del grafo de membresías y rechazar toda concesión adicional. Los owner siguen con los atributos sellados indicados arriba.
+
+Las concesiones extraordinarias del instalador se limitan a cada migración y se revocan antes del `COMMIT`; el ensayo exige consultar `pg_auth_members` después de **cada versión**, además de la auditoría final de 99. La revisión independiente debe tratar la posibilidad de autoconcesión del DBA como amenaza residual aceptada explícitamente, no como garantía criptográfica nueva.
