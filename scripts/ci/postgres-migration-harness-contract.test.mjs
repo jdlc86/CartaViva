@@ -48,29 +48,38 @@ test('recovery exercises representative load, lock timeout, corrupt input and ta
 const providerCompat=readFileSync(new URL('./supabase-nonsuperuser-migration-smoke.sh',import.meta.url),'utf8');
 const providerWorkflow=readFileSync(new URL('../../.github/workflows/supabase-nonsuperuser-compatibility.yml',import.meta.url),'utf8');
 
-test('non-superuser Supabase compatibility harness is isolated and exercises the full ordered chain',()=>{
+test('provider owner admission is read-only, fail-closed and never presented as activation',()=>{
+ const sql=readFileSync(new URL('./sabora-pg17-owner-admission.sql',import.meta.url),'utf8');
+ assert.match(sql,/SELECT CASE/);
+ assert.match(sql,/NO_GO:sealed_owner_privileged_provider_required/);
+ assert.match(sql,/NO_GO:first_install_state_not_clean/);
+ assert.match(sql,/PREFLIGHT_ONLY:privileged_executor_not_approval/);
+ assert.match(sql,/to_regnamespace\('sabora'\)/);
+ assert.doesNotMatch(sql,/\b(?:CREATE|ALTER|DROP|GRANT|REVOKE|INSERT|UPDATE|DELETE|TRUNCATE)\s+(?:ROLE|TABLE|FUNCTION|SCHEMA|ON|INTO|FROM)\b/i);
+ assert.match(providerCompat,/sabora_nonsuperuser_owner_admission_boundary_verified/);
+});
+
+test('disposable PG17 lab demonstrates safe NO-GO and tests the DBA self-grant threat',()=>{
  for(const required of [
   'GITHUB_ACTIONS','GITHUB_RUN_ID','RUNNER_TEMP','--network none',
   'NOSUPERUSER NOBYPASSRLS NOREPLICATION','CREATEROLE',
   'node scripts/ci/migration-audit.mjs',
   "docker inspect -f '{{.HostConfig.NetworkMode}}'",
-  'supabase/migrations/$name',
-  'sabora_nonsuperuser_migration_blocked:$name',
-  'sabora_nonsuperuser_force_rls_mismatch',
-  'sabora_nonsuperuser_pg17_migration_chain_ok:',
-  'sabora_nonsuperuser_provider_no_go:automatic_createrole_membership_conflicts_with_sealed_owner',
   'sabora_ci_membership_probe',
-  'sabora_nonsuperuser_self_revocation_observed',
-  'sabora_nonsuperuser_self_revocation_unavailable',
+  'cv005_ci_runtime_probe',
+  'sabora_nonsuperuser_dba_self_grant_risk_and_runtime_denial_verified',
   'sabora_nonsuperuser_sealed_owner_provenance_verified',
   'sabora_nonsuperuser_sealed_owner_negative_guard_bypassed',
+  'sabora_nonsuperuser_provider_no_go_verified:',
+  'sabora_provider_installation_not_authorized'
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
  assert.match(providerCompat,/20261024190000_sabora_order_operation_actor_capability_candidate.sql/);
  assert.match(providerCompat,/sealed_memberships/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
+ assert.doesNotMatch(providerCompat,/sabora_nonsuperuser_pg17_migration_chain_ok:|sabora_nonsuperuser_provider_no_go:automatic_createrole/);
  assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
- assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);
+ assert.match(providerWorkflow,/Demonstrate sealed-owner NO-GO and DBA\/runtime separation on disposable PG17/);
  assert.match(providerWorkflow,/bash scripts\/ci\/supabase-nonsuperuser-migration-smoke\.sh/);
  assert.doesNotMatch(providerWorkflow,/secrets\.|SUPABASE_DB_|DATABASE_URL/);
 });
