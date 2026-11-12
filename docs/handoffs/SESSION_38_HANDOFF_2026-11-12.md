@@ -10,7 +10,7 @@ Acciones **del mismo SHA**:
 - [PG17 sin superusuario #43217686791](https://github.com/jdlc86/CartaViva/actions/runs/43217686791) — `completed/success`; log `sabora_nonsuperuser_pg17_migration_chain_ok:99`.
 - [Bootstrap Sabora #43217687760](https://github.com/jdlc86/CartaViva/actions/runs/43217687760) — `completed/success` al corte de S38.
 - [Cobertura UI #43217686802](https://github.com/jdlc86/CartaViva/actions/runs/43217686802) — `completed/success`; el job de **aceptación visual final** figura `skipped`, no es aprobación humana.
-- [Sabora CI H6 #43217687786](https://github.com/jdlc86/CartaViva/actions/runs/43217687786) — **`in_progress`** en el último corte; **verificar antes de declarar 4/4** y comprobar que HEAD no haya avanzado. No reutilizar un PASS de otro SHA.
+- [Sabora CI H6 #43217687786](https://github.com/jdlc86/CartaViva/actions/runs/43217687786) — **`completed/success`** en el último corte. Los cuatro workflows del SHA `9c943e5b` están **4/4 `completed/success`**, incluidos H6 PG17/Chromium, build, aislamiento, imagen y smoke de API health-only. Esto no valida despliegue ni apariencia humana.
 
 **Diferencia respecto a la [sesión 37](SESSION_37_HANDOFF_2026-11-12.md):** su cabecera documenta HEAD antiguo `9722b663`, 55 SQL modificados y el error `must be owner of function verify_management_capability_m3`. El PR #57 avanzó **7 commits** hasta `9c943e5b` con cambios adicionales y su diff respecto a `main` ya alcanza **59 migraciones SQL** entre 67 archivos; el gate PG17 se tornó verde **tras ejecutar de verdad las 99 versiones**, no como simple prueba negativa. Por eso **no repetir la corrección del fallo ya resuelto en el laboratorio**. La descripción del PR #57 está atrasada y aún habla de cero migraciones SQL modificadas; requiere conciliación antes de revisión/merge.
 
@@ -51,7 +51,7 @@ Acciones **del mismo SHA**:
 
 ## 4. Plan de cierre **sin nuevos PR redundantes**
 
-**Carril A — PR #57 / CV-005:** revalidar HEAD y la **CI H6 todavía pendiente**, conciliación de descripción y 59 SQL, auditoría de permisos/owner/SECURITY DEFINER/ledger y dictamen **independiente** DBA/seguridad. Aprobar, fusionar y migrar son tres decisiones distintas; no instalar ni desplegar por un simple 99/99 verde.
+**Carril A — PR #57 / CV-005:** revalidar HEAD y el **4/4 CI ya verificado en `9c943e5b`**, conciliación de descripción y 59 SQL, auditoría de permisos/owner/SECURITY DEFINER/ledger y dictamen **independiente** DBA/seguridad. Aprobar, fusionar y migrar son tres decisiones distintas; no instalar ni desplegar por un simple 99/99 verde.
 
 **Carril B — Bloque 2 preparatorio:** trabajar desde código/base verificados **sin mezclar el diff SQL pendiente de #57**; crear una rama de implementación solo cuando se vaya a cerrar el paquete integral; evitar PR nuevo hasta tener una candidatura completa. Entregable común: manifiesto de 17+ identidades y custodias, TLS/egress estrictos con pruebas de aislamiento, backup cifrado/restauración PG17 desechable, **bootstrap operativo separado y fail-closed** que ensamble JWT/HMAC/roles/eventos y registre rutas únicamente tras preflight, `/ready` de dependencias reales, observabilidad/alertas y suite E2E de dos PWA. Adaptar coordinadamente **los gates de seguridad existentes**: no comentar ni eliminar validaciones solo para que una CI pase.
 
@@ -61,6 +61,6 @@ Acciones **del mismo SHA**:
 
 ## 5. Siguiente actuación prioritaria para la nueva sesión
 
-Al reabrir: (1) comprobar GitHub HEAD de #57 y **cuatro Actions del mismo SHA**; (2) contrastar normativa y diff, identificar si existe un revisor independiente; (3) priorizar un **único hito integral** del Bloque 2 por sobre pequeños parches; (4) establecer antes del código el contrato de bootstrap/producto realmente activable y las negativas de seguridad; (5) ejecutar integración PG17/HTTP/Chromium y documentar hechos observados; (6) mantener este documento y el tablero actualizados por **hitos completos**, nunca por estados especulativos.
+Al reabrir: (1) comprobar GitHub HEAD de #57 y que el **4/4 SUCCESS del SHA `9c943e5b`** siga siendo aplicable al HEAD; (2) contrastar normativa y diff, identificar si existe un revisor independiente; (3) priorizar un **único hito integral** del Bloque 2 por sobre pequeños parches; (4) establecer antes del código el contrato de bootstrap/producto realmente activable y las negativas de seguridad; (5) ejecutar integración PG17/HTTP/Chromium y documentar hechos observados; (6) mantener este documento y el tablero actualizados por **hitos completos**, nunca por estados especulativos.
 
 **Referencias de seguimiento:** [PR #57](https://github.com/jdlc86/CartaViva/pull/57) · [PG17 99/99](https://github.com/jdlc86/CartaViva/actions/runs/43217686791) · [Sabora CI H6](https://github.com/jdlc86/CartaViva/actions/runs/43217687786) · [expediente Bloque 2](../reviews/SABORA_S38_PARALLEL_ACTIVATION_READINESS_ANALYSIS_2026-11-12.md) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
