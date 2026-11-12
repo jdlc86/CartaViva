@@ -21,6 +21,11 @@ test('operational isolation gate rejects API egress, broad exposure and weakened
   [baseline.replace('cap_drop: [ALL]','privileged: true'),'capabilities_not_dropped:api'],
   [baseline.replace('SABORA_OPERATIONAL_MANIFEST_FILE: /run/sabora/activation.json',
    'SABORA_HMAC: unsafe'),'manifest_file_injection_missing'],
+  [baseline.replace('SABORA_OPERATIONAL_EGRESS_POLICY_FILE: /run/sabora/egress-policy.json',
+   'SABORA_OPERATIONAL_EGRESS_POLICY_FILE: /tmp/other-policy.json'),
+   'api_egress_policy_injection_missing'],
+  [baseline.replace('source: ${SABORA_EGRESS_POLICY_FILE:?absolute egress policy path required}',
+   'source: /tmp/policy-not-shared.json'),'egress_policy_shared_bind_missing:api'],
  ];
  for(const [compose,expected] of cases)
   assert.ok(inspectOperationalDeploymentIsolation(root,{composeText:compose}).includes(expected),expected);
