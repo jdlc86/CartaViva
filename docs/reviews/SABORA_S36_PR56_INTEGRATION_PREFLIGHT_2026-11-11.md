@@ -77,6 +77,15 @@ En `27dc70f0`, seis workflows de PR fueron `completed/success`: [Bootstrap #4300
 
 **Operaciones efectuadas en este corte:** consulta GitHub de diffs, workflows/jobs/logs y revisiones; actualización documental. No hay SQL de escritura, cambios en Supabase, merge, despliegue ni acciones sobre VPS/Fleetia.
 
+
+## 7. Estado posterior a la revisión S36-16 (2026-11-12)
+
+Se ejecutó la **transición de PR #56 de Draft a Ready for review** mediante el conector GitHub. La respuesta confirmó `state=open`, `draft=false`, `merged=false`, `head=98dfd0607513cc018101d843c97cb3f57baa1ca5` y `mergeable=true`. Este cambio **no fusiona código** ni sustituye revisión humana, autorización explícita del merge o prueba post-merge en `main`. No se solicitaron aprobaciones fingidas ni se ejecutó el desplegable `health-only`.
+
+**Preflight de recuperación operativa:** lectura de metadatos de Supabase `restaurante` identifica plan de organización **Free** y proyecto `ACTIVE_HEALTHY`, sin migraciones aplicadas; verificación contra [documentación de backups Supabase](https://supabase.com/docs/guides/platform/backups) y [FAQ del plan Free](https://supabase.com/kb/faqs/platform/free-plan-backups) confirma que **no están incluidos los backups automáticos diarios ni PITR**. Se corrigió el [runbook P2](../runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md) para abandonar el conteo fijo **42** (histórico octubre) y exigir el manifiesto real del SHA final (98 en `main`, 99 en PR #56 en este corte), y el [runbook P3](../runbooks/SABORA_P3_RECOVERY_CONTINUITY_RUNBOOK_2026-10-29.md) para distinguir ensayos PG17 de backup de proveedor. **Dump lógico externo, restauración comprobada y RTO/RPO siguen pendientes; no puede declararse lista la migración.**
+
+**Corte:** avance de preparación e inspección GitHub/Supabase solamente, sin modificación de datos, permisos SQL, costes de proveedor, merge, ni despliegue sobre VPS/Fleetia. Próxima puerta: aprobación de integración específica del PR, CI de `main` post-merge, definición operativa de secretos completos, backups y compatibilidad PG17.11 no superuser.
+
 ---
 
 _Las adiciones y evidencias posteriores deben constar en [continuidad 36](../handoffs/SESSION_36_HANDOFF_2026-11-11.md) con SHA de código y ejecuciones exactas._
