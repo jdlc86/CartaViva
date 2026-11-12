@@ -43,5 +43,13 @@ En SHA **`4f19e12793e2c260c232593d1476276386f0617f`**, [workflow de compatibilid
 
 **Operaciones expresamente no realizadas:** DDL/migración/cambios de roles en Supabase operativo, aprovisionamiento de los tres secretos del propietario, copia/restauración real, merge de PR #57, aceptación visual en dispositivos, modificación de VPS/Fleetia o despliegue.
 
+## 5. S37-3 — preflight Supabase real, exclusivamente lectura (12-11-2026)
+
+Consulta al conector de la cuenta **RESTAURANTE** y proyecto exacto **`byhvmumqivmunkmomhup`**: `status=ACTIVE_HEALTHY`, región `eu-central-1`, PostgreSQL `17.11`; `current_database()=postgres`, `current_user=postgres`, atributos **`rolcreaterole=true`, `rolsuper=false`, `rolbypassrls=true`**. La configuración de sesión `current_setting('createrole_self_grant',true)` devolvió **cadena vacía**. `to_regnamespace('sabora') IS NOT NULL=false`; `to_regrole('sabora_order_operations_fn_owner') IS NOT NULL=false`; total roles `sabora_*` **0**, membresías Sabora **0**, y no existe el ledger `public.sabora_migration_meta`. Fue **un único SELECT read-only**, sin crear roles, sin DDL, sin obtener contraseñas y sin consultar otros proyectos.
+
+**Implicación que debe conservarse:** el administrador de Supabase **no es superusuario**, pero tiene **BYPASSRLS**. Por tanto, el fixture CI `CREATEROLE NOSUPERUSER NOBYPASSRLS` sigue siendo un ensayo deliberadamente más restringido, no una réplica exacta del rol `postgres` de Supabase. **Nunca** trasladar `postgres` ni BYPASSRLS a runtime; las identidades operativas SQL siguen sujetas a menor privilegio, RLS y actor verificado. La ausencia de roles Sabora deja abierta la fase de provisionamiento, pero no elimina la incompatibilidad entre membresía automática de `CREATEROLE` y la guarda de función propietaria sellada. La solución exige diseño/validación específico de seguridad y proveedor antes de instalar la cadena.
+
+**Estado final de este bloque:** evidencia de proveedor read-only cerrada, instalación **NO-GO**; no backup/restore real, no secretos instalados, no escritura SQL, no despliegue o VPS.
+
 ---
 _Esta sesión pasa a ser el registro operativo de nuevos hitos. Para cualquier avance reconsultar HEAD y CI exactos; no reciclar fotografías históricas de la sesión 36._
