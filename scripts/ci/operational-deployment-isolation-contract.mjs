@@ -10,7 +10,7 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
  const violations=[];
  const require=(pattern,code)=>{if(!pattern.test(compose))violations.push(code);};
  const forbid=(pattern,code)=>{if(pattern.test(compose))violations.push(code);};
- require(/^name:\s*sabora-operational-candidate\s*$/m,'operational_project_name_invalid');
+ require(/^name:\s*sabora\s*$/m,'operational_project_name_invalid');
  require(/^\s{2}api:\s*$/m,'operational_api_missing');
  require(/^\s{2}sabora-egress:\s*$/m,'operational_egress_gateway_missing');
  require(/command:\s*\["node",\s*"src\/operational-server\.mjs"\]/,
