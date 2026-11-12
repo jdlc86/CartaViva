@@ -49,6 +49,34 @@ En `27dc70f0`, seis workflows de PR fueron `completed/success`: [Bootstrap #4300
 
 **No realizado en este preflight:** merge, cambios normativos, operación sobre Supabase operativo, VPS/Fleetia, secretos, proveedores reales ni despliegue.
 
+
+## 6. Cierre técnico S36-16 — revisión del HEAD definitivo y candidatura a integración (2026-11-12)
+
+**SHA comprobado de #56:** [`98dfd0607513cc018101d843c97cb3f57baa1ca5`](https://github.com/jdlc86/CartaViva/commit/98dfd0607513cc018101d843c97cb3f57baa1ca5). GitHub devolvió PR `state=open`, `draft=true` en esta consulta, `merged=false` y `mergeable=true` (este último puede oscilar mientras GitHub recalcula). La rama sigue divergida de `main`; la comparación exacta `main...PR` devolvió **20 commits por delante y 51 por detrás**. La comparación inversa `PR...main` halló **9 rutas exclusivas de `main`, todas documentales**, entre ellas la normativa de observabilidad, continuidad 35/36 y tablero. **No se detectaron en ese delta cambios funcionales exclusivos de `main`**. No confundir diferencia documental con permiso de sobrescritura ni con un merge ya realizado.
+
+**CI sobre el mismo SHA final — 6/6 SUCCESS sin ejecuciones pendientes o fallidas:**
+
+| Área | Workflow verificado | Resultado |
+| --- | --- | --- |
+| H6 PG17/JWT/HMAC/Chromium | [Sabora CI #43130945675](https://github.com/jdlc86/CartaViva/actions/runs/43130945675) | `completed/success` |
+| Cadena PG17, Node driver, contenedor aislado | [Bootstrap #43130945669](https://github.com/jdlc86/CartaViva/actions/runs/43130945669) | `completed/success` |
+| Cliente Chromium | [Cliente #43130945712](https://github.com/jdlc86/CartaViva/actions/runs/43130945712) | `completed/success` |
+| Gestión Chromium | [Gestión #43130945920](https://github.com/jdlc86/CartaViva/actions/runs/43130945920) | `completed/success` |
+| Instalabilidad PWA independiente | [PWA #43130945679](https://github.com/jdlc86/CartaViva/actions/runs/43130945679) | `completed/success` |
+| Cobertura funcional / contrato visual automatizado | [Cobertura #43130945863](https://github.com/jdlc86/CartaViva/actions/runs/43130945863) | `completed/success` |
+
+**Verificación del contenido de logs:** el job `130894625362` del bootstrap registró `sabora_real_migration_chain_resume_ok:99:20261030200000`, aceptación del recorrido integrado `PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PWAs, transfer, ROOT force and stale writer denial` (`ok 1`), y un test explícito `PG17 customer advisory fence lets a later positive order win without deadlock` (`ok 4`). El job `130894625727` acreditó las puertas de seguridad/configuración/aislamiento, compilación, contenedor aislado y HTTP health. El texto `deadlock` en el log forma parte del **nombre de un test PASS**, no de un error `40P01`. La observación no constituye diagnóstico causal del deadlock histórico de invitaciones/outbox ni su eliminación garantizada.
+
+**Cambios consolidados en el PR desde S36:** además de titularidad efectiva M3/M5 y permisos ADMIN, incluye observabilidad segura y correlación HTTP, señales SQL/events, readiness `/ready=503` en `health-only`, puerta declarativa de 16 controles y un **inventario vinculante de 15/17/22 slots SQL más dos notificadores**, usado por composición y laboratorio; se preserva la condición de login de tipo string y el rechazo de duplicación. **Cada suite se ejecutó sobre el SHA que contiene el conjunto completo**, no se extrapolaron los anteriores.
+
+**Revisión independiente:** la lectura actual de GitHub de `list_pull_request_reviews` devolvió **0 revisiones** y `list_pull_request_review_threads` **0 hilos**. Por tanto, el trabajo está probado en CI, pero **no revisado independientemente**. La revisión propia permite proponer el PR para revisión, no equivale a aprobación de seguridad ni estética humana.
+
+**Dictamen de integración:** **APTO PARA PASAR DE DRAFT A REVISIÓN**, sin evidencias nuevas de conflicto funcional de `main`; **NO AUTORIZADO AUTOMÁTICAMENTE PARA MERGE** porque la normativa de ingeniería y el procedimiento vigente exigen decisión específica. Antes de cualquier merge: obtener aprobación explícita, conservar los 9 documentos de `main`, verificar que GitHub mantiene mergeabilidad al momento del acto, aplicar estrategia de merge que no invalide el SHA auditado, y comprobar CI de `main` tras integrar. Ninguna prueba verde autoriza por sí misma migración SQL, secretos ni VPS.
+
+**Riesgos posteriores que no se resuelven por merge:** bootstrap productivo CV-005 aún ausente (`server.mjs` continúa `health-only`), SQL logins operativos 15/17/22 no provisionados, compatibilidad de 99 migraciones con rol Supabase PG17.11 no superusuario sin comprobar, salida TLS/egress Sabora-only, alertas externas entregadas, backup/restore y RTO/RPO, verificación de las dos PWA en dispositivos y F28/R09 con aprobación humana. Tres contraseñas guardadas por propietario **no deben copiarse ni compartirse**. Sin usuarios reales, puede ensayarse con datos ficticios tras autorización y preservando laboratorio PG17 para depuración.
+
+**Operaciones efectuadas en este corte:** consulta GitHub de diffs, workflows/jobs/logs y revisiones; actualización documental. No hay SQL de escritura, cambios en Supabase, merge, despliegue ni acciones sobre VPS/Fleetia.
+
 ---
 
 _Las adiciones y evidencias posteriores deben constar en [continuidad 36](../handoffs/SESSION_36_HANDOFF_2026-11-11.md) con SHA de código y ejecuciones exactas._
