@@ -44,3 +44,25 @@ test('recovery exercises representative load, lock timeout, corrupt input and ta
  assert.match(recovery,/interrupted_new_oid/);
  assert.match(recovery,/sabora_p3_recovery_metrics/);
 });
+
+const providerCompat=readFileSync(new URL('./supabase-nonsuperuser-migration-smoke.sh',import.meta.url),'utf8');
+const providerWorkflow=readFileSync(new URL('../../.github/workflows/supabase-nonsuperuser-compatibility.yml',import.meta.url),'utf8');
+
+test('non-superuser Supabase compatibility harness is isolated and exercises the full ordered chain',()=>{
+ for(const required of [
+  'GITHUB_ACTIONS','GITHUB_RUN_ID','RUNNER_TEMP','--network none',
+  'NOSUPERUSER NOBYPASSRLS NOREPLICATION','CREATEROLE',
+  'node scripts/ci/migration-audit.mjs',
+  "docker inspect -f '{{.HostConfig.NetworkMode}}'",
+  'supabase/migrations/$name',
+  'sabora_nonsuperuser_migration_blocked:$name',
+  'sabora_nonsuperuser_force_rls_mismatch',
+  'sabora_nonsuperuser_pg17_migration_chain_ok:',
+ ])assert.ok(providerCompat.includes(required),required);
+ assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
+ assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
+ assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
+ assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);
+ assert.match(providerWorkflow,/bash scripts\/ci\/supabase-nonsuperuser-migration-smoke\.sh/);
+ assert.doesNotMatch(providerWorkflow,/secrets\.|SUPABASE_DB_|DATABASE_URL/);
+});

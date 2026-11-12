@@ -1,0 +1,35 @@
+name: Sabora PG17 non-superuser provider compatibility
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/ci/migration-audit.mjs'
+      - 'scripts/ci/migration-manifest.mjs'
+      - 'scripts/ci/supabase-nonsuperuser-migration-smoke.sh'
+      - 'scripts/ci/postgres-migration-harness-contract.test.mjs'
+      - '.github/workflows/supabase-nonsuperuser-compatibility.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/ci/supabase-nonsuperuser-migration-smoke.sh'
+      - '.github/workflows/supabase-nonsuperuser-compatibility.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pg17-nonsuperuser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact CartaViva commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate isolated migration rehearsal contract
+        run: node --test scripts/ci/postgres-migration-harness-contract.test.mjs
+      - name: Rehearse complete Sabora chain as non-superuser on disposable PG17
+        run: bash scripts/ci/supabase-nonsuperuser-migration-smoke.sh
