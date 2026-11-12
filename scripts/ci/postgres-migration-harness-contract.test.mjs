@@ -186,3 +186,29 @@ test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()
   assert.ok(sql.indexOf('DO $cv005_release$')<sql.lastIndexOf('COMMIT;'),name);
  }
 });
+
+test('Option A owner scope is transactional across the complete edited migration family',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(names.length,99,'review the full actual migration inventory');
+ let scoped=0;
+ for(const name of names){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  if(!sql.includes('$cv005_existing_owner_access$')) continue;
+  scoped++;
+  for(const marker of [
+    '$cv005_existing_owner_release$',
+    'cv005_unsafe_preexisting_fn_owner',
+    'GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',
+    'REVOKE %I FROM CURRENT_USER',
+    "roles.rolname ~ '^sabora_[a-z0-9_]+_fn_owner$'"
+  ])assert.ok(sql.includes(marker),name+': missing '+marker);
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('DO $cv005_existing_owner_access$'),name);
+  assert.ok(sql.indexOf('DO $cv005_existing_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+ }
+ assert.equal(scoped,52,'every retrieved candidate migration has the same guard');
+ assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
+ assert.match(providerCompat,/sabora_nonsuperuser_postcommit_owner_create_leak/);
+ assert.match(providerCompat,/committed_owner_create/);
+});

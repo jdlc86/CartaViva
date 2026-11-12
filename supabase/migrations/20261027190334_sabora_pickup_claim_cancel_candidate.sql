@@ -2,6 +2,36 @@
 -- Candidate only. It creates no LOGIN, secret, worker, endpoint activation or
 -- production migration. Historical picked_up rows remain untouched.
 BEGIN;
+
+-- CV-005 OPTION A: existing Sabora function owners must be temporarily
+-- visible to this DBA before CREATE OR REPLACE or legacy cross-owner ACL.
+-- The only durable membership allowed remains bootstrap ADMIN/NOSET/NOINHERIT.
+DO $cv005_existing_owner_access$
+DECLARE owner_role name; role_info record;
+BEGIN
+ FOR role_info IN
+  SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,
+   r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+  FROM pg_catalog.pg_roles r
+  WHERE r.rolname ~ '^sabora_[a-z0-9_]+_fn_owner$'
+   AND r.rolname<>current_user::text
+   AND (EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
+     JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+     WHERE p.proowner=r.oid AND n.nspname='sabora')
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c
+     JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+     WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+  IF role_info.rolcanlogin OR role_info.rolinherit OR role_info.rolsuper
+    OR role_info.rolbypassrls OR role_info.rolcreaterole
+    OR role_info.rolcreatedb OR role_info.rolreplication THEN
+   RAISE EXCEPTION 'cv005_unsafe_preexisting_fn_owner' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',role_info.rolname);
+ END LOOP;
+END;
+$cv005_existing_owner_access$;
+
 -- CV-005: the first permission change below targets a function owned by
 -- sabora_h6_fn_owner, prior to any new function ownership transfer. PostgreSQL
 -- 17 requires the migrator's scoped inheritable membership already here.
@@ -561,4 +591,23 @@ REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
+
+-- CV-005: no role access issued by this installer may survive COMMIT.
+-- The PostgreSQL bootstrap superuser-issued ADMIN/SET FALSE/INHERIT FALSE row
+-- is intentionally retained and checked by the PG17 provider harness.
+DO $cv005_existing_owner_release$
+DECLARE owner_role name;
+BEGIN
+ FOR owner_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members m
+   JOIN pg_catalog.pg_roles roles ON roles.oid=m.roleid
+  WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND roles.rolname ~ '^sabora_[a-z0-9_]+_fn_owner$'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',owner_role);
+ END LOOP;
+END;
+$cv005_existing_owner_release$;
+
 COMMIT;
