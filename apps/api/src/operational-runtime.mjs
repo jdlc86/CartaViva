@@ -25,9 +25,12 @@ export async function startOperationalM3Runtime({options,listener,resources,
   candidate=await createCandidate(options);
   if(candidate?.mode!=='opt-in-h3-h6-m3-candidate'||typeof candidate.app?.listen!=='function')
    throw invalid();
-  const origin=await candidate.app.listen({host:listener.host,port:listener.port});
+  // A successful factory preflight is not sufficient if readiness changes
+  // before exposure. Probe live SQL/event dependencies while the HTTP socket
+  // is still CLOSED; never publish routes and only then discover a 503.
   const ready=await candidate.app.inject({method:'GET',url:'/ready'});
   if(ready.statusCode!==200)throw invalid();
+  const origin=await candidate.app.listen({host:listener.host,port:listener.port});
   try{observability?.lifecycle('started_operational_candidate');}catch{}
   return Object.freeze({app:candidate.app,origin,mode:'operational-h3-h6-m3-candidate',close});
  }catch{
