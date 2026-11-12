@@ -3,7 +3,7 @@ import {dirname,isAbsolute,join,relative,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import pg from 'pg';
 import {createSaboraObservability} from './operational-observability.mjs';
-import {materializeOperationalM3Options} from './operational-activation-manifest.mjs';
+import {materializeOperationalM3Options,validateOperationalEgressBinding} from './operational-activation-manifest.mjs';
 import {installOperationalSignalHandlers,startOperationalM3Runtime} from './operational-runtime.mjs';
 import {assertPilotActivation} from './pilot-activation-gate.mjs';
 
@@ -35,11 +35,18 @@ export async function startOperationalServerFromFiles({env=process.env,Pool=pg.P
  try{
   const manifestPath=env.SABORA_OPERATIONAL_MANIFEST_FILE;
   const secretsDirectory=env.SABORA_OPERATIONAL_SECRETS_DIR;
+  const policyPath=env.SABORA_OPERATIONAL_EGRESS_POLICY_FILE;
   if(env.NODE_ENV!=='production'||typeof manifestPath!=='string'||!isAbsolute(manifestPath)||
-     typeof secretsDirectory!=='string'||!isAbsolute(secretsDirectory))throw generic();
-  const raw=await readBoundedFile(manifestPath,262144);
-  let manifest;try{manifest=JSON.parse(raw);}catch{throw generic();}
+     typeof secretsDirectory!=='string'||!isAbsolute(secretsDirectory)||
+     typeof policyPath!=='string'||!isAbsolute(policyPath))throw generic();
+  // Read both Sabora-only configuration files BEFORE looking up even one
+  // secret, constructing a pool or listening for a request.
+  const [raw,policyRaw]=await Promise.all([
+   readBoundedFile(manifestPath,262144),readBoundedFile(policyPath,65536)]);
+  let manifest,policy;
+  try{manifest=JSON.parse(raw);policy=JSON.parse(policyRaw);}catch{throw generic();}
   if(manifest?.stage!=='production')throw generic();
+  validateOperationalEgressBinding(manifest,policy);
   assertPilotActivation(manifest.activationEvidence);
   const resources=await materializeOperationalM3Options({manifest,Pool,
    resolveSecret:createFileSecretResolver(secretsDirectory),fetchImpl,observability});
