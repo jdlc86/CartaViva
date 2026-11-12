@@ -88,10 +88,19 @@ auto_membership="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
 # The bootstrap grant cannot be withdrawn by CREATEROLE. Prove the
 # threat model: DBA can self-grant SET, ordinary runtime LOGIN cannot.
 revoke_log="$RUNNER_TEMP/sabora-ci-revoke-$GITHUB_RUN_ID-$$.log"
-if docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"    -c "REVOKE sabora_ci_membership_probe FROM $operator" >"$revoke_log" 2>&1; then
-  echo 'sabora_nonsuperuser_bootstrap_grant_revocation_unexpected' >&2; exit 1
-fi
+# PostgreSQL may report command success with a NOTICE: exit status alone
+# cannot certify revocation of a grant issued by the bootstrap superuser.
+docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"  -c "REVOKE sabora_ci_membership_probe FROM $operator" >"$revoke_log" 2>&1 || true
 rm -f "$revoke_log"
+automatic_grant_remains="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1  -U "$operator" -d "$database" -Atqc  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
+  JOIN pg_roles grantor ON grantor.oid=m.grantor
+  WHERE r.rolname='sabora_ci_membership_probe'
+    AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+    AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option")"
+[[ "$automatic_grant_remains" == 1 ]] || {
+ echo 'sabora_nonsuperuser_bootstrap_grant_mutated' >&2; exit 1
+}
+echo 'sabora_nonsuperuser_automatic_membership_immutable_verified'
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database"  -c 'CREATE ROLE cv005_ci_runtime_probe LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE' >/dev/null
 if docker exec "$container" psql -X -v ON_ERROR_STOP=1   -U cv005_ci_runtime_probe -d "$database"   -c 'SET ROLE sabora_ci_membership_probe' >/dev/null 2>&1; then
  echo 'sabora_nonsuperuser_runtime_set_role_elevation' >&2; exit 1
