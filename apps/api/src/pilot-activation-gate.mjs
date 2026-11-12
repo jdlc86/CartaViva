@@ -1,9 +1,13 @@
 // Fail-closed activation gate for the Sabora pilot. No environment reads,
 // network connections, container operations or route registration.
+// Exhaustive *claims* checklist, not an authority to deploy. Completion
+// never overrides independent approvals or the protected production bootstrap.
 const REQUIRED = Object.freeze([
   'normativeConformance', 'customerFlow', 'staffOperations',
-  'sqlLeastPrivilege', 'secretsProvisioned', 'vpsIsolationVerified',
-  'backupRestoreVerified', 'observabilityReady', 'rollbackVerified',
+  'twoPwasValidated', 'migrationChecksumsVerified', 'sqlLeastPrivilege',
+  'secretsProvisioned', 'jwtHmacIdentityVerified', 'tlsAndEgressVerified',
+  'vpsIsolationVerified', 'backupRestoreVerified', 'observabilityReady',
+  'alertDeliveryVerified', 'rollbackVerified', 'operationalBootstrapVerified',
   'deploymentAuthorized'
 ]);
 
@@ -18,7 +22,7 @@ export function evaluatePilotActivation(evidence = {}) {
     ready: missing.length === 0,
     missing: Object.freeze(missing),
     // No credentials, arbitrary evidence values or external identifiers are echoed.
-    mode: missing.length === 0 ? 'eligible_for_controlled_activation' : 'blocked'
+    mode: missing.length === 0 ? 'self_reported_evidence_complete_unverified' : 'blocked'
   });
 }
 

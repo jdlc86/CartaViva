@@ -18,19 +18,23 @@ test('health-only Fastify request telemetry is correlated, bounded and does not 
   assert.equal(first.statusCode, 200);
   assert.equal(second.statusCode, 200);
   assert.equal(missed.statusCode, 404);
+  assert.equal(second.statusCode, 503);
   assert.match(first.headers['x-sabora-request-id'], /^[a-f0-9-]{36}$/);
   assert.notEqual(first.headers['x-sabora-request-id'], second.headers['x-sabora-request-id']);
   assert.notEqual(first.headers['x-sabora-request-id'], secret);
   assert.equal(output.length, 3);
   assert.deepEqual(output.map(value => value.route), ['/health', '/ready', 'other']);
-  assert.deepEqual(output.map(value => value.statusClass), ['2xx', '2xx', '4xx']);
+  assert.deepEqual(output.map(value => value.statusClass), ['2xx', '5xx', '4xx']);
   assert.equal(output[0].source, 'sabora_observability');
   assert.equal(diagnostics.snapshot().requests, 3);
   assert.equal(diagnostics.snapshot().denied4xx, 1);
+  assert.equal(diagnostics.snapshot().failures5xx, 1);
   assert.equal(diagnostics.snapshot().byRoute.other, 1);
   assert.doesNotMatch(JSON.stringify(output), new RegExp(secret));
-  assert.deepEqual(await app.inject({ method: 'GET', url: '/ready' }).then(r => r.json()), {
-    status: 'ready', service: 'sabora-api', mode: 'health-only',
+  const unready=await app.inject({ method: 'GET', url: '/ready' });
+  assert.equal(unready.statusCode,503);
+  assert.deepEqual(unready.json(), {
+    status: 'unavailable', service: 'sabora-api', mode: 'health-only',
   });
 });
 

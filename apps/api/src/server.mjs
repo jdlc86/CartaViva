@@ -13,7 +13,7 @@ export function createApiApp({observability = createSaboraObservability()} = {})
   app.decorate('saboraObservability', observability);
   const store = createRestaurantStore();
   app.get('/health', async () => ({ status: 'ok', service: 'sabora-api' }));
-  app.get('/ready', async () => ({ status: 'ready', service: 'sabora-api', mode: 'health-only' }));
+  app.get('/ready', async (_request, reply) => reply.code(503).send({ status: 'unavailable', service: 'sabora-api', mode: 'health-only' }));
 
   // Domain proof-of-concept only: no public table/order endpoints until authentication,
   // durable PostgreSQL transactions and restaurant-scoped authorization are in place.

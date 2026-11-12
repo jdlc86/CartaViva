@@ -18,6 +18,17 @@ test('pilot activation requires every gate to be explicitly true', () => {
    assert.deepEqual(evaluatePilotActivation(bad).missing, [key]);
  }
  assert.equal(assertPilotActivation(evidence).ready, true);
+ assert.equal(assertPilotActivation(evidence).mode, 'self_reported_evidence_complete_unverified');
+});
+
+test('full pilot readiness includes migration, two PWA, TLS/egress, signed identity and delivered alerts', () => {
+ const essential=['twoPwasValidated','migrationChecksumsVerified','jwtHmacIdentityVerified',
+  'tlsAndEgressVerified','alertDeliveryVerified','operationalBootstrapVerified'];
+ for(const required of essential)assert.ok(PILOT_ACTIVATION_REQUIREMENTS.includes(required));
+ const partial=Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(key=>[key,true]));
+ for(const required of essential){
+  assert.equal(evaluatePilotActivation({...partial,[required]:false}).ready,false);
+ }
 });
 
 test('pilot activation does not expose supplied secret-like evidence', () => {

@@ -60,6 +60,9 @@ export function inspectProductionConfig(rootPath){
   requireMatch(example,/SABORA_API_MODE=health-only/,'example_missing_runtime_mode');
   requireMatch(example,/__INJECT_SECRET_AT_RUNTIME__/,'example_missing_injection_marker');
   forbidMatch(example,CREDENTIAL,'example_contains_credential');
+  // Health-only liveness is not restaurant availability. The active server
+  // must never assert a successful operational readiness before CV-005.
+  requireMatch(server,/app\.get\('\/ready'[^\n]*\.code\(503\)/,'health_only_false_readiness');
   forbidMatch(server,/h6-candidate-composition|h4-h6-integrated-candidate|staff-lifecycle-composition|customer-production-composition/,'server_mounts_dormant_candidate');
   violations.push(...inspectDeploymentIsolation(root));
   violations.push(...inspectOperationalSecurityInventory(root));
