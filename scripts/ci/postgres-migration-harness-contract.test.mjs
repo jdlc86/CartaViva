@@ -60,6 +60,8 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
   'sabora_nonsuperuser_pg17_migration_chain_ok:',
   'sabora_nonsuperuser_provider_no_go:automatic_createrole_membership_conflicts_with_sealed_owner',
   'sabora_ci_membership_probe',
+  'sabora_nonsuperuser_self_revocation_observed',
+  'sabora_nonsuperuser_self_revocation_unavailable',
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);

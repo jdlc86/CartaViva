@@ -75,9 +75,32 @@ auto_membership="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
 [[ "$auto_membership" == 1 ]] || {
   echo 'sabora_nonsuperuser_role_semantics_unexpected' >&2; exit 1;
 }
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
-  -U "$operator" -d "$database" -c \
-  'DROP ROLE sabora_ci_membership_probe' >/dev/null
+# Determine, rather than assume, whether CREATEROLE can remove the
+# bootstrap-issued automatic membership from its *own* disposable role.
+# The attempt does not run against the provider or any real Sabora role.
+# A positive result would still require separately verifying all ownership,
+# schema/ACL checks and sealing before the installation can be accepted.
+revoke_log="$RUNNER_TEMP/sabora-pg-role-self-revoke-$GITHUB_RUN_ID-$.log"
+if docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+    -U "$operator" -d "$database" -c \
+    "REVOKE sabora_ci_membership_probe FROM $operator" >"$revoke_log" 2>&1; then
+  revoke_status=ok
+else
+  revoke_status=denied
+fi
+remaining_membership="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
+   WHERE r.rolname='sabora_ci_membership_probe'
+     AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)")"
+rm -f "$revoke_log"
+if [[ "$revoke_status" == ok && "$remaining_membership" == 0 ]]; then
+  echo 'sabora_nonsuperuser_self_revocation_observed'
+else
+  echo 'sabora_nonsuperuser_self_revocation_unavailable'
+fi
+# This is still NO-GO for the *unchanged* migration because CREATE ROLE and
+# the sealed-owner membership guard occur in the same versioned transaction.
 if grep -q 'unsafe_sabora_order_operations_fn_owner_membership' \
     supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql; then
   echo 'sabora_nonsuperuser_provider_no_go:automatic_createrole_membership_conflicts_with_sealed_owner' >&2
