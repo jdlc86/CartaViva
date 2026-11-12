@@ -46,7 +46,7 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   const diagnosticEvents=[];
   const diagnostics=createSaboraObservability({emit:record=>diagnosticEvents.push(record)});
   const isolatedOptions={...options,observability:diagnostics,h6:{...options.h6,stripe:noProvider},
-   enableDeferredDispatch:false};
+   enableDeferredDispatch:false,requireTrustedKeysOnReadiness:true};
   // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
   // Exercise the *same* identity inventory as the HTTP assembly in the
