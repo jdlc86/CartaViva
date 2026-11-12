@@ -197,7 +197,7 @@ END;
 $pickup_events$;
 -- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
 GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
-GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+-- Owner membership was already granted at BEGIN for existing function ACL.
 ALTER FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   uuid,uuid,uuid,text,bigint,uuid,uuid,text,text
 ) OWNER TO sabora_h6_fn_owner;
