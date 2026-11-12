@@ -69,7 +69,7 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
 
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
- assert.match(providerCompat,/20261024190000_sabora_order_operation_actor_capability_candidate.sql/);
+ assert.match(providerCompat,/sabora_nonsuperuser_bootstrap_membership_confirmed/);
  assert.match(providerCompat,/unsafe_memberships/);
  assert.match(providerCompat,/unsafe_role_attrs/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
