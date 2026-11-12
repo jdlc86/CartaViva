@@ -376,13 +376,16 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(!operational){reportDependencyFailure('events');
     return reply.code(503).send({status:'unavailable'});}
    const started=performance.now();
-   try{
-    if(requireTrustedKeysOnReadiness){
+   if(requireTrustedKeysOnReadiness){
+    try{
      const keys=await staff.getTrustedKeys();
      if(!Array.isArray(keys)||keys.length===0)throw Error('jwks_unavailable');
+    }catch{
+     reportReadiness('failure',started);reportDependencyFailure('staff');
+     return reply.code(503).send({status:'unavailable'});
     }
-    await preflight();
    }
+   try{await preflight();}
    catch{reportReadiness('failure',started);reportDependencyFailure('database');
     return reply.code(503).send({status:'unavailable'});}
    reportReadiness('success',started);
