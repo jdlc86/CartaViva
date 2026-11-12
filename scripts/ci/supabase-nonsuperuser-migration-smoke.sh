@@ -43,7 +43,7 @@ SQL
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
   -c "CREATE DATABASE $database OWNER $operator" >/dev/null
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" <<'SQL' >/dev/null
-CREATE SCHEMA extensions AUTHORIZATION sabora_ci_migration_operator;
+CREATE SCHEMA extensions AUTHORIZATION cv005_ci_migration_operator;
 CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
 SQL
 # Diagnose the fixture with public, boolean role attributes only. This must be
