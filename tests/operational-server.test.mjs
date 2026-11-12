@@ -101,6 +101,14 @@ test('production files, exact egress policy, secrets and 17 SQL slots reach one 
  assert.ok(SpyPool.instances.every(pool=>pool.options.ssl.rejectUnauthorized===true));
  await runtime.close();
  assert.ok(SpyPool.instances.every(pool=>pool.closed===1));
+ // Failure after all 19 physical pools have been materialized must still
+ // close every pool exactly once, without leaking private error details.
+ SpyPool.instances.length=0;
+ await assert.rejects(startOperationalServerFromFiles({env,Pool:SpyPool,
+  startRuntime:async()=>{throw Error('private_bootstrap_credentials_dont_log');}}),
+  error=>error.message==='sabora_operational_startup_failed');
+ assert.equal(SpyPool.instances.length,19);
+ assert.ok(SpyPool.instances.every(pool=>pool.closed===1));
  // A valid manifest with an altered sidecar destination must never load even
  // one of the SQL secrets or construct a pool, let alone register HTTP.
  policy.targets[0].host='other.supabase.co';
