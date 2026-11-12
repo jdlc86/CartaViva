@@ -30,6 +30,9 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'customer_round_scope_forbidden' USING errcode='42501'; END IF;
 END;
 $customer_round$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)
@@ -39,4 +42,6 @@ GRANT EXECUTE ON FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,tex
  TO sabora_h6_customer_runtime;
 COMMENT ON FUNCTION sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid) IS
  'Historical order and visit determine replay scope; order_rounds.account_id is the stable economic account identity, independent of current delivery table.';
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

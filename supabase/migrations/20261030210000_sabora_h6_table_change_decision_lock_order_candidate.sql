@@ -45,9 +45,14 @@ BEGIN
  RETURN CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END;
 END;
 $decision$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
  sabora_h6_operations_runtime,sabora_h6_provider_runtime;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

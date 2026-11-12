@@ -104,6 +104,9 @@ SET search_path=pg_catalog,pg_temp AS $fn$
         WHERE f.cash_settlement_id=c.id))
  );
 $fn$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.third_party_round_eligible_candidate(uuid,uuid,uuid,uuid)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.third_party_round_eligible_candidate(uuid,uuid,uuid,uuid)
@@ -639,4 +642,6 @@ BEGIN
 END;
 $read$;
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

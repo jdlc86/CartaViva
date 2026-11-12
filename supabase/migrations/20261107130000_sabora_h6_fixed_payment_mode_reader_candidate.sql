@@ -64,6 +64,9 @@ BEGIN
 END;
 $fixed_payment_mode$;
 
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)
@@ -72,4 +75,6 @@ REVOKE ALL ON FUNCTION sabora.read_customer_account_payment_mode_h6_candidate(by
       sabora_f12_customer_runtime,sabora_f12_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.read_customer_account_payment_mode_h6_candidate(bytea,uuid,text)
  TO sabora_b3_h6_reader_runtime;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

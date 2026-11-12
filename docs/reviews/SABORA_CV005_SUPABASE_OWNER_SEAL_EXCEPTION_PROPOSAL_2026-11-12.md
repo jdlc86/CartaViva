@@ -1,6 +1,6 @@
 # CV-005 — Propuesta de decisión normativa: membresía administrativa de PostgreSQL 17 en Supabase
 
-**Fecha:** 2026-11-12. **Estado:** PROPUESTA TÉCNICA PENDIENTE DE APROBACIÓN Y REVISIÓN INDEPENDIENTE, NO NORMATIVA EN VIGOR. **PR:** [#57](https://github.com/jdlc86/CartaViva/pull/57). **Proyecto:** Sabora, único restaurante, Supabase `byhvmumqivmunkmomhup`.
+**Fecha:** 2026-11-12. **Estado:** OPCIÓN A SELECCIONADA POR EL PROPIETARIO; norma complementaria en [decisión CV-005](../security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md). **Revisión independiente, SQL e instalación pendientes.** **PR:** [#57](https://github.com/jdlc86/CartaViva/pull/57). **Proyecto:** Sabora, único restaurante, Supabase `byhvmumqivmunkmomhup`.
 
 ## Contrato existente y contradicción objetiva
 
@@ -33,3 +33,7 @@ El [ensayo integrado #43202505656](https://github.com/jdlc86/CartaViva/actions/r
 Por tanto, la opción A **no preserva literalmente la propiedad «sin membresías»** ni puede aprobarse como un simple retoque de SQL. Requiere una decisión explícita de aceptar el administrador de migraciones como autoridad de confianza y su custodia/auditoría, además de una revisión independiente de seguridad y de la instalación completa (99 SQL, RLS, HMAC, ACL, recuperación, logins operativos aislados). La opción B conserva la normativa, pero depende de una intervención privilegiada de Supabase que actualmente no está demostrada. El [preflight read-only](../../scripts/ci/sabora-pg17-owner-admission.sql) retorna NO-GO en el proyecto Supabase operativo, no instala nada ni autoriza un bypass.
 
 **Estado:** estas opciones siguen pendientes; el ensayo de seguridad que certifica un NO-GO pasó, pero el despliegue sigue expresamente bloqueado.
+
+## Selección expresa del propietario (S37, 2026-11-12)
+
+El propietario ha respondido **«Opción A»** tras recibir explicación de la autoconcesión administrativa y alternativa de proveedor. Se registra aprobación de **arquitectura DBA de confianza** en el [contrato normativo CV-005](../security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md). La aprobación no constituye garantía de que las 99 migraciones sean compatibles, aceptación de un bypass de HMAC/privilegios de runtime, revisión independiente ni autorización de migración/merge/despliegue. El SQL del ensayo histórico se recupera solo para diagnóstico en PR Draft y debe superar las pruebas completas antes de considerarse candidato de instalación.

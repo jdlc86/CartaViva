@@ -140,6 +140,9 @@ BEGIN
  RETURN NEW;
 END;
 $seed_revision$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.seed_order_revision_h6_candidate() OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.seed_order_revision_h6_candidate()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
@@ -913,6 +916,9 @@ BEGIN
  ORDER BY o.confirmed_at,o.id,l.line_number LIMIT p_limit+1;
 END;
 $board_delivery_pickup$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_order_operations_delivery_pickup_board_h6_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)
  OWNER TO sabora_order_operations_fn_owner;
@@ -981,4 +987,8 @@ CREATE TRIGGER h6_bind_dispatch_event_revision
  BEFORE INSERT ON sabora.event_outbox FOR EACH ROW
  EXECUTE FUNCTION sabora.bind_dispatch_event_revision_h6_candidate();
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

@@ -54,6 +54,9 @@ BEGIN
   RETURN QUERY SELECT v_payment.id,v_payment.state,v_round.state,v_repeated;
 END;
 $authorization_outcome$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.record_h6_authorization_outcome_candidate(uuid,text,text,timestamptz,text)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.record_h6_authorization_outcome_candidate(uuid,text,text,timestamptz,text)
@@ -562,4 +565,6 @@ REVOKE ALL ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,tex
 GRANT USAGE ON SCHEMA sabora TO sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.acknowledge_kitchen_dispatch_h6_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)
  TO sabora_h6_operations_runtime;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

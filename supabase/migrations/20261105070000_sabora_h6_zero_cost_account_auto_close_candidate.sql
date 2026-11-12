@@ -132,6 +132,9 @@ BEGIN
  RETURN true;
 END;
 $auto_close$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.try_auto_close_zero_cost_account_h6_candidate(uuid)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.try_auto_close_zero_cost_account_h6_candidate(uuid)
@@ -239,4 +242,6 @@ REVOKE ALL ON FUNCTION sabora.transition_table_ordering_candidate(uuid,uuid,text
   sabora_h6_customer_runtime,sabora_h6_operations_runtime,
   sabora_h6_provider_runtime,sabora_h6_account_close_runtime;
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

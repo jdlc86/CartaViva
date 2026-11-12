@@ -69,6 +69,9 @@ BEGIN
  ORDER BY o.confirmed_at,o.id,l.line_number LIMIT p_limit+1;
 END;
 $delivery_board$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_order_operations_delivery_board_h6_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)
  OWNER TO sabora_order_operations_fn_owner;
@@ -78,4 +81,6 @@ REVOKE ALL ON FUNCTION sabora.read_order_operations_delivery_board_h6_candidate(
 COMMENT ON FUNCTION sabora.read_order_operations_delivery_board_h6_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)
  IS 'Sealed candidate. HMAC staff-bound delivery board reads mutable per-line destination; no runtime EXECUTE.';
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

@@ -28,6 +28,9 @@ BEGIN
  ORDER BY r.grouping_deadline,r.id LIMIT p_limit;
 END;
 $schedule$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.list_schedulable_h6_rounds_candidate(integer)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.list_schedulable_h6_rounds_candidate(integer)
@@ -36,4 +39,6 @@ REVOKE ALL ON FUNCTION sabora.list_schedulable_h6_rounds_candidate(integer)
 GRANT EXECUTE ON FUNCTION sabora.list_schedulable_h6_rounds_candidate(integer)
  TO sabora_h6_provider_runtime;
 
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

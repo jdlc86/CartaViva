@@ -111,6 +111,9 @@ BEGIN
  RETURN v_grant.id;
 END;
 $consume$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.consume_customer_table_change_h6_candidate(uuid,uuid,bytea,uuid,uuid,text,uuid)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.consume_customer_table_change_h6_candidate(uuid,uuid,bytea,uuid,uuid,text,uuid)
@@ -118,4 +121,6 @@ REVOKE ALL ON FUNCTION sabora.consume_customer_table_change_h6_candidate(uuid,uu
  sabora_h6_operations_runtime,sabora_h6_provider_runtime;
 -- The function is deliberately NOT granted to the customer runtime.
 -- Integration into confirmation and operational readers remains a separate gate.
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

@@ -61,6 +61,30 @@ CREATE TRIGGER waiter_call_events_immutable BEFORE UPDATE OR DELETE
 CREATE TRIGGER waiter_call_events_no_truncate BEFORE TRUNCATE
  ON sabora.waiter_call_events FOR EACH STATEMENT EXECUTE FUNCTION sabora.guard_waiter_call_events_immutable();
 
+-- CV-005 CANDIDATE: the DBA can administer roles it created but must not
+-- retain SET/INHERIT at COMMIT. Grant ownership of existing Sabora objects
+-- only while the legacy global REVOKE executes; no runtime LOGIN involved.
+DO $cv005_scope$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_roles roles
+  WHERE roles.oid IN (
+   SELECT p.proowner FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='sabora'
+   UNION
+   SELECT c.relowner FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='sabora'
+  )
+  AND roles.rolname<>current_user::text
+  AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',candidate_role);
+ END LOOP;
+END;
+$cv005_scope$;
 REVOKE ALL ON SCHEMA sabora FROM sabora_waiter_call_fn_owner,
  sabora_waiter_call_customer_runtime,sabora_waiter_call_staff_runtime;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_waiter_call_fn_owner,
@@ -69,6 +93,7 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_waiter_call_fn_owner,
  sabora_waiter_call_customer_runtime,sabora_waiter_call_staff_runtime;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_waiter_call_fn_owner,
  sabora_waiter_call_customer_runtime,sabora_waiter_call_staff_runtime;
+
 GRANT USAGE ON SCHEMA sabora TO sabora_waiter_call_fn_owner,
  sabora_waiter_call_customer_runtime,sabora_waiter_call_staff_runtime;
 GRANT USAGE ON SCHEMA extensions TO sabora_waiter_call_fn_owner;
@@ -201,6 +226,9 @@ BEGIN
   'tableNumber',v_number,'createdAt',v_call.created_at,'repeated',false);
 END;
 $customer$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_waiter_call_fn_owner;
+GRANT sabora_waiter_call_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.waiter_call_customer_candidate(bytea,uuid,text,uuid)
  OWNER TO sabora_waiter_call_fn_owner;
 REVOKE ALL ON FUNCTION sabora.waiter_call_customer_candidate(bytea,uuid,text,uuid)
@@ -331,4 +359,24 @@ GRANT EXECUTE ON FUNCTION sabora.waiter_call_staff_candidate(jsonb,text,uuid)
  TO sabora_waiter_call_staff_runtime;
 REVOKE ALL ON FUNCTION sabora.guard_waiter_call_events_immutable()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer;
+REVOKE sabora_waiter_call_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_waiter_call_fn_owner;
+
+-- Release only the grants issued by this transaction's current DBA.
+-- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
+DO $cv005_release$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
+   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
+  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
+ END LOOP;
+END;
+$cv005_release$;
+
 COMMIT;
