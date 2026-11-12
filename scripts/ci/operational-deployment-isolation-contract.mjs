@@ -30,9 +30,19 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
   'secret_directory_injection_missing');
  require(/SABORA_EGRESS_POLICY_FILE:\s*\/run\/sabora\/egress-policy\.json/,
   'egress_policy_injection_missing');
+ require(/SABORA_OPERATIONAL_EGRESS_POLICY_FILE:\s*\/run\/sabora\/egress-policy\.json/,
+  'api_egress_policy_injection_missing');
  const serviceSection=name=>compose.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|^networks:)`,'m'))?.[0]??'';
  const apiSection=serviceSection('api'),egressSection=serviceSection('sabora-egress');
  const serviceSections=[apiSection,egressSection];
+ // The application must read the very same immutable policy file mounted
+ // into the gateway, or manifest↔egress preflight cannot be trusted.
+ const policyBind=/source:\s*\$\{SABORA_EGRESS_POLICY_FILE:\?absolute egress policy path required\}\s*\n\s*target:\s*\/run\/sabora\/egress-policy\.json\s*\n\s*read_only:\s*true/;
+ for(const [name,section] of [['api',apiSection],['egress',egressSection]]){
+  if(!policyBind.test(section))violations.push('egress_policy_shared_bind_missing:'+name);
+ }
+ if(!/SABORA_OPERATIONAL_EGRESS_POLICY_FILE:\s*\/run\/sabora\/egress-policy\.json/.test(apiSection))
+  violations.push('api_egress_policy_injection_missing');
  for(const section of serviceSections){
   for(const [pattern,code] of [
    [/restart:\s*["']?no["']?/,'automatic_restart_enabled'],
