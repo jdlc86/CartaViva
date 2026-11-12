@@ -194,6 +194,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    const policyFile=join(fixtureDir,'egress-policy.json');
    await writeFile(manifestFile,JSON.stringify(manifest),{mode:0o600});
    await writeFile(policyFile,JSON.stringify(gw.policy),{mode:0o600});
+   let deniedPoolSlot='not_observed';
    class OnlyCiLoopbackPool extends Pool{
     constructor(options){
      assert.equal(options.host,'sabora-egress');
@@ -202,13 +203,25 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
      // This substitution simulates Docker DNS only on an ephemeral runner;
      // actual TLS, gateway, PostgreSQL role and SQL remain real.
      super({...options,host:'127.0.0.1'});
+     const slot=contract.slots.find(item=>slots[item.poolPath].login===options.user)?.poolPath
+      ?? 'notification';
+     this.on('connect',client=>{
+      const query=client.query.bind(client);
+      client.query=(...args)=>{
+       const result=query(...args);
+       return result&&typeof result.catch==='function'?result.catch(error=>{
+        if(error?.code==='42501')deniedPoolSlot=slot;
+        throw error;
+       }):result;
+      };
+     });
     }
    }
    let labDiagnostic='before_real_sql_start';
    const category=error=>{
     const message=String(error?.message??'');
     if(/^[a-z][a-z0-9_]{4,90}$/.test(message))return message;
-    if(error?.code==='42501')return 'restricted_sql_permission_denied';
+    if(error?.code==='42501')return 'restricted_sql_permission_denied_in_'+deniedPoolSlot.replace(/[^a-z0-9]/gi,'_');
     if(error?.code==='28P01')return 'restricted_sql_password_mismatch';
     if(error?.code==='28000')return 'restricted_sql_role_invalid';
     return 'non_categorized_dependency_failure';
