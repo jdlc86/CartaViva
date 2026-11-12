@@ -1,5 +1,7 @@
 # Sabora S38 — revisión técnica cruzada CV-005 (#57) ↔ activación Bloque 2 (#58)
 
+> **ESTADO VIGENTE S38-6 (12-11-2026):** la candidatura de código B2 `b0d6412191dca6961175e9ba2fba37f81ba7749c` pasó **4/4 workflows**. Se acreditó en laboratorio la pareja exacta `#57@9c943e5b` + `#58@b0d64121` mediante un overlay **solo en CI**; el apartado «pendiente» anterior es cronología, no el estado actual. **Ambos PR siguen Draft y NO-GO operativo**. Ver §6.
+
 **Fecha:** 2026-11-12. **Naturaleza:** expediente técnico de código; **NO** es revisión independiente de DBA/seguridad, conformidad visual, autorización de merge, instalación ni GO operativo. Únicamente `jdlc86/CartaViva`; ningún acceso al VPS, Fleetia, otros proyectos, o DDL/secretos de Supabase.
 
 ## 1. Candidaturas reales y alcance comprobado
@@ -72,3 +74,39 @@ Se corrigió el control de vida de las conexiones en `sabora-egress-gateway.mjs`
 **Puerta abierta:** hasta que el E2E combinado y el real-file bootstrap del nuevo SHA terminen verdes, no cerrar la compatibilidad de laboratorio entre #57/#58 ni declarar transporte resuelto. Tras ello siguen en **NO-GO operacional**: revisión independiente DBA/seguridad de owners y 59 SQL, compatibilidad con Supabase 17.11/supautils, SSL/endpoints/roles/secretos reales, backup/restore custodiado, alertas, aislamiento comprobado de VPS, aceptación visual y autorizaciones explícitas de merge/SQL/despliegue.
 
 **Estado por nivel:** implementado en PR #58; pruebas de la nueva versión **pendientes**; proveedor/aceptación **NO VALIDADOS**.
+
+## 6. S38 — cierre acreditado del hito grande (SHA exacto, 12-11-2026)
+
+### Evidencia reproduci­ble y comparación de fuentes
+
+- **Código B2 evaluado:** [`b0d6412191dca6961175e9ba2fba37f81ba7749c`](https://github.com/jdlc86/CartaViva/commit/b0d6412191dca6961175e9ba2fba37f81ba7749c) en [PR #58 Draft](https://github.com/jdlc86/CartaViva/pull/58).
+- **SQL CV-005 evaluado:** [`9c943e5b6ae2fa39e5abd18fc604688aa5689e5d`](https://github.com/jdlc86/CartaViva/commit/9c943e5b6ae2fa39e5abd18fc604688aa5689e5d) en [PR #57 Draft](https://github.com/jdlc86/CartaViva/pull/57).
+- La ejecución combinada verifica **99 archivos SQL con mismos nombres, 59 versiones modificadas**, superpone las SQL y el harness no-superuser del SHA #57 exclusivamente en el workspace del runner descartable; no crea un commit de árbol fusionado, ni modifica `main`. La pareja de SHAs está inmovilizada por la propia CI. **«Combinado aprobado en laboratorio» significa esta pareja inmutable, no aprobación de un futuro SHA de merge.**
+- La interfaz aprobada **no** se declara aceptada mediante screenshots o regresión funcional. La aceptación visual final se mantuvo `skipped` intencionalmente.
+
+| Workflow en el SHA B2 indicado | Resultado observado | Alcance técnico |
+| --- | --- | --- |
+| [Integración CV-005 + B2 #43274919031](https://github.com/jdlc86/CartaViva/actions/runs/43274919031) | **SUCCESS** | 12/12 contratos non-superuser, **99/99 PG17 con operador CREATEROLE/NOSUPERUSER**, negativa owner/ACL, H6 bloques 1, 2A y 2B **PASS**, API/HMAC/PG17/Chromium con las dos PWA, builds API/cliente/gestión |
+| [Sabora CI #43274918997](https://github.com/jdlc86/CartaViva/actions/runs/43274918997) | **SUCCESS** | H6 1/2A/2B **PASS**, seguridad/configuración/aislamiento/Compose, imagen de API, smoke del modo health-only |
+| [Bootstrap #43274918986](https://github.com/jdlc86/CartaViva/actions/runs/43274918986) | **SUCCESS** | Driver Node PG17, suite final **51/51, 0 fallos**, laboratorio TLS/Gateway/JWKS `sabora_operational_pg17_tls_gateway_and_jwks_ok`, pruebas negativas, Chromium y build en runner |
+| [Functional UI #43274918989](https://github.com/jdlc86/CartaViva/actions/runs/43274918989) | **SUCCESS** | Cobertura funcional; gate de aceptación visual humana `skipped` — **no aprobada** |
+
+La regresión detectó fallos **reales** previamente (`EPIPE` del socket TLS, denegación de privilegio SQL en el preflight). Se corrigió el ciclo de vida de pares de socket y se ajustó el fixture de **`staff.pool`** conforme al contrato de lectura H4 ya implementado: acceso solo a las columnas `user_id, role, state` de `sabora.staff_members`, no membresía en el rol técnico ni permisos genéricos de tabla. Se preservó el principio de mínimo privilegio; el último SHA ejecutó y pasó nuevamente las cuatro baterías.
+
+### Alcance probado frente a límites estrictos
+
+**Implementado:** entrypoint explícito operativo con configuración y secretos de fichero; binding exacto política egress/manifiesto; handshake PostgreSQL SSLRequest + SNI y validación CA/hostname; 17 LOGIN y dos notifiers de CI; JWT/JWKS/HMAC; `/health` separado de `/ready` y listener cerrado durante preflight; rutas H3–H6/M3; integración H6 de dos PWA; fixture de backup/restore cifrado y reversión.
+
+**Ejecutado:** POSTGRESQL17 y 99 SQL de CV-005 bajo operador DBA descartable, comprobación de privilegios; 17 LOGIN ficticios mínimos con `pg` real hacia gateway TLS; Auth JWKS local con certificado efímero, SQL preflight, operaciones HTTP y negativas; H6 Chromium. **Hay dos niveles de E2E:** el ensayo de bootstrap operacional autentica SQL/TLS y llama a las rutas reales; el recorrido de PWA/Chromium usa el harness H6 PG17 integrado. Los tests **no** demuestran las dos PWA navegando por el contenedor Compose operativo montado contra Supabase.
+
+**No probado ni autorizado:** características específicas de Supabase 17.11/`supautils`, credenciales/roles/CA reales, directo IPv6 vs pooler sesión IPv4, egress/firewall y coexistencia real en el VPS, receptor real de alertas, backup/restauración de datos reales, secrets custody/rotation, proveedores Stripe, aceptación estética y revisión independiente. La prueba TLS usó redireccionamiento de sockets al loopback **solo en fixture**; no prueba la seguridad de red del VPS.
+
+### Acta de aceptación y siguiente puerta (sin crear PR nuevo)
+
+**DECISIÓN:** **GO de laboratorio para la pareja de SHAs ensayada**, **NO-GO de merge/despliegue/migración/activación**. Los PR #57/#58 permanecen Draft sin revisión DBA/seguridad independiente; no inferir que la CI es ese dictamen.
+
+**Siguiente hito grande, sin micro-PR:** revisión independiente formal de #57 sobre las 59 versiones, 99 hashes, grants de ownership `NOLOGIN`, membresía DBA `ADMIN TRUE/SET FALSE/INHERIT FALSE`, amenaza de autoconcesión por instalador, keyring HMAC, `SECURITY DEFINER`, `search_path`, `REVOKE` transaccional y compatibilidad Supabase PG17.11; revisión de #58 sobre TLS/SNI, mounts y redes, allowlist, autocierre de 19 pools, JWKS/caducidad, rutas y tratamiento de secretos. Emitir veredicto independiente referenciado a los SHAs, hallazgos reproducibles (severidad/archivo/línea) y acciones a corregir en los PR existentes. El autor del código **no puede aprobarlo como revisor independiente**.
+
+Tras revisión favorable y autorizaciones diferenciadas: preparar un candidato **de integración a un SHA real común**, repetir **todas** las baterías sobre ese SHA; confirmar preflight READ-ONLY del proveedor; diseñar custodia, restauración y provisión de identidades/secretos; solicitar aprobación específica de migración, rollback y VPS Sabora-only. **Ninguna de esas operaciones reales se ejecutó en este hito**; Fleetia y otros proyectos permanecen fuera de alcance.
+
+**Cuatro niveles obligatorios:** CÓDIGO CANDIDATO — **SÍ**; PRUEBAS EN LABORATORIO — **SÍ, con evidencia exacta**; VALIDADO SUPABASE/VPS — **NO**; REVISIÓN INDEPENDIENTE Y APROBACIÓN VISUAL — **NO**.
