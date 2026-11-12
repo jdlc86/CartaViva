@@ -1,6 +1,6 @@
 # Explicit operational candidate. It does not replace compose.sabora.yml and
 # must only be rendered after the activation runbook's STOP gates pass.
-name: sabora-operational-candidate
+name: sabora
 services:
   api:
     build:
