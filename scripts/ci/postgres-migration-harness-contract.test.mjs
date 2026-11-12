@@ -62,8 +62,12 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
   'sabora_ci_membership_probe',
   'sabora_nonsuperuser_self_revocation_observed',
   'sabora_nonsuperuser_self_revocation_unavailable',
+  'sabora_nonsuperuser_sealed_owner_provenance_verified',
+  'sabora_nonsuperuser_sealed_owner_negative_guard_bypassed',
  ])assert.ok(providerCompat.includes(required),required);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
+ assert.match(providerCompat,/20261024190000_sabora_order_operation_actor_capability_candidate.sql/);
+ assert.match(providerCompat,/sealed_memberships/);
  assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
  assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
  assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);
