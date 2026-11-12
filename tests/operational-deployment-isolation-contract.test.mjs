@@ -14,6 +14,8 @@ test('operational candidate gives only the gateway an outbound bridge',()=>{
 
 test('operational isolation gate rejects API egress, broad exposure and weakened hardening',()=>{
  const cases=[
+  [baseline.replace('name: sabora\nservices:', 'name: shared-project\nservices:'),
+   'operational_project_name_invalid'],
   [baseline.replace('networks: [sabora_runtime_internal]\n    volumes:',
    'networks: [sabora_runtime_internal, sabora_egress_outbound]\n    volumes:'),'api_attached_to_outbound_network'],
   [baseline.replace("ports: ['127.0.0.1:4100:4100']","ports: ['4100:4100']"),'operational_port_not_loopback'],
