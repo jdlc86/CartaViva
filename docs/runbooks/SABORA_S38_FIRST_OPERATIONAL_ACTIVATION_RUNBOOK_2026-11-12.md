@@ -81,7 +81,7 @@ health-only; no se permite `sslmode=require` sin identidad ni TLS permisivo.
 
 ## 4. Bootstrap y smoke controlado
 
-1. Arrancar únicamente el proyecto Compose `sabora-operational-candidate` y sus
+1. Arrancar únicamente el proyecto Compose `sabora` con archivo explícito `deploy/compose.sabora-operational.yml` y sus
    dos servicios, sin compartir red, volumen, socket o nombre con otro proyecto.
 2. Verificar que no existe listener útil hasta completar JWKS y todos los
    preflights SQL/ACL/roles/eventos. `/health` sólo acredita proceso vivo.
@@ -100,7 +100,7 @@ certificada permanecen deshabilitados.
 ## 5. Reversión
 
 Ante cualquier fallo, detener sólo los servicios nombrados del proyecto
-`sabora-operational-candidate`, respetando SIGTERM y el timeout acotado. No usar
+`sabora` y servicios nombrados del archivo Compose operativo, respetando SIGTERM y el timeout acotado. No usar
 comandos globales. Confirmar cierre de listener/notifiers/pools y volver al
 compose health-only, que no comparte la red de salida.
 
