@@ -36,6 +36,12 @@ BEGIN
      OR v_owner.rolreplication THEN
    RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
   END IF;
+  -- Existing CI laboratory migrations executed by fixture superuser remain
+  -- compatible: that trusted fixture does not receive bootstrap membership
+  -- and needs no temporary grant. Actual Supabase installer is NOSUPERUSER.
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user::text) THEN
+   CONTINUE;
+  END IF;
   IF NOT EXISTS (
    SELECT 1 FROM pg_catalog.pg_auth_members m
    JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor

@@ -212,7 +212,8 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
  assert.equal(protectedCount,54,'52 original versions plus M2 and M3-M5 transaction scopes');
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
  assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
- assert.match(providerCompat,/NOT rolsuper AND NOT rolbypassrls/, 'migration principal may not bypass RLS');
+ assert.match(providerCompat,/scope_matrix/, 'inspect all browser/DBA privilege facts');
+ assert.match(providerCompat,/'f\|f\|f\|f'/, 'fail if any forbidden privilege is true');
 });
 
 
@@ -241,6 +242,7 @@ test('PG17 redefinitions require a fail-closed, explicitly named owner fence in 
   assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,file);
   assert.ok(sql.includes('cv005_provider_bootstrap_membership_missing'),file);
   assert.ok(sql.includes('cv005_unsafe_existing_fn_owner'),file);
+  assert.ok(sql.includes('IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user::text) THEN'),file+': superuser fixture compatibility');
   assert.ok(sql.includes('m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)'),file);
   assert.ok(sql.includes('NOT m.set_option AND NOT m.inherit_option'),file);
   const actual=[...sql.matchAll(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+sabora\.([a-z_0-9]+)/gi)].map(m=>m[1]).sort();

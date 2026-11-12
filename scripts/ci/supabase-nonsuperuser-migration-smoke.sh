@@ -158,13 +158,20 @@ test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
      AND c.relrowsecurity AND c.relforcerowsecurity")" -eq 69 || {
   echo 'sabora_nonsuperuser_force_rls_mismatch' >&2; exit 1;
 }
-test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
-  "SELECT NOT has_schema_privilege('anon','sabora','USAGE')
-     AND NOT has_schema_privilege('authenticated','sabora','USAGE')
-     AND (SELECT NOT rolsuper AND NOT rolbypassrls
-       FROM pg_roles WHERE rolname=current_user)")" = t || {
-  echo 'sabora_nonsuperuser_privilege_boundary_failed' >&2; exit 1;
-}
+# Negative scope assertion, one boolean per condition; never print credentials.
+# A successful migration chain is not security-approved if browser roles or
+# the fixture DBA can bypass this boundary.
+scope_matrix="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \\
+  -U "$operator" -d "$database" -Atqc \\
+  "SELECT has_schema_privilege('anon','sabora','USAGE'),
+          has_schema_privilege('authenticated','sabora','USAGE'),
+          rolsuper,rolbypassrls
+   FROM pg_roles WHERE rolname=current_user")"
+if [[ "$scope_matrix" != 'f|f|f|f' ]]; then
+  echo "sabora_nonsuperuser_privilege_boundary_failed:${scope_matrix:-empty}" >&2
+  exit 1
+fi
+echo 'sabora_nonsuperuser_privilege_boundary_verified'
 # Prove the runtime boundary with a distinct real LOGIN, not with the DBA.
 runtime_attributes="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
   -U cv005_ci_restricted_probe -d "$database" -Atqc \
