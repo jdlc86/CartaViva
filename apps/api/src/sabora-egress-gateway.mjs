@@ -146,6 +146,17 @@ async function connectTarget(target,lookup,connectImpl){
  });
 }
 
+// A rejected TLS handshake or a peer disconnect must never turn an expected
+// upstream write-after-FIN into an uncaught EPIPE that crashes the gateway.
+// Attach these before forwarding any SSLRequest or ClientHello bytes.
+function bindPeerLifetime(client,upstream){
+ const abort=()=>{client.destroy();upstream.destroy();};
+ client.on('error',abort);
+ upstream.on('error',abort);
+ client.once('close',()=>upstream.destroy());
+ upstream.once('close',()=>client.destroy());
+}
+
 async function proxyConnection(client,target,lookup,connectImpl){
  client.setTimeout(10_000,()=>client.destroy());
  let hello;
@@ -156,6 +167,7 @@ async function proxyConnection(client,target,lookup,connectImpl){
   hello=await firstPacket(client);
   if(hello.serverName!==target.host)throw Error('sabora_egress_destination_denied');
   const upstream=await connectTarget(target,lookup,connectImpl);
+  bindPeerLifetime(client,upstream);
   upstream.write(request);
   const answer=await exactBytes(upstream,1);
   if(answer[0]!==83){upstream.destroy();throw Error('sabora_egress_tls_required');}
@@ -165,6 +177,7 @@ async function proxyConnection(client,target,lookup,connectImpl){
  hello=await firstPacket(client);
  if(hello.serverName!==target.host)throw Error('sabora_egress_destination_denied');
  const upstream=await connectTarget(target,lookup,connectImpl);
+ bindPeerLifetime(client,upstream);
  upstream.write(hello.buffered);client.setTimeout(0);client.pipe(upstream).pipe(client);
 }
 
