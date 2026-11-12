@@ -208,6 +208,6 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
   assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('DO $cv005_early_owner_scope$'),name);
   assert.ok(sql.indexOf('DO $cv005_early_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
  }
- assert.equal(protectedCount,52,'all old candidate versions covered');
+ assert.equal(protectedCount,53,'52 owner versions plus M2 runtime ACL migration covered');
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
 });
