@@ -67,8 +67,87 @@ La primera orden de Codex es inventariar su árbol local, ejecutar `git fetch --
 
 **Estado en este corte:** el documento de encargo **SÍ fue creado** y enlazado; Codex **aún no ha iniciado ni acreditado** implementación desde este encargo, no hay PR B2, no hay nuevos tests B2 ni operaciones reales. No se ha sincronizado remotamente el equipo local de Codex desde esta sesión: será su primer paso. Prohibidos merge, SQL real, secretos, backup real, VPS y operaciones sobre Fleetia sin autorizaciones correspondientes.
 
+## 4 ter. S38-3 — candidato integral Bloque 2 en PR #58 Draft
+
+El encargo S38-2 se convirtió en un único [PR #58 Draft](https://github.com/jdlc86/CartaViva/pull/58),
+rama `feat/sabora-s38-operational-activation-20261112`, partiendo del
+`origin/main` verificado `49420b2c9515fe83659d4e4dd463c8f8d4b6de7d`. El checkout anterior estaba
+limpio y fue preservado; se ejecutó `git fetch --prune origin` y no se usó
+`reset --hard`, `clean`, force-push ni un merge del #57. Su HEAD inicial se
+revalidó como `9c943e5b6ae2fa39e5abd18fc604688aa5689e5d`, Draft y 4/4 workflows verdes,
+pero sus 59 SQL siguen fuera de esta rama y pendientes de revisión independiente.
+
+**Implementado en el commit funcional `9c394e07`:** entrypoint operativo
+separado que reutiliza H3–H6/M3; manifiesto exacto de 17 capacidades mínimas,
+hasta 22 opt-in y dos pools notifier; referencias de secretos sin valores;
+preflight JWKS/SQL/ACL/roles/eventos antes del listener; TLS CA+hostname;
+gateway egress por destino/SNI para PostgreSQL y Auth; Compose operativo con API
+sólo en red interna; cierre parcial/SIGTERM; backup fixture Sabora-only
+AES-256-GCM con checksum, restore PG17 y corrupción negativa; alertas event-driven
+no bloqueantes. `server.mjs`, `api-runtime-config.mjs` y
+`deploy/compose.sabora.yml` permanecen health-only.
+
+**Pruebas locales ejecutadas:** Node **1397/1397 PASS, 0 skipped**; build API,
+cliente y gestión PASS; gates de configuración, aislamiento health-only y
+operativo, inventario de seguridad, recuperación y validación funcional PASS;
+render de ambos Compose PASS; tests dinámicos del túnel TLS y del handshake
+`SSLRequest` PostgreSQL, SNI no autorizado, CA/secreto/identidad, lifecycle y
+backup corrupto PASS. El harness PG17/HTTP/Chromium rechaza correctamente un
+equipo que no sea runner aislado de GitHub Actions; no se falseó
+`GITHUB_ACTIONS`. La batería integral debe acreditarse por Actions del **SHA
+final posterior a esta actualización**, sin heredar PASS del commit funcional.
+
+[Informe técnico del hito](../reviews/SABORA_S38_BLOCK2_OPERATIONAL_ACTIVATION_CANDIDATE_2026-11-12.md)
+y [runbook con puntos STOP](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md).
+**Estado:** candidato de código/laboratorio, NO activación. No se accedió a
+Supabase operativo, VPS, Fleetia ni otros recursos; no hubo DDL, backup real,
+secretos, merge o despliegue. Continúan bloqueando: revisión independiente
+DBA/seguridad; decisión e integración CV-005/#57; endpoints y conectividad reales;
+provisión de LOGIN/secretos; custodia y restore reales; receptor externo de
+alertas; comprobación VPS y autorizaciones separadas.
+
+## 4 quater. S38-4 — revisión cruzada y correcciones integrales #57/#58
+
+Se completó una **revisión técnica de integración** (no revisión independiente de DBA ni de seguridad) documentada en el [expediente S38 CV-005/Bloque 2](../reviews/SABORA_S38_CV005_BLOCK2_CROSS_PR_TECHNICAL_REVIEW_2026-11-12.md). Los PR [#57](https://github.com/jdlc86/CartaViva/pull/57) y [#58](https://github.com/jdlc86/CartaViva/pull/58) permanecen **Draft y sin merge**. Las rutas cambiadas desde `main` no se solapan, pero la ejecución SQL final de ambos **todavía no ha sido validada conjuntamente en un SHA**.
+
+**Defectos concretos corregidos EN #58, no en SQL ni infraestructura:**
+- Socket HTTP del candidato ahora se abre **después** del probe /ready positivo, con pruebas de espera y 503 sin exposición.
+- Nueva paridad exacta entre los 17–22 slots SQL/JWKS y el gateway de salida: política idéntica montada en API y gateway, cotejada antes de leer secretos; rechaza destino, puerto o protocolo divergente y egress no declarado.
+- Compose operativo usa el proyecto **`sabora`** exigido por la normativa, como modo alternativo al health-only; nunca ejecutar ambos a la vez ni operaciones globales, sin tocar otros contenedores.
+- En modo operativo, `/ready` revalida JWKS además de SQL/eventos y falla 503 si no hay claves confiables. El harness PostgreSQL17 real incorpora una interrupción JWKS con /health todavía 200 y posterior recuperación.
+
+**Evidencia separada:** mejoras de código y tests implementados en la rama; **CI del HEAD revisado pendiente de comprobar** y no se hereda el 3/3 de `b825b78e`. El contrato de configuración integrado usa 17 pools simulados y archivo real; no acredita TLS/SQL de proveedor. La prueba H3–H6/M3 PG17 usa SQL real en runner desechable, no el container operativo completo con política real. **NO-GO** persiste por revisión independiente DBA/seguridad, SQL #57 + API #58 en mismo SHA, secretos/login/SSL/egress reales, backup/restore del proveedor y autorizaciones.
+
+## 4 quinquies. S38-5 — integración grande PG17 SQL #57 + API #58 + gateway TLS (12-11-2026)
+
+**Hito técnico en curso dentro de PR #58, sin nuevo PR ni merge:** [expediente cruzado actualizado](../reviews/SABORA_S38_CV005_BLOCK2_CROSS_PR_TECHNICAL_REVIEW_2026-11-12.md). Se añadió un workflow que toma exactamente `#57@9c943e5b`, comprueba **99/99 archivos SQL y 59 diferencias**, superpone solo **en runner desechable** las migraciones y pruebas DBA, ejecuta PostgreSQL 17 `CREATEROLE/NOSUPERUSER`, y pasa la misma candidata API #58 por H6/HMAC/Chromium. La primera ejecución confirmó 99/99 en DBA no-superusuario; **falló después en el ensayo de TLS de la API**, no se considera completa la integración.
+
+El nuevo E2E de transporte usa PG17 real con TLS/hostname verificado, gateway de SNI, origen JWKS HTTPS de laboratorio, y 17 roles LOGIN temporales que se borran con el contenedor. Amplía la comprobación al entrypoint basado en fichero, pools reales, 2 notifiers, catálogo, /ready y permisos denegados. El código implementado además asegura cierre total de pools si falla el entrypoint. La primera batería encontró **`EPIPE` no capturado** al cortar TLS; corregido en el gateway con cierre bilateral y listeners de error. Se añadió diagnóstico exclusivamente de categoría cerrada para localizar qué fase de preflight provocó `sabora_operational_startup_failed`; no se publican errores/credenciales SQL.
+
+Ejecuciones negativas **reales** del commit anterior (no heredar PASS): [CI #43271588836](https://github.com/jdlc86/CartaViva/actions/runs/43271588836), [Bootstrap #43271588874](https://github.com/jdlc86/CartaViva/actions/runs/43271588874), [SQL#57+API#58 #43271588918](https://github.com/jdlc86/CartaViva/actions/runs/43271588918). Se espera **nueva regresión final** antes de marcar hito probado. La revisión independiente de DBA, el proveedor real, la aceptación humana y operaciones autorizadas siguen **NO-GO**. No hubo acceso a Supabase operativo, Fleetia ni VPS.
+
+## 4 sexies. S38-6 — laboratorio SQL CV-005 + API B2 + TLS/HMAC/Chromium **CERRADO VERDE** (12-11-2026)
+
+La revisión de resultados posterior a S38-5 confirma que el [PR #58](https://github.com/jdlc86/CartaViva/pull/58) llegó al SHA **`b0d6412191dca6961175e9ba2fba37f81ba7749c`**, con **4/4 workflows SUCCESS**: [combinación SQL #57 + B2 #43274919031](https://github.com/jdlc86/CartaViva/actions/runs/43274919031), [Sabora CI/H6 #43274918997](https://github.com/jdlc86/CartaViva/actions/runs/43274918997), [Bootstrap PG17 #43274918986](https://github.com/jdlc86/CartaViva/actions/runs/43274918986), [UI funcional #43274918989](https://github.com/jdlc86/CartaViva/actions/runs/43274918989). Aceptación visual humana `skipped` intencionadamente.
+
+En el runner desechable se fijó `PR #57@9c943e5b6ae2fa39e5abd18fc604688aa5689e5d`: **99 SQL, 59 diferentes** de base, **99/99** ejecutadas como operador PG17 `CREATEROLE/NOSUPERUSER`, **12/12** contratos. Tras superponer SQL exclusivamente en CI se pasó H6 completo (normativa, migración/ACL, API/HMAC/PG17/Chromium), además del ensayo de TLS PG17 real ↔ gateway ↔ JWKS HTTPS local y arranque desde ficheros con **17 LOGIN de prueba mínimos y 2 notifiers**. El laboratorio de Node PG17 final quedó **51/51 PASS**. **No existe un commit con código+SQL fusionados**: esta es validación de **pareja exacta de SHAs**; un merge exige nuevo SHA y regresión completa propia.
+
+Causa de fallos previos: `EPIPE` en desconexión del gateway TLS, corregido con cierre bilateral; preflight de staff H4 denegaba porque el fixture otorgaba un rol donde el contrato exige lectura **solo de tres columnas** de `staff_members` sin membresía, corregido en el fixture sin ampliar permisos indiscriminadamente. Todo volvió a PASS.
+
+**Expediente completo y puertas restantes:** [revisión cruzada S38, §6](../reviews/SABORA_S38_CV005_BLOCK2_CROSS_PR_TECHNICAL_REVIEW_2026-11-12.md). **GO únicamente de laboratorio**. **NO-GO** para merge, Supabase, secretos, backup real, VPS y despliegue hasta **revisión independiente DBA/seguridad**, aprobación específica del modelo de autoridad CV-005 y preflight de proveedor Supabase PG17.11/`supautils`, custodia/rotación, SSL y red real aislada, restore/alertas reales y aceptación visual. PR #57 y #58 **Draft, sin fusionar**. No se tocó Fleetia, Supabase operativo ni el VPS.
+
+**Prioridad siguiente de un hito completo:** solicitar revisión verdaderamente independiente de ambos PR, cerrar sus hallazgos en esas mismas ramas y después probar un árbol combinado con un SHA real sin desplegar. Los documentos de continuidad no sustituyen la decisión normativa pendiente de integrar desde #57.
+
+## 4 septies. S38-7 — preflight real READ-ONLY del proveedor y revisión independiente encargada
+
+Se realizó **solo lectura** del proyecto Supabase **`byhvmumqivmunkmomhup`** de la organización RESTAURANTE, sin operar sobre Fleetia ni ningún otro proyecto. Estado **ACTIVE_HEALTHY**, **PostgreSQL 17.11**; la sesión `postgres` expone `NOSUPERUSER/CREATEROLE/BYPASSRLS`; **`pgcrypto` presente**, esquema `sabora` **ausente**, **0 roles Sabora** y **0 migraciones instaladas**. `SHOW ssl` devolvió `on`: **no acredita SSL enforcement** ni verifica identidad del cliente. Tampoco determina el endpoint de pooler sesión, CA del proveedor, custodia de las claves o compatibilidad concreta con `supautils`. No se ejecutó DDL/DML ni se consultaron datos de usuarios.
+
+Se creó en `main` el **[encargo independiente de revisión DBA/seguridad CV-005 + B2](../assignments/SABORA_S38_INDEPENDENT_DBA_SECURITY_REVIEW_CV005_B2_2026-11-12.md)**. Incluye la pareja de SHAs que pasó 4/4, los contratos y 59 migraciones históricas, el riesgo de autoconcesión administrativa bajo la opción A, role/ACL/HMAC/seguridad TLS/JWKS/egress, evidencias/lagunas de PG17.11 y el preflight de proveedor anterior. **Crear el encargo NO significa que Codex haya revisado ni aprobado los PR.** Exige revisor no autor de los cambios, veredictos separados y observaciones con archivo/línea, sin merge, cambios SQL, secretos o despliegue.
+
+**Próxima prioridad:** revisión verdaderamente independiente de [PR #57](https://github.com/jdlc86/CartaViva/pull/57) y [PR #58](https://github.com/jdlc86/CartaViva/pull/58); cerrar los hallazgos dentro de esos PR sin introducir micro-PR; después disponer **un único SHA real integrado con baterías completas** para decidir merge autorizado. La primera instalación exige además permisos separados para roles/DDL, respaldo y restauración custodiada, SSL/egress/VPS aislados, alertas y aceptación visual.
+
 ## 5. Siguiente actuación prioritaria para la nueva sesión
 
-Al reabrir: (1) comprobar GitHub HEAD de #57 y que el **4/4 SUCCESS del SHA `9c943e5b`** siga siendo aplicable al HEAD; (2) contrastar normativa y diff, identificar si existe un revisor independiente; (3) priorizar un **único hito integral** del Bloque 2 por sobre pequeños parches; (4) establecer antes del código el contrato de bootstrap/producto realmente activable y las negativas de seguridad; (5) ejecutar integración PG17/HTTP/Chromium y documentar hechos observados; (6) mantener este documento y el tablero actualizados por **hitos completos**, nunca por estados especulativos.
+Al reabrir: (1) leer **S38-6 y S38-7**, no repetir el hito PG17/TLS ya demostrado; (2) comprobar los HEAD actuales de #57/#58 y las cuatro Actions del SHA de código `b0d64121` o del SHA posterior que incluya cambios de código; (3) ejecutar **revisión independiente formal** usando el encargo DBA/seguridad, sin autoaprobar los cambios ni falsear compatibilidad Supabase; (4) corregir hallazgos en los PR existentes y repetir baterías integradoras; (5) solo con autorizaciones correspondientes preparar un SHA fusionado real y el preflight de proveedor, backup, roles/secretos y aislamiento sin tocar Fleetia; (6) actualizar seguimiento exclusivamente por hitos y separar implementación, laboratorio, proveedor y aceptación humana.
 
 **Referencias de seguimiento:** [PR #57](https://github.com/jdlc86/CartaViva/pull/57) · [PG17 99/99](https://github.com/jdlc86/CartaViva/actions/runs/43217686791) · [Sabora CI H6](https://github.com/jdlc86/CartaViva/actions/runs/43217687786) · [expediente Bloque 2](../reviews/SABORA_S38_PARALLEL_ACTIVATION_READINESS_ANALYSIS_2026-11-12.md) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
