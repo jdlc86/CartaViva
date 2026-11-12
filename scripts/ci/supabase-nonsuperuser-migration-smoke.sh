@@ -144,7 +144,7 @@ unsafe_memberships="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
 }
 unsafe_role_attrs="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
   -U "$operator" -d "$database" -Atqc \
-  "SELECT count(*) FROM pg_roles WHERE left(rolname,7)='sabora_'
+  "SELECT count(*) FROM pg_roles WHERE left(rolname,7)='sabora_' AND rolname <> current_user
   AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)")"
 [[ "$unsafe_role_attrs" == 0 ]] || {
   echo 'sabora_nonsuperuser_sql_role_escalation' >&2; exit 1;
@@ -161,7 +161,7 @@ test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
 test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
   "SELECT NOT has_schema_privilege('anon','sabora','USAGE')
      AND NOT has_schema_privilege('authenticated','sabora','USAGE')
-     AND (SELECT NOT rolsuper AND rolbypassrls
+     AND (SELECT NOT rolsuper AND NOT rolbypassrls
        FROM pg_roles WHERE rolname=current_user)")" = t || {
   echo 'sabora_nonsuperuser_privilege_boundary_failed' >&2; exit 1;
 }

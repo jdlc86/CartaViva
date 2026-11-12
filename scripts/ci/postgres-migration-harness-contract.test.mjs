@@ -211,6 +211,8 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
  }
  assert.equal(protectedCount,54,'52 original versions plus M2 and M3-M5 transaction scopes');
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
+ assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
+ assert.match(providerCompat,/NOT rolsuper AND NOT rolbypassrls/, 'migration principal may not bypass RLS');
 });
 
 
