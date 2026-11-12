@@ -59,6 +59,14 @@ Acciones **del mismo SHA**:
 
 **Estado S38-1:** **análisis y documentación realizados**, código nuevo del Bloque 2 **NO IMPLEMENTADO**, ensayos nuevos del Bloque 2 **NO EJECUTADOS**, operación real **NO VALIDADA**. Esta es una vía de avance paralela sin eludir el NO-GO de activación.
 
+## 4 bis. S38-2 — encargo integral formal a Codex operativo (12-11-2026)
+
+El propietario confirma **Codex nuevamente disponible** y solicita que se le encargue el Bloque 2 completo, indicando que **su repositorio local está desactualizado**. Se creó en `main` el **[encargo ejecutable de desarrollo S38 para Codex](../assignments/SABORA_S38_CODEX_OPERATIONAL_ACTIVATION_IMPLEMENTATION_2026-11-12.md)**, commit [`f4a2275b`](https://github.com/jdlc86/CartaViva/commit/f4a2275b2623ac761d42dd47485287471f2fb1b2). **No es normativa ni ejecución de código.**
+
+La primera orden de Codex es inventariar su árbol local, ejecutar `git fetch --prune origin`, reconciliar sin descartes (`git reset --hard` y `git clean -fd` prohibidos) y partir de `origin/main` actualizado o worktree independiente. Leer la continuidad, tablero y normas; contrastar PR #57 y SHA actual. El encargo incluye como **único hito integral**: identidades SQL/secretos y rotación, TLS y egress Sabora-only, arranque operativo fail-closed de H3–H6/M3, restore cifrado desechable, observabilidad/alertas y pruebas PG17↔API↔dos PWA Chromium. Mantener el trabajo SQL del #57 separado y la revisión independiente pendiente.
+
+**Estado en este corte:** el documento de encargo **SÍ fue creado** y enlazado; Codex **aún no ha iniciado ni acreditado** implementación desde este encargo, no hay PR B2, no hay nuevos tests B2 ni operaciones reales. No se ha sincronizado remotamente el equipo local de Codex desde esta sesión: será su primer paso. Prohibidos merge, SQL real, secretos, backup real, VPS y operaciones sobre Fleetia sin autorizaciones correspondientes.
+
 ## 5. Siguiente actuación prioritaria para la nueva sesión
 
 Al reabrir: (1) comprobar GitHub HEAD de #57 y que el **4/4 SUCCESS del SHA `9c943e5b`** siga siendo aplicable al HEAD; (2) contrastar normativa y diff, identificar si existe un revisor independiente; (3) priorizar un **único hito integral** del Bloque 2 por sobre pequeños parches; (4) establecer antes del código el contrato de bootstrap/producto realmente activable y las negativas de seguridad; (5) ejecutar integración PG17/HTTP/Chromium y documentar hechos observados; (6) mantener este documento y el tablero actualizados por **hitos completos**, nunca por estados especulativos.
