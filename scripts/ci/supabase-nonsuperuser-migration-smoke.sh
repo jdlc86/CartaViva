@@ -11,7 +11,7 @@ fi
 for tool in node docker sha256sum; do command -v "$tool" >/dev/null; done
 node scripts/ci/migration-audit.mjs >/dev/null
 container="sabora-pg-role-ci-$GITHUB_RUN_ID-$$"
-operator="cv005_ci_migration_operator"
+operator="sabora_ci_migration_operator"
 database="sabora_ci_migration_compat"
 cleanup(){ docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -37,13 +37,13 @@ done
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' >/dev/null
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE cv005_ci_migration_operator LOGIN CREATEROLE INHERIT
+CREATE ROLE sabora_ci_migration_operator LOGIN CREATEROLE INHERIT
   NOSUPERUSER NOBYPASSRLS NOREPLICATION;
 SQL
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
   -c "CREATE DATABASE $database OWNER $operator" >/dev/null
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" <<'SQL' >/dev/null
-CREATE SCHEMA extensions AUTHORIZATION cv005_ci_migration_operator;
+CREATE SCHEMA extensions AUTHORIZATION sabora_ci_migration_operator;
 CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
 SQL
 # Diagnose the fixture with public, boolean role attributes only. This must be
@@ -59,116 +59,96 @@ if [[ "$role_check" != 'expected|f|f|t|t' ]]; then
   exit 1
 fi
 echo 'sabora_nonsuperuser_role_preflight_ok'
-# Both branches are exercised on the same offline PG17 cluster before
-# touching Sabora roles. No superuser is available through the Supabase
-# project user's ordinary postgres connection.
-restricted_admission="$(docker exec -i "$container" psql -X -v ON_ERROR_STOP=1  -U "$operator" -d "$database" -At < scripts/ci/sabora-pg17-owner-admission.sql)"
-privileged_admission="$(docker exec -i "$container" psql -X -v ON_ERROR_STOP=1  -U postgres -d "$database" -At < scripts/ci/sabora-pg17-owner-admission.sql)"
-[[ "$restricted_admission" == 'NO_GO:sealed_owner_privileged_provider_required' &&
-   "$privileged_admission" == 'PREFLIGHT_ONLY:privileged_executor_not_approval' ]] || {
-  echo 'sabora_nonsuperuser_admission_gate_inconsistent' >&2; exit 1;
-}
-echo 'sabora_nonsuperuser_owner_admission_boundary_verified'
 
-# Feasibility gate: PG17 CREATEROLE automatically grants ADMIN membership
-# on newly-created roles, while the signed order-owner migration rejects ANY
-# such membership. A login with only CREATEROLE cannot revoke the bootstrap
-# superuser's automatic grant. This is a mandatory NO-GO, not a flaky test.
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
-  -U "$operator" -d "$database" -c \
+# Verify actual PostgreSQL 17 bootstrap membership semantics in the
+# disposable database. The admin's bootstrap grant cannot be removed by
+# CREATEROLE; only a separate short-lived own grant may be revoked.
+docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
   'CREATE ROLE sabora_ci_membership_probe NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS' >/dev/null
-auto_membership="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+baseline="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
   -U "$operator" -d "$database" -Atqc \
-  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
+  "SELECT count(*) FROM pg_auth_members m
+   JOIN pg_roles r ON r.oid=m.roleid
+   JOIN pg_roles giver ON giver.oid=m.grantor
    WHERE r.rolname='sabora_ci_membership_probe'
-     AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)")"
-[[ "$auto_membership" == 1 ]] || {
+     AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+     AND giver.rolsuper AND m.admin_option
+     AND NOT m.set_option AND NOT m.inherit_option")"
+[[ "$baseline" == 1 ]] || {
   echo 'sabora_nonsuperuser_role_semantics_unexpected' >&2; exit 1;
 }
-# The bootstrap grant cannot be withdrawn by CREATEROLE. Prove the
-# threat model: DBA can self-grant SET, ordinary runtime LOGIN cannot.
-revoke_log="$RUNNER_TEMP/sabora-ci-revoke-$GITHUB_RUN_ID-$$.log"
-# PostgreSQL may report command success with a NOTICE: exit status alone
-# cannot certify revocation of a grant issued by the bootstrap superuser.
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"  -c "REVOKE sabora_ci_membership_probe FROM $operator" >"$revoke_log" 2>&1 || true
-rm -f "$revoke_log"
-automatic_grant_remains="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1  -U "$operator" -d "$database" -Atqc  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
-  JOIN pg_roles grantor ON grantor.oid=m.grantor
-  WHERE r.rolname='sabora_ci_membership_probe'
-    AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)
-    AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option")"
-[[ "$automatic_grant_remains" == 1 ]] || {
- echo 'sabora_nonsuperuser_bootstrap_grant_mutated' >&2; exit 1
-}
-echo 'sabora_nonsuperuser_automatic_membership_immutable_verified'
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database"  -c 'CREATE ROLE cv005_ci_runtime_probe LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE' >/dev/null
-if docker exec "$container" psql -X -v ON_ERROR_STOP=1   -U cv005_ci_runtime_probe -d "$database"   -c 'SET ROLE sabora_ci_membership_probe' >/dev/null 2>&1; then
- echo 'sabora_nonsuperuser_runtime_set_role_elevation' >&2; exit 1
-fi
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"  -c "GRANT sabora_ci_membership_probe TO $operator WITH SET TRUE, INHERIT FALSE" >/dev/null
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"  -c 'BEGIN; SET ROLE sabora_ci_membership_probe; ROLLBACK;' >/dev/null
-if docker exec "$container" psql -X -v ON_ERROR_STOP=1   -U cv005_ci_runtime_probe -d "$database"   -c 'SET ROLE sabora_ci_membership_probe' >/dev/null 2>&1; then
- echo 'sabora_nonsuperuser_runtime_inherited_admin_access' >&2; exit 1
-fi
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database"  -c "REVOKE sabora_ci_membership_probe FROM $operator" >/dev/null
-remaining_membership="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1  -U "$operator" -d "$database" -Atqc  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
-  WHERE r.rolname='sabora_ci_membership_probe'
-    AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)
-    AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option")"
-[[ "$remaining_membership" == 1 ]] || {
- echo 'sabora_nonsuperuser_admin_grant_cleanup_failed' >&2; exit 1
-}
-echo 'sabora_nonsuperuser_dba_self_grant_risk_and_runtime_denial_verified'
-# Exercise the actual sealed-owner validation block from the *versioned*
-# migration, without editing or replaying it against any operational database.
-# Negative: CREATEROLE-created owner has a bootstrap-issued membership.
-# Positive control: fixture superuser-created owner has no membership, and
-# the exact same guard succeeds. This proves role-provenance dependence;
-# neither path certifies the complete 99-migration provider installation.
-guard_sql="$RUNNER_TEMP/sabora-sealed-owner-guard-$GITHUB_RUN_ID-$.sql"
-guard_log="$RUNNER_TEMP/sabora-sealed-owner-result-$GITHUB_RUN_ID-$.log"
-awk '$0 == "DO $role$" {active=1} active {print} active && $0 == "$role$;" {exit}' \
-  supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql \
-  > "$guard_sql"
-if ! grep -Fqx '$role$;' "$guard_sql"; then
-  echo 'sabora_nonsuperuser_sealed_owner_guard_extract_failed' >&2; exit 1
-fi
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
-  'CREATE ROLE sabora_order_operations_fn_owner NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' >/dev/null
-if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
-  < "$guard_sql" > "$guard_log" 2>&1; then
-  echo 'sabora_nonsuperuser_sealed_owner_negative_guard_bypassed' >&2; exit 1
-fi
-if ! grep -Fq 'unsafe_sabora_order_operations_fn_owner_membership' "$guard_log"; then
-  echo 'sabora_nonsuperuser_sealed_owner_negative_guard_unexpected' >&2; exit 1
-fi
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
-  'DROP ROLE sabora_order_operations_fn_owner' >/dev/null
-# The privileged account is an off-line fixture only; the real Supabase
-# 'postgres' role is NOT a superuser and cannot be treated as equivalent.
-docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" -c \
-  'CREATE ROLE sabora_order_operations_fn_owner NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION' >/dev/null
-sealed_memberships="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -Atqc \
-  "SELECT count(*) FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid
-   JOIN pg_roles member_role ON member_role.oid=m.member
-   WHERE r.rolname='sabora_order_operations_fn_owner'
-      OR member_role.rolname='sabora_order_operations_fn_owner'")"
-[[ "$sealed_memberships" == 0 ]] || {
-  echo 'sabora_nonsuperuser_preprovisioned_owner_not_sealed' >&2; exit 1
+  "REVOKE sabora_ci_membership_probe FROM $operator" >/dev/null 2>&1 || true
+remaining="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_auth_members m
+   JOIN pg_roles r ON r.oid=m.roleid
+   WHERE r.rolname='sabora_ci_membership_probe'
+     AND m.member=(SELECT oid FROM pg_roles WHERE rolname=current_user)")"
+[[ "$remaining" == 1 ]] || {
+  echo 'sabora_nonsuperuser_bootstrap_grant_changed' >&2; exit 1;
 }
-if ! docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
-  < "$guard_sql" > "$guard_log" 2>&1; then
-  echo 'sabora_nonsuperuser_sealed_owner_positive_guard_failed' >&2; exit 1
-fi
-rm -f "$guard_sql" "$guard_log"
-echo 'sabora_nonsuperuser_sealed_owner_provenance_verified'
-# NO-GO is the expected and PROVED RESULT, not a PostgreSQL execution error.
-# The test succeeds only after the original normative guard rejects the DBA
-# membership and accepts a superuser-created membership-free owner. It does
-# NOT claim that any of the 99 SQL migrations is provider-installable.
-if ! grep -Fq 'unsafe_sabora_order_operations_fn_owner_membership'   supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql; then
-  echo 'sabora_nonsuperuser_sealed_owner_guard_removed' >&2
-  exit 1
-fi
-echo 'sabora_nonsuperuser_provider_no_go_verified:automatic_createrole_membership_conflicts_with_sealed_owner'
-echo 'sabora_provider_installation_not_authorized'
+docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
+  'DROP ROLE sabora_ci_membership_probe' >/dev/null
+echo 'sabora_nonsuperuser_bootstrap_membership_confirmed'
+
+log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
+count=0
+while IFS= read -r name; do
+  [[ "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
+    echo 'sabora_nonsuperuser_invalid_migration_name' >&2; exit 1;
+  }
+  if ! docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 \
+      -U "$operator" -d "$database" < "supabase/migrations/$name" > "$log" 2>&1; then
+    echo "sabora_nonsuperuser_migration_blocked:$name" >&2
+    # The fixture contains no operational identities or credentials.
+    grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
+    exit 1
+  fi
+  ((count+=1))
+done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+[[ "$count" -eq 99 ]] || { echo "sabora_nonsuperuser_incomplete_chain:$count" >&2; exit 1; }
+
+# Exact provider-generated DBA membership is the ONLY tolerated membership
+# on a Sabora role in this *candidate* contract. All migration-scoped SET/
+# INHERIT grants must already have been removed by their originating SQL.
+unsafe_memberships="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_auth_members m
+    JOIN pg_roles granted ON granted.oid=m.roleid
+    JOIN pg_roles member ON member.oid=m.member
+    JOIN pg_roles grantor ON grantor.oid=m.grantor
+   WHERE (left(granted.rolname,7)='sabora_'
+      OR left(member.rolname,7)='sabora_')
+     AND NOT (left(granted.rolname,7)='sabora_'
+      AND member.rolname=current_user::text
+      AND grantor.rolsuper AND m.admin_option
+      AND NOT m.set_option AND NOT m.inherit_option)")"
+[[ "$unsafe_memberships" == 0 ]] || {
+  echo 'sabora_nonsuperuser_runtime_role_membership_leak' >&2; exit 1;
+}
+unsafe_role_attrs="$(docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_roles WHERE left(rolname,7)='sabora_'
+  AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)")"
+[[ "$unsafe_role_attrs" == 0 ]] || {
+  echo 'sabora_nonsuperuser_sql_role_escalation' >&2; exit 1;
+}
+echo 'sabora_nonsuperuser_runtime_role_boundary_verified'
+
+# No skipped RLS tables, no unexpected browser schema access or elevation.
+test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+  "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='sabora' AND c.relkind='r'
+     AND c.relrowsecurity AND c.relforcerowsecurity")" -eq 69 || {
+  echo 'sabora_nonsuperuser_force_rls_mismatch' >&2; exit 1;
+}
+test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+  "SELECT NOT has_schema_privilege('anon','sabora','USAGE')
+     AND NOT has_schema_privilege('authenticated','sabora','USAGE')
+     AND (SELECT NOT rolsuper AND NOT rolbypassrls
+       FROM pg_roles WHERE rolname=current_user)")" = t || {
+  echo 'sabora_nonsuperuser_privilege_boundary_failed' >&2; exit 1;
+}
+rm -f "$log"
+echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"

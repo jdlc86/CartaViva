@@ -1,4 +1,4 @@
-name: Sabora PG17 sealed-owner safety verification (installation NO-GO)
+name: Sabora CV005 PG17 non-superuser 99 migration candidate
 
 on:
   pull_request:
@@ -31,5 +31,5 @@ jobs:
           persist-credentials: false
       - name: Validate isolated migration rehearsal contract
         run: node --test scripts/ci/postgres-migration-harness-contract.test.mjs
-      - name: Demonstrate sealed-owner NO-GO and DBA/runtime separation on disposable PG17
+      - name: Rehearse complete Sabora chain as non-superuser on disposable PG17
         run: bash scripts/ci/supabase-nonsuperuser-migration-smoke.sh
