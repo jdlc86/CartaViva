@@ -13,6 +13,7 @@ import {createGatewayJwksFetch} from '../../apps/api/src/gateway-jwks-fetch.mjs'
 import {createSupabaseJwksProvider} from '../../apps/api/src/jwks.mjs';
 import {startOperationalServerFromFiles} from '../../apps/api/src/operational-server.mjs';
 import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.mjs';
+import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
 import {describeOperationalSqlContract} from '../../apps/api/src/operational-activation-manifest.mjs';
 import {PILOT_ACTIVATION_REQUIREMENTS} from '../../apps/api/src/pilot-activation-gate.mjs';
 
@@ -203,15 +204,37 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
      super({...options,host:'127.0.0.1'});
     }
    }
-   apiRuntime=await startOperationalServerFromFiles({
-    env:{NODE_ENV:'production',SABORA_OPERATIONAL_MANIFEST_FILE:manifestFile,
-     SABORA_OPERATIONAL_SECRETS_DIR:secretsDir,
-     SABORA_OPERATIONAL_EGRESS_POLICY_FILE:policyFile},
-    Pool:OnlyCiLoopbackPool,fetchImpl:trustedFetch,
-    startRuntime:({options,resources,observability})=>
-     startOperationalM3Runtime({options,resources,observability,
-      listener:{host:'127.0.0.1',port:0}})
-   });
+   let labDiagnostic='before_real_sql_start';
+   const category=error=>{
+    const message=String(error?.message??'');
+    if(/^[a-z][a-z0-9_]{4,90}$/.test(message))return message;
+    if(error?.code==='42501')return 'restricted_sql_permission_denied';
+    if(error?.code==='28P01')return 'restricted_sql_password_mismatch';
+    if(error?.code==='28000')return 'restricted_sql_role_invalid';
+    return 'non_categorized_dependency_failure';
+   };
+   try{
+    apiRuntime=await startOperationalServerFromFiles({
+     env:{NODE_ENV:'production',SABORA_OPERATIONAL_MANIFEST_FILE:manifestFile,
+      SABORA_OPERATIONAL_SECRETS_DIR:secretsDir,
+      SABORA_OPERATIONAL_EGRESS_POLICY_FILE:policyFile},
+     Pool:OnlyCiLoopbackPool,fetchImpl:trustedFetch,
+     startRuntime:({options,resources,observability})=>
+      startOperationalM3Runtime({options,resources,observability,
+       listener:{host:'127.0.0.1',port:0},
+       createCandidate:async candidateOptions=>{
+        labDiagnostic='sql_candidate_preflight_started';
+        try{
+         const candidate=await createM3RestaurantCandidate(candidateOptions);
+         labDiagnostic='sql_candidate_preflight_success';
+         return candidate;
+        }catch(error){labDiagnostic=category(error);throw error;}
+       }})
+    });
+   }catch(error){
+    // No raw driver errors, account identifiers, URLs or SQL may be logged.
+    assert.fail('ci_operational_bootstrap_stage:'+labDiagnostic);
+   }
    assert.equal(apiRuntime.summary.capabilityCount,17);
    assert.equal(apiRuntime.mode,'operational-h3-h6-m3-candidate');
    const request=path=>fetch(apiRuntime.origin+path,{signal:AbortSignal.timeout(10_000)});
