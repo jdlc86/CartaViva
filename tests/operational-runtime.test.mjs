@@ -26,7 +26,7 @@ test('operational runtime verifies JWKS and readiness before exposing a successf
   listener:{host:'127.0.0.1',port:0},resources:value.resources,
   createCandidate:async()=>value.candidate,observability:{lifecycle:event=>lifecycle.push(event)}});
  assert.equal(runtime.mode,'operational-h3-h6-m3-candidate');
- assert.deepEqual(value.calls.slice(0,3),[['jwks'],['listen',{host:'127.0.0.1',port:0}],['ready']]);
+ assert.deepEqual(value.calls.slice(0,3),[['jwks'],['ready'],['listen',{host:'127.0.0.1',port:0}]]);
  assert.deepEqual(lifecycle,['started_operational_candidate']);
  await runtime.close();await runtime.close();
  assert.deepEqual(value.calls.slice(-2),[['candidate_close'],['resource_close']]);
@@ -43,6 +43,53 @@ test('JWKS, listener and readiness failures close every acquired dependency and 
   assert.equal(value.calls.filter(call=>call[0]==='resource_close').length,1);
   if(scenario!=='jwks')assert.equal(value.calls.filter(call=>call[0]==='candidate_close').length,1);
  }
+});
+
+test('a pending or failing SQL readiness probe never publishes an HTTP socket',async()=>{
+ const value=fixture();
+ let entered,settle;
+ const probeEntered=new Promise(resolve=>{entered=resolve;});
+ value.candidate.app.inject=async()=>{
+  value.calls.push(['ready']);
+  const result=new Promise(resolve=>{settle=resolve;});
+  entered();
+  return result;
+ };
+ const pending=startOperationalM3Runtime({
+  options:value.options,listener:{host:'127.0.0.1',port:0},
+  resources:value.resources,createCandidate:async()=>value.candidate
+ });
+ await probeEntered;
+ assert.equal(value.calls.some(call=>call[0]==='listen'),false,
+  'no listener may be published while a database readiness check is pending');
+ settle({statusCode:503});
+ await assert.rejects(pending,/operational_runtime_startup_failed/);
+ assert.equal(value.calls.some(call=>call[0]==='listen'),false,
+  'a failed readiness probe must not publish HTTP even momentarily');
+ assert.equal(value.calls.filter(call=>call[0]==='candidate_close').length,1);
+ assert.equal(value.calls.filter(call=>call[0]==='resource_close').length,1);
+});
+
+test('a completed positive readiness probe is required before the listener is created',async()=>{
+ const value=fixture();
+ let entered,settle;
+ const probeEntered=new Promise(resolve=>{entered=resolve;});
+ value.candidate.app.inject=async()=>{
+  value.calls.push(['ready']);
+  const result=new Promise(resolve=>{settle=resolve;});
+  entered();
+  return result;
+ };
+ const pending=startOperationalM3Runtime({
+  options:value.options,listener:{host:'127.0.0.1',port:0},
+  resources:value.resources,createCandidate:async()=>value.candidate
+ });
+ await probeEntered;
+ assert.deepEqual(value.calls.map(call=>call[0]),['jwks','ready']);
+ settle({statusCode:200});
+ const runtime=await pending;
+ assert.deepEqual(value.calls.map(call=>call[0]).slice(0,3),['jwks','ready','listen']);
+ await runtime.close();
 });
 
 test('signal handlers close once and can be removed without process termination',async()=>{
