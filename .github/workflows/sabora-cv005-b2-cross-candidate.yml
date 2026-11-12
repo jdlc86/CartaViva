@@ -1,15 +1,15 @@
 name: Sabora CV005 + B2 SHA-locked combined PG17/HTTP/Chromium candidate
 
 on:
-  push:
-    branches:
-      - feat/sabora-s38-operational-activation-20261112
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   cv005-b2-disposable-integration:
+    if: github.head_ref == 'feat/sabora-s38-operational-activation-20261112'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     concurrency:
@@ -19,6 +19,7 @@ jobs:
       - name: Checkout exact B2 candidate under review
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Checkout pinned CV005 migration candidate separately
         uses: actions/checkout@v4
@@ -54,6 +55,6 @@ jobs:
         run: |
           printf '%s\n' '## Sabora CV005 + B2 cross-candidate rehearsal' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- CV005 migrations: pinned 9c943e5b6ae2fa39e5abd18fc604688aa5689e5d (99 files, 59 modified).' >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' "- B2 source: ${GITHUB_SHA}." >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "- B2 source: $(git rev-parse HEAD) (exact PR head)." >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- SQL overlay: temporary GitHub-hosted runner only, no merge, no Supabase or VPS.' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- PG17 Docker lacks managed supautils/Supabase, real secrets/TLS and human acceptance.' >> "$GITHUB_STEP_SUMMARY"
