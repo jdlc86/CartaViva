@@ -74,7 +74,9 @@ test('production PostgreSQL readers require distinct exact logins, verified TLS 
 test('API app remains health-only and readiness identifies the locked mode',async t=>{
  const app=createApiApp();t.after(()=>app.close());
  assert.deepEqual((await app.inject({method:'GET',url:'/health'})).json(),{status:'ok',service:'sabora-api'});
- assert.deepEqual((await app.inject({method:'GET',url:'/ready'})).json(),{status:'ready',service:'sabora-api',mode:'health-only'});
+ const readiness=await app.inject({method:'GET',url:'/ready'});
+ assert.equal(readiness.statusCode,503);
+ assert.deepEqual(readiness.json(),{status:'unavailable',service:'sabora-api',mode:'health-only'});
  assert.equal((await app.inject({method:'GET',url:'/api/v1/operations/orders'})).statusCode,404);
 });
 

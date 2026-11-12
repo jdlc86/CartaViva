@@ -16,7 +16,6 @@ test('health-only Fastify request telemetry is correlated, bounded and does not 
   const second = await app.inject({ method: 'GET', url: '/ready', headers: header });
   const missed = await app.inject({ method: 'GET', url: '/not-an-endpoint/' + secret + '?qr=' + secret, headers: header });
   assert.equal(first.statusCode, 200);
-  assert.equal(second.statusCode, 200);
   assert.equal(missed.statusCode, 404);
   assert.equal(second.statusCode, 503);
   assert.match(first.headers['x-sabora-request-id'], /^[a-f0-9-]{36}$/);
