@@ -106,6 +106,18 @@ DBA/seguridad; decisión e integración CV-005/#57; endpoints y conectividad rea
 provisión de LOGIN/secretos; custodia y restore reales; receptor externo de
 alertas; comprobación VPS y autorizaciones separadas.
 
+## 4 quater. S38-4 — revisión cruzada y correcciones integrales #57/#58
+
+Se completó una **revisión técnica de integración** (no revisión independiente de DBA ni de seguridad) documentada en el [expediente S38 CV-005/Bloque 2](../reviews/SABORA_S38_CV005_BLOCK2_CROSS_PR_TECHNICAL_REVIEW_2026-11-12.md). Los PR [#57](https://github.com/jdlc86/CartaViva/pull/57) y [#58](https://github.com/jdlc86/CartaViva/pull/58) permanecen **Draft y sin merge**. Las rutas cambiadas desde `main` no se solapan, pero la ejecución SQL final de ambos **todavía no ha sido validada conjuntamente en un SHA**.
+
+**Defectos concretos corregidos EN #58, no en SQL ni infraestructura:**
+- Socket HTTP del candidato ahora se abre **después** del probe /ready positivo, con pruebas de espera y 503 sin exposición.
+- Nueva paridad exacta entre los 17–22 slots SQL/JWKS y el gateway de salida: política idéntica montada en API y gateway, cotejada antes de leer secretos; rechaza destino, puerto o protocolo divergente y egress no declarado.
+- Compose operativo usa el proyecto **`sabora`** exigido por la normativa, como modo alternativo al health-only; nunca ejecutar ambos a la vez ni operaciones globales, sin tocar otros contenedores.
+- En modo operativo, `/ready` revalida JWKS además de SQL/eventos y falla 503 si no hay claves confiables. El harness PostgreSQL17 real incorpora una interrupción JWKS con /health todavía 200 y posterior recuperación.
+
+**Evidencia separada:** mejoras de código y tests implementados en la rama; **CI del HEAD revisado pendiente de comprobar** y no se hereda el 3/3 de `b825b78e`. El contrato de configuración integrado usa 17 pools simulados y archivo real; no acredita TLS/SQL de proveedor. La prueba H3–H6/M3 PG17 usa SQL real en runner desechable, no el container operativo completo con política real. **NO-GO** persiste por revisión independiente DBA/seguridad, SQL #57 + API #58 en mismo SHA, secretos/login/SSL/egress reales, backup/restore del proveedor y autorizaciones.
+
 ## 5. Siguiente actuación prioritaria para la nueva sesión
 
 Al reabrir: (1) comprobar GitHub HEAD de #57 y que el **4/4 SUCCESS del SHA `9c943e5b`** siga siendo aplicable al HEAD; (2) contrastar normativa y diff, identificar si existe un revisor independiente; (3) priorizar un **único hito integral** del Bloque 2 por sobre pequeños parches; (4) establecer antes del código el contrato de bootstrap/producto realmente activable y las negativas de seguridad; (5) ejecutar integración PG17/HTTP/Chromium y documentar hechos observados; (6) mantener este documento y el tablero actualizados por **hitos completos**, nunca por estados especulativos.
