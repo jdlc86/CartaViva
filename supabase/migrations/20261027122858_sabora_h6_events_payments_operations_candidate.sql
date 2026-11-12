@@ -37,10 +37,18 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_auth_members m
     JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
     JOIN pg_catalog.pg_roles member ON member.oid=m.member
-    WHERE granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
+    WHERE (granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
       'sabora_h6_provider_runtime','sabora_h6_fn_owner')
        OR member.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
-         'sabora_h6_provider_runtime','sabora_h6_fn_owner')
+         'sabora_h6_provider_runtime','sabora_h6_fn_owner'))
+      AND NOT (
+        granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
+          'sabora_h6_provider_runtime','sabora_h6_fn_owner')
+        AND member.rolname=current_user::text AND grantor.rolsuper
+        AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper
+      )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_h6_role_membership' USING errcode='0P000';
   END IF;

@@ -37,6 +37,9 @@ BEGIN
    'occupancy',v_admin_writer OR v_role='waiter'));
 END;
 $read_tables$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m3_management_fn_owner;
+GRANT sabora_m3_management_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_admin_tables_m3_candidate(jsonb,integer,integer)
  OWNER TO sabora_m3_management_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_admin_tables_m3_candidate(jsonb,integer,integer)
@@ -126,4 +129,6 @@ GRANT EXECUTE ON FUNCTION sabora.read_admin_catalog_m3_candidate(jsonb)
 
 REVOKE sabora_m5_comms_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_m5_comms_fn_owner;
+REVOKE sabora_m3_management_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m3_management_fn_owner;
 COMMIT;

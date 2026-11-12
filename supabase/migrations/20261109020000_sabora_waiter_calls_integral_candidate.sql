@@ -241,6 +241,9 @@ BEGIN
   'tableNumber',v_number,'createdAt',v_call.created_at,'repeated',false);
 END;
 $customer$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_waiter_call_fn_owner;
+GRANT sabora_waiter_call_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.waiter_call_customer_candidate(bytea,uuid,text,uuid)
  OWNER TO sabora_waiter_call_fn_owner;
 REVOKE ALL ON FUNCTION sabora.waiter_call_customer_candidate(bytea,uuid,text,uuid)
@@ -371,4 +374,6 @@ GRANT EXECUTE ON FUNCTION sabora.waiter_call_staff_candidate(jsonb,text,uuid)
  TO sabora_waiter_call_staff_runtime;
 REVOKE ALL ON FUNCTION sabora.guard_waiter_call_events_immutable()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer;
+REVOKE sabora_waiter_call_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_waiter_call_fn_owner;
 COMMIT;

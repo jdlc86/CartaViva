@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 
 const smoke=readFileSync(new URL('./postgres-migration-smoke.sh',import.meta.url),'utf8');
 const chain=readFileSync(new URL('./postgres-migration-chain-smoke.sh',import.meta.url),'utf8');
@@ -120,4 +120,69 @@ test('HMAC-bound owner retains negative policy for all runtime and unexpected me
   'NOT membership.inherit_option AND NOT membership.set_option',
   'member.rolname = current_user::text',
  ])assert.ok(sql.includes(code),code);
+});
+
+test('all 99 PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(names.length,99,'exact audited chain');
+ let ownerTransferVersions=0;
+ for(const name of names){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  const owners=[...new Set([...sql.matchAll(/\bOWNER TO (sabora_\w+);/g)].map(x=>x[1]))];
+  if(!owners.length)continue;
+  ownerTransferVersions++;
+  const begin=sql.indexOf('BEGIN;');
+  const commit=sql.lastIndexOf('COMMIT;');
+  assert.ok(begin>=0&&commit>begin,name+': one transaction');
+  for(const owner of owners){
+   const grant='GRANT CREATE ON SCHEMA sabora TO '+owner+';';
+   const member='GRANT '+owner+' TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;';
+   const roleRevoke='REVOKE '+owner+' FROM CURRENT_USER;';
+   const createRevoke='REVOKE CREATE ON SCHEMA sabora FROM '+owner+';';
+   const firstOwner=sql.indexOf('OWNER TO '+owner+';');
+   const lastOwner=sql.lastIndexOf('OWNER TO '+owner+';');
+   assert.ok(sql.indexOf(grant)>begin && sql.indexOf(grant)<firstOwner,name+': schema CREATE before owner');
+   assert.ok(sql.indexOf(member)>begin && sql.indexOf(member)<firstOwner,name+': membership before owner');
+   assert.ok(sql.indexOf(roleRevoke)>lastOwner && sql.indexOf(roleRevoke)<commit,name+': membership revoked');
+   assert.ok(sql.indexOf(createRevoke)>lastOwner && sql.indexOf(createRevoke)<commit,name+': CREATE revoked');
+  }
+ }
+ assert.ok(ownerTransferVersions>=50,'complete function owner transfer inventory');
+});
+test('all PG17 sealed owner guards allow at most bootstrap DBA membership',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const gated=[
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261025081318_staff_identity_lifecycle_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261028120000_sabora_staff_directory_read_candidate.sql'
+ ];
+ for(const name of gated){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.match(sql,/grantor\.rolsuper/,name);
+  assert.match(sql,/\.admin_option/,name);
+  assert.match(sql,/NOT (?:membership|m)\.set_option/,name);
+  assert.match(sql,/NOT (?:membership|m)\.inherit_option/,name);
+  assert.match(sql,/current_user::text/,name);
+ }
+});
+test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const gated=[
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261025081318_staff_identity_lifecycle_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261028120000_sabora_staff_directory_read_candidate.sql',
+ '20261109020000_sabora_waiter_calls_integral_candidate.sql'
+ ];
+ for(const name of gated){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.ok(sql.includes('DO $cv005_scope$')&&sql.includes('DO $cv005_release$'),name);
+  assert.ok(sql.indexOf('DO $cv005_scope$')<sql.indexOf('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora'),name);
+  assert.ok(sql.indexOf('DO $cv005_release$')>sql.indexOf('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora'),name);
+  assert.ok(sql.indexOf('DO $cv005_release$')<sql.lastIndexOf('COMMIT;'),name);
+ }
 });

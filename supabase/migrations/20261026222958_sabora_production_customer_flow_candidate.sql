@@ -87,6 +87,9 @@ BEGIN
     CASE WHEN p_company IS NULL THEN NULL ELSE btrim(p_company) END;
 END;
 $registration$;
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_registration_fn_owner;
+GRANT sabora_customer_registration_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.register_customer_profile_session_candidate(
   uuid, text, text, text, uuid, bytea, timestamptz, timestamptz
 ) OWNER TO sabora_customer_registration_fn_owner;
@@ -776,6 +779,9 @@ BEGIN
 END;
 $persist_order$;
 
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_flow_fn_owner;
+GRANT sabora_customer_flow_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.authorize_customer_visit_candidate(
   bytea, uuid, text, text, text, timestamptz
 ) OWNER TO sabora_customer_flow_fn_owner;
@@ -834,4 +840,8 @@ GRANT EXECUTE ON FUNCTION sabora.persist_customer_order_candidate(
   bytea, uuid, text, text, text, text, bytea, uuid, uuid, jsonb, boolean
 ) TO sabora_customer_flow_runtime;
 
+REVOKE sabora_customer_registration_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_registration_fn_owner;
+REVOKE sabora_customer_flow_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_flow_fn_owner;
 COMMIT;

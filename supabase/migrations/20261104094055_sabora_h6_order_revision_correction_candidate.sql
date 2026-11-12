@@ -916,6 +916,9 @@ BEGIN
  ORDER BY o.confirmed_at,o.id,l.line_number LIMIT p_limit+1;
 END;
 $board_delivery_pickup$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_order_operations_delivery_pickup_board_h6_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text)
  OWNER TO sabora_order_operations_fn_owner;
@@ -986,4 +989,6 @@ CREATE TRIGGER h6_bind_dispatch_event_revision
 
 REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

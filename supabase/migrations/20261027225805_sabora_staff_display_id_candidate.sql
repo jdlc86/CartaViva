@@ -18,9 +18,17 @@ BEGIN
          OR rolcreatedb OR rolcreaterole OR rolreplication)
   ) OR EXISTS (
     SELECT 1 FROM pg_catalog.pg_auth_members membership
-    JOIN pg_catalog.pg_roles role
-      ON role.oid=membership.roleid OR role.oid=membership.member
-    WHERE role.rolname='sabora_staff_identity_fn_owner'
+    JOIN pg_catalog.pg_roles granted ON granted.oid=membership.roleid
+    JOIN pg_catalog.pg_roles member ON member.oid=membership.member
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid=membership.grantor
+    WHERE (granted.rolname='sabora_staff_identity_fn_owner' OR member.rolname='sabora_staff_identity_fn_owner')
+      AND NOT (
+        granted.rolname = 'sabora_staff_identity_fn_owner'
+        AND member.rolname = current_user::text
+        AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper
+      )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_staff_identity_fn_owner' USING errcode='0P000';
   END IF;
@@ -394,6 +402,9 @@ BEGIN
  RETURN NEXT;
 END;
 $identity$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_identity_fn_owner;
+GRANT sabora_staff_identity_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.transition_staff_lifecycle_with_identity_candidate(
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text
 ) OWNER TO sabora_staff_identity_fn_owner;
@@ -656,6 +667,9 @@ BEGIN
  ORDER BY o.confirmed_at,o.id,l.line_number LIMIT p_limit+1;
 END;
 $board_v3$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_order_operations_board_authorized_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text
 ) OWNER TO sabora_order_operations_fn_owner;
@@ -674,4 +688,8 @@ COMMENT ON TABLE sabora.staff_employee_code_events IS
 
 REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+REVOKE sabora_staff_identity_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_identity_fn_owner;
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

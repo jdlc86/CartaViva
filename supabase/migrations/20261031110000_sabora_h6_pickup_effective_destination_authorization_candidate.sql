@@ -187,6 +187,9 @@ BEGIN
  RETURN v_result||jsonb_build_object('repeated',false);
 END;
 $manage_pickup$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.manage_pickup_task_h6_candidate(
  text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text
 ) OWNER TO sabora_h6_fn_owner;
@@ -197,4 +200,6 @@ REVOKE ALL ON FUNCTION sabora.manage_pickup_task_h6_candidate(
 GRANT EXECUTE ON FUNCTION sabora.manage_pickup_task_h6_candidate(
  text,text,uuid,text,text,uuid,bigint,text,bigint,bigint,text
 ) TO sabora_h6_operations_runtime;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

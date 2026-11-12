@@ -145,6 +145,9 @@ BEGIN
 END;
 $authorized_read$;
 
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.authorize_order_operation_read_candidate(
   text,text,uuid,text,text,text,bigint,bigint,text
 ) OWNER TO sabora_order_operations_fn_owner;
@@ -348,4 +351,6 @@ COMMENT ON FUNCTION sabora.read_order_operations_history_authorized_candidate(
   text,text,uuid,text,uuid,integer,bigint,bigint,text
 ) IS 'Candidate HMAC-bound operational history projection. No runtime EXECUTE grant is provisioned by migrations.';
 
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
 COMMIT;

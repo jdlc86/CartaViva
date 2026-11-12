@@ -41,6 +41,9 @@ BEGIN
     NULL,NULL,NULL,'kitchen','kitchen',p_event_type,p_task_id,p_task_version,v_payload);
 END;
 $pickup_events$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   uuid,uuid,uuid,text,bigint,uuid,uuid,text,text) OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.emit_pickup_task_staff_events_candidate(
@@ -49,4 +52,6 @@ REVOKE ALL ON FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   sabora_h6_provider_runtime,sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   uuid,uuid,uuid,text,bigint,uuid,uuid,text,text) TO sabora_h6_fn_owner;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;

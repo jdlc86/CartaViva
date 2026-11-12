@@ -281,6 +281,9 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501';
 END;
 $verify_management$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m3_management_fn_owner;
+GRANT sabora_m3_management_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.verify_management_capability_m3(jsonb,text)
  OWNER TO sabora_m3_management_fn_owner;
 REVOKE ALL ON FUNCTION sabora.verify_management_capability_m3(jsonb,text)
@@ -1142,6 +1145,9 @@ BEGIN
  RETURN QUERY SELECT p_order_id,v_grouping,false;
 END;
 $persist_order_m3$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_flow_fn_owner;
+GRANT sabora_customer_flow_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.persist_customer_order_candidate(
  bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean)
  OWNER TO sabora_customer_flow_fn_owner;
@@ -1183,4 +1189,8 @@ CREATE TRIGGER order_line_dynamic_category_m3
 
 REVOKE sabora_catalog_fn_owner FROM CURRENT_USER;
 REVOKE CREATE ON SCHEMA sabora FROM sabora_catalog_fn_owner;
+REVOKE sabora_m3_management_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m3_management_fn_owner;
+REVOKE sabora_customer_flow_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_flow_fn_owner;
 COMMIT;

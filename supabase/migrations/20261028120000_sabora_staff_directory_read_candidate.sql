@@ -18,9 +18,17 @@ BEGIN
          OR rolcreatedb OR rolcreaterole OR rolreplication)
   ) OR EXISTS (
     SELECT 1 FROM pg_catalog.pg_auth_members membership
-    JOIN pg_catalog.pg_roles role
-      ON role.oid=membership.roleid OR role.oid=membership.member
-    WHERE role.rolname='sabora_staff_directory_fn_owner'
+    JOIN pg_catalog.pg_roles granted ON granted.oid=membership.roleid
+    JOIN pg_catalog.pg_roles member ON member.oid=membership.member
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid=membership.grantor
+    WHERE (granted.rolname='sabora_staff_directory_fn_owner' OR member.rolname='sabora_staff_directory_fn_owner')
+      AND NOT (
+        granted.rolname = 'sabora_staff_directory_fn_owner'
+        AND member.rolname = current_user::text
+        AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper
+      )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_staff_directory_fn_owner' USING errcode='0P000';
   END IF;
@@ -229,6 +237,9 @@ BEGIN
   v_transition.result_employee_code,v_transition.result_operational_display_id;
 END;
 $directory_write$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_directory_fn_owner;
+GRANT sabora_staff_directory_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.transition_staff_lifecycle_with_directory_candidate(
  text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text,text,text,text
 ) OWNER TO sabora_staff_directory_fn_owner;
@@ -376,6 +387,9 @@ BEGIN
   'kitchen','kitchen',p_event_type,p_task_id,p_task_version,v_payload);
 END;
 $pickup_events$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_pickup_task_staff_events_candidate(
  uuid,uuid,uuid,text,bigint,uuid,uuid,text,text
 ) OWNER TO sabora_h6_fn_owner;
@@ -390,4 +404,8 @@ COMMENT ON FUNCTION sabora.read_staff_directory_authorized_candidate(
  text,text,uuid,text,text,uuid,text,integer,integer,bigint,bigint,text
 ) IS 'HMAC-bound staff directory projection with active membership revalidation; no runtime grant provisioned.';
 
+REVOKE sabora_staff_directory_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_directory_fn_owner;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
 COMMIT;
