@@ -54,7 +54,9 @@ Un backup de base de datos puede conservar metadatos, pero no contiene los bytes
 
 ## PITR y RTO/RPO operativos
 
-PITR no se ha consultado ni activado sobre ningún proyecto. Antes de producción, DBA y propietario del entorno deben acreditar en una copia autorizada:
+**Actualización 12-11-2026:** se consultaron **únicamente metadatos** de la organización RESTAURANTE y del proyecto Sabora `byhvmumqivmunkmomhup`: organización en plan **Free**, proyecto `ACTIVE_HEALTHY` (PostgreSQL 17.11). Se confirmó con [la documentación vigente de Supabase](https://supabase.com/docs/guides/platform/backups) que **no hay respaldo automático diario incluido en Free ni PITR disponible en ese plan**. No se efectuó una operación de backup ni de restauración; ninguna función de PITR está activada. El detalle de alternativa de dump lógico manual, custodia y validación se actualizó en [runbook P2](SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md).
+
+Antes de una restauración operativa, DBA y propietario del entorno deben acreditar en una copia autorizada:
 
 - modalidad contratada, retención, earliest/latest recovery point y región;
 - punto seleccionado anterior al incidente y RPO resultante;
