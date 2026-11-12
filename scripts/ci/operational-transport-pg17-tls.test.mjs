@@ -156,8 +156,18 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
      " LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB"+
      " NOREPLICATION PASSWORD '"+password+"'");
     createdLogins.push(login);
-    await admin.query('GRANT '+item.capabilityRole+' TO '+login+
-     ' WITH SET TRUE, INHERIT FALSE');
+    if(item.poolPath==='staff.pool'){
+     // Normative H4 staff reader is NOT a SET ROLE capability. Its direct
+     // LOGIN must have zero role memberships and precisely three SELECT
+     // columns, never whole-table SELECT. Mirror the existing PG17 staff
+     // identity test; a broad role GRANT would violate the sealed preflight.
+     await admin.query('GRANT USAGE ON SCHEMA sabora TO '+login);
+     await admin.query('GRANT SELECT (user_id,role,state) '+
+      'ON sabora.staff_members TO '+login);
+    }else{
+     await admin.query('GRANT '+item.capabilityRole+' TO '+login+
+      ' WITH SET TRUE, INHERIT FALSE');
+    }
     const passwordRef='sql_password_'+String(index).padStart(2,'0');
     await writeFile(join(secretsDir,passwordRef),password,{mode:0o600});
     slots[item.poolPath]={login,serverName:actorCertificate,port:5432,
