@@ -299,6 +299,15 @@
 
 **Frontera de autorización:** el permiso recibido era **solo fusionar #56**. Ninguna migración Supabase, DDL, creación de `LOGIN`, instalación de contraseñas, restauración o despliegue VPS queda autorizada por ese mensaje. El proyecto Supabase `byhvmumqivmunkmomhup` permanece sin migraciones aplicadas, plan Free sin backups diarios automáticos ni PITR, y CV-005 con API ordinaria aún `health-only`. Antes de activación real: compatibilidad PG17.11 con rol no-superuser, backup lógico cifrado/ensayo de restauración, inventario de 15/17/22 identidades y notificaciones, contrato de secretos/egress/TLS aislado, alarmas externas probadas y aceptación visual en móvil. No se ha intervenido en VPS/Fleetia ni otros proyectos.
 
+
+### S36-18 — CI post-merge de main confirmada (12-11-2026)
+
+**Verificación directa de la [ejecución GitHub Actions #43177964808](https://github.com/jdlc86/CartaViva/actions/runs/43177964808):** `status=completed`, `conclusion=success`, `event=push`, `head_sha=7dcf90dfab4961574b3bb24b54add9be30b34c00` (commit de fusión de [PR #56](https://github.com/jdlc86/CartaViva/pull/56) en `main`). El job `validate` terminó `success`, sin pasos con conclusión `failure`. Están en `success` específicamente `H6 consolidated acceptance (contracts + disposable PG17 + Chromium)`, `Build`, `Gate production configuration, isolation and frontend artifacts`, `Validate Docker Compose`, `Smoke-test API container without host port or shared network` y `Exercise live API health inside isolated container`. GitHub confirmó también PR #56 `closed/merged`. Las actualizaciones posteriores de documentación no modifican el código integrado.
+
+**Dictamen:** el hito de **integración en `main` y validación CI post-merge queda CERRADO en el laboratorio**. El éxito de este workflow de push no representa seis ejecuciones nuevas de PR: es **un workflow post-merge** con recorrido integrado; los **6/6 de PR** acreditaron el SHA original `98dfd060`. Ninguna ejecución CI equivale a restauración real de Supabase, arranque funcional CV-005 en VPS, revisión independiente, aceptación humana de la interfaz o GO operativo. Continúan pendientes las 99 migraciones en Supabase, verificación del rol PG17.11 no superusuario, backup lógico/restauración del plan Free, identidades SQL mínimas, secretos, TLS/egress Sabora-only, alertas y despliegue expresamente autorizado.
+
+**Alcance de esta comprobación:** consultas de solo lectura a GitHub y actualización de documentación de continuidad/tablero. No se ejecutó SQL de escritura ni operación en Supabase, VPS, Fleetia u otros proyectos.
+
 ---
 
 _Esta es la continuidad operativa vigente a partir de la sesión 36. [Sesión 35](SESSION_35_HANDOFF_2026-11-10.md) permanece como antecedente; los hitos posteriores se documentan aquí._
