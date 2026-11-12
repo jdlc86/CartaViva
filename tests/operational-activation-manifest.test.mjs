@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import tls from 'node:tls';
 import {
   describeOperationalSqlContract,
+  validateOperationalEgressBinding,
   materializeOperationalM3Options,
   validateOperationalActivationManifest,
 } from '../apps/api/src/operational-activation-manifest.mjs';
@@ -18,7 +19,7 @@ function fixtureManifest({stage='lab',mutate}={}){
    serverName:'db.project.supabase.co',port:5432,database:'postgres',mode:'direct',
    passwordRef:`database_password_${String(index).padStart(2,'0')}`,caRef:'database_ca'};
   if(stage==='production')Object.assign(slots[item.poolPath],{
-   connectHost:'sabora-egress',connectPort:15432+index});
+   connectHost:'sabora-egress',connectPort:15432});
  }
  const value={schemaVersion:1,stage,restaurantCode:'SABORA_01',
   listener:{host:stage==='production'?'0.0.0.0':'127.0.0.1',port:4100,
@@ -89,6 +90,36 @@ test('manifest rejects shared identities, privileged principals, host drift and 
  for(const mutate of cases)
   assert.throws(()=>validateOperationalActivationManifest(fixtureManifest({stage:'production',mutate})),
    /operational_activation_manifest_invalid/);
+});
+
+test('production bootstrap allows only exact SQL/JWKS tunnel bindings shared by all slots',()=>{
+ const manifest=fixtureManifest({stage:'production'});
+ const policy={schemaVersion:1,bindHost:'0.0.0.0',targets:[
+  {id:'database_main',listenPort:15432,host:'db.project.supabase.co',
+   port:5432,protocol:'postgres_tls'},
+  {id:'auth_jwks',listenPort:15443,host:'project.supabase.co',
+   port:443,protocol:'tls'},
+ ]};
+ assert.deepEqual(validateOperationalEgressBinding(manifest,policy),{
+  targetCount:2,capabilityCount:22,notifierCount:2,
+ });
+ const fails=[
+  [value=>{value.database.slots['customer.flowPool'].connectPort=15433;},null],
+  [value=>{value.database.slots['h6.eventPool'].serverName='db2.project.supabase.co';
+   value.network.allowedTlsHosts.push('db2.project.supabase.co');},null],
+  [null,value=>{value.targets[0].host='other.supabase.co';}],
+  [null,value=>{value.targets[0].protocol='tls';}],
+  [null,value=>{value.targets[1].listenPort=15444;}],
+  [null,value=>{value.targets.push({id:'unused_target',listenPort:15445,
+   host:'extra.supabase.co',port:443,protocol:'tls'});}],
+ ];
+ for(const [changeManifest,changePolicy] of fails){
+  const candidate=structuredClone(manifest);
+  const egress=structuredClone(policy);
+  changeManifest?.(candidate);changePolicy?.(egress);
+  assert.throws(()=>validateOperationalEgressBinding(candidate,egress),
+   /operational_activation_manifest_invalid/);
+ }
 });
 
 test('materialization constructs one strict bounded pool per slot plus two distinct notifiers',async()=>{
