@@ -4,8 +4,8 @@
 # runner, never on Supabase, the VPS or a developer's working tree.
 set -euo pipefail
 if [[ "${GITHUB_ACTIONS:-}" != "true" || -z "${GITHUB_RUN_ID:-}" ||
-      -z "${RUNNER_TEMP:-}" || "${GITHUB_REF:-}" !=
-      "refs/heads/feat/sabora-s38-operational-activation-20261112" ]]; then
+      -z "${RUNNER_TEMP:-}" || "${GITHUB_EVENT_NAME:-}" != "pull_request" ||
+      "${GITHUB_HEAD_REF:-}" != "feat/sabora-s38-operational-activation-20261112" ]]; then
  echo 'sabora_cv005_b2_disposable_runner_required' >&2; exit 1
 fi
 cv005=.cv005-exact-pin
