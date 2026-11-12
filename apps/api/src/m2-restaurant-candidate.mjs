@@ -160,6 +160,14 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
 
   const preflight=async()=>{
+   // Readiness includes the configured issuer and a bounded trusted JWKS
+   // source. Routes must not be considered ready merely because SQL works.
+   const trustedKeys=await staff.getTrustedKeys();
+   if(!Array.isArray(trustedKeys)||trustedKeys.length<1||trustedKeys.length>20||
+      trustedKeys.some(key=>!key||key.kty!=='RSA'||key.alg!=='RS256'||
+       key.use!=='sig'||typeof key.kid!=='string'||!key.kid||
+       typeof key.n!=='string'||!key.n||typeof key.e!=='string'||!key.e))
+    throw Error('invalid_m2_staff_jwks');
    if(waiterCalls){
     await assertWaiterCallRuntimeIdentity({pool:waiterCalls.customerPool,
      expectedLogin:waiterCalls.expectedCustomerLogin,kind:'customer'});

@@ -1,0 +1,78 @@
+# Explicit operational candidate. It does not replace compose.sabora.yml and
+# must only be rendered after the activation runbook's STOP gates pass.
+name: sabora-operational-candidate
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: ["node", "src/operational-server.mjs"]
+    restart: "no"
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      NODE_ENV: production
+      SABORA_OPERATIONAL_MANIFEST_FILE: /run/sabora/activation.json
+      SABORA_OPERATIONAL_SECRETS_DIR: /run/secrets/sabora
+    ports: ['127.0.0.1:4100:4100']
+    networks: [sabora_runtime_internal]
+    volumes:
+      - type: bind
+        source: ${SABORA_OPERATIONAL_MANIFEST_FILE:?absolute manifest path required}
+        target: /run/sabora/activation.json
+        read_only: true
+      - type: bind
+        source: ${SABORA_OPERATIONAL_SECRETS_DIR:?absolute secrets directory required}
+        target: /run/secrets/sabora
+        read_only: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 150
+    cap_drop: [ALL]
+    init: true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+  sabora-egress:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    command: ["node", "src/sabora-egress-gateway.mjs"]
+    restart: "no"
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      NODE_ENV: production
+      SABORA_EGRESS_POLICY_FILE: /run/sabora/egress-policy.json
+    networks: [sabora_runtime_internal, sabora_egress_outbound]
+    volumes:
+      - type: bind
+        source: ${SABORA_EGRESS_POLICY_FILE:?absolute egress policy path required}
+        target: /run/sabora/egress-policy.json
+        read_only: true
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 75
+    cap_drop: [ALL]
+    init: true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+networks:
+  sabora_runtime_internal:
+    driver: bridge
+    internal: true
+  sabora_egress_outbound:
+    driver: bridge

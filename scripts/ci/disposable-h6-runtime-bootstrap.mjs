@@ -2,9 +2,9 @@
 // The live server.mjs remains health-only. This bootstrap never provisions
 // roles, reads operational secrets, deploys, or contacts an external database.
 // All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
-import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
 import {validateM2RuntimeSqlIdentities} from '../../apps/api/src/m2-runtime-identity-inventory.mjs';
 import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
+import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const invalid=()=>Error('disposable_m3_bootstrap_required');
@@ -57,10 +57,11 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    (isolatedOptions.waiterCalls?2:0);
   if(inventory.capabilityCount!==expected||inventory.notifierCount!==2)
    throw invalid();
-  candidate=await createM3RestaurantCandidate(isolatedOptions);
-  if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
-  // The factory permits only loopback. Port 0 eliminates fixed host binds.
-  const origin=await candidate.listen({host:'127.0.0.1',port:0});
+  candidate=await startOperationalM3Runtime({options:isolatedOptions,
+   listener:{host:'127.0.0.1',port:0},observability:diagnostics});
+  if(candidate.mode!=='operational-h3-h6-m3-candidate')throw invalid();
+  // The lab entrypoint permits only loopback. Port 0 eliminates fixed host binds.
+  const origin=candidate.origin;
   if(!/^http:\/\/127\.0\.0\.1:[0-9]+$/.test(origin))throw invalid();
   const probe=async path=>fetch(origin+path,{
    method:'GET',cache:'no-store',signal:AbortSignal.timeout(30000)

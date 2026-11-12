@@ -75,12 +75,19 @@ jobs:
       - name: Gate production configuration, isolation and frontend artifacts
         run: |
           node scripts/ci/deployment-isolation-contract.mjs
+          node scripts/ci/operational-deployment-isolation-contract.mjs
           node scripts/ci/operational-security-inventory.mjs
           node scripts/ci/recovery-continuity-contract.mjs
           node scripts/ci/functional-validation-contract.mjs
           node scripts/ci/production-config-secrets-gate.mjs
       - name: Validate Docker Compose
-        run: docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
+        env:
+          SABORA_OPERATIONAL_MANIFEST_FILE: /tmp/sabora-activation-unavailable.json
+          SABORA_OPERATIONAL_SECRETS_DIR: /tmp/sabora-secrets-unavailable
+          SABORA_EGRESS_POLICY_FILE: /tmp/sabora-egress-unavailable.json
+        run: |
+          docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
+          docker compose --project-name sabora-operational-candidate --file deploy/compose.sabora-operational.yml config --quiet
       - name: Build isolated Sabora API image
         run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
       - name: Smoke-test API container without host port or shared network

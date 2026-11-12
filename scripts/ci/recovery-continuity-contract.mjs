@@ -61,6 +61,9 @@ export function inspectRecoveryContinuity(rootPath, {
     '--section=pre-data',
     'p3_interrupted_recovery_target_not_recreated',
     'p3_clean_cluster_load_fingerprint_mismatch',
+    'encrypted-backup-artifact.mjs encrypt',
+    'encrypted-backup-artifact.mjs decrypt',
+    'p3_corrupt_encrypted_archive_accepted',
     'sabora_p3_recovery_metrics:',
   ];
   for (const marker of exactMarkers) if (!script.includes(marker)) {

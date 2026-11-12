@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 # Only called with a container owned by the isolated migration CI harness.
 if [[ "${GITHUB_ACTIONS:-}" != true || -z "${RUNNER_TEMP:-}" || -z "${GITHUB_RUN_ID:-}" || "$#" -ne 1 ]]; then
  echo 'recovery_harness_required' >&2; exit 1
@@ -223,9 +224,16 @@ done
 clean_container="sabora-pg-recovery-ci-${GITHUB_RUN_ID}-$$"
 host_archive="${RUNNER_TEMP}/sabora-schema-recovery-${GITHUB_RUN_ID}-$.dump"
 host_roles="${RUNNER_TEMP}/sabora-roles-recovery-${GITHUB_RUN_ID}-$.sql"
+host_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.tar"
+encrypted_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.tar.aesgcm"
+backup_manifest="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.manifest.json"
+backup_key="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.key"
+corrupt_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.corrupt"
+corrupt_output="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.corrupt-output"
 cleanup_clean_recovery(){
  docker rm -f -v "$clean_container" >/dev/null 2>&1 || true
- rm -f "$host_archive" "$host_roles"
+ rm -f "$host_archive" "$host_roles" "$host_bundle" "$encrypted_bundle" \
+  "$backup_manifest" "$backup_key" "$corrupt_bundle" "$corrupt_output"
 }
 trap cleanup_clean_recovery EXIT
 
@@ -257,6 +265,20 @@ order by parent.rolname,member.rolname;
 SQL
 grep -q '^create role sabora_staff_reader ' "$host_roles"
 docker cp "$container:/tmp/sabora-schema-only-recovery.dump" "$host_archive" >/dev/null
+openssl rand -hex 32 > "$backup_key"
+tar -cf "$host_bundle" -C "$RUNNER_TEMP" "$(basename "$host_archive")" "$(basename "$host_roles")"
+SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs encrypt \
+ "$host_bundle" "$encrypted_bundle" "$backup_manifest"
+rm -f "$host_bundle" "$host_archive" "$host_roles"
+SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs decrypt \
+ "$encrypted_bundle" "$backup_manifest" "$host_bundle"
+tar -xf "$host_bundle" -C "$RUNNER_TEMP"
+cp "$encrypted_bundle" "$corrupt_bundle"
+printf 'X' | dd of="$corrupt_bundle" bs=1 seek=17 conv=notrunc status=none
+if SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs decrypt \
+ "$corrupt_bundle" "$backup_manifest" "$corrupt_output" >/dev/null 2>&1; then
+ echo 'p3_corrupt_encrypted_archive_accepted' >&2; exit 1
+fi
 
 docker run -d --name "$clean_container" --network none \
  -e POSTGRES_PASSWORD=ci_only_not_a_secret postgres:17-alpine >/dev/null
