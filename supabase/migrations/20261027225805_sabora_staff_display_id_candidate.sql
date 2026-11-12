@@ -153,10 +153,50 @@ CREATE TRIGGER staff_code_maintenance_requests_no_truncate
   BEFORE TRUNCATE ON sabora.staff_code_maintenance_requests
   FOR EACH STATEMENT EXECUTE FUNCTION sabora.reject_staff_lifecycle_history_mutation();
 
+-- CV-005 CANDIDATE: the DBA can administer roles it created but must not
+-- retain SET/INHERIT at COMMIT. Grant ownership of existing Sabora objects
+-- only while the legacy global REVOKE executes; no runtime LOGIN involved.
+DO $cv005_scope$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_roles roles
+  WHERE roles.oid IN (
+   SELECT p.proowner FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='sabora'
+   UNION
+   SELECT c.relowner FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='sabora'
+  )
+  AND roles.rolname<>current_user::text
+  AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',candidate_role);
+ END LOOP;
+END;
+$cv005_scope$;
 REVOKE ALL ON SCHEMA sabora FROM sabora_staff_identity_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_staff_identity_fn_owner;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_staff_identity_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_staff_identity_fn_owner;
+-- Release only the grants issued by this transaction's current DBA.
+-- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
+DO $cv005_release$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
+   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
+  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
+ END LOOP;
+END;
+$cv005_release$;
 GRANT USAGE ON SCHEMA sabora,extensions TO sabora_staff_identity_fn_owner;
 -- PostgreSQL requires UPDATE privilege for a SELECT ... FOR SHARE row lock.
 -- The owner is a sealed NOLOGIN/NOINHERIT role and the candidate functions
