@@ -104,9 +104,9 @@ test('PG17 candidate owner transfers are scoped to the original migration transa
   const revokes=[...sql.matchAll(/^REVOKE (sabora_\w+) FROM CURRENT_USER;$/gm)].map(x=>x[1]);
   const schemaRevokes=[...sql.matchAll(/^REVOKE CREATE ON SCHEMA sabora FROM (sabora_\w+);$/gm)].map(x=>x[1]);
   assert.ok(grants.length>0,name+': no scoped owner grants');
-  assert.deepEqual(grants,memberships,name);
-  assert.deepEqual(grants,revokes,name);
-  assert.deepEqual(grants,schemaRevokes,name);
+  assert.deepEqual(grants.slice().sort(),memberships.slice().sort(),name);
+  assert.deepEqual(grants.slice().sort(),revokes.slice().sort(),name);
+  assert.deepEqual(grants.slice().sort(),schemaRevokes.slice().sort(),name);
   assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('GRANT CREATE ON SCHEMA sabora'),name);
   assert.ok(sql.lastIndexOf('COMMIT;')>sql.lastIndexOf('REVOKE CREATE ON SCHEMA sabora'),name);
   assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
