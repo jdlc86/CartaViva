@@ -51,12 +51,15 @@ test('verified table action projections are exact and legacy reads stay non-auth
  assert.equal(admin.permissions.configure,true);
  assert.equal(waiter.permissions.configure,false);
  assert.equal(waiter.permissions.readiness,true);
+ const nonOwner=validateAdminTablesPage({version:2,items:[],nextAfterNumber:null,
+   permissions:{configure:false,qr:false,readiness:false,occupancy:false}});
+ assert.deepEqual(nonOwner.permissions,{configure:false,qr:false,readiness:false,occupancy:false});
  assert.ok(Object.isFrozen(waiter.permissions));
  for(const permissions of [
   {configure:true,qr:false,readiness:true,occupancy:true},
   {configure:'admin',qr:true,readiness:true,occupancy:true},
   {configure:false,qr:false,readiness:true,occupancy:true,role:'admin'},
-  {configure:false,qr:false,readiness:false,occupancy:true}
+  {configure:true,qr:true,readiness:false,occupancy:false}
  ]){
   assert.throws(()=>validateAdminTablesPage({version:2,items:[],nextAfterNumber:null,
    permissions}),/invalid_admin_tables_page/);

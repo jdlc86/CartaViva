@@ -20,6 +20,7 @@ const emptyForm=()=>({name:'',description:'',imageUrl:'',categoryId:'',price:'0,
 
 export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3CatalogGateway;operationsGateway?:OrderOperationsGateway}){
  const [catalog,setCatalog]=useState<M3ManagementCatalog|null>(null);
+ const canWriteAdmin=catalog?.permissions.manage===true;
  const [phase,setPhase]=useState<'loading'|'ready'|'error'>('loading');
  const [reload,setReload]=useState(0);const [pending,setPending]=useState(false);
  const [message,setMessage]=useState<string|null>(null);const [selectedId,setSelectedId]=useState<string|null>(null);
@@ -34,6 +35,16 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  useEffect(()=>{let active=true;setPhase('loading');void loadM3ManagementCatalog(gateway).then(value=>{
   if(!active)return;setCatalog(value);setSelectedId(value.items[0]?.id??null);setPhase('ready');
  }).catch(()=>active&&setPhase('error'));return()=>{active=false};},[gateway,reload]);
+ // No polling. Foreground/focus prompts a fresh signed authorization
+ // projection when another ADMIN may have acquired ownership.
+ useEffect(()=>{
+  const onFocus=()=>setReload(v=>v+1);
+  const onVisible=()=>{if(document.visibilityState==='visible')onFocus();};
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>{window.removeEventListener('focus',onFocus);
+   document.removeEventListener('visibilitychange',onVisible);};
+ },[]);
  const selected=catalog?.items.find(item=>item.id===selectedId)??null;
  // Selection hydration must complete before an input becomes interactable;
  // a passive effect can restore stale values after the next user action.
@@ -64,7 +75,7 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
      price:euro(x.priceCents),available:x.available===true})):[]})):[]});
  },[catalog?.categories,newItem,selected]);
  const mutate=async(operation:string,payload:Record<string,unknown>,success:string)=>{
-  if(pending)return;setPending(true);setMessage(null);
+  if(pending||!canWriteAdmin)return;setPending(true);setMessage(null);
   let committed=false;
   try{
    const result=await gateway.manageCatalog({requestId:crypto.randomUUID(),operation,payload});
@@ -77,6 +88,12 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
    await refresh();
    setMessage(success);
   }catch(error){
+   if(error instanceof Error&&error.message==='m3_management_forbidden'){
+    // The server rejected an old actor. Immediately withdraw the stale
+    // edit controls; the next signed read decides current ownership.
+    setCatalog(previous=>previous?Object.freeze({...previous,
+     permissions:Object.freeze({manage:false})}):previous);
+   }
    setMessage(error instanceof Error&&error.message==='m3_management_forbidden'
     ?'Solo el administrador titular puede modificar el catálogo. Los cambios no se han guardado.'
     :committed
@@ -122,6 +139,17 @@ export function M3CatalogManagementView({gateway,operationsGateway}:{gateway:M3C
  const published=useMemo(()=>catalog?.items.filter(item=>item.publishedSnapshot&&!item.withdrawn)??[],[catalog]);
  if(phase==='loading')return <LoadingState title="Cargando editor" description="Leyendo borradores y publicaciones con autorización administrativa."/>;
  if(phase==='error'||!catalog)return <ErrorState title="Editor no disponible" description="No se recibió una proyección administrativa válida." onRetry={()=>setReload(v=>v+1)}/>;
+ if(!canWriteAdmin)return <div className="view-stack">
+  <PageHeader eyebrow="Catálogo" title="Carta en consulta" description="El editor requiere la titularidad administrativa vigente."/>
+  <ConnectionNotice title="Solo lectura">No eres el ADMIN titular verificado, o no se pudo comprobar la titularidad. Cocina y sala conservan sus permisos independientes.</ConnectionNotice>
+  <section className="panel" aria-label="Catálogo administrativo en consulta">
+   <ul className="catalog-list">{catalog.items.map(item=><li key={item.id}>
+    <div className="catalog-list-item"><strong>{String(item.draft.name??'Borrador sin nombre')}</strong>
+     <StatusBadge tone={item.withdrawn?'warning':item.publishedRevision?'brand':'neutral'}>
+      {item.withdrawn?'RETIRADO':item.publishedRevision?'PUBLICADO':'BORRADOR'}
+     </StatusBadge></div></li>)}</ul>
+  </section>
+ </div>;
  return <div className="view-stack">
   <PageHeader eyebrow="Catálogo" title="Editor de carta" description="Borrador y publicación explícita, categorías dinámicas y precios calculados en céntimos."
    actions={<button className="button button--primary" type="button" onClick={()=>{

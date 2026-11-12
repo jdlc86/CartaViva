@@ -211,7 +211,20 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   assert.match(formattedBody,/\*\*negrita\*\*/,
    'rich-text toolbar must insert bold markup at the intended cursor');
   await manager.getByLabel('Emoji para la banda').fill('🌿');
-  // The default schedule starts at 09:00 Madrid: make this E2E notice active at test time.
+  // The public SQL interval is [startTime, endTime), so 23:59 Madrid
+  // is already *outside* a 00:00–23:59 notice. On CI at 22:59:52 UTC
+  // (23:59:52 Europe/Madrid), this previously yielded 1 instead of 2.
+  // Exercise a real IANA timezone safely around local noon, regardless of
+  // the runner clock, without bypassing PostgreSQL scheduling or publication.
+  const now=new Date(),shift=12-now.getUTCHours();
+  const scheduleZone=shift===0?'Etc/GMT':
+   `Etc/GMT${shift>0?'-':'+'}${Math.abs(shift)}`;
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:scheduleZone,
+   year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+  const dayField=type=>parts.find(part=>part.type===type)?.value;
+  const scheduleDay=[dayField('year'),dayField('month'),dayField('day')].join('-');
+  await manager.getByLabel('Zona horaria IANA').fill(scheduleZone);
+  await manager.getByLabel('Fecha desde').fill(scheduleDay);
   await manager.getByLabel('Hora desde').fill('00:00');
   await manager.getByLabel('Hora hasta').fill('23:59');
   await manager.getByLabel('Fotografía opcional (propia o con licencia; máximo 128 KiB)')
@@ -224,6 +237,10 @@ test('CV-014: actual PostgreSQL17 → signed Fastify → two Chromium PWAs → p
   const itemsAfterSave=(await repositories.readAdmin(verified)).items;
   const photo=itemsAfterSave.find(a=>a.draft.title==='Oferta de la tarde');
   assert(photo,'management must create a real durable row');
+  assert.equal(photo.draft.schedule.timeZone,scheduleZone,
+   'the browser must persist the selected IANA timezone via signed PostgreSQL');
+  assert.equal(photo.draft.schedule.startDate,scheduleDay,
+   'the browser must persist the active schedule date without UTC/Madrid drift');
   assert.equal(photo.draft.body,formattedBody,
    'draft must persist the entire formatted browser message exactly');
   assert.match(photo.draft.body,/\*\*negrita\*\*/,

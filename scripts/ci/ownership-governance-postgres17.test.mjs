@@ -15,6 +15,18 @@ import {assertWaiterCallRuntimeIdentity,createWaiterCallStaffIssuer,
  WAITER_CALL_CUSTOMER_ROLE,WAITER_CALL_STAFF_ROLE}
  from '../../apps/api/src/waiter-call-candidate.mjs';
 import {createStaffProtectedHooksFromPool} from '../../apps/api/src/staff-protected-hooks-from-pool.mjs';
+import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
+import {M3_TABLES_ROLE,M3_CATALOG_ROLE,assertM3TablesCapability,
+ assertM3CatalogCapability} from '../../apps/api/src/m3-runtime-capabilities.mjs';
+import {createM3TablesRepository,createM3CatalogRepository,createM3FinanceRepository,
+ READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL,
+ READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL}
+ from '../../apps/api/src/m3-management-repository.mjs';
+import {registerM3ManagementHttp} from '../../apps/api/src/m3-management-http.mjs';
+import {M5_COMMS_ADMIN_ROLE,M5_COMMS_PUBLIC_ROLE,READ_M5_COMMS_ADMIN_SQL,
+ MANAGE_M5_COMMS_SQL,READ_M5_COMMS_PUBLIC_SQL,assertM5CommunicationsCapability,
+ createM5CommunicationsRepositories,registerM5CommunicationsHttp}
+ from '../../apps/api/src/m5-communications.mjs';
 import {OWNERSHIP_ROLE,OWNERSHIP_SQL,createOwnershipCapabilityIssuer,
  assertOwnershipRuntimeIdentity,createOwnershipGovernanceRepository,
  registerOwnershipGovernanceHttp} from '../../apps/api/src/ownership-governance-candidate.mjs';
@@ -34,7 +46,11 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
  const suffix=process.pid.toString(36),login='sabora_owner_sql_'+suffix,
   staffLogin='sabora_owner_staff_'+suffix,keyId='ownership_ci_'+suffix;
  const customerLogin='sabora_dual_customer_'+suffix,
-  waiterLogin='sabora_dual_waiter_'+suffix;
+  waiterLogin='sabora_dual_waiter_'+suffix,
+  tablesLogin='sabora_dual_tables_'+suffix,
+  catalogLogin='sabora_dual_catalog_'+suffix,
+  commsAdminLogin='sabora_dual_comms_admin_'+suffix,
+  commsPublicLogin='sabora_dual_comms_public_'+suffix;
  const customerId=randomUUID(),waiterId=randomUUID(),tableId=randomUUID();
  const customerToken=randomBytes(32).toString('base64url');
  const qrToken=randomBytes(32).toString('base64url');
@@ -76,20 +92,30 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
   }
   await admin.query('UPDATE sabora.admin_write_ownership SET owner_user_id=$1 WHERE singleton',[a]);
   await admin.query("INSERT INTO sabora.order_operation_signing_keys(key_id,hmac_key,not_before,expires_at) VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')",[keyId,secret]);
-  for(const name of [login,staffLogin,customerLogin,waiterLogin])
+  for(const name of [login,staffLogin,customerLogin,waiterLogin,
+   tablesLogin,catalogLogin,commsAdminLogin,commsPublicLogin])
    await admin.query('CREATE ROLE '+name+" LOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD '"+password+"'");
   await admin.query('GRANT '+OWNERSHIP_ROLE+' TO '+login+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+M3_TABLES_ROLE+' TO '+tablesLogin+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+M3_CATALOG_ROLE+' TO '+catalogLogin+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+M5_COMMS_ADMIN_ROLE+' TO '+commsAdminLogin+' WITH SET TRUE, INHERIT FALSE');
+  await admin.query('GRANT '+M5_COMMS_PUBLIC_ROLE+' TO '+commsPublicLogin+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT '+WAITER_CALL_CUSTOMER_ROLE+' TO '+customerLogin+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT '+WAITER_CALL_STAFF_ROLE+' TO '+waiterLogin+' WITH SET TRUE, INHERIT FALSE');
   await admin.query('GRANT USAGE ON SCHEMA sabora TO '+staffLogin);
   await admin.query('GRANT SELECT(user_id,role,state) ON sabora.staff_members TO '+staffLogin);
   await admin.query('CREATE POLICY ci_owner_staff_'+suffix+' ON sabora.staff_members FOR SELECT TO '+staffLogin+' USING(true)');
-  for(const name of [login,staffLogin,customerLogin,waiterLogin]){
+  for(const name of [login,staffLogin,customerLogin,waiterLogin,
+   tablesLogin,catalogLogin,commsAdminLogin,commsPublicLogin]){
    const url=new URL(target);url.username=name;url.password=password;
    pools.push(new Pool({connectionString:url.toString(),max:3,connectionTimeoutMillis:3000,
     options:'-c statement_timeout=15000'}));
   }
   await assertOwnershipRuntimeIdentity({pool:pools[0],expectedLogin:login});
+  await assertM3TablesCapability({pool:pools[4],expectedLogin:tablesLogin});
+  await assertM3CatalogCapability({pool:pools[5],expectedLogin:catalogLogin});
+  await assertM5CommunicationsCapability({pool:pools[6],expectedLogin:commsAdminLogin,kind:'admin'});
+  await assertM5CommunicationsCapability({pool:pools[7],expectedLogin:commsPublicLogin,kind:'public'});
   await assertWaiterCallRuntimeIdentity({pool:pools[2],expectedLogin:customerLogin,kind:'customer'});
   await assertWaiterCallRuntimeIdentity({pool:pools[3],expectedLogin:waiterLogin,kind:'staff'});
   await assert.rejects(pools[2].query('SELECT * FROM sabora.waiter_calls'),/permission denied/);
@@ -127,6 +153,31 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    revokeCustomerSession:async()=>false,allowedOrigin:clientOrigin});
   registerOwnershipGovernanceHttp(api,{forRoles,repository:repo});
   registerWaiterCallHttp(api,{cookieAuth,forRoles,repository:callRepository});
+  // H35-P1 is exercised in this *existing* real PG17 + verified JWT/HMAC +
+  // Fastify + two-PWA Chromium journey, not a disconnected browser mock.
+  const tablesTx=createRoleScopedPostgresTransaction({pool:pools[4],role:M3_TABLES_ROLE,
+   allowedSql:new Set([READ_M3_TABLES_SQL,MANAGE_M3_TABLE_SQL,OCCUPANCY_M3_TABLE_SQL])});
+  const catalogTx=createRoleScopedPostgresTransaction({pool:pools[5],role:M3_CATALOG_ROLE,
+   allowedSql:new Set([READ_M3_CATALOG_SQL,MANAGE_M3_CATALOG_SQL,READ_M3_FINANCE_SQL])});
+  const tablesRepository=createM3TablesRepository({withTransaction:tablesTx,
+   issueCapability:createM3ManagementCapabilityIssuer({keyId,secret,databaseRole:tablesLogin})});
+  const catalogIssuer=createM3ManagementCapabilityIssuer({keyId,secret,databaseRole:catalogLogin});
+  const catalogRepository=createM3CatalogRepository({withTransaction:catalogTx,
+   issueCapability:catalogIssuer});
+  const financeRepository=createM3FinanceRepository({withTransaction:catalogTx,
+   issueCapability:catalogIssuer,timeZone:'Europe/Madrid'});
+  registerM3ManagementHttp(api,{forRoles,tables:tablesRepository,catalog:catalogRepository,
+   finance:financeRepository,qr:{secret:'h35_owner_composition_qr_test_secret_32_bytes_minimum',
+    origin:'https://sabora.example',restaurantCode:'SABORA_CI'}});
+  const commsTx=createRoleScopedPostgresTransaction({pool:pools[6],role:M5_COMMS_ADMIN_ROLE,
+   allowedSql:new Set([READ_M5_COMMS_ADMIN_SQL,MANAGE_M5_COMMS_SQL])});
+  const publicCommsTx=createRoleScopedPostgresTransaction({pool:pools[7],role:M5_COMMS_PUBLIC_ROLE,
+   allowedSql:new Set([READ_M5_COMMS_PUBLIC_SQL])});
+  registerM5CommunicationsHttp(api,{forRoles,
+   repositories:createM5CommunicationsRepositories({adminTx:commsTx,
+    publicTx:publicCommsTx,issueCapability:createM3ManagementCapabilityIssuer({
+     keyId,secret,databaseRole:commsAdminLogin})}),
+   stream:{subscribe:()=>()=>{}}});
   api.get('/api/v1/customer/session',{preHandler:cookieAuth.authenticate},
    async request=>({authenticated:true,publicId:request.customerIdentity.publicId,
     alias:request.customerIdentity.alias,company:request.customerIdentity.company}));
@@ -542,6 +593,106 @@ test('PG17 JWT/HMAC single Fastify with ADMIN ownership and waiter calls, two PW
    'an ADMIN remains barred from waiter calls even after ROOT reassignment');
   await client.getByRole('button',{name:'Consultar llamada'}).click();
   await client.getByText('Puedes avisar a sala',{exact:false}).waitFor({timeout:15000});
+
+  // H35-P1: d is the live owner at this point (ROOT just recovered to d);
+  // same PG17 and JWT session, effective read projection across
+  // ADMIN owner, non-owner, ROOT and waiter. No UUID/secret owner leaks in M3.
+  const tableRead=async id=>api.inject({method:'GET',url:'/api/v1/admin/tables?limit=1',
+   headers:{authorization:'Bearer '+jwt(id)}});
+  const expectedWriter={configure:true,qr:true,readiness:true,occupancy:true};
+  const expectedReadOnly={configure:false,qr:false,readiness:false,occupancy:false};
+  const expectedWaiter={configure:false,qr:false,readiness:true,occupancy:true};
+  for(const [user,permissions] of [[d,expectedWriter],[a,expectedReadOnly],
+   [root,expectedReadOnly],[waiterId,expectedWaiter]]){
+   const response=await tableRead(user);
+   assert.equal(response.statusCode,200,response.body);
+   assert.deepEqual(response.json().permissions,permissions);
+   assert.equal(response.body.includes('ownerUserId'),false);
+  }
+  const oldWriterBrowser=await browser.newPage();
+  const nextWriterBrowser=await browser.newPage();
+  for(const [tab,actor] of [[oldWriterBrowser,d],[nextWriterBrowser,a]]){
+   await tab.goto(vite.resolvedUrls.local[0]+'#mesas');
+   await tab.evaluate(async token=>{
+    const host=await import('/src/main.tsx');
+    window.h35Dispose=host.mountAuthenticatedManagementApp({
+     element:document.getElementById('root'),getAccessToken:async()=>token,
+     enableM3Management:true});
+   },jwt(actor));
+  }
+  await oldWriterBrowser.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
+  // The notice also renders during the initial fail-closed loading state;
+  // its disabled placeholder must not be mistaken for a granted action.
+  // Await the actual SQL-backed page before asserting non-owner affordances.
+  await nextWriterBrowser.getByRole('region',{name:'Estado de la lectura de mesas'})
+   .waitFor({timeout:20000});
+  await nextWriterBrowser.getByText('Proyección de mesas en modo consulta.').waitFor({timeout:20000});
+  assert.equal(await nextWriterBrowser.getByRole('button',{name:'Crear mesa'}).count(),0);
+  await oldWriterBrowser.getByRole('link',{name:/Catálogo/}).click();
+  await oldWriterBrowser.getByRole('button',{name:'Nuevo plato'}).waitFor({timeout:20000});
+  await nextWriterBrowser.getByRole('link',{name:/Catálogo/}).click();
+  await nextWriterBrowser.getByRole('heading',{name:'Carta en consulta'}).waitFor({timeout:20000});
+  assert.equal(await nextWriterBrowser.getByRole('button',{name:'Nuevo plato'}).count(),0);
+  await oldWriterBrowser.getByRole('link',{name:/Configuración/}).click();
+  await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).waitFor({timeout:20000});
+  await nextWriterBrowser.getByRole('link',{name:/Configuración/}).click();
+  await nextWriterBrowser.getByRole('heading',{name:'Comunicaciones · Consulta'}).waitFor({timeout:20000});
+  assert.equal(await nextWriterBrowser.getByRole('button',{name:'Guardar borrador'}).count(),0);
+
+  // S36: keep an old ADMIN's Communications editor open and already hydrated
+  // while ROOT transfers ownership through the same restricted PG17 backend.
+  // Its stale form must receive SQL 403, save nothing and immediately lose
+  // edit controls even without a focus/navigation event or client polling.
+  await oldWriterBrowser.bringToFront();
+  await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).waitFor({timeout:20000});
+  const staleNoticeTitle='S36 borrador prohibido tras cesión';
+  await oldWriterBrowser.getByLabel('Título (máx. 120)').fill(staleNoticeTitle);
+  await oldWriterBrowser.getByLabel('Mensaje (admite saltos de línea y emojis)')
+   .fill('No se debe almacenar tras retirar la titularidad administrativa.');
+  await oldWriterBrowser.getByLabel('Emoji para la banda').fill('🌿');
+  const staleNoticeRows=async()=>Number((await admin.query(
+   "SELECT count(*)::integer AS n FROM sabora.comms_announcements_m5 WHERE draft->>'title'=$1",
+   [staleNoticeTitle])).rows[0].n);
+  assert.equal(await staleNoticeRows(),0);
+
+  // ROOT takes ownership from the current ADMIN to A. No polling or
+  // fabricated client role: page focus/navigation triggers a signed re-read.
+  const takeover=await post(root,'force',{targetUserId:a,
+   reason:'Verificación del cambio efectivo de permisos de gestión'});
+  assert.equal(takeover.statusCode,200,takeover.body);
+  await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).click();
+  await oldWriterBrowser.getByRole('heading',{name:'Comunicaciones · Consulta'})
+   .waitFor({timeout:20000});
+  assert.equal(await oldWriterBrowser.getByRole('button',{name:'Guardar borrador'}).count(),0,
+   'SQL 403 must withdraw stale Communications editing in the same foreground tab');
+  assert.equal(await staleNoticeRows(),0,
+   'revoked owner must not persist even a draft while stale UI was visible');
+  assert.deepEqual((await tableRead(d)).json().permissions,expectedReadOnly);
+  assert.deepEqual((await tableRead(a)).json().permissions,expectedWriter);
+  await oldWriterBrowser.bringToFront();
+  await oldWriterBrowser.getByRole('link',{name:/Mesas/}).click();
+  await oldWriterBrowser.getByRole('region',{name:'Estado de la lectura de mesas'})
+   .waitFor({timeout:20000});
+  await oldWriterBrowser.getByText('Proyección de mesas en modo consulta.').waitFor({timeout:20000});
+  assert.equal(await oldWriterBrowser.getByRole('button',{name:'Crear mesa'}).count(),0);
+  await nextWriterBrowser.bringToFront();
+  await nextWriterBrowser.getByRole('link',{name:/Mesas/}).click();
+  await nextWriterBrowser.getByRole('button',{name:'Crear mesa'}).waitFor({timeout:20000});
+  // A revoked owner's old JWT cannot perform a real table mutation.
+  const deniedOldWriter=await api.inject({method:'POST',
+   url:'/api/v1/admin/tables/actions',
+   headers:{authorization:'Bearer '+jwt(d)},
+   payload:{requestId:randomUUID(),operation:'create',payload:{
+    number:9799,capacity:4,description:'No creada por propietario anterior'}}});
+  assert.equal(deniedOldWriter.statusCode,403,deniedOldWriter.body);
+  assert.equal((await admin.query(
+   'SELECT count(*)::integer AS n FROM sabora.dining_tables WHERE number=9799')).rows[0].n,0);
+  // Restore exact previous ownership before the remainder of the integrated
+  // governance/dual-PWA test; do not rewrite orders or waiter-call history.
+  const restore=await post(root,'force',{targetUserId:d,
+   reason:'Restitución del titular del escenario integral'});
+  assert.equal(restore.statusCode,200,restore.body);
+  await oldWriterBrowser.close();await nextWriterBrowser.close();
 
   // RF-02: signed capability is initially valid but expires while the
   // actual restricted PostgreSQL call awaits a staff FOR UPDATE row lock.

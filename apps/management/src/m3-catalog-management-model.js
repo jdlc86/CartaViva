@@ -12,11 +12,12 @@ const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.len
 const revision=value=>Number.isSafeInteger(value)&&value>=0;
 
 export function validateM3ManagementCatalog(payload){
- if(!exact(payload,['version','scope','categories','items','allergenTaxonomyVersion','allergens'])||
+ if(!exact(payload,['version','scope','categories','items','allergenTaxonomyVersion','allergens','permissions'])||
     payload.version!==2||payload.scope!=='administrative'||payload.allergenTaxonomyVersion!==1||
     !Array.isArray(payload.categories)||payload.categories.length>500||
     !Array.isArray(payload.items)||payload.items.length>500||
-    !Array.isArray(payload.allergens)||payload.allergens.length!==14)
+    !Array.isArray(payload.allergens)||payload.allergens.length!==14||
+    !exact(payload.permissions,['manage'])||typeof payload.permissions.manage!=='boolean')
   throw Error('invalid_m3_management_catalog');
  const categoryIds=new Set();
  const categories=payload.categories.map(value=>{
@@ -53,7 +54,8 @@ export function validateM3ManagementCatalog(payload){
    publishedSnapshot:value.publishedSnapshot===null?null:Object.freeze({...value.publishedSnapshot})});
  });
  return Object.freeze({version:2,scope:'administrative',categories:Object.freeze(categories),
-  items:Object.freeze(items),allergenTaxonomyVersion:1,allergens:Object.freeze(allergens)});
+  items:Object.freeze(items),allergenTaxonomyVersion:1,allergens:Object.freeze(allergens),
+  permissions:Object.freeze({manage:payload.permissions.manage})});
 }
 
 export async function loadM3ManagementCatalog(gateway,{signal}={}){

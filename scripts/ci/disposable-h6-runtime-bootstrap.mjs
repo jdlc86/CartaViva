@@ -3,6 +3,8 @@
 // roles, reads operational secrets, deploys, or contacts an external database.
 // All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
 import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
+import {validateM2RuntimeSqlIdentities} from '../../apps/api/src/m2-runtime-identity-inventory.mjs';
+import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const invalid=()=>Error('disposable_m3_bootstrap_required');
@@ -41,10 +43,20 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   const paymentDisabled=()=>{throw Error('disposable_h6_payment_provider_disabled');};
   const noProvider=Object.freeze({authorize:paymentDisabled,capture:paymentDisabled,
    release:paymentDisabled,refund:paymentDisabled,retrieve:paymentDisabled});
-  const isolatedOptions={...options,h6:{...options.h6,stripe:noProvider},
+  const diagnosticEvents=[];
+  const diagnostics=createSaboraObservability({emit:record=>diagnosticEvents.push(record)});
+  const isolatedOptions={...options,observability:diagnostics,h6:{...options.h6,stripe:noProvider},
    enableDeferredDispatch:false};
   // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
+  // Exercise the *same* identity inventory as the HTTP assembly in the
+  // disposable PG17 end-to-end acceptance. No login names are emitted.
+  const inventory=validateM2RuntimeSqlIdentities(isolatedOptions);
+  const expected=17+(isolatedOptions.management?.ownership?1:0)+
+   (isolatedOptions.management?.communications?2:0)+
+   (isolatedOptions.waiterCalls?2:0);
+  if(inventory.capabilityCount!==expected||inventory.notifierCount!==2)
+   throw invalid();
   candidate=await createM3RestaurantCandidate(isolatedOptions);
   if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
   // The factory permits only loopback. Port 0 eliminates fixed host binds.
@@ -66,6 +78,26 @@ export async function startDisposableM3Runtime({options,environment=process.env}
      healthJson.service!=='sabora-m3-candidate'||
      readyJson.service!=='sabora-m3-candidate'||
      !Array.isArray(catalogJson))throw invalid();
+  // E2E on the real SQL-backed candidate must emit sanitized, low-cardinality
+  // HTTP telemetry without ever logging request headers, cookies or raw URLs.
+  const summary=diagnostics.snapshot();
+  const httpFields=new Set(['schema','source','service','level','event','at',
+   'requestId','route','method','statusClass','durationMs']);
+  const operationFields=new Set(['schema','source','service','level','event','at',
+   'component','operation','outcome','durationMs']);
+  const safeHttp=diagnosticEvents.filter(v=>v.event==='http_request');
+  const safeOps=diagnosticEvents.filter(v=>v.event==='operation');
+  if(summary.requests<4||summary.byRoute['/health']<1||
+     summary.byRoute['/ready']<1||summary.byRoute.other<2||
+     !safeHttp.some(v=>v.statusClass==='4xx')||
+     !safeOps.some(v=>v.component==='database'&&v.operation==='check'&&
+       v.outcome==='success')||
+     diagnosticEvents.some(v=>v.event==='http_request'?
+       ((v.route!=='/health'&&v.route!=='/ready'&&v.route!=='other')||
+        Object.keys(v).some(key=>!httpFields.has(key))):
+       (v.event!=='operation'||v.component!=='database'||v.operation!=='check'||
+        v.outcome!=='success'||Object.keys(v).some(key=>!operationFields.has(key)))))
+     throw invalid();
   return Object.freeze({
    app:candidate.app,mode:candidate.mode,origin,
    close:()=>candidate.close()

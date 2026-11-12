@@ -59,6 +59,34 @@ export function ManagementApp({
   const [area, setArea] = useState<ManagementArea>(() => parseManagementArea(window.location.hash));
   const [financeAllowed,setFinanceAllowed]=useState(false);
   const [commsAllowed,setCommsAllowed]=useState(false);
+  const [canWriteAdmin,setCanWriteAdmin]=useState(false);
+  const [ownershipRevision,setOwnershipRevision]=useState(0);
+  // Effective permissions come from a signed PG17 read, never the JWT role.
+  // Refresh on navigation, foreground and explicit governance decisions.
+  useEffect(()=>{
+   let active=true,revision=0;
+   const refresh=()=>{
+    const current=++revision;
+    setCanWriteAdmin(false);
+    if(area==='configuracion'&&financeGateway){
+     // M5 can be installed separately from M3; its own signed SQL read
+     // returns the effective ADMIN writer without relying on table RPCs.
+     void financeGateway.readCommunications()
+      .then(page=>{if(active&&current===revision)
+       setCanWriteAdmin(page.permissions?.manage===true);})
+      .catch(()=>{if(active&&current===revision)setCanWriteAdmin(false);});
+     return;
+    }
+    // Catalog's own signed SQL read carries its independent manage flag.
+    // It does not require the optional M3 tables composition.
+   };
+   refresh();
+   const visible=()=>{if(document.visibilityState==='visible')refresh();};
+   window.addEventListener('focus',refresh);
+   document.addEventListener('visibilitychange',visible);
+   return()=>{active=false;revision++;window.removeEventListener('focus',refresh);
+    document.removeEventListener('visibilitychange',visible);};
+  },[financeGateway,area,ownershipRevision]);
   useEffect(()=>{
    let active=true;
    setFinanceAllowed(false);
@@ -115,8 +143,8 @@ export function ManagementApp({
     : area === 'comandas' ? <OrdersView gateway={operationsGateway}/>
     : area === 'caja' ? <CashView gateway={operationsGateway}/>
     : area === 'configuracion' ? <ConfigurationView gateway={financeGateway??null}
-        financeAllowed={financeAllowed} commsAllowed={commsAllowed}/>
-    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway}/>;
+        financeAllowed={financeAllowed} commsAllowed={commsAllowed} canWriteAdmin={canWriteAdmin}/>
+    : <TeamView gateway={staffGateway} directoryGateway={staffDirectoryGateway} ownershipGateway={ownershipGateway} onOwnershipChanged={()=>setOwnershipRevision(v=>v+1)}/>;
 
   return (
     <div className="management-shell">

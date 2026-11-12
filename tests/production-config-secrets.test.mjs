@@ -74,7 +74,9 @@ test('production PostgreSQL readers require distinct exact logins, verified TLS 
 test('API app remains health-only and readiness identifies the locked mode',async t=>{
  const app=createApiApp();t.after(()=>app.close());
  assert.deepEqual((await app.inject({method:'GET',url:'/health'})).json(),{status:'ok',service:'sabora-api'});
- assert.deepEqual((await app.inject({method:'GET',url:'/ready'})).json(),{status:'ready',service:'sabora-api',mode:'health-only'});
+ const readiness=await app.inject({method:'GET',url:'/ready'});
+ assert.equal(readiness.statusCode,503);
+ assert.deepEqual(readiness.json(),{status:'unavailable',service:'sabora-api',mode:'health-only'});
  assert.equal((await app.inject({method:'GET',url:'/api/v1/operations/orders'})).statusCode,404);
 });
 
@@ -107,10 +109,14 @@ test('production gate detects global cleanup and frontend secret regressions',t=
  writeFileSync(join(fixture,'deploy/Dockerfile.api'),readFileSync(join(root,'deploy/Dockerfile.api')));
  writeFileSync(join(fixture,'.github/workflows/ci.yml'),'permissions:\n  contents: read\n');
  writeFileSync(join(fixture,'.env.example'),readFileSync(join(root,'.env.example')));
- writeFileSync(join(fixture,'apps/api/src/server.mjs'),'export const mode="health-only";\n');
+ writeFileSync(join(fixture,'apps/api/src/server.mjs'),"app.get('/ready', async (_request, reply) => reply.code(503).send({status:'unavailable'}));\n");
  writeFileSync(join(fixture,'scripts/cleanup.sh'),'echo safe\n');
  writeFileSync(join(fixture,'apps/client/src/config.js'),'export const publicCode="SABORA";\n');
  assert.deepEqual(inspectProductionConfig(fixture),[]);
+ // The gate refuses a health-only deployment that lies about readiness.
+ writeFileSync(join(fixture,'apps/api/src/server.mjs'),"app.get('/ready', async (_request, reply) => reply.code(200).send({status:'ready'}));\n");
+ assert.ok(inspectProductionConfig(fixture).includes('health_only_false_readiness'));
+ writeFileSync(join(fixture,'apps/api/src/server.mjs'),"app.get('/ready', async (_request, reply) => reply.code(503).send({status:'unavailable'}));\n");
 
  writeFileSync(join(fixture,'scripts/cleanup.sh'),'docker system prune -af\n');
  assert.ok(inspectProductionConfig(fixture).some(code=>code.startsWith('global_control:')));

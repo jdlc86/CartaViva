@@ -92,7 +92,11 @@ export function createM3AuthenticatedManagementGateway({getAccessToken,fetchImpl
   },
   async readCommunications({signal}={}){
    const value=await send('/api/v1/admin/communications',{signal});
-   if(value.version!==1||!Array.isArray(value.items)||value.items.length>500||
+   if(value.version!==1||
+    (value.permissions!==undefined&&(!plain(value.permissions)||
+     Object.keys(value.permissions).length!==1||
+     typeof value.permissions.manage!=='boolean'))||
+    !Array.isArray(value.items)||value.items.length>500||
     !value.items.every(x=>plain(x)&&UUID.test(x.id??'')&&
       ['draft','published','paused','withdrawn'].includes(x.state)&&
       Number.isSafeInteger(x.revision)&&x.revision>=1&&plain(x.draft)))

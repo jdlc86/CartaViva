@@ -130,6 +130,11 @@ export function TablesView({gateway,tableChangeGateway}: {gateway?: AdminTablesG
   const selectedTable = tables.find((table) => table.id === selectedId) ??
     (focusedTable?.id===selectedId ? focusedTable : null);
   const hasTableMutation=typeof gateway?.manageTable==='function';
+  useEffect(()=>{
+   const onFocus=()=>setReloadVersion(v=>v+1);
+   window.addEventListener('focus',onFocus);
+   return()=>window.removeEventListener('focus',onFocus);
+  },[]);
   const canConfigure=phase==='ready'&&tablePermissions?.configure===true&&hasTableMutation;
   const canReadiness=phase==='ready'&&tablePermissions?.readiness===true&&hasTableMutation;
   const canOccupancy=phase==='ready'&&tablePermissions?.occupancy===true&&

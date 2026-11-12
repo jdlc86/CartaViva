@@ -12,7 +12,7 @@ export type M5CommunicationRecord=Readonly<{
  draft:M5CommunicationDraft;published:M5CommunicationDraft|null;updatedAt:string;
 }>;
 export type M5CommunicationsGateway=Readonly<{
- readCommunications():Promise<Readonly<{version:1;items:readonly M5CommunicationRecord[]}>>;
+ readCommunications():Promise<Readonly<{version:1;items:readonly M5CommunicationRecord[];permissions?:Readonly<{manage:boolean}>}>>;
  manageCommunication(input:Readonly<{
  requestId:string;operation:'save'|'publish'|'pause'|'resume'|'withdraw';
  payload:Readonly<{id:string|null;revision:number|null;draft:M5CommunicationDraft|null}>;

@@ -25,7 +25,7 @@ jobs:
   functional-ui:
     name: functional-ui-gate
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
   visual-final:
     name: visual-final-acceptance-gate
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4

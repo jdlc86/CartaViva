@@ -8,7 +8,8 @@ const itemId='20000000-0000-4000-8000-000000000002';
 const payload=()=>({version:2,scope:'administrative',categories:[{id,name:'ENTRANTE',sortOrder:100,
  mandatory:true,hidden:false,revision:1}],items:[{id:itemId,categoryId:id,draft:{name:'Plato'},
  draftRevision:1,publishedRevision:null,publishedSnapshot:null,publishedAt:null,withdrawn:false,soldOut:false}],
- allergenTaxonomyVersion:1,allergens:Array.from({length:14},(_,index)=>({id:index+1,name:`Alérgeno ${index+1}`}))});
+ allergenTaxonomyVersion:1,allergens:Array.from({length:14},(_,index)=>({id:index+1,name:`Alérgeno ${index+1}`})),
+ permissions:{manage:true}});
 const response=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
 
 test('M3 management catalog validates exact administrative projection and category scope',()=>{
@@ -16,6 +17,13 @@ test('M3 management catalog validates exact administrative projection and catego
  assert.equal(result.categories[0].name,'ENTRANTE');
  assert.equal(result.items[0].categoryId,id);
  assert.equal(Object.isFrozen(result),true);
+ assert.deepEqual(result.permissions,{manage:true});
+ assert.deepEqual(validateM3ManagementCatalog({...payload(),permissions:{manage:false}}).permissions,
+  {manage:false});
+ assert.throws(()=>validateM3ManagementCatalog({...payload(),permissions:{manage:1}}),
+  /invalid_m3_management_catalog/);
+ assert.throws(()=>validateM3ManagementCatalog({...payload(),permissions:{manage:true,root:true}}),
+  /invalid_m3_management_catalog/);
  assert.throws(()=>validateM3ManagementCatalog({...payload(),items:[{...payload().items[0],
   categoryId:'30000000-0000-4000-8000-000000000003'}]}),/invalid_m3_management_catalog/);
  let getterCalls=0;const hostile=payload();

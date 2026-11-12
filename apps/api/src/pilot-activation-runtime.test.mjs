@@ -18,7 +18,8 @@ test('pilot readiness evidence never implicitly mounts customer or staff routes'
      ['POST','/api/v1/customer/register']
    ]) assert.equal(app.hasRoute({method,url}), false, url);
    const response = await app.inject({method:'GET',url:'/ready'});
-   assert.equal(response.statusCode,200);
+   assert.equal(response.statusCode,503);
+   assert.deepEqual(response.json(),{status:'unavailable',service:'sabora-api',mode:'health-only'});
    assert.equal(response.json().mode,'health-only');
  } finally { await app.close(); }
 });
