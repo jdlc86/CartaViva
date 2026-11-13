@@ -8,6 +8,16 @@ net="sabora-web-ci-${tag}"
 web="sabora-web-ci-${tag}"
 api="sabora-api-stub-ci-${tag}"
 cleanup(){
+ local exit_status=$?
+ if [ "$exit_status" -ne 0 ]; then
+  # CI fixture only: bounded process status and sanitized startup logs, no tokens.
+  echo "Sabora HTTPS publication fixture failed (exit $exit_status)" >&2
+  docker inspect "$web" --format 'web state={{.State.Status}} exit={{.State.ExitCode}}' >&2 || true
+  docker logs --tail 90 "$web" >&2 || true
+  curl --noproxy '*' --verbose --max-time 5 --cacert "$tmp/tls/client.crt" \
+   --resolve 'client.sabora.test:18443:127.0.0.1' \
+   'https://client.sabora.test:18443/' -o /dev/null 2>&1 | tail -n 25 >&2 || true
+ fi
  docker rm -f "$web" "$api" >/dev/null 2>&1 || true
  docker network rm "$net" >/dev/null 2>&1 || true
  rm -rf "$tmp"
