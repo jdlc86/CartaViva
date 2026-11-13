@@ -7,7 +7,7 @@
 - PR [#57 CV-005](https://github.com/jdlc86/CartaViva/pull/57), SHA `a60548955d559da7ecc4b686f59c01974298dd46`: cadena de 99 migraciones, 61 modificadas respecto a `main`.
 - PR [#58 B2](https://github.com/jdlc86/CartaViva/pull/58), código anterior `31e76b484ec0cc43cbfc929821afa1e9ffa7c100`.
 - [Commit Git real de dos padres](https://github.com/jdlc86/CartaViva/commit/c3216fecf2133cd1852d3b6d21516308836e6a2d) `c3216fecf2133cd1852d3b6d21516308836e6a2d`; 99 blobs SQL con el mismo SHA de subárbol `d26f1d4fc22acb13b6bda4927c424a74f5164c4a` que CV-005. [Acta de laboratorio 5/5 de ese SHA](https://github.com/jdlc86/CartaViva/blob/main/docs/reviews/SABORA_S38_CV005_B2_REAL_GIT_INTEGRATION_CANDIDATE_2026-11-13.md).
-- **Nuevo SHA de cambio normativo/test** `ee57c6074a8d06df6172da157d81f81f9a7ed2d6`: frente a `c3216fec`, exactamente **dos archivos cambiados**: `docs/SABORA_AUTHORIZATION_GATE.md` y `tests/cv005-normative-authority-boundary.test.mjs`. **No cambia migraciones, permisos efectivos, API, egress, secretos ni Compose**. Requiere 5/5 nueva CI antes de declarar su propia regresión concluida.
+- **Nuevo SHA de cambio normativo/test** `ee57c6074a8d06df6172da157d81f81f9a7ed2d6`: frente a `c3216fec`, exactamente **dos archivos cambiados**: `docs/SABORA_AUTHORIZATION_GATE.md` y `tests/cv005-normative-authority-boundary.test.mjs`. **No cambia migraciones, permisos efectivos, API, egress, secretos ni Compose**. **Regresión final verificada: 5/5 GitHub Actions completed/success en ese mismo SHA.** La aceptación visual humana permanece \`skipped\`.
 
 ## 2. Conflicto P0 histórico resuelto documentalmente, sin conceder privilegios
 
@@ -36,4 +36,10 @@ Un revisor **no autor** del merge ni de la conciliación debe emitir nuevo dicta
 
 **STOP hasta entonces:** PR #57 y #58 continúan Draft; sin integración en `main`, sin migraciones, roles o secretos en Supabase, sin despliegue/reinicio en VPS, sin cambios en Fleetia ni terceros. Falta preflight de compatibilidad real `PG17.11/supautils`, respaldo/restauración custodiados, CA/endpoint/pooler, firewall Sabora-only, alertas reales y aceptación de la interfaz aprobada.
 
-**Resultados de CI:** comprobar el [SHA de norma/test](https://github.com/jdlc86/CartaViva/commit/ee57c6074a8d06df6172da157d81f81f9a7ed2d6) en Actions del PR #58 para confirmar cinco `success`; las ejecuciones del SHA `c3216fec` fueron 5/5, pero no se deben atribuir automáticamente al SHA posterior.
+## 5. Verificación final de SHA normativo + enlace al encargo independiente (2026-11-13)
+
+Se consultaron nuevamente las cinco ejecuciones del **SHA de código/norma `ee57c6074a8d06df6172da157d81f81f9a7ed2d6`**: [PG17 99/99 #43424784850](https://github.com/jdlc86/CartaViva/actions/runs/43424784850), [árbol único SQL/API/Chromium #43424784656](https://github.com/jdlc86/CartaViva/actions/runs/43424784656), [CI/H6 #43424784968](https://github.com/jdlc86/CartaViva/actions/runs/43424784968), [Bootstrap #43424784844](https://github.com/jdlc86/CartaViva/actions/runs/43424784844) y [UI funcional #43424784893](https://github.com/jdlc86/CartaViva/actions/runs/43424784893) terminaron **`completed/success` (5/5)**, sin pasos fallidos. El job `visual-final-acceptance-gate` se omitió intencionadamente. La comparación entre `ee57c607` y `7a249909` acreditó **solo 3 archivos documentales**, ninguna SQL, API, PWA, test ni Compose posterior. La documentación nueva no revalida la infraestructura real.
+
+**Siguiente puerta que no firma el autor:** [encargo independiente sobre el árbol Git definitivo](../assignments/SABORA_S38_FINAL_INDEPENDENT_REVIEW_INTEGRATED_SHA_2026-11-13.md). Se exige revisor materialmente distinto, veredictos explícitos para #57/#58, examinar la interacción y el delta normativo, registrar residual DBA y STOP operativos. No registrar `APPROVED` ficticio por disponer de 5/5 CI.
+
+**Referencia histórica anterior (ya resuelta):** comprobar el [SHA de norma/test](https://github.com/jdlc86/CartaViva/commit/ee57c6074a8d06df6172da157d81f81f9a7ed2d6) en Actions del PR #58 para confirmar cinco `success`; las ejecuciones del SHA `c3216fec` fueron 5/5, pero no se deben atribuir automáticamente al SHA posterior.
