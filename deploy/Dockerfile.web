@@ -1,0 +1,25 @@
+# Two distinct, static Sabora PWAs; zero production secrets in the image.
+FROM node:22-alpine AS build
+WORKDIR /workspace
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/client/package.json apps/client/package.json
+COPY apps/management/package.json apps/management/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN pnpm install --frozen-lockfile
+COPY apps/client ./apps/client
+COPY apps/management ./apps/management
+COPY packages/contracts ./packages/contracts
+ARG SABORA_RESTAURANT_CODE
+ENV VITE_SABORA_RESTAURANT_CODE=${SABORA_RESTAURANT_CODE}
+RUN node -e "if (!/^[A-Z0-9_-]{3,32}$/.test(process.env.VITE_SABORA_RESTAURANT_CODE??'')) process.exit(1)"
+RUN pnpm --filter @sabora/client build && SABORA_MANAGEMENT_BASE_PATH=/ pnpm --filter @sabora/management build
+
+FROM caddy:2.11.9-alpine
+COPY --from=build /workspace/apps/client/dist /srv/sabora/client
+COPY --from=build /workspace/apps/management/dist /srv/sabora/management
+COPY deploy/Caddyfile.sabora /etc/caddy/Caddyfile
+USER 10001:10001
+EXPOSE 8443
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

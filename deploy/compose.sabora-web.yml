@@ -1,0 +1,44 @@
+# Overlay onto compose.sabora-operational.yml ONLY after all Sabora activation gates.
+# Explicit exclusive Sabora ingress IP, never a blanket host port or shared proxy.
+name: sabora
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        SABORA_RESTAURANT_CODE: ${SABORA_RESTAURANT_CODE:?approved restaurant code required}
+    restart: "no"
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      SABORA_CLIENT_HOST: ${SABORA_CLIENT_HOST:?approved distinct HTTPS client hostname required}
+      SABORA_MANAGEMENT_HOST: ${SABORA_MANAGEMENT_HOST:?approved distinct HTTPS management hostname required}
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
+    ports:
+      - "${SABORA_INGRESS_BIND_IP:?dedicated Sabora bind IP and free TCP 443 required}:443:8443"
+    networks: [sabora_runtime_internal]
+    volumes:
+      - type: bind
+        source: ${SABORA_WEB_TLS_DIRECTORY:?absolute Sabora-only TLS directory required}
+        target: /run/sabora/tls
+        read_only: true
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    cap_drop: [ALL]
+    init: true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
