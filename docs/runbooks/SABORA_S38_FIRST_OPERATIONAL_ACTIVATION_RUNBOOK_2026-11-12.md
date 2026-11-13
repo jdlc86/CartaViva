@@ -103,6 +103,22 @@ Si no puede verificarse la restauración, no migrar ni arrancar el candidato.
 Un fallo de CA, hostname, endpoint, rol, ACL, JWKS, HMAC o notifier vuelve a
 health-only; no se permite `sslmode=require` sin identidad ni TLS permisivo.
 
+## 3A. Publicación HTTPS de las dos PWA — candidato S39, sin ejecutar en VPS
+
+**No basta el Compose operativo API+egress:** la publicación candidata de las PWA reside en [`deploy/compose.sabora-web.yml`](../../deploy/compose.sabora-web.yml), [`deploy/Dockerfile.web`](../../deploy/Dockerfile.web) y [`deploy/Caddyfile.sabora`](../../deploy/Caddyfile.sabora). Usar siempre un **único proyecto Compose `sabora`** con los archivos operativo+web explícitos, nunca un `up` sin ámbito ni despliegue compartido. No arrancar el contenedor web contra el `health-only`; no confundir una PWA estática visible con backend `/ready=200`.
+
+La imagen de publicación compila **dos bundles independientes** desde SHA fijo, cliente y gestión, con **código público de restaurante aprobado** `SABORA_RESTAURANT_CODE`; este valor no es secreto. Dos nombres DNS **distintos y aprobados** (`SABORA_CLIENT_HOST`, `SABORA_MANAGEMENT_HOST`) son vhosts TLS separados, cada uno con su manifest/service worker y cookies de su propio origen; ambos redirigen únicamente sus rutas `/api/*` al servicio `api:4100` de la **red interna propia Sabora**. No exponer el API ni la puerta de salida a puertos públicos. No inventar orígenes ni usar un proxy, dominio, certificado o sesión de Fleetia.
+
+**Puertas adicionales antes de desplegar `web`:**
+
+1. Aprobar el nombre de restaurante y ambos DNS/orígenes HTTPS (`https://<nombre>/`, sin puertos según contrato API). Comprobar que el DNS apunta solo a la infraestructura autorizada; la misma PWA no debe convivir en un scope compartido con la otra.
+2. Acreditar dirección IP **dedicada/ligada exclusivamente a Sabora**, disponible para `SABORA_INGRESS_BIND_IP:443`, o **STOP**. El overlay exige ese valor sin fallback a `0.0.0.0`. Si no hay puerto/IP exclusivo, no ocupar el 443 de Fleetia ni modificar su ingress; elaborar una alternativa de red separada para aprobación posterior, sin cambiar la norma por suposición.
+3. Provisionar **fuera de Git, CI e imágenes** `SABORA_WEB_TLS_DIRECTORY` con `client.crt/client.key` y `management.crt/management.key` accesibles solo al proceso Sabora, verificados para nombre, fecha y cadena. La clave privada solo puede leerse por UID/GID autorizado `10001`; no incluirla en evidencias. El web sirve TLS dentro del contenedor por `8443` no privilegiado y publica **solo** el puerto host aprobado `443` de Sabora.
+4. Confirmar firewall/ingress Sabora-only, política egress externa del gateway, límites de CPU/RAM/PID/almacenamiento y ausencia de recursos ajenos. El contenedor web está en `sabora_runtime_internal`, read-only, non-root, sin volúmenes de datos ni redes compartidas; las dos PWA no tienen claves SQL, JWT ni HMAC en sus assets. Comprobar que `/api/*` no recibe HTML SPA, que navegación profunda, manifest, service workers, cookies y certificados son correctos en navegador real.
+5. Solo después de SQL y secretos aprobados, probar `/ready=200`, QR, identidad y todo el circuito real desde ambos orígenes. Registrar SHA, capturas auténticas, denegaciones, alertas y parada **solo de servicios Sabora explícitos**. No usar `down`, `prune` ni reinicios globales; nunca reiniciar el daemon/host. No inferir GO de los tests de CI.
+
+La CI debe validar el render conjunto con **marcadores inocuos**, construir la imagen estática y usar certificados autogenerados **solo en runner descartable** para comprobar identidades TLS y ruteo hacia API simulada. Esto no acredita dominio/CA real, puerto/IP disponible del VPS ni despliegue. Mantener STOP cuando falten.
+
 ## 4. Bootstrap y smoke controlado
 
 1. Tras autorización específica y comprobar que no hay otro arranque Sabora

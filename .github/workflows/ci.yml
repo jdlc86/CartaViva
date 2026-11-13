@@ -91,6 +91,23 @@ jobs:
         run: |
           docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
           docker compose --project-name sabora --file deploy/compose.sabora-operational.yml config --quiet
+      - name: Validate isolated two-PWA HTTPS publication overlay (no VPS)
+        env:
+          SABORA_OPERATIONAL_MANIFEST_FILE: /tmp/sabora-ci-no-manifest.json
+          SABORA_OPERATIONAL_SECRETS_DIR: /tmp/sabora-ci-no-secrets
+          SABORA_EGRESS_POLICY_FILE: /tmp/sabora-ci-no-egress.json
+          SABORA_EGRESS_ALLOWLIST_NETWORK: sabora-ci-preprovisioned-egress-unavailable
+          SABORA_RESTAURANT_CODE: SABORA
+          SABORA_CLIENT_HOST: client.sabora.test
+          SABORA_MANAGEMENT_HOST: management.sabora.test
+          SABORA_INGRESS_BIND_IP: 127.0.0.2
+          SABORA_WEB_TLS_DIRECTORY: /tmp/sabora-ci-no-tls
+        run: |
+          docker compose --project-name sabora --file deploy/compose.sabora-operational.yml --file deploy/compose.sabora-web.yml config --quiet
+      - name: Build and exercise both published PWAs with real TLS and API proxy
+        run: |
+          docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
+          bash scripts/ci/sabora-web-publishing-smoke.sh
       - name: Build isolated Sabora API image
         run: docker build -f deploy/Dockerfile.api -t sabora-api:ci .
       - name: Smoke-test API container without host port or shared network
