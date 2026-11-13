@@ -129,6 +129,7 @@ jobs:
           SABORA_MANAGEMENT_HOST: management.sabora.test
           SABORA_INGRESS_BIND_IP: 127.0.0.2
           SABORA_WEB_TLS_DIRECTORY: /tmp/sabora-ci-no-tls
+          SABORA_INGRESS_FILTERED_NETWORK: sabora-ci-ingress-unavailable
         run: |
           docker compose --project-name sabora --file deploy/compose.sabora-operational.yml --file deploy/compose.sabora-web.yml config --quiet
       - name: Build and exercise both published PWAs with real TLS and API proxy

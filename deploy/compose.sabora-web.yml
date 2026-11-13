@@ -18,7 +18,7 @@ services:
       XDG_DATA_HOME: /tmp/caddy-data
     ports:
       - "${SABORA_INGRESS_BIND_IP:?dedicated Sabora bind IP and free TCP 443 required}:443:8443"
-    networks: [sabora_runtime_internal]
+    networks: [sabora_runtime_internal, sabora_ingress_filtered]
     volumes:
       - type: bind
         source: ${SABORA_WEB_TLS_DIRECTORY:?absolute Sabora-only TLS directory required}
@@ -42,3 +42,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+networks:
+  # The HTTPS entrypoint MUST be reachable via its own prefiltered bridge.
+  # Docker networks with internal:true cannot accept published host ports.
+  # This network is preprovisioned for Sabora only, with outbound blocked by
+  # host/provider firewall. It must never be a shared reverse-proxy network.
+  sabora_ingress_filtered:
+    external: true
+    name: ${SABORA_INGRESS_FILTERED_NETWORK:?pre-provisioned Sabora-only filtered ingress bridge required}

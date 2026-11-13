@@ -4,7 +4,8 @@
 set -euo pipefail
 tmp="$(mktemp -d)"
 tag="${GITHUB_RUN_ID:-local}-$$"
-net="sabora-web-ci-${tag}"
+net="sabora-web-ci-internal-${tag}"
+ingress="sabora-web-ci-ingress-${tag}"
 web="sabora-web-ci-${tag}"
 api="sabora-api-stub-ci-${tag}"
 cleanup(){
@@ -19,7 +20,7 @@ cleanup(){
    'https://client.sabora.test:18443/' -o /dev/null 2>&1 | tail -n 25 >&2 || true
  fi
  docker rm -f "$web" "$api" >/dev/null 2>&1 || true
- docker network rm "$net" >/dev/null 2>&1 || true
+ docker network rm "$net" "$ingress" >/dev/null 2>&1 || true
  rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -32,16 +33,22 @@ cp "$tmp/tls/client.key" "$tmp/tls/management.key"
 chmod 755 "$tmp" "$tmp/tls"
 chmod 644 "$tmp/tls/"*
 docker network create --internal "$net" >/dev/null
+# In CI only: a disposable inbound bridge permits host-port routing. Production
+# requires an externally filtered, Sabora-only bridge before any activation.
+docker network create "$ingress" >/dev/null
 docker run -d --name "$api" --network "$net" --network-alias api --read-only \
  --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
  --entrypoint node node:22-alpine -e 'require("node:http").createServer((req,res)=>{res.setHeader("content-type","application/json");res.setHeader("cache-control","no-store");res.end(JSON.stringify({route:req.url,via:"sabora-ci-api"}))}).listen(4100,"0.0.0.0")' >/dev/null
-docker run -d --name "$web" --network "$net" --read-only --tmpfs /tmp \
+docker run -d --name "$web" --network "$ingress" --read-only --tmpfs /tmp \
  --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
  -p 127.0.0.1:18443:8443 -v "$tmp/tls:/run/sabora/tls:ro" \
  -e SABORA_CLIENT_HOST=client.sabora.test \
  -e SABORA_MANAGEMENT_HOST=management.sabora.test \
  -e XDG_CONFIG_HOME=/tmp/caddy-config -e XDG_DATA_HOME=/tmp/caddy-data \
  sabora-web:ci >/dev/null
+# API remains on a second, internal-only network; web is the only dual-homed
+# frontend. No connection to other CI, Fleetia or host projects.
+docker network connect "$net" "$web"
 request(){
  local host="$1" path="$2"
  curl --noproxy '*' --silent --show-error --fail \

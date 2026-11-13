@@ -12,7 +12,9 @@ test('Sabora PWA publication cannot silently use shared ingress or unscoped oper
  assert.match(web,/\$\{SABORA_CLIENT_HOST:\?/);
  assert.match(web,/\$\{SABORA_MANAGEMENT_HOST:\?/);
  assert.match(web,/\$\{SABORA_WEB_TLS_DIRECTORY:\?/);
- assert.match(web,/networks: \[sabora_runtime_internal\]/);
+ assert.match(web,/networks: \[sabora_runtime_internal, sabora_ingress_filtered\]/);
+ assert.match(web,/\$\{SABORA_INGRESS_FILTERED_NETWORK:\?/);
+ assert.match(web,/sabora_ingress_filtered:[\s\S]*external: true/);
  assert.match(web,/user: "10001:10001"/);
  assert.match(web,/read_only: true/);
  assert.match(web,/cap_drop: \[ALL\]/);
