@@ -5,6 +5,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 const smoke=readFileSync(new URL('./postgres-migration-smoke.sh',import.meta.url),'utf8');
 const chain=readFileSync(new URL('./postgres-migration-chain-smoke.sh',import.meta.url),'utf8');
 const recovery=readFileSync(new URL('./postgres-recovery-smoke.sh',import.meta.url),'utf8');
+const admission=readFileSync(new URL('./sabora-pg17-owner-admission.sql',import.meta.url),'utf8');
 
 test('migration smoke invokes preflight, real-chain resume, transactional failure and clean recovery as commands',()=>{
  assert.doesNotMatch(smoke,/\\nbash scripts\/ci\/postgres-migration-failure-smoke/);
@@ -21,7 +22,27 @@ test('real-chain harness is checksum-ledgered and has no destination URL or bypa
  assert.match(chain,/applied_migrations/);
  assert.match(chain,/sha256sum/);
  assert.match(chain,/return 75/);
+ assert.match(chain,/CREATE CONSTRAINT TRIGGER cv005_commit_ledger/);
+ assert.match(chain,/DEFERRABLE INITIALLY DEFERRED/);
+ assert.match(chain,/pg_terminate_backend/);
+ assert.match(chain,/sabora_migration_chain_precommit_atomicity_verified/);
  assert.doesNotMatch(chain,/--force|DATABASE_URL|SUPABASE/);
+});
+
+test('every real migration owns one intact transaction consumed by the atomic ledger runner',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(names.length,99,'exact audited chain');
+ for(const name of names){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.equal((sql.match(/^BEGIN;$/gim)||[]).length,1,name+': BEGIN count');
+  const commits=[...sql.matchAll(/^COMMIT;$/gim)];
+  assert.equal(commits.length,1,name+': COMMIT count');
+  assert.doesNotMatch(sql,/^SET\s+CONSTRAINTS\b/gim,name+': deferred ledger must remain deferred');
+  const trailing=sql.slice(commits[0].index+commits[0][0].length)
+   .replace(/--[^\n]*(?:\n|$)/g,'').trim();
+  assert.equal(trailing,'',name+': statements after final COMMIT');
+ }
 });
 
 test('recovery uses a second offline PG17 cluster and a genuine restricted LOGIN',()=>{
@@ -47,6 +68,26 @@ test('recovery exercises representative load, lock timeout, corrupt input and ta
 
 const providerCompat=readFileSync(new URL('./supabase-nonsuperuser-migration-smoke.sh',import.meta.url),'utf8');
 const providerWorkflow=readFileSync(new URL('../../.github/workflows/supabase-nonsuperuser-compatibility.yml',import.meta.url),'utf8');
+
+test('Option A owner admission is fail-closed, ledger-aware and wired to the provider rehearsal',()=>{
+ for(const required of [
+  "to_regnamespace('sabora_migration_meta')",
+  "to_regclass('sabora_migration_meta.applied_migrations')",
+  'rolcanlogin AND rolcreaterole AND rolbypassrls AND NOT rolsuper',
+  'PREFLIGHT_ONLY:option_a_managed_dba_candidate',
+  'NO_GO:option_a_dba_attributes_required'
+ ])assert.ok(admission.includes(required),required);
+ assert.doesNotMatch(admission,/public\.sabora_migration_meta|rolsuper\) IS NOT TRUE/);
+ for(const required of [
+  "'scripts/ci/sabora-pg17-owner-admission.sql'",
+  "'docs/security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md'"
+ ])assert.ok(providerWorkflow.includes(required),required);
+ for(const required of [
+  'scripts/ci/sabora-pg17-owner-admission.sql',
+  'sabora_option_a_owner_admission_verified',
+  'NO_GO:first_install_state_not_clean'
+ ])assert.ok(providerCompat.includes(required),required);
+});
 
 test('non-superuser Supabase compatibility harness is isolated and exercises the full ordered chain',()=>{
  for(const required of [

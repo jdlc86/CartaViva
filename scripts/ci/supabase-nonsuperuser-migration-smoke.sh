@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # CV-005: full Sabora migration chain executed by a PG17 CREATEROLE role
-# WITHOUT SUPERUSER/BYPASSRLS, in a network-disabled, disposable Actions job.
+# with the observed managed-DBA BYPASSRLS attribute but WITHOUT SUPERUSER,
+# in a network-disabled, disposable Actions job.
 # This is not a live Supabase test and does not emulate its supautils hooks.
 if [[ "$(printenv GITHUB_ACTIONS || true)" != true ||
       -z "$(printenv GITHUB_RUN_ID || true)" ||
@@ -61,6 +62,31 @@ if [[ "$role_check" != 'expected|f|t|t|t' ]]; then
   exit 1
 fi
 echo 'sabora_nonsuperuser_role_preflight_ok'
+
+# The read-only first-install gate must accept the exact Option A fixture, reject
+# a runtime identity, and notice even a ledger-only partial installation.
+admission="$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" < scripts/ci/sabora-pg17-owner-admission.sql)"
+[[ "$admission" == 'PREFLIGHT_ONLY:option_a_managed_dba_candidate' ]] || {
+  echo "sabora_option_a_admission_failed:${admission:-empty}" >&2; exit 1;
+}
+restricted_admission="$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
+  -U cv005_ci_restricted_probe -d "$database" < scripts/ci/sabora-pg17-owner-admission.sql)"
+[[ "$restricted_admission" == 'NO_GO:option_a_dba_attributes_required' ]] || {
+  echo "sabora_runtime_admission_not_denied:${restricted_admission:-empty}" >&2; exit 1;
+}
+docker exec -i "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" <<'SQL'
+CREATE SCHEMA sabora_migration_meta;
+CREATE TABLE sabora_migration_meta.applied_migrations(version text PRIMARY KEY);
+SQL
+partial_admission="$(docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
+  -U "$operator" -d "$database" < scripts/ci/sabora-pg17-owner-admission.sql)"
+[[ "$partial_admission" == 'NO_GO:first_install_state_not_clean' ]] || {
+  echo "sabora_partial_install_admission_not_denied:${partial_admission:-empty}" >&2; exit 1;
+}
+docker exec "$container" psql -X -q -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+  -c 'DROP SCHEMA sabora_migration_meta CASCADE'
+echo 'sabora_option_a_owner_admission_verified'
 
 # Verify actual PostgreSQL 17 bootstrap membership semantics in the
 # disposable database. The admin's bootstrap grant cannot be removed by

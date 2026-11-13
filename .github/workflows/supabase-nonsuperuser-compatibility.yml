@@ -6,14 +6,19 @@ on:
       - 'supabase/migrations/**'
       - 'scripts/ci/migration-audit.mjs'
       - 'scripts/ci/migration-manifest.mjs'
+      - 'scripts/ci/sabora-pg17-owner-admission.sql'
       - 'scripts/ci/supabase-nonsuperuser-migration-smoke.sh'
       - 'scripts/ci/postgres-migration-harness-contract.test.mjs'
+      - 'docs/security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md'
       - '.github/workflows/supabase-nonsuperuser-compatibility.yml'
   push:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      - 'scripts/ci/sabora-pg17-owner-admission.sql'
       - 'scripts/ci/supabase-nonsuperuser-migration-smoke.sh'
+      - 'scripts/ci/postgres-migration-harness-contract.test.mjs'
+      - 'docs/security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md'
       - '.github/workflows/supabase-nonsuperuser-compatibility.yml'
   workflow_dispatch:
 

@@ -1,5 +1,6 @@
 -- Sabora single-restaurant catalog foundation. No public grants or HTTP routes.
 -- Drafts are private; public snapshots are immutable and explicitly published.
+BEGIN;
 CREATE SCHEMA IF NOT EXISTS sabora;
 CREATE TABLE IF NOT EXISTS sabora.catalog_items (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,3 +28,4 @@ REVOKE ALL ON sabora.catalog_items FROM PUBLIC, anon, authenticated;
 -- discounts, then atomically copy the validated draft to published_snapshot.
 -- A withdrawal changes withdrawn_at; sold_out stays visible, but unselectable.
 -- No security-definer functions or publication permissions are installed here.
+COMMIT;
