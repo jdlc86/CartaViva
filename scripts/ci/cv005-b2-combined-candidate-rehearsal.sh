@@ -48,6 +48,8 @@ done
 # Bring in the matching NO-SUPERUSER fixture code and contractual assertions
 # from the same pinned SHA; do not use the older main smoke implementation.
 for filename in \
+ scripts/ci/sabora-pg17-owner-admission.sql \
+ scripts/ci/postgres-migration-chain-smoke.sh \
  scripts/ci/supabase-nonsuperuser-migration-smoke.sh \
  scripts/ci/postgres-migration-harness-contract.test.mjs \
  .github/workflows/supabase-nonsuperuser-compatibility.yml; do

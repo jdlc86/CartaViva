@@ -104,7 +104,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
+ let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,
+  operational=false,notificationDependencyLost=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
   await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
@@ -321,12 +322,12 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
    expectedLogin:tableChange.expectedOperationsLogin,onLost:error=>{
-    operational=false;reportDependencyFailure('events');
+    notificationDependencyLost=true;operational=false;reportDependencyFailure('events');
     try{observeFailure(error);}catch{}
     if(scheduler)void scheduler.close().catch(()=>{});
    }});
   h6Notifier=await createPostgresH6OutboxNotifier({pool:h6.notifierPool,onLost:error=>{
-   operational=false;reportDependencyFailure('events');
+   notificationDependencyLost=true;operational=false;reportDependencyFailure('events');
    try{observeFailure(error);}catch{}
    if(scheduler)void scheduler.close().catch(()=>{});
   }});
@@ -396,7 +397,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
-  await app.ready();operational=true;
+  await app.ready();operational=!notificationDependencyLost;
   let closePromise=null;
   return Object.freeze({app,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},
