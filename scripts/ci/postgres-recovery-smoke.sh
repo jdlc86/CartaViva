@@ -444,7 +444,9 @@ if docker exec "$clean_container" psql -X -v ON_ERROR_STOP=1 -U postgres \
 fi
 docker exec "$clean_container" psql -X -U postgres -d sabora_clean_recovery_ci -Atqc \
  "select parent.rolname||'|'||member.rolname||'|'||grantor.rolname||'|'||
-         membership.admin_option||'|'||membership.set_option||'|'||membership.inherit_option
+         case when membership.admin_option then 't' else 'f' end||'|'||
+         case when membership.set_option then 't' else 'f' end||'|'||
+         case when membership.inherit_option then 't' else 'f' end
   from pg_auth_members membership
   join pg_roles parent on parent.oid=membership.roleid
   join pg_roles member on member.oid=membership.member
