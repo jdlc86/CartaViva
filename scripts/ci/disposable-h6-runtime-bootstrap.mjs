@@ -2,9 +2,9 @@
 // The live server.mjs remains health-only. This bootstrap never provisions
 // roles, reads operational secrets, deploys, or contacts an external database.
 // All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
-import {createM3RestaurantCandidate} from '../../apps/api/src/m3-restaurant-candidate.mjs';
 import {validateM2RuntimeSqlIdentities} from '../../apps/api/src/m2-runtime-identity-inventory.mjs';
 import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
+import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const invalid=()=>Error('disposable_m3_bootstrap_required');
@@ -45,8 +45,18 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    release:paymentDisabled,refund:paymentDisabled,retrieve:paymentDisabled});
   const diagnosticEvents=[];
   const diagnostics=createSaboraObservability({emit:record=>diagnosticEvents.push(record)});
-  const isolatedOptions={...options,observability:diagnostics,h6:{...options.h6,stripe:noProvider},
-   enableDeferredDispatch:false};
+  // Exercise a real PG17-backed readiness transition when the *trusted*
+  // JWKS provider becomes unavailable. No external Auth or operational URL.
+  let jwksAvailable=true;
+  const originalGetTrustedKeys=options.staff?.getTrustedKeys;
+  if(typeof originalGetTrustedKeys!=='function')throw invalid();
+  const staff={...options.staff,getTrustedKeys:(...args)=>{
+   if(!jwksAvailable)throw Error('disposable_jwks_temporarily_unavailable');
+   return originalGetTrustedKeys.apply(options.staff,args);
+  }};
+  const isolatedOptions={...options,staff,observability:diagnostics,
+   h6:{...options.h6,stripe:noProvider},
+   enableDeferredDispatch:false,requireTrustedKeysOnReadiness:true};
   // Internal factory checks 17 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
   // Exercise the *same* identity inventory as the HTTP assembly in the
@@ -57,10 +67,11 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    (isolatedOptions.waiterCalls?2:0);
   if(inventory.capabilityCount!==expected||inventory.notifierCount!==2)
    throw invalid();
-  candidate=await createM3RestaurantCandidate(isolatedOptions);
-  if(candidate.mode!=='opt-in-h3-h6-m3-candidate')throw invalid();
-  // The factory permits only loopback. Port 0 eliminates fixed host binds.
-  const origin=await candidate.listen({host:'127.0.0.1',port:0});
+  candidate=await startOperationalM3Runtime({options:isolatedOptions,
+   listener:{host:'127.0.0.1',port:0},observability:diagnostics});
+  if(candidate.mode!=='operational-h3-h6-m3-candidate')throw invalid();
+  // The lab entrypoint permits only loopback. Port 0 eliminates fixed host binds.
+  const origin=candidate.origin;
   if(!/^http:\/\/127\.0\.0\.1:[0-9]+$/.test(origin))throw invalid();
   const probe=async path=>fetch(origin+path,{
    method:'GET',cache:'no-store',signal:AbortSignal.timeout(30000)
@@ -78,6 +89,13 @@ export async function startDisposableM3Runtime({options,environment=process.env}
      healthJson.service!=='sabora-m3-candidate'||
      readyJson.service!=='sabora-m3-candidate'||
      !Array.isArray(catalogJson))throw invalid();
+  jwksAvailable=false;
+  const unavailable=await probe('/ready');
+  const alive=await probe('/health');
+  jwksAvailable=true;
+  const restored=await probe('/ready');
+  if(unavailable.status!==503||alive.status!==200||restored.status!==200)
+   throw invalid();
   // E2E on the real SQL-backed candidate must emit sanitized, low-cardinality
   // HTTP telemetry without ever logging request headers, cookies or raw URLs.
   const summary=diagnostics.snapshot();
@@ -85,18 +103,33 @@ export async function startDisposableM3Runtime({options,environment=process.env}
    'requestId','route','method','statusClass','durationMs']);
   const operationFields=new Set(['schema','source','service','level','event','at',
    'component','operation','outcome','durationMs']);
+  const lifecycleFields=new Set(['schema','source','service','level','event','at','code']);
+  const dependencyFields=new Set(['schema','source','service','level','event','at','component','code']);
   const safeHttp=diagnosticEvents.filter(v=>v.event==='http_request');
   const safeOps=diagnosticEvents.filter(v=>v.event==='operation');
-  if(summary.requests<4||summary.byRoute['/health']<1||
-     summary.byRoute['/ready']<1||summary.byRoute.other<2||
+  const failedOps=safeOps.filter(v=>v.outcome==='failure');
+  const failures=diagnosticEvents.filter(v=>v.event==='dependency_failed');
+  if(summary.requests<7||summary.byRoute['/health']<2||
+     summary.byRoute['/ready']<3||summary.byRoute.other<2||
      !safeHttp.some(v=>v.statusClass==='4xx')||
+     !safeHttp.some(v=>v.statusClass==='5xx'&&v.route==='/ready')||
      !safeOps.some(v=>v.component==='database'&&v.operation==='check'&&
        v.outcome==='success')||
+     failedOps.length!==1||failedOps[0].component!=='database'||
+     failedOps[0].operation!=='check'||
+     failures.length!==1||failures[0].component!=='staff'||
+     failures[0].code!=='dependency_unavailable'||
      diagnosticEvents.some(v=>v.event==='http_request'?
        ((v.route!=='/health'&&v.route!=='/ready'&&v.route!=='other')||
-        Object.keys(v).some(key=>!httpFields.has(key))):
-       (v.event!=='operation'||v.component!=='database'||v.operation!=='check'||
-        v.outcome!=='success'||Object.keys(v).some(key=>!operationFields.has(key)))))
+        Object.keys(v).some(key=>!httpFields.has(key))):v.event==='operation'?
+       (v.component!=='database'||v.operation!=='check'||
+        !['success','failure'].includes(v.outcome)||
+        Object.keys(v).some(key=>!operationFields.has(key))):
+       v.event==='dependency_failed'?
+       (v.component!=='staff'||v.code!=='dependency_unavailable'||
+        Object.keys(v).some(key=>!dependencyFields.has(key))):
+       (v.event!=='lifecycle'||v.code!=='started_operational_candidate'||
+        Object.keys(v).some(key=>!lifecycleFields.has(key)))))
      throw invalid();
   return Object.freeze({
    app:candidate.app,mode:candidate.mode,origin,

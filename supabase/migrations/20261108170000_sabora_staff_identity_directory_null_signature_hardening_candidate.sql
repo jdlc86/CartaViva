@@ -4,6 +4,62 @@
 -- PostgreSQL IF NULL must never permit unsigned identity or directory access.
 BEGIN;
 
+-- CV-005 (PG17): grant the installer temporary access ONLY to the owners
+-- of these pre-existing Sabora functions before CREATE OR REPLACE.
+-- This is never a runtime grant. The exact DBA-created membership is removed
+-- before COMMIT, leaving only the provider/bootstrap ADMIN SET FALSE membership.
+DO $cv005_exact_fn_owner_scope$
+DECLARE v_owner record;
+DECLARE v_names name[] := ARRAY['transition_staff_lifecycle_with_identity_candidate', 'transition_staff_lifecycle_with_directory_candidate', 'read_staff_directory_authorized_candidate']::name[];
+BEGIN
+ IF EXISTS (
+   SELECT 1 FROM unnest(v_names) AS expected(proname)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_proc p
+       JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='sabora' AND p.proname=expected.proname
+    )
+ ) THEN
+  RAISE EXCEPTION 'cv005_expected_existing_function_missing' USING errcode='0P000';
+ END IF;
+ FOR v_owner IN
+  SELECT DISTINCT r.* FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+  JOIN pg_catalog.pg_roles r ON r.oid=p.proowner
+  WHERE n.nspname='sabora' AND p.proname=ANY(v_names)
+    AND r.rolname<>current_user::text
+ LOOP
+  IF left(v_owner.rolname,7)<>'sabora_'
+     OR right(v_owner.rolname,9)<>'_fn_owner'
+     OR v_owner.rolcanlogin OR v_owner.rolinherit
+     OR v_owner.rolsuper OR v_owner.rolbypassrls
+     OR v_owner.rolcreaterole OR v_owner.rolcreatedb
+     OR v_owner.rolreplication THEN
+   RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+  END IF;
+  -- Existing CI laboratory migrations executed by fixture superuser remain
+  -- compatible: that trusted fixture does not receive bootstrap membership
+  -- and needs no temporary grant. Actual Supabase installer is NOSUPERUSER.
+  IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user::text) THEN
+   CONTINUE;
+  END IF;
+  IF NOT EXISTS (
+   SELECT 1 FROM pg_catalog.pg_auth_members m
+   JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
+    WHERE m.roleid=v_owner.oid
+     AND m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+     AND grantor.rolsuper AND m.admin_option
+     AND NOT m.set_option AND NOT m.inherit_option
+  ) THEN
+   RAISE EXCEPTION 'cv005_provider_bootstrap_membership_missing' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',v_owner.rolname);
+ END LOOP;
+END;
+$cv005_exact_fn_owner_scope$;
+
+
+
 -- Internal staff-identity wrapper: independently reject a missing HMAC.
 CREATE OR REPLACE FUNCTION sabora.transition_staff_lifecycle_with_identity_candidate(
  p_key_id text,p_database_role text,p_actor_user_id uuid,p_action text,
@@ -349,5 +405,25 @@ BEGIN
   RAISE EXCEPTION 'expired_staff_directory_read_capability' USING errcode='42501'; END IF;
 END;
 $directory_read$;
+
+-- CV-005: remove only the migration-DBA's temporary role grants.
+DO $cv005_exact_fn_owner_release$
+DECLARE v_role name;
+DECLARE v_names name[] := ARRAY['transition_staff_lifecycle_with_identity_candidate', 'transition_staff_lifecycle_with_directory_candidate', 'read_staff_directory_authorized_candidate']::name[];
+BEGIN
+ FOR v_role IN
+  SELECT DISTINCT r.rolname
+   FROM pg_catalog.pg_proc p
+   JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+   JOIN pg_catalog.pg_roles r ON r.oid=p.proowner
+   JOIN pg_catalog.pg_auth_members m ON m.roleid=r.oid
+  WHERE n.nspname='sabora' AND p.proname=ANY(v_names)
+    AND m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',v_role);
+ END LOOP;
+END;
+$cv005_exact_fn_owner_release$;
 
 COMMIT;

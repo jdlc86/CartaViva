@@ -2,6 +2,25 @@
 -- Isolated candidate only. No LOGIN, endpoint, worker or operational activation.
 BEGIN;
 
+-- CV-005: scoped role access for existing function owners before REPLACE/ACL.
+DO $cv005_early_owner_scope$
+DECLARE ri record;
+BEGIN
+ FOR ri IN SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+ FROM pg_catalog.pg_roles r WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner' AND r.rolname<>current_user::text
+ AND (EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+ OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+ IF ri.rolcanlogin OR ri.rolinherit OR ri.rolsuper OR ri.rolbypassrls OR ri.rolcreaterole OR ri.rolcreatedb OR ri.rolreplication THEN
+  RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+ END IF;
+ EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',ri.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
+
 CREATE ROLE sabora_m3_management_fn_owner NOLOGIN NOINHERIT NOBYPASSRLS
  NOSUPERUSER NOCREATEDB NOCREATEROLE;
 CREATE ROLE sabora_m3_tables_runtime NOLOGIN NOINHERIT NOBYPASSRLS
@@ -281,6 +300,9 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501';
 END;
 $verify_management$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m3_management_fn_owner;
+GRANT sabora_m3_management_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.verify_management_capability_m3(jsonb,text)
  OWNER TO sabora_m3_management_fn_owner;
 REVOKE ALL ON FUNCTION sabora.verify_management_capability_m3(jsonb,text)
@@ -967,6 +989,9 @@ LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $read_public
  ORDER BY coalesce(c.sort_order,10001),i.published_at DESC,i.id
  LIMIT 500
 $read_public_catalog$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_catalog_fn_owner;
+GRANT sabora_catalog_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_published_catalog() OWNER TO sabora_catalog_fn_owner;
 REVOKE ALL ON FUNCTION sabora.read_published_catalog()
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_customer_session_runtime,
@@ -1139,6 +1164,9 @@ BEGIN
  RETURN QUERY SELECT p_order_id,v_grouping,false;
 END;
 $persist_order_m3$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_flow_fn_owner;
+GRANT sabora_customer_flow_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.persist_customer_order_candidate(
  bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean)
  OWNER TO sabora_customer_flow_fn_owner;
@@ -1177,5 +1205,25 @@ REVOKE ALL ON FUNCTION sabora.restore_dynamic_order_line_category_m3()
 CREATE TRIGGER order_line_dynamic_category_m3
  BEFORE INSERT ON sabora.order_lines FOR EACH ROW
  EXECUTE FUNCTION sabora.restore_dynamic_order_line_category_m3();
+
+REVOKE sabora_catalog_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_catalog_fn_owner;
+REVOKE sabora_m3_management_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m3_management_fn_owner;
+REVOKE sabora_customer_flow_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_flow_fn_owner;
+
+
+-- CV-005: no DBA-issued function-owner membership may survive COMMIT.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+ WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+ AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+ AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
 
 COMMIT;

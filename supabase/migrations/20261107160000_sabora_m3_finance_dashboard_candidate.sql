@@ -2,6 +2,25 @@
 -- Durable, append-only timeline for captured charge/refund acknowledgements.
 -- Historical charge dates cannot safely be synthesized from mutable updated_at.
 BEGIN;
+
+-- CV-005: scoped role access for existing function owners before REPLACE/ACL.
+DO $cv005_early_owner_scope$
+DECLARE ri record;
+BEGIN
+ FOR ri IN SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+ FROM pg_catalog.pg_roles r WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner' AND r.rolname<>current_user::text
+ AND (EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+ OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+ IF ri.rolcanlogin OR ri.rolinherit OR ri.rolsuper OR ri.rolbypassrls OR ri.rolcreaterole OR ri.rolcreatedb OR ri.rolreplication THEN
+  RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+ END IF;
+ EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',ri.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
 CREATE TABLE sabora.finance_provider_events_candidate (
  kind text NOT NULL CHECK (kind IN ('capture','refund')),
  source_id uuid NOT NULL,
@@ -45,6 +64,9 @@ BEGIN
  RETURN NEW;
 END;
 $fn$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.append_finance_provider_event_candidate()
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.append_finance_provider_event_candidate()
@@ -125,6 +147,9 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
  RAISE EXCEPTION 'invalid_m3_management_capability' USING ERRCODE='42501';
 END;
 $verify_management$;
+-- CV-005 CANDIDATE: transaction-scoped PG17 ownership transfer.
+GRANT CREATE ON SCHEMA sabora TO sabora_m3_management_fn_owner;
+GRANT sabora_m3_management_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.verify_management_capability_m3(jsonb,text)
  OWNER TO sabora_m3_management_fn_owner;
 REVOKE ALL ON FUNCTION sabora.verify_management_capability_m3(jsonb,text)
@@ -366,4 +391,22 @@ REVOKE ALL ON FUNCTION sabora.read_admin_finance_dashboard_candidate(jsonb,text,
    sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.read_admin_finance_dashboard_candidate(jsonb,text,text,text)
  TO sabora_m3_catalog_runtime;
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+REVOKE sabora_m3_management_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_m3_management_fn_owner;
+
+
+-- CV-005: no DBA-issued function-owner membership may survive COMMIT.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+ WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+ AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+ AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
+
 COMMIT;

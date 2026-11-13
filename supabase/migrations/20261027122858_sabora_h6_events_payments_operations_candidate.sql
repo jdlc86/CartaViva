@@ -3,6 +3,34 @@
 -- worker or production deployment is created or enabled by this migration.
 BEGIN;
 
+-- CV-005: existing sealed function owners are scoped to this transaction
+-- before CREATE OR REPLACE or cross-owner ACL; no runtime LOGIN is granted.
+DO $cv005_early_owner_scope$
+DECLARE roleinfo record;
+BEGIN
+ FOR roleinfo IN
+  SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,
+    r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+  FROM pg_catalog.pg_roles r
+  WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+   AND r.rolname<>current_user::text
+   AND (EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n
+     ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
+     ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+  IF roleinfo.rolcanlogin OR roleinfo.rolinherit OR roleinfo.rolsuper
+    OR roleinfo.rolbypassrls OR roleinfo.rolcreaterole
+    OR roleinfo.rolcreatedb OR roleinfo.rolreplication THEN
+    RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',roleinfo.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
+
 CREATE SCHEMA IF NOT EXISTS extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
@@ -37,10 +65,18 @@ BEGIN
     SELECT 1 FROM pg_catalog.pg_auth_members m
     JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid
     JOIN pg_catalog.pg_roles member ON member.oid=m.member
-    WHERE granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
+    WHERE (granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
       'sabora_h6_provider_runtime','sabora_h6_fn_owner')
        OR member.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
-         'sabora_h6_provider_runtime','sabora_h6_fn_owner')
+         'sabora_h6_provider_runtime','sabora_h6_fn_owner'))
+      AND NOT (
+        granted.rolname IN ('sabora_h6_customer_runtime','sabora_h6_operations_runtime',
+          'sabora_h6_provider_runtime','sabora_h6_fn_owner')
+        AND member.rolname=current_user::text AND grantor.rolsuper
+        AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper
+      )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_h6_role_membership' USING errcode='0P000';
   END IF;
@@ -281,10 +317,35 @@ REVOKE ALL ON FUNCTION sabora.notify_h6_outbox_after_commit() FROM PUBLIC,anon,a
 CREATE TRIGGER h6_outbox_notify AFTER INSERT ON sabora.event_outbox
  FOR EACH ROW EXECUTE FUNCTION sabora.notify_h6_outbox_after_commit();
 
+-- CV-005 CANDIDATE: the DBA can administer roles it created but must not
+-- retain SET/INHERIT at COMMIT. Grant ownership of existing Sabora objects
+-- only while the legacy global REVOKE executes; no runtime LOGIN involved.
+DO $cv005_scope$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_roles roles
+  WHERE roles.oid IN (
+   SELECT p.proowner FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='sabora'
+   UNION
+   SELECT c.relowner FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='sabora'
+  )
+  AND roles.rolname<>current_user::text
+  AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',candidate_role);
+ END LOOP;
+END;
+$cv005_scope$;
 REVOKE ALL ON SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_h6_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_h6_fn_owner;
+
 GRANT USAGE ON SCHEMA sabora,extensions TO sabora_h6_fn_owner;
 GRANT USAGE,SELECT ON SEQUENCE sabora.event_outbox_id_seq TO sabora_h6_fn_owner;
 GRANT EXECUTE ON FUNCTION extensions.hmac(bytea,bytea,text) TO sabora_h6_fn_owner;
@@ -371,6 +432,9 @@ BEGIN
   RETURN v_id;
 END;
 $emit$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
  OWNER TO sabora_h6_fn_owner;
 REVOKE ALL ON FUNCTION sabora.emit_h6_event_candidate(uuid,uuid,text,uuid,uuid,text,text,text,uuid,bigint,jsonb)
@@ -1618,5 +1682,41 @@ COMMENT ON TABLE sabora.event_outbox IS
  'H6 seven-day logical replay window; expired rows are excluded. Physical pruning requires a separately authorized maintenance procedure.';
 COMMENT ON FUNCTION sabora.read_customer_event_backlog_h6_candidate(bytea,uuid,text,uuid,bigint,integer) IS
  'One-shot authorized replay, maximum 100 events. It is invoked on connect/reconnect or a committed-event signal, never by periodic business polling.';
+
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+
+-- Release only the grants issued by this transaction's current DBA.
+-- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
+DO $cv005_release$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
+   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
+  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
+ END LOOP;
+END;
+$cv005_release$;
+
+
+
+-- CV-005: revoke every DBA-issued membership on Sabora function owners.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN
+  SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m
+  JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+  WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
 
 COMMIT;

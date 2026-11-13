@@ -41,7 +41,8 @@ export async function mountVerifiedTableChangeB3HttpCandidate(app,{
  if(typeof guard!=='function')throw Error('invalid_b3_http_composition');
  if(typeof notificationPool?.connect!=='function')throw Error('invalid_b3_http_composition');
  const notifier=await createTableChangeCommitNotifier({
-  pool:notificationPool,expectedLogin:b3Configuration.expectedOperationsLogin
+  pool:notificationPool,expectedLogin:b3Configuration.expectedOperationsLogin,
+  onLost:error=>{try{observeStreamFailure?.(error);}catch{}}
  });
  try{
   registerCustomerProductionFlowHttp(app,{

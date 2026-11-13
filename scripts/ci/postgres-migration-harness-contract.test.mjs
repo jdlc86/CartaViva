@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 
 const smoke=readFileSync(new URL('./postgres-migration-smoke.sh',import.meta.url),'utf8');
 const chain=readFileSync(new URL('./postgres-migration-chain-smoke.sh',import.meta.url),'utf8');
 const recovery=readFileSync(new URL('./postgres-recovery-smoke.sh',import.meta.url),'utf8');
+const admission=readFileSync(new URL('./sabora-pg17-owner-admission.sql',import.meta.url),'utf8');
 
 test('migration smoke invokes preflight, real-chain resume, transactional failure and clean recovery as commands',()=>{
  assert.doesNotMatch(smoke,/\\nbash scripts\/ci\/postgres-migration-failure-smoke/);
@@ -21,7 +22,27 @@ test('real-chain harness is checksum-ledgered and has no destination URL or bypa
  assert.match(chain,/applied_migrations/);
  assert.match(chain,/sha256sum/);
  assert.match(chain,/return 75/);
+ assert.match(chain,/CREATE CONSTRAINT TRIGGER cv005_commit_ledger/);
+ assert.match(chain,/DEFERRABLE INITIALLY DEFERRED/);
+ assert.match(chain,/pg_terminate_backend/);
+ assert.match(chain,/sabora_migration_chain_precommit_atomicity_verified/);
  assert.doesNotMatch(chain,/--force|DATABASE_URL|SUPABASE/);
+});
+
+test('every real migration owns one intact transaction consumed by the atomic ledger runner',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(names.length,99,'exact audited chain');
+ for(const name of names){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.equal((sql.match(/^BEGIN;$/gim)||[]).length,1,name+': BEGIN count');
+  const commits=[...sql.matchAll(/^COMMIT;$/gim)];
+  assert.equal(commits.length,1,name+': COMMIT count');
+  assert.doesNotMatch(sql,/^SET\s+CONSTRAINTS\b/gim,name+': deferred ledger must remain deferred');
+  const trailing=sql.slice(commits[0].index+commits[0][0].length)
+   .replace(/--[^\n]*(?:\n|$)/g,'').trim();
+  assert.equal(trailing,'',name+': statements after final COMMIT');
+ }
 });
 
 test('recovery uses a second offline PG17 cluster and a genuine restricted LOGIN',()=>{
@@ -43,4 +64,231 @@ test('recovery exercises representative load, lock timeout, corrupt input and ta
  assert.match(recovery,/interrupted_old_oid/);
  assert.match(recovery,/interrupted_new_oid/);
  assert.match(recovery,/sabora_p3_recovery_metrics/);
+});
+
+const providerCompat=readFileSync(new URL('./supabase-nonsuperuser-migration-smoke.sh',import.meta.url),'utf8');
+const providerWorkflow=readFileSync(new URL('../../.github/workflows/supabase-nonsuperuser-compatibility.yml',import.meta.url),'utf8');
+
+test('Option A owner admission is fail-closed, ledger-aware and wired to the provider rehearsal',()=>{
+ for(const required of [
+  "to_regnamespace('sabora_migration_meta')",
+  "to_regclass('sabora_migration_meta.applied_migrations')",
+  'rolcanlogin AND rolcreaterole AND rolbypassrls AND NOT rolsuper',
+  'PREFLIGHT_ONLY:option_a_managed_dba_candidate',
+  'NO_GO:option_a_dba_attributes_required'
+ ])assert.ok(admission.includes(required),required);
+ assert.doesNotMatch(admission,/public\.sabora_migration_meta|rolsuper\) IS NOT TRUE/);
+ for(const required of [
+  "'scripts/ci/sabora-pg17-owner-admission.sql'",
+  "'docs/security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md'"
+ ])assert.ok(providerWorkflow.includes(required),required);
+ for(const required of [
+  'scripts/ci/sabora-pg17-owner-admission.sql',
+  'sabora_option_a_owner_admission_verified',
+  'NO_GO:first_install_state_not_clean'
+ ])assert.ok(providerCompat.includes(required),required);
+});
+
+test('non-superuser Supabase compatibility harness is isolated and exercises the full ordered chain',()=>{
+ for(const required of [
+  'GITHUB_ACTIONS','GITHUB_RUN_ID','RUNNER_TEMP','--network none',
+  'NOSUPERUSER BYPASSRLS NOREPLICATION','CREATEROLE',
+  'node scripts/ci/migration-audit.mjs',
+  "docker inspect -f '{{.HostConfig.NetworkMode}}'",
+  'supabase/migrations/$name',
+  'sabora_nonsuperuser_migration_blocked:$name',
+  'sabora_nonsuperuser_force_rls_mismatch',
+  'sabora_nonsuperuser_pg17_migration_chain_ok:',
+  'sabora_provider_restricted_runtime_denied',
+
+  'sabora_ci_membership_probe',
+  'sabora_nonsuperuser_runtime_role_boundary_verified',
+  'sabora_nonsuperuser_bootstrap_membership_confirmed',
+  'sabora_nonsuperuser_incomplete_chain:',
+
+
+
+
+ ])assert.ok(providerCompat.includes(required),required);
+ assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
+ assert.match(providerCompat,/sabora_nonsuperuser_bootstrap_membership_confirmed/);
+ assert.match(providerCompat,/unsafe_memberships/);
+ assert.match(providerCompat,/unsafe_role_attrs/);
+ assert.match(providerCompat,/docker exec -i "\$container" psql -X -v ON_ERROR_STOP=1/);
+ assert.doesNotMatch(providerCompat,/DATABASE_URL|SUPABASE_DB_|--publish|--network host|docker (system|volume|network) prune/);
+ assert.match(providerWorkflow,/Rehearse complete Sabora chain as non-superuser on disposable PG17/);
+ assert.match(providerWorkflow,/bash scripts\/ci\/supabase-nonsuperuser-migration-smoke\.sh/);
+ assert.doesNotMatch(providerWorkflow,/secrets\.|SUPABASE_DB_|DATABASE_URL/);
+});
+
+const PG17_OWNER_MIGRATIONS = [
+ '20261021030000_sabora_customer_session_restricted_rpcs.sql',
+ '20261021200000_sabora_catalog_reader.sql',
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027190334_sabora_pickup_claim_cancel_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261030190000_sabora_h6_table_change_request_decision_candidate.sql',
+ '20261031020000_sabora_h6_decision_lock_order_fix_candidate.sql',
+ '20261103020000_sabora_h6_live_economic_event_destination_candidate.sql',
+ '20261104094055_sabora_h6_order_revision_correction_candidate.sql',
+ '20261105150000_sabora_m3_management_candidate.sql',
+ '20261107190000_sabora_m4_third_party_cash_provenance_candidate.sql',
+ '20261107200000_sabora_m4_cash_tips_candidate.sql',
+ '20261108070000_sabora_m5_communications_candidate.sql',
+ '20261110232000_sabora_m3_effective_management_permissions_candidate.sql'
+];
+test('PG17 candidate owner transfers are scoped to the original migration transaction',()=>{
+ for(const name of PG17_OWNER_MIGRATIONS) {
+  const sql=readFileSync(new URL('../../supabase/migrations/'+name,import.meta.url),'utf8');
+  const grants=[...sql.matchAll(/^GRANT CREATE ON SCHEMA sabora TO (sabora_\w+);$/gm)].map(x=>x[1]);
+  const memberships=[...sql.matchAll(/^GRANT (sabora_\w+) TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;$/gm)].map(x=>x[1]);
+  const revokes=[...sql.matchAll(/^REVOKE (sabora_\w+) FROM CURRENT_USER;$/gm)].map(x=>x[1]);
+  const schemaRevokes=[...sql.matchAll(/^REVOKE CREATE ON SCHEMA sabora FROM (sabora_\w+);$/gm)].map(x=>x[1]);
+  assert.ok(grants.length>0,name+': no scoped owner grants');
+  assert.deepEqual(grants.slice().sort(),memberships.slice().sort(),name);
+  assert.deepEqual(grants.slice().sort(),revokes.slice().sort(),name);
+  assert.deepEqual(grants.slice().sort(),schemaRevokes.slice().sort(),name);
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('GRANT CREATE ON SCHEMA sabora'),name);
+  assert.ok(sql.lastIndexOf('COMMIT;')>sql.lastIndexOf('REVOKE CREATE ON SCHEMA sabora'),name);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+ }
+});
+test('HMAC-bound owner retains negative policy for all runtime and unexpected members',()=>{
+ const sql=readFileSync(new URL('../../supabase/migrations/20261024190000_sabora_order_operation_actor_capability_candidate.sql',import.meta.url),'utf8');
+ for(const code of [
+  'unsafe_sabora_order_operations_fn_owner_membership',
+  'AND grantor.rolsuper AND membership.admin_option',
+  'NOT membership.inherit_option AND NOT membership.set_option',
+  'member.rolname = current_user::text',
+ ])assert.ok(sql.includes(code),code);
+});
+
+test('all 99 PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(names.length,99,'exact audited chain');
+ let ownerTransferVersions=0;
+ for(const name of names){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  const owners=[...new Set([...sql.matchAll(/\bOWNER TO (sabora_\w+);/g)].map(x=>x[1]))];
+  if(!owners.length)continue;
+  ownerTransferVersions++;
+  const begin=sql.indexOf('BEGIN;');
+  const commit=sql.lastIndexOf('COMMIT;');
+  assert.ok(begin>=0&&commit>begin,name+': one transaction');
+  for(const owner of owners){
+   const grant='GRANT CREATE ON SCHEMA sabora TO '+owner+';';
+   const member='GRANT '+owner+' TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;';
+   const roleRevoke='REVOKE '+owner+' FROM CURRENT_USER;';
+   const createRevoke='REVOKE CREATE ON SCHEMA sabora FROM '+owner+';';
+   const firstOwner=sql.indexOf('OWNER TO '+owner+';');
+   const lastOwner=sql.lastIndexOf('OWNER TO '+owner+';');
+   assert.ok(sql.indexOf(grant)>begin && sql.indexOf(grant)<firstOwner,name+': schema CREATE before owner');
+   assert.ok(sql.indexOf(member)>begin && sql.indexOf(member)<firstOwner,name+': membership before owner');
+   assert.ok(sql.indexOf(roleRevoke)>lastOwner && sql.indexOf(roleRevoke)<commit,name+': membership revoked');
+   assert.ok(sql.indexOf(createRevoke)>lastOwner && sql.indexOf(createRevoke)<commit,name+': CREATE revoked');
+  }
+ }
+ assert.ok(ownerTransferVersions>=50,'complete function owner transfer inventory');
+});
+test('all PG17 sealed owner guards allow at most bootstrap DBA membership',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const gated=[
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261025081318_staff_identity_lifecycle_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261028120000_sabora_staff_directory_read_candidate.sql'
+ ];
+ for(const name of gated){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.match(sql,/grantor\.rolsuper/,name);
+  assert.match(sql,/\.admin_option/,name);
+  assert.match(sql,/NOT (?:membership|m)\.set_option/,name);
+  assert.match(sql,/NOT (?:membership|m)\.inherit_option/,name);
+  assert.match(sql,/current_user::text/,name);
+ }
+});
+test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const gated=[
+ '20261024190000_sabora_order_operation_actor_capability_candidate.sql',
+ '20261025081318_staff_identity_lifecycle_candidate.sql',
+ '20261027122858_sabora_h6_events_payments_operations_candidate.sql',
+ '20261027225805_sabora_staff_display_id_candidate.sql',
+ '20261028120000_sabora_staff_directory_read_candidate.sql',
+ '20261109020000_sabora_waiter_calls_integral_candidate.sql'
+ ];
+ for(const name of gated){
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  assert.ok(sql.includes('DO $cv005_scope$')&&sql.includes('DO $cv005_release$'),name);
+  assert.ok(sql.indexOf('DO $cv005_scope$')<sql.indexOf('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora'),name);
+  assert.ok(sql.indexOf('DO $cv005_release$')>sql.indexOf('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora'),name);
+  assert.ok(sql.indexOf('DO $cv005_release$')<sql.lastIndexOf('COMMIT;'),name);
+ }
+});
+
+test('all 52 provider-adapted versions preserve one transaction and restore installer owner roles',()=>{
+ const folder=new URL('../../supabase/migrations/',import.meta.url);
+ const files=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
+ assert.equal(files.length,99,'full chain inventory');
+ let protectedCount=0;
+ for (const name of files) {
+  const sql=readFileSync(new URL(name,folder),'utf8');
+  if (!sql.includes('DO $cv005_early_owner_scope$')) continue;
+  protectedCount++;
+  for (const part of [
+   '$cv005_early_owner_release$;',
+   'cv005_unsafe_existing_fn_owner',
+   "left(r.rolname,7)='sabora_'",
+   "right(r.rolname,9)='_fn_owner'",
+   'GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',
+   'REVOKE %I FROM CURRENT_USER'
+  ]) assert.ok(sql.includes(part),name+': missing '+part);
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,name);
+  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('DO $cv005_early_owner_scope$'),name);
+  assert.ok(sql.indexOf('DO $cv005_early_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
+ }
+ assert.equal(protectedCount,54,'52 original versions plus M2 and M3-M5 transaction scopes');
+ assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
+ assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
+ assert.match(providerCompat,/scope_matrix/, 'inspect all browser/DBA privilege facts');
+ assert.match(providerCompat,/'f\\|f\\|f\\|t'/, 'fixture DBA has observed privilege profile');
+ assert.match(providerCompat,/sabora_provider_runtime_attributes_unsafe/, 'runtime NOBYPASSRLS gate still required');
+ assert.match(providerCompat,/sabora_provider_runtime_owner_escalation/, 'runtime cannot assume owner');
+});
+
+
+const CV005_REPLACED_EXISTING_FUNCTIONS = {
+ '20261108160000_sabora_m3_m5_signed_capability_null_hardening_candidate.sql':[
+  'verify_management_capability_m3'],
+ '20261108170000_sabora_staff_identity_directory_null_signature_hardening_candidate.sql':[
+  'transition_staff_lifecycle_with_identity_candidate',
+  'transition_staff_lifecycle_with_directory_candidate',
+  'read_staff_directory_authorized_candidate'],
+ '20261108180000_sabora_ownership_eligible_admin_identity_candidate.sql':[
+  'admin_ownership_action_candidate'],
+ '20261109010000_sabora_ownership_post_lock_expiry_candidate.sql':[
+  'admin_ownership_action_candidate']
+};
+test('PG17 redefinitions require a fail-closed, explicitly named owner fence in each migration transaction',()=>{
+ for(const [file,names] of Object.entries(CV005_REPLACED_EXISTING_FUNCTIONS)){
+  const sql=readFileSync(new URL('../../supabase/migrations/'+file,import.meta.url),'utf8');
+  const begin=sql.indexOf('BEGIN;');
+  const firstReplacement=sql.search(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+sabora\./i);
+  const before=sql.indexOf('DO $cv005_exact_fn_owner_scope$');
+  const after=sql.indexOf('DO $cv005_exact_fn_owner_release$');
+  const commit=sql.lastIndexOf('COMMIT;');
+  assert.ok(begin>=0&&before>begin&&before<firstReplacement,file+': owner scope must precede replacement');
+  assert.ok(after>firstReplacement&&after<commit,file+': owner scope release must precede COMMIT');
+  assert.equal((sql.match(/^COMMIT;$/gm)||[]).length,1,file);
+  assert.ok(sql.includes('cv005_provider_bootstrap_membership_missing'),file);
+  assert.ok(sql.includes('cv005_unsafe_existing_fn_owner'),file);
+  assert.ok(sql.includes('IF (SELECT rolsuper FROM pg_catalog.pg_roles WHERE rolname=current_user::text) THEN'),file+': superuser fixture compatibility');
+  assert.ok(sql.includes('m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)'),file);
+  assert.ok(sql.includes('NOT m.set_option AND NOT m.inherit_option'),file);
+  const actual=[...sql.matchAll(/CREATE\s+OR\s+REPLACE\s+FUNCTION\s+sabora\.([a-z_0-9]+)/gi)].map(m=>m[1]).sort();
+  assert.deepEqual(actual,names.slice().sort(),file+': every replaced function must appear in scoped inventory');
+ }
 });

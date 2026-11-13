@@ -5,6 +5,34 @@
 -- browser grants or operational endpoints.
 BEGIN;
 
+-- CV-005: existing sealed function owners are scoped to this transaction
+-- before CREATE OR REPLACE or cross-owner ACL; no runtime LOGIN is granted.
+DO $cv005_early_owner_scope$
+DECLARE roleinfo record;
+BEGIN
+ FOR roleinfo IN
+  SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,
+    r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+  FROM pg_catalog.pg_roles r
+  WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+   AND r.rolname<>current_user::text
+   AND (EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n
+     ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
+     ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+  IF roleinfo.rolcanlogin OR roleinfo.rolinherit OR roleinfo.rolsuper
+    OR roleinfo.rolbypassrls OR roleinfo.rolcreaterole
+    OR roleinfo.rolcreatedb OR roleinfo.rolreplication THEN
+    RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',roleinfo.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
+
 CREATE ROLE sabora_customer_registration_runtime
   NOLOGIN NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 CREATE ROLE sabora_customer_registration_fn_owner
@@ -87,6 +115,9 @@ BEGIN
     CASE WHEN p_company IS NULL THEN NULL ELSE btrim(p_company) END;
 END;
 $registration$;
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_registration_fn_owner;
+GRANT sabora_customer_registration_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.register_customer_profile_session_candidate(
   uuid, text, text, text, uuid, bytea, timestamptz, timestamptz
 ) OWNER TO sabora_customer_registration_fn_owner;
@@ -776,6 +807,9 @@ BEGIN
 END;
 $persist_order$;
 
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_customer_flow_fn_owner;
+GRANT sabora_customer_flow_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.authorize_customer_visit_candidate(
   bytea, uuid, text, text, text, timestamptz
 ) OWNER TO sabora_customer_flow_fn_owner;
@@ -833,5 +867,25 @@ GRANT EXECUTE ON FUNCTION sabora.prepare_customer_confirmation_line_candidate(
 GRANT EXECUTE ON FUNCTION sabora.persist_customer_order_candidate(
   bytea, uuid, text, text, text, text, bytea, uuid, uuid, jsonb, boolean
 ) TO sabora_customer_flow_runtime;
+
+REVOKE sabora_customer_registration_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_registration_fn_owner;
+REVOKE sabora_customer_flow_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_customer_flow_fn_owner;
+
+
+-- CV-005: revoke every DBA-issued membership on Sabora function owners.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN
+  SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m
+  JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+  WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
 
 COMMIT;

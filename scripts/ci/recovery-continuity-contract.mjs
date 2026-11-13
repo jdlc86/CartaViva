@@ -61,6 +61,18 @@ export function inspectRecoveryContinuity(rootPath, {
     '--section=pre-data',
     'p3_interrupted_recovery_target_not_recreated',
     'p3_clean_cluster_load_fingerprint_mismatch',
+    'cv005_recovery_provider_dba',
+    'membership.set_option',
+    'membership.inherit_option',
+    'grantor.rolname',
+    'sabora_option_a_provider_membership_recovery_verified',
+    'clean_cluster_unexpected_membership_not_fingerprinted',
+    'sabora_recovery_membership_graph_closure_verified',
+    'grant pg_read_all_data to sabora_staff_reader;',
+    'grant sabora_h6_fn_owner to cv005_recovery_unexpected_member;',
+    'encrypted-backup-artifact.mjs encrypt',
+    'encrypted-backup-artifact.mjs decrypt',
+    'p3_corrupt_encrypted_archive_accepted',
     'sabora_p3_recovery_metrics:',
   ];
   for (const marker of exactMarkers) if (!script.includes(marker)) {

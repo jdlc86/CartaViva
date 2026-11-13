@@ -106,6 +106,7 @@ test('production gate detects global cleanup and frontend secret regressions',t=
  for(const directory of ['deploy','.github/workflows','scripts','apps/api/src','apps/client/src','apps/management/src'])
   mkdirSync(join(fixture,directory),{recursive:true});
  writeFileSync(join(fixture,'deploy/compose.sabora.yml'),readFileSync(join(root,'deploy/compose.sabora.yml')));
+ writeFileSync(join(fixture,'deploy/compose.sabora-operational.yml'),readFileSync(join(root,'deploy/compose.sabora-operational.yml')));
  writeFileSync(join(fixture,'deploy/Dockerfile.api'),readFileSync(join(root,'deploy/Dockerfile.api')));
  writeFileSync(join(fixture,'.github/workflows/ci.yml'),'permissions:\n  contents: read\n');
  writeFileSync(join(fixture,'.env.example'),readFileSync(join(root,'.env.example')));

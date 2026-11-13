@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 # Only called with a container owned by the isolated migration CI harness.
 if [[ "${GITHUB_ACTIONS:-}" != true || -z "${RUNNER_TEMP:-}" || -z "${GITHUB_RUN_ID:-}" || "$#" -ne 1 ]]; then
  echo 'recovery_harness_required' >&2; exit 1
@@ -43,6 +44,16 @@ begin
   raise exception 'partial_write_survived';
  end if;
 end $do$;
+SQL
+
+# Model the exact managed-provider Option A edge. It is intentionally outside
+# the sabora_* namespace so recovery must follow the Sabora membership closure
+# instead of relying on a name prefix. Password material is never exported.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+create role cv005_recovery_provider_dba login createrole nosuperuser nocreatedb
+ noinherit noreplication bypassrls;
+grant sabora_h6_fn_owner to cv005_recovery_provider_dba
+ with admin true, set false, inherit false;
 SQL
 
 # Hold an ACCESS EXCLUSIVE lock in a concurrent real PostgreSQL session. The
@@ -223,9 +234,16 @@ done
 clean_container="sabora-pg-recovery-ci-${GITHUB_RUN_ID}-$$"
 host_archive="${RUNNER_TEMP}/sabora-schema-recovery-${GITHUB_RUN_ID}-$.dump"
 host_roles="${RUNNER_TEMP}/sabora-roles-recovery-${GITHUB_RUN_ID}-$.sql"
+host_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.tar"
+encrypted_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.tar.aesgcm"
+backup_manifest="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.manifest.json"
+backup_key="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.key"
+corrupt_bundle="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.corrupt"
+corrupt_output="${RUNNER_TEMP}/sabora-recovery-bundle-${GITHUB_RUN_ID}-$.corrupt-output"
 cleanup_clean_recovery(){
  docker rm -f -v "$clean_container" >/dev/null 2>&1 || true
- rm -f "$host_archive" "$host_roles"
+ rm -f "$host_archive" "$host_roles" "$host_bundle" "$encrypted_bundle" \
+  "$backup_manifest" "$backup_key" "$corrupt_bundle" "$corrupt_output"
 }
 trap cleanup_clean_recovery EXIT
 
@@ -244,19 +262,42 @@ select format(
  case when rolbypassrls then 'bypassrls' else 'nobypassrls' end,
  rolconnlimit)
 from pg_roles
-where rolname in ('anon','authenticated') or rolname like 'sabora\_%' escape '\'
+where rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+   or rolname like 'sabora\_%' escape '\'
 order by rolname;
-select format('grant %I to %I%s;',parent.rolname,member.rolname,
- case when membership.admin_option then ' with admin option' else '' end)
+select format('grant %I to %I with admin %s, set %s, inherit %s granted by %I;',
+ parent.rolname,member.rolname,
+ case when membership.admin_option then 'true' else 'false' end,
+ case when membership.set_option then 'true' else 'false' end,
+ case when membership.inherit_option then 'true' else 'false' end,
+ grantor.rolname)
 from pg_auth_members membership
 join pg_roles parent on parent.oid=membership.roleid
 join pg_roles member on member.oid=membership.member
+join pg_roles grantor on grantor.oid=membership.grantor
 where (parent.rolname in ('anon','authenticated') or parent.rolname like 'sabora\_%' escape '\')
-  and (member.rolname in ('anon','authenticated') or member.rolname like 'sabora\_%' escape '\')
-order by parent.rolname,member.rolname;
+  and (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+       or member.rolname like 'sabora\_%' escape '\')
+order by parent.rolname,member.rolname,grantor.rolname;
 SQL
 grep -q '^create role sabora_staff_reader ' "$host_roles"
+grep -q '^create role cv005_recovery_provider_dba ' "$host_roles"
+grep -q '^grant sabora_h6_fn_owner to cv005_recovery_provider_dba with admin true, set false, inherit false granted by postgres;' "$host_roles"
 docker cp "$container:/tmp/sabora-schema-only-recovery.dump" "$host_archive" >/dev/null
+openssl rand -hex 32 > "$backup_key"
+tar -cf "$host_bundle" -C "$RUNNER_TEMP" "$(basename "$host_archive")" "$(basename "$host_roles")"
+SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs encrypt \
+ "$host_bundle" "$encrypted_bundle" "$backup_manifest"
+rm -f "$host_bundle" "$host_archive" "$host_roles"
+SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs decrypt \
+ "$encrypted_bundle" "$backup_manifest" "$host_bundle"
+tar -xf "$host_bundle" -C "$RUNNER_TEMP"
+cp "$encrypted_bundle" "$corrupt_bundle"
+printf 'X' | dd of="$corrupt_bundle" bs=1 seek=17 conv=notrunc status=none
+if SABORA_BACKUP_KEY_FILE="$backup_key" node scripts/ci/encrypted-backup-artifact.mjs decrypt \
+ "$corrupt_bundle" "$backup_manifest" "$corrupt_output" >/dev/null 2>&1; then
+ echo 'p3_corrupt_encrypted_archive_accepted' >&2; exit 1
+fi
 
 docker run -d --name "$clean_container" --network none \
  -e POSTGRES_PASSWORD=ci_only_not_a_secret postgres:17-alpine >/dev/null
@@ -283,14 +324,19 @@ recovery_fingerprint(){
 select 'roles:'||md5(coalesce(string_agg(
  rolname||':'||rolsuper||':'||rolinherit||':'||rolcreaterole||':'||rolcreatedb||':'||rolcanlogin||':'||rolreplication||':'||rolbypassrls||':'||rolconnlimit,
  E'\n' order by rolname),''))
-from pg_roles where rolname in ('anon','authenticated') or rolname like 'sabora\_%' escape '\';
-select 'memberships:'||md5(coalesce(string_agg(parent.rolname||':'||member.rolname||':'||membership.admin_option,
- E'\n' order by parent.rolname,member.rolname),''))
+from pg_roles where rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+ or rolname like 'sabora\_%' escape '\';
+select 'memberships:'||md5(coalesce(string_agg(
+ parent.rolname||':'||member.rolname||':'||grantor.rolname||':'||membership.admin_option||':'||membership.set_option||':'||membership.inherit_option,
+ E'\n' order by parent.rolname,member.rolname,grantor.rolname),''))
 from pg_auth_members membership
 join pg_roles parent on parent.oid=membership.roleid
 join pg_roles member on member.oid=membership.member
-where (parent.rolname in ('anon','authenticated') or parent.rolname like 'sabora\_%' escape '\')
-  and (member.rolname in ('anon','authenticated') or member.rolname like 'sabora\_%' escape '\');
+join pg_roles grantor on grantor.oid=membership.grantor
+where (parent.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+       or parent.rolname like 'sabora\_%' escape '\')
+   or (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+       or member.rolname like 'sabora\_%' escape '\');
 select 'extensions:'||md5(coalesce(string_agg(e.extname||':'||e.extversion||':'||n.nspname,
  E'\n' order by e.extname),''))
 from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname='pgcrypto';
@@ -340,6 +386,27 @@ SQL
 }
 
 source_fingerprint="$(recovery_fingerprint "$container" postgres)"
+# The fingerprint is deliberately wider than the export allowlist. Any extra
+# incoming or outgoing edge touching a Sabora/browser role must change it and
+# make restore fail closed rather than disappear silently.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+create role cv005_recovery_unexpected_member nologin;
+grant sabora_h6_fn_owner to cv005_recovery_unexpected_member;
+grant pg_read_all_data to sabora_staff_reader;
+SQL
+unexpected_membership_fingerprint="$(recovery_fingerprint "$container" postgres)"
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+revoke pg_read_all_data from sabora_staff_reader;
+revoke sabora_h6_fn_owner from cv005_recovery_unexpected_member;
+drop role cv005_recovery_unexpected_member;
+SQL
+[[ "$unexpected_membership_fingerprint" != "$source_fingerprint" ]] || {
+ echo 'clean_cluster_unexpected_membership_not_fingerprinted' >&2; exit 1;
+}
+[[ "$(recovery_fingerprint "$container" postgres)" = "$source_fingerprint" ]] || {
+ echo 'clean_cluster_membership_probe_not_reversible' >&2; exit 1;
+}
+echo 'sabora_recovery_membership_graph_closure_verified'
 clean_fingerprint="$(recovery_fingerprint "$clean_container" sabora_clean_recovery_ci)"
 if [[ "$source_fingerprint" != "$clean_fingerprint" ]]; then
  diff -u <(printf '%s\n' "$source_fingerprint") <(printf '%s\n' "$clean_fingerprint") >&2 || true
@@ -370,6 +437,23 @@ if docker exec -e PGPASSWORD=ci_only_not_a_secret "$clean_container" \
  "set role postgres" >/dev/null 2>&1; then
  echo 'clean_cluster_restore_set_role_escalation' >&2; exit 1
 fi
+if docker exec "$clean_container" psql -X -v ON_ERROR_STOP=1 -U postgres \
+ -d sabora_clean_recovery_ci -Atqc \
+ "set session authorization cv005_recovery_provider_dba; set role sabora_h6_fn_owner" >/dev/null 2>&1; then
+ echo 'clean_cluster_provider_dba_set_option_restored_as_true' >&2; exit 1
+fi
+docker exec "$clean_container" psql -X -U postgres -d sabora_clean_recovery_ci -Atqc \
+ "select parent.rolname||'|'||member.rolname||'|'||grantor.rolname||'|'||
+         case when membership.admin_option then 't' else 'f' end||'|'||
+         case when membership.set_option then 't' else 'f' end||'|'||
+         case when membership.inherit_option then 't' else 'f' end
+  from pg_auth_members membership
+  join pg_roles parent on parent.oid=membership.roleid
+  join pg_roles member on member.oid=membership.member
+  join pg_roles grantor on grantor.oid=membership.grantor
+  where parent.rolname='sabora_h6_fn_owner' and member.rolname='cv005_recovery_provider_dba'" \
+ | grep -Fx 'sabora_h6_fn_owner|cv005_recovery_provider_dba|postgres|t|f|f'
+echo 'sabora_option_a_provider_membership_recovery_verified'
 
 # No destructive rollback. Both clusters and host artifacts are disposable and
 # removed by traps; the source schema remains untouched for subsequent checks.

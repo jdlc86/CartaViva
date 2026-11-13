@@ -3,6 +3,39 @@
 -- production migration. Historical picked_up rows remain untouched.
 BEGIN;
 
+-- CV-005: existing sealed function owners are scoped to this transaction
+-- before CREATE OR REPLACE or cross-owner ACL; no runtime LOGIN is granted.
+DO $cv005_early_owner_scope$
+DECLARE roleinfo record;
+BEGIN
+ FOR roleinfo IN
+  SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,
+    r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+  FROM pg_catalog.pg_roles r
+  WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+   AND r.rolname<>current_user::text
+   AND (EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n
+     ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
+     ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+  IF roleinfo.rolcanlogin OR roleinfo.rolinherit OR roleinfo.rolsuper
+    OR roleinfo.rolbypassrls OR roleinfo.rolcreaterole
+    OR roleinfo.rolcreatedb OR roleinfo.rolreplication THEN
+    RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',roleinfo.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
+-- CV-005: the first permission change below targets a function owned by
+-- sabora_h6_fn_owner, prior to any new function ownership transfer. PostgreSQL
+-- 17 requires the migrator's scoped inheritable membership already here.
+-- The grant is issued by this DBA and revoked before this transaction commits.
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
+
 ALTER TABLE sabora.pickup_notifications
   ADD COLUMN invalidated_at timestamptz,
   ADD COLUMN invalidated_by uuid REFERENCES sabora.staff_members(user_id),
@@ -190,6 +223,9 @@ BEGIN
     'kitchen','kitchen',p_event_type,p_task_id,p_task_version,v_payload);
 END;
 $pickup_events$;
+-- CV-005 CANDIDATE (not approved): migration-only capability, revoked before COMMIT.
+GRANT CREATE ON SCHEMA sabora TO sabora_h6_fn_owner;
+-- Owner membership was already granted at BEGIN for existing function ACL.
 ALTER FUNCTION sabora.emit_pickup_task_staff_events_candidate(
   uuid,uuid,uuid,text,bigint,uuid,uuid,text,text
 ) OWNER TO sabora_h6_fn_owner;
@@ -531,6 +567,9 @@ BEGIN
  ORDER BY o.confirmed_at,o.id,l.line_number LIMIT p_limit+1;
 END;
 $board_v2$;
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_order_operations_fn_owner;
+GRANT sabora_order_operations_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.read_order_operations_board_authorized_candidate(
  text,text,uuid,text,text,bigint,uuid,integer,integer,bigint,bigint,text
 ) OWNER TO sabora_order_operations_fn_owner;
@@ -545,5 +584,25 @@ COMMENT ON TABLE sabora.pickup_tasks IS
  'Issue #33 exclusive pickup coordination. claimed means an operational task assignment, never physical pickup or delivery.';
 COMMENT ON TABLE sabora.pickup_task_events IS
  'Append-only pickup assignment audit; cancellation releases only the assignment.';
+
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_h6_fn_owner;
+REVOKE sabora_order_operations_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_order_operations_fn_owner;
+
+
+-- CV-005: revoke every DBA-issued membership on Sabora function owners.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN
+  SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m
+  JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+  WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
 
 COMMIT;

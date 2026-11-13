@@ -94,7 +94,7 @@ const staffGuard=forRoles=>roles=>{
 // reads environment variables, creates LOGINs or imports server.mjs.
 export async function createM2RestaurantCandidate({customer,tableChange,staff,h4,h6,
  management=null,waiterCalls=null,eventHeartbeatMs=15_000,enableDeferredDispatch=false,
- observeFailure=()=>{},observability=null}={}){
+ observeFailure=()=>{},observability=null,requireTrustedKeysOnReadiness=false}={}){
  const app=Fastify({logger:false,trustProxy:false});
  // Telemetry must never receive arbitrary provider/SQL exception details.
  const reportDependencyFailure=component=>{
@@ -104,7 +104,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   try{observability?.recordOperation({component:'database',
    operation:'check',outcome,durationMs:performance.now()-started});}catch{}
  };
- let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,operational=false;
+ let tableNotifier,h6Notifier,scheduler,announcementStream,closed=false,
+  operational=false,notificationDependencyLost=false;
  const closeServices=async()=>{
   if(closed)return;closed=true;operational=false;
   await Promise.allSettled([scheduler?.close(),announcementStream?.close(),tableNotifier?.close(),h6Notifier?.close()]);
@@ -150,7 +151,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
       typeof waiterCalls.expectedCustomerLogin!=='string'||
       typeof waiterCalls.expectedStaffLogin!=='string'||
       typeof waiterCalls.issueStaffCapability!=='function'))||
-     !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000)
+     !Number.isSafeInteger(eventHeartbeatMs)||eventHeartbeatMs<5_000||eventHeartbeatMs>60_000||
+     typeof requireTrustedKeysOnReadiness!=='boolean')
    throw Error('invalid_m2_restaurant_candidate');
 
   // The canonical SQL slot inventory is validated before any query/HTTP route.
@@ -160,6 +162,14 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
 
   const preflight=async()=>{
+   // Readiness includes the configured issuer and a bounded trusted JWKS
+   // source. Routes must not be considered ready merely because SQL works.
+   const trustedKeys=await staff.getTrustedKeys();
+   if(!Array.isArray(trustedKeys)||trustedKeys.length<1||trustedKeys.length>20||
+      trustedKeys.some(key=>!key||key.kty!=='RSA'||key.alg!=='RS256'||
+       key.use!=='sig'||typeof key.kid!=='string'||!key.kid||
+       typeof key.n!=='string'||!key.n||typeof key.e!=='string'||!key.e))
+    throw Error('invalid_m2_staff_jwks');
    if(waiterCalls){
     await assertWaiterCallRuntimeIdentity({pool:waiterCalls.customerPool,
      expectedLogin:waiterCalls.expectedCustomerLogin,kind:'customer'});
@@ -311,9 +321,13 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
-   expectedLogin:tableChange.expectedOperationsLogin});
+   expectedLogin:tableChange.expectedOperationsLogin,onLost:error=>{
+    notificationDependencyLost=true;operational=false;reportDependencyFailure('events');
+    try{observeFailure(error);}catch{}
+    if(scheduler)void scheduler.close().catch(()=>{});
+   }});
   h6Notifier=await createPostgresH6OutboxNotifier({pool:h6.notifierPool,onLost:error=>{
-   operational=false;reportDependencyFailure('events');
+   notificationDependencyLost=true;operational=false;reportDependencyFailure('events');
    try{observeFailure(error);}catch{}
    if(scheduler)void scheduler.close().catch(()=>{});
   }});
@@ -367,6 +381,15 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    if(!operational){reportDependencyFailure('events');
     return reply.code(503).send({status:'unavailable'});}
    const started=performance.now();
+   if(requireTrustedKeysOnReadiness){
+    try{
+     const keys=await staff.getTrustedKeys();
+     if(!Array.isArray(keys)||keys.length===0)throw Error('jwks_unavailable');
+    }catch{
+     reportReadiness('failure',started);reportDependencyFailure('staff');
+     return reply.code(503).send({status:'unavailable'});
+    }
+   }
    try{await preflight();}
    catch{reportReadiness('failure',started);reportDependencyFailure('database');
     return reply.code(503).send({status:'unavailable'});}
@@ -374,7 +397,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    return {status:'ready',service:management?'sabora-m3-candidate':'sabora-m2-candidate',mode:'opt-in'};
   });
   app.addHook('onClose',closeServices);
-  await app.ready();operational=true;
+  await app.ready();operational=!notificationDependencyLost;
   let closePromise=null;
   return Object.freeze({app,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},

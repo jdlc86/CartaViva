@@ -61,7 +61,9 @@ test('emitter faults do not affect HTTP responses and burst alerts are event-dri
   const alerts = [];
   let time = 10000;
   let tick = 1n;
-  const monitor = createSaboraObservability({ emit: value => alerts.push(value), now: () => time, monotonic: () => tick++ });
+  const delivered=[];
+  const monitor = createSaboraObservability({ emit: value => alerts.push(value),
+    alertSink: async value => delivered.push(value), now: () => time, monotonic: () => tick++ });
   for (let i = 0; i < 5; i++) {
     const request = { method: 'GET', routeOptions: { url: '/not-an-approved-url' } };
     const reply = { header() {}, statusCode: 500 };
@@ -79,6 +81,16 @@ test('emitter faults do not affect HTTP responses and burst alerts are event-dri
   }
   assert.equal(monitor.snapshot().alerts, 2);
   assert.equal(alerts.filter(x => x.event === 'alert').length, 2);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(delivered.map(value=>value.code),['http_5xx_burst','http_5xx_burst']);
+  assert.doesNotMatch(JSON.stringify(delivered),new RegExp(secret));
+  const sinkFailure=createSaboraObservability({emit:()=>{},alertSink:async()=>{throw Error(secret);}});
+  for(let index=0;index<3;index++){
+    const request={method:'GET'},reply={header(){},statusCode:500};
+    await sinkFailure.onRequest(request,reply);await sinkFailure.onResponse(request,reply);
+  }
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(sinkFailure.snapshot().alerts,1);
 });
 
 test('M2 H3-H6 opt-in rejects incomplete observer before any SQL dependencies are opened', async () => {

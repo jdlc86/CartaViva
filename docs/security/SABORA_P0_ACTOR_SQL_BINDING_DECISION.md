@@ -30,7 +30,7 @@ locks. UUID, GUC, rol funcional y `current_user` no se aceptan como prueba.
 
 - `sabora.order_operation_signing_keys` permanece vacío y con RLS forzada.
 - `sabora_order_operations_fn_owner` es un owner `NOLOGIN`, `NOINHERIT`, sin
-  superusuario, `BYPASSRLS`, creación de roles/base ni membresías.
+  superusuario, `BYPASSRLS` ni creación de roles/base. **Excepción controlada de membresía DBA automática PostgreSQL 17**, exclusivamente como define [la decisión normativa CV-005](SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md); ningún login de aplicación puede ser miembro. Esta excepción no autoriza activación ni impide la amenaza de autoconcesión del DBA.
 - `transition_order_line_authorized_candidate(...)` es la única rutina
   mutadora candidata `SECURITY DEFINER`, con `search_path` cerrado y sin SQL
   dinámico.
@@ -80,3 +80,7 @@ frontera de lectura del tablero/historial y autorización operativa expresa.
 Hasta entonces `server.mjs` no registra las rutas y el keyring queda vacío.
 
 No se ha accedido a Supabase operativo, Fleetia ni el VPS.
+
+## Modificación normativa CV-005 — 2026-11-12
+
+El propietario seleccionó expresamente la opción A: reconocer exclusivamente la membresía administrativa automática del instalador PG17, según la [decisión de autoridad DBA CV-005](SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md). Las demás garantías de actor HMAC, keyring, RLS, privilegio mínimo, `NOLOGIN`, auditoría y prohibición de conexión API como DBA siguen vigentes. **Implementación, revisión independiente y aceptación operativa siguen pendientes**; esta modificación no autoriza DDL real ni despliegue.

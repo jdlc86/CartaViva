@@ -11,8 +11,8 @@ const safeMillis = value => Number.isFinite(value) ? Math.min(600000, Math.max(0
 const safeTime = value => Number.isFinite(value) && value >= 0 ? new Date(value).toISOString() : new Date(0).toISOString();
 const defaultEmit = record => process.stdout.write(JSON.stringify(record) + '\n');
 
-export function createSaboraObservability({ emit = defaultEmit, now = Date.now, monotonic = () => process.hrtime.bigint() } = {}) {
-  if (typeof emit !== 'function' || typeof now !== 'function' || typeof monotonic !== 'function') {
+export function createSaboraObservability({ emit = defaultEmit, alertSink = async () => {}, now = Date.now, monotonic = () => process.hrtime.bigint() } = {}) {
+  if (typeof emit !== 'function' || typeof alertSink !== 'function' || typeof now !== 'function' || typeof monotonic !== 'function') {
     throw Error('invalid_sabora_observability_configuration');
   }
   const requests = new WeakMap();
@@ -39,7 +39,12 @@ export function createSaboraObservability({ emit = defaultEmit, now = Date.now, 
     if (failureWindowCount >= 3 && !failureWindowAlerted) {
       failureWindowAlerted = true;
       totals.alerts += 1;
-      publish('error', 'alert', { code: 'http_5xx_burst', threshold: 3, windowSeconds: 60 });
+      const alert = Object.freeze({ schema: 1, source: 'sabora_observability', service: 'sabora-api',
+        code: 'http_5xx_burst', threshold: 3, windowSeconds: 60 });
+      publish('error', 'alert', { code: alert.code, threshold: alert.threshold, windowSeconds: alert.windowSeconds });
+      // Delivery is event-driven and deliberately detached from the request.
+      // A failed receiver can never change an HTTP, SQL or economic outcome.
+      Promise.resolve().then(() => alertSink(alert)).catch(() => {});
     }
   }
   return Object.freeze({
@@ -84,7 +89,8 @@ export function createSaboraObservability({ emit = defaultEmit, now = Date.now, 
       publish('error', 'dependency_failed', { component, code: 'dependency_unavailable' });
     },
     lifecycle(event) {
-      if (!['started_health_only', 'stopped_health_only'].includes(event)) {
+      if (!['started_health_only', 'stopped_health_only',
+        'started_operational_candidate', 'stopped_operational_candidate'].includes(event)) {
         throw Error('invalid_sabora_diagnostic_lifecycle');
       }
       publish('info', 'lifecycle', { code: event });

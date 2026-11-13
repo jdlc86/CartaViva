@@ -1,0 +1,61 @@
+name: Sabora CV005 + B2 integrated SHA PG17/HTTP/Chromium candidate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cv005-b2-disposable-integration:
+    if: github.head_ref == 'feat/sabora-s38-operational-activation-20261112'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    concurrency:
+      group: sabora-cv005-b2-ci-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout exact B2 candidate under review
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout pinned CV005 migration candidate separately
+        uses: actions/checkout@v4
+        with:
+          ref: a60548955d559da7ecc4b686f59c01974298dd46
+          path: .cv005-exact-pin
+          persist-credentials: false
+      - name: Verify two-parent Git ancestry and 99 exact CV005 SQL blobs in integrated HEAD
+        run: bash scripts/ci/cv005-b2-combined-candidate-rehearsal.sh
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Install exact application dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Confirm all cross-PR security and owner contracts
+        run: |
+          node --test scripts/ci/postgres-migration-harness-contract.test.mjs
+          node scripts/ci/operational-deployment-isolation-contract.mjs
+          node scripts/ci/production-config-secrets-gate.mjs
+      - name: Rehearse 99 CV005 migrations with real PG17 CREATEROLE NOSUPERUSER
+        run: bash scripts/ci/supabase-nonsuperuser-migration-smoke.sh
+      - name: Run integrated-tree 99-SQL B2 runtime, HMAC, PG17 and two-PWA Chromium E2E
+        env:
+          SABORA_CI_F21_FULL_WINDOW: 'false'
+        run: bash scripts/ci/h6-acceptance-gate.sh
+      - name: Build API and both PWA bundles from the combined fixture
+        run: pnpm build
+      - name: Document exact integrated SHA and operational limitations
+        if: always()
+        run: |
+          printf '%s\n' '## Sabora CV005 + B2 cross-candidate rehearsal' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '- CV005 migrations: pinned a60548955d559da7ecc4b686f59c01974298dd46 (99 files, 61 modified; reviewed fix head).' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "- B2 source: $(git rev-parse HEAD) (exact PR head)." >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '- Source: genuine two-parent Git integration tree; CV005 SQL/installer bytes verified, no SQL copy, no main merge, no Supabase or VPS.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '- PG17 Docker lacks managed supautils/Supabase, real secrets/TLS and human acceptance.' >> "$GITHUB_STEP_SUMMARY"

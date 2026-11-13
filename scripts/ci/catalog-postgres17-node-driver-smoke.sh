@@ -13,6 +13,7 @@ node --check scripts/ci/order-operations-postgres17-integration.test.mjs
 node --check scripts/ci/order-operations-identity-postgres17.test.mjs
 node --check scripts/ci/order-operations-read-postgres17.test.mjs
 node --check scripts/ci/m3-management-postgres17.test.mjs
+node --check scripts/ci/operational-transport-pg17-tls.test.mjs
 node --check scripts/ci/admin-single-writer-postgres17.test.mjs
 node --check scripts/ci/ownership-governance-postgres17.test.mjs
 node --check scripts/ci/cv014-communications-postgres17.test.mjs
@@ -73,6 +74,11 @@ node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
 node --test scripts/ci/m3-management-postgres17.test.mjs
+# A complete transport-level rehearsal against this SAME throwaway PG17:
+# TLS-issued test CA + real restricted LOGIN + two exact gateway destinations
+# + HTTPS JWKS, with wrong-SNI and direct-SQL denial assertions.
+# The runner-only sidecar connector redirects upstream sockets to loopback.
+bash scripts/ci/operational-transport-pg17-tls-smoke.sh "$container"
 # Browser-backed vertical E2E is isolated to this disposable PG17 container.
 # The Chromium binary is installed only on the ephemeral Actions runner.
 npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false pg@8.16.3 playwright@1.56.1 >/dev/null
