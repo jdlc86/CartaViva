@@ -1,5 +1,5 @@
 # Overlay onto compose.sabora-operational.yml ONLY after all Sabora activation gates.
-# Approved IPv4 bind and dedicated TCP/8443 on the shared IP. No wildcard host port, shared proxy or Fleetia dependency.
+# Approved IPv4 bind and dedicated TCP/8443 on the shared IP. Never bind wildcard or share ingress resources.
 name: sabora
 services:
   web:
