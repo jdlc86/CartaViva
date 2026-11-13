@@ -37,6 +37,10 @@
 
 **Sin permisos para extracción y sin el canal externo elegido:** las acciones 3–6 anteriores permanecen **PENDIENTES**. En concreto **no se ha usado** `pg_dump`, `supabase db dump`, `psql` externo ni ningún fichero con credenciales real.
 
+## Aplazamiento por prioridad decidido el 13-11-2026
+
+A petición expresa del propietario, **no se realizará ahora** la extracción de un backup real, su custodia externa ni el ensayo de restauración. Se retoma solo tras nueva instrucción y los permisos concretos. Se conservan todos los controles anteriores como **pendientes**, sin rebajar las condiciones STOP: el piloto que implique SQL operativo no puede comenzar sobre Supabase sin recuperación adecuada. Mientras tanto, el trabajo se dirige a validar el flujo y la experiencia visual M3 (incluida la corrección H35-P1 ya presente en código) y a completar requisitos que puedan avanzar sobre PG17 efímero. [Continuidad S38](../handoffs/SESSION_38_HANDOFF_2026-11-12.md) · [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
 ## 4. Matriz de custodia y GO/STOP para la primera instalación
 
 | Pieza | Custodio autorizado | Situación | Evidencia mínima exigida |

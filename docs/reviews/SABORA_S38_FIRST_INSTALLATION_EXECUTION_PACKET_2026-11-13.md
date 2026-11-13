@@ -90,6 +90,8 @@
 
 **Adenda S38-16 — estrategia Free y custodia:** consultar [acta de decisión y recuperación manual sin PITR](SABORA_S38_FREE_BACKUP_CUSTODY_RECOVERY_DECISION_2026-11-13.md). El estado actual del plan ya no es una hipótesis; no cambia el STOP de restauración real, ni autoriza captura, SQL ni el uso de CI contra el proveedor.
 
+**Aplazamiento de la puerta de recuperación (13-11-2026):** la ejecución real de backup, selección de equipo/almacén externo y restore aislado se posterga por solicitud del propietario. **No constituye PASS de la puerta de recuperación** ni autorización para ejecutar las 99 migraciones. [Decisión registrada S38-17](../handoffs/SESSION_38_HANDOFF_2026-11-12.md). El trabajo inmediato se traslada a la conformidad M3/CV-006–007 y CV-017, independiente de infraestructura operativa. No repetir la solicitud de ordenador/secretos hasta su reanudación.
+
 ## 7. Plan de intervención cuando existan pruebas y autorizaciones (no ejecutado)
 
 **Puerta A — release y recuperación:** fijar SHA + manifiesto 99 SHA256, identidad DBA/alcance, modo/restauración del backup y quién revoca; registrar puntos de retorno, tiempo y abortos. Sin respaldo restaurable, **STOP**.
