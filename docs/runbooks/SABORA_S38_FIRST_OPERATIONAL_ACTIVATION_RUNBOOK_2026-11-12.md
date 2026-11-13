@@ -4,6 +4,12 @@
 > tocar Fleetia, otros proyectos, Supabase/VPS sin permiso, hacer merge ni
 > inferir credenciales o endpoints. Cada STOP requiere evidencia material.
 
+## Actualización S38-16 — recuperación Free confirmada, pendiente de ejecución (13-11-2026)
+
+La consulta actual a la organización `lqdarfcfumupgxbwmaoa` confirmó `plan=free/tier=tier_free`. **No hay backups diarios automáticos ni PITR incluidos**: la estrategia de primera instalación es **captura lógica cifrada y restauración real aislada de Sabora**, sin contratar un plan nuevo por defecto. [Acta y matriz de custodia S38-16](../reviews/SABORA_S38_FREE_BACKUP_CUSTODY_RECOVERY_DECISION_2026-11-13.md).
+
+**STOP explícito que no se salva con dump de esquema vacío:** antes de instalar, elegir destino/custodios y ensayar la recuperación de un estado parcial que incluya transacciones confirmadas/ledger/roles/ownership y no toque `auth`/`storage` gestionados. Los dumps de CLI separan roles, esquema y datos, filtran internals; **no garantizan reconstruir la membresía otorgada por `supabase_admin` ni las credenciales**. Prohibido restaurar roles globales, borrar ledger, `DROP SCHEMA CASCADE`, reset del proyecto o recrear objetos Supabase administrados sin intervención específica. Ejecutar la CLI con versión y flags comprobados por `--help`, SSL con CA/hostname verificados, fuera del VPS compartido y bajo autorización específica. Este añadido **no** significa que se haya tomado o restaurado un backup real.
+
 ## 0. Condiciones de entrada — STOP
 
 No continuar si falta cualquiera de estas condiciones:

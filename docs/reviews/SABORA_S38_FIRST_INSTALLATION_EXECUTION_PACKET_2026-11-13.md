@@ -56,7 +56,7 @@
 
 ## 4. Recuperación real: política y demostración antes de tocar SQL
 
-[Runbook P2 de recuperación](../runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md) documenta un **plan Free histórico** para el proyecto, por lo que **no presupone** backups automáticos ni PITR. **El plan contratado actual y el catálogo efectivo de backups/retención NO se han comprobado en este hito** con una consulta de facturación/Backups. [La documentación oficial de Supabase](https://supabase.com/docs/guides/platform/backups) indica que backups diarios automáticos corresponden a planes Pro/Team/Enterprise y que la opción Free requiere exportación propia; los backups físicos pueden excluir contraseñas de roles y cualquier backup DB excluye los bytes de Supabase Storage.
+[Runbook P2 de recuperación](../runbooks/SABORA_P2_MIGRATION_RECOVERY_RUNBOOK_2026-10-29.md) documenta un **plan Free histórico** para el proyecto, por lo que **no presupone** backups automáticos ni PITR. **ACTUALIZACIÓN S38-16:** el plan efectivo de la organización se ha comprobado directamente por conector: **Free / tier_free** (13-11-2026). El catálogo de copias efectivas y la capacidad de descarga/restauración siguen **no comprobados** con este conector; no hay backup real. [La documentación oficial de Supabase](https://supabase.com/docs/guides/platform/backups) indica que backups diarios automáticos corresponden a planes Pro/Team/Enterprise y que la opción Free requiere exportación propia; los backups físicos pueden excluir contraseñas de roles y cualquier backup DB excluye los bytes de Supabase Storage.
 
 **Procedimiento exigible y evidencia pendiente:**
 1. Antes de intervenir, custodio DBA y seguridad confirman plan efectivo, panel **Database > Backups**, disponibilidad o no de PITR, ventana/retención y un **destino externo exclusivo Sabora** (no repositorio, Actions ni VPS compartido). Si la opción es dump lógico manual, documentar su alcance y no confundirla con PITR.
@@ -87,6 +87,8 @@
 | CA/host/puerto y conectividad | **STOP** | Endpoint real de la consola, SSL verify-full equivalente, DNS IPv4/IPv6, políticas y certificado |
 | Alertas y firewall/VPS | **STOP separado** | Responsable de red y observabilidad; demostrar exclusividad Sabora antes de cualquier deploy |
 | Producto, visual y pagos | **STOP aceptación plena** | Dos PWA en dispositivos, revisión humana, Stripe sandbox real y matriz F/R; no fingir aceptación de variantes no activadas |
+
+**Adenda S38-16 — estrategia Free y custodia:** consultar [acta de decisión y recuperación manual sin PITR](SABORA_S38_FREE_BACKUP_CUSTODY_RECOVERY_DECISION_2026-11-13.md). El estado actual del plan ya no es una hipótesis; no cambia el STOP de restauración real, ni autoriza captura, SQL ni el uso de CI contra el proveedor.
 
 ## 7. Plan de intervención cuando existan pruebas y autorizaciones (no ejecutado)
 
