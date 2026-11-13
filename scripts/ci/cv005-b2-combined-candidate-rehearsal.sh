@@ -16,7 +16,8 @@ actual_sha="$(git -C "$cv005" rev-parse HEAD)"
  echo 'sabora_cv005_sha_drift_denied' >&2; exit 1
 }
 # Only previously enumerated Sabora SQL migration paths may be overlaid.
-# Compare strict 99/99 inventories, count the known 59 modifications.
+# Compare strict 99/99 inventories, count the reviewed 61 modifications. The
+# correction adds transaction boundaries to two previously exceptional files.
 mapfile -t main_files < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
 mapfile -t candidate_files < <(find "$cv005/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
 [[ "${#main_files[@]}" -eq 99 && "${#candidate_files[@]}" -eq 99 ]] || {
@@ -36,8 +37,8 @@ for filename in "${main_files[@]}"; do
   changed=$((changed+1))
  fi
 done
-[[ "$changed" -eq 59 ]] || {
- echo "sabora_cv005_expected_59_sql_changes_found_$changed" >&2; exit 1
+[[ "$changed" -eq 61 ]] || {
+ echo "sabora_cv005_expected_61_sql_changes_found_$changed" >&2; exit 1
 }
 # Provenance: the source is the exact SHA checkout. GitHub's runner is
 # destroyed; no SQL is written back to either PR or main.
@@ -55,5 +56,5 @@ for filename in \
 done
 rm -rf -- "$cv005"
 test ! -e "$cv005"
-echo 'sabora_cv005_b2_cross_candidate_sha_locked:99_sql:59_changed'
+echo 'sabora_cv005_b2_cross_candidate_sha_locked:99_sql:61_changed'
 node scripts/ci/migration-audit.mjs

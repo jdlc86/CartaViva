@@ -27,7 +27,7 @@ jobs:
           ref: a60548955d559da7ecc4b686f59c01974298dd46
           path: .cv005-exact-pin
           persist-credentials: false
-      - name: Prove SHA and 59 SQL delta then overlay in disposable runner only
+      - name: Prove SHA and 61 SQL delta then overlay in disposable runner only
         run: bash scripts/ci/cv005-b2-combined-candidate-rehearsal.sh
       - name: Set up Node 22
         uses: actions/setup-node@v4
@@ -54,7 +54,7 @@ jobs:
         if: always()
         run: |
           printf '%s\n' '## Sabora CV005 + B2 cross-candidate rehearsal' >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' '- CV005 migrations: pinned a60548955d559da7ecc4b686f59c01974298dd46 (99 files, 59 modified; reviewed fix head).' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '- CV005 migrations: pinned a60548955d559da7ecc4b686f59c01974298dd46 (99 files, 61 modified; reviewed fix head).' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' "- B2 source: $(git rev-parse HEAD) (exact PR head)." >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- SQL overlay: temporary GitHub-hosted runner only, no merge, no Supabase or VPS.' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- PG17 Docker lacks managed supautils/Supabase, real secrets/TLS and human acceptance.' >> "$GITHUB_STEP_SUMMARY"
