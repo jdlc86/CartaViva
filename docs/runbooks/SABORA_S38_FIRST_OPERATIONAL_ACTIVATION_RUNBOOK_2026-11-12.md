@@ -10,6 +10,10 @@ La consulta actual a la organización `lqdarfcfumupgxbwmaoa` confirmó `plan=fre
 
 **STOP explícito que no se salva con dump de esquema vacío:** antes de instalar, elegir destino/custodios y ensayar la recuperación de un estado parcial que incluya transacciones confirmadas/ledger/roles/ownership y no toque `auth`/`storage` gestionados. Los dumps de CLI separan roles, esquema y datos, filtran internals; **no garantizan reconstruir la membresía otorgada por `supabase_admin` ni las credenciales**. Prohibido restaurar roles globales, borrar ledger, `DROP SCHEMA CASCADE`, reset del proyecto o recrear objetos Supabase administrados sin intervención específica. Ejecutar la CLI con versión y flags comprobados por `--help`, SSL con CA/hostname verificados, fuera del VPS compartido y bajo autorización específica. Este añadido **no** significa que se haya tomado o restaurado un backup real.
 
+## Actualización de decisión (13-11-2026): dos destinos, no dos respaldos independientes en VPS
+
+Conforme a la [norma de doble copia](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md#4-backup-recuperación-y-parada-segura), se admite **opcionalmente** una copia **ya cifrada** en el VPS exclusivo de Sabora para recuperación rápida. La copia **externa y restaurable** sigue siendo obligatoria, fuera de Supabase/VPS/GitHub. La extracción autorizada se hace desde equipo de captura externo; un mismo artefacto cifrado con hash puede distribuirse a ambos destinos. La copia local no habilita SQL ni despliegue, no justifica acceder a Fleetia y requiere permiso VPS independiente, aislamiento y cuota verificados. Este procedimiento está **propuesto, NO ejecutado** y no cancela el aplazamiento registrado en S38-17.
+
 ## 0. Condiciones de entrada — STOP
 
 No continuar si falta cualquiera de estas condiciones:
@@ -27,7 +31,7 @@ No continuar si falta cualquiera de estas condiciones:
 5. Canal de secretos y custodios aprobados. Las tres contraseñas existentes no
    cubren por sí solas la composición. Ningún secreto puede pasar por Git,
    Actions, PWA, imagen, logs, argumento de proceso o este runbook.
-6. Custodia cifrada externa, retención y borrado aprobados; receptor de alertas
+6. Custodia cifrada **externa obligatoria** (copia VPS adicional opcional y nunca sustitutiva), retención y borrado aprobados; receptor de alertas
    operativo; ventana y responsables de reversión identificados.
 
 Si una condición no se cumple, mantener `deploy/compose.sabora.yml` en
@@ -64,10 +68,8 @@ El fixture CI no autoriza un backup real. Con permiso DBA y canal de custodia:
    y requieren inventario/restauración separados si llegaran a usarse.
 2. Crear dump lógico custom Sabora-only y exportar definiciones de roles sin
    contraseñas. Generar manifiesto de hashes y cadena de migraciones.
-3. Cifrar autenticadamente antes de abandonar el host de captura. Transportar
-   ciphertext y clave con custodios/canales separados; nunca Git/Actions/VPS
-   compartido. Aplicar retención y destrucción aprobadas.
-4. Restaurar en PG17 aislado, reinyectar secretos sólo por el canal separado y
+3. Cifrar autenticadamente **antes de persistir el backup** y generar hash verificable. Transportar ciphertext y clave por custodios/canales distintos; nunca Git/Actions ni claves en VPS. Depositar la copia **externa obligatoria** fuera del VPS/Supabase. **Solo con permiso VPS y aislamiento acreditado**, replicar opcionalmente el mismo ciphertext en ruta exclusiva Sabora, con cuota, ACL, espacio libre y retención controlada, sin dump en claro ni uso de recursos Fleetia. Aplicar retención y destrucción aprobadas.
+4. Restaurar **desde la copia externa** en PG17 aislado **fuera del VPS compartido**, reinyectar secretos sólo por el canal separado y
    comparar datos, roles, owners, ACL, FORCE RLS, funciones y negativas. Probar
    corrupción. No declarar RTO/RPO a partir del tiempo CI.
 

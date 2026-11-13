@@ -14,7 +14,7 @@ Una intervención futura exige cuatro aprobaciones separadas y registradas: prop
 
 Por tanto, el paso de recuperación previsto como *snapshot/PITR gestionado* solo es viable **si se activa y acredita** un plan/capacidad que lo incluya. **No escribir a Supabase basándose en la supuesta existencia de ese snapshot.** Para una primera prueba sin usuarios se admite preparar la alternativa de **dump lógico manual y copia fuera del proveedor**, con custodia cifrada separada de Git/CI, inventario de roles/ACL/RLS, hash, retención y ensayo de restauración **en PostgreSQL 17 desechable o destino Sabora expresamente autorizado**. Esta alternativa no equivale a PITR y puede tener RPO/RTO peores; deben permanecer `NO VALIDADOS` hasta una restauración real cronometrada y aprobada.
 
-**Bloqueo previo a ejecutar SQL operativo:** definir custodia, canal de exportación no expuesto en logs, destino de backup fuera de Fleetia/VPS compartido, procedimiento de reconstrucción del proveedor, modo de restaurar roles/contraseñas, aprobación del DBA y prueba de restauración del SHA concreto. El conector de Supabase empleado hasta ahora no proporciona un respaldo listo para descargar ni acredita restauración. Se mantiene la separación de autorización entre release, DBA, seguridad y titular del entorno descrita en el primer apartado.
+**Bloqueo previo a ejecutar SQL operativo:** definir custodia, canal de exportación no expuesto en logs, **destino externo obligatorio fuera de Fleetia/VPS compartido**, procedimiento de reconstrucción del proveedor, modo de restaurar roles/contraseñas, aprobación del DBA y prueba de restauración del SHA concreto. El conector de Supabase empleado hasta ahora no proporciona un respaldo listo para descargar ni acredita restauración. Se mantiene la separación de autorización entre release, DBA, seguridad y titular del entorno descrita en el primer apartado.
 
 ## 2. Preparación obligatoria
 
@@ -30,8 +30,10 @@ El comando CI `migration-preflight.mjs` solo acepta el nombre exacto del contene
 
 ## 3. Copia y punto de retorno
 
+**Dos ubicaciones según [la política normativa de recuperación](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md#4-backup-recuperación-y-parada-segura):** (A) artefacto operativo **cifrado, opcional** en almacenamiento exclusivo Sabora del VPS con cuota/ACL/retención y permiso VPS separado; (B) artefacto **cifrado, obligatorio y restaurable** en almacenamiento externo independiente de Supabase y VPS. Preferir **una exportación y dos destinos** del mismo archivo autenticado y con hash; no duplicar capturas ni confundir dos archivos en un mismo VPS con dos dominios de fallo. La exportación inicial sigue realizándose **fuera del VPS compartido**; este puede recibir después solo el fichero ya cifrado mediante canal autorizado Sabora. No realizar restauraciones ni crear contenedores PostgreSQL de prueba en el VPS compartido. Si A compromete aislamiento o espacio de otro servicio, omitir A; si falla B, **STOP** de instalación. Verificar restauración de B en PG17 aislado y registrar ambos destinos sin incluir rutas privadas/secretos.
+
 - Pausar únicamente entradas Sabora mediante el mecanismo que se apruebe para esa instalación; no parar servicios ajenos.
-- Tomar snapshot/PITR gestionado conforme al plan contratado y, como segunda evidencia lógica, un archivo custom de los objetos/datos Sabora.
+- Usar snapshot/PITR gestionado **solo si el plan real lo incluye y está acreditado**; en Supabase Free aplicar exportación lógica autorizada con copia externa restaurable obligatoria y réplica local opcional cifrada.
 - Exportar atributos y membresías de roles Sabora sin contraseñas. Las contraseñas y secretos se restablecen por el gestor autorizado, nunca desde el dump ni el repositorio.
 - Registrar versión exacta de PostgreSQL, extensiones, checksum del archivo, hora inicial/final y prueba de lectura del archivo.
 - Probar la restauración antes de aplicar. Crear `extensions.pgcrypto` con versión compatible, reconstruir roles mínimos, restaurar `sabora` con `--exit-on-error` y ejecutar la matriz de validación.
