@@ -2,6 +2,29 @@
 
 > **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA.** Fuente de verdad: los contratos normativos existentes en GitHub; esta sesión no puede aprobar cambios de seguridad, diseño o flujos por sí misma. El estado de GitHub/CI del **SHA actual** prevalece sobre todo resumen. Registrar aquí nuevos hitos integrales con enlaces, no microestados.
 
+## S38-10 — paquete entregable a Codex: revisión final estrictamente diferencial (13-11-2026)
+
+**Instrucción expresa del propietario:** la próxima revisión independiente **NO debe volver a auditar lo ya revisado**, ni repetir las 99 migraciones ni las suites completas por rutina. Se limita a verificar **cierre de los hallazgos de las revisiones previas**, **riesgos de interacción nuevos al unir #57 + #58** y **fidelidad de la conciliación normativa P0/CV-005**. Consultar las evidencias de las 5 Actions aprobadas y ejecutar pruebas nuevas solo si se identifica una brecha concreta sin cobertura, señalando cuál. Si el revisor descubre una falla real, debe indicar ruta, evidencia, norma y severidad, y evitar conclusiones genéricas.
+
+**Objeto exacto al cierre de esta actualización:** [PR #58](https://github.com/jdlc86/CartaViva/pull/58) HEAD `fdb5d895255a6f5ca304e9cf576a3d079a56dcd4` (Draft, fusionable técnicamente, **no fusionado**), que contiene el commit de dos padres `c3216fecf2133cd1852d3b6d21516308836e6a2d` y la conciliación normativa/test de `ee57c6074a8d06df6172da157d81f81f9a7ed2d6`. El delta posterior al SHA de contenido probado comprende **solo cuatro documentos**, sin SQL, API, PWA, test ni Compose. [PR #57](https://github.com/jdlc86/CartaViva/pull/57) SHA `a60548955d559da7ecc4b686f59c01974298dd46` sigue Draft y sin fusionar; sus 99 migraciones están incorporadas byte a byte en el candidato integrado.
+
+**Evidencia comprobada del SHA `ee57c607`: cinco workflows completed/success, ninguna falla en los jobs normales:**
+- [CV005 PG17 sin superusuario #43424784850](https://github.com/jdlc86/CartaViva/actions/runs/43424784850).
+- [Árbol integrado SQL + API + Chromium #43424784656](https://github.com/jdlc86/CartaViva/actions/runs/43424784656).
+- [Sabora CI/H6 #43424784968](https://github.com/jdlc86/CartaViva/actions/runs/43424784968).
+- [Bootstrap PG17/TLS/JWKS #43424784844](https://github.com/jdlc86/CartaViva/actions/runs/43424784844).
+- [UI funcional #43424784893](https://github.com/jdlc86/CartaViva/actions/runs/43424784893). **Aceptación visual humana `skipped`.**
+
+**Entregables preparados y publicados:**
+- [Encargo de revisión independiente del árbol final](../assignments/SABORA_S38_FINAL_INDEPENDENT_REVIEW_INTEGRATED_SHA_2026-11-13.md), que **debe aplicarse con el alcance reducido y sin redundancia solicitado ahora por el propietario**.
+- [Informe diferencial existente del autor — no es un dictamen independiente](../reviews/SABORA_S38_CV005_B2_NORMATIVE_DIFFERENTIAL_CLOSE_2026-11-13.md).
+- [Comentario de instrucciones y evidencias en #58](https://github.com/jdlc86/CartaViva/pull/58#issuecomment-6853352876) y [trazabilidad en #57](https://github.com/jdlc86/CartaViva/pull/57#issuecomment-6853354592).
+- [Tablero vivo obligatorio](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
+**Trabajo pendiente, sin declararlo ejecutado:** trasladar el prompt al revisor independiente/Codex y obtener dictamen concreto sobre el último árbol. **No existe aún `APPROVED` formal** del último SHA; las revisiones previas constan como `COMMENTED` sobre versiones anteriores. Codex **no se ha invocado desde esta actualización** ni hay resultado independiente nuevo. Si el dictamen es favorable, valorar **un solo merge a `main` utilizando el PR #58**, con autorización correspondiente; evitar un segundo PR redundante o volver a integrar las mismas ramas. Si aparece fallo reproducible, corregirlo en el PR existente y repetir únicamente pruebas adecuadas, manteniendo la prueba integradora robusta que protege el requisito.
+
+**Separación de decisiones y estado:** implementación integrada **SÍ**; laboratorio integrado **5/5 SUCCESS en SHA de contenido**; revisión independiente **PENDIENTE**; `main` **SIN MERGE**; compatibilidad gestionada Supabase PG17.11/`supautils`, custodia DBA/secretos, backup y restauración reales, TLS/CA/pooler, egress/firewall Sabora-only, observabilidad receptora y aprobación visual humana **NO VALIDADOS**. Ningún permiso de migración, provisión o despliegue se infiere de este hito; prohibido tocar Fleetia, otros recursos del VPS o infraestructura compartida.
+
 ## S38-9 — Cierre de las cinco baterías del SHA normativo y entrega a revisor independiente (13-11-2026)
 
 **Resultado real comprobado:** el SHA `ee57c6074a8d06df6172da157d81f81f9a7ed2d6`, que contiene el árbol integrado de dos padres y la conciliación CV-005/P0 con su nueva prueba de deriva, obtuvo **5/5 GitHub Actions completed/success**: [99 SQL PG17 #43424784850](https://github.com/jdlc86/CartaViva/actions/runs/43424784850), [árbol real SQL/API/HMAC/Chromium #43424784656](https://github.com/jdlc86/CartaViva/actions/runs/43424784656), [Sabora CI #43424784968](https://github.com/jdlc86/CartaViva/actions/runs/43424784968), [Bootstrap PG17/TLS/JWKS #43424784844](https://github.com/jdlc86/CartaViva/actions/runs/43424784844), [UI funcional #43424784893](https://github.com/jdlc86/CartaViva/actions/runs/43424784893). Aceptación humana visual `skipped`. Después de ese SHA solo cambiaron documentos de continuidad, revisión y tracking.
