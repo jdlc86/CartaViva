@@ -9,7 +9,7 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" || -z "${GITHUB_RUN_ID:-}" ||
  echo 'sabora_cv005_b2_disposable_runner_required' >&2; exit 1
 fi
 cv005=.cv005-exact-pin
-expected_sha=9c943e5b6ae2fa39e5abd18fc604688aa5689e5d
+expected_sha=a60548955d559da7ecc4b686f59c01974298dd46
 test -d "$cv005/.git" || { echo 'sabora_cv005_missing_pinned_checkout' >&2; exit 1; }
 actual_sha="$(git -C "$cv005" rev-parse HEAD)"
 [[ "$actual_sha" == "$expected_sha" ]] || {
