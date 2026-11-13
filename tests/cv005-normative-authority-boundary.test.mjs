@@ -31,9 +31,9 @@ test('P0 historical deny-all remains bounded and cannot authorize public grants 
  assert.match(gate,/política temporal de cero grants|veto temporal/);
  assert.match(gate,/\`PUBLIC\/anon\/authenticated\`/);
  assert.match(gate,/\`FORCE RLS\`/);
- assert.match(gate,/no tienen membresías[\s\S]{0,80}históric/);
+ assert.match(gate,/corte original\*\* los logins runtime aún no existían ni tenían\s+membresías, DDL/);
  assert.match(hmac,/HMAC-SHA-256/);
- assert.match(gate,/sin[\s\S]{0,200}membresías, DDL/);
+ assert.match(gate,/sin membresías, con `USAGE` pero no `CREATE`/);
  assert.match(gate,/Ni esta conciliación ni la CI verde autorizan/);
 });
 
