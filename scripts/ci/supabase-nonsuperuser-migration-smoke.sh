@@ -12,7 +12,7 @@ fi
 for tool in node docker sha256sum; do command -v "$tool" >/dev/null; done
 node scripts/ci/migration-audit.mjs >/dev/null
 container="sabora-pg-role-ci-$GITHUB_RUN_ID-$$"
-operator="sabora_ci_migration_operator"
+operator="cv005_ci_migration_operator"
 database="sabora_ci_migration_compat"
 cleanup(){ docker rm -f -v "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -38,7 +38,7 @@ done
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' >/dev/null
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE sabora_ci_migration_operator LOGIN CREATEROLE INHERIT
+CREATE ROLE cv005_ci_migration_operator LOGIN CREATEROLE INHERIT
   NOSUPERUSER BYPASSRLS NOREPLICATION;
 CREATE ROLE cv005_ci_restricted_probe LOGIN NOINHERIT NOSUPERUSER
   NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION;
@@ -46,7 +46,7 @@ SQL
 docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres \
   -c "CREATE DATABASE $database OWNER $operator" >/dev/null
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database" <<'SQL' >/dev/null
-CREATE SCHEMA extensions AUTHORIZATION sabora_ci_migration_operator;
+CREATE SCHEMA extensions AUTHORIZATION cv005_ci_migration_operator;
 CREATE EXTENSION pgcrypto WITH SCHEMA extensions;
 SQL
 # Diagnose the fixture with public, boolean role attributes only. This must be
