@@ -53,7 +53,8 @@ request management.sabora.test /manifest.webmanifest >"$tmp/management-manifest.
 node -e '
 const fs=require("node:fs");
 const [c,m]=process.argv.slice(1).map(p=>JSON.parse(fs.readFileSync(p,"utf8")));
-if(c.scope===m.scope&&c.start_url===m.start_url)throw Error("non_separate_pwa");
+if(!c.id||!m.id||c.id===m.id)throw Error("non_separate_pwa_identity");
+if(c.scope!=="/"||m.scope!=="/")throw Error("unexpected_pwa_scope");
 if(!c.name||!m.name)throw Error("manifest_missing_name");
 ' "$tmp/client-manifest.json" "$tmp/management-manifest.json"
 request client.sabora.test /sw.js >"$tmp/client-sw.js"

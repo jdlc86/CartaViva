@@ -39,5 +39,6 @@ test('web image builds two real PWAs with a validated non-secret restaurant code
  assert.match(dockerfile,/pnpm --filter @sabora\/management build/);
  assert.match(dockerfile,/VITE_SABORA_RESTAURANT_CODE/);
  assert.match(dockerfile,/USER 10001:10001/);
+ assert.match(dockerfile,/entrypoint\.sabora-web\.sh/);
  assert.doesNotMatch(dockerfile,/COPY \.env|COPY .*\.pem|COPY .*\.key|COPY .*secrets/);
 });

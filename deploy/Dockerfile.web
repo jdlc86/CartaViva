@@ -20,6 +20,8 @@ FROM caddy:2.11.9-alpine
 COPY --from=build /workspace/apps/client/dist /srv/sabora/client
 COPY --from=build /workspace/apps/management/dist /srv/sabora/management
 COPY deploy/Caddyfile.sabora /etc/caddy/Caddyfile
+COPY deploy/entrypoint.sabora-web.sh /usr/local/bin/sabora-web-entrypoint
 USER 10001:10001
 EXPOSE 8443
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/sabora-web-entrypoint"]
 CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
