@@ -42,6 +42,15 @@ test('recovery gate requires the exact provider DBA membership closure', () => {
   assert.ok(violations.some(value => value.includes('grantor.rolname')));
 });
 
+test('recovery fingerprint covers unexpected membership edges in both directions', () => {
+  const weakened = recovery
+    .replace("grant pg_read_all_data to sabora_staff_reader;", '-- omitted incoming edge')
+    .replace("grant sabora_h6_fn_owner to cv005_recovery_unexpected_member;", '-- omitted outgoing edge');
+  const violations = inspectRecoveryContinuity(root, { recoveryScript: weakened });
+  assert.ok(violations.some(value => value.includes('grant pg_read_all_data to sabora_staff_reader;')));
+  assert.ok(violations.some(value => value.includes('grant sabora_h6_fn_owner to cv005_recovery_unexpected_member;')));
+});
+
 test('new Storage usage fails until a separate object recovery contract exists', () => {
   assert.deepEqual(inspectRecoveryContinuity(root, { applicationTexts: ['export const safe = true;'] }), []);
   assert.ok(inspectRecoveryContinuity(root, {

@@ -333,8 +333,9 @@ from pg_auth_members membership
 join pg_roles parent on parent.oid=membership.roleid
 join pg_roles member on member.oid=membership.member
 join pg_roles grantor on grantor.oid=membership.grantor
-where (parent.rolname in ('anon','authenticated') or parent.rolname like 'sabora\_%' escape '\')
-  and (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+where (parent.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
+       or parent.rolname like 'sabora\_%' escape '\')
+   or (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
        or member.rolname like 'sabora\_%' escape '\');
 select 'extensions:'||md5(coalesce(string_agg(e.extname||':'||e.extversion||':'||n.nspname,
  E'\n' order by e.extname),''))
@@ -385,6 +386,27 @@ SQL
 }
 
 source_fingerprint="$(recovery_fingerprint "$container" postgres)"
+# The fingerprint is deliberately wider than the export allowlist. Any extra
+# incoming or outgoing edge touching a Sabora/browser role must change it and
+# make restore fail closed rather than disappear silently.
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+create role cv005_recovery_unexpected_member nologin;
+grant sabora_h6_fn_owner to cv005_recovery_unexpected_member;
+grant pg_read_all_data to sabora_staff_reader;
+SQL
+unexpected_membership_fingerprint="$(recovery_fingerprint "$container" postgres)"
+docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+revoke pg_read_all_data from sabora_staff_reader;
+revoke sabora_h6_fn_owner from cv005_recovery_unexpected_member;
+drop role cv005_recovery_unexpected_member;
+SQL
+[[ "$unexpected_membership_fingerprint" != "$source_fingerprint" ]] || {
+ echo 'clean_cluster_unexpected_membership_not_fingerprinted' >&2; exit 1;
+}
+[[ "$(recovery_fingerprint "$container" postgres)" = "$source_fingerprint" ]] || {
+ echo 'clean_cluster_membership_probe_not_reversible' >&2; exit 1;
+}
+echo 'sabora_recovery_membership_graph_closure_verified'
 clean_fingerprint="$(recovery_fingerprint "$clean_container" sabora_clean_recovery_ci)"
 if [[ "$source_fingerprint" != "$clean_fingerprint" ]]; then
  diff -u <(printf '%s\n' "$source_fingerprint") <(printf '%s\n' "$clean_fingerprint") >&2 || true
