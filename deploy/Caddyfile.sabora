@@ -1,12 +1,13 @@
 # Two separate HTTPS origins; no automatic ACME, shared host proxy or Fleetia dependency.
-# Certificates and hostnames are supplied ONLY by the authorized Sabora operator.
+# One SAN origin certificate and key serve both approved HTTPS origins.
+# Certificate and hostnames are supplied ONLY by the authorized Sabora operator.
 {
  admin off
  auto_https off
 }
 
 https://{$SABORA_CLIENT_HOST}:8443 {
- tls /run/sabora/tls/client.crt /run/sabora/tls/client.key
+ tls /run/sabora/tls/origin.crt /run/sabora/tls/origin.key
  encode gzip
  header {
   X-Content-Type-Options "nosniff"
@@ -27,7 +28,7 @@ https://{$SABORA_CLIENT_HOST}:8443 {
 }
 
 https://{$SABORA_MANAGEMENT_HOST}:8443 {
- tls /run/sabora/tls/management.crt /run/sabora/tls/management.key
+ tls /run/sabora/tls/origin.crt /run/sabora/tls/origin.key
  encode gzip
  header {
   X-Content-Type-Options "nosniff"

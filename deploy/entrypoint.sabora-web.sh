@@ -21,7 +21,7 @@ valid_bind_ip "${SABORA_INGRESS_BIND_IP:-}" || fail
 valid_hostname "$SABORA_CLIENT_HOST" || fail
 valid_hostname "$SABORA_MANAGEMENT_HOST" || fail
 [ "$SABORA_CLIENT_HOST" != "$SABORA_MANAGEMENT_HOST" ] || fail
-for name in client.crt client.key management.crt management.key; do
+for name in origin.crt origin.key; do
  [ -f "/run/sabora/tls/$name" ] && [ -r "/run/sabora/tls/$name" ] || fail
 done
 exec "$@"

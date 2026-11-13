@@ -15,7 +15,7 @@ cleanup(){
   echo "Sabora HTTPS publication fixture failed (exit $exit_status)" >&2
   docker inspect "$web" --format 'web state={{.State.Status}} exit={{.State.ExitCode}}' >&2 || true
   docker logs --tail 90 "$web" >&2 || true
-  curl --noproxy '*' --verbose --max-time 5 --cacert "$tmp/tls/client.crt" \
+  curl --noproxy '*' --verbose --max-time 5 --cacert "$tmp/tls/origin.crt" \
    --resolve 'client.sabora.test:8443:127.0.0.1' \
    'https://client.sabora.test:8443/' -o /dev/null 2>&1 | tail -n 25 >&2 || true
  fi
@@ -25,10 +25,8 @@ cleanup(){
 }
 trap cleanup EXIT
 mkdir -p "$tmp/tls"
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout "$tmp/tls/client.key" -out "$tmp/tls/client.crt" \
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout "$tmp/tls/origin.key" -out "$tmp/tls/origin.crt" \
  -subj "/CN=client.sabora.test" -addext "subjectAltName=DNS:client.sabora.test,DNS:management.sabora.test" >/dev/null 2>&1
-cp "$tmp/tls/client.crt" "$tmp/tls/management.crt"
-cp "$tmp/tls/client.key" "$tmp/tls/management.key"
 # Test-only certs; production key permissions are provisioned separately.
 chmod 755 "$tmp" "$tmp/tls"
 chmod 644 "$tmp/tls/"*
@@ -54,7 +52,7 @@ request(){
  local host="$1" path="$2"
  curl --noproxy '*' --silent --show-error --fail \
  --connect-timeout 2 --max-time 8 \
- --cacert "$tmp/tls/client.crt" \
+ --cacert "$tmp/tls/origin.crt" \
  --resolve "$host:8443:127.0.0.1" \
  "https://$host:8443$path"
 }
@@ -93,7 +91,7 @@ if docker run --rm --network none --read-only --tmpfs /tmp \
  exit 1
 fi
 # A mismatched TLS name must never be accepted.
-if curl --noproxy '*' --silent --fail --max-time 5 --cacert "$tmp/tls/client.crt" \
+if curl --noproxy '*' --silent --fail --max-time 5 --cacert "$tmp/tls/origin.crt" \
  --resolve 'other.sabora.test:8443:127.0.0.1' \
  'https://other.sabora.test:8443/' >/dev/null 2>&1; then
  echo 'Unexpected TLS/name acceptance' >&2

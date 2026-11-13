@@ -39,8 +39,11 @@ test('HTTPS virtual hosts are independent and API is proxied without exposing ba
  assert.match(caddy,/root \* \/srv\/sabora\/client/);
  assert.match(caddy,/root \* \/srv\/sabora\/management/);
  assert.match(caddy,/Cache-Control "no-store"/);
- assert.match(caddy,/tls \/run\/sabora\/tls\/client\.crt \/run\/sabora\/tls\/client\.key/);
- assert.match(caddy,/tls \/run\/sabora\/tls\/management\.crt \/run\/sabora\/tls\/management\.key/);
+ assert.equal((caddy.match(/tls \/run\/sabora\/tls\/origin\.crt \/run\/sabora\/tls\/origin\.key/g)||[]).length,2);
+ assert.doesNotMatch(caddy,/tls \/run\/sabora\/tls\/(?:client|management)\./);
+ assert.match(entrypoint,/for name in origin\.crt origin\.key; do/);
+ assert.match(smoke,/subjectAltName=DNS:client\.sabora\.test,DNS:management\.sabora\.test/);
+ assert.doesNotMatch(smoke,/cp "\$tmp\/tls\/(?:client|management)\./);
  assert.doesNotMatch(caddy,/reverse_proxy (?:localhost|127\.0\.0\.1):/);
 });
 
