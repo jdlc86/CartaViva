@@ -33,11 +33,9 @@ REVOKE ALL ON FUNCTION sabora.valid_catalog_cents(jsonb)
  FROM PUBLIC, anon, authenticated, sabora_admin_writer, sabora_catalog_reader;
 REVOKE ALL ON FUNCTION sabora.validate_catalog_modifier_value(jsonb)
  FROM PUBLIC, anon, authenticated, sabora_admin_writer, sabora_catalog_reader;
-COMMIT;
 
 -- Candidate modifier validation only. Not wired to publication or browser roles.
 -- SQL parity target: apps/api/src/catalog-economic-modifiers.mjs.
-BEGIN;
 CREATE FUNCTION sabora.validate_catalog_economic_modifiers(p jsonb)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $body$
 DECLARE

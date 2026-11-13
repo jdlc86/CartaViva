@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# CI-only, SHA-locked cross-candidate rehearsal. This is NOT a merge or an
-# operational migration: every SQL and app process lives on GitHub's ephemeral
-# runner, never on Supabase, the VPS or a developer's working tree.
+# This is an immutable two-parent Git integration candidate, NOT a SQL
+# overlay. The real code and migrations in HEAD must already equal CV-005.
+# The only test target is a disposable GitHub PR runner, never Supabase/VPS.
 set -euo pipefail
 if [[ "${GITHUB_ACTIONS:-}" != "true" || -z "${GITHUB_RUN_ID:-}" ||
       -z "${RUNNER_TEMP:-}" || "${GITHUB_EVENT_NAME:-}" != "pull_request" ||
       "${GITHUB_HEAD_REF:-}" != "feat/sabora-s38-operational-activation-20261112" ]]; then
- echo 'sabora_cv005_b2_disposable_runner_required' >&2; exit 1
+ echo 'sabora_integrated_pg17_disposable_runner_required' >&2; exit 1
 fi
 cv005=.cv005-exact-pin
 expected_sha=a60548955d559da7ecc4b686f59c01974298dd46
@@ -15,48 +15,51 @@ actual_sha="$(git -C "$cv005" rev-parse HEAD)"
 [[ "$actual_sha" == "$expected_sha" ]] || {
  echo 'sabora_cv005_sha_drift_denied' >&2; exit 1
 }
-# Only previously enumerated Sabora SQL migration paths may be overlaid.
-# Compare strict 99/99 inventories, count the reviewed 61 modifications. The
-# correction adds transaction boundaries to two previously exceptional files.
-mapfile -t main_files < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
-mapfile -t candidate_files < <(find "$cv005/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
-[[ "${#main_files[@]}" -eq 99 && "${#candidate_files[@]}" -eq 99 ]] || {
+git cat-file -e "$expected_sha^{commit}" || {
+ echo 'sabora_integrated_parent_not_fetched' >&2; exit 1
+}
+git merge-base --is-ancestor "$expected_sha" HEAD || {
+ echo 'sabora_cv005_not_in_integrated_git_history' >&2; exit 1
+}
+git rev-parse --verify origin/main >/dev/null || {
+ echo 'sabora_integrated_main_ref_missing' >&2; exit 1
+}
+mapfile -t integrated_files < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+mapfile -t cv005_files < <(find "$cv005/supabase/migrations" -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
+[[ "${#integrated_files[@]}" -eq 99 && "${#cv005_files[@]}" -eq 99 ]] || {
  echo 'sabora_cv005_unexpected_migration_inventory' >&2; exit 1
 }
-for i in "${!main_files[@]}"; do
- [[ "${main_files[i]}" == "${candidate_files[i]}" ]] || {
+for i in "${!integrated_files[@]}"; do
+ filename="${integrated_files[i]}"
+ [[ "$filename" == "${cv005_files[i]}" &&
+    "$filename" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
   echo 'sabora_cv005_migration_inventory_diff_denied' >&2; exit 1
  }
-done
-changed=0
-for filename in "${main_files[@]}"; do
- [[ "$filename" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
-  echo 'sabora_cv005_sql_path_denied' >&2; exit 1
+ cmp -s "supabase/migrations/$filename" "$cv005/supabase/migrations/$filename" || {
+  echo 'sabora_cv005_integrated_sql_blob_mismatch' >&2; exit 1
  }
- if ! cmp -s "supabase/migrations/$filename" "$cv005/supabase/migrations/$filename"; then
-  changed=$((changed+1))
- fi
 done
-[[ "$changed" -eq 61 ]] || {
- echo "sabora_cv005_expected_61_sql_changes_found_$changed" >&2; exit 1
-}
-# Provenance: the source is the exact SHA checkout. GitHub's runner is
-# destroyed; no SQL is written back to either PR or main.
-for filename in "${main_files[@]}"; do
- cp -- "$cv005/supabase/migrations/$filename" "supabase/migrations/$filename"
-done
-# Bring in the matching NO-SUPERUSER fixture code and contractual assertions
-# from the same pinned SHA; do not use the older main smoke implementation.
+# All nine non-SQL files are part of CV-005's reviewed installation contract.
 for filename in \
- scripts/ci/sabora-pg17-owner-admission.sql \
+ .github/workflows/supabase-nonsuperuser-compatibility.yml \
+ docs/reviews/SABORA_CV005_SUPABASE_NONSUPERUSER_MIGRATION_REHEARSAL_2026-11-12.md \
+ docs/reviews/SABORA_CV005_SUPABASE_OWNER_SEAL_EXCEPTION_PROPOSAL_2026-11-12.md \
+ docs/security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md \
+ docs/security/SABORA_P0_ACTOR_SQL_BINDING_DECISION.md \
  scripts/ci/postgres-migration-chain-smoke.sh \
- scripts/ci/supabase-nonsuperuser-migration-smoke.sh \
  scripts/ci/postgres-migration-harness-contract.test.mjs \
- .github/workflows/supabase-nonsuperuser-compatibility.yml; do
- test -f "$cv005/$filename" || { echo 'sabora_cv005_missing_rehearsal_file' >&2; exit 1; }
- cp -- "$cv005/$filename" "$filename"
+ scripts/ci/sabora-pg17-owner-admission.sql \
+ scripts/ci/supabase-nonsuperuser-migration-smoke.sh; do
+ test -f "$filename" && test -f "$cv005/$filename" &&
+ cmp -s "$filename" "$cv005/$filename" || {
+  echo 'sabora_cv005_integrated_contract_blob_mismatch' >&2; exit 1
+ }
 done
+mapfile -t different < <(git diff --name-only origin/main -- supabase/migrations/ | LC_ALL=C sort)
+[[ "${#different[@]}" -eq 61 ]] || {
+ echo "sabora_cv005_expected_61_sql_delta_found_${#different[@]}" >&2; exit 1
+}
 rm -rf -- "$cv005"
 test ! -e "$cv005"
-echo 'sabora_cv005_b2_cross_candidate_sha_locked:99_sql:61_changed'
+echo 'sabora_cv005_b2_single_git_tree_integrated_verified:99_sql:61_changed:two_parent_ancestry'
 node scripts/ci/migration-audit.mjs

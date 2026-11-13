@@ -4,6 +4,34 @@
 -- separate security review and explicit authorization.
 BEGIN;
 
+-- CV-005: existing sealed function owners are scoped to this transaction
+-- before CREATE OR REPLACE or cross-owner ACL; no runtime LOGIN is granted.
+DO $cv005_early_owner_scope$
+DECLARE roleinfo record;
+BEGIN
+ FOR roleinfo IN
+  SELECT DISTINCT r.rolname,r.rolcanlogin,r.rolinherit,r.rolsuper,
+    r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication
+  FROM pg_catalog.pg_roles r
+  WHERE left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+   AND r.rolname<>current_user::text
+   AND (EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n
+     ON n.oid=p.pronamespace WHERE p.proowner=r.oid AND n.nspname='sabora')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
+     ON n.oid=c.relnamespace WHERE c.relowner=r.oid AND n.nspname='sabora'))
+ LOOP
+  IF roleinfo.rolcanlogin OR roleinfo.rolinherit OR roleinfo.rolsuper
+    OR roleinfo.rolbypassrls OR roleinfo.rolcreaterole
+    OR roleinfo.rolcreatedb OR roleinfo.rolreplication THEN
+    RAISE EXCEPTION 'cv005_unsafe_existing_fn_owner' USING errcode='0P000';
+  END IF;
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',roleinfo.rolname);
+ END LOOP;
+END;
+$cv005_early_owner_scope$;
+
+
+
 DO $prerequisite$
 BEGIN
   IF to_regprocedure('extensions.hmac(bytea,bytea,text)') IS NULL THEN
@@ -40,8 +68,15 @@ BEGIN
       FROM pg_catalog.pg_auth_members membership
       JOIN pg_catalog.pg_roles granted ON granted.oid = membership.roleid
       JOIN pg_catalog.pg_roles member ON member.oid = membership.member
-     WHERE granted.rolname = 'sabora_staff_lifecycle_fn_owner'
-        OR member.rolname = 'sabora_staff_lifecycle_fn_owner'
+      JOIN pg_catalog.pg_roles grantor ON grantor.oid = membership.grantor
+     WHERE (granted.rolname = 'sabora_staff_lifecycle_fn_owner' OR member.rolname = 'sabora_staff_lifecycle_fn_owner')
+       AND NOT (
+        granted.rolname = 'sabora_staff_lifecycle_fn_owner'
+        AND member.rolname = current_user::text
+        AND grantor.rolsuper AND membership.admin_option
+        AND NOT membership.inherit_option AND NOT membership.set_option
+        AND member.rolcreaterole AND NOT member.rolsuper
+      )
   ) THEN
     RAISE EXCEPTION 'unsafe_sabora_staff_lifecycle_fn_owner_membership'
       USING errcode = '0P000';
@@ -201,10 +236,35 @@ CREATE TRIGGER staff_lifecycle_audit_no_truncate
 REVOKE ALL ON FUNCTION sabora.reject_staff_lifecycle_history_mutation()
   FROM PUBLIC, anon, authenticated, sabora_staff_reader, sabora_admin_writer;
 
+-- CV-005 CANDIDATE: the DBA can administer roles it created but must not
+-- retain SET/INHERIT at COMMIT. Grant ownership of existing Sabora objects
+-- only while the legacy global REVOKE executes; no runtime LOGIN involved.
+DO $cv005_scope$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_roles roles
+  WHERE roles.oid IN (
+   SELECT p.proowner FROM pg_catalog.pg_proc p
+    JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='sabora'
+   UNION
+   SELECT c.relowner FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='sabora'
+  )
+  AND roles.rolname<>current_user::text
+  AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('GRANT %I TO CURRENT_USER WITH SET TRUE, INHERIT TRUE',candidate_role);
+ END LOOP;
+END;
+$cv005_scope$;
 REVOKE ALL ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
 REVOKE ALL ON ALL TABLES IN SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+
 GRANT USAGE ON SCHEMA sabora, extensions TO sabora_staff_lifecycle_fn_owner;
 
 GRANT SELECT (key_id,hmac_key,not_before,expires_at,disabled_at),
@@ -735,6 +795,9 @@ BEGIN
 END;
 $staff_lifecycle$;
 
+-- CV-005 CANDIDATE: transaction-scoped owner transfer for PostgreSQL 17.
+GRANT CREATE ON SCHEMA sabora TO sabora_staff_lifecycle_fn_owner;
+GRANT sabora_staff_lifecycle_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 ALTER FUNCTION sabora.transition_staff_lifecycle_authorized_candidate(
   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
 ) OWNER TO sabora_staff_lifecycle_fn_owner;
@@ -749,5 +812,41 @@ COMMENT ON TABLE sabora.staff_lifecycle_signing_keys IS
 COMMENT ON FUNCTION sabora.transition_staff_lifecycle_authorized_candidate(
   text,text,uuid,text,uuid,uuid,text,text,text,text,text,text,bigint,bigint,text
 ) IS 'Candidate HMAC-bound lifecycle transition; no runtime EXECUTE grant is provisioned.';
+
+REVOKE sabora_staff_lifecycle_fn_owner FROM CURRENT_USER;
+REVOKE CREATE ON SCHEMA sabora FROM sabora_staff_lifecycle_fn_owner;
+
+-- Release only the grants issued by this transaction's current DBA.
+-- PostgreSQL's superuser-issued ADMIN/SET FALSE/INHERIT FALSE row persists.
+DO $cv005_release$
+DECLARE candidate_role name;
+BEGIN
+ FOR candidate_role IN
+  SELECT DISTINCT roles.rolname FROM pg_catalog.pg_auth_members membership
+   JOIN pg_catalog.pg_roles roles ON roles.oid=membership.roleid
+  WHERE membership.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND membership.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+    AND left(roles.rolname,7)='sabora_'
+ LOOP
+  EXECUTE format('REVOKE %I FROM CURRENT_USER',candidate_role);
+ END LOOP;
+END;
+$cv005_release$;
+
+
+
+-- CV-005: revoke every DBA-issued membership on Sabora function owners.
+DO $cv005_early_owner_release$
+DECLARE role_name name;
+BEGIN
+ FOR role_name IN
+  SELECT DISTINCT r.rolname FROM pg_catalog.pg_auth_members m
+  JOIN pg_catalog.pg_roles r ON r.oid=m.roleid
+  WHERE m.member=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND m.grantor=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user::text)
+   AND left(r.rolname,7)='sabora_' AND right(r.rolname,9)='_fn_owner'
+ LOOP EXECUTE format('REVOKE %I FROM CURRENT_USER',role_name); END LOOP;
+END;
+$cv005_early_owner_release$;
 
 COMMIT;

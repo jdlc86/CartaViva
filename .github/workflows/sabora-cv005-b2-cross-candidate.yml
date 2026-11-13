@@ -1,4 +1,4 @@
-name: Sabora CV005 + B2 SHA-locked combined PG17/HTTP/Chromium candidate
+name: Sabora CV005 + B2 integrated SHA PG17/HTTP/Chromium candidate
 
 on:
   pull_request:
@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Checkout pinned CV005 migration candidate separately
         uses: actions/checkout@v4
@@ -27,7 +28,7 @@ jobs:
           ref: a60548955d559da7ecc4b686f59c01974298dd46
           path: .cv005-exact-pin
           persist-credentials: false
-      - name: Prove SHA and 61 SQL delta then overlay in disposable runner only
+      - name: Verify two-parent Git ancestry and 99 exact CV005 SQL blobs in integrated HEAD
         run: bash scripts/ci/cv005-b2-combined-candidate-rehearsal.sh
       - name: Set up Node 22
         uses: actions/setup-node@v4
@@ -44,17 +45,17 @@ jobs:
           node scripts/ci/production-config-secrets-gate.mjs
       - name: Rehearse 99 CV005 migrations with real PG17 CREATEROLE NOSUPERUSER
         run: bash scripts/ci/supabase-nonsuperuser-migration-smoke.sh
-      - name: Run combined 99-SQL B2 runtime, HMAC, PG17 and two-PWA Chromium E2E
+      - name: Run integrated-tree 99-SQL B2 runtime, HMAC, PG17 and two-PWA Chromium E2E
         env:
           SABORA_CI_F21_FULL_WINDOW: 'false'
         run: bash scripts/ci/h6-acceptance-gate.sh
       - name: Build API and both PWA bundles from the combined fixture
         run: pnpm build
-      - name: Document exact scope and limitations
+      - name: Document exact integrated SHA and operational limitations
         if: always()
         run: |
           printf '%s\n' '## Sabora CV005 + B2 cross-candidate rehearsal' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- CV005 migrations: pinned a60548955d559da7ecc4b686f59c01974298dd46 (99 files, 61 modified; reviewed fix head).' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' "- B2 source: $(git rev-parse HEAD) (exact PR head)." >> "$GITHUB_STEP_SUMMARY"
-          printf '%s\n' '- SQL overlay: temporary GitHub-hosted runner only, no merge, no Supabase or VPS.' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '- Source: genuine two-parent Git integration tree; CV005 SQL/installer bytes verified, no SQL copy, no main merge, no Supabase or VPS.' >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '- PG17 Docker lacks managed supautils/Supabase, real secrets/TLS and human acceptance.' >> "$GITHUB_STEP_SUMMARY"

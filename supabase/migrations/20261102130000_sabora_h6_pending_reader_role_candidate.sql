@@ -1,6 +1,10 @@
 -- Candidate-only F12 pending reader capability. No login, membership or API cutover.
 -- This separate role may execute exactly one function, never staff decisions.
 BEGIN;
+-- CV-005: existing H6 function is owned by a sealed NOLOGIN principal.
+-- Transient inheritance permits the DBA to grant EXECUTE; it is revoked
+-- before COMMIT and never extends to the runtime role being created.
+GRANT sabora_h6_fn_owner TO CURRENT_USER WITH SET TRUE, INHERIT TRUE;
 CREATE ROLE sabora_f12_pending_reader_runtime NOLOGIN NOINHERIT
  NOBYPASSRLS NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 GRANT USAGE ON SCHEMA sabora TO sabora_f12_pending_reader_runtime;
@@ -22,4 +26,5 @@ CREATE POLICY sabora_h6_pending_owner_accounts_read ON sabora.customer_accounts
  FOR SELECT TO sabora_h6_fn_owner USING (true);
 -- Existing h6_owner_table_change_select policy supplies request read access.
 -- This migration deliberately does not grant SET ROLE to any login.
+REVOKE sabora_h6_fn_owner FROM CURRENT_USER;
 COMMIT;

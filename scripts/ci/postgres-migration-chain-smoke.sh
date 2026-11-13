@@ -25,6 +25,33 @@ SQL
 mapfile -t migrations < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
 [[ "${#migrations[@]}" -gt 1 ]] || { echo 'migration_chain_empty' >&2; exit 1; }
 
+emit_atomic_apply_prefix(){
+ local version="$1" name="$2" checksum="$3"
+ cat <<SQL
+SET client_min_messages=error;
+BEGIN;
+CREATE TEMP TABLE cv005_pending_migration(
+ version text NOT NULL,
+ name text NOT NULL,
+ sha256 text NOT NULL
+) ON COMMIT DROP;
+CREATE FUNCTION pg_temp.cv005_record_committed_migration()
+RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS \$cv005_atomic\$
+BEGIN
+ INSERT INTO sabora_migration_meta.applied_migrations(version,name,sha256)
+ VALUES (NEW.version,NEW.name,NEW.sha256);
+ RETURN NEW;
+END
+\$cv005_atomic\$;
+CREATE CONSTRAINT TRIGGER cv005_commit_ledger
+AFTER INSERT ON cv005_pending_migration
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION pg_temp.cv005_record_committed_migration();
+INSERT INTO cv005_pending_migration(version,name,sha256)
+VALUES ('$version','$name','$checksum');
+SQL
+}
+
 ledger_status(){
  local version="$1" name="$2" checksum="$3" actual
  actual="$(docker exec "$container" psql -X -U postgres -d postgres -Atqc \
@@ -37,11 +64,16 @@ ledger_status(){
 }
 
 apply_or_skip(){
- local name="$1" path="supabase/migrations/$1" version checksum
+ local name="$1" path="supabase/migrations/$1" version checksum begin_count commit_count
  version="${name:0:14}"
  checksum="$(sha256sum "$path" | cut -d' ' -f1)"
  [[ "$version" =~ ^[0-9]{14}$ && "$checksum" =~ ^[a-f0-9]{64}$ && "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
   echo 'migration_chain_invalid_manifest_entry' >&2; exit 1;
+ }
+ begin_count="$(grep -ci '^BEGIN;$' "$path" || true)"
+ commit_count="$(grep -ci '^COMMIT;$' "$path" || true)"
+ [[ "$begin_count" -eq 1 && "$commit_count" -eq 1 ]] || {
+  echo "migration_chain_transaction_boundary_invalid:$name:$begin_count:$commit_count" >&2; exit 1;
  }
  if ledger_status "$version" "$name" "$checksum"; then
   return 0
@@ -49,12 +81,60 @@ apply_or_skip(){
   local status=$?
   [[ "$status" -eq 1 ]] || return "$status"
  fi
- docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < "$path"
- docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<SQL
-insert into sabora_migration_meta.applied_migrations(version,name,sha256)
-values ('$version','$name','$checksum');
-SQL
+ # The migration's own final COMMIT fires the deferred ledger trigger. SQL and
+ # checksum therefore either commit together or both roll back on interruption.
+ {
+  emit_atomic_apply_prefix "$version" "$name" "$checksum"
+  cat "$path"
+ } | docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres
 }
+
+assert_precommit_interruption_atomic(){
+ local version='00000000000000' name='00000000000000_atomicity_probe.sql'
+ local checksum probe_app client_pid backend_pid status state
+ checksum="$(printf '0%.0s' {1..64})"
+ probe_app="sabora_chain_precommit_probe_${GITHUB_RUN_ID}_$$"
+ (
+  {
+   emit_atomic_apply_prefix "$version" "$name" "$checksum"
+   cat <<'SQL'
+BEGIN;
+CREATE TABLE public.sabora_chain_atomicity_probe(id integer PRIMARY KEY);
+SELECT pg_sleep(30);
+COMMIT;
+SQL
+  } | docker exec -i "$container" env PGAPPNAME="$probe_app" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres
+ ) >/dev/null 2>&1 &
+ client_pid=$!
+ backend_pid=''
+ for _ in $(seq 1 100); do
+  backend_pid="$(docker exec "$container" psql -X -U postgres -d postgres -Atqc \
+   "select pid from pg_stat_activity where application_name='$probe_app' and state='active' limit 1")"
+  [[ -n "$backend_pid" ]] && break
+  sleep 0.1
+ done
+ [[ -n "$backend_pid" ]] || {
+  kill "$client_pid" >/dev/null 2>&1 || true; wait "$client_pid" || true
+  echo 'migration_chain_precommit_probe_not_observed' >&2; exit 1;
+ }
+ docker exec "$container" psql -X -U postgres -d postgres -Atqc \
+  "select pg_terminate_backend($backend_pid)" | grep -Fx t >/dev/null
+ set +e
+ wait "$client_pid"
+ status=$?
+ set -e
+ [[ "$status" -ne 0 ]] || { echo 'migration_chain_precommit_probe_not_interrupted' >&2; exit 1; }
+ state="$(docker exec "$container" psql -X -U postgres -d postgres -Atqc \
+  "select (to_regclass('public.sabora_chain_atomicity_probe') is null)::int || '|' ||
+          (select count(*) from sabora_migration_meta.applied_migrations where version='$version')")"
+ [[ "$state" == '1|0' ]] || {
+  echo "migration_chain_precommit_atomicity_failed:$state" >&2; exit 1;
+ }
+ echo 'sabora_migration_chain_precommit_atomicity_verified'
+}
+
+assert_precommit_interruption_atomic
 
 run_chain(){
  local stop_after="${1:-}" name
