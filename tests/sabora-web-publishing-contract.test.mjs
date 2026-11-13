@@ -5,10 +5,14 @@ const web=readFileSync(new URL('../deploy/compose.sabora-web.yml',import.meta.ur
 const caddy=readFileSync(new URL('../deploy/Caddyfile.sabora',import.meta.url),'utf8');
 const dockerfile=readFileSync(new URL('../deploy/Dockerfile.web',import.meta.url),'utf8');
 const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+const entrypoint=readFileSync(new URL('../deploy/entrypoint.sabora-web.sh',import.meta.url),'utf8');
+const smoke=readFileSync(new URL('../scripts/ci/sabora-web-publishing-smoke.sh',import.meta.url),'utf8');
 
 test('Sabora PWA publication cannot silently use shared ingress or unscoped operations',()=>{
  assert.match(web,/^name: sabora$/m);
  assert.match(web,/\$\{SABORA_INGRESS_BIND_IP:\?/);
+ assert.match(web,/:8443:8443"/);
+ assert.doesNotMatch(web,/:443:8443"/);
  assert.match(web,/\$\{SABORA_CLIENT_HOST:\?/);
  assert.match(web,/\$\{SABORA_MANAGEMENT_HOST:\?/);
  assert.match(web,/\$\{SABORA_WEB_TLS_DIRECTORY:\?/);
@@ -22,6 +26,10 @@ test('Sabora PWA publication cannot silently use shared ingress or unscoped oper
  assert.doesNotMatch(web,/\bdepends_on:/);
  assert.match(ci,/--file deploy\/compose\.sabora-web\.yml config --quiet/);
  assert.match(ci,/sabora-web-publishing-smoke\.sh/);
+ assert.match(entrypoint,/valid_bind_ip/);
+ assert.match(entrypoint,/0\.0\.0\.0/);
+ assert.match(smoke,/-p 127\.0\.0\.1:8443:8443/);
+ assert.match(smoke,/SABORA_INGRESS_BIND_IP=0\.0\.0\.0/);
 });
 
 test('HTTPS virtual hosts are independent and API is proxied without exposing backend',()=>{

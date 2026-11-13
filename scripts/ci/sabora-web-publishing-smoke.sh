@@ -16,8 +16,8 @@ cleanup(){
   docker inspect "$web" --format 'web state={{.State.Status}} exit={{.State.ExitCode}}' >&2 || true
   docker logs --tail 90 "$web" >&2 || true
   curl --noproxy '*' --verbose --max-time 5 --cacert "$tmp/tls/client.crt" \
-   --resolve 'client.sabora.test:18443:127.0.0.1' \
-   'https://client.sabora.test:18443/' -o /dev/null 2>&1 | tail -n 25 >&2 || true
+   --resolve 'client.sabora.test:8443:127.0.0.1' \
+   'https://client.sabora.test:8443/' -o /dev/null 2>&1 | tail -n 25 >&2 || true
  fi
  docker rm -f "$web" "$api" >/dev/null 2>&1 || true
  docker network rm "$net" "$ingress" >/dev/null 2>&1 || true
@@ -41,7 +41,8 @@ docker run -d --name "$api" --network "$net" --network-alias api --read-only \
  --entrypoint node node:22-alpine -e 'require("node:http").createServer((req,res)=>{res.setHeader("content-type","application/json");res.setHeader("cache-control","no-store");res.end(JSON.stringify({route:req.url,via:"sabora-ci-api"}))}).listen(4100,"0.0.0.0")' >/dev/null
 docker run -d --name "$web" --network "$ingress" --read-only --tmpfs /tmp \
  --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges \
- -p 127.0.0.1:18443:8443 -v "$tmp/tls:/run/sabora/tls:ro" \
+ -p 127.0.0.1:8443:8443 -v "$tmp/tls:/run/sabora/tls:ro" \
+ -e SABORA_INGRESS_BIND_IP=127.0.0.1 \
  -e SABORA_CLIENT_HOST=client.sabora.test \
  -e SABORA_MANAGEMENT_HOST=management.sabora.test \
  -e XDG_CONFIG_HOME=/tmp/caddy-config -e XDG_DATA_HOME=/tmp/caddy-data \
@@ -54,8 +55,8 @@ request(){
  curl --noproxy '*' --silent --show-error --fail \
  --connect-timeout 2 --max-time 8 \
  --cacert "$tmp/tls/client.crt" \
- --resolve "$host:18443:127.0.0.1" \
- "https://$host:18443$path"
+ --resolve "$host:8443:127.0.0.1" \
+ "https://$host:8443$path"
 }
 for attempt in $(seq 1 25); do
  if request client.sabora.test / >"$tmp/client.html" 2>/dev/null; then break; fi
@@ -81,10 +82,20 @@ request client.sabora.test /api/v1/catalog >"$tmp/api.json"
 node -e 'const v=require("node:fs").readFileSync(process.argv[1],"utf8");if(JSON.parse(v).route!=="/api/v1/catalog"||JSON.parse(v).via!=="sabora-ci-api")process.exit(1)' "$tmp/api.json"
 request management.sabora.test /api/v1/admin/tables >"$tmp/admin-api.json"
 node -e 'const v=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));if(v.route!=="/api/v1/admin/tables")process.exit(1)' "$tmp/admin-api.json"
+# The bind guard rejects wildcard host addresses before accepting any TLS
+# paths. The negative probe runs with no network or published port.
+if docker run --rm --network none --read-only --tmpfs /tmp \
+ -e SABORA_INGRESS_BIND_IP=0.0.0.0 \
+ -e SABORA_CLIENT_HOST=client.sabora.test \
+ -e SABORA_MANAGEMENT_HOST=management.sabora.test \
+ sabora-web:ci true >/dev/null 2>&1; then
+ echo 'Wildcard bind address unexpectedly accepted' >&2
+ exit 1
+fi
 # A mismatched TLS name must never be accepted.
 if curl --noproxy '*' --silent --fail --max-time 5 --cacert "$tmp/tls/client.crt" \
- --resolve 'other.sabora.test:18443:127.0.0.1' \
- 'https://other.sabora.test:18443/' >/dev/null 2>&1; then
+ --resolve 'other.sabora.test:8443:127.0.0.1' \
+ 'https://other.sabora.test:8443/' >/dev/null 2>&1; then
  echo 'Unexpected TLS/name acceptance' >&2
  exit 1
 fi

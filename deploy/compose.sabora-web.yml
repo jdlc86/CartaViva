@@ -1,5 +1,5 @@
 # Overlay onto compose.sabora-operational.yml ONLY after all Sabora activation gates.
-# Explicit exclusive Sabora ingress IP, never a blanket host port or shared proxy.
+# Approved IPv4 bind and dedicated TCP/8443 on the shared IP. No wildcard host port, shared proxy or Fleetia dependency.
 name: sabora
 services:
   web:
@@ -12,12 +12,13 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 20s
     environment:
+      SABORA_INGRESS_BIND_IP: ${SABORA_INGRESS_BIND_IP:?approved specific bind IPv4 for TCP 8443 required}
       SABORA_CLIENT_HOST: ${SABORA_CLIENT_HOST:?approved distinct HTTPS client hostname required}
       SABORA_MANAGEMENT_HOST: ${SABORA_MANAGEMENT_HOST:?approved distinct HTTPS management hostname required}
       XDG_CONFIG_HOME: /tmp/caddy-config
       XDG_DATA_HOME: /tmp/caddy-data
     ports:
-      - "${SABORA_INGRESS_BIND_IP:?dedicated Sabora bind IP and free TCP 443 required}:443:8443"
+      - "${SABORA_INGRESS_BIND_IP:?approved specific bind IPv4 and free TCP 8443 required}:8443:8443"
     networks: [sabora_runtime_internal, sabora_ingress_filtered]
     volumes:
       - type: bind
