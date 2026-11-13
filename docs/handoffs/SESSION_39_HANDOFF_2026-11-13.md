@@ -130,6 +130,14 @@ El propietario ha confirmado con «Correcto me gusta» la estructura de nombres 
 
 Referencias: [Cloudflare puertos](https://developers.cloudflare.com/fundamentals/reference/network-ports/), [526](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-526/) y [Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/).
 
+### S39-14 — los dos registros DNS A de Sabora existen, evidencia de panel (13-11-2026)
+
+El propietario aportó una captura del panel **Cloudflare → allaiso.com → DNS Records** que muestra de forma explícita y con **TTL Auto** los dos registros A aprobados: **`sabora.allaiso.com` → `146.59.145.64`** y **`gestion-sabora.allaiso.com` → `146.59.145.64`**, ambos **Proxied (nube naranja)**. La IP coincide con el endpoint público del VPS previamente comprobado en Gateway. Esto **cierra la duda de si los dos registros exactos existían en el panel**, pero no prueba que el backend esté instalado ni operable y no autoriza mutaciones de zona, DNS global, Fleetia, red o SSL. No publicar la captura como archivo de repo; la evidencia visual procede del usuario.
+
+**Nuevo orden de trabajo:** los registros **ya están creados**: no pedir al propietario volver a crearlos ni desactivar la nube naranja. Los resultados públicos S39-13 (TLS de borde correcto, `HEAD:8443` timeout, `HTTP 526` en 443) pueden persistir mientras Sabora **no** esté desplegada. Para emitir certificados Cloudflare Origin CA se necesita **custodia segura de la clave privada**, que Cloudflare muestra una sola vez si genera la clave; no pedir foto ni clave por chat, ticket, Git o Actions. **Antes de solicitar la creación efectiva**, decidir el canal de custodia/instalación exclusivo de Sabora (fuera de repo/GitHub/VPS compartido hasta su instalación autorizada) y comprobar compatibilidad con `client.crt/key` y `management.crt/key`, dos SAN exactos y modo Full (strict) ya existente sin cambiar ajustes globales de `allaiso.com`. Referencia oficial: https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/.
+
+**Estado real:** DNS exacto **VERIFICADO EN EL PANEL**; Cloudflare borde HTTPS validado según S39-13; certificados de origen y servidor Sabora **NO CONFIGURADOS**; 99 SQL/roles/backup y autorizaciones siguen bloqueados; [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) con CI del código ya verde pero sin integración. No se realizó operación DNS, TLS, VPS ni Supabase en esta sesión.
+
 ## 2. Prioridad y orden de la próxima intervención (sin repetir trabajos)
 
 1. **Resolver PR #59** como decisión normativa concreta: contrastar su diff con contratos existentes; pedir decisión de integración separada; no atribuirle vigencia hasta merge confirmado y sincronización de referencias. No duplicar la propuesta ni crear nuevo runbook.
