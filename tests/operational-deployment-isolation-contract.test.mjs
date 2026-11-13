@@ -7,9 +7,15 @@ import {inspectOperationalDeploymentIsolation,OPERATIONAL_COMPOSE}
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const baseline=readFileSync(new URL('../'+OPERATIONAL_COMPOSE,import.meta.url),'utf8');
+const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
 
 test('operational candidate requires an independently filtered outbound network',()=>{
  assert.deepEqual(inspectOperationalDeploymentIsolation(root),[]);
+});
+
+test('CI can render the fail-closed external egress network without provisioning it',()=>{
+ assert.match(ci,/SABORA_EGRESS_ALLOWLIST_NETWORK: sabora-ci-preprovisioned-egress-unavailable/);
+ assert.match(ci,/docker compose --project-name sabora --file deploy\/compose\.sabora-operational\.yml config --quiet/);
 });
 
 test('operational isolation gate rejects API egress, broad exposure and weakened hardening',()=>{

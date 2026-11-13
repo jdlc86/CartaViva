@@ -85,6 +85,9 @@ jobs:
           SABORA_OPERATIONAL_MANIFEST_FILE: /tmp/sabora-activation-unavailable.json
           SABORA_OPERATIONAL_SECRETS_DIR: /tmp/sabora-secrets-unavailable
           SABORA_EGRESS_POLICY_FILE: /tmp/sabora-egress-unavailable.json
+          # Config rendering must satisfy the fail-closed external-network
+          # contract without provisioning or connecting to an egress network.
+          SABORA_EGRESS_ALLOWLIST_NETWORK: sabora-ci-preprovisioned-egress-unavailable
         run: |
           docker compose --project-name sabora --file deploy/compose.sabora.yml config --quiet
           docker compose --project-name sabora --file deploy/compose.sabora-operational.yml config --quiet
