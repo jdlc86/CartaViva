@@ -11,7 +11,45 @@ const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&
 const exact=(value,keys)=>plain(value)&&Reflect.ownKeys(value).length===keys.length&&
  keys.every(key=>Object.hasOwn(value,key));
 
-function privateAddress(address){
+function ipv6Integer(address){
+ let value=address.toLowerCase();
+ if(value.includes('.')){
+  const split=value.lastIndexOf(':'),octets=value.slice(split+1).split('.').map(Number);
+  if(octets.length!==4||octets.some(part=>!Number.isInteger(part)||part<0||part>255))return null;
+  value=value.slice(0,split+1)+((octets[0]<<8)|octets[1]).toString(16)+':' +
+   ((octets[2]<<8)|octets[3]).toString(16);
+ }
+ const halves=value.split('::');
+ if(halves.length>2)return null;
+ const left=halves[0]?halves[0].split(':'):[];
+ const right=halves.length===2&&halves[1]?halves[1].split(':'):[];
+ const missing=8-left.length-right.length;
+ if((halves.length===1&&missing!==0)||(halves.length===2&&missing<1))return null;
+ const words=[...left,...Array(missing).fill('0'),...right];
+ if(words.length!==8||words.some(word=>!/^[0-9a-f]{1,4}$/.test(word)))return null;
+ return words.reduce((result,word)=>(result<<16n)|BigInt(parseInt(word,16)),0n);
+}
+
+const ipv6Prefix=(address,bits)=>Object.freeze({value:ipv6Integer(address),bits:BigInt(bits)});
+const IPV6_GLOBAL=ipv6Prefix('2000::',3);
+const IPV6_MAPPED=ipv6Prefix('::ffff:0:0',96);
+const IPV6_SPECIAL=Object.freeze([
+ ipv6Prefix('::',96),
+ ipv6Prefix('64:ff9b::',96),
+ ipv6Prefix('64:ff9b:1::',48),
+ ipv6Prefix('100::',64),
+ // IETF protocol assignments, including documentation, benchmarking,
+ // ORCHID and Teredo, are not provider destinations for this deployment.
+ ipv6Prefix('2001::',23),
+ ipv6Prefix('2001:db8::',32),
+ ipv6Prefix('2002::',16),
+ ipv6Prefix('3fff::',20),
+ ipv6Prefix('5f00::',16),
+]);
+const inIpv6Prefix=(value,{value:prefix,bits})=>
+ (value>>(128n-bits))===(prefix>>(128n-bits));
+
+export function isForbiddenEgressAddress(address){
  if(isIP(address)===4){
   const parts=address.split('.').map(Number);
   return parts[0]===0||parts[0]===10||parts[0]===127||parts[0]>=224||
@@ -22,10 +60,17 @@ function privateAddress(address){
    (parts[0]===203&&parts[1]===0&&parts[2]===113);
  }
  if(isIP(address)===6){
-  const value=address.toLowerCase();
-  if(value.startsWith('::ffff:'))return privateAddress(value.slice(7));
-  return value==='::'||value==='::1'||value.startsWith('fc')||value.startsWith('fd')||
-   /^fe[89ab]/.test(value)||value.startsWith('ff')||value.startsWith('2001:db8:');
+  const value=ipv6Integer(address);
+  if(value===null)return true;
+  if(inIpv6Prefix(value,IPV6_MAPPED)){
+   const ipv4=Number(value&0xffffffffn);
+   return isForbiddenEgressAddress([
+    ipv4>>>24,(ipv4>>>16)&255,(ipv4>>>8)&255,ipv4&255].join('.'));
+  }
+  // Only allocated global-unicast space is considered, then every IANA
+  // special-purpose range relevant to SSRF/route ambiguity is denied.
+  return !inIpv6Prefix(value,IPV6_GLOBAL)||
+   IPV6_SPECIAL.some(prefix=>inIpv6Prefix(value,prefix));
  }
  return true;
 }
@@ -99,7 +144,7 @@ export function extractTlsServerName(buffer){
 
 async function resolvePublic(host,lookup=dnsLookup){
  const records=await lookup(host,{all:true,verbatim:true});
- if(!Array.isArray(records)||records.length===0||records.some(item=>privateAddress(item.address)))
+ if(!Array.isArray(records)||records.length===0||records.some(item=>isForbiddenEgressAddress(item.address)))
   throw Error('sabora_egress_destination_denied');
  return records[0];
 }

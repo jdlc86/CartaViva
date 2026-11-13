@@ -58,7 +58,7 @@ services:
     environment:
       NODE_ENV: production
       SABORA_EGRESS_POLICY_FILE: /run/sabora/egress-policy.json
-    networks: [sabora_runtime_internal, sabora_egress_outbound]
+    networks: [sabora_runtime_internal, sabora_egress_allowlisted]
     volumes:
       - type: bind
         source: ${SABORA_EGRESS_POLICY_FILE:?absolute egress policy path required}
@@ -79,5 +79,10 @@ networks:
   sabora_runtime_internal:
     driver: bridge
     internal: true
-  sabora_egress_outbound:
-    driver: bridge
+  # This project deliberately does not create a general-purpose outbound
+  # bridge. Activation requires a separately provisioned Sabora-only network
+  # whose host/provider firewall permits only the policy destinations. Its
+  # rule evidence remains an independent STOP gate in the runbook.
+  sabora_egress_allowlisted:
+    external: true
+    name: ${SABORA_EGRESS_ALLOWLIST_NETWORK:?pre-provisioned filtered Sabora egress network required}

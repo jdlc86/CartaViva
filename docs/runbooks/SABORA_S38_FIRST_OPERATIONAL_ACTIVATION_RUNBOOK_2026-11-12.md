@@ -36,15 +36,18 @@ health-only y registrar el bloqueo. No editar banderas para eludirlo.
    placeholder, JWKS, readiness, notifier, sink, corrupción y cierre parcial.
 3. Renderizar `compose.sabora-operational.yml` con `--project-name sabora` y
    rutas de ficheros temporales no sensibles. Confirmar: API sólo en red
-   interna, gateway único en red de salida, ingress `127.0.0.1`, sin puerto
+   interna, gateway único en la red externa preaprovisionada y filtrada
+   `SABORA_EGRESS_ALLOWLIST_NETWORK`, ingress `127.0.0.1`, sin puerto
    público del gateway, usuario no-root, read-only, `cap_drop`, límites y logs
    acotados. **Ambos servicios deben montar EL MISMO fichero de política de
    egress Sabora en solo lectura.** El preflight compara exactamente destinos,
    puertos y protocolos de SQL/JWKS entre manifiesto y gateway; cualquier
-   diferencia es STOP antes de leer secretos.
+   diferencia es STOP antes de leer secretos. El Compose no crea un bridge de
+   salida general ni admite fallback: si esa red no existe, el render/arranque
+   debe fallar.
 4. Ensayar parada y re-arranque del servicio Sabora nombrado. No usar `down`,
-   prune, Docker socket, redes externas, nombres globales ni operaciones sobre
-   contenedores ajenos.
+   prune, Docker socket, redes externas compartidas/no verificadas, nombres
+   globales ni operaciones sobre contenedores ajenos.
 
 ## 2. Copia previa — STOP de autorización
 
@@ -75,8 +78,17 @@ Si no puede verificarse la restauración, no migrar ni arrancar el candidato.
    issuer exacto `/auth/v1`, host directo/pooler confirmado, SNI original,
    `sabora-egress` como único connect host y puertos de gateway no estándar.
 4. Construir la política egress con sólo destinos/puertos verificados. DNS debe
-   resolver a dirección pública; todo SNI distinto se rechaza antes de conectar.
-5. Marcar las 16 evidencias de activación como `true` sólo cuando exista el
+   resolver a dirección pública; IPv4/IPv6 privada, reservada o de propósito
+   especial y todo SNI distinto se rechazan antes de conectar.
+5. Antes de renderizar Compose, el responsable de red debe crear una red
+   exclusiva Sabora y aplicar fuera del proceso `sabora-egress` un firewall o
+   proxy de salida que permita solamente esos destinos/puertos. Registrar
+   reglas, responsable, hora, resolución DNS y pruebas desde el namespace del
+   contenedor: destino autorizado funciona y un destino público ajeno falla.
+   El nombre de red por sí solo, la allowlist Node o CI no son evidencia de
+   enforcement independiente. Inyectar su nombre por
+   `SABORA_EGRESS_ALLOWLIST_NETWORK`; sin evidencia y autorización, STOP.
+6. Marcar las 16 evidencias de activación como `true` sólo cuando exista el
    documento/ejecución correspondiente. Son declaraciones auditables, no prueba
    autocertificada.
 

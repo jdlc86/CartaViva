@@ -31,6 +31,17 @@ test('recovery gate detects weakened load, isolation and ambiguous-target handli
   assert.ok(violations.includes('clean_recovery_cluster_not_network_isolated'));
 });
 
+test('recovery gate requires the exact provider DBA membership closure', () => {
+  const weakened = recovery
+    .replaceAll('membership.set_option', 'true')
+    .replaceAll('membership.inherit_option', 'true')
+    .replaceAll('grantor.rolname', "'postgres'");
+  const violations = inspectRecoveryContinuity(root, { recoveryScript: weakened });
+  assert.ok(violations.some(value => value.includes('membership.set_option')));
+  assert.ok(violations.some(value => value.includes('membership.inherit_option')));
+  assert.ok(violations.some(value => value.includes('grantor.rolname')));
+});
+
 test('new Storage usage fails until a separate object recovery contract exists', () => {
   assert.deepEqual(inspectRecoveryContinuity(root, { applicationTexts: ['export const safe = true;'] }), []);
   assert.ok(inspectRecoveryContinuity(root, {

@@ -144,11 +144,33 @@ export function registerTableChangeStateStreamCandidate(scope,{tableChange,subsc
 
 // One physical NOTIFY listener under the verified operations SQL login.
 // It has no business-data privileges; every wake-up re-reads per-session SQL.
-export async function createTableChangeCommitNotifier({pool,expectedLogin}={}){
- if(typeof pool?.connect!=='function'||typeof expectedLogin!=='string'||!expectedLogin)
+export async function createTableChangeCommitNotifier({pool,expectedLogin,onLost=()=>{}}={}){
+ if(typeof pool?.connect!=='function'||typeof expectedLogin!=='string'||!expectedLogin||
+    typeof onLost!=='function')
   throw Error('invalid_table_change_notifier');
  const connection=await pool.connect();
- let ready=false;
+ const listeners=new Set();
+ let ready=false,closed=false,released=false;
+ const removeHandlers=()=>{
+  connection.off?.('notification',receive);
+  connection.off?.('error',onError);
+  connection.off?.('end',onEnd);
+ };
+ const release=broken=>{
+  if(released)return;released=true;
+  try{connection.release(broken);}catch{}
+ };
+ const lost=()=>{
+  if(closed)return;
+  closed=true;listeners.clear();removeHandlers();release(true);
+  try{onLost(Error('table_change_notification_connection_lost'));}catch{}
+ };
+ const onError=()=>lost();
+ const onEnd=()=>lost();
+ const receive=notification=>{
+  if(closed||notification?.channel!=='sabora_h6_table_change_changed')return;
+  for(const listener of [...listeners]){try{listener();}catch{}}
+ };
  try{
   if(typeof connection?.on!=='function'||typeof connection?.release!=='function')
    throw Error('invalid_table_change_notifier_connection');
@@ -156,15 +178,12 @@ export async function createTableChangeCommitNotifier({pool,expectedLogin}={}){
   if(identity?.rows?.length!==1||identity.rows[0].actor!==expectedLogin||
    identity.rows[0].login!==expectedLogin)
    throw Error('invalid_table_change_notifier_login');
-  const listeners=new Set();
-  const receive=notification=>{
-   if(notification?.channel!=='sabora_h6_table_change_changed')return;
-   for(const listener of [...listeners]){try{listener();}catch{}}
-  };
+  connection.on('error',onError);
+  connection.on('end',onEnd);
   connection.on('notification',receive);
   try{await connection.query('LISTEN sabora_h6_table_change_changed');}
-  catch(error){connection.off?.('notification',receive);throw error;}
-  let closed=false;
+  catch(error){lost();throw error;}
+  if(closed)throw Error('table_change_notification_connection_lost');
   ready=true;
   return Object.freeze({
    subscribe(listener){
@@ -176,8 +195,9 @@ export async function createTableChangeCommitNotifier({pool,expectedLogin}={}){
     if(closed)return;
     closed=true;listeners.clear();
     try{await connection.query('UNLISTEN sabora_h6_table_change_changed');}
-    finally{connection.off?.('notification',receive);connection.release();}
+    catch(error){release(true);throw error;}
+    finally{removeHandlers();release(false);}
    }
   });
- }finally{if(!ready)connection.release(true);}
+ }finally{if(!ready)release(true);}
 }

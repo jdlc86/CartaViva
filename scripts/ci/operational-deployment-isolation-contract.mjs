@@ -20,10 +20,12 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
  require(/ports:\s*\['127\.0\.0\.1:4100:4100'\]/,'operational_port_not_loopback');
  require(/api:[\s\S]*?networks:\s*\[sabora_runtime_internal\]/,
   'api_has_unrestricted_network');
- require(/sabora-egress:[\s\S]*?networks:\s*\[sabora_runtime_internal, sabora_egress_outbound\]/,
-  'egress_network_bridge_missing');
+ require(/sabora-egress:[\s\S]*?networks:\s*\[sabora_runtime_internal, sabora_egress_allowlisted\]/,
+  'egress_allowlisted_network_missing');
  require(/sabora_runtime_internal:[\s\S]*?driver:\s*bridge[\s\S]*?internal:\s*true/,
   'runtime_network_not_internal');
+ require(/sabora_egress_allowlisted:\s*\r?\n\s*external:\s*true\s*\r?\n\s*name:\s*\$\{SABORA_EGRESS_ALLOWLIST_NETWORK:\?pre-provisioned filtered Sabora egress network required\}/,
+  'independent_egress_enforcement_boundary_missing');
  require(/SABORA_OPERATIONAL_MANIFEST_FILE:\s*\/run\/sabora\/activation\.json/,
   'manifest_file_injection_missing');
  require(/SABORA_OPERATIONAL_SECRETS_DIR:\s*\/run\/secrets\/sabora/,
@@ -32,12 +34,12 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
   'egress_policy_injection_missing');
  require(/SABORA_OPERATIONAL_EGRESS_POLICY_FILE:\s*\/run\/sabora\/egress-policy\.json/,
   'api_egress_policy_injection_missing');
- const serviceSection=name=>compose.match(new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\n|^networks:)`,'m'))?.[0]??'';
+ const serviceSection=name=>compose.match(new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z][a-z0-9-]*:\\r?\\n|^networks:)`,'m'))?.[0]??'';
  const apiSection=serviceSection('api'),egressSection=serviceSection('sabora-egress');
  const serviceSections=[apiSection,egressSection];
  // The application must read the very same immutable policy file mounted
  // into the gateway, or manifest↔egress preflight cannot be trusted.
- const policyBind=/source:\s*\$\{SABORA_EGRESS_POLICY_FILE:\?absolute egress policy path required\}\s*\n\s*target:\s*\/run\/sabora\/egress-policy\.json\s*\n\s*read_only:\s*true/;
+ const policyBind=/source:\s*\$\{SABORA_EGRESS_POLICY_FILE:\?absolute egress policy path required\}\s*\r?\n\s*target:\s*\/run\/sabora\/egress-policy\.json\s*\r?\n\s*read_only:\s*true/;
  for(const [name,section] of [['api',apiSection],['egress',egressSection]]){
   if(!policyBind.test(section))violations.push('egress_policy_shared_bind_missing:'+name);
  }
@@ -55,12 +57,15 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
    [/max-size:\s*["']10m["']/,'log_rotation_missing'],
   ])if(!pattern.test(section))violations.push(`${code}:${section.startsWith('  api:')?'api':'egress'}`);
  }
- forbid(/external:\s*true|network_mode:\s*host|privileged:\s*true|container_name:|env_file:|\/(?:var\/run\/docker\.sock)|fleetia/i,
+ forbid(/network_mode:\s*host|privileged:\s*true|container_name:|env_file:|\/(?:var\/run\/docker\.sock)|fleetia/i,
   'shared_or_foreign_resource');
+ if((compose.match(/external:\s*true/g)??[]).length!==1)
+  violations.push('external_network_scope_invalid');
+ forbid(/sabora_egress_outbound/,'unfiltered_egress_bridge_present');
  forbid(/SABORA_[A-Z0-9_]*(?:PASSWORD|TOKEN|PRIVATE_KEY|CA_PEM|HMAC):/,
   'secret_value_in_compose_environment');
  if(/\bports:/.test(egressSection))violations.push('egress_exposes_host_port');
- if(/sabora_egress_outbound/.test(apiSection))violations.push('api_attached_to_outbound_network');
+ if(/sabora_egress_allowlisted/.test(apiSection))violations.push('api_attached_to_outbound_network');
  return Object.freeze([...new Set(violations)]);
 }
 

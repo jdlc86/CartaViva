@@ -320,7 +320,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   }
 
   tableNotifier=await createTableChangeCommitNotifier({pool:tableChange.notificationPool,
-   expectedLogin:tableChange.expectedOperationsLogin});
+   expectedLogin:tableChange.expectedOperationsLogin,onLost:error=>{
+    operational=false;reportDependencyFailure('events');
+    try{observeFailure(error);}catch{}
+    if(scheduler)void scheduler.close().catch(()=>{});
+   }});
   h6Notifier=await createPostgresH6OutboxNotifier({pool:h6.notifierPool,onLost:error=>{
    operational=false;reportDependencyFailure('events');
    try{observeFailure(error);}catch{}

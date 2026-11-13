@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import tls from 'node:tls';
-import {createSaboraEgressGateway,extractTlsServerName,validateSaboraEgressPolicy}
+import {createSaboraEgressGateway,extractTlsServerName,isForbiddenEgressAddress,
+ validateSaboraEgressPolicy}
  from '../apps/api/src/sabora-egress-gateway.mjs';
 
 const policy=()=>({schemaVersion:1,bindHost:'0.0.0.0',targets:[
@@ -21,6 +22,19 @@ test('egress policy is an exact allowlist without literal/private/shared destina
  ];
  for(const mutate of mutations){const value=policy();mutate(value);
   assert.throws(()=>validateSaboraEgressPolicy(value),/sabora_egress_policy_invalid/);}
+});
+
+test('binary IPv6 policy denies every special route spelling and permits global unicast',()=>{
+ for(const address of [
+  '::','::1','0:0:0:0:0:ffff:0a00:0001','::ffff:127.0.0.1',
+  '::ffff:192.168.1.1','64:ff9b::0808:0808','64:ff9b:1::1','100::1',
+  '2001::1','2001:db8::1','2002:c000:0201::','3fff::1','5f00::1',
+  'fc00::1','fdff:ffff::1','fe80::1','ff02::1','4000::1'
+ ])assert.equal(isForbiddenEgressAddress(address),true,address);
+ for(const address of [
+  '::ffff:8.8.8.8','2606:4700:4700::1111',
+  '2a00:1450:4001:0810:0000:0000:0000:200e'
+ ])assert.equal(isForbiddenEgressAddress(address),false,address);
 });
 
 async function freePort(){

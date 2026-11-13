@@ -278,6 +278,21 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     ' WITH SET TRUE, INHERIT FALSE');
    const recovered=await request('/ready');
    assert.equal(recovered.status,200);
+   // Killing the distinct table-change LISTEN backend must be observable by
+   // the runtime and permanently fail readiness for this process. Durable
+   // events remain in PostgreSQL; restart is an explicit supervisor action.
+   const tableListener=await admin.query(`SELECT pid FROM pg_stat_activity
+    WHERE application_name='sabora_table_change_listen' AND usename=$1`,
+    [slots['tableChange.operationsPool'].login]);
+   assert.equal(tableListener.rows.length,1);
+   assert.equal((await admin.query('SELECT pg_terminate_backend($1) AS terminated',
+    [tableListener.rows[0].pid])).rows[0].terminated,true);
+   let listenerLossStatus=200;
+   for(let attempt=0;attempt<40&&listenerLossStatus!==503;attempt++){
+    await new Promise(resolve=>setTimeout(resolve,50));
+    listenerLossStatus=(await request('/ready')).status;
+   }
+   assert.equal(listenerLossStatus,503);
   }finally{
    await apiRuntime?.close().catch(()=>{});
    if(keyInserted)
