@@ -110,6 +110,14 @@ El propietario aclaró expresamente la grafía del restaurante: **Sabora, no «S
 
 **Estado:** dirección cliente **propuesta por el propietario**, DNS público responde a IPs Cloudflare, puerto 8443 compatible según documentación; **gestión pendiente de aprobación**, proxy/origen/certificados/red no validados, CI previa en `02f21856` PASS, PR #59 Draft sin merge ni despliegue. Mantener las puertas de respaldo, roles y migración de Supabase y separación absoluta de Fleetia.
 
+### S39-12 — aprobados los dos orígenes propuestos para Sabora (13-11-2026)
+
+El propietario ha confirmado con «Correcto me gusta» la estructura de nombres propuesta: **PWA cliente:** `https://sabora.allaiso.com:8443`; **PWA gestión:** `https://gestion-sabora.allaiso.com:8443`. Se mantiene la grafía **Sabora**. Son **orígenes elegidos para la configuración futura**, no evidencia de disponibilidad real; no usar el subdominio de dos niveles `gestion.sabora.allaiso.com` como sustituto sin una nueva decisión.
+
+**DNS solo observado:** consultas anteriores resolvieron ambos nombres hacia IPs de Cloudflare; esto no confirma registros específicos, encaminamiento hasta el VPS, modo SSL, certificados ni firewall. Se debe verificar la titularidad/configuración DNS y la compatibilidad de Cloudflare con TLS y `:8443` antes de uso real. **No se han creado ni cambiado entradas DNS, TLS, firewall, red ni contenedores.** El [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) ya admite ambas PWA en orígenes distintos por TCP/8443 mediante `SABORA_CLIENT_HOST` y `SABORA_MANAGEMENT_HOST`; al activar se deben suministrar explícitamente estos valores aprobados, sin introducirlos como secretos ni alterar redes ajenas.
+
+**Permisos y STOP:** la conformidad con estos dominios **no equivale** a autorización para merge, despliegue, SQL, copias o cambios de firewall/DNS; la política de doble respaldo sigue propuesta en el PR. Mantener completa separación de Fleetia. La próxima intervención técnica con autorización deberá comprobar DNS/Cloudflare de forma verificable, certificados validables y acceso exterior de ambas PWA desde su mismo SHA y puerto autorizado, además de las puertas SQL/recuperación independientes.
+
 ## 2. Prioridad y orden de la próxima intervención (sin repetir trabajos)
 
 1. **Resolver PR #59** como decisión normativa concreta: contrastar su diff con contratos existentes; pedir decisión de integración separada; no atribuirle vigencia hasta merge confirmado y sincronización de referencias. No duplicar la propuesta ni crear nuevo runbook.
