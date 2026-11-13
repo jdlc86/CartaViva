@@ -25,8 +25,24 @@ cleanup(){
 }
 trap cleanup EXIT
 mkdir -p "$tmp/tls"
-openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout "$tmp/tls/origin.key" -out "$tmp/tls/origin.crt" \
+openssl req -x509 -newkey rsa:2048 -nodes -days 45 -keyout "$tmp/tls/origin.key" -out "$tmp/tls/origin.crt" \
  -subj "/CN=client.sabora.test" -addext "subjectAltName=DNS:client.sabora.test,DNS:management.sabora.test" >/dev/null 2>&1
+# One material gate for both real Caddy origins, using only disposable CI keys.
+node scripts/ops/sabora-origin-material-check.mjs \
+ "$tmp/tls/origin.crt" "$tmp/tls/origin.key" client.sabora.test management.sabora.test
+# A missing hostname or mismatched key must fail before HTTPS is published.
+if node scripts/ops/sabora-origin-material-check.mjs \
+ "$tmp/tls/origin.crt" "$tmp/tls/origin.key" client.sabora.test other.sabora.test >/dev/null 2>&1; then
+ echo 'Unexpected Origin CA SAN acceptance' >&2
+ exit 1
+fi
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmp/other.key" >/dev/null 2>&1
+if node scripts/ops/sabora-origin-material-check.mjs \
+ "$tmp/tls/origin.crt" "$tmp/other.key" client.sabora.test management.sabora.test >/dev/null 2>&1; then
+ echo 'Unexpected mismatched Origin CA key acceptance' >&2
+ exit 1
+fi
+rm -f "$tmp/other.key"
 # Test-only certs; production key permissions are provisioned separately.
 chmod 755 "$tmp" "$tmp/tls"
 chmod 644 "$tmp/tls/"*
