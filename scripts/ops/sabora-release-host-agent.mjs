@@ -1,7 +1,7 @@
 // Sabora-only host boundary. This is a verification component, not a Docker
 // actuator. Installing it does not authorize any release or host mutation.
-import {createHash,constants} from 'node:crypto';
-import {openSync,closeSync,fstatSync,readFileSync,writeFileSync,statSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {constants,openSync,closeSync,fstatSync,readFileSync,writeFileSync,lstatSync} from 'node:fs';
 import {join} from 'node:path';
 import {verifyReleaseAuthorization,EVIDENCE_KEYS,SABORA_RELEASE_SCOPE} from '../ci/sabora-release-governor.mjs';
 
@@ -113,8 +113,8 @@ export function recordAuthorizationOnce(directory,receipt,details){
  if(!ID.test(receipt.authorizationId))stop('invalid_authorization_id');
  // Directory creation and ownership are the provisioning operator's task;
  // this routine never creates/modifies arbitrary project directories.
- const st=statSync(directory);
- if(!st.isDirectory()||(st.mode&0o022)!==0)stop('unsafe_ledger_directory');
+ const st=lstatSync(directory);
+ if(!st.isDirectory()||st.uid!==process.getuid()||(st.mode&0o022)!==0)stop('unsafe_ledger_directory');
  const file=join(directory,receipt.authorizationId+'.json');
  let fd;
  try{
