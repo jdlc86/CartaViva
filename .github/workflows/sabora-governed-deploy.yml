@@ -37,6 +37,7 @@ jobs:
         id: scope
         env:
           RELEASE_SHA: ${{ inputs.release_sha }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
         shell: bash
         run: |
           set -euo pipefail
@@ -44,9 +45,14 @@ jobs:
           git fetch --no-tags origin main
           git cat-file -e "${RELEASE_SHA}^{commit}"
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
-          # Do not authorize an ancestor while executing different main code.
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          # Always execute the immutable workflow from the current main SHA.
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          # Deploy current main only; rollback can target an ancestor ONLY if
+          # the Sabora host ledger independently proves prior deployment.
+          if [[ "$RELEASE_OPERATION" == deploy ]]; then
+            test "$RELEASE_SHA" = "$GITHUB_SHA"
+          fi
           echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
       - name: Verify immutable release plan and integrated CI
         env:
@@ -68,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: ${{ needs.verify.outputs.approved_sha }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
