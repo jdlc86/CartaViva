@@ -51,8 +51,10 @@ test('governed host boundary: signed SSH request to real files to single-use rec
   assert.throws(()=>verifyHostEnvelope(cmd,envelope,generateKeyPairSync('ed25519').publicKey.export({format:'pem',type:'spki'}),now),/signature_invalid/);
   assert.throws(()=>parseForcedReleaseCommand(cmd+';docker ps'),/invalid_forced_command/);
   assert.equal(verifyReleaseBundle(receipt,manifest,files,Buffer.from(JSON.stringify(manifest,null,2)+'\n')).authorizedToDeploy,false);
-  assert.throws(()=>verifyReleaseBundle(receipt,{...manifest,project:'another'},files,Buffer.from(JSON.stringify(manifest,null,2)+'\n')),/invalid_release_bundle/);
+  assert.throws(()=>verifyReleaseBundle(receipt,{...manifest,project:'another'},files,Buffer.from(JSON.stringify(manifest,null,2)+'\n')),/bundle_manifest_bytes_disagree|invalid_release_bundle/);
   assert.throws(()=>verifyReleaseBundle(receipt,manifest,{...files,api:Buffer.from('tampered')},Buffer.from(JSON.stringify(manifest,null,2)+'\n')),/image_bundle_hash_or_scope/);
+  assert.throws(()=>verifyReleaseBundle(receipt,manifest,files,Buffer.from('{}')),
+   /signed_bundle_manifest_mismatch/);
   const protectedFile=join(dir,'owner.pem');
   writeFileSync(protectedFile,pub,{mode:0o600});
   assert.equal(readProtectedFile(protectedFile,process.getuid()).toString(),pub);
