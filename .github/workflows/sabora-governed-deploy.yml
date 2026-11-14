@@ -92,12 +92,14 @@ jobs:
           set -euo pipefail
           node scripts/ci/sabora-release-governor.mjs authorize "$RELEASE_OPERATION" "$RELEASE_SHA"
       - name: Find exact main-push release package (read-only GitHub API)
+        if: inputs.operation == 'deploy'
         id: artifact
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
         run: node scripts/ci/sabora-release-artifact.mjs "$RELEASE_SHA"
       - uses: actions/download-artifact@v4
+        if: inputs.operation == 'deploy'
         with:
           name: sabora-governed-release-package
           run-id: ${{ steps.artifact.outputs.run_id }}
@@ -129,8 +131,15 @@ jobs:
           # a one-use audit ledger; argv alone is never sufficient consent.
           # Exact approved bundle bytes travel encrypted over stdin, never
           # through SSH argv, shell interpolation or arbitrary SCP paths.
-          node scripts/ci/sabora-release-transport.mjs "$RUNNER_TEMP/sabora-release-package" |
-            ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
+          {
+            if [[ "$RELEASE_OPERATION" == deploy ]]; then
+              node scripts/ci/sabora-release-transport.mjs "$RUNNER_TEMP/sabora-release-package"
+            else
+              # Rollback uses only the previously deployed Sabora bundle
+              # retained and proved healthy in a protected host ledger.
+              node scripts/ci/sabora-release-rollback-request.mjs
+            fi
+          } | ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
               -i "$key" -p 22 sabora-release@146.59.145.64 \
               "sabora-release-v1 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH $GITHUB_RUN_ID"
