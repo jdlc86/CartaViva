@@ -137,14 +137,19 @@ jobs:
           docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
           bash scripts/ci/sabora-web-publishing-smoke.sh
       - name: Prepare immutable two-image package on main only (no VPS)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
+        env:
+          SABORA_APPROVED_RESTAURANT_CODE: ${{ vars.SABORA_APPROVED_RESTAURANT_CODE }}
         shell: bash
         run: |
           set -euo pipefail
           pkg="$RUNNER_TEMP/sabora-release-package"
           mkdir -p "$pkg"
           docker build -f deploy/Dockerfile.api -t "sabora-api:$GITHUB_SHA" .
-          docker tag sabora-web:ci "sabora-web:$GITHUB_SHA"
+          # CI smoke uses SABORA as a fixture; operational bundles must use
+          # the explicitly approved, non-secret public restaurant code.
+          docker build --build-arg SABORA_RESTAURANT_CODE="$SABORA_APPROVED_RESTAURANT_CODE" \
+            -f deploy/Dockerfile.web -t "sabora-web:$GITHUB_SHA" .
           docker save -o "$pkg/api.tar" "sabora-api:$GITHUB_SHA"
           docker save -o "$pkg/web.tar" "sabora-web:$GITHUB_SHA"
           cp deploy/compose.sabora-operational.yml "$pkg/operational.yml"
