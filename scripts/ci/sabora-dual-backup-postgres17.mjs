@@ -55,7 +55,11 @@ async function migrationInventory(){
 }
 async function waitForPg(container){
  for(let attempt=0;attempt<60;attempt++){
-  const probe=docker(['exec',container,'psql','-X','-U','postgres','-d','postgres','-Atqc','select 1'],
+  // The official image opens a temporary socket-only server during init and
+  // then stops it. Require the final TCP listener to avoid restoring roles
+  // into that transient postmaster.
+  const probe=docker(['exec',container,'psql','-X','-h','127.0.0.1',
+   '-U','postgres','-d','postgres','-Atqc','select 1'],
    {allowFailure:true});
   if(probe.status===0&&probe.stdout.trim()==='1')return;
   await new Promise(accept=>setTimeout(accept,1000));

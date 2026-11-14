@@ -26,6 +26,7 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/bundleDirectory:offsite,name:'data'/);
  assert.doesNotMatch(integration,/bundleDirectory:vpsCache,name:'(?:schema|data)'/);
  assert.match(integration,/--network','none'/);
+ assert.match(integration,/psql','-X','-h','127\.0\.0\.1'/);
  assert.match(integration,/create schema extensions; create extension pgcrypto with schema extensions;/);
  assert.match(integration,/databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\\n'/);
  assert.match(integration,/databaseAclMarker='-- sabora-database-acl-reconciliation-v1\\n'/);
