@@ -65,3 +65,16 @@ Se reutiliza la rama del PR #59. [Runbook único](../runbooks/SABORA_S40_DUAL_BA
 - **Producto/UI:** no cambia ninguna RF ni pantalla y por ello no se altera artificialmente `FUNCTIONAL_UI_COVERAGE.json`. Las dos PWA solo podrán recibir aceptación visual/funcional después del despliegue real autorizado y capturas Chromium del mismo SHA.
 
 **Estado operativo:** NO-GO. Sin proveedor externo, custodios, retención, RPO/RTO, autorizaciones de merge/captura/restore/SQL/red/deploy, seis expedientes reales o revisión independiente. No se ha conectado a Supabase, VPS o Fleetia, ni creado backup, regla, red, contenedor o despliegue fuera de laboratorios. Tras CI y revisión, el siguiente paso exige decisiones/autoridad del propietario; no se deduce de este encargo.
+
+## S40-5 — validación integral de laboratorio y cierre técnico del candidato
+
+**Código exacto probado:** [`5afea7ccb6ccdb2077f084a6018b6ad7501fb792`](https://github.com/jdlc86/CartaViva/commit/5afea7ccb6ccdb2077f084a6018b6ad7501fb792), en el mismo [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59). Cuatro puertas requeridas observadas en SUCCESS:
+
+- [CI #43619941591](https://github.com/jdlc86/CartaViva/actions/runs/43619941591): `validate` 15m30s y `web-publication` 55s; bloques H6 1/2A/2B PASS, puerta de producción PASS, dos HTTPS, nftables aplicado/revertido y driver Docker real desechable.
+- [Bootstrap #43619941584](https://github.com/jdlc86/CartaViva/actions/runs/43619941584): `generate-lockfile` 11m12s; 51/51, API/Compose/imagen y recibo `sabora_dual_backup_pg17_external_restore_ok` con 99 migraciones y restore únicamente desde fixture externo.
+- [UI #43619941608](https://github.com/jdlc86/CartaViva/actions/runs/43619941608): `functional-ui-gate` 13s. Aceptación visual final SKIPPED, no aceptación humana.
+- [CV005+B2 #43619941612](https://github.com/jdlc86/CartaViva/actions/runs/43619941612): opt-in SKIPPED; no se presenta como expediente DBA real.
+
+**Defectos hallados y cerrados por la propia regresión:** la API dejó de publicarse en el host y se prueba desde `web` por la red privada; restore de datos usa triggers deshabilitados solo durante la carga y luego compara triggers/RLS; `pgcrypto` se prepara en `extensions`; ACL se compara por aristas y se reconcilia con grantor exacto; el fixture crea la autoridad CV-005 aprobada; readiness del target espera TCP final para no confundir el postmaster temporal del entrypoint. Un restore reducido adicional pasó localmente con 99 migraciones y recibo positivo. No se alteró el árbol SQL para obtener verde.
+
+**Estado separado:** implementación y prueba de laboratorio = cerradas para este candidato; validación operativa y aceptación del propietario = **NO**. No hay backup externo/VPS real, SQL operativo, redes/forced-command, deploy, rollback, URLs públicas ni capturas de aceptación. Próxima acción irreversible, solo tras decisiones y permisos: elegir almacén/custodios/retención, autorizar captura+restore real y reunir los seis expedientes; después se podrá decidir merge, SQL/red y deploy por autorizaciones separadas. Ninguna operación de este hito tocó Fleetia, VPS o Supabase operativo.

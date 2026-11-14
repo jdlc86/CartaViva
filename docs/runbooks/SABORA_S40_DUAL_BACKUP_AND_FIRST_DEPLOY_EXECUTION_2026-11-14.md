@@ -7,7 +7,7 @@
 | Estado | Evidencia admisible | Estado actual |
 | --- | --- | --- |
 | Implementado | código y contratos en PR #59 | candidato |
-| Ensayado en laboratorio | PG17/Docker/nftables desechables del mismo SHA | pendiente de CI del HEAD nuevo |
+| Ensayado en laboratorio | PG17/Docker/nftables desechables del mismo SHA | **SÍ**, código `5afea7cc`; CI/Bootstrap/UI SUCCESS |
 | Validado operativamente | copia externa real restaurada, SQL/host/red/alertas observados | **NO** |
 | Aceptado | revisión independiente y aceptación humana de producto/visual | **NO** |
 
@@ -17,7 +17,7 @@ Una CI verde solo puede cerrar la segunda fila. No autoriza merge, captura, SQL,
 
 La implementación operable está en `scripts/ops/sabora-encrypted-backup-bundle.mjs`, con interfaz estrecha `scripts/ops/sabora-encrypted-backup-cli.mjs`. Produce cuatro componentes autenticados de Sabora:
 
-1. `roles-memberships.aesgcm`: roles propios y aristas `grantor/admin/set/inherit`, nunca passwords;
+1. `roles-memberships.aesgcm`: roles propios, aristas `grantor/admin/set/inherit`, prerrequisitos de ACL de base y grants Sabora exactos sobre el esquema gestionado `extensions`, nunca passwords ni objetos gestionados;
 2. `schema.aesgcm`: esquema de `sabora` y `sabora_migration_meta`;
 3. `data.aesgcm`: datos y estado de secuencias de esos dos esquemas;
 4. `inventory.aesgcm`: fingerprint de roles, membresías, owners, ACL, RLS, funciones, constraints, índices, triggers, ledger y datos.
@@ -39,7 +39,7 @@ El AAD de cada componente autentica la totalidad de la identidad normativa del m
 7. Desde la **copia externa**, descifrar cada componente únicamente dentro del entorno PG17 de restauración, aplicar roles revisados, esquema y datos en ese orden, comparar `inventory`, ledger 99/99, grants/RLS/negativas y destruir temporales claros al terminar.
 8. Registrar tiempos y tamaños reales. Los tiempos CI no son RTO/RPO de producción.
 
-La batería `scripts/ci/sabora-dual-backup-postgres17.mjs` ejecuta esa misma semántica sobre el PG17 plenamente migrado: crea ledger 99/99, captura streaming, genera las dos réplicas, elimina staging, restaura solo desde la clase externa en un segundo contenedor `--network none`, compara inventario y datos, prueba LOGIN mínimo, corrupción y clave incorrecta. Los destinos del runner son **fixtures**, no custodias reales.
+La batería `scripts/ci/sabora-dual-backup-postgres17.mjs` ejecuta esa misma semántica sobre el PG17 plenamente migrado: crea ledger 99/99, captura streaming, genera las dos réplicas, elimina staging, restaura solo desde la clase externa en un segundo contenedor `--network none`, espera el listener TCP del postmaster final —no el temporal del entrypoint—, carga datos con triggers deshabilitados solo durante el restore y después compara inventario, datos, secuencias, triggers/RLS, roles y ACL por grantor/opción exactos. También prueba LOGIN mínimo, corrupción y clave incorrecta. Los destinos del runner son **fixtures**, no custodias reales.
 
 ## 3. Gobernanza y agente de release
 
@@ -50,7 +50,9 @@ La CI añade dos ensayos que deben pasar en el SHA candidato:
 - `sabora-nftables-enforcement-lab.sh`: crea namespaces y bridges efímeros, demuestra conectividad previa, aplica las dos tablas dentro del router aislado, verifica entrada exacta, bypass/puerto/salida/IPv6 denegados, retira solo tablas Sabora, recupera conectividad y compara inventario de tablas del host;
 - `sabora-release-real-docker-lab.mjs`: bajo root de runner desechable, construye y guarda imágenes reales, las elimina y recarga por archivo, inspecciona tres redes, aplica tablas a bridges exclusivos, renderiza Compose firmado, arranca exactamente `sabora-egress`, `api`, `web` con `--no-deps --no-build --pull never`, prueba API, dos HTTPS, recepción de alerta y ledger con `fsync`, y limpia solo sus recursos nominados.
 
-Esto sustituye el hueco de laboratorio simulado, pero **no es el adaptador instalable del VPS**. Antes de provisionar el forced-command hace falta revisión independiente del código final, asignación de privilegios root-owned, destinos reales de egress y prueba en un entorno de host separado. La cuenta `sabora-release` no debe tener shell genérica ni pertenecer al grupo Docker.
+**Resultado observado:** código [`5afea7ccb6ccdb2077f084a6018b6ad7501fb792`](https://github.com/jdlc86/CartaViva/commit/5afea7ccb6ccdb2077f084a6018b6ad7501fb792); [CI #43619941591](https://github.com/jdlc86/CartaViva/actions/runs/43619941591) `validate` y `web-publication` SUCCESS; [Bootstrap PG17 #43619941584](https://github.com/jdlc86/CartaViva/actions/runs/43619941584) SUCCESS 51/51 con `sabora_dual_backup_pg17_external_restore_ok`; [UI #43619941608](https://github.com/jdlc86/CartaViva/actions/runs/43619941608) `functional-ui-gate` SUCCESS. La API no publica puerto de host: `web` la alcanza como `api:4100` por la red privada y el único listener de aplicación expuesto por el fixture es HTTPS/8443. [CV005+B2 #43619941612](https://github.com/jdlc86/CartaViva/actions/runs/43619941612) y aceptación visual final están SKIPPED, no PASS.
+
+Esto cierra el hueco de laboratorio simulado, pero **no es el adaptador instalable del VPS**. Antes de provisionar el forced-command hace falta revisión independiente del código final, asignación de privilegios root-owned, destinos reales de egress y prueba en un entorno de host separado. La cuenta `sabora-release` no debe tener shell genérica ni pertenecer al grupo Docker.
 
 ## 4. Primera instalación y despliegue reales
 
