@@ -1148,3 +1148,11 @@ Se contrastaron `merge-base..HEAD` de las cuatro divergencias documentales: **#1
 
 **Estado de este corte:** auditoría/selección de hito documental **COMPLETADA**; hito H35-P1 de código **PENDIENTE**. No se ejecutó SQL operativo, ninguna modificación de runtime/UI, merge, despliegue ni cambio de VPS/Fleetia/Supabase operativo.
 
+## 94. S40 — candidato integral de gobernanza, doble copia y primera activación (14-11-2026)
+
+**PR único:** [#59 Draft](https://github.com/jdlc86/CartaViva/pull/59), sin merge. El delta S40-4 incorpora captura cifrada antes de persistir con roles/esquema/datos/inventario, réplica ciphertext externa obligatoria + caché VPS opcional, restore PG17 desde la externa con ledger 99/99 e inventario completo; enforcement nftables real dentro de namespaces desechables; y driver Docker real de laboratorio con imágenes save/load, redes/bridges inspeccionados, tres servicios exactos, API, dos HTTPS, alerta y ledger durable. [Runbook](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md) · [acta](../reviews/SABORA_S40_THREE_PRIORITIES_IMPLEMENTATION_CLOSURE_2026-11-14.md) · [continuidad S40](../handoffs/SESSION_40_HANDOFF_2026-11-14.md).
+
+**Evidencia actual:** unitarias de backup 2 PASS + 1 SKIP NTFS esperado, checks de sintaxis y `git diff --check` PASS. Regresión Node Windows del árbol final: 1.444 pruebas, 1.439 PASS/1 SKIP/4 fallos POSIX conocidos; no equivale a CI. Los nuevos recorridos PG17/Docker/nftables están **PENDIENTES del workflow Ubuntu del SHA publicado** y no heredan los verdes de `fbb8e357`. La matriz UI no cambia porque no hay RF/pantalla nueva ni aceptación humana.
+
+**NO-GO operativo:** ningún backup externo/VPS real, restore del proveedor, migración, red, forced-command, despliegue, rollback o captura visual se ha ejecutado. Faltan almacén y custodios, retención/RPO/RTO, revisión independiente, seis expedientes reales y autorizaciones separadas de merge, backup/restore, SQL, VPS/red y deploy. `authorizeHostOperation()` conserva STOP. Prohibido tocar Fleetia o interpretar el laboratorio como validación del host compartido.
+

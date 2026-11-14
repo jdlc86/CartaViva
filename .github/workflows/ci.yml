@@ -113,7 +113,7 @@ jobs:
 
   web-publication:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -136,18 +136,41 @@ jobs:
         run: |
           docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
           bash scripts/ci/sabora-web-publishing-smoke.sh
-      - name: Parse strict ingress and egress nftables in disposable CI runner (no apply)
+      - name: Enforce and roll back strict nftables inside disposable network namespaces
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v nft >/dev/null 2>&1; then
+          if ! command -v nft >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; then
             sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends nftables
+            sudo apt-get install -y --no-install-recommends nftables iproute2
           fi
-          outfile="$RUNNER_TEMP/sabora-network-policy-fixture.nft"
-          node scripts/ci/sabora-nftables-lab-fixture.mjs "$outfile"
-          # --check parses/verifies WITHOUT applying any firewall transaction.
-          sudo nft --check --file "$outfile"
+          export SABORA_NODE_BIN="$(command -v node)"
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,SABORA_NODE_BIN \
+            bash scripts/ci/sabora-nftables-enforcement-lab.sh
+      - name: Publish disposable nftables enforcement and rollback receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-nftables-enforcement-lab
+          path: ${{ runner.temp }}/sabora-network-enforcement/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Exercise the bounded release actuator with real Docker and inspected isolation
+        env:
+          SABORA_DISPOSABLE_RELEASE_LAB: explicitly-authorized-ci
+        shell: bash
+        run: |
+          node_bin="$(command -v node)"
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,GITHUB_SHA,SABORA_DISPOSABLE_RELEASE_LAB \
+            "$node_bin" scripts/ci/sabora-release-real-docker-lab.mjs
+      - name: Publish real disposable release-driver receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-real-docker-release-driver-lab
+          path: ${{ runner.temp }}/sabora-release-driver-lab/
+          if-no-files-found: error
+          retention-days: 7
       - name: Prepare immutable two-image package on main only (no VPS)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
         env:

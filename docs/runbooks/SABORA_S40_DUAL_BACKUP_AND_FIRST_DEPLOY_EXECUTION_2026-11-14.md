@@ -1,0 +1,86 @@
+# Sabora S40 — ejecución gobernada de doble copia y primer despliegue
+
+**Estado: procedimiento candidato; ninguna operación externa autorizada por este documento.** Ámbito único `jdlc86/CartaViva`, proyecto Supabase restaurante `byhvmumqivmunkmomhup` y proyecto Compose `sabora`. Quedan fuera Fleetia, otros proyectos, bases, redes, contenedores y servicios. Prevalecen [autorización](../SABORA_AUTHORIZATION_GATE.md), [frontera](../architecture/CARTAVIVA_PROJECT_BOUNDARY.md), [release gobernada](../architecture/SABORA_GOVERNED_RELEASE_V1.md), [método de recuperación](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md) y [primera activación](SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md).
+
+## 1. Estados que no se pueden colapsar
+
+| Estado | Evidencia admisible | Estado actual |
+| --- | --- | --- |
+| Implementado | código y contratos en PR #59 | candidato |
+| Ensayado en laboratorio | PG17/Docker/nftables desechables del mismo SHA | pendiente de CI del HEAD nuevo |
+| Validado operativamente | copia externa real restaurada, SQL/host/red/alertas observados | **NO** |
+| Aceptado | revisión independiente y aceptación humana de producto/visual | **NO** |
+
+Una CI verde solo puede cerrar la segunda fila. No autoriza merge, captura, SQL, red, secretos, VPS ni despliegue.
+
+## 2. Mecanismo de copia lógica, cifrado antes de persistir
+
+La implementación operable está en `scripts/ops/sabora-encrypted-backup-bundle.mjs`, con interfaz estrecha `scripts/ops/sabora-encrypted-backup-cli.mjs`. Produce cuatro componentes autenticados de Sabora:
+
+1. `roles-memberships.aesgcm`: roles propios y aristas `grantor/admin/set/inherit`, nunca passwords;
+2. `schema.aesgcm`: esquema de `sabora` y `sabora_migration_meta`;
+3. `data.aesgcm`: datos y estado de secuencias de esos dos esquemas;
+4. `inventory.aesgcm`: fingerprint de roles, membresías, owners, ACL, RLS, funciones, constraints, índices, triggers, ledger y datos.
+
+Cada comando PostgreSQL entrega su `stdout` directamente al cifrador AES-256-GCM. El módulo no crea primero un dump en claro. El manifiesto vincula proyecto exacto, SHA de release, PostgreSQL 17, SHA256 del árbol de migraciones, esquemas incluidos y esquemas gestionados excluidos. Cada componente registra IV, tag, tamaño y hash de plaintext/ciphertext; la clave nunca entra en el bundle, manifiesto, argv o réplica.
+
+La CLI acepta solamente rutas absolutas, operaciones nominadas y la clave por `SABORA_BACKUP_KEY_FILE`. Los binarios aprobados se fijan fuera del plan mediante `SABORA_BACKUP_PSQL_BIN` y `SABORA_BACKUP_PG_DUMP_BIN`: deben ser rutas absolutas a ficheros regulares no enlazados ni modificables por grupo/otros, y cada componente queda unido al cliente que le corresponde. El plan JSON protegido contiene `metadata` y cuatro especificaciones directas `command/args`; no usa shell, exige propietario y modo `0600`, abre sin seguir enlaces y rechaza DSN/secretos, ficheros de salida/log, metaórdenes `psql`, esquemas adicionales y formatos `pg_dump` no cifrables por `stdout`. Las credenciales PostgreSQL deben entrar por un canal de entorno/archivo protegido del cliente aprobado, nunca por el JSON, argv, Git, Actions, chat o logs. En Linux/macOS la clave falla si tiene permisos de grupo/otros; en Windows la operación exige el hash del acta ACL NTFS independiente en `SABORA_BACKUP_NTFS_ACL_RECEIPT_SHA256`, además de conservar el acta en el expediente autorizado.
+
+El AAD de cada componente autentica la totalidad de la identidad normativa del manifiesto —incluidos `postgresVersion`, `createdAt`, esquemas incluidos/excluidos y custodia—, además del nombre y tipo del componente. Alterar cualquiera de esos campos después de la captura hace fallar el descifrado y no deja un fichero parcial.
+
+### Secuencia autorizada, no ejecutar sin las decisiones de §5
+
+1. En equipo de captura designado y fuera del VPS, registrar versiones reales de CLI/`pg_dump`/`psql` y su `--help`; verificar CA y hostname.
+2. Construir el plan protegido con comandos que capturen **solo** los dos esquemas y roles propios permitidos. Verificar el proyecto exacto antes de abrir el flujo.
+3. Ejecutar `capture`; comprobar que el directorio contiene exclusivamente manifiesto y cuatro `.aesgcm`.
+4. Ejecutar `replicate-offsite` hacia el almacén independiente obligatorio. Verificar el recibo y lectura de ciphertext.
+5. Solo con autorización VPS e aislamiento/cuota probados, ejecutar `replicate-vps-cache` hacia ruta exclusiva Sabora. Omitirla si no puede demostrarse independencia.
+6. Eliminar staging conforme a la política aprobada. La clave permanece bajo custodio/canal diferente y nunca se replica con el bundle.
+7. Desde la **copia externa**, descifrar cada componente únicamente dentro del entorno PG17 de restauración, aplicar roles revisados, esquema y datos en ese orden, comparar `inventory`, ledger 99/99, grants/RLS/negativas y destruir temporales claros al terminar.
+8. Registrar tiempos y tamaños reales. Los tiempos CI no son RTO/RPO de producción.
+
+La batería `scripts/ci/sabora-dual-backup-postgres17.mjs` ejecuta esa misma semántica sobre el PG17 plenamente migrado: crea ledger 99/99, captura streaming, genera las dos réplicas, elimina staging, restaura solo desde la clase externa en un segundo contenedor `--network none`, compara inventario y datos, prueba LOGIN mínimo, corrupción y clave incorrecta. Los destinos del runner son **fixtures**, no custodias reales.
+
+## 3. Gobernanza y agente de release
+
+El workflow manual permanece `main`-only, exige Ed25519, seis evidencias SHA256 distintas, paquete inmutable y autorización de una sola operación. `authorizeHostOperation()` sigue en STOP: el repositorio no instala el agente ni concede Docker/SSH.
+
+La CI añade dos ensayos que deben pasar en el SHA candidato:
+
+- `sabora-nftables-enforcement-lab.sh`: crea namespaces y bridges efímeros, demuestra conectividad previa, aplica las dos tablas dentro del router aislado, verifica entrada exacta, bypass/puerto/salida/IPv6 denegados, retira solo tablas Sabora, recupera conectividad y compara inventario de tablas del host;
+- `sabora-release-real-docker-lab.mjs`: bajo root de runner desechable, construye y guarda imágenes reales, las elimina y recarga por archivo, inspecciona tres redes, aplica tablas a bridges exclusivos, renderiza Compose firmado, arranca exactamente `sabora-egress`, `api`, `web` con `--no-deps --no-build --pull never`, prueba API, dos HTTPS, recepción de alerta y ledger con `fsync`, y limpia solo sus recursos nominados.
+
+Esto sustituye el hueco de laboratorio simulado, pero **no es el adaptador instalable del VPS**. Antes de provisionar el forced-command hace falta revisión independiente del código final, asignación de privilegios root-owned, destinos reales de egress y prueba en un entorno de host separado. La cuenta `sabora-release` no debe tener shell genérica ni pertenecer al grupo Docker.
+
+## 4. Primera instalación y despliegue reales
+
+Orden obligatorio, con autorización independiente por fila:
+
+1. merge del PR revisado y CI del SHA final;
+2. captura preinstalación y restore externo válido;
+3. migración CV-005 99/99 y comprobaciones por versión;
+4. captura postinstalación y segundo restore externo válido;
+5. provisión de secretos/roles mínimos y receptor de alertas;
+6. creación de redes y reglas Sabora-only, verificación de no interferencia;
+7. instalación auditada del forced-command y clave pública;
+8. autorización Ed25519 `deploy` para el SHA exacto;
+9. deploy, `/ready`, ambos orígenes `:8443`, alertas, recorrido funcional con datos ficticios y negativas;
+10. capturas Chromium del mismo SHA y aceptación humana separada;
+11. ensayo de rollback de aplicación con autorización nueva, sin revertir SQL.
+
+Un fallo detiene la secuencia. No se compensa una copia ausente con CI, ni SQL fallido con rollback de imagen, ni una captura visual con aceptación funcional.
+
+## 5. Decisiones y autorizaciones aún necesarias
+
+| Decisión | Debe fijar el propietario | Situación |
+| --- | --- | --- |
+| Almacén externo | proveedor/cuenta exclusiva, ubicación no sensible y método de acceso | **SIN ELEGIR** |
+| Custodia | custodio del ciphertext, custodio distinto de clave, sustitutos y recuperación | **SIN ASIGNAR** |
+| Retención | frecuencia, generaciones, purga, legalidad y presupuesto | **SIN APROBAR** |
+| RPO/RTO | objetivos y umbral de STOP basados en ensayo real | **NO VALIDADOS** |
+| Réplica VPS | sí/no, cuota, ruta, ACL y responsable; nunca sustituye externa | **CONDICIONADA** |
+| Captura/restore | equipo externo, DBA, ventana y proyecto exacto | **NO AUTORIZADOS** |
+| Red/host | CIDR/puertos reales, Cloudflare, destinos egress, usuario forced-command | **NO AUTORIZADOS** |
+| SQL/despliegue | autorización separada para 99 migraciones y otra para deploy | **NO AUTORIZADOS** |
+
+Mientras cualquiera de las decisiones necesarias para su fase falte, el dictamen es **NO-GO operativo**. Este runbook no pide ni contiene secretos.

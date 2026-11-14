@@ -26,6 +26,7 @@ node --check scripts/ci/customer-production-postgres17.test.mjs
 node --check scripts/ci/h6-postgres17.test.mjs
 node --check scripts/ci/table-change-root-postgres17.test.mjs
 node --check scripts/ci/zero-cost-account-postgres17.test.mjs
+node --check scripts/ci/sabora-dual-backup-postgres17.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 cleanup() {
@@ -99,3 +100,8 @@ node --test scripts/ci/zero-cost-account-postgres17.test.mjs
 # Last: root cannot be deleted under governance; disposable container is removed.
 node --test scripts/ci/admin-single-writer-postgres17.test.mjs
 node --test scripts/ci/ownership-governance-postgres17.test.mjs
+# Last: the same fully migrated source is streamed into authenticated
+# ciphertext, replicated twice and restored only from the external-class copy
+# into a second networkless PG17 cluster. This mutates no persistent system.
+export SABORA_CI_PG_CONTAINER="$container"
+node scripts/ci/sabora-dual-backup-postgres17.mjs
