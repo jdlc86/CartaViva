@@ -75,8 +75,11 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.match(workflow,/sabora-release-transport\.mjs/);
  assert.match(workflow,/SABORA_RELEASE_AGENT_READY/);
  assert.match(workflow,/StrictHostKeyChecking=yes/);
- assert.match(workflow,/approvalB64/);
- assert.match(workflow,/signatureB64/);
+ assert.match(workflow,/SABORA_APPROVAL_JSON_B64/);
+ assert.match(workflow,/SABORA_APPROVAL_SIG_B64/);
+ const transport=readFileSync(new URL('../scripts/ci/sabora-release-transport.mjs',import.meta.url),'utf8');
+ assert.match(transport,/approvalB64/);
+ assert.match(transport,/signatureB64/);
  assert.match(workflow,/GITHUB_RUN_ID/);
  assert.match(workflow,/sabora-release@146\.59\.145\.64/);
  assert.doesNotMatch(workflow,/docker (?:compose|run|stop|restart|rm)|prune|systemctl|sudo /);
