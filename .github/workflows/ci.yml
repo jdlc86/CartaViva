@@ -136,6 +136,18 @@ jobs:
         run: |
           docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
           bash scripts/ci/sabora-web-publishing-smoke.sh
+      - name: Parse strict ingress and egress nftables in disposable CI runner (no apply)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v nft >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends nftables
+          fi
+          outfile="$RUNNER_TEMP/sabora-network-policy-fixture.nft"
+          node scripts/ci/sabora-nftables-lab-fixture.mjs "$outfile"
+          # --check parses/verifies WITHOUT applying any firewall transaction.
+          sudo nft --check --file "$outfile"
       - name: Prepare immutable two-image package on main only (no VPS)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
         env:
