@@ -148,7 +148,6 @@ jobs:
           sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,SABORA_NODE_BIN \
             bash scripts/ci/sabora-nftables-enforcement-lab.sh
       - name: Publish disposable nftables enforcement and rollback receipt
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sabora-nftables-enforcement-lab
@@ -164,7 +163,6 @@ jobs:
           sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,GITHUB_SHA,SABORA_DISPOSABLE_RELEASE_LAB \
             "$node_bin" scripts/ci/sabora-release-real-docker-lab.mjs
       - name: Publish real disposable release-driver receipt
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sabora-real-docker-release-driver-lab
