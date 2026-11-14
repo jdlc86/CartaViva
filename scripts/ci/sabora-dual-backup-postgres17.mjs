@@ -146,12 +146,25 @@ try{
  assert.match(sourceInventory,/^data:[0-9a-f]{32}$/m);
  const rolesPayload=await readFile(rolesOut,'utf8');
  const databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\n';
+ const databaseAclMarker='-- sabora-database-acl-reconciliation-v1\n';
  const databasePrerequisiteAt=rolesPayload.indexOf(databasePrerequisiteMarker);
+ const databaseAclAt=rolesPayload.indexOf(databaseAclMarker);
  assert.ok(databasePrerequisiteAt>0);
+ assert.ok(databaseAclAt>databasePrerequisiteAt);
  const globalRolesSql=rolesPayload.slice(0,databasePrerequisiteAt);
  const databasePrerequisiteSql=rolesPayload.slice(
-  databasePrerequisiteAt+databasePrerequisiteMarker.length);
- assert.match(databasePrerequisiteSql,/^grant USAGE on schema extensions to sabora_/m);
+  databasePrerequisiteAt+databasePrerequisiteMarker.length,databaseAclAt);
+ const databaseAclSql=rolesPayload.slice(databaseAclAt+databaseAclMarker.length);
+ assert.match(databasePrerequisiteSql,
+  /^set role [^;]+; grant USAGE on schema extensions to sabora_[^;]+; reset role;$/m);
+ assert.match(databaseAclSql,
+  /^set role [^;]+; revoke all privileges on schema sabora /m);
+ assert.match(databaseAclSql,
+  /^set role [^;]+; grant (?:CREATE|USAGE) on schema sabora /m);
+ assert.match(databaseAclSql,
+  /^set role [^;]+; revoke all privileges on table sabora\./m);
+ assert.match(databaseAclSql,
+  /^set role [^;]+; grant [A-Z]+ on table sabora\./m);
  const restoreStarted=process.hrtime.bigint();
  docker(['run','-d','--name',target,'--network','none','-e','POSTGRES_PASSWORD=ci_only_not_a_secret',
   'postgres:17-alpine']);
@@ -167,6 +180,7 @@ try{
   '--exit-on-error','/tmp/sabora-schema.dump']);
  docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',
   '--exit-on-error','--disable-triggers','/tmp/sabora-data.dump']);
+ psql(target,'sabora_external_restore_ci',databaseAclSql);
  docker(['exec',target,'rm','-f','/tmp/sabora-schema.dump','/tmp/sabora-data.dump']);
  await rm(rolesOut,{force:true});await rm(schemaOut,{force:true});await rm(dataOut,{force:true});
  const restoredInventory=psql(target,'sabora_external_restore_ci',await readFile(inventorySql,'utf8')).stdout;

@@ -28,9 +28,17 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/--network','none'/);
  assert.match(integration,/create schema extensions; create extension pgcrypto with schema extensions;/);
  assert.match(integration,/databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\\n'/);
+ assert.match(integration,/databaseAclMarker='-- sabora-database-acl-reconciliation-v1\\n'/);
  assert.match(integration,/psql\(target,'sabora_external_restore_ci',databasePrerequisiteSql\)/);
+ assert.match(integration,/psql\(target,'sabora_external_restore_ci',databaseAclSql\)/);
  assert.match(roles,/aclexplode\(namespace\.nspacl\)/);
  assert.match(roles,/recipient\.rolname like 'sabora\\_%'/);
+ assert.match(roles,/set role %I; revoke all privileges on schema %I from %s cascade; reset role/);
+ assert.match(roles,/set role %I; revoke all privileges on %s %I\.%I from %s cascade; reset role/);
+ assert.match(roles,/union select namespace\.nspowner/);
+ assert.match(roles,/union select relation\.relowner/);
+ assert.match(roles,/set role %I; grant %s on schema %I to %s%s; reset role/);
+ assert.match(roles,/set role %I; grant %s on %s %I\.%I to %s%s; reset role/);
  assert.match(inventory,/from aclexplode\(n\.nspacl\) acl/);
  assert.match(inventory,/from aclexplode\(c\.relacl\) acl/);
  assert.doesNotMatch(inventory,/(?:nspacl|relacl)::text/);
