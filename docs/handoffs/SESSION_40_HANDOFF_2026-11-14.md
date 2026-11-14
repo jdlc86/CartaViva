@@ -17,3 +17,11 @@ Leer [continuidad S39](SESSION_39_HANDOFF_2026-11-13.md), especialmente S39-19/2
 ## Próximo bloque integral
 
 El paquete candidato ya dispone de cuatro gates de laboratorio SUCCESS para el SHA `0514d09b`; sin validación operativa del mecanismo. A continuación, diseñar/probar en entorno aislado el **actuador host**, evidencia de red de entrada y salida, canal de entrega de artefactos y reversión Sabora-only; contrastar con política y no usar Docker de VPS hasta permiso específico y aislamiento material. Resolver separadamente restauración externa y SQL Supabase antes de primera instalación. Actualizar tablero solo con hitos, no con comprobaciones repetidas. Las credenciales y certificados no se comparten por chat ni GitHub. Aceptación visual de dos PWA es posterior a instalación real.
+
+## S40-2 — avance de entrega gobernada y reversión Sabora-only
+
+En el mismo PR #59 Draft se ha añadido verificación de procedencia del artefacto de push a main sobre SHA exacto, descarga segura desde Actions, transporte de cuatro archivos con sobre firmado y hashes por flujo, recepción a staging privado y negativas de alteración/replay. Para rollback histórico se añadió una puerta explícita de versión anteriormente saludable y observación Sabora real (contrato puro, sin ejecutar cambios). SHA funcional: [15d3165e](https://github.com/jdlc86/CartaViva/commit/15d3165ea9628d1b04651178d154b6c21318d562). **La regresión completa de este SHA aún no se declara PASS sin observar los resultados.**
+
+Se corrigió un supuesto peligroso: la compilación de laboratorio usa el código SABORA como fixture, pero un paquete operativo debe usar una variable GitHub no secreta y expresamente aprobada SABORA_APPROVED_RESTAURANT_CODE. Si no existe, no se publica paquete de release. Eso no requiere cambios de DNS ni recursos ajenos.
+
+**NO-GO:** no hay agente SSH forzado ni ejecutor Docker instalado; el host respondería STOP. Falta instalar y validar redes/egress y firewall exclusivos, entregar/restaurar copia externa, activar SQL y roles mínimos, comprobar alertas y hacer pruebas reales de rollback/aislamiento. No se tocaron Fleetia, VPS, Supabase ni secretos.
