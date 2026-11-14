@@ -145,6 +145,20 @@ Debe devolver `PASS` sin mostrar ningún secreto; verifica que ambos archivos so
 
 **Referencias externas:** [Cloudflare: puertos compatibles](https://developers.cloudflare.com/fundamentals/reference/network-ports/), [error 526](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-526/), [certificados Origin CA](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/) y [DNS](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/). Evidencia [continuidad S39](../handoffs/SESSION_39_HANDOFF_2026-11-13.md).
 
+### Estado S39-19 — certificado de origen instalado en VPS Sabora (14-11-2026)
+
+**Alcance de la autorización del propietario:** instalación **únicamente del material TLS de Sabora** y preparación de su directorio aislado; no se autorizó desplegar PWA/API, integrar este PR, abrir ingress/8443, manipular firewall general, reiniciar host/servicios, ejecutar migraciones ni alterar Fleetia.
+
+**Ejecución Gateway, host** `146.59.145.64` (registro accesible `srv_01M7CEC20000XZSVEGP0EB76DY`):
+- Preflight: `/srv` ya existía como directorio root, `/srv/sabora`, `/srv/sabora/tls` y la identidad `sabora` no existían; el UID/GID `10001` no estaban asignados según comprobación y operaciones dry-run. Se creó **únicamente** grupo `sabora` GID `10001`, usuario `sabora` UID `10001` con contraseña bloqueada, `/usr/sbin/nologin`, sin crear home y con grupo principal exclusivo.
+- Se crearon `/srv/sabora` y `/srv/sabora/tls`, **0700**, usuario y grupo `sabora:sabora`; directorios preexistentes ajenos no se reescribieron. La ruta aprobada para `SABORA_WEB_TLS_DIRECTORY` es **`/srv/sabora/tls`**, pero no se aplicó todavía en ningún contenedor/Compose real.
+- Desde **dos valores Gateway de uso único** y sin mostrar su contenido se escribieron `/srv/sabora/tls/origin.crt` y `/srv/sabora/tls/origin.key` mediante `write_secret_file`, **0400**, propietario `sabora:sabora`, UID/GID `10001`; `stat_file` confirmó archivos regulares y esas propiedades. Los valores de uso único **fueron consumidos**; no pedir que se reenvíen al chat.
+- `certificate.inspect_file` identificó emisor **Cloudflare Origin SSL Certificate Authority**, RSA 2048, **dos DNS SAN exactos** `sabora.allaiso.com` y `gestion-sabora.allaiso.com`, `notBefore=2026-11-13 21:37 UTC`, `notAfter=2041-11-09 21:37 UTC`. Huella SHA256 pública: `E9:AF:77:16:4E:4B:72:BF:1E:2F:2B:19:3B:84:96:96:27:C0:FD:BF:BE:80:9E:0E:57:61:50:20:40:16:C3:71`.
+- La prueba **local sobre el VPS**, usando Python stdlib y OpenSSL bajo privilegio autorizado, comparó SPKI del certificado con la derivada de la clave privada y devolvió **PASS**; exigió SAN exactos y vigencia superior a siete días. No reveló la clave ni efectuó solicitudes externas. **No prueba todavía trust Cloudflare, visibilidad de archivos dentro de contenedor, HTTPS externo, ACL extendidas ni modo Full (strict).**
+- `get_file_acl` intentó cuatro comprobaciones **sin modificar ficheros**, pero el servidor carece de la utilidad requerida (`CAPABILITY_UNAVAILABLE`): ACL extendidas no inspeccionadas. Las modalidades Unix `0700/0400` y propietarios sí se verificaron; no instalar paquetes globales ni tocar recursos ajenos para suplir esta limitación. `network.inspect` posterior confirma **80/443 ocupados** y **8443 libre**; no se publicaron listeners.
+
+**Siguiente puerta STOP:** confirmar compatibilidad del UID mapeado por un **contenedor Sabora aislado** cuando se autorice el despliegue; resolver/justificar verificación ACL por mecanismo no disruptivo si se exige, validar enforcement independiente de red/ingress TCP 8443 y firewall proveedor, respaldos SQL restaurados fuera VPS, roles/secretos y aprobación de PR. Este hito **no** implica que Sabora esté funcionando en Internet ni revoca la prohibición de intervenir en Fleetia.
+
 ## 4. Bootstrap y smoke controlado
 
 1. Tras autorización específica y comprobar que no hay otro arranque Sabora
