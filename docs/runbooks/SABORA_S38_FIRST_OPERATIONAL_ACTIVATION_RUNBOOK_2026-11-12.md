@@ -159,6 +159,17 @@ Debe devolver `PASS` sin mostrar ningún secreto; verifica que ambos archivos so
 
 **Siguiente puerta STOP:** confirmar compatibilidad del UID mapeado por un **contenedor Sabora aislado** cuando se autorice el despliegue; resolver/justificar verificación ACL por mecanismo no disruptivo si se exige, validar enforcement independiente de red/ingress TCP 8443 y firewall proveedor, respaldos SQL restaurados fuera VPS, roles/secretos y aprobación de PR. Este hito **no** implica que Sabora esté funcionando en Internet ni revoca la prohibición de intervenir en Fleetia.
 
+### Estado S39-20 — paquete ACL instalado y directorios Sabora auditados (14-11-2026)
+
+**Nueva autorización expresa del propietario:** «Instala ACL». Esta autorización **solo** cubrió la instalación de la utilidad para inspeccionar permisos, sin habilitar despliegue, cambio de red, reinicios ni operaciones sobre proyectos ajenos.
+
+- Estado inicial: `acl` no estaba instalado, candidato Ubuntu `2.3.2-2`; `package_health` detectó apt y reboot pendiente previo. La operación `package.install` se validó con `dry_run`.
+- Se instaló mediante Gateway `package.install` **únicamente el paquete `acl=2.3.2-2`**, sin actualizar metadatos ni ejecutar upgrade/autoremove. `apt` declaró **0 paquetes actualizados, 1 nuevo, 0 eliminados**; el paquete activó la actualización normal del índice `man-db`. `needrestart` informó de **reinicios de servicios diferidos** (incluido Docker), no ejecutados; no arrancar ningún servicio para satisfacer ese aviso. La verificación posterior confirmó paquete `ii 2.3.2-2`.
+- `file.acl.get` funcionó posteriormente **sin alterar archivos** en las cuatro rutas. En `/srv/sabora` y `/srv/sabora/tls` mostró **exactamente tres entradas ACL de acceso**: `user::rwx`, `group::---`, `other::---` (0700). Para `/srv/sabora/tls/origin.crt` y `origin.key`, exactamente `user::r--`, `group::---`, `other::---` (0400). **No hay ACL nominativas ni de grupo extra**; los permisos de superusuario root son inherentes al sistema y no constituyen un principal aislado.
+- Tras la instalación `network.inspect` confirmó que **80/443** seguían en escucha y **TCP/8443 sin listener**. `system.health` registró `failedUnits=0` y **boot ID idéntico al de antes**. Se evitó consultar, detener o reiniciar servicios o contenedores de otros proyectos. El paquete `acl` es del sistema compartido, no un recurso privado del contenedor Sabora; no declarar aislamiento total de la infraestructura por su mera instalación.
+
+**Puertas que continúan:** red de ingress filtrada y firewall independiente, aceptación/despliegue del PR, copia externa restaurada, Supabase SQL/migraciones y verificación funcional HTTPS real. La prueba ACL acredita únicamente control de acceso en el host para estas cuatro rutas, no los permisos dentro de contenedores ni la seguridad de otros proyectos.
+
 ## 4. Bootstrap y smoke controlado
 
 1. Tras autorización específica y comprobar que no hay otro arranque Sabora
