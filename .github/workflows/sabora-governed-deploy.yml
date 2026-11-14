@@ -105,7 +105,7 @@ jobs:
           # forced command; it MUST NOT have a normal shell or Docker group.
           # Host agent must independently verify the signed payload and keep
           # a one-use audit ledger; argv alone is never sufficient consent.
-          printf '{"approvalB64":"%s","signatureB64":"%s"}\\n' \
+          printf '{"approvalB64":"%s","signatureB64":"%s"}\n' \
             "$SABORA_APPROVAL_JSON_B64" "$SABORA_APPROVAL_SIG_B64" |
             ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
