@@ -5,7 +5,7 @@ import {generateKeyPairSync,sign} from 'node:crypto';
 import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
  SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
 
-const fullSha='a'.repeat(40),hash='b'.repeat(64);
+const fullSha='a'.repeat(40);
 const {privateKey,publicKey}=generateKeyPairSync('ed25519');
 const pub=publicKey.export({format:'pem',type:'spki'});
 const now=Date.parse('2026-11-14T09:00:00.000Z');
@@ -15,7 +15,7 @@ function approval(overrides={}){
   approvedAt:'2026-11-14T08:45:00.000Z',expiresAt:'2026-11-14T09:45:00.000Z',
   server:'146.59.145.64',project:'sabora',port:8443,
   origins:[...SABORA_RELEASE_SCOPE.origins],services:[...SABORA_RELEASE_SCOPE.services],
-  evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,hash])),...overrides};
+  evidence:Object.fromEntries(EVIDENCE_KEYS.map((k,i)=>[k,(i+1).toString(16).repeat(64)])),...overrides};
 }
 function signed(value){const raw=stableStringify(value);return [raw,sign(null,Buffer.from(raw),privateKey).toString('base64')];}
 function verify(value){const [raw,sig]=signed(value);return verifyReleaseAuthorization(raw,sig,pub,{operation:'deploy',sha:fullSha},now);}
@@ -38,7 +38,8 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
   approval({services:['web','api','other']}),approval({expiresAt:'2026-11-14T08:00:00.000Z'}),
   approval({approvedAt:'2026-11-14T09:05:00.000Z'}),
   approval({evidence:{...approval().evidence,externalRestoreSha256:'0'.repeat(64)}}),
-  approval({evidence:{...approval().evidence,ingressIsolationSha256:''}})
+  approval({evidence:{...approval().evidence,ingressIsolationSha256:''}}),
+  approval({evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,'f'.repeat(64)]))})
  ]) assert.throws(()=>verify(candidate),/sabora_release_stop:/);
  const [raw,sig]=signed(approval());
  assert.throws(()=>verifyReleaseAuthorization(raw,sig,pub,{operation:'rollback',sha:fullSha},now));

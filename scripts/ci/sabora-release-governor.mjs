@@ -62,7 +62,9 @@ export function verifyReleaseAuthorization(raw,signatureB64,publicPem,expected,n
     start>now||now>=end||end-start>3600000||end<=start||now-start>3600000)
   reject('expired_or_invalid_authorization_window');
  if(!exactKeys(approval.evidence,EVIDENCE_KEYS)||EVIDENCE_KEYS.some(k=>typeof approval.evidence[k]!=='string'||
-    !HEX64.test(approval.evidence[k])||/^0+$/.test(approval.evidence[k])))reject('missing_real_evidence_reference');
+    !HEX64.test(approval.evidence[k])||/^0+$/.test(approval.evidence[k]))||
+    new Set(EVIDENCE_KEYS.map(k=>approval.evidence[k])).size!==EVIDENCE_KEYS.length)
+  reject('missing_or_reused_real_evidence_reference');
  if(typeof signatureB64!=='string'||!/^[A-Za-z0-9+/]+={0,2}$/.test(signatureB64))reject('signature_missing');
  let pub,valid;
  try{
