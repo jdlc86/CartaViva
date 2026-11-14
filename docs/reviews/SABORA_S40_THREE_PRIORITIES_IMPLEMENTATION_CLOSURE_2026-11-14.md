@@ -7,7 +7,7 @@
 | Prioridad | Implementación nueva | Evidencia prevista en el mismo SHA | Límite real |
 | --- | --- | --- | --- |
 | Gobernanza | driver Docker real de laboratorio, inspector de redes/puerto, reglas reales en bridges efímeros, imágenes `save/load`, Compose exacto, HTTPS/API privada/alerta, ledger `fsync` | `web-publication` SUCCESS publica recibos nftables y release-driver en [CI #43619941591](https://github.com/jdlc86/CartaViva/actions/runs/43619941591) | forced-command del VPS sigue sin instalar; `authorizeHostOperation()` continúa STOP |
-| Doble copia | captura streaming AES-256-GCM separada en roles/esquema/datos/inventario, manifiesto estricto, dos clases de réplica, restore solo desde externa | PG17 plenamente migrado → dos réplicas → segundo PG17 sin red → fingerprint/ledger/negativas, SUCCESS en [Bootstrap #43619941584](https://github.com/jdlc86/CartaViva/actions/runs/43619941584) | no existe proveedor externo elegido, copia real, clave/custodios o RTO/RPO |
+| Doble copia | captura streaming AES-256-GCM separada en roles/esquema/datos/inventario, manifiesto estricto, dos clases de réplica, restore solo desde externa | PG17 plenamente migrado → dos réplicas → segundo PG17 sin red → fingerprint/ledger/negativas, SUCCESS en [Bootstrap #43619941584](https://github.com/jdlc86/CartaViva/actions/runs/43619941584) | ordenador doméstico y réplica VPS decididos, pero no configurados; no existe copia real, clave/custodios o RTO/RPO |
 | Primer despliegue | paquete y recorrido real Docker/HTTPS reproducidos de extremo a extremo en runner; procedimiento de instalación ordenado | `validate`, `web-publication`, `generate-lockfile` y `functional-ui-gate` SUCCESS en el SHA exacto | no hay permiso de merge, SQL, red, VPS o deploy; no existen URLs reales disponibles para aceptación |
 
 No se ha cambiado funcionalidad de producto ni composición visual. Por ello `docs/design/FUNCTIONAL_UI_COVERAGE.json` conserva sus estados: añadir una fila de despliegue habría mezclado una puerta operativa con capacidades RF/UI y no demostraría aceptación humana.
@@ -43,9 +43,10 @@ Durante la convergencia, CI detectó y se corrigió: publicación innecesaria de
 ## 5. Bloqueos reales
 
 1. revisión independiente del delta y resultados del SHA final;
-2. elección de almacén externo, custodios, retención, RPO/RTO y canal de clave;
-3. autorizaciones específicas separadas para merge, captura+restore, SQL 99/99, red/forced-command y deploy;
-4. seis expedientes operativos reales y distintos que exige Ed25519;
-5. aceptación humana funcional/visual sobre las dos URLs reales después de deploy.
+2. configuración observada del ordenador doméstico, custodios, retención, RPO/RTO y canal de clave;
+3. evidencia y autorización de ruta/cuota/ACL/owner para la réplica VPS ya decidida;
+4. autorizaciones específicas separadas para merge, captura+restore, SQL 99/99, red/forced-command y deploy;
+5. seis expedientes operativos reales y distintos que exige Ed25519;
+6. aceptación humana funcional/visual sobre las dos URLs reales después de deploy.
 
 Hasta resolverlos, no hay copia externa real, copia VPS, migración, contenedor, firewall, usuario SSH, despliegue, rollback ni aceptación. No se ha accedido a Fleetia ni a recursos ajenos.

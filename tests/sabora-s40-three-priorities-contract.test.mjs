@@ -50,6 +50,31 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/vpsReplicaUsedForRestore:false/);
 });
 
+test('S40 home-computer profile records both destinations without claiming operational evidence',()=>{
+ const profile=JSON.parse(read('deploy/sabora-home-offsite-backup.profile.example.json'));
+ const ignored=read('.gitignore');
+ assert.equal(profile.schema,'sabora-home-offsite-backup-profile/v1');
+ assert.equal(profile.scope.externalDestinationClass,'offsite');
+ assert.equal(profile.scope.externalLocationType,'independent-home-computer');
+ assert.equal(profile.scope.vpsDestinationClass,'vps-encrypted-cache');
+ assert.equal(profile.scope.vpsStorageScope,'sabora-exclusive');
+ assert.equal(profile.state.configurationComplete,false);
+ assert.equal(profile.state.copiesExist,false);
+ assert.equal(profile.state.restoreValidated,false);
+ assert.equal(profile.state.operationalAuthorizationGranted,false);
+ assert.equal(profile.state.schedulerEnabled,false);
+ assert.equal(profile.homeComputer.inboundServiceEnabled,false);
+ assert.equal(profile.homeComputer.inboundWriteFromVpsAllowed,false);
+ assert.equal(profile.keyCustody.storedInOffsiteCiphertextRoot,false);
+ assert.equal(profile.keyCustody.storedOnVps,false);
+ assert.equal(profile.vpsReplica.requiredByOwnerDecision,true);
+ assert.equal(profile.vpsReplica.authorizationGranted,false);
+ assert.equal(profile.vpsReplica.fleetiaDependency,false);
+ assert.match(JSON.stringify(profile),/PENDING_WINDOWS_MACOS_OR_LINUX/);
+ assert.match(JSON.stringify(profile),/PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER/);
+ assert.match(ignored,/deploy\/sabora-home-offsite-backup\.profile\.json/);
+});
+
 test('S40 nftables gate applies, proves denials and rolls back only inside disposable lab',()=>{
  const lab=read('scripts/ci/sabora-nftables-enforcement-lab.sh');
  assert.match(lab,/root_disposable_actions_context_required/);

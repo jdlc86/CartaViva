@@ -3,6 +3,7 @@ dist/
 .env
 .env.*
 !.env.example
+deploy/sabora-home-offsite-backup.profile.json
 .DS_Store
 apps/client/playwright-report/
 apps/client/test-results/
