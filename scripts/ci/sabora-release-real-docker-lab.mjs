@@ -58,6 +58,15 @@ function httpsProbe(hostname){
   request.once('error',reject);request.end();
  });
 }
+async function eventually(label,probe,{attempts=40,delayMs=250}={}){
+ let last;
+ for(let attempt=1;attempt<=attempts;attempt++){
+  try{return await probe();}catch(error){last=error;}
+  await new Promise(accept=>setTimeout(accept,delayMs));
+ }
+ const detail=String(last?.code??last?.message??'unknown').replace(/[^A-Za-z0-9_.:-]/g,'_').slice(0,120);
+ throw stop('readiness_timeout:'+label+':'+detail);
+}
 function addressRange(cidr){
  const [ip,bitsRaw]=cidr.split('/'),bits=Number(bitsRaw),oct=ip.split('.').map(Number);
  const value=oct.reduce((total,item)=>((total<<8)|item)>>>0,0);
@@ -310,12 +319,18 @@ networks:
   },
   readiness:async({expectedOrigins})=>{
    assert.deepEqual(expectedOrigins,SABORA_RELEASE_SCOPE.origins);
-   const api=await fetch('http://127.0.0.1:4100/ready').then(response=>response.json());
-   const client=JSON.parse(await httpsProbe('sabora.allaiso.com'));
-   const management=JSON.parse(await httpsProbe('gestion-sabora.allaiso.com'));
+   const api=await eventually('api',()=>fetch('http://127.0.0.1:4100/ready').then(async response=>{
+    if(!response.ok)throw stop('api_status');return response.json();
+   }));
+   const client=JSON.parse(await eventually('client_https',()=>httpsProbe('sabora.allaiso.com')));
+   const management=JSON.parse(await eventually('management_https',()=>httpsProbe('gestion-sabora.allaiso.com')));
    const egressId=serviceContainers()['sabora-egress'];
-   const alert=docker(['exec',egressId,'node','-e',
-    "fetch('http://127.0.0.1:4300/alert').then(async r=>{console.log(JSON.stringify(await r.json()));process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]);
+   const alert=await eventually('alert_reception',async()=>{
+    const result=docker(['exec',egressId,'node','-e',
+     "fetch('http://127.0.0.1:4300/alert').then(async r=>{console.log(JSON.stringify(await r.json()));process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"],
+    {allowFailure:true});
+    if(result.status!==0)throw stop('alert_status');return result;
+   });
    const alertBody=JSON.parse(alert.stdout.trim());
    return {apiReady:api.mode==='api',clientHttps:client.mode==='web'&&client.host==='sabora.allaiso.com',
     managementHttps:management.mode==='web'&&management.host==='gestion-sabora.allaiso.com',
