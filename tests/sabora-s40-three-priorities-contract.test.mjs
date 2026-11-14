@@ -24,6 +24,7 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/bundleDirectory:offsite,name:'data'/);
  assert.doesNotMatch(integration,/bundleDirectory:vpsCache,name:'(?:schema|data)'/);
  assert.match(integration,/--network','none'/);
+ assert.match(integration,/--exit-on-error','--disable-triggers','\/tmp\/sabora-data\.dump'/);
  assert.match(integration,/assert\.equal\(ledgerCount,'99'\)/);
  assert.match(integration,/vpsReplicaUsedForRestore:false/);
 });

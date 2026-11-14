@@ -156,7 +156,7 @@ try{
  docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',
   '--exit-on-error','/tmp/sabora-schema.dump']);
  docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',
-  '--exit-on-error','/tmp/sabora-data.dump']);
+  '--exit-on-error','--disable-triggers','/tmp/sabora-data.dump']);
  docker(['exec',target,'rm','-f','/tmp/sabora-schema.dump','/tmp/sabora-data.dump']);
  await rm(rolesOut,{force:true});await rm(schemaOut,{force:true});await rm(dataOut,{force:true});
  const restoredInventory=psql(target,'sabora_external_restore_ci',await readFile(inventorySql,'utf8')).stdout;
