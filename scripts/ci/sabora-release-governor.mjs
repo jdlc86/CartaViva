@@ -90,7 +90,7 @@ export async function verifyGithubChecks(sha,token,fetcher=fetch){
  const names=['validate','web-publication','generate-lockfile','functional-ui-gate'];
  for(const name of names){
   const candidates=body.check_runs.filter(c=>c.name===name);
-  if(!candidates.length||candidates.some(c=>c.status!=='completed'||c.conclusion!=='success'||c.head_sha!==sha))
+  if(!candidates.length||candidates.some(c=>c.status!=='completed'||c.conclusion!=='success'||c.head_sha!==sha||c.app?.slug!=='github-actions'))
    reject('ci_not_success:'+name);
  }
  return names;

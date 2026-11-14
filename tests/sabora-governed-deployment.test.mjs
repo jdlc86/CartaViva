@@ -48,11 +48,12 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
  assert.throws(()=>verifyReleaseAuthorization(raw,sig,generateKeyPairSync('ed25519').publicKey.export({format:'pem',type:'spki'}),{operation:'deploy',sha:fullSha},now));
  assert.throws(()=>verifyReleaseAuthorization(' '+raw,sig,pub,{operation:'deploy',sha:fullSha},now));
  assert.throws(()=>planRelease('remove',fullSha),/invalid_operation/);
- const good=['validate','web-publication','generate-lockfile','functional-ui-gate'].map(name=>({name,status:'completed',conclusion:'success',head_sha:fullSha}));
+ const good=['validate','web-publication','generate-lockfile','functional-ui-gate'].map(name=>({name,status:'completed',conclusion:'success',head_sha:fullSha,app:{slug:'github-actions'}}));
  const ok=async()=>({ok:true,json:async()=>({total_count:good.length,check_runs:good})});
  assert.equal((await verifyGithubChecks(fullSha,'test-token-for-ci-check',ok)).length,4);
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:3,check_runs:good.slice(1)})})),/ci_not_success:validate/);
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='web-publication'?{...x,conclusion:'failure'}:x)})})),/ci_not_success:web-publication/);
+ await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='validate'?{...x,app:{slug:'untrusted-external-app'}}:x)})})),/ci_not_success:validate/);
 });
 
 test('release workflow requires explicit dispatch, signed gate, forced host identity, no auto deployment',()=>{
