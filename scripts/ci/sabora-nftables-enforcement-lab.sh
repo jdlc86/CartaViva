@@ -85,16 +85,16 @@ ip -n "$web" route add default via 172.28.240.1
 ip -n "$rtr" addr add 172.28.241.1/24 dev br-abcdef123456
 ip -n "$app" addr add 172.28.241.2/24 dev ae0
 ip -n "$app" route add default via 172.28.241.1
-ip -n "$rtr" -6 addr add 2001:db8:241::1/64 dev br-abcdef123456
-ip -n "$app" -6 addr add 2001:db8:241::2/64 dev ae0
+ip -n "$rtr" -6 addr add 2001:db8:241::1/64 dev br-abcdef123456 nodad
+ip -n "$app" -6 addr add 2001:db8:241::2/64 dev ae0 nodad
 ip -n "$app" -6 route add 2001:db8:113::/64 via 2001:db8:241::1 dev ae0
 
 ip -n "$rtr" addr add 203.0.113.1/24 dev rd0
 ip -n "$dst" addr add 203.0.113.10/24 dev dd0
 ip -n "$dst" addr add 203.0.113.30/24 dev dd0
 ip -n "$dst" route add default via 203.0.113.1
-ip -n "$rtr" -6 addr add 2001:db8:113::1/64 dev rd0
-ip -n "$dst" -6 addr add 2001:db8:113::10/64 dev dd0
+ip -n "$rtr" -6 addr add 2001:db8:113::1/64 dev rd0 nodad
+ip -n "$dst" -6 addr add 2001:db8:113::10/64 dev dd0 nodad
 ip -n "$dst" -6 route add 2001:db8:241::/64 via 2001:db8:113::1 dev dd0
 ip netns exec "$rtr" sysctl -qw net.ipv4.ip_forward=1
 ip netns exec "$rtr" sysctl -qw net.ipv6.conf.all.forwarding=1
