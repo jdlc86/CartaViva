@@ -1,0 +1,87 @@
+# Encargo integral a Codex — Sabora: gobernanza + doble copia + primera activación y pruebas visuales
+
+**Fecha de encargo:** 14-11-2026. **Repositorio autorizado único:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva). **Ámbito:** un único restaurante Sabora con dos PWA independientes (cliente y gestión). **Prioridad del propietario:** terminar la instalación operativa real para poder inspeccionar visualmente y probar la aplicación, no continuar indefinidamente con componentes auxiliares.
+
+> **Este encargo NO es normativa, autorización de despliegue, de merge, de SQL real, de acceso a secretos ni de modificación del VPS.** Las normas existentes prevalecen, incluidas sus condiciones STOP. Codex puede desarrollar, corregir, commitear, probar y preparar integración exclusivamente en `jdlc86/CartaViva`. Las operaciones reales de infraestructura, restauración, migración, DNS, firewall, secretos, integración en main y despliegue requieren las autorizaciones específicas que establece el repositorio. **Prohibido leer, alterar, detener, reiniciar, compartir o depender de cualquier contenedor, servicio, volumen, red, credencial o recurso de Fleetia u otros proyectos.** Reiniciar el daemon Docker o el VPS tampoco está permitido como vía de activación.
+
+## 1. Verificación obligatoria antes de trabajar
+
+1. Verifica `git remote -v`, `git status`, refs y SHA remotos; preserva trabajo local y no uses `reset --hard`, `git clean`, `push --force` ni descartes cambios ajenos. Confirma que el repositorio de trabajo sea únicamente `jdlc86/CartaViva`. No supongas que el checkout local está actualizado. Si hace falta, usa worktree aislado.
+2. Reconcílialo con el [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59), rama `docs/sabora-dual-backup-vps-offsite-20261113`, y con `main`. **Foto informativa de arranque, NO SHA fijo:** PR #59 HEAD `704424d529265da49c948112e7f6974285640f59`; main `59866219971a78237d14d7820d9b18a086ac2bfc`. Antes de editar o aprobar, comprueba los valores actuales y el diff acumulado. Conserva preferentemente **el mismo PR #59** para este hito; no abras PR de microcorrecciones, ni dupliques implementaciones previas. Si el PR ya se ha cerrado o divergió, documenta la reconciliación y justifica el flujo mínimo.
+3. **Lee las normas como fuente de verdad** (no inventes contratos, diseños, roles o decisiones):
+   - [Límite entre proyectos](../architecture/CARTAVIVA_PROJECT_BOUNDARY.md), [puerta de autorizaciones](../SABORA_AUTHORIZATION_GATE.md), [metodología y doble backup](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md).
+   - [Gobernanza de release candidata en PR #59](../architecture/SABORA_GOVERNED_RELEASE_V1.md), [runbook de primera activación S38](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md), [ciclo de vida aislado P3](../runbooks/SABORA_P3_ISOLATED_LIFECYCLE_RUNBOOK_2026-10-29.md), [decisión de custodia Free y recuperación](../reviews/SABORA_S38_FREE_BACKUP_CUSTODY_RECOVERY_DECISION_2026-11-13.md).
+   - [Contrato funcional consolidado](../architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md), [contrato del diseño](../DESIGN_SYSTEM_CONTRACT.md), [estilo visual aprobado](../design/APPROVED_VISUAL_STYLE_AUDIT_V1.md) y [metodología de observabilidad](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md).
+   - [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y [continuidad S40](../handoffs/SESSION_40_HANDOFF_2026-11-14.md) **solo para contexto**, nunca para cambiar la normativa.
+4. Inventaría qué existe, qué está probado en un SHA exacto y qué está funcionando realmente. Referencia funciones y ficheros, registra defectos concretos y **evita reimplementaciones**. Si hay contradicción normativa, STOP y plantea una decisión al propietario sin reinterpretar unilateralmente.
+
+## 2. Estado comprobado al abrir el encargo
+
+- `main` aún no integra #59; PR Draft, sin merge ni release desplegado. Último SHA **funcional probado**: `fbb8e3575fa1e436239a8b7d26bea15e5e80f67a`; CI [#43587897164](https://github.com/jdlc86/CartaViva/actions/runs/43587897164) `validate` y `web-publication` SUCCESS, Bootstrap PG17 [#43587898080](https://github.com/jdlc86/CartaViva/actions/runs/43587898080) SUCCESS, interfaz [#43587906576](https://github.com/jdlc86/CartaViva/actions/runs/43587906576) SUCCESS. `nft --check` sobre reglas candidatas PASS **en runner desechable**; aceptación visual humana y CV005+B2 opt-in **SKIPPED**, no PASS. La HEAD informativa anterior es solo documentación.
+- Ya existe candidato de firma Ed25519, gobernanza, transporte de artefactos de main y SHA exacto, staging privado, anti-replay, guardas de aislamiento, modelo de rollback y generador de comandos Docker acotado. El **actuador real aún NO está instalado**: `authorizeHostOperation()` falla cerrado. Las pruebas de actuación usan drivers/inspectores simulados; no demuestran red/firewall reales, publicación efectiva ni que el sistema haya sido recuperado.
+- Preflight del VPS `146.59.145.64`: TCP 8443 sin listener; 80/443 ocupados; nftables activo; las redes `sabora_ingress_filtered` y `sabora_egress_filtered` **no están creadas** según consulta por nombre exacto. Certificados Origin CA guardados bajo ruta exclusiva Sabora, pero existencia/ACL no equivalen a prueba completa de validez/SAN/operación HTTPS. Está PROHIBIDO modificar 80/443 o recursos compartidos.
+- Supabase proyecto Sabora `byhvmumqivmunkmomhup`: plan Free y PG17.11 documentados. La cadena de 99 migraciones está diseñada/probada en laboratorio; no se ha activado operativamente ni acreditado los roles/login mínimos, un backup real o una restauración real. En Free no se dispone de backups diarios automáticos/PITR incluidos.
+- **No hay dos copias útiles existentes acreditadas.** La decisión del 13-11 aplazó expresamente la extracción real del backup; el aplazamiento se mantiene hasta nueva autorización. Un ZIP de GitHub Actions, dump vacío o fixture PG17 no cuenta como backup externo recuperable.
+
+## 3. Objetivo y estrategia de cierre: tres prioridades, UN hito integral
+
+### P1 — Sistema de gobernanza operativo, seguro y repetible
+
+Reutilizar el código ya presente del PR #59 y **cerrar el conjunto**, no añadir una serie de gates redundantes. Entregar:
+- Flujo manual gobernado `plan → autorización externa Ed25519 (operación/SHA/expiración/seis expedientes verificables) → artifact main SHA exacto → ejecución Sabora-only → postchecks → ledger/alerta`. Sin despliegue automático por un simple push, PR o CI verde.
+- Agente `forced-command` bajo identidad exclusiva `sabora-release`, sin shell libre, Docker group ni privilegios sobre otros proyectos; host key anclada, rutas root-owned/ACL probadas, permisos mínimos, anti-replay y estados coherentes en fallos parciales. Crear y probar un driver/inspector **real pero exclusivamente en laboratorio desechable** antes de proponer su instalación. No abrir deliberadamente la puerta host STOP solo para lograr una suite verde.
+- Runtime de **solo** proyecto Compose `sabora`, servicios `sabora-egress`, `api` y `web`; imágenes de SHA e identidad confirmada; sin `docker down`, `prune`, reinicio global ni dependencia de otras redes/servicios. Validar Compose resuelto, puerto exclusivo 8443 y rutas HTTPS separadas.
+- Prueba de seguridad de entrada y salida: Cloudflare→origen solo para los dos hosts aprobados; filtros de red/allowlists concretos, DNS/CA/SNI, denegación direct-to-origin y egress ajeno/IPv6, persistencia y reversibilidad de **solo los filtros Sabora**. `nft --check` CI no demuestra enforcement vivo. Aportar prueba independiente y no interferencia antes de una propuesta de instalación; si depende de inspectores/driver aún simulados, marcarlo pendiente.
+- Reversión **solo de la aplicación Sabora** a una versión previamente desplegada y saludable, con nueva autorización firmada y artefactos retenidos (sin depender de ZIP Actions de 7 días), prueba de recuperación y no afectación de datos SQL/otros proyectos. Ledger duradero e inspeccionable.
+
+**Aceptación P1:** código y pruebas integradoras robustas en un SHA, configuración de instalación/operación revisada, evidencia de seguridad material cuando se autorice. Antes de eso: `IMPLEMENTADO EN LABORATORIO`, **NO** `GOBERNANZA OPERATIVA VALIDADA`.
+
+### P2 — Dos destinos de copia cifrada: VPS Sabora + exterior independiente
+
+Cumplir **sin reinterpretar** el contrato existente: la **copia externa cifrada y restaurable es obligatoria**; la copia local en el VPS es opcional normativamente pero **está incluida como objetivo de este encargo si el aislamiento, cuota y autorización lo permiten**. No considerar que dos archivos en el mismo VPS son backups independientes.
+
+- Preparar mecanismo Sabora-only de **captura lógica autorizada desde equipo/servicio externo al VPS compartido**, con versión real de herramientas, TLS/CA/hostname verificados, ámbito Sabora y exclusión de recursos gestionados de Supabase que no correspondan. Inventariar esquema, datos, roles propios, grants, owner/grantor, políticas RLS/FORCE RLS, ledger, migraciones e implicaciones Auth/Storage, sin intentar recrear objetos del proveedor.
+- Cifrar autenticadamente **antes** de guardar o transferir; custodiar claves fuera de los artefactos y Git/Actions/VPS; registrar hash, versión/fecha/SHA/migraciones, retención, rotación, responsables y RPO/RTO **medidos**. Una sola exportación cifrada puede replicarse a ambos destinos.
+- **Externo:** requiere decisión del propietario sobre proveedor, ubicación, responsable, política y recuperación de clave; NO seleccionar o contratar por intuición, ni usar GitHub/Actions, Supabase o el VPS como destino externo.
+- **VPS Sabora:** solo guardar copia **ya cifrada** en una ruta segregada Sabora con ownership/ACL/cuota/espacio y retención verificables; sin motor de restauración local ni uso de volúmenes/servicios de Fleetia. Si la copia local pudiera interferir, STOP solo de esa réplica, manteniendo la externa y elevando decisión.
+- Probar **restauración REAL desde el destino externo** en PG17 aislado **fuera del VPS** con datos ficticios/permitidos y comparación de esquema, datos, rol/ACL/RLS/ledger, negativos y corrupción; separar la verificación de membresías administradas por Supabase. Capturar evidencia del restore y criterios de éxito/fallo.
+- Preparar automatización y monitorización de capturas/retención/alertas **sin afirmar que el proceso periódico se ejecutó hasta comprobarlo**. No hay PITR equivalente por arte de magia.
+
+**Aceptación P2:** artefacto externo real recuperable, restauración aislada validada y réplica local cifrada **si autorizada y viable**; evidencias de custodia y retención. Si falta destino/aprobación o restauración: `NO-GO PARA SQL OPERATIVO`.
+
+### P3 — Primera instalación y prueba REAL de ambas PWA + API
+
+Resultado final buscado por el propietario, **no otro paquete de CI**:
+- Preparar y, solo tras autorización operativa específica y P1/P2 satisfechos, ejecutar la primera activación aislada: preflight del host/puerto/firewall/Cloudflare, red Sabora-only, código público de restaurante `SABORA_APPROVED_RESTAURANT_CODE` aprobado, certificados/custodia, secretos, roles mínimos y migraciones PostgreSQL 17.11 según runbook CV-005/autoridad DBA.
+- Publicar **dos orígenes HTTPS distintos y aprobados**: cliente `https://sabora.allaiso.com:8443` y gestión `https://gestion-sabora.allaiso.com:8443`, sin modificar el 443 compartido ni alterar ajustes generales de Cloudflare. Verificar los dos registros DNS exactos y sus destinos, SAN de certificado, TLS, manifest/service worker/scope, rutas internas y reverse proxy `/api/*`; evitar falsos positivos de SPA/health-only.
+- Prueba real integral: API `/ready=200` con dependencias, autenticación/identidades/roles y permisos, catálogo/anuncios/QR/mesas/pedidos/avisos, cliente y gestión en Chromium y dispositivos; alertas recibidas y observabilidad Sabora-only. Probar flujos de valor y negativos, sin inventar funcionalidad aprobada ni marcar Stripe/Gemini/reservas/Excel como validados si no han sido activados.
+- Conservar **laboratorio permanente** con PG17 desechable, API y ambas PWA para depuración posterior, además de la instalación real. Registrar capturas AUTÉNTICAS y listado de discrepancias con el diseño aprobado; la **aceptación estética final corresponde al propietario**, no al CI ni a Codex.
+- Ensayar parada/arranque/rollback nominal **solo de Sabora** y demostrar continuidad/no interferencia de otros proyectos mediante evidencia pasiva/aislada que no requiera operar sus recursos.
+
+**Aceptación P3:** URLs efectivamente accesibles, API/PG17 reales, smoke y E2E de los dos orígenes, evidencias de infraestructura/seguridad/alertas/rollback y preparación para inspección humana. Si cualquier autorización o evidencia externa falta, cerrar todo lo que sea verificable, registrar **NO-GO real**, y dar una sola lista accionable de aprobaciones y datos pendientes.
+
+## 4. Secuencia de ejecución obligatoria
+
+**Trabajar por bloques integrales, no por parches o PR sucesivos:**
+
+1. **Auditoría diferencial y plan de cierre:** leer HEAD/PR/normas, comprobar que los tres ejes no estén ya implementados; detectar incompatibilidades y bloquear decisiones que requieran propietario. Clasificar P0/P1/P2 y las dependencias reales entre P1, P2 y P3. Evitar expandir el alcance hacia nuevas funciones de negocio.
+2. **Implementación coordinada P1/P2/P3 en el PR #59:** cerrar gobernanza y respaldo junto a configuración de primera activación, sin falsas evidencias ni alterar el árbol de 99 SQL para facilitar un pase de pruebas. Preparar documentación de operación, permisos y rollback que el propietario pueda aprobar en un solo expediente.
+3. **Una regresión integradora robusta sobre SHA final**: Node/CI, PostgreSQL 17 real desechable, API HTTP/JWT/HMAC, ambas PWA/Chromium HTTPS, Compose e imágenes Docker aislados, networking/nft cuando proceda, errores de firma/roles/corrupción, restore/rollback y negativas de aislamiento. Pruebas aisladas solo para diagnosticar defecto preciso o proteger invariante crítica; no mantener una serie de microtests como sustituto de regresión. Inspeccionar jobs, logs, completitud y provenance.
+4. **Revisión y propuesta de GO/NO-GO por eje**, acreditando qué está implementado, qué se probó en laboratorio, qué se verificó materialmente y qué aceptó el propietario. La revisión independiente no puede autocertificarse con la misma identidad.
+5. **Solo con autorización expresa por tipo de operación**, preparar/evidenciar respaldo externo, provisión de red y cuentas Sabora, SQL/roles y despliegue/rollback. No hacer merge, cambios de red o servicios, ejecución de backup real ni publicaciones como efecto implícito del encargo o de CI verde.
+6. **Tras activación autorizada**, verificar dos URL + API/PG17 real, generar evidencias visuales, depurar y cerrar defectos como hito de producto; conservar el laboratorio y actualizar la documentación normativa/runbook/tablero/continuidad cuando se cierre cada hito importante.
+
+## 5. Entregables obligatorios a devolver al propietario
+
+1. **Un solo PR candidato coherente**, preferentemente #59, con enlace, SHA, inventario de cambios efectivos y sin PR redundantes; explicar cualquier merge pendiente.
+2. **Matriz de los tres objetivos** (`gobernanza` / `copia externa + copia VPS` / `despliegue`) con estado separado `IMPLEMENTADO`, `PRUEBA EJECUTADA [SHA y enlace]`, `VALIDADO OPERATIVAMENTE`, `ACEPTADO POR PROPIETARIO`, bloqueos P0/P1 y próximo acto irreversible.
+3. **Resultados integradores y casos negativos**, incluyendo rollback, restauración externa, no interferencia, TLS/egress y dos PWA. No transformar un `SKIPPED`, un fixture, un SHA anterior o un `nft --check` en evidencia real.
+4. **Paquete de operación reproducible** (plan firmado, checks de preflight, alcance único de red/host, logs y alertas seguros, retención y recovery, procedimientos STOP/rollback), sin secretos ni identidades no aprobadas.
+5. **Una sola lista de acciones del propietario**: decisiones/proveedor de copia externa, custodios, código público de restaurante, autorizaciones específicas de backup/migración/red/SSH/merge/despliegue y pruebas visuales. No solicitar nuevamente lo que ya esté validado documentalmente. No usar el coste o la ausencia de usuarios para saltarse protección de otros proyectos.
+6. **Acta final con enlaces** que permita comenzar la inspección visual tan pronto exista GO operativo; actualizar [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), [continuidad S40](../handoffs/SESSION_40_HANDOFF_2026-11-14.md) y normas afectadas al cerrar hitos, no cada microcorrección.
+
+## 6. Criterio de terminación real
+
+La tarea **no está completamente terminada** hasta que el despliegue gobernado opere con el aislamiento acreditado, la **copia externa sea recuperable**, la copia cifrada del VPS exista **si se autoriza y es viable**, y ambas PWA estén accesibles y funcionen con API/PG17, habilitando inspecciones visuales reales. Sin los permisos externos necesarios, Codex debe cerrar **todo el desarrollo y pruebas permitidas**, reportar el NO-GO exacto con evidencias y dejar lista la siguiente acción de autorización; **nunca declarar un despliegue completado ni fabricar un GO**.
+
+**Prioridad de ejecución:** alcanzar los tres resultados operativos y abrir la aplicación a pruebas humanas. No ampliar indefinidamente la gobernanza, ni abrir nuevos hitos sin relación con la primera activación.
