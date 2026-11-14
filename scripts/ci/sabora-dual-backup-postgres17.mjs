@@ -76,6 +76,20 @@ let targetStarted=false;
 const started=process.hrtime.bigint();
 try{
  const migrations=await migrationInventory();
+ const recoveryAuthorityFixture=`
+  do $sabora_provider_fixture$
+  begin
+   if exists(select 1 from pg_roles where rolname='cv005_recovery_provider_dba') then
+    raise exception 'cv005_recovery_provider_dba_preexists';
+   end if;
+   execute 'create role cv005_recovery_provider_dba
+    login createrole nosuperuser nocreatedb noreplication nobypassrls noinherit
+    connection limit 2';
+  end $sabora_provider_fixture$;
+  grant sabora_h6_fn_owner to cv005_recovery_provider_dba
+   with admin true, set false, inherit false;
+ `;
+ psql(source,'postgres',recoveryAuthorityFixture);
  const ledgerSql=`
   create schema sabora_migration_meta;
   revoke all on schema sabora_migration_meta from public,anon,authenticated;

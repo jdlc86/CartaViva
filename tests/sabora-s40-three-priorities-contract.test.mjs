@@ -31,6 +31,8 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/databaseAclMarker='-- sabora-database-acl-reconciliation-v1\\n'/);
  assert.match(integration,/psql\(target,'sabora_external_restore_ci',databasePrerequisiteSql\)/);
  assert.match(integration,/psql\(target,'sabora_external_restore_ci',databaseAclSql\)/);
+ assert.match(integration,/cv005_recovery_provider_dba_preexists/);
+ assert.match(integration,/grant sabora_h6_fn_owner to cv005_recovery_provider_dba\s+with admin true, set false, inherit false/);
  assert.match(roles,/aclexplode\(namespace\.nspacl\)/);
  assert.match(roles,/recipient\.rolname like 'sabora\\_%'/);
  assert.match(roles,/set role %I; revoke all privileges on schema %I from %s cascade; reset role/);
