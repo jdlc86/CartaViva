@@ -67,3 +67,27 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.doesNotMatch(workflow,/docker (?:compose|run|stop|restart|rm)|prune|systemctl|sudo /);
  assert.doesNotMatch(workflow,/ssh\s+[^\n]*ubuntu@|root@146\.59/);
 });
+
+import {checkIngressAddressSpace,renderIngressFilter,INGRESS_SPEC}
+ from '../scripts/ci/sabora-ingress-network-policy.mjs';
+
+test('Sabora ingress filter is scoped to a dedicated bridge and Cloudflare sources only',()=>{
+ const preflight=checkIngressAddressSpace([
+  {dst:'default'},{dst:'172.17.0.0/16'},{dst:'172.18.0.0/16'},
+  {dst:'146.59.144.1'}]);
+ assert.equal(preflight.overlap,false);
+ assert.equal(preflight.candidateCidr,'172.28.240.0/24');
+ assert.throws(()=>checkIngressAddressSpace([{dst:'172.28.0.0/16'}]),/existing_route_overlaps/);
+ assert.throws(()=>checkIngressAddressSpace([],'172.18.0.0/16'),/unapproved_network/);
+ const nft=renderIngressFilter({
+   bridge:'br-0123456789ab',
+   cloudflareIpv4Cidrs:['173.245.48.0/20','103.21.244.0/22']});
+ assert.match(nft,/table inet sabora_ingress_guard/);
+ assert.match(nft,/oifname "br-0123456789ab" ct state new drop/);
+ assert.match(nft,/iifname "br-0123456789ab" ct state new drop/);
+ assert.match(nft,/ip saddr @cf4/);
+ assert.doesNotMatch(nft,/flush ruleset|docker0|fleetia|chain INPUT|chain FORWARD/);
+ assert.throws(()=>renderIngressFilter({bridge:'docker0',cloudflareIpv4Cidrs:['0.0.0.0/0','10.0.0.0/8']}),/invalid_bridge/);
+ assert.throws(()=>renderIngressFilter({bridge:'br-0123456789ab',cloudflareIpv4Cidrs:['0.0.0.0/0','10.0.0.0/8']}),/unrestricted_cloudflare/);
+ assert.equal(INGRESS_SPEC.port,8443);
+});
