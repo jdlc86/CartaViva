@@ -8,6 +8,8 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  const bundle=read('scripts/ops/sabora-encrypted-backup-bundle.mjs');
  const cli=read('scripts/ops/sabora-encrypted-backup-cli.mjs');
  const integration=read('scripts/ci/sabora-dual-backup-postgres17.mjs');
+ const roles=read('scripts/ci/sabora-backup-roles.sql');
+ const inventory=read('scripts/ci/sabora-backup-inventory.sql');
  assert.match(bundle,/createCipheriv\('aes-256-gcm'/);
  assert.match(bundle,/roles-memberships\|schema\|data\|inventory/);
  assert.match(bundle,/ciphertext-only-replicas; no keys or plaintext dumps/);
@@ -24,6 +26,14 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(integration,/bundleDirectory:offsite,name:'data'/);
  assert.doesNotMatch(integration,/bundleDirectory:vpsCache,name:'(?:schema|data)'/);
  assert.match(integration,/--network','none'/);
+ assert.match(integration,/create schema extensions; create extension pgcrypto with schema extensions;/);
+ assert.match(integration,/databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\\n'/);
+ assert.match(integration,/psql\(target,'sabora_external_restore_ci',databasePrerequisiteSql\)/);
+ assert.match(roles,/aclexplode\(namespace\.nspacl\)/);
+ assert.match(roles,/recipient\.rolname like 'sabora\\_%'/);
+ assert.match(inventory,/from aclexplode\(n\.nspacl\) acl/);
+ assert.match(inventory,/from aclexplode\(c\.relacl\) acl/);
+ assert.doesNotMatch(inventory,/(?:nspacl|relacl)::text/);
  assert.match(integration,/--exit-on-error','--disable-triggers','\/tmp\/sabora-data\.dump'/);
  assert.match(integration,/assert\.equal\(ledgerCount,'99'\)/);
  assert.match(integration,/vpsReplicaUsedForRestore:false/);

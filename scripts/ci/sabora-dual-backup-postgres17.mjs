@@ -144,13 +144,23 @@ try{
  const sourceInventory=await readFile(inventoryOut,'utf8');
  assert.match(await readFile(rolesOut,'utf8'),/^create role sabora_staff_reader /m);
  assert.match(sourceInventory,/^data:[0-9a-f]{32}$/m);
+ const rolesPayload=await readFile(rolesOut,'utf8');
+ const databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\n';
+ const databasePrerequisiteAt=rolesPayload.indexOf(databasePrerequisiteMarker);
+ assert.ok(databasePrerequisiteAt>0);
+ const globalRolesSql=rolesPayload.slice(0,databasePrerequisiteAt);
+ const databasePrerequisiteSql=rolesPayload.slice(
+  databasePrerequisiteAt+databasePrerequisiteMarker.length);
+ assert.match(databasePrerequisiteSql,/^grant USAGE on schema extensions to sabora_/m);
  const restoreStarted=process.hrtime.bigint();
  docker(['run','-d','--name',target,'--network','none','-e','POSTGRES_PASSWORD=ci_only_not_a_secret',
   'postgres:17-alpine']);
  targetStarted=true;await waitForPg(target);
- psql(target,'postgres',await readFile(rolesOut,'utf8'));
+ psql(target,'postgres',globalRolesSql);
  docker(['exec',target,'createdb','-U','postgres','sabora_external_restore_ci']);
- psql(target,'sabora_external_restore_ci','create extension pgcrypto;');
+ psql(target,'sabora_external_restore_ci',
+  'create schema extensions; create extension pgcrypto with schema extensions;');
+ psql(target,'sabora_external_restore_ci',databasePrerequisiteSql);
  docker(['cp',schemaOut,target+':/tmp/sabora-schema.dump']);
  docker(['cp',dataOut,target+':/tmp/sabora-data.dump']);
  docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',

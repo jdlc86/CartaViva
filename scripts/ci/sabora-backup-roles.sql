@@ -28,3 +28,24 @@ where (parent.rolname in ('anon','authenticated') or parent.rolname like 'sabora
   and (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
        or member.rolname like 'sabora\_%' escape '\')
 order by parent.rolname,member.rolname,grantor.rolname;
+
+-- Keep database-scoped privileges that Sabora granted on provider-managed
+-- dependencies in the same encrypted component, but behind an explicit
+-- boundary. Recovery applies this section only after creating the target
+-- database and its provider prerequisite; it never recreates managed objects.
+select '-- sabora-database-prerequisites-v1';
+
+select format(
+ 'grant %s on schema %I to %I%s granted by %I;',
+ acl.privilege_type,
+ namespace.nspname,
+ recipient.rolname,
+ case when acl.is_grantable then ' with grant option' else '' end,
+ grantor.rolname)
+from pg_namespace namespace
+cross join lateral aclexplode(namespace.nspacl) acl
+join pg_roles grantor on grantor.oid=acl.grantor
+join pg_roles recipient on recipient.oid=acl.grantee
+where namespace.nspname='extensions'
+  and recipient.rolname like 'sabora\_%' escape '\'
+order by recipient.rolname,acl.privilege_type,grantor.rolname,acl.is_grantable;

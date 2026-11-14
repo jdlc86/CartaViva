@@ -18,18 +18,43 @@ where (parent.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
    or (member.rolname in ('anon','authenticated','cv005_recovery_provider_dba')
        or member.rolname like 'sabora\_%' escape '\');
 
-select 'extensions:'||md5(coalesce(string_agg(e.extname||':'||e.extversion||':'||n.nspname,
+select 'extensions:'||md5(coalesce(string_agg(
+ e.extname||':'||e.extversion||':'||n.nspname||':'||pg_get_userbyid(n.nspowner)||':'||
+ coalesce((select string_agg(
+  pg_get_userbyid(acl.grantor)||'>'||pg_get_userbyid(acl.grantee)||':'||
+  acl.privilege_type||':'||acl.is_grantable,
+  ',' order by pg_get_userbyid(acl.grantor),pg_get_userbyid(acl.grantee),
+   acl.privilege_type,acl.is_grantable)
+  from aclexplode(n.nspacl) acl
+  join pg_roles recipient on recipient.oid=acl.grantee
+  where recipient.rolname like 'sabora\_%' escape '\'),'NO-SABORA-ACL'),
  E'\n' order by e.extname),''))
 from pg_extension e join pg_namespace n on n.oid=e.extnamespace where e.extname='pgcrypto';
 
 select 'schemas:'||md5(coalesce(string_agg(
- n.nspname||':'||pg_get_userbyid(n.nspowner)||':'||coalesce(n.nspacl::text,'NULL'),
+ n.nspname||':'||pg_get_userbyid(n.nspowner)||':'||
+ coalesce((select string_agg(
+  pg_get_userbyid(acl.grantor)||'>'||
+  case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end||':'||
+  acl.privilege_type||':'||acl.is_grantable,
+  ',' order by pg_get_userbyid(acl.grantor),
+   case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end,
+   acl.privilege_type,acl.is_grantable)
+  from aclexplode(n.nspacl) acl),'NULL'),
  E'\n' order by n.nspname),''))
 from pg_namespace n where n.nspname in ('sabora','sabora_migration_meta');
 
 select 'relations:'||md5(coalesce(string_agg(
  n.nspname||':'||c.relname||':'||c.relkind::text||':'||pg_get_userbyid(c.relowner)||':'||
- c.relrowsecurity||':'||c.relforcerowsecurity||':'||coalesce(c.relacl::text,'NULL'),
+ c.relrowsecurity||':'||c.relforcerowsecurity||':'||
+ coalesce((select string_agg(
+  pg_get_userbyid(acl.grantor)||'>'||
+  case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end||':'||
+  acl.privilege_type||':'||acl.is_grantable,
+  ',' order by pg_get_userbyid(acl.grantor),
+   case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end,
+   acl.privilege_type,acl.is_grantable)
+  from aclexplode(c.relacl) acl),'NULL'),
  E'\n' order by n.nspname,c.relname,c.relkind),''))
 from pg_class c join pg_namespace n on n.oid=c.relnamespace
 where n.nspname in ('sabora','sabora_migration_meta') and c.relkind in ('r','p','v','m','S','f');
