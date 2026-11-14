@@ -164,6 +164,37 @@ El propietario aportó una captura del panel **Cloudflare → allaiso.com → DN
 
 **Sin cambios operativos:** no se consumieron credenciales, no se escribieron ficheros en VPS, no se desplegó ni se cambió SQL, firewall, Docker, Cloudflare o Fleetia. Mantener separadas las puertas de autorización para VPS, recuperación/backup, Supabase/99 migraciones y aceptación visual. El siguiente paso es reconciliar acceso a Gateway, **no** abrir otro PR ni repetir generación de certificados sin necesidad.
 
+### S39-18 — cuenta Gateway con acceso simultáneo a servidor y secretos, preflight sin cambios (14-11-2026)
+
+**Bloqueo anterior S39-17 parcialmente resuelto:** la conexión actual de Gateway ve simultáneamente **dos secretos personales one_time** `sabora-origin-cert` y `sabora-origin-key` (`lastUsedAt=null`, hasta aproximadamente 14-11-2026 22:42–22:43 Europe/Madrid) y **un servidor Linux ready**, `vps-4a8baaf7.vps.ovh.net` ID **`srv_01M7CEC20000XZSVEGP0EB76DY`**, IP pública **`146.59.145.64`**, SSH `ubuntu:22`. El registro anterior de ese VPS era `FLEETIA` ID `srv_01M3M9E39EJJTZBM89JEC9AKR4`; la identidad Gateway cambió. La IP, usuario SSH, interfaz y configuración de escucha coinciden con el preflight previo, pero **no atribuir permisos sobre contenedores ni demostrar aislamiento por la coincidencia de IP**.
+
+**Inspecciones Gateway read-only del nuevo registro:** `network.inspect` muestra listeners públicos **80 y 443**, y **no hay listener TCP/8443**; `system.health` indica ~3,26 GB de RAM disponibles y ~28,17 GB de disco libre, con `rebootRequired=true` (NO autoriza reinicio); `firewall.check` bajo nftables para regla exacta de entrada TCP/8443 informa **`present=false`**, lo que **no prueba** por sí solo denegación ni accesibilidad externa. Las redes y servicios en ejecución son preexistentes y no se han tocado ni inspeccionado a nivel de contenedor. No ejecutar cambio global del firewall ni reiniciar el host/proxy de otros proyectos.
+
+**Pruebas del [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59):** la rama funcional `40f11f34` completó [Sabora CI #43511025053](https://github.com/jdlc86/CartaViva/actions/runs/43511025053) con `validate=SUCCESS` y `web-publication=SUCCESS`, [Bootstrap #43511025070](https://github.com/jdlc86/CartaViva/actions/runs/43511025070) `generate-lockfile=SUCCESS` y [UI #43511025160](https://github.com/jdlc86/CartaViva/actions/runs/43511025160) `functional-ui-gate=SUCCESS`; visual final y CV005+B2 opt-in SKIPPED. El PR sigue Draft y sin desplegar.
+
+**Siguiente puerta:** definir identidad/ruta/ACL Sabora-only y red de entrada filtrada, confirmar permisos específicos del propietario para instalación **solo de Sabora** y para integración PR, y establecer plan de recuperación externa y dependencias SQL aparte. El hecho de que Gateway permita acceder al VPS no constituye autorización para consumir secretos o modificarlo. **NO se consumieron secretos, ni se crearon ficheros, reglas, redes o contenedores en VPS. Fleetia sin intervención.**
+
+### S39-19 — certificado Origin CA instalado en ruta exclusiva Sabora (14-11-2026)
+
+**Autorización:** el propietario autorizó «Okk adelante» para **preparar e instalar** exclusivamente el certificado Sabora; no autorizó iniciar contenedores, abrir puertos, desplegar PWA/API, ejecutar SQL, fusionar PR ni afectar a Fleetia.
+
+Mediante Gateway del VPS `146.59.145.64` (registro `srv_01M7CEC20000XZSVEGP0EB76DY`) se verificó que UID/GID 10001 estaban libres, se creó exclusivamente el grupo `sabora` GID 10001 y usuario `sabora` UID 10001, contraseña bloqueada, shell `/usr/sbin/nologin`, sin home, y directorios nuevos `/srv/sabora`, `/srv/sabora/tls` con dueño `sabora:sabora`, modo **0700**. No se modificaron directorios preexistentes ajenos. Dos valores secretos Gateway `sabora-origin-cert`/`sabora-origin-key` (un solo uso) se consumieron mediante `write_secret_file`, creando `/srv/sabora/tls/origin.crt` y `origin.key`, ficheros normales dueño UID/GID 10001, modo **0400**, sin revelar ni registrar el contenido.
+
+`inspect_certificate_file` y comprobación local con OpenSSL sobre el servidor verificaron certificado **Cloudflare Origin CA**, solo SAN `sabora.allaiso.com` y `gestion-sabora.allaiso.com`, vigencia **13-11-2026 21:37 UTC a 09-11-2041 21:37 UTC**, y **clave privada correspondiente** mediante comparación SPKI. La prueba local devolvió PASS y no imprimió secreto. La validez y lectura dentro de un contenedor, Cloudflare Full (strict), firewalls y acceso HTTP público **no han sido probados**. Tras este hito, TCP/8443 seguía libre y los puertos 80/443 seguían ocupados, sin reinicios ni despliegue.
+
+**Runbook [S38 §3B, Estado S39-19](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md)** actualizado en [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59); no se integra automáticamente en main.
+
+### S39-20 — ACL instaladas y acceso a los secretos verificado sin reinicios (14-11-2026)
+
+El propietario autorizó explícitamente «Instala ACL» después de recibir el diagnóstico de herramienta ausente. Se inspeccionó el paquete `acl` como no instalado, candidato `2.3.2-2`, y se validó una operación `package.install` en simulación. Luego Gateway instaló **únicamente `acl=2.3.2-2`** con APT, sin `upgrade`, `autoremove` ni refresco de repositorios. La transacción informó **0 paquetes actualizados, 1 nuevo, 0 eliminados**, ejecutando solo el trigger habitual de `man-db`. `needrestart` anunció **reinicios de servicios diferidos** (entre ellos `docker.service`), no efectuados; no se reinició ningún contenedor, servicio ni host. APT es global al VPS compartido, pero no se modificó ningún recurso de aplicaciones ajenas. La instalación está verificada por `package.inspect` (ii, 2.3.2-2).
+
+Se ejecutó `file.acl.get` **en solo lectura** sobre cuatro rutas exclusivas Sabora y se observaron solo **tres entradas ACL de acceso por recurso, sin entradas nominativas añadidas**:
+- Directorios `/srv/sabora`, `/srv/sabora/tls`: `user::rwx`, `group::---`, `other::---` (**0700**).
+- Archivos `origin.crt`, `origin.key`: `user::r--`, `group::---`, `other::---` (**0400**).
+El superusuario del host conserva su autoridad técnica inherente. `system.health` confirma **boot ID invariable** y **0 unidades fallidas**; `network.inspect` confirma 80/443 en escucha y **8443 sin listener**. Este hito cierra la comprobación ACL antes bloqueada por utilidad ausente, pero no demuestra protección dentro de contenedores ni aislamiento integral de las redes.
+
+**Estado:** certificado real instalado y verificado como par, permisos del host revisados; **Sabora sigue sin desplegar**, y permanecen pendientes permisos específicos para red/ingress y aplicación, el respaldo externo restaurable, SQL/roles/99 migraciones y la aceptación visual. [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) sigue sin merge. El runbook de la rama contiene [Estado S39-20](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md).
+
 ## 2. Prioridad y orden de la próxima intervención (sin repetir trabajos)
 
 1. **Resolver PR #59** como decisión normativa concreta: contrastar su diff con contratos existentes; pedir decisión de integración separada; no atribuirle vigencia hasta merge confirmado y sincronización de referencias. No duplicar la propuesta ni crear nuevo runbook.
