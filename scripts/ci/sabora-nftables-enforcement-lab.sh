@@ -102,19 +102,10 @@ ip netns exec "$rtr" sysctl -qw net.ipv6.conf.all.forwarding=1
 serve(){
  local namespace="$1" address="$2" port="$3"
  if [[ "$address" == *:* ]]; then
-  ip netns exec "$namespace" python3 -c '
-import socket,sys
-server=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-server.bind((sys.argv[1],int(sys.argv[2])))
-server.listen(8)
-while True:
- connection,_=server.accept()
- try:
-  connection.recv(8192)
-  connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
- finally:
-  connection.close()
+  ip netns exec "$namespace" "$SABORA_NODE_BIN" -e '
+const http=require("node:http");
+const server=http.createServer((_request,response)=>{response.writeHead(200);response.end("ok");});
+server.listen({host:process.argv[1],port:Number(process.argv[2]),ipv6Only:true});
 ' "$address" "$port" >/dev/null 2>&1 &
  else
   ip netns exec "$namespace" python3 -m http.server "$port" --bind "$address" >/dev/null 2>&1 &
