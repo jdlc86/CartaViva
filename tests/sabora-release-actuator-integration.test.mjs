@@ -84,7 +84,7 @@ test('M6 integrated dry lab: signed release -> 4 frames -> guarded network/evide
   const compose=()=>({project:'sabora',releaseSha:sha,
    services:[...SABORA_RELEASE_SCOPE.services],
    publicTcpPorts:['146.59.145.64:8443'],
-   loopbackTcpPorts:['127.0.0.1:4100'],
+   loopbackTcpPorts:[],
    externalNetworks:['sabora_ingress_filtered','sabora_egress_filtered'],
    internalNetwork:'sabora_sabora_runtime_internal',
    unsafeOptionsPresent:false,unknownServicesPresent:false,healthchecksEnabled:true});

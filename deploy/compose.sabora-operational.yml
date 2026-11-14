@@ -15,7 +15,9 @@ services:
       SABORA_OPERATIONAL_MANIFEST_FILE: /run/sabora/activation.json
       SABORA_OPERATIONAL_SECRETS_DIR: /run/secrets/sabora
       SABORA_OPERATIONAL_EGRESS_POLICY_FILE: /run/sabora/egress-policy.json
-    ports: ['127.0.0.1:4100:4100']
+    # The API is intentionally not published on the host. The web service
+    # reaches api:4100 over the internal runtime bridge and is the sole
+    # externally reachable application entrypoint.
     networks: [sabora_runtime_internal]
     volumes:
       - type: bind

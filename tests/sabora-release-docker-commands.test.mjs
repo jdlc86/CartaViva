@@ -26,8 +26,7 @@ test('Sabora-only host command plan: full immutable image/compose/3-services, de
  const service=(name,network,image,ports)=>({image:'sabora-'+image+':'+sha,
   read_only:true,cap_drop:['ALL'],networks:Object.fromEntries(network.map(x=>[x,null])),
   ports,healthcheck:{test:['CMD','true']}});
- const api=service('api',['sabora_runtime_internal'],'api',
-  [{target:4100,published:'4100',host_ip:'127.0.0.1',protocol:'tcp'}]);
+ const api=service('api',['sabora_runtime_internal'],'api',[]);
  const gate=service('sabora-egress',['sabora_runtime_internal','sabora_egress_allowlisted'],'api',[]);
  const web=service('web',['sabora_runtime_internal','sabora_ingress_filtered'],'web',
   [{target:8443,published:'8443',host_ip:'146.59.145.64',protocol:'tcp'}]);
@@ -43,6 +42,8 @@ test('Sabora-only host command plan: full immutable image/compose/3-services, de
   {...cfg,services:{...cfg.services,unrelated:api}},
   {...cfg,services:{...cfg.services,web:{...web,privileged:true}}},
   {...cfg,services:{...cfg.services,web:{...web,ports:[{...web.ports[0],host_ip:'0.0.0.0'}]}}},
+  {...cfg,services:{...cfg.services,api:{...api,ports:[{target:4100,published:'4100',
+   host_ip:'127.0.0.1',protocol:'tcp'}]}}},
   {...cfg,services:{...cfg.services,api:{...api,networks:{...api.networks,foreign:null}}}},
   {...cfg,networks:{...cfg.networks,sabora_egress_allowlisted:{...cfg.networks.sabora_egress_allowlisted,external:false}}}
  ])assert.throws(()=>inspectResolvedSaboraCompose(bad,sha),/sabora_docker_command_stop:/);

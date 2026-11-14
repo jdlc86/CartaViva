@@ -159,7 +159,6 @@ services:
   api:
     command: ["node", "/app/server.mjs"]
     environment: {LAB_MODE: api}
-    ports: ["127.0.0.1:4100:4100"]
     networks: [sabora_runtime_internal]
     read_only: true
     tmpfs: [/tmp]
@@ -281,6 +280,9 @@ networks:
   assert.match(ingressRules,/br-234567890abc/);assert.match(egressRules,/br-34567890abcd/);
   const sockets=run('ss',['-H','-ltn']).stdout;
   if(running){
+   const apiBinding=dockerJson(['inspect',services.api])[0].NetworkSettings.Ports?.['4100/tcp'];
+   assert.equal(apiBinding??null,null);
+   assert.doesNotMatch(sockets,/(?:127\.0\.0\.1|0\.0\.0\.0):4100/);
    const binding=dockerJson(['inspect',services.web])[0].NetworkSettings.Ports['8443/tcp'];
    assert.deepEqual(binding,[{HostIp:'146.59.145.64',HostPort:'8443'}]);
   }else assert.doesNotMatch(sockets,/146\.59\.145\.64:8443/);
@@ -319,9 +321,14 @@ networks:
   },
   readiness:async({expectedOrigins})=>{
    assert.deepEqual(expectedOrigins,SABORA_RELEASE_SCOPE.origins);
-   const api=await eventually('api',()=>fetch('http://127.0.0.1:4100/ready').then(async response=>{
-    if(!response.ok)throw stop('api_status');return response.json();
-   }));
+   const webId=serviceContainers().web;
+   const apiResult=await eventually('api_private_runtime',async()=>{
+    const result=docker(['exec',webId,'node','-e',
+     "fetch('http://api:4100/ready').then(async r=>{console.log(JSON.stringify(await r.json()));process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"],
+    {allowFailure:true});
+    if(result.status!==0)throw stop('api_private_runtime_status');return result;
+   });
+   const api=JSON.parse(apiResult.stdout.trim());
    const client=JSON.parse(await eventually('client_https',()=>httpsProbe('sabora.allaiso.com')));
    const management=JSON.parse(await eventually('management_https',()=>httpsProbe('gestion-sabora.allaiso.com')));
    const egressId=serviceContainers()['sabora-egress'];

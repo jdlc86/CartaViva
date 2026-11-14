@@ -85,7 +85,7 @@ function checkComposeView(config,sha){
  if(!config||config.project!=='sabora'||config.releaseSha!==sha||
   !Array.isArray(config.services)||config.services.join('|')!==SABORA_RELEASE_SCOPE.services.join('|')||
   config.publicTcpPorts?.length!==1||config.publicTcpPorts[0]!=='146.59.145.64:8443'||
-  config.loopbackTcpPorts?.length!==1||config.loopbackTcpPorts[0]!=='127.0.0.1:4100'||
+  config.loopbackTcpPorts?.length!==0||
   config.externalNetworks?.join('|')!=='sabora_ingress_filtered|sabora_egress_filtered'||
   config.internalNetwork!=='sabora_sabora_runtime_internal'||
   config.unsafeOptionsPresent!==false||config.unknownServicesPresent!==false||

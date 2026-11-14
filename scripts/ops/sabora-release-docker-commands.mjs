@@ -67,8 +67,7 @@ export function inspectResolvedSaboraCompose(c,sha){
     networks(service.networks).slice().sort().join('|')!==allowed.slice().sort().join('|'))
    stop('unsafe_compose_service');
  }
- if(!Array.isArray(api.ports)||api.ports.length!==1||
-    !port(api.ports[0],'127.0.0.1',4100)||
+ if((api.ports??[]).length!==0||
     !Array.isArray(web.ports)||web.ports.length!==1||
     !port(web.ports[0],'146.59.145.64',8443)||
     (gate.ports??[]).length!==0||
@@ -86,7 +85,7 @@ export function inspectResolvedSaboraCompose(c,sha){
  return Object.freeze({project:'sabora',releaseSha:sha,
    services:[...SABORA_RELEASE_SCOPE.services],
    publicTcpPorts:['146.59.145.64:8443'],
-   loopbackTcpPorts:['127.0.0.1:4100'],
+   loopbackTcpPorts:[],
    externalNetworks:['sabora_ingress_filtered','sabora_egress_filtered'],
    internalNetwork:'sabora_sabora_runtime_internal',
    unsafeOptionsPresent:false,unknownServicesPresent:false,healthchecksEnabled:true});
