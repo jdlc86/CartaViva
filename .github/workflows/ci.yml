@@ -160,7 +160,7 @@ jobs:
             "$pkg/api.tar" "$pkg/web.tar" "$api_id" "$web_id" \
             "$pkg/operational.yml" "$pkg/web.yml" "$pkg/manifest.json"
       - name: Preserve release package for explicitly governed handoff (not backup)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
         uses: actions/upload-artifact@v4
         with:
           name: sabora-governed-release-package
