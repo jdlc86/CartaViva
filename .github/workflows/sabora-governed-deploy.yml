@@ -89,11 +89,13 @@ jobs:
           RELEASE_OPERATION: ${{ inputs.operation }}
           AUTHORIZATION_ID: ${{ steps.consent.outputs.authorization_id }}
           AUTHORIZATION_HASH: ${{ steps.consent.outputs.authorization_sha256 }}
+          SABORA_APPROVAL_JSON_B64: ${{ secrets.SABORA_APPROVAL_JSON_B64 }}
+          SABORA_APPROVAL_SIG_B64: ${{ secrets.SABORA_APPROVAL_SIG_B64 }}
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          [[ -n "$SABORA_SSH_KEY_B64" && -n "$SABORA_SSH_KNOWN_HOSTS_B64" ]]
+          [[ -n "$SABORA_SSH_KEY_B64" && -n "$SABORA_SSH_KNOWN_HOSTS_B64" && -n "$SABORA_APPROVAL_JSON_B64" && -n "$SABORA_APPROVAL_SIG_B64" ]]
           key="$RUNNER_TEMP/sabora-ssh-key"
           known="$RUNNER_TEMP/sabora-known-hosts"
           trap 'rm -f "$key" "$known"' EXIT
@@ -101,7 +103,11 @@ jobs:
           printf '%s' "$SABORA_SSH_KNOWN_HOSTS_B64" | base64 --decode > "$known"
           # This login must be bound on the host to a root-owned, Sabora-only
           # forced command; it MUST NOT have a normal shell or Docker group.
-          ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
-            -i "$key" -p 22 sabora-release@146.59.145.64 \
-            "sabora-release-v1 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH"
+          # Host agent must independently verify the signed payload and keep
+          # a one-use audit ledger; argv alone is never sufficient consent.
+          printf '{"approvalB64":"%s","signatureB64":"%s"}\\n' \
+            "$SABORA_APPROVAL_JSON_B64" "$SABORA_APPROVAL_SIG_B64" |
+            ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
+              -i "$key" -p 22 sabora-release@146.59.145.64 \
+              "sabora-release-v1 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH $GITHUB_RUN_ID"
