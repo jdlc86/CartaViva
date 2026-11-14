@@ -170,6 +170,16 @@ Debe devolver `PASS` sin mostrar ningún secreto; verifica que ambos archivos so
 
 **Puertas que continúan:** red de ingress filtrada y firewall independiente, aceptación/despliegue del PR, copia externa restaurada, Supabase SQL/migraciones y verificación funcional HTTPS real. La prueba ACL acredita únicamente control de acceso en el host para estas cuatro rutas, no los permisos dentro de contenedores ni la seguridad de otros proyectos.
 
+## 3C. Despliegue gobernado y automatizable — S39-21, NO activado
+
+El propietario exige el **mecanismo gobernado** (14-11-2026); véase la [propuesta normativa de despliegue y red V1](../architecture/SABORA_GOVERNED_RELEASE_V1.md) en el **mismo PR #59**. El artefacto [`sabora-governed-deploy.yml`](../../.github/workflows/sabora-governed-deploy.yml) utiliza `workflow_dispatch` exclusivamente en `main` y distingue `plan`, `deploy`, `rollback` (solo aplicación), con concurrency única. `plan` es inspección de SHA y CI, **sin operación VPS**. El flujo `execute` permanece **NO OPERATIVO** por ausencia de agente root-owned Sabora `forced-command`, cuenta SSH específica, clave de firma/consentimiento, entrega de imágenes por digest y evidencias externas.
+
+**Puertas obligatorias antes de configurar el workflow para actuar:** integración de PR con autorización separada, revisión independiente de código, plan de recuperación real, evidencia DBA/SQL/99 migraciones, interfaz y dos PWA, firewall ingress/egress realmente validado, alertas receptor y observabilidad. La autorización para cada despliegue no puede deducirse de la CI ni del permiso para crear una red o instalar ACL. El operador debe proveer una autorización Ed25519 firmada, ligada a SHA, host `146.59.145.64`, 3 servicios, 2 orígenes, operación y ventana de una hora, sin la clave privada de firma en GitHub, CI, VPS ni ChatGPT. El agente futuro revalidará las evidencias y consumirá el ID de autorización **una sola vez**. No se puede confiar en reviewers de environment sin comprobar soporte y configuración para el repositorio privado concreto.
+
+**Red comprobada 14-11-2026:** Gateway confirmó rutas IPv4 `172.17.0.0/16` y `172.18.0.0/16`, 8443 libre, nftables. El intento `docker.create_network dry_run` para `sabora_ingress_filtered` `172.28.240.0/24` devolvió `wouldChange=true, changed=false`: **no existe una red nueva ni un firewall Sabora aplicado**. La planificación de nftables en el PR es exclusivamente un candidato de tabla `inet sabora_ingress_guard` con rangos Cloudflare explícitos y bloqueo de conexiones nuevas ajenas, que requiere evaluación de conectividad/nft en laboratorio y verificación del modo de firewall del proveedor antes de actuar; no cambiar cadenas Docker, reglas generales o redes de terceros. Mantener STOP de red.
+
+**Control visual:** ningún SHA/governance workflow permite sustituir el diseño aprobado ni declarar aceptación de las dos PWA sin prueba real. No iniciar servicios mientras el backend operativo no tenga `/ready=200`, backup externo restaurado y permisos SQL verificados.
+
 ## 4. Bootstrap y smoke controlado
 
 1. Tras autorización específica y comprobar que no hay otro arranque Sabora
