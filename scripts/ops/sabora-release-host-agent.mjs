@@ -72,7 +72,7 @@ export function verifyHostEvidence(receipt,artifacts){
  }
  return verified;
 }
-export function verifyReleaseBundle(receipt,manifest,files,manifestBytes){
+export function verifyReleaseBundleManifest(receipt,manifest,manifestBytes){
  if((!Buffer.isBuffer(manifestBytes)&&typeof manifestBytes!=='string')||
    !SHA64.test(receipt?.bundleManifestSha256)||
    hash(manifestBytes)!==receipt.bundleManifestSha256)stop('signed_bundle_manifest_mismatch');
@@ -86,6 +86,21 @@ export function verifyReleaseBundle(receipt,manifest,files,manifestBytes){
  !Array.isArray(manifest.services)||manifest.services.join('|')!==SABORA_RELEASE_SCOPE.services.join('|')||
  !keys(manifest.images,['api','web'])||
  !keys(manifest.compose,['operational','web']))stop('invalid_release_bundle');
+ for(const n of ['api','web']){
+  const im=manifest.images[n];
+  if(!keys(im,['tag','imageId','archiveSha256'])||
+   im.tag!=='sabora-'+n+':'+receipt.releaseSha||
+   !HEX_ID.test(im.imageId)||!SHA64.test(im.archiveSha256))stop('image_bundle_scope:'+n);
+ }
+ for(const n of ['operational','web']){
+  if(!SHA64.test(manifest.compose[n]))stop('compose_hash_invalid:'+n);
+ }
+ return Object.freeze({releaseSha:manifest.releaseSha,images:manifest.images,
+  compose:manifest.compose,verifiedOnlyAsBytes:true,authorizedToDeploy:false});
+}
+
+export function verifyReleaseBundle(receipt,manifest,files,manifestBytes){
+ verifyReleaseBundleManifest(receipt,manifest,manifestBytes);
  const checks=[];
  for(const n of ['api','web']){
   const im=manifest.images[n];
