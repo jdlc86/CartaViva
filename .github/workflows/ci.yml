@@ -110,3 +110,93 @@ jobs:
           done
           docker logs "$id"
           exit 1
+
+  web-publication:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate two-PWA HTTPS publication with fail-closed Sabora-only Compose
+        env:
+          SABORA_OPERATIONAL_MANIFEST_FILE: /tmp/sabora-ci-no-manifest.json
+          SABORA_OPERATIONAL_SECRETS_DIR: /tmp/sabora-ci-no-secrets
+          SABORA_EGRESS_POLICY_FILE: /tmp/sabora-ci-no-egress.json
+          SABORA_EGRESS_ALLOWLIST_NETWORK: sabora-ci-preprovisioned-egress-unavailable
+          SABORA_RESTAURANT_CODE: SABORA
+          SABORA_CLIENT_HOST: client.sabora.test
+          SABORA_MANAGEMENT_HOST: management.sabora.test
+          SABORA_INGRESS_BIND_IP: 127.0.0.2
+          SABORA_WEB_TLS_DIRECTORY: /tmp/sabora-ci-no-tls
+          SABORA_INGRESS_FILTERED_NETWORK: sabora-ci-ingress-unavailable
+        run: |
+          docker compose --project-name sabora --file deploy/compose.sabora-operational.yml --file deploy/compose.sabora-web.yml config --quiet
+      - name: Build and exercise both published PWAs with real TLS and API proxy
+        run: |
+          docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
+          bash scripts/ci/sabora-web-publishing-smoke.sh
+      - name: Enforce and roll back strict nftables inside disposable network namespaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v nft >/dev/null 2>&1 || ! command -v ip >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends nftables iproute2
+          fi
+          export SABORA_NODE_BIN="$(command -v node)"
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,SABORA_NODE_BIN \
+            bash scripts/ci/sabora-nftables-enforcement-lab.sh
+      - name: Publish disposable nftables enforcement and rollback receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-nftables-enforcement-lab
+          path: ${{ runner.temp }}/sabora-network-enforcement/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Exercise the bounded release actuator with real Docker and inspected isolation
+        env:
+          SABORA_DISPOSABLE_RELEASE_LAB: explicitly-authorized-ci
+        shell: bash
+        run: |
+          node_bin="$(command -v node)"
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,GITHUB_SHA,SABORA_DISPOSABLE_RELEASE_LAB \
+            "$node_bin" scripts/ci/sabora-release-real-docker-lab.mjs
+      - name: Publish real disposable release-driver receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-real-docker-release-driver-lab
+          path: ${{ runner.temp }}/sabora-release-driver-lab/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Prepare immutable two-image package on main only (no VPS)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
+        env:
+          SABORA_APPROVED_RESTAURANT_CODE: ${{ vars.SABORA_APPROVED_RESTAURANT_CODE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="$RUNNER_TEMP/sabora-release-package"
+          mkdir -p "$pkg"
+          docker build -f deploy/Dockerfile.api -t "sabora-api:$GITHUB_SHA" .
+          # CI smoke uses SABORA as a fixture; operational bundles must use
+          # the explicitly approved, non-secret public restaurant code.
+          docker build --build-arg SABORA_RESTAURANT_CODE="$SABORA_APPROVED_RESTAURANT_CODE" \
+            -f deploy/Dockerfile.web -t "sabora-web:$GITHUB_SHA" .
+          docker save -o "$pkg/api.tar" "sabora-api:$GITHUB_SHA"
+          docker save -o "$pkg/web.tar" "sabora-web:$GITHUB_SHA"
+          cp deploy/compose.sabora-operational.yml "$pkg/operational.yml"
+          cp deploy/compose.sabora-web.yml "$pkg/web.yml"
+          api_id="$(docker image inspect --format '{{.Id}}' "sabora-api:$GITHUB_SHA")"
+          web_id="$(docker image inspect --format '{{.Id}}' "sabora-web:$GITHUB_SHA")"
+          node scripts/ci/sabora-release-bundle.mjs "$GITHUB_SHA" \
+            "$pkg/api.tar" "$pkg/web.tar" "$api_id" "$web_id" \
+            "$pkg/operational.yml" "$pkg/web.yml" "$pkg/manifest.json"
+      - name: Preserve release package for explicitly governed handoff (not backup)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-governed-release-package
+          path: ${{ runner.temp }}/sabora-release-package/
+          retention-days: 7
+          if-no-files-found: error
