@@ -1,0 +1,69 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
+ SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
+
+const fullSha='a'.repeat(40),hash='b'.repeat(64);
+const {privateKey,publicKey}=generateKeyPairSync('ed25519');
+const pub=publicKey.export({format:'pem',type:'spki'});
+const now=Date.parse('2026-11-14T09:00:00.000Z');
+function approval(overrides={}){
+ return {schema:'sabora-governed-release/v1',repository:'jdlc86/CartaViva',
+  operation:'deploy',releaseSha:fullSha,authorizationId:'SABORA-RELEASE-20261114',
+  approvedAt:'2026-11-14T08:45:00.000Z',expiresAt:'2026-11-14T09:45:00.000Z',
+  server:'146.59.145.64',project:'sabora',port:8443,
+  origins:[...SABORA_RELEASE_SCOPE.origins],services:[...SABORA_RELEASE_SCOPE.services],
+  evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,hash])),...overrides};
+}
+function signed(value){const raw=stableStringify(value);return [raw,sign(null,Buffer.from(raw),privateKey).toString('base64')];}
+function verify(value){const [raw,sig]=signed(value);return verifyReleaseAuthorization(raw,sig,pub,{operation:'deploy',sha:fullSha},now);}
+
+test('complete governed Sabora release: plan scope, signed attestations, immutable actions and negatives',async()=>{
+ const plan=planRelease('deploy',fullSha);
+ assert.equal(plan.automaticallyAuthorized,false);
+ assert.equal(plan.serverChanged,false);
+ assert.deepEqual(plan.scope.services,['sabora-egress','api','web']);
+ assert.deepEqual(plan.scope.origins,SABORA_RELEASE_SCOPE.origins);
+ assert.equal(plan.scope.port,8443);
+ const receipt=verify(approval());
+ assert.equal(receipt.releaseSha,fullSha);
+ assert.equal(receipt.authorizationId,'SABORA-RELEASE-20261114');
+ assert.match(receipt.authorizationSha256,/^[0-9a-f]{64}$/);
+ for(const candidate of [
+  approval({server:'other.example.com'}),approval({project:'fleetia'}),
+  approval({port:443}),approval({releaseSha:'c'.repeat(40)}),
+  approval({operation:'rollback'}),approval({origins:['https://fake.test']}),
+  approval({services:['web','api','other']}),approval({expiresAt:'2026-11-14T08:00:00.000Z'}),
+  approval({approvedAt:'2026-11-14T09:05:00.000Z'}),
+  approval({evidence:{...approval().evidence,externalRestoreSha256:'0'.repeat(64)}}),
+  approval({evidence:{...approval().evidence,ingressIsolationSha256:''}})
+ ]) assert.throws(()=>verify(candidate),/sabora_release_stop:/);
+ const [raw,sig]=signed(approval());
+ assert.throws(()=>verifyReleaseAuthorization(raw,sig,pub,{operation:'rollback',sha:fullSha},now));
+ assert.throws(()=>verifyReleaseAuthorization(raw,sig,generateKeyPairSync('ed25519').publicKey.export({format:'pem',type:'spki'}),{operation:'deploy',sha:fullSha},now));
+ assert.throws(()=>verifyReleaseAuthorization(' '+raw,sig,pub,{operation:'deploy',sha:fullSha},now));
+ assert.throws(()=>planRelease('remove',fullSha),/invalid_operation/);
+ const good=['validate','web-publication','generate-lockfile','functional-ui-gate'].map(name=>({name,status:'completed',conclusion:'success',head_sha:fullSha}));
+ const ok=async()=>({ok:true,json:async()=>({total_count:good.length,check_runs:good})});
+ assert.equal((await verifyGithubChecks(fullSha,'test-token-for-ci-check',ok)).length,4);
+ await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:3,check_runs:good.slice(1)})})),/ci_not_success:validate/);
+ await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='web-publication'?{...x,conclusion:'failure'}:x)})})),/ci_not_success:web-publication/);
+});
+
+test('release workflow requires explicit dispatch, signed gate, forced host identity, no auto deployment',()=>{
+ const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+ assert.match(workflow,/workflow_dispatch:/);
+ assert.doesNotMatch(workflow,/^  push:|^  pull_request:|^  schedule:|pull_request_target:/m);
+ assert.match(workflow,/github.ref == 'refs\/heads\/main'/);
+ assert.match(workflow,/git merge-base --is-ancestor/);
+ assert.match(workflow,/cancel-in-progress: false/);
+ assert.match(workflow,/environment: sabora-live/);
+ assert.match(workflow,/sabora-release-governor\.mjs authorize/);
+ assert.match(workflow,/SABORA_RELEASE_AGENT_READY/);
+ assert.match(workflow,/StrictHostKeyChecking=yes/);
+ assert.match(workflow,/sabora-release@146\.59\.145\.64/);
+ assert.doesNotMatch(workflow,/docker (?:compose|run|stop|restart|rm)|prune|systemctl|sudo /);
+ assert.doesNotMatch(workflow,/ssh\s+[^\n]*ubuntu@|root@146\.59/);
+});

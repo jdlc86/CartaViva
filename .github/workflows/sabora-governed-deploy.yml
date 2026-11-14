@@ -1,0 +1,107 @@
+name: Sabora governed release (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Plan, deploy or application-only rollback of exactly one Sabora release
+        type: choice
+        required: true
+        options: [plan, deploy, rollback]
+      release_sha:
+        description: Exact 40-character merged Git commit SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  checks: read
+concurrency:
+  group: sabora-exclusive-vps-release
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      approved_sha: ${{ steps.scope.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate exact SHA and ancestry in main
+        id: scope
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin main
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+      - name: Verify immutable release plan and integrated CI
+        env:
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_SHA: ${{ steps.scope.outputs.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/sabora-release-governor.mjs plan "$RELEASE_OPERATION" "$RELEASE_SHA"
+          node scripts/ci/sabora-release-governor.mjs check-ci "$RELEASE_OPERATION" "$RELEASE_SHA"
+  execute:
+    if: inputs.operation == 'deploy' || inputs.operation == 'rollback'
+    needs: verify
+    environment: sabora-live
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check signed owner consent and immutable evidence
+        id: consent
+        env:
+          SABORA_RELEASE_AGENT_READY: ${{ vars.SABORA_RELEASE_AGENT_READY }}
+          SABORA_APPROVER_PUBLIC_KEY_B64: ${{ vars.SABORA_APPROVER_PUBLIC_KEY_B64 }}
+          SABORA_APPROVAL_JSON_B64: ${{ secrets.SABORA_APPROVAL_JSON_B64 }}
+          SABORA_APPROVAL_SIG_B64: ${{ secrets.SABORA_APPROVAL_SIG_B64 }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ci/sabora-release-governor.mjs authorize "$RELEASE_OPERATION" "$RELEASE_SHA"
+      - name: Invoke only a preinstalled forced-command Sabora host agent
+        env:
+          SABORA_SSH_KEY_B64: ${{ secrets.SABORA_SSH_KEY_B64 }}
+          SABORA_SSH_KNOWN_HOSTS_B64: ${{ secrets.SABORA_SSH_KNOWN_HOSTS_B64 }}
+          RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          AUTHORIZATION_ID: ${{ steps.consent.outputs.authorization_id }}
+          AUTHORIZATION_HASH: ${{ steps.consent.outputs.authorization_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ -n "$SABORA_SSH_KEY_B64" && -n "$SABORA_SSH_KNOWN_HOSTS_B64" ]]
+          key="$RUNNER_TEMP/sabora-ssh-key"
+          known="$RUNNER_TEMP/sabora-known-hosts"
+          trap 'rm -f "$key" "$known"' EXIT
+          printf '%s' "$SABORA_SSH_KEY_B64" | base64 --decode > "$key"
+          printf '%s' "$SABORA_SSH_KNOWN_HOSTS_B64" | base64 --decode > "$known"
+          # This login must be bound on the host to a root-owned, Sabora-only
+          # forced command; it MUST NOT have a normal shell or Docker group.
+          ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
+            -i "$key" -p 22 sabora-release@146.59.145.64 \
+            "sabora-release-v1 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH"
