@@ -231,3 +231,9 @@ resultado de rollback. Separar siempre:
 
 Sin las cuatro capas no declarar GO. Actualizar continuidad y tablero sólo como
 hito integral, manteniéndolos como seguimiento no normativo.
+
+## S40-1 — paquete de release y verificador del lado del host (14-11-2026, solo candidato GitHub)
+
+Tras S39-21, el [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) contiene verificador de autorización Ed25519 independiente del runner, comprobación de seis expedientes por hash y ámbito, paquete API+dos PWA por imágenes `api.tar`/`web.tar` con manifiesto y hashes Compose, y control de reutilización de autorización. El workflow limita el SHA de autorización al HEAD exacto de `main`; el paquete solo se generaría en el job `web-publication` tras un push a `main`, sin conexión al VPS y con retención temporal de 7 días. Ver norma propuesta [`SABORA_GOVERNED_RELEASE_V1.md`](../architecture/SABORA_GOVERNED_RELEASE_V1.md#5-avance-de-implementación-del-verificador-de-host-y-paquete-inmutable-14-11-2026).
+
+**STOP deliberado:** código de verificación en repo no implica instalación. La función actuadora sigue devolviendo STOP; no existen aún entrega gobernada de los tar al host, carga e inspección de IDs Docker, agente SSH root-owned instalado, examen material de redes egress/ingress y firewall ni rollback con ledger de versión operativa. No cambiar `SABORA_RELEASE_AGENT_READY` ni exponer usuario SSH, no crear contenedores ni tocar otro proyecto. Solo tras autorización separada y pruebas de denegación reales del aislamiento se instalaría el agente, nunca por estar verde la CI de la rama. No confundir `api.tar`/`web.tar` con backups ni publicar secretos en bundles.

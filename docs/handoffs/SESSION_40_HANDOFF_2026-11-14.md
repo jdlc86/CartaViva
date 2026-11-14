@@ -1,0 +1,19 @@
+# Sabora / CartaViva — continuidad operativa de la sesión 40 (2026-11-14)
+
+> **CONTEXTO, NO NORMATIVA NI AUTORIZACIÓN.** Requisitos y prohibiciones proceden de documentación normativa; confirmar siempre HEAD, CI y estado de proveedores antes de operar. [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). No repetir pruebas ni reabrir hitos anteriores sin regresión evidenciada.
+
+## Contexto heredado
+
+Leer [continuidad S39](SESSION_39_HANDOFF_2026-11-13.md), especialmente S39-19/20 sobre TLS/ACL Sabora y S39-21 sobre despliegue gobernado. Existe un solo [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) con propuesta normativa de doble copia, publicación HTTPS de cliente y gestión en TCP/8443 y candidato de automatización. `main` no contiene esos cambios; **no fusionar por deducción**. La solución en VPS debe ser enteramente independiente de Fleetia y de otros proyectos, sin detener ni reutilizar sus recursos.
+
+## S40-1 — preflight real de lectura y avance de cadena de release en GitHub
+
+- **Consultas externas realizadas solo lectura:** Gateway confirma VPS `146.59.145.64` accesible, TCP/8443 sin listener, 80/443 ocupados, ~3,27 GB RAM disponibles y ~28,16 GB disco libre, sin swap, ACL /srv/sabora/tls 0700 y origin.crt/key 0400. Regla exacta TCP/8443 no encontrada; su ausencia no decide por completo el efecto del firewall. Inspección exacta de `sabora_ingress_filtered` falló y no acredita existencia/red segura. No se cambió firewall, Docker, TLS ni recursos ajenos.
+- **Supabase restaurante `byhvmumqivmunkmomhup` read-only:** PostgreSQL 17.11 ACTIVE_HEALTHY, 0 migraciones, 0 esquemas/roles/logins Sabora. No se ejecutó DDL, exportación ni SQL operativo.
+- **CI de SHA previo `2a9dfafa`:** `validate`, `web-publication`, `generate-lockfile`, `functional-ui-gate` SUCCESS; `visual-final-acceptance` y CV005+B2 opcional SKIPPED. No atribuir esos resultados al SHA nuevo del PR.
+- **Cambio candidato GitHub (mismo PR):** commits [`abdc2074`](https://github.com/jdlc86/CartaViva/commit/abdc20743e28b018306af121d406960a9c55b669), [`593f1b50`](https://github.com/jdlc86/CartaViva/commit/593f1b50aa727a9a2045bf924f95fba509ac60d8) y [`b6294f48`](https://github.com/jdlc86/CartaViva/commit/b6294f48bd33522b09b18bf4e5cb4f9a7cd060a0): firma + evidencia del host, antireplay, paquete content-addressed API/web y dos Compose, cabeza exacta de main para release. Primera CI de `abdc2074` detectó fallo de flags de fichero en test integrado (1428/1429), corregido en `593f1b50`. **CI del SHA funcional final pendiente de veredicto al crear este documento**; verificar los 4 workflows y el job real antes de marcar PASS.
+- **Delimitación:** función actuadora de host sigue deteniendo operaciones; el paquete main-only no ha sido generado ni distribuido para un SHA fusionado. No existen SSH forced-command instalado, importación de imágenes con IDs comprobados, evidencia aislada de firewall/egress, rollback real, copia externa restaurada ni 99 migraciones. **NO-GO operativo.**
+
+## Próximo bloque integral
+
+Cierre técnico del paquete y verificaciones del SHA funcional. Después, diseñar/probar en entorno aislado el **actuador host**, evidencia de red de entrada y salida, canal de entrega de artefactos y reversión Sabora-only; contrastar con política y no usar Docker de VPS hasta permiso específico y aislamiento material. Resolver separadamente restauración externa y SQL Supabase antes de primera instalación. Actualizar tablero solo con hitos, no con comprobaciones repetidas. Las credenciales y certificados no se comparten por chat ni GitHub. Aceptación visual de dos PWA es posterior a instalación real.
