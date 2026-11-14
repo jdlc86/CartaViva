@@ -8,17 +8,22 @@ const CIDR=/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/(?:[0-9]|[12][0-9]|3[0-2])$/;
 function stop(reason){throw Error('sabora_live_isolation_stop:'+reason);}
 const exactly=(a,b)=>Array.isArray(a)&&a.length===b.length&&
  a.every((value,i)=>value===b[i]);
-function checkNet(n,name,kind,internal){
+function checkNet(n,name,kind,internal,phase){
+ const allowed=kind==='runtime'?['sabora-egress','api','web']:
+   kind==='ingress'?['web']:['sabora-egress'];
+ const attachments=n?.attachedServices;
+ const safe=Array.isArray(attachments)&&new Set(attachments).size===attachments.length&&
+   attachments.every(v=>allowed.includes(v))&&
+   (phase==='preflight'||exactly(attachments,allowed));
  if(!n||n.name!==name||n.project!=='sabora'||n.kind!==kind||
     n.driver!=='bridge'||n.internal!==internal||
     n.attachable!==false||n.ipv6!==false||
-    !RFC.test(n.bridge)||!CIDR.test(n.cidr)||
-    !exactly(n.attachedServices,kind==='runtime'?
-      ['sabora-egress','api','web']:kind==='ingress'?['web']:['sabora-egress']))
+    !RFC.test(n.bridge)||!CIDR.test(n.cidr)||!safe)
    stop('untrusted_'+kind+'_network');
  return n.bridge;
 }
-export function assertLiveSaboraIsolation(witness,now=Date.now()){
+export function assertLiveSaboraIsolation(witness,now=Date.now(),phase='running'){
+ if(!['preflight','running'].includes(phase))stop('invalid_inspection_phase');
  if(!witness||witness.schema!=='sabora-live-isolation/v1'||
     witness.project!=='sabora'||witness.source!=='host-readonly-inspector'||
     !Number.isFinite(Date.parse(witness.observedAt))||
@@ -28,9 +33,9 @@ export function assertLiveSaboraIsolation(witness,now=Date.now()){
  if(!network||!network.runtime||!network.ingress||!network.egress)
   stop('missing_networks');
  const bridges=[
-  checkNet(network.runtime,'sabora_sabora_runtime_internal','runtime',true),
-  checkNet(network.ingress,'sabora_ingress_filtered','ingress',false),
-  checkNet(network.egress,'sabora_egress_filtered','egress',false)
+  checkNet(network.runtime,'sabora_sabora_runtime_internal','runtime',true,phase),
+  checkNet(network.ingress,'sabora_ingress_filtered','ingress',false,phase),
+  checkNet(network.egress,'sabora_egress_filtered','egress',false,phase)
  ];
  if(new Set(bridges).size!==3||new Set([
   network.runtime.cidr,network.ingress.cidr,network.egress.cidr]).size!==3)

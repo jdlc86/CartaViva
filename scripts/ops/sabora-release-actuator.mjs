@@ -36,12 +36,16 @@ async function hashStageFile(file,maxSize){
 }
 export async function verifyStagedSaboraBundle(stage,root,receipt){
  if(!stage||stage.stage!=='verified-only'||stage.authorizedToDeploy!==false||
-  stage.authorizationId!==receipt?.authorizationId||
+  (stage.authorizationId!==receipt?.authorizationId&&!stage.retainedPreviouslyHealthy)||
   stage.releaseSha!==receipt?.releaseSha||
   stage.bundleManifestSha256!==receipt?.bundleManifestSha256)
   stop('untrusted_stage_receipt');
  protectedStage(stage.location,root);
  const paths=ITEMS.map(n=>join(stage.location,n));
+ const metadata=lstatSync(paths[4]);
+ if(!metadata.isFile()||metadata.isSymbolicLink()||metadata.nlink!==1||
+    metadata.uid!==process.getuid()||(metadata.mode&0o077)!==0||
+    metadata.size<20||metadata.size>65536)stop('unsafe_manifest_file');
  const manifestBytes=readFileSync(paths[4]);
  let manifest;
  try{manifest=JSON.parse(manifestBytes.toString('utf8'))}
@@ -57,7 +61,9 @@ export async function verifyStagedSaboraBundle(stage,root,receipt){
 }
 function checkScope(plan,receipt,mode){
  if(!receipt||receipt.operation!==mode||!SHA.test(receipt.releaseSha)||
-  receipt.project==='other'||!EVIDENCE_KEYS.every(k=>typeof receipt.evidence?.[k]==='string'))
+  !/^[0-9a-f]{64}$/.test(receipt.authorizationSha256)||
+  !/^[0-9a-f]{64}$/.test(receipt.bundleManifestSha256)||
+  !EVIDENCE_KEYS.every(k=>/^[0-9a-f]{64}$/.test(receipt.evidence?.[k]??'')))
   stop('invalid_signed_scope');
  if(plan?.operation!==mode||plan?.project!==SABORA_RELEASE_SCOPE.project||
     !Array.isArray(plan.services)||plan.services.join('|')!==SABORA_RELEASE_SCOPE.services.join('|')||
@@ -97,7 +103,7 @@ export async function executeScopedSaboraRelease({
  assertDriver(driver);
  if(receipt?.operation!==operation)stop('signed_operation_mismatch');
  const evidence=verifiedEvidence(receipt,await driver.getEvidence(receipt));
- const network=assertLiveSaboraIsolation(await driver.inspectIsolation(),now);
+ const network=assertLiveSaboraIsolation(await driver.inspectIsolation(),now,'preflight');
  const history=await driver.readHistory();
  let bundle,rollbackPlan;
  if(operation==='deploy'){
@@ -141,13 +147,15 @@ export async function executeScopedSaboraRelease({
    noDependencies:true,noBuild:true,noPull:true});
  const health=await driver.readiness({plan,bundle,expectedOrigins:SABORA_RELEASE_SCOPE.origins});
  if(!health||health.apiReady!==true||health.clientHttps!==true||
-  health.managementHttps!==true||health.alertReception===false)
+  health.managementHttps!==true||health.alertReception!==true)
   stop('operational_readiness_not_demonstrated');
  // Recheck exclusive network state AFTER launch: a green health is insufficient.
- assertLiveSaboraIsolation(await driver.inspectIsolation(),Date.now());
+ assertLiveSaboraIsolation(await driver.inspectIsolation(),now,'running');
  const record=await driver.commitResult({receipt,operation,previous:history?.activeReleaseSha??null,
    manifestSha256:receipt.bundleManifestSha256,evidenceVerified:evidence.length,
    releaseSha:receipt.releaseSha,readiness:health});
+ if(record?.durablyRecorded!==true||record.releaseSha!==receipt.releaseSha||
+    record.operation!==operation)stop('release_ledger_not_committed');
  return Object.freeze({releaseSha:receipt.releaseSha,operation,
   status:'lab-executor-complete',receiptId:receipt.authorizationId,
   proof:record,changed:true,previousRelease:history?.activeReleaseSha??null});
