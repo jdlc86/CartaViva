@@ -164,6 +164,16 @@ El propietario aportó una captura del panel **Cloudflare → allaiso.com → DN
 
 **Sin cambios operativos:** no se consumieron credenciales, no se escribieron ficheros en VPS, no se desplegó ni se cambió SQL, firewall, Docker, Cloudflare o Fleetia. Mantener separadas las puertas de autorización para VPS, recuperación/backup, Supabase/99 migraciones y aceptación visual. El siguiente paso es reconciliar acceso a Gateway, **no** abrir otro PR ni repetir generación de certificados sin necesidad.
 
+### S39-18 — cuenta Gateway con acceso simultáneo a servidor y secretos, preflight sin cambios (14-11-2026)
+
+**Bloqueo anterior S39-17 parcialmente resuelto:** la conexión actual de Gateway ve simultáneamente **dos secretos personales one_time** `sabora-origin-cert` y `sabora-origin-key` (`lastUsedAt=null`, hasta aproximadamente 14-11-2026 22:42–22:43 Europe/Madrid) y **un servidor Linux ready**, `vps-4a8baaf7.vps.ovh.net` ID **`srv_01M7CEC20000XZSVEGP0EB76DY`**, IP pública **`146.59.145.64`**, SSH `ubuntu:22`. El registro anterior de ese VPS era `FLEETIA` ID `srv_01M3M9E39EJJTZBM89JEC9AKR4`; la identidad Gateway cambió. La IP, usuario SSH, interfaz y configuración de escucha coinciden con el preflight previo, pero **no atribuir permisos sobre contenedores ni demostrar aislamiento por la coincidencia de IP**.
+
+**Inspecciones Gateway read-only del nuevo registro:** `network.inspect` muestra listeners públicos **80 y 443**, y **no hay listener TCP/8443**; `system.health` indica ~3,26 GB de RAM disponibles y ~28,17 GB de disco libre, con `rebootRequired=true` (NO autoriza reinicio); `firewall.check` bajo nftables para regla exacta de entrada TCP/8443 informa **`present=false`**, lo que **no prueba** por sí solo denegación ni accesibilidad externa. Las redes y servicios en ejecución son preexistentes y no se han tocado ni inspeccionado a nivel de contenedor. No ejecutar cambio global del firewall ni reiniciar el host/proxy de otros proyectos.
+
+**Pruebas del [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59):** la rama funcional `40f11f34` completó [Sabora CI #43511025053](https://github.com/jdlc86/CartaViva/actions/runs/43511025053) con `validate=SUCCESS` y `web-publication=SUCCESS`, [Bootstrap #43511025070](https://github.com/jdlc86/CartaViva/actions/runs/43511025070) `generate-lockfile=SUCCESS` y [UI #43511025160](https://github.com/jdlc86/CartaViva/actions/runs/43511025160) `functional-ui-gate=SUCCESS`; visual final y CV005+B2 opt-in SKIPPED. El PR sigue Draft y sin desplegar.
+
+**Siguiente puerta:** definir identidad/ruta/ACL Sabora-only y red de entrada filtrada, confirmar permisos específicos del propietario para instalación **solo de Sabora** y para integración PR, y establecer plan de recuperación externa y dependencias SQL aparte. El hecho de que Gateway permita acceder al VPS no constituye autorización para consumir secretos o modificarlo. **NO se consumieron secretos, ni se crearon ficheros, reglas, redes o contenedores en VPS. Fleetia sin intervención.**
+
 ## 2. Prioridad y orden de la próxima intervención (sin repetir trabajos)
 
 1. **Resolver PR #59** como decisión normativa concreta: contrastar su diff con contratos existentes; pedir decisión de integración separada; no atribuirle vigencia hasta merge confirmado y sincronización de referencias. No duplicar la propuesta ni crear nuevo runbook.
