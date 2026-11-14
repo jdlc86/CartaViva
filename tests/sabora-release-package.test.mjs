@@ -18,11 +18,13 @@ test('Sabora two-image package: complete producer/host digest roundtrip with tam
    apiImageId:'sha256:'+'1'.repeat(64),webImageId:'sha256:'+'2'.repeat(64),
    operationalCompose:join(dir,'compose_operational'),webCompose:join(dir,'compose_web')});
   const parsed=JSON.parse(JSON.stringify(manifest));
-  const checked=verifyReleaseBundle({releaseSha:sha},parsed,files);
+  const manifestBytes=Buffer.from(JSON.stringify(parsed,null,2)+'\n');
+  const receipt={releaseSha:sha,bundleManifestSha256:(await import('node:crypto')).createHash('sha256').update(manifestBytes).digest('hex')};
+  const checked=verifyReleaseBundle(receipt,parsed,files,manifestBytes);
   assert.equal(checked.images.length,2);
   assert.equal(checked.authorizedToDeploy,false);
-  assert.throws(()=>verifyReleaseBundle({releaseSha:sha},parsed,
-   {...files,web:Buffer.from('tampered')}),/image_bundle_hash_or_scope/);
+  assert.throws(()=>verifyReleaseBundle(receipt,parsed,
+   {...files,web:Buffer.from('tampered')},manifestBytes),/image_bundle_hash_or_scope/);
   await assert.rejects(()=>buildReleaseBundleManifest({...{
    releaseSha:sha,apiArchive:join(dir,'api'),webArchive:join(dir,'web'),
    apiImageId:'sha256:'+'1'.repeat(64),webImageId:'sha256:'+'2'.repeat(64),

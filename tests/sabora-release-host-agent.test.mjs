@@ -21,10 +21,21 @@ test('governed host boundary: signed SSH request to real files to single-use rec
    status:'verified',observedAt:'2026-11-14T08:00:00Z',
    reference:'independent-explicit-evidence-'+i}))]));
   const evidence=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,digest(artifacts[k])]));
+  const imageA=Buffer.from('example-image-archive-A');
+  const imageB=Buffer.from('example-image-archive-B');
+  const composeA=Buffer.from('name: sabora\nservices:\n  api: {}\n');
+  const composeB=Buffer.from('name: sabora\nservices:\n  web: {}\n');
+  const files={api:imageA,web:imageB,compose_operational:composeA,compose_web:composeB};
+  const manifest={schema:'sabora-release-bundle/v1',repository:'jdlc86/CartaViva',
+   releaseSha:sha,project:'sabora',services:[...SABORA_RELEASE_SCOPE.services],
+   images:{api:{tag:'sabora-api:'+sha,imageId:'sha256:'+'1'.repeat(64),archiveSha256:digest(imageA)},
+    web:{tag:'sabora-web:'+sha,imageId:'sha256:'+'2'.repeat(64),archiveSha256:digest(imageB)}},
+   compose:{operational:digest(composeA),web:digest(composeB)}};
   const approval={schema:'sabora-governed-release/v1',repository:'jdlc86/CartaViva',
    operation:'deploy',releaseSha:sha,authorizationId:'SABORA-RELEASE-20261114',
    approvedAt:'2026-11-14T08:45:00.000Z',expiresAt:'2026-11-14T09:45:00.000Z',
    server:'146.59.145.64',project:'sabora',port:8443,
+   bundleManifestSha256:digest(JSON.stringify(manifest,null,2)+'\n'),
    origins:[...SABORA_RELEASE_SCOPE.origins],services:[...SABORA_RELEASE_SCOPE.services],evidence};
   const raw=stableStringify(approval);
   const sig=sign(null,Buffer.from(raw),pair.privateKey).toString('base64');
@@ -39,19 +50,9 @@ test('governed host boundary: signed SSH request to real files to single-use rec
   assert.throws(()=>verifyHostEnvelope(cmd.replace(' deploy ',' rollback '),envelope,pub,now),/command_approval_mismatch|wrong_release_scope/);
   assert.throws(()=>verifyHostEnvelope(cmd,envelope,generateKeyPairSync('ed25519').publicKey.export({format:'pem',type:'spki'}),now),/signature_invalid/);
   assert.throws(()=>parseForcedReleaseCommand(cmd+';docker ps'),/invalid_forced_command/);
-  const imageA=Buffer.from('example-image-archive-A');
-  const imageB=Buffer.from('example-image-archive-B');
-  const composeA=Buffer.from('name: sabora\nservices:\n  api: {}\n');
-  const composeB=Buffer.from('name: sabora\nservices:\n  web: {}\n');
-  const files={api:imageA,web:imageB,compose_operational:composeA,compose_web:composeB};
-  const manifest={schema:'sabora-release-bundle/v1',repository:'jdlc86/CartaViva',
-   releaseSha:sha,project:'sabora',services:[...SABORA_RELEASE_SCOPE.services],
-   images:{api:{tag:'sabora-api:'+sha,imageId:'sha256:'+'1'.repeat(64),archiveSha256:digest(imageA)},
-    web:{tag:'sabora-web:'+sha,imageId:'sha256:'+'2'.repeat(64),archiveSha256:digest(imageB)}},
-   compose:{operational:digest(composeA),web:digest(composeB)}};
-  assert.equal(verifyReleaseBundle(receipt,manifest,files).authorizedToDeploy,false);
-  assert.throws(()=>verifyReleaseBundle(receipt,{...manifest,project:'another'},files),/invalid_release_bundle/);
-  assert.throws(()=>verifyReleaseBundle(receipt,manifest,{...files,api:Buffer.from('tampered')}),/image_bundle_hash_or_scope/);
+  assert.equal(verifyReleaseBundle(receipt,manifest,files,Buffer.from(JSON.stringify(manifest,null,2)+'\n')).authorizedToDeploy,false);
+  assert.throws(()=>verifyReleaseBundle(receipt,{...manifest,project:'another'},files,Buffer.from(JSON.stringify(manifest,null,2)+'\n')),/invalid_release_bundle/);
+  assert.throws(()=>verifyReleaseBundle(receipt,manifest,{...files,api:Buffer.from('tampered')},Buffer.from(JSON.stringify(manifest,null,2)+'\n')),/image_bundle_hash_or_scope/);
   const protectedFile=join(dir,'owner.pem');
   writeFileSync(protectedFile,pub,{mode:0o600});
   assert.equal(readProtectedFile(protectedFile,process.getuid()).toString(),pub);

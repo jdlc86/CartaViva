@@ -14,6 +14,7 @@ function approval(overrides={}){
   operation:'deploy',releaseSha:fullSha,authorizationId:'SABORA-RELEASE-20261114',
   approvedAt:'2026-11-14T08:45:00.000Z',expiresAt:'2026-11-14T09:45:00.000Z',
   server:'146.59.145.64',project:'sabora',port:8443,
+  bundleManifestSha256:'9'.repeat(64),
   origins:[...SABORA_RELEASE_SCOPE.origins],services:[...SABORA_RELEASE_SCOPE.services],
   evidence:Object.fromEntries(EVIDENCE_KEYS.map((k,i)=>[k,(i+1).toString(16).repeat(64)])),...overrides};
 }
@@ -33,7 +34,8 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
  assert.match(receipt.authorizationSha256,/^[0-9a-f]{64}$/);
  for(const candidate of [
   approval({server:'other.example.com'}),approval({project:'fleetia'}),
-  approval({port:443}),approval({releaseSha:'c'.repeat(40)}),
+  approval({port:443}),approval({bundleManifestSha256:'0'.repeat(64)}),
+  approval({releaseSha:'c'.repeat(40)}),
   approval({operation:'rollback'}),approval({origins:['https://fake.test']}),
   approval({services:['web','api','other']}),approval({expiresAt:'2026-11-14T08:00:00.000Z'}),
   approval({approvedAt:'2026-11-14T09:05:00.000Z'}),

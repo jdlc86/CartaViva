@@ -47,7 +47,8 @@ export function verifyHostEnvelope(command,envelope,publicKeyPem,now=Date.now())
   {operation:expected.operation,sha:expected.releaseSha},now);
  if(receipt.authorizationId!==expected.authorizationId||
    receipt.authorizationSha256!==expected.authorizationSha256)stop('command_approval_mismatch');
- return Object.freeze({...expected,evidence:receipt.evidence});
+ return Object.freeze({...expected,bundleManifestSha256:receipt.bundleManifestSha256,
+  evidence:receipt.evidence});
 }
 export function verifyHostEvidence(receipt,artifacts){
  if(!keys(artifacts,EVIDENCE_KEYS))stop('incomplete_evidence');
@@ -71,7 +72,14 @@ export function verifyHostEvidence(receipt,artifacts){
  }
  return verified;
 }
-export function verifyReleaseBundle(receipt,manifest,files){
+export function verifyReleaseBundle(receipt,manifest,files,manifestBytes){
+ if((!Buffer.isBuffer(manifestBytes)&&typeof manifestBytes!=='string')||
+   !SHA64.test(receipt?.bundleManifestSha256)||
+   hash(manifestBytes)!==receipt.bundleManifestSha256)stop('signed_bundle_manifest_mismatch');
+ let decoded;
+ try{decoded=JSON.parse(Buffer.isBuffer(manifestBytes)?manifestBytes.toString('utf8'):manifestBytes);}
+ catch{stop('bundle_manifest_not_json');}
+ if(JSON.stringify(decoded)!==JSON.stringify(manifest))stop('bundle_manifest_bytes_disagree');
  if(!keys(manifest,['schema','repository','releaseSha','project','services','images','compose'])||
  manifest.schema!=='sabora-release-bundle/v1'||manifest.repository!=='jdlc86/CartaViva'||
  manifest.releaseSha!==receipt.releaseSha||manifest.project!=='sabora'||

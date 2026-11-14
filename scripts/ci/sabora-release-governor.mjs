@@ -45,7 +45,7 @@ export function verifyReleaseAuthorization(raw,signatureB64,publicPem,expected,n
  let approval;
  try{approval=JSON.parse(raw)}catch{reject('approval_not_json');}
  const fields=['schema','repository','operation','releaseSha','authorizationId','approvedAt','expiresAt',
-  'server','project','port','origins','services','evidence'];
+  'server','project','port','origins','services','bundleManifestSha256','evidence'];
  if(!exactKeys(approval,fields)||raw!==stableStringify(approval))reject('noncanonical_approval');
  if(approval.schema!=='sabora-governed-release/v1'||approval.repository!==SABORA_RELEASE_SCOPE.repository ||
     approval.operation!==expected.operation||approval.releaseSha!==expected.sha ||
@@ -61,6 +61,8 @@ export function verifyReleaseAuthorization(raw,signatureB64,publicPem,expected,n
     !/^\d{4}-\d{2}-\d{2}T/.test(approval.expiresAt)||
     start>now||now>=end||end-start>3600000||end<=start||now-start>3600000)
   reject('expired_or_invalid_authorization_window');
+ if(typeof approval.bundleManifestSha256!=='string'||!HEX64.test(approval.bundleManifestSha256)||
+    /^0+$/.test(approval.bundleManifestSha256))reject('invalid_bundle_manifest_hash');
  if(!exactKeys(approval.evidence,EVIDENCE_KEYS)||EVIDENCE_KEYS.some(k=>typeof approval.evidence[k]!=='string'||
     !HEX64.test(approval.evidence[k])||/^0+$/.test(approval.evidence[k]))||
     new Set(EVIDENCE_KEYS.map(k=>approval.evidence[k])).size!==EVIDENCE_KEYS.length)
@@ -75,7 +77,8 @@ export function verifyReleaseAuthorization(raw,signatureB64,publicPem,expected,n
  if(!valid)reject('signature_invalid');
  const digest=createHash('sha256').update(raw).digest('hex');
  return Object.freeze({authorizationId:approval.authorizationId,releaseSha:approval.releaseSha,
-   operation:approval.operation,authorizationSha256:digest,evidence:approval.evidence});
+   operation:approval.operation,authorizationSha256:digest,
+   bundleManifestSha256:approval.bundleManifestSha256,evidence:approval.evidence});
 }
 export async function verifyGithubChecks(sha,token,fetcher=fetch){
  if(!SHA.test(sha)||typeof token!=='string'||token.length<10)reject('ci_lookup_credentials_missing');
