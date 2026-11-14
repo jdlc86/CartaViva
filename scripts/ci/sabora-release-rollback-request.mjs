@@ -10,7 +10,8 @@ export function renderRollbackEnvelope({approvalB64,signatureB64}){
   stop('invalid_signed_request');
  return JSON.stringify({protocol:'sabora-rollback-wire/v1',approvalB64,signatureB64})+'\n';
 }
-export async function verifyRollbackEnvelope(source,{command,publicKey,history,observed,now=Date.now()}){
+export async function verifyRollbackEnvelope(source,{command,publicKey,history,observed,
+  readProtectedHistory,observeExclusiveRuntime,now=Date.now()}){
  if(parseForcedReleaseCommand(command).operation!=='rollback')stop('not_rollback_operation');
  let text='';
  for await(const chunk of source){
@@ -25,6 +26,15 @@ export async function verifyRollbackEnvelope(source,{command,publicKey,history,o
   h.protocol!=='sabora-rollback-wire/v1')stop('invalid_rollback_protocol');
  const receipt=verifyHostEnvelope(command,JSON.stringify({approvalB64:h.approvalB64,
   signatureB64:h.signatureB64}),publicKey,now);
+ // Fetch host state only after signature/command validity is established.
+ if(!history){
+  if(typeof readProtectedHistory!=='function')stop('trusted_history_unavailable');
+  history=await readProtectedHistory();
+ }
+ if(!observed){
+  if(typeof observeExclusiveRuntime!=='function')stop('trusted_observer_unavailable');
+  observed=await observeExclusiveRuntime();
+ }
  const plan=planSaboraRollback({authorization:receipt,history,observed});
  return {receipt,plan};
 }
