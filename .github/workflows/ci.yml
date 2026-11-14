@@ -136,3 +136,29 @@ jobs:
         run: |
           docker build --build-arg SABORA_RESTAURANT_CODE=SABORA -f deploy/Dockerfile.web -t sabora-web:ci .
           bash scripts/ci/sabora-web-publishing-smoke.sh
+      - name: Prepare immutable two-image package on main only (no VPS)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="$RUNNER_TEMP/sabora-release-package"
+          mkdir -p "$pkg"
+          docker build -f deploy/Dockerfile.api -t "sabora-api:$GITHUB_SHA" .
+          docker tag sabora-web:ci "sabora-web:$GITHUB_SHA"
+          docker save -o "$pkg/api.tar" "sabora-api:$GITHUB_SHA"
+          docker save -o "$pkg/web.tar" "sabora-web:$GITHUB_SHA"
+          cp deploy/compose.sabora-operational.yml "$pkg/operational.yml"
+          cp deploy/compose.sabora-web.yml "$pkg/web.yml"
+          api_id="$(docker image inspect --format '{{.Id}}' "sabora-api:$GITHUB_SHA")"
+          web_id="$(docker image inspect --format '{{.Id}}' "sabora-web:$GITHUB_SHA")"
+          node scripts/ci/sabora-release-bundle.mjs "$GITHUB_SHA" \
+            "$pkg/api.tar" "$pkg/web.tar" "$api_id" "$web_id" \
+            "$pkg/operational.yml" "$pkg/web.yml" "$pkg/manifest.json"
+      - name: Preserve release package for explicitly governed handoff (not backup)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-governed-release-package
+          path: ${{ runner.temp }}/sabora-release-package/
+          retention-days: 7
+          if-no-files-found: error
