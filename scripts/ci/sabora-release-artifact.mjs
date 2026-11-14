@@ -1,5 +1,8 @@
 // Read-only provenance gate for immutable Sabora release packages.
 // Actions runner only; never downloads anything to the shared host.
+import {appendFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const SHA=/^[0-9a-f]{40}$/;
 const ENDPOINT='https://api.github.com/repos/jdlc86/CartaViva';
 export function assertExactReleaseSource(run,sha) {
@@ -43,4 +46,18 @@ export async function findReleasePackage(sha,token,fetcher=fetch) {
  }
  if(found.length!==1)throw Error('sabora_artifact_stop:release_package_missing_or_ambiguous');
  return found[0];
+}
+
+const self=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
+if(self){
+ try{
+  if(process.argv.length!==3)throw Error('sabora_artifact_stop:sha_required');
+  const result=await findReleasePackage(process.argv[2],process.env.GITHUB_TOKEN);
+  if(!process.env.GITHUB_OUTPUT)throw Error('sabora_artifact_stop:github_output_missing');
+  appendFileSync(process.env.GITHUB_OUTPUT,'run_id='+result.runId+'\n');
+  process.stdout.write('sabora_release_artifact_provenance_verified\n');
+ }catch(error){
+  process.stderr.write(String(error?.message||error).replace(/[^a-zA-Z0-9:_-]/g,'_')+'\n');
+  process.exitCode=1;
+ }
 }

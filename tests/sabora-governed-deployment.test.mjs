@@ -70,6 +70,9 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.match(workflow,/cancel-in-progress: false/);
  assert.match(workflow,/environment: sabora-live/);
  assert.match(workflow,/sabora-release-governor\.mjs authorize/);
+ assert.match(workflow,/sabora-release-artifact\.mjs/);
+ assert.match(workflow,/actions\/download-artifact@v4/);
+ assert.match(workflow,/sabora-release-transport\.mjs/);
  assert.match(workflow,/SABORA_RELEASE_AGENT_READY/);
  assert.match(workflow,/StrictHostKeyChecking=yes/);
  assert.match(workflow,/approvalB64/);

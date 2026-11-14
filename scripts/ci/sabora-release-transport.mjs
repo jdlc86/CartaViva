@@ -2,6 +2,7 @@
 // This is an artifact transfer protocol, never an authorization to invoke Docker.
 import {createReadStream,lstatSync,readFileSync} from 'node:fs';
 import {once} from 'node:events';
+import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 
 export const RELEASE_WIRE_NAMES=Object.freeze(['api','web','compose_operational','compose_web']);
@@ -43,15 +44,17 @@ export async function sendReleaseBundle(out,{approvalB64,signatureB64,manifestBy
 const self=process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1];
 if(self){
  try{
-  const [, ...args]=process.argv;
-  const paths=args.slice(2); // process.argv[2] = package directory, unused
-  const dir=process.argv[2];
+   const dir=process.argv[2];
   if(!dir||process.argv.length!==3)stop('expected_package_directory');
   const {join}=await import('node:path');
+  const manifestBytes=readFileSync(join(dir,'manifest.json'));
+  const approval=JSON.parse(Buffer.from(process.env.SABORA_APPROVAL_JSON_B64||'','base64').toString('utf8'));
+  if(createHash('sha256').update(manifestBytes).digest('hex')!==approval.bundleManifestSha256)
+   stop('signed_manifest_package_mismatch');
   await sendReleaseBundle(process.stdout,{
    approvalB64:process.env.SABORA_APPROVAL_JSON_B64,
    signatureB64:process.env.SABORA_APPROVAL_SIG_B64,
-   manifestBytes:readFileSync(join(dir,'manifest.json')),
+   manifestBytes,
    paths:['api.tar','web.tar','operational.yml','web.yml'].map(n=>join(dir,n))
   });
  }catch(err){
