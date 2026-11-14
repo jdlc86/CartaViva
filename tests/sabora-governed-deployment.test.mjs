@@ -59,6 +59,9 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.doesNotMatch(workflow,/^  push:|^  pull_request:|^  schedule:|pull_request_target:/m);
  assert.match(workflow,/github.ref == 'refs\/heads\/main'/);
  assert.match(workflow,/git merge-base --is-ancestor/);
+ assert.match(workflow,/git rev-parse HEAD/);
+ assert.match(workflow,/git rev-parse origin\/main/);
+ assert.match(workflow,/ref: \$\{\{ needs\.verify\.outputs\.approved_sha \}\}/);
  assert.match(workflow,/cancel-in-progress: false/);
  assert.match(workflow,/environment: sabora-live/);
  assert.match(workflow,/sabora-release-governor\.mjs authorize/);
