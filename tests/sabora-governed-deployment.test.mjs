@@ -112,3 +112,33 @@ test('Sabora ingress filter is scoped to a dedicated bridge and Cloudflare sourc
  assert.throws(()=>renderIngressFilter({bridge:'br-0123456789ab',cloudflareIpv4Cidrs:['0.0.0.0/0','10.0.0.0/8']}),/unrestricted_cloudflare/);
  assert.equal(INGRESS_SPEC.port,8443);
 });
+
+import {renderSaboraEgressGuard,EGRESS_SPEC}
+ from '../scripts/ci/sabora-egress-network-policy.mjs';
+
+test('Sabora-only ingress and egress policy compose two separate deny-by-default bridges in lab, with no global changes',()=>{
+ const ingress=renderIngressFilter({
+  bridge:'br-0123456789ab',
+  cloudflareIpv4Cidrs:['173.245.48.0/20','103.21.244.0/22']});
+ const egress=renderSaboraEgressGuard({
+  bridge:'br-abcdef123456',
+  allowlisted:[
+   {cidr:'198.51.100.10/32',port:5432,protocol:'tcp'},
+   {cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]});
+ assert.match(egress,/table inet sabora_egress_guard/);
+ assert.match(egress,/iifname "br-abcdef123456" drop/);
+ assert.match(egress,/tcp dport 5432 accept/);
+ assert.match(egress,/tcp dport 443 accept/);
+ assert.doesNotMatch(egress,/0\.0\.0\.0\/0|flush ruleset|chain INPUT|fleetia/i);
+ assert.doesNotMatch(ingress,/br-abcdef123456/);
+ assert.doesNotMatch(egress,/br-0123456789ab/);
+ assert.equal(EGRESS_SPEC.project,'sabora');
+ for(const candidate of [
+  {bridge:'docker0',allowlisted:[{cidr:'0.0.0.0/0',port:5432,protocol:'tcp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]},
+  {bridge:'br-abcdef123456',allowlisted:[{cidr:'0.0.0.0/0',port:5432,protocol:'tcp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]},
+  {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:5432,protocol:'tcp'}]},
+  {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:5432,protocol:'tcp'},{cidr:'198.51.100.10/32',port:5432,protocol:'tcp'}]},
+  {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:0,protocol:'tcp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]},
+  {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:53,protocol:'udp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]}
+ ])assert.throws(()=>renderSaboraEgressGuard(candidate),/sabora_egress_stop:/);
+});
