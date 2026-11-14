@@ -64,3 +64,12 @@ Referencias de GitHub sobre disponibilidad por plan: https://docs.github.com/en/
 5. El actuador continúa fallando cerrado. SSH forced-command real, carga e inspección de imágenes por identidad, validación material de reglas ingress/egress, alertas, copia externa restaurada, roles SQL mínimos, ledger final y rollback real siguen sin ejecutarse. Ni la firma ni el staging acreditan materialmente que los seis expedientes ocurrieron.
 
 Pruebas principales de laboratorio: tests/sabora-release-wire-integration.test.mjs, tests/sabora-release-artifact.test.mjs y tests/sabora-release-rollback-plan.test.mjs; registrar los cuatro gates del SHA funcional final tras su terminación. Nada de este bloque ha intervenido en Fleetia o en el VPS.
+
+### Reconciliación de seguridad del corte S40-2 (14-11-2026)
+
+- Se ha separado el flujo de deploy del rollback **sin depender de la caducidad de artefactos Actions**. Deploy requiere el paquete binario de un CI push a main del SHA exacto; rollback no descarga ese paquete: envía solo una solicitud firmada, y depende de una versión anterior de Sabora retenida, verificada y reflejada en un ledger confiable del host. Ese ledger/observador **no está instalado**; si falta, la operación rechaza.
+- El nuevo enrutador de host, scripts/ops/sabora-release-host-router.mjs, decide el tipo de solicitud desde el comando SSH exacto. En rollback verifica la firma antes de invocar cualquier lectura de historial u observación de runtime, y ambas se consideran **fuentes protegidas que el operador autorizado aún debe implementar**. No permite SSH interactivo ni Docker.
+- El verificador de cuatro jobs CI también exige ahora que el origen de cada check-run sea la aplicación oficial GitHub Actions (app.slug=github-actions). Se comprobó el campo en checks reales del repositorio antes de codificar la condición.
+- Todas las pruebas que se ejecuten en CI siguen siendo de código/fixtures desechables. No existe aún un histórico de versiones reales con estado saludable, un retorno demostrado del proceso ni supervisión y alertas reales en el VPS. El enrutador operativo termina en STOP incluso si el mensaje es legítimo.
+
+**SHA candidato de código de seguridad más reciente: 4c0566825c653bbaf759f90fd11df828889517bc.** Solo marcar pruebas PASS si los workflows de ese SHA concluyen y se inspeccionan. El PR continúa Draft y no autoriza merge ni uso de recursos del VPS.

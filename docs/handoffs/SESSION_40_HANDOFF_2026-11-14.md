@@ -25,3 +25,7 @@ En el mismo PR #59 Draft se ha añadido verificación de procedencia del artefac
 Se corrigió un supuesto peligroso: la compilación de laboratorio usa el código SABORA como fixture, pero un paquete operativo debe usar una variable GitHub no secreta y expresamente aprobada SABORA_APPROVED_RESTAURANT_CODE. Si no existe, no se publica paquete de release. Eso no requiere cambios de DNS ni recursos ajenos.
 
 **NO-GO:** no hay agente SSH forzado ni ejecutor Docker instalado; el host respondería STOP. Falta instalar y validar redes/egress y firewall exclusivos, entregar/restaurar copia externa, activar SQL y roles mínimos, comprobar alertas y hacer pruebas reales de rollback/aislamiento. No se tocaron Fleetia, VPS, Supabase ni secretos.
+
+### S40-2 — consolidación de la reversión y procedencia CI
+
+Corrección integral adicional dentro del mismo PR: rollback no puede depender del ZIP de GitHub de solo 7 días. El workflow ahora distingue el transporte de los cuatro binarios (solo deploy) de una solicitud firmada sin imágenes (rollback); un enrutador de host verifica la firma antes de consultar historial/observación Sabora. Esas fuentes reales siguen sin provisionar y el actuador continúa STOP. El controlador de CI exige la aplicación fuente github-actions, contrastada en el listado real de check-runs. SHA código más reciente [4c056682](https://github.com/jdlc86/CartaViva/commit/4c0566825c653bbaf759f90fd11df828889517bc). **No atribuir PASS al SHA nuevo mientras no concluya su CI.**
