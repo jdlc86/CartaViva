@@ -8,6 +8,19 @@ const CIDR=/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/(?:[0-9]|[12][0-9]|3[0-2])$/;
 function stop(reason){throw Error('sabora_live_isolation_stop:'+reason);}
 const exactly=(a,b)=>Array.isArray(a)&&a.length===b.length&&
  a.every((value,i)=>value===b[i]);
+function range(cidr){
+ const [host,bits]=cidr.split('/');
+ const octets=host.split('.').map(Number),width=Number(bits);
+ if(octets.length!==4||octets.some(n=>!Number.isInteger(n)||n<0||n>255)||
+   !Number.isInteger(width)||width<1||width>30)stop('unusable_address_space');
+ const value=octets.reduce((x,n)=>((x<<8)|n)>>>0,0);
+ const mask=(0xffffffff << (32-width))>>>0;
+ const first=(value&mask)>>>0,last=(first|(~mask>>>0))>>>0;
+ if(value!==first)stop('noncanonical_address_space');
+ return {first,last};
+}
+function overlaps(a,b){return a.first<=b.last&&b.first<=a.last;}
+
 function checkNet(n,name,kind,internal,phase){
  const allowed=kind==='runtime'?['sabora-egress','api','web']:
    kind==='ingress'?['web']:['sabora-egress'];
@@ -37,9 +50,28 @@ export function assertLiveSaboraIsolation(witness,now=Date.now(),phase='running'
   checkNet(network.ingress,'sabora_ingress_filtered','ingress',false,phase),
   checkNet(network.egress,'sabora_egress_filtered','egress',false,phase)
  ];
- if(new Set(bridges).size!==3||new Set([
-  network.runtime.cidr,network.ingress.cidr,network.egress.cidr]).size!==3)
+ const ranges=[network.runtime.cidr,network.ingress.cidr,network.egress.cidr].map(range);
+ if(new Set(bridges).size!==3||ranges.some((x,j)=>ranges.some((y,k)=>j<k&&overlaps(x,y))))
   stop('shared_bridge_or_address_space');
+ // This evidence must be measured independently of the SSH request; no
+ // interface in Sabora may overlap a non-Sabora kernel route or inactive
+ // Docker allocation. The code cannot manufacture that measurement.
+ if(witness.routingCollisionTested!==true)stop('address_space_collisions_unverified');
+ const connections=witness.serviceNetworks;
+ const expected={
+  api:['sabora_sabora_runtime_internal'],
+  web:['sabora_ingress_filtered','sabora_sabora_runtime_internal'],
+  'sabora-egress':['sabora_egress_filtered','sabora_sabora_runtime_internal']
+ };
+ if(phase==='running'){
+  if(!connections||Object.keys(connections).sort().join('|')!=='api|sabora-egress|web'||
+   Object.entries(expected).some(([name,allowed])=>!exactly(
+     Array.isArray(connections[name])?connections[name].slice().sort():null,allowed)))
+    stop('service_attached_to_unapproved_network');
+ }else if(connections&&Object.keys(connections).some(name=>
+  !Object.hasOwn(expected,name)||!Array.isArray(connections[name])||
+  connections[name].some(net=>!expected[name].includes(net))))
+  stop('preflight_service_uses_other_network');
  const ingress=witness.ingress,egress=witness.egress,port=witness.port;
  if(!ingress||ingress.bridge!==network.ingress.bridge||
     ingress.table!=='sabora_ingress_guard'||ingress.filterHook!=='forward'||

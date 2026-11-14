@@ -108,11 +108,13 @@ export async function executeScopedSaboraRelease({
  let bundle,rollbackPlan;
  if(operation==='deploy'){
   if(!stage)stop('missing_deploy_bundle');
+  if(stage.retainedPreviouslyHealthy===true)stop('deploy_cannot_bypass_current_authorization');
   bundle=await verifyStagedSaboraBundle(stage,stageRoot,receipt);
  }else{
   const live=await driver.observeRuntime();
   rollbackPlan=planSaboraRollback({authorization:receipt,history,observed:live});
   bundle=await driver.getRetainedBundle(rollbackPlan);
+  if(bundle?.retainedPreviouslyHealthy!==true)stop('rollback_bundle_not_retained');
   bundle=await verifyStagedSaboraBundle(bundle,stageRoot,receipt);
   if(bundle.sha!==rollbackPlan.targetReleaseSha)
    stop('retained_bundle_not_rollback_target');

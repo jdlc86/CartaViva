@@ -19,6 +19,11 @@ function witness(running=false){
   ipv6:false,attachedServices:running?services:[]});
  return {schema:'sabora-live-isolation/v1',source:'host-readonly-inspector',
   project:'sabora',observedAt:new Date(now).toISOString(),
+  routingCollisionTested:true,
+  serviceNetworks:running?{
+   api:['sabora_sabora_runtime_internal'],
+   'sabora-egress':['sabora_egress_filtered','sabora_sabora_runtime_internal'],
+   web:['sabora_ingress_filtered','sabora_sabora_runtime_internal']}:undefined,
   networks:{
    runtime:mk('sabora_sabora_runtime_internal','runtime','br-1234567890ab','172.28.200.0/24',true,
     ['sabora-egress','api','web']),
@@ -85,7 +90,11 @@ test('M6 integrated dry lab: signed release -> 4 frames -> guarded network/evide
    unsafeOptionsPresent:false,unknownServicesPresent:false,healthchecksEnabled:true});
   const driver={
    getEvidence:async()=>threat==='evidence'?{...docs,externalRestoreSha256:Buffer.from('{}')}:docs,
-   inspectIsolation:async()=>{const w=witness(running);if(threat==='egress')w.egress.wildcardDenied=false;return w;},
+   inspectIsolation:async()=>{const w=witness(running);
+    if(threat==='egress')w.egress.wildcardDenied=false;
+    if(threat==='overlap')w.networks.egress.cidr='172.28.240.0/23';
+    if(threat==='network')w.routingCollisionTested=false;
+    return w;},
    inspectScopedCompose:async()=>{const c=compose();if(threat==='port')c.publicTcpPorts=['0.0.0.0:443'];return c;},
    inspectImages:async()=>loaded,
    loadImage:async input=>{events.push('load:'+input.type);loaded={...loaded,[input.type]:manifest.images[input.type].imageId};},
@@ -100,7 +109,7 @@ test('M6 integrated dry lab: signed release -> 4 frames -> guarded network/evide
     releaseSha:input.releaseSha,operation:input.operation};},
    getRetainedBundle:async()=>{throw Error('rollback_not_invoked');}
   };
-  for(const reason of ['evidence','egress','port']){
+  for(const reason of ['evidence','egress','port','overlap','network']){
    threat=reason;
    await assert.rejects(executeScopedSaboraRelease({
     operation:'deploy',receipt,stage,stageRoot,driver,now}),/sabora_/);
