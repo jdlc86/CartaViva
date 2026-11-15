@@ -122,3 +122,20 @@ Se actualizan en el mismo PR #59 la norma de validación/recuperación, la decis
 4. **Primera activación** tras autorizaciones *separadas* de merge, captura/restore, SQL/migraciones y red/VPS/despliegue; ejecutar las dos URL aprobadas `https://sabora.allaiso.com:8443` y `https://gestion-sabora.allaiso.com:8443`, API/ready real, recorridos cliente/gestión, observabilidad/alertas y rollback Sabora-only. Tomar capturas reales y solicitar aceptación humana contra diseño aprobado.
 
 **Dictamen al cierre:** GO exclusivamente de laboratorio para las suites observadas; **NO-GO de operación real** de gobernanza, copia externa+réplica VPS y despliegue. No se efectuó merge, copia, restauración, SQL, aprovisionamiento de red, despliegue ni operación sobre Fleetia o recursos de otros proyectos. Esta sección es **continuidad/contexto**; cualquier conflicto se resuelve leyendo la normativa, no reinterpretándola.
+
+## S40-8 — estrategia aprobada de cierre sin SSH/VPS (15-11-2026)
+
+El propietario indica que **actualmente no existe conexión SSH disponible** y Gateway está temporalmente bajo revisión. Decide **priorizar y cerrar trabajo independiente del VPS**, dejando para después la decisión de recuperación de acceso. No hay autorización nueva de merge, Supabase, equipos domésticos, SQL, credenciales ni despliegue. Esta prioridad no altera la normativa.
+
+**Se completó inventario GitHub de solo lectura:** un único PR abierto [#59 Draft](https://github.com/jdlc86/CartaViva/pull/59); `main` `59866219`; código probado `29f09b5c`, revisión propia COMMENT [#5909786213](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5909786213) sin carácter independiente; cuatro jobs principales CI SUCCESS sobre dicho SHA, pruebas CV005+B2 y aceptación visual SKIPPED, artefacto de deploy push-`main` no generado. Ningún cambio al VPS/Fleetia/Supabase.
+
+**Orden vigente único:** seguir [tablero vivo §96](../tracking/SABORA_LIVE_PROJECT_TRACKER.md) y no crear documento de plan paralelo.
+
+1. **OFF-1** revisión independiente/seguridad del PR #59, correcciones integradas únicamente ante defecto fundamentado, CI exacta y decisión separada sobre integración en `main`. Se puede preparar el merge **sin ejecutarlo** hasta autorización.
+2. **OFF-2** auditoría y cierre de escenarios producto ya implementados con PG17+HTTP+Chromium/dos PWA de laboratorio; screenshots/axe contra la orientación visual aprobada. No reclasificar como aceptación exacta de pantallas ni entorno VPS.
+3. **OFF-3** conciliación normativa de brechas restantes M1/M4/M5, cerrando bloques funcionales con reglas aprobadas y separando Stripe externo, caja visual, reservas, Excel, Gemini, directorio y decisiones pendientes. No inventar políticas.
+4. **OFF-4 condicionado al ordenador doméstico** terminar solo parámetros no secretos/custodia y ensayos sintéticos de backup. Destino fuera de VPS = equipo de casa; destino adicional = almacenamiento exclusivo de Sabora en VPS. Sin copia/restauración real ni transferencia remota acreditada.
+
+**Suspender hasta decisión posterior:** instalaciones de `forced-command` o Docker, red/firewall/SSH/8443, validación de aislamiento real de Fleetia, migraciones Supabase, backup de fuente real, réplica host, despliegue/rollback y aceptación pública. Tampoco se utilizará GitHub Actions como terminal libre ni se modificarán otros proyectos. Las puertas CV-005/CV-010/CV-011 y la [normativa de recuperación](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md) permanecen sin rebaja.
+
+**Próximo paso material:** ejecutar OFF-1 sobre el SHA funcional revisado; no añadir pequeñas correcciones ni PR redundantes. Cada resultado debe registrar **implementado / CI ejecutada / validado en laboratorio / aceptado / validado operativamente** por separado.
