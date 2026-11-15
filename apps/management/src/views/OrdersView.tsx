@@ -2,6 +2,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Icon} from '../components/Icon';
 import {ConnectionNotice, EmptyState, LockedButton, PageHeader, StatusBadge} from '../components/Primitives';
 import {OrderOperationsGatewayError, type H6OperationEvent, type OrderOperationsGateway, type PendingWaiterCall} from '../order-operations-gateway.js';
+import {createIncidentOperationAttempts} from '../incident-operation-attempts.js';
 import {
   groupOrderBoard,
   nextOrderLineAction,
@@ -38,6 +39,8 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   const historyEpoch = useRef(0);
   const transitionAttempts = useRef(new Map<string, {targetStatus: string; correlationId: string}>());
   const pickupAttempts = useRef(new Map<string, {action: string; correlationId: string}>());
+  const incidentAttempts = useRef(createIncidentOperationAttempts());
+  const [refundAcknowledgments,setRefundAcknowledgments]=useState<ReadonlySet<string>>(new Set());
   const [workspace, setWorkspace] = useState<OrderWorkspace>('kitchen');
   const [waiterCalls,setWaiterCalls]=useState<readonly PendingWaiterCall[]>([]);
   const [callBusy,setCallBusy]=useState<string|null>(null);
@@ -173,9 +176,16 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
   }, [operationEvents]);
   const pendingArbitrations = useMemo(() => operationEvents.filter((event) =>
     event.type==='sabora.incident.awaiting_admin'&&typeof event.payload.incidentId==='string'), [operationEvents]);
-  const pendingCashRefunds = useMemo(() => operationEvents.filter((event) =>
-    event.type==='sabora.incident.cash_refund_due'&&typeof event.payload.incidentId==='string'&&
-    Number.isSafeInteger(event.payload.amountCents)), [operationEvents]);
+  const pendingCashRefunds = useMemo(() => {
+    const seen=new Set<string>();
+    return operationEvents.filter(event=>{
+      const id=event.payload.incidentId;
+      if(event.type!=='sabora.incident.cash_refund_due'||typeof id!=='string'||
+        !Number.isSafeInteger(event.payload.amountCents)||Number(event.payload.amountCents)<=0||
+        seen.has(id))return false;
+      seen.add(id);return true;
+    });
+  },[operationEvents]);
   const invalidatedRevisions=useMemo(()=>operationEvents.filter(event=>
     event.type==='sabora.order.revision_invalidated'&&typeof event.payload.orderId==='string'),
     [operationEvents]);
@@ -267,32 +277,50 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
     setPendingOperation(orderId);setError(null);
     const origin=board.role==='kitchen'?'kitchen':incidentOrigin;
     try {
-      await gateway.reportIncident({roundId,lineId:null,origin,reason:incidentReason,
-        affectedCents,correlationId:`ui_incident_${crypto.randomUUID().replaceAll('-','_')}`});
+      await incidentAttempts.current.run({kind:'report',subjectId:roundId,
+        payload:{lineId:null,origin,reason:incidentReason,affectedCents},
+        invoke:correlationId=>gateway.reportIncident({roundId,lineId:null,origin,
+          reason:incidentReason,affectedCents,correlationId}),
+        validateResult:result=>typeof result.incidentId==='string'&&typeof result.state==='string'});
       setIncidentOrderId(null);setIncidentReason('');setIncidentAmount('0');await load();
-    } catch { setError('La incidencia no quedó confirmada. No se ha inferido ningún ajuste económico.');await load(); }
-    finally { setPendingOperation(null); }
+    } catch {
+      await load();
+      setError('Incidencia incierta. Reintenta la MISMA solicitud sin alterar sus datos y no abras otra hasta conciliarla.');
+    } finally { setPendingOperation(null); }
   };
 
   const resolveIncident = async (incidentId: string,resolution: 'approve'|'reject') => {
     if (!gateway || pendingOperation || !resolutionReason.trim()) return;
     setPendingOperation(incidentId);setError(null);
-    try { await gateway.resolveIncident({incidentId,resolution,reason:resolutionReason,
-      correlationId:`ui_resolution_${crypto.randomUUID().replaceAll('-','_')}`});await load(); }
-    catch { setError('La resolución no quedó confirmada; la incidencia conserva su estado anterior.');await load(); }
-    finally { setPendingOperation(null); }
+    try {
+      await incidentAttempts.current.run({kind:'resolve',subjectId:incidentId,
+        payload:{resolution,reason:resolutionReason},
+        invoke:correlationId=>gateway.resolveIncident({incidentId,resolution,reason:resolutionReason,
+          correlationId}),
+        validateResult:result=>result.incidentId===incidentId&&typeof result.state==='string'});
+      await load();
+    } catch {
+      await load();
+      setError('Resolución incierta. Reintenta la MISMA decisión y motivo; no cambies de acción hasta conciliar.');
+    } finally { setPendingOperation(null); }
   };
 
-  const refundCash = async (incidentId: string) => {
-    if (!gateway || pendingOperation) return;
+  const refundCash = async (incidentId: string,amountCents:number) => {
+    if (!gateway || pendingOperation || !refundAcknowledgments.has(incidentId)) return;
     setPendingOperation(incidentId);setError(null);
     try {
-      await gateway.refundCash({incidentId,correlationId:`ui_cash_refund_${crypto.randomUUID().replaceAll('-','_')}`});
-      setOperationEvents(current=>current.filter(event=>event.payload.incidentId!==incidentId));await load();
-    } catch { setError('La devolución presencial no quedó registrada. No se muestra como completada.');await load(); }
-    finally { setPendingOperation(null); }
+      await incidentAttempts.current.run({kind:'refund',subjectId:incidentId,
+        payload:{amountCents},invoke:correlationId=>gateway.refundCash({incidentId,correlationId}),
+        validateResult:result=>result.incidentId===incidentId&&result.state==='resolved'&&
+          result.amountCents===amountCents&&typeof result.settlementId==='string'});
+      setRefundAcknowledgments(current=>{const next=new Set(current);next.delete(incidentId);return next;});
+      setOperationEvents(current=>current.filter(event=>event.payload.incidentId!==incidentId));
+      await load();
+    } catch {
+      await load();
+      setError('Registro de devolución incierto. NO vuelvas a entregar efectivo. Reintenta solo el mismo registro o solicita conciliación.');
+    } finally { setPendingOperation(null); }
   };
-
   return (
     <div className="view-stack">
       <PageHeader
@@ -450,7 +478,21 @@ export function OrdersView({gateway = null}: {gateway?: OrderOperationsGateway |
         ) : null}
 
         {board?.role==='admin'&&pendingArbitrations.length?<section className="incident-arbitration" aria-label="Arbitraje de incidencias"><div><span className="eyebrow">Administración</span><h3>Incidencias pendientes</h3></div><label>Motivo de resolución<input maxLength={500} value={resolutionReason} onChange={event=>setResolutionReason(event.target.value)}/></label><ul>{pendingArbitrations.map(event=><li key={event.id}><span>Incidencia {String(event.payload.incidentId).slice(0,8)}</span><div className="button-row"><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'approve')}>Aprobar ajuste</button>{event.payload.origin!=='kitchen'?<button type="button" disabled={Boolean(pendingOperation)} onClick={()=>void resolveIncident(String(event.payload.incidentId),'reject')}>Rechazar solicitud</button>:null}</div></li>)}</ul></section>:null}
-        {pendingCashRefunds.length?<section className="incident-arbitration" aria-label="Devoluciones presenciales pendientes"><div><span className="eyebrow">Sala</span><h3>Devolución en efectivo pendiente</h3></div><ul>{pendingCashRefunds.map(event=><li key={event.id}><span>{Number(event.payload.amountCents)/100} € · incidencia {String(event.payload.incidentId).slice(0,8)}</span><button className="button button--primary" type="button" disabled={Boolean(pendingOperation)} onClick={()=>void refundCash(String(event.payload.incidentId))}>Registrar devolución entregada</button></li>)}</ul></section>:null}
+        {pendingCashRefunds.length?<section className="incident-arbitration" aria-label="Devoluciones presenciales pendientes"><div><span className="eyebrow">Sala</span><h3>Devolución en efectivo pendiente</h3></div><ul>{pendingCashRefunds.map(event=>{
+          const id=String(event.payload.incidentId),cents=Number(event.payload.amountCents);
+          return <li key={id}><span>{(cents/100).toLocaleString('es-ES',{style:'currency',currency:'EUR'})} · incidencia {id.slice(0,8)}</span>
+            <label><input type="checkbox" checked={refundAcknowledgments.has(id)} disabled={Boolean(pendingOperation)}
+              onChange={change=>setRefundAcknowledgments(current=>{
+                const next=new Set(current);
+                if(change.target.checked)next.add(id);else next.delete(id);
+                return next;
+              })}/> Confirmo que el efectivo se ha devuelto físicamente al pagador correspondiente. No se realiza una nueva entrega al reintentar el registro.</label>
+            <button className="button button--primary" type="button"
+              disabled={Boolean(pendingOperation)||!refundAcknowledgments.has(id)}
+              onClick={()=>void refundCash(id,cents)}>
+              {incidentAttempts.current.pending('refund',id)?'Conciliar el mismo registro':'Registrar devolución entregada'}
+            </button></li>;
+        })}</ul></section>:null}
         {invalidatedRevisions.length?<section className="incident-arbitration" aria-label="Revisiones de pedido pendientes"><div><span className="eyebrow">Agrupación</span><h3>Pedidos pendientes de corrección por el cliente</h3></div><ul>{invalidatedRevisions.map(event=><li key={event.id}><span>Pedido {String(event.payload.orderId).slice(0,8)} · revisión {String(event.payload.revisionNumber??'—')} · fuera del despacho</span><StatusBadge tone="warning">ESPERANDO REENVÍO</StatusBadge></li>)}</ul><p className="honest-operational-note">Cocina no puede preparar esta revisión. Si el pedido ya hubiese sido despachado, corresponde registrar una incidencia; no se habilita edición del cliente.</p></section>:null}
 
         {!gateway ? (
