@@ -111,18 +111,23 @@ try{
  psql(source,'postgres',ledgerSql);
  const postgresVersion=psql(source,'postgres','show server_version;').stdout.trim();
  assert.match(postgresVersion,/^17\./);
+ const systemIdentifier=psql(source,'postgres',
+  'select (pg_control_system()).system_identifier::text;').stdout.trim();
+ assert.match(systemIdentifier,/^[0-9]{10,20}$/);
  await writeFile(keyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await writeFile(wrongKeyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await chmod(keyPath,0o600);await chmod(wrongKeyPath,0o600);
  const captureStarted=process.hrtime.bigint();
  const result=await captureEncryptedBackupBundle({directory:capture,keyPath,metadata:{
-  schema:'sabora-logical-backup/v1',backupId:'SABORA-BACKUP-CI-'+runId,
+  schema:'sabora-logical-backup/v2',backupId:'SABORA-BACKUP-CI-'+runId,
   repository:'jdlc86/CartaViva',releaseSha,sourceProjectRef:'byhvmumqivmunkmomhup',
   postgresMajor:17,postgresVersion,migrationTreeSha256:migrations.treeSha256,
   includedSchemas:['sabora','sabora_migration_meta'],
   excludedManagedSchemas:['auth','extensions','realtime','storage','supabase_functions','vault'],
   createdAt:new Date().toISOString(),custody:'key-outside-artifact-git-actions-vps',
- },components:[
+ },snapshot:{exporter:{command:'docker',args:['exec','-i',source,'psql','-X','-qAt',
+  '-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-']},
+  expectedSystemIdentifier:systemIdentifier},components:[
   {name:'roles-memberships',mediaType:'application/sql',command:'docker',
    args:['exec','-i',source,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-'],
    stdinPath:rolesSql},
@@ -136,6 +141,10 @@ try{
    args:['exec','-i',source,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-'],
    stdinPath:inventorySql},
  ]});
+ assert.equal(result.manifest.schema,'sabora-logical-backup/v2');
+ assert.equal(result.manifest.sourceSystemIdentifier,systemIdentifier);
+ assert.equal(result.manifest.sourceDatabase,'postgres');
+ assert.match(result.manifest.snapshotId,/^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9A-Fa-f]+$/);
  const captureMs=elapsed(captureStarted);
  assert.equal((await inspectEncryptedBackupBundle(capture)).containsPlaintext,false);
  const externalReceipt=await replicateEncryptedBackupBundle({sourceDirectory:capture,
