@@ -1,19 +1,29 @@
 // Explicit, CI-only launch boundary for the *complete* M3/H3-H6 candidate.
 // The live server.mjs remains health-only. This bootstrap never provisions
 // roles, reads operational secrets, deploys, or contacts an external database.
-// All 17 distinct application SQL identities must pass the existing M2/M3 live preflights.
+// All 18 distinct application SQL identities must pass the existing M2/M3 live preflights.
+import {createRequire} from 'node:module';
+import {dirname,resolve} from 'node:path';
 import {validateM2RuntimeSqlIdentities} from '../../apps/api/src/m2-runtime-identity-inventory.mjs';
 import {createSaboraObservability} from '../../apps/api/src/operational-observability.mjs';
 import {startOperationalM3Runtime} from '../../apps/api/src/operational-runtime.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 
 const invalid=()=>Error('disposable_m3_bootstrap_required');
+const apiRequire=createRequire(new URL('../../apps/api/package.json',import.meta.url));
+const workspacePgPath=dirname(apiRequire.resolve('pg/package.json'));
+const workspacePgVersion=apiRequire('pg/package.json').version;
 
 function isolatedEnvironment(environment){
+ const focusedWorkspaceDriver=environment?.SABORA_PG17_TEST_SCOPE==='issue61'&&
+  environment.SABORA_CI_REUSE_WORKSPACE_PG==='true'&&
+  resolve(environment.SABORA_CI_PG_MODULE??'')===resolve(workspacePgPath)&&
+  workspacePgVersion==='8.16.3';
  if(!environment||environment.GITHUB_ACTIONS!=='true'||
     environment.NODE_ENV==='production'||
     typeof environment.RUNNER_TEMP!=='string'||!environment.RUNNER_TEMP||
-    !isDisposablePgModulePath(environment.SABORA_CI_PG_MODULE))return false;
+    (!isDisposablePgModulePath(environment.SABORA_CI_PG_MODULE)&&
+     !focusedWorkspaceDriver))return false;
  try{
   const target=new URL(environment.SABORA_CI_PG_URL);
   return target.protocol==='postgresql:'&&target.hostname==='127.0.0.1'&&
@@ -62,7 +72,7 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   // Exercise the *same* identity inventory as the HTTP assembly in the
   // disposable PG17 end-to-end acceptance. No login names are emitted.
   const inventory=validateM2RuntimeSqlIdentities(isolatedOptions);
-  const expected=17+(isolatedOptions.management?.ownership?1:0)+
+  const expected=18+(isolatedOptions.management?.ownership?1:0)+
    (isolatedOptions.management?.communications?2:0)+
    (isolatedOptions.waiterCalls?2:0);
   if(inventory.capabilityCount!==expected||inventory.notifierCount!==2)

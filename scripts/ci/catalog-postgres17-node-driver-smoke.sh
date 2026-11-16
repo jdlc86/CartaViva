@@ -10,6 +10,16 @@ if [[ "$scope" != full && "$scope" != issue61 ]]; then
   echo 'Unsupported PG17 test scope' >&2
   exit 1
 fi
+issue61_target="${SABORA_PG17_ISSUE61_TARGET:-all}"
+if [[ "$scope" = issue61 ]]; then
+ if [[ "$issue61_target" != all && "$issue61_target" != h6 && "$issue61_target" != i49 ]]; then
+  echo 'Unsupported Issue #61 test target' >&2
+  exit 1
+ fi
+elif [[ "$issue61_target" != all ]]; then
+ echo 'Issue #61 target requires focused scope' >&2
+ exit 1
+fi
 export SABORA_PG17_TEST_SCOPE="$scope"
 for tool in docker node npm; do command -v "$tool" >/dev/null; done
 # Fail fast before npm installation, Docker startup or SQL migrations.
@@ -96,7 +106,14 @@ if [[ "$scope" = issue61 ]]; then
   SABORA_CI_PLAYWRIGHT_MODULE="$(node -e "const {createRequire}=require('node:module');const {resolve}=require('node:path');const r=createRequire(resolve('apps/client/package.json'));process.stdout.write(r.resolve('@playwright/test'))")"
   export SABORA_CI_PLAYWRIGHT_MODULE
  fi
- node --test scripts/ci/h6-postgres17.test.mjs
+ if [[ "$issue61_target" != i49 ]]; then
+  node --test scripts/ci/h6-postgres17.test.mjs
+ fi
+ if [[ "$issue61_target" != h6 ]]; then
+  node --test --test-name-pattern \
+   'PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey' \
+   scripts/ci/table-change-root-postgres17.test.mjs
+ fi
  exit 0
 fi
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs

@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {dirname,resolve} from 'node:path';
+import {pathToFileURL as modulePathToFileURL} from 'node:url';
 import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
@@ -58,13 +60,26 @@ import {createEconomicCircuitService} from '../../apps/api/src/economic-circuit-
 import {registerEconomicCircuitHttp} from '../../apps/api/src/economic-circuit-http.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
-if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
+const apiRequire=createRequire(new URL('../../apps/api/package.json',import.meta.url));
+const workspacePgPath=dirname(apiRequire.resolve('pg/package.json'));
+const focusedWorkspaceDriver=process.env.SABORA_PG17_TEST_SCOPE==='issue61'&&
+ process.env.SABORA_CI_REUSE_WORKSPACE_PG==='true'&&
+ resolve(modulePath??'')===resolve(workspacePgPath)&&apiRequire('pg/package.json').version==='8.16.3';
+if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||
+ (!isDisposablePgModulePath(modulePath)&&!focusedWorkspaceDriver))
  throw Error('disposable_pg17_harness_required');
 const parsed=new URL(url);
 if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||parsed.pathname!=='/postgres'||
  parsed.password!=='sabora_ci_ephemeral_only'||parsed.search||parsed.hash||!parsed.port)
  throw Error('unsafe_pg17_harness_target');
 const require=createRequire(import.meta.url),{Pool}=require(modulePath);
+async function loadChromium(){
+ const playwrightModule=await import(modulePathToFileURL(
+  process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+ const chromium=playwrightModule.chromium??playwrightModule.default?.chromium;
+ assert.ok(chromium,'Playwright Chromium must be exported by the configured module');
+ return chromium;
+}
 const admin=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,idleTimeoutMillis:1000,
  options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'});
 test.after(async()=>admin.end());
@@ -2958,16 +2973,18 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
     REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
-    SET_CATALOG_SOLD_OUT_H6_SQL,READ_ECONOMIC_CONSUMPTION_SQL,
-    CREATE_ECONOMIC_SETTLEMENT_SQL,READ_STAFF_ECONOMIC_ACCOUNTS_SQL,
+    SET_CATALOG_SOLD_OUT_H6_SQL,READ_STAFF_ECONOMIC_ACCOUNTS_SQL,
     VERIFY_EXTERNAL_SETTLEMENT_SQL,CLOSE_ECONOMIC_TABLE_SQL])});
+  const customerEconomicTx=createRoleScopedPostgresTransaction({pool:scopedPools[6],
+   role:specs[6].role,allowedSql:new Set([
+    READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL])});
   const staffIssuer=createH6StaffCapabilityIssuer({keyId:staffSigningKeyId,
    secret:staffSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:staffTx}),
    issueCapability:staffIssuer
   });
-  const economicCustomer=createEconomicCustomerRepository({withTransaction:staffTx});
+  const economicCustomer=createEconomicCustomerRepository({withTransaction:customerEconomicTx});
   const economicProvider=createEconomicProviderRepository({withTransaction:providerTx});
   const economicStaff=createEconomicStaffRepository({withTransaction:staffTx,
    issueCapability:staffIssuer});
@@ -3488,8 +3505,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // the destination-free request from the actual browser and leave A intact.
     const {pathToFileURL:requestPathToFileURL,fileURLToPath:requestFileURLToPath}
      =await import('node:url');
-    const {chromium:requestChromium}=await import(
-     requestPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const requestChromium=await loadChromium();
     const requestRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer:createRequestViteServer}=await import(
      requestPathToFileURL(requestRequire.resolve('vite')).href);
@@ -3623,7 +3639,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // drive the real management PWA in Chromium. The browser approves the
      // request; an injected SQL mock cannot substitute for this boundary.
      const {pathToFileURL,fileURLToPath}=await import('node:url');
-     const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+     const chromium=await loadChromium();
      const manageRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer}=await import(pathToFileURL(manageRequire.resolve('vite')).href);
      let vite,browser,context;
@@ -3958,7 +3974,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // presentation is an explicitly isolated HTTP fixture: the order,
     // quote, session, QR and account transfer use the live SQL functions.
     const {pathToFileURL,fileURLToPath}=await import('node:url');
-    const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const chromium=await loadChromium();
     const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
     let clientVite,clientBrowser,clientContext;
@@ -5477,7 +5493,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const {pathToFileURL:chefToUrl,fileURLToPath:chefFilePath}=await import('node:url');
         const chefRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
         const {createServer:chefServe}=await import(chefToUrl(chefRequire.resolve('vite')).href);
-        const {chromium:chefChromium}=await import(chefToUrl(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+        const chefChromium=await loadChromium();
         let chefVite=null,chefBrowser=null,chefContext=null,chefWaiterContext=null;
         try{
          chefVite=await chefServe({
@@ -6446,8 +6462,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE id=$1 AND status='consumed'`,[created.json().id]);
     const {pathToFileURL:rejectPathToFileURL,fileURLToPath:rejectFileURLToPath}
      =await import('node:url');
-    const {chromium:rejectChromium}=await import(
-     rejectPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const rejectChromium=await loadChromium();
     const rejectRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer:createRejectVite}=await import(
      rejectPathToFileURL(rejectRequire.resolve('vite')).href);
@@ -7094,7 +7109,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const {pathToFileURL,fileURLToPath}=await import('node:url');
    const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
-   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const chromium=await loadChromium();
    const {mkdir}=await import('node:fs/promises');
    const {join}=await import('node:path');
    if(!http.server.listening)await http.listen({host:'127.0.0.1',port:0});
@@ -7983,8 +7998,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const m3CiRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer:createM3ViteServer}=await import(
     m3PathToFileURL(m3CiRequire.resolve('vite')).href);
-   const {chromium:m3Chromium}=await import(
-    m3PathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const m3Chromium=await loadChromium();
    const m3ClientVite=await createM3ViteServer({
     root:m3FileURLToPath(new URL('../../apps/client/',import.meta.url)),
     mode:'test',logLevel:'error',
