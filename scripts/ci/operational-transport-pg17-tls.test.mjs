@@ -127,7 +127,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
   const keys=await getKeys();
   assert.equal(keys.length,1);
   assert.equal(keys[0].kid,'sabora-ci-local-trusted-key');
-  // Full file-based operational bootstrap, this time backed by 17 DISTINCT
+  // Full file-based operational bootstrap, this time backed by 18 DISTINCT
   // real restricted PostgreSQL LOGINs, encrypted PgWire through this gateway
   // and an actual trusted JWKS HTTPS response. PWA browser journeys remain
   // separately covered by the existing H6 PG17/Chromium acceptance.
@@ -148,7 +148,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
    ])await writeFile(join(secretsDir,ref),value,{mode:0o600});
    const slots={};
    const contract=describeOperationalSqlContract();
-   assert.equal(contract.capabilityCount,17);
+   assert.equal(contract.capabilityCount,18);
    for(const [index,item] of contract.slots.entries()){
     const login='sabora_ci_operational_'+process.pid+'_'+String(index).padStart(2,'0');
     const password=randomBytes(27).toString('base64url');
@@ -258,7 +258,7 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
     // No raw driver errors, account identifiers, URLs or SQL may be logged.
     assert.fail('ci_operational_bootstrap_stage:'+labDiagnostic);
    }
-   assert.equal(apiRuntime.summary.capabilityCount,17);
+   assert.equal(apiRuntime.summary.capabilityCount,18);
    assert.equal(apiRuntime.mode,'operational-h3-h6-m3-candidate');
    const request=path=>fetch(apiRuntime.origin+path,{signal:AbortSignal.timeout(10_000)});
    const [health,ready,catalog,unauthorized]=await Promise.all([

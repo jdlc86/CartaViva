@@ -32,13 +32,13 @@ test('operational server refuses non-production and relative configuration befor
  assert.equal(pools,0);
 });
 
-test('production files, exact egress policy, secrets and 17 SQL slots reach one closed-by-default runtime',async t=>{
+test('production files, exact egress policy, secrets and 18 SQL slots reach one closed-by-default runtime',async t=>{
  const root=await mkdtemp(join(tmpdir(),'sabora-operational-files-'));
  t.after(()=>rm(root,{recursive:true,force:true}));
  const secretsDir=join(root,'secrets');await mkdir(secretsDir);
  const manifestPath=join(root,'activation.json'),policyPath=join(root,'egress-policy.json');
  const contract=describeOperationalSqlContract();
- assert.equal(contract.capabilityCount,17);
+ assert.equal(contract.capabilityCount,18);
  const slots={};
  for(const [index,item] of contract.slots.entries()){
   slots[item.poolPath]={login:'sabora_runtime_'+String(index).padStart(2,'0'),
@@ -90,24 +90,24 @@ test('production files, exact egress policy, secrets and 17 SQL slots reach one 
   startRuntime:async({options,listener,resources})=>{
    started++;
    const checked=validateM2RuntimeSqlIdentities(options);
-   assert.equal(checked.capabilityCount,17);
+   assert.equal(checked.capabilityCount,18);
    assert.equal(checked.notifierCount,2);
    assert.equal(listener.port,4100);
    return {mode:'lab-assembly',close:resources.close};
   }});
  assert.equal(started,1);
- assert.equal(runtime.summary.capabilityCount,17);
- assert.equal(SpyPool.instances.length,19);
+ assert.equal(runtime.summary.capabilityCount,18);
+ assert.equal(SpyPool.instances.length,20);
  assert.ok(SpyPool.instances.every(pool=>pool.options.ssl.rejectUnauthorized===true));
  await runtime.close();
  assert.ok(SpyPool.instances.every(pool=>pool.closed===1));
- // Failure after all 19 physical pools have been materialized must still
+ // Failure after all 20 physical pools have been materialized must still
  // close every pool exactly once, without leaking private error details.
  SpyPool.instances.length=0;
  await assert.rejects(startOperationalServerFromFiles({env,Pool:SpyPool,
   startRuntime:async()=>{throw Error('private_bootstrap_credentials_dont_log');}}),
   error=>error.message==='sabora_operational_startup_failed');
- assert.equal(SpyPool.instances.length,19);
+ assert.equal(SpyPool.instances.length,20);
  assert.ok(SpyPool.instances.every(pool=>pool.closed===1));
  // A valid manifest with an altered sidecar destination must never load even
  // one of the SQL secrets or construct a pool, let alone register HTTP.

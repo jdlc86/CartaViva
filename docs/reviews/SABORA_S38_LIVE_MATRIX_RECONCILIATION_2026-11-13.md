@@ -26,7 +26,7 @@
 
 ## Plan de ejecución sin duplicidades
 
-1. **Primero:** preparar el **paquete único de instalación y recuperación** según [runbook S38](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md): SHA/99 SQL, DBA opción A, backups restaurables y PITR confirmado, ledger transaccional, 17 slots de identidades (22 si opt-in), custodia/rotación de secretos, CA/endpoint/pooler, condiciones STOP, responsabilidades y evidencia verificable. No crear otro proyecto ni repetir auditorías cerradas por inercia.
+1. **Primero:** preparar el **paquete único de instalación y recuperación** según [runbook S38](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md): SHA/cadena SQL, DBA opción A, backups restaurables y PITR confirmado, ledger transaccional, 18 slots de identidades (23 si opt-in), custodia/rotación de secretos, CA/endpoint/pooler, condiciones STOP, responsabilidades y evidencia verificable. El slot adicional `h6.customerPool` separa el circuito económico del cliente de operaciones; no implica que exista el LOGIN físico. No crear otro proyecto ni repetir auditorías cerradas por inercia.
 2. **Con autorización específica:** migraciones + roles/ledger y verificación real en el Supabase del restaurante, recuperación y STOP si `supautils`/ACL diferencian del laboratorio.
 3. **Con autorización VPS separada e aislamiento material:** desplegar Sabora sin conexión/dependencia con Fleetia, probar ingress/egress/alertas y los flujos de ambas PWA y aceptación visual humana.
 4. **Cerrar producto completo:** matriz H6, Stripe sandbox/caja, reservas/Excel tras decisiones normativas, Gemini con coste y directorio separado; no presentar piloto acotado como M6 final.

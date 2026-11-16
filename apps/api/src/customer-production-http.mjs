@@ -191,7 +191,7 @@ export function registerCustomerProductionFlowHttp(app,{cookieAuth,flow,tableCha
     return reply.code(result.status==='confirmed'?201:200).send({status:result.status,
      orderId:result.orderId,grouping:result.grouping,
      ...(result.accountId?{accountId:result.accountId,roundId:result.roundId,
-      amountCents:result.amountCents,paymentMode:result.paymentMode,
+      amountCents:result.amountCents,paymentMode:result.paymentMode,paymentChannel:result.paymentChannel??null,
       roundState:result.roundState,paymentState:result.paymentState??null,
       requiresPaymentAction:typeof result.clientSecret==='string'}:null),
      ...(result.clientSecret?{clientSecret:result.clientSecret}:null)});

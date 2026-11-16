@@ -47,9 +47,9 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_
  REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
  from './h6-provider-repository.mjs';
 import {createH6OperationsRepository,createH6CustomerEventRepository,ACK_DISPATCH_H6_SQL,
- REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,
+ REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,
  READ_STAFF_EVENTS_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
- SET_CATALOG_SOLD_OUT_H6_SQL,CLOSE_ACCOUNT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL}
+ SET_CATALOG_SOLD_OUT_H6_SQL,CLOSE_ACCOUNT_H6_SQL}
  from './h6-operations-repository.mjs';
 import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
 import {registerH6OperationsHttp} from './h6-operations-http.mjs';
@@ -72,14 +72,25 @@ import {M5_COMMS_ADMIN_ROLE,M5_COMMS_PUBLIC_ROLE,READ_M5_COMMS_ADMIN_SQL,
  MANAGE_M5_COMMS_SQL,READ_M5_COMMS_PUBLIC_SQL,
  assertM5CommunicationsCapability,createM5CommunicationsRepositories,
  registerM5CommunicationsHttp,createM5CommunicationsStream} from './m5-communications.mjs';
+import {createEconomicCustomerRepository,createEconomicProviderRepository,createEconomicStaffRepository,
+ READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL,
+ RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+ READ_STAFF_ECONOMIC_ACCOUNTS_SQL,VERIFY_EXTERNAL_SETTLEMENT_SQL,REQUEST_ECONOMIC_REFUND_SQL,
+ RECORD_ECONOMIC_REFUND_SQL,CLOSE_ECONOMIC_TABLE_SQL} from './economic-circuit-repository.mjs';
+import {createEconomicCircuitService} from './economic-circuit-service.mjs';
+import {registerEconomicCircuitHttp} from './economic-circuit-http.mjs';
 
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,LIST_SCHEDULABLE_H6_SQL,
  REQUEST_DUE_CAPTURE_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
  RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
- REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
+ REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL,
+ RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+ REQUEST_ECONOMIC_REFUND_SQL,RECORD_ECONOMIC_REFUND_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
- RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL]);
+ RESOLVE_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,
+ READ_STAFF_ECONOMIC_ACCOUNTS_SQL,VERIFY_EXTERNAL_SETTLEMENT_SQL,CLOSE_ECONOMIC_TABLE_SQL]);
+const customerEconomicSql=new Set([READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL]);
 
 const staffGuard=forRoles=>roles=>{
  const hooks=forRoles(roles);
@@ -201,6 +212,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
    await preflightOrderTransitionStaffIdentity({pool:staff.pool,role:staff.expectedLogin});
    await assertM2H4OperationsCapability({pool:h4.operationsPool,
     expectedLogin:h4.expectedOperationsLogin});
+   await assertH6RuntimeIdentity({pool:h6.customerPool,
+    expectedLogin:h6.expectedCustomerLogin,capability:'sabora_h6_customer_runtime'});
    await assertH6RuntimeIdentity({pool:h6.providerPool,
     expectedLogin:h6.expectedProviderLogin,capability:'sabora_h6_provider_runtime'});
    await assertH6RuntimeIdentity({pool:h6.operationsPool,
@@ -253,6 +266,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   });
   const providerTx=createRoleScopedPostgresTransaction({pool:h6.providerPool,
    role:'sabora_h6_provider_runtime',allowedSql:providerSql});
+  const customerEconomicTx=createRoleScopedPostgresTransaction({pool:h6.customerPool,
+   role:'sabora_h6_customer_runtime',allowedSql:customerEconomicSql});
   const operationsTx=createRoleScopedPostgresTransaction({pool:h6.operationsPool,
    role:'sabora_h6_operations_runtime',allowedSql:operationsSql});
   const closeTx=createRoleScopedPostgresTransaction({pool:h6.closePool,
@@ -268,10 +283,16 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   if(h6.webhook!==undefined&&h6.webhook!==null)
    registerH6StripeWebhookHttp(app,{secret:h6.webhook.secret,providerRepository:provider});
   const payments=createH6PaymentOrchestrator({stripe:h6.stripe,repository:provider});
+  const economicCustomer=createEconomicCustomerRepository({withTransaction:customerEconomicTx});
+  const economicProvider=createEconomicProviderRepository({withTransaction:providerTx});
+  const economicStaff=createEconomicStaffRepository({withTransaction:operationsTx,
+   issueCapability:h6.issueStaffCapability});
+  const economicService=createEconomicCircuitService({stripe:h6.stripe,repository:economicProvider});
   const flow=createH6CustomerPaymentFlow({flow:b3.flow,payments});
   const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
   const operations=createH6OperationsCoordinator({repository:operationsRepository,
-   issueCapability:h6.issueStaffCapability});
+   issueCapability:h6.issueStaffCapability,
+   refundEconomicIncident:incidentId=>economicService.refundIncident(incidentId)});
   const closeOperations=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:closeTx}),
    issueCapability:h6.issueCloseCapability});
@@ -342,6 +363,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   registerOrderOperationsHttp(app,{forRoles:oneGuard,operations:h4Operations,
    legacyPickupDisabled:true});
   registerH6OperationsHttp(app,{forRoles:oneGuard,operations:composedOperations});
+  registerEconomicCircuitHttp(app,{cookieAuth,forRoles:oneGuard,customer:economicCustomer,
+   staffRepository:economicStaff,service:economicService});
   registerH6CustomerEventStreamHttp(app,{cookieAuth,events:customerEvents,
    subscribeCommitted:h6Notifier.subscribe,heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles:oneGuard,events:operationsRepository,
@@ -399,7 +422,7 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   app.addHook('onClose',closeServices);
   await app.ready();operational=!notificationDependencyLost;
   let closePromise=null;
-  return Object.freeze({app,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
+  return Object.freeze({app,economicService,mode:management?'opt-in-h3-h6-m3-candidate':'opt-in-h3-h6-m2-candidate',
    close(){if(!closePromise)closePromise=app.close();return closePromise;},
    async listen({host='127.0.0.1',port=0}={}){
     if(host!=='127.0.0.1'||!Number.isSafeInteger(port)||port<0||port>65535)

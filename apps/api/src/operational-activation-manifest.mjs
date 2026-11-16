@@ -41,6 +41,7 @@ const META=Object.freeze({
  'tableChange.pendingPool':['sabora_f12_pending_reader_runtime','pending_table_change_read'],
  'staff.pool':['sabora_staff_reader','staff_membership_read'],
  'h4.operationsPool':['sabora_b3_h4_transition_runtime','kitchen_waiter_operations'],
+ 'h6.customerPool':['sabora_h6_customer_runtime','h6_customer_economic'],
  'h6.providerPool':['sabora_h6_provider_runtime','payment_provider_ledger'],
  'h6.operationsPool':['sabora_h6_operations_runtime','h6_staff_operations'],
  'h6.closePool':['sabora_h6_account_close_runtime','account_close'],

@@ -11,12 +11,6 @@ export const REPORT_INCIDENT_H6_SQL=`SELECT sabora.report_h6_incident_authorized
 export const RESOLVE_INCIDENT_H6_SQL=`SELECT sabora.resolve_h6_incident_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::text,$8::text,
  $9::bigint,$10::bigint,$11::text) AS result`;
-export const SETTLE_CASH_H6_SQL=`SELECT sabora.settle_h6_account_cash_authorized_candidate(
- $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::bigint,$7::text,$8::bigint,$9::bigint,$10::text) AS result`;
-export const READ_CASH_ACCOUNTS_H6_SQL=`SELECT sabora.read_h6_cash_accounts_candidate(
- $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text,$9::uuid,$10::integer) AS result`;
-export const REFUND_CASH_H6_SQL=`SELECT sabora.refund_h6_cash_authorized_candidate(
- $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::bigint,$8::bigint,$9::text) AS result`;
 export const CLOSE_ACCOUNT_H6_SQL=`SELECT sabora.close_h6_account_authorized_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::uuid,$6::text,$7::bigint,$8::bigint,$9::text) AS result`;
 export const SET_CATALOG_SOLD_OUT_H6_SQL=`SELECT sabora.set_catalog_sold_out_h6_candidate(
@@ -111,19 +105,6 @@ export function createH6OperationsRepository({withTransaction}={}){
    return withTransaction(query=>one(query(RESOLVE_INCIDENT_H6_SQL,[...head,incidentId,
     resolution,reason.trim(),...tail(cap)])));
   },
-  readCashAccounts:({after=null,limit=50,capability:cap}={})=>{
-   if((after!==null&&!UUID.test(after))||!Number.isSafeInteger(limit)||limit<1||limit>50)
-    throw Error('invalid_h6_cash_snapshot');
-   const head=capability(cap,'read_cash_accounts',cap.actorId);
-   return withTransaction(query=>one(query(READ_CASH_ACCOUNTS_H6_SQL,
-    [...head,...tail(cap),after,limit])));
-  },
-  settleCash:({accountId,amountCents,capability:cap}={})=>{
-   if(!UUID.test(accountId??'')||!Number.isSafeInteger(amountCents)||amountCents<1)
-    throw Error('invalid_h6_cash_settlement');
-   const head=capability(cap,'settle_cash',accountId);
-   return withTransaction(query=>one(query(SETTLE_CASH_H6_SQL,[...head,accountId,amountCents,...tail(cap)])));
-  },
   closeAccount:({accountId,capability:cap}={})=>{
    if(!UUID.test(accountId??''))throw Error('invalid_h6_account_close');
    const head=capability(cap,'close_account',accountId);
@@ -135,11 +116,6 @@ export function createH6OperationsRepository({withTransaction}={}){
    const head=capability(cap,'set_catalog_sold_out',itemId);
    return withTransaction(query=>one(query(SET_CATALOG_SOLD_OUT_H6_SQL,
     [...head,itemId,soldOut,...tail(cap)])));
-  },
-  refundCash:({incidentId,capability:cap}={})=>{
-   if(!UUID.test(incidentId??''))throw Error('invalid_h6_cash_refund');
-   const head=capability(cap,'refund_cash',incidentId);
-   return withTransaction(query=>one(query(REFUND_CASH_H6_SQL,[...head,incidentId,...tail(cap)])));
   },
   managePickup:({lineId,action,expectedVersion,capability:cap}={})=>{
    if(!UUID.test(lineId??'')||!['claim_pickup','cancel_pickup','correct_ready'].includes(action)||

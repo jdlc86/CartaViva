@@ -4,6 +4,15 @@ Versión: 0.2 · 18-10-2026 · Estado: borrador para revisión, no implementaci�
 ## Propósito
 Comedor de trabajadores de distintas empresas. Dos PWA sobre un backend compartido: cliente y gestión. La PWA de gestión ofrece administración, sala y cocina con permisos separados. Los datos de consumo sirven para exportación empresarial; CartaViva no calcula nóminas.
 
+## Reconciliación económica vinculante (decisión del propietario, issue #61 · 15-11-2026)
+- **Stripe es el único gestor de movimientos monetarios dentro de Sabora.** Una caja o terminal externa queda íntegramente fuera: Sabora no registra sus cobros, devoluciones, arqueos, facturas ni propinas, y el personal no entrega dinero desde la aplicación.
+- Separar dos elecciones: **momento** (`pagar al pedir` o `pagar al final`) y **canal** (`Stripe` o `externo`). Pagar al final acumula consumo y permite escoger el canal al liquidar; no significa obligatoriamente efectivo. Pagar al pedir no se despacha a cocina hasta captura Stripe confirmada o verificación operativa externa por personal autorizado.
+- Sabora conserva pedidos, consumo bruto, cancelaciones, consumo neto, saldos operativos, asignación por persona/ronda, incidencias y cierre operativo. Una verificación externa solo declara que el personal comprobó el paso por el sistema externo; **no acredita dinero, recaudación, devolución ni factura**.
+- Una cancelación no servida reduce consumo. Si el canal fue externo, la eventual devolución se resuelve fuera de Sabora y no crea asiento monetario. Si hubo captura Stripe, el reintegro vuelve de forma idempotente al pagador y cargo originales.
+- El camarero consulta consumo por persona/mesa, modalidad, canal y estado, verifica el canal externo y cierra operativamente con actor y fecha cuando no quedan obligaciones; no cobra ni reembolsa desde Sabora.
+- Los indicadores distinguen consumo bruto, cancelaciones y consumo neto de capturas/devoluciones Stripe acreditadas. Las propinas no generan reparto, nómina ni importes por empleado en Sabora.
+- Esta decisión sustituye cualquier cláusula posterior que convirtiera Sabora en libro de caja o exigiera registrar efectivo. Los contratos históricos permanecen como trazabilidad; no autorizan APIs o pantallas de dinero externo.
+
 ## Identidad y acceso
 - **Identidad de cliente aprobada:** alias/nick elegido y editable; número ID visible generado automáticamente por Sabora y único por instalación; UUID interno permanente; empresa opcional y editable. No exigir DNI, número de empleado real, correo ni credenciales corporativas. El alias no tiene por qué ser único y el ID visible no es una contraseña.
 - **Persistencia:** la PWA instalada y la web reutilizan una sesión segura mientras siga vigente; no volver a solicitar los datos en cada visita. El QR identifica mesa, no persona. **Passkey opcional** para proteger y recuperar el perfil en dispositivos compatibles; la recuperación solo es posible si la credencial está disponible o mediante un mecanismo alternativo seguro todavía por definir. Véase `docs/architecture/SABORA_CUSTOMER_IDENTITY_CONTRACT.md`. Implementación y pruebas pendientes.

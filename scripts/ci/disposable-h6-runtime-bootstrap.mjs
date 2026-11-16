@@ -57,7 +57,7 @@ export async function startDisposableM3Runtime({options,environment=process.env}
   const isolatedOptions={...options,staff,observability:diagnostics,
    h6:{...options.h6,stripe:noProvider},
    enableDeferredDispatch:false,requireTrustedKeysOnReadiness:true};
-  // Internal factory checks 17 unique, least-privileged application SQL logins and
+  // Internal factory checks 18 unique, least-privileged application SQL logins and
   // all exact SQL capability grants before it registers an HTTP route.
   // Exercise the *same* identity inventory as the HTTP assembly in the
   // disposable PG17 end-to-end acceptance. No login names are emitted.

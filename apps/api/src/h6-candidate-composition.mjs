@@ -8,9 +8,9 @@ import {registerH6CustomerEventStreamHttp,registerH6StaffEventStreamHttp,
 import {createH6OperationsCoordinator} from './h6-operations-coordinator.mjs';
 import {registerH6OperationsHttp} from './h6-operations-http.mjs';
 import {createH6CustomerEventRepository,createH6OperationsRepository,ACK_DISPATCH_H6_SQL,
- REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- REFUND_CASH_H6_SQL,READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
- SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL} from './h6-operations-repository.mjs';
+ REPORT_INCIDENT_H6_SQL,RESOLVE_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ READ_CUSTOMER_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
+ SET_CATALOG_SOLD_OUT_H6_SQL} from './h6-operations-repository.mjs';
 import {createH6PaymentOrchestrator} from './h6-payment-orchestrator.mjs';
 import {createH6DeferredDispatchScheduler} from './h6-deferred-dispatch-scheduler.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
@@ -19,23 +19,26 @@ import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
  from './h6-provider-repository.mjs';
 import {assertH6SqlCapabilities} from './h6-sql-preflight.mjs';
-import {createThirdPartyCashCustomerRepository,createThirdPartyCashOperations,
- TP_CASH_DEBTS_SQL,TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
- TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,
- TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL,TP_CASH_TIP_REFUND_SQL} from './third-party-cash-repository.mjs';
-import {registerThirdPartyCashHttp} from './third-party-cash-http.mjs';
+import {createEconomicCustomerRepository,createEconomicProviderRepository,createEconomicStaffRepository,
+ READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL,
+ RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+ READ_STAFF_ECONOMIC_ACCOUNTS_SQL,VERIFY_EXTERNAL_SETTLEMENT_SQL,REQUEST_ECONOMIC_REFUND_SQL,
+ RECORD_ECONOMIC_REFUND_SQL,CLOSE_ECONOMIC_TABLE_SQL} from './economic-circuit-repository.mjs';
+import {createEconomicCircuitService} from './economic-circuit-service.mjs';
+import {registerEconomicCircuitHttp} from './economic-circuit-http.mjs';
 
-const customerSql=new Set([READ_H6_ROUND_SQL,READ_CUSTOMER_EVENTS_H6_SQL,TP_CASH_DEBTS_SQL,
- TP_CASH_INTENT_SQL,TP_CASH_REFUNDS_SQL,TP_CASH_REFUND_PROOF_SQL,
- TP_CASH_TIP_INTENT_SQL,TP_CASH_TIPS_SQL,TP_CASH_TIP_PROOF_SQL]);
+const customerSql=new Set([READ_H6_ROUND_SQL,READ_CUSTOMER_EVENTS_H6_SQL,
+ READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL]);
 const providerSql=new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
  LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
  RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
- RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL]);
+ RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL,
+ RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+ REQUEST_ECONOMIC_REFUND_SQL,RECORD_ECONOMIC_REFUND_SQL]);
 const operationsSql=new Set([ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
- RESOLVE_INCIDENT_H6_SQL,SETTLE_CASH_H6_SQL,REFUND_CASH_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
- MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
- TP_CASH_PENDING_SQL,TP_CASH_SETTLE_SQL,TP_CASH_REFUND_SQL,TP_CASH_TIP_REFUND_SQL]);
+ RESOLVE_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,
+ MANAGE_PICKUP_TASK_H6_SQL,SET_CATALOG_SOLD_OUT_H6_SQL,
+ READ_STAFF_ECONOMIC_ACCOUNTS_SQL,VERIFY_EXTERNAL_SETTLEMENT_SQL,CLOSE_ECONOMIC_TABLE_SQL]);
 
 // Explicitly dormant composition: it opens only the injected LISTEN connection,
 // never reads environment variables, creates credentials, starts a worker or
@@ -65,11 +68,14 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
   readPaymentState:createH6CustomerPaymentStateReader({withTransaction:customerTx})});
  const events=createH6CustomerEventRepository({withTransaction:customerTx});
  const operationsRepository=createH6OperationsRepository({withTransaction:operationsTx});
+ const economicCustomer=createEconomicCustomerRepository({withTransaction:customerTx});
+ const economicProvider=createEconomicProviderRepository({withTransaction:providerTx});
+ const economicStaff=createEconomicStaffRepository({withTransaction:operationsTx,
+  issueCapability:issueStaffCapability});
+ const economicService=createEconomicCircuitService({stripe,repository:economicProvider});
  const operations=createH6OperationsCoordinator({repository:operationsRepository,
-  issueCapability:issueStaffCapability});
- const thirdPartyPayer=createThirdPartyCashCustomerRepository({withTransaction:customerTx});
- const thirdPartyOperations=createThirdPartyCashOperations({withTransaction:operationsTx,
-  issueCapability:issueStaffCapability});
+  issueCapability:issueStaffCapability,
+  refundEconomicIncident:incidentId=>economicService.refundIncident(incidentId)});
  let scheduler=null;
  const notifier=await createPostgresH6OutboxNotifier({
   pool:notifierPool,
@@ -86,8 +92,8 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
  try{
   registerCustomerProductionFlowHttp(app,{cookieAuth,flow});
   registerH6OperationsHttp(app,{forRoles,operations});
-  registerThirdPartyCashHttp(app,{cookieAuth,forRoles,payer:thirdPartyPayer,
-   operations:thirdPartyOperations});
+  registerEconomicCircuitHttp(app,{cookieAuth,forRoles,customer:economicCustomer,
+   staffRepository:economicStaff,service:economicService});
   registerH6CustomerEventStreamHttp(app,{cookieAuth,events,subscribeCommitted:notifier.subscribe,
    heartbeatMs:eventHeartbeatMs});
   registerH6StaffEventStreamHttp(app,{forRoles,events:operationsRepository,
@@ -102,7 +108,7 @@ export async function registerH6CandidateHttp(app,{cookieAuth,forRoles,customerF
    await scheduler.start();
   }
  }catch(error){await scheduler?.close();await notifier.close();throw error;}
- return Object.freeze({provider,payments,operations,thirdPartyPayer,thirdPartyOperations,
+ return Object.freeze({provider,payments,operations,economicCustomer,economicStaff,economicService,
   close:async()=>{await scheduler?.close();await notifier.close();}});
 
 }

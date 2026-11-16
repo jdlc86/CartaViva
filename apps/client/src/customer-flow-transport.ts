@@ -166,7 +166,7 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     if(value.orderId!==input.orderId||
        ![null,'pay_now','pay_at_end'].includes(value.paymentMode as never)||
        !['free_grouping','awaiting_authorization','grouping','payment_unknown',
-         'capture_requested','captured','dispatch_requested','kitchen_acknowledged',
+         'capture_requested','captured','awaiting_external_verification','dispatch_requested','kitchen_acknowledged',
          'payment_failed','cancelled','compensation_required'].includes(value.roundState as string))
      throw new CustomerFlowTransportError('customer_flow_unavailable',503);
     return Object.freeze({orderId:input.orderId,
@@ -190,6 +190,7 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
        typeof value.accountId!=='string'||!UUID.test(value.accountId)||typeof value.roundId!=='string'||
        !UUID.test(value.roundId)||!Number.isSafeInteger(value.amountCents)||(value.amountCents as number)<0||
        !['pay_now','pay_at_end',null].includes(value.paymentMode as never)||typeof value.roundState!=='string'||
+       !['stripe','external',null].includes(value.paymentChannel as never)||
        typeof value.requiresPaymentAction!=='boolean'||
        (value.clientSecret!==undefined&&typeof value.clientSecret!=='string'))))
     throw new CustomerFlowTransportError('customer_flow_unavailable',503);
@@ -199,95 +200,57 @@ export function createCustomerFlowTransport({fetchImpl=globalThis.fetch}:{fetchI
     accountId:value.accountId as string|undefined,roundId:value.roundId as string|undefined,
     amountCents:value.amountCents as number|undefined,
     paymentMode:value.paymentMode as 'pay_now'|'pay_at_end'|null|undefined,
+    paymentChannel:value.paymentChannel as 'stripe'|'external'|null|undefined,
     roundState:value.roundState as string|undefined,paymentState:value.paymentState as string|null|undefined,
     requiresPaymentAction:value.requiresPaymentAction as boolean|undefined,
     clientSecret:value.clientSecret as string|undefined
    });
   },
-  async thirdPartyCashDebts(input:{tableId:string;visitId:string}){
-   if(!UUID.test(input.tableId)||!KEY.test(input.visitId))throw Error('invalid_third_party_transport');
-   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/debts','POST',input);
-   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
-    !value.items.every(x=>plain(x)&&UUID.test(x.roundId as string)&&
-     UUID.test(x.accountId as string)&&PUBLIC_ID.test(x.customerCode as string)&&
-     Number.isSafeInteger(x.amountCents)&&(x.amountCents as number)>0))
-    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
-   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
-    roundId:x.roundId as string,accountId:x.accountId as string,
-    customerCode:x.customerCode as string,amountCents:x.amountCents as number
-   })))});
+  async economicConsumption(input:{tableId:string;visitId:string}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId))throw Error('invalid_economic_transport');
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/economic/consumption','POST',input);
+   if(value.version!==2||typeof value.notice!=='string'||!Array.isArray(value.items)||value.items.length>250||
+    !Array.isArray(value.pendingSettlements)||value.pendingSettlements.length>25||
+    !value.pendingSettlements.every(x=>plain(x)&&UUID.test(x.intentId as string)&&KEY.test(x.requestKey as string)&&
+     ['stripe','external'].includes(x.channel as string)&&typeof x.state==='string'&&
+     Number.isSafeInteger(x.amountCents)&&(x.amountCents as number)>0&&
+     typeof x.createdAt==='string'&&Number.isFinite(Date.parse(x.createdAt as string))&&
+     Array.isArray(x.allocations)&&(x.allocations as Json[]).length>0&&
+     (x.allocations as Json[]).every(a=>plain(a)&&UUID.test(a.roundId as string)&&
+      Number.isSafeInteger(a.amountCents)&&(a.amountCents as number)>0))||
+    !value.items.every(x=>plain(x)&&UUID.test(x.accountId as string)&&
+     typeof x.customerCode==='string'&&typeof x.customerAlias==='string'&&typeof x.own==='boolean'&&
+     Number.isSafeInteger(x.netConsumptionCents)&&(x.netConsumptionCents as number)>=0&&
+     Array.isArray(x.rounds)&&x.rounds.every(r=>plain(r)&&UUID.test(r.roundId as string)&&
+      Number.isSafeInteger(r.amountCents)&&(r.amountCents as number)>0)))
+    throw new CustomerFlowTransportError('economic_circuit_unavailable',503);
+   return Object.freeze({notice:value.notice,
+    pendingSettlements:Object.freeze((value.pendingSettlements as Json[]).map(x=>Object.freeze({
+     intentId:x.intentId as string,requestKey:x.requestKey as string,
+     channel:x.channel as 'stripe'|'external',state:x.state as string,
+     amountCents:x.amountCents as number,createdAt:x.createdAt as string,
+     allocations:Object.freeze((x.allocations as Json[]).map(a=>Object.freeze({
+      roundId:a.roundId as string,amountCents:a.amountCents as number})))
+    }))),
+    items:Object.freeze(value.items.map(x=>Object.freeze({accountId:x.accountId as string,
+     customerCode:x.customerCode as string,customerAlias:x.customerAlias as string,own:x.own as boolean,
+     netConsumptionCents:x.netConsumptionCents as number,outstandingCents:x.outstandingCents as number,
+     rounds:Object.freeze((x.rounds as Json[]).map(r=>Object.freeze({roundId:r.roundId as string,
+      amountCents:r.amountCents as number}))) })))});
   },
-  async createThirdPartyCashIntent(input:{tableId:string;visitId:string;consent:true;
-   rounds:readonly {roundId:string;amountCents:number}[];requestKey:string;
-   tipOption?:'none'|'percent5'|'percent10'|'fixed100'|'fixed200'|'fixed500'}){
-   if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||input.consent!==true||
-    !KEY.test(input.requestKey)||input.rounds.length<1||input.rounds.length>10||
-    !input.rounds.every(x=>UUID.test(x.roundId)&&Number.isSafeInteger(x.amountCents)&&x.amountCents>0)||
-    (input.tipOption!==undefined&&!['none','percent5','percent10','fixed100','fixed200','fixed500'].includes(input.tipOption)))
-    throw Error('invalid_third_party_transport');
-   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/intents','POST',input);
-   if(value.version!==1||!UUID.test(value.intentId as string)||
-    !['pending','paid'].includes(value.state as string)||typeof value.repeated!=='boolean'||
-    !Number.isSafeInteger(value.totalCents)||(value.totalCents as number)<=0||
-    (input.tipOption!==undefined&&
-     (!Number.isSafeInteger(value.tipCents)||(value.tipCents as number)<0||
-      !Number.isSafeInteger(value.consumptionCents)||(value.consumptionCents as number)<=0||
-      (value.consumptionCents as number)+(value.tipCents as number)!==value.totalCents||
-      value.tipOption!==input.tipOption)))
-    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
-   return Object.freeze({intentId:value.intentId as string,
-    totalCents:value.totalCents as number,
-    consumptionCents:input.tipOption!==undefined?value.consumptionCents as number:value.totalCents as number,
-    tipCents:input.tipOption!==undefined?value.tipCents as number:0,
-    state:value.state as 'pending'|'paid'});
-  },
-  async myCashTips(){
-   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/tips','GET');
-   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
-      !value.items.every(x=>plain(x)&&UUID.test(x.collectionId as string)&&
-       Number.isSafeInteger(x.tipCents)&&(x.tipCents as number)>0&&
-       typeof x.collectedAt==='string'&&Number.isFinite(Date.parse(x.collectedAt))))
-    throw new CustomerFlowTransportError('tip_refund_unavailable',503);
-   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
-    collectionId:x.collectionId as string,tipCents:x.tipCents as number,
-    collectedAt:x.collectedAt as string
-   })))});
-  },
-  async cashTipRefundProof(collectionId:string){
-   if(!UUID.test(collectionId))throw Error('invalid_tip_scope');
-   const value=await jsonRequest(fetchImpl,
-    `/api/v1/customer/third-party/cash/tips/${collectionId}/proof`,'POST',{});
-   if(value.version!==1||value.collectionId!==collectionId||
-    !UUID.test(value.claimId as string)||!(/^[0-9a-f]{64}$/).test(value.proof as string)||
-    !Number.isSafeInteger(value.tipCents)||(value.tipCents as number)<=0||
-    typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt)))
-    throw new CustomerFlowTransportError('tip_refund_unavailable',503);
-   return Object.freeze({collectionId,claimId:value.claimId as string,
-    proof:value.proof as string,tipCents:value.tipCents as number,
-    expiresAt:value.expiresAt as string});
-  },
-  async thirdPartyCashRefunds(){
-   const value=await jsonRequest(fetchImpl,'/api/v1/customer/third-party/cash/refunds','GET');
-   if(value.version!==1||!Array.isArray(value.items)||value.items.length>50||
-    !value.items.every(x=>plain(x)&&UUID.test(x.incidentId as string)&&
-     Number.isSafeInteger(x.amountCents)&&(x.amountCents as number)>0))
-    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
-   return Object.freeze({items:Object.freeze(value.items.map(x=>Object.freeze({
-    incidentId:x.incidentId as string,amountCents:x.amountCents as number
-   })))});
-  },
-  async thirdPartyCashRefundProof(incidentId:string){
-   if(!UUID.test(incidentId))throw Error('invalid_third_party_transport');
-   const value=await jsonRequest(fetchImpl,
-    `/api/v1/customer/third-party/cash/refunds/${incidentId}/proof`,'POST',{});
-   if(value.version!==1||value.incidentId!==incidentId||
-    !UUID.test(value.claimId as string)||!(/^[0-9a-f]{64}$/).test(value.proof as string)||
-    !Number.isSafeInteger(value.amountCents)||(value.amountCents as number)<=0||
-    typeof value.expiresAt!=='string'||!Number.isFinite(Date.parse(value.expiresAt)))
-    throw new CustomerFlowTransportError('third_party_cash_unavailable',503);
-   return Object.freeze({claimId:value.claimId as string,incidentId,
-    amountCents:value.amountCents as number,proof:value.proof as string,
-    expiresAt:value.expiresAt as string});
+  async createEconomicSettlement(input:{tableId:string;visitId:string;requestKey:string;
+   channel:'stripe'|'external';allocations:readonly {roundId:string;amountCents:number}[]}){
+   if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||!KEY.test(input.requestKey)||
+    !['stripe','external'].includes(input.channel)||input.allocations.length<1||
+    input.allocations.length>50||!input.allocations.every(x=>UUID.test(x.roundId)&&
+     Number.isSafeInteger(x.amountCents)&&x.amountCents>0))throw Error('invalid_economic_transport');
+   const value=await jsonRequest(fetchImpl,'/api/v1/customer/economic/settlements','POST',input);
+   if(value.version!==2||!UUID.test(value.intentId as string)||typeof value.state!=='string')
+    throw new CustomerFlowTransportError('economic_circuit_unavailable',503);
+   return Object.freeze({intentId:value.intentId as string,state:value.state as string,
+    channel:input.channel,amountCents:Number.isSafeInteger(value.amountCents)?value.amountCents as number:
+     input.allocations.reduce((sum,x)=>sum+x.amountCents,0),
+    clientSecret:typeof value.clientSecret==='string'?value.clientSecret:undefined});
   },
   async readOrderRevision(input:{tableId:string;visitId:string;orderId:string}){
    if(!UUID.test(input.tableId)||!KEY.test(input.visitId)||!UUID.test(input.orderId))

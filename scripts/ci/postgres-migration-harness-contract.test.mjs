@@ -32,7 +32,7 @@ test('real-chain harness is checksum-ledgered and has no destination URL or bypa
 test('every real migration owns one intact transaction consumed by the atomic ledger runner',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(names.length,99,'exact audited chain');
+ assert.equal(names.length,100,'exact audited chain');
  for(const name of names){
   const sql=readFileSync(new URL(name,folder),'utf8');
   assert.equal((sql.match(/^BEGIN;$/gim)||[]).length,1,name+': BEGIN count');
@@ -164,10 +164,10 @@ test('HMAC-bound owner retains negative policy for all runtime and unexpected me
  ])assert.ok(sql.includes(code),code);
 });
 
-test('all 99 PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
+test('all 100 PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(names.length,99,'exact audited chain');
+ assert.equal(names.length,100,'exact audited chain');
  let ownerTransferVersions=0;
  for(const name of names){
   const sql=readFileSync(new URL(name,folder),'utf8');
@@ -229,10 +229,10 @@ test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()
  }
 });
 
-test('all 52 provider-adapted versions preserve one transaction and restore installer owner roles',()=>{
+test('all 55 provider-adapted versions preserve one transaction and restore installer owner roles',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const files=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(files.length,99,'full chain inventory');
+ assert.equal(files.length,100,'full chain inventory');
  let protectedCount=0;
  for (const name of files) {
   const sql=readFileSync(new URL(name,folder),'utf8');
@@ -250,7 +250,7 @@ test('all 52 provider-adapted versions preserve one transaction and restore inst
   assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('DO $cv005_early_owner_scope$'),name);
   assert.ok(sql.indexOf('DO $cv005_early_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
  }
- assert.equal(protectedCount,54,'52 original versions plus M2 and M3-M5 transaction scopes');
+ assert.equal(protectedCount,55,'reviewed provider-adapted chain including economic reconciliation');
  assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
  assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
  assert.match(providerCompat,/scope_matrix/, 'inspect all browser/DBA privilege facts');

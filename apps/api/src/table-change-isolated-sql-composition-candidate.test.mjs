@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import {createIsolatedTableChangeSqlCandidate,createVerifiedIsolatedTableChangeSqlCandidate,createVerifiedTableChangeB3Candidate,createIsolatedB3ConfirmationTransaction,B3_CONFIRMATION_SQL,createIsolatedB3H6ReadTransaction,createB3CustomerConfirmationFlowCandidate,createVerifiedTableChangeB3CustomerFlowCandidate,B3_CUSTOMER_FLOW_SQL,B3_CUSTOMER_FLOW_EXACT_SET_SQL,B3_H6_LOGIN_SURFACE_SQL,B3_H6_READER_FUNCTION_SQL,B3_H6_READ_SQL,F12_CUSTOMER_SQL,F12_OPERATIONS_SQL}
  from './table-change-isolated-sql-composition-candidate.mjs';
 import {PERSIST_H6_TRANSFER_ORDER_SQL,PERSIST_H6_ORDER_SQL,READ_H6_ROUND_SQL,
- READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL,
+ CONVERT_H6_EXTERNAL_SQL}
  from './customer-production-flow.mjs';
 import {REQUEST_TABLE_CHANGE_H6_RESOLVED_SQL,READ_TABLE_CHANGE_H6_SQL,
  READ_TABLE_CHANGE_H6_OUTBOX_SQL,DECIDE_TABLE_CHANGE_H6_SQL}
@@ -87,7 +88,8 @@ function preflightPool(capability,login,{deny=false}={}){
       'sabora.read_customer_table_change_outbox_h6_candidate(bytea,bigint,integer)']:
     capability==='sabora_b3_confirmation_runtime'?
      ['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
-      'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)']:
+      'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)',
+      'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)']:
      ['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']}]};
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK'||sql.startsWith('SET LOCAL ROLE '))
    return {rows:[]};
@@ -219,7 +221,8 @@ function b3ConfirmationPool({extraFunction=false,directLoginGrant=false}={}){
  const login='b3_confirmation_login',role='sabora_b3_confirmation_runtime';
  const signatures=[
   'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
-  'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'];
+  'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)',
+  'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)'];
  const calls=[];
  return {calls,async connect(){return {
   async query(sql,args){
@@ -289,7 +292,8 @@ test('B3 full isolated composition never constructs confirmation on privilege dr
 
 
 test('B3 confirmation writer executes only transfer SQL under a local capability role',async()=>{
- assert.deepEqual(B3_CONFIRMATION_SQL,[PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL]);
+ assert.deepEqual(B3_CONFIRMATION_SQL,[PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL,
+  CONVERT_H6_EXTERNAL_SQL]);
  const confirmation=pool(PERSIST_H6_TRANSFER_ORDER_SQL,[{persisted_order_id:requestId}]);
  const transaction=createIsolatedB3ConfirmationTransaction({confirmationPool:confirmation});
  await assert.rejects(()=>transaction(query=>query(PERSIST_H6_ORDER_SQL,[])),

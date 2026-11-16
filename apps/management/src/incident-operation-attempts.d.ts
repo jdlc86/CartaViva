@@ -1,4 +1,4 @@
-export type IncidentOperationKind='report'|'resolve'|'refund';
+export type IncidentOperationKind='report'|'resolve';
 export type IncidentOperationAttempts=Readonly<{
  pending(kind:IncidentOperationKind,subjectId:string):boolean;
  run<T>(args:{

@@ -1,7 +1,7 @@
 // A failed or lost HTTP response must not create a different financial intent.
 // PostgreSQL remains the authority; this memory ledger only protects the PWA session.
 const PREFIX=Object.freeze({
- report:'ui_incident_',resolve:'ui_resolution_',refund:'ui_cash_refund_'
+ report:'ui_incident_',resolve:'ui_resolution_'
 });
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const plain=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
