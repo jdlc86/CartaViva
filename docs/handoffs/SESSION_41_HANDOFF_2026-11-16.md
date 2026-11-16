@@ -243,3 +243,7 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Decisión:** **NO-GO de merge a `main` por P1-07**, aunque 8/8 CI PASS. #59 y #60 continúan Draft, y #60 ya es ancestro de #59 (evitar duplicación). No crear PR adicional. No tocar Supabase operativo, VPS, Fleetia ni los recursos de otros proyectos. Sin aprobación visual humana ni revisión independiente de SHA corregido.
 
+## S41-13 — encargo de revisión independiente y propuestas a Codex (16-11-2026)
+
+Se publica [encargo S41 de revisión para Codex](../assignments/CODEX_S41_INDEPENDENT_REVIEW_PR59_AND_SOLUTION_PROPOSAL_2026-11-16.md) sobre PR #59 Draft (que incorpora #60 en su genealogía). **Este es solo un encargo, no un informe recibido, una aprobación independiente ni una corrección.** Codex debe cuestionar S41-rv03, investigar P1-07 del webhook Stripe y el conjunto H6/Issue #61/M6, y elaborar propuestas concretas por hallazgo, alternativas, riesgos, ficheros a cambiar, pruebas y comparación de quién debería corregir. **Prohibido modificar código antes de la decisión posterior del propietario**. Única salida autorizada: informe Markdown en `docs/reviews/SABORA_S41_CODEX_INDEPENDENT_REVIEW_PR59_2026-11-16.md`, commit documental en la rama #59 y comentario con URL absoluta y SHA en [PR #59](https://github.com/jdlc86/CartaViva/pull/59). Los 8/8 CI PASS se refieren a `e3495644`, sin aceptación visual ni validación de producción. Hasta leer el informe y decidir: **NO-GO merge**, NO-GO Supabase/VPS, prohibido Fleetia.
+
