@@ -13,8 +13,8 @@ export const RECORD_CAPTURE_H6_SQL=`SELECT payment_state,round_state,dispatch_id
  FROM sabora.record_h6_capture_outcome_candidate($1::uuid,$2::text,$3::text,$4::text)`;
 export const RECORD_CAPTURE_COMPENSATION_H6_SQL=`SELECT payment_state,round_state,dispatch_id,dispatch_state,repeated
  FROM sabora.record_h6_capture_compensation_candidate($1::uuid,$2::text,$3::text)`;
-export const INGEST_STRIPE_WEBHOOK_H6_SQL=`SELECT sabora.ingest_stripe_webhook_h6_candidate(
- $1::text,$2::text,$3::text,$4::timestamptz,$5::bytea,$6::text,$7::timestamptz,$8::uuid,$9::text) AS result`;
+export const INGEST_STRIPE_WEBHOOK_H6_SQL=`SELECT sabora.ingest_stripe_webhook_issue61_candidate(
+ $1::text,$2::text,$3::text,$4::timestamptz,$5::bytea,$6::text,$7::timestamptz,$8::uuid,$9::text,$10::uuid) AS result`;
 export const RECORD_REFUND_H6_SQL=`SELECT sabora.record_h6_refund_outcome_candidate(
  $1::uuid,$2::text,$3::text) AS result`;
 export const REQUEST_REFUND_H6_SQL=`SELECT refund_attempt_id,provider_charge_id,amount_cents,
@@ -69,13 +69,13 @@ export function createH6ProviderRepository({withTransaction}={}){
     [orderId,providerChargeId,errorCode])));
   },
   ingestWebhook({eventId,eventType,providerObjectId,providerCreatedAt,payloadSha256,
-   providerChargeId=null,captureBefore=null,refundAttemptId=null,refundStatus=null}={}){
+   providerChargeId=null,captureBefore=null,refundAttemptId=null,refundStatus=null,saboraOrderId=null}={}){
    if(!(providerCreatedAt instanceof Date)||!Number.isFinite(providerCreatedAt.getTime())||
       !Buffer.isBuffer(payloadSha256)||payloadSha256.length!==32)
     throw Error('invalid_h6_webhook_record');
    return withTransaction(query=>rows(query(INGEST_STRIPE_WEBHOOK_H6_SQL,
     [eventId,eventType,providerObjectId,providerCreatedAt,payloadSha256,providerChargeId,captureBefore,
-     refundAttemptId,refundStatus])))
+     refundAttemptId,refundStatus,saboraOrderId])))
     .then(row=>Object.freeze(row.result));
   },
   recordRefund({refundAttemptId,outcome,providerRefundId=null}={}){

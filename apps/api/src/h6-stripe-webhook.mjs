@@ -2,6 +2,7 @@ import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 
 const EVENT=/^evt_[A-Za-z0-9]{8,128}$/;
 const OBJECT=/^(pi|ch|re)_[A-Za-z0-9]{8,128}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TYPES=new Set(['payment_intent.amount_capturable_updated','payment_intent.payment_failed',
  'payment_intent.succeeded','payment_intent.canceled','charge.refunded','refund.updated']);
 
@@ -47,13 +48,18 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
     !object.id.startsWith(expectedIdPrefix)||
     !Number.isSafeInteger(event?.created)||event.created<1)
   throw Error('invalid_stripe_webhook_payload');
- let providerChargeId=null;
+ let providerChargeId=null,saboraOrderId=null;
  let captureBefore=null;
  let refundAttemptId=null,refundStatus=null;
  if(event.type==='payment_intent.succeeded'){
   providerChargeId=typeof object.latest_charge==='string'?object.latest_charge:object.latest_charge?.id;
   if(typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
    throw Error('invalid_stripe_webhook_payload');
+ }
+ if(event.type.startsWith('payment_intent.')){
+  const value=object?.metadata?.sabora_order_id;
+  if(value!==undefined&&value!==null&&!UUID.test(value))throw Error('invalid_stripe_webhook_payload');
+  saboraOrderId=value??null;
  }
  if(event.type==='payment_intent.amount_capturable_updated'){
   const raw=object?.latest_charge?.payment_method_details?.card?.capture_before;
@@ -73,7 +79,7 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  }
  return Object.freeze({eventId:event.id,eventType:event.type,providerObjectId:object.id,
   providerCreatedAt:new Date(event.created*1000),payloadSha256:createHash('sha256').update(body).digest(),
-  providerChargeId,captureBefore,refundAttemptId,refundStatus});
+  providerChargeId,captureBefore,refundAttemptId,refundStatus,saboraOrderId});
 }
 
 export function createH6StripeWebhookHandler({secret,providerRepository,

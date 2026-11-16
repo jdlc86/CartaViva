@@ -38,8 +38,8 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
  const reload=()=>setRevision(v=>v+1);
  const maxSales=useMemo(()=>Math.max(1,...(snapshot?.dailySales.map(x=>Math.abs(x.netSalesCents))??[])),[snapshot]);
  return <div className="view-stack">
-  <PageHeader eyebrow="Configuración · Finanzas" title="Dashboard financiero"
-   description="Información del restaurante calculada en servidor: ventas netas y recaudación confirmada no son la misma magnitud."
+  <PageHeader eyebrow="Configuración · Consumo" title="Dashboard económico"
+   description="Consumo operativo y recaudación acreditada Stripe son magnitudes distintas. La caja o terminal externa queda fuera de Sabora."
    actions={<StatusBadge tone={phase==='ready'?'brand':'warning'}>{phase==='ready'?'Lectura autorizada':'Sin lectura vigente'}</StatusBadge>}/>
   <div className="period-bar" aria-label="Periodo del dashboard financiero">
    <span>Periodo</span>
@@ -61,20 +61,20 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
    <div className="finance-snapshot-time"><span>Última actualización: {new Date(snapshot.asOf).toLocaleString('es-ES',{timeZone:snapshot.timeZone})} · {snapshot.timeZone}</span>
     <span>Periodo: {new Date(snapshot.from).toLocaleDateString('es-ES',{timeZone:snapshot.timeZone})} – {new Date(snapshot.to).toLocaleDateString('es-ES',{timeZone:snapshot.timeZone})} (fin exclusivo)</span></div>
    {snapshot.historicalCoverage==='incomplete'?<div className="connection-notice connection-notice--warning" role="status">
-    <p><strong>Recaudación digital histórica no verificable.</strong> Existen cobros o devoluciones anteriores sin fecha inmutable de confirmación. La recaudación total y su comparación permanecen en «Sin datos»; no se calculan cifras aproximadas.</p>
+    <p><strong>Recaudación Stripe histórica no verificable.</strong> Existen capturas o reembolsos anteriores sin fecha inmutable de confirmación. La recaudación acreditada y su comparación permanecen en «Sin datos»; no se calculan cifras aproximadas.</p>
    </div>:null}
    <section aria-label="Indicadores diarios y mensuales">
     <div className="metric-grid">
-     <article className="metric-card"><span>Ventas netas · hoy</span><strong>{currency(snapshot.todaySalesCents)}</strong><p>Consumo confirmado neto de ajustes de hoy, sin propinas.</p></article>
-     <article className="metric-card"><span>Ventas netas · mes actual</span><strong>{currency(snapshot.monthSalesCents)}</strong><p>Consumo confirmado neto de ajustes del mes en el huso del restaurante.</p></article>
-     <article className="metric-card"><span>Recaudación · hoy</span><strong>{money(snapshot.todayCollectedCents)}</strong><p>Solo cobros confirmados menos devoluciones ejecutadas.</p></article>
-     <article className="metric-card"><span>Recaudación · mes actual</span><strong>{money(snapshot.monthCollectedCents)}</strong><p>Sin anticipar autorizaciones ni eventos inciertos.</p></article>
+     <article className="metric-card"><span>Consumo neto · hoy</span><strong>{currency(snapshot.todaySalesCents)}</strong><p>Consumo operativo menos cancelaciones; no acredita recaudación ni facturación.</p></article>
+     <article className="metric-card"><span>Consumo neto · mes actual</span><strong>{currency(snapshot.monthSalesCents)}</strong><p>Incluye consumos destinados a caja externa sin convertirlos en dinero verificado.</p></article>
+     <article className="metric-card"><span>Stripe acreditado · hoy</span><strong>{money(snapshot.todayCollectedCents)}</strong><p>Solo capturas Stripe confirmadas menos reembolsos confirmados.</p></article>
+     <article className="metric-card"><span>Stripe acreditado · mes actual</span><strong>{money(snapshot.monthCollectedCents)}</strong><p>Sin anticipar autorizaciones ni eventos inciertos.</p></article>
     </div>
    </section>
    <section aria-label="Indicadores financieros del periodo seleccionado">
     <div className="metric-grid">
-     <article className="metric-card"><span>Ventas netas · periodo</span><strong>{currency(snapshot.salesCents)}</strong><p>Consumo confirmado menos ajustes; sin propinas.</p><small>Vs. periodo anterior: {compare(snapshot.salesCents,snapshot.previousSalesCents)}</small></article>
-     <article className="metric-card"><span>Recaudación confirmada · periodo</span><strong>{money(snapshot.collectedCents)}</strong><p>Solo consumo: efectivo y capturas Stripe menos devoluciones ejecutadas; propinas separadas.</p><small>Vs. anterior: {compare(snapshot.collectedCents,snapshot.previousCollectedCents)}</small></article>
+     <article className="metric-card"><span>Consumo neto · periodo</span><strong>{currency(snapshot.salesCents)}</strong><p>Consumo operativo menos cancelaciones; no es recaudación ni facturación acreditada.</p><small>Vs. periodo anterior: {compare(snapshot.salesCents,snapshot.previousSalesCents)}</small></article>
+     <article className="metric-card"><span>Recaudación acreditada Stripe · periodo</span><strong>{money(snapshot.collectedCents)}</strong><p>Capturas confirmadas menos reembolsos confirmados; nunca incluye caja externa.</p><small>Vs. anterior: {compare(snapshot.collectedCents,snapshot.previousCollectedCents)}</small></article>
      <article className="metric-card"><span>Saldo pendiente · actual</span><strong>{currency(snapshot.outstandingCents)}</strong><p>Deuda abierta exigible; nunca incluye autorizaciones como recaudación.</p></article>
      <article className="metric-card"><span>Pedidos con consumo · periodo</span><strong>{snapshot.ordersCount}</strong><p>Pedidos confirmados sin contabilizar reintentos.</p></article>
      <article className="metric-card"><span>Ticket medio · periodo</span><strong>{money(snapshot.averageTicketCents)}</strong><p>Por {snapshot.consumingAccounts} cuenta(s) con consumo; métrica operativa, no fiscal.</p></article>
@@ -83,8 +83,8 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
    <div className="dashboard-grid">
     <section className="panel panel--wide" aria-labelledby="finance-trend-title">
      <div className="panel-heading"><div><span className="eyebrow">Tendencia</span>
-      <h2 id="finance-trend-title">Ventas netas por día · {snapshot.month}</h2></div></div>
-     <div className="finance-trend" role="img" aria-label={'Ventas diarias del mes '+snapshot.month}>
+      <h2 id="finance-trend-title">Consumo neto por día · {snapshot.month}</h2></div></div>
+     <div className="finance-trend" role="img" aria-label={'Consumo diario del mes '+snapshot.month}>
       {snapshot.dailySales.map(entry=><div className="finance-trend-day" key={entry.date}
        title={entry.date+': '+currency(entry.netSalesCents)}>
        <span className="finance-trend-plot"><span
@@ -107,20 +107,13 @@ export function FinanceDashboardView({gateway}:{gateway:FinanceDashboardGateway}
        </li>)}</ol>}
     </section>
    </div>
-   <section className="panel" aria-label="Desglose de cobros">
-    <div className="panel-heading"><div><span className="eyebrow">Cobros</span>
-     <h2>Medios y propinas</h2></div></div>
+   <section className="panel" aria-label="Límite de acreditación económica">
+    <div className="panel-heading"><div><span className="eyebrow">Canales</span>
+     <h2>Stripe frente a operación externa</h2></div></div>
     <div className="finance-channels">
-     <p><strong>Efectivo registrado:</strong> {currency(snapshot.cashCollectedCents)}</p>
-     <p><strong>Tarjeta confirmada:</strong> {money(snapshot.stripeCollectedCents)}</p>
-     {snapshot.tipsAvailable?
-     <>
-      <p><strong>Propinas recaudadas · efectivo:</strong> {currency(snapshot.tipsCollectedCents??0)}</p>
-      <p><strong>Devoluciones de propinas:</strong> {currency(snapshot.tipsRefundedCents??0)}</p>
-      <p><strong>Propinas netas · efectivo:</strong> {currency(snapshot.tipsCents??0)}</p>
-      <p className="privacy-copy">Las propinas no son ventas ni se distribuyen a empleados desde Sabora. La recaudación por Stripe no está incorporada a este indicador hasta validar el proveedor.</p>
-     </>:
-     <p><strong>Propinas:</strong> Sin datos verificables. No se imputan a ventas.</p>}
+     <p><strong>Stripe confirmado neto:</strong> {money(snapshot.stripeCollectedCents)}</p>
+     <p><strong>Caja o terminal externa:</strong> fuera de Sabora; sus verificaciones operativas no se contabilizan.</p>
+     <p className="privacy-copy">Consumo operativo, no recaudación ni facturación acreditada. Sabora no gestiona reparto de propinas, nóminas ni devoluciones externas.</p>
     </div>
    </section>
   </>:null}

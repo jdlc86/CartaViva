@@ -4,6 +4,8 @@ Fecha: 2026-10-27. Estado: **candidato técnico desconectado; no desplegado**.
 
 Este documento describe la implementación candidata de H6. No modifica ni sustituye los contratos normativos. En caso de discrepancia prevalecen `SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`, `SABORA_CONTRACT_CONSISTENCY_V1.md`, el contrato QR V1 y el gate de cocina/sala.
 
+> **Reconciliación issue #61 (15-11-2026):** las referencias históricas de este candidato a liquidación o devolución presencial en Sabora están superadas. La migración `20261115115624_sabora_economic_circuit_reconciliation_candidate.sql` y la composición nueva separan momento y canal; Stripe es el único dinero acreditado y el canal externo solo admite verificación/cierre operativos. Los objetos antiguos se conservan como evidencia histórica y no se montan en la composición normal.
+
 ## Límite de activación
 
 - Las migraciones `20261027122858_sabora_h6_events_payments_operations_candidate.sql` y `20261027190334_sabora_pickup_claim_cancel_candidate.sql` solo se han ejecutado en PostgreSQL 17 desechable.
@@ -27,7 +29,7 @@ Hay tres roles de capacidad `NOLOGIN NOINHERIT`:
 
 - `sabora_h6_customer_runtime`: confirmación económica, lectura de política/ronda y backlog del cliente.
 - `sabora_h6_provider_runtime`: resultados/reconciliación de Stripe, captura, liberación y reembolsos.
-- `sabora_h6_operations_runtime`: ACK de cocina, incidencias, arbitraje, liquidación/devolución presencial y backlog por rol.
+- `sabora_h6_operations_runtime`: ACK de cocina, incidencias, arbitraje, verificación externa, cierre operativo y backlog por rol. Las capacidades antiguas de caja no forman parte de la API económica vigente.
 
 Los logins reales deben ser `NOINHERIT`, sin superusuario, `BYPASSRLS`, DDL, tablas ni secuencias directas. El preflight compara identidad, membresía `SET ROLE` y superficie exacta de funciones antes del montaje.
 
@@ -57,14 +59,14 @@ El adaptador acepta exclusivamente credenciales test/restricted-test inyectadas.
 
 La captura y la solicitud de despacho se persisten en una sola transacción. Cocina no puede pasar una línea de `confirmed` a `preparing` hasta el ACK durable del despacho.
 
-## Incidencias y efectivo
+## Incidencias y canal externo (reconciliado por issue #61)
 
 - Cocina: siempre abre arbitraje administrativo; un reintegro debido no puede rechazarse.
 - Camarero por petición del cliente: sigue la configuración. Si se pidiera omitir aprobación sin límites antifraude normativos, se bloquea de forma explícita.
 - Camarero por causa del restaurante: efecto económico automático y auditable.
-- Cuenta abierta no cobrada: reduce deuda.
-- Cuenta ya cobrada en efectivo: crea `cash_refund_due`; camarero/admin registra la entrega presencial con capacidad HMAC e idempotencia.
-- Pago digital autorizado: libera autorización. Capturado: crea reembolso al cargo original.
+- Consumo todavía pendiente: reduce saldo operativo.
+- Canal externo ya verificado: reduce consumo; cualquier devolución ocurre fuera y no genera `cash_refund_due`, asiento o entrega desde Sabora.
+- Stripe autorizado: libera/reduce autorización. Capturado: crea reembolso durable al cargo y pagador originales.
 
 ## Asignación de recogida de sala (Issue #33)
 

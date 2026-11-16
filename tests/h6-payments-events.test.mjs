@@ -50,8 +50,6 @@ test('pickup HTTP routes preserve version, conflict snapshot and approved role b
   acknowledgeDispatch:async()=>{throw Error('unused');},
   reportIncident:async()=>{throw Error('unused');},
   resolveIncident:async()=>{throw Error('unused');},
-  settleCash:async()=>{throw Error('unused');},
-  refundCash:async()=>{throw Error('unused');},
   managePickup:async(identity,input)=>{
    calls.push({identity,input});
    return {version:1,outcome:input.correlationId.includes('conflict')?'conflict':'applied',
@@ -94,6 +92,32 @@ test('pickup HTTP routes preserve version, conflict snapshot and approved role b
  assert.equal(malformed.statusCode,400);
 });
 
+test('legacy money routes cannot be recomposed while explicit account close remains available',async t=>{
+ const app=Fastify({logger:false});
+ t.after(()=>app.close());
+ const forRoles=()=>async request=>{
+  request.verifiedIdentity={sub:actorId};request.verifiedStaff={id:actorId,role:'waiter'};
+ };
+ let closes=0;
+ registerH6OperationsHttp(app,{forRoles,operations:{
+  closeAccount:async()=>{closes+=1;return {state:'settled'};}
+ }});
+ await app.ready();
+ const legacy=[
+  {method:'GET',url:'/api/v1/operations/cash/accounts'},
+  {method:'POST',url:`/api/v1/operations/accounts/${targetId}/cash-settlements`,
+   payload:{amountCents:100,correlationId:'legacy_cash_settle_001'}},
+  {method:'POST',url:`/api/v1/operations/incidents/${targetId}/cash-refund`,
+   payload:{correlationId:'legacy_cash_refund_001'}},
+  {method:'GET',url:'/api/v1/operations/third-party/cash/pending'},
+  {method:'POST',url:`/api/v1/operations/tips/${targetId}/refund`,payload:{}}
+ ];
+ for(const request of legacy)assert.equal((await app.inject(request)).statusCode,404);
+ const close=await app.inject({method:'POST',url:`/api/v1/operations/accounts/${targetId}/close`,
+  payload:{correlationId:'operational_close_0001'}});
+ assert.equal(close.statusCode,200);assert.equal(closes,1);
+});
+
 test('Stripe adapter fixes manual capture and durable idempotency without live credentials',async()=>{
  const calls=[];
  const adapter=createH6StripeAdapter({credential:'sk_test_candidate_not_real_2026',request:async call=>{
@@ -132,12 +156,13 @@ test('Stripe adapter fixes manual capture and durable idempotency without live c
 test('Stripe webhook verifies the unmodified body, age and any valid v1 signature',async()=>{
  const secret='whsec_candidate_0123456789abcdef',timestamp=Math.floor(Date.UTC(2026,9,27,12,0,0)/1000);
  const rawBody=Buffer.from(JSON.stringify({id:'evt_12345678',type:'payment_intent.succeeded',created:timestamp,
-  data:{object:{id:'pi_12345678',latest_charge:'ch_12345678'}}}));
+  data:{object:{id:'pi_12345678',latest_charge:'ch_12345678',metadata:{sabora_order_id:orderId}}}}));
  const valid=createHmac('sha256',secret).update(`${timestamp}.`).update(rawBody).digest('hex');
  const verified=verifyH6StripeWebhook({rawBody,signatureHeader:`t=${timestamp},v1=${'0'.repeat(64)},v1=${valid}`,
   secret,nowMs:timestamp*1000});
  assert.equal(verified.eventId,'evt_12345678');
  assert.equal(verified.providerChargeId,'ch_12345678');
+ assert.equal(verified.saboraOrderId,orderId);
  const ingested=[];
  const handler=createH6StripeWebhookHandler({secret,clock:()=>timestamp*1000,
   providerRepository:{ingestWebhook:async event=>{ingested.push(event);return {outcome:'applied'};}}});

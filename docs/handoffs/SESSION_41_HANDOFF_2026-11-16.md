@@ -85,4 +85,11 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Evidencia y alcance al publicar:** revisión estática de archivos exactos y preparación del cambio en rama #59; **CI combinada no ejecutada ni acreditada** al redactar. Tras el commit verificar en GitHub Actions el nuevo SHA de #59; una ejecución verde de #59 solamente prueba sus 99 migraciones actuales. Para acreditar las 100 y todo el producto integrado hace falta el SHA que contenga **ambos PR** y las baterías PG17/HTTP/Chromium/recuperación correspondientes. No se realizó merge, operación Supabase, VPS, Fleetia ni despliegue.
 
-**Puerta de integración:** mantener evaluación independiente real sobre ambos deltas, confrontación de normas económicas y gobernanza, resolución conservadora de los tres archivos superpuestos, comprobación de roles/SQL 100 y pruebas del árbol combinado antes de dar GO de integración en `main`. No mezclar un GO de GitHub con GO operativo M6. 
+**Puerta de integración:** mantener evaluación independiente real sobre ambos deltas, confrontación de normas económicas y gobernanza, resolución conservadora de los tres archivos superpuestos, comprobación de roles/SQL 100 y pruebas del árbol combinado antes de dar GO de integración en `main`. No mezclar un GO de GitHub con GO operativo M6.
+
+## S41-3 — candidato integrado #59 + #60 en la rama existente (16-11-2026)
+
+**Integración entre ramas, no en main:** se combinan como dos progenitores el PR #59 `a9ccf1ff` y el PR #60 `4ba65545` sobre la base común `main@59866219`. Se conservan los 83 cambios del #60 y las capacidades de gobernanza, doble copia y publicación del #59; los tres archivos comunes se resuelven expresamente: catálogo PG17 con selector #61 y restauración cifrada total; runbook S38 con doble copia y 18/23 slots del nuevo contrato; tablero vivo con entradas económicas y toda la cadena S40/S41. El ensayo de restauración compara inventario auditado para 99 históricos o 100 en el candidato conjunto.
+
+**Evidencia pendiente:** CI del nuevo SHA integrado, pruebas PG17/HTTP/Chromium, recuperación, permisos, build, UI y aislamiento. Ninguna CI previa de cada rama certifica el nuevo árbol. El PR #60 sigue Draft sin fusionar en main; la posible fusión posterior necesita revisión y decisión explícita. Sin operación SQL de Supabase, VPS, Fleetia ni despliegue.
+

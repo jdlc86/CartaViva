@@ -4,26 +4,25 @@ const CAPABILITIES=Object.freeze({
   'confirm_customer_round_h6_candidate','read_customer_payment_policy_h6_candidate',
   'read_customer_round_h6_candidate','read_customer_event_backlog_h6_candidate',
   'read_customer_order_revision_h6_candidate','resubmit_customer_order_revision_h6_candidate',
-  'read_third_party_cash_debts_candidate','create_third_party_cash_intent_candidate',
-  'read_third_party_cash_refunds_candidate','issue_third_party_cash_refund_proof_candidate',
-  'create_cash_tip_intent_candidate','read_my_cash_tips_candidate',
-  'issue_cash_tip_refund_proof_candidate'
+  'read_customer_economic_consumption_candidate',
+  'create_customer_economic_settlement_candidate','convert_customer_round_to_external_candidate'
  ]),
  sabora_h6_provider_runtime:Object.freeze([
   'record_h6_authorization_outcome_candidate','request_h6_capture_dispatch_candidate',
   'list_schedulable_h6_rounds_candidate',
   'record_h6_capture_outcome_candidate','record_h6_capture_compensation_candidate',
-  'ingest_stripe_webhook_h6_candidate','record_h6_refund_outcome_candidate',
-  'request_h6_refund_candidate','request_h6_release_candidate','record_h6_release_outcome_candidate'
+  'ingest_stripe_webhook_issue61_candidate','record_h6_refund_outcome_candidate',
+  'request_h6_refund_candidate','request_h6_release_candidate','record_h6_release_outcome_candidate',
+  'record_economic_stripe_authorization_candidate','request_economic_stripe_capture_candidate',
+  'record_economic_stripe_capture_candidate','request_economic_stripe_refund_candidate',
+  'record_economic_stripe_refund_candidate'
  ]),
  sabora_h6_operations_runtime:Object.freeze([
   'acknowledge_kitchen_dispatch_h6_candidate','report_h6_incident_authorized_candidate',
-  'resolve_h6_incident_authorized_candidate','settle_h6_account_cash_authorized_candidate',
-  'refund_h6_cash_authorized_candidate','read_staff_event_backlog_h6_candidate',
+  'resolve_h6_incident_authorized_candidate','read_staff_event_backlog_h6_candidate',
   'manage_pickup_task_h6_candidate','set_catalog_sold_out_h6_candidate',
-  'read_h6_cash_accounts_candidate','read_third_party_cash_pending_candidate',
-  'settle_third_party_cash_candidate','refund_third_party_cash_candidate',
-  'refund_cash_tip_candidate'
+  'read_staff_economic_accounts_candidate',
+  'verify_external_settlement_authorized_candidate','close_economic_table_authorized_candidate'
  ])
 });
 const ROLES=Object.freeze(Object.keys(CAPABILITIES));

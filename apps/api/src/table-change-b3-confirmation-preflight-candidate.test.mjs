@@ -5,7 +5,8 @@ import {assertB3ConfirmationCapabilities,B3_CONFIRMATION_IDENTITY_SQL,
 const role='sabora_b3_confirmation_runtime',login='b3_confirmation_login';
 const signatures=[
  'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
- 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'
+ 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)',
+ 'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)'
 ];
 function fixture({extra=[],loginGrants=[],badIdentity=false}={}){
  const calls=[];let discarded;

@@ -4,7 +4,8 @@ import {createRoleScopedPostgresTransaction} from './role-scoped-postgres.mjs';
 import {assertF12SqlCapabilities} from './table-change-isolated-sql-preflight-candidate.mjs';
 import {assertB3ConfirmationCapabilities} from './table-change-b3-confirmation-preflight-candidate.mjs';
 import {createCustomerProductionFlow,PERSIST_H6_TRANSFER_ORDER_SQL,READ_H6_ROUND_SQL,
- READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL}
+ READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,RESUBMIT_H6_ORDER_REVISION_SQL,
+ CONVERT_H6_EXTERNAL_SQL}
  from './customer-production-flow.mjs';
 import {assertCustomerFlowSqlCapabilities} from './customer-production-sql-preflight.mjs';
 import {AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSERT_QUOTE_SQL,
@@ -86,7 +87,7 @@ export async function assertB3H6LoginSurface({pool,expectedLogin}={}){
 }
 
 export const B3_CONFIRMATION_SQL=Object.freeze([
- PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL]);
+ PERSIST_H6_TRANSFER_ORDER_SQL,RESUBMIT_H6_ORDER_REVISION_SQL,CONVERT_H6_EXTERNAL_SQL]);
 export const B3_H6_READ_SQL=Object.freeze([
  READ_H6_ROUND_SQL,READ_H6_PAYMENT_POLICY_SQL,READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL]);
 

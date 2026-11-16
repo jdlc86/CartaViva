@@ -25,7 +25,7 @@ No continuar si falta cualquiera de estas condiciones:
 3. Endpoint PostgreSQL copiado del panel del proyecto Sabora por persona
    autorizada. Selección documentada entre directo IPv6 y pooler de sesión IPv4;
    nunca inferir host, región ni contraseña.
-4. Inventario de 17 slots M3 mínimos o 22 si los opt-in se activan, con LOGIN
+4. Inventario de 18 slots M3 mínimos o 23 si los opt-in se activan, con LOGIN
    físico existente, rol NOLOGIN exacto, owner, custodio, expiry, rotación y
    revocación. Los slots no autorizan crear LOGIN automáticamente.
 5. Canal de secretos y custodios aprobados. Las tres contraseñas existentes no

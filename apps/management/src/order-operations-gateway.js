@@ -204,84 +204,48 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
       return mutation(send,`/api/v1/operations/incidents/${incidentId}/resolution`,
        {resolution,reason:reason.trim(),correlationId});
     },
-    async listCashAccounts({after=null,limit=50}={}){
-      if((after!==null&&!UUID.test(after))||!Number.isSafeInteger(limit)||limit<1||limit>50)
-        throw Error('invalid_h6_cash_request');
-      const query=new URLSearchParams({limit:String(limit)});
-      if(after)query.set('after',after);
-      const response=await send('/api/v1/operations/cash/accounts?'+query,{
-       method:'GET',cache:'no-store',redirect:'error',credentials:'omit',
-       headers:{Accept:'application/json'}});
-      const result=await json(response);
-      if(!result||result.version!==1||!Array.isArray(result.items)||
-         (result.nextAfter!==null&&!UUID.test(result.nextAfter))||
-         !result.items.every(value=>value&&UUID.test(value.accountId)&&
-          UUID.test(value.tableId)&&Number.isSafeInteger(value.tableNumber)&&
-          typeof value.customerCode==='string'&&/^SB-[2-9A-HJ-NP-Y]{12}$/.test(value.customerCode)&&
-          ['open','blocked'].includes(value.state)&&
-          ['pay_now','pay_at_end',null].includes(value.paymentMode)&&
-          Number.isSafeInteger(value.outstandingCents)&&value.outstandingCents>=0&&
-          Number.isSafeInteger(value.cashSettledCents)&&value.cashSettledCents>=0&&
-          typeof value.paymentUncertain==='boolean'&&typeof value.refundPending==='boolean'&&
-          typeof value.canSettle==='boolean'))
-       throw new OrderOperationsGatewayError('invalid_response');
-      return Object.freeze({version:1,nextAfter:result.nextAfter,
-       items:Object.freeze(result.items.map(value=>Object.freeze({...value})))});
-    },
-    async listThirdPartyCashPending(){
-      const response=await send('/api/v1/operations/third-party/cash/pending',{
+    async listEconomicAccounts(){
+      const response=await send('/api/v1/operations/economic/accounts',{
        method:'GET',cache:'no-store',redirect:'error',credentials:'omit',headers:{Accept:'application/json'}});
       const data=await json(response);
-      if(data?.version!==1||!Array.isArray(data.items)||data.items.length>50||
-       !data.items.every(x=>x&&UUID.test(x.intentId)&&typeof x.payerCode==='string'&&
-        /^SB-[2-9A-HJ-NP-Y]{12}$/.test(x.payerCode)&&
-        Number.isSafeInteger(x.totalCents)&&x.totalCents>0&&
-        Number.isSafeInteger(x.consumptionCents)&&x.consumptionCents>0&&
-        Number.isSafeInteger(x.tipCents)&&x.tipCents>=0&&
-        x.totalCents===x.consumptionCents+x.tipCents&&
-        Array.isArray(x.rounds)&&x.rounds.length>0&&
-        x.rounds.every(r=>r&&UUID.test(r.roundId)&&UUID.test(r.accountId)&&
-          Number.isSafeInteger(r.amountCents)&&r.amountCents>0)))
+      if(data?.version!==2||typeof data.notice!=='string'||!Array.isArray(data.items)||data.items.length>250||
+       !data.items.every(x=>x&&UUID.test(x.accountId)&&UUID.test(x.tableId)&&UUID.test(x.sessionId)&&
+        typeof x.customerCode==='string'&&typeof x.customerAlias==='string'&&
+        ['pay_now','pay_at_end',null].includes(x.paymentTiming)&&
+        Number.isSafeInteger(x.grossConsumptionCents)&&x.grossConsumptionCents>=0&&
+        Number.isSafeInteger(x.cancelledCents)&&x.cancelledCents>=0&&
+        Number.isSafeInteger(x.netConsumptionCents)&&x.netConsumptionCents>=0&&
+        Number.isSafeInteger(x.stripeCapturedCents)&&x.stripeCapturedCents>=0&&
+        Number.isSafeInteger(x.stripeRefundedCents)&&x.stripeRefundedCents>=0&&
+        Number.isSafeInteger(x.stripeNetCents)&&x.stripeNetCents>=0&&
+        Number.isSafeInteger(x.outstandingCents)&&x.outstandingCents>=0&&
+        (x.settlementIntentId===null||UUID.test(x.settlementIntentId))&&
+        [null,'stripe','external'].includes(x.settlementChannel)&&
+        typeof x.providerConfirmed==='boolean'&&typeof x.externalVerified==='boolean'))
        throw new OrderOperationsGatewayError('invalid_response');
-      return Object.freeze({items:Object.freeze(data.items.map(x=>Object.freeze(x)))});
+      return Object.freeze({version:2,notice:data.notice,
+       items:Object.freeze(data.items.map(x=>Object.freeze({...x})))});
     },
-    settleThirdPartyCash({intentId,correlationId}={}){
-      if(!UUID.test(intentId)||!CORRELATION.test(correlationId))
-       throw Error('invalid_third_party_cash_operation');
-      return mutation(send,`/api/v1/operations/third-party/cash/${intentId}/settle`,
-       {received:true,correlationId});
+    verifyExternalSettlement({intentId,correlationId}={}){
+      if(!UUID.test(intentId)||!CORRELATION.test(correlationId))throw Error('invalid_economic_operation');
+      return mutation(send,`/api/v1/operations/economic/settlements/${intentId}/external-verification`,
+       {correlationId,verifiedOutsideSabora:true});
     },
-    refundCashTip({collectionId,claimId,proof,correlationId}={}){
-      if(!UUID.test(collectionId)||!UUID.test(claimId)||!(/^[0-9a-f]{64}$/).test(proof)||
-       !CORRELATION.test(correlationId))throw Error('invalid_cash_tip_refund_operation');
-      return mutation(send,`/api/v1/operations/tips/${collectionId}/refund`,
-       {claimId,proof,correlationId,handedOver:true});
+    closeEconomicTable({tableId,sessionId,correlationId}={}){
+      if(!UUID.test(tableId)||!UUID.test(sessionId)||!CORRELATION.test(correlationId))
+       throw Error('invalid_economic_operation');
+      return mutation(send,`/api/v1/operations/economic/tables/${tableId}/sessions/${sessionId}/close`,
+       {correlationId,operationalOnly:true});
     },
-    refundThirdPartyCash({incidentId,claimId,proof,correlationId}={}){
-      if(!UUID.test(incidentId)||!UUID.test(claimId)||!(/^[0-9a-f]{64}$/).test(proof)||
-       !CORRELATION.test(correlationId))throw Error('invalid_third_party_cash_operation');
-      return mutation(send,`/api/v1/operations/third-party/refunds/${incidentId}`,
-       {claimId,proof,correlationId,handedOver:true});
-    },
-    closeCashAccount({accountId,correlationId}={}){
+    closeOperationalAccount({accountId,correlationId}={}){
      if(!UUID.test(accountId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
      return mutation(send,`/api/v1/operations/accounts/${accountId}/close`,{correlationId});
-    },
-    settleCash({accountId,amountCents,correlationId}={}) {
-      if(!UUID.test(accountId)||!Number.isSafeInteger(amountCents)||amountCents<1||
-        !CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
-      return mutation(send,`/api/v1/operations/accounts/${accountId}/cash-settlements`,
-       {amountCents,correlationId});
     },
     setCatalogSoldOut({itemId,soldOut,correlationId}={}) {
       if(!UUID.test(itemId)||typeof soldOut!=='boolean'||!CORRELATION.test(correlationId))
        throw Error('invalid_catalog_availability_operation');
       return mutation(send,`/api/v1/operations/catalog/items/${itemId}/availability`,
        {soldOut,correlationId});
-    },
-    refundCash({incidentId,correlationId}={}) {
-      if(!UUID.test(incidentId)||!CORRELATION.test(correlationId))throw Error('invalid_h6_operation');
-      return mutation(send,`/api/v1/operations/incidents/${incidentId}/cash-refund`,{correlationId});
     },
     claimPickup(input){return pickupMutation(send,'pickup-claim',input);},
     cancelPickup(input){return pickupMutation(send,'pickup-claim/cancel',input);},

@@ -557,6 +557,10 @@ p { line-height: 1.55; }
 .incident-controls input, .incident-controls select, .incident-controls textarea, .incident-arbitration input { width: 100%; min-height: 44px; padding: var(--cv-space-2) var(--cv-space-3); border: 1px solid var(--cv-border); border-radius: var(--cv-radius-control); background: var(--cv-surface); color: var(--cv-ink); }
 .incident-controls textarea { min-height: 84px; resize: vertical; }
 .honest-operational-note { padding: var(--cv-space-3); border-radius: var(--cv-radius-control); background: color-mix(in srgb, var(--cv-warning) 8%, var(--cv-surface)); color: var(--cv-ink-muted); font-size: .78rem; }
+.channel-wordmark{display:inline-flex;align-items:center;min-height:24px;padding:2px 9px;border:1px solid var(--cv-border);border-radius:999px;font-size:.72rem;font-weight:800;letter-spacing:.035em;vertical-align:middle}
+.channel-wordmark--stripe{border-color:#635bff;color:#4f46d8;background:#f4f3ff;font-family:Inter,var(--cv-font-sans,sans-serif);font-style:italic;letter-spacing:-.02em;text-transform:none}
+.channel-wordmark--external{color:var(--cv-ink);background:color-mix(in srgb,var(--cv-warning) 10%,var(--cv-surface))}
+.channel-wordmark--pending{color:var(--cv-ink-muted);background:var(--cv-surface-muted)}
 .incident-arbitration { display: grid; gap: var(--cv-space-4); margin-top: var(--cv-space-5); padding: var(--cv-space-4); border: 1px solid color-mix(in srgb, var(--cv-warning) 35%, var(--cv-border)); border-radius: var(--cv-radius-panel); background: var(--cv-surface); }
 .incident-arbitration h3 { margin: var(--cv-space-1) 0 0; }
 .incident-arbitration ul { display: grid; gap: var(--cv-space-2); margin: 0; padding: 0; list-style: none; }

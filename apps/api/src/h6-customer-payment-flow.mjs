@@ -12,7 +12,7 @@ export function createH6CustomerPaymentFlow({flow,payments,readPaymentState=null
   ...(typeof flow.readOrderRevision==='function'?{readOrderRevision:flow.readOrderRevision}:null),
   async confirm(input){
    const result=await flow.confirm(input);
-   if(result.status==='acceptance_required'||result.paymentMode!=='pay_now'||
+   if(result.status==='acceptance_required'||result.paymentChannel==='external'||result.paymentMode!=='pay_now'||
       result.roundState!=='awaiting_authorization')return result;
    if(!result.authorizationKey||!result.paymentAttemptId)throw Error('invalid_h6_payment_state');
    const payment=await payments.authorize({orderId:result.orderId,amountCents:result.amountCents,

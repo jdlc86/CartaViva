@@ -3,7 +3,8 @@
 const ROLE='sabora_b3_confirmation_runtime';
 const SIGNATURES=Object.freeze([
  'sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
- 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'
+ 'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)',
+ 'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)'
 ]);
 const LOGIN=/^[a-z][a-z0-9_]{0,62}$/;
 export const B3_CONFIRMATION_IDENTITY_SQL=`SELECT current_user AS effective_role,

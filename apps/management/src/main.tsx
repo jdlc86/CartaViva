@@ -30,7 +30,7 @@ const sections: ReadonlyArray<{id: ManagementArea; label: string; detail: string
   {id:'catalogo', label: 'Catálogo', detail: 'Carta e imágenes', icon: 'catalog'},
   {id:'mesas', label: 'Mesas y QR', detail: 'Accesos de mesa', icon: 'tables'},
   {id:'comandas', label: 'Comandas', detail: 'Cocina y sala', icon: 'orders'},
-  {id:'caja', label: 'Caja', detail: 'Cobros y cuentas', icon: 'tables'},
+  {id:'caja', label: 'Consumo', detail: 'Liquidación operativa', icon: 'tables'},
   {id:'configuracion', label:'Configuración',detail:'Comunicaciones y finanzas',icon:'overview'},
   {id:'equipo', label: 'Equipo', detail: 'Roles y titularidad', icon: 'team'},
 ];

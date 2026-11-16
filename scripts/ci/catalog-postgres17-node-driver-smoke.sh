@@ -5,6 +5,22 @@ if [[ -z "${GITHUB_ACTIONS:-}" || "${GITHUB_ACTIONS}" != true ]]; then
   echo 'Refusing to start: disposable GitHub Actions runner required' >&2
   exit 1
 fi
+scope="${SABORA_PG17_TEST_SCOPE:-full}"
+if [[ "$scope" != full && "$scope" != issue61 ]]; then
+  echo 'Unsupported PG17 test scope' >&2
+  exit 1
+fi
+issue61_target="${SABORA_PG17_ISSUE61_TARGET:-all}"
+if [[ "$scope" = issue61 ]]; then
+ if [[ "$issue61_target" != all && "$issue61_target" != h6 && "$issue61_target" != i49 ]]; then
+  echo 'Unsupported Issue #61 test target' >&2
+  exit 1
+ fi
+elif [[ "$issue61_target" != all ]]; then
+ echo 'Issue #61 target requires focused scope' >&2
+ exit 1
+fi
+export SABORA_PG17_TEST_SCOPE="$scope"
 for tool in docker node npm; do command -v "$tool" >/dev/null; done
 # Fail fast before npm installation, Docker startup or SQL migrations.
 # A syntax regression must not consume a full disposable PG17 run.
@@ -29,14 +45,30 @@ node --check scripts/ci/zero-cost-account-postgres17.test.mjs
 node --check scripts/ci/sabora-dual-backup-postgres17.mjs
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
+if [[ "$scope" = issue61 && -z "${RUNNER_TEMP:-}" ]]; then
+ if [[ "${OS:-}" == Windows_NT ]]; then
+  RUNNER_TEMP="$(cygpath -w "$tmp")"
+ else
+  RUNNER_TEMP="$tmp"
+ fi
+ export RUNNER_TEMP
+fi
 cleanup() {
  docker rm -f -v "$container" >/dev/null 2>&1 || true
  rm -rf "$tmp"
 }
 trap cleanup EXIT
-# pg is installed ONLY in a disposable harness, not in the runtime manifest.
-# Pin an exact version; production dependency/lockfile gate remains separate.
-npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false pg@8.16.3 >/dev/null
+# The focused Issue #61 gate reuses the already pinned workspace driver to
+# avoid a redundant registry download. Its test harness accepts only the exact
+# apps/api pg@8.16.3 path. The complete CI gate retains its isolated install.
+if [[ "$scope" = issue61 ]]; then
+ workspace_pg="$(node -e "const {createRequire}=require('node:module');const {dirname,resolve}=require('node:path');const r=createRequire(resolve('apps/api/package.json'));const p=r.resolve('pg/package.json');const v=r(p).version;if(v!=='8.16.3')throw Error('unexpected_pg_version');process.stdout.write(dirname(p))")"
+ module_path="$workspace_pg"
+ export SABORA_CI_REUSE_WORKSPACE_PG=true
+else
+ npm install --prefix "$tmp" --no-save --ignore-scripts --no-audit --no-fund --package-lock=false pg@8.16.3 >/dev/null
+ module_path="$tmp/node_modules/pg"
+fi
 docker run -d --name "$container" \
  --publish 127.0.0.1::5432 \
  -e POSTGRES_PASSWORD=sabora_ci_ephemeral_only postgres:17-alpine >/dev/null
@@ -66,11 +98,25 @@ done
 port="$(docker port "$container" 5432/tcp)"
 [[ "$port" =~ ^127\.0\.0\.1:[0-9]+$ ]] || { echo "Unexpected bind: $port" >&2; exit 1; }
 export SABORA_CI_PG_URL="postgresql://postgres:sabora_ci_ephemeral_only@$port/postgres"
-module_path="$tmp/node_modules/pg"
 if [[ "${OS:-}" == Windows_NT ]]; then
  module_path="$(cygpath -w "$module_path")"
 fi
 export SABORA_CI_PG_MODULE="$module_path"
+if [[ "$scope" = issue61 ]]; then
+ if [[ -z "${SABORA_CI_PLAYWRIGHT_MODULE:-}" ]]; then
+  SABORA_CI_PLAYWRIGHT_MODULE="$(node -e "const {createRequire}=require('node:module');const {resolve}=require('node:path');const r=createRequire(resolve('apps/client/package.json'));process.stdout.write(r.resolve('@playwright/test'))")"
+  export SABORA_CI_PLAYWRIGHT_MODULE
+ fi
+ if [[ "$issue61_target" != i49 ]]; then
+  node --test scripts/ci/h6-postgres17.test.mjs
+ fi
+ if [[ "$issue61_target" != h6 ]]; then
+  node --test --test-name-pattern \
+   'PG17 B3 six isolated logins complete PWA customer A to waiter to economic B journey' \
+   scripts/ci/table-change-root-postgres17.test.mjs
+ fi
+ exit 0
+fi
 node --test scripts/ci/catalog-postgres17-driver-integration.test.mjs
 node --test scripts/ci/order-operations-postgres17-integration.test.mjs
 node --test scripts/ci/order-operations-identity-postgres17.test.mjs
@@ -100,8 +146,7 @@ node --test scripts/ci/zero-cost-account-postgres17.test.mjs
 # Last: root cannot be deleted under governance; disposable container is removed.
 node --test scripts/ci/admin-single-writer-postgres17.test.mjs
 node --test scripts/ci/ownership-governance-postgres17.test.mjs
-# Last: the same fully migrated source is streamed into authenticated
-# ciphertext, replicated twice and restored only from the external-class copy
-# into a second networkless PG17 cluster. This mutates no persistent system.
+
+# Verify restoration from the encrypted external replica of the same migrated PG17 source.
 export SABORA_CI_PG_CONTAINER="$container"
 node scripts/ci/sabora-dual-backup-postgres17.mjs

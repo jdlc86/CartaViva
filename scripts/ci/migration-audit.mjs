@@ -186,6 +186,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'create tables/functions/index/policies and row locking on current dining table then pending call for serialized requests',
   'new private service-call receipts and append-only audit; no change to orders, account balances, payments or historical table visits',
   'inherited'),
+ '20261115115624_sabora_economic_circuit_reconciliation_candidate.sql':r(
+  'Issue 61 economic circuit reconciliation',
+  ['H6 accounts, rounds, incidents and dispatch','customer session and visit authorization','staff HMAC capability','Stripe provider runtime'],
+  'FORCE RLS settlement intents, immutable round allocations, provider refund attempts and operational closures; customer, provider and signed staff RPCs',
+  'sealed H6 owner with exact customer/provider/operations RPC grants; no browser/direct table access; external verification records no money movement',
+  'customer advisory lock plus session, visit, account, round and intent row locks; provider and signed staff actions serialize one intent',
+  'new candidate ledgers only; historical cash ledgers retained as non-operational evidence; external channel changes operational outstanding without claiming payment',
+  'inherited'),
  '20261108070000_sabora_m5_communications_candidate.sql':r(
   'M5 CV-014 scheduled internal restaurant communications',
   ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],

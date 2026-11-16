@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {dirname,resolve} from 'node:path';
+import {pathToFileURL as modulePathToFileURL} from 'node:url';
 import {createHash,randomBytes,randomUUID,createHmac,generateKeyPairSync,sign} from 'node:crypto';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {F12_FUNCTION_SQL,assertF12SqlIdentity} from '../../apps/api/src/table-change-isolated-sql-preflight-candidate.mjs';
@@ -10,7 +12,7 @@ import {assertCustomerFlowSqlCapabilities} from '../../apps/api/src/customer-pro
 import {PERSIST_H6_TRANSFER_ORDER_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createH6OperationsRepository,createH6CustomerEventRepository,
- SETTLE_CASH_H6_SQL,CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL,
+ CLOSE_ACCOUNT_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
  READ_CUSTOMER_EVENTS_H6_SQL} from '../../apps/api/src/h6-operations-repository.mjs';
 import {createOrderOperationCapabilityIssuer} from '../../apps/api/src/order-operation-capability.mjs';
 import {createOrderOperationReadCapabilityIssuer} from '../../apps/api/src/order-operation-read-capability.mjs';
@@ -48,15 +50,36 @@ import {startDisposableM3Runtime} from './disposable-h6-runtime-bootstrap.mjs';
 import {createM3AuthenticatedManagementGateway} from '../../apps/management/src/m3-authenticated-management-gateway.js';
 import {createM3ManagementCapabilityIssuer} from '../../apps/api/src/m3-management-capability.mjs';
 import {assertM2CustomerEventCapability} from '../../apps/api/src/m2-runtime-capabilities.mjs';
+import {createEconomicCustomerRepository,createEconomicProviderRepository,
+ createEconomicStaffRepository,READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL,
+ RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+ REQUEST_ECONOMIC_REFUND_SQL,RECORD_ECONOMIC_REFUND_SQL,READ_STAFF_ECONOMIC_ACCOUNTS_SQL,
+ VERIFY_EXTERNAL_SETTLEMENT_SQL,CLOSE_ECONOMIC_TABLE_SQL}
+ from '../../apps/api/src/economic-circuit-repository.mjs';
+import {createEconomicCircuitService} from '../../apps/api/src/economic-circuit-service.mjs';
+import {registerEconomicCircuitHttp} from '../../apps/api/src/economic-circuit-http.mjs';
 
 const url=process.env.SABORA_CI_PG_URL,modulePath=process.env.SABORA_CI_PG_MODULE;
-if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||!isDisposablePgModulePath(modulePath))
+const apiRequire=createRequire(new URL('../../apps/api/package.json',import.meta.url));
+const workspacePgPath=dirname(apiRequire.resolve('pg/package.json'));
+const focusedWorkspaceDriver=process.env.SABORA_PG17_TEST_SCOPE==='issue61'&&
+ process.env.SABORA_CI_REUSE_WORKSPACE_PG==='true'&&
+ resolve(modulePath??'')===resolve(workspacePgPath)&&apiRequire('pg/package.json').version==='8.16.3';
+if(!url||!modulePath||process.env.GITHUB_ACTIONS!=='true'||
+ (!isDisposablePgModulePath(modulePath)&&!focusedWorkspaceDriver))
  throw Error('disposable_pg17_harness_required');
 const parsed=new URL(url);
 if(parsed.hostname!=='127.0.0.1'||parsed.username!=='postgres'||parsed.pathname!=='/postgres'||
  parsed.password!=='sabora_ci_ephemeral_only'||parsed.search||parsed.hash||!parsed.port)
  throw Error('unsafe_pg17_harness_target');
 const require=createRequire(import.meta.url),{Pool}=require(modulePath);
+async function loadChromium(){
+ const playwrightModule=await import(modulePathToFileURL(
+  process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+ const chromium=playwrightModule.chromium??playwrightModule.default?.chromium;
+ assert.ok(chromium,'Playwright Chromium must be exported by the configured module');
+ return chromium;
+}
 const admin=new Pool({connectionString:url,max:4,connectionTimeoutMillis:3000,idleTimeoutMillis:1000,
  options:'-c statement_timeout=15000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=20000'});
 test.after(async()=>admin.end());
@@ -2479,6 +2502,7 @@ test('PG17 M2 provisions only the dedicated transfer writer capability',async()=
  assert.deepEqual(role,{rolcanlogin:false,rolinherit:false,rolsuper:false,rolbypassrls:false});
  const exact=(await admin.query(F12_FUNCTION_SQL,['sabora_b3_confirmation_runtime'])).rows[0].names;
  assert.deepEqual(exact,[signature,
+  'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)',
   'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)'].sort());
 });
 
@@ -2487,6 +2511,7 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
   const role='sabora_b3_confirmation_runtime',login='sabora_b3_confirmation_probe_login';
   const signature='sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)';
   const revisionSignature='sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)';
+  const externalSignature='sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)';
   await client.query(`CREATE ROLE ${login} LOGIN NOINHERIT`);
   await client.query(`GRANT ${role} TO ${login} WITH SET TRUE, INHERIT FALSE`);
   const functionOid=(await client.query('SELECT to_regprocedure($1)::oid AS oid',
@@ -2507,8 +2532,8 @@ test('PG17 B3 dedicated login has no direct transfer EXECUTE and capability is e
   assert.equal(after.who,role);
   assert.equal(after.can_execute,true);
   const names=(await client.query(F12_FUNCTION_SQL,[role])).rows[0].names;
-  assert.deepEqual(names,[signature,revisionSignature].sort(),
-   'B3 role must have exactly the confirmation and corrective-revision writes');
+  assert.deepEqual(names,[signature,revisionSignature,externalSignature].sort(),
+   'B3 role must have exactly confirmation, external conversion and corrective revision');
   await client.query('RESET ROLE');
  });
 });
@@ -2728,6 +2753,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    signatures:['sabora.decide_customer_table_change_h6_candidate(uuid,uuid,boolean)']},
   {role:'sabora_b3_confirmation_runtime',login:'sabora_b3_physical_writer_'+suffix,
    signatures:['sabora.confirm_customer_round_h6_transfer_integration_candidate(bytea,uuid,text,text,text,text,bytea,uuid,uuid,jsonb,boolean,text)',
+    'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)',
     'sabora.resubmit_customer_order_revision_h6_candidate(bytea,uuid,text,text,text,uuid,integer,text,jsonb,boolean)']},
   {role:'sabora_b3_h6_reader_runtime',login:'sabora_b3_physical_reader_'+suffix,
    signatures:['sabora.read_customer_round_h6_candidate(bytea,uuid,text,uuid)',
@@ -2738,8 +2764,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    signatures:[]},
   {role:'sabora_f12_pending_reader_runtime',login:'sabora_b3_physical_pending_'+suffix,
    signatures:[]},
-  {role:'sabora_b3_cash_runtime',login:'sabora_b3_physical_cash_'+suffix,
-   signatures:['sabora.settle_h6_account_cash_authorized_candidate(text,text,uuid,text,uuid,bigint,text,bigint,bigint,text)']},
+  {role:'sabora_h6_customer_runtime',login:'sabora_b3_physical_h6_customer_'+suffix,
+   signatures:[]},
   {role:'sabora_h6_provider_runtime',login:'sabora_b3_physical_provider_'+suffix,
    signatures:[]},
   {role:'sabora_h6_operations_runtime',login:'sabora_b3_physical_oper_'+suffix,
@@ -2773,7 +2799,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    if(!['sabora_customer_flow_runtime','sabora_f12_customer_runtime',
        'sabora_f12_operations_runtime','sabora_b3_confirmation_runtime',
        'sabora_b3_h6_reader_runtime','sabora_f12_pending_reader_runtime',
-       'sabora_h6_provider_runtime','sabora_h6_operations_runtime',
+       'sabora_h6_customer_runtime','sabora_h6_provider_runtime','sabora_h6_operations_runtime',
        'sabora_b3_h4_transition_runtime',
        'sabora_staff_reader','sabora_h6_account_close_runtime',
        'sabora_m2_customer_event_runtime','sabora_catalog_reader',
@@ -2859,9 +2885,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    /permission denied/);
   await assert.rejects(connections[9].query('SET ROLE sabora_h6_fn_owner'),
    /permission denied/);
-  const cashFunctions=(await connections[6].query(F12_FUNCTION_SQL,[specs[6].role])).rows[0].names;
-  assert.deepEqual(cashFunctions,specs[6].signatures,
-   'F20 cash role executes exactly the reviewed settlement RPC');
+  await assertH6RuntimeIdentity({pool:scopedPools[6],
+   expectedLogin:specs[6].login,capability:specs[6].role});
   await assert.rejects(connections[6].query('SELECT * FROM sabora.customer_accounts'),
    /permission denied/);
   await assert.rejects(connections[6].query('SET ROLE sabora_h6_fn_owner'),/permission denied/);
@@ -2932,35 +2957,42 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   const ciStaffRoles=createStaffProtectedHooksFromPool({
    pool:pools[9],issuer:ciIssuer,getTrustedKeys:async()=>[ciJwk]
   });
-  const cashSigningKeyId='b3_f20_cash_'+suffix,cashSigningSecret=randomBytes(32);
-  const m3TablesIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
-   secret:cashSigningSecret,databaseRole:specs[16].login});
-  const m3CatalogIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
-   secret:cashSigningSecret,databaseRole:specs[17].login});
-  const cashIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
-   secret:cashSigningSecret,databaseRole:specs[6].login});
-  const cashSql=createRoleScopedPostgresTransaction({pool:scopedPools[6],
-   role:specs[6].role,allowedSql:new Set([SETTLE_CASH_H6_SQL])});
-  const cashOperations=createH6OperationsCoordinator({
-   repository:createH6OperationsRepository({withTransaction:cashSql}),
-   issueCapability:cashIssuer
-  });
+  const staffSigningKeyId='b3_f20_staff_'+suffix,staffSigningSecret=randomBytes(32);
+  const m3TablesIssuer=createM3ManagementCapabilityIssuer({keyId:staffSigningKeyId,
+   secret:staffSigningSecret,databaseRole:specs[16].login});
+  const m3CatalogIssuer=createM3ManagementCapabilityIssuer({keyId:staffSigningKeyId,
+   secret:staffSigningSecret,databaseRole:specs[17].login});
   const providerTx=createRoleScopedPostgresTransaction({pool:scopedPools[7],
    role:specs[7].role,allowedSql:new Set([LIST_SCHEDULABLE_H6_SQL,REQUEST_DUE_CAPTURE_H6_SQL,
     RECORD_AUTHORIZATION_H6_SQL,
     REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
-    REQUEST_REFUND_H6_SQL,RECORD_REFUND_H6_SQL])});
+    REQUEST_REFUND_H6_SQL,RECORD_REFUND_H6_SQL,RECORD_ECONOMIC_AUTHORIZATION_SQL,
+    REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
+    REQUEST_ECONOMIC_REFUND_SQL,RECORD_ECONOMIC_REFUND_SQL])});
   const h6Provider=createH6ProviderRepository({withTransaction:providerTx});
   const staffTx=createRoleScopedPostgresTransaction({pool:scopedPools[8],
    role:specs[8].role,allowedSql:new Set([ACK_DISPATCH_H6_SQL,
     REPORT_INCIDENT_H6_SQL,READ_STAFF_EVENTS_H6_SQL,MANAGE_PICKUP_TASK_H6_SQL,
-    SET_CATALOG_SOLD_OUT_H6_SQL,READ_CASH_ACCOUNTS_H6_SQL])});
-  const staffIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
-   secret:cashSigningSecret,databaseRole:specs[8].login});
+    SET_CATALOG_SOLD_OUT_H6_SQL,READ_STAFF_ECONOMIC_ACCOUNTS_SQL,
+    VERIFY_EXTERNAL_SETTLEMENT_SQL,CLOSE_ECONOMIC_TABLE_SQL])});
+  const customerEconomicTx=createRoleScopedPostgresTransaction({pool:scopedPools[6],
+   role:specs[6].role,allowedSql:new Set([
+    READ_ECONOMIC_CONSUMPTION_SQL,CREATE_ECONOMIC_SETTLEMENT_SQL])});
+  const staffIssuer=createH6StaffCapabilityIssuer({keyId:staffSigningKeyId,
+   secret:staffSigningSecret,databaseRole:specs[8].login});
   const providerStaff=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:staffTx}),
    issueCapability:staffIssuer
   });
+  const economicCustomer=createEconomicCustomerRepository({withTransaction:customerEconomicTx});
+  const economicProvider=createEconomicProviderRepository({withTransaction:providerTx});
+  const economicStaff=createEconomicStaffRepository({withTransaction:staffTx,
+   issueCapability:staffIssuer});
+  const economicService=createEconomicCircuitService({repository:economicProvider,stripe:{
+   authorize:async()=>{throw Error('unexpected_stripe_authorization_in_external_scenario');},
+   capture:async()=>{throw Error('unexpected_stripe_capture_in_external_scenario');},
+   refund:async()=>{throw Error('unexpected_stripe_refund_in_external_scenario');}
+  }});
   const customerEventsTx=createRoleScopedPostgresTransaction({pool:scopedPools[12],
    role:specs[12].role,allowedSql:new Set([READ_CUSTOMER_EVENTS_H6_SQL])});
   const customerEvents=createH6CustomerEventRepository({withTransaction:customerEventsTx});
@@ -2970,8 +3002,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   // wraps a pinned preflight client and cannot safely execute two BEGINs.
   const closeTx=createRoleScopedPostgresTransaction({pool:pools[10],
    role:specs[10].role,allowedSql:new Set([CLOSE_ACCOUNT_H6_SQL])});
-  const closeIssuer=createH6StaffCapabilityIssuer({keyId:cashSigningKeyId,
-   secret:cashSigningSecret,databaseRole:specs[10].login});
+  const closeIssuer=createH6StaffCapabilityIssuer({keyId:staffSigningKeyId,
+   secret:staffSigningSecret,databaseRole:specs[10].login});
   const closeOperations=createH6OperationsCoordinator({
    repository:createH6OperationsRepository({withTransaction:closeTx}),
    issueCapability:closeIssuer
@@ -2983,9 +3015,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    role:specs[11].role,allowedSql:new Set([TRANSITION_ORDER_LINE_SQL,
     READ_H6_DELIVERY_BOARD_SQL,READ_ORDER_HISTORY_SQL])});
   const h4KitchenIssuer=createOrderOperationCapabilityIssuer({
-   keyId:cashSigningKeyId,secret:cashSigningSecret,databaseRole:specs[11].login});
+   keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4ReadIssuer=createOrderOperationReadCapabilityIssuer({
-   keyId:cashSigningKeyId,secret:cashSigningSecret,databaseRole:specs[11].login});
+   keyId:staffSigningKeyId,secret:staffSigningSecret,databaseRole:specs[11].login});
   const h4KitchenOperations=createOrderOperationsCoordinator({
    withTransaction:h4KitchenTx,
    repository:createOrderOperationsRepository({deliveryBoardCandidate:true}),
@@ -3169,9 +3201,9 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    registerH6CustomerEventStreamHttp(http,{cookieAuth:customerCookieAuth,
     events:customerEvents,subscribeCommitted:customerEventNotifier.subscribe,
     heartbeatMs:5000});
-   // Seventh sealed cash RPC and the staff decision/queue now share the
-   // same verified RS256 JWT and live PostgreSQL membership checks. The
-   // tenth login can read only user_id/role/state and never payment tables.
+   // Staff economic verification and the decision queue share the same
+   // verified RS256 JWT and live PostgreSQL membership checks. The staff
+   // reader can read only user_id/role/state and never payment tables.
    // F20: real Fastify raw-body ingress and least-privileged PG17 provider
    // login in the existing comprehensive E2E; never Stripe network.
    registerH6StripeWebhookHttp(http,{
@@ -3184,14 +3216,14 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       'stripe-signature':signed.signatureHeader},payload:signed.rawBody});
    };
    registerH6OperationsHttp(http,{
-    operations:Object.freeze({...cashOperations,
-     acknowledgeDispatch:providerStaff.acknowledgeDispatch,
+    operations:Object.freeze({...providerStaff,
      managePickup:providerStaff.managePickup,
      setCatalogSoldOut:providerStaff.setCatalogSoldOut,
-     readCashAccounts:providerStaff.readCashAccounts,
      closeAccount:closeOperations.closeAccount}),
     forRoles:ciStaffRoles
    });
+   registerEconomicCircuitHttp(http,{cookieAuth:customerCookieAuth,forRoles:ciStaffRoles,
+    customer:economicCustomer,staffRepository:economicStaff,service:economicService});
    registerOrderOperationsHttp(http,{forRoles:ciStaffRoles,
     operations:h4KitchenOperations,legacyPickupDisabled:true});
    // Test-only public catalog projection; checkout still revalidates the
@@ -3365,7 +3397,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     await fixture.query(`INSERT INTO sabora.order_operation_signing_keys
      (key_id,hmac_key,not_before,expires_at)
      VALUES($1,$2,clock_timestamp()-interval '1 minute',clock_timestamp()+interval '1 hour')`,
-     [cashSigningKeyId,cashSigningSecret]);
+     [staffSigningKeyId,staffSigningSecret]);
     // Historical A order has a completed pickup and a still-pending line.
     // The integrated B checkout must redirect only the pending destination.
     const priorOrder='b0a00000-0000-4000-8000-000000000340';
@@ -3473,8 +3505,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // the destination-free request from the actual browser and leave A intact.
     const {pathToFileURL:requestPathToFileURL,fileURLToPath:requestFileURLToPath}
      =await import('node:url');
-    const {chromium:requestChromium}=await import(
-     requestPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const requestChromium=await loadChromium();
     const requestRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer:createRequestViteServer}=await import(
      requestPathToFileURL(requestRequire.resolve('vite')).href);
@@ -3608,7 +3639,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      // drive the real management PWA in Chromium. The browser approves the
      // request; an injected SQL mock cannot substitute for this boundary.
      const {pathToFileURL,fileURLToPath}=await import('node:url');
-     const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+     const chromium=await loadChromium();
      const manageRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer}=await import(pathToFileURL(manageRequire.resolve('vite')).href);
      let vite,browser,context;
@@ -3943,7 +3974,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     // presentation is an explicitly isolated HTTP fixture: the order,
     // quote, session, QR and account transfer use the live SQL functions.
     const {pathToFileURL,fileURLToPath}=await import('node:url');
-    const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const chromium=await loadChromium();
     const clientRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer}=await import(pathToFileURL(clientRequire.resolve('vite')).href);
     let clientVite,clientBrowser,clientContext;
@@ -4293,43 +4324,36 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         'h6_capture_f20_history_pending_00001','requires_action',
         'pi_F20HistoryPending12345')`,
        [payNowDiner.round,payNowDiner.account]);
-      // The partial cash receipt will be performed by signed HTTP + PG17, not seeded.
+      // Economic reconciliation is exercised later through the approved external intent.
       await raceFixture.query('COMMIT');
      }catch(error){await raceFixture.query('ROLLBACK').catch(()=>{});throw error;}
      finally{raceFixture.release();}
-     // F20: same full PG17/Fastify customer-to-staff scenario, now including
-     // management PWA cashier, authorized read and actual signed cash receipt.
+     // Issue #61: retired money-like endpoints stay absent. The replacement
+     // journey is customer external intent -> signed staff verification ->
+     // real management PWA, with no cash ledger or inferred money movement.
      const noCashAccess=await http.inject({method:'GET',
       url:'/api/v1/operations/cash/accounts'});
-     assert.equal(noCashAccess.statusCode,401,'anonymous cashier access prohibited');
+     assert.equal(noCashAccess.statusCode,404,'retired cashier route must not exist');
      const kitchenCashAccess=await http.inject({method:'GET',
       url:'/api/v1/operations/cash/accounts',
       headers:{authorization:'Bearer '+jwtKitchen}});
-     assert.equal(kitchenCashAccess.statusCode,403,'kitchen cannot access financial accounts');
-     const directCashSnapshot=await providerStaff.readCashAccounts({
-      verifiedIdentity:{userId:'b0a00000-0000-4000-8000-000000000307'},
-      verifiedStaff:{userId:'b0a00000-0000-4000-8000-000000000307',role:'waiter'}
-     },{limit:50});
-     assert.ok(directCashSnapshot.items.some(a=>a.accountId===uiCashDiner.account),
-      'sealed staff RPC must first prove the cashier scope in real PG17');
-     const authorizedCash=await http.inject({method:'GET',
-      url:'/api/v1/operations/cash/accounts?limit=50',
-      headers:ciVerifiedStaffHeaders()});
-     assert.equal(authorizedCash.statusCode,200,authorizedCash.body);
-     const cashierAccount=authorizedCash.json().items.find(a=>a.accountId===uiCashDiner.account);
-     assert.ok(cashierAccount,'account discovery must use signed PG17, not PWA seed');
-     assert.equal(cashierAccount.customerCode,uiCashDiner.publicId);
-     assert.equal(cashierAccount.outstandingCents,800);
-     assert.equal(cashierAccount.canSettle,true);
-     const digitalAccount=authorizedCash.json().items.find(a=>a.accountId===payNowDiner.account);
-     assert.ok(digitalAccount);
-     assert.equal(digitalAccount.canSettle,false,
-      'a pay-now account cannot be presented as collectible by cash');
-     assert.equal((await http.inject({method:'GET',
-      url:'/api/v1/operations/cash/accounts?limit=51',
-      headers:ciVerifiedStaffHeaders()})).statusCode,400,
-      'cash list never permits an unbounded scan');
-     assert.ok(!authorizedCash.body.includes('provider_intent_id'));
+     assert.equal(kitchenCashAccess.statusCode,404,'retired cashier route stays absent for staff');
+     const externalIntent=await http.inject({method:'POST',
+      url:'/api/v1/customer/economic/settlements',
+      headers:{cookie:'__Secure-sabora_customer='+uiCashDiner.token,
+       'content-type':'application/json'},payload:{tableId:httpFixture.sourceTable,
+       visitId:uiCashDiner.visitKey,requestKey:'f20_external_ui_request_0001',
+       channel:'external',allocations:[{roundId:uiCashDiner.round,amountCents:800}]}});
+     assert.equal(externalIntent.statusCode,201,externalIntent.body);
+     assert.equal(externalIntent.json().state,'external_pending');
+     const externalIntentId=externalIntent.json().intentId;
+     const economicProjection=await http.inject({method:'GET',
+      url:'/api/v1/operations/economic/accounts',headers:ciVerifiedStaffHeaders()});
+     assert.equal(economicProjection.statusCode,200,economicProjection.body);
+     assert.ok(economicProjection.json().items.some(item=>
+      item.accountId===uiCashDiner.account&&item.settlementIntentId===externalIntentId&&
+      item.providerConfirmed===false&&item.externalVerified===false),
+     'signed staff projection must expose the pending external intent with explicit booleans');
      const cashierRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
      const {createServer:createCashVite}=await import(
       pathToFileURL(cashierRequire.resolve('vite')).href);
@@ -4359,67 +4383,56 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         element:document.getElementById('root'),getAccessToken:async()=>token
        });
       },jwtWaiter);
-      await cashierPage.getByRole('heading',{name:'Caja por comensal'}).waitFor({timeout:30000});
-      const card=cashierPage.locator('.cash-account-card').filter({hasText:uiCashDiner.publicId});
+      await cashierPage.getByRole('heading',{name:'Consumo y cierre operativo'}).waitFor({timeout:30000});
+      const card=cashierPage.getByRole('listitem').filter({hasText:uiCashDiner.publicId});
       await card.waitFor({timeout:30000});
       assert.match(await card.innerText(),/8,00/);
-      await card.click();
-      await cashierPage.getByLabel('Importe recibido en efectivo (EUR)').fill('3,00');
-      await cashierPage.getByLabel(/Confirmo que he recibido físicamente este importe/).check();
+      await card.getByLabel(/He comprobado físicamente/).check();
       const receipt=cashierPage.waitForResponse(resp=>
-       new URL(resp.url()).pathname.endsWith('/cash-settlements')&&resp.status()===201,
+       new URL(resp.url()).pathname.endsWith('/external-verification')&&resp.status()===200,
        {timeout:30000});
-      await cashierPage.getByRole('button',{name:'Registrar cobro en efectivo'}).click();
+      await card.getByRole('button',{name:'Verificar y liberar operativamente'}).click();
       await receipt;
-      await cashierPage.locator('.cash-account-card').filter({
-       hasText:uiCashDiner.publicId}).getByText(/Saldo: 5,00/).waitFor({timeout:30000});
+      await card.getByText('EXTERNO VERIFICADO',{exact:true}).waitFor({timeout:30000});
+      await cashierPage.getByText(/Verificación externa registrada/).waitFor({timeout:30000});
       assert.deepEqual(cashierErrors,[],'full cashier PWA must not log JS errors');
       const stored=(await admin.query(`SELECT outstanding_cents,cash_settled_cents
        FROM sabora.customer_accounts WHERE id=$1`,[uiCashDiner.account])).rows[0];
-      assert.equal(stored.outstanding_cents,'500');
-      assert.equal(stored.cash_settled_cents,'300');
+      assert.equal(stored.outstanding_cents,'0');
+      assert.equal(stored.cash_settled_cents,'0');
       assert.equal((await admin.query(`SELECT count(*)::int AS n
-       FROM sabora.cash_settlements WHERE account_id=$1 AND kind='payment'`,
-       [uiCashDiner.account])).rows[0].n,1);
+       FROM sabora.cash_settlements WHERE account_id=$1`,[uiCashDiner.account])).rows[0].n,0,
+       'external verification must never create a cash payment');
+      assert.equal((await admin.query(`SELECT state FROM
+       sabora.economic_settlement_intents_candidate WHERE id=$1`,
+       [externalIntentId])).rows[0].state,'external_verified');
       const {mkdir:mkdirCash}=await import('node:fs/promises');
       const {join:joinCash}=await import('node:path');
       const evidence=joinCash(process.env.RUNNER_TEMP,'sabora-h6-acceptance');
       await mkdirCash(evidence,{recursive:true});
-      await cashierPage.screenshot({path:joinCash(evidence,'f20-cash-verified-pg17-mobile-390.png'),
+      await cashierPage.screenshot({path:joinCash(evidence,'f20-external-verified-pg17-mobile-390.png'),
        fullPage:true});
      }finally{
       await cashierContext?.close();await cashierBrowser?.close();await cashierVite?.close();
      }
-     // Before A->D, a waiter performs an actual 300-cent partial receipt over
-     // signed Fastify/PG17. Concurrent replay and overpayment must not mutate
-     // the same account a second time. The old direct cash insert is gone.
+     // The historical transfer fixture remains unpaid before A->D. Both the
+     // anonymous and authenticated forms of the retired mutation are absent.
      const preCashUrl='/api/v1/operations/accounts/'+cashHistoryDiner.account+'/cash-settlements';
      const cashHeaders={authorization:'Bearer '+jwtWaiter,'content-type':'application/json'};
      const preCashBody={amountCents:300,correlationId:'f20_pre_transfer_cash_300'};
      const forbiddenCash=await http.inject({method:'POST',url:preCashUrl,
       payload:preCashBody});
-     assert.equal(forbiddenCash.statusCode,401,
-      'anonymous cash settlement is rejected at the JWT authentication gate');
-     const preReceipts=await Promise.all([1,2].map(()=>http.inject({
-      method:'POST',url:preCashUrl,headers:cashHeaders,payload:preCashBody})));
-     assert.ok(preReceipts.every(r=>r.statusCode===201),
-      preReceipts.map(r=>r.body).join(' '));
-     assert.deepEqual(preReceipts.map(r=>r.json().repeated).sort(),[false,true]);
-     assert.ok(preReceipts.every(r=>r.json().accountId===cashHistoryDiner.account));
-     assert.ok(preReceipts.every(r=>r.json().outstandingCents===900));
-     assert.ok(preReceipts.every(r=>r.json().state==='partial'));
+     assert.equal(forbiddenCash.statusCode,404);
      const refusedCash=await http.inject({method:'POST',url:preCashUrl,
       headers:cashHeaders,payload:{amountCents:1200,correlationId:'f20_overpay_forbidden'}});
-     assert.equal(refusedCash.statusCode,409,'overpayment must fail before ledger write');
+     assert.equal(refusedCash.statusCode,404,'retired staff money mutation must not be reachable');
      const originalCash=(await admin.query(`SELECT state,outstanding_cents,cash_settled_cents
       FROM sabora.customer_accounts WHERE id=$1`,[cashHistoryDiner.account])).rows[0];
-     assert.deepEqual(originalCash,{state:'open',outstanding_cents:'900',
-      cash_settled_cents:'300'});
+     assert.deepEqual(originalCash,{state:'open',outstanding_cents:'1200',
+      cash_settled_cents:'0'});
      assert.equal((await admin.query(`SELECT count(*)::int AS n
       FROM sabora.cash_settlements WHERE account_id=$1`,
-      [cashHistoryDiner.account])).rows[0].n,1);
-     cashHistoryDiner.balance=900;
-     cashHistoryDiner.cashSettled=300;
+      [cashHistoryDiner.account])).rows[0].n,0);
      // Scoped, server-authoritative mode read under a customer cookie.
      const modeQuery=new URLSearchParams({tableId:httpFixture.sourceTable,
       visitId:cashHistoryDiner.visitKey});
@@ -4949,14 +4962,13 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
        }
       }
       // F20/R05/R06: the original account is preserved across a new
-      // client checkout even with a pre-existing Stripe authorization
-      // still pending or an immutable prior cash payment. Provider and cash
-      // history are fixture SETUP only; the transfer/quote/confirm/replay
-      // below run through real PWA, Fastify, six PG17 roles and H6 SQL.
+      // client checkout with either a pre-existing Stripe authorization
+      // still pending or an unpaid pay-at-end round. The transfer, quote,
+      // confirmation and replay run through real PWA/Fastify/PG17 boundaries.
       for(const scenario of [
        {diner:payNowDiner,mode:'pay_now',balance:'0',attempts:2,cash:0},
-       {diner:cashHistoryDiner,mode:'pay_at_end',balance:'1600',
-        attempts:0,cash:1}
+       {diner:cashHistoryDiner,mode:'pay_at_end',balance:'1900',
+        attempts:0,cash:0}
       ]){
        const {diner,mode}=scenario;
        const historicalPayments=(await admin.query(`SELECT id,round_id,
@@ -4974,9 +4986,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(historicalPayments[0].amount_cents,'1200');
         assert.equal(historicalPayments[0].provider_intent_id,
          'pi_F20HistoryPending12345');
-       }else{
-        assert.equal(historicalCash[0].amount_cents,'300');
-        assert.equal(historicalCash[0].kind,'payment');
        }
        const requested=await http.inject({method:'POST',
         url:'/api/v1/customer/table-change/requests',
@@ -5054,7 +5063,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          correlation_id,amount_cents,kind FROM sabora.cash_settlements
          WHERE account_id=$1`,[diner.account])).rows;
         assert.deepEqual(afterCash,historicalCash,
-         'prior cash receipt must remain append-only and intact');
+         'the transfer must not invent cash history');
        }
        const history=(await admin.query(`SELECT o.table_id AS source,
         r.amount_cents AS amount,d.table_id AS operational
@@ -5287,34 +5296,39 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const otherCash=(await admin.query(`SELECT cash_settled_cents,
          outstanding_cents FROM sabora.customer_accounts WHERE id=$1`,
          [cashHistoryDiner.account])).rows[0];
-        // The other diner has independent signed-cash history, not this Stripe refund.
-        assert.equal(otherCash.cash_settled_cents,'300');
-        assert.equal(otherCash.outstanding_cents,'900');
+        // The other diner remains independent and unpaid; the Stripe refund
+        // may not invent an external or cash settlement for another account.
+        assert.equal(otherCash.cash_settled_cents,'0');
+        assert.equal(otherCash.outstanding_cents,'1200');
        }
        if(mode==='pay_at_end'){
-        // After A->D, repeat a genuinely authorized partial receipt and then
-        // liquidate the remaining debt. The economic account stays OPEN so
-        // later orders may reuse it, irrespective of a zero outstanding balance.
-        const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
-        const cashHeaders={authorization:'Bearer '+jwtWaiter,'content-type':'application/json'};
-        const partialBody={amountCents:400,correlationId:'f20_after_transfer_cash_400'};
-        const partial=await http.inject({method:'POST',url:cashUrl,
-         headers:cashHeaders,payload:partialBody});
-        assert.equal(partial.statusCode,201,partial.body);
-        assert.equal(partial.json().accountId,diner.account);
-        assert.equal(partial.json().state,'partial');
-        assert.equal(partial.json().outstandingCents,1200);
-        assert.equal(partial.json().accountState,'open');
-        const partialReplay=await http.inject({method:'POST',url:cashUrl,
-         headers:cashHeaders,payload:partialBody});
-        assert.equal(partialReplay.statusCode,201);
-        assert.equal(partialReplay.json().repeated,true);
-        const full=await http.inject({method:'POST',url:cashUrl,
-         headers:cashHeaders,payload:{amountCents:1200,correlationId:'f20_after_transfer_cash_full'}});
-        assert.equal(full.statusCode,201,full.body);
-        assert.equal(full.json().state,'settled');
-        assert.equal(full.json().outstandingCents,0);
-        assert.equal(full.json().accountState,'open');
+        // After A->D, the customer selects the approved external channel for
+        // both full rounds. Staff verifies the operation outside Sabora; no
+        // money, cash receipt, refund or fiscal event is recorded by Sabora.
+        const settlement=await http.inject({method:'POST',
+         url:'/api/v1/customer/economic/settlements',headers:dHeaders(diner),
+         payload:{tableId:httpFixture.concurrentTable,visitId:payload.visitId,
+          requestKey:'f20_after_transfer_external_0001',channel:'external',allocations:[
+           {roundId:diner.round,amountCents:1200},
+           {roundId:confirmed.roundId,amountCents:700}]}});
+        assert.equal(settlement.statusCode,201,settlement.body);
+        assert.equal(settlement.json().state,'external_pending');
+        assert.equal(settlement.json().amountCents,1900);
+        const settlementUrl='/api/v1/operations/economic/settlements/'+
+         settlement.json().intentId+'/external-verification';
+        const externalBody={correlationId:'f20_after_transfer_external_verified_0001',
+         verifiedOutsideSabora:true};
+        const verified=await http.inject({method:'POST',url:settlementUrl,
+         headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
+         payload:externalBody});
+        assert.equal(verified.statusCode,200,verified.body);
+        assert.equal(verified.json().state,'external_verified');
+        assert.equal(verified.json().repeated,false);
+        const verifiedReplay=await http.inject({method:'POST',url:settlementUrl,
+         headers:{authorization:'Bearer '+jwtWaiter,'content-type':'application/json'},
+         payload:externalBody});
+        assert.equal(verifiedReplay.statusCode,200,verifiedReplay.body);
+        assert.equal(verifiedReplay.json().repeated,true);
         const account=(await admin.query(`SELECT id,customer_id,state,outstanding_cents,
          cash_settled_cents FROM sabora.customer_accounts WHERE id=$1`,
          [diner.account])).rows[0];
@@ -5322,26 +5336,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(account.customer_id,diner.customer);
         assert.equal(account.state,'open');
         assert.equal(account.outstanding_cents,'0');
-        assert.equal(account.cash_settled_cents,'1900');
+        assert.equal(account.cash_settled_cents,'0');
         const receipts=(await admin.query(`SELECT amount_cents,kind FROM sabora.cash_settlements
          WHERE account_id=$1 ORDER BY created_at,id`,[diner.account])).rows;
-        assert.deepEqual(receipts.map(r=>[r.amount_cents,r.kind]),
-         [['300','payment'],['400','payment'],['1200','payment']]);
-        const notices=(await admin.query(`SELECT event_type,table_id,account_id,
-         payload->>'outstandingCents' AS remaining FROM sabora.event_outbox
-         WHERE account_id=$1 AND event_type LIKE 'sabora.account.cash_%'
-         ORDER BY id`,[diner.account])).rows;
-        assert.deepEqual(notices.map(n=>n.event_type),[
-         'sabora.account.cash_partially_paid','sabora.account.cash_partially_paid',
-         'sabora.account.cash_settled']);
-        assert.deepEqual(notices.map(n=>n.table_id),[
-         httpFixture.sourceTable,httpFixture.concurrentTable,httpFixture.concurrentTable],
-         'post-transfer cash events must follow the live table D, never historical A');
-        assert.deepEqual(notices.map(n=>n.remaining),['900','1200','0']);
-        assert.ok(notices.every(n=>n.account_id===diner.account));
-        // F20/F23/R03/R05: explicit account closure is not implicit cash
-        // settlement. Exercise the new authenticated JWT + scoped HMAC + PG17
-        // RPC in the SAME customer PWA/checkout/cash/transfer scenario.
+        assert.deepEqual(receipts,[],'external verification must not create cash records');
+        const ledger=(await admin.query(`SELECT e.channel,e.state,e.amount_cents,
+         count(l.*)::int AS allocations,sum(l.consumption_cents)::bigint AS consumption
+         FROM sabora.economic_settlement_intents_candidate e
+         JOIN sabora.economic_settlement_allocations_candidate l ON l.intent_id=e.id
+         WHERE e.id=$1 GROUP BY e.id`,[settlement.json().intentId])).rows[0];
+        assert.deepEqual(ledger,{channel:'external',state:'external_verified',
+         amount_cents:'1900',allocations:2,consumption:'1900'});
+        assert.equal((await admin.query(`SELECT count(*)::int AS n FROM sabora.event_outbox
+         WHERE account_id=$1 AND event_type LIKE 'sabora.account.cash_%'`,
+         [diner.account])).rows[0].n,0,'external verification emits no cash events');
+        // F20/F23/R03/R05: explicit account closure is separate from
+        // external operational verification and remains JWT + HMAC + PG17.
         const closeUrl='/api/v1/operations/accounts/'+diner.account+'/close';
         const closingHeaders={authorization:'Bearer '+jwtWaiter,
          'content-type':'application/json'};
@@ -5483,7 +5493,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const {pathToFileURL:chefToUrl,fileURLToPath:chefFilePath}=await import('node:url');
         const chefRequire=createRequire(new URL('../../apps/management/package.json',import.meta.url));
         const {createServer:chefServe}=await import(chefToUrl(chefRequire.resolve('vite')).href);
-        const {chromium:chefChromium}=await import(chefToUrl(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+        const chefChromium=await loadChromium();
         let chefVite=null,chefBrowser=null,chefContext=null,chefWaiterContext=null;
         try{
          chefVite=await chefServe({
@@ -5722,7 +5732,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
           WHERE id=$1`,[diner.account])).rows[0];
          assert.deepEqual(outstanding,{state:'open',outstanding_cents:'700',
-          cash_settled_cents:'1900'});
+          cash_settled_cents:'0'});
          // The new real order must complete its full life cycle, too:
          // sealed SQL dispatch -> signed kitchen ACK -> Chromium PREPARING /
          // READY -> durable H6 pickup task, before the original close-wins
@@ -5780,7 +5790,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
           WHERE id=$1`,[diner.account])).rows[0];
          assert.deepEqual(readyButUnpaid,{state:'open',outstanding_cents:'700',
-          cash_settled_cents:'1900'},
+          cash_settled_cents:'0'},
           'kitchen readiness does not settle economic debt or close an account');
         }finally{
          if(reverseLocked)await reverseHolder.query('ROLLBACK').catch(()=>{});
@@ -5817,29 +5827,42 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         const concurrentCloseBody={correlationId:'b3_f20_close_after_resolved'};
         // F20/R03/R05: at this point ALL THREE real kitchen rounds are
         // acknowledged and READY, but the just-confirmed round still owes
-        // 700 cents. Place the actual signed cash receipt FIRST in the PG17
-        // account-row lock queue, then two identical close requests. The
-        // customer lock is independently held until cash commits and the
-        // closer is queued, before allowing a new quoted checkout to race.
-        const dueBody={amountCents:700,
-         correlationId:'b3_f20_inverse_cash_700_once'};
-        const cashUrl='/api/v1/operations/accounts/'+diner.account+'/cash-settlements';
-        // Cash and close must authenticate as DISTINCT active waiters:
+        // 700 cents. Create the customer-selected external intent, then place
+        // its signed staff verification FIRST in the PG17 account-row queue,
+        // followed by two identical close requests.
+        const dueRound=(await admin.query(`SELECT r.id FROM sabora.order_rounds r
+         WHERE r.account_id=$1 AND r.amount_cents=700
+          AND NOT EXISTS(SELECT 1 FROM sabora.economic_settlement_allocations_candidate l
+           WHERE l.round_id=r.id AND l.released_at IS NULL)
+         ORDER BY r.created_at DESC,r.id DESC LIMIT 1`,[diner.account])).rows[0];
+        assert.ok(dueRound?.id,'the latest ready debt must be externally selectable');
+        const dueSettlement=await http.inject({method:'POST',
+         url:'/api/v1/customer/economic/settlements',headers:dHeaders(diner),
+         payload:{tableId:httpFixture.concurrentTable,visitId:payload.visitId,
+          requestKey:'b3_f20_inverse_external_0001',channel:'external',
+          allocations:[{roundId:dueRound.id,amountCents:700}]}});
+        assert.equal(dueSettlement.statusCode,201,dueSettlement.body);
+        assert.equal(dueSettlement.json().state,'external_pending');
+        const dueBody={correlationId:'b3_f20_inverse_external_verified_0001',
+         verifiedOutsideSabora:true};
+        const externalUrl='/api/v1/operations/economic/settlements/'+
+         dueSettlement.json().intentId+'/external-verification';
+        // External verification and close authenticate as DISTINCT active waiters:
         // verify_h6_staff_capability_candidate locks its own staff_members
         // row. Reusing the closer identity would serialize on staff auth,
         // masking the intended account-row lock race.
-        const concurrentCashHeaders={authorization:'Bearer '+jwtSecondWaiter,
+        const concurrentExternalHeaders={authorization:'Bearer '+jwtSecondWaiter,
          'content-type':'application/json'};
         // A second disposable transaction holds the customer's advisory
         // lock separately from the account row. The shared signing key is
-        // locked during capability verification, so cash and close cannot
+        // locked during capability verification, so verification and close cannot
         // both reach the account row concurrently. Release the row first,
-        // prove cash committed, THEN release the customer advisory lock with
+        // prove external verification committed, THEN release the customer advisory lock with
         // the closer already queued ahead of the next customer checkout.
         const customerLock=await admin.connect();
         const accountLock=await admin.connect();
         let accountLockOpen=false,customerLockOpen=false;
-        let closureRequests=[],customerRequest=null,cashRequest=null;
+        let closureRequests=[],customerRequest=null,verificationRequest=null;
         let concurrentClose;
         try{
          await customerLock.query('BEGIN');customerLockOpen=true;
@@ -5852,11 +5875,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           'SELECT pg_backend_pid() AS pid')).rows[0].pid;
          await accountLock.query('SELECT id FROM sabora.customer_accounts WHERE id=$1 FOR UPDATE',
           [diner.account]);
-         cashRequest=http.inject({method:'POST',url:cashUrl,
-          headers:concurrentCashHeaders,payload:dueBody});
-         let cashQueued=false;
+         verificationRequest=http.inject({method:'POST',url:externalUrl,
+          headers:concurrentExternalHeaders,payload:dueBody});
+         let verificationQueued=false;
          for(let tries=0;tries<150;tries++){
-          // A concurrent authenticated operation can sit between cash and the
+          // A concurrent authenticated operation can sit between verification and the
           // held account row in PostgreSQL's lock queue. Follow the complete
           // wait graph so the test observes the real economic fence without
           // requiring the account holder to be the immediate blocker.
@@ -5864,22 +5887,22 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
            SELECT a.pid,blocker,1 FROM pg_stat_activity a
            CROSS JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS blocker
            WHERE a.wait_event_type='Lock'
-            AND a.query LIKE '%settle_h6_account_cash_authorized_candidate%'
+            AND a.query LIKE '%verify_external_settlement_authorized_candidate%'
            UNION
            SELECT wait_graph.root_pid,blocker,wait_graph.depth+1 FROM wait_graph
            CROSS JOIN LATERAL unnest(pg_blocking_pids(wait_graph.pid)) AS blocker
            WHERE wait_graph.depth<8
           ) SELECT count(*)::int AS n FROM wait_graph WHERE pid=$1::int`,[holderPid]);
-          if(waiting.rows[0].n>0){cashQueued=true;break;}
+          if(waiting.rows[0].n>0){verificationQueued=true;break;}
           await new Promise(resolve=>setTimeout(resolve,40));
          }
-         assert.equal(cashQueued,true,
-          'cash settlement must enter PG17 account-row queue before close');
+         assert.equal(verificationQueued,true,
+          'external verification must enter PG17 account-row queue before close');
          closureRequests=[0,1].map(()=>http.inject({
           method:'POST',url:closeUrl,headers:closingHeaders,
           payload:concurrentCloseBody
          }));
-         // While cash owns the HMAC signing-key lock, the signed closer
+         // While external verification owns the HMAC signing-key lock, the signed closer
          // must be queued on some REAL PostgreSQL lock. It cannot yet
          // reach the account row because the key is serialized by SQL.
          let closerQueued=false;
@@ -5893,23 +5916,21 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           await new Promise(resolve=>setTimeout(resolve,40));
          }
          assert.equal(closerQueued,true,
-          'signed closure must enter PostgreSQL lock queue while cash is pending');
+          'signed closure must enter PostgreSQL lock queue while external verification is pending');
          // Unlock ONLY the row. The customer advisory lock remains held in
          // the independent disposable connection, so the new checkout cannot
          // interleave ahead of a fully paid but not yet closed account.
          await accountLock.query('COMMIT');accountLockOpen=false;
-         const settledCash=await cashRequest;
-         assert.equal(settledCash.statusCode,201,settledCash.body);
-         assert.equal(settledCash.json().repeated,false);
-         assert.equal(settledCash.json().outstandingCents,0);
-         assert.equal(settledCash.json().accountState,'open',
-          'even a full cash receipt never closes a customer account itself');
+         const verifiedExternal=await verificationRequest;
+         assert.equal(verifiedExternal.statusCode,200,verifiedExternal.body);
+         assert.equal(verifiedExternal.json().repeated,false);
+         assert.equal(verifiedExternal.json().state,'external_verified');
          const paidBeforeClose=(await admin.query(`SELECT state,
           outstanding_cents,cash_settled_cents FROM sabora.customer_accounts
           WHERE id=$1`,[diner.account])).rows[0];
          assert.deepEqual(paidBeforeClose,{state:'open',outstanding_cents:'0',
-          cash_settled_cents:'2600'},
-          'cash must commit before any explicit account close can proceed');
+          cash_settled_cents:'0'},
+          'external verification must commit before explicit account close can proceed');
          // The first closer has now passed HMAC verification and queues
          // at the customer advisory lock, which is shared with checkout.
          let closerOnCustomer=false;
@@ -5939,7 +5960,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
           await new Promise(resolve=>setTimeout(resolve,40));
          }
          assert.equal(checkoutBlocked,true,
-          'new quoted checkout must wait behind committed cash and pending close');
+          'new quoted checkout must wait behind committed verification and pending close');
          await customerLock.query('COMMIT');customerLockOpen=false;
          concurrentClose=await Promise.all(closureRequests);
          assert.deepEqual(concurrentClose.map(r=>r.statusCode),[200,200],
@@ -5962,33 +5983,32 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          if(customerLockOpen)await customerLock.query('ROLLBACK').catch(()=>{});
          accountLock.release();
          customerLock.release();
-         if(cashRequest)await Promise.allSettled([cashRequest]);
+         if(verificationRequest)await Promise.allSettled([verificationRequest]);
          if(closureRequests.length)await Promise.allSettled(closureRequests);
          if(customerRequest)await Promise.allSettled([customerRequest]);
         }
-        // Retrying the identical signed cash receipt AFTER closure must
-        // return its originally committed response. Neither cash replay nor
-        // the losing quoted order may resurrect or repay closed debt.
-        const cashReplayAfterClose=await http.inject({method:'POST',
-         url:cashUrl,headers:concurrentCashHeaders,payload:dueBody});
-        assert.equal(cashReplayAfterClose.statusCode,201,cashReplayAfterClose.body);
-        assert.equal(cashReplayAfterClose.json().repeated,true);
-        assert.equal(cashReplayAfterClose.json().accountState,'open',
-         'idempotent replay retains the historical settlement response');
-        assert.equal(cashReplayAfterClose.json().outstandingCents,0);
-        const finalCash=(await admin.query(`SELECT
-         (SELECT count(*)::int FROM sabora.cash_settlements
-          WHERE account_id=$1 AND correlation_id=$2) AS receipts,
+        // Retrying the identical verification AFTER closure returns the
+        // committed intent response. It cannot create cash history or revive
+        // the losing quoted order.
+        const externalReplayAfterClose=await http.inject({method:'POST',
+         url:externalUrl,headers:concurrentExternalHeaders,payload:dueBody});
+        assert.equal(externalReplayAfterClose.statusCode,200,externalReplayAfterClose.body);
+        assert.equal(externalReplayAfterClose.json().repeated,true);
+        assert.equal(externalReplayAfterClose.json().state,'external_verified');
+        const finalExternal=(await admin.query(`SELECT
+         (SELECT count(*)::int FROM sabora.economic_settlement_intents_candidate
+          WHERE id=$2 AND state='external_verified') AS verified_intents,
+         (SELECT count(*)::int FROM sabora.cash_settlements WHERE account_id=$1) AS receipts,
          (SELECT count(*)::int FROM sabora.event_outbox
-          WHERE account_id=$1 AND event_type='sabora.account.cash_settled') AS settled_notices,
+          WHERE account_id=$1 AND event_type LIKE 'sabora.account.cash_%') AS cash_notices,
          (SELECT cash_settled_cents FROM sabora.customer_accounts
           WHERE id=$1) AS paid_cents`,
-         [diner.account,dueBody.correlationId])).rows[0];
-        assert.equal(finalCash.receipts,1,
-         'real simultaneous cash/close must create exactly one receipt');
-        assert.equal(finalCash.settled_notices,2,
-         'original cash settlement and new one each have one durable event');
-        assert.equal(finalCash.paid_cents,'2600');
+         [diner.account,dueSettlement.json().intentId])).rows[0];
+        assert.equal(finalExternal.verified_intents,1,
+         'concurrent external verification must converge on one intent');
+        assert.equal(finalExternal.receipts,0,'external verification creates no cash receipts');
+        assert.equal(finalExternal.cash_notices,0,'external verification creates no cash events');
+        assert.equal(finalExternal.paid_cents,'0');
         const outcomes=concurrentClose.map(r=>r.json());
         assert.deepEqual(outcomes.map(x=>x.repeated).sort(),[false,true],
          'exactly one concurrent request must commit the account closure');
@@ -6022,7 +6042,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(closedSql.closed_by,httpFixture.waiter);
         assert.equal(closedSql.close_correlation_id,'b3_f20_close_after_resolved');
         assert.equal(closedSql.outstanding_cents,'0');
-        assert.equal(closedSql.cash_settled_cents,'2600');
+        assert.equal(closedSql.cash_settled_cents,'0');
         assert.equal(closedSql.table_id,httpFixture.concurrentTable);
         assert.equal(closedSql.accounts,1);
         assert.equal(closedSql.rounds,3);
@@ -6442,8 +6462,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      WHERE id=$1 AND status='consumed'`,[created.json().id]);
     const {pathToFileURL:rejectPathToFileURL,fileURLToPath:rejectFileURLToPath}
      =await import('node:url');
-    const {chromium:rejectChromium}=await import(
-     rejectPathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+    const rejectChromium=await loadChromium();
     const rejectRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
     const {createServer:createRejectVite}=await import(
      rejectPathToFileURL(rejectRequire.resolve('vite')).href);
@@ -7090,7 +7109,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const {pathToFileURL,fileURLToPath}=await import('node:url');
    const ciRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer}=await import(pathToFileURL(ciRequire.resolve('vite')).href);
-   const {chromium}=await import(pathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const chromium=await loadChromium();
    const {mkdir}=await import('node:fs/promises');
    const {join}=await import('node:path');
    if(!http.server.listening)await http.listen({host:'127.0.0.1',port:0});
@@ -7541,9 +7560,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     getTrustedKeys:async()=>[ciJwk]},
    h4:{operationsPool:pools[11],expectedOperationsLogin:specs[11].login,
     issueTransitionCapability:h4KitchenIssuer,issueReadCapability:h4ReadIssuer},
-   h6:{providerPool:pools[7],operationsPool:pools[8],closePool:pools[10],
+   h6:{customerPool:pools[6],providerPool:pools[7],operationsPool:pools[8],closePool:pools[10],
     eventPool:pools[12],notifierPool:pools[8],expectedProviderLogin:specs[7].login,
-    expectedOperationsLogin:specs[8].login,expectedCloseLogin:specs[10].login,
+     expectedCustomerLogin:specs[6].login,expectedOperationsLogin:specs[8].login,
+     expectedCloseLogin:specs[10].login,
     expectedEventLogin:specs[12].login,stripe:dormantStripe,
     webhook:Object.freeze({secret:signedStripeSecret}),
     issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
@@ -7705,17 +7725,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    assert.ok(Number.isSafeInteger(financeBefore.todaySalesCents));
    assert.ok(Number.isSafeInteger(financeBefore.monthSalesCents));
    assert.ok(financeBefore.todayCollectedCents===null||Number.isSafeInteger(financeBefore.todayCollectedCents));
-   // M4 exposes only actual CASH tip collection/refund, not digital revenue
-   // and never employee distribution. The old M3 "tips unavailable" contract
-   // was correct only before the append-only cash tips migration.
-   assert.equal(financeBefore.tipsAvailable,true);
-   assert.equal(financeBefore.tipsCoverage,'cash');
-   assert.ok(Number.isSafeInteger(financeBefore.tipsCollectedCents));
-   assert.ok(Number.isSafeInteger(financeBefore.tipsRefundedCents));
-   assert.ok(financeBefore.tipsCollectedCents>=0);
-   assert.ok(financeBefore.tipsRefundedCents>=0);
-   assert.equal(financeBefore.tipsCents,
-    financeBefore.tipsCollectedCents-financeBefore.tipsRefundedCents);
+   assert.equal(financeBefore.moneyBoundary,'stripe_only');
+   assert.equal(financeBefore.cashCollectedCents,0);
+   assert.equal(financeBefore.tipsAvailable,false);
+   assert.equal(financeBefore.tipsCents,null,
+    'retired cash-tip records must not re-enter the reconciled finance projection');
    assert.equal(financeBefore.version,1);
    const monthWindow=await management.readFinancialDashboard({period:'thisMonth'});
    assert.equal(monthWindow.period,'thisMonth');
@@ -7922,8 +7936,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     connections[16].query(`SELECT sabora.manage_table_m3_candidate($1::jsonb,$2,$3)`,
      [JSON.stringify(validCapability),'update',capabilityBody.replace('No debe mutar','Manipulado')])),
     /invalid_m3_management_capability/,'a signed capability cannot authorize a changed body');
-   const expiredIssuer=createM3ManagementCapabilityIssuer({keyId:cashSigningKeyId,
-    secret:cashSigningSecret,databaseRole:specs[16].login,ttlMs:1,clock:()=>Date.now()-1000});
+   const expiredIssuer=createM3ManagementCapabilityIssuer({keyId:staffSigningKeyId,
+    secret:staffSigningSecret,databaseRole:specs[16].login,ttlMs:1,clock:()=>Date.now()-1000});
    const expiredCapability=expiredIssuer({actorId:adminId,staffRole:'admin',action:'table.update',
     requestId:randomUUID(),body:capabilityBody});
    await assert.rejects(underRole(connections[16],'sabora_m3_tables_runtime',()=>
@@ -7984,8 +7998,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    const m3CiRequire=createRequire(new URL('../../apps/client/package.json',import.meta.url));
    const {createServer:createM3ViteServer}=await import(
     m3PathToFileURL(m3CiRequire.resolve('vite')).href);
-   const {chromium:m3Chromium}=await import(
-    m3PathToFileURL(process.env.SABORA_CI_PLAYWRIGHT_MODULE).href);
+   const m3Chromium=await loadChromium();
    const m3ClientVite=await createM3ViteServer({
     root:m3FileURLToPath(new URL('../../apps/client/',import.meta.url)),
     mode:'test',logLevel:'error',
@@ -8161,10 +8174,11 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
       enableM3Management:true});
     },jwtAdmin);
     await m3StaffPage.getByRole('link',{name:/Configuración/}).waitFor({timeout:30000});
-    await m3StaffPage.getByRole('heading',{name:'Dashboard financiero'}).waitFor({timeout:30000});
-    await m3StaffPage.getByText('Ventas netas · periodo').waitFor({timeout:30000});
+    await m3StaffPage.getByRole('heading',{name:'Dashboard económico'}).waitFor({timeout:30000});
+    await m3StaffPage.getByText('Consumo neto · periodo').waitFor({timeout:30000});
     await m3StaffPage.getByRole('button',{name:'Últimos 7 días'}).click();
-    await m3StaffPage.getByText('Cobros').first().waitFor({timeout:20000});
+    await m3StaffPage.getByText('Recaudación acreditada Stripe · periodo')
+     .waitFor({timeout:20000});
     for(const width of [390,1440]){
      await m3StaffPage.setViewportSize({width,height:900});
      assert.equal(await m3StaffPage.evaluate(()=>

@@ -21,7 +21,7 @@
 
 **Riesgo central y STOP de autoridad:** la excepción normativa Opción A admite **solo** el grant automático del instalador DBA de `supabase_admin` `ADMIN TRUE/SET FALSE/INHERIT FALSE` para owner/capability `NOLOGIN`. El DBA puede autoconcesionarse `SET TRUE`; la frontera de confianza exige credencial bajo custodia separada de runtime. Los `GRANT SET/INHERIT/CREATE` transitorios de una migración se retiran **antes del COMMIT** y se verifican tras cada versión. Runtime→owner, privileges superuser o SQL directo no previsto: STOP.
 
-## 3. Inventario normado por código: **17 slots mínimos + cinco opt-in, dos notifiers**
+## 3. Inventario normado por código: **18 slots mínimos + cinco opt-in, dos notifiers**
 
 **Fuente exacta:** `apps/api/src/m2-runtime-identity-inventory.mjs` y `apps/api/src/operational-activation-manifest.mjs` (`describeOperationalSqlContract`). Cada fila refiere **una capacidad y un pool**; no son variables de entorno nuevas, ni logins creados, ni autorizaciones a inventar usuarios. El nombre real de LOGIN y la referencia de fichero secreto se fijan según la norma y el comprobador, deben ser distintos por pool, y **no están acreditados actualmente**.
 
@@ -38,21 +38,22 @@
 | 9 | `tableChange.pendingPool` | `sabora_f12_pending_reader_runtime` | `pending_table_change_read` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
 | 10 | `staff.pool` | `sabora_staff_reader` | `staff_membership_read` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
 | 11 | `h4.operationsPool` | `sabora_b3_h4_transition_runtime` | `kitchen_waiter_operations` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 12 | `h6.providerPool` | `sabora_h6_provider_runtime` | `payment_provider_ledger` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 13 | `h6.operationsPool` | `sabora_h6_operations_runtime` | `h6_staff_operations` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 14 | `h6.closePool` | `sabora_h6_account_close_runtime` | `account_close` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 15 | `h6.eventPool` | `sabora_m2_customer_event_runtime` | `customer_event_read` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 16 | `management.tablesPool` | `sabora_m3_tables_runtime` | `management_tables` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 17 | `management.catalogPool` | `sabora_m3_catalog_runtime` | `management_catalog_finance` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 18 | `management.ownership.pool` | `sabora_ownership_runtime` | `admin_ownership_governance` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 19 | `management.communications.adminPool` | `sabora_m5_comms_admin_runtime` | `communications_admin` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 20 | `management.communications.publicPool` | `sabora_m5_comms_public_runtime` | `communications_public` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 21 | `waiterCalls.customerPool` | `sabora_waiter_call_customer_runtime` | `waiter_call_customer` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
-| 22 | `waiterCalls.staffPool` | `sabora_waiter_call_staff_runtime` | `waiter_call_staff` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 12 | `h6.customerPool` | `sabora_h6_customer_runtime` | `h6_customer_economic` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 13 | `h6.providerPool` | `sabora_h6_provider_runtime` | `payment_provider_ledger` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 14 | `h6.operationsPool` | `sabora_h6_operations_runtime` | `h6_staff_operations` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 15 | `h6.closePool` | `sabora_h6_account_close_runtime` | `account_close` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 16 | `h6.eventPool` | `sabora_m2_customer_event_runtime` | `customer_event_read` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 17 | `management.tablesPool` | `sabora_m3_tables_runtime` | `management_tables` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 18 | `management.catalogPool` | `sabora_m3_catalog_runtime` | `management_catalog_finance` | Mínimo | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 19 | `management.ownership.pool` | `sabora_ownership_runtime` | `admin_ownership_governance` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 20 | `management.communications.adminPool` | `sabora_m5_comms_admin_runtime` | `communications_admin` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 21 | `management.communications.publicPool` | `sabora_m5_comms_public_runtime` | `communications_public` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 22 | `waiterCalls.customerPool` | `sabora_waiter_call_customer_runtime` | `waiter_call_customer` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
+| 23 | `waiterCalls.staffPool` | `sabora_waiter_call_staff_runtime` | `waiter_call_staff` | Opt-in | LOGIN físico, referencia de secreto y custodia: **NO ACREDITADOS** |
 
 **Notificadores obligatorios:** `tableChange.notificationPool` utiliza la credencial del slot `tableChange.operationsPool` con **conexión dedicada LISTEN**; `h6.notifierPool` utiliza `h6.operationsPool`, también conexión LISTEN dedicada. No representan dos roles/grants genéricos adicionales. El manifiesto exige además tres referencias de secretos de firma separadas `capabilitySecretRef`, `customerSecretRef`, `qrSecretRef`, `keyId` válido, issuer Auth HTTPS real `/auth/v1`, orígenes HTTPS distintos de cliente/gestión y destinos TLS exactamente iguales entre manifiesto y política gateway. Ninguna clave debe guardarse en Git/Actions/PWA ni exponerse aquí.
 
-**Opt-in:** `management.ownership.pool`, los dos slots `management.communications.*` y los dos `waiterCalls.*` solo si se activan las funcionalidades correspondientes. Conjunto mínimo: 15 `CORE` + 2 `MANAGEMENT` = **17**; total con tres opt-in habilitados **22**. La existencia de tres contraseñas preparadas históricamente para lectores no acredita un total de 17 credenciales ni su validación operativa.
+**Opt-in:** `management.ownership.pool`, los dos slots `management.communications.*` y los dos `waiterCalls.*` solo si se activan las funcionalidades correspondientes. Conjunto mínimo vigente: 16 `CORE` + 2 `MANAGEMENT` = **18**; total con los tres grupos opt-in habilitados **23**. El slot `h6.customerPool` fue añadido por la reconciliación económica de Issue #61 para que el cliente no use la identidad de operaciones. La existencia de tres contraseñas preparadas históricamente para lectores no acredita un total de 18 credenciales ni su validación operativa.
 
 ## 4. Recuperación real: política y demostración antes de tocar SQL
 
@@ -83,7 +84,7 @@
 | Compatibilidad PG17.11, `pgcrypto` básica | **PASS lectura limitada** | Preflight [13-11](SABORA_S38_SUPABASE_PG17_11_READONLY_PREFLIGHT_2026-11-13.md) |
 | `supautils`, ownership/ACL/ledger en proveedor | **STOP** | DBA Sabora + seguridad aprueban procedimiento para **la instalación íntegra**, verifican efectos reales en cada COMMIT; no usar un SQL canario de múltiples parches |
 | Backup cifrado/restauración del estado inicial y postinstalación | **STOP** | DBA + custodio de copia, destino independiente y ensayo documentado; RTO/RPO/retención aprobados |
-| Identidades SQL y HMAC/JWKS | **STOP** | 17 slots mínimos, 2 LISTEN, login exacto por pool, custodio y canal de ficheros; prohibido DBA/runtime compartido |
+| Identidades SQL y HMAC/JWKS | **STOP** | 18 slots mínimos, 2 LISTEN, login exacto por pool, custodio y canal de ficheros; prohibido DBA/runtime compartido |
 | CA/host/puerto y conectividad | **STOP** | Endpoint real de la consola, SSL verify-full equivalente, DNS IPv4/IPv6, políticas y certificado |
 | Alertas y firewall/VPS | **STOP separado** | Responsable de red y observabilidad; demostrar exclusividad Sabora antes de cualquier deploy |
 | Producto, visual y pagos | **STOP aceptación plena** | Dos PWA en dispositivos, revisión humana, Stripe sandbox real y matriz F/R; no fingir aceptación de variantes no activadas |
