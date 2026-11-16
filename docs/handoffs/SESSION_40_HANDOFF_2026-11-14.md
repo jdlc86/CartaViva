@@ -2,6 +2,8 @@
 
 > **CONTEXTO, NO NORMATIVA NI AUTORIZACIÓN.** Requisitos y prohibiciones proceden de documentación normativa; confirmar siempre HEAD, CI y estado de proveedores antes de operar. [Tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). No repetir pruebas ni reabrir hitos anteriores sin regresión evidenciada.
 
+> **Continuación vigente:** [sesión 41 (2026-11-16)](SESSION_41_HANDOFF_2026-11-16.md). Este documento S40 queda como antecedente histórico: el nuevo corte verifica el PR #60 en SHA `4ba65545`, 7/7 controles automatizados aplicables PASS, sin integración ni aceptación operativa. Conservar las prioridades de S40-9, pero registrar los hitos nuevos en S41.
+
 ## Contexto heredado
 
 Leer [continuidad S39](SESSION_39_HANDOFF_2026-11-13.md), especialmente S39-19/20 sobre TLS/ACL Sabora y S39-21 sobre despliegue gobernado. Existe un solo [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59) con propuesta normativa de doble copia, publicación HTTPS de cliente y gestión en TCP/8443 y candidato de automatización. `main` no contiene esos cambios; **no fusionar por deducción**. La solución en VPS debe ser enteramente independiente de Fleetia y de otros proyectos, sin detener ni reutilizar sus recursos.
