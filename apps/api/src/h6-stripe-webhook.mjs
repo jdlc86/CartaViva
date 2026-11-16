@@ -69,9 +69,18 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
   saboraOrderId=value??null;
  }
  if(event.type==='payment_intent.amount_capturable_updated'){
-  const raw=object?.latest_charge?.payment_method_details?.card?.capture_before;
-  if(!Number.isSafeInteger(raw)||raw<1)throw Error('invalid_stripe_webhook_payload');
-  captureBefore=new Date(raw*1000);
+  const charge=object?.latest_charge;
+  providerChargeId=typeof charge==='string'?charge:charge?.id;
+  if(typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
+   throw Error('invalid_stripe_webhook_payload');
+  // A signed Stripe snapshot may contain the expandable Charge ID rather
+  // than the expanded object. Its capture deadline is not inferred.
+  const raw=typeof charge==='object'&&charge!==null?
+   charge.payment_method_details?.card?.capture_before:undefined;
+  if(raw!==undefined&&raw!==null){
+   if(!Number.isSafeInteger(raw)||raw<1)throw Error('invalid_stripe_webhook_payload');
+   captureBefore=new Date(raw*1000);
+  }
  }
  if(event.type==='refund.updated'){
   refundAttemptId=object?.metadata?.sabora_refund_attempt_id;
@@ -93,10 +102,30 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
   providerAmountCents,providerCurrency});
 }
 
-export function createH6StripeWebhookHandler({secret,providerRepository,
+export function createH6StripeWebhookHandler({secret,providerRepository,stripe=null,
  clock=Date.now,expectedLivemode=null}={}){
  if(typeof secret!=='string'||!providerRepository||typeof providerRepository.ingestWebhook!=='function'||
-    typeof clock!=='function')throw Error('invalid_h6_stripe_webhook_handler');
- return async({rawBody,signatureHeader}={})=>providerRepository.ingestWebhook(
-  verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs:clock(),expectedLivemode}));
+    typeof clock!=='function'||(stripe!==null&&
+    typeof stripe.retrieveCapturableEvidence!=='function'))
+  throw Error('invalid_h6_stripe_webhook_handler');
+ return async({rawBody,signatureHeader}={})=>{
+  const event=verifyH6StripeWebhook({rawBody,signatureHeader,secret,
+   nowMs:clock(),expectedLivemode});
+  if(event.eventType!=='payment_intent.amount_capturable_updated'||event.captureBefore)
+   return providerRepository.ingestWebhook(event);
+  // Provider access only AFTER raw-body HMAC validation. Missing or ambiguous
+  // evidence must be retryable (503), never silently acknowledged as paid.
+  if(!stripe)throw Error('stripe_webhook_provider_unavailable');
+  const evidence=await stripe.retrieveCapturableEvidence({providerIntentId:event.providerObjectId});
+  if(evidence?.providerIntentId!==event.providerObjectId||
+     evidence?.providerChargeId!==event.providerChargeId||
+     evidence?.amountCents!==event.providerAmountCents||
+     evidence?.currency!=='eur'||event.providerCurrency!=='eur'||
+     evidence?.saboraOrderId!==event.saboraOrderId||
+     !(evidence?.captureBefore instanceof Date)||
+     !Number.isFinite(evidence.captureBefore.getTime())||
+     !evidence.saboraOrderId)
+   throw Error('stripe_webhook_evidence_mismatch');
+  return providerRepository.ingestWebhook(Object.freeze({...event,captureBefore:evidence.captureBefore}));
+ };
 }

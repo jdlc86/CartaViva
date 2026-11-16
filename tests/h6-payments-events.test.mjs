@@ -221,7 +221,7 @@ test('Stripe capturable webhook preserves the provider authorization deadline',(
  const deadline=timestamp+6*24*60*60;
  const rawBody=Buffer.from(JSON.stringify({id:'evt_87654321',
   type:'payment_intent.amount_capturable_updated',created:timestamp,data:{object:{id:'pi_87654321',
-   latest_charge:{payment_method_details:{card:{capture_before:deadline}}}}}}));
+   latest_charge:{id:'ch_87654321',payment_method_details:{card:{capture_before:deadline}}}}}}));
  const valid=createHmac('sha256',secret).update(`${timestamp}.`).update(rawBody).digest('hex');
  const verified=verifyH6StripeWebhook({rawBody,signatureHeader:`t=${timestamp},v1=${valid}`,
   secret,nowMs:timestamp*1000});
@@ -416,4 +416,58 @@ test('Stripe recovery GET expands latest_charge without guessing capture deadlin
  const u=new URL('https://api.stripe.invalid'+calls[0].path);
  assert.equal(calls[0].method,'GET');
  assert.equal(u.searchParams.get('expand[]'),'latest_charge');
+});
+
+test('signed non-expanded Stripe capturable webhook retries, correlates exact Charge and preserves SQL idempotency',async t=>{
+ const app=Fastify({logger:false});t.after(()=>app.close());
+ const now=Date.UTC(2026,10,16,12),timestamp=Math.floor(now/1000);
+ const secret='whsec_candidate_0123456789abcdef',deadline=timestamp+3600;
+ const records=[],requests=[];let unavailable=false,wrongCharge=false;
+ const stripe=createH6StripeAdapter({credential:'sk_test_candidate_not_real_2026',
+  request:async call=>{
+   requests.push(call);if(unavailable)throw Error('stripe_down');
+   return {object:'payment_intent',id:'pi_87654321',status:'requires_capture',
+    amount:700,currency:'eur',metadata:{sabora_order_id:orderId},
+    latest_charge:{id:wrongCharge?'ch_other1234':'ch_87654321',
+     payment_method_details:{card:{capture_before:deadline}}}};
+  }});
+ registerH6StripeWebhookHttp(app,{secret,stripe,clock:()=>now,providerRepository:{
+  ingestWebhook:async value=>{records.push(value);return {outcome:'applied'};}
+ }});
+ await app.ready();
+ const make=expanded=>{
+  const object={object:'payment_intent',id:'pi_87654321',status:'requires_capture',
+   amount:700,currency:'eur',metadata:{sabora_order_id:orderId},
+   latest_charge:expanded?{id:'ch_87654321',payment_method_details:{card:{capture_before:deadline}}}:
+    'ch_87654321'};
+  const raw=Buffer.from(JSON.stringify({object:'event',id:'evt_CapturableValid01',
+   livemode:false,created:timestamp,type:'payment_intent.amount_capturable_updated',
+   data:{object}}));
+  const signature='t='+timestamp+',v1='+createHmac('sha256',secret)
+   .update(timestamp+'.').update(raw).digest('hex');
+  return {raw,signature};
+ };
+ const post=({raw,signature})=>app.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
+  payload:raw,headers:{'content-type':'application/json','stripe-signature':signature}});
+ const compact=make(false),expanded=make(true);
+ assert.equal((await post({...compact,signature:'t='+timestamp+',v1='+'0'.repeat(64)})).statusCode,400);
+ assert.equal(requests.length,0,'no provider lookup before HMAC');
+ unavailable=true;
+ assert.equal((await post(compact)).statusCode,503);
+ assert.equal(records.length,0);
+ unavailable=false;wrongCharge=true;
+ assert.equal((await post(compact)).statusCode,503);
+ assert.equal(records.length,0,'wrong charge never persists');
+ wrongCharge=false;
+ assert.equal((await post(compact)).statusCode,200);
+ assert.equal(records.length,1);
+ assert.equal(records[0].providerChargeId,'ch_87654321');
+ assert.equal(records[0].captureBefore.toISOString(),new Date(deadline*1000).toISOString());
+ assert.equal((await post(expanded)).statusCode,200);
+ assert.equal(records.length,2);
+ assert.equal(records[1].captureBefore.getTime(),records[0].captureBefore.getTime());
+ const url=new URL('https://api.stripe.invalid'+requests.at(-1).path);
+ assert.equal(url.searchParams.get('expand[]'),'latest_charge');
+ assert.equal((await post(compact)).statusCode,200);
+ assert.equal(records.length,3,'durable de-duplication belongs to PostgreSQL ledger');
 });

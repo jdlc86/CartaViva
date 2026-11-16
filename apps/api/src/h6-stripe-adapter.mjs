@@ -47,6 +47,24 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
   return response;
  };
  return Object.freeze({
+  // Resolve the current Stripe object for a previously signed capturable
+  // event. Never use event-only IDs to fabricate a capture deadline.
+  async retrieveCapturableEvidence({providerIntentId}={}){
+   if(!INTENT.test(providerIntentId??''))throw Error('invalid_stripe_reconciliation');
+   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET',
+    fields:{'expand[]':'latest_charge'}});
+   if(value.outcome==='failed'||value.id!==providerIntentId||
+      value.status!=='requires_capture'||typeof value.latest_charge!=='object'||
+      !CHARGE.test(value.latest_charge?.id??'')||
+      !Number.isSafeInteger(value.amount)||value.amount<1||value.currency!=='eur'||
+      !UUID.test(value.metadata?.sabora_order_id??''))
+    throw new StripeAmbiguousResultError('stripe_capturable_evidence_missing');
+   const deadline=captureBefore(value);
+   if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
+   return Object.freeze({providerIntentId:value.id,providerChargeId:value.latest_charge.id,
+    amountCents:value.amount,currency:value.currency,
+    saboraOrderId:value.metadata.sabora_order_id,captureBefore:deadline});
+  },
   async retrieve({providerIntentId}={}){
    if(!INTENT.test(providerIntentId??''))throw Error('invalid_stripe_reconciliation');
    const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET',
