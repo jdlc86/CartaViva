@@ -90,6 +90,14 @@ function rejectSharedArgs(args){
  if(lower.some(value=>/postgres(?:ql)?:\/\//.test(value)||
   /(?:^|[?;&])(?:password|passfile)=/.test(value)||/\b(?:password|passfile)\s*=/.test(value)||
   /^(?:--)?(?:password|passfile)(?:=|$)/.test(value)))throw stop('secret_or_dsn_argument');
+ // PGHOST and TLS in validateCaptureSource must not be overridden from
+ // an approved protected JSON plan by -h/--host/-p/--port/DB flags.
+ if(!includesPair(args,'-U','postgres')||!includesPair(args,'-d','postgres')||
+  args.filter(x=>x==='-U').length!==1||args.filter(x=>x==='-d').length!==1||
+  args.some(x=>x==='-h'||x.startsWith('-h')||x==='-p'||x.startsWith('-p')||
+   x==='-W'||x.startsWith('--host')||x.startsWith('--port')||
+   x.startsWith('--dbname')||x.startsWith('--username')||
+   x.startsWith('--maintenance-db')))throw stop('connection_override_not_allowed');
  if(args.some(value=>value==='-o'||value.startsWith('-o')||value==='-L'||value.startsWith('-L'))||
   lower.some(value=>['--output','--log-file'].includes(value)||
    value.startsWith('--output=')||value.startsWith('--log-file=')))
