@@ -6,6 +6,9 @@ const euro=(cents:number)=>new Intl.NumberFormat('es-ES',{style:'currency',curre
 const correlation=()=>`ui_external_verify_${crypto.randomUUID().replaceAll('-','_')}`;
 const closeCorrelation=()=>`ui_operational_close_${crypto.randomUUID().replaceAll('-','_')}`;
 const tableCloseCorrelation=()=>`ui_table_operational_close_${crypto.randomUUID().replaceAll('-','_')}`;
+const unresolvedSettlement=(state:string)=>['external_pending','stripe_authorization_requested',
+ 'stripe_requires_action','stripe_authorized','stripe_authorization_unknown',
+ 'stripe_capture_requested','stripe_capture_unknown','stripe_refund_pending'].includes(state);
 
 export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
  const [snapshot,setSnapshot]=useState<EconomicAccountSnapshot|null>(null);
@@ -89,7 +92,8 @@ export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
     <article className="metric-card"><span>Stripe acreditado neto</span><strong>{euro(totals.stripeNet)}</strong><p>Capturas {euro(totals.captured)} menos devoluciones ejecutadas {euro(totals.refunded)}.</p></article>
    </div>:null}
    <div className="operation-list" aria-label="Cierre operativo por mesa">{tableSessions.map(([key,group])=>{
-    const closable=group.accounts.every(account=>account.outstandingCents===0)&&
+    const closable=group.accounts.every(account=>account.outstandingCents===0&&
+     !account.settlements.some(item=>unresolvedSettlement(item.state)))&&
      group.accounts.some(account=>account.operationalState!=='settled');
     if(!closable)return null;
     return <article className="operation-card" key={key}><div><strong>Cierre conjunto de mesa</strong>
@@ -102,13 +106,14 @@ export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
     </article>;
    })}</div>
    <ul className="operation-list">{snapshot.items.map(account=>{
-    const tone=account.outstandingCents>0?'warning':'brand';
+    const hasUnresolved=account.settlements.some(item=>unresolvedSettlement(item.state));
+    const tone=account.outstandingCents>0||hasUnresolved?'warning':'brand';
     return <li key={account.accountId} className="operation-card">
      <div><strong>{account.customerAlias} · {account.customerCode}</strong>
       <p>Bruto {euro(account.grossConsumptionCents)} · cancelado {euro(account.cancelledCents)} · neto {euro(account.netConsumptionCents)}</p>
       <p>Stripe: capturado {euro(account.stripeCapturedCents)} · devuelto {euro(account.stripeRefundedCents)} · neto {euro(account.stripeNetCents)}</p>
       <p>Pendiente operativo: {euro(account.outstandingCents)} · modalidad {account.paymentTiming==='pay_now'?'al pedir':'al final'} · canales y verificaciones detallados por liquidación</p></div>
-     <StatusBadge tone={tone}>{account.outstandingCents>0?'SALDO OPERATIVO PENDIENTE':'SALDO OPERATIVO CERO'}</StatusBadge>
+     <StatusBadge tone={tone}>{account.outstandingCents>0?'SALDO OPERATIVO PENDIENTE':hasUnresolved?'LIQUIDACIÓN O DEVOLUCIÓN PENDIENTE':'SALDO OPERATIVO CERO'}</StatusBadge>
      {account.settlements.length?<ul className="operation-list" aria-label={`Liquidaciones de ${account.customerAlias}`}>
       {account.settlements.map(item=>{
        const pendingExternal=item.channel==='external'&&item.state==='external_pending';
@@ -136,7 +141,7 @@ export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
        </li>;
       })}
      </ul>:<p className="honest-operational-note">No hay liquidaciones al final individualizadas en esta cuenta. Los importes Stripe históricos se muestran arriba, sin inferir canal externo.</p>}
-     {account.outstandingCents===0&&account.operationalState!=='settled'?<div className="button-row">
+     {account.outstandingCents===0&&!hasUnresolved&&account.operationalState!=='settled'?<div className="button-row">
       <label><input type="checkbox" checked={closeAck.has(account.accountId)} disabled={Boolean(busy)}
        onChange={event=>setCloseAck(current=>{const next=new Set(current);if(event.target.checked)next.add(account.accountId);else next.delete(account.accountId);return next;})}/>
        He comprobado el estado del canal correspondiente. Este cierre es operativo y no registra ni entrega dinero.</label>
