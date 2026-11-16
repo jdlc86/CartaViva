@@ -1702,7 +1702,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   providerChargeId:'ch_H6CompCharge02',errorCode:'dispatch_persistence_failed',
   providerIntentId:compensationProof.provider_intent_id,
   providerAmountCents:compensationProof.amount_cents,providerCurrency:'eur'}),
-  /capture_compensation_conflict/);
+  /h6_provider_money_mismatch/);
  const compensationRefund=(await admin.query(`SELECT rf.id FROM sabora.refund_attempts rf
   JOIN sabora.payment_attempts p ON p.id=rf.payment_attempt_id
   JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=$1 AND rf.incident_id IS NULL`,
