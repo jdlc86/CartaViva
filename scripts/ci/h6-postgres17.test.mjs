@@ -19,7 +19,7 @@ import {createCustomerProductionFlow,AUTHORIZE_VISIT_SQL,PREPARE_QUOTE_SQL,INSER
  READ_H6_ACCOUNT_PAYMENT_MODE_SQL,READ_H6_ORDER_REVISION_SQL,PERSIST_H6_ORDER_SQL,
  CONVERT_H6_EXTERNAL_SQL} from '../../apps/api/src/customer-production-flow.mjs';
 import {createH6ProviderRepository,RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,
- RECORD_CAPTURE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
+ RECORD_CAPTURE_H6_SQL,READ_PAYMENT_EVIDENCE_H6_SQL,RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,
  RECORD_REFUND_H6_SQL,REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL}
  from '../../apps/api/src/h6-provider-repository.mjs';
 import {createH6OperationsRepository,ACK_DISPATCH_H6_SQL,REPORT_INCIDENT_H6_SQL,
@@ -151,8 +151,24 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    'EXECUTE') AS legacy,
   has_function_privilege('sabora_h6_provider_runtime',
    'sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)',
+   'EXECUTE') AS bypass,
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.ingest_stripe_webhook_verified_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)',
    'EXECUTE') AS reconciled`)).rows[0];
- assert.deepEqual(webhookPrivileges,{legacy:false,reconciled:true});
+ assert.deepEqual(webhookPrivileges,{legacy:false,bypass:false,reconciled:true});
+ const evidencePrivileges=(await admin.query(`SELECT
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.record_h6_capture_outcome_candidate(uuid,text,text,text)','EXECUTE') AS old_capture,
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.record_h6_refund_outcome_candidate(uuid,text,text)','EXECUTE') AS old_refund,
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.record_h6_capture_verified_candidate(uuid,text,text,text,text,bigint,text)','EXECUTE') AS capture,
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.record_h6_refund_verified_candidate(uuid,text,text,bigint,text,text)','EXECUTE') AS refund,
+  has_function_privilege('sabora_h6_provider_runtime',
+   'sabora.read_h6_provider_evidence_candidate(uuid)','EXECUTE') AS read_only`)).rows[0];
+ assert.deepEqual(evidencePrivileges,{old_capture:false,old_refund:false,
+  capture:true,refund:true,read_only:true});
 
  for(const pool of [customerPool,providerPool,operationsPool]){
   await assert.rejects(pool.query('SELECT * FROM sabora.event_outbox'),/permission denied/);
@@ -363,7 +379,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  }finally{await customerHttp.close();}
  const events=createH6CustomerEventRepository({withTransaction:h6CustomerTx});
  const providerTx=createRoleScopedPostgresTransaction({pool:providerPool,role:'sabora_h6_provider_runtime',
-  allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,
+  allowedSql:new Set([RECORD_AUTHORIZATION_H6_SQL,REQUEST_CAPTURE_H6_SQL,RECORD_CAPTURE_H6_SQL,READ_PAYMENT_EVIDENCE_H6_SQL,
    RECORD_CAPTURE_COMPENSATION_H6_SQL,INGEST_STRIPE_WEBHOOK_H6_SQL,RECORD_REFUND_H6_SQL,
    REQUEST_REFUND_H6_SQL,REQUEST_RELEASE_H6_SQL,RECORD_RELEASE_H6_SQL,
    RECORD_ECONOMIC_AUTHORIZATION_SQL,REQUEST_ECONOMIC_CAPTURE_SQL,RECORD_ECONOMIC_CAPTURE_SQL,
@@ -390,7 +406,10 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   async capture(){providerCalls.capture++;return {outcome:'captured',
    providerChargeId:'ch_EconomicCircuit0001',providerIntentId:'pi_EconomicCircuit0001',
    amountCents:2400,currency:'eur'};},
-  async refund(){providerCalls.refund++;return {outcome:'succeeded',
+  async refund(request){providerCalls.refund++;
+   assert.equal(request.amountCents,500);
+   assert.ok(Number.isSafeInteger(request.amountCents),'pg bigint must be normalized');
+   return {outcome:'succeeded',
    providerRefundId:'re_EconomicCircuit0001',providerChargeId:'ch_EconomicCircuit0001',
    amountCents:500,currency:'eur'};}
  }});
@@ -413,7 +432,9 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   orderId:httpConfirmedOrder.orderId,now:new Date(Date.now()+360000)});
  assert.equal(httpCaptureRequest.action,'capture');
  const httpCapture=await provider.recordCapture({orderId:httpConfirmedOrder.orderId,
-  outcome:'captured',providerChargeId:'ch_H6HttpRound01'});
+  outcome:'captured',providerChargeId:'ch_H6HttpRound01',
+  providerIntentId:httpCaptureRequest.provider_intent_id,
+  providerAmountCents:httpCaptureRequest.amount_cents,providerCurrency:'eur'});
  assert.equal(httpCapture.dispatch_state,'requested');
  const captureRead=await readPaymentState({customerSessionToken:customer.token,
   tableId,visitId:httpConfirmedVisitId,orderId:httpConfirmedOrder.orderId});
@@ -582,9 +603,22 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal(authorized.payment_state,'authorized');
  const capture=await provider.requestCapture({orderId:order.orderId,now:new Date(Date.now()+360000)});
  assert.equal(capture.action,'capture');
+ await assert.rejects(provider.recordCapture({orderId:order.orderId,outcome:'captured',
+  providerChargeId:'ch_H6Pg17Charge01',providerIntentId:capture.provider_intent_id,
+  providerAmountCents:1200,providerCurrency:'eur'}),/h6_provider_money_mismatch/);
+ const beforeBadCapture=(await admin.query(`SELECT state FROM sabora.payment_attempts
+  WHERE round_id=$1`,[order.roundId])).rows[0].state;
+ assert.equal(beforeBadCapture,'capture_requested','bad provider receipt must not capture or dispatch');
  const captured=await provider.recordCapture({orderId:order.orderId,outcome:'captured',
-  providerChargeId:'ch_H6Pg17Charge01'});
+  providerChargeId:'ch_H6Pg17Charge01',providerIntentId:capture.provider_intent_id,
+  providerAmountCents:capture.amount_cents,providerCurrency:'eur'});
  assert.equal(captured.dispatch_state,'requested');
+ await assert.rejects(provider.recordCapture({orderId:order.orderId,outcome:'captured',
+  providerChargeId:'ch_H6Pg17Charge01',providerIntentId:capture.provider_intent_id,
+  providerAmountCents:1200,providerCurrency:'eur'}),/h6_provider_money_mismatch/);
+ await assert.rejects(provider.recordCapture({orderId:order.orderId,outcome:'captured',
+  providerChargeId:'ch_H6Pg17Charge01',providerIntentId:capture.provider_intent_id,
+  providerAmountCents:capture.amount_cents,providerCurrency:'usd'}),/h6_provider_money_mismatch/);
 
  // The automatic dispatch belongs to this exact confirmed order and round:
  // no second dispatch is created by concurrent confirmation or capture.
@@ -981,16 +1015,30 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  assert.equal(resolution.state,'refund_due');
  const refund=(await admin.query('SELECT id FROM sabora.refund_attempts WHERE incident_id=$1',
   [incident.incidentId])).rows[0];
- assert.equal((await provider.requestRefund({refundAttemptId:refund.id})).action,'refund');
+ const refundRequest=await provider.requestRefund({refundAttemptId:refund.id});
+ assert.equal(refundRequest.action,'refund');
+ await assert.rejects(provider.recordRefund({refundAttemptId:refund.id,outcome:'succeeded',
+  providerRefundId:'re_H6Pg17Refund01',providerAmountCents:100,
+  providerChargeId:refundRequest.provider_charge_id,providerCurrency:'eur'}),/h6_refund_money_mismatch/);
  assert.equal((await provider.recordRefund({refundAttemptId:refund.id,outcome:'succeeded',
-  providerRefundId:'re_H6Pg17Refund01'})).state,'succeeded');
+  providerRefundId:'re_H6Pg17Refund01',providerAmountCents:refundRequest.amount_cents,
+  providerChargeId:refundRequest.provider_charge_id,providerCurrency:'eur'})).state,'succeeded');
+ await assert.rejects(provider.recordRefund({refundAttemptId:refund.id,outcome:'succeeded',
+  providerRefundId:'re_H6Pg17Refund01',providerAmountCents:refundRequest.amount_cents,
+  providerChargeId:'ch_H6WrongCharge01',providerCurrency:'eur'}),/h6_refund_money_mismatch/);
  assert.equal((await provider.requestRefund({refundAttemptId:refund.id})).action,'done');
  assert.equal((await admin.query('SELECT state FROM sabora.incident_cases WHERE id=$1',
   [incident.incidentId])).rows[0].state,'resolved');
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_H6RefundBadAmount1',
+  eventType:'refund.updated',providerObjectId:'re_H6Pg17Refund01',
+  providerChargeId:'ch_H6Pg17Charge01',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,77),refundAttemptId:refund.id,refundStatus:'succeeded',
+  providerAmountCents:100,providerCurrency:'eur'}),/h6_refund_money_mismatch/);
  const refundWebhook=await provider.ingestWebhook({eventId:'evt_H6RefundUpdate1',eventType:'refund.updated',
   providerObjectId:'re_H6Pg17Refund01',providerChargeId:'ch_H6Pg17Charge01',
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,6),
-  refundAttemptId:refund.id,refundStatus:'succeeded'});
+  refundAttemptId:refund.id,refundStatus:'succeeded',
+  providerAmountCents:refundRequest.amount_cents,providerCurrency:'eur'});
  assert.equal(refundWebhook.outcome,'applied');
 
  const staffEventsCap=issueKitchen({actorId:kitchenId,staffRole:'kitchen',action:'read_events',
@@ -1649,9 +1697,11 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=$1 AND rf.incident_id IS NULL`,
   [compensationOrder.orderId])).rows[0];
  assert.ok(compensationRefund?.id);
- assert.equal((await provider.requestRefund({refundAttemptId:compensationRefund.id})).action,'refund');
+ const compensationRefundRequest=await provider.requestRefund({refundAttemptId:compensationRefund.id});
+ assert.equal(compensationRefundRequest.action,'refund');
  assert.equal((await provider.recordRefund({refundAttemptId:compensationRefund.id,outcome:'succeeded',
-  providerRefundId:'re_H6CompRefund01'})).state,'succeeded');
+  providerRefundId:'re_H6CompRefund01',providerAmountCents:compensationRefundRequest.amount_cents,
+  providerChargeId:compensationRefundRequest.provider_charge_id,providerCurrency:'eur'})).state,'succeeded');
  const compensatedFinal=(await admin.query(`SELECT p.state AS payment_state,r.state AS round_state,
   d.state AS dispatch_state FROM sabora.payment_attempts p JOIN sabora.order_rounds r ON r.id=p.round_id
   JOIN sabora.kitchen_dispatches d ON d.round_id=r.id WHERE r.order_id=$1`,[compensationOrder.orderId])).rows[0];
@@ -1673,9 +1723,20 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await provider.recordAuthorization({orderId:webhookOrder.orderId,outcome:'requires_action',
   providerIntentId:'pi_H6WebhookIntent1'});
  const webhookCaptureBefore=new Date(Date.now()+6*86400000);
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadAmount01',
+  eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,71),
+  captureBefore:webhookCaptureBefore,providerAmountCents:1000,providerCurrency:'eur'}),
+  /h6_provider_money_mismatch/);
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadCurrency01',
+  eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,72),
+  captureBefore:webhookCaptureBefore,providerAmountCents:2400,providerCurrency:'usd'}),
+  /h6_provider_money_mismatch/);
  const appliedAuthorization=await provider.ingestWebhook({eventId:'evt_H6Capturable01',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
-  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,7),captureBefore:webhookCaptureBefore});
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,7),captureBefore:webhookCaptureBefore,
+  providerAmountCents:2400,providerCurrency:'eur'});
  assert.equal(appliedAuthorization.outcome,'applied');
  const webhookPayment=(await admin.query(`SELECT p.state,p.capture_before
   FROM sabora.payment_attempts p JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=$1`,

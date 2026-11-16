@@ -27,10 +27,12 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
     !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}\.[a-z]+$/.test(apiVersion))
   throw Error('invalid_h6_stripe_adapter');
  const call=async(path,{method='POST',idempotencyKey=null,fields={}}={})=>{
+  const requestedPath=method==='GET'&&Object.keys(fields).length?
+   `${path}?${encode(fields)}`:path;
   if(idempotencyKey!==null&&!IDEMPOTENCY.test(idempotencyKey))throw Error('invalid_stripe_idempotency_key');
   let response;
   try{
-   response=await request({method,path,headers:Object.freeze({
+   response=await request({method,path:requestedPath,headers:Object.freeze({
     authorization:`Bearer ${credential}`,'stripe-version':apiVersion,
     'content-type':'application/x-www-form-urlencoded',
     ...(idempotencyKey?{'idempotency-key':idempotencyKey}:null)
@@ -47,7 +49,8 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
  return Object.freeze({
   async retrieve({providerIntentId}={}){
    if(!INTENT.test(providerIntentId??''))throw Error('invalid_stripe_reconciliation');
-   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET'});
+   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET',
+    fields:{'expand[]':'latest_charge'}});
    if(value.outcome==='failed')return value;
    if(!INTENT.test(value.id??'')||value.id!==providerIntentId)throw new StripeAmbiguousResultError();
    if(value.status==='requires_capture'){

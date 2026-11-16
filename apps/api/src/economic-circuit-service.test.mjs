@@ -133,3 +133,24 @@ test('economic Stripe refund requires exact original charge, amount and currency
  assert.equal(good.outcome,'succeeded');assert.equal(good.providerAmountCents,800);
  assert.equal(good.providerChargeId,request.provider_charge_id);
 });
+
+test('PG bigint refund cents are normalized without rounding; unsafe values never reach Stripe',async()=>{
+ const request={action:'refund',refund_attempt_id:refundAttemptId,
+  provider_charge_id:'ch_12345678',amount_cents:'500',idempotency_key:'h6_refund_economic_12345678'};
+ const calls=[],make=(amount)=>createEconomicCircuitService({repository:repository({
+  requestRefund:async()=>({...request,amount_cents:amount}),
+  recordRefund:async value=>value
+ }),stripe:{authorize:async()=>{throw Error('unused');},
+  capture:async()=>{throw Error('unused');},
+  refund:async input=>{calls.push(input);return {outcome:'succeeded',
+   providerRefundId:'re_12345678',providerChargeId:'ch_12345678',
+   amountCents:500,currency:'eur'};}}});
+ const done=await make('500').refundIncident('e6100000-0000-4000-8000-000000000003');
+ assert.equal(done.outcome,'succeeded');
+ assert.equal(calls[0].amountCents,500);assert.ok(Number.isSafeInteger(calls[0].amountCents));
+ for(const bad of ['9007199254740993','5.00','0','-1','005',null]){
+  await assert.rejects(make(bad).refundIncident('e6100000-0000-4000-8000-000000000003'),
+   /invalid_provider_amount/);
+ }
+ assert.equal(calls.length,1,'no Stripe side effect for unrepresentable cents');
+});

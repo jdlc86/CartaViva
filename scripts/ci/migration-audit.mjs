@@ -194,6 +194,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'customer advisory lock plus session, visit, account, round and intent row locks; provider and signed staff actions serialize one intent',
   'new candidate ledgers only; historical cash ledgers retained as non-operational evidence; external channel changes operational outstanding without claiming payment',
   'inherited'),
+ '20261116210000_sabora_h6_provider_money_evidence_candidate.sql':r(
+  'S41-rv02 H6 Stripe pay-now money evidence and point reconciliation',
+  ['H6 payment_attempts/refund_attempts/order_rounds','H6 original NOLOGIN function owner','Issue61 shared Stripe webhook ledger'],
+  'sealed request/lookup/capture/refund/webhook evidence functions, preserving previous H6 and Issue61 entrypoints as inaccessible owner-only history',
+  'NOLOGIN sabora_h6_fn_owner SECURITY DEFINER; exact provider runtime grants for evidence wrappers; original capture/refund/webhook and request entrypoints revoked from runtime and PUBLIC',
+  'function create and runtime ACL change only; request wrapper calls existing round-locked capture; immutable expected cents loaded from payment attempt',
+  'no table rewrite, no payment mutation during migration; existing H6 events, dedup and original charge assignments remain intact',
+  'inherited'),
  '20261108070000_sabora_m5_communications_candidate.sql':r(
   'M5 CV-014 scheduled internal restaurant communications',
   ['M3 active staff and signed capability issuer','M3 sealed ACL/RLS','no external publishing provider'],

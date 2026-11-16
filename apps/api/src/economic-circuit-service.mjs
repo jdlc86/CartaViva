@@ -1,4 +1,5 @@
 import {StripeAmbiguousResultError} from './h6-stripe-adapter.mjs';
+import {safeProviderCents} from './h6-money-evidence.mjs';
 
 const safe=value=>typeof value==='string'&&/^[a-z0-9_]{1,80}$/.test(value)?value:null;
 const verifiedEuros=(result,expected)=>Number.isSafeInteger(expected)&&expected>0&&
@@ -56,13 +57,14 @@ export function createEconomicCircuitService({stripe,repository}={}){
   async refundIncident(incidentId){
    const request=await repository.requestRefund({incidentId});
    if(request.action!=='refund')return request;
+   const amount=safeProviderCents(request.amount_cents);
    let result;
    try{result=await stripe.refund({refundAttemptId:request.refund_attempt_id,
-    providerChargeId:request.provider_charge_id,amountCents:request.amount_cents,
+    providerChargeId:request.provider_charge_id,amountCents:amount,
     idempotencyKey:request.idempotency_key});}
    catch(error){if(!(error instanceof StripeAmbiguousResultError))throw error;
     result={outcome:'unknown',errorCode:'provider_result_ambiguous'};}
-   if(result.outcome==='succeeded'&&(!verifiedEuros(result,Number(request.amount_cents))||
+   if(result.outcome==='succeeded'&&(!verifiedEuros(result,amount)||
      result.providerChargeId!==request.provider_charge_id))result=uncertain();
    const outcome=['succeeded','failed'].includes(result.outcome)?result.outcome:'unknown';
    return repository.recordRefund({refundAttemptId:request.refund_attempt_id,outcome,
