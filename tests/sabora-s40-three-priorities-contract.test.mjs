@@ -46,7 +46,11 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(inventory,/from aclexplode\(c\.relacl\) acl/);
  assert.doesNotMatch(inventory,/(?:nspacl|relacl)::text/);
  assert.match(integration,/--exit-on-error','--disable-triggers','\/tmp\/sabora-data\.dump'/);
- assert.match(integration,/assert\.equal\(ledgerCount,'99'\)/);
+ assert.match(integration,/buildMigrationAudit\(root\)/);
+ assert.match(integration,/historical_migration_baseline_missing/);
+ assert.match(integration,/assert\.equal\(ledgerCount,String\(migrations\.count\)\)/);
+ assert.match(integration,/migrations:migrations\.count/);
+ assert.doesNotMatch(integration,/expected_99_migrations|assert\.equal\(ledgerCount,'99'\)|migrations:99/);
  assert.match(integration,/vpsReplicaUsedForRestore:false/);
 });
 

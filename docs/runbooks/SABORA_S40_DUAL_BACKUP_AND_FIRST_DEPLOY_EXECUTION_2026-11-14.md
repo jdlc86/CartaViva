@@ -51,10 +51,10 @@ El modelo preferido es **saliente desde el ordenador doméstico**: el equipo ini
 4. Ejecutar `replicate-offsite` hacia la ruta privada del ordenador doméstico independiente. Verificar recibo, lectura e identidad del ciphertext; hasta entonces no existe copia externa acreditada.
 5. Con autorización VPS separada e aislamiento/cuota probados, ejecutar `replicate-vps-cache` hacia la ruta exclusiva Sabora. Esta segunda réplica está decidida, pero si no puede demostrarse independencia la operación y la activación permanecen STOP; no tocar Fleetia ni sustituirla por otra copia en el mismo equipo doméstico.
 6. Eliminar staging conforme a la política aprobada. La clave permanece bajo custodio/canal diferente y nunca se replica con el bundle.
-7. Desde la **copia externa**, descifrar cada componente únicamente dentro del entorno PG17 de restauración, aplicar roles revisados, esquema y datos en ese orden, comparar `inventory`, ledger 99/99, grants/RLS/negativas y destruir temporales claros al terminar.
+7. Desde la **copia externa**, descifrar cada componente únicamente dentro del entorno PG17 de restauración, aplicar roles revisados, esquema y datos en ese orden, comparar `inventory`, ledger de todas las migraciones auditadas del SHA (sin contador fijo), grants/RLS/negativas y destruir temporales claros al terminar.
 8. Registrar tiempos y tamaños reales. Los tiempos CI no son RTO/RPO de producción.
 
-La batería `scripts/ci/sabora-dual-backup-postgres17.mjs` ejecuta esa misma semántica sobre el PG17 plenamente migrado: crea ledger 99/99, captura streaming, genera las dos réplicas, elimina staging, restaura solo desde la clase externa en un segundo contenedor `--network none`, espera el listener TCP del postmaster final —no el temporal del entrypoint—, carga datos con triggers deshabilitados solo durante el restore y después compara inventario, datos, secuencias, triggers/RLS, roles y ACL por grantor/opción exactos. También prueba LOGIN mínimo, corrupción y clave incorrecta. Los destinos del runner son **fixtures**, no custodias reales.
+La batería `scripts/ci/sabora-dual-backup-postgres17.mjs` ejecuta esa misma semántica sobre el PG17 plenamente migrado: crea ledger del inventario auditado (99 en la base histórica; la rama económica #60 incorpora la migración candidata 100), captura streaming, genera las dos réplicas, elimina staging, restaura solo desde la clase externa en un segundo contenedor `--network none`, espera el listener TCP del postmaster final —no el temporal del entrypoint—, carga datos con triggers deshabilitados solo durante el restore y después compara inventario, datos, secuencias, triggers/RLS, roles y ACL por grantor/opción exactos. También prueba LOGIN mínimo, corrupción y clave incorrecta. Los destinos del runner son **fixtures**, no custodias reales.
 
 ## 3. Gobernanza y agente de release
 
@@ -75,7 +75,7 @@ Orden obligatorio, con autorización independiente por fila:
 
 1. merge del PR revisado y CI del SHA final;
 2. captura preinstalación y restore externo válido;
-3. migración CV-005 99/99 y comprobaciones por versión;
+3. migraciones CV-005 según el inventario auditado y SHA aprobado, con comprobaciones exactas por versión y hash (99 históricas; 100 en el candidato económico #60);
 4. captura postinstalación y segundo restore externo válido;
 5. provisión de secretos/roles mínimos y receptor de alertas;
 6. creación de redes y reglas Sabora-only, verificación de no interferencia;
@@ -98,6 +98,6 @@ Un fallo detiene la secuencia. No se compensa una copia ausente con CI, ni SQL f
 | Réplica VPS | decisión afirmativa; cuota, ruta, ACL, espacio y responsable; nunca sustituye externa | **DECIDIDA, NO AUTORIZADA NI PROVISIONADA** |
 | Captura/restore | equipo externo, DBA, ventana y proyecto exacto | **NO AUTORIZADOS** |
 | Red/host | CIDR/puertos reales, Cloudflare, destinos egress, usuario forced-command | **NO AUTORIZADOS** |
-| SQL/despliegue | autorización separada para 99 migraciones y otra para deploy | **NO AUTORIZADOS** |
+| SQL/despliegue | autorización separada para la cadena de migraciones exacta del SHA integrado y otra para deploy | **NO AUTORIZADOS** |
 
 Mientras cualquiera de las decisiones necesarias para su fase falte, el dictamen es **NO-GO operativo**. Este runbook no pide ni contiene secretos.

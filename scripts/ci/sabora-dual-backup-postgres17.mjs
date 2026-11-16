@@ -8,6 +8,7 @@ import {spawnSync} from 'node:child_process';
 import {chmod,mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {basename,join,resolve} from 'node:path';
+import {buildMigrationAudit} from './migration-audit.mjs';
 import {fileURLToPath} from 'node:url';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
@@ -17,7 +18,6 @@ import {
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
 const root=resolve(here,'../..');
-const migrationsDirectory=join(root,'supabase','migrations');
 const rolesSql=join(here,'sabora-backup-roles.sql');
 const inventorySql=join(here,'sabora-backup-inventory.sql');
 const source=process.env.SABORA_CI_PG_CONTAINER??'';
@@ -39,19 +39,20 @@ function psql(container,database,sql,{allowFailure=false}={}){
  return docker(['exec','-i',container,'psql','-X','-qAt','-v','ON_ERROR_STOP=1',
   '-U','postgres','-d',database,'-f','-'],{input:sql,allowFailure});
 }
-function sha256(value){return createHash('sha256').update(value).digest('hex');}
 function sqlLiteral(value){return "'"+value.replaceAll("'","''")+"'";}
 async function migrationInventory(){
- const names=(await readdir(migrationsDirectory)).filter(x=>/^\d{14}_[a-z0-9_]+\.sql$/.test(x)).sort();
- if(names.length!==99)throw failure('expected_99_migrations');
+ // Fail closed unless every SQL file is present in the independently
+ // reviewed migration audit. The historical 99-migration baseline remains
+ // mandatory; approved later migrations extend the exact audited inventory.
+ const audited=buildMigrationAudit(root).migrations;
+ if(audited.length<99)throw failure('historical_migration_baseline_missing');
  const rows=[],tree=createHash('sha256');
- for(const filename of names){
-  const content=await readFile(join(migrationsDirectory,filename));
-  const digest=sha256(content),version=filename.slice(0,14),name=filename.slice(15,-4);
+ for(const {name:filename,sha256:digest,version} of audited){
+  const name=filename.slice(15,-4);
   tree.update(filename).update('\0').update(digest).update('\n');
   rows.push('('+[version,name,digest].map(sqlLiteral).join(',')+')');
  }
- return {treeSha256:tree.digest('hex'),rows};
+ return {treeSha256:tree.digest('hex'),rows,count:audited.length};
 }
 async function waitForPg(container){
  for(let attempt=0;attempt<60;attempt++){
@@ -206,7 +207,7 @@ try{
  await rm(inventoryOut,{force:true});
  const ledgerCount=psql(target,'sabora_external_restore_ci',
   'select count(*) from sabora_migration_meta.applied_migrations where application_count=1;').stdout.trim();
- assert.equal(ledgerCount,'99');
+ assert.equal(ledgerCount,String(migrations.count));
  psql(target,'sabora_external_restore_ci',`create role sabora_backup_restore_probe login
   password 'ci_only_not_a_secret' nosuperuser nocreatedb nocreaterole noinherit nobypassrls;
   grant sabora_staff_reader to sabora_backup_restore_probe;`);
@@ -238,7 +239,7 @@ try{
  await assert.rejects(readFile(wrongKeyOutput));
  console.log('sabora_dual_backup_pg17_external_restore_ok:'+JSON.stringify({
   backupId:result.manifest.backupId,manifestSha256:result.manifestSha256,
-  migrations:99,captureMs,restoreMs,totalMs:elapsed(started),
+  migrations:migrations.count,captureMs,restoreMs,totalMs:elapsed(started),
   restoredFrom:'external-store-fixture',vpsReplicaUsedForRestore:false,
   plaintextPersistedInReplicas:false,operationalReceipt:false,
  }));
