@@ -5256,15 +5256,16 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          livemode:false,created:Math.floor(Date.now()/1000),
          type:'refund.updated',data:{object:{object:'refund',
           id:'re_F20PostTransferRefund001',charge:providerChargeId,status:'succeeded',
-          metadata:{sabora_refund_attempt_id:refundId.id}}}};
-        // Even an otherwise correctly signed refund event cannot settle an
-        // incident if it references another charge: binding is checked in SQL.
+          amount:300,currency:'eur',metadata:{sabora_refund_attempt_id:refundId.id}}}};
+        // Even a correctly signed and fully quantified refund event cannot settle
+        // an incident if it references another charge. The sealed SQL rejects
+        // it transactionally; HTTP must NOT acknowledge the event.
         const misboundHttp=await signedStripeHttp({
          ...refundEvent,id:'evt_F20WrongOriginalCharge001',
          data:{object:{...refundEvent.data.object,
           charge:'ch_F20OtherAccountWrongCharge01'}}});
-        assert.equal(misboundHttp.statusCode,200,
-         'SQL ignores signed events with a wrong original charge');
+        assert.equal(misboundHttp.statusCode,503,
+         'SQL refuses to acknowledge a signed refund with a wrong original charge');
         assert.equal((await admin.query(`SELECT state FROM sabora.refund_attempts
          WHERE id=$1`,[refundId.id])).rows[0].state,'unknown');
         const refundHttp=await signedStripeHttp(refundEvent);
