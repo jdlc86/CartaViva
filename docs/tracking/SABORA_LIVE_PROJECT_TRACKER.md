@@ -1306,3 +1306,17 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 
 **Acción y dictamen:** reparar en mismo PR #59 sin aceptar un `capture_before` desconocido; consulta puntual Stripe autenticada para obtener cargo/fecha, cotejar importe y moneda, preservar idempotencia; negativos HMAC/HTTP/PG17 más suite integral al SHA final, nueva revisión propia y aprobación independiente si normativa la exige. **NO-GO merge**, NO-GO despliegue/SQL real. Dos opt-in `SKIPPED`, no aceptación. La revisión fue `COMMENT` de la cuenta autora, no `APPROVE` externa. [Continuidad S41-12](../handoffs/SESSION_41_HANDOFF_2026-11-16.md).
 
+
+
+## 112. S42 — apertura de continuidad y recepción del NO-GO independiente (17-11-2026)
+
+**Fuente de continuidad:** [S42](../handoffs/SESSION_42_HANDOFF_2026-11-17.md). **Fuente de revisión:** [informe independiente Codex S41](../reviews/SABORA_S41_CODEX_INDEPENDENT_REVIEW_PR59_2026-11-16.md). PR de trabajo **[#59 Draft](https://github.com/jdlc86/CartaViva/pull/59)**; #60 sigue Draft, ya contenido en la genealogía #59; `main@59866219` sin merge a la fecha del corte.
+
+- **P1-07 CONFIRMADO Y REPRODUCIDO:** webhook Stripe firmado y válido con `latest_charge` como ID `ch_...` devuelve HTTP 400, impidiendo conciliación de `payment_intent.amount_capturable_updated`. **Bloquea merge**, pese a 8/8 controles de laboratorio SUCCESS del SHA funcional anterior `e3495644` (y dos opt-in SKIPPED).
+- **P2-08 CONFIRMADO:** falta fixture realista que atraviese HMAC, HTTP/Fastify, consulta del proveedor y PG17 para el evento no expandido, incluido replay/fallo de proveedor.
+- **P2-09 DEFECTO ESTÁTICO CONFIRMADO:** backup carece de snapshot único e identidad material de origen; no se ha simulado una captura concurrente de producción. Requiere estrategia de snapshot consistente o quiescencia Sabora-only expresamente decidida, procedencia verificada, negativos y restore desechable.
+- **P2-10 REPRODUCIDO EN WINDOWS:** herramienta offline de firma termina exit 0 sin ejecutar. Corregir entrypoint, añadir negativos/firma con material no operativo y validar Windows real.
+- **S42-0 DOCUMENTACIÓN CREADA, SIN CÓDIGO NUEVO NI TESTS NUEVOS:** los cuatro defectos siguen ABIERTOS. Corregir A (webhook+coverage), B (backup), C (firma) como **un único hito de cierre dentro de #59**, seguido de batería integral final y revisión independiente; no abrir PR redundante ni duplicar fusión de #60.
+- **NO-GO de merge y NO-GO operativo M6.** Falta aceptación humana visual, Stripe sandbox remoto, respaldo externo físico/restauración real, Supabase SQL autorizado, inspección/aislamiento físico del VPS y autorización de despliegue. Fleetia y otros proyectos absolutamente intocables. Las copias y los servicios Sabora no se presumen existentes por CI.
+
+**Estado distinto por nivel:** código anterior = candidato implementado; pruebas anteriores = GitHub Actions por SHA; defecto P1 = reproducido independientemente; **corrección S42 = pendiente**; aceptación independiente de delta = pendiente; integración en main y operación real = no realizadas. Mantener esta fila y [continuidad S42](../handoffs/SESSION_42_HANDOFF_2026-11-17.md) sincronizadas al cerrar hitos grandes; las revisiones de documentación `[skip ci]` no heredan aceptación técnica.
