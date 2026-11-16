@@ -208,3 +208,24 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Separación de estados y condición de cierre:** implementación presente en PR #59; seis controles del SHA `1cfba812` observados verdes; dos integradoras **pendientes en ese corte**; no hay validación Stripe sandbox remoto, revisión independiente acreditada, aceptación visual humana, copias externas VPS reales, aplicación SQL sobre Supabase operativo, despliegue ni merge a `main`. El árbol unido no equivale a GO operativo. **Próximo paso:** comprobar `validate` y `generate-lockfile` del SHA exacto, corregir fallos reales dentro de #59 y repetir batería final solo cuando cambie código; revisar delta de la migración y ambas rutas económicas y decidir fusión única tras cumplir puertas normativas. Mantener `main` sin cambios hasta esa decisión y jamás tocar Fleetia u otros recursos del VPS compartido.
 
+## S41-11 — Cierre verificado de GitHub Actions para el candidato integrado #59+#60 (16-11-2026)
+
+**SHA funcional y documental exacto sometido a CI:** [`e34956444f901ec6ee2dbf4f2f434d55ea5488e7`](https://github.com/jdlc86/CartaViva/commit/e34956444f901ec6ee2dbf4f2f434d55ea5488e7). Comprobación de GitHub Checks + pasos internos del job finalizados: **8 de 8 controles aplicables `completed/success`; 0 fallos**. Es el cierre de las dos ejecuciones que permanecían `in_progress` en S41-10:
+
+| Control | Resultado | Fuente de GitHub |
+| --- | --- | --- |
+| `validate` — H6 consolidado, contratos, PG17 efímero, Chromium | **SUCCESS**: 16-11-2026 21:05:19 UTC | [Sabora CI #43953798016](https://github.com/jdlc86/CartaViva/actions/runs/43953798016) |
+| `generate-lockfile` — bootstrap, driver PG17 y pruebas integradas | **SUCCESS**: 16-11-2026 21:00:35 UTC | [Bootstrap #43953798275](https://github.com/jdlc86/CartaViva/actions/runs/43953798275) |
+| `pg17-nonsuperuser` — migraciones PG17 con permisos mínimos | **SUCCESS** | [#43953798004](https://github.com/jdlc86/CartaViva/actions/runs/43953798004) |
+| `client-browser` — cliente Chromium | **SUCCESS** | [#43953798028](https://github.com/jdlc86/CartaViva/actions/runs/43953798028) |
+| `management-browser-smoke` — gestión Chromium | **SUCCESS** | [#43953797982](https://github.com/jdlc86/CartaViva/actions/runs/43953797982) |
+| `two-pwa-installability` — ambas PWA | **SUCCESS** | [#43953798108](https://github.com/jdlc86/CartaViva/actions/runs/43953798108) |
+| `web-publication` — publicación web de laboratorio | **SUCCESS** | [#43953798016](https://github.com/jdlc86/CartaViva/actions/runs/43953798016) |
+| `functional-ui-gate` — cobertura funcional de interfaz | **SUCCESS** | [#43953798029](https://github.com/jdlc86/CartaViva/actions/runs/43953798029) |
+
+**No se contabilizan como PASS:** `visual-final-acceptance-gate` y `cv005-b2-disposable-integration` opt-in histórica, ambas `completed/skipped`. La inspección adicional de los jobs `validate` y `generate-lockfile` confirmó `completed/success` sin ningún paso fallido.
+
+**Dictamen limitado de este hito:** el código integrado y las regresiones de S41-rv02 han pasado la batería GitHub Actions sobre el SHA anterior; son resultados de laboratorio efímero, no pruebas reales de Stripe remoto, restauración de backup externo del sistema operativo, despliegue en VPS, cambios en Supabase operativo, ni aceptación estética humana/revisión independiente. La migración 101 está implementada y probada en laboratorio, **no aplicada al Supabase operativo**.
+
+**Genealogía y puerta de merge:** PR [#59 Draft](https://github.com/jdlc86/CartaViva/pull/59) y PR [#60 Draft](https://github.com/jdlc86/CartaViva/pull/60) siguen abiertos, `merged=false`. `4ba655459dfe22a5cfd0a50f842000567e7919fc` (#60) es ancestro Git real de #59, por tanto **no fusionar #60 otra vez**. `main` permanece en `59866219971a78237d14d7820d9b18a086ac2bfc`. Siguiente acción: revisar dictamen de integración, puertas normativas y autorización expresa de merge, y después verificar CI de `main` si se autoriza. No tocar Fleetia ni usar el PASS de runner como permiso de despliegue. Esta actualización de continuidad y tablero será solo documental (`[skip ci]`); no atribuir nuevas pruebas al SHA de documentación posterior.
+
