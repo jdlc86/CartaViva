@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,readdirSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {buildMigrationAudit} from './migration-audit.mjs';
+
+const auditedNames=()=>buildMigrationAudit(fileURLToPath(new URL('../..',import.meta.url)))
+ .migrations.map(item=>item.name);
+const assertAuditedChain=names=>{
+ assert.ok(names.length>=100,'all 100 historical migrations must remain');
+ assert.deepEqual(names,auditedNames(),'full chain must exactly match reviewed inventory');
+};
 
 const smoke=readFileSync(new URL('./postgres-migration-smoke.sh',import.meta.url),'utf8');
 const chain=readFileSync(new URL('./postgres-migration-chain-smoke.sh',import.meta.url),'utf8');
@@ -32,7 +41,7 @@ test('real-chain harness is checksum-ledgered and has no destination URL or bypa
 test('every real migration owns one intact transaction consumed by the atomic ledger runner',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(names.length,100,'exact audited chain');
+ assertAuditedChain(names);
  for(const name of names){
   const sql=readFileSync(new URL(name,folder),'utf8');
   assert.equal((sql.match(/^BEGIN;$/gim)||[]).length,1,name+': BEGIN count');
@@ -166,10 +175,10 @@ test('HMAC-bound owner retains negative policy for all runtime and unexpected me
  ])assert.ok(sql.includes(code),code);
 });
 
-test('all 100 PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
+test('all audited PG17 migration versions leave scoped owner grants inside BEGIN/COMMIT',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const names=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(names.length,100,'exact audited chain');
+ assertAuditedChain(names);
  let ownerTransferVersions=0;
  for(const name of names){
   const sql=readFileSync(new URL(name,folder),'utf8');
@@ -234,7 +243,7 @@ test('broad legacy SQL REVOKEs use a scoped temporary owner-membership fence',()
 test('all 55 provider-adapted versions preserve one transaction and restore installer owner roles',()=>{
  const folder=new URL('../../supabase/migrations/',import.meta.url);
  const files=readdirSync(folder).filter(x=>/^\d{14}_[\w-]+\.sql$/.test(x)).sort();
- assert.equal(files.length,100,'full chain inventory');
+ assertAuditedChain(files);
  let protectedCount=0;
  for (const name of files) {
   const sql=readFileSync(new URL(name,folder),'utf8');
