@@ -26,7 +26,7 @@ export async function openPostgresBackupSnapshot({command,args,expectedSystemIde
  });
  // Observe close early even if the exporter fails before providing the ID.
  close.catch(()=>{});
- let buffer='';
+ let buffer='',readinessTimer;
  let response;
  try{
   response=await Promise.race([
@@ -49,19 +49,24 @@ export async function openPostgresBackupSnapshot({command,args,expectedSystemIde
     );
    }),
    close.then(()=>{throw stop('exporter_closed_before_snapshot');}),
-   new Promise((_resolve,reject)=>setTimeout(()=>reject(stop('exporter_timeout')),timeoutMs)),
+   new Promise((_resolve,reject)=>{readinessTimer=setTimeout(
+    ()=>reject(stop('exporter_timeout')),timeoutMs);}),
   ]);
   if(finished||response.systemIdentifier!==expectedSystemIdentifier||
      response.database!==expectedDatabase||!ID.test(response.snapshotId))
    throw stop('source_identity_mismatch');
  }catch(error){child.kill('SIGKILL');throw error;}
+ finally{clearTimeout(readinessTimer);}
  return Object.freeze({...response,
   async close(){
    if(finished)throw stop('exporter_lost_before_capture');
    child.stdin.end('COMMIT;\n');
-   await Promise.race([close,new Promise((_resolve,reject)=>setTimeout(()=>{
-    child.kill('SIGKILL');reject(stop('exporter_close_timeout'));
-   },timeoutMs))]);
+   let timer;
+   try{await Promise.race([close,new Promise((_resolve,reject)=>{
+    timer=setTimeout(()=>{
+     child.kill('SIGKILL');reject(stop('exporter_close_timeout'));
+    },timeoutMs);
+   })]);}finally{clearTimeout(timer);}
   },
   abort(){if(!finished)child.kill('SIGKILL');}
  });
