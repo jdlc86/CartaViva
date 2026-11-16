@@ -8,6 +8,7 @@ import {basename,isAbsolute,join,relative,resolve} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 import {spawn} from 'node:child_process';
+import {openPostgresBackupSnapshot} from './sabora-postgres-snapshot.mjs';
 
 const failure=code=>Error('sabora_backup_stop:'+code);
 const SHA=/^[0-9a-f]{40}$/;
@@ -17,6 +18,7 @@ const FILE=/^[a-z][a-z0-9-]{1,63}\.aesgcm$/;
 const META_KEYS=['backupId','createdAt','custody','excludedManagedSchemas','includedSchemas',
  'migrationTreeSha256','postgresMajor','postgresVersion','releaseSha','repository','schema',
  'sourceProjectRef'];
+const V2_META_KEYS=[...META_KEYS,'snapshotId','sourceDatabase','sourceSystemIdentifier'].sort();
 const COMPONENT_KEYS=['algorithm','ciphertextBytes','ciphertextSha256','filename','ivHex',
  'mediaType','name','plaintextBytes','plaintextSha256','tagHex'];
 
@@ -46,8 +48,13 @@ async function keyBytes(path){
  return Buffer.from(value,'hex');
 }
 function metadata(value){
- if(!plainObject(value)||Object.keys(value).sort().join('|')!==META_KEYS.join('|')||
-  value.schema!=='sabora-logical-backup/v1'||
+ if(!plainObject(value))throw failure('invalid_metadata');
+ const v2=value.schema==='sabora-logical-backup/v2';
+ if(Object.keys(value).sort().join('|')!==(v2?V2_META_KEYS:META_KEYS).join('|')||
+  !['sabora-logical-backup/v1','sabora-logical-backup/v2'].includes(value.schema)||
+  (v2&&(!/^[0-9]{10,20}$/.test(value.sourceSystemIdentifier??'')||
+   value.sourceDatabase!=='postgres'||
+   !/^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9A-Fa-f]+$/.test(value.snapshotId??'')))||
   !/^SABORA-BACKUP-[A-Z0-9-]{8,80}$/.test(value.backupId)||
   value.repository!=='jdlc86/CartaViva'||!SHA.test(value.releaseSha)||
   value.sourceProjectRef!=='byhvmumqivmunkmomhup'||value.postgresMajor!==17||
@@ -67,7 +74,10 @@ function aad(meta,name,mediaType){
   sourceProjectRef:meta.sourceProjectRef,postgresMajor:meta.postgresMajor,
   postgresVersion:meta.postgresVersion,migrationTreeSha256:meta.migrationTreeSha256,
   includedSchemas:meta.includedSchemas,excludedManagedSchemas:meta.excludedManagedSchemas,
-  createdAt:meta.createdAt,custody:meta.custody,name,mediaType}));
+  createdAt:meta.createdAt,custody:meta.custody,
+  ...(meta.schema==='sabora-logical-backup/v2'?{
+   sourceSystemIdentifier:meta.sourceSystemIdentifier,sourceDatabase:meta.sourceDatabase,
+   snapshotId:meta.snapshotId}:{}),name,mediaType}));
 }
 function meter(){
  const hash=createHash('sha256');let bytes=0;
@@ -100,7 +110,7 @@ function stderrCollector(stream){
  stream.on('data',chunk=>{if(value.length<8192)value+=chunk.slice(0,8192-value.length);});
  return ()=>value.replace(/[^A-Za-z0-9_:. -]/g,'_').slice(0,512);
 }
-async function encryptCommand({directory,key,meta,spec}){
+async function encryptCommand({directory,key,meta,spec,snapshotId=null}){
  componentSpec(spec);
  const filename=spec.name+'.aesgcm',target=join(directory,filename);
  await absent(target);
@@ -119,9 +129,19 @@ async function encryptCommand({directory,key,meta,spec}){
    createHash('sha256').update(stdinBytes).digest('hex')!==spec.stdinSha256)
    throw failure('stdin_changed_after_validation');
  }
+ if(snapshotId&&spec.name.startsWith('inventory')){
+  const original=stdinBytes;
+  stdinBytes=Buffer.concat([Buffer.from(
+   "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n"+
+   "SET TRANSACTION SNAPSHOT '"+snapshotId+"';\n"),
+   original,Buffer.from("\nCOMMIT;\n")]);
+  original.fill(0);
+ }
  const childEnv={...process.env};
  delete childEnv.SABORA_BACKUP_KEY_FILE;delete childEnv.SABORA_BACKUP_COMPONENT;
- const child=spawn(spec.command,spec.args,{env:childEnv,
+ const commandArgs=snapshotId&&['schema','data'].includes(spec.name)?
+  [...spec.args,'--snapshot='+snapshotId]:spec.args;
+ const child=spawn(spec.command,commandArgs,{env:childEnv,
   windowsHide:true,stdio:[spec.stdinPath===undefined?'ignore':'pipe','pipe','pipe']});
  const stderr=stderrCollector(child.stderr);
  let created=false;
@@ -155,34 +175,76 @@ async function encryptCommand({directory,key,meta,spec}){
  }
 }
 
-export async function captureEncryptedBackupBundle({directory,keyPath,metadata:raw,components}={}){
+export async function captureEncryptedBackupBundle({directory,keyPath,metadata:raw,components,
+ snapshot=null}={}){
  if(typeof directory!=='string'||!isAbsolute(directory)||!Array.isArray(components)||
   components.length!==4)throw failure('invalid_capture_request');
  await absent(directory);
- const meta=metadata(raw),key=await keyBytes(keyPath);
  const names=components.map(x=>componentSpec(x).name);
  if(names.join('|')!=='roles-memberships|schema|data|inventory'||new Set(names).size!==4)
   throw failure('component_set');
- await mkdir(directory,{recursive:false,mode:0o700});
+ if((raw?.schema==='sabora-logical-backup/v2')!==Boolean(snapshot))
+  throw failure('snapshot_required_for_v2');
+ const key=await keyBytes(keyPath);
+ let session,created=false,finished=false;
  try{
+  if(snapshot){
+   if(!snapshot.exporter||!snapshot.expectedSystemIdentifier)throw failure('snapshot_config_missing');
+   session=await openPostgresBackupSnapshot({
+    command:snapshot.exporter.command,args:snapshot.exporter.args,
+    expectedSystemIdentifier:snapshot.expectedSystemIdentifier,expectedDatabase:'postgres'});
+  }
+  const meta=metadata(snapshot?{...raw,snapshotId:session.snapshotId,
+   sourceSystemIdentifier:session.systemIdentifier,sourceDatabase:session.database}:raw);
+  await mkdir(directory,{recursive:false,mode:0o700});created=true;
+  const snapshotId=session?.snapshotId??null;
   const captured=[];
-  for(const spec of components)captured.push(await encryptCommand({directory,key,meta,spec}));
+  captured.push(await encryptCommand({directory,key,meta,spec:components[0],snapshotId}));
+  captured.push(await encryptCommand({directory,key,meta,spec:components[1],snapshotId}));
+  if(session){
+   // Catalog, global roles and non-MVCC sequence values must not drift
+   // during the single synchronized MVCC capture.
+   const probe=await encryptCommand({directory,key,meta,
+    spec:{...components[3],name:'inventory-preview'},snapshotId});
+   await rm(join(directory,probe.filename));
+   captured.push(await encryptCommand({directory,key,meta,spec:components[2],snapshotId}));
+   captured.push(await encryptCommand({directory,key,meta,spec:components[3],snapshotId}));
+   if(probe.plaintextSha256!==captured[3].plaintextSha256||
+      probe.plaintextBytes!==captured[3].plaintextBytes)
+    throw failure('source_changed_during_capture');
+   const rolesProbe=await encryptCommand({directory,key,meta,
+    spec:{...components[0],name:'roles-memberships-verify'},snapshotId});
+   await rm(join(directory,rolesProbe.filename));
+   if(rolesProbe.plaintextSha256!==captured[0].plaintextSha256||
+      rolesProbe.plaintextBytes!==captured[0].plaintextBytes)
+    throw failure('roles_changed_during_capture');
+   await session.close();finished=true;
+  }else{
+   captured.push(await encryptCommand({directory,key,meta,spec:components[2]}));
+   captured.push(await encryptCommand({directory,key,meta,spec:components[3]}));
+  }
   const manifest={...meta,components:captured,
    artifactPolicy:'ciphertext-only-replicas; no keys or plaintext dumps'};
-  const path=join(directory,'manifest.json');
-  await writeFile(path,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
-  const digest=await fileDigest(path);
+  const manifestPath=join(directory,'manifest.json');
+  await writeFile(manifestPath,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
+  const digest=await fileDigest(manifestPath);
   return Object.freeze({directory,manifest:Object.freeze(manifest),manifestSha256:digest.sha256});
- }catch(error){await rm(directory,{recursive:true,force:true});throw error;}
+ }catch(error){
+  if(session&&!finished)session.abort();
+  if(created)await rm(directory,{recursive:true,force:true});
+  throw error;
+ }finally{key.fill(0);}
 }
 
 function validatedManifest(value){
  if(!plainObject(value)||Object.keys(value).sort().join('|')!==
-  [...META_KEYS,'artifactPolicy','components'].sort().join('|')||
+  [...(value.schema==='sabora-logical-backup/v2'?V2_META_KEYS:META_KEYS),
+   'artifactPolicy','components'].sort().join('|')||
   !Array.isArray(value.components)||value.components.length!==4||
   value.artifactPolicy!=='ciphertext-only-replicas; no keys or plaintext dumps')
   throw failure('invalid_manifest');
- const meta=metadata(Object.fromEntries(META_KEYS.map(key=>[key,value[key]])));
+ const meta=metadata(Object.fromEntries((value.schema==='sabora-logical-backup/v2'?V2_META_KEYS:META_KEYS)
+   .map(key=>[key,value[key]])));
  const names=[];
  for(const item of value.components){
   if(!plainObject(item)||Object.keys(item).sort().join('|')!==COMPONENT_KEYS.join('|')||
