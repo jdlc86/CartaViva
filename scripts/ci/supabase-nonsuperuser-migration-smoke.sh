@@ -122,6 +122,10 @@ echo 'sabora_nonsuperuser_bootstrap_membership_confirmed'
 
 log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
 count=0
+expected_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | wc -l | tr -d '[:space:]')"
+[[ "$expected_count" =~ ^[1-9][0-9]*$ ]] || {
+  echo 'sabora_nonsuperuser_invalid_expected_chain' >&2; exit 1;
+}
 while IFS= read -r name; do
   [[ "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
     echo 'sabora_nonsuperuser_invalid_migration_name' >&2; exit 1;
@@ -148,7 +152,7 @@ while IFS= read -r name; do
   fi
   ((count+=1))
 done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | LC_ALL=C sort)
-[[ "$count" -eq 99 ]] || { echo "sabora_nonsuperuser_incomplete_chain:$count" >&2; exit 1; }
+[[ "$count" -eq "$expected_count" ]] || { echo "sabora_nonsuperuser_incomplete_chain:$count/$expected_count" >&2; exit 1; }
 
 # Exact provider-generated DBA membership is the ONLY tolerated membership
 # on a Sabora role in this *candidate* contract. All migration-scoped SET/
@@ -181,7 +185,7 @@ echo 'sabora_nonsuperuser_runtime_role_boundary_verified'
 test "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
   "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='sabora' AND c.relkind='r'
-     AND c.relrowsecurity AND c.relforcerowsecurity")" -eq 69 || {
+     AND c.relrowsecurity AND c.relforcerowsecurity")" -eq 73 || {
   echo 'sabora_nonsuperuser_force_rls_mismatch' >&2; exit 1;
 }
 # Negative scope assertion, one boolean per condition; never print credentials.

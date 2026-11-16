@@ -10,6 +10,8 @@ El trabajo continúa en el único [PR #60 Draft](https://github.com/jdlc86/Carta
 
 **Optimización de batería:** `SABORA_PG17_TEST_SCOPE=issue61` reutiliza un solo clúster migrado, el `pg@8.16.3` ya fijado en `apps/api` y Chromium instalado; ejecuta únicamente `h6-postgres17.test.mjs` y sale antes de suites ajenas. El modo por defecto `full` conserva la instalación aislada y toda la secuencia. El inventario operativo candidato pasa a **18 identidades mínimas/23 con opt-in** al añadir `h6.customerPool`; no se han creado LOGIN ni secretos reales.
 
+**Corrección CI focalizada:** la primera Action `pg17-nonsuperuser` del commit integral aplicó correctamente las 100 migraciones y falló después por un contador heredado `99`. El arnés compara ahora el total ejecutado con su inventario auditado y exige **73 tablas FORCE RLS**; contrato Node **14/14** y rehearsal local sin red `sabora_nonsuperuser_pg17_migration_chain_ok:100` PASS. No se repitieron suites no afectadas.
+
 **Pendiente de cierre verificable:** commit/push y GitHub Actions del SHA final del PR #60. Stripe remoto, aceptación visual humana, merge, despliegue y migración operativa siguen fuera de este hito. No se ha modificado Supabase operativo, VPS o Fleetia.
 
 > **DOCUMENTO DE CONTINUIDAD, NO NORMATIVA NI AUTORIZACIÓN DE OPERACIONES.** La fuente de verdad de requisitos es la documentación normativa de GitHub; para implementación y pruebas prevalecen el código y CI del SHA actual. Registrar aquí **únicamente hitos significativos y decisiones comprobadas** de la sesión 39, con enlaces. No repetir tareas ni reabrir cierres sin evidencia de regresión. El documento será el punto de seguimiento de esta sesión y se actualizará cuando se cierre otro hito relevante, no con microestados.

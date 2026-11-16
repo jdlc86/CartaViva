@@ -110,6 +110,8 @@ test('non-superuser Supabase compatibility harness is isolated and exercises the
 
 
  ])assert.ok(providerCompat.includes(required),required);
+ assert.match(providerCompat,/expected_count=.*find supabase\/migrations/);
+ assert.match(providerCompat,/c\.relforcerowsecurity"\)" -eq 73/);
  assert.match(providerCompat,/CREATE DATABASE \$database OWNER \$operator/);
  assert.match(providerCompat,/sabora_nonsuperuser_bootstrap_membership_confirmed/);
  assert.match(providerCompat,/unsafe_memberships/);
