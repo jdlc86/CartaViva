@@ -34,6 +34,10 @@ test('la PWA de gestión verifica externo y cierra cuenta/mesa sin inventar dine
  await expect(page.getByText('Cancelaciones',{exact:true})).toBeVisible();
  await expect(page.getByText('Stripe acreditado neto',{exact:true})).toBeVisible();
  await expect(page.getByText('EXTERNO PENDIENTE',{exact:true})).toBeVisible();
+ const refundPending=page.getByRole('listitem').filter({hasText:'Daniel'});
+ await expect(refundPending.getByText('STRIPE CAPTURADO · DEVOLUCIÓN PENDIENTE',{exact:true})).toBeVisible();
+ await expect(refundPending.getByRole('button',{name:'Cerrar cuenta operativamente'})).toHaveCount(0);
+ await expect(page.getByRole('list',{name:'Liquidaciones de Daniel'}).getByText('STRIPE CAPTURADO · DEVOLUCIÓN PENDIENTE',{exact:true})).toBeVisible();
  await expect(page.getByText(/cobro en efectivo/i)).toHaveCount(0);
 
  const verify=page.getByRole('button',{name:'Verificar y liberar operativamente'});

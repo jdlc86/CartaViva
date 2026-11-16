@@ -21,7 +21,19 @@ let accounts:EconomicAccount[]=[
   settlements:[{intentId:'ca610000-0000-4000-8000-000000000006',channel:'stripe',
     state:'stripe_partially_refunded',allocatedCents:1500,providerConfirmed:true,externalVerified:false},
    {intentId:'ca610000-0000-4000-8000-000000000007',channel:'external',
-    state:'external_verified',allocatedCents:500,providerConfirmed:false,externalVerified:true}]}
+    state:'external_verified',allocatedCents:500,providerConfirmed:false,externalVerified:true}]},
+ {accountId:'ca610000-0000-4000-8000-000000000010',
+  tableId:'ca610000-0000-4000-8000-000000000008',
+  sessionId:'ca610000-0000-4000-8000-000000000009',
+  customerCode:'SB-23456789ABCF',customerAlias:'Daniel',paymentTiming:'pay_at_end',
+  grossConsumptionCents:1200,cancelledCents:0,netConsumptionCents:1200,
+  stripeCapturedCents:1200,stripeRefundedCents:0,stripeNetCents:1200,
+  outstandingCents:0,operationalState:'open',
+  settlementIntentId:'ca610000-0000-4000-8000-000000000011',
+  settlementChannel:'stripe',settlementState:'stripe_refund_pending',
+  providerConfirmed:false,externalVerified:false,
+  settlements:[{intentId:'ca610000-0000-4000-8000-000000000011',channel:'stripe',
+   state:'stripe_refund_pending',allocatedCents:1200,providerConfirmed:true,externalVerified:false}]}
 ];
 const calls={verify:0,closeAccount:0,closeTable:0};
 Object.assign(window,{__economicCalls:calls});
