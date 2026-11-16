@@ -21,7 +21,7 @@ const self=process.argv[1]&&resolve(process.argv[1])===resolve(fileURLToPath(imp
 if(self){
  try{
   if(process.argv.length!==5)throw Error('expected_draft_privatekey_output_prefix');
-  const paths=process.argv.slice(2).map(resolve);
+  const paths=process.argv.slice(2).map(value=>resolve(value));
   const cwd=resolve(process.cwd())+sep;
   if(paths.some(p=>p.startsWith(cwd)))throw Error('secrets_must_remain_outside_checkout');
   if(new Set(paths).size!==3)throw Error('duplicate_file_paths');
