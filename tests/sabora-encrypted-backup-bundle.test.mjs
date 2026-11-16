@@ -8,7 +8,7 @@ import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../scripts/ops/sabora-encrypted-backup-bundle.mjs';
-import {validateOperationalPlan} from '../scripts/ops/sabora-encrypted-backup-cli.mjs';
+import {validateOperationalPlan,validateCaptureSource} from '../scripts/ops/sabora-encrypted-backup-cli.mjs';
 
 const releaseSha='d'.repeat(40),migrationTreeSha256='e'.repeat(64);
 function meta(){
@@ -129,6 +129,9 @@ test('operational capture plan permits only scoped psql and pg_dump streams',()=
   value=>{value.components[1].args.push('--schema=auth');},
   value=>{value.components[1].args.push('-nauth');},
   value=>{value.components[2].args.push('--format=plain');},
+  value=>{value.components[2].args.push('--snapshot=00000001-00000001-1');},
+  value=>{value.components[2].args.push('--host=attacker.example.com');},
+  value=>{value.components[3].args.push('-h','attacker.example.com');},
  ]){
   const changed=structuredClone(plan);mutate(changed);
   assert.throws(()=>validateOperationalPlan(changed,{psql,pgDump}),/sabora_backup_cli_stop/);
@@ -145,4 +148,26 @@ test('bundle rejects POSIX keys with group or world permissions',{
  await chmod(keyPath,0o644);
  await assert.rejects(captureEncryptedBackupBundle({directory:join(root,'capture'),keyPath,
   metadata:meta(),components:components()}),/sabora_backup_stop:key_permissions/);
+});
+
+test('backup v2 binds live TLS endpoint and independently pinned cluster identity',()=>{
+ const candidate={...meta(),schema:'sabora-logical-backup/v2'};
+ const env={PGHOST:'db.byhvmumqivmunkmomhup.supabase.co',PGSSLMODE:'verify-full',
+  PGSSLROOTCERT:'/protected/postgres-ca.pem',PGPORT:'5432',
+  SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER:'7123456789012345678'};
+ assert.equal(validateCaptureSource(candidate,env),'7123456789012345678');
+ for(const [key,value] of [
+  ['PGHOST','db.otherproject.supabase.co'],['PGSSLMODE','require'],
+  ['PGSSLROOTCERT','relative.pem'],['PGHOSTADDR','127.0.0.1'],
+  ['PGSERVICE','untrusted'],['PGPORT','5433'],
+  ['SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER','']
+ ]){
+  assert.throws(()=>validateCaptureSource(candidate,{...env,[key]:value}),/sabora_backup_cli_stop:/);
+ }
+ assert.throws(()=>validateCaptureSource(meta(),env),/sabora_backup_cli_stop:v2_snapshot_required/);
+});
+test('backup v2 cannot fall back to four inconsistent independent commands',async()=>{
+ await assert.rejects(captureEncryptedBackupBundle({directory:'/tmp/unused-unique-v2-capture',
+  keyPath:'/tmp/not-used.key',metadata:{...meta(),schema:'sabora-logical-backup/v2'},
+  components:components()}),/sabora_backup_stop:snapshot_required_for_v2/);
 });
