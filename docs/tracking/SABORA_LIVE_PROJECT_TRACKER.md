@@ -1286,3 +1286,11 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 
 **Estado del hito:** cambios implementados y publicados en el PR #59, batería *del nuevo SHA* pendiente. La CI previa no basta para aprobar este nuevo cambio. No fusionar `main`, no aplicar migración Supabase operativo ni intervenir VPS/Fleetia.
 
+## 109. S41 — continuidad consolidada del candidato H6 rv02 (16-11-2026)
+
+**Fuente de detalle y cronología:** [S41-10](../handoffs/SESSION_41_HANDOFF_2026-11-16.md). Integración de código: [PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59), SHA revisado `1cfba81216ea7a6bccb7fb9c3c4bc6e746c3856e`; [PR #60](https://github.com/jdlc86/CartaViva/pull/60) ya incorporado como progenitor en esa rama, no fusionar ambos por duplicado.
+
+- **Implementado (no desplegado):** P1-04 reembolso seguro desde bigint PG17; P1-05 protección H6 `pay_now` Stripe con importe EUR, PI, charge y *seis* funciones selladas en migración candidata 101; P2-06 `expand[]=latest_charge` en reconciliación. E2E PG17 añadido para fallo cerrado de compensación y refund firmado de cargo incorrecto.
+- **Pruebas CI `1cfba812` observadas 20:46 UTC:** 6/8 controles aplicables **SUCCESS** (PG17 no-superusuario, UI funcional, cliente navegador, gestión navegador, dos PWA, publicación web laboratorio), **`validate` y `generate-lockfile` IN_PROGRESS**; dos puertas opt-in `SKIPPED`. Corrigen fallos anteriores de manifiesto 100/101, fixture Stripe incompleta y antigua expectativa de error de compensación; el nuevo SHA **todavía no tiene PASS integral**.
+- **Pendiente y NO-GO:** confirmar dos integradoras, revisar delta normativo/independiente, y decidir merge; aprobación visual, Stripe real/sandbox remoto, backup externo real, SQL/host/operación permanecen aparte. `main`, Supabase operativo, VPS, Fleetia y otros recursos **sin cambios por este hito**.
+

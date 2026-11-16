@@ -175,3 +175,36 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Estado del hito:** cambios implementados y publicados en el PR #59, batería *del nuevo SHA* pendiente. La CI previa no basta para aprobar este nuevo cambio. No fusionar `main`, no aplicar migración Supabase operativo ni intervenir VPS/Fleetia.
 
+## S41-10 — consolidación de continuidad: cierre de hallazgos rv02 en código, CI final pendiente (16-11-2026)
+
+**Fuente normativa**: documentos de requisitos y arquitectura aprobados del repositorio, no las notas de continuidad. **Objeto**: [PR Draft #59](https://github.com/jdlc86/CartaViva/pull/59) como rama de integración de los dos PR, con [PR Draft #60](https://github.com/jdlc86/CartaViva/pull/60) ya incorporado en la genealogía del candidato; **sin merge a `main`**, sin crear más PR. **SHA de código revisado en este corte:** [`1cfba81216ea7a6bccb7fb9c3c4bc6e746c3856e`](https://github.com/jdlc86/CartaViva/commit/1cfba81216ea7a6bccb7fb9c3c4bc6e746c3856e).
+
+**Hito de implementación de S41-rv02**:
+- [`ea77a389`](https://github.com/jdlc86/CartaViva/commit/ea77a389aed48d3fdbb514c69a1880498e97eb80) introdujo una nueva migración SQL auditada **n.º 101** `20261116210000_sabora_h6_provider_money_evidence_candidate.sql`, manteniendo las cien anteriores inmutables; conversión segura del `bigint` decimal a entero seguro para Stripe `pay_at_end` (P1-04), cotejo monetario/identidad de pago y reembolso H6 `pay_now` (P1-05), y `expand[]=latest_charge` en `retrieve` (P2-06). Añado a ello las pruebas negativas de importe, moneda, cargo original, permisos y estados inciertos.
+- [`17ca77c1`](https://github.com/jdlc86/CartaViva/commit/17ca77c1c0ed0ebaaa6168f2fc32c59a91bb335f) retiró la suposición obsoleta de **exactamente 100** migraciones en el contrato de pruebas: ahora exige conservar las 100 históricas y que la totalidad del inventario coincida **exactamente** con `buildMigrationAudit`; no rebajó los controles de alcance transaccional ni propietario.
+- [`a1ec5434`](https://github.com/jdlc86/CartaViva/commit/a1ec5434d5f418161637704908f651fc5c6c23a1) amplió la migración n.º 101 a **seis funciones selladas** incluyendo `record_h6_capture_compensation_verified_candidate`. Retiró al rol proveedor el acceso a `record_h6_capture_compensation_candidate` sin evidencia; la compensación verifica importe, EUR, PaymentIntent y coherencia del cargo antes de marcar `refund_required`. Adaptó el recorrido integrador de Stripe simulado para devolver `amount:700`, `currency:'eur'` y `amount_received:700` conforme al contrato, sin rebajar la verificación.
+- [`159094a2`](https://github.com/jdlc86/CartaViva/commit/159094a2e2ca318e56022fe4ad4f8d681c806e12) adecuó la expectativa del negativo PG17: una compensación repetida con otro cargo devuelve `h6_provider_money_mismatch` antes de alcanzar el antiguo `capture_compensation_conflict`. El error anticipado es la nueva invariante, no una captura permitida.
+- [`1cfba812`](https://github.com/jdlc86/CartaViva/commit/1cfba81216ea7a6bccb7fb9c3c4bc6e746c3856e) reforzó el E2E HTTP de `refund.updated` firmado: cargo original incorrecto → HTTP 503 y estado `unknown` conservado; evento con importe/moneda/cargo correctos → acuse y conciliación, con replay idempotente.
+
+**Trazabilidad de ejecuciones previas, NO reutilizables como PASS del SHA final**:
+1. En `ea77a389`, `validate`, `generate-lockfile` y `pg17-nonsuperuser` fallaron por un contrato de inventario todavía fijado a 100 en vez de 101. Se corrigió como invariante auditada.
+2. En `17ca77c1`, `pg17-nonsuperuser`, UI funcional, navegadores y publicación pasaron; instalación PWA falló inicialmente porque `/sw.js` estaba activado sin controlador, y **pasó al reejecutar sobre el mismo SHA**. `validate` y `generate-lockfile` encontraron el simulador sin evidencia de cantidad/moneda (`authorization_unknown`), corregido en la fixture.
+3. En `a1ec5434`, `validate` falló en el E2E PG17 al esperar el mensaje antiguo de conflicto; la ruta devolvió el nuevo `h6_provider_money_mismatch`. Se adecuó la aserción en `159094a2` y se amplió el E2E de refund firmado en `1cfba812`. **No afirmar que el último SHA tenga validación integral concluida por este motivo.**
+
+**Corte de Actions del SHA `1cfba812`, consultado 16-11-2026 aproximadamente 20:46 UTC**:
+
+| Control aplicable | Estado observado | Ejecución |
+| --- | --- | --- |
+| `pg17-nonsuperuser` (101 migraciones en PG17 efímero) | **SUCCESS** | [#43952804606](https://github.com/jdlc86/CartaViva/actions/runs/43952804606) |
+| `functional-ui-gate` | **SUCCESS** | [#43952804010](https://github.com/jdlc86/CartaViva/actions/runs/43952804010) |
+| `client-browser` | **SUCCESS** | [#43952804015](https://github.com/jdlc86/CartaViva/actions/runs/43952804015) |
+| `management-browser-smoke` | **SUCCESS** | [#43952804248](https://github.com/jdlc86/CartaViva/actions/runs/43952804248) |
+| `two-pwa-installability` | **SUCCESS** | [#43952804332](https://github.com/jdlc86/CartaViva/actions/runs/43952804332) |
+| `web-publication` (laboratorio aislado, no VPS) | **SUCCESS** | [#43952804598](https://github.com/jdlc86/CartaViva/actions/runs/43952804598) |
+| `validate` (PG17/HTTP/Chromium integradores largos) | **IN_PROGRESS** | [#43952804598](https://github.com/jdlc86/CartaViva/actions/runs/43952804598) |
+| `generate-lockfile` (PG17/driver/restore) | **IN_PROGRESS** | [#43952804155](https://github.com/jdlc86/CartaViva/actions/runs/43952804155) |
+
+**Dos puertas deliberadamente `SKIPPED`, no PASS:** `visual-final-acceptance-gate` (aprobación humana) y `cv005-b2-disposable-integration` opt-in. El nombre heredado del workflow `pg17-nonsuperuser 100 migration candidate` no demuestra que existan solo 100; el contrato del código y manifiesto auditado contienen **101**.
+
+**Separación de estados y condición de cierre:** implementación presente en PR #59; seis controles del SHA `1cfba812` observados verdes; dos integradoras **pendientes en ese corte**; no hay validación Stripe sandbox remoto, revisión independiente acreditada, aceptación visual humana, copias externas VPS reales, aplicación SQL sobre Supabase operativo, despliegue ni merge a `main`. El árbol unido no equivale a GO operativo. **Próximo paso:** comprobar `validate` y `generate-lockfile` del SHA exacto, corregir fallos reales dentro de #59 y repetir batería final solo cuando cambie código; revisar delta de la migración y ambas rutas económicas y decidir fusión única tras cumplir puertas normativas. Mantener `main` sin cambios hasta esa decisión y jamás tocar Fleetia u otros recursos del VPS compartido.
+
