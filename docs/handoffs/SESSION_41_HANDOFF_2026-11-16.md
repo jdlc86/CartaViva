@@ -114,3 +114,17 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Próxima decisión de integración:** revisión independiente del SHA combinado, contraste con normativa económica Issue #61 y gobernanza, decisión explícita de fusión con metodología que no duplique el merge del #60 (ya contenido como segundo progenitor del commit #59), y verificación de `main` tras integrar. No crear un tercer PR para copiar lo mismo ni usar el GO de código para levantar Sabora en VPS.
 
+## S41-5 — revisión técnica propia S41-rv01 del árbol económico + release integrado (16-11-2026)
+
+**Objeto exacto:** [código integrado `1b70069195cab6ac53ec6857809869c1056ec80b`](https://github.com/jdlc86/CartaViva/commit/1b70069195cab6ac53ec6857809869c1056ec80b). **Revisión publicada** en [PR #59, revisión COMMENT #5922255670](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5922255670) por la cuenta propietaria `jdlc86`; **NO es APPROVE independiente** ni revisión Codex externa. No se ejecutaron nuevos tests ni Stripe real; se inspeccionó código/normativa y las 8 puertas CI anteriores siguen PASS para ese SHA.
+
+| Hallazgo | Prioridad | Soporte concreto | Dictamen |
+| --- | --- | --- | --- |
+| **S41-rv01/P1-01**: captura Stripe acreditada sin comprobar importe efectivo ni moneda | **P1, bloqueante de merge** | `apps/api/src/h6-stripe-adapter.mjs:88-97`; `apps/api/src/economic-circuit-service.mjs:10-19`; `20261115115624_*.sql:421-454,892-905` | El `succeeded` y `ch_...` bastan para reducir todo `intent.amount_cents` incluso ante una respuesta de importe distinto. Conciliar `amount_received`/EUR y vínculo al cargo exacto en servicio y webhook, con pruebas negativas |
+| **S41-rv01/P1-02**: devolución Stripe sin contrastar cantidad/cargo original | **P1, bloqueante de merge** | `h6-stripe-adapter.mjs:106-116`; `economic-circuit-service.mjs:45-56`; SQL `:773-812`; `h6-stripe-webhook.mjs:69-78` | Se acepta `refund.succeeded` por ID/estado y se liquida nominalmente el importe solicitado sin cotejar `refund.amount`, `charge`, moneda. Confrontar datos reales del proveedor antes de marcar incidencia `resolved` |
+| **S41-rv01/P2-03**: estado de caja incompleto en cuentas con canales o devoluciones mixtos | **P2** | SQL `:507-543` selecciona una sola liquidación reciente por cuenta; `CashView.tsx:105-112` muestra su estado como distintivo global | Proyectar cada intento o agregado explícito; una captura con devolución pendiente no debe pasar a `SIN LIQUIDACIÓN` |
+
+**Caso negativo propuesto antes de merge:** consumo 2200 céntimos, respuesta Stripe con `status=succeeded`, `ch_...` correcto pero `amount_received=1000`; hoy el adaptador no comprueba ese importe y SQL acredita 2200. Devolución solicitada de 800 céntimos con respuesta `succeeded` por 100 céntimos u otro `charge`; hoy el adaptador no verifica esos datos y SQL puede cerrar expediente. **No afirmar que esas respuestas se produjeron con Stripe real**: son riesgos reproducibles mediante fixtures de proveedor, aún no ensayados por esta revisión.
+
+**Dictamen de integración:** `NO-GO de merge` en el corte hasta reparar ambos P1, hacer prueba negativa focalizada por invariante, repetir una única batería integral del SHA reparado y revisar el delta. Conservar el PR #59 como rama integradora; no abrir más PR ni duplicar #60. S41-rv01 no satisface la puerta de aprobación formal independiente; si la normativa la exige, mantenerla pendiente. M6 sigue NO-GO operativo por Stripe sandbox real, aceptación visual y autorizaciones de backup/SQL/VPS/host. Fleetia intocable.
+

@@ -1234,3 +1234,13 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 
 **Conclusión:** compatibilidad económica + recuperación + dos PWA **probada con batería integrada en SHA conjunto**. Restan revisión independiente, autorización y fusión informada de #59/#60 (evitar doble merge), eventual CI post-merge sobre `main`, Stripe sandbox real y puertas de M6. NO modificar VPS, Fleetia, Cloudflare ni SQL Supabase por este resultado. [Continuidad S41-4](../handoffs/SESSION_41_HANDOFF_2026-11-16.md).
 
+## 104. S41 — revisión técnica propia S41-rv01: NO-GO merge por integridad monetaria (16-11-2026)
+
+[Revisión GitHub COMMENT #5922255670](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5922255670) sobre [código conjunto `1b700691`](https://github.com/jdlc86/CartaViva/commit/1b70069195cab6ac53ec6857809869c1056ec80b). **8/8 CI PASS sigue acreditando las suites del laboratorio**, pero revisión estática propia del asistente/propietario, **NO independiente** y sin Stripe remoto, identifica **dos P1 bloqueantes**:
+
+- **P1-01**: `h6-stripe-adapter.mjs:88-97` y `economic-circuit-service.mjs:10-19` aceptan `PaymentIntent.succeeded` + `ch_...` sin confrontar `amount_received` y moneda; SQL económico `:421-454` marca pagado todo el importe previsto y la ruta webhook `:892-905` tampoco valida el importe. Exigir prueba exacta del importe/currency desde proveedor, rechazo de capturas parciales o inconsistentes y bloqueo seguro.
+- **P1-02**: `h6-stripe-adapter.mjs:106-116` y SQL `:773-812` pueden marcar devolución nominal y expediente resuelto por `refund.succeeded` sin comparar importe/cargo original/moneda; webhook `refund.updated` tampoco coteja importe. Exigir reconciliación completa y negativos.
+- **P2-03**: SQL económico `:507-543` selecciona el último intento por cuenta, y `CashView.tsx:105-112` lo usa para presentar estado global; estados mixtos/captura con refund pendiente se simplifican incorrectamente.
+
+**Acción:** reparar P1-01/P1-02 en el **mismo PR #59 candidato** sin otro PR, pruebas aisladas para proteger invariantes monetarias y una batería integradora al SHA final, revisar delta y obtener decisión/aprobación de integración. El P2 debe quedar trazado y corregido en el hito si afecta representación normativa obligatoria. No fusionar #59/#60 en main ni desplegar solo por CI verde. [Continuidad S41-5](../handoffs/SESSION_41_HANDOFF_2026-11-16.md); sin operaciones en Supabase, VPS ni Fleetia.
+
