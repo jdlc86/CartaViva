@@ -5131,7 +5131,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          request:async call=>{
           outboundStripe.push(call);
           if(call.path==='/v1/payment_intents'&&call.method==='POST')
-           return {id:providerIntentId,status:'requires_capture',
+           return {id:providerIntentId,status:'requires_capture',amount:700,currency:'eur',
             latest_charge:{payment_method_details:{card:{
              capture_before:Math.floor(Date.now()/1000)+86400}}}};
           if(call.path==='/v1/payment_intents/'+providerIntentId+'/capture')
@@ -5172,7 +5172,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          livemode:false,created:Math.floor(Date.now()/1000),
          type:'payment_intent.succeeded',
          data:{object:{object:'payment_intent',id:providerIntentId,
-          latest_charge:providerChargeId,status:'succeeded'}}};
+          latest_charge:providerChargeId,status:'succeeded',
+          amount_received:700,currency:'eur'}}};
         assert.equal((await signedStripeHttp(successEvent,{
          secret:randomBytes(32)})).statusCode,400,
          'invalid Stripe HMAC must not reach SQL');

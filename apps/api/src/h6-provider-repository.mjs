@@ -15,7 +15,8 @@ export const RECORD_CAPTURE_H6_SQL=`SELECT payment_state,round_state,dispatch_id
 export const READ_PAYMENT_EVIDENCE_H6_SQL=`SELECT amount_cents,provider_intent_id,provider_charge_id
  FROM sabora.read_h6_provider_evidence_candidate($1::uuid)`;
 export const RECORD_CAPTURE_COMPENSATION_H6_SQL=`SELECT payment_state,round_state,dispatch_id,dispatch_state,repeated
- FROM sabora.record_h6_capture_compensation_candidate($1::uuid,$2::text,$3::text)`;
+ FROM sabora.record_h6_capture_compensation_verified_candidate($1::uuid,$2::text,$3::text,
+  $4::text,$5::bigint,$6::text)`;
 export const INGEST_STRIPE_WEBHOOK_H6_SQL=`SELECT sabora.ingest_stripe_webhook_verified_candidate(
  $1::text,$2::text,$3::text,$4::timestamptz,$5::bytea,$6::text,$7::timestamptz,$8::uuid,$9::text,$10::uuid,$11::bigint,$12::text) AS result`;
 export const RECORD_REFUND_H6_SQL=`SELECT sabora.record_h6_refund_verified_candidate(
@@ -70,11 +71,12 @@ export function createH6ProviderRepository({withTransaction}={}){
    return withTransaction(query=>rows(query(RECORD_CAPTURE_H6_SQL,
     [orderId,outcome,providerChargeId,errorCode,providerIntentId,providerAmountCents,providerCurrency])));
   },
-  recordCaptureCompensation({orderId,providerChargeId,errorCode='dispatch_persistence_failed'}={}){
+  recordCaptureCompensation({orderId,providerChargeId,errorCode='dispatch_persistence_failed',
+   providerIntentId=null,providerAmountCents=null,providerCurrency=null}={}){
    if(!UUID.test(orderId??'')||typeof providerChargeId!=='string'||typeof errorCode!=='string')
     throw Error('invalid_h6_capture_compensation');
    return withTransaction(query=>rows(query(RECORD_CAPTURE_COMPENSATION_H6_SQL,
-    [orderId,providerChargeId,errorCode])));
+    [orderId,providerChargeId,errorCode,providerIntentId,providerAmountCents,providerCurrency])));
   },
   ingestWebhook({eventId,eventType,providerObjectId,providerCreatedAt,payloadSha256,
    providerChargeId=null,captureBefore=null,refundAttemptId=null,refundStatus=null,

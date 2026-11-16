@@ -167,3 +167,11 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Situación:** implementación publicada para evaluación en PR #59, #60 preservado como progenitor; `main` no modificado. El resultado técnico depende de ejecución de Actions y revisión del delta; si falla se reparará en el mismo PR. Queda prohibido alterar Fleetia, otros contenedores, VPS o Supabase operativo.
 
+## S41-9 — diagnóstico e integración complementaria de compensación (16-11-2026)
+
+**Evidencia Actions del SHA `17ca77c1`:** `pg17-nonsuperuser` PASS con **101 migraciones**, `functional-ui-gate`, `client-browser`, `management-browser-smoke`, `web-publication` PASS. El gate de dos PWA **falló en el primer intento** por `cv012_service_worker_control_missing` con `/sw.js` ya activated pero sin controller, y fue **SUCCESS tras rerun del mismo SHA** (sin modificar PWA). `validate` y `generate-lockfile` **FAIL** por el mismo test integrador [PG17 B3 seis logins](https://github.com/jdlc86/CartaViva/actions/runs/43949653245): el mock de `requires_capture` omitía importe/moneda, por lo que el servicio corregido devolvía `authorization_unknown` en lugar de inferir captura. Se corrige el **fixture** introduciendo exactamente `amount:700,currency:'eur'` y el webhook `amount_received:700,currency:'eur'`. No se relaja la verificación real.
+
+**Segunda vía de integridad detectada al recorrer todas las escrituras H6:** el `record_h6_capture_compensation_candidate` histórico podía persistir `refund_required` y generar tentativa de devolución desde el rol proveedor con solo un `chargeId`. La migración candidata #101 incorpora una **sexta** función SQL sellada `record_h6_capture_compensation_verified_candidate` que verifica importe/currency/PaymentIntent ante compensación y repetición, delegando después al legado atómico; retira el `EXECUTE` runtime de la vía sin evidencia, actualiza repositorio/orquestador/preflight y añade negativo PG17 por importe divergente. Mantiene propietario NOLOGIN y un solo ledger Stripe.
+
+**Estado del hito:** cambios implementados y publicados en el PR #59, batería *del nuevo SHA* pendiente. La CI previa no basta para aprobar este nuevo cambio. No fusionar `main`, no aplicar migración Supabase operativo ni intervenir VPS/Fleetia.
+

@@ -281,7 +281,8 @@ test('captured provider result becomes durable compensation when dispatch persis
    providerChargeId:'ch_12345678',amountCents:500,currency:'eur'}),release:async()=>{},refund:async()=>{}}});
  const result=await payments.captureOrDispatch({orderId});
  assert.equal(result.round_state,'compensation_required');
- assert.deepEqual(calls,[{orderId,providerChargeId:'ch_12345678',errorCode:'dispatch_persistence_failed'}]);
+ assert.deepEqual(calls,[{orderId,providerChargeId:'ch_12345678',errorCode:'dispatch_persistence_failed',
+  providerIntentId:'pi_12345678',providerAmountCents:500,providerCurrency:'eur'}]);
 });
 
 test('point reconciliation does not invent a capture and permits only same-key retry',async()=>{

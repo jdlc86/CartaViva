@@ -1682,15 +1682,26 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await provider.recordAuthorization({orderId:compensationOrder.orderId,outcome:'authorized',
   providerIntentId:'pi_H6CompIntent01',captureBefore:new Date(Date.now()+86400000)});
  await provider.requestCapture({orderId:compensationOrder.orderId,now:new Date(Date.now()+360000)});
+ const compensationProof=await provider.readPaymentEvidence({orderId:compensationOrder.orderId});
+ await assert.rejects(provider.recordCaptureCompensation({orderId:compensationOrder.orderId,
+  providerChargeId:'ch_H6CompCharge01',errorCode:'dispatch_persistence_failed',
+  providerIntentId:compensationProof.provider_intent_id,
+  providerAmountCents:100,providerCurrency:'eur'}),/h6_provider_money_mismatch/);
  const compensated=await provider.recordCaptureCompensation({orderId:compensationOrder.orderId,
-  providerChargeId:'ch_H6CompCharge01',errorCode:'dispatch_persistence_failed'});
+  providerChargeId:'ch_H6CompCharge01',errorCode:'dispatch_persistence_failed',
+  providerIntentId:compensationProof.provider_intent_id,
+  providerAmountCents:compensationProof.amount_cents,providerCurrency:'eur'});
  assert.equal(compensated.payment_state,'refund_required');
  assert.equal(compensated.round_state,'compensation_required');
  assert.equal(compensated.dispatch_state,'compensation_required');
  assert.equal((await provider.recordCaptureCompensation({orderId:compensationOrder.orderId,
-  providerChargeId:'ch_H6CompCharge01',errorCode:'dispatch_persistence_failed'})).repeated,true);
+  providerChargeId:'ch_H6CompCharge01',errorCode:'dispatch_persistence_failed',
+  providerIntentId:compensationProof.provider_intent_id,
+  providerAmountCents:compensationProof.amount_cents,providerCurrency:'eur'})).repeated,true);
  await assert.rejects(provider.recordCaptureCompensation({orderId:compensationOrder.orderId,
-  providerChargeId:'ch_H6CompCharge02',errorCode:'dispatch_persistence_failed'}),
+  providerChargeId:'ch_H6CompCharge02',errorCode:'dispatch_persistence_failed',
+  providerIntentId:compensationProof.provider_intent_id,
+  providerAmountCents:compensationProof.amount_cents,providerCurrency:'eur'}),
   /capture_compensation_conflict/);
  const compensationRefund=(await admin.query(`SELECT rf.id FROM sabora.refund_attempts rf
   JOIN sabora.payment_attempts p ON p.id=rf.payment_attempt_id

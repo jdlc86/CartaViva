@@ -10,7 +10,7 @@ const CAPABILITIES=Object.freeze({
  sabora_h6_provider_runtime:Object.freeze([
   'record_h6_authorization_outcome_candidate','request_h6_capture_evidence_candidate','read_h6_provider_evidence_candidate',
   'list_schedulable_h6_rounds_candidate',
-  'record_h6_capture_verified_candidate','record_h6_capture_compensation_candidate',
+  'record_h6_capture_verified_candidate','record_h6_capture_compensation_verified_candidate',
   'ingest_stripe_webhook_verified_candidate','record_h6_refund_verified_candidate',
   'request_h6_refund_candidate','request_h6_release_candidate','record_h6_release_outcome_candidate',
   'record_economic_stripe_authorization_candidate','request_economic_stripe_capture_candidate',

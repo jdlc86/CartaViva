@@ -64,7 +64,9 @@ export function createH6PaymentOrchestrator({stripe,repository,clock=Date.now}={
    catch(error){
     if(outcome!=='captured'||typeof result.providerChargeId!=='string')throw error;
     try{return await repository.recordCaptureCompensation({orderId,
-     providerChargeId:result.providerChargeId,errorCode:'dispatch_persistence_failed'});}
+     providerChargeId:result.providerChargeId,errorCode:'dispatch_persistence_failed',
+     providerIntentId:result.providerIntentId,providerAmountCents:result.amountCents,
+     providerCurrency:result.currency});}
     catch(compensationError){
      try{error.compensationError=compensationError;}catch{}
      throw error;
@@ -92,7 +94,8 @@ export function createH6PaymentOrchestrator({stripe,repository,clock=Date.now}={
      providerChargeId:result.providerChargeId,providerIntentId,
      providerAmountCents:result.amountCents,providerCurrency:result.currency});
     return repository.recordCaptureCompensation({orderId,providerChargeId:result.providerChargeId,
-     errorCode:'unexpected_provider_capture'});
+     errorCode:'unexpected_provider_capture',providerIntentId:result.providerIntentId,
+     providerAmountCents:result.amountCents,providerCurrency:result.currency});
    }
    if(phase==='authorization'){
     const outcome=['authorized','requires_action','failed'].includes(result.outcome)?result.outcome:'unknown';

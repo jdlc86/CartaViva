@@ -107,6 +107,34 @@ BEGIN
 END;
 $refund_evidence$;
 
+-- Capture compensation is a monetary state transition too. Match the exact
+-- provider receipt to the sealed attempt before creating any refund due.
+CREATE FUNCTION sabora.record_h6_capture_compensation_verified_candidate(
+ p_order_id uuid,p_provider_charge_id text,p_error_code text,
+ p_provider_intent_id text,p_provider_amount_cents bigint,p_provider_currency text)
+RETURNS TABLE(payment_state text,round_state text,dispatch_id uuid,
+ dispatch_state text,repeated boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
+AS $compensation_evidence$
+DECLARE v_payment sabora.payment_attempts%ROWTYPE;
+BEGIN
+ SELECT p.* INTO v_payment FROM sabora.payment_attempts p
+ JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=p_order_id;
+ IF NOT FOUND THEN
+  RAISE EXCEPTION 'payment_attempt_not_found' USING errcode='P0002'; END IF;
+ IF p_provider_amount_cents IS DISTINCT FROM v_payment.amount_cents
+  OR p_provider_currency IS DISTINCT FROM v_payment.currency
+  OR p_provider_intent_id IS DISTINCT FROM v_payment.provider_intent_id
+  OR (v_payment.state='refund_required'
+   AND p_provider_charge_id IS DISTINCT FROM v_payment.provider_charge_id)
+ THEN RAISE EXCEPTION 'h6_provider_money_mismatch' USING errcode='23514'; END IF;
+ RETURN QUERY SELECT q.payment_state,q.round_state,q.dispatch_id,
+  q.dispatch_state,q.repeated
+ FROM sabora.record_h6_capture_compensation_candidate(
+  p_order_id,p_provider_charge_id,p_error_code) q;
+END;
+$compensation_evidence$;
+
 -- Single server ingress for the *same* signed Stripe event. Inspect which
 -- ledger owns it before delegating to the already sealed H6/Issue61 handler.
 -- Do not create a second webhook receipt or permit unsigned browser calls.
@@ -159,6 +187,7 @@ BEGIN
   'sabora.request_h6_capture_evidence_candidate(uuid,timestamptz)'::regprocedure,
   'sabora.read_h6_provider_evidence_candidate(uuid)'::regprocedure,
   'sabora.record_h6_capture_verified_candidate(uuid,text,text,text,text,bigint,text)'::regprocedure,
+  'sabora.record_h6_capture_compensation_verified_candidate(uuid,text,text,text,bigint,text)'::regprocedure,
   'sabora.record_h6_refund_verified_candidate(uuid,text,text,bigint,text,text)'::regprocedure,
   'sabora.ingest_stripe_webhook_verified_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)'::regprocedure
  ] LOOP
@@ -173,6 +202,7 @@ $owner_acl$;
 -- They remain callable only by the sealed NOLOGIN function owner.
 REVOKE ALL ON FUNCTION
  sabora.record_h6_capture_outcome_candidate(uuid,text,text,text),
+ sabora.record_h6_capture_compensation_candidate(uuid,text,text),
  sabora.record_h6_refund_outcome_candidate(uuid,text,text),
  sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)
  FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,
