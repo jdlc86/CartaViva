@@ -1,12 +1,14 @@
 import type {OrderBoard, OrderHistory, OrderLineStatus, OrderLineTarget, OrderTransition} from './order-operations-model.js';
 export type OrderOperationsSender = (path: string, init: RequestInit) => Promise<Response>;
 export type H6OperationEvent = Readonly<{id: number; type: string; payload: Readonly<Record<string, unknown>>; createdAt: string}>;
+export type EconomicSettlement=Readonly<{intentId:string;channel:'stripe'|'external';
+ state:string;allocatedCents:number;providerConfirmed:boolean;externalVerified:boolean}>;
 export type EconomicAccount=Readonly<{accountId:string;tableId:string;sessionId:string;customerCode:string;customerAlias:string;
  paymentTiming:'pay_now'|'pay_at_end'|null;grossConsumptionCents:number;cancelledCents:number;
  netConsumptionCents:number;stripeCapturedCents:number;stripeRefundedCents:number;stripeNetCents:number;
  outstandingCents:number;operationalState:string;settlementIntentId:string|null;
  settlementChannel:'stripe'|'external'|null;settlementState:string|null;
- providerConfirmed:boolean;externalVerified:boolean}>;
+ providerConfirmed:boolean;externalVerified:boolean;settlements:readonly EconomicSettlement[]}>;
 export type EconomicAccountSnapshot=Readonly<{version:2;notice:string;items:readonly EconomicAccount[]}>;
 export type PendingWaiterCall=Readonly<{id:string;tableNumber:number;createdAt:string}>;
 export interface OrderOperationsGateway {

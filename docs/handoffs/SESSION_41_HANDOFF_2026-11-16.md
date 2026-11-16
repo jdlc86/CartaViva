@@ -128,3 +128,15 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Dictamen de integración:** `NO-GO de merge` en el corte hasta reparar ambos P1, hacer prueba negativa focalizada por invariante, repetir una única batería integral del SHA reparado y revisar el delta. Conservar el PR #59 como rama integradora; no abrir más PR ni duplicar #60. S41-rv01 no satisface la puerta de aprobación formal independiente; si la normativa la exige, mantenerla pendiente. M6 sigue NO-GO operativo por Stripe sandbox real, aceptación visual y autorizaciones de backup/SQL/VPS/host. Fleetia intocable.
 
+
+## S41-6 — corrección integrada P1-01/P1-02/P2-03: candidato de revisión (16-11-2026)
+
+**Motivo:** revisión propia [S41-rv01](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5922255670) del SHA `1b700691`, que detectó 2 P1 de integridad económica y 1 P2 de representación de caja. **Estado de este nuevo hito: código y pruebas nuevas publicados como candidato; CI del nuevo SHA y aceptación independientes PENDIENTES. No afirmar PASS antes de su evidencia.**
+
+- **P1-01, captura:** el adaptador lee `amount_received`, `currency` e identificador `PaymentIntent` de la respuesta Stripe; el servicio exige coincidencia con importe exacto, EUR e intento persistido y registra `unknown` ante cualquier incongruencia. La RPC PostgreSQL de captura ahora exige `p_provider_amount_cents` y `p_provider_currency` iguales a los del intento antes de rebajar deuda (incluidas repeticiones); el request captura devuelve `amountCents` del intento. Webhook firmado transfiere importe/moneda y la RPC rechaza eventos económicos con discrepancias, preservando la ruta histórica por propietario. No se cambia la atribución de cobros externos.
+- **P1-02, devolución:** el adaptador toma `refund.amount`, `refund.currency` y `refund.charge`; el servicio exige original idéntico antes de registrar `succeeded`. La RPC PostgreSQL rechaza discrepancias también en replay, antes de resolver incidencia o alimentar el stream financiero. La ruta webhook `refund.updated` comprueba cantidad/moneda y sigue vinculando `charge` al cargo del intento; `unknown` no equivale a reintegro.
+- **P2-03, sala/caja:** SQL de personal devuelve `settlements[]` por cada asignación/intento (sin `LIMIT 1` como fuente única de la pantalla), manteniendo campos legacy en el wire. Contrato gateway valida cada liquidación; PWA gestión presenta estados por canal/intento, incluidos captura Stripe con devolución pendiente y externo pendiente, con verificación operativa por ID de intento. E2E cliente/gestión y fixtures actualizadas.
+- **Pruebas nuevas:** unitarios negativos de importe parcial, moneda/cargo incompatibles y ausentes, más PG17 económico con webhooks incorrectos antes de éxito correcto; se conserva la batería completa H6/100 SQL, RBAC/RLS, Chromium y la restauración cifrada #59.
+
+**Puertas:** revisión de código del delta y Actions sobre SHA nuevo, posible corrección si fallan; GO de merge no automático. Persiste ausencia de Stripe sandbox remoto y aprobación visual humana. El experimento no toca Supabase operativo, VPS, Cloudflare, Fleetia ni `main`.
+

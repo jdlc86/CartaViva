@@ -150,7 +150,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
    'sabora.ingest_stripe_webhook_h6_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text)',
    'EXECUTE') AS legacy,
   has_function_privilege('sabora_h6_provider_runtime',
-   'sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid)',
+   'sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)',
    'EXECUTE') AS reconciled`)).rows[0];
  assert.deepEqual(webhookPrivileges,{legacy:false,reconciled:true});
 
@@ -385,11 +385,14 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const providerCalls={authorize:0,capture:0,refund:0};
  const economicService=createEconomicCircuitService({repository:economicProvider,stripe:{
   async authorize(){providerCalls.authorize++;return {outcome:'authorized',
-   providerIntentId:'pi_EconomicCircuit0001',captureBefore:new Date(Date.now()+86400000)};},
+   providerIntentId:'pi_EconomicCircuit0001',captureBefore:new Date(Date.now()+86400000),
+   amountCents:2400,currency:'eur'};},
   async capture(){providerCalls.capture++;return {outcome:'captured',
-   providerChargeId:'ch_EconomicCircuit0001'};},
+   providerChargeId:'ch_EconomicCircuit0001',providerIntentId:'pi_EconomicCircuit0001',
+   amountCents:2400,currency:'eur'};},
   async refund(){providerCalls.refund++;return {outcome:'succeeded',
-   providerRefundId:'re_EconomicCircuit0001'};}
+   providerRefundId:'re_EconomicCircuit0001',providerChargeId:'ch_EconomicCircuit0001',
+   amountCents:500,currency:'eur'};}
  }});
  const coordinatedOperations=createH6OperationsCoordinator({repository:operations,
   issueCapability:issueKitchen,
@@ -1131,17 +1134,33 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const webhookAuthorized=await provider.ingestWebhook({eventId:'evt_Issue61Auth001',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,61),captureBefore:webhookDeadline,
-  saboraOrderId:webhookEconomicIntent.intentId});
+  saboraOrderId:webhookEconomicIntent.intentId,providerAmountCents:2400,providerCurrency:'eur'});
  assert.equal(webhookAuthorized.outcome,'applied');
+ // A signed, replayable provider event never advances an economic intent
+ // if the provider's real amount or currency differs from the debt.
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_Issue61Underpaid1',
+  eventType:'payment_intent.succeeded',providerObjectId:webhookEconomicPi,
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,64),
+  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId,
+  providerAmountCents:1000,providerCurrency:'eur'}),/economic_provider_money_mismatch/);
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_Issue61WrongCurrency1',
+  eventType:'payment_intent.succeeded',providerObjectId:webhookEconomicPi,
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,65),
+  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId,
+  providerAmountCents:2400,providerCurrency:'usd'}),/economic_provider_money_mismatch/);
+ assert.equal((await admin.query('SELECT state FROM sabora.economic_settlement_intents_candidate WHERE id=$1',
+  [webhookEconomicIntent.intentId])).rows[0].state,'stripe_authorized');
  const webhookCaptured=await provider.ingestWebhook({eventId:'evt_Issue61Capture1',
   eventType:'payment_intent.succeeded',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,62),
-  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId});
+  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId,
+  providerAmountCents:2400,providerCurrency:'eur'});
  assert.equal(webhookCaptured.outcome,'applied');
  assert.equal((await provider.ingestWebhook({eventId:'evt_Issue61Capture1',
   eventType:'payment_intent.succeeded',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,62),
-  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId})).repeated,true);
+  providerChargeId:'ch_Issue61Webhook01',saboraOrderId:webhookEconomicIntent.intentId,
+  providerAmountCents:2400,providerCurrency:'eur'})).repeated,true);
  const staleEconomicFailure=await provider.ingestWebhook({eventId:'evt_Issue61Stale01',
   eventType:'payment_intent.payment_failed',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,63),

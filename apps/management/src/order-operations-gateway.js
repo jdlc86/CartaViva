@@ -219,12 +219,18 @@ export function createOrderOperationsGateway({send,reconnectDelayMs=1500} = {}) 
         Number.isSafeInteger(x.stripeRefundedCents)&&x.stripeRefundedCents>=0&&
         Number.isSafeInteger(x.stripeNetCents)&&x.stripeNetCents>=0&&
         Number.isSafeInteger(x.outstandingCents)&&x.outstandingCents>=0&&
-        (x.settlementIntentId===null||UUID.test(x.settlementIntentId))&&
+        Array.isArray(x.settlements)&&x.settlements.length<=100&&x.settlements.every(item=>
+          item&&UUID.test(item.intentId)&&['stripe','external'].includes(item.channel)&&
+          typeof item.state==='string'&&item.state.length>=1&&item.state.length<=64&&
+          Number.isSafeInteger(item.allocatedCents)&&item.allocatedCents>=0&&
+          typeof item.providerConfirmed==='boolean'&&typeof item.externalVerified==='boolean')&&
+         (x.settlementIntentId===null||UUID.test(x.settlementIntentId))&&
         [null,'stripe','external'].includes(x.settlementChannel)&&
         typeof x.providerConfirmed==='boolean'&&typeof x.externalVerified==='boolean'))
        throw new OrderOperationsGatewayError('invalid_response');
       return Object.freeze({version:2,notice:data.notice,
-       items:Object.freeze(data.items.map(x=>Object.freeze({...x})))});
+       items:Object.freeze(data.items.map(x=>Object.freeze({...x,
+         settlements:Object.freeze(x.settlements.map(item=>Object.freeze({...item})))})))});
     },
     verifyExternalSettlement({intentId,correlationId}={}){
       if(!UUID.test(intentId)||!CORRELATION.test(correlationId))throw Error('invalid_economic_operation');

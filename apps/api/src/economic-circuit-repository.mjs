@@ -9,11 +9,11 @@ export const RECORD_ECONOMIC_AUTHORIZATION_SQL=`SELECT sabora.record_economic_st
  $1::uuid,$2::text,$3::text,$4::timestamptz,$5::text) AS result`;
 export const REQUEST_ECONOMIC_CAPTURE_SQL=`SELECT sabora.request_economic_stripe_capture_candidate($1::uuid) AS result`;
 export const RECORD_ECONOMIC_CAPTURE_SQL=`SELECT sabora.record_economic_stripe_capture_candidate(
- $1::uuid,$2::text,$3::text,$4::text) AS result`;
+ $1::uuid,$2::text,$3::text,$4::text,$5::bigint,$6::text) AS result`;
 export const REQUEST_ECONOMIC_REFUND_SQL=`SELECT refund_attempt_id,provider_charge_id,amount_cents,
  idempotency_key,action,repeated FROM sabora.request_economic_stripe_refund_candidate($1::uuid)`;
 export const RECORD_ECONOMIC_REFUND_SQL=`SELECT sabora.record_economic_stripe_refund_candidate(
- $1::uuid,$2::text,$3::text,$4::text) AS result`;
+ $1::uuid,$2::text,$3::text,$4::text,$5::bigint,$6::text,$7::text) AS result`;
 export const READ_STAFF_ECONOMIC_ACCOUNTS_SQL=`SELECT sabora.read_staff_economic_accounts_candidate(
  $1::text,$2::text,$3::uuid,$4::text,$5::text,$6::bigint,$7::bigint,$8::text) AS result`;
 export const VERIFY_EXTERNAL_SETTLEMENT_SQL=`SELECT sabora.verify_external_settlement_authorized_candidate(
@@ -83,21 +83,24 @@ export function createEconomicProviderRepository({withTransaction}={}){
    if(!UUID.test(intentId??''))throw Error('invalid_economic_provider_record');
    return withTransaction(query=>one(query(REQUEST_ECONOMIC_CAPTURE_SQL,[intentId])));
   },
-  recordCapture({intentId,outcome,providerChargeId=null,errorCode=null}){
+  recordCapture({intentId,outcome,providerChargeId=null,errorCode=null,
+   providerAmountCents=null,providerCurrency=null}){
    if(!UUID.test(intentId??'')||!['captured','failed','unknown'].includes(outcome))
     throw Error('invalid_economic_provider_record');
    return withTransaction(query=>one(query(RECORD_ECONOMIC_CAPTURE_SQL,
-    [intentId,outcome,providerChargeId,errorCode])));
+    [intentId,outcome,providerChargeId,errorCode,providerAmountCents,providerCurrency])));
   },
   requestRefund({incidentId}){
    if(!UUID.test(incidentId??''))throw Error('invalid_economic_refund');
    return withTransaction(query=>oneRow(query(REQUEST_ECONOMIC_REFUND_SQL,[incidentId])));
   },
-  recordRefund({refundAttemptId,outcome,providerRefundId=null,errorCode=null}){
+  recordRefund({refundAttemptId,outcome,providerRefundId=null,errorCode=null,
+   providerAmountCents=null,providerChargeId=null,providerCurrency=null}){
    if(!UUID.test(refundAttemptId??'')||!['succeeded','failed','unknown'].includes(outcome))
     throw Error('invalid_economic_refund');
    return withTransaction(query=>one(query(RECORD_ECONOMIC_REFUND_SQL,
-    [refundAttemptId,outcome,providerRefundId,errorCode])));
+    [refundAttemptId,outcome,providerRefundId,errorCode,providerAmountCents,
+    providerChargeId,providerCurrency])));
   }
  });
 }

@@ -49,8 +49,15 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
     !Number.isSafeInteger(event?.created)||event.created<1)
   throw Error('invalid_stripe_webhook_payload');
  let providerChargeId=null,saboraOrderId=null;
+ let providerAmountCents=null,providerCurrency=null;
  let captureBefore=null;
  let refundAttemptId=null,refundStatus=null;
+ if(event.type.startsWith('payment_intent.')){
+  const amount=event.type==='payment_intent.succeeded'?object.amount_received:object.amount;
+  if(Number.isSafeInteger(amount)&&amount>0)providerAmountCents=amount;
+  if(typeof object.currency==='string'&&/^[a-z]{3}$/.test(object.currency))
+   providerCurrency=object.currency;
+ }
  if(event.type==='payment_intent.succeeded'){
   providerChargeId=typeof object.latest_charge==='string'?object.latest_charge:object.latest_charge?.id;
   if(typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
@@ -72,6 +79,9 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
   // The refund ID and metadata alone are insufficient: the sealed SQL must
   // also reconcile the provider's original charge to the payment attempt.
   providerChargeId=typeof object?.charge==='string'?object.charge:object?.charge?.id;
+  if(Number.isSafeInteger(object.amount)&&object.amount>0)providerAmountCents=object.amount;
+  if(typeof object.currency==='string'&&/^[a-z]{3}$/.test(object.currency))
+   providerCurrency=object.currency;
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(refundAttemptId??'')||
      !['pending','requires_action','succeeded','failed','canceled'].includes(refundStatus)||
      typeof providerChargeId!=='string'||!/^ch_[A-Za-z0-9]{8,128}$/.test(providerChargeId))
@@ -79,7 +89,8 @@ export function verifyH6StripeWebhook({rawBody,signatureHeader,secret,nowMs=Date
  }
  return Object.freeze({eventId:event.id,eventType:event.type,providerObjectId:object.id,
   providerCreatedAt:new Date(event.created*1000),payloadSha256:createHash('sha256').update(body).digest(),
-  providerChargeId,captureBefore,refundAttemptId,refundStatus,saboraOrderId});
+  providerChargeId,captureBefore,refundAttemptId,refundStatus,saboraOrderId,
+  providerAmountCents,providerCurrency});
 }
 
 export function createH6StripeWebhookHandler({secret,providerRepository,

@@ -42,7 +42,9 @@ test('la PWA de gestión verifica externo y cierra cuenta/mesa sin inventar dine
  await expect(verify).toBeEnabled();
  await verify.click();
  await expect(page.getByText(/Verificación externa registrada/)).toBeVisible();
- await expect(page.getByText('EXTERNO VERIFICADO',{exact:true})).toBeVisible();
+ await expect(page.getByRole('list',{name:'Liquidaciones de Marina'}).getByText('EXTERNO VERIFICADO',{exact:true})).toBeVisible();
+ await expect(page.getByRole('list',{name:'Liquidaciones de Lucía'}).getByText('STRIPE · DEVOLUCIÓN PARCIAL',{exact:true})).toBeVisible();
+ await expect(page.getByRole('list',{name:'Liquidaciones de Lucía'}).getByText('EXTERNO VERIFICADO',{exact:true})).toBeVisible();
 
  const lucia=page.getByRole('listitem').filter({hasText:'Lucía'});
  const closeAccount=lucia.getByRole('button',{name:'Cerrar cuenta operativamente'});

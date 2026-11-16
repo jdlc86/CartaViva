@@ -122,8 +122,9 @@ test('Stripe adapter fixes manual capture and durable idempotency without live c
  const calls=[];
  const adapter=createH6StripeAdapter({credential:'sk_test_candidate_not_real_2026',request:async call=>{
   calls.push(call);
-  if(call.path.endsWith('/capture'))return {id:'pi_12345678',status:'succeeded',latest_charge:'ch_12345678'};
-  return {id:'pi_12345678',status:'requires_capture',latest_charge:{
+  if(call.path.endsWith('/capture'))return {id:'pi_12345678',status:'succeeded',latest_charge:'ch_12345678',
+   amount_received:2750,currency:'eur'};
+  return {id:'pi_12345678',status:'requires_capture',amount:2750,currency:'eur',latest_charge:{
    id:'ch_12345678',payment_method_details:{card:{capture_before:Date.UTC(2026,10,2)/1000}}
   }};
  }});
@@ -137,9 +138,11 @@ test('Stripe adapter fixes manual capture and durable idempotency without live c
  assert.equal(form.get('currency'),'eur');
  const captured=await adapter.capture({providerIntentId:'pi_12345678',
   idempotencyKey:'h6_capture_a6100000_0000_4000_8000_000000000003'});
- assert.deepEqual(captured,{outcome:'captured',providerChargeId:'ch_12345678'});
+ assert.deepEqual(captured,{outcome:'captured',providerIntentId:'pi_12345678',
+  providerChargeId:'ch_12345678',amountCents:2750,currency:'eur'});
  const refundAdapter=createH6StripeAdapter({credential:'sk_test_candidate_not_real_2026',request:async call=>{
-  calls.push(call);return {id:'re_12345678',status:'succeeded'};
+  calls.push(call);return {id:'re_12345678',status:'succeeded',amount:400,
+   currency:'eur',charge:'ch_12345678'};
  }});
  await refundAdapter.refund({refundAttemptId:targetId,providerChargeId:'ch_12345678',amountCents:400,
   idempotencyKey:'h6_refund_a6100000_0000_4000_8000_000000000003'});

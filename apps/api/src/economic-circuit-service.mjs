@@ -1,6 +1,9 @@
 import {StripeAmbiguousResultError} from './h6-stripe-adapter.mjs';
 
 const safe=value=>typeof value==='string'&&/^[a-z0-9_]{1,80}$/.test(value)?value:null;
+const verifiedEuros=(result,expected)=>Number.isSafeInteger(expected)&&expected>0&&
+ Number.isSafeInteger(result?.amountCents)&&result.amountCents===expected&&result.currency==='eur';
+const uncertain=()=>({outcome:'unknown',errorCode:'provider_money_mismatch'});
 export function createEconomicCircuitService({stripe,repository}={}){
  if(!stripe||typeof stripe.authorize!=='function'||typeof stripe.capture!=='function'||typeof stripe.refund!=='function'||
   !repository||typeof repository.recordAuthorization!=='function'||
@@ -9,14 +12,19 @@ export function createEconomicCircuitService({stripe,repository}={}){
   throw Error('invalid_economic_circuit_service');
  const capture=async intentId=>{
   const request=await repository.requestCapture({intentId});
-  let result;
+   if(!Number.isSafeInteger(request.amountCents)||request.amountCents<=0||
+    typeof request.providerIntentId!=='string')throw Error('invalid_economic_capture_request');
+   let result;
   try{result=await stripe.capture({providerIntentId:request.providerIntentId,
    idempotencyKey:request.captureKey});}
   catch(error){if(!(error instanceof StripeAmbiguousResultError))throw error;
    result={outcome:'unknown',errorCode:'provider_result_ambiguous'};}
-  const outcome=['captured','failed'].includes(result.outcome)?result.outcome:'unknown';
-  return repository.recordCapture({intentId,outcome,providerChargeId:result.providerChargeId??null,
-   errorCode:safe(result.errorCode)});
+  if(result.outcome==='captured'&&(!verifiedEuros(result,request.amountCents)||
+    result.providerIntentId!==request.providerIntentId))result=uncertain();
+   const outcome=['captured','failed'].includes(result.outcome)?result.outcome:'unknown';
+   return repository.recordCapture({intentId,outcome,providerChargeId:result.providerChargeId??null,
+    errorCode:safe(result.errorCode),providerAmountCents:outcome==='captured'?result.amountCents:null,
+    providerCurrency:outcome==='captured'?result.currency:null});
  };
  return Object.freeze({
   async authorizeAndCapture(intent){
@@ -35,8 +43,11 @@ export function createEconomicCircuitService({stripe,repository}={}){
     idempotencyKey:intent.authorizationKey});}
    catch(error){if(!(error instanceof StripeAmbiguousResultError))throw error;
     result={outcome:'unknown',errorCode:'provider_result_ambiguous'};}
-   const outcome=['authorized','requires_action','failed'].includes(result.outcome)?result.outcome:'unknown';
-   const recorded=await repository.recordAuthorization({intentId:intent.intentId,outcome,
+   if(['authorized','requires_action'].includes(result.outcome)&&
+     (!verifiedEuros(result,intent.amountCents)||typeof result.providerIntentId!=='string'))
+     result=uncertain();
+    const outcome=['authorized','requires_action','failed'].includes(result.outcome)?result.outcome:'unknown';
+    const recorded=await repository.recordAuthorization({intentId:intent.intentId,outcome,
     providerIntentId:result.providerIntentId??null,captureBefore:result.captureBefore??null,
     errorCode:safe(result.errorCode)});
    if(outcome==='authorized')return capture(intent.intentId);
@@ -51,9 +62,14 @@ export function createEconomicCircuitService({stripe,repository}={}){
     idempotencyKey:request.idempotency_key});}
    catch(error){if(!(error instanceof StripeAmbiguousResultError))throw error;
     result={outcome:'unknown',errorCode:'provider_result_ambiguous'};}
+   if(result.outcome==='succeeded'&&(!verifiedEuros(result,Number(request.amount_cents))||
+     result.providerChargeId!==request.provider_charge_id))result=uncertain();
    const outcome=['succeeded','failed'].includes(result.outcome)?result.outcome:'unknown';
    return repository.recordRefund({refundAttemptId:request.refund_attempt_id,outcome,
-    providerRefundId:result.providerRefundId??null,errorCode:safe(result.errorCode)});
+    providerRefundId:result.providerRefundId??null,errorCode:safe(result.errorCode),
+    providerAmountCents:outcome==='succeeded'?result.amountCents:null,
+    providerChargeId:outcome==='succeeded'?result.providerChargeId:null,
+    providerCurrency:outcome==='succeeded'?result.currency:null});
   }
  });
 }

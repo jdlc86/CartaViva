@@ -102,21 +102,40 @@ export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
     </article>;
    })}</div>
    <ul className="operation-list">{snapshot.items.map(account=>{
-    const pendingExternal=account.settlementChannel==='external'&&account.settlementState==='external_pending'&&account.settlementIntentId;
-    const tone=account.providerConfirmed||account.externalVerified?'brand':account.outstandingCents>0?'warning':'neutral';
+    const tone=account.outstandingCents>0?'warning':'brand';
     return <li key={account.accountId} className="operation-card">
      <div><strong>{account.customerAlias} · {account.customerCode}</strong>
       <p>Bruto {euro(account.grossConsumptionCents)} · cancelado {euro(account.cancelledCents)} · neto {euro(account.netConsumptionCents)}</p>
       <p>Stripe: capturado {euro(account.stripeCapturedCents)} · devuelto {euro(account.stripeRefundedCents)} · neto {euro(account.stripeNetCents)}</p>
-      <p>Pendiente operativo: {euro(account.outstandingCents)} · modalidad {account.paymentTiming==='pay_now'?'al pedir':'al final'} · canal <span className={`channel-wordmark channel-wordmark--${account.settlementChannel??'pending'}`}>{account.settlementChannel==='stripe'?'Stripe':account.settlementChannel==='external'?'CAJA EXTERNA':'SIN ELEGIR'}</span></p></div>
-     <StatusBadge tone={tone}>{account.providerConfirmed?'STRIPE CONFIRMADO':account.externalVerified?'EXTERNO VERIFICADO':pendingExternal?'EXTERNO PENDIENTE':'SIN LIQUIDACIÓN'}</StatusBadge>
-     {pendingExternal?<div className="button-row">
-      <label><input type="checkbox" checked={ack.has(pendingExternal)} disabled={Boolean(busy)}
-       onChange={event=>setAck(current=>{const next=new Set(current);if(event.target.checked)next.add(pendingExternal);else next.delete(pendingExternal);return next;})}/>
-       He comprobado físicamente que el cliente pasó por la caja o terminal externa. Sabora no registra dinero.</label>
-      <button className="button button--primary" type="button" disabled={Boolean(busy)||!ack.has(pendingExternal)}
-       onClick={()=>void verify(pendingExternal)}>{busy===pendingExternal?'Verificando…':'Verificar y liberar operativamente'}</button>
-     </div>:null}
+      <p>Pendiente operativo: {euro(account.outstandingCents)} · modalidad {account.paymentTiming==='pay_now'?'al pedir':'al final'} · canales y verificaciones detallados por liquidación</p></div>
+     <StatusBadge tone={tone}>{account.outstandingCents>0?'SALDO OPERATIVO PENDIENTE':'SALDO OPERATIVO CERO'}</StatusBadge>
+     {account.settlements.length?<ul className="operation-list" aria-label={`Liquidaciones de ${account.customerAlias}`}>
+      {account.settlements.map(item=>{
+       const pendingExternal=item.channel==='external'&&item.state==='external_pending';
+       const refundPending=item.state==='stripe_refund_pending';
+       const label=pendingExternal?'EXTERNO PENDIENTE':item.state==='external_verified'?'EXTERNO VERIFICADO':
+        refundPending?'STRIPE CAPTURADO · DEVOLUCIÓN PENDIENTE':
+        item.state==='stripe_partially_refunded'?'STRIPE · DEVOLUCIÓN PARCIAL':
+        item.state==='stripe_refunded'?'STRIPE · DEVUELTO':
+        item.state==='stripe_captured'?'STRIPE CONFIRMADO':
+        item.state==='stripe_requires_action'?'STRIPE · ACCIÓN PENDIENTE':
+        item.channel==='stripe'?'STRIPE · SIN CONFIRMAR':'EXTERNO · SIN VERIFICAR';
+       return <li key={item.intentId} className="honest-operational-note">
+        <div><strong>{item.channel==='stripe'?'Stripe':'Caja/terminal externa'} · {euro(item.allocatedCents)}</strong>
+         <span> Identificador de liquidación: {item.intentId.slice(0,8)}</span></div>
+        <StatusBadge tone={pendingExternal||refundPending?'warning':item.providerConfirmed||item.externalVerified?'brand':'neutral'}>
+         {label}
+        </StatusBadge>
+        {pendingExternal?<div className="button-row">
+         <label><input type="checkbox" checked={ack.has(item.intentId)} disabled={Boolean(busy)}
+          onChange={event=>setAck(current=>{const next=new Set(current);if(event.target.checked)next.add(item.intentId);else next.delete(item.intentId);return next;})}/>
+          He comprobado físicamente que el cliente pasó por la caja o terminal externa. Sabora no registra dinero.</label>
+         <button className="button button--primary" type="button" disabled={Boolean(busy)||!ack.has(item.intentId)}
+          onClick={()=>void verify(item.intentId)}>{busy===item.intentId?'Verificando…':'Verificar y liberar operativamente'}</button>
+        </div>:null}
+       </li>;
+      })}
+     </ul>:<p className="honest-operational-note">No hay liquidaciones al final individualizadas en esta cuenta. Los importes Stripe históricos se muestran arriba, sin inferir canal externo.</p>}
      {account.outstandingCents===0&&account.operationalState!=='settled'?<div className="button-row">
       <label><input type="checkbox" checked={closeAck.has(account.accountId)} disabled={Boolean(busy)}
        onChange={event=>setCloseAck(current=>{const next=new Set(current);if(event.target.checked)next.add(account.accountId);else next.delete(account.accountId);return next;})}/>

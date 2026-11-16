@@ -409,18 +409,19 @@ BEGIN
  IF NOT FOUND OR v.channel<>'stripe' THEN RAISE EXCEPTION 'economic_intent_not_found' USING errcode='P0002'; END IF;
  IF v.state IN('stripe_capture_requested','stripe_capture_unknown') THEN
   RETURN jsonb_build_object('version',2,'intentId',v.id,'action','capture','repeated',true,
-   'providerIntentId',v.provider_intent_id,'captureKey',v.capture_key); END IF;
+   'providerIntentId',v.provider_intent_id,'captureKey',v.capture_key,'amountCents',v.amount_cents); END IF;
  IF v.state<>'stripe_authorized' THEN RAISE EXCEPTION 'economic_not_capturable' USING errcode='23514'; END IF;
  UPDATE sabora.economic_settlement_intents_candidate SET state='stripe_capture_requested',updated_at=clock_timestamp()
   WHERE id=v.id;
  RETURN jsonb_build_object('version',2,'intentId',v.id,'action','capture','repeated',false,
-  'providerIntentId',v.provider_intent_id,'captureKey',v.capture_key);
+  'providerIntentId',v.provider_intent_id,'captureKey',v.capture_key,'amountCents',v.amount_cents);
 END;
 $capture$;
 
 CREATE FUNCTION sabora.record_economic_stripe_capture_candidate(
- p_intent_id uuid,p_outcome text,p_provider_charge_id text,p_error_code text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
+ p_intent_id uuid,p_outcome text,p_provider_charge_id text,p_error_code text,
+ p_provider_amount_cents bigint,p_provider_currency text)
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
 AS $record$
 DECLARE v sabora.economic_settlement_intents_candidate%ROWTYPE;v_state text;
 BEGIN
@@ -430,6 +431,9 @@ BEGIN
   RAISE EXCEPTION 'invalid_economic_provider_outcome' USING errcode='22023'; END IF;
  SELECT * INTO v FROM sabora.economic_settlement_intents_candidate WHERE id=p_intent_id FOR UPDATE;
  IF NOT FOUND OR v.channel<>'stripe' THEN RAISE EXCEPTION 'economic_intent_not_found' USING errcode='P0002'; END IF;
+  IF p_outcome='captured' AND (p_provider_amount_cents IS DISTINCT FROM v.amount_cents
+  OR p_provider_currency IS DISTINCT FROM 'eur') THEN
+  RAISE EXCEPTION 'economic_provider_money_mismatch' USING errcode='23514'; END IF;
  IF v.state='stripe_captured' THEN
   IF v.provider_charge_id IS DISTINCT FROM p_provider_charge_id THEN
    RAISE EXCEPTION 'economic_provider_conflict' USING errcode='23505'; END IF;
@@ -511,7 +515,8 @@ BEGIN
   'stripeCapturedCents',coalesce(m.captured,0),'stripeRefundedCents',coalesce(m.refunded,0),
   'stripeNetCents',greatest(coalesce(m.captured,0)-coalesce(m.refunded,0),0),
   'outstandingCents',a.outstanding_cents,'operationalState',a.state,
-  'settlementIntentId',s.id,'settlementChannel',s.channel,'settlementState',s.state,
+  'settlements',coalesce(all_settlements.items,'[]'::jsonb),
+   'settlementIntentId',s.id,'settlementChannel',s.channel,'settlementState',s.state,
   'providerConfirmed',coalesce(s.state IN('stripe_captured','stripe_partially_refunded','stripe_refunded'),false),
   'externalVerified',coalesce(s.state='external_verified',false)) ORDER BY b.table_id,p.public_id),'[]'::jsonb)
  INTO v_items FROM sabora.customer_accounts a
@@ -525,6 +530,19 @@ BEGIN
  LEFT JOIN LATERAL (SELECT e.id,e.channel,e.state FROM sabora.economic_settlement_allocations_candidate l
   JOIN sabora.economic_settlement_intents_candidate e ON e.id=l.intent_id
   WHERE l.account_id=a.id ORDER BY e.created_at DESC LIMIT 1) s ON true
+ LEFT JOIN LATERAL (SELECT coalesce(jsonb_agg(jsonb_build_object(
+  'intentId',z.id,'channel',z.channel,'state',z.state,
+  'allocatedCents',z.allocated_cents,'providerConfirmed',z.state IN(
+   'stripe_captured','stripe_refund_pending','stripe_partially_refunded','stripe_refunded'),
+  'externalVerified',z.state='external_verified'
+ ) ORDER BY z.created_at,z.id),'[]'::jsonb) items FROM (
+  SELECT e.id,e.channel,e.state,e.created_at,
+   sum(l.consumption_cents-l.adjusted_cents)::bigint allocated_cents
+  FROM sabora.economic_settlement_allocations_candidate l
+  JOIN sabora.economic_settlement_intents_candidate e ON e.id=l.intent_id
+  WHERE l.account_id=a.id AND l.released_at IS NULL
+  GROUP BY e.id
+ ) z) all_settlements ON true
  LEFT JOIN LATERAL (SELECT
   (coalesce((SELECT sum(l.consumption_cents-l.adjusted_cents)
    FROM sabora.economic_settlement_allocations_candidate l
@@ -771,8 +789,9 @@ END;
 $request_refund$;
 
 CREATE FUNCTION sabora.record_economic_stripe_refund_candidate(
- p_refund_attempt_id uuid,p_outcome text,p_provider_refund_id text,p_error_code text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $record_refund$
+ p_refund_attempt_id uuid,p_outcome text,p_provider_refund_id text,p_error_code text,
+ p_provider_amount_cents bigint,p_provider_charge_id text,p_provider_currency text)
+ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $record_refund$
 DECLARE v_refund sabora.economic_refund_attempts_candidate%ROWTYPE;
  v_intent sabora.economic_settlement_intents_candidate%ROWTYPE;v_next text;v_refunded bigint;
 BEGIN
@@ -784,6 +803,10 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'refund_not_found' USING errcode='P0002'; END IF;
  SELECT * INTO v_intent FROM sabora.economic_settlement_intents_candidate
   WHERE id=v_refund.intent_id FOR UPDATE;
+ IF p_outcome='succeeded' AND (p_provider_amount_cents IS DISTINCT FROM v_refund.amount_cents
+  OR p_provider_charge_id IS DISTINCT FROM v_intent.provider_charge_id
+  OR p_provider_currency IS DISTINCT FROM 'eur') THEN
+  RAISE EXCEPTION 'economic_refund_money_mismatch' USING errcode='23514'; END IF;
  IF v_refund.state='succeeded' THEN
   IF p_outcome<>'succeeded' OR v_refund.provider_refund_id IS DISTINCT FROM p_provider_refund_id
    THEN RAISE EXCEPTION 'invalid_refund_transition' USING errcode='23514'; END IF;
@@ -821,7 +844,8 @@ CREATE FUNCTION sabora.ingest_stripe_webhook_issue61_candidate(
  p_event_id text,p_event_type text,p_provider_object_id text,p_provider_created_at timestamptz,
  p_payload_sha256 bytea,p_provider_charge_id text DEFAULT NULL,p_capture_before timestamptz DEFAULT NULL,
  p_refund_attempt_id uuid DEFAULT NULL,p_refund_status text DEFAULT NULL,
- p_sabora_order_id uuid DEFAULT NULL)
+ p_sabora_order_id uuid DEFAULT NULL,p_provider_amount_cents bigint DEFAULT NULL,
+ p_provider_currency text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp
 AS $stripe_issue61$
 DECLARE v_existing sabora.stripe_webhook_events%ROWTYPE;
@@ -856,15 +880,22 @@ BEGIN
     OR (p_sabora_order_id IS NOT NULL AND e.id=p_sabora_order_id)
    ORDER BY (e.provider_intent_id=p_provider_object_id) DESC LIMIT 1 FOR UPDATE;
   IF NOT FOUND THEN RETURN sabora.ingest_stripe_webhook_h6_candidate(
-   p_event_id,p_event_type,p_provider_object_id,p_provider_created_at,p_payload_sha256,
-   p_provider_charge_id,p_capture_before,p_refund_attempt_id,p_refund_status); END IF;
- ELSIF p_event_type='refund.updated' THEN
+    p_event_id,p_event_type,p_provider_object_id,p_provider_created_at,p_payload_sha256,
+    p_provider_charge_id,p_capture_before,p_refund_attempt_id,p_refund_status); END IF;
+   IF p_event_type IN('payment_intent.amount_capturable_updated','payment_intent.succeeded')
+    AND (p_provider_amount_cents IS DISTINCT FROM v_intent.amount_cents
+     OR p_provider_currency IS DISTINCT FROM 'eur') THEN
+    RAISE EXCEPTION 'economic_provider_money_mismatch' USING errcode='23514'; END IF;
+  ELSIF p_event_type='refund.updated' THEN
   SELECT * INTO v_refund FROM sabora.economic_refund_attempts_candidate r
    WHERE r.id=p_refund_attempt_id FOR UPDATE;
   IF NOT FOUND THEN RETURN sabora.ingest_stripe_webhook_h6_candidate(
-   p_event_id,p_event_type,p_provider_object_id,p_provider_created_at,p_payload_sha256,
-   p_provider_charge_id,p_capture_before,p_refund_attempt_id,p_refund_status); END IF;
- ELSE
+    p_event_id,p_event_type,p_provider_object_id,p_provider_created_at,p_payload_sha256,
+    p_provider_charge_id,p_capture_before,p_refund_attempt_id,p_refund_status); END IF;
+   IF p_provider_amount_cents IS DISTINCT FROM v_refund.amount_cents
+    OR p_provider_currency IS DISTINCT FROM 'eur' THEN
+    RAISE EXCEPTION 'economic_refund_money_mismatch' USING errcode='23514'; END IF;
+  ELSE
   RETURN sabora.ingest_stripe_webhook_h6_candidate(p_event_id,p_event_type,p_provider_object_id,
    p_provider_created_at,p_payload_sha256,p_provider_charge_id,p_capture_before,
    p_refund_attempt_id,p_refund_status);
@@ -901,7 +932,7 @@ BEGIN
      PERFORM sabora.request_economic_stripe_capture_candidate(v_intent.id);
     END IF;
     PERFORM sabora.record_economic_stripe_capture_candidate(v_intent.id,'captured',
-     p_provider_charge_id,NULL);
+     p_provider_charge_id,NULL,p_provider_amount_cents,p_provider_currency);
     v_outcome:='applied';
    ELSIF p_event_type IN('payment_intent.payment_failed','payment_intent.canceled')
     AND v_intent.state IN('stripe_authorization_requested','stripe_authorization_unknown',
@@ -914,7 +945,7 @@ BEGIN
       PERFORM sabora.request_economic_stripe_capture_candidate(v_intent.id);
      END IF;
      PERFORM sabora.record_economic_stripe_capture_candidate(v_intent.id,'failed',NULL,
-      'provider_webhook_failed');
+      'provider_webhook_failed',NULL,NULL);
     END IF;
     v_outcome:='applied';
    END IF;
@@ -926,7 +957,8 @@ BEGIN
    IF p_refund_status IN('succeeded','failed','canceled') THEN
     PERFORM sabora.record_economic_stripe_refund_candidate(v_refund.id,
      CASE WHEN p_refund_status='succeeded' THEN 'succeeded' ELSE 'failed' END,
-     CASE WHEN p_refund_status='succeeded' THEN p_provider_object_id END,NULL);
+     CASE WHEN p_refund_status='succeeded' THEN p_provider_object_id END,NULL,
+      p_provider_amount_cents,p_provider_charge_id,p_provider_currency);
     v_outcome:='applied';
    END IF;
   END IF;
@@ -1070,14 +1102,14 @@ BEGIN
   'sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid)'::regprocedure,
   'sabora.record_economic_stripe_authorization_candidate(uuid,text,text,timestamptz,text)'::regprocedure,
   'sabora.request_economic_stripe_capture_candidate(uuid)'::regprocedure,
-  'sabora.record_economic_stripe_capture_candidate(uuid,text,text,text)'::regprocedure,
+  'sabora.record_economic_stripe_capture_candidate(uuid,text,text,text,bigint,text)'::regprocedure,
   'sabora.verify_external_settlement_authorized_candidate(text,text,uuid,text,uuid,text,bigint,bigint,text)'::regprocedure,
   'sabora.read_staff_economic_accounts_candidate(text,text,uuid,text,text,bigint,bigint,text)'::regprocedure
   ,'sabora.close_economic_table_authorized_candidate(text,text,uuid,text,uuid,uuid,text,bigint,bigint,text)'::regprocedure
   ,'sabora.apply_h6_incident_economic_effect_candidate(uuid)'::regprocedure
   ,'sabora.request_economic_stripe_refund_candidate(uuid)'::regprocedure
-  ,'sabora.record_economic_stripe_refund_candidate(uuid,text,text,text)'::regprocedure
-  ,'sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid)'::regprocedure
+  ,'sabora.record_economic_stripe_refund_candidate(uuid,text,text,text,bigint,text,text)'::regprocedure
+  ,'sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text)'::regprocedure
  ] LOOP EXECUTE format('ALTER FUNCTION %s OWNER TO sabora_h6_fn_owner',f); END LOOP;
 END;
 $owners$;
@@ -1086,12 +1118,12 @@ REVOKE ALL ON FUNCTION sabora.create_customer_economic_settlement_candidate(byte
 GRANT EXECUTE ON FUNCTION sabora.read_customer_economic_consumption_candidate(bytea,uuid,text),sabora.create_customer_economic_settlement_candidate(bytea,uuid,text,text,text,jsonb) TO sabora_h6_customer_runtime;
 REVOKE ALL ON FUNCTION sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_provider_runtime,sabora_h6_operations_runtime;
 GRANT EXECUTE ON FUNCTION sabora.convert_customer_round_to_external_candidate(bytea,uuid,text,uuid) TO sabora_h6_customer_runtime,sabora_b3_confirmation_runtime;
-REVOKE ALL ON FUNCTION sabora.record_economic_stripe_authorization_candidate(uuid,text,text,timestamptz,text),sabora.request_economic_stripe_capture_candidate(uuid),sabora.record_economic_stripe_capture_candidate(uuid,text,text,text) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
-GRANT EXECUTE ON FUNCTION sabora.record_economic_stripe_authorization_candidate(uuid,text,text,timestamptz,text),sabora.request_economic_stripe_capture_candidate(uuid),sabora.record_economic_stripe_capture_candidate(uuid,text,text,text) TO sabora_h6_provider_runtime;
-REVOKE ALL ON FUNCTION sabora.request_economic_stripe_refund_candidate(uuid),sabora.record_economic_stripe_refund_candidate(uuid,text,text,text) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
-GRANT EXECUTE ON FUNCTION sabora.request_economic_stripe_refund_candidate(uuid),sabora.record_economic_stripe_refund_candidate(uuid,text,text,text) TO sabora_h6_provider_runtime;
-REVOKE ALL ON FUNCTION sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
-GRANT EXECUTE ON FUNCTION sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid) TO sabora_h6_provider_runtime;
+REVOKE ALL ON FUNCTION sabora.record_economic_stripe_authorization_candidate(uuid,text,text,timestamptz,text),sabora.request_economic_stripe_capture_candidate(uuid),sabora.record_economic_stripe_capture_candidate(uuid,text,text,text,bigint,text) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
+GRANT EXECUTE ON FUNCTION sabora.record_economic_stripe_authorization_candidate(uuid,text,text,timestamptz,text),sabora.request_economic_stripe_capture_candidate(uuid),sabora.record_economic_stripe_capture_candidate(uuid,text,text,text,bigint,text) TO sabora_h6_provider_runtime;
+REVOKE ALL ON FUNCTION sabora.request_economic_stripe_refund_candidate(uuid),sabora.record_economic_stripe_refund_candidate(uuid,text,text,text,bigint,text,text) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
+GRANT EXECUTE ON FUNCTION sabora.request_economic_stripe_refund_candidate(uuid),sabora.record_economic_stripe_refund_candidate(uuid,text,text,text,bigint,text,text) TO sabora_h6_provider_runtime;
+REVOKE ALL ON FUNCTION sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime;
+GRANT EXECUTE ON FUNCTION sabora.ingest_stripe_webhook_issue61_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text,uuid,bigint,text) TO sabora_h6_provider_runtime;
 REVOKE ALL ON FUNCTION sabora.ingest_stripe_webhook_h6_candidate(text,text,text,timestamptz,bytea,text,timestamptz,uuid,text) FROM sabora_h6_provider_runtime;
 REVOKE ALL ON FUNCTION sabora.apply_h6_incident_economic_effect_candidate(uuid) FROM PUBLIC,anon,authenticated,sabora_admin_writer,sabora_h6_customer_runtime,sabora_h6_operations_runtime,sabora_h6_provider_runtime;
 GRANT EXECUTE ON FUNCTION sabora.apply_h6_incident_economic_effect_candidate(uuid) TO sabora_h6_fn_owner;

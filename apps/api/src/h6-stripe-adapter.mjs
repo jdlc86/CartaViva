@@ -53,16 +53,19 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
    if(value.status==='requires_capture'){
     const deadline=captureBefore(value);
     if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
-    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline});
+    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline,
+     amountCents:value.amount,currency:value.currency});
    }
    if(value.status==='succeeded'){
     const id=chargeId(value);
     if(!CHARGE.test(id??''))throw new StripeAmbiguousResultError();
-    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id});
+    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id,
+     amountCents:value.amount_received,currency:value.currency});
    }
    if(['requires_action','requires_confirmation','requires_payment_method'].includes(value.status))
     return Object.freeze({outcome:'requires_action',providerIntentId:value.id,
-     clientSecret:typeof value.client_secret==='string'?value.client_secret:null});
+     clientSecret:typeof value.client_secret==='string'?value.client_secret:null,
+     amountCents:value.amount,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'payment_intent_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -77,11 +80,13 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
    if(value.status==='requires_capture'){
     const deadline=captureBefore(value);
     if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
-    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline});
+    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline,
+     amountCents:value.amount,currency:value.currency});
    }
    if(['requires_action','requires_confirmation','requires_payment_method'].includes(value.status))
     return Object.freeze({outcome:'requires_action',providerIntentId:value.id,
-     clientSecret:typeof value.client_secret==='string'?value.client_secret:null});
+     clientSecret:typeof value.client_secret==='string'?value.client_secret:null,
+     amountCents:value.amount,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'payment_intent_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -92,7 +97,8 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
    if(value.outcome==='failed')return value;
    const id=chargeId(value);
    if(value.status==='succeeded'&&CHARGE.test(id??''))
-    return Object.freeze({outcome:'captured',providerChargeId:id});
+    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id,
+     amountCents:value.amount_received,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'capture_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -111,7 +117,9 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
     'metadata[sabora_refund_attempt_id]':refundAttemptId}});
    if(value.outcome==='failed')return value;
    if(!REFUND.test(value.id??''))throw new StripeAmbiguousResultError();
-   if(value.status==='succeeded')return Object.freeze({outcome:'succeeded',providerRefundId:value.id});
+   if(value.status==='succeeded')return Object.freeze({outcome:'succeeded',providerRefundId:value.id,
+     amountCents:value.amount,currency:value.currency,
+     providerChargeId:typeof value.charge==='string'?value.charge:value.charge?.id});
    if(value.status==='failed')return Object.freeze({outcome:'failed',errorCode:'refund_failed'});
    throw new StripeAmbiguousResultError();
   }
