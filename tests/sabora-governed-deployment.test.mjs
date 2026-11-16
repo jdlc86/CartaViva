@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdtempSync,chmodSync,rmSync,existsSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
  SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
@@ -141,4 +145,32 @@ test('Sabora-only ingress and egress policy compose two separate deny-by-default
   {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:0,protocol:'tcp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]},
   {bridge:'br-abcdef123456',allowlisted:[{cidr:'198.51.100.10/32',port:53,protocol:'udp'},{cidr:'203.0.113.20/32',port:443,protocol:'tcp'}]}
  ])assert.throws(()=>renderSaboraEgressGuard(candidate),/sabora_egress_stop:/);
+});
+
+test('offline signer CLI does not exit 0 silently and signs with a protected test key',()=>{
+ const cli=fileURLToPath(new URL('../scripts/ops/sabora-sign-release-approval.mjs',import.meta.url));
+ const root=mkdtempSync(join(tmpdir(),'sabora-signer-subprocess-'));
+ try{
+  const env={...process.env,SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256:'a'.repeat(64)};
+  const missing=spawnSync(process.execPath,[cli],{encoding:'utf8',env});
+  assert.notEqual(missing.status,0);
+  assert.match(missing.stderr,/sabora_release_sign_stop:expected_draft_privatekey_output_prefix/);
+  const draft=join(root,'approval.json'),privatePath=join(root,'test-private.pem'),prefix=join(root,'approved');
+  const keys=generateKeyPairSync('ed25519');
+  writeFileSync(privatePath,keys.privateKey.export({format:'pem',type:'pkcs8'}),{mode:0o600});
+  chmodSync(privatePath,0o600);
+  const moment=Date.now();
+  writeFileSync(draft,JSON.stringify(approval({
+   approvedAt:new Date(moment-60000).toISOString(),
+   expiresAt:new Date(moment+600000).toISOString()})),{mode:0o600});
+  const result=spawnSync(process.execPath,[cli,draft,privatePath,prefix],{encoding:'utf8',env});
+  assert.equal(result.status,0,result.stderr);
+  for(const suffix of ['.json','.sig','.pub.pem'])assert.equal(existsSync(prefix+suffix),true);
+  const receipt=verifyReleaseAuthorization(readFileSync(prefix+'.json','utf8'),
+   readFileSync(prefix+'.sig','utf8').trim(),readFileSync(prefix+'.pub.pem','utf8'),
+   {operation:'deploy',sha:fullSha},moment);
+  assert.equal(receipt.releaseSha,fullSha);
+  assert.notEqual(spawnSync(process.execPath,[cli,draft,privatePath,prefix],
+   {encoding:'utf8',env}).status,0,'never overwrite a signed approval');
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

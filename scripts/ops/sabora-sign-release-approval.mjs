@@ -3,6 +3,7 @@
 // No key bytes or signed payload are printed.
 import {readFileSync,writeFileSync,statSync} from 'node:fs';
 import {resolve,sep} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
 import {stableStringify,verifyReleaseAuthorization} from '../ci/sabora-release-governor.mjs';
 
@@ -16,16 +17,21 @@ export function signAuthorizedRelease(approval,privatePem,now=Date.now()){
   {operation:approval.operation,sha:approval.releaseSha},now);
  return {raw,signatureB64,publicKey:pub,receipt:result};
 }
-const self=process.argv[1]&&resolve(process.argv[1])===resolve(new URL(import.meta.url).pathname);
+const self=process.argv[1]&&resolve(process.argv[1])===resolve(fileURLToPath(import.meta.url));
 if(self){
  try{
   if(process.argv.length!==5)throw Error('expected_draft_privatekey_output_prefix');
   const paths=process.argv.slice(2).map(resolve);
   const cwd=resolve(process.cwd())+sep;
   if(paths.some(p=>p.startsWith(cwd)))throw Error('secrets_must_remain_outside_checkout');
-  if(paths[0]===paths[1]||paths[1]===paths[2])throw Error('duplicate_file_paths');
+  if(new Set(paths).size!==3)throw Error('duplicate_file_paths');
   const st=statSync(paths[1]);
-  if(!st.isFile()||(st.mode&0o077)!==0)throw Error('private_key_file_permissions_not_restricted');
+  if(!st.isFile())throw Error('private_key_not_regular');
+   // NTFS mode bits are not an ACL receipt; fail closed until one is supplied.
+   if(process.platform==='win32'){
+    if(!/^[0-9a-f]{64}$/.test(process.env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256??''))
+     throw Error('ntfs_acl_receipt_required');
+   }else if((st.mode&0o077)!==0)throw Error('private_key_file_permissions_not_restricted');
   const result=signAuthorizedRelease(JSON.parse(readFileSync(paths[0],'utf8')),readFileSync(paths[1]));
   writeFileSync(paths[2]+'.json',result.raw,{mode:0o600,flag:'wx'});
   writeFileSync(paths[2]+'.sig',result.signatureB64+'\n',{mode:0o600,flag:'wx'});
