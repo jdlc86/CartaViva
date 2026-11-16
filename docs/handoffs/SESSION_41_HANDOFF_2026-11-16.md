@@ -93,3 +93,24 @@ Codex indica haber corregido seis fallos diferenciados (permiso `EXECUTE`, ident
 
 **Evidencia pendiente:** CI del nuevo SHA integrado, pruebas PG17/HTTP/Chromium, recuperación, permisos, build, UI y aislamiento. Ninguna CI previa de cada rama certifica el nuevo árbol. El PR #60 sigue Draft sin fusionar en main; la posible fusión posterior necesita revisión y decisión explícita. Sin operación SQL de Supabase, VPS, Fleetia ni despliegue.
 
+## S41-4 — CI integral final del árbol combinado #59 + #60 (16-11-2026)
+
+**SHA funcional exacto:** [`1b70069195cab6ac53ec6857809869c1056ec80b`](https://github.com/jdlc86/CartaViva/commit/1b70069195cab6ac53ec6857809869c1056ec80b), commit de dos progenitores en la rama Draft del PR #59. GitHub Actions comprobado nuevamente el 16-11-2026: **8/8 controles aplicables `completed/success`, 0 fallos**:
+
+| Job | Resultado, evidencia |
+| --- | --- |
+| `validate` | **SUCCESS** [Sabora CI #43888424272](https://github.com/jdlc86/CartaViva/actions/runs/43888424272), final 14:57:30Z; H6/PG17/HTTP/Chromium, contratos, builds, Compose, seguridad e aislamiento completaron sus pasos |
+| `generate-lockfile` | **SUCCESS** [Bootstrap #43888424825](https://github.com/jdlc86/CartaViva/actions/runs/43888424825), final 14:52:23Z; migración PG17, driver SQL loopback, integración y ensayo de restauración cifrada del catálogo completaron su paso compuesto |
+| `pg17-nonsuperuser` | **SUCCESS** [#43888424411](https://github.com/jdlc86/CartaViva/actions/runs/43888424411), candidato con inventario 100 migraciones |
+| `client-browser` | **SUCCESS** [#43888424383](https://github.com/jdlc86/CartaViva/actions/runs/43888424383) |
+| `management-browser-smoke` | **SUCCESS** [#43888424304](https://github.com/jdlc86/CartaViva/actions/runs/43888424304) |
+| `two-pwa-installability` | **SUCCESS** [#43888424318](https://github.com/jdlc86/CartaViva/actions/runs/43888424318) |
+| `web-publication` | **SUCCESS** dentro de [#43888424272](https://github.com/jdlc86/CartaViva/actions/runs/43888424272): TLS de laboratorio, nftables efímero y actuación Docker estrictamente Sabora en runner |
+| `functional-ui-gate` | **SUCCESS** [#43888424295](https://github.com/jdlc86/CartaViva/actions/runs/43888424295) |
+
+**Dos puertas intencionalmente SKIPPED, no PASS:** aceptación visual exacta humana y `cv005-b2-disposable-integration` opt-in histórica. En el job `web-publication`, los pasos de creación y conservación de un paquete para `main` se omitieron correctamente porque esta ejecución procede de PR y no de un `push` a `main`; no existe paquete liberado por esta ejecución.
+
+**Resultado limitado:** código unido en rama, suite automatizada conjunta **PASS** en GitHub Actions y restauración de laboratorio dentro del paso PG17 finalizado. **NO** es despliegue real, Stripe sandbox remoto, backup externo doméstico real, validación visual por el propietario, revisión independiente de código, aceptación de seguridad contra amenazas no cubiertas, integración en `main` ni autorización SQL/host. Los PR #59/#60 permanecen abiertos Draft en este corte.
+
+**Próxima decisión de integración:** revisión independiente del SHA combinado, contraste con normativa económica Issue #61 y gobernanza, decisión explícita de fusión con metodología que no duplique el merge del #60 (ya contenido como segundo progenitor del commit #59), y verificación de `main` tras integrar. No crear un tercer PR para copiar lo mismo ni usar el GO de código para levantar Sabora en VPS.
+
