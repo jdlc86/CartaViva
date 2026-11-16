@@ -15,6 +15,23 @@ import {
 const stop=code=>Error('sabora_backup_cli_stop:'+code);
 const HASH=/^[0-9a-f]{64}$/;
 const COMPONENTS=['roles-memberships','schema','data','inventory'];
+const SYSTEM=/^[0-9]{10,20}$/;
+const PROJECT='byhvmumqivmunkmomhup';
+// TLS hostname and independently approved cluster identity must BOTH match
+// the live Postgres exporter; an operator-provided ref alone is not evidence.
+export function validateCaptureSource(meta,env=process.env){
+ if(meta?.schema!=='sabora-logical-backup/v2'||meta.sourceProjectRef!==PROJECT)
+  throw stop('v2_snapshot_required');
+ if(env.PGHOST!=='db.'+PROJECT+'.supabase.co'||env.PGSSLMODE!=='verify-full'||
+    !isAbsolute(env.PGSSLROOTCERT??'')||env.PGHOSTADDR||
+    env.PGSERVICE||env.PGSERVICEFILE||
+    (env.PGPORT!==undefined&&env.PGPORT!=='5432'))
+  throw stop('supabase_verified_tls_identity_required');
+ if(!SYSTEM.test(env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER??''))
+  throw stop('independent_cluster_identity_pin_required');
+ return env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER;
+}
+
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.getPrototypeOf(value)===Object.prototype;
 
@@ -101,6 +118,7 @@ function validatePgDump(spec,pgDump,mode){
  const formats=spec.args.filter(value=>value.startsWith('-F')||
   value.toLowerCase().startsWith('--format='));
  if(formats.length!==1||!['-Fc','--format=custom'].includes(formats[0])||
+  lower.some(x=>x==='--snapshot'||x.startsWith('--snapshot='))||
   schemas.join('|')!=='--schema=sabora|--schema=sabora_migration_meta'||
   !lower.includes('--'+mode+'-only')||lower.includes('--schema-only')===lower.includes('--data-only')||
   spec.args.some(value=>value.startsWith('-f')||value.startsWith('-n')||value.startsWith('-N')||
@@ -134,6 +152,7 @@ async function request(path){
  let value;try{value=JSON.parse(bytes.toString('utf8'));}
  catch{throw stop('request_not_json');}
  const binaries=postgresBinaries();validateOperationalPlan(value,binaries);
+  validateCaptureSource(value.metadata);
  await Promise.all([verifyExecutable(binaries.psql),verifyExecutable(binaries.pgDump)]);
  for(const spec of value.components.filter(item=>item.stdinPath!==undefined)){
   const sql=(await protectedRead(spec.stdinPath,1024*1024)).toString('utf8');
@@ -158,7 +177,9 @@ export async function main(){
  if(operation==='capture'){
   const [requestPath,directory]=args(2),plan=await request(requestPath);
   const result=await captureEncryptedBackupBundle({directory,keyPath:keyPath(),
-   metadata:plan.metadata,components:plan.components});
+   metadata:plan.metadata,components:plan.components,
+   snapshot:{exporter:{command:plan.components[3].command,args:plan.components[3].args},
+    expectedSystemIdentifier:validateCaptureSource(plan.metadata)}});
   return {operation,backupId:result.manifest.backupId,releaseSha:result.manifest.releaseSha,
    manifestSha256:result.manifestSha256,containsKey:false,containsPlaintext:false};
  }
