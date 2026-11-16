@@ -1258,3 +1258,12 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 
 **Puertas:** revisión de código del delta y Actions sobre SHA nuevo, posible corrección si fallan; GO de merge no automático. Persiste ausencia de Stripe sandbox remoto y aprobación visual humana. El experimento no toca Supabase operativo, VPS, Cloudflare, Fleetia ni `main`.
 
+## 106. S41 — S41-rv02: segunda revisión propia y NO-GO de merge (16-11-2026)
+
+[Revisión formal `COMMENTED` #5922856161](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5922856161) sobre el [SHA `13d2ff40`](https://github.com/jdlc86/CartaViva/commit/13d2ff406e3b534e72dc2dcde529b9a015a9bfb4). Reevalúa 16 archivos del delta S41-rv01: P1-01/P1-02 de circuito económico nuevo y P2 de caja abordados en código (no proveedor real), **pero quedan**:
+- **P1-04, reembolso económico imposible con `pg` real:** bigint `amount_cents` → string `'500'` en SQL/driver; `economic-circuit-service.mjs` lo pasa sin normalizar al adapter Stripe, que exige `Number.isSafeInteger`. El mock PG17 no valida la entrada. Corregir entero seguro y probar `'500'` end-to-end.
+- **P1-05, H6 histórico `pay_now` sin cotejo de dinero** en captura, reembolso, conciliación y webhook (`h6-payment-orchestrator.mjs`; SQL histórico `20261027122858_*.sql`). La normativa económica Issue #61 comprende ambos momentos. Requiere proteger ruta H6 y renovar RPCs con **nueva migración auditada**, sin reescribir historia.
+- **P2-06, lectura de Stripe autorizada no expande `latest_charge`**; `retrieve` GET pide solo PI, luego necesita `capture_before` de Charge. Añadir expansión y prueba de respuesta realista para reconciliación sin sondeo.
+
+**Corte CI `13d2ff40`**: 6/8 verdes, 2 trabajos largos en curso, 2 gates opt-in SKIPPED; no atribuir verde integral a este SHA. **NO-GO merge** hasta cerrar 2 P1, proteger recuperación, pruebas negativas focalizadas, batería final PG17/HTTP/Chromium/restore/UI y revisión del delta. No hay aprobación independiente ni Stripe remoto/humano; #59 y #60 siguen Draft, no `main`, no Supabase operativo/VPS/Fleetia. [Continuidad S41-7](../handoffs/SESSION_41_HANDOFF_2026-11-16.md).
+
