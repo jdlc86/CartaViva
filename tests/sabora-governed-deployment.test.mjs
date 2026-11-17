@@ -172,13 +172,22 @@ $ErrorActionPreference='Stop'
 $paths=@($env:SABORA_TEST_DIR,$env:SABORA_TEST_DRAFT,$env:SABORA_TEST_KEY)
 $user=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 foreach ($path in $paths) {
- $acl=Get-Acl -LiteralPath $path
+ $isDirectory=[System.IO.Directory]::Exists($path)
+ if ($isDirectory) {
+  $acl=[System.IO.Directory]::GetAccessControl($path)
+ } else {
+  $acl=[System.IO.File]::GetAccessControl($path)
+ }
  $acl.SetAccessRuleProtection($true,$false)
  $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
   $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
   [System.Security.AccessControl.AccessControlType]::Allow)
  $acl.AddAccessRule($rule)
- Set-Acl -LiteralPath $path -AclObject $acl
+ if ($isDirectory) {
+  [System.IO.Directory]::SetAccessControl($path,$acl)
+ } else {
+  [System.IO.File]::SetAccessControl($path,$acl)
+ }
 }
 `;
    const ps=join(process.env.SystemRoot??'C:\\Windows','System32',

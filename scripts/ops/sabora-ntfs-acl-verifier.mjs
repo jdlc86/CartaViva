@@ -10,7 +10,11 @@ const POWERSHELL=`
 $ErrorActionPreference='Stop'
 $p=[System.Text.Encoding]::UTF8.GetString(
  [System.Convert]::FromBase64String($env:SABORA_NTFS_PATH_B64))
-$acl=Get-Acl -LiteralPath $p
+if ([System.IO.Directory]::Exists($p)) {
+ $acl=[System.IO.Directory]::GetAccessControl($p)
+} else {
+ $acl=[System.IO.File]::GetAccessControl($p)
+}
 if (-not $acl.AreAccessRulesProtected) { throw 'inherited_dacl' }
 $me=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $owner=$acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
