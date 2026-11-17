@@ -104,15 +104,25 @@ const waitForScope=async(page,path)=>{
  // confusing that hard-reload path with an uncontrolled application.
  // The new document must still have the exact expected controller; registration
  // and activation alone must never be counted as sufficient.
- const next=new URL(page.url());
- next.searchParams.set('cv012-control-check','1');
- await page.goto(next.href,{waitUntil:'load'});
- try{
-  await page.waitForFunction(expected=>
-   navigator.serviceWorker.controller&&
-   new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
-   expectedScript,{timeout:35000});
- }catch(error){
+ // Chrome can finish activating a worker before clients.claim() has
+ // taken control of the first post-install document. Require control after
+ // real same-scope navigations; never count registration alone as PASS.
+ // Bound the attempts: an app with no functioning controller still FAILS.
+ let controlError=null,controlled=false;
+ for(let attempt=1;attempt<=3;attempt++){
+  const next=new URL(page.url());
+  next.searchParams.set('cv012-control-check',String(attempt));
+  await page.goto(next.href,{waitUntil:'load'});
+  try{
+   await page.waitForFunction(expected=>
+    navigator.serviceWorker.controller&&
+    new URL(navigator.serviceWorker.controller.scriptURL).pathname===expected,
+    expectedScript,{timeout:12000});
+   controlled=true;
+   break;
+  }catch(error){controlError=error;}
+ }
+ if(!controlled){
   // Safe diagnostics: only public worker paths/states, never cookies or URLs
   // with QR fragments. This is not a fallback that turns failures into PASS.
   const diagnostic=await page.evaluate(async()=>{
@@ -127,7 +137,7 @@ const waitForScope=async(page,path)=>{
     }))};
   }).catch(()=>({inspection:'unavailable'}));
   throw new Error('cv012_service_worker_control_missing: '+
-   JSON.stringify({path,expectedScript,diagnostic}),{cause:error});
+   JSON.stringify({path,expectedScript,diagnostic}),{cause:controlError});
  }
 };
 const inventory=page=>page.evaluate(async()=>{
