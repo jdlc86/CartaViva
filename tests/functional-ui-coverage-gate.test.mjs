@@ -120,6 +120,42 @@ test('governed main UI gate rejects zero/missing/divergent ancestry and real sta
   assert.notEqual(notAncestor.status,0);
   assert.match(notAncestor.stderr,/governed_functional_ui_base_not_ancestor/);
   assert.equal(loadGovernedBaseManifest(fixture,base,head).schemaVersion,1);
+
+  // Codex PR69-P2-01-R1 proved that a partial but ancestral Git manifest
+  // could bypass downgrade comparison; preserve the single disposable Git test.
+  const rejectPrior=(name,change)=>{
+   git('checkout','-b','adversarial-'+name,base);
+   file(COVERAGE_FILE,JSON.stringify(change(structuredClone(manifest)),null,2)+'\n');
+   const malformedBase=commit('bad prior '+name);
+   manifestFile();
+   const repairedHead=commit('restore full inventory '+name);
+   const result=run(malformedBase,repairedHead);
+   assert.notEqual(result.status,0,'should reject '+name+' predecessor');
+   assert.match(result.stderr,/governed_functional_ui_base_manifest_incomplete/,
+    'missing fail-closed signal for '+name);
+   git('checkout','main');
+  };
+  rejectPrior('partial',prior=>{
+   prior.capabilities=[prior.capabilities.find(x=>x.id==='CV-007-catalogo')];return prior;
+  });
+  rejectPrior('duplicate',prior=>{
+   prior.capabilities.push(structuredClone(prior.capabilities[0]));return prior;
+  });
+  rejectPrior('bad-status',prior=>{
+   prior.capabilities[0].status='UNKNOWN';return prior;
+  });
+  rejectPrior('blank-id',prior=>{
+   prior.capabilities[0].id=' ';return prior;
+  });
+  rejectPrior('missing-evidence',prior=>{
+   prior.capabilities[0].evidence=[];return prior;
+  });
+  rejectPrior('missing-reason',prior=>{
+   prior.capabilities.find(x=>x.status==='PENDIENTE').blockers=[];return prior;
+  });
+  rejectPrior('null-row',prior=>{
+   prior.capabilities[0]=null;return prior;
+  });
   const downgraded=structuredClone(manifest);
   const catalog=downgraded.capabilities.find(x=>x.id==='CV-007-catalogo');
   catalog.status='PENDIENTE';
