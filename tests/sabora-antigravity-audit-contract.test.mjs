@@ -66,6 +66,7 @@ test('Antigravity report is correlated by exact SHA/type and scoped fields',()=>
   /invalid_audit_report_content/);
 });
 test('Antigravity comment without a structured result cannot be treated as an approval',()=>{
- assert.throws(()=>validateAntigravityIssueComment({body:'GO, everything works'},request),
+ assert.throws(()=>validateAntigravityIssueComment({user:{login:'jdlc86'},
+  body:'GO, everything works'},request),
   /missing_or_ambiguous_json_block/);
 });
