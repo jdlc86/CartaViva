@@ -112,10 +112,10 @@ try{
  psql(source,'postgres',ledgerSql);
  // Exercise a real column ACL that pg_restore cannot be assumed to restore
  // after our explicit table REVOKE+GRANT reconciliation.
- psql(source,'postgres','grant select (id) on sabora.staff_members to sabora_staff_reader;');
+ psql(source,'postgres','grant select (user_id) on sabora.staff_members to sabora_staff_reader;');
  const sourceColumnAcl=psql(source,'postgres',`
   select attacl is not null from pg_attribute
-  where attrelid='sabora.staff_members'::regclass and attname='id';`).stdout.trim();
+  where attrelid='sabora.staff_members'::regclass and attname='user_id';`).stdout.trim();
  assert.equal(sourceColumnAcl,'t');
  const postgresVersion=psql(source,'postgres','show server_version;').stdout.trim();
  assert.match(postgresVersion,/^17\./);
@@ -288,7 +288,7 @@ try{
  assert.equal(restoredInventory,sourceInventory);
  const restoredColumnAcl=psql(target,'sabora_external_restore_ci',`
   select attacl is not null from pg_attribute
-  where attrelid='sabora.staff_members'::regclass and attname='id';`).stdout.trim();
+  where attrelid='sabora.staff_members'::regclass and attname='user_id';`).stdout.trim();
  assert.equal(restoredColumnAcl,'t','column ACL survives external encrypted restore');
  await rm(inventoryOut,{force:true});
  const ledgerCount=psql(target,'sabora_external_restore_ci',

@@ -7387,8 +7387,23 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      }
     });
     notifier=liveListener;
+    // This F21 scheduler has a cash-only dispatch callback and no Stripe
+    // capture transport. The sealed provider listing is GLOBAL: an earlier
+    // pay_now fixture may become due during the real five-minute window.
+    // Keep the real provider query but scope this test-only worker to the
+    // F21 account. A cash round on that account returning 'capture' still
+    // fails below; no production scheduler, SQL or deadline is changed.
+    const listNaturalWindowSchedulable=async opts=>{
+     const entries=await h6Provider.listSchedulable(opts);
+     if(entries.length===0)return entries;
+     const ownRows=(await admin.query(`SELECT order_id FROM sabora.order_rounds
+      WHERE account_id=$1 AND order_id=ANY($2::uuid[])`,
+      [first.accountId,entries.map(entry=>entry.orderId)])).rows;
+     const ownOrderIds=new Set(ownRows.map(row=>row.order_id));
+     return entries.filter(entry=>ownOrderIds.has(entry.orderId));
+    };
     const createScheduler=()=>createH6DeferredDispatchScheduler({
-     listSchedulable:opts=>h6Provider.listSchedulable(opts),
+     listSchedulable:listNaturalWindowSchedulable,
      dispatchDue:async({orderId})=>{
       const result=await h6Provider.requestDueCapture({orderId});
       assert.equal(result.action,'dispatch',
