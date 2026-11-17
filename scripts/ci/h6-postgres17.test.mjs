@@ -1745,6 +1745,38 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  await assert.rejects(admin.query(`UPDATE sabora.order_lines SET status='preparing' WHERE id=$1`,
   [compensationLine]),/kitchen_dispatch_not_acknowledged/);
 
+ // An ambiguous authorization with no provider_intent_id is recoverable
+ // from authentic, money-matched capturable evidence without inventing
+ // capture/dispatch and without a second webhook receipt.
+ const unknownCustomer=await register({alias:'Cliente autorización ambigua',company:null});
+ const unknownVisit=await flow.authorizeVisit({
+  customerSessionToken:unknownCustomer.token,tableId,qrToken});
+ const unknownQuote=await flow.quote({customerSessionToken:unknownCustomer.token,
+  tableId,qrToken,visitId:unknownVisit.visitId,basketId:unknownVisit.basketId,
+  lines:[{itemId,selection,quantity:1}]});
+ const unknownOrder=await flow.confirm({customerSessionToken:unknownCustomer.token,
+  tableId,qrToken,visitId:unknownVisit.visitId,basketId:unknownVisit.basketId,
+  requestKey:'h6_unknown_recovery_0001',paymentMode:'pay_now',
+  lines:[{quoteId:unknownQuote.lines[0].quoteId,itemId,selection,quantity:1}]});
+ assert.equal((await provider.recordAuthorization({orderId:unknownOrder.orderId,
+  outcome:'unknown',providerIntentId:null,
+  errorCode:'provider_result_ambiguous'})).payment_state,'authorization_unknown');
+ const unknownDeadline=new Date(Math.floor((Date.now()+5*86400000)/1000)*1000);
+ const unknownEvent={eventId:'evt_H6UnknownRecover01',
+  eventType:'payment_intent.amount_capturable_updated',
+  providerObjectId:'pi_H6UnknownRecover01',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,94),providerChargeId:'ch_H6UnknownRecover01',
+  captureBefore:unknownDeadline,saboraOrderId:unknownOrder.orderId,
+  providerAmountCents:2400,providerCurrency:'eur'};
+ const recovered=await provider.ingestWebhook(unknownEvent);
+ assert.equal(recovered.outcome,'stale','sealed recorder already transitioned to authorized');
+ const proof=(await admin.query(`SELECT p.state,p.provider_intent_id,p.capture_before
+  FROM sabora.payment_attempts p JOIN sabora.order_rounds r ON r.id=p.round_id
+  WHERE r.order_id=$1`,[unknownOrder.orderId])).rows[0];
+ assert.equal(proof.state,'authorized');
+ assert.equal(proof.provider_intent_id,'pi_H6UnknownRecover01');
+ assert.equal(proof.capture_before.toISOString(),unknownDeadline.toISOString());
+ assert.equal((await provider.ingestWebhook(unknownEvent)).repeated,true);
  const webhookCustomer=await register({alias:'Cliente webhook',company:null});
  const webhookVisit=await flow.authorizeVisit({customerSessionToken:webhookCustomer.token,tableId,qrToken});
  const webhookQuote=await flow.quote({customerSessionToken:webhookCustomer.token,tableId,qrToken,
@@ -1798,6 +1830,15 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   providerIntentId:'pi_H6WebhookIntent1'});
  // A payment intent found through its provider ID still has exactly one
  // order: mismatch in signed metadata must not persist or acknowledge.
+ // Even a signed failure or cancellation has to match the exact
+ // durable amount/currency, not only capturable/succeeded events.
+ await assert.rejects(provider.ingestWebhook({
+  eventId:'evt_H6BadFailedAmount01',
+  eventType:'payment_intent.payment_failed',
+  providerObjectId:'pi_H6WebhookIntent1',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,95),
+  saboraOrderId:webhookOrder.orderId,providerAmountCents:1,
+  providerCurrency:'eur'}),/h6_provider_money_mismatch/);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6WrongOrder01',
   eventType:'payment_intent.amount_capturable_updated',
   providerObjectId:'pi_H6WebhookIntent1',providerCreatedAt:new Date(),
