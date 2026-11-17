@@ -6,6 +6,7 @@ import {basename,dirname,resolve,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
 import {stableStringify,verifyReleaseAuthorization} from '../ci/sabora-release-governor.mjs';
+import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
 
 export function signAuthorizedRelease(approval,privatePem,now=Date.now()){
  const raw=stableStringify(approval);
@@ -22,28 +23,39 @@ if(self){
  try{
   if(process.argv.length!==5)throw Error('expected_draft_privatekey_output_prefix');
   const paths=process.argv.slice(2).map(value=>resolve(value));
-  // Check canonical parents too: an outside-looking directory symlink must
-  // not redirect a private key or output artifacts into the checkout.
-  const canonical=paths.map((path,index)=>index===2?
-   resolve(realpathSync(dirname(path)),basename(path)):realpathSync(path));
-  const cwd=realpathSync(process.cwd());
+  const checkout=realpathSync(resolve(fileURLToPath(new URL('../..',import.meta.url))));
+  const outputFiles=['.json','.sig','.pub.pem'].map(ext=>paths[2]+ext);
+  const actualPaths=[...paths.slice(0,2),...outputFiles];
+  // Compare actual output filenames, not just output prefix. Realpath of
+  // the parent blocks symlink indirection into the repository.
+  const canonical=actualPaths.map((path,index)=>index<2?realpathSync(path):
+   resolve(realpathSync(dirname(path)),basename(path)));
   const comparable=value=>process.platform==='win32'?value.toLowerCase():value;
-  const inside=value=>comparable(value)===comparable(cwd)||
-   comparable(value).startsWith(comparable(cwd)+sep);
-  if([...paths,...canonical].some(inside))throw Error('secrets_must_remain_outside_checkout');
-  if(new Set(canonical.map(comparable)).size!==3)throw Error('duplicate_file_paths');
+  const inside=value=>comparable(value)===comparable(checkout)||
+   comparable(value).startsWith(comparable(checkout)+sep);
+  if([...actualPaths,...canonical].some(inside))
+   throw Error('secrets_must_remain_outside_checkout');
+  if(new Set(canonical.map(comparable)).size!==canonical.length)
+   throw Error('duplicate_file_paths');
   for(const path of paths.slice(0,2)){
    const stat=lstatSync(path);
    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)
     throw Error('protected_input_not_regular');
   }
   const st=lstatSync(paths[1]);
-  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)throw Error('private_key_not_regular');
-   // NTFS mode bits are not an ACL receipt; fail closed until one is supplied.
-   if(process.platform==='win32'){
-    if(!/^[0-9a-f]{64}$/.test(process.env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256??''))
-     throw Error('ntfs_acl_receipt_required');
-   }else if((st.mode&0o077)!==0)throw Error('private_key_file_permissions_not_restricted');
+  if(process.platform==='win32'){
+   const receipt=process.env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256;
+   if(!/^[0-9a-f]{64}$/.test(receipt??''))
+    throw Error('ntfs_acl_receipt_required');
+   const actual=verifiedNtfsAclDigest(paths[1]);
+   if(receipt!==actual)throw Error('ntfs_acl_receipt_mismatch');
+   // A protected output directory is required before writing approvals:
+   // createWriteStream/file modes alone do not establish Windows DACLs.
+   verifiedNtfsAclDigest(dirname(paths[2]));
+   verifiedNtfsAclDigest(paths[0]);
+  }else if((st.mode&0o077)!==0){
+   throw Error('private_key_file_permissions_not_restricted');
+  }
   const result=signAuthorizedRelease(JSON.parse(readFileSync(paths[0],'utf8')),readFileSync(paths[1]));
   writeFileSync(paths[2]+'.json',result.raw,{mode:0o600,flag:'wx'});
   writeFileSync(paths[2]+'.sig',result.signatureB64+'\n',{mode:0o600,flag:'wx'});

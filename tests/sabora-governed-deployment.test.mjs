@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {generateKeyPairSync,sign} from 'node:crypto';
+import {verifiedNtfsAclDigest} from '../scripts/ops/sabora-ntfs-acl-verifier.mjs';
 import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
  SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
 
@@ -163,6 +164,35 @@ test('offline signer CLI does not exit 0 silently and signs with a protected tes
   writeFileSync(draft,JSON.stringify(approval({
    approvedAt:new Date(moment-60000).toISOString(),
    expiresAt:new Date(moment+600000).toISOString()})),{mode:0o600});
+  if(process.platform==='win32'){
+   // CI-only ephemeral DACLs: remove inherited grants on the temporary
+   // directory, draft and test private key, then measure the real SDDL.
+   const prepare=`
+$ErrorActionPreference='Stop'
+$paths=@($env:SABORA_TEST_DIR,$env:SABORA_TEST_DRAFT,$env:SABORA_TEST_KEY)
+$user=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
+foreach ($path in $paths) {
+ $acl=Get-Acl -LiteralPath $path
+ $acl.SetAccessRuleProtection($true,$false)
+ $rule=New-Object System.Security.AccessControl.FileSystemAccessRule(
+  $user,'FullControl','Allow')
+ $acl.AddAccessRule($rule)
+ Set-Acl -LiteralPath $path -AclObject $acl
+}
+`;
+   const ps=join(process.env.SystemRoot??'C:\\Windows','System32',
+    'WindowsPowerShell','v1.0','powershell.exe');
+   const config=spawnSync(ps,['-NoProfile','-NonInteractive','-EncodedCommand',
+    Buffer.from(prepare,'utf16le').toString('base64')],{windowsHide:true,encoding:'utf8',
+    env:{...env,SABORA_TEST_DIR:root,SABORA_TEST_DRAFT:draft,SABORA_TEST_KEY:privatePath}});
+   assert.equal(config.status,0,'Windows runner must create a real restricted DACL');
+   assert.throws(()=>verifiedNtfsAclDigest(join(tmpdir(),'definitely-missing.sabora')),
+    /sabora_ntfs_acl_stop:/);
+   env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256=verifiedNtfsAclDigest(privatePath);
+   const wrongAcl=spawnSync(process.execPath,[cli,draft,privatePath,prefix],
+    {encoding:'utf8',env:{...env,SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256:'a'.repeat(64)}});
+   assert.notEqual(wrongAcl.status,0,'arbitrary 64-hex receipt is not an ACL proof');
+  }
   const result=spawnSync(process.execPath,[cli,draft,privatePath,prefix],{encoding:'utf8',env});
   assert.equal(result.status,0,result.stderr);
   for(const suffix of ['.json','.sig','.pub.pem'])assert.equal(existsSync(prefix+suffix),true);
@@ -170,6 +200,13 @@ test('offline signer CLI does not exit 0 silently and signs with a protected tes
    readFileSync(prefix+'.sig','utf8').trim(),readFileSync(prefix+'.pub.pem','utf8'),
    {operation:'deploy',sha:fullSha},moment);
   assert.equal(receipt.releaseSha,fullSha);
+  // Launch from a different working directory: checkout protection is
+  // derived from the script's real module path, never process.cwd().
+  const insideCheckout=fileURLToPath(new URL('../AGENTS.md',import.meta.url));
+  const escapeResult=spawnSync(process.execPath,[cli,draft,insideCheckout,
+   join(root,'must-not-sign')],{encoding:'utf8',env,cwd:root});
+  assert.notEqual(escapeResult.status,0);
+  assert.match(escapeResult.stderr,/secrets_must_remain_outside_checkout/);
   assert.notEqual(spawnSync(process.execPath,[cli,draft,privatePath,prefix],
    {encoding:'utf8',env}).status,0,'never overwrite a signed approval');
   if(process.platform!=='win32'){
