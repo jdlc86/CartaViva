@@ -125,13 +125,44 @@ request(){
  ip netns exec "$namespace" curl --noproxy '*' --silent --show-error --fail \
   --connect-timeout 1 --max-time 2 "$@" >/dev/null 2>&1
 }
+# A server that has only been forked is not necessarily listening yet.
+# Prove each exact fixture endpoint locally before testing cross-namespace
+# routing and then the strict positive/negative firewall invariants.
+wait_listener(){
+ local label="$1" namespace="$2" url="$3"
+ for attempt in {1..25}; do
+  if ip netns exec "$namespace" curl --noproxy '*' --silent --show-error --fail \
+    --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; then return 0; fi
+  sleep 0.2
+ done
+ echo "sabora_nft_lab_stop:fixture_listener_unavailable:${label}" >&2
+ ip netns exec "$namespace" ss -lnt >&2 || true
+ exit 1
+}
+wait_listener web_ingress "$web" http://172.28.240.2:8443/
+wait_listener web_wrong_port "$web" http://172.28.240.2:9443/
+wait_listener external_reverse "$ext" http://198.51.100.10:9443/
+wait_listener dest_allowed "$dst" http://203.0.113.10:443/
+wait_listener dest_wrong_port "$dst" http://203.0.113.10:8443/
+wait_listener dest_wrong_address "$dst" http://203.0.113.30:443/
+wait_listener dest_ipv6 "$dst" http://[2001:db8:113::10]:7443/
+
+# A negative firewall assertion is *never* treated as flaky. Readiness
+# retries apply only to connections that MUST work without the filter.
 must_reach(){
  local label="$1"; shift
- for attempt in 1 2 3 4 5; do if request "$@"; then return 0; fi; sleep 0.2; done
+ for attempt in {1..20}; do if request "$@"; then return 0; fi; sleep 0.25; done
+ echo "sabora_nft_lab_preflight_diagnostics:${label}" >&2
+ for namespace in "$ext" "$web" "$app" "$dst" "$rtr"; do
+  echo "sabora_nft_lab_namespace:${namespace}" >&2
+  ip -n "$namespace" -brief address show >&2 || true
+  ip -n "$namespace" route show >&2 || true
+  ip -n "$namespace" -6 route show >&2 || true
+ done
+ ip netns exec "$rtr" sysctl net.ipv4.ip_forward net.ipv6.conf.all.forwarding >&2 || true
+ ip netns exec "$web" ss -lnt >&2 || true
+ ip netns exec "$rtr" bridge link show >&2 || true
  if [[ "$label" = egress_ipv6_pre ]]; then
-  ip -n "$app" -6 address show >&2; ip -n "$app" -6 route show >&2
-  ip -n "$rtr" -6 address show >&2; ip -n "$rtr" -6 route show >&2
-  ip -n "$dst" -6 address show >&2; ip -n "$dst" -6 route show >&2
   ip netns exec "$dst" ss -lnt6 >&2 || true
   ip netns exec "$app" curl --noproxy '*' --verbose --connect-timeout 1 --max-time 2 \
    http://[2001:db8:113::10]:7443/ >&2 || true
