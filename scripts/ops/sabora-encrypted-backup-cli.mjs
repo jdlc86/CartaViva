@@ -17,6 +17,10 @@ const HASH=/^[0-9a-f]{64}$/;
 const COMPONENTS=['roles-memberships','schema','data','inventory'];
 const SYSTEM=/^[0-9]{10,20}$/;
 const PROJECT='byhvmumqivmunkmomhup';
+// One direct verified connection: never inherit libpq options, service
+// indirection, client certs or connection overrides from the operator shell.
+const ALLOWED_PG_ENV=new Set(['PGHOST','PGPORT','PGSSLMODE','PGSSLROOTCERT',
+ 'PGUSER','PGPASSWORD','PGCONNECT_TIMEOUT','PGAPPNAME','PGCLIENTENCODING']);
 // TLS hostname and independently approved cluster identity must BOTH match
 // the live Postgres exporter; an operator-provided ref alone is not evidence.
 export function validateCaptureSource(meta,env=process.env){
@@ -27,9 +31,41 @@ export function validateCaptureSource(meta,env=process.env){
     env.PGSERVICE||env.PGSERVICEFILE||
     (env.PGPORT!==undefined&&env.PGPORT!=='5432'))
   throw stop('supabase_verified_tls_identity_required');
+ if(Object.keys(env).some(k=>/^PG[A-Z0-9_]+$/.test(k)&&!ALLOWED_PG_ENV.has(k)))
+  throw stop('unapproved_libpq_environment');
+ if(!HASH.test(env.SABORA_BACKUP_APPROVED_CA_SHA256??''))
+  throw stop('independent_tls_ca_pin_required');
  if(!SYSTEM.test(env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER??''))
   throw stop('independent_cluster_identity_pin_required');
  return env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER;
+}
+
+// The CA is not a secret, but its exact bytes must be independently pinned.
+// libpq still validates server identity via PGSSLMODE=verify-full.
+export async function verifyPinnedTlsRootCert(env=process.env){
+ const path=env.PGSSLROOTCERT,expected=env.SABORA_BACKUP_APPROVED_CA_SHA256;
+ if(!isAbsolute(path??'')||!HASH.test(expected??''))
+  throw stop('independent_tls_ca_pin_required');
+ let handle;
+ try{
+  const before=await lstat(path);
+  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||
+     before.size<32||before.size>1024*1024)throw stop('unsafe_tls_ca_file');
+  handle=await open(path,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW??0));
+  const after=await handle.stat();
+  if(!after.isFile()||after.nlink!==1||after.size!==before.size||
+     after.dev!==before.dev||after.ino!==before.ino)
+   throw stop('unsafe_tls_ca_file');
+  const contents=await handle.readFile();
+  if(!contents.includes(Buffer.from('-----BEGIN CERTIFICATE-----'))||
+    !contents.includes(Buffer.from('-----END CERTIFICATE-----'))||
+    createHash('sha256').update(contents).digest('hex')!==expected)
+   throw stop('tls_ca_pin_mismatch');
+  return true;
+ }catch(error){
+  if(error?.message?.startsWith('sabora_backup_cli_stop:'))throw error;
+  throw stop('unsafe_tls_ca_file');
+ }finally{await handle?.close();}
 }
 
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
@@ -161,7 +197,8 @@ async function request(path){
  catch{throw stop('request_not_json');}
  const binaries=postgresBinaries();validateOperationalPlan(value,binaries);
   validateCaptureSource(value.metadata);
- await Promise.all([verifyExecutable(binaries.psql),verifyExecutable(binaries.pgDump)]);
+ await Promise.all([verifyExecutable(binaries.psql),verifyExecutable(binaries.pgDump),
+  verifyPinnedTlsRootCert()]);
  for(const spec of value.components.filter(item=>item.stdinPath!==undefined)){
   const sql=(await protectedRead(spec.stdinPath,1024*1024)).toString('utf8');
   if(/^\s*\\/m.test(sql))throw stop('psql_meta_command_not_allowed');
