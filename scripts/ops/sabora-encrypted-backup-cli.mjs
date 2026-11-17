@@ -22,7 +22,7 @@ const SOURCE_ROOT=resolve(fileURLToPath(new URL('../..',import.meta.url)));
 export function currentAuditedMigrationTreeSha256(){
  const hash=createHash('sha256');
  for(const {name,sha256} of buildMigrationAudit(SOURCE_ROOT).migrations)
-  hash.update(name).update('\\0').update(sha256).update('\\n');
+  hash.update(name).update('\0').update(sha256).update('\n');
  return hash.digest('hex');
 }
 // One direct verified connection: never inherit libpq options, service
