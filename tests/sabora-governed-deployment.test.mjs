@@ -180,9 +180,19 @@ foreach ($path in $paths) {
  }
  $acl.SetAccessRuleProtection($true,$false)
  $acl.SetOwner($user)
- $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
-  $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
-  [System.Security.AccessControl.AccessControlType]::Allow)
+ if ($isDirectory) {
+  # Inherited *child* permissions must be restricted too; otherwise files
+  # written by the signer inherit an empty DACL and cannot be reopened.
+  $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
+   $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
+   [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',
+   [System.Security.AccessControl.PropagationFlags]::None,
+   [System.Security.AccessControl.AccessControlType]::Allow)
+ } else {
+  $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
+   $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
+   [System.Security.AccessControl.AccessControlType]::Allow)
+ }
  $acl.AddAccessRule($rule)
  if ($isDirectory) {
   [System.IO.Directory]::SetAccessControl($path,$acl)
