@@ -18,7 +18,12 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.match(cli,/SABORA_BACKUP_PSQL_BIN/);
  assert.match(cli,/SABORA_BACKUP_PG_DUMP_BIN/);
  assert.match(cli,/fsConstants\.O_NOFOLLOW/);
- assert.match(cli,/plaintext_output_argument/);
+ // Exact allowlisted PostgreSQL argv shapes now supersede the legacy
+ // keyword-based output guard. Long/short, attached and alternate flags
+ // cannot appear in either expected argument vector.
+ assert.match(cli,/exactArgs\(spec\.args,PSQL_ARGS\)/);
+ assert.match(cli,/exactArgs\(spec\.args,expected\)/);
+ assert.doesNotMatch(cli,/function rejectSharedArgs/);
  assert.match(integration,/destinationClass:'offsite'/);
  assert.match(integration,/destinationClass:'vps-encrypted-cache'/);
  assert.match(integration,/await rm\(capture,\{recursive:true,force:true\}\)/);
