@@ -2,6 +2,8 @@
 
 **Estado: mecanismo documental/contractual candidato en [PR #59](https://github.com/jdlc86/CartaViva/pull/59), no puerta de aprobación ni proceso operativo siempre disponible.** Fuente de diseño: handoff entregado por el propietario `handoff_para_chatgpt.md`, «HANDOFF TÉCNICO PARA CHATGPT — INTEGRACIÓN CON GOOGLE ANTIGRAVITY». Este documento no altera los requisitos, contratos visuales, la puerta de autorización, ni el plan de revisión independiente Codex. La jerarquía normativa y `AGENTS.md` siguen intactos.
 
+> **Ampliación separada V2 (lectura y escritura):** [guía de encargos V2](SABORA_ANTIGRAVITY_GITHUB_TASK_BRIDGE_V2.md). El V1 conserva su contrato **estrictamente de lectura**, pese al commit de prueba real [#66](https://github.com/jdlc86/CartaViva/issues/66) sobre una rama aislada.
+
 > **Guía de inicio para futuras sesiones:** [SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md](SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md). Incluye el procedimiento de solicitud, lectura, validación del informe y cómo usar el puente sin acceso remoto al Windows.
 
 ## Canal y límites acreditables
@@ -24,7 +26,7 @@ El **esquema de entrada declarado `SaboraAuditRequest v1.0`** exige exactamente 
 2. Crear Issue en `jdlc86/CartaViva` como `jdlc86`, con etiqueta existente `audit-request` y exactamente un bloque ```json. **Leer el Issue creado para verificar la autoría y la etiqueta efectivamente aplicadas**; una etiqueta solicitada pero no materializada no dispara el orquestador. No crear múltiples Issues redundantes para el mismo trabajo.
 3. Con el ordenador Windows activo, iniciar el puente en PowerShell con `start_realtime_bridge.ps1` **o** procesar una solicitud pendiente de forma puntual:
    ```powershell
-   python C:\Users\Miko\Documents\Antigravity\Sabora\orchestrator\bin\poll_github_audits.py --poll-github --publish
+   python "$env:SABORA_ORCHESTRATOR_DIR\bin\poll_github_audits.py" --poll-github --publish
    ```
    El orquestador debe impedir ejecución si el autor no es `jdlc86`, la etiqueta no es exacta o si el SHA/ruta no son válidos.
 4. Comprobar el Issue, el cambio `audit-request` -> `audit-completed`, y el comentario con resultado estructurado del mismo SHA. Ejercitar `validateAntigravityAuditIssue` y `validateAntigravityIssueComment` antes de clasificar el resultado; si faltan etiqueta/informe/SHA, el estado es **PENDIENTE, no GO**.

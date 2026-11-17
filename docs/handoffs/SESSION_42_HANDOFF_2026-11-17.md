@@ -229,3 +229,13 @@ Se incorporó en la rama existente [PR #59](https://github.com/jdlc86/CartaViva/
 - **Criterio de cierre:** comprobar un comentario de ejecución de Antigravity en #66 con código/diff, SHA publicado en la rama de prueba, pruebas efectivamente realizadas y preservación del perímetro; contrastar contra GitHub. Si no ocurre, estado **BLOQUEADO POR DESPACHO DE ESCRITURA**, que requerirá implementar/verificar el manejador Windows fuera del repositorio. No prometer trabajo desatendido ni despliegue.
 
 Referencias de método: [guía de futuras sesiones §8.7](../integrations/SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md) y [puente V1](../integrations/SABORA_ANTIGRAVITY_AUDIT_BRIDGE_V1.md). **Sin solicitudes nuevas a Codex ni segunda auditoría independiente**, y sin tocar el contenido funcional del PR #59.
+
+### S42-11 — puente Antigravity V2, primera escritura verificada externamente (17-11-2026)
+
+El propietario entregó `HANDOFF_CONTRATO_V2_PARA_CHATGPT.md`, que declara el orquestador local Windows para lectura, desarrollo, corrección, propuestas y seguridad, con etiquetas y seis fases multiagente. La [guía V2 integrada en GitHub](../integrations/SABORA_ANTIGRAVITY_GITHUB_TASK_BRIDGE_V2.md) distingue esas declaraciones de la evidencia verificable.
+
+**Prueba material confirmada:** [Issue #66](https://github.com/jdlc86/CartaViva/issues/66) con etiqueta `autonomy-completed` y [comentario de cierre](https://github.com/jdlc86/CartaViva/issues/66#issuecomment-6936826906) publicado el 17-11-2026 03:07:16 UTC. GitHub confirma el [commit `5059b8d367adca47b1058169585423a33844f476`](https://github.com/jdlc86/CartaViva/commit/5059b8d367adca47b1058169585423a33844f476) en `test/antigravity-write-roundtrip-20261117`, parent exacto `792c08bd4db367321922ec93b288d01d858c8598` y **un solo archivo cambiado**, la ruta Windows de `SABORA_ANTIGRAVITY_AUDIT_BRIDGE_V1.md`. Se replicó esa corrección en el candidato PR #59 sin fusionar ramas ni tocar `main`.
+
+**Pruebas declaradas por Antigravity, no reejecutadas por ChatGPT:** `git diff --check` PASS; búsqueda de ruta Windows PASS; `node --test tests/sabora-antigravity-audit-contract.test.mjs` 7/7 PASS. El SHA #66 no tiene checks GitHub Actions asociados. Modelos alternativos, fallback 429, seis fases, Cloudflare, heartbeat 90 s, polling 15 s, aislamiento del host y ACL **no inspeccionados por GitHub**.
+
+**Estado:** integración V2 nominal de escritura por Issue **demostrada**; seguridad integral del orquestador y flujo largo de programación **no validados**. PR #59 sigue Draft, NO-GO merge/despliegue. Revisión independiente nueva solo mediante orden expresa. No tocar Fleetia, VPS, Supabase operativo ni otros proyectos.
