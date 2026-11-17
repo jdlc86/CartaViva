@@ -7577,8 +7577,31 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
   ]);
   await admin.query(`UPDATE sabora.catalog_items SET sold_out=false,withdrawn_at=NULL
    WHERE id='b0a00000-0000-4000-8000-000000000330'`);
+  // The M3/M2 webhook uses a test-only Stripe adapter with injected transport.
+  // Only evidence lookup is allowed; no real Stripe network or capture.
+  const m3StripeEvidenceCalls=[];
+  let m3StripeEvidenceMode='valid';
+  const m3StripeEvidence=createH6StripeAdapter({
+   credential:'sk_test_M3_Stripe_Evidence_Integration_No_Network',
+   request:async call=>{
+    m3StripeEvidenceCalls.push(call);
+    assert.equal(call.method,'GET');
+    const url=new URL('https://stripe.invalid'+call.path);
+    assert.equal(url.pathname,'/v1/payment_intents/pi_F20HistoryPending12345');
+    assert.equal(url.searchParams.get('expand[]'),'latest_charge');
+    if(m3StripeEvidenceMode==='unavailable')throw Error('disposable_stripe_timeout');
+    return {object:'payment_intent',id:'pi_F20HistoryPending12345',
+     status:'requires_capture',
+     amount:m3StripeEvidenceMode==='wrong_amount'?1199:1200,currency:'eur',
+     metadata:{sabora_order_id:payNowDiner.order},
+     latest_charge:{id:m3StripeEvidenceMode==='wrong_charge'?
+      'ch_M3ForeignCharge12345':'ch_M3CapturableCharge12345',
+      payment_method_details:{card:{capture_before:Math.floor(Date.now()/1000)+86400}}}};
+   }
+  });
   const dormantStripe=Object.freeze({
    testOnlyDisabled:true,
+   retrieveCapturableEvidence:params=>m3StripeEvidence.retrieveCapturableEvidence(params),
    authorize:async()=>{throw Error('unexpected_m2_provider_call');},
    capture:async()=>{throw Error('unexpected_m2_provider_call');},
    release:async()=>{throw Error('unexpected_m2_provider_call');},
@@ -7609,6 +7632,10 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     webhook:Object.freeze({secret:signedStripeSecret}),
     issueStaffCapability:staffIssuer,issueCloseCapability:closeIssuer}
   };
+  await assert.rejects(createM2RestaurantCandidate({...m2Options,
+   h6:{...m2Options.h6,stripe:{...dormantStripe,retrieveCapturableEvidence:undefined}}}),
+   /invalid_m2_restaurant_candidate/,
+   'opted-in Stripe ingress cannot start without a Charge evidence adapter');
   const m2=await createM2RestaurantCandidate(m2Options);
   try{
    const address=await m2.listen({host:'127.0.0.1',port:0});
@@ -7700,7 +7727,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'postgresql://postgres:sabora_ci_ephemeral_only@db.remote.invalid/postgres'}}),
    /disposable_m3_bootstrap_required/);
   const m3=await startDisposableM3Runtime({options:{...m2Options,
-   h6:{...m2Options.h6,webhook:undefined},
+   h6:{...m2Options.h6},
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
