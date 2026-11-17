@@ -1744,6 +1744,35 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   /h6_provider_identity_not_committed/);
  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
   [earlyEventId])).rows[0].n,0,'early webhook cannot leave a replay-masking ignored receipt');
+ // Real signed HTTP + Fastify + sealed PG17 for an expanded Charge must
+ // return a retryable 503 before provider_intent_id has been committed.
+ const earlyHttpServer=apiRequire('fastify')({logger:false});
+ const earlyHttpTime=Date.now(),earlyHttpSeconds=Math.floor(earlyHttpTime/1000);
+ const earlyHttpSecret='whsec_pg17early_0123456789abcdef';
+ const earlyHttpEventId='evt_H6EarlyHttp001';
+ const earlyHttpBody=Buffer.from(JSON.stringify({
+  id:earlyHttpEventId,object:'event',livemode:false,created:earlyHttpSeconds,
+  type:'payment_intent.amount_capturable_updated',
+  data:{object:{id:'pi_H6WebhookIntent1',object:'payment_intent',
+   amount:2400,currency:'eur',metadata:{sabora_order_id:webhookOrder.orderId},
+   latest_charge:{id:'ch_H6WebhookCharge1',
+    payment_method_details:{card:{capture_before:earlyHttpSeconds+86400}}}}}
+ }));
+ const earlyHttpHeader='t='+earlyHttpSeconds+',v1='+createHmac('sha256',earlyHttpSecret)
+  .update(earlyHttpSeconds+'.').update(earlyHttpBody).digest('hex');
+ try{
+  registerH6StripeWebhookHttp(earlyHttpServer,{secret:earlyHttpSecret,
+   clock:()=>earlyHttpTime,providerRepository:{
+    ingestWebhook:event=>provider.ingestWebhook(event)
+   }});
+  await earlyHttpServer.ready();
+  const response=await earlyHttpServer.inject({method:'POST',
+   url:'/api/v1/provider/stripe/webhook',payload:earlyHttpBody,
+   headers:{'content-type':'application/json','stripe-signature':earlyHttpHeader}});
+  assert.equal(response.statusCode,503,'real early Stripe event must be retryable');
+  assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+   [earlyHttpEventId])).rows[0].n,0,'503 leaves no ignored event for deduplication');
+ }finally{await earlyHttpServer.close();}
  await provider.recordAuthorization({orderId:webhookOrder.orderId,outcome:'requires_action',
   providerIntentId:'pi_H6WebhookIntent1'});
  // A payment intent found through its provider ID still has exactly one
