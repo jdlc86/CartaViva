@@ -174,8 +174,9 @@ $user=[System.Security.Principal.WindowsIdentity]::GetCurrent().User
 foreach ($path in $paths) {
  $acl=Get-Acl -LiteralPath $path
  $acl.SetAccessRuleProtection($true,$false)
- $rule=New-Object System.Security.AccessControl.FileSystemAccessRule(
-  $user,'FullControl','Allow')
+ $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
+  $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
+  [System.Security.AccessControl.AccessControlType]::Allow)
  $acl.AddAccessRule($rule)
  Set-Acl -LiteralPath $path -AclObject $acl
 }
@@ -185,7 +186,9 @@ foreach ($path in $paths) {
    const config=spawnSync(ps,['-NoProfile','-NonInteractive','-EncodedCommand',
     Buffer.from(prepare,'utf16le').toString('base64')],{windowsHide:true,encoding:'utf8',
     env:{...env,SABORA_TEST_DIR:root,SABORA_TEST_DRAFT:draft,SABORA_TEST_KEY:privatePath}});
-   assert.equal(config.status,0,'Windows runner must create a real restricted DACL');
+   assert.equal(config.status,0,
+    'Windows runner DACL fixture: '+String(config.stderr??'')
+     .replace(/[A-Za-z]:\\[^\s]*/g,'<runner-path>').slice(0,500));
    assert.throws(()=>verifiedNtfsAclDigest(join(tmpdir(),'definitely-missing.sabora')),
     /sabora_ntfs_acl_stop:/);
    env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256=verifiedNtfsAclDigest(privatePath);
