@@ -166,6 +166,22 @@ export function loadGovernedBaseManifest(root,baseSha,headSha){
  if(prior?.schemaVersion!==1||prior.stage!=='FUNCIONAL_PRIMERO'||
    !Array.isArray(prior.capabilities))reject('base_manifest_invalid');
  if(!validGovernedPriorManifest(prior))reject('base_manifest_incomplete');
+ // Traceability must hold in the *historical* commit, not just in the
+ // manifest's claimed paths or in the current checkout. Reuse exactly the
+ // same source-marker/surface guard on that tree; do not reimplement it.
+ const historicalFiles=new Map();
+ const readHistorical=path=>{
+  if(!fileSafe(path))return null;
+  if(!historicalFiles.has(path)){
+   let source=null;
+   try{source=git(['show',baseSha+':'+path]);}
+   catch{/* Absent/unreadable prior path is a closed gate, not a bootstrap. */}
+   historicalFiles.set(path,source);
+  }
+  return historicalFiles.get(path);
+ };
+ const historical=inspectFunctionalUi({manifest:prior,read:readHistorical});
+ if(historical.errors.length)reject('base_manifest_incomplete');
  return prior;
 }
 

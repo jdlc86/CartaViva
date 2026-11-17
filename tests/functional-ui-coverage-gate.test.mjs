@@ -156,6 +156,25 @@ test('governed main UI gate rejects zero/missing/divergent ancestry and real sta
   rejectPrior('null-row',prior=>{
    prior.capabilities[0]=null;return prior;
   });
+  // Codex R2 PoC: valid ancestral manifest but its evidence marker never
+  // existed in that commit's source tree. The successor repairs the JSON.
+  rejectPrior('missing-marker',prior=>{
+   prior.capabilities[0].evidence[0].marker=
+    '__marker_absent_from_base_commit__';return prior;
+  });
+  // Full baseline references must exist at base SHA, even when the head has
+  // both the files and markers. Removing the historical file must be fatal.
+  git('checkout','-b','adversarial-missing-file',base);
+  const missingPath=manifest.capabilities[0].evidence[0].path;
+  git('rm','--',missingPath);
+  const missingFileBase=commit('bad prior missing source file');
+  file(missingPath,[...markers.get(missingPath)].join('\n')+'\n');
+  const restoredFileHead=commit('restore missing historical evidence file');
+  const missingFileResult=run(missingFileBase,restoredFileHead);
+  assert.notEqual(missingFileResult.status,0);
+  assert.match(missingFileResult.stderr,
+   /governed_functional_ui_base_manifest_incomplete/);
+  git('checkout','main');
   const downgraded=structuredClone(manifest);
   const catalog=downgraded.capabilities.find(x=>x.id==='CV-007-catalogo');
   catalog.status='PENDIENTE';
