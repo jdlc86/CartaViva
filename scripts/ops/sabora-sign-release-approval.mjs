@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Offline-only owner action. NEVER invoke from GitHub Actions, a VPS or CI.
 // No key bytes or signed payload are printed.
-import {readFileSync,writeFileSync,statSync} from 'node:fs';
-import {resolve,sep} from 'node:path';
+import {readFileSync,writeFileSync,lstatSync,realpathSync} from 'node:fs';
+import {basename,dirname,resolve,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
 import {stableStringify,verifyReleaseAuthorization} from '../ci/sabora-release-governor.mjs';
@@ -22,11 +22,23 @@ if(self){
  try{
   if(process.argv.length!==5)throw Error('expected_draft_privatekey_output_prefix');
   const paths=process.argv.slice(2).map(value=>resolve(value));
-  const cwd=resolve(process.cwd())+sep;
-  if(paths.some(p=>p.startsWith(cwd)))throw Error('secrets_must_remain_outside_checkout');
-  if(new Set(paths).size!==3)throw Error('duplicate_file_paths');
-  const st=statSync(paths[1]);
-  if(!st.isFile())throw Error('private_key_not_regular');
+  // Check canonical parents too: an outside-looking directory symlink must
+  // not redirect a private key or output artifacts into the checkout.
+  const canonical=paths.map((path,index)=>index===2?
+   resolve(realpathSync(dirname(path)),basename(path)):realpathSync(path));
+  const cwd=realpathSync(process.cwd());
+  const comparable=value=>process.platform==='win32'?value.toLowerCase():value;
+  const inside=value=>comparable(value)===comparable(cwd)||
+   comparable(value).startsWith(comparable(cwd)+sep);
+  if([...paths,...canonical].some(inside))throw Error('secrets_must_remain_outside_checkout');
+  if(new Set(canonical.map(comparable)).size!==3)throw Error('duplicate_file_paths');
+  for(const path of paths.slice(0,2)){
+   const stat=lstatSync(path);
+   if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)
+    throw Error('protected_input_not_regular');
+  }
+  const st=lstatSync(paths[1]);
+  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)throw Error('private_key_not_regular');
    // NTFS mode bits are not an ACL receipt; fail closed until one is supplied.
    if(process.platform==='win32'){
     if(!/^[0-9a-f]{64}$/.test(process.env.SABORA_RELEASE_NTFS_ACL_RECEIPT_SHA256??''))
