@@ -1871,7 +1871,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   providerObjectId:'pi_H6WebhookIntent1',providerCreatedAt:new Date(),
   payloadSha256:Buffer.alloc(32,88),captureBefore:new Date(Date.now()+86400000),
   saboraOrderId:compensationOrder.orderId,
-  providerAmountCents:2400,providerCurrency:'eur'}),/h6_provider_order_mismatch/);
+  providerAmountCents:2400,providerCurrency:'eur'}),/h6_provider_intent_order_conflict/);
  // A different provider intent cannot attach to this order once the
  // original intent was durably recorded. No ignored receipt is permitted.
  const mismatchedIntentEventId='evt_H6WrongIntent01';
