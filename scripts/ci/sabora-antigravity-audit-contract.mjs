@@ -51,7 +51,7 @@ export function renderAntigravityAuditIssue(value){
 }
 export function extractAntigravityJsonBlock(body){
  if(typeof body!=='string'||body.length>100000)reject('invalid_body');
- const blocks=[...body.matchAll(/```json[ \t]*\r?\n([\s\\S]*?)\r?\n```/g)];
+ const blocks=[...body.matchAll(/```json[ \t]*\r?\n([\s\S]*?)\r?\n```/g)];
  if(blocks.length!==1||blocks[0][1].length>50000)reject('missing_or_ambiguous_json_block');
  try{return JSON.parse(blocks[0][1]);}catch{reject('invalid_json_block');}
 }
