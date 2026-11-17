@@ -24,7 +24,7 @@ El **esquema de entrada declarado `SaboraAuditRequest v1.0`** exige exactamente 
 2. Crear Issue en `jdlc86/CartaViva` como `jdlc86`, con etiqueta existente `audit-request` y exactamente un bloque ```json. **Leer el Issue creado para verificar la autoría y la etiqueta efectivamente aplicadas**; una etiqueta solicitada pero no materializada no dispara el orquestador. No crear múltiples Issues redundantes para el mismo trabajo.
 3. Con el ordenador Windows activo, iniciar el puente en PowerShell con `start_realtime_bridge.ps1` **o** procesar una solicitud pendiente de forma puntual:
    ```powershell
-   python C:\Users\Miko\Documents\Antigravity\Sabora\orchestrator\bin\poll_github_audits.py --poll-github --publish
+   python "$env:SABORA_ORCHESTRATOR_DIR\bin\poll_github_audits.py" --poll-github --publish
    ```
    El orquestador debe impedir ejecución si el autor no es `jdlc86`, la etiqueta no es exacta o si el SHA/ruta no son válidos.
 4. Comprobar el Issue, el cambio `audit-request` -> `audit-completed`, y el comentario con resultado estructurado del mismo SHA. Ejercitar `validateAntigravityAuditIssue` y `validateAntigravityIssueComment` antes de clasificar el resultado; si faltan etiqueta/informe/SHA, el estado es **PENDIENTE, no GO**.
