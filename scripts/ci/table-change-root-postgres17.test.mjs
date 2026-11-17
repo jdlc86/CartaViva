@@ -7579,29 +7579,29 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
    WHERE id='b0a00000-0000-4000-8000-000000000330'`);
   // The M3/M2 webhook uses a test-only Stripe adapter with injected transport.
   // Only evidence lookup is allowed; no real Stripe network or capture.
-  const m3StripeEvidenceCalls=[];
-  let m3StripeEvidenceMode='valid';
-  const m3StripeEvidence=createH6StripeAdapter({
+  const m2StripeEvidenceCalls=[];
+  let m2StripeEvidenceMode='valid';
+  const m2StripeEvidence=createH6StripeAdapter({
    credential:'sk_test_M3_Stripe_Evidence_Integration_No_Network',
    request:async call=>{
-    m3StripeEvidenceCalls.push(call);
+    m2StripeEvidenceCalls.push(call);
     assert.equal(call.method,'GET');
     const url=new URL('https://stripe.invalid'+call.path);
     assert.equal(url.pathname,'/v1/payment_intents/pi_F20HistoryPending12345');
     assert.equal(url.searchParams.get('expand[]'),'latest_charge');
-    if(m3StripeEvidenceMode==='unavailable')throw Error('disposable_stripe_timeout');
+    if(m2StripeEvidenceMode==='unavailable')throw Error('disposable_stripe_timeout');
     return {object:'payment_intent',id:'pi_F20HistoryPending12345',
      status:'requires_capture',
-     amount:m3StripeEvidenceMode==='wrong_amount'?1199:1200,currency:'eur',
+     amount:m2StripeEvidenceMode==='wrong_amount'?1199:1200,currency:'eur',
      metadata:{sabora_order_id:payNowDiner.order},
-     latest_charge:{id:m3StripeEvidenceMode==='wrong_charge'?
+     latest_charge:{id:m2StripeEvidenceMode==='wrong_charge'?
       'ch_M3ForeignCharge12345':'ch_M3CapturableCharge12345',
       payment_method_details:{card:{capture_before:Math.floor(Date.now()/1000)+86400}}}};
    }
   });
   const dormantStripe=Object.freeze({
    testOnlyDisabled:true,
-   retrieveCapturableEvidence:params=>m3StripeEvidence.retrieveCapturableEvidence(params),
+   retrieveCapturableEvidence:params=>m2StripeEvidence.retrieveCapturableEvidence(params),
    authorize:async()=>{throw Error('unexpected_m2_provider_call');},
    capture:async()=>{throw Error('unexpected_m2_provider_call');},
    release:async()=>{throw Error('unexpected_m2_provider_call');},
@@ -7644,6 +7644,62 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     status:'ok',service:'sabora-m2-candidate',mode:'opt-in'});
    assert.deepEqual((await m2.app.inject('/ready')).json(),{
     status:'ready',service:'sabora-m2-candidate',mode:'opt-in'});
+   // P1-INT-01: actual M2 webhook composition, HMAC raw bytes, Stripe adapter
+   // evidence GET and sealed PG17 provider login; no direct webhook route mounting.
+   const m2CapturableId='evt_M3CapturableWiring001';
+   const m2Capturable={id:m2CapturableId,object:'event',livemode:false,
+    created:Math.floor(Date.now()/1000),
+    type:'payment_intent.amount_capturable_updated',
+    data:{object:{object:'payment_intent',id:'pi_F20HistoryPending12345',
+     amount:1200,currency:'eur',
+     metadata:{sabora_order_id:payNowDiner.order},
+     latest_charge:'ch_M3CapturableCharge12345'}}};
+   const deliverM2Stripe=(event,signOptions={})=>{
+    const signed=signStripeEvent(event,signOptions);
+    return m2.app.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
+     headers:{'content-type':'application/json',
+      'stripe-signature':signed.signatureHeader},payload:signed.rawBody});
+   };
+   assert.equal((await admin.query('SELECT state FROM sabora.payment_attempts WHERE round_id=$1',
+    [payNowDiner.round])).rows[0].state,'requires_action');
+   assert.equal((await deliverM2Stripe(m2Capturable,
+    {secret:randomBytes(32)})).statusCode,400);
+   assert.equal(m2StripeEvidenceCalls.length,0,
+    'invalid HMAC must not query Stripe evidence');
+   m2StripeEvidenceMode='unavailable';
+   assert.equal((await deliverM2Stripe(m2Capturable)).statusCode,503,
+    'transient Stripe outage must remain unacknowledged');
+   m2StripeEvidenceMode='wrong_charge';
+   assert.equal((await deliverM2Stripe(m2Capturable)).statusCode,503,
+    'foreign expanded Charge must not authorize the pending round');
+   m2StripeEvidenceMode='wrong_amount';
+   assert.equal((await deliverM2Stripe(m2Capturable)).statusCode,503,
+    'provider money mismatch must not authorize the pending round');
+   const m2Rejected=(await admin.query(`SELECT state,
+    (SELECT count(*)::int FROM sabora.stripe_webhook_events WHERE event_id=$2) AS receipts
+    FROM sabora.payment_attempts WHERE round_id=$1`,
+    [payNowDiner.round,m2CapturableId])).rows[0];
+   assert.equal(m2Rejected.state,'requires_action');
+   assert.equal(m2Rejected.receipts,0,
+    'provider failures cannot persist a receipt or change payment state');
+   m2StripeEvidenceMode='valid';
+   const m2Applied=await deliverM2Stripe(m2Capturable);
+   assert.equal(m2Applied.statusCode,200,m2Applied.body);
+   assert.deepEqual(m2Applied.json(),{received:true});
+   const m2Authorized=(await admin.query(`SELECT p.state,p.provider_intent_id,
+    (SELECT count(*)::int FROM sabora.stripe_webhook_events WHERE event_id=$2) AS receipts
+    FROM sabora.payment_attempts p WHERE p.round_id=$1`,
+    [payNowDiner.round,m2CapturableId])).rows[0];
+   assert.equal(m2Authorized.state,'authorized',
+    'M2 webhook must reconcile valid capturable authorization through PG17');
+   assert.equal(m2Authorized.provider_intent_id,'pi_F20HistoryPending12345');
+   assert.equal(m2Authorized.receipts,1);
+   assert.equal((await deliverM2Stripe(m2Capturable)).statusCode,200,
+    'signed event replay must not duplicate settlement');
+   assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+    [m2CapturableId])).rows[0].n,1);
+   assert.equal(m2StripeEvidenceCalls.length,5,
+    'only signed HMAC deliveries can call the test-only Stripe adapter');
    assert.equal((await m2.app.inject({method:'POST',
     url:'/api/v1/provider/stripe/webhook',
     headers:{'content-type':'application/json'},payload:Buffer.from('{}')})).statusCode,400,
@@ -7727,7 +7783,7 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
      'postgresql://postgres:sabora_ci_ephemeral_only@db.remote.invalid/postgres'}}),
    /disposable_m3_bootstrap_required/);
   const m3=await startDisposableM3Runtime({options:{...m2Options,
-   h6:{...m2Options.h6},
+   h6:{...m2Options.h6,webhook:undefined},
    observeFailure:error=>m3Failures.push(error),management:{
    tablesPool:pools[16],catalogPool:pools[17],expectedTablesLogin:specs[16].login,
    expectedCatalogLogin:specs[17].login,issueTablesCapability:m3TablesIssuer,
@@ -7740,62 +7796,6 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
     status:'ok',service:'sabora-m3-candidate',mode:'opt-in'});
    assert.deepEqual((await m3.app.inject('/ready')).json(),{
     status:'ready',service:'sabora-m3-candidate',mode:'opt-in'});
-   // P1-INT-01: actual M3 -> M2 webhook, HMAC raw bytes, Stripe adapter
-   // evidence GET and sealed PG17 provider login; no direct route mounting.
-   const m3CapturableId='evt_M3CapturableWiring001';
-   const m3Capturable={id:m3CapturableId,object:'event',livemode:false,
-    created:Math.floor(Date.now()/1000),
-    type:'payment_intent.amount_capturable_updated',
-    data:{object:{object:'payment_intent',id:'pi_F20HistoryPending12345',
-     amount:1200,currency:'eur',
-     metadata:{sabora_order_id:payNowDiner.order},
-     latest_charge:'ch_M3CapturableCharge12345'}}};
-   const deliverM3Stripe=(event,signOptions={})=>{
-    const signed=signStripeEvent(event,signOptions);
-    return m3.app.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
-     headers:{'content-type':'application/json',
-      'stripe-signature':signed.signatureHeader},payload:signed.rawBody});
-   };
-   assert.equal((await admin.query('SELECT state FROM sabora.payment_attempts WHERE round_id=$1',
-    [payNowDiner.round])).rows[0].state,'requires_action');
-   assert.equal((await deliverM3Stripe(m3Capturable,
-    {secret:randomBytes(32)})).statusCode,400);
-   assert.equal(m3StripeEvidenceCalls.length,0,
-    'invalid HMAC must not query Stripe evidence');
-   m3StripeEvidenceMode='unavailable';
-   assert.equal((await deliverM3Stripe(m3Capturable)).statusCode,503,
-    'transient Stripe outage must remain unacknowledged');
-   m3StripeEvidenceMode='wrong_charge';
-   assert.equal((await deliverM3Stripe(m3Capturable)).statusCode,503,
-    'foreign expanded Charge must not authorize the pending round');
-   m3StripeEvidenceMode='wrong_amount';
-   assert.equal((await deliverM3Stripe(m3Capturable)).statusCode,503,
-    'provider money mismatch must not authorize the pending round');
-   const m3Rejected=(await admin.query(`SELECT state,
-    (SELECT count(*)::int FROM sabora.stripe_webhook_events WHERE event_id=$2) AS receipts
-    FROM sabora.payment_attempts WHERE round_id=$1`,
-    [payNowDiner.round,m3CapturableId])).rows[0];
-   assert.equal(m3Rejected.state,'requires_action');
-   assert.equal(m3Rejected.receipts,0,
-    'provider failures cannot persist a receipt or change payment state');
-   m3StripeEvidenceMode='valid';
-   const m3Applied=await deliverM3Stripe(m3Capturable);
-   assert.equal(m3Applied.statusCode,200,m3Applied.body);
-   assert.deepEqual(m3Applied.json(),{received:true});
-   const m3Authorized=(await admin.query(`SELECT p.state,p.provider_intent_id,
-    (SELECT count(*)::int FROM sabora.stripe_webhook_events WHERE event_id=$2) AS receipts
-    FROM sabora.payment_attempts p WHERE p.round_id=$1`,
-    [payNowDiner.round,m3CapturableId])).rows[0];
-   assert.equal(m3Authorized.state,'authorized',
-    'M3/M2 webhook must reconcile valid capturable authorization through PG17');
-   assert.equal(m3Authorized.provider_intent_id,'pi_F20HistoryPending12345');
-   assert.equal(m3Authorized.receipts,1);
-   assert.equal((await deliverM3Stripe(m3Capturable)).statusCode,200,
-    'signed event replay must not duplicate settlement');
-   assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
-    [m3CapturableId])).rows[0].n,1);
-   assert.equal(m3StripeEvidenceCalls.length,5,
-    'only signed HMAC deliveries can call the test-only Stripe adapter');
    const adminId='b0a00000-0000-4000-8000-000000000313';
    await admin.query(`INSERT INTO sabora.staff_members(user_id,role,state)
     VALUES($1,'admin','active') ON CONFLICT(user_id) DO UPDATE SET role='admin',state='active'`,[adminId]);
