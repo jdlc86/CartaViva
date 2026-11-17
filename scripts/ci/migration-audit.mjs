@@ -194,6 +194,14 @@ export const REVIEWED_MIGRATION_AUDIT={
   'customer advisory lock plus session, visit, account, round and intent row locks; provider and signed staff actions serialize one intent',
   'new candidate ledgers only; historical cash ledgers retained as non-operational evidence; external channel changes operational outstanding without claiming payment',
   'inherited'),
+ '20261117010000_sabora_h6_webhook_order_identity_retry_candidate.sql':r(
+  'S42-rv01 Stripe H6 durable order identity and receipt-free provider-intent race',
+  ['H6 payment_attempts/order_rounds','sealed Stripe webhook 101 wrapper','Issue61 shared event ledger'],
+  'replaces only the SECURITY DEFINER verified provider webhook wrapper; matches signed order metadata to durable round and retries early intent race before ledger write',
+  'preserves NOLOGIN H6 function ownership and only one provider EXECUTE grant; no public, customer or staff grants',
+  'SQL function replacement; no table rewrite; no new locks or direct payment mutation; early provider event raises and rolls back before ignored receipt',
+  'old webhook ledgers preserved; no false ACK for mismatched H6 order or pending provider_intent_id',
+  'inherited'),
  '20261116210000_sabora_h6_provider_money_evidence_candidate.sql':r(
   'S41-rv02 H6 Stripe pay-now money evidence and point reconciliation',
   ['H6 payment_attempts/refund_attempts/order_rounds','H6 original NOLOGIN function owner','Issue61 shared Stripe webhook ledger'],

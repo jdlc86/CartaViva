@@ -450,6 +450,15 @@ test('signed non-expanded Stripe capturable webhook retries, correlates exact Ch
  const post=({raw,signature})=>app.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
   payload:raw,headers:{'content-type':'application/json','stripe-signature':signature}});
  const compact=make(false),expanded=make(true);
+ // A signed expanded Charge with missing order metadata must not bypass
+ // identity correlation just because it includes capture_before.
+ const missingOrder=JSON.parse(expanded.raw.toString('utf8'));
+ delete missingOrder.data.object.metadata;
+ const rawMissing=Buffer.from(JSON.stringify(missingOrder));
+ const headerMissing='t='+timestamp+',v1='+createHmac('sha256',secret)
+  .update(timestamp+'.').update(rawMissing).digest('hex');
+ assert.equal((await post({raw:rawMissing,signature:headerMissing})).statusCode,503);
+ assert.equal(records.length,0);
  assert.equal((await post({...compact,signature:'t='+timestamp+',v1='+'0'.repeat(64)})).statusCode,400);
  assert.equal(requests.length,0,'no provider lookup before HMAC');
  unavailable=true;

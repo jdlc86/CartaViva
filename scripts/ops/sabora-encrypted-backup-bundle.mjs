@@ -129,7 +129,11 @@ async function encryptCommand({directory,key,meta,spec,snapshotId=null}){
    createHash('sha256').update(stdinBytes).digest('hex')!==spec.stdinSha256)
    throw failure('stdin_changed_after_validation');
  }
- if(snapshotId&&spec.name.startsWith('inventory')){
+ // The roles SQL reads pg_namespace/pg_class in addition to shared catalogs:
+ // its database-scoped ACLs must use the same MVCC snapshot as pg_dump and
+ // the inventory. Global role membership itself is verified by pre/post hash.
+ if(snapshotId&&(spec.name.startsWith('inventory')||
+    spec.name.startsWith('roles-memberships'))){
   const original=stdinBytes;
   stdinBytes=Buffer.concat([Buffer.from(
    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;\n"+

@@ -1733,18 +1733,39 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   visitId:webhookVisit.visitId,basketId:webhookVisit.basketId,
   requestKey:'h6_webhook_order_0001',paymentMode:'pay_now',
   lines:[{quoteId:webhookQuote.lines[0].quoteId,itemId,selection,quantity:1}]});
+ // An early authenticated Stripe webhook must NOT create a durable ignored
+ // receipt before the authorization transaction stores provider_intent_id.
+ const earlyEventId='evt_H6BeforeIntent01';
+ await assert.rejects(provider.ingestWebhook({eventId:earlyEventId,
+  eventType:'payment_intent.amount_capturable_updated',
+  providerObjectId:'pi_H6WebhookIntent1',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,87),captureBefore:new Date(Date.now()+86400000),
+  saboraOrderId:webhookOrder.orderId,providerAmountCents:2400,providerCurrency:'eur'}),
+  /h6_provider_identity_not_committed/);
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  [earlyEventId])).rows[0].n,0,'early webhook cannot leave a replay-masking ignored receipt');
  await provider.recordAuthorization({orderId:webhookOrder.orderId,outcome:'requires_action',
   providerIntentId:'pi_H6WebhookIntent1'});
+ // A payment intent found through its provider ID still has exactly one
+ // order: mismatch in signed metadata must not persist or acknowledge.
+ await assert.rejects(provider.ingestWebhook({eventId:'evt_H6WrongOrder01',
+  eventType:'payment_intent.amount_capturable_updated',
+  providerObjectId:'pi_H6WebhookIntent1',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,88),captureBefore:new Date(Date.now()+86400000),
+  saboraOrderId:compensationOrder.orderId,
+  providerAmountCents:2400,providerCurrency:'eur'}),/h6_provider_order_mismatch/);
  const webhookCaptureBefore=new Date(Math.floor((Date.now()+6*86400000)/1000)*1000);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadAmount01',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,71),
-  captureBefore:webhookCaptureBefore,providerAmountCents:1000,providerCurrency:'eur'}),
+  captureBefore:webhookCaptureBefore,saboraOrderId:webhookOrder.orderId,
+  providerAmountCents:1000,providerCurrency:'eur'}),
   /h6_provider_money_mismatch/);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadCurrency01',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,72),
-  captureBefore:webhookCaptureBefore,providerAmountCents:2400,providerCurrency:'usd'}),
+  captureBefore:webhookCaptureBefore,saboraOrderId:webhookOrder.orderId,
+  providerAmountCents:2400,providerCurrency:'usd'}),
   /h6_provider_money_mismatch/);
  // Real signed HTTP -> adapter lookup -> sealed PG17 transition (not
  // direct repository ingestion); a Stripe snapshot can send a Charge ID.
