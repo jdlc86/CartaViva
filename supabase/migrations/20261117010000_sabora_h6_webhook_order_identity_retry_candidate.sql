@@ -49,15 +49,20 @@ BEGIN
   ELSIF p_sabora_order_id IS NOT NULL AND EXISTS(
    SELECT 1 FROM sabora.payment_attempts p
    JOIN sabora.order_rounds r ON r.id=p.round_id
-   WHERE r.order_id=p_sabora_order_id
-    AND p.state IN('authorization_requested','authorization_unknown','requires_action')
-    AND (p.provider_intent_id IS NULL OR
-         p.provider_intent_id IS DISTINCT FROM p_provider_object_id)
+   WHERE r.order_id=p_sabora_order_id AND p.provider_intent_id IS NULL
   ) THEN
    -- An authentic Stripe event may race the write of provider_intent_id.
-   -- Do not insert an 'ignored' immutable receipt that will mask all retries.
-   -- The transaction rolls back and the HTTP boundary replies 503.
+   -- Roll back before an immutable 'ignored' receipt masks every retry.
    RAISE EXCEPTION 'h6_provider_identity_not_committed' USING errcode='P0001';
+  ELSIF p_sabora_order_id IS NOT NULL AND EXISTS(
+   SELECT 1 FROM sabora.payment_attempts p
+   JOIN sabora.order_rounds r ON r.id=p.round_id
+   WHERE r.order_id=p_sabora_order_id
+    AND p.provider_intent_id IS DISTINCT FROM p_provider_object_id
+  ) THEN
+   -- A signed foreign PaymentIntent cannot claim a known H6 order, even
+   -- after its original authorization has been completed.
+   RAISE EXCEPTION 'h6_provider_intent_order_conflict' USING errcode='23514';
   END IF;
   IF FOUND AND p_event_type IN('payment_intent.amount_capturable_updated',
     'payment_intent.succeeded') AND (

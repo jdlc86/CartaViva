@@ -1783,6 +1783,18 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   payloadSha256:Buffer.alloc(32,88),captureBefore:new Date(Date.now()+86400000),
   saboraOrderId:compensationOrder.orderId,
   providerAmountCents:2400,providerCurrency:'eur'}),/h6_provider_order_mismatch/);
+ // A different provider intent cannot attach to this order once the
+ // original intent was durably recorded. No ignored receipt is permitted.
+ const mismatchedIntentEventId='evt_H6WrongIntent01';
+ await assert.rejects(provider.ingestWebhook({eventId:mismatchedIntentEventId,
+  eventType:'payment_intent.amount_capturable_updated',
+  providerObjectId:'pi_H6WrongIntent01',providerCreatedAt:new Date(),
+  payloadSha256:Buffer.alloc(32,89),captureBefore:new Date(Date.now()+86400000),
+  saboraOrderId:webhookOrder.orderId,
+  providerAmountCents:2400,providerCurrency:'eur'}),
+  /h6_provider_intent_order_conflict/);
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  [mismatchedIntentEventId])).rows[0].n,0);
  const webhookCaptureBefore=new Date(Math.floor((Date.now()+6*86400000)/1000)*1000);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadAmount01',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
