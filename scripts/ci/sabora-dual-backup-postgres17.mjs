@@ -14,6 +14,7 @@ import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
+import {openPostgresBackupSnapshot} from '../ops/sabora-postgres-snapshot.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -114,6 +115,46 @@ try{
  const systemIdentifier=psql(source,'postgres',
   'select (pg_control_system()).system_identifier::text;').stdout.trim();
  assert.match(systemIdentifier,/^[0-9]{10,20}$/);
+
+ // Integration proof: a writer and a DDL migration commit AFTER the snapshot
+ // was exported, while a new session imports that exact snapshot. The frozen
+ // read must see the old row and absent table even when the live database
+ // already sees the committed changes. This never touches another project.
+ psql(source,'postgres',`
+  CREATE TABLE public.sabora_snapshot_ci_probe(id integer PRIMARY KEY,marker text NOT NULL);
+  INSERT INTO public.sabora_snapshot_ci_probe VALUES(1,'before');`);
+ const exporterArgs=['exec','-i',source,'psql','-X','-qAt','-v','ON_ERROR_STOP=1',
+  '-U','postgres','-d','postgres','-f','-'];
+ await assert.rejects(openPostgresBackupSnapshot({
+  command:'docker',args:exporterArgs,
+  expectedSystemIdentifier:systemIdentifier==='1000000000000000000'?
+   '2000000000000000000':'1000000000000000000'}),
+  /sabora_snapshot_stop:source_identity_mismatch/);
+ const proof=await openPostgresBackupSnapshot({command:'docker',args:exporterArgs,
+  expectedSystemIdentifier:systemIdentifier});
+ try{
+  psql(source,'postgres',`
+   UPDATE public.sabora_snapshot_ci_probe SET marker='after' WHERE id=1;
+   CREATE TABLE public.sabora_snapshot_ci_ddl(id integer);`);
+  const frozen=psql(source,'postgres',`
+   BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
+   SET TRANSACTION SNAPSHOT '${proof.snapshotId}';
+   SELECT (SELECT marker FROM public.sabora_snapshot_ci_probe WHERE id=1)
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text;
+   COMMIT;`).stdout.trim();
+  const live=psql(source,'postgres',`
+   SELECT (SELECT marker FROM public.sabora_snapshot_ci_probe WHERE id=1)
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text;`).stdout.trim();
+  assert.equal(frozen,'before:0','imported MVCC snapshot must resist writer and DDL');
+  assert.equal(live,'after:1','concurrent writes really committed outside snapshot');
+  await proof.close();
+ }finally{
+  proof.abort();
+  psql(source,'postgres',`
+   DROP TABLE IF EXISTS public.sabora_snapshot_ci_ddl;
+   DROP TABLE IF EXISTS public.sabora_snapshot_ci_probe;`);
+ }
+
  await writeFile(keyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await writeFile(wrongKeyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await chmod(keyPath,0o600);await chmod(wrongKeyPath,0o600);
