@@ -105,3 +105,16 @@ Un fallo detiene la secuencia. No se compensa una copia ausente con CI, ni SQL f
 | SQL/despliegue | autorización separada para la cadena de migraciones exacta del SHA integrado y otra para deploy | **NO AUTORIZADOS** |
 
 Mientras cualquiera de las decisiones necesarias para su fase falte, el dictamen es **NO-GO operativo**. Este runbook no pide ni contiene secretos.
+
+
+### Puerta correctiva S42-6 (17-11-2026): tras auditoría #64; NO autorización
+
+Se ha añadido en PR #59 la migración **103** `20261117020000_sabora_h6_economic_provider_stripe_identity_serialized_candidate.sql`, con admisión serializada bajo locks de ronda/PaymentAttempt o del settlement económico, comparación monetaria/identidad de todos los eventos `payment_intent.*`, sin falsos ACK para pedidos sin tentativa Stripe ni para PID/metadata discordantes. En estado `authorization_unknown` de H6 solo se reconstituye autorización si la evidencia Stripe firmada está completa y mantiene una fecha capturable futura; no se certifica pago. El resto de resultados ambiguos requieren procedimiento de reconciliación de proveedor distinto, sin dar 200/recibo `ignored` que bloquee reintentos.
+
+**Captura PG17 V2:** el exportador no solo recibe `migrationTreeSha256` de un plan: consulta las filas reales de `sabora_migration_meta.applied_migrations` dentro del snapshot MVCC exportado, calcula el digest con los mismos bytes NUL/LF que `migrationInventory()` y hace STOP por diferencia. Esto **no se ha probado con Supabase operativo** y no dispensa la comprobación DBA de identidad del proyecto y de privilegios. `psql` y `pg_dump` reciben únicamente argumentos de forma exacta (no banderas breves adheridas ni alias de conexión); `PG*` no permitidas, incluidas variantes mixtas de Windows, son rechazadas por la CLI y los procesos hijo. La huella de `PGSSLROOTCERT` y el system identifier conservan sus autorizaciones externas propias.
+
+**Roles/ACL:** las concesiones de columna `pg_attribute.attacl` se vuelven a aplicar después de la reconciliación a nivel de tabla, y la huella de inventario usa nombres de grantor/grantee estables entre orígenes y restores, no OID.
+
+**Firma offline Windows:** `scripts/ops/sabora-ntfs-acl-verifier.mjs` consulta propietario, SIDs y DACL protegida efectivos; exige que una huella aprobada corresponda a los bytes reales del descriptor de seguridad del fichero clave, y que borrador/directorio de salida tengan DACL restringida. Sin ACL real demostrada **STOP**, no se permite sustituir por un valor hexadecimal arbitrario ni por permisos POSIX nominales. Verificar explícitamente en el equipo del propietario antes del primer uso, sin copiar claves, datos privados ni DACL al repositorio.
+
+**Aprobación:** CI de laboratorio y revisión externa posterior son puertas distintas. El usuario ha ordenado **NO ENVIAR nuevas revisiones** hasta que lo indique. Tampoco autoriza merge, migraciones en Supabase, VPS, Fleetia ni despliegue. [Continuidad S42-6](../handoffs/SESSION_42_HANDOFF_2026-11-17.md) y [tablero §117](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
