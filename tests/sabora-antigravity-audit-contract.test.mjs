@@ -65,6 +65,18 @@ test('Antigravity report is correlated by exact SHA/type and scoped fields',()=>
   ...report,findings:[{...report.findings[0],file_path:'../../Fleetia'}]},request),
   /invalid_audit_report_content/);
 });
+test('Antigravity report must inspect every requested path, answer every question and use ordered lines',()=>{
+ for(const change of [
+  {inspected_files:['AGENTS.md']},
+  {inspected_files:[...request.target_paths,'AGENTS.md']},
+  {questions_answered:[]},
+  {questions_answered:[...report.questions_answered,...report.questions_answered]},
+  {findings:[{...report.findings[0],line_reference:'L50-L10'}]},
+  {findings:[{...report.findings[0],line_reference:'L3-L2'}]}
+ ])assert.throws(()=>validateAntigravityAuditReport({...report,...change},request),
+  /sabora_antigravity_contract_stop/);
+});
+
 test('Antigravity comment without a structured result cannot be treated as an approval',()=>{
  assert.throws(()=>validateAntigravityIssueComment({user:{login:'jdlc86'},
   body:'GO, everything works'},request),

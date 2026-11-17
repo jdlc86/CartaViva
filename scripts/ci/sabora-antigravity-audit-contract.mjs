@@ -13,6 +13,12 @@ const PATH=/^[A-Za-z0-9_.\-/]+$/;
 const SHA=/^[0-9a-fA-F]{7,40}$/;
 const FULL_SHA=/^[0-9a-f]{40}$/;
 const LINE=/^L[1-9][0-9]*(?:-L?[1-9][0-9]*)?$/;
+function orderedLineReference(value){
+ if(!LINE.test(value??''))return false;
+ const [,from,to]=/^L(\d+)(?:-L?(\d+))?$/.exec(value);
+ return Number.isSafeInteger(Number(from))&&
+  (to===undefined||(Number.isSafeInteger(Number(to))&&Number(to)>=Number(from)));
+}
 const own=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.getPrototypeOf(value)===Object.prototype;
 const reject=code=>{throw Error('sabora_antigravity_contract_stop:'+code);};
@@ -76,18 +82,23 @@ export function validateAntigravityAuditReport(value,request){
    value.executive_summary.length>20000||
    !Array.isArray(value.inspected_files)||value.inspected_files.length<1||
    value.inspected_files.length>200||!value.inspected_files.every(pathAllowed)||
+   !unique(value.inspected_files)||
+   !sent.target_paths.every(path=>value.inspected_files.includes(path))||
    !Array.isArray(value.findings)||value.findings.length>200||
    !Array.isArray(value.questions_answered)||value.questions_answered.length>20)
   reject('invalid_or_wrong_sha_audit_report');
  if(!value.findings.every(f=>onlyFields(f,[
   'id','severity','file_path','line_reference','title','evidence','recommendation'])&&
    typeof f.id==='string'&&f.id.length>0&&f.id.length<=80&&
-   SEVERITIES.has(f.severity)&&pathAllowed(f.file_path)&&LINE.test(f.line_reference)&&
+   SEVERITIES.has(f.severity)&&pathAllowed(f.file_path)&&orderedLineReference(f.line_reference)&&
    ['title','evidence','recommendation'].every(k=>typeof f[k]==='string'&&f[k].length>0&&f[k].length<=10000))||
   !value.questions_answered.every(q=>onlyFields(q,['question','answer'])&&
     typeof q.question==='string'&&q.question.length>0&&q.question.length<=300&&
     typeof q.answer==='string'&&q.answer.length>0&&q.answer.length<=20000))
    reject('invalid_audit_report_content');
+ if(!sent.focus_questions?.every(question=>value.questions_answered.some(answer=>answer.question===question))&&
+   (sent.focus_questions?.length??0)>0)reject('audit_questions_incomplete');
+ if(!unique(value.questions_answered.map(answer=>answer.question)))reject('duplicate_audit_answers');
  return Object.freeze({...value,inspected_files:Object.freeze([...value.inspected_files]),
   findings:Object.freeze([...value.findings]),
   questions_answered:Object.freeze([...value.questions_answered])});

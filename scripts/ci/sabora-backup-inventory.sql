@@ -61,7 +61,15 @@ where n.nspname in ('sabora','sabora_migration_meta') and c.relkind in ('r','p',
 
 select 'columns:'||md5(coalesce(string_agg(
  n.nspname||':'||c.relname||':'||a.attnum||':'||a.attname||':'||format_type(a.atttypid,a.atttypmod)||':'||
- a.attnotnull||':'||coalesce(pg_get_expr(d.adbin,d.adrelid),'NULL'),
+ a.attnotnull||':'||coalesce(pg_get_expr(d.adbin,d.adrelid),'NULL')||':'||
+ coalesce((select string_agg(
+  pg_get_userbyid(acl.grantor)||'>'||
+  case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end||':'||
+  acl.privilege_type||':'||acl.is_grantable,
+  ',' order by pg_get_userbyid(acl.grantor),
+   case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end,
+   acl.privilege_type,acl.is_grantable)
+  from aclexplode(a.attacl) acl),'NULL'),
  E'\n' order by n.nspname,c.relname,a.attnum),''))
 from pg_attribute a
 join pg_class c on c.oid=a.attrelid

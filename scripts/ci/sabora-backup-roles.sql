@@ -127,3 +127,29 @@ order by namespace.nspname,relation.relname,relation.relkind,
  pg_get_userbyid(acl.grantor),
  case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end,
  acl.privilege_type,acl.is_grantable;
+
+
+-- Column ACLs must be re-applied after full-table REVOKE; PostgreSQL
+-- stores column-level privileges in pg_attribute.attacl, not pg_class.relacl.
+-- Use stable grantor names so restored OIDs never leak into reconciliation.
+select format(
+ 'set role %I; grant %s (%I) on table %I.%I to %s%s; reset role;',
+ pg_get_userbyid(acl.grantor),
+ acl.privilege_type,
+ attribute.attname,
+ namespace.nspname,
+ relation.relname,
+ case when acl.grantee=0 then 'public' else format('%I',pg_get_userbyid(acl.grantee)) end,
+ case when acl.is_grantable then ' with grant option' else '' end)
+from pg_attribute attribute
+join pg_class relation on relation.oid=attribute.attrelid
+join pg_namespace namespace on namespace.oid=relation.relnamespace
+cross join lateral aclexplode(attribute.attacl) acl
+where namespace.nspname in ('sabora','sabora_migration_meta')
+ and relation.relkind in ('r','p','v','m','f')
+ and attribute.attnum>0 and not attribute.attisdropped
+order by namespace.nspname,relation.relname,attribute.attnum,
+ case when acl.grantor=relation.relowner then 0 else 1 end,
+ pg_get_userbyid(acl.grantor),
+ case when acl.grantee=0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end,
+ acl.privilege_type,acl.is_grantable;
