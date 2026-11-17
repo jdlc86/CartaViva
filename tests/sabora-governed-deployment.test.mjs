@@ -262,7 +262,7 @@ test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evi
  assert.match(release,/node scripts\/ci\/production-config-secrets-gate\.mjs/);
  assert.match(release,/FUNCTIONAL_UI_BASE_SHA: \$\{\{ github\.event\.before \}\}/);
  assert.match(release,/node --test tests\/functional-ui-coverage-gate\.test\.mjs/);
- assert.match(release,/node scripts\/ci\/functional-ui-coverage-gate\.mjs/);
+ assert.match(release,/node scripts\/ci\/functional-ui-coverage-gate\.mjs --require-base/);
  assert.doesNotMatch(release,/pnpm test|F21_FULL_WINDOW|catalog-postgres17|docker (?:build|run|compose)|ssh -/);
  assert.match(ci,/^  push:\s*\n    branches: \[main,/m);
  assert.match(ci,/SABORA_CI_F21_FULL_WINDOW: 'true'/);

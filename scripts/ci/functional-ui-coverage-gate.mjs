@@ -94,6 +94,39 @@ export function auditFunctionalUi(root,{prior=null,requireAll=false,overrides={}
   read:path=>Object.hasOwn(overrides,path)?overrides[path]:fileSafe(path)?load(root,path):null
  });
 }
+
+/**
+ * Mandatory for governed push-main evidence: a missing/unreachable predecessor
+ * must NEVER be treated as the initial rollout or as successful regression proof.
+ * PR/legacy callers retain the explicit non-governed compatibility mode.
+ */
+export function loadGovernedBaseManifest(root,baseSha,headSha){
+ const reject=reason=>{throw Error('governed_functional_ui_'+reason);};
+ if(typeof baseSha!=='string'||!/^[0-9a-f]{40}$/.test(baseSha)||/^0{40}$/.test(baseSha))
+  reject('base_sha_invalid');
+ if(typeof headSha!=='string'||!/^[0-9a-f]{40}$/.test(headSha)||/^0{40}$/.test(headSha))
+  reject('head_sha_invalid');
+ const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8',
+  stdio:['ignore','pipe','ignore']}).trim();
+ let actual;
+ try{actual=git(['rev-parse','HEAD']);}catch{reject('head_unavailable');}
+ if(actual!==headSha)reject('head_mismatch');
+ if(baseSha===headSha)reject('base_not_previous');
+ try{git(['cat-file','-e',baseSha+'^{commit}']);}
+ catch{reject('base_commit_unavailable');}
+ try{git(['merge-base','--is-ancestor',baseSha,headSha]);}
+ catch{reject('base_not_ancestor');}
+ let raw;
+ try{raw=git(['show',baseSha+':'+COVERAGE_FILE]);}
+ catch{reject('base_manifest_unavailable');}
+ let prior;
+ try{prior=JSON.parse(raw);}catch{reject('base_manifest_invalid');}
+ if(prior?.schemaVersion!==1||prior.stage!=='FUNCIONAL_PRIMERO'||
+   !Array.isArray(prior.capabilities)||prior.capabilities.length===0)
+  reject('base_manifest_invalid');
+ return prior;
+}
+
 function baseManifest(root,sha){
  if(!/^[a-f0-9]{40}$/i.test(sha||''))return null;
  try{
@@ -102,10 +135,14 @@ function baseManifest(root,sha){
  }catch{return null;} // initial rollout: base branch has no register
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const root=process.cwd(),prior=baseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA);
+ const root=process.cwd();
  let result;
- try{result=auditFunctionalUi(root,{prior,requireAll:process.argv.includes('--release')});}
- catch(e){process.stderr.write('FUNCTIONAL_UI_GATE_FAIL: '+e.message+'\n');process.exit(1);}
+ try{
+  const prior=process.argv.includes('--require-base')?
+   loadGovernedBaseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA,process.env.GITHUB_SHA):
+   baseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA);
+  result=auditFunctionalUi(root,{prior,requireAll:process.argv.includes('--release')});
+ }catch(e){process.stderr.write('FUNCTIONAL_UI_GATE_FAIL: '+e.message+'\n');process.exit(1);}
  for(const gap of result.gaps)process.stdout.write(
   'FUNCTIONAL_UI_PENDING '+gap.id+': '+gap.missing.join(' | ')+'\n');
  if(result.errors.length){

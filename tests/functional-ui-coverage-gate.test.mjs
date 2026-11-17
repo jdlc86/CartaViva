@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {resolve,join} from 'node:path';
-import {auditFunctionalUi,inspectFunctionalUi,COVERAGE_FILE}
+import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,rmSync} from 'node:fs';
+import {resolve,join,dirname} from 'node:path';
+import {tmpdir} from 'node:os';
+import {execFileSync,spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {auditFunctionalUi,inspectFunctionalUi,loadGovernedBaseManifest,COVERAGE_FILE}
  from '../scripts/ci/functional-ui-coverage-gate.mjs';
 
 const root=resolve(import.meta.dirname,'..');
@@ -59,3 +62,75 @@ test('final acceptance cannot silently pass while reservations and other unappro
  // release remains gated by unresolved reservations and visual acceptance.
  assert(report.errors.length>0);
 });
+
+test('governed main UI gate rejects zero/missing/divergent ancestry and real status downgrades',()=>{
+ const fixture=mkdtempSync(join(tmpdir(),'sabora-ui-main-'));
+ const git=(...args)=>execFileSync('git',args,{cwd:fixture,encoding:'utf8',
+  stdio:['ignore','pipe','pipe']}).trim();
+ const commit=message=>{
+  git('add','.');
+  git('-c','user.name=Sabora CI','-c','user.email=sabora-test@example.invalid',
+   '-c','commit.gpgsign=false','commit','-m',message);
+  return git('rev-parse','HEAD');
+ };
+ const file=(path,content)=>{
+  const absolute=join(fixture,path);
+  mkdirSync(dirname(absolute),{recursive:true});
+  writeFileSync(absolute,content,'utf8');
+ };
+ const manifestFile=()=>file(COVERAGE_FILE,JSON.stringify(manifest,null,2)+'\n');
+ const cli=fileURLToPath(new URL('../scripts/ci/functional-ui-coverage-gate.mjs',import.meta.url));
+ const run=(base,head)=>spawnSync(process.execPath,[cli,'--require-base'],{
+  cwd:fixture,encoding:'utf8',env:{...process.env,
+   FUNCTIONAL_UI_BASE_SHA:base,GITHUB_SHA:head}
+ });
+ try{
+  git('init','-b','main');
+  git('config','core.autocrlf','false');
+  manifestFile();
+  const markers=new Map();
+  for(const row of manifest.capabilities)if(row.status!=='PENDIENTE')
+   for(const group of ['ui','api','evidence'])
+    for(const entry of row[group]||[]){
+     if(!markers.has(entry.path))markers.set(entry.path,new Set());
+     markers.get(entry.path).add(entry.marker);
+    }
+  for(const [path,strings] of markers)
+   file(path,[...strings].join('\n')+'\n');
+  const base=commit('base UI contract');
+  file('fixture-update.txt','harmless change\n');
+  const head=commit('main successor with unchanged UI');
+  const valid=run(base,head);
+  assert.equal(valid.status,0,valid.stderr);
+  assert.match(valid.stdout,/FUNCTIONAL_UI_GATE_PASS/);
+  const zero=run('0'.repeat(40),head);
+  assert.notEqual(zero.status,0);
+  assert.match(zero.stderr,/governed_functional_ui_base_sha_invalid/);
+  const missing=run('f'.repeat(40),head);
+  assert.notEqual(missing.status,0);
+  assert.match(missing.stderr,/governed_functional_ui_base_commit_unavailable/);
+  const wrongHead=run(base,'f'.repeat(40));
+  assert.notEqual(wrongHead.status,0);
+  assert.match(wrongHead.stderr,/governed_functional_ui_head_mismatch/);
+  git('checkout','-b','unrelated',base);
+  file('diverged.txt','different history\n');
+  const divergent=commit('commit outside current history');
+  git('checkout','main');
+  const notAncestor=run(divergent,head);
+  assert.notEqual(notAncestor.status,0);
+  assert.match(notAncestor.stderr,/governed_functional_ui_base_not_ancestor/);
+  assert.equal(loadGovernedBaseManifest(fixture,base,head).schemaVersion,1);
+  const downgraded=structuredClone(manifest);
+  const catalog=downgraded.capabilities.find(x=>x.id==='CV-007-catalogo');
+  catalog.status='PENDIENTE';
+  catalog.blockers=['regression fixture'];
+  file(COVERAGE_FILE,JSON.stringify(downgraded,null,2)+'\n');
+  const degradedHead=commit('regress catalog status');
+  const degraded=run(head,degradedHead);
+  assert.notEqual(degraded.status,0);
+  assert.match(degraded.stderr,/unapproved_status_downgrade:CV-007-catalogo/);
+  // The strict mode must not rewrite the historical/opt-in acceptance gate.
+  assert.deepEqual(inspectFunctionalUi({manifest,read:realRead}).errors,[]);
+ }finally{rmSync(fixture,{recursive:true,force:true});}
+});
+

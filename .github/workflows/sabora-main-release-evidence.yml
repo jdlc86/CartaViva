@@ -64,6 +64,6 @@ jobs:
           FUNCTIONAL_UI_BASE_SHA: ${{ github.event.before }}
         run: |
           node --test tests/functional-ui-coverage-gate.test.mjs
-          node scripts/ci/functional-ui-coverage-gate.mjs
+          node scripts/ci/functional-ui-coverage-gate.mjs --require-base
 
 # Not a visual-final acceptance, backup, SQL, Stripe or VPS operation.
