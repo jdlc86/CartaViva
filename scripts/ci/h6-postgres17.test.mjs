@@ -4,12 +4,14 @@ import {registerCustomerProductionFlowHttp} from '../../apps/api/src/customer-pr
 import {createH6CustomerPaymentStateReader} from '../../apps/api/src/h6-customer-payment-state.mjs';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHmac} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {dirname,resolve} from 'node:path';
 import {registerH6OperationsHttp} from '../../apps/api/src/h6-operations-http.mjs';
 import {registerH6StaffEventStreamHttp,createPostgresH6OutboxNotifier} from '../../apps/api/src/h6-event-stream.mjs';
 import {createH6OperationsCoordinator} from '../../apps/api/src/h6-operations-coordinator.mjs';
+import {createH6StripeAdapter} from '../../apps/api/src/h6-stripe-adapter.mjs';
+import {registerH6StripeWebhookHttp} from '../../apps/api/src/h6-stripe-webhook-http.mjs';
 import {isDisposablePgModulePath} from './disposable-pg-module-path.mjs';
 import {createRoleScopedPostgresTransaction} from '../../apps/api/src/role-scoped-postgres.mjs';
 import {createRestrictedCustomerRegistration,REGISTER_CUSTOMER_SQL} from '../../apps/api/src/customer-production-registration.mjs';
@@ -1744,11 +1746,50 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,72),
   captureBefore:webhookCaptureBefore,providerAmountCents:2400,providerCurrency:'usd'}),
   /h6_provider_money_mismatch/);
- const appliedAuthorization=await provider.ingestWebhook({eventId:'evt_H6Capturable01',
-  eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
-  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,7),captureBefore:webhookCaptureBefore,
-  providerAmountCents:2400,providerCurrency:'eur'});
- assert.equal(appliedAuthorization.outcome,'applied');
+ // Real signed HTTP -> adapter lookup -> sealed PG17 transition (not
+ // direct repository ingestion); a Stripe snapshot can send a Charge ID.
+ const webhookServer=apiRequire('fastify')({logger:false});
+ const webhookSecret='whsec_pg17candidate_0123456789abcdef';
+ const webhookTime=Date.now(),webhookSeconds=Math.floor(webhookTime/1000);
+ const webhookCharge='ch_H6WebhookCharge1';
+ let receivedAuthorization,lookups=0,wrongLookup=false;
+ const stripeWebhook=createH6StripeAdapter({credential:'sk_test_candidate_not_real_2026',
+  request:async request=>{
+   lookups++;
+   assert.equal(new URL('https://stripe.invalid'+request.path).searchParams.get('expand[]'),
+    'latest_charge');
+   return {object:'payment_intent',id:'pi_H6WebhookIntent1',status:'requires_capture',
+    amount:2400,currency:'eur',metadata:{sabora_order_id:webhookOrder.orderId},
+    latest_charge:{id:wrongLookup?'ch_other1234':webhookCharge,
+     payment_method_details:{card:{capture_before:Math.floor(webhookCaptureBefore.getTime()/1000)}}}};
+  }});
+ try{
+  registerH6StripeWebhookHttp(webhookServer,{secret:webhookSecret,stripe:stripeWebhook,
+   clock:()=>webhookTime,providerRepository:{
+    ingestWebhook:async event=>(receivedAuthorization=await provider.ingestWebhook(event))
+   }});
+  await webhookServer.ready();
+  const payload=Buffer.from(JSON.stringify({id:'evt_H6Capturable01',object:'event',
+   livemode:false,created:webhookSeconds,type:'payment_intent.amount_capturable_updated',
+   data:{object:{id:'pi_H6WebhookIntent1',object:'payment_intent',
+    latest_charge:webhookCharge,amount:2400,currency:'eur',
+    metadata:{sabora_order_id:webhookOrder.orderId}}}}));
+  const header='t='+webhookSeconds+',v1='+createHmac('sha256',webhookSecret)
+   .update(webhookSeconds+'.').update(payload).digest('hex');
+  const send=h=>webhookServer.inject({method:'POST',url:'/api/v1/provider/stripe/webhook',
+   payload,headers:{'content-type':'application/json','stripe-signature':h}});
+  assert.equal((await send('t='+webhookSeconds+',v1='+'0'.repeat(64))).statusCode,400);
+  assert.equal(lookups,0,'invalid HMAC cannot trigger outbound Stripe access');
+  wrongLookup=true;
+  assert.equal((await send(header)).statusCode,503,'wrong Charge must be retryable');
+  wrongLookup=false;
+  assert.equal((await send(header)).statusCode,200);
+  const appliedAuthorization=receivedAuthorization;
+  assert.equal(appliedAuthorization.outcome,'applied');
+  assert.equal((await send(header)).statusCode,200,'identical event is idempotent in SQL');
+  assert.equal(lookups,3);
+ }finally{await webhookServer.close();}
+
  const webhookPayment=(await admin.query(`SELECT p.state,p.capture_before
   FROM sabora.payment_attempts p JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=$1`,
   [webhookOrder.orderId])).rows[0];
