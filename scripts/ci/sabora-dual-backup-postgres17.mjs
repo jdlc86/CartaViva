@@ -135,24 +135,36 @@ try{
  try{
   psql(source,'postgres',`
    UPDATE public.sabora_snapshot_ci_probe SET marker='after' WHERE id=1;
-   CREATE TABLE public.sabora_snapshot_ci_ddl(id integer);`);
+   CREATE TABLE public.sabora_snapshot_ci_ddl(id integer);
+   CREATE TABLE sabora.sabora_snapshot_ci_acl_ddl(id integer);`);
   const frozen=psql(source,'postgres',`
    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;
    SET TRANSACTION SNAPSHOT '${proof.snapshotId}';
    SELECT (SELECT marker FROM public.sabora_snapshot_ci_probe WHERE id=1)
-    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text;
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_acl_ddl')::text;
    COMMIT;`).stdout.trim();
   const live=psql(source,'postgres',`
    SELECT (SELECT marker FROM public.sabora_snapshot_ci_probe WHERE id=1)
-    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text;`).stdout.trim();
-  assert.equal(frozen,'before:0','imported MVCC snapshot must resist writer and DDL');
-  assert.equal(live,'after:1','concurrent writes really committed outside snapshot');
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_ddl')::text
+    || ':' || (SELECT count(*) FROM pg_class WHERE relname='sabora_snapshot_ci_acl_ddl')::text;`).stdout.trim();
+  assert.equal(frozen,'before:0:0','imported MVCC snapshot must resist writer and DDL');
+  assert.equal(live,'after:1:1','concurrent writes really committed outside snapshot');
+  const rolesSource=await readFile(rolesSql,'utf8');
+  const snapshotRoles=psql(source,'postgres',
+   "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"+
+   "SET TRANSACTION SNAPSHOT '"+proof.snapshotId+"';\n"+
+   rolesSource+"\nCOMMIT;").stdout;
+  const liveRoles=psql(source,'postgres',rolesSource).stdout;
+  assert.equal(snapshotRoles.includes('sabora_snapshot_ci_acl_ddl'),false);
+  assert.equal(liveRoles.includes('sabora_snapshot_ci_acl_ddl'),true);
   await proof.close();
  }finally{
   proof.abort();
   psql(source,'postgres',`
    DROP TABLE IF EXISTS public.sabora_snapshot_ci_ddl;
-   DROP TABLE IF EXISTS public.sabora_snapshot_ci_probe;`);
+   DROP TABLE IF EXISTS public.sabora_snapshot_ci_probe;
+   DROP TABLE IF EXISTS sabora.sabora_snapshot_ci_acl_ddl;`);
  }
 
  await writeFile(keyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});

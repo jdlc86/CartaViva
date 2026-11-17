@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,writeFileSync,mkdtempSync,chmodSync,rmSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdtempSync,chmodSync,rmSync,existsSync,symlinkSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -172,5 +172,13 @@ test('offline signer CLI does not exit 0 silently and signs with a protected tes
   assert.equal(receipt.releaseSha,fullSha);
   assert.notEqual(spawnSync(process.execPath,[cli,draft,privatePath,prefix],
    {encoding:'utf8',env}).status,0,'never overwrite a signed approval');
+  if(process.platform!=='win32'){
+   const alias=join(root,'private-alias.pem');
+   symlinkSync(privatePath,alias);
+   const resultLink=spawnSync(process.execPath,[cli,draft,alias,join(root,'alias-out')],
+    {encoding:'utf8',env});
+   assert.notEqual(resultLink.status,0);
+   assert.match(resultLink.stderr,/protected_input_not_regular/);
+  }
  }finally{rmSync(root,{recursive:true,force:true});}
 });

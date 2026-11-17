@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {chmod,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -8,7 +8,8 @@ import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../scripts/ops/sabora-encrypted-backup-bundle.mjs';
-import {validateOperationalPlan,validateCaptureSource} from '../scripts/ops/sabora-encrypted-backup-cli.mjs';
+import {validateOperationalPlan,validateCaptureSource,verifyPinnedTlsRootCert}
+ from '../scripts/ops/sabora-encrypted-backup-cli.mjs';
 
 const releaseSha='d'.repeat(40),migrationTreeSha256='e'.repeat(64);
 function meta(){
@@ -154,17 +155,40 @@ test('backup v2 binds live TLS endpoint and independently pinned cluster identit
  const candidate={...meta(),schema:'sabora-logical-backup/v2'};
  const env={PGHOST:'db.byhvmumqivmunkmomhup.supabase.co',PGSSLMODE:'verify-full',
   PGSSLROOTCERT:join(tmpdir(),'postgres-ca.pem'),PGPORT:'5432',
-  SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER:'7123456789012345678'};
+  SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER:'7123456789012345678',
+  SABORA_BACKUP_APPROVED_CA_SHA256:'f'.repeat(64)};
  assert.equal(validateCaptureSource(candidate,env),'7123456789012345678');
  for(const [key,value] of [
   ['PGHOST','db.otherproject.supabase.co'],['PGSSLMODE','require'],
   ['PGSSLROOTCERT','relative.pem'],['PGHOSTADDR','127.0.0.1'],
-  ['PGSERVICE','untrusted'],['PGPORT','5433'],
+  ['PGSERVICE','untrusted'],['PGOPTIONS','-c search_path=public'],
+  ['PGPASSFILE',join(tmpdir(),'untrusted.pass')],['PGSSLCERT',join(tmpdir(),'client.crt')],
+  ['PGPORT','5433'],
   ['SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER','']
  ]){
   assert.throws(()=>validateCaptureSource(candidate,{...env,[key]:value}),/sabora_backup_cli_stop:/);
  }
  assert.throws(()=>validateCaptureSource(meta(),env),/sabora_backup_cli_stop:v2_snapshot_required/);
+ assert.throws(()=>validateCaptureSource(candidate,{...env,SABORA_BACKUP_APPROVED_CA_SHA256:''}),
+  /independent_tls_ca_pin_required/);
+});
+
+test('operational TLS CA bytes must be pinned and cannot be replaced by a symlink',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'sabora-ca-pin-'));
+ t.after(()=>rm(root,{recursive:true,force:true}));
+ const cert=join(root,'approved-ca.pem');
+ const contents='-----BEGIN CERTIFICATE-----\nTUVBSw==\n-----END CERTIFICATE-----\n';
+ await writeFile(cert,contents,{mode:0o600});
+ const env={PGSSLROOTCERT:cert,
+  SABORA_BACKUP_APPROVED_CA_SHA256:createHash('sha256').update(contents).digest('hex')};
+ assert.equal(await verifyPinnedTlsRootCert(env),true);
+ await assert.rejects(verifyPinnedTlsRootCert({...env,SABORA_BACKUP_APPROVED_CA_SHA256:'0'.repeat(64)}),
+  /tls_ca_pin_mismatch/);
+ const link=join(root,'alias-ca.pem');
+ try{const {symlink}=await import('node:fs/promises');await symlink(cert,link);
+  await assert.rejects(verifyPinnedTlsRootCert({...env,PGSSLROOTCERT:link}),
+   /unsafe_tls_ca_file/);
+ }catch(error){if(error?.code!=='EPERM')throw error;}
 });
 test('backup v2 cannot fall back to four inconsistent independent commands',async()=>{
  await assert.rejects(captureEncryptedBackupBundle({directory:join(tmpdir(),'unused-unique-v2-capture'),
