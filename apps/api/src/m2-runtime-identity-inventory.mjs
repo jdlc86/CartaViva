@@ -14,6 +14,7 @@ const CORE = Object.freeze([
  ['tableChange.pendingPool','tableChange.expectedPendingLogin'],
  ['staff.pool','staff.expectedLogin'],
  ['h4.operationsPool','h4.expectedOperationsLogin'],
+ ['h6.customerPool','h6.expectedCustomerLogin'],
  ['h6.providerPool','h6.expectedProviderLogin'],
  ['h6.operationsPool','h6.expectedOperationsLogin'],
  ['h6.closePool','h6.expectedCloseLogin'],

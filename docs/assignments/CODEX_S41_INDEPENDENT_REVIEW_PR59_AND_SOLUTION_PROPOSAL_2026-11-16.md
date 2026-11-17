@@ -1,0 +1,48 @@
+# Encargo a Codex — revisión técnica independiente del PR #59 y propuestas de solución (S41)
+
+**Fecha:** 16-11-2026. **Repositorio único autorizado:** `jdlc86/CartaViva`. **PR a evaluar:** [#59 Draft](https://github.com/jdlc86/CartaViva/pull/59), rama `docs/sabora-dual-backup-vps-offsite-20261113`. **PR #60:** [Draft #60](https://github.com/jdlc86/CartaViva/pull/60), ya integrado como ancestro Git del #59; no se debe fusionar por duplicado.
+
+## 1. Modalidad y límites: DIAGNÓSTICO, NO CORRECCIÓN
+
+**Se encarga exclusivamente una revisión crítica de código, contratos y evidencia de pruebas, con propuestas de solución concretas. NO implementar correcciones todavía.** El propietario y ChatGPT leerán primero tu informe y después decidirán expresamente quién ejecutará las correcciones, si procede. No abras otro PR, no cambies código/migraciones/pruebas normativas, no hagas merge a `main`, no cambies estado Draft ni cierres PR. La **única modificación de repositorio permitida** para este encargo es crear o actualizar **un único informe** Markdown en `docs/reviews/SABORA_S41_CODEX_INDEPENDENT_REVIEW_PR59_2026-11-16.md` dentro de **la misma rama del PR #59** y hacer el commit documental que lo publique; puedes comentar en #59 con el enlace. No realices cambios adicionales ni un commit de "arreglos".
+
+**Prohibiciones operativas:** no conectar ni escribir en el Supabase operativo de Sabora, no modificar secretos, claves, DNS, Cloudflare, infraestructura ni VPS. No tocar ni inspeccionar recursos Fleetia ni ningún recurso de otros proyectos. No instalar, desplegar, reiniciar, parar, borrar, ni configurar contenedores, redes o daemon Docker del VPS. Si necesitas reproducir, usa exclusivamente un entorno **local/CI desechable aislado**, sin credenciales reales ni conexión a producción. No inventes una validación ni una aprobación humana.
+
+## 2. Preparación obligatoria
+
+1. Confirma `git remote -v`, rama, `git status`, base de `main`, cabeza de #59 y genealogía del #60 **en tiempo real**. No descartes trabajo ajeno, ni `reset --hard`, `git clean` o `push --force`. Usa worktree o checkout limpio para no alterar el repositorio de otro agente. Identifica tanto el **SHA completo revisado** como el **último SHA con cambios funcionales**; verifica si los commits posteriores son solo documentales.
+2. Lee `AGENTS.md` y la documentación **normativa** aplicable antes de juzgar: `docs/REQUISITOS_FUNCIONALES.md`, `docs/architecture/SABORA_FUNCTIONAL_CONTRACT_CONSOLIDATED_V1.md`, `docs/SABORA_AUTHORIZATION_GATE.md`, `docs/architecture/CARTAVIVA_PROJECT_BOUNDARY.md`, `docs/architecture/SABORA_GOVERNED_RELEASE_V1.md`, el runbook de activación S38 y contratos de roles/SQL, privacidad, pagos e integridad. Para cambios de PWA, coteja `docs/DESIGN_SYSTEM_CONTRACT.md` y diseño aprobado. **La normativa prevalece sobre las continuidades**.
+3. Lee [revisión propia S41-rv03](https://github.com/jdlc86/CartaViva/pull/59#pullrequestreview-5927982291) y `docs/handoffs/SESSION_41_HANDOFF_2026-11-16.md` **solo como contexto e hipótesis que debes cuestionar**; no presupongas que mis hallazgos son correctos. Comprueba la CI del SHA `e34956444f901ec6ee2dbf4f2f434d55ea5488e7`: ocho controles aplicables en PASS; dos opt-in (visual humano/CV-005 B2) SKIPPED. Comprueba las ejecuciones de nuevo si la cabeza cambió. **PASS de runner no es prueba real de Stripe, backup remoto ni despliegue**.
+
+## 3. Alcance técnico — revisión completa priorizada
+
+**A — P1-07 bajo verificación, no conclusión impuesta.** Investiga de extremo a extremo `payment_intent.amount_capturable_updated` y las representaciones que realmente entrega Stripe de `latest_charge` expandido/no expandido (incluido contexto de versión de API), fecha `capture_before`, HMAC y errores HTTP. Verifica si el receptor `apps/api/src/h6-stripe-webhook.mjs` rechaza con HTTP 400 un evento firmado válido cuando `latest_charge` es el ID `ch_...` en vez de objeto; contrasta parser, composición, repositorio, migraciones SQL, reintentos, deduplicación y la recuperación de estado incierto. **Descarta el supuesto P1** si no se sostiene, con evidencia y causa exacta. No resuelvas fabricando plazo de captura ni convirtiendo un fallo de integridad en autorización.
+
+**B — Integridad económica H6 + Issue #61.** Revisa los dos momentos aprobados de pago (`pay_now`/`pay_at_end`) de forma integral: identidad del pagador original, PaymentIntent/cargo/reembolso, importe exacto en céntimos, EUR, `bigint` PG17, idempotencia, carreras entre API/webhook, recuperación de `unknown`, incidentes, devolución parcial/total, saldo y cierre operativo. Comprueba integridad transaccional, `SECURITY DEFINER`, propietario NOLOGIN, `EXECUTE` de funciones antiguas/nuevas, bloqueo de rutas alternativas, permisos efectivos de roles mínimos, RLS y consecuencias de la migración candidata n.º 101. No confundas SQL definido con SQL efectivamente aplicado en el Supabase operativo.
+
+**C — M6 infraestructura, backups y riesgo interproyecto.** Revisa el contrato del deploy gobernado y su implementación en PR #59: firmas/expiración/one-use, cadena de artefactos e imágenes SHA, estado real STOP del actuador host, `docker compose` limitado a Sabora, redes ingress/egress aisladas, ausencia de afectación/dependencia de Fleetia, rollback exclusivo, riesgos de symlinks/path/TOCTOU, y dos copias cifradas (VPS Sabora y ordenador externo) realmente distinguibles. Evalúa los límites de la evidencia CI frente a infraestructura real. **No realices pruebas en el VPS.**
+
+**D — Cobertura y preparación de integración.** Comprueba que el delta de #59 frente a `main` conserva los requisitos normativos, que #60 está realmente incluido como ancestro, que no se duplican migraciones y que la experiencia de cliente/gestión mantiene sus acciones y protección de cierre. Revisa si faltan pruebas integradoras o controles específicos pese a 8/8 PASS, en especial payloads Stripe realistas, firma/HMAC y HTTP + PG17, carrera/replay y negativo de fondos. Evita proponer un refactor general si una reparación acotada puede resolver el riesgo.
+
+## 4. Informe obligatorio y propuestas de solución
+
+Publica **un único informe completo**, en español, en el archivo:
+
+`docs/reviews/SABORA_S41_CODEX_INDEPENDENT_REVIEW_PR59_2026-11-16.md`
+
+Debe contener:
+
+1. **Identificación y dictamen:** fecha, SHA exacto revisado, `main` base, PR #59/#60, metodología, archivos/contratos comprobados, pruebas realmente ejecutadas con comando/resultado (o `NO EJECUTADO`) y distinción entre evidencia heredada y verificación propia; `GO / GO CON CONDICIONES / NO-GO` **técnico**, separado de autorización de merge/despliegue. Nunca inventes aprobación independiente de una persona.
+2. **Hallazgos ordenados P0–P3**, y también **falsos positivos** de revisión previa si los hay. Cada hallazgo debe indicar: ID, gravedad argumentada, condición que lo dispara, impacto y si es demostrado/reproducido o riesgo hipotético, archivo **y línea de commit revisado**, normativa aplicable, evidencia reproducible y limitaciones. Si no existen defectos adicionales, dilo expresamente, sin inventar problemas para completar una lista.
+3. **Propuesta de solución por hallazgo**, sin aplicarla: intervención mínima recomendada, alternativa viable cuando corresponda, ventajas/inconvenientes, riesgos, migración/compatibilidad/rollback si afecta datos, archivos y funciones a cambiar, y **pruebas negativas e integradoras de aceptación** concretas. Para P1-07 evalúa consulta puntual a Stripe tras HMAC, conciliación PI/cargo/importe/moneda/plazo, manejo 400 vs 503 y reintento, y solución alternativa si procede; justifica tu elección, no la des por sentada.
+4. **Plan de corrección por bloques completos** (no micro-PRs), orden de prioridad, posibles dependencias, puntos de no regresión y **comparativa explícita**: qué tareas es razonable corregir por ChatGPT/propietario frente a delegar a Codex, con dificultad, riesgo y recomendación razonada; **no te autoadjudiques la implementación**.
+5. **Puertas de validación pendientes** antes de merge a `main` y antes de instalación real: pruebas sobre SHA final, revisión independiente, aceptación visual humana, Stripe remoto/sandbox, restauración externa, aislamiento material del VPS, etc., según normas. Separar `IMPLEMENTADO`, `PROBADO EN CI`, `VALIDADO EN ENTORNO REAL` y `APROBADO`.
+
+## 5. Entrega en GitHub (obligatoria)
+
+- Crea el informe en la **rama del PR #59**, commit documental `docs(review): Codex independent audit and proposed fixes for S41 PR59 [skip ci]`. No alteres otros archivos. Si la rama avanza durante el análisis, comprueba el nuevo HEAD; reconcilia y especifica en el informe el SHA funcional revisado, sin reescritura forzada.
+- Publica un comentario **en la conversación del PR #59** con el título **`Codex S41 — revisión independiente: resultado y propuestas`**, resumen P0–P3, dictamen, SHA, y **enlace absoluto al Markdown dentro de GitHub** (por rama o mejor por SHA de tu commit, para que sea inmutable). **Indica expresamente dónde has puesto el informe y el SHA del commit.**
+- En la respuesta final al propietario informa del resultado y proporciona **dos enlaces verificables**: (1) informe Markdown en GitHub y (2) comentario en PR #59. Si no puedes escribir/comentar por permisos, **NO afirmes haberlo publicado**: entrega el informe completo y explica qué impidió publicarlo; no inventes enlaces.
+- **No corrijas nada** después de publicar el informe; espera la decisión explícita del propietario sobre si lo hará ChatGPT o Codex.
+
+**Resultado buscado:** dictamen independiente y accionable, con propuestas de solución claras y evidencia concreta, publicado en GitHub para tomar una decisión informada antes de corregir.

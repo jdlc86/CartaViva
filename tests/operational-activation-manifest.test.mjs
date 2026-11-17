@@ -60,19 +60,19 @@ function resolverFor(manifest,{unsafe=false}={}){
 }
 
 test('operational SQL contract accounts for all optional capabilities and dedicated notifiers',()=>{
- assert.equal(describeOperationalSqlContract({}).capabilityCount,17);
+ assert.equal(describeOperationalSqlContract({}).capabilityCount,18);
  const contract=describeOperationalSqlContract(features);
- assert.equal(contract.capabilityCount,22);
+ assert.equal(contract.capabilityCount,23);
  assert.equal(contract.notifierCount,2);
- assert.equal(new Set(contract.slots.map(item=>item.poolPath)).size,22);
+ assert.equal(new Set(contract.slots.map(item=>item.poolPath)).size,23);
  assert.ok(contract.slots.every(item=>item.tls==='verify_ca_and_hostname'));
 });
 
 test('manifest validation is exact, bounded and exposes no credential values',()=>{
  const result=validateOperationalActivationManifest(fixtureManifest({stage:'production'}));
- assert.deepEqual(result.summary,{schemaVersion:1,stage:'production',capabilityCount:22,
+ assert.deepEqual(result.summary,{schemaVersion:1,stage:'production',capabilityCount:23,
   notifierCount:2,slots:result.summary.slots,tlsHostCount:2});
- assert.equal(result.summary.slots.length,22);
+ assert.equal(result.summary.slots.length,23);
  assert.doesNotMatch(JSON.stringify(result.summary),/password|login|supabase\.co/i);
 });
 
@@ -101,7 +101,7 @@ test('production bootstrap allows only exact SQL/JWKS tunnel bindings shared by 
    port:443,protocol:'tls'},
  ]};
  assert.deepEqual(validateOperationalEgressBinding(manifest,policy),{
-  targetCount:2,capabilityCount:22,notifierCount:2,
+  targetCount:2,capabilityCount:23,notifierCount:2,
  });
  const fails=[
   [value=>{value.database.slots['customer.flowPool'].connectPort=15433;},null],
@@ -127,8 +127,8 @@ test('materialization constructs one strict bounded pool per slot plus two disti
  const manifest=fixtureManifest();
  const resources=await materializeOperationalM3Options({manifest,Pool:FakePool,
   resolveSecret:resolverFor(manifest),fetchImpl:async()=>{throw Error('not_fetched_during_materialize');}});
- assert.equal(FakePool.instances.length,24);
- assert.equal(resources.summary.capabilityCount,22);
+ assert.equal(FakePool.instances.length,25);
+ assert.equal(resources.summary.capabilityCount,23);
  for(const pool of FakePool.instances){
   assert.equal(pool.options.ssl.rejectUnauthorized,true);
   assert.equal(pool.options.ssl.servername,'db.project.supabase.co');

@@ -17,7 +17,6 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
   'operational_entrypoint_missing');
  require(/command:\s*\["node",\s*"src\/sabora-egress-gateway\.mjs"\]/,
   'egress_entrypoint_missing');
- require(/ports:\s*\['127\.0\.0\.1:4100:4100'\]/,'operational_port_not_loopback');
  require(/api:[\s\S]*?networks:\s*\[sabora_runtime_internal\]/,
   'api_has_unrestricted_network');
  require(/sabora-egress:[\s\S]*?networks:\s*\[sabora_runtime_internal, sabora_egress_allowlisted\]/,
@@ -65,6 +64,7 @@ export function inspectOperationalDeploymentIsolation(rootPath,{composeText}={})
  forbid(/SABORA_[A-Z0-9_]*(?:PASSWORD|TOKEN|PRIVATE_KEY|CA_PEM|HMAC):/,
   'secret_value_in_compose_environment');
  if(/\bports:/.test(egressSection))violations.push('egress_exposes_host_port');
+ if(/\bports:/.test(apiSection))violations.push('api_exposes_host_port');
  if(/sabora_egress_allowlisted/.test(apiSection))violations.push('api_attached_to_outbound_network');
  return Object.freeze([...new Set(violations)]);
 }

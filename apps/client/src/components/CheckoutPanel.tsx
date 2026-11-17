@@ -2,13 +2,16 @@ import {formatPrice} from '../catalog';
 import type {Locale} from '../client-state';
 
 export type PaymentMode='pay_now'|'pay_at_end';
+export type PaymentChannel='stripe'|'external';
 export type CheckoutPhase='quoting'|'ready'|'confirming'|'confirmed'|'payment_action'|'uncertain'|'error';
 
-export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsOrdered,fixedPaymentMode=null,policyConflict=false,paymentsEnabled=true,message,
- onPaymentMode,onConfirm,onRetry}:{locale:Locale;totalCents:number;phase:CheckoutPhase;
+export function CheckoutPanel({locale,totalCents,phase,paymentMode,paymentChannel,requirePayAsOrdered,fixedPaymentMode=null,policyConflict=false,paymentsEnabled=true,message,
+ onPaymentMode,onPaymentChannel,onConfirm,onRetry}:{locale:Locale;totalCents:number;phase:CheckoutPhase;
  paymentMode:PaymentMode;requirePayAsOrdered:boolean;fixedPaymentMode?:PaymentMode|null;
+ paymentChannel:PaymentChannel;
  policyConflict?:boolean;paymentsEnabled?:boolean;message:string|null;
- onPaymentMode:(mode:PaymentMode)=>void;onConfirm:()=>void;onRetry:()=>void}){
+ onPaymentMode:(mode:PaymentMode)=>void;onPaymentChannel:(channel:PaymentChannel)=>void;
+ onConfirm:()=>void;onRetry:()=>void}){
  const es=locale==='es',free=totalCents===0,busy=phase==='quoting'||phase==='confirming';
  if(phase==='quoting')return <div className="checkout-status" role="status"><span/>
   <p>{es?'Revalidando disponibilidad y precio…':'Revalidating availability and price…'}</p></div>;
@@ -45,8 +48,13 @@ export function CheckoutPanel({locale,totalCents,phase,paymentMode,requirePayAsO
      checked={paymentMode==='pay_at_end'} disabled={requirePayAsOrdered}
      onChange={()=>onPaymentMode('pay_at_end')}/><span><strong>{es?'Pagar al terminar':'Pay at the end'}</strong>
      <small>{requirePayAsOrdered?(es?'La política de esta mesa exige pagar conforme se pide.':'This table requires payment as ordered.'):
-      (es?'La cuenta se liquidará presencialmente con el personal.':'The account will be settled in person with staff.')}</small></span></label>
+      (es?'Acumula consumo y elige Stripe o caja/terminal externa al liquidar.':'Accumulate consumption and choose Stripe or an external cash desk/terminal at settlement.')}</small></span></label>
    </fieldset>}
+  {paymentsEnabled&&!free&&!policyConflict&&(fixedPaymentMode??paymentMode)==='pay_now'?<fieldset className="payment-choice">
+   <legend>{es?'¿Dónde se verifica antes de servir?':'Where is it verified before serving?'}</legend>
+   <label><input type="radio" name="payment-channel" checked={paymentChannel==='stripe'} onChange={()=>onPaymentChannel('stripe')}/><span><strong>Stripe</strong><small>{es?'Solo se libera tras confirmación real del proveedor.':'Released only after real provider confirmation.'}</small></span></label>
+   <label><input type="radio" name="payment-channel" checked={paymentChannel==='external'} onChange={()=>onPaymentChannel('external')}/><span><strong>{es?'Caja o terminal externa':'External cash desk or terminal'}</strong><small>{es?'El camarero comprueba fuera de Sabora y libera; no se registra dinero.':'Staff verifies outside Sabora and releases; no money is recorded.'}</small></span></label>
+  </fieldset>:null}
   {message?<p className="honest-status" role="status">{message}</p>:null}
   <button className="primary-action" type="button" disabled={busy||policyConflict} onClick={onConfirm}>
    {phase==='confirming'?(es?'Confirmando…':'Confirming…'):(es?'Confirmar pedido':'Confirm order')}</button>

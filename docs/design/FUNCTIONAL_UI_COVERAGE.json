@@ -53,7 +53,7 @@
         {
           "surface": "client",
           "path": "apps/client/src/App.tsx",
-          "marker": "<ThirdPartyCashPanel"
+          "marker": "<EconomicSettlementPanel"
         },
         {
           "surface": "management",
@@ -63,23 +63,28 @@
       ],
       "api": [
         {
-          "path": "apps/api/src/third-party-cash-http.mjs",
-          "marker": "cash"
+          "path": "apps/api/src/economic-circuit-http.mjs",
+          "marker": "registerEconomicCircuitHttp"
         }
       ],
       "evidence": [
         {
           "kind": "browser-client",
           "path": "apps/client/e2e/client-premium.spec.ts",
-          "marker": "third-party"
+          "marker": "economic circuit"
+        },
+        {
+          "kind": "browser-management",
+          "path": "apps/management/e2e/economic-circuit.spec.ts",
+          "marker": "sin inventar dinero"
         },
         {
           "kind": "postgres17",
           "path": "scripts/ci/h6-postgres17.test.mjs",
-          "marker": "third-party"
+          "marker": "economic circuit"
         }
       ],
-      "note": "Recorrido presencial candidato; no acreditar dinero físico, Stripe real ni aceptación global."
+      "note": "Consumo operativo y elección Stripe/externo según #61. La verificación externa no acredita cobro, devolución, recaudación ni factura; Stripe real y aceptación global siguen separados."
     },
     {
       "id": "H6-checkout",

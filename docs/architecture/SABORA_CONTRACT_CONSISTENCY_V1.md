@@ -145,6 +145,18 @@ Antes de declarar implementado el flujo: pruebas de categoría vacía/todos agot
 
 **Pendiente de concretar:** tratamiento de mesas con varios clientes/pagadores y política de caja compartida. No inferir cambios de modalidad sin consentimiento.
 
+### Reconciliación aprobada por el propietario — issue #61 (15-11-2026)
+
+El contrato original de esta sección ya establecía que, en la modalidad presencial, la resolución económica ocurría **fuera de la app** y Sabora se limitaba a ajustar consumo/saldo. Versiones posteriores ampliaron esa idea a un ledger, endpoints y controles de cobro/devolución en efectivo. Esa ampliación no se considera una decisión aprobada y queda anulada por esta reconciliación.
+
+- `Pagar al pedir`/`Pagar al final` expresan **cuándo** liquidar; `Stripe`/`externo` expresan **dónde**. `Pagar al final` no fija caja ni impide elegir Stripe al terminar.
+- Solo Stripe produce en Sabora movimientos monetarios acreditados. El canal externo no crea pago, devolución, recaudación, factura o propina: solo una verificación operativa firmada que habilita despacho o cierre.
+- Para pago al pedir, cocina espera captura Stripe confirmada o verificación externa. Para pago al final, se acumula consumo por persona/ronda y se elige después un canal.
+- Cancelación no servida: ajustar consumo; canal externo se resuelve económicamente fuera; Stripe se devuelve al pagador/cargo originales. El camarero no manipula dinero en Sabora.
+- El dashboard separa consumo bruto, cancelaciones y neto de capturas y devoluciones Stripe. No existe distribución de propinas o nómina por empleado.
+
+Esta sección es la interpretación vigente ante cualquier contradicción con “cuenta de caja”, “efectivo registrado” o “devolución presencial registrada” en documentos posteriores.
+
 ## Pago obligatorio por mesa (18-10-2026)
 
 **Decisión aprobada:** el configurador de mesas debe permitir activar **«Exigir pago conforme se pide»** por mesa (p. ej. terraza). La política de la mesa prevalece sobre la opción general «Pagar al terminar» para los pedidos nuevos con importe positivo. Cuando está activa, el cliente no puede seleccionar cuenta abierta/caja: debe pagar cada pedido conforme lo realiza. Si Stripe está habilitado, se autoriza al confirmar y se captura al despachar a cocina; cada ronda de importe positivo requiere su propia operación de autorización/captura. Si el pedido tiene importe final cero, no se exige operación de pago.

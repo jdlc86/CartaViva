@@ -45,6 +45,7 @@ incluyen valores, DSN ni detalles del driver.
 | `tableChange.pendingPool` | `sabora_f12_pending_reader_runtime` | cambio pendiente |
 | `staff.pool` | `sabora_staff_reader` | pertenencia staff |
 | `h4.operationsPool` | `sabora_b3_h4_transition_runtime` | cocina/sala |
+| `h6.customerPool` | `sabora_h6_customer_runtime` | circuito económico cliente |
 | `h6.providerPool` | `sabora_h6_provider_runtime` | ledger proveedor |
 | `h6.operationsPool` | `sabora_h6_operations_runtime` | operación H6 |
 | `h6.closePool` | `sabora_h6_account_close_runtime` | cierre de cuenta |
@@ -57,8 +58,9 @@ incluyen valores, DSN ni detalles del driver.
 | `waiterCalls.customerPool` | `sabora_waiter_call_customer_runtime` | llamada cliente |
 | `waiterCalls.staffPool` | `sabora_waiter_call_staff_runtime` | atención por sala |
 
-El mínimo H3–H6 es 15 slots, M3 mínimo suma 17 y los tres módulos opt-in llegan
-a 22. `tableChange.notificationPool` y `h6.notifierPool` son dos instancias
+El mínimo H3–H6 vigente es 16 slots, M3 mínimo suma 18 y los tres grupos opt-in llegan
+a 23. `h6.customerPool` separa el circuito económico de cliente de la identidad
+de operaciones desde Issue #61. `tableChange.notificationPool` y `h6.notifierPool` son dos instancias
 separadas de conexión, pero reutilizan las credenciales de su capacidad exacta:
 no inventan dos privilegios SQL adicionales. Cada entrada documenta dueño
 `dba_sabora`, custodia conjunta seguridad/DBA, TLS, rotación por credencial
@@ -122,7 +124,7 @@ JWT, cookies, QR, cuerpo, PII y secretos no se publican.
 
 | Componente | Implementación | Evidencia automatizada | Resultado local |
 |---|---|---|---|
-| 17/22 slots + 2 notifier | `operational-activation-manifest.mjs` | `operational-activation-manifest.test.mjs` | PASS |
+| 18/23 slots + 2 notifier | `operational-activation-manifest.mjs` | `operational-activation-manifest.test.mjs` | PASS |
 | JWKS vía egress TLS | `gateway-jwks-fetch.mjs` | `gateway-jwks-fetch.test.mjs` | PASS |
 | Proxy TLS/PG allowlist | `sabora-egress-gateway.mjs` | `sabora-egress-gateway.test.mjs` | PASS, TLS y PG dinámicos |
 | Bootstrap/cierre activo | `operational-runtime.mjs`, `operational-server.mjs` | tests homónimos + bootstrap integral | PASS unitario; integral se registra en CI final |
@@ -180,7 +182,7 @@ integración del candidato, sin tocar el SQL de #57:
 2. **Paridad exacta de red:** la API lee el MISMO fichero de política de egress
    (montaje read-only de ambos servicios) y compara cada puerto, host y
    protocolo SQL/JWKS con su manifiesto **antes de resolver secretos**. El
-   contrato admite que 17/22 pools SQL distintos compartan un puerto de
+   contrato admite que 18/23 pools SQL distintos compartan un puerto de
    túnel si apuntan al mismo destino, pero rechaza destinos extra o drift.
    Pruebas de contrato y ensamblaje desde archivos con 17 pools simulados;
    **no son una prueba TLS real contra Supabase**.

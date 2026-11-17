@@ -116,35 +116,6 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
     itemId,soldOut:body.soldOut,correlationId:body.correlationId}));}
    catch(error){return failure(reply,error);}
   });
- app.get('/api/v1/operations/cash/accounts',{preHandler:floor},async(request,reply)=>{
-  reply.header('Cache-Control','no-store');
-  reply.header('X-Content-Type-Options','nosniff');
-  // Only exact bounded query strings are accepted; never depend on a
-  // framework-specific query-object prototype or coerced number type.
-  let params;
-  try{params=new URL(request.raw.url,'http://sabora.invalid').searchParams;}
-  catch{return reply.code(400).send({error:'invalid_h6_operation'});}
-  const names=[...params.keys()];
-  if(names.some(key=>!['after','limit'].includes(key))||
-     params.getAll('after').length>1||params.getAll('limit').length>1)
-   return reply.code(400).send({error:'invalid_h6_operation'});
-  const after=params.get('after'),limitText=params.get('limit');
-  if((after!==null&&!UUID.test(after))||
-     (limitText!==null&&(!/^[0-9]{1,2}$/.test(limitText)||
-       Number(limitText)<1||Number(limitText)>50)))
-   return reply.code(400).send({error:'invalid_h6_operation'});
-  try{return reply.code(200).send(await operations.readCashAccounts(verified(request),{
-   after,limit:limitText===null?50:Number(limitText)}));}
-  catch(error){return failure(reply,error);}
- });
- app.post('/api/v1/operations/accounts/:accountId/cash-settlements',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
-  const body=request.body;
-  if(!UUID.test(request.params?.accountId??'')||!exact(body,['amountCents','correlationId'])||
-     !Number.isSafeInteger(body.amountCents)||body.amountCents<1||!CORRELATION.test(body.correlationId))
-   return reply.code(400).send({error:'invalid_h6_operation'});
-  try{return reply.code(201).send(await operations.settleCash(verified(request),{
-   accountId:request.params.accountId,...body}));}catch(error){return failure(reply,error);}
- });
  // Paying in full is not account closure: an explicit staff action is required.
  app.post('/api/v1/operations/accounts/:accountId/close',
   {preHandler:floor,bodyLimit:2048},async(request,reply)=>{
@@ -157,12 +128,4 @@ export function registerH6OperationsHttp(app,{forRoles,operations,tableChange=nu
    }));}
    catch(error){return failure(reply,error);}
   });
- app.post('/api/v1/operations/incidents/:incidentId/cash-refund',{preHandler:floor,bodyLimit:2048},async(request,reply)=>{
-  const body=request.body;
-  if(!UUID.test(request.params?.incidentId??'')||!exact(body,['correlationId'])||
-     !CORRELATION.test(body.correlationId))return reply.code(400).send({error:'invalid_h6_operation'});
-  try{return reply.code(201).send(await operations.refundCash(verified(request),{
-   incidentId:request.params.incidentId,correlationId:body.correlationId}));}
-  catch(error){return failure(reply,error);}
- });
 }

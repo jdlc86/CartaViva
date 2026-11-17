@@ -1,167 +1,155 @@
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ConnectionNotice,EmptyState,ErrorState,LoadingState,PageHeader,StatusBadge} from '../components/Primitives';
-import type {CashAccount,CashAccountSnapshot,OrderOperationsGateway} from '../order-operations-gateway.js';
-import {ThirdPartyCashDesk} from './ThirdPartyCashDesk';
+import type {EconomicAccountSnapshot,OrderOperationsGateway} from '../order-operations-gateway.js';
 
 const euro=(cents:number)=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).format(cents/100);
-const centsFromInput=(raw:string):number|null=>{
- const normalized=raw.trim();
- const parsed=/^([0-9]{1,9})(?:[,.]([0-9]{1,2}))?$/.exec(normalized);
- if(!parsed)return null;
- const amount=Number(parsed[1])*100+Number((parsed[2]??'').padEnd(2,'0'));
- return Number.isSafeInteger(amount)&&amount>0?amount:null;
-};
-const eurosForInput=(cents:number)=>String(Math.floor(cents/100))+','+String(cents%100).padStart(2,'0');
-type CashAttempt=Readonly<{accountId:string;amountCents:number;correlationId:string}>;
-const correlation=()=>`ui_cash_${crypto.randomUUID().replaceAll('-','_')}`;
+const correlation=()=>`ui_external_verify_${crypto.randomUUID().replaceAll('-','_')}`;
+const closeCorrelation=()=>`ui_operational_close_${crypto.randomUUID().replaceAll('-','_')}`;
+const tableCloseCorrelation=()=>`ui_table_operational_close_${crypto.randomUUID().replaceAll('-','_')}`;
+const unresolvedSettlement=(state:string)=>['external_pending','stripe_authorization_requested',
+ 'stripe_requires_action','stripe_authorized','stripe_authorization_unknown',
+ 'stripe_capture_requested','stripe_capture_unknown','stripe_refund_pending'].includes(state);
 
 export function CashView({gateway}:{gateway?:OrderOperationsGateway|null}){
- const [snapshot,setSnapshot]=useState<CashAccountSnapshot|null>(null);
+ const [snapshot,setSnapshot]=useState<EconomicAccountSnapshot|null>(null);
  const [phase,setPhase]=useState<'idle'|'loading'|'ready'|'error'>(gateway?'loading':'idle');
- const [busy,setBusy]=useState(false);
+ const [busy,setBusy]=useState<string|null>(null);
  const [message,setMessage]=useState<string|null>(null);
- const [selectedId,setSelectedId]=useState<string|null>(null);
- const [amount,setAmount]=useState('');
- const [acknowledged,setAcknowledged]=useState(false);
- const [refreshRequired,setRefreshRequired]=useState(false);
- const readEpoch=useRef(0);
- const pendingCash=useRef<CashAttempt|null>(null);
- const [pageAfter,setPageAfter]=useState<string|null>(null);
- const load=useCallback(async(after:string|null=null,append=false)=>{
-  if(!gateway)return;
-  const current=++readEpoch.current;
-  setPhase('loading');
-  try{
-   const page=await gateway.listCashAccounts({after,limit:50});
-   if(readEpoch.current!==current)return;
-   setSnapshot(previous=>append&&previous?{...page,items:[...previous.items,...page.items]}:page);
-   setPageAfter(page.nextAfter);
-   setRefreshRequired(false);
-   setPhase('ready');
-   setMessage(null);
-  }catch{
-   if(readEpoch.current!==current)return;
-   setPhase('error');
-   setRefreshRequired(true);
-   setMessage('No se ha podido leer el saldo confirmado. No se permite registrar efectivo a ciegas.');
-  }
+ const [ack,setAck]=useState<ReadonlySet<string>>(new Set());
+ const [closeAck,setCloseAck]=useState<ReadonlySet<string>>(new Set());
+ const [tableCloseAck,setTableCloseAck]=useState<ReadonlySet<string>>(new Set());
+ const epoch=useRef(0);
+ const load=useCallback(async()=>{
+  if(!gateway)return;const current=++epoch.current;setPhase('loading');
+  try{const value=await gateway.listEconomicAccounts();if(current!==epoch.current)return;
+   setSnapshot(value);setPhase('ready');setMessage(null);
+  }catch{if(current!==epoch.current)return;setPhase('error');
+   setMessage('No se ha podido leer el consumo operativo. No se permite inferir cobros ni cierres.');}
  },[gateway]);
- useEffect(()=>{
-  void load();
-  return()=>{readEpoch.current+=1;};
- },[load]);
- const chosen=snapshot?.items.find(a=>a.accountId===selectedId)??null;
- const select=(account:CashAccount)=>{
-  setSelectedId(account.accountId);setAmount(eurosForInput(account.outstandingCents));
-  setAcknowledged(false);setMessage(null);
- };
- const refresh=async()=>{setAcknowledged(false);await load();};
- const parsed=centsFromInput(amount);
- const canSettle=Boolean(chosen&&chosen.canSettle&&parsed!==null&&parsed<=chosen.outstandingCents&&
-  acknowledged&&!busy&&!refreshRequired&&phase==='ready'&&
-  (pendingCash.current===null||pendingCash.current.accountId===chosen.accountId&&
-   pendingCash.current.amountCents===parsed));
- const settle=async()=>{
-  if(!gateway||!chosen||!canSettle||parsed===null)return;
-  const request=pendingCash.current??Object.freeze({accountId:chosen.accountId,
-   amountCents:parsed,correlationId:correlation()});
-  pendingCash.current=request;
-  setBusy(true);setMessage(null);
-  try{
-   const result=await gateway.settleCash(request);
-   if(typeof result.outstandingCents!=='number'||!Number.isSafeInteger(result.outstandingCents)||
-      result.accountId!==request.accountId)throw Error('invalid_cash_receipt');
-   pendingCash.current=null;
-   setMessage('Cobro registrado por el servidor. La cuenta no se cierra automáticamente.');
-   setAcknowledged(false);
-   setRefreshRequired(true);
+ useEffect(()=>{void load();return()=>{epoch.current+=1;};},[load]);
+ const verify=async(intentId:string)=>{
+  if(!gateway||busy||!ack.has(intentId))return;setBusy(intentId);setMessage(null);
+  try{await gateway.verifyExternalSettlement({intentId,correlationId:correlation()});
+   setAck(current=>{const next=new Set(current);next.delete(intentId);return next;});
    await load();
-  }catch{
-   setRefreshRequired(true);
-   setMessage('Resultado del registro incierto. No repitas con otra operación: conserva este intento y solicita conciliación.');
-  }finally{setBusy(false);}
+   setMessage('Verificación externa registrada. No acredita cobro, devolución, recaudación ni factura.');
+  }catch{setMessage('La verificación no quedó confirmada. No se ha alterado el saldo operativo.');}
+  finally{setBusy(null);}
  };
- const retryPending=async()=>{
-  if(!gateway||!pendingCash.current||busy)return;
-  const request=pendingCash.current;
-  setBusy(true);
-  try{
-   const result=await gateway.settleCash(request);
-   if(result.accountId!==request.accountId||!Number.isSafeInteger(result.outstandingCents))
-    throw Error('invalid_cash_receipt');
-   pendingCash.current=null;
-   setMessage('El intento anterior ha sido confirmado o recuperado sin crear otro cobro.');
+ const closeOperational=async(accountId:string)=>{
+  if(!gateway||busy||!closeAck.has(accountId))return;setBusy(accountId);setMessage(null);
+  try{await gateway.closeOperationalAccount({accountId,correlationId:closeCorrelation()});
+   setCloseAck(current=>{const next=new Set(current);next.delete(accountId);return next;});
    await load();
-  }catch{
-   setMessage('El intento sigue incierto; no se ha creado una nueva clave de cobro.');
-  }finally{setBusy(false);}
+   setMessage('Cuenta cerrada operativamente con identidad y hora del personal. No se ha registrado dinero.');
+  }catch{setMessage('El cierre operativo no quedó confirmado. Comprueba pendientes y reintenta sin inferir cobros.');}
+  finally{setBusy(null);}
  };
- const close=async()=>{
-  if(!gateway||!chosen||chosen.state!=='open'||chosen.outstandingCents!==0||
-     busy||refreshRequired||phase!=='ready'||pendingCash.current)return;
-  setBusy(true);setMessage(null);
-  try{
-   await gateway.closeCashAccount({accountId:chosen.accountId,
-    correlationId:'ui_close_'+crypto.randomUUID().replaceAll('-','_')});
-   setMessage('Cierre económico registrado. La recogida de cocina no acredita una entrega física.');
-   setSelectedId(null);await load();
-  }catch{
-   setRefreshRequired(true);
-   setMessage('No está confirmado el cierre. Puede existir una incidencia, ronda o devolución pendiente; verificar antes de reintentar.');
-  }finally{setBusy(false);}
+ const closeTable=async(tableId:string,sessionId:string)=>{
+  const key=`${tableId}:${sessionId}`;
+  if(!gateway||busy||!tableCloseAck.has(key))return;setBusy(key);setMessage(null);
+  try{await gateway.closeEconomicTable({tableId,sessionId,correlationId:tableCloseCorrelation()});
+   setTableCloseAck(current=>{const next=new Set(current);next.delete(key);return next;});
+   await load();
+   setMessage('Mesa cerrada operativamente con actor y hora. No se ha registrado caja externa como dinero.');
+  }catch{setMessage('El cierre de mesa no quedó confirmado. No se ha inferido ningún cobro. Revisa todas las cuentas.');}
+  finally{setBusy(null);}
  };
- if(!gateway)return <div className="view-stack"><PageHeader eyebrow="Sala" title="Caja por comensal"
-  description="Cobros presenciales y cierre de cuentas individuales."/>
-  <ConnectionNotice>La caja requiere autenticación de personal y un backend aislado con permisos mínimos.</ConnectionNotice></div>;
+ const totals=useMemo(()=>snapshot?.items.reduce((sum,item)=>({
+  gross:sum.gross+item.grossConsumptionCents,cancelled:sum.cancelled+item.cancelledCents,
+  net:sum.net+item.netConsumptionCents,captured:sum.captured+item.stripeCapturedCents,
+  refunded:sum.refunded+item.stripeRefundedCents,stripeNet:sum.stripeNet+item.stripeNetCents
+ }),{gross:0,cancelled:0,net:0,captured:0,refunded:0,stripeNet:0})??null,[snapshot]);
+ const tableSessions=useMemo(()=>{
+  const values=new Map<string,{tableId:string;sessionId:string;accounts:EconomicAccountSnapshot['items'][number][]}>();
+  for(const account of snapshot?.items??[]){const key=`${account.tableId}:${account.sessionId}`;
+   const group=values.get(key)??{tableId:account.tableId,sessionId:account.sessionId,accounts:[]};
+   group.accounts.push(account);values.set(key,group);}
+  return [...values.entries()];
+ },[snapshot]);
  return <div className="view-stack">
-  <PageHeader eyebrow="Sala" title="Caja por comensal" description="Saldo individual confirmado; pago parcial, devolución presencial y cierre económico son operaciones diferentes."/>
-  <section className="panel" aria-label="Estado de caja" aria-busy={phase==='loading'}>
-   <div className="panel-heading"><h2>Cuentas abiertas</h2>
-    <button type="button" className="button" disabled={busy||phase==='loading'} onClick={()=>void refresh()}>Actualizar saldos</button></div>
-   {phase==='loading'&&!snapshot?<LoadingState title="Consultando cuentas" description="Comprobando los saldos autorizados del restaurante."/>:null}
-   {phase==='error'?<ErrorState title="Lectura no disponible" description="No se puede cobrar sin saldo actualizado." onRetry={()=>void refresh()}/>:null}
-   {phase!=='error'&&snapshot?.items.length===0?<EmptyState icon="tables" title="Sin cuentas pendientes" description="No hay cuentas abiertas en la lectura autorizada."/>:null}
-   {snapshot?.items.length?<div className="cash-account-grid">{snapshot.items.map(account=><button
-     type="button" key={account.accountId}
-     className={selectedId===account.accountId?'cash-account-card cash-account-card--active':'cash-account-card'}
-     onClick={()=>select(account)} disabled={busy}>
-     <strong>Mesa {account.tableNumber} · {account.customerCode}</strong>
-     <span>Saldo: {euro(account.outstandingCents)}</span>
-     <small>Abonado en efectivo: {euro(account.cashSettledCents)}</small>
-     {account.paymentUncertain?<StatusBadge tone="danger">Pago digital incierto: caja bloqueada</StatusBadge>:
-       account.state==='blocked'?<StatusBadge tone="warning">Cuenta bloqueada</StatusBadge>:
-       <StatusBadge tone={account.paymentMode==='pay_at_end'?'brand':'neutral'}>
-        {account.paymentMode==='pay_at_end'?'Pagar al terminar':
-        account.paymentMode==='pay_now'?'Pagar ahora':'Solo rondas gratuitas'}
-       </StatusBadge>}
-     {account.refundPending?<span>Devolución digital pendiente</span>:null}
-    </button>)}</div>:null}
-   {pageAfter&&phase==='ready'?<button type="button" className="button" disabled={busy}
-    onClick={()=>void load(pageAfter,true)}>Mostrar más cuentas</button>:null}
+  <PageHeader eyebrow="Operación económica" title="Consumo y cierre operativo"
+   description="Stripe es el único movimiento monetario acreditado por Sabora. Caja o terminal externos se verifican solo para liberar y cerrar operativamente."/>
+  <ConnectionNotice title={gateway?'Proyección económica restringida.':'Circuito económico no conectado.'}
+   tone={gateway?'brand':'warning'}>
+   {gateway?'Los datos proceden de capacidades firmadas de sala.':'No se mostrarán ni inferirán consumos o liquidaciones.'}
+  </ConnectionNotice>
+  <section className="honest-operational-note" aria-label="Límite contable">
+   <strong>Consumo operativo, no recaudación ni facturación acreditada.</strong>
+   <span> Una cancelación reduce consumo. Nunca demuestra una devolución realizada fuera de Sabora.</span>
   </section>
-  {chosen?<section className="panel" aria-label="Operación de caja">
-   <div className="panel-heading"><h2>Mesa {chosen.tableNumber} · {chosen.customerCode}</h2>
-    <StatusBadge tone={chosen.paymentUncertain?'danger':'neutral'}>{chosen.state==='open'?'Cuenta abierta':'Cuenta bloqueada'}</StatusBadge></div>
-   <p><strong>Deuda exigible: {euro(chosen.outstandingCents)}</strong></p>
-   <p className="honest-operational-note">«Pagar al terminar» es una modalidad, no un cobro acreditado. Comprueba la entrega física del efectivo antes de registrarlo.</p>
-   {chosen.canSettle?<div className="cash-capture-controls">
-    <label>Importe recibido en efectivo (EUR)<input inputMode="decimal" autoComplete="off" value={amount}
-      disabled={busy||Boolean(pendingCash.current)} onChange={event=>{setAmount(event.target.value);setAcknowledged(false);}}/></label>
-    <label><input type="checkbox" checked={acknowledged} disabled={busy||Boolean(pendingCash.current)}
-      onChange={event=>setAcknowledged(event.target.checked)}/> Confirmo que he recibido físicamente este importe.</label>
-    <button type="button" className="button button--primary" disabled={!canSettle}
-      onClick={()=>void settle()}>Registrar cobro en efectivo</button>
-   </div>:<p className="honest-operational-note">No existe un cobro presencial habilitado para esta cuenta. La modalidad, el saldo o un pago pendiente lo impiden.</p>}
-   {chosen.state==='open'&&chosen.outstandingCents===0?<div className="cash-close-controls">
-    <p>El saldo es cero. El cierre requiere además que el servidor valide rondas, cocina, devoluciones e incidencias.</p>
-    <button type="button" className="button" disabled={busy||refreshRequired||phase!=='ready'||Boolean(pendingCash.current)}
-      onClick={()=>void close()}>Solicitar cierre de cuenta</button>
+  {message?<p role="status" className="honest-operational-note">{message}</p>:null}
+  {phase==='loading'?<LoadingState title="Leyendo consumos" description="Comprobando confirmaciones operativas y Stripe."/>:null}
+  {phase==='error'?<ErrorState title="Proyección económica no disponible" description={message??'Sin datos verificables.'} onRetry={()=>void load()}/>:null}
+  {phase==='ready'&&snapshot?.items.length===0?<EmptyState icon="orders" title="Sin cuentas operativas" description="Todavía no hay consumos abiertos o conciliados para esta sesión."/>:null}
+  {phase==='ready'&&snapshot?.items.length?<section className="data-panel" aria-label="Cuentas por persona y mesa">
+   <div className="panel-heading"><div><span className="eyebrow">Sala</span><h2>Personas y cuentas</h2></div>
+    <button type="button" onClick={()=>void load()} disabled={Boolean(busy)}>Actualizar</button></div>
+   {totals?<div className="metric-grid" aria-label="Resumen económico separado">
+    <article className="metric-card"><span>Consumo bruto</span><strong>{euro(totals.gross)}</strong><p>Magnitud operativa; no acredita recaudación.</p></article>
+    <article className="metric-card"><span>Cancelaciones</span><strong>{euro(totals.cancelled)}</strong><p>Ajustes aprobados de consumo no servido.</p></article>
+    <article className="metric-card"><span>Consumo neto</span><strong>{euro(totals.net)}</strong><p>Bruto menos cancelaciones; no es una liquidación fiscal.</p></article>
+    <article className="metric-card"><span>Stripe acreditado neto</span><strong>{euro(totals.stripeNet)}</strong><p>Capturas {euro(totals.captured)} menos devoluciones ejecutadas {euro(totals.refunded)}.</p></article>
    </div>:null}
+   <div className="operation-list" aria-label="Cierre operativo por mesa">{tableSessions.map(([key,group])=>{
+    const closable=group.accounts.every(account=>account.outstandingCents===0&&
+     !account.settlements.some(item=>unresolvedSettlement(item.state)))&&
+     group.accounts.some(account=>account.operationalState!=='settled');
+    if(!closable)return null;
+    return <article className="operation-card" key={key}><div><strong>Cierre conjunto de mesa</strong>
+     <p>{group.accounts.length} cuenta(s) conciliadas. La operación es atómica y no acredita dinero externo.</p></div>
+     <label><input type="checkbox" checked={tableCloseAck.has(key)} disabled={Boolean(busy)}
+      onChange={event=>setTableCloseAck(current=>{const next=new Set(current);if(event.target.checked)next.add(key);else next.delete(key);return next;})}/>
+      He comprobado el estado operativo de todas las cuentas de esta sesión de mesa.</label>
+     <button type="button" className="button button--primary" disabled={Boolean(busy)||!tableCloseAck.has(key)}
+      onClick={()=>void closeTable(group.tableId,group.sessionId)}>{busy===key?'Cerrando mesa…':'Cerrar mesa operativamente'}</button>
+    </article>;
+   })}</div>
+   <ul className="operation-list">{snapshot.items.map(account=>{
+    const hasUnresolved=account.settlements.some(item=>unresolvedSettlement(item.state));
+    const tone=account.outstandingCents>0||hasUnresolved?'warning':'brand';
+    return <li key={account.accountId} className="operation-card">
+     <div><strong>{account.customerAlias} · {account.customerCode}</strong>
+      <p>Bruto {euro(account.grossConsumptionCents)} · cancelado {euro(account.cancelledCents)} · neto {euro(account.netConsumptionCents)}</p>
+      <p>Stripe: capturado {euro(account.stripeCapturedCents)} · devuelto {euro(account.stripeRefundedCents)} · neto {euro(account.stripeNetCents)}</p>
+      <p>Pendiente operativo: {euro(account.outstandingCents)} · modalidad {account.paymentTiming==='pay_now'?'al pedir':'al final'} · canales y verificaciones detallados por liquidación</p></div>
+     <StatusBadge tone={tone}>{account.outstandingCents>0?'SALDO OPERATIVO PENDIENTE':hasUnresolved?'LIQUIDACIÓN O DEVOLUCIÓN PENDIENTE':'SALDO OPERATIVO CERO'}</StatusBadge>
+     {account.settlements.length?<ul className="operation-list" aria-label={`Liquidaciones de ${account.customerAlias}`}>
+      {account.settlements.map(item=>{
+       const pendingExternal=item.channel==='external'&&item.state==='external_pending';
+       const refundPending=item.state==='stripe_refund_pending';
+       const label=pendingExternal?'EXTERNO PENDIENTE':item.state==='external_verified'?'EXTERNO VERIFICADO':
+        refundPending?'STRIPE CAPTURADO · DEVOLUCIÓN PENDIENTE':
+        item.state==='stripe_partially_refunded'?'STRIPE · DEVOLUCIÓN PARCIAL':
+        item.state==='stripe_refunded'?'STRIPE · DEVUELTO':
+        item.state==='stripe_captured'?'STRIPE CONFIRMADO':
+        item.state==='stripe_requires_action'?'STRIPE · ACCIÓN PENDIENTE':
+        item.channel==='stripe'?'STRIPE · SIN CONFIRMAR':'EXTERNO · SIN VERIFICAR';
+       return <li key={item.intentId} className="honest-operational-note">
+        <div><strong>{item.channel==='stripe'?'Stripe':'Caja/terminal externa'} · {euro(item.allocatedCents)}</strong>
+         <span> Identificador de liquidación: {item.intentId.slice(0,8)}</span></div>
+        <StatusBadge tone={pendingExternal||refundPending?'warning':item.providerConfirmed||item.externalVerified?'brand':'neutral'}>
+         {label}
+        </StatusBadge>
+        {pendingExternal?<div className="button-row">
+         <label><input type="checkbox" checked={ack.has(item.intentId)} disabled={Boolean(busy)}
+          onChange={event=>setAck(current=>{const next=new Set(current);if(event.target.checked)next.add(item.intentId);else next.delete(item.intentId);return next;})}/>
+          He comprobado físicamente que el cliente pasó por la caja o terminal externa. Sabora no registra dinero.</label>
+         <button className="button button--primary" type="button" disabled={Boolean(busy)||!ack.has(item.intentId)}
+          onClick={()=>void verify(item.intentId)}>{busy===item.intentId?'Verificando…':'Verificar y liberar operativamente'}</button>
+        </div>:null}
+       </li>;
+      })}
+     </ul>:<p className="honest-operational-note">No hay liquidaciones al final individualizadas en esta cuenta. Los importes Stripe históricos se muestran arriba, sin inferir canal externo.</p>}
+     {account.outstandingCents===0&&!hasUnresolved&&account.operationalState!=='settled'?<div className="button-row">
+      <label><input type="checkbox" checked={closeAck.has(account.accountId)} disabled={Boolean(busy)}
+       onChange={event=>setCloseAck(current=>{const next=new Set(current);if(event.target.checked)next.add(account.accountId);else next.delete(account.accountId);return next;})}/>
+       He comprobado el estado del canal correspondiente. Este cierre es operativo y no registra ni entrega dinero.</label>
+      <button type="button" className="button button--primary" disabled={Boolean(busy)||!closeAck.has(account.accountId)}
+       onClick={()=>void closeOperational(account.accountId)}>{busy===account.accountId?'Cerrando…':'Cerrar cuenta operativamente'}</button>
+     </div>:null}
+    </li>;
+   })}</ul>
   </section>:null}
-  <ThirdPartyCashDesk gateway={gateway}/>
-  {message?<p className="honest-operational-note" role="status">{message}</p>:null}
-  {pendingCash.current?<button type="button" className="button" disabled={busy}
-    onClick={()=>void retryPending()}>Verificar de nuevo el mismo cobro (sin nueva clave)</button>:null}
-  <p className="privacy-copy">No se liquidan deudas con autorizaciones Stripe inciertas; la pantalla no sustituye la conciliación del proveedor ni la revisión de caja.</p>
  </div>;
 }

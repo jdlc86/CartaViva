@@ -5,18 +5,22 @@ export const RECORD_AUTHORIZATION_H6_SQL=`SELECT payment_attempt_id,payment_stat
 export const LIST_SCHEDULABLE_H6_SQL=`SELECT order_id,grouping_deadline,server_now
  FROM sabora.list_schedulable_h6_rounds_candidate($1::integer)`;
 export const REQUEST_DUE_CAPTURE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,capture_key,
- dispatch_id,dispatch_key,action,repeated
- FROM sabora.request_h6_capture_dispatch_candidate($1::uuid,clock_timestamp())`;
+ dispatch_id,dispatch_key,action,repeated,amount_cents
+ FROM sabora.request_h6_capture_evidence_candidate($1::uuid,clock_timestamp())`;
 export const REQUEST_CAPTURE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,capture_key,
- dispatch_id,dispatch_key,action,repeated FROM sabora.request_h6_capture_dispatch_candidate($1::uuid,$2::timestamptz)`;
+ dispatch_id,dispatch_key,action,repeated,amount_cents FROM sabora.request_h6_capture_evidence_candidate($1::uuid,$2::timestamptz)`;
 export const RECORD_CAPTURE_H6_SQL=`SELECT payment_state,round_state,dispatch_id,dispatch_state,repeated
- FROM sabora.record_h6_capture_outcome_candidate($1::uuid,$2::text,$3::text,$4::text)`;
+ FROM sabora.record_h6_capture_verified_candidate($1::uuid,$2::text,$3::text,$4::text,
+ $5::text,$6::bigint,$7::text)`;
+export const READ_PAYMENT_EVIDENCE_H6_SQL=`SELECT amount_cents,provider_intent_id,provider_charge_id
+ FROM sabora.read_h6_provider_evidence_candidate($1::uuid)`;
 export const RECORD_CAPTURE_COMPENSATION_H6_SQL=`SELECT payment_state,round_state,dispatch_id,dispatch_state,repeated
- FROM sabora.record_h6_capture_compensation_candidate($1::uuid,$2::text,$3::text)`;
-export const INGEST_STRIPE_WEBHOOK_H6_SQL=`SELECT sabora.ingest_stripe_webhook_h6_candidate(
- $1::text,$2::text,$3::text,$4::timestamptz,$5::bytea,$6::text,$7::timestamptz,$8::uuid,$9::text) AS result`;
-export const RECORD_REFUND_H6_SQL=`SELECT sabora.record_h6_refund_outcome_candidate(
- $1::uuid,$2::text,$3::text) AS result`;
+ FROM sabora.record_h6_capture_compensation_verified_candidate($1::uuid,$2::text,$3::text,
+  $4::text,$5::bigint,$6::text)`;
+export const INGEST_STRIPE_WEBHOOK_H6_SQL=`SELECT sabora.ingest_stripe_webhook_verified_candidate(
+ $1::text,$2::text,$3::text,$4::timestamptz,$5::bytea,$6::text,$7::timestamptz,$8::uuid,$9::text,$10::uuid,$11::bigint,$12::text) AS result`;
+export const RECORD_REFUND_H6_SQL=`SELECT sabora.record_h6_refund_verified_candidate(
+ $1::uuid,$2::text,$3::text,$4::bigint,$5::text,$6::text) AS result`;
 export const REQUEST_REFUND_H6_SQL=`SELECT refund_attempt_id,provider_charge_id,amount_cents,
  idempotency_key,action,repeated FROM sabora.request_h6_refund_candidate($1::uuid)`;
 export const REQUEST_RELEASE_H6_SQL=`SELECT payment_attempt_id,provider_intent_id,idempotency_key,
@@ -56,33 +60,42 @@ export function createH6ProviderRepository({withTransaction}={}){
     throw Error('invalid_h6_capture_request');
    return withTransaction(query=>rows(query(REQUEST_CAPTURE_H6_SQL,[orderId,now])));
   },
-  recordCapture({orderId,outcome,providerChargeId=null,errorCode=null}={}){
+  readPaymentEvidence({orderId}={}){
+   if(!UUID.test(orderId??''))throw Error('invalid_h6_provider_evidence');
+   return withTransaction(query=>rows(query(READ_PAYMENT_EVIDENCE_H6_SQL,[orderId])));
+  },
+  recordCapture({orderId,outcome,providerChargeId=null,errorCode=null,
+   providerIntentId=null,providerAmountCents=null,providerCurrency=null}={}){
    if(!UUID.test(orderId??'')||!['captured','failed','unknown'].includes(outcome))
     throw Error('invalid_h6_capture_record');
    return withTransaction(query=>rows(query(RECORD_CAPTURE_H6_SQL,
-    [orderId,outcome,providerChargeId,errorCode])));
+    [orderId,outcome,providerChargeId,errorCode,providerIntentId,providerAmountCents,providerCurrency])));
   },
-  recordCaptureCompensation({orderId,providerChargeId,errorCode='dispatch_persistence_failed'}={}){
+  recordCaptureCompensation({orderId,providerChargeId,errorCode='dispatch_persistence_failed',
+   providerIntentId=null,providerAmountCents=null,providerCurrency=null}={}){
    if(!UUID.test(orderId??'')||typeof providerChargeId!=='string'||typeof errorCode!=='string')
     throw Error('invalid_h6_capture_compensation');
    return withTransaction(query=>rows(query(RECORD_CAPTURE_COMPENSATION_H6_SQL,
-    [orderId,providerChargeId,errorCode])));
+    [orderId,providerChargeId,errorCode,providerIntentId,providerAmountCents,providerCurrency])));
   },
   ingestWebhook({eventId,eventType,providerObjectId,providerCreatedAt,payloadSha256,
-   providerChargeId=null,captureBefore=null,refundAttemptId=null,refundStatus=null}={}){
+   providerChargeId=null,captureBefore=null,refundAttemptId=null,refundStatus=null,
+    saboraOrderId=null,providerAmountCents=null,providerCurrency=null}={}){
    if(!(providerCreatedAt instanceof Date)||!Number.isFinite(providerCreatedAt.getTime())||
       !Buffer.isBuffer(payloadSha256)||payloadSha256.length!==32)
     throw Error('invalid_h6_webhook_record');
    return withTransaction(query=>rows(query(INGEST_STRIPE_WEBHOOK_H6_SQL,
     [eventId,eventType,providerObjectId,providerCreatedAt,payloadSha256,providerChargeId,captureBefore,
-     refundAttemptId,refundStatus])))
+     refundAttemptId,refundStatus,saboraOrderId,providerAmountCents,providerCurrency])))
     .then(row=>Object.freeze(row.result));
   },
-  recordRefund({refundAttemptId,outcome,providerRefundId=null}={}){
+  recordRefund({refundAttemptId,outcome,providerRefundId=null,providerAmountCents=null,
+   providerChargeId=null,providerCurrency=null}={}){
    if(!UUID.test(refundAttemptId??'')||!['succeeded','failed','unknown'].includes(outcome))
     throw Error('invalid_h6_refund_record');
    return withTransaction(query=>rows(query(RECORD_REFUND_H6_SQL,
-    [refundAttemptId,outcome,providerRefundId]))).then(row=>Object.freeze(row.result));
+    [refundAttemptId,outcome,providerRefundId,providerAmountCents,providerChargeId,
+     providerCurrency]))).then(row=>Object.freeze(row.result));
   },
   requestRefund({refundAttemptId}={}){
    if(!UUID.test(refundAttemptId??''))throw Error('invalid_h6_refund_request');

@@ -27,10 +27,12 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
     !/^20[0-9]{2}-[0-9]{2}-[0-9]{2}\.[a-z]+$/.test(apiVersion))
   throw Error('invalid_h6_stripe_adapter');
  const call=async(path,{method='POST',idempotencyKey=null,fields={}}={})=>{
+  const requestedPath=method==='GET'&&Object.keys(fields).length?
+   `${path}?${encode(fields)}`:path;
   if(idempotencyKey!==null&&!IDEMPOTENCY.test(idempotencyKey))throw Error('invalid_stripe_idempotency_key');
   let response;
   try{
-   response=await request({method,path,headers:Object.freeze({
+   response=await request({method,path:requestedPath,headers:Object.freeze({
     authorization:`Bearer ${credential}`,'stripe-version':apiVersion,
     'content-type':'application/x-www-form-urlencoded',
     ...(idempotencyKey?{'idempotency-key':idempotencyKey}:null)
@@ -45,24 +47,46 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
   return response;
  };
  return Object.freeze({
+  // Resolve the current Stripe object for a previously signed capturable
+  // event. Never use event-only IDs to fabricate a capture deadline.
+  async retrieveCapturableEvidence({providerIntentId}={}){
+   if(!INTENT.test(providerIntentId??''))throw Error('invalid_stripe_reconciliation');
+   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET',
+    fields:{'expand[]':'latest_charge'}});
+   if(value.outcome==='failed'||value.id!==providerIntentId||
+      value.status!=='requires_capture'||typeof value.latest_charge!=='object'||
+      !CHARGE.test(value.latest_charge?.id??'')||
+      !Number.isSafeInteger(value.amount)||value.amount<1||value.currency!=='eur'||
+      !UUID.test(value.metadata?.sabora_order_id??''))
+    throw new StripeAmbiguousResultError('stripe_capturable_evidence_missing');
+   const deadline=captureBefore(value);
+   if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
+   return Object.freeze({providerIntentId:value.id,providerChargeId:value.latest_charge.id,
+    amountCents:value.amount,currency:value.currency,
+    saboraOrderId:value.metadata.sabora_order_id,captureBefore:deadline});
+  },
   async retrieve({providerIntentId}={}){
    if(!INTENT.test(providerIntentId??''))throw Error('invalid_stripe_reconciliation');
-   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET'});
+   const value=await call(`/v1/payment_intents/${providerIntentId}`,{method:'GET',
+    fields:{'expand[]':'latest_charge'}});
    if(value.outcome==='failed')return value;
    if(!INTENT.test(value.id??'')||value.id!==providerIntentId)throw new StripeAmbiguousResultError();
    if(value.status==='requires_capture'){
     const deadline=captureBefore(value);
     if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
-    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline});
+    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline,
+     amountCents:value.amount,currency:value.currency});
    }
    if(value.status==='succeeded'){
     const id=chargeId(value);
     if(!CHARGE.test(id??''))throw new StripeAmbiguousResultError();
-    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id});
+    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id,
+     amountCents:value.amount_received,currency:value.currency});
    }
    if(['requires_action','requires_confirmation','requires_payment_method'].includes(value.status))
     return Object.freeze({outcome:'requires_action',providerIntentId:value.id,
-     clientSecret:typeof value.client_secret==='string'?value.client_secret:null});
+     clientSecret:typeof value.client_secret==='string'?value.client_secret:null,
+     amountCents:value.amount,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'payment_intent_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -77,11 +101,13 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
    if(value.status==='requires_capture'){
     const deadline=captureBefore(value);
     if(!deadline)throw new StripeAmbiguousResultError('stripe_capture_deadline_missing');
-    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline});
+    return Object.freeze({outcome:'authorized',providerIntentId:value.id,captureBefore:deadline,
+     amountCents:value.amount,currency:value.currency});
    }
    if(['requires_action','requires_confirmation','requires_payment_method'].includes(value.status))
     return Object.freeze({outcome:'requires_action',providerIntentId:value.id,
-     clientSecret:typeof value.client_secret==='string'?value.client_secret:null});
+     clientSecret:typeof value.client_secret==='string'?value.client_secret:null,
+     amountCents:value.amount,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'payment_intent_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -92,7 +118,8 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
    if(value.outcome==='failed')return value;
    const id=chargeId(value);
    if(value.status==='succeeded'&&CHARGE.test(id??''))
-    return Object.freeze({outcome:'captured',providerChargeId:id});
+    return Object.freeze({outcome:'captured',providerIntentId:value.id,providerChargeId:id,
+     amountCents:value.amount_received,currency:value.currency});
    if(value.status==='canceled')return Object.freeze({outcome:'failed',errorCode:'capture_canceled'});
    throw new StripeAmbiguousResultError();
   },
@@ -111,7 +138,9 @@ export function createH6StripeAdapter({request,credential,apiVersion='2026-09-30
     'metadata[sabora_refund_attempt_id]':refundAttemptId}});
    if(value.outcome==='failed')return value;
    if(!REFUND.test(value.id??''))throw new StripeAmbiguousResultError();
-   if(value.status==='succeeded')return Object.freeze({outcome:'succeeded',providerRefundId:value.id});
+   if(value.status==='succeeded')return Object.freeze({outcome:'succeeded',providerRefundId:value.id,
+     amountCents:value.amount,currency:value.currency,
+     providerChargeId:typeof value.charge==='string'?value.charge:value.charge?.id});
    if(value.status==='failed')return Object.freeze({outcome:'failed',errorCode:'refund_failed'});
    throw new StripeAmbiguousResultError();
   }

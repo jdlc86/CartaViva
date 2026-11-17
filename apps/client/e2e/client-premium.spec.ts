@@ -330,7 +330,7 @@ test('H6 customer completes QR, server quote, pay-at-end confirmation and durabl
   confirmations.push(route.request().postDataJSON());
   return route.fulfill({status:201,contentType:'application/json',body:JSON.stringify({status:'confirmed',
    orderId,grouping:'first',accountId,roundId,amountCents:1290,paymentMode:'pay_at_end',
-   roundState:'grouping',paymentState:null,requiresPaymentAction:false})});
+   paymentChannel:null,roundState:'grouping',paymentState:null,requiresPaymentAction:false})});
  });
  await page.route('**/api/v1/customer/events**',route=>route.fulfill({status:200,
   headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store'},
@@ -388,7 +388,7 @@ test('zero-cost round hides payment and a later positive round asks once on the 
    grouping:index===1?'first':'grouped',accountId:'64000000-0000-4000-8000-000000000004',
    roundId:`65000000-0000-4000-8000-${String(index).padStart(12,'0')}`,
    amountCents:freeRound?0:catalog[0].priceCents,paymentMode:body.paymentMode,
-   roundState:freeRound?'free_grouping':'grouping',paymentState:null,
+   paymentChannel:null,roundState:freeRound?'free_grouping':'grouping',paymentState:null,
    requiresPaymentAction:false})});
  });
  await page.route('**/api/v1/customer/events**',route=>route.fulfill({status:200,
@@ -501,74 +501,58 @@ test('ambiguous confirmation is recovered by lookup without repeating the write'
 });
 
 
-test('voluntary cash tips selector preserves consent, six choices and payer proof',async({page})=>{
+test('economic circuit records an external choice without claiming money',async({page})=>{
  const tableId='ca710000-0000-4000-8000-000000000001';
  const round1='62000000-0000-4000-8000-000000000001';
  const round2='62000000-0000-4000-8000-000000000002';
- const collectionId='64000000-0000-4000-8000-000000000001';
- const claimId='65000000-0000-4000-8000-000000000001';
- const proof='a'.repeat(64);
  const submitted:unknown[]=[];
  await page.route('**/api/v1/customer/session',route=>route.fulfill({status:200,contentType:'application/json',
   body:JSON.stringify({authenticated:true,publicId:'SB-23456789ABCD',alias:'Marina',company:null})}));
  await page.route('**/api/v1/customer/visits',route=>route.fulfill({status:201,contentType:'application/json',
   body:JSON.stringify({tableId,visitId:'visit_h6_12345678',basketId:'basket_h6_1234567',
    expiresAt:'2026-12-07T23:00:00.000Z',paymentPolicy:{requirePayAsOrdered:false,version:1}})}));
- await page.route('**/api/v1/customer/third-party/cash/debts',route=>route.fulfill({status:200,
-  contentType:'application/json',body:JSON.stringify({version:1,items:[
-   {roundId:round1,accountId:'63000000-0000-4000-8000-000000000001',
-    customerCode:'SB-23456789ABCD',amountCents:2400},
-   {roundId:round2,accountId:'63000000-0000-4000-8000-000000000002',
-    customerCode:'SB-23456789ABCE',amountCents:2400}
+ await page.route('**/api/v1/customer/economic/consumption',route=>route.fulfill({status:200,
+  contentType:'application/json',body:JSON.stringify({version:2,
+   notice:'Operational consumption only; external money stays outside Sabora.',pendingSettlements:[],items:[
+    {accountId:'63000000-0000-4000-8000-000000000001',customerCode:'SB-23456789ABCD',
+     customerAlias:'Marina',own:true,netConsumptionCents:2400,outstandingCents:2400,
+     rounds:[{roundId:round1,amountCents:2400}]},
+    {accountId:'63000000-0000-4000-8000-000000000002',customerCode:'SB-23456789ABCE',
+     customerAlias:'Invitado 2',own:false,netConsumptionCents:2400,outstandingCents:2400,
+     rounds:[{roundId:round2,amountCents:2400}]}
   ]})}));
- await page.route('**/api/v1/customer/third-party/cash/intents',route=>{
+ await page.route('**/api/v1/customer/economic/settlements',route=>{
   submitted.push(route.request().postDataJSON());
   return route.fulfill({status:201,contentType:'application/json',
-   body:JSON.stringify({version:1,intentId:'66000000-0000-4000-8000-000000000001',
-    consumptionCents:4800,tipCents:240,totalCents:5040,tipOption:'percent5',
-    state:'pending',repeated:false})});
+   body:JSON.stringify({version:2,intentId:'66000000-0000-4000-8000-000000000001',
+    amountCents:4800,state:'external_pending',repeated:false})});
  });
- await page.route('**/api/v1/customer/third-party/cash/tips',route=>route.fulfill({
-  status:200,contentType:'application/json',
-  body:JSON.stringify({version:1,items:[{collectionId,tipCents:240,
-   collectedAt:'2026-11-07T14:00:00.000Z'}]})}));
- await page.route('**/api/v1/customer/third-party/cash/tips/'+collectionId+'/proof',
-  route=>route.fulfill({status:201,contentType:'application/json',
-   body:JSON.stringify({version:1,collectionId,claimId,proof,tipCents:240,
-    expiresAt:'2026-11-07T23:00:00.000Z'})}));
  await page.goto('/qr/v1/SABORA/'+tableId+'#'+'A'.repeat(43));
  const qr=page.getByRole('dialog',{name:'QR de mesa'});
  await expect(qr).toContainText('Mesa verificada');
- await qr.getByRole('button',{name:'Pagar consumos y propinas en caja'}).click();
- const dlg=page.getByRole('dialog',{name:'Pagar deudas ajenas'});
+ await qr.getByRole('button',{name:'Cerrar'}).click();
+ await page.getByRole('button',{name:'Liquidar consumo al final'}).click();
+ const dlg=page.getByRole('dialog',{name:'Liquidar consumo'});
  await expect(dlg).toBeVisible();
- await dlg.getByRole('button',{name:'Consultar importes autorizados'}).click();
- const consumer=dlg.getByRole('group',{name:'Selecciona consumos de esta mesa'});
+ await expect(dlg).toContainText('Stripe es el único dinero acreditado dentro de Sabora');
+ await dlg.getByRole('button',{name:'Consultar consumo pendiente'}).click();
+ const consumer=dlg.getByRole('group',{name:'Selecciona consumos'});
  await expect(consumer.getByRole('checkbox')).toHaveCount(2);
  await consumer.getByRole('checkbox').first().check();
  await consumer.getByRole('checkbox').last().check();
- const tips=dlg.getByRole('group',{name:/Elige una opción/});
- await expect(tips.getByRole('radio')).toHaveCount(6);
- await expect(tips.getByRole('radio',{name:/Sin propina/})).toBeChecked();
- await expect(dlg.getByRole('button',{name:'Registrar intención de pago en caja'})).toBeDisabled();
- await tips.getByRole('radio',{name:/5 %/}).check();
- await expect(tips.getByRole('radio',{name:/Sin propina/})).not.toBeChecked();
- await expect(dlg).toContainText('2,40');
- await dlg.getByRole('checkbox',{name:/Consiento expresamente/}).check();
- await dlg.getByRole('button',{name:'Registrar intención de pago en caja'}).click();
- await expect(dlg).toContainText('50,40');
+ const channels=dlg.getByRole('group',{name:'Canal de liquidación'});
+ await channels.getByRole('radio',{name:/Caja o terminal externa/}).check();
+ await expect(dlg.getByRole('button',{name:'Iniciar liquidación'})).toBeDisabled();
+ await dlg.getByRole('checkbox',{name:/Confirmo esta selección/}).check();
+ await dlg.getByRole('button',{name:'Iniciar liquidación'}).click();
+ await expect(dlg).toContainText('El personal debe comprobarla físicamente; Sabora no acredita dinero');
+ await expect(dlg).toContainText('external_pending');
  expect(submitted).toHaveLength(1);
  expect(submitted[0]).toMatchObject({tableId,visitId:'visit_h6_12345678',
-  consent:true,tipOption:'percent5',rounds:[
+  channel:'external',allocations:[
    {roundId:round1,amountCents:2400},{roundId:round2,amountCents:2400}
   ]});
  expect((submitted[0] as Record<string,unknown>).requestKey).toMatch(/^[A-Za-z0-9_-]{16,128}$/);
- await dlg.getByRole('button',{name:'Consultar mis propinas recaudadas'}).click();
- await expect(dlg.getByRole('button',{name:'Solicitar prueba para devolución'})).toBeVisible();
- await dlg.getByRole('button',{name:'Solicitar prueba para devolución'}).click();
- await expect(dlg).toContainText(collectionId);
- await expect(dlg).toContainText(claimId);
- await expect(dlg).toContainText(proof);
 });
 
 test('unverified Stripe action stays pending, reuses original order and verifies SQL state',async({page})=>{
@@ -595,7 +579,7 @@ test('unverified Stripe action stays pending, reuses original order and verifies
   return route.fulfill({status:201,contentType:'application/json',
    body:JSON.stringify({status:'confirmed',orderId,grouping:'first',accountId,roundId,
     amountCents:1290,paymentMode:'pay_now',roundState:'awaiting_authorization',
-    paymentState:'requires_action',requiresPaymentAction:true,
+    paymentChannel:'stripe',paymentState:'requires_action',requiresPaymentAction:true,
     clientSecret:'pi_fake12345678_secret_browser_only'})});
  });
  await page.route(url=>url.pathname===`/api/v1/customer/orders/${orderId}/payment-state`,

@@ -1,0 +1,54 @@
+# Overlay onto compose.sabora-operational.yml ONLY after all Sabora activation gates.
+# Approved IPv4 bind and dedicated TCP/8443 on the shared IP. Never bind wildcard or share ingress resources.
+name: sabora
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        SABORA_RESTAURANT_CODE: ${SABORA_RESTAURANT_CODE:?approved restaurant code required}
+    restart: "no"
+    stop_signal: SIGTERM
+    stop_grace_period: 20s
+    environment:
+      SABORA_INGRESS_BIND_IP: ${SABORA_INGRESS_BIND_IP:?approved specific bind IPv4 for TCP 8443 required}
+      SABORA_CLIENT_HOST: ${SABORA_CLIENT_HOST:?approved distinct HTTPS client hostname required}
+      SABORA_MANAGEMENT_HOST: ${SABORA_MANAGEMENT_HOST:?approved distinct HTTPS management hostname required}
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
+    ports:
+      - "${SABORA_INGRESS_BIND_IP:?approved specific bind IPv4 and free TCP 8443 required}:8443:8443"
+    networks: [sabora_runtime_internal, sabora_ingress_filtered]
+    volumes:
+      - type: bind
+        source: ${SABORA_WEB_TLS_DIRECTORY:?absolute Sabora-only TLS directory required}
+        target: /run/sabora/tls
+        read_only: true
+    user: "10001:10001"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 100
+    cap_drop: [ALL]
+    init: true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  # The HTTPS entrypoint MUST be reachable via its own prefiltered bridge.
+  # Docker networks with internal:true cannot accept published host ports.
+  # This network is preprovisioned for Sabora only, with outbound blocked by
+  # host/provider firewall. It must never be a shared reverse-proxy network.
+  sabora_ingress_filtered:
+    external: true
+    name: ${SABORA_INGRESS_FILTERED_NETWORK:?pre-provisioned Sabora-only filtered ingress bridge required}

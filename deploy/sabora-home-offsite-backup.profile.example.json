@@ -1,0 +1,75 @@
+{
+  "schema": "sabora-home-offsite-backup-profile/v1",
+  "state": {
+    "ownerDecisionRecorded": true,
+    "configurationComplete": false,
+    "copiesExist": false,
+    "restoreValidated": false,
+    "operationalAuthorizationGranted": false,
+    "schedulerEnabled": false
+  },
+  "scope": {
+    "repository": "jdlc86/CartaViva",
+    "sourceProjectRef": "byhvmumqivmunkmomhup",
+    "releaseSha": "PENDING_APPROVED_40_HEX_SHA",
+    "externalDestinationClass": "offsite",
+    "externalLocationType": "independent-home-computer",
+    "vpsDestinationClass": "vps-encrypted-cache",
+    "vpsStorageScope": "sabora-exclusive"
+  },
+  "homeComputer": {
+    "deviceId": "PENDING_NON_SENSITIVE_DEVICE_ID",
+    "operatingSystem": "PENDING_WINDOWS_MACOS_OR_LINUX",
+    "custodian": "PENDING_HOME_COMPUTER_CUSTODIAN",
+    "dedicatedLocalAccount": "PENDING_DEDICATED_LOCAL_ACCOUNT",
+    "fullDiskEncryption": "PENDING_VERIFICATION",
+    "securityUpdates": "PENDING_VERIFICATION",
+    "filesystem": "PENDING_FILESYSTEM",
+    "volumeId": "PENDING_NON_SENSITIVE_VOLUME_ID",
+    "availableBytes": "PENDING_MEASURED_BYTES",
+    "offsiteCiphertextRoot": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
+    "captureStagingRoot": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
+    "operationalPlanPath": "PENDING_ABSOLUTE_PATH_OUTSIDE_CHECKOUT",
+    "rolesSqlPath": "PENDING_ABSOLUTE_PATH_OUTSIDE_CHECKOUT",
+    "inventorySqlPath": "PENDING_ABSOLUTE_PATH_OUTSIDE_CHECKOUT",
+    "psqlBinary": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
+    "pgDumpBinary": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
+    "inboundServiceEnabled": false,
+    "inboundWriteFromVpsAllowed": false
+  },
+  "databaseConnection": {
+    "method": "PENDING_DIRECT_IPV6_OR_SESSION_POOLER_IPV4",
+    "tlsMode": "verify-full",
+    "caPath": "PENDING_ABSOLUTE_CA_PATH_OUTSIDE_CHECKOUT",
+    "hostname": "PENDING_COPY_FROM_AUTHORIZED_SUPABASE_PANEL",
+    "credentialChannel": "PENDING_PROTECTED_CHANNEL_NOT_ARGV_GIT_ACTIONS_OR_CHAT"
+  },
+  "keyCustody": {
+    "custodian": "PENDING_DISTINCT_KEY_CUSTODIAN",
+    "keyFileAtExecution": "PENDING_ABSOLUTE_PATH_ON_SEPARATE_CUSTODY_MEDIUM",
+    "recoveryProcedure": "PENDING_APPROVED_KEY_RECOVERY_PROCEDURE",
+    "storedInOffsiteCiphertextRoot": false,
+    "storedOnVps": false,
+    "storedInGitOrActions": false
+  },
+  "retention": {
+    "captureFrequency": "PENDING_APPROVAL",
+    "generationCount": "PENDING_APPROVAL",
+    "purgeProcedure": "PENDING_APPROVAL",
+    "minimumFreeBytes": "PENDING_MEASUREMENT_AND_APPROVAL",
+    "rpo": "PENDING_REAL_REHEARSAL",
+    "rto": "PENDING_REAL_REHEARSAL"
+  },
+  "vpsReplica": {
+    "requiredByOwnerDecision": true,
+    "authorizationGranted": false,
+    "ciphertextRoot": "PENDING_ABSOLUTE_SABORA_EXCLUSIVE_VPS_PATH",
+    "owner": "PENDING_SABORA_EXCLUSIVE_OWNER",
+    "group": "PENDING_SABORA_EXCLUSIVE_GROUP",
+    "mode": "PENDING_RESTRICTIVE_MODE",
+    "quotaBytes": "PENDING_APPROVAL",
+    "availableBytes": "PENDING_MEASUREMENT",
+    "retention": "PENDING_APPROVAL",
+    "fleetiaDependency": false
+  }
+}

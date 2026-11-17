@@ -33,6 +33,8 @@ export const PERSIST_H6_ORDER_SQL=`SELECT persisted_order_id,persisted_grouping,
  FROM sabora.confirm_customer_round_h6_candidate(
  $1::bytea,$2::uuid,$3::text,$4::text,$5::text,$6::text,$7::bytea,$8::uuid,$9::uuid,$10::jsonb,$11::boolean,$12::text
  )`;
+export const CONVERT_H6_EXTERNAL_SQL=`SELECT sabora.convert_customer_round_to_external_candidate(
+ $1::bytea,$2::uuid,$3::text,$4::uuid) AS result`;
 export const READ_H6_ORDER_REVISION_SQL=`SELECT sabora.read_customer_order_revision_h6_candidate(
  $1::bytea,$2::uuid,$3::text,$4::uuid) AS result`;
 export const RESUBMIT_H6_ORDER_REVISION_SQL=`SELECT sabora.resubmit_customer_order_revision_h6_candidate(
@@ -75,7 +77,7 @@ const economicEvidence=value=>plain(value)?Object.freeze({
 
 function assertScope(input,{request=false,h6=false}={}){
  if(!strictObject(input,request?
-  (h6?['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken','paymentMode']:
+  (h6?['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken','paymentMode','paymentChannel']:
    ['tableId','qrToken','visitId','basketId','requestKey','lines','acceptanceToken']):
   ['tableId','qrToken','visitId','basketId','lines'])||
     !TABLE_ID.test(input.tableId)||typeof input.qrToken!=='string'||!QR_TOKEN.test(input.qrToken)||
@@ -105,6 +107,10 @@ function assertScope(input,{request=false,h6=false}={}){
   throw Error('invalid_customer_flow_input');
  if(request&&h6&&input.paymentMode!==undefined&&input.paymentMode!==null&&
     !['pay_now','pay_at_end'].includes(input.paymentMode))throw Error('invalid_customer_flow_input');
+ if(request&&h6&&input.paymentChannel!==undefined&&input.paymentChannel!==null&&
+    !['stripe','external'].includes(input.paymentChannel))throw Error('invalid_customer_flow_input');
+ if(request&&h6&&input.paymentChannel==='external'&&input.paymentMode!=='pay_now')
+  throw Error('invalid_customer_flow_input');
 }
 
 const one=result=>{
@@ -210,9 +216,10 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   const sessionHash=hashCustomerSessionToken(customerSessionToken);
   if(!sessionHash)throw Error('invalid_customer_flow_input');
   const paymentMode=h6?(raw.paymentMode??null):undefined;
+  const paymentChannel=h6?(raw.paymentChannel??(paymentMode==='pay_now'?'stripe':null)):undefined;
   const fingerprint=digest({schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
    basketId:raw.basketId,requestKey:raw.requestKey,lines:raw.lines,
-   ...(h6?{paymentMode}:null)});
+   ...(h6?{paymentMode,paymentChannel}:null)});
   const now=clock();
   if(!Number.isSafeInteger(now)||now<0)throw Error('invalid_customer_production_flow');
   const prepared=await withTransaction(async query=>{
@@ -256,7 +263,7 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
    }
    const acceptanceContext={schemaVersion:h6?2:1,tableId:raw.tableId,visitId:raw.visitId,
     basketId:raw.basketId,requestKey:raw.requestKey,lines:current,
-    ...(h6?{paymentMode}:null)};
+    ...(h6?{paymentMode,paymentChannel}:null)};
    if(repriced&&!verifyCustomerBasketAcceptance({token:raw.acceptanceToken,secretKey,
       context:acceptanceContext,nowMs:now})){
     const acceptance=issueCustomerBasketAcceptance({secretKey,context:acceptanceContext,nowMs:now});
@@ -274,13 +281,23 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
     orderId:persisted.persisted_order_id,grouping:persisted.persisted_grouping})});
   });
   if(prepared.kind==='complete')return prepared.value;
-  const h6Row=await (prepared.kind==='h6_replay'?withH6Reader:withH6Transaction)(async query=>one(await query(
-   prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
-   prepared.kind==='h6_replay'?
-    [sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
-    [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
-     fingerprint,prepared.batchId,prepared.orderId,JSON.stringify(prepared.current),prepared.repriced,paymentMode]
-  )));
+  const h6Row=await (prepared.kind==='h6_replay'?withH6Reader:withH6Transaction)(async query=>{
+   const row=one(await query(prepared.kind==='h6_replay'?READ_H6_ROUND_SQL:h6ConfirmationSql,
+    prepared.kind==='h6_replay'?[sessionHash,raw.tableId,raw.visitId,prepared.orderId]:
+     [sessionHash,raw.tableId,raw.qrToken,raw.visitId,raw.basketId,raw.requestKey,
+      fingerprint,prepared.batchId,prepared.orderId,JSON.stringify(prepared.current),prepared.repriced,paymentMode]));
+   if(prepared.kind==='h6_persist'&&paymentChannel==='external'&&row.amount_cents!==0){
+    const converted=one(await query(CONVERT_H6_EXTERNAL_SQL,
+     [sessionHash,raw.tableId,raw.visitId,row.round_id])).result;
+    if(!plain(converted)||converted.version!==2||converted.roundId!==row.round_id||
+       converted.state!=='awaiting_external_verification')throw Error('invalid_customer_flow_result');
+    return {...row,round_state:converted.state,payment_attempt_id:null,authorization_key:null,
+     payment_channel:'external'};
+   }
+    return {...row,payment_channel:row.effective_payment_mode==='pay_now'?
+     ((row.round_state==='awaiting_external_verification'||row.payment_attempt_id==null)&&
+      Number(row.amount_cents)>0?'external':'stripe'):null};
+  });
   const persistedOrderId=prepared.kind==='h6_replay'?prepared.orderId:h6Row.persisted_order_id;
   const amount=typeof h6Row.amount_cents==='string'&&/^[0-9]+$/.test(h6Row.amount_cents)?
    Number(h6Row.amount_cents):h6Row.amount_cents;
@@ -292,7 +309,8 @@ export function createCustomerProductionFlow({withTransaction,secretKey,clock=Da
   return Object.freeze({status:prepared.kind==='h6_replay'||h6Row.repeated?'replayed':'confirmed',
    orderId:persistedOrderId,grouping:prepared.grouping??h6Row.persisted_grouping,
    accountId:h6Row.account_id,roundId:h6Row.round_id,amountCents:amount,
-   paymentMode:h6Row.effective_payment_mode,roundState:h6Row.round_state,
+   paymentMode:h6Row.effective_payment_mode,paymentChannel:h6Row.payment_channel,
+   roundState:h6Row.round_state,
    paymentAttemptId:h6Row.payment_attempt_id,authorizationKey:h6Row.authorization_key});
  };
 

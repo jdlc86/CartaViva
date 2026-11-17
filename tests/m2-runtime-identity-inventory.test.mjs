@@ -32,8 +32,8 @@ const make=(management=true,extended=false)=>{
  return {options,spec};
 };
 
-test('SQL runtime inventory is exhaustive for 15 base, 17 M3, 22 optional capability slots',()=>{
- for(const [management,extended,expected] of [[false,false,15],[true,false,17],[true,true,22]]){
+test('SQL runtime inventory is exhaustive for 16 base, 18 M3, 23 optional capability slots',()=>{
+ for(const [management,extended,expected] of [[false,false,16],[true,false,18],[true,true,23]]){
   const {options,spec}=make(management,extended);
   const result=validateM2RuntimeSqlIdentities(options);
   assert.equal(result.capabilityCount,expected);
