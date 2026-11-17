@@ -1735,7 +1735,7 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   lines:[{quoteId:webhookQuote.lines[0].quoteId,itemId,selection,quantity:1}]});
  await provider.recordAuthorization({orderId:webhookOrder.orderId,outcome:'requires_action',
   providerIntentId:'pi_H6WebhookIntent1'});
- const webhookCaptureBefore=new Date(Date.now()+6*86400000);
+ const webhookCaptureBefore=new Date(Math.floor((Date.now()+6*86400000)/1000)*1000);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6BadAmount01',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:'pi_H6WebhookIntent1',
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,71),
