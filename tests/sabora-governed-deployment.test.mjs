@@ -255,7 +255,7 @@ test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evi
  assert.match(release,/ref: \$\{\{ github\.sha \}\}/);
  assert.match(release,/git rev-parse HEAD/);
  for(const name of ['generate-lockfile','functional-ui-gate'])
-  assert.match(release,new RegExp('name: '+name+'\\n'));
+  assert.match(release,new RegExp('name: '+name+'\\r?\\n'));
  assert.match(release,/pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile/);
  assert.match(release,/git diff --exit-code -- pnpm-lock\.yaml/);
  assert.match(release,/pnpm install --frozen-lockfile/);
