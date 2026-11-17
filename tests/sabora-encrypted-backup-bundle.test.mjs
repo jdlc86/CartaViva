@@ -153,7 +153,7 @@ test('bundle rejects POSIX keys with group or world permissions',{
 test('backup v2 binds live TLS endpoint and independently pinned cluster identity',()=>{
  const candidate={...meta(),schema:'sabora-logical-backup/v2'};
  const env={PGHOST:'db.byhvmumqivmunkmomhup.supabase.co',PGSSLMODE:'verify-full',
-  PGSSLROOTCERT:'/protected/postgres-ca.pem',PGPORT:'5432',
+  PGSSLROOTCERT:join(tmpdir(),'postgres-ca.pem'),PGPORT:'5432',
   SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER:'7123456789012345678'};
  assert.equal(validateCaptureSource(candidate,env),'7123456789012345678');
  for(const [key,value] of [
@@ -167,7 +167,7 @@ test('backup v2 binds live TLS endpoint and independently pinned cluster identit
  assert.throws(()=>validateCaptureSource(meta(),env),/sabora_backup_cli_stop:v2_snapshot_required/);
 });
 test('backup v2 cannot fall back to four inconsistent independent commands',async()=>{
- await assert.rejects(captureEncryptedBackupBundle({directory:'/tmp/unused-unique-v2-capture',
-  keyPath:'/tmp/not-used.key',metadata:{...meta(),schema:'sabora-logical-backup/v2'},
+ await assert.rejects(captureEncryptedBackupBundle({directory:join(tmpdir(),'unused-unique-v2-capture'),
+  keyPath:join(tmpdir(),'not-used.key'),metadata:{...meta(),schema:'sabora-logical-backup/v2'},
   components:components()}),/sabora_backup_stop:snapshot_required_for_v2/);
 });
