@@ -5,8 +5,9 @@
 import {constants as fsConstants} from 'node:fs';
 import {lstat,open} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {basename,dirname,isAbsolute} from 'node:path';
+import {basename,dirname,isAbsolute,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {buildMigrationAudit} from '../ci/migration-audit.mjs';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
@@ -17,6 +18,13 @@ const HASH=/^[0-9a-f]{64}$/;
 const COMPONENTS=['roles-memberships','schema','data','inventory'];
 const SYSTEM=/^[0-9]{10,20}$/;
 const PROJECT='byhvmumqivmunkmomhup';
+const SOURCE_ROOT=resolve(fileURLToPath(new URL('../..',import.meta.url)));
+export function currentAuditedMigrationTreeSha256(){
+ const hash=createHash('sha256');
+ for(const {name,sha256} of buildMigrationAudit(SOURCE_ROOT).migrations)
+  hash.update(name).update('\\0').update(sha256).update('\\n');
+ return hash.digest('hex');
+}
 // One direct verified connection: never inherit libpq options, service
 // indirection, client certs or connection overrides from the operator shell.
 const ALLOWED_PG_ENV=new Set(['PGHOST','PGPORT','PGSSLMODE','PGSSLROOTCERT',
@@ -197,6 +205,8 @@ async function request(path){
  catch{throw stop('request_not_json');}
  const binaries=postgresBinaries();validateOperationalPlan(value,binaries);
   validateCaptureSource(value.metadata);
+ if(value.metadata.migrationTreeSha256!==currentAuditedMigrationTreeSha256())
+  throw stop('migration_tree_mismatch');
  await Promise.all([verifyExecutable(binaries.psql),verifyExecutable(binaries.pgDump),
   verifyPinnedTlsRootCert()]);
  for(const spec of value.components.filter(item=>item.stdinPath!==undefined)){
