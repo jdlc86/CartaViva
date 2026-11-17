@@ -39,7 +39,7 @@ export function validateCaptureSource(meta,env=process.env){
     env.PGSERVICE||env.PGSERVICEFILE||
     (env.PGPORT!==undefined&&env.PGPORT!=='5432'))
   throw stop('supabase_verified_tls_identity_required');
- if(Object.keys(env).some(k=>/^PG[A-Z0-9_]+$/.test(k)&&!ALLOWED_PG_ENV.has(k)))
+ if(Object.keys(env).some(k=>/^pg/i.test(k)&&(k!==k.toUpperCase()||!ALLOWED_PG_ENV.has(k))))
   throw stop('unapproved_libpq_environment');
  if(!HASH.test(env.SABORA_BACKUP_APPROVED_CA_SHA256??''))
   throw stop('independent_tls_ca_pin_required');
@@ -124,63 +124,27 @@ async function verifyExecutable(path){
   }
  }
 }
-function includesPair(args,left,right){
- return args.some((value,index)=>value===left&&args[index+1]===right);
-}
-function rejectSharedArgs(args){
- if(args.length<1||args.length>100||args.some(value=>typeof value!=='string'||
-  value.length<1||value.length>2048||value.includes('\0')))throw stop('invalid_postgres_args');
- const lower=args.map(value=>value.toLowerCase());
- if(lower.some(value=>/postgres(?:ql)?:\/\//.test(value)||
-  /(?:^|[?;&])(?:password|passfile)=/.test(value)||/\b(?:password|passfile)\s*=/.test(value)||
-  /^(?:--)?(?:password|passfile)(?:=|$)/.test(value)))throw stop('secret_or_dsn_argument');
- // PGHOST and TLS in validateCaptureSource must not be overridden from
- // an approved protected JSON plan by -h/--host/-p/--port/DB flags.
- if(!includesPair(args,'-U','postgres')||!includesPair(args,'-d','postgres')||
-  args.filter(x=>x==='-U').length!==1||args.filter(x=>x==='-d').length!==1||
-  args.some(x=>x==='-h'||x.startsWith('-h')||x==='-p'||x.startsWith('-p')||
-   x==='-W'||x.startsWith('--host')||x.startsWith('--port')||
-   x.startsWith('--dbname')||x.startsWith('--username')||
-   x.startsWith('--maintenance-db')))throw stop('connection_override_not_allowed');
- if(args.some(value=>value==='-o'||value.startsWith('-o')||value==='-L'||value.startsWith('-L'))||
-  lower.some(value=>['--output','--log-file'].includes(value)||
-   value.startsWith('--output=')||value.startsWith('--log-file=')))
-  throw stop('plaintext_output_argument');
+// Exact PostgreSQL CLI shapes: no attached -Uother/-dotra/-cSQL/-f/path,
+// no DSN/connection flags and no alternate stdout/output or schema scope.
+const PSQL_ARGS=Object.freeze(['-X','-qAt','-v','ON_ERROR_STOP=1',
+ '-U','postgres','-d','postgres','-f','-']);
+function exactArgs(actual,expected){
+ return Array.isArray(actual)&&actual.length===expected.length&&
+  actual.every((value,index)=>value===expected[index]);
 }
 function validatePsql(spec,psql){
- if(spec.command!==psql||spec.mediaType!=='application/sql'&&spec.mediaType!=='text/plain'||
-  !isAbsolute(spec.stdinPath??''))throw stop('psql_component_contract');
- rejectSharedArgs(spec.args);
- const lower=spec.args.map(value=>value.toLowerCase());
- if(!lower.includes('-x')||
-  !(includesPair(spec.args,'-v','ON_ERROR_STOP=1')||
-    lower.includes('--set=on_error_stop=1'))||
-  !(includesPair(spec.args,'-f','-')||lower.includes('--file=-'))||
-  lower.some((value,index)=>['-c','--command','-w','--password'].includes(value)||
-   (['-f','--file'].includes(value)&&spec.args[index+1]!=='-')||
-   value.startsWith('--command=')||(value.startsWith('--file=')&&value!=='--file=-')))
-  throw stop('psql_arguments_not_fail_closed');
+ if(spec.command!==psql||
+    !['application/sql','text/plain'].includes(spec.mediaType)||
+    !isAbsolute(spec.stdinPath??'')||!exactArgs(spec.args,PSQL_ARGS))
+  throw stop('psql_component_contract');
 }
 function validatePgDump(spec,pgDump,mode){
- if(spec.command!==pgDump||spec.mediaType!=='application/vnd.postgresql.custom'||
-  spec.stdinPath!==undefined)throw stop('pg_dump_component_contract');
- rejectSharedArgs(spec.args);
- const lower=spec.args.map(value=>value.toLowerCase());
- const schemas=lower.filter(value=>value.startsWith('--schema='));
- const formats=spec.args.filter(value=>value.startsWith('-F')||
-  value.toLowerCase().startsWith('--format='));
- if(formats.length!==1||!['-Fc','--format=custom'].includes(formats[0])||
-  lower.some(x=>x==='--snapshot'||x.startsWith('--snapshot='))||
-  schemas.join('|')!=='--schema=sabora|--schema=sabora_migration_meta'||
-  !lower.includes('--'+mode+'-only')||lower.includes('--schema-only')===lower.includes('--data-only')||
-  spec.args.some(value=>value.startsWith('-f')||value.startsWith('-n')||value.startsWith('-N')||
-   value.startsWith('-t')||value.startsWith('-T'))||
-  lower.some(value=>value==='--file'||value.startsWith('--file=')||
-   value==='--schema'||value==='--table'||value.startsWith('--exclude-')||
-   value.startsWith('--table=')||value.startsWith('--table-and-children=')||
-   value.startsWith('--section=')||value==='-a'||value==='-s'||value==='-b'||
-   value==='--blobs'||value==='--large-objects'))
-  throw stop('pg_dump_scope_or_output_argument');
+ const expected=['-U','postgres','-d','postgres','-Fc',
+  '--schema=sabora','--schema=sabora_migration_meta','--'+mode+'-only'];
+ if(spec.command!==pgDump||
+    spec.mediaType!=='application/vnd.postgresql.custom'||
+    spec.stdinPath!==undefined||!exactArgs(spec.args,expected))
+  throw stop('pg_dump_component_contract');
 }
 
 export function validateOperationalPlan(value,{psql,pgDump}=postgresBinaries()){

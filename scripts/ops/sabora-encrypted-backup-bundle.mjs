@@ -8,7 +8,8 @@ import {basename,isAbsolute,join,relative,resolve} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 import {spawn} from 'node:child_process';
-import {openPostgresBackupSnapshot} from './sabora-postgres-snapshot.mjs';
+import {openPostgresBackupSnapshot,safePostgresChildEnv}
+ from './sabora-postgres-snapshot.mjs';
 
 const failure=code=>Error('sabora_backup_stop:'+code);
 const SHA=/^[0-9a-f]{40}$/;
@@ -141,8 +142,7 @@ async function encryptCommand({directory,key,meta,spec,snapshotId=null}){
    original,Buffer.from("\nCOMMIT;\n")]);
   original.fill(0);
  }
- const childEnv={...process.env};
- delete childEnv.SABORA_BACKUP_KEY_FILE;delete childEnv.SABORA_BACKUP_COMPONENT;
+ const childEnv=safePostgresChildEnv();
  const commandArgs=snapshotId&&['schema','data'].includes(spec.name)?
   [...spec.args,'--snapshot='+snapshotId]:spec.args;
  const child=spawn(spec.command,commandArgs,{env:childEnv,
@@ -196,7 +196,8 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
    if(!snapshot.exporter||!snapshot.expectedSystemIdentifier)throw failure('snapshot_config_missing');
    session=await openPostgresBackupSnapshot({
     command:snapshot.exporter.command,args:snapshot.exporter.args,
-    expectedSystemIdentifier:snapshot.expectedSystemIdentifier,expectedDatabase:'postgres'});
+    expectedSystemIdentifier:snapshot.expectedSystemIdentifier,expectedDatabase:'postgres',
+    expectedMigrationTreeSha256:raw.migrationTreeSha256});
   }
   const meta=metadata(snapshot?{...raw,snapshotId:session.snapshotId,
    sourceSystemIdentifier:session.systemIdentifier,sourceDatabase:session.database}:raw);

@@ -133,6 +133,12 @@ test('operational capture plan permits only scoped psql and pg_dump streams',()=
   value=>{value.components[2].args.push('--snapshot=00000001-00000001-1');},
   value=>{value.components[2].args.push('--host=attacker.example.com');},
   value=>{value.components[3].args.push('-h','attacker.example.com');},
+  value=>{value.components[0].args.push('-Uforeign');},
+  value=>{value.components[0].args.push('-dother');},
+  value=>{value.components[0].args.push('-cSELECT 1');},
+  value=>{value.components[0].args.push('-f/tmp/other.sql');},
+  value=>{value.components[2].args.push('-Uevil');},
+  value=>{value.components[2].args.push('-dforeign');},
  ]){
   const changed=structuredClone(plan);mutate(changed);
   assert.throws(()=>validateOperationalPlan(changed,{psql,pgDump}),/sabora_backup_cli_stop/);
@@ -162,6 +168,7 @@ test('backup v2 binds live TLS endpoint and independently pinned cluster identit
   ['PGHOST','db.otherproject.supabase.co'],['PGSSLMODE','require'],
   ['PGSSLROOTCERT','relative.pem'],['PGHOSTADDR','127.0.0.1'],
   ['PGSERVICE','untrusted'],['PGOPTIONS','-c search_path=public'],
+  ['pgoptions','-c search_path=public'],['PgPassFile',join(tmpdir(),'foreign.pass')],
   ['PGPASSFILE',join(tmpdir(),'untrusted.pass')],['PGSSLCERT',join(tmpdir(),'client.crt')],
   ['PGPORT','5433'],
   ['SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER','']

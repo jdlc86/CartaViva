@@ -177,6 +177,19 @@ try{
  await writeFile(keyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await writeFile(wrongKeyPath,randomBytes(32).toString('hex')+'\n',{mode:0o600});
  await chmod(keyPath,0o600);await chmod(wrongKeyPath,0o600);
+ // Verify the real applied_migrations ledger, not just a manifest copied
+ // from the Git checkout. Wrong expected digest must fail before pg_dump.
+ await assert.rejects(openPostgresBackupSnapshot({
+  command:'docker',args:exporterArgs,
+  expectedSystemIdentifier:systemIdentifier,
+  expectedMigrationTreeSha256:'0'.repeat(64)}),
+  /sabora_snapshot_stop:source_migration_ledger_mismatch/);
+ const matchingLedger=await openPostgresBackupSnapshot({
+  command:'docker',args:exporterArgs,
+  expectedSystemIdentifier:systemIdentifier,
+  expectedMigrationTreeSha256:migrations.treeSha256});
+ assert.equal(matchingLedger.migrationTreeSha256,migrations.treeSha256);
+ await matchingLedger.close();
  const captureStarted=process.hrtime.bigint();
  const result=await captureEncryptedBackupBundle({directory:capture,keyPath,metadata:{
   schema:'sabora-logical-backup/v2',backupId:'SABORA-BACKUP-CI-'+runId,
