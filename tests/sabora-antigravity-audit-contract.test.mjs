@@ -49,8 +49,13 @@ const report={repository:'jdlc86/CartaViva',audited_commit_sha:sha,audit_type:'t
  questions_answered:[{question:request.focus_questions[0],answer:'No queda acreditado'}]};
 test('Antigravity report is correlated by exact SHA/type and scoped fields',()=>{
  assert.deepEqual(validateAntigravityAuditReport(report,request),report);
- assert.deepEqual(validateAntigravityIssueComment({body:'Sección 5\n\n```json\n'+
-  JSON.stringify(report)+'\n```'},request),report);
+ assert.deepEqual(validateAntigravityIssueComment({user:{login:'jdlc86'},
+  body:'Sección 5\n\n```json\n'+JSON.stringify(report)+'\n```'},request),report);
+ assert.throws(()=>validateAntigravityIssueComment({user:{login:'attacker'},
+  body:'```json\n'+JSON.stringify(report)+'\n```'},request),
+  /untrusted_audit_comment_author/);
+ assert.throws(()=>renderAntigravityAuditIssue({...request,commit_sha:sha.toUpperCase()}),
+  /invalid_audit_request/);
  for(const change of [{audited_commit_sha:'b'.repeat(40)}, {audit_type:'release_readiness'},
   {secret:'hidden'},{verdict:'APPROVE'}]){
   assert.throws(()=>validateAntigravityAuditReport({...report,...change},request),

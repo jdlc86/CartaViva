@@ -11,7 +11,7 @@ export const AUDIT_VERDICTS=Object.freeze(['GO','GO_WITH_WARNINGS','NO-GO']);
 const SEVERITIES=new Set(['CRITICAL','HIGH','MEDIUM','LOW','INFO']);
 const PATH=/^[A-Za-z0-9_.\-/]+$/;
 const SHA=/^[0-9a-fA-F]{7,40}$/;
-const FULL_SHA=/^[0-9a-fA-F]{40}$/;
+const FULL_SHA=/^[0-9a-f]{40}$/;
 const LINE=/^L[1-9][0-9]*(?:-L?[1-9][0-9]*)?$/;
 const own=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.getPrototypeOf(value)===Object.prototype;
@@ -93,8 +93,10 @@ export function validateAntigravityAuditReport(value,request){
   questions_answered:Object.freeze([...value.questions_answered])});
 }
 export function validateAntigravityIssueComment(comment,request){
- // Validation of the JSON envelope does NOT authenticate the agent process,
- // the Windows machine, or assertions made in prose outside the JSON block.
+ // GitHub identity is mandatory but does not cryptographically authenticate
+ // the local agy process, Windows confinement, or the report's assertions.
+ if(comment?.user?.login!==AUDIT_REQUEST_AUTHOR)
+  reject('untrusted_audit_comment_author');
  const value=extractAntigravityJsonBlock(comment?.body);
  return validateAntigravityAuditReport(value,request);
 }
