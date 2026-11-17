@@ -179,6 +179,7 @@ foreach ($path in $paths) {
   $acl=[System.IO.File]::GetAccessControl($path)
  }
  $acl.SetAccessRuleProtection($true,$false)
+ $acl.SetOwner($user)
  $rule=[System.Security.AccessControl.FileSystemAccessRule]::new(
   $user,[System.Security.AccessControl.FileSystemRights]::FullControl,
   [System.Security.AccessControl.AccessControlType]::Allow)
