@@ -194,6 +194,15 @@ export const REVIEWED_MIGRATION_AUDIT={
   'customer advisory lock plus session, visit, account, round and intent row locks; provider and signed staff actions serialize one intent',
   'new candidate ledgers only; historical cash ledgers retained as non-operational evidence; external channel changes operational outstanding without claiming payment',
   'inherited'),
+ '20261117020000_sabora_h6_economic_provider_stripe_identity_serialized_candidate.sql':r(
+  'S42-rv02 serial Stripe H6 and Issue61 order/intent identity',
+  ['H6 order_rounds/payment_attempts','Issue61 economic settlement intents',
+   'sealed Stripe webhook 102 wrapper','immutable shared Stripe event ledger'],
+  'replace sealed verified ingress, lock H6 round then payment or economic intent before routing signed Stripe metadata to exactly one durable owner',
+  'existing NOLOGIN SECURITY DEFINER function owner; exact provider EXECUTE only; H6 and economic privileged legacy ingesters remain owner-only',
+  'no schema/table data rewrite; provider admission checks amount, EUR and immutable PI under row locks; unknown authorization reconciles only with signed capturable evidence',
+  'never ACK an early or foreign event as ignored; no false capture or refund; Stripe replays remain in the existing single ledger',
+  'inherited'),
  '20261117010000_sabora_h6_webhook_order_identity_retry_candidate.sql':r(
   'S42-rv01 Stripe H6 durable order identity and receipt-free provider-intent race',
   ['H6 payment_attempts/order_rounds','sealed Stripe webhook 101 wrapper','Issue61 shared event ledger'],

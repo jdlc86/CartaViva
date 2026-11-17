@@ -111,8 +111,10 @@ export function createH6StripeWebhookHandler({secret,providerRepository,stripe=n
  return async({rawBody,signatureHeader}={})=>{
   const event=verifyH6StripeWebhook({rawBody,signatureHeader,secret,
    nowMs:clock(),expectedLivemode});
-  if(event.eventType==='payment_intent.amount_capturable_updated'&&!event.saboraOrderId)
-   throw Error('stripe_webhook_order_identity_missing');
+  if(event.eventType.startsWith('payment_intent.')&&
+    (!event.saboraOrderId||!Number.isSafeInteger(event.providerAmountCents)||
+     event.providerAmountCents<1||event.providerCurrency!=='eur'))
+   throw Error('stripe_webhook_money_or_order_identity_missing');
   if(event.eventType!=='payment_intent.amount_capturable_updated'||event.captureBefore)
    return providerRepository.ingestWebhook(event);
   // Provider access only AFTER raw-body HMAC validation. Missing or ambiguous

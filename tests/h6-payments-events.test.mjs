@@ -159,7 +159,8 @@ test('Stripe adapter fixes manual capture and durable idempotency without live c
 test('Stripe webhook verifies the unmodified body, age and any valid v1 signature',async()=>{
  const secret='whsec_candidate_0123456789abcdef',timestamp=Math.floor(Date.UTC(2026,9,27,12,0,0)/1000);
  const rawBody=Buffer.from(JSON.stringify({id:'evt_12345678',type:'payment_intent.succeeded',created:timestamp,
-  data:{object:{id:'pi_12345678',latest_charge:'ch_12345678',metadata:{sabora_order_id:orderId}}}}));
+  data:{object:{id:'pi_12345678',latest_charge:'ch_12345678',amount_received:500,
+   currency:'eur',metadata:{sabora_order_id:orderId}}}}));
  const valid=createHmac('sha256',secret).update(`${timestamp}.`).update(rawBody).digest('hex');
  const verified=verifyH6StripeWebhook({rawBody,signatureHeader:`t=${timestamp},v1=${'0'.repeat(64)},v1=${valid}`,
   secret,nowMs:timestamp*1000});

@@ -1181,11 +1181,31 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   allocations:[{roundId:webhookEconomicOrder.roundId,amountCents:2400}]});
  const webhookEconomicPi='pi_Issue61Webhook01';
  const webhookDeadline=new Date(Date.now()+6*86400000);
+ // A signed but foreign PI cannot fail/cancel a customer settlement while
+ // provider_intent_id is NULL. No immutable receipt and no released allocation.
+ const econForeignId='evt_Issue61ForeignBeforeId';
+ await assert.rejects(provider.ingestWebhook({eventId:econForeignId,
+  eventType:'payment_intent.payment_failed',providerObjectId:'pi_Issue61OtherPI01',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,91),
+  saboraOrderId:webhookEconomicIntent.intentId,providerAmountCents:2400,
+  providerCurrency:'eur'}),/h6_provider_identity_not_committed/);
+ assert.equal((await admin.query('SELECT state FROM sabora.economic_settlement_intents_candidate WHERE id=$1',
+  [webhookEconomicIntent.intentId])).rows[0].state,'stripe_authorization_requested');
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  [econForeignId])).rows[0].n,0);
  const webhookAuthorized=await provider.ingestWebhook({eventId:'evt_Issue61Auth001',
   eventType:'payment_intent.amount_capturable_updated',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,61),captureBefore:webhookDeadline,
   saboraOrderId:webhookEconomicIntent.intentId,providerAmountCents:2400,providerCurrency:'eur'});
  assert.equal(webhookAuthorized.outcome,'applied');
+ const econForeignAfterId='evt_Issue61ForeignAfterId';
+ await assert.rejects(provider.ingestWebhook({eventId:econForeignAfterId,
+  eventType:'payment_intent.payment_failed',providerObjectId:'pi_Issue61OtherPI02',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,92),
+  saboraOrderId:webhookEconomicIntent.intentId,providerAmountCents:2400,
+  providerCurrency:'eur'}),/h6_provider_intent_order_conflict/);
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  [econForeignAfterId])).rows[0].n,0);
  // A signed, replayable provider event never advances an economic intent
  // if the provider's real amount or currency differs from the debt.
  await assert.rejects(provider.ingestWebhook({eventId:'evt_Issue61Underpaid1',
@@ -1214,7 +1234,8 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  const staleEconomicFailure=await provider.ingestWebhook({eventId:'evt_Issue61Stale01',
   eventType:'payment_intent.payment_failed',providerObjectId:webhookEconomicPi,
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,63),
-  saboraOrderId:webhookEconomicIntent.intentId});
+  saboraOrderId:webhookEconomicIntent.intentId,
+  providerAmountCents:2400,providerCurrency:'eur'});
  assert.equal(staleEconomicFailure.outcome,'stale');
  const webhookEconomicState=(await admin.query(`SELECT e.state,a.outstanding_cents
   FROM sabora.economic_settlement_intents_candidate e JOIN sabora.customer_accounts a
@@ -1852,6 +1873,16 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
   assert.equal(lookups,3);
  }finally{await webhookServer.close();}
 
+ // A real H6 order without payment_attempts must not absorb an unrelated
+ // provider PI as a durable 'ignored' receipt (free, pay-at-end, external).
+ const missingAttemptId='evt_H6NoPaymentAttempt01';
+ await assert.rejects(provider.ingestWebhook({eventId:missingAttemptId,
+  eventType:'payment_intent.payment_failed',providerObjectId:'pi_H6NoAttemptPI1',
+  providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,93),
+  saboraOrderId:stripeOrder.orderId,providerAmountCents:2400,
+  providerCurrency:'eur'}),/h6_provider_intent_order_conflict/);
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  [missingAttemptId])).rows[0].n,0);
  const webhookPayment=(await admin.query(`SELECT p.state,p.capture_before
   FROM sabora.payment_attempts p JOIN sabora.order_rounds r ON r.id=p.round_id WHERE r.order_id=$1`,
   [webhookOrder.orderId])).rows[0];
@@ -1872,15 +1903,15 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
 
  const webhookPayload=Buffer.alloc(32,9);
  const ignored=await provider.ingestWebhook({eventId:'evt_H6Pg17Ignored01',
-  eventType:'payment_intent.payment_failed',providerObjectId:'pi_H6Pg17Unknown01',
+  eventType:'charge.refunded',providerObjectId:'ch_H6Pg17Unknown01',
   providerCreatedAt:new Date(),payloadSha256:webhookPayload});
  assert.equal(ignored.outcome,'ignored');
  const duplicate=await provider.ingestWebhook({eventId:'evt_H6Pg17Ignored01',
-  eventType:'payment_intent.payment_failed',providerObjectId:'pi_H6Pg17Unknown01',
+  eventType:'charge.refunded',providerObjectId:'ch_H6Pg17Unknown01',
   providerCreatedAt:new Date(),payloadSha256:webhookPayload});
  assert.equal(duplicate.repeated,true);
  await assert.rejects(provider.ingestWebhook({eventId:'evt_H6Pg17Ignored01',
-  eventType:'payment_intent.canceled',providerObjectId:'pi_H6Pg17Unknown01',
+  eventType:'charge.refunded',providerObjectId:'ch_H6Pg17Unknown01',
   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,8)}),/stripe_event_identity_conflict/);
 
  await admin.query('UPDATE sabora.customer_sessions SET revoked_at=clock_timestamp() WHERE customer_id=$1',
