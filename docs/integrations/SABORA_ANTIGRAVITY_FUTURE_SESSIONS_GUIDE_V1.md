@@ -2,6 +2,8 @@
 
 > **GUÍA DE USO Y CONTINUIDAD, NO CONTRATO NORMATIVO NI AUTORIZACIÓN.** La fuente de verdad de requisitos, seguridad, estética, SQL, despliegue y aprobaciones sigue siendo la normativa de GitHub. Leer primero [AGENTS.md](../../AGENTS.md), normativa pertinente, [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md), [última continuidad](../handoffs/SESSION_42_HANDOFF_2026-11-17.md) y el [contrato del puente Antigravity V1](SABORA_ANTIGRAVITY_AUDIT_BRIDGE_V1.md). Verificar sus revisiones actuales antes de actuar.
 >
+> **RESTRICCIÓN VIGENTE 17-11-2026 (mandato del propietario): NO iniciar ni enviar nuevas auditorías/revisiones a Antigravity o Codex hasta nueva indicación expresa.** Investigar sus capacidades, documentar su uso futuro y ejecutar pruebas CI del repositorio no constituyen autorización para crear Issues `audit-request`, usar `/swarm`, `/boost`, `/run-workflow`, ejecutar `agy` ni enviar un encargo local. La referencia histórica a cómo emitir una auditoría en las secciones siguientes es una **guía condicional**, no un permiso vigente.
+>
 > **Ubicación y estado:** este documento se introduce **solo en la rama Draft del [PR #59](https://github.com/jdlc86/CartaViva/pull/59)** (`docs/sabora-dual-backup-vps-offsite-20261113`), todavía fuera de `main` al crear esta guía. Las sesiones futuras deben buscarlo en la rama de trabajo mientras no se haya integrado. Ni esta guía ni un informe `GO` permiten merge o despliegue.
 
 ## 1. Para qué sirve y qué NO hace
@@ -111,3 +113,65 @@ El propietario puede copiar este texto. La sesión debe **leer la guía en GitHu
 - [Contrato de uso e invariantes](SABORA_ANTIGRAVITY_AUDIT_BRIDGE_V1.md) y [validador JS](../../scripts/ci/sabora-antigravity-audit-contract.mjs).
 - [Normativa de agentes](../../AGENTS.md); [documentación de validación y observabilidad](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md).
 - [Continuidad S42](../handoffs/SESSION_42_HANDOFF_2026-11-17.md), [tablero vivo](../tracking/SABORA_LIVE_PROJECT_TRACKER.md).
+
+
+## 8. Capacidades de programación y ciberseguridad descubiertas (verificación documental: 17-11-2026)
+
+**Naturaleza de esta actualización:** investigación de documentación oficial pública de Google Antigravity, **NO** inspección del PC Windows del propietario, prueba de suscripciones/modelos disponibles, modificación del puente local, revisión de la PR #59 ni autorización para ejecutar agentes. Las funciones mencionadas dependen de versión, sistema operativo, plan, configuración y despliegue gradual. Ninguna función se declara instalada, configurada o ensayada en Sabora hasta obtener evidencia local identificable.
+
+### 8.1. Novedades contrastadas con fuentes oficiales
+
+| Capacidad anunciada | Verificación y alcance | Aplicabilidad potencial y limitación en Sabora |
+| --- | --- | --- |
+| **Gemini 4 Carbon (10-11-2026)** | Modelo presentado para ingeniería compleja, investigación larga y **ciberseguridad**. Google lo describe apropiado para revisar arquitectura y verificar adversarialmente en la coordinación de equipos `/swarm`. | Buen candidato **futuro** para analizar RLS/`SECURITY DEFINER`, HMAC Stripe, races, backups, PWA y separación de recursos; **no equivale a un scanner de seguridad certificado**. Su disponibilidad inicial se vincula a Google AI Ultra/planes empresariales elegibles; no se ha consultado la cuenta Windows. |
+| **Gemini 4 Hydrogen y Orchestrator (12-11-2026)** | Hydrogen realiza cambios cotidianos, refactorizaciones y ensayos. **Orchestrator** coordina un modelo planificador (Carbon o Argon) y Hydrogen para implementar, compilar y probar, con traspasos de control. | Potencial pareja planificación/ejecución de hitos integrales. Elegibilidad de Orchestrator (Carbon/Argon) depende del plan. **No conectar automáticamente a GitHub/Supabase/VPS ni otorgar permisos de escritura.** |
+| **`/swarm` (vista previa, 10-11-2026)** | Equipo multiagente con coordinación y modelos especializados sobre worktrees aislados. Permite separar implementación, comprobación de contratos y adversarialidad; puede consumir bastante más cuota. | Útil para paquetes grandes, **solo si** un futuro flujo autorizado garantiza ramas/worktrees Sabora-only y asigna permisos de solo lectura a revisores independientes. Ningún `/swarm` está integrado en el puente V1. |
+| **`/boost`** | Comando de análisis profundo que puede delegar subagentes y contrastar iteraciones para fallos complicados y carreras. Documentado para planes de pago. | Candidato para condiciones de carrera Stripe/SQL; no sustituye una reproducción real PG17, una revisión de otro agente ni el dictamen independiente. |
+| **`/run-workflow` y Dynamic Workflows (App 2.32.0, 13-11-2026)** | Agente genera **un script Python** que coordina fases paralelas y secuenciales; exige revisión/aprobación del script. Documentado para Google AI Pro/Ultra. | Futuro pipeline reproducible: auditoría del diff -> pruebas negativas -> reparación en rama -> pruebas integradoras -> reporte. **Este script no se debe ejecutar ni se debe publicar como encargo sin autorización.** |
+| **Agentes especializados (`agent.md`), skills, reglas, MCP y SDK** | Se pueden definir subagentes especializados. La propia documentación ilustra un `security-reviewer` de solo lectura que busca secretos, inyección y privilegios excesivos; el SDK permite coordinación programática. | Potencial auditor de seguridad dedicado, siempre aislado y sin credenciales operativas. MCP o plugins de terceros **amplían la superficie de acceso** y deben partir de denegación por defecto; no habilitarlos por el mero hecho de documentarlos. |
+| **Navegador, artefactos y diffs** | Agentes de navegador, evidencias visuales y revisión de diffs; sujetos a políticas de permisos y versión. | Complemento para inspección de las dos PWA (flujos, accesibilidad, consola, CSP y registros). **No reemplaza baselines aprobados, pruebas reales ni aceptación humana.** |
+
+**Fuentes primarias fechadas (consultadas el 17-11-2026):**
+
+- [Google Antigravity: Gemini 4 Carbon y `/swarm` (10-11-2026)](https://antigravity.google/blog/gemini-4-carbon-in-google-antigravity/).
+- [Google Antigravity: Gemini 4 Hydrogen y Orchestrator (12-11-2026)](https://antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity/).
+- [Historial oficial de versiones: App 2.32.0 y disponibilidad gradual](https://antigravity.google/docs/changelog).
+- [`/run-workflow`: Dynamic Workflows y requisitos de plan](https://antigravity.google/docs/dynamic-workflows/).
+- [`/boost`: verificación profunda multiagente y requisitos de plan](https://antigravity.google/docs/boost/).
+- [Ejemplo oficial de subagente `security-reviewer` en plugins](https://antigravity.google/docs/build-plugins/).
+- [Funciones y restricciones de agentes, navegador y proyectos](https://antigravity.google/docs/features).
+- [Permisos y presets](https://antigravity.google/docs/secure-mode) y [configuración por superficie/Windows](https://antigravity.google/docs/agent-settings).
+- [Antigravity CLI: agentes personalizados](https://antigravity.google/docs/cli/commands/agents).
+
+**No encontrado como garantía oficial autónoma:** un producto llamado «escáner automático SAST integral», certificación de ausencia de vulnerabilidades, capacidad del bridge V1 de escribir código o ejecutar `/swarm`, ni concesión automática de autenticidad e independencia a la revisión hecha por el mismo agente que programó. Para usar analizadores específicos (por ejemplo, herramientas de dependencias, SAST o generación SBOM) deben estar instalados, configurados, autorizados y ejecutados con evidencia independiente. Una descripción promocional de «ciberseguridad» no sustituye pruebas.
+
+### 8.2. Separación estricta de modos: lo existente, lo propuesto y lo prohibido
+
+| Modo | Estado en CartaViva | Política vigente |
+| --- | --- | --- |
+| **Puente GitHub Issue -> Windows -> Antigravity (V1, solo lectura)** | **Probado nominalmente** en Issue #63; informe completo posterior #64 recibido, sin demostrar seguridad del host. | **No volver a solicitar auditorías** hasta orden expresa. El contrato JSON V1 no conoce `task_type=programming`, permisos de escritura, modelo, agentes, workflows ni ejecución arbitraria. No extenderlo en silencio. |
+| **Antigravity como auditor de ciberseguridad especializado** | **Capacidad del producto documentada; sin perfil ni configuración local verificadas.** | En el futuro: prompt de solo lectura, ámbito SHA/worktree autorizado, mínimos permisos, informe con CWE/OWASP cuando corresponda, ruta/línea, reproducción no destructiva y límites expresos. Revisión consultiva, no GO. |
+| **Antigravity como desarrollador (Orchestrator/Hydrogen y/o subagentes)** | **PROPUESTA NO IMPLEMENTADA NI AUTORIZADA.** | Requiere decisión explícita del propietario, **contrato de tareas diferente**, aislamiento OS/Git, trabajo exclusivamente en `jdlc86/CartaViva`, revisión humana previa de cualquier script/acción y pruebas integradas en SHA final. Sin secretos, sin Supabase operativo, VPS ni Fleetia. |
+| **Autorrevisión del código generado por el mismo agente** | Sirve como control de calidad interno. | **No acredita auditoría independiente**; conservar una instancia lectora/contexto separado y, cuando se autorice, revisión adicional Codex u otro revisor independiente. |
+| **Despliegue, cambios en main o sistemas externos** | Fuera del puente y sin autorización. | **Prohibido** sin orden expresa y aislamiento verificable; ni `/run-workflow`, MCP, `/swarm`, un informe GO ni la suscripción elevan permisos. |
+
+### 8.3. Diseño recomendado para una futura adopción, sujeto a nueva orden
+
+**Fase A — inventario y confinamiento local, solo tras autorización del propietario.** Verificar en Windows versión real de App/`agy`, edición, modelos disponibles, plan y comandos realmente admitidos; no inferir Carbon o `/swarm` por documentación de Google. Confirmar carpeta de Sabora como **única raíz de lectura**; impedir selección multicarpeta con Fleetia, acceso fuera de workspace, shell, red, GitHub con credenciales de escritura, plugins/MCP operativos y repositorios adyacentes. La documentación de permisos distingue App y CLI: **`Request Review` no es sandbox por sí mismo**, `Default/Auto` pueden ejecutar comandos permitidos; `Turbo` y `Always Proceed` tienen riesgo alto. Windows puede conservar políticas anteriores o no disponer de sandbox en builds concretas: comprobarlo realmente, no asumirlo. Mantener el usuario Windows limitado.
+
+**Fase B — perfil auditor ciberseguridad, solo lectura.** Si el usuario ordena una auditoría, seleccionar modelo disponible (Carbon si autorizado/disponible, Argon cuando proceda), con subagentes de revisión en worktrees temporales de lectura. Alcances útiles para **Sabora**:
+
+1. Economía H6 / Issue61: exclusividad PaymentIntent->pedido y charge->payer, HMAC Stripe, orden de locks, retries, `ignored` irreversible, ledger inmutable, importes en céntimos, estados ambiguos, pruebas reales PG17+HTTP.
+2. Persistencia y privilegios: RLS `FORCE`, `SECURITY DEFINER`, `search_path`, revocaciones/grants mínimos, migraciones append-only, invariantes intertablas.
+3. Resiliencia y recuperación: snapshots MVCC, integridad/firma/ACL de copia, restauración externa, TLS `verify-full`, aislamiento de redes y recursos Fleetia.
+4. Cliente/gestión: QR/cookies, XSS, CSRF, privacidad de caché PWA, headers/CSP, navegación, regresiones de UX y accesibilidad.
+
+Entregable esperado: matriz de hallazgos **P0–P3** con evidencia trazable, rutas/líneas y pruebas reproducibles **no destructivas**, falsos positivos/limitaciones, pruebas realmente corridas y juicio consultivo. Evitar ejecutar PoC contra sistemas reales, extraer datos, imprimir secretos, emitir comunicaciones, manipular pagos o lanzar scripts no autorizados.
+
+**Fase C — eventual modo programador (nunca implícito).** Si el propietario lo ordena expresamente, diseñar una **V2 separada**, con nuevo esquema versionado y aprobación previa de tareas; no sobrecargar `SaboraAuditRequest v1.0` ni reutilizar `audit-request`. El operador prepara rama/worktree de CartaViva exclusivo; el agente genera un plan, implementa un hito completo y ejecuta pruebas **en laboratorio desechable**, produciendo cambios Git/diff y evidencias. Publicación en GitHub, commits, acciones y revisión de resultados solo con permisos explícitos limitados a este repositorio; **merge y despliegue permanecen denegados**. Sin asumir que el Windows ya contiene este mecanismo.
+
+**Fase D — puertas y operación:** cotejar SHA, normativa, CI integradora PG17/HTTP/Chromium, seguridad, aceptación visual y revisión independiente (si se autoriza después). Registro por estado: `ANUNCIADA` -> `DISPONIBLE LOCALMENTE` -> `CONFIGURADA` -> `PROBADA EN AISLAMIENTO` -> `AUTORIZADA PARA TAREA` -> `EVIDENCIA CONTRASTADA`; no promover automáticamente ninguna etapa.
+
+### 8.4. Instrucción para futuras sesiones (añadido obligatorio al mensaje de §6)
+
+> **Antes de usar capacidades nuevas de programación o ciberseguridad de Antigravity**, leer íntegramente esta guía (especialmente §8), el contrato del puente V1 y `AGENTS.md`. Comprobar versión real Windows, modelo y plan, normativa del repositorio y SHA, distinguiendo capacidades anunciadas de instaladas, configuradas y probadas. **Por orden expresa del propietario, NO crear Issues de auditoría, NO enviar revisiones a Antigravity/Codex y NO invocar modelos, `/swarm`, `/boost` o `/run-workflow` para Sabora hasta que lo autorice.** El puente V1 es solo lectura: no usarlo para programar ni ampliar sus permisos sin diseñar y aprobar un contrato V2 distinto. No tocar Fleetia, otros recursos del VPS, Supabase operativo, secretos, `main` o despliegues. Actualizar la continuidad con evidencia, no con expectativas.
