@@ -139,7 +139,11 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
      typeof staff.issuer!=='string'||typeof staff.getTrustedKeys!=='function'||
      typeof h4.issueTransitionCapability!=='function'||typeof h4.issueReadCapability!=='function'||
      typeof h6.issueStaffCapability!=='function'||typeof h6.issueCloseCapability!=='function'||
-     !h6.stripe||typeof observeFailure!=='function'||typeof enableDeferredDispatch!=='boolean'||
+     !h6.stripe||
+     // An opted-in Stripe webhook must resolve non-expanded Charge evidence.
+     // A payment-disabled production runtime stays webhook-disabled.
+     (h6.webhook!=null&&typeof h6.stripe.retrieveCapturableEvidence!=='function')||
+     typeof observeFailure!=='function'||typeof enableDeferredDispatch!=='boolean'||
      (management!==null&&(!management||typeof management!=='object'||
        typeof management.expectedTablesLogin!=='string'||
        typeof management.expectedCatalogLogin!=='string'||
@@ -281,7 +285,8 @@ export async function createM2RestaurantCandidate({customer,tableChange,staff,h4
   // Signed ingress is optional and restricted to test-mode webhooks.
   // server.mjs remains health-only; no route is exposed by default.
   if(h6.webhook!==undefined&&h6.webhook!==null)
-   registerH6StripeWebhookHttp(app,{secret:h6.webhook.secret,providerRepository:provider});
+   registerH6StripeWebhookHttp(app,{secret:h6.webhook.secret,
+    providerRepository:provider,stripe:h6.stripe});
   const payments=createH6PaymentOrchestrator({stripe:h6.stripe,repository:provider});
   const economicCustomer=createEconomicCustomerRepository({withTransaction:customerEconomicTx});
   const economicProvider=createEconomicProviderRepository({withTransaction:providerTx});
