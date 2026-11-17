@@ -2,6 +2,8 @@
 
 **Estado: mecanismo documental/contractual candidato en [PR #59](https://github.com/jdlc86/CartaViva/pull/59), no puerta de aprobación ni proceso operativo siempre disponible.** Fuente de diseño: handoff entregado por el propietario `handoff_para_chatgpt.md`, «HANDOFF TÉCNICO PARA CHATGPT — INTEGRACIÓN CON GOOGLE ANTIGRAVITY». Este documento no altera los requisitos, contratos visuales, la puerta de autorización, ni el plan de revisión independiente Codex. La jerarquía normativa y `AGENTS.md` siguen intactos.
 
+> **Guía de inicio para futuras sesiones:** [SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md](SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md). Incluye el procedimiento de solicitud, lectura, validación del informe y cómo usar el puente sin acceso remoto al Windows.
+
 ## Canal y límites acreditables
 
 El equipo Windows del propietario **declara** disponer de `agy.exe` CLI autenticado, `poll_github_audits.py`, `webhook_listener.py`, `start_realtime_bridge.ps1`, un `gh webhook forward` y directorios `git worktree --detach` de solo lectura, todos **fuera** del repositorio de Sabora. Una prueba local `local-dry-run` sobre `main@59866219971a78237d14d7820d9b18a086ac2bfc` consta en el handoff; **no equivale a evidencia de un Issue completo publicado y procesado por GitHub, ni a auditoría del PR #59**. El puente depende de que el equipo Windows esté encendido y de que el usuario arranque el listener o el sondeo bajo demanda; no tenemos acceso remoto al ordenador ni podemos afirmar que esté encendido. La configuración `read_file(*)`/denegación `write_file(*)`/`command(*)`, las firmas/verificación del webhook, credenciales GH, confinamiento OS de lectura y `worktree_unmodified` son garantías **declaradas por la herramienta local, no comprobadas por este repositorio**.
@@ -43,3 +45,14 @@ El **esquema de entrada declarado `SaboraAuditRequest v1.0`** exige exactamente 
 **Estado al emitir:** encargo **PUBLICADO / PENDIENTE DE PROCESAMIENTO LOCAL**. No se observó todavía un informe estructurado de Antigravity, ni `audit-completed`. Para ejecutarlo es indispensable que el propietario arranque `start_realtime_bridge.ps1` o procese el Issue pendiente mediante el comando de sondeo descrito arriba en su equipo Windows; ChatGPT no tiene canal de comandos al ordenador y no debe afirmar que se invocó `agy`. El resultado se considerará validado únicamente tras recuperar comentarios, comprobar JSON y SHA, y examinar críticamente los hallazgos. El dictamen `GO` del auditor nunca sustituye revisión independiente/aceptación humana ni autoriza merge/despliegue. La entrega Codex sigue organizada en `docs/assignments/CODEX_S42_POST_CORRECTIONS_INDEPENDENT_REVIEW_PR59_2026-11-17.md`.
 
 **Validación del mecanismo (no de Antigravity local):** `node --test tests/sabora-antigravity-audit-contract.test.mjs`. El CI del PR deberá acreditar los casos positivos/negativos por SHA; no se han ejecutado tests en el ordenador Windows por este procedimiento.
+
+
+## Actualización de evidencias operativas (17-11-2026, posterior al estado inicial)
+
+**El texto «PENDIENTE» del primer encargo en las secciones históricas anteriores era correcto al redactarlo, pero ya no representa su resultado actual.** [Issue #62](https://github.com/jdlc86/CartaViva/issues/62) recibió el [informe `GO_WITH_WARNINGS`](https://github.com/jdlc86/CartaViva/issues/62#issuecomment-6934523316) tras **ejecución manual** del propietario, con etiqueta `audit-completed`. El informe identificó **dos hallazgos MEDIUM, dos LOW y uno INFO** que deben ser revisados antes del merge.
+
+Se creó además el [Issue #63](https://github.com/jdlc86/CartaViva/issues/63) con **un único archivo `AGENTS.md`** y sin intervención manual para procesarlo. GitHub registró su alta `2026-11-17T01:11:18Z`, el [informe estructurado `GO`](https://github.com/jdlc86/CartaViva/issues/63#issuecomment-6934620403) a `01:11:44Z` y la sustitución de la etiqueta por `audit-completed` a `01:11:46Z`. Se verificaron SHA de 40 caracteres, repositorio, tipo, un bloque JSON, respuesta y ruta. **Este caso acredita la recepción y publicación automáticas nominales una vez**, no su disponibilidad permanente, origen criptográfico local ni aislamiento OS. Ninguna parte fue ejecutada en VPS o Supabase; Fleetia intocable.
+
+Las pruebas GitHub Actions del SHA inspeccionado `ad07c4d7d0fc18e57f674d445a256ea24f7f2873` terminaron **9/9 aplicables SUCCESS**, con dos controles opt-in **SKIPPED**. No equivalen a aprobación humana ni a despliegue.
+
+Consultar la [guía futura](SABORA_ANTIGRAVITY_FUTURE_SESSIONS_GUIDE_V1.md) para el estado actualizado, criterios de aceptación, pasos de diagnóstico y mensaje listo para la siguiente sesión.
