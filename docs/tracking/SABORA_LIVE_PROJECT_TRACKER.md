@@ -1372,3 +1372,15 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 **Prueba #63 automática:** [Issue](https://github.com/jdlc86/CartaViva/issues/63), [respuesta GO](https://github.com/jdlc86/CartaViva/issues/63#issuecomment-6934620403), SHA fijo `ad07c4d7d0fc18e57f674d445a256ea24f7f2873`, único archivo `AGENTS.md`. Issue `audit-request` creado 01:11:18 UTC; informe 01:11:44; `audit-completed` 01:11:46, **sin intervención manual de ChatGPT/propietario en el sondeo de este Issue**. Acreditado **flujo nominal de una ejecución**, NO durabilidad 24/7, recuperación de webhook perdido, autenticación local ni sandbox del Windows.
 
 **CI por SHA `ad07c4d7`: 9/9 aplicables SUCCESS**, 2 opt-in `SKIPPED`. **No GO** de merge/despliegue: subsisten los nuevos hallazgos, revisión Codex S42 separada, aceptación y preflight operativo. El puente Antigravity solo permite auditorías consultivas: no manipular VPS, Supabase operativo, secretos ni Fleetia. Para iniciar futuras sesiones, remitir de forma explícita a la guía, leer documentación normativa y verificar estado vivo de GitHub.
+
+## 116. S42 — cinco correcciones de revisión Antigravity #62, hito candidato sin GO (17-11-2026)
+
+[Informe #62](https://github.com/jdlc86/CartaViva/issues/62#issuecomment-6934523316) `GO_WITH_WARNINGS`: `AUD-S42-001`/002 MEDIUM, 003/004 LOW, 005 INFO. Código correctivo en **[PR #59 Draft](https://github.com/jdlc86/CartaViva/pull/59)**, sin nuevo PR. [S42-5](../handoffs/SESSION_42_HANDOFF_2026-11-17.md) y [runbook S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md) detallan restricciones y evidencias.
+
+- `AUD-S42-001`: nueva **migración 102** `20261117010000...` de identidad H6 Stripe vinculada a pedido persistido y retry transaccional antes de crear eventos ignorados; pruebas HTTP/PG17 negativas.
+- `AUD-S42-002`: roles/ACL leen catálogo `pg_class`/`pg_namespace` en el **mismo snapshot** que dumps/inventario; prueba PG17 con DDL confirmado concurrente. Globales/seq requieren además control pre/post.
+- `AUD-S42-003`: conexión operativa verifica TLS `verify-full`, CA por SHA256 aprobado y árbol local auditado de migraciones; variables libpq fuera de lista rechazadas. **Supabase real y ledger aplicado siguen NO VALIDADOS.**
+- `AUD-S42-004`: entradas del firmador Windows protegidas contra symlinks y rutas canónicas dentro del checkout, pruebas negativas; **ACL real de Windows no demostrada**.
+- `AUD-S42-005`: comentario del auditor requiere autor GitHub esperado y SHA canónico; **autenticidad criptográfica del proceso AGY y sandbox OS externos no demostrados**.
+
+**No atribuir PASS a CI anterior:** `e8ad2b1d` falló `validate`/`generate-lockfile` por test negativo del comentario mal adaptado al control nuevo de autor; `58f7ee15` corrigió el test. Verificar nuevo SHA final tras el chequeo de hash de migraciones y demás cambios. Revisión independiente Codex S42 pendiente; tampoco existe aceptación visual, backup físico/restore externo, Stripe sandbox real ni permiso de merge/despliegue. **NO-GO merge / NO-GO operativo.**
