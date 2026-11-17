@@ -52,7 +52,14 @@ export function verifiedNtfsAclDigest(path){
  const r=spawnSync(executable,['-NoProfile','-NonInteractive','-EncodedCommand',code],
   {encoding:'utf8',windowsHide:true,env,timeout:15000,maxBuffer:2048});
  const digest=r.stdout?.trim()??'';
- if(r.error||r.status!==0||!HASH.test(digest))
-  throw Error('sabora_ntfs_acl_stop:effective_dacl_unverified');
+ if(r.error||r.status!==0||!HASH.test(digest)){
+  // Only bounded, source-owned error codes; never leak an ACL, identity, or
+  // local pathname to a PR/CI log or to a signing caller.
+  const stopReasons=['inherited_dacl','unexpected_owner','unexpected_acl_principal',
+   'empty_dacl','owner_without_access'];
+  const reason=stopReasons.find(code=>String(r.stderr??'').includes(code))??
+   'effective_dacl_unverified';
+  throw Error('sabora_ntfs_acl_stop:'+reason);
+ }
  return digest;
 }
