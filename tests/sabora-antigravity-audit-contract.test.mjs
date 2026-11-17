@@ -38,7 +38,7 @@ test('Antigravity rejects paths, extra fields, oversized prompts and duplicate b
  }
  assert.throws(()=>validateAntigravityAuditRequest({...request,action:'deploy'}),/invalid_audit_request/);
  assert.throws(()=>validateAntigravityAuditRequest({...request,focus_questions:['x'.repeat(301)]}),/invalid_focus_questions/);
- assert.throws(()=>extractAntigravityJsonBlock(issue.body+'\\n'+issue.body),/missing_or_ambiguous_json_block/);
+ assert.throws(()=>extractAntigravityJsonBlock(issue.body+'\n'+issue.body),/missing_or_ambiguous_json_block/);
 });
 const report={repository:'jdlc86/CartaViva',audited_commit_sha:sha,audit_type:'targeted_paths_audit',
  verdict:'NO-GO',executive_summary:'Falta validar el caso negativo con PostgreSQL',
@@ -49,8 +49,8 @@ const report={repository:'jdlc86/CartaViva',audited_commit_sha:sha,audit_type:'t
  questions_answered:[{question:request.focus_questions[0],answer:'No queda acreditado'}]};
 test('Antigravity report is correlated by exact SHA/type and scoped fields',()=>{
  assert.deepEqual(validateAntigravityAuditReport(report,request),report);
- assert.deepEqual(validateAntigravityIssueComment({body:'Sección 5\\n\\n```json\\n'+
-  JSON.stringify(report)+'\\n```'},request),report);
+ assert.deepEqual(validateAntigravityIssueComment({body:'Sección 5\n\n```json\n'+
+  JSON.stringify(report)+'\n```'},request),report);
  for(const change of [{audited_commit_sha:'b'.repeat(40)}, {audit_type:'release_readiness'},
   {secret:'hidden'},{verdict:'APPROVE'}]){
   assert.throws(()=>validateAntigravityAuditReport({...report,...change},request),
