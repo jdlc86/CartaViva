@@ -5154,6 +5154,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
         assert.equal(quotedCharge.get('capture_method'),'manual');
         assert.equal(quotedCharge.get('amount'),'700');
         assert.equal(quotedCharge.get('currency'),'eur');
+        assert.equal(quotedCharge.get('metadata[sabora_order_id]'),orderId,
+         'Stripe authorization must carry the immutable order identity');
         const pending=await payments.captureOrDispatch({orderId});
         assert.equal(pending.payment_state,'capture_unknown');
         assert.equal(pending.dispatch_state,'blocked',
@@ -5173,7 +5175,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          type:'payment_intent.succeeded',
          data:{object:{object:'payment_intent',id:providerIntentId,
           latest_charge:providerChargeId,status:'succeeded',
-          amount_received:700,currency:'eur'}}};
+          amount_received:700,currency:'eur',
+         metadata:{sabora_order_id:orderId}}}};
         assert.equal((await signedStripeHttp(successEvent,{
          secret:randomBytes(32)})).statusCode,400,
          'invalid Stripe HMAC must not reach SQL');
@@ -5182,6 +5185,26 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          'expired signature must not reach SQL');
         assert.equal((await signedStripeHttp({...successEvent,livemode:true})).statusCode,400,
          'live Stripe mode cannot enter sandbox');
+        // Malformed or mismatched signed provider events cannot be acknowledged
+        // or leave a receipt in the shared ledger before the valid capture.
+        const missingOrderEventId='evt_F20MissingOrderIdentity001';
+        const wrongAmountEventId='evt_F20MismatchedAmount001';
+        const missingOrderEvent={...successEvent,id:missingOrderEventId,
+         data:{object:{...successEvent.data.object,metadata:undefined}}};
+        assert.equal((await signedStripeHttp(missingOrderEvent)).statusCode,503,
+         'missing order metadata must be retryable, never paid');
+        const wrongAmountEvent={...successEvent,id:wrongAmountEventId,
+         data:{object:{...successEvent.data.object,amount_received:699}}};
+        assert.equal((await signedStripeHttp(wrongAmountEvent)).statusCode,503,
+         'a signed event with the wrong amount must not settle an order');
+        const rejectedReceipts=(await admin.query(`SELECT count(*)::integer AS total
+         FROM sabora.stripe_webhook_events WHERE event_id=ANY($1::text[])`,
+         [[missingOrderEventId,wrongAmountEventId]])).rows[0].total;
+        assert.equal(rejectedReceipts,0,
+         'rejected signed events must not leave even ignored ledger receipts');
+        assert.equal((await admin.query(`SELECT state FROM sabora.payment_attempts
+         WHERE round_id=$1`,[roundId])).rows[0].state,'capture_unknown',
+         'a rejected webhook must not settle the pending capture');
         const appliedHttp=await signedStripeHttp(successEvent);
         assert.equal(appliedHttp.statusCode,200);
         assert.deepEqual(appliedHttp.json(),{received:true},
@@ -5194,7 +5217,8 @@ test('PG17 B3 six isolated logins complete PWA customer A to waiter to economic 
          ...successEvent,id:'evt_F20StaleFailedAfterCaptured01',
          type:'payment_intent.payment_failed',
          data:{object:{object:'payment_intent',id:providerIntentId,
-          status:'requires_payment_method'}}}));
+          status:'requires_payment_method',amount:700,currency:'eur',
+         metadata:{sabora_order_id:orderId}}}}));
         assert.equal(failedLate.outcome,'stale');
         const evidencePay=(await admin.query(`SELECT p.id AS payment_attempt_id,p.state,p.provider_intent_id,
          p.provider_charge_id,r.state AS round_state,d.id AS dispatch_id,
