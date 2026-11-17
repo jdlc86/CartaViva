@@ -1828,6 +1828,33 @@ test('H6 runs atomically under split least-privilege PG17 principals',async()=>{
  }finally{await earlyHttpServer.close();}
  await provider.recordAuthorization({orderId:webhookOrder.orderId,outcome:'requires_action',
   providerIntentId:'pi_H6WebhookIntent1'});
+ // Real READ COMMITTED concurrency: the webhook must wait on the same
+ // durable round lock as authorization before reading provider money. A
+ // stale pre-lock SELECT/FOUND must not bypass the cents/currency check.
+ const heldRound=await admin.connect();
+ try{
+  await heldRound.query('BEGIN');
+  await heldRound.query('SELECT id FROM sabora.order_rounds WHERE order_id=$1 FOR UPDATE',
+   [webhookOrder.orderId]);
+  let finished=false;
+  const racing=provider.ingestWebhook({eventId:'evt_H6ConcurrentMoney01',
+   eventType:'payment_intent.amount_capturable_updated',
+   providerObjectId:'pi_H6WebhookIntent1',
+   providerCreatedAt:new Date(),payloadSha256:Buffer.alloc(32,96),
+   captureBefore:new Date(Date.now()+86400000),
+   providerChargeId:'ch_H6WebhookCharge1',saboraOrderId:webhookOrder.orderId,
+   providerAmountCents:1,providerCurrency:'eur'}).finally(()=>{finished=true;});
+  racing.catch(()=>{});
+  await new Promise(resolve=>setTimeout(resolve,150));
+  assert.equal(finished,false,'webhook must be serialized behind held round lock');
+  await heldRound.query('COMMIT');
+  await assert.rejects(racing,/h6_provider_money_mismatch/);
+ }finally{
+  await heldRound.query('ROLLBACK').catch(()=>{});
+  heldRound.release();
+ }
+ assert.equal((await admin.query('SELECT count(*)::int AS n FROM sabora.stripe_webhook_events WHERE event_id=$1',
+  ['evt_H6ConcurrentMoney01'])).rows[0].n,0);
  // A payment intent found through its provider ID still has exactly one
  // order: mismatch in signed metadata must not persist or acknowledge.
  // Even a signed failure or cancellation has to match the exact
