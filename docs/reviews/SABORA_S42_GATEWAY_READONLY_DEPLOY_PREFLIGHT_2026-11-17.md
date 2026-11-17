@@ -58,3 +58,10 @@
 - **NO PROBADO:** cuatro checks requeridos para release en mismo SHA; paquete inmutable; redes/enforcement/host actuador; certificado contra clave; rutas externas; backups reales; SQL real; aceptación visual humana.
 - **NO AUTORIZADO:** ninguna operación que modifique el VPS, Supabase, Stripe, secretos, almacenamiento o redes.
 - **DICTAMEN:** **PREPARACIÓN PARCIAL / NO-GO de deploy**. No asociar un GO operativo al acceso de Gateway ni al merge de #59. Al cerrar GATE-01 y GATE-02 y las evidencias/operaciones faltantes se reevaluará en un único hito.
+
+
+## 6. Hito GitHub de reparación en candidato (17-11-2026)
+
+Se implementa **en la rama de preparación, pendiente de CI y revisión antes de integrar** `.github/workflows/sabora-main-release-evidence.yml`, invocado **solo** en `push main`. Genera dos comprobaciones de Github Actions con nombres exactos que ya exige `verifyGithubChecks()` y ancladas a `GITHUB_SHA` real de `main`: **`generate-lockfile`** reproduce el lockfile y comprueba instalación `--frozen-lockfile`/secret-gate, **`functional-ui-gate`** conserva la regresión de cobertura y no regresión contra `github.event.before`. No reproduce el PG17/Chromium/F21 ni los 300 s de espera porque `ci.yml:validate` ya ejecuta esa regresión para el **mismo SHA**. `tests/sabora-governed-deployment.test.mjs` comprueba estáticamente la topología conjunta y el fallo cerrado de empaquetado sin variable pública aprobada.
+
+**IMPORTANTE:** el paquete de imágenes sigue condicionado a `vars.SABORA_APPROVED_RESTAURANT_CODE`; **no se ha modificado ni rellenado** esta variable, ni es correcto reutilizar la fixture `SABORA` por defecto. No se ha generado artefacto de despliegue, ni se ha disparado main CI por este candidato de PR. **No se rebaja `verifyGithubChecks()`, ni se habilita el actuador ni se ejecuta workflow de deploy.** Al aprobarse e integrarse este único hito, los cuatro controles deberían aparecer en el mismo SHA `main`; comprobarlo materialmente antes de dar GATE-01 por cerrado. GATE-02 seguirá STOP hasta configuración explícita del código público y generación verificable del paquete, con pruebas de procedencia por SHA. 
