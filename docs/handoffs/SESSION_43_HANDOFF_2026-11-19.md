@@ -133,10 +133,30 @@ S38 §2 y S40 §4 exigen copia y restauración **antes** de instalar. S40 §2 y 
 | Hito | Estado | Acción siguiente |
 | --- | --- | --- |
 | S43-3a — análisis de dependencias reales | COMPLETADO (GitHub, no ejecución real) | Hallazgos anteriores; no nuevo P0/P1 dictaminado, son bloqueos operativos. |
-| S43-3b — preflight origen/recuperación | STOP hasta autorización específica | Solo lectura en proyecto byhvmumqivmunkmomhup: versión/identidad DBA, presencia de esquemas/roles Sabora y ledger, alcance de objetos, permiso pg_control_system sin revelar identificador públicamente; confirmar acceso desde equipo doméstico y CA por canal separado. Sin modificación ni extracción de datos de cliente. |
+| S43-3b — preflight origen/recuperación | COMPLETADO (Supabase solo lectura; equipo/TLS directo pendientes) | Solo lectura en proyecto byhvmumqivmunkmomhup: versión/identidad DBA, presencia de esquemas/roles Sabora y ledger, alcance de objetos, permiso pg_control_system sin revelar identificador públicamente; confirmar acceso desde equipo doméstico y CA por canal separado. Sin modificación ni extracción de datos de cliente. |
 | S43-3c — mecanismo primera instalación + restauración | STOP decisión de diseño y autorización de captura/restore | Bloque B1, prueba integrada PG17 y controles de origen; perfil y custodia doméstica, retención aprobada; copia externa real restaurada y réplica cifrada Sabora-only con permiso VPS. No capturar antes de resolver B1. |
 | S43-3d — SQL operativo | STOP backup/restore y permiso DBA | Cadena exacta 103 para SHA vigente, ledger transaccional, roles/ACL/RLS, pre/post copia/restore, credenciales separadas. |
 | S43-3e — actuador/host/red | STOP B2, permisos y evidencia material | Código candidato aislado, validación integrada, revisión independiente solo por orden expresa; preparación VPS Sabora-only, sin tocar Fleetia ni reiniciar host. |
 | S43-3f — primera activación | STOP | Firma Ed25519 y seis evidencias reales, SHA/paquete vigentes, autorización separada deploy y rollback, readiness, dos PWA, Stripe y aceptación humana según alcance normativo. |
 
 **Decisión inmediata solicitada:** autorización expresa para preflight de solo lectura del Supabase Sabora y confirmación de si el ordenador doméstico Windows ya utilizado para Antigravity es también el destino decidido para la copia (no presumir acceso a ese equipo ni permiso del agente). No pedir contraseñas, claves ni datos de usuario. El resultado decidirá el camino de captura inicial o recuperación de estado parcial. El paquete vigente caduca el 26-11 a las 00:24 Madrid; si se requiere integrar código nuevo, regenerar evidencia para el nuevo SHA autorizado, no prolongar ni reutilizar el paquete incorrecto. No se lanza CI, crea PR ni cambia main en este corte. Seguimiento documental en rama existente; no nuevas tareas Antigravity/Codex.
+
+## S43-3b — preflight real Supabase autorizado, origen inicial confirmado (19-11-2026)
+
+Autorización del propietario «Okk» a la inspección exclusivamente de lectura solicitada tras S43-3a. Se utilizó solo el conector RESTAURANTE para el proyecto exacto byhvmumqivmunkmomhup, con get_project, list_migrations y dos SELECT de catálogos/funciones de lectura. Sin DDL/DML, lecturas de datos de cliente, secretos, cambios de configuración, backup ni acceso VPS/Fleetia.
+
+| Control | Resultado material |
+| --- | --- |
+| Proyecto | restaurante, ACTIVE_HEALTHY, eu-central-1, PG administrado 17.11.0.003 |
+| Conexión SQL | current_user postgres, current_database postgres, versión 17.11, ssl=on en servidor |
+| Autoridad administrativa | LOGIN, CREATEROLE, NOSUPERUSER, BYPASSRLS; no puede SET ROLE supabase_admin; nunca runtime |
+| Esquemas exactos sabora/sabora_migration_meta y prefijo sabora_ | 0, 0; relaciones y rutinas en ambos esquemas: 0 |
+| Roles exacto sabora/prefijo sabora_ y membresías asociadas | 0 y 0 |
+| Ledger Sabora | to_regclass(sabora_migration_meta.applied_migrations) ausente |
+| Migraciones registradas por proveedor | [] |
+| pgcrypto | 1.3, esquema extensions confirmado |
+| Identidad PostgreSQL | EXECUTE permitido sobre pg_catalog.pg_control_system(); ejecución SELECT real devuelve system_identifier no nulo y con formato decimal válido, sin exponer el valor |
+
+**Conclusión acotada:** preflight SQL por conector PASS; estado inicial de Sabora confirmado en catálogos consultados y no hay registro de migraciones; no equivale a inventario completo del proveedor ni a TLS verify-full desde ordenador doméstico. No hay evidencia de instalación de las 103 migraciones. En este estado la CLI V2 de captura exige un ledger que materialmente no existe; B1 deja de ser hipótesis sobre estado histórico. No se ejecutó la CLI contra Supabase, no se creó ledger ni se aplicó migración. La lectura de pg_control_system confirma capacidad de obtener identificador, no sustituye su aprobación independiente ni demuestra conexión directa desde equipo de custodia. No usar ni ampliar permisos de postgres para runtime.
+
+**Siguiente bloque B1:** preparar mecanismo explícito para origen inicial, con identidad y snapshot verificados, inventario de ausencia exacto y rechazo de estados parciales/inesperados; preservar íntegramente comprobación de ledger para backups de estados instalados. Restauración y ensayo parcial real fuera del VPS, sin calificar un dump vacío de restauración suficiente. Propuesta pendiente de decisión de diseño de propietario y de autorización de captura/restore; no se modifica norma, código ni main en este corte. Confirmar explícitamente si el ordenador Windows de Antigravity es también el destino externo; no interpretar el «Okk» como prueba de configuración, custodia o acceso al equipo. S43-3b preflight Supabase completado, conexión TLS directa/CA/equipo y S43-3c–f pendientes. GATE-01/02 previamente acreditados para 6dba3042d2c54d484bd3f6d03c7ec64458577976; NO-GO operativo.
