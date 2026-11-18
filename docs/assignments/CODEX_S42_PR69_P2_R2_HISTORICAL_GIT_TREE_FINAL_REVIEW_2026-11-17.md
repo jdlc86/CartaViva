@@ -1,59 +1,67 @@
-# Sabora S42 — encargo Codex de cierre independiente del P2-R2: integridad del árbol histórico
+# Sabora S42 — revisión de calidad del control de cobertura funcional en el PR #69
 
-**Fecha:** 17-11-2026. **Tipo:** revisión independiente, adversarial, focal y no correctiva. **Repositorio:** `jdlc86/CartaViva`. **PR:** [#69](https://github.com/jdlc86/CartaViva/pull/69), abierto/Draft. **Rama:** `prep/sabora-gateway-readiness-20261117`.
+**Revisión editorial del encargo:** 18-11-2026. **Objeto:** evaluación independiente de un cambio de código y su regresión de CI, en un repositorio propio y autorizado. **No requiere pruebas ofensivas, acceso a servicios externos ni interacción con infraestructura.**
 
-| Objeto | SHA/evidencia exactos |
+**Repositorio exclusivo:** `jdlc86/CartaViva`. **PR existente:** [#69](https://github.com/jdlc86/CartaViva/pull/69), abierto/Draft. **Rama:** `prep/sabora-gateway-readiness-20261117`.
+
+| Referencia | Estado comprobado al preparar el encargo |
 |---|---|
-| **Único SHA funcional a revisar** | [`56ab31c27acbc84d168a310c4266e93e48eb1e07`](https://github.com/jdlc86/CartaViva/commit/56ab31c27acbc84d168a310c4266e93e48eb1e07/checks) |
-| `main`/base al emitir encargo | `67585f255815be3b1f944e49dc9a51c46a81014a` |
-| Último informe Codex con PoC residual | [`SABORA_S42_CODEX_PR69_P2_R1_SECOND_CLOSURE_2026-11-17.md`](../reviews/SABORA_S42_CODEX_PR69_P2_R1_SECOND_CLOSURE_2026-11-17.md) |
-| Hallazgo a reevaluar | `PR69-P2-01-R2` — base ancestral completa pero marcadores sin respaldo en su propio árbol |
-| Comprobación puntual ya ejecutada | [`functional-ui-gate`](https://github.com/jdlc86/CartaViva/actions/runs/44175938068/job/134367152498), **SUCCESS**, 5/5 pruebas, incluido test Git histórico ampliado |
-| CI completa ya ejecutada | `validate`, `generate-lockfile`, `web-publication`, `functional-ui-gate`, `windows-offline-signer`: **5/5 SUCCESS** en el SHA indicado |
-| Controles opt-in | `visual-final-acceptance-gate` y `cv005-b2-disposable-integration`: **SKIPPED**, no aceptación |
+| **SHA funcional exacto que debe examinarse** | [`56ab31c27acbc84d168a310c4266e93e48eb1e07`](https://github.com/jdlc86/CartaViva/commit/56ab31c27acbc84d168a310c4266e93e48eb1e07/checks) |
+| Base de `main` | `67585f255815be3b1f944e49dc9a51c46a81014a` |
+| Revisión técnica anterior | [Informe P2-R2](../reviews/SABORA_S42_CODEX_PR69_P2_R1_SECOND_CLOSURE_2026-11-17.md) |
+| Identificador de seguimiento | `PR69-P2-01-R2` |
+| CI del SHA funcional | 5/5 checks aplicables `SUCCESS`; 2 controles opt-in `SKIPPED` |
+| Archivo de informe solicitado | `docs/reviews/SABORA_S42_CODEX_PR69_P2_R2_HISTORICAL_TREE_CLOSURE_2026-11-17.md` |
 
-## 1. Resultado que debe demostrar o refutar Codex
+## 1. Propósito técnico
 
-El informe anterior reprodujo una vulnerabilidad del gate de no regresión funcional: existía un `docs/design/FUNCTIONAL_UI_COVERAGE.json` anterior bien formado y con todas las capacidades obligatorias, pero un `marker` de `CV-007-catalogo` solo figuraba en ese JSON, **no en el contenido del archivo referenciado del commit base**. El CLI gobernado terminó con `exit 0` y `FUNCTIONAL_UI_GATE_PASS`; el dictamen fue **P2 RESIDUAL / NO-GO para merge**.
+Revisar si el control de trazabilidad de interfaces `functional-ui-gate` compara correctamente la información de cobertura de dos revisiones Git del mismo proyecto. La versión anterior podía aceptar un inventario que citaba texto de un archivo que no estaba presente en esa revisión; el último cambio pretende resolver esta inconsistencia.
 
-La nueva corrección en `56ab31c27acbc84d168a310c4266e93e48eb1e07` llama `inspectFunctionalUi({manifest:prior,read:readHistorical})`, donde `readHistorical(path)` ejecuta `git show <baseSha>:<path>` y almacena por ruta lo obtenido, devolviendo `null` cuando no existe. Se añadió al mismo test Git el negativo `missing-marker` (marcador falso en JSON ancestral) y `missing-file` (archivo histórico ausente). **El objetivo es buscar una refutación, no certificar por semejanza textual**. Determinar expresamente si la verificación obliga a existir las referencias `ui`, `api` y `evidence` en la **versión histórica correspondiente**, con `baseSha` correcto, error no cero en caso adversarial y PASS para sucesor legítimo.
+En el SHA funcional indicado, `loadGovernedBaseManifest()` comprueba versión, identidad del commit anterior y estructura del inventario. `readHistorical(path)` lee cada archivo desde ese **commit anterior** mediante `git show <baseSha>:<path>`, y `inspectFunctionalUi()` comprueba que los marcadores declarados aparezcan en ese contenido. El objetivo es confirmar que la implementación y los tests representan fielmente este requisito, sin atribuir a la revisión de código capacidades operativas no demostradas.
 
-## 2. Lectura obligatoria y alcance estricto
+**Resultado esperado:** un inventario anterior consistente debe superar el control; un inventario que cite un marcador inexistente o un archivo ausente en esa revisión debe producir un resultado de validación negativo. El inventario de la revisión actual también debe cumplir el control habitual. Distinguir implementación, pruebas ejecutadas y aceptación real.
 
-Antes de evaluar, leer `AGENTS.md`, `docs/architecture/SABORA_GOVERNED_RELEASE_V1.md`, `docs/architecture/CARTAVIVA_PROJECT_BOUNDARY.md`, `docs/SABORA_AUTHORIZATION_GATE.md`, `docs/architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md`, `docs/design/FUNCTIONAL_UI_COVERAGE.json` y `docs/design/VISUAL_CONTROL_GATE.md`. Los documentos de continuidad solo son contexto; **la normativa tiene prioridad**.
+## 2. Documentación y archivos que deben leerse
 
-Auditar exclusivamente el delta de [`0e273d73f8448962f307b244d4aec2fa5845e9b5..56ab31c27acbc84d168a310c4266e93e48eb1e07`](https://github.com/jdlc86/CartaViva/compare/0e273d73f8448962f307b244d4aec2fa5845e9b5...56ab31c27acbc84d168a310c4266e93e48eb1e07), centrado en:
+La referencia normativa es el propio repositorio. Lee `AGENTS.md`, `docs/architecture/SABORA_GOVERNED_RELEASE_V1.md`, `docs/architecture/CARTAVIVA_PROJECT_BOUNDARY.md`, `docs/SABORA_AUTHORIZATION_GATE.md`, `docs/architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md`, `docs/design/FUNCTIONAL_UI_COVERAGE.json` y `docs/design/VISUAL_CONTROL_GATE.md`. La continuidad es contextual y no sustituye los requisitos normativos.
 
-- `scripts/ci/functional-ui-coverage-gate.mjs`: `readHistorical`, `loadGovernedBaseManifest()`, `validGovernedPriorManifest()` y `inspectFunctionalUi()`.
-- `tests/functional-ui-coverage-gate.test.mjs`: fixture Git real desechable, negativos `missing-marker` y `missing-file`, caso válido, degradación y los rechazos anteriores.
-- `.github/workflows/sabora-main-release-evidence.yml` **solo** para asegurar que `push main` ejecutaría `--require-base` con `github.event.before`, `GITHUB_SHA` y checkout de historia completa.
-- No reabrir Stripe, backup, CI económica, pagos, PWA estética, SQL o toda la arquitectura salvo dependencia estrictamente necesaria para este P2.
+Revisa **solamente el cambio** entre `0e273d73f8448962f307b244d4aec2fa5845e9b5` y `56ab31c27acbc84d168a310c4266e93e48eb1e07`, usando estas rutas:
 
-Antes de usar resultados previos, constatar repo remoto, `git merge-base`, SHA funcional, HEAD del PR, base `main`, estado del checkout y diff de los commits posteriores. Los commits de encargo y de informe pueden ser solo documentales; **probarlo con diff**, no presumirlo. Si aparece otro cambio funcional, limitar/revisar evidencia y declarar el cierre del SHA anterior no extrapolable.
+- `scripts/ci/functional-ui-coverage-gate.mjs`: `loadGovernedBaseManifest()`, `readHistorical()`, `validGovernedPriorManifest()` e `inspectFunctionalUi()`.
+- `tests/functional-ui-coverage-gate.test.mjs`: prueba existente con repositorio Git temporal, verificaciones `missing-marker`, `missing-file`, caso nominal y casos de rechazo previos.
+- `.github/workflows/sabora-main-release-evidence.yml`: únicamente para comprobar que el flujo gobernado `push main` usa `--require-base` y proporciona `FUNCTIONAL_UI_BASE_SHA` y `GITHUB_SHA` correctamente.
 
-## 3. Matriz adversarial con coste controlado
+Comprobar el estado real del PR, su SHA y el diferencial posterior al SHA funcional. Los commits documentales posteriores no cambian la validez de la CI si se acredita que no alteraron código, configuración o tests.
 
-Verificar explícitamente, clasificando evidencia como lectura de código, CI reutilizada o PoC ejecutada:
+## 3. Lista de comprobación de calidad
 
-1. **PoC original:** base ancestral con 6 IDs, metadata coherente y `evidence.marker` falsificado solo en JSON para `apps/client/e2e/client-premium.spec.ts`; archivo base sin el marcador. Sucesor restaura el manifiesto. El CLI gobernado DEBE devolver **exit distinto de 0**, `governed_functional_ui_base_manifest_incomplete`, **sin PASS**.
-2. **Archivo histórico eliminado:** referencia correcta en el manifiesto anterior, archivo de evidencia ausente del commit base; sucesor lo restaura. El resultado debe ser FAIL. Verificar también que los recorridos de `ui` y `api` reciben la misma comprobación, no solo `evidence`.
-3. **Positivos:** inventario ancestral íntegro con todos los marcadores históricos existentes y sucesor sin regresión => PASS. No aceptar arreglos que den siempre FAIL o que consulten por error únicamente el HEAD actual.
-4. **Adversariales previos:** SHA cero/inexistente/divergente, base igual al HEAD, inventario parcial/duplicado, fila/estado inválido, downgrade, marcador nuevo ausente y ausencia de fichero. Reutilizar la CI ya ejecutada para los casos cubiertos; no repetir esas pruebas sin hipótesis nueva.
-5. **Fronteras y falsos positivos:** examinar rutas con ausencia, error de lectura, contenido binario o esquemas impropios, manifestaciones `PENDIENTE`, ambigüedad de rutas, symlinks u otras particularidades Git **solo si representan un bypass concreto y plausible del contrato**. Si se identifica, aportar un único PoC desechable, SHA y resultado exactos, no una lista especulativa de riesgos.
-6. **Separar código de evidencia real:** el workflow de `push main` todavía no ha corrido en `main` con este SHA. El gate confirma presencia de marcadores y trazabilidad, no aceptación visual, funcionalidad material ni autorización operativa.
+1. **Lectura de la revisión correcta:** `readHistorical()` debe leer archivos del commit `baseSha`, no del checkout actual, y reutilizar resultados por ruta para evitar trabajo innecesario.
+2. **Datos consistentes:** para capacidades con estado candidato o validado, los marcadores declarados en `ui`, `api` y `evidence` deben estar presentes en el archivo correspondiente de la versión anterior. Un archivo ausente o contenido que no contenga el marcador no puede considerarse conforme.
+3. **Pruebas existentes:** verificar que `missing-marker` y `missing-file` efectivamente ejecutan el CLI y comprueban un código de salida distinto de cero y el diagnóstico `governed_functional_ui_base_manifest_incomplete`.
+4. **Caso positivo:** el historial Git de prueba con inventario y referencias correctos debe continuar dando `FUNCTIONAL_UI_GATE_PASS`. No sería válida una modificación que rechazara también las versiones legítimas.
+5. **Compatibilidad:** preservar los controles ya comprobados de SHA/base, inventario parcial/duplicado, estados permitidos, no degradación y la distinción entre modo gobernado y uso histórico sin `--require-base`.
+6. **Límites de la evidencia:** una CI verde en un PR no significa que el workflow nuevo haya corrido en `main`, que exista paquete inmutable, que la interfaz esté aprobada visualmente o que el despliegue sea seguro.
 
-**Eficiencia:** reutilizar los cinco SUCCESS del SHA; evitar ejecutar `validate`, PG17, HTTP, Chromium, F21, Docker, `pnpm test`, builds o Actions adicionales. Solo si el análisis encuentra un caso adversarial no cubierto, ejecutar **una PoC focal en repositorio temporal externo**; registrar milisegundos, comando, stdout/stderr y exit code. No producir cambios en código para ensayar ni nuevos test files del repositorio.
+Si detectas una inconsistencia concreta de estos requisitos, describe el archivo, la línea, el resultado esperado frente al observado y una corrección mínima sugerida; **no implementes cambios**.
 
-## 4. Entregable único y decisiones separadas
+## 4. Pruebas y eficiencia
 
-Publicar **un único informe nuevo**, sin reescribir revisiones históricas, en:
+En [el SHA funcional](https://github.com/jdlc86/CartaViva/commit/56ab31c27acbc84d168a310c4266e93e48eb1e07/checks), GitHub registra `validate`, `generate-lockfile`, `web-publication`, `functional-ui-gate` y `windows-offline-signer` en **SUCCESS**. Los dos opt-in visual y CV-005 B2 permanecen **SKIPPED**, no aprobados.
+
+El [job `functional-ui-gate`](https://github.com/jdlc86/CartaViva/actions/runs/44175938068/job/134367152498) ejecutó la suite existente con **5/5 tests PASS**; el caso Git temporal incluye ya los escenarios históricos mencionados.
+
+**Trabajo solicitado:** lectura técnica y comprobación de esos resultados y de los tests incluidos. No repetir las suites largas PostgreSQL17, HTTP, Chromium, Docker, F21 ni los workflows. Únicamente si la revisión descubre una discrepancia concreta que las pruebas existentes no resuelven, se permite una prueba unitaria/local acotada en un directorio temporal sin acceso a redes ni a sistemas operativos reales. Indica con precisión qué ejecutaste y qué resultados solo has consultado.
+
+## 5. Informe y permisos
+
+Prepara un único informe de revisión en:
 
 `docs/reviews/SABORA_S42_CODEX_PR69_P2_R2_HISTORICAL_TREE_CLOSURE_2026-11-17.md`
 
-**Única escritura autorizada:** un commit **exclusivamente documental** con ese informe en la misma rama del PR #69 y **un comentario** resumen en el propio PR enlazando el informe, el SHA funcional y el dictamen. No crear ramas, PR, Issue ni múltiples informes; tampoco cambiar estado Draft, emitir `APPROVE` a nombre ajeno ni fusionar. Si la rama cambia durante el análisis, inspeccionar nuevo diff antes de publicar.
+Incluye: SHA del código revisado; base y diff examinados; requisitos normativos aplicados; tabla de comprobaciones con evidencia; incidencias concretas si existen; resultado **`PR69-P2-01-R2: CERRADO / RESIDUAL / NO VERIFICADO`**; recomendación técnica sobre integración del PR (GO / GO CON CONDICIONES / NO-GO), sin emitir una aprobación de plataforma; y situación **operativa separada**, que sigue NO-GO hasta verificar en `main` los controles de release, el paquete inmutable, copias externas recuperables, Supabase/DBA, aislamiento del VPS, alertas y aceptación humana.
 
-El informe debe contener: (i) SHAs, normas y diff realmente inspeccionado; (ii) tabla concisa de hipótesis/evidencias/resultados con separación propia versus CI reutilizada; (iii) dictamen **`PR69-P2-01-R2`: CERRADO / RESIDUAL / NO VERIFICADO**, citando archivo/líneas; (iv) PoC mínima para todo fallo real con gravedad P0–P3 y corrección mínima sugerida, **sin implementarla**; (v) recomendación **GO / GO CON CONDICIONES / NO-GO técnico** para el merge **limitada al P2**; (vi) **NO-GO operativo separado** hasta 4 checks en SHA exacto de `main`, paquete gobernado con dos imágenes y digests, backup cifrado externo recuperable, DBA/SQL real, aislamiento VPS Sabora-only, alertas, firma y aprobación humana. No declarar que `SABORA_APPROVED_RESTAURANT_CODE=SABORA_00` implica que el paquete fue construido.
+**Publicación autorizada:** un único commit **solo documental** en la **misma rama** del PR #69 y un único comentario resumido en el mismo PR con enlace al informe. No modificar informes históricos, código, pruebas, workflows o contratos. No crear PR, Issue ni rama adicional, no marcar Ready ni fusionar.
 
-**Prohibiciones:** no modificar código, tests, workflows, normas, secretos, variables GitHub, `main` ni estado de PR; no hacer merge/rebase/despliegue; no operar Gateway/VPS, Supabase real, Cloudflare, Stripe real, equipo doméstico ni recursos **Fleetia**. No tocar, reiniciar ni depender de contenedores ajenos. Detenerse tras informe y comentario. **El informe consultivo no constituye `APPROVE` independiente de GitHub ni autorización de integración.**
+**Frontera de trabajo:** únicamente el repositorio autorizado, y pruebas locales aisladas cuando estén justificadas. No acceder ni actuar sobre servidores, Gateway, Supabase operativo, Stripe, Cloudflare, DNS, secretos, equipos del propietario, Fleetia ni otros proyectos. No desplegar, reiniciar ni modificar infraestructura compartida.
 
-**Estado de este documento:** PREPARADO EN GITHUB; no acredita que Codex lo haya recibido ni que la revisión haya comenzado.
+La publicación de este documento no inicia por sí misma una tarea en Codex. Si el entorno no permite alguna acción, señalarla sin afirmar que se ejecutó.
