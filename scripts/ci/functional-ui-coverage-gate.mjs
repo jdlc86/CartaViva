@@ -148,10 +148,11 @@ export function loadGovernedBaseManifest(root,baseSha,headSha){
   reject('base_sha_invalid');
  if(typeof headSha!=='string'||!/^[0-9a-f]{40}$/.test(headSha)||/^0{40}$/.test(headSha))
   reject('head_sha_invalid');
+ // Keep historical file content intact; trim only textual Git metadata.
  const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8',
-  stdio:['ignore','pipe','ignore']}).trim();
+  stdio:['ignore','pipe','ignore']});
  let actual;
- try{actual=git(['rev-parse','HEAD']);}catch{reject('head_unavailable');}
+ try{actual=git(['rev-parse','HEAD']).trim();}catch{reject('head_unavailable');}
  if(actual!==headSha)reject('head_mismatch');
  if(baseSha===headSha)reject('base_not_previous');
  try{git(['cat-file','-e',baseSha+'^{commit}']);}

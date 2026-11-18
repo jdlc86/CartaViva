@@ -121,6 +121,30 @@ test('governed main UI gate rejects zero/missing/divergent ancestry and real sta
   assert.match(notAncestor.stderr,/governed_functional_ui_base_not_ancestor/);
   assert.equal(loadGovernedBaseManifest(fixture,base,head).schemaVersion,1);
 
+  // PR69-R2-QA-01: significant LF at the end of a historical blob is
+  // part of the marker; metadata trimming must not alter file content.
+  git('checkout','-b','valid-historical-lf',base);
+  const whitespaceManifest=structuredClone(manifest);
+  const whitespaceEntry=whitespaceManifest.capabilities
+   .find(x=>x.id==='CV-007-catalogo').evidence.find(x=>x.kind==='postgres17');
+  const originalMarker=whitespaceEntry.marker;
+  whitespaceEntry.marker=originalMarker+'\n';
+  const historicalSource=[...markers.get(whitespaceEntry.path)]
+   .filter(marker=>marker!==originalMarker).concat(originalMarker).join('\n')+'\n';
+  // Ensure this fixture really distinguishes raw blob reads from trim().
+  assert(historicalSource.endsWith(whitespaceEntry.marker));
+  assert(!historicalSource.trim().includes(whitespaceEntry.marker));
+  file(whitespaceEntry.path,historicalSource);
+  file(COVERAGE_FILE,JSON.stringify(whitespaceManifest,null,2)+'\n');
+  const whitespaceBase=commit('valid historical evidence with significant final LF');
+  file('fixture-update.txt','valid successor preserves historical LF\n');
+  const whitespaceHead=commit('successor preserves LF-sensitive evidence');
+  assert.deepEqual(auditFunctionalUi(fixture).errors,[]);
+  const whitespaceResult=run(whitespaceBase,whitespaceHead);
+  assert.equal(whitespaceResult.status,0,whitespaceResult.stderr);
+  assert.match(whitespaceResult.stdout,/FUNCTIONAL_UI_GATE_PASS/);
+  git('checkout','main');
+
   // Codex PR69-P2-01-R1 proved that a partial but ancestral Git manifest
   // could bypass downgrade comparison; preserve the single disposable Git test.
   const rejectPrior=(name,change)=>{
