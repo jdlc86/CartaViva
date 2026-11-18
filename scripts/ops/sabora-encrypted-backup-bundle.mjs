@@ -3,12 +3,12 @@
 // The key is intentionally external to every bundle and replica.
 import {createCipheriv,createDecipheriv,createHash,randomBytes} from 'node:crypto';
 import {constants as fsConstants,createReadStream,createWriteStream} from 'node:fs';
-import {copyFile,lstat,mkdir,open,readFile,rename,rm,writeFile} from 'node:fs/promises';
+import {copyFile,lstat,mkdir,open,readFile,readdir,rename,rm,writeFile} from 'node:fs/promises';
 import {basename,isAbsolute,join,relative,resolve} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 import {spawn} from 'node:child_process';
-import {openPostgresBackupSnapshot,safePostgresChildEnv}
+import {openPostgresBackupSnapshot,safePostgresChildEnv,readPreinstallState,validatePreinstallState}
  from './sabora-postgres-snapshot.mjs';
 
 const failure=code=>Error('sabora_backup_stop:'+code);
@@ -20,6 +20,12 @@ const META_KEYS=['backupId','createdAt','custody','excludedManagedSchemas','incl
  'migrationTreeSha256','postgresMajor','postgresVersion','releaseSha','repository','schema',
  'sourceProjectRef'];
 const V2_META_KEYS=[...META_KEYS,'snapshotId','sourceDatabase','sourceSystemIdentifier'].sort();
+export const PREINSTALL_SCHEMA='sabora-preinstall-backup/v1';
+const PREINSTALL_KEYS=[...V2_META_KEYS.filter(k=>k!=='migrationTreeSha256'),
+ 'plannedMigrationTreeSha256','initialState'].sort();
+const manifestMetaKeys=schema=>schema===PREINSTALL_SCHEMA?PREINSTALL_KEYS:
+ schema==='sabora-logical-backup/v2'?V2_META_KEYS:META_KEYS;
+const namesFor=schema=>schema===PREINSTALL_SCHEMA?['initial-state']:['roles-memberships','schema','data','inventory'];
 const COMPONENT_KEYS=['algorithm','ciphertextBytes','ciphertextSha256','filename','ivHex',
  'mediaType','name','plaintextBytes','plaintextSha256','tagHex'];
 
@@ -50,6 +56,16 @@ async function keyBytes(path){
 }
 function metadata(value){
  if(!plainObject(value))throw failure('invalid_metadata');
+ if(value.schema===PREINSTALL_SCHEMA){
+  if(Object.keys(value).sort().join('|')!==PREINSTALL_KEYS.join('|')||
+   !Array.isArray(value.includedSchemas)||value.includedSchemas.length!==0||
+   value.initialState!=='no-sabora-objects'||!HASH.test(value.plannedMigrationTreeSha256??''))
+   throw failure('invalid_preinstall_metadata');
+  const {plannedMigrationTreeSha256,initialState,...shared}=value;
+  metadata({...shared,schema:'sabora-logical-backup/v2',
+   migrationTreeSha256:plannedMigrationTreeSha256,includedSchemas:['sabora','sabora_migration_meta']});
+  return Object.freeze({...value,includedSchemas:[],excludedManagedSchemas:[...value.excludedManagedSchemas]});
+ }
  const v2=value.schema==='sabora-logical-backup/v2';
  if(Object.keys(value).sort().join('|')!==(v2?V2_META_KEYS:META_KEYS).join('|')||
   !['sabora-logical-backup/v1','sabora-logical-backup/v2'].includes(value.schema)||
@@ -70,6 +86,8 @@ function metadata(value){
   excludedManagedSchemas:[...value.excludedManagedSchemas]});
 }
 function aad(meta,name,mediaType){
+ if(meta.schema===PREINSTALL_SCHEMA)
+  return Buffer.from(JSON.stringify({metadata:Object.fromEntries(PREINSTALL_KEYS.map(k=>[k,meta[k]])),name,mediaType}));
  return Buffer.from(JSON.stringify({schema:meta.schema,backupId:meta.backupId,
   repository:meta.repository,releaseSha:meta.releaseSha,
   sourceProjectRef:meta.sourceProjectRef,postgresMajor:meta.postgresMajor,
@@ -187,6 +205,7 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
  const names=components.map(x=>componentSpec(x).name);
  if(names.join('|')!=='roles-memberships|schema|data|inventory'||new Set(names).size!==4)
   throw failure('component_set');
+ if(raw?.schema===PREINSTALL_SCHEMA)throw failure('preinstall_requires_separate_capture');
  if((raw?.schema==='sabora-logical-backup/v2')!==Boolean(snapshot))
   throw failure('snapshot_required_for_v2');
  const key=await keyBytes(keyPath);
@@ -241,14 +260,68 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
  }finally{key.fill(0);}
 }
 
+// Separate initial state format; no pg_dump of absent schemas or fake ledger.
+export async function capturePreinstallBackup({directory,keyPath,metadata:raw,exporter,expectedSystemIdentifier}={}){
+ if(!isAbsolute(directory??'')||!isAbsolute(keyPath??'')||
+  resolve(directory)===resolve(keyPath)||contained(directory,keyPath)||
+  !plainObject(raw)||Object.keys(raw).sort().join('|')!==
+   'backupId|plannedMigrationTreeSha256|releaseSha|repository|schema|sourceProjectRef'||
+  raw.schema!==PREINSTALL_SCHEMA||!HASH.test(raw.plannedMigrationTreeSha256??'')||
+  !exporter||typeof exporter.command!=='string'||!Array.isArray(exporter.args))
+  throw failure('invalid_preinstall_capture_request');
+ await absent(directory);
+ const key=await keyBytes(keyPath);
+ let session,created=false,finished=false;
+ try{
+  const input={...exporter,expectedSystemIdentifier};
+  const before=await readPreinstallState(input);
+  session=await openPostgresBackupSnapshot({...input,expectedDatabase:'postgres'});
+  const observed=await readPreinstallState({...input,snapshotId:session.snapshotId});
+  if(JSON.stringify(before)!==JSON.stringify(observed))throw failure('preinstall_source_changed');
+  await session.close();finished=true;
+  const after=await readPreinstallState(input);
+  if(JSON.stringify(after)!==JSON.stringify(observed))throw failure('preinstall_source_changed');
+  const meta=metadata({...raw,postgresMajor:17,postgresVersion:observed.postgresVersion,
+   includedSchemas:[],excludedManagedSchemas:['auth','extensions','realtime','storage','supabase_functions','vault'],
+   createdAt:new Date().toISOString(),custody:'key-outside-artifact-git-actions-vps',
+   initialState:'no-sabora-objects',snapshotId:session.snapshotId,
+   sourceDatabase:session.database,sourceSystemIdentifier:session.systemIdentifier});
+  const payload=Buffer.from(JSON.stringify(observed)+'\n');
+  const iv=randomBytes(12),name='initial-state',mediaType='application/json';
+  const cipher=createCipheriv('aes-256-gcm',key,iv);
+  cipher.setAAD(aad(meta,name,mediaType));
+  let encrypted,plainHash;
+  try{
+   plainHash=createHash('sha256').update(payload).digest('hex');
+   encrypted=Buffer.concat([cipher.update(payload),cipher.final()]);
+  }finally{payload.fill(0);}
+  await mkdir(directory,{recursive:false,mode:0o700});created=true;
+  const filename=name+'.aesgcm';
+  await writeFile(join(directory,filename),encrypted,{flag:'wx',mode:0o600});
+  const hashes=await fileDigest(join(directory,filename));
+  const manifest={...meta,components:[{name,filename,mediaType,algorithm:'aes-256-gcm',
+   ivHex:iv.toString('hex'),tagHex:cipher.getAuthTag().toString('hex'),
+   plaintextBytes:encrypted.length,plaintextSha256:plainHash,
+   ciphertextBytes:hashes.bytes,ciphertextSha256:hashes.sha256}],
+   artifactPolicy:'ciphertext-only-replicas; no keys or plaintext dumps'};
+  const path=join(directory,'manifest.json');
+  await writeFile(path,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
+  return Object.freeze({directory,manifest:Object.freeze(manifest),manifestSha256:(await fileDigest(path)).sha256});
+ }catch(error){
+  if(session&&!finished)session.abort();
+  if(created)await rm(directory,{recursive:true,force:true});
+  throw error;
+ }finally{key.fill(0);}
+}
+
 function validatedManifest(value){
  if(!plainObject(value)||Object.keys(value).sort().join('|')!==
-  [...(value.schema==='sabora-logical-backup/v2'?V2_META_KEYS:META_KEYS),
+  [...manifestMetaKeys(value.schema),
    'artifactPolicy','components'].sort().join('|')||
-  !Array.isArray(value.components)||value.components.length!==4||
+  !Array.isArray(value.components)||value.components.length!==namesFor(value.schema).length||
   value.artifactPolicy!=='ciphertext-only-replicas; no keys or plaintext dumps')
   throw failure('invalid_manifest');
- const meta=metadata(Object.fromEntries((value.schema==='sabora-logical-backup/v2'?V2_META_KEYS:META_KEYS)
+ const meta=metadata(Object.fromEntries(manifestMetaKeys(value.schema)
    .map(key=>[key,value[key]])));
  const names=[];
  for(const item of value.components){
@@ -262,7 +335,8 @@ function validatedManifest(value){
    throw failure('invalid_component_manifest');
   names.push(item.name);
  }
- if(names.join('|')!=='roles-memberships|schema|data|inventory'||new Set(names).size!==4)
+ if(names.join('|')!==namesFor(value.schema).join('|')||new Set(names).size!==names.length||
+    (value.schema===PREINSTALL_SCHEMA&&(value.components[0].mediaType!=='application/json'||value.components[0].plaintextBytes>8192||value.components[0].ciphertextBytes>8192)))
   throw failure('manifest_component_set');
  return {meta,components:value.components};
 }
@@ -271,7 +345,12 @@ async function loadManifest(directory){
  await regular(path,262144);
  let value;try{value=JSON.parse(await readFile(path,'utf8'));}
  catch{throw failure('manifest_parse');}
- return {path,value,...validatedManifest(value)};
+ const parsed=validatedManifest(value);
+ if(parsed.meta.schema===PREINSTALL_SCHEMA){
+  const entries=(await readdir(directory)).sort();
+  if(entries.join('|')!=='initial-state.aesgcm|manifest.json')throw failure('preinstall_unexpected_files');
+ }
+ return {path,value,...parsed};
 }
 function contained(root,path){
  const rel=relative(resolve(root),resolve(path));
@@ -295,6 +374,9 @@ export async function replicateEncryptedBackupBundle({sourceDirectory,destinatio
    await copyFile(from,to);
    const before=await fileDigest(from),after=await fileDigest(to);
    if(before.sha256!==after.sha256||before.bytes!==after.bytes)throw failure('replica_mismatch');
+   const expected=source.components.find(x=>x.filename===name);
+   if(expected&&(before.sha256!==expected.ciphertextSha256||before.bytes!==expected.ciphertextBytes))
+    throw failure('ciphertext_mismatch');
   }
   return Object.freeze({schema:'sabora-backup-replica-receipt/v1',
    backupId:source.meta.backupId,destinationClass,
@@ -333,6 +415,36 @@ export async function decryptBackupComponent({bundleDirectory,name,keyPath,outpu
   if(created)await rm(partial,{force:true});
   throw error?.message?.startsWith('sabora_backup_stop:')?error:failure('authentication_failed');
  }
+}
+
+// Authenticated read of the initial-state receipt in memory. No SQL writes;
+// a separate isolated recovery rehearsal is mandatory before installation.
+export async function verifyPreinstallBackup({bundleDirectory,keyPath,expectedReleaseSha,expectedMigrationTreeSha256}={}){
+ if(!isAbsolute(bundleDirectory??'')||!SHA.test(expectedReleaseSha??'')||
+  !HASH.test(expectedMigrationTreeSha256??''))throw failure('invalid_preinstall_verify_request');
+ const b=await loadManifest(bundleDirectory);
+ if(b.meta.schema!==PREINSTALL_SCHEMA||b.meta.releaseSha!==expectedReleaseSha||
+  b.meta.plannedMigrationTreeSha256!==expectedMigrationTreeSha256)throw failure('preinstall_scope_mismatch');
+ const item=b.components[0],path=join(bundleDirectory,item.filename);
+ await regular(path,8192);
+ const encrypted=await readFile(path);
+ if(encrypted.length!==item.ciphertextBytes||createHash('sha256').update(encrypted).digest('hex')!==item.ciphertextSha256)
+  throw failure('ciphertext_mismatch');
+ const key=await keyBytes(keyPath);
+ let clear,decoded;
+ try{
+  const d=createDecipheriv('aes-256-gcm',key,Buffer.from(item.ivHex,'hex'));
+  d.setAAD(aad(b.meta,item.name,item.mediaType));d.setAuthTag(Buffer.from(item.tagHex,'hex'));
+  try{clear=Buffer.concat([d.update(encrypted),d.final()]);}catch{throw failure('authentication_failed');}
+  if(clear.length!==item.plaintextBytes||createHash('sha256').update(clear).digest('hex')!==item.plaintextSha256)
+   throw failure('plaintext_mismatch');
+  try{decoded=JSON.parse(clear.toString('utf8'));}catch{throw failure('invalid_preinstall_payload');}
+  const observed=validatePreinstallState(decoded,b.meta.sourceSystemIdentifier);
+  if(observed.postgresVersion!==b.meta.postgresVersion)throw failure('preinstall_metadata_mismatch');
+  return Object.freeze({schema:PREINSTALL_SCHEMA,backupId:b.meta.backupId,releaseSha:b.meta.releaseSha,
+   manifestSha256:(await fileDigest(b.path)).sha256,plannedMigrationTreeSha256:b.meta.plannedMigrationTreeSha256,
+   initialStateVerified:true,containsKey:false,containsPlaintext:false,restoreValidated:false});
+ }finally{key.fill(0);clear?.fill(0);}
 }
 
 export async function inspectEncryptedBackupBundle(directory){
