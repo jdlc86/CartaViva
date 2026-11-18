@@ -242,3 +242,33 @@ foreach ($path in $paths) {
   }
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evidence as main',()=>{
+ const release=readFileSync(new URL('../.github/workflows/sabora-main-release-evidence.yml',import.meta.url),'utf8');
+ const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+ const visual=readFileSync(new URL('../.github/workflows/visual-contract-gate.yml',import.meta.url),'utf8');
+ assert.match(release,/^on:\s*\n  push:\s*\n    branches: \[main\]/m);
+ assert.doesNotMatch(release,/^  pull_request:|^  workflow_dispatch:|^  schedule:|pull_request_target:/m);
+ assert.match(release,/github\.repository == 'jdlc86\/CartaViva'/);
+ assert.match(release,/github\.ref == 'refs\/heads\/main'/);
+ assert.match(release,/ref: \$\{\{ github\.sha \}\}/);
+ assert.match(release,/git rev-parse HEAD/);
+ for(const name of ['generate-lockfile','functional-ui-gate'])
+  assert.match(release,new RegExp('name: '+name+'\\r?\\n'));
+ assert.match(release,/pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile/);
+ assert.match(release,/git diff --exit-code -- pnpm-lock\.yaml/);
+ assert.match(release,/pnpm install --frozen-lockfile/);
+ assert.match(release,/node scripts\/ci\/production-config-secrets-gate\.mjs/);
+ assert.match(release,/FUNCTIONAL_UI_BASE_SHA: \$\{\{ github\.event\.before \}\}/);
+ assert.match(release,/node --test tests\/functional-ui-coverage-gate\.test\.mjs/);
+ assert.match(release,/node scripts\/ci\/functional-ui-coverage-gate\.mjs --require-base/);
+ assert.doesNotMatch(release,/pnpm test|F21_FULL_WINDOW|catalog-postgres17|docker (?:build|run|compose)|ssh -/);
+ assert.match(ci,/^  push:\s*\n    branches: \[main,/m);
+ assert.match(ci,/SABORA_CI_F21_FULL_WINDOW: 'true'/);
+ // A green main SHA is insufficient if the public restaurant code has not
+ // been approved explicitly. Never silently use the lab value SABORA.
+ assert.match(ci,/vars\.SABORA_APPROVED_RESTAURANT_CODE != ''/);
+ assert.match(ci,/SABORA_RESTAURANT_CODE="\$SABORA_APPROVED_RESTAURANT_CODE"/);
+ assert.match(visual,/if: github\.event_name == 'workflow_dispatch'/);
+});

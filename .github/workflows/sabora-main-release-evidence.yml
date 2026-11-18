@@ -1,0 +1,69 @@
+name: Sabora main release evidence (exact SHA, no deployment)
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Both check names are required by verifyGithubChecks(). Run ONLY on
+# actual main pushes, with the same SHA as the consolidated integration CI.
+# The long PG17/F21/Chromium regressions already run in ci.yml validate;
+# reproducing them here would duplicate cost without increasing coverage.
+jobs:
+  generate-lockfile:
+    name: generate-lockfile
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact integrated commit (immutable evidence)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require exact commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.17.1 --activate
+          test "$(pnpm --version)" = "10.17.1"
+      - name: Regenerate and verify committed lockfile (no suite duplication)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s pnpm-lock.yaml
+          pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml
+          pnpm install --frozen-lockfile
+          node scripts/ci/production-config-secrets-gate.mjs
+
+  functional-ui:
+    name: functional-ui-gate
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact integrated commit and baseline history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify real UI coverage traceability and no status downgrade
+        env:
+          FUNCTIONAL_UI_BASE_SHA: ${{ github.event.before }}
+        run: |
+          node --test tests/functional-ui-coverage-gate.test.mjs
+          node scripts/ci/functional-ui-coverage-gate.mjs --require-base
+
+# Not a visual-final acceptance, backup, SQL, Stripe or VPS operation.

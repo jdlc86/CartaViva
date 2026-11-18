@@ -94,6 +94,98 @@ export function auditFunctionalUi(root,{prior=null,requireAll=false,overrides={}
   read:path=>Object.hasOwn(overrides,path)?overrides[path]:fileSafe(path)?load(root,path):null
  });
 }
+
+/**
+ * Mandatory for governed push-main evidence: a missing/unreachable predecessor
+ * must NEVER be treated as the initial rollout or as successful regression proof.
+ * PR/legacy callers retain the explicit non-governed compatibility mode.
+ */
+/**
+ * Governing release evidence must reject a semantically incomplete previous
+ * inventory; ancestry and valid JSON alone do not prove non-regression.
+ * This check is intentionally limited to --require-base, preserving legacy CI.
+ */
+function validGovernedPriorManifest(prior){
+ if(prior?.schemaVersion!==1||prior.stage!=='FUNCIONAL_PRIMERO'||
+   !Array.isArray(prior.capabilities)||prior.capabilities.length===0)return false;
+ const ids=new Set();
+ const validEntry=e=>e&&typeof e==='object'&&!Array.isArray(e)&&
+  fileSafe(e.path)&&typeof e.marker==='string'&&e.marker.length>=3;
+ for(const row of prior.capabilities){
+  if(!row||typeof row!=='object'||Array.isArray(row)||
+    typeof row.id!=='string'||!row.id.length||row.id.trim()!==row.id||
+    ids.has(row.id)||!STATUSES.has(row.status)||
+    !Array.isArray(row.surfaces)||!row.surfaces.length||
+    row.surfaces.some(surface=>!Object.hasOwn(CODE_ROOTS,surface))||
+    new Set(row.surfaces).size!==row.surfaces.length)return false;
+  ids.add(row.id);
+  if(row.status==='PENDIENTE'){
+   if(!Array.isArray(row.blockers)||!row.blockers.length||
+     row.blockers.some(reason=>typeof reason!=='string'||!reason.trim()))return false;
+   continue;
+  }
+  if(!Array.isArray(row.ui)||!row.ui.length||
+    !Array.isArray(row.api)||!row.api.length||
+    !Array.isArray(row.evidence)||!row.evidence.length||
+    ![...row.ui,...row.api,...row.evidence].every(validEntry))return false;
+  if(row.surfaces.some(surface=>!row.ui.some(e=>
+    e.surface===surface&&e.path.startsWith(CODE_ROOTS[surface]))))return false;
+  if(!row.api.some(e=>e.path.startsWith('apps/api/')))return false;
+  if(row.ui.some(e=>!Object.values(CODE_ROOTS).some(prefix=>e.path.startsWith(prefix)))||
+    row.evidence.some(e=>!/^(?:apps\/(?:client|management)\/e2e\/|scripts\/ci\/|tests\/)/.test(e.path)))return false;
+  const kinds=new Set(row.evidence.map(e=>e.kind));
+  if(!kinds.has('browser-client')||!kinds.has('postgres17')||
+    (row.status==='FUNCIONALMENTE_VALIDADO'&&row.surfaces.includes('management')&&
+     !kinds.has('browser-management'))||
+    (row.status==='FUNCIONALMENTE_VALIDADO'&&!row.acceptanceEvidence))return false;
+ }
+ return REQUIRED_IDS.every(id=>ids.has(id));
+}
+
+export function loadGovernedBaseManifest(root,baseSha,headSha){
+ const reject=reason=>{throw Error('governed_functional_ui_'+reason);};
+ if(typeof baseSha!=='string'||!/^[0-9a-f]{40}$/.test(baseSha)||/^0{40}$/.test(baseSha))
+  reject('base_sha_invalid');
+ if(typeof headSha!=='string'||!/^[0-9a-f]{40}$/.test(headSha)||/^0{40}$/.test(headSha))
+  reject('head_sha_invalid');
+ // Keep historical file content intact; trim only textual Git metadata.
+ const git=args=>execFileSync('git',args,{cwd:root,encoding:'utf8',
+  stdio:['ignore','pipe','ignore']});
+ let actual;
+ try{actual=git(['rev-parse','HEAD']).trim();}catch{reject('head_unavailable');}
+ if(actual!==headSha)reject('head_mismatch');
+ if(baseSha===headSha)reject('base_not_previous');
+ try{git(['cat-file','-e',baseSha+'^{commit}']);}
+ catch{reject('base_commit_unavailable');}
+ try{git(['merge-base','--is-ancestor',baseSha,headSha]);}
+ catch{reject('base_not_ancestor');}
+ let raw;
+ try{raw=git(['show',baseSha+':'+COVERAGE_FILE]);}
+ catch{reject('base_manifest_unavailable');}
+ let prior;
+ try{prior=JSON.parse(raw);}catch{reject('base_manifest_invalid');}
+ if(prior?.schemaVersion!==1||prior.stage!=='FUNCIONAL_PRIMERO'||
+   !Array.isArray(prior.capabilities))reject('base_manifest_invalid');
+ if(!validGovernedPriorManifest(prior))reject('base_manifest_incomplete');
+ // Traceability must hold in the *historical* commit, not just in the
+ // manifest's claimed paths or in the current checkout. Reuse exactly the
+ // same source-marker/surface guard on that tree; do not reimplement it.
+ const historicalFiles=new Map();
+ const readHistorical=path=>{
+  if(!fileSafe(path))return null;
+  if(!historicalFiles.has(path)){
+   let source=null;
+   try{source=git(['show',baseSha+':'+path]);}
+   catch{/* Absent/unreadable prior path is a closed gate, not a bootstrap. */}
+   historicalFiles.set(path,source);
+  }
+  return historicalFiles.get(path);
+ };
+ const historical=inspectFunctionalUi({manifest:prior,read:readHistorical});
+ if(historical.errors.length)reject('base_manifest_incomplete');
+ return prior;
+}
+
 function baseManifest(root,sha){
  if(!/^[a-f0-9]{40}$/i.test(sha||''))return null;
  try{
@@ -102,10 +194,14 @@ function baseManifest(root,sha){
  }catch{return null;} // initial rollout: base branch has no register
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const root=process.cwd(),prior=baseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA);
+ const root=process.cwd();
  let result;
- try{result=auditFunctionalUi(root,{prior,requireAll:process.argv.includes('--release')});}
- catch(e){process.stderr.write('FUNCTIONAL_UI_GATE_FAIL: '+e.message+'\n');process.exit(1);}
+ try{
+  const prior=process.argv.includes('--require-base')?
+   loadGovernedBaseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA,process.env.GITHUB_SHA):
+   baseManifest(root,process.env.FUNCTIONAL_UI_BASE_SHA);
+  result=auditFunctionalUi(root,{prior,requireAll:process.argv.includes('--release')});
+ }catch(e){process.stderr.write('FUNCTIONAL_UI_GATE_FAIL: '+e.message+'\n');process.exit(1);}
  for(const gap of result.gaps)process.stdout.write(
   'FUNCTIONAL_UI_PENDING '+gap.id+': '+gap.missing.join(' | ')+'\n');
  if(result.errors.length){
