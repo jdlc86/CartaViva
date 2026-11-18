@@ -293,13 +293,25 @@ try{
  const initialVps=await replicateEncryptedBackupBundle({sourceDirectory:initialCapture,destinationDirectory:initialReplica,destinationClass:'vps-encrypted-cache'});
  assert.equal(initialOffsite.manifestSha256,initialResult.manifestSha256);
  assert.equal(initialVps.manifestSha256,initialResult.manifestSha256);
+ assert.equal(initialVps.backupSchema,PREINSTALL_SCHEMA);
+ assert.equal((await inspectEncryptedBackupBundle(initialExternal)).backupSchema,PREINSTALL_SCHEMA);
  await rm(initialCapture,{recursive:true,force:true});
  const verifyInitial={bundleDirectory:initialExternal,keyPath,expectedReleaseSha:releaseSha,
-  expectedMigrationTreeSha256:migrations.treeSha256};
+  expectedMigrationTreeSha256:migrations.treeSha256,expectedSystemIdentifier:initialSystem,expectedBackupId:initialPlan.backupId};
  assert.equal((await verifyPreinstallBackup(verifyInitial)).initialStateVerified,true);
  assert.equal((await verifyPreinstallBackup(verifyInitial)).restoreValidated,false);
  await assert.rejects(verifyPreinstallBackup({...verifyInitial,keyPath:wrongKeyPath}),/authentication_failed/);
  await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedMigrationTreeSha256:'0'.repeat(64)}),/preinstall_scope_mismatch/);
+ const wrongSystem=initialSystem==='1000000000000000000'?'2000000000000000000':'1000000000000000000';
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedSystemIdentifier:wrongSystem}),/preinstall_scope_mismatch/);
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedBackupId:'SABORA-BACKUP-OTHER-0001'}),/preinstall_scope_mismatch/);
+ await assert.rejects(capturePreinstallBackup({...initialRequest,expectedSystemIdentifier:wrongSystem}),/preinstall_source_identity_or_prerequisite/);
+ const initialManifestPath=join(initialExternal,'manifest.json');
+ const initialManifestBytes=await readFile(initialManifestPath);
+ const tamperedInitial=JSON.parse(initialManifestBytes.toString('utf8'));tamperedInitial.createdAt='2020-01-01T00:00:00.000Z';
+ await writeFile(initialManifestPath,JSON.stringify(tamperedInitial)+'\n');
+ await assert.rejects(verifyPreinstallBackup(verifyInitial),/authentication_failed/);
+ await writeFile(initialManifestPath,initialManifestBytes);
  // Committed state plus an aborted transaction: never treat as initial.
  psql(target,'postgres',
   "CREATE ROLE sabora_preinstall_ci_owner NOLOGIN; CREATE SCHEMA sabora AUTHORIZATION sabora_preinstall_ci_owner; "+

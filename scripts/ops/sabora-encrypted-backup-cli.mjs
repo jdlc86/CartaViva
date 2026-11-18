@@ -230,7 +230,8 @@ export async function main(){
   const [directory,requestPath]=args(2),plan=await initialRequest(requestPath);
   const key=keyPath();await protectedRead(key,128).then(bytes=>bytes.fill(0));
   return {operation,...await verifyPreinstallBackup({bundleDirectory:directory,keyPath:key,
-   expectedReleaseSha:plan.releaseSha,expectedMigrationTreeSha256:plan.plannedMigrationTreeSha256})};
+   expectedReleaseSha:plan.releaseSha,expectedMigrationTreeSha256:plan.plannedMigrationTreeSha256,
+   expectedSystemIdentifier:process.env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER,expectedBackupId:plan.backupId})};
  }
  if(operation==='capture'){
   const [requestPath,directory]=args(2),plan=await request(requestPath);
