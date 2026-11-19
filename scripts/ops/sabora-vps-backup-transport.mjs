@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
-import {lstat,realpath,readFile} from 'node:fs/promises';
+import {lstat,realpath,open,readFile} from 'node:fs/promises';
 import {isAbsolute,resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
@@ -13,14 +13,41 @@ import {exactKeys} from './sabora-release-protected-store.mjs';
 export const BACKUP_RECEIVE_COMMAND='sabora-backup-receive-v1';
 const stop=code=>{throw Error('sabora_backup_transport_stop:'+code);};
 const sha=v=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
-async function localFile(path,{privateFile=false}={}){
+async function canonicalFilePath(path){
  if(typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path||/["\r\n\x00%~$]/.test(path)||
   await realpath(path)!==path)stop('local_file_path_invalid');
+}
+async function localFile(path,{privateFile=false}={}){
+ await canonicalFilePath(path);
  const st=await lstat(path);
- if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||
-  (process.platform!=='win32'&&(privateFile?(st.mode&0o077)!==0:(st.mode&0o022)!==0)))
-  stop('local_file_invalid');
+ if(!st.isFile()||st.isSymbolicLink()||st.size<1)stop('local_file_invalid');
+ if(st.nlink!==1)stop('local_file_link_count_invalid');
+ if(process.platform!=='win32'&&(privateFile?(st.mode&0o077)!==0:(st.mode&0o022)!==0))
+  stop('local_file_permissions_invalid');
  return path;
+}
+// Windows may service system binaries through legitimate NTFS hard links.
+// The exception is confined to the canonical native OpenSSH executable,
+// never to a caller-selected binary or any key, pin or ciphertext file.
+async function verifyWindowsNativeClient(path,expectedDigest){
+ const native=join(process.env.SystemRoot??'C:\\Windows','System32','OpenSSH','ssh.exe');
+ const canonical=await realpath(native);
+ if(path!==canonical)stop('windows_client_path_invalid');
+ await canonicalFilePath(path);
+ const original=await lstat(native),before=await lstat(path);
+ if(original.isSymbolicLink()||!original.isFile()||!before.isFile()||before.isSymbolicLink()||
+  !Number.isInteger(before.nlink)||before.nlink<1||before.size<1||before.size>32*1024**2||
+  original.dev!==before.dev||original.ino!==before.ino)stop('windows_client_file_invalid');
+ const handle=await open(path,'r');
+ try{
+  const sameFile=st=>st.isFile()&&st.dev===before.dev&&st.ino===before.ino&&
+   st.size===before.size&&st.nlink===before.nlink&&st.ctimeMs===before.ctimeMs&&st.mtimeMs===before.mtimeMs;
+  if(!sameFile(await handle.stat()))stop('windows_client_changed');
+  const bytes=await handle.readFile();
+  if(bytes.length!==before.size||!sameFile(await handle.stat())||!sameFile(await lstat(path)))
+   stop('windows_client_changed');
+  if(createHash('sha256').update(bytes).digest('hex')!==expectedDigest)stop('windows_client_identity_invalid');
+ }finally{await handle.close();}
 }
 // No user ssh_config, agent, proxy, forwarding, shell or password fallback.
 // Windows uses the existing OS DACL verifier and exact expected observations
@@ -34,19 +61,17 @@ export async function backupLabSshArguments(endpoint){
   !Number.isInteger(endpoint.port)||endpoint.port<1024||endpoint.port>65535||
   typeof endpoint.user!=='string'||!/^[a-z_][a-z0-9_-]{0,31}$/.test(endpoint.user))
   stop('endpoint_not_authorized');
- await localFile(endpoint.sshBinary);
+ if(!windows)await localFile(endpoint.sshBinary);
  await localFile(endpoint.identityFile,{privateFile:true});
  const knownFile=await localFile(endpoint.knownHostsFile);
  if(windows){
   const expected=endpoint.windowsAcl;
   if(!exactKeys(expected,['directorySha256','identitySha256','knownHostsSha256','clientBinarySha256','knownHostsContentSha256'])||
    !Object.values(expected).every(sha)||dirname(endpoint.identityFile)!==dirname(knownFile))stop('windows_acl_receipt_required');
-  const native=await realpath(join(process.env.SystemRoot??'C:\\Windows','System32','OpenSSH','ssh.exe'));
-  if(endpoint.sshBinary!==native||(await lstat(native)).size>32*1024**2||
-   (await lstat(knownFile)).size>16384)stop('windows_client_identity_invalid');
-  const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
-  if(digest(await readFile(native))!==expected.clientBinarySha256||
-   digest(await readFile(knownFile))!==expected.knownHostsContentSha256)stop('windows_client_identity_invalid');
+  await verifyWindowsNativeClient(endpoint.sshBinary,expected.clientBinarySha256);
+  if((await lstat(knownFile)).size>16384)stop('windows_client_identity_invalid');
+  if(createHash('sha256').update(await readFile(knownFile)).digest('hex')!==expected.knownHostsContentSha256)
+   stop('windows_client_identity_invalid');
   if(verifiedNtfsAclDigest(dirname(knownFile))!==expected.directorySha256||
    verifiedNtfsAclDigest(endpoint.identityFile)!==expected.identitySha256||
    verifiedNtfsAclDigest(knownFile)!==expected.knownHostsSha256)stop('windows_acl_receipt_mismatch');
