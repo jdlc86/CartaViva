@@ -60,6 +60,8 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   assert.notEqual(run('/usr/bin/getent',['group',account],{allowFailure:true}).status,0);
   sudo(['/usr/bin/mkdir','-m','0755',base]);created=true;
   dir(join(base,'bin'));dir(code);dir(mount);
+  assert.equal(resolve(repository),repository);
+  assert.equal(run('/usr/bin/git',['-C',repository,'rev-parse','HEAD']).stdout.trim(),sourceSha);
   const artifact=join(temp,'source');
   const prepared=buildBackupPreparationArtifact(artifact,sourceSha);
   for(const name of ['artifact.json',...BACKUP_PREPARATION_FILES]){
@@ -67,7 +69,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    await put(target,await readFile(join(artifact,name)));
   }
   sudo(['/usr/bin/install','-o','root','-g','root','-m','0755',await realpath(process.execPath),node]);
-  sudo(['/usr/sbin/useradd','--user-group','--no-create-home','--home-dir','/nonexistent','--shell',shell,account]);
+  sudo(['/usr/sbin/useradd','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',account]);
   userCreated=true;sudo(['/usr/sbin/usermod','--password','*',account]);
   const uid=Number(run('/usr/bin/id',['-u',account]).stdout.trim()),gid=Number(run('/usr/bin/id',['-g',account]).stdout.trim());
   assert.ok(uid>0&&gid>0&&Number.isSafeInteger(uid)&&Number.isSafeInteger(gid));
@@ -77,6 +79,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    '-DSABORA_BACKUP_LAB_BASE="'+base+'"','-DSABORA_BACKUP_LAB_UID='+uid,'-DSABORA_BACKUP_LAB_GID='+gid,
    '-o',compiled,join(artifact,'deploy/sabora-backup-lab-shell.c')]);
   sudo(['/usr/bin/install','-o','root','-g','root','-m','0755',compiled,shell]);
+  sudo(['/usr/sbin/usermod','--shell',shell,account]);
   await mkdir(subdir,{mode:0o700});
   sudo(['/usr/bin/mount','--bind',subdir,mount]);mounted=true;
   sudo(['/usr/bin/mount','-o','remount,bind,nodev,nosuid,noexec',mount]);
