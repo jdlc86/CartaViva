@@ -36,5 +36,39 @@ test('root filesystem, durable replay/crash and signed malicious Docker TAR inva
   assert.throws(()=>inspect(archive(manifest,[tarFile('link',Buffer.alloc(0),'2')])),/tar_path/);
   assert.throws(()=>inspect(archive(manifest,[tarFile(configName,config)])),/tar_path/);
   assert.throws(()=>inspect(archive(manifest,[tarFile('unknown',Buffer.from('bad'))])),/unreferenced/);
+  // Same dual OCI + legacy-compatibility shape observed in real Docker save.
+  const created='2026-11-19T00:00:00Z',legacyEmpty={Hostname:'',Domainname:'',User:'',
+   AttachStdin:false,AttachStdout:false,AttachStderr:false,Tty:false,OpenStdin:false,StdinOnce:false,
+   Env:null,Cmd:null,Image:'',Volumes:null,WorkingDir:'',Entrypoint:null,OnBuild:null,Labels:null};
+  const config2=Buffer.from(JSON.stringify({...JSON.parse(config),created})),configId=sha256(config2);
+  const blob=hash=>'blobs/sha256/'+hash;
+  const layerDigest='sha256:'+sha256(layer),layerDesc={mediaType:'application/vnd.oci.image.layer.v1.tar',digest:layerDigest,size:layer.length};
+  const imageType='application/vnd.oci.image.manifest.v1+json';
+  const image={schemaVersion:2,mediaType:imageType,
+   config:{mediaType:'application/vnd.oci.image.config.v1+json',digest:'sha256:'+configId,size:config2.length},layers:[layerDesc]};
+  const imageBytes=Buffer.from(JSON.stringify(image)),imageDigest=sha256(imageBytes);
+  const [repoName,repoTag]=tag.split(':');
+  const index={schemaVersion:2,mediaType:'application/vnd.oci.image.index.v1+json',manifests:[
+   {mediaType:imageType,digest:'sha256:'+imageDigest,size:imageBytes.length,
+    annotations:{'io.containerd.image.name':'docker.io/library/'+tag,'org.opencontainers.image.ref.name':repoTag}}]};
+  const compatibility={id:'f'.repeat(64),created,container_config:legacyEmpty,config:{...legacyEmpty,User:'sabora'},architecture:'amd64',os:'linux'};
+  const modernManifest=[{Config:blob(configId),RepoTags:[tag],Layers:[blob(sha256(layer))],LayerSources:{[layerDigest]:layerDesc}}];
+  const j=(name,value)=>tarFile(name,Buffer.from(JSON.stringify(value)));
+  function modern({metadata=compatibility,manifest=modernManifest,indexValue=index,repository={[repoName]:{[repoTag]:sha256(layer)}},extra=[]}={}){
+   const metaBytes=Buffer.from(JSON.stringify(metadata));
+   return Buffer.concat([tarFile(blob(configId),config2),tarFile(blob(sha256(layer)),layer),tarFile(blob(imageDigest),imageBytes),
+    tarFile(blob(sha256(metaBytes)),metaBytes),j('manifest.json',manifest),j('index.json',indexValue),
+    j('repositories',repository),j('oci-layout',{imageLayoutVersion:'1.0.0'}),...extra,Buffer.alloc(1024)]);
+  }
+  const inspectModern=bytes=>{writeFileSync(path,bytes,{mode:0o600});return inspectDockerSaveArchive(path,{tag,imageId:'sha256:'+configId,archiveSha256:sha256(bytes)});};
+  assert.equal(inspectModern(modern()).imageId,'sha256:'+configId);
+  assert.throws(()=>inspectModern(modern({metadata:{...compatibility,config:{...compatibility.config,User:'root'}}})),/archive_legacy_config_disagrees/);
+  assert.throws(()=>inspectModern(modern({metadata:{...compatibility,parent:compatibility.id}})),/archive_legacy_chain_invalid/);
+  assert.throws(()=>inspectModern(modern({extra:[tarFile(blob(sha256(Buffer.from('arbitrary'))),Buffer.from('arbitrary'))]})),/archive_unreferenced_payload/);
+  assert.throws(()=>inspectModern(modern({repository:{[repoName]:{[repoTag]:'e'.repeat(64)}}})),/archive_repository_layer_disagrees/);
+  const changedIndex=structuredClone(index);changedIndex.manifests[0].annotations['org.opencontainers.image.ref.name']='foreign';
+  assert.throws(()=>inspectModern(modern({indexValue:changedIndex})),/archive_oci_foreign_tag/);
+  const changedSources=structuredClone(modernManifest);changedSources[0].LayerSources[layerDigest].urls=['https://foreign.invalid/layer'];
+  assert.throws(()=>inspectModern(modern({manifest:changedSources})),/archive_layer_sources_disagree/);
  }finally{rmSync(root,{recursive:true,force:true});rmSync('/var/lib/sabora-release-tests',{recursive:true,force:true});}
 });

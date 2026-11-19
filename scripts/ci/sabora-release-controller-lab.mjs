@@ -16,6 +16,7 @@ import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS} from '../ops/sabora-release-installation.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
+import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
 import {immutableComposeOverride,validateClosedCompose} from '../ops/sabora-release-compose-policy.mjs';
 import {LAB_ENVIRONMENT,labAuthority,signedLabDocument,labHash,keyIdentity,materialLabDossiers} from './sabora-release-lab-fixtures.mjs';
 if(process.platform!=='linux'||process.getuid()!==0||process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||
@@ -156,6 +157,9 @@ try{
   const manifest=await buildReleaseBundleManifest({releaseSha:sha,apiArchive:paths[0],webArchive:paths[1],apiImageId:apiId,webImageId:webId,operationalCompose:paths[2],webCompose:paths[3]}),manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n');put(dir+'/manifest.json',manifestBytes);bundles.push({sha,manifest,manifestBytes,paths});docker(['image','rm',apiTag,webTag]);
  }
  const [a,b]=bundles;
+ for(const bundle of bundles)for(const [i,type] of ['api','web'].entries())
+  assert.equal(inspectDockerSaveArchive(bundle.paths[i],bundle.manifest.images[type]).imageId,bundle.manifest.images[type].imageId);
+ ok('four-real-docker-archives-verified-before-transport');
  put(work+'/overlay.yml',immutableComposeOverride(a.manifest));
  const resolved=json(['compose','--project-name','sabora','--project-directory',P.root,'--env-file',P.runtimeEnv,'-f',a.paths[2],'-f',a.paths[3],'-f',work+'/overlay.yml','config','--format','json']);
  validateClosedCompose(resolved,a.manifest);
@@ -173,11 +177,13 @@ try{
  docker(['image','rm',a.manifest.images.api.tag,foreign]);
  const badManifest=structuredClone(a.manifest);badManifest.images.api.archiveSha256=hashFile(badTar);
  const badBundle={...a,paths:[badTar,...a.paths.slice(1)],manifestBytes:Buffer.from(JSON.stringify(badManifest)+'\n')};
- await denied('signed-foreign-tag-tar-no-mutation',badBundle,approval(badBundle,'deploy','LAB-FOREIGN-TAR'));
+ const badTarResult=await denied('signed-foreign-tag-tar-no-mutation',badBundle,approval(badBundle,'deploy','LAB-FOREIGN-TAR'));
+ assert.match(badTarResult.stderr,/archive_(image_scope|multiple_images|foreign_repository|oci_index_ambiguous|oci_foreign_tag)/);
  const badCompose=work+'/foreign-mount.yml';put(badCompose,readFileSync(a.paths[3],'utf8')+'\nsecrets:\n  foreign:\n    file: /etc/shadow\n');
  const badComposeManifest=structuredClone(a.manifest);badComposeManifest.compose.web=hashFile(badCompose);
  const badComposeBundle={...a,paths:[...a.paths.slice(0,3),badCompose],manifestBytes:Buffer.from(JSON.stringify(badComposeManifest)+'\n')};
- await denied('signed-unapproved-compose-no-mutation',badComposeBundle,approval(badComposeBundle,'deploy','LAB-FOREIGN-COMPOSE'));
+ const badComposeResult=await denied('signed-unapproved-compose-no-mutation',badComposeBundle,approval(badComposeBundle,'deploy','LAB-FOREIGN-COMPOSE'));
+ assert.match(badComposeResult.stderr,/compose_source_not_installation_approved/);
  renameSync(P.installation,P.installation+'.held');await denied('installation-absent-no-mutation',a,approval(a,'deploy','LAB-NOT-PROVISIONED'));renameSync(P.installation+'.held',P.installation);
  await session('id; docker ps');ok('ssh-shell-command-denied');assert.notEqual(run('runuser',['-u',account,'--','sudo','-n','--',P.root+'/bin/root-entry','extra'],{allowFailure:true}).status,0);ok('sudo-arguments-denied');
  const forwarding=run('ssh',['-N','-o','ExitOnForwardFailure=yes','-R','127.0.0.1:22230:127.0.0.1:22229',...sshBase()],{allowFailure:true,timeout:10000});

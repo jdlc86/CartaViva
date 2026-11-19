@@ -74,7 +74,11 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
    if(!cfg||cfg.User!==(type==='api'?'sabora':'10001:10001')||cfg.WorkingDir!==(type==='api'?'/app':'/srv')||
     !same(cfg.Entrypoint,type==='api'?['docker-entrypoint.sh']:['/bin/sh','/usr/local/bin/sabora-web-entrypoint'])||
     !same(cfg.Cmd,type==='api'?['node','src/server.mjs']:['caddy','run','--config','/etc/caddy/Caddyfile','--adapter','caddyfile'])||
-    !same(Object.keys(cfg.Volumes??{}).sort(),type==='web'?['/config','/data']:[])||cfg.OnBuild?.length||cfg.Healthcheck||cfg.StopSignal&&cfg.StopSignal!=='SIGTERM')
+    // Some Caddy image exports omit inherited VOLUME metadata. Either
+    // absence or the exact two tmpfs-covered paths is safe; no other volume.
+    !(same(Object.keys(cfg.Volumes??{}).sort(),[])||
+      (type==='web'&&same(Object.keys(cfg.Volumes??{}).sort(),['/config','/data'])))||
+    cfg.OnBuild?.length||cfg.Healthcheck||cfg.StopSignal&&cfg.StopSignal!=='SIGTERM')
     stop('image_execution_defaults_not_approved');
   }
  }

@@ -29,6 +29,55 @@ function regionHash(fd,start,size){
  for(let offset=0;offset<size;offset+=65536)h.update(readAt(fd,start+offset,Math.min(65536,size-offset)));
  return h.digest('hex');
 }
+// Docker's OCI save also writes content-addressed compatibility JSON for
+// legacy v1 layers. These are not image descriptors or executable layers.
+// Admit only the exact bounded metadata shape, a single chain with one
+// record per already verified layer, and terminal config matching the image.
+const LEGACY_EMPTY=Object.freeze({Hostname:'',Domainname:'',User:'',AttachStdin:false,
+ AttachStdout:false,AttachStderr:false,Tty:false,OpenStdin:false,StdinOnce:false,
+ Env:null,Cmd:null,Image:'',Volumes:null,WorkingDir:'',Entrypoint:null,OnBuild:null,Labels:null});
+const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':
+ v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
+const same=(a,b)=>stable(a)===stable(b);
+function normalizedLegacyConfig(v){
+ if(!v||typeof v!=='object'||Array.isArray(v))stop('archive_legacy_config_invalid');
+ return Object.fromEntries(Object.entries(v).filter(([key,value])=>
+  !Object.hasOwn(LEGACY_EMPTY,key)||!same(value,LEGACY_EMPTY[key])));
+}
+function verifyOciCompatibilityMetadata({entries,references,readJson,hashBlob,item,config}){
+ const extra=[...entries].filter(([name,e])=>!e.directory&&!references.has(name));
+ if(!extra.length)return;
+ if(extra.length!==item.Layers.length)stop('archive_unreferenced_payload');
+ const ids=new Map();let last;
+ for(const [name,entry] of extra){
+  if(!/^blobs\/sha256\/[0-9a-f]{64}$/.test(name)||entry.size>16384||
+    hashBlob(entry)!==name.slice('blobs/sha256/'.length))stop('archive_unreferenced_payload');
+  const doc=readJson(name),terminal=Object.hasOwn(doc??{},'config');
+  const expectedKeys=['id','created','container_config','os',
+   ...(Object.hasOwn(doc??{},'parent')?['parent']:[]),...(terminal?['config','architecture']:[])];
+  if(!exactKeys(doc,expectedKeys)||!HEX.test(doc.id??'')||
+   (Object.hasOwn(doc,'parent')&&!HEX.test(doc.parent??''))||ids.has(doc.id)||
+   doc.os!=='linux'||!same(doc.container_config,LEGACY_EMPTY))stop('archive_legacy_metadata_invalid');
+  if(terminal){
+   if(last||doc.architecture!==config.architecture||doc.created!==config.created||
+    !same(normalizedLegacyConfig(doc.config),normalizedLegacyConfig(config.config)))
+    stop('archive_legacy_config_disagrees');
+   last=doc.id;
+  }else if(doc.created!=='1970-01-01T00:00:00Z')stop('archive_legacy_metadata_invalid');
+  ids.set(doc.id,{name,parent:doc.parent,terminal});
+ }
+ // Every supplemental record must lie on one complete, acyclic chain
+ // ending in the compatible final configuration. No unrelated blobs.
+ if(!last)stop('archive_legacy_terminal_missing');
+ const visited=new Set();
+ while(last!==undefined){
+  const node=ids.get(last);
+  if(!node||visited.has(last))stop('archive_legacy_chain_invalid');
+  visited.add(last);last=node.parent;
+ }
+ if(visited.size!==extra.length)stop('archive_legacy_chain_invalid');
+ for(const {name} of ids.values())references.add(name);
+}
 export function inspectDockerSaveArchive(path,expected,{uid=0}={}){
  if(!expected||!/^sabora-(?:api|web):[0-9a-f]{40}$/.test(expected.tag)||
   !/^sha256:[0-9a-f]{64}$/.test(expected.imageId)||!HEX.test(expected.archiveSha256))stop('archive_expected_identity_invalid');
@@ -66,7 +115,8 @@ export function inspectDockerSaveArchive(path,expected,{uid=0}={}){
   const manifests=readJson('manifest.json');
   if(!Array.isArray(manifests)||manifests.length!==1)stop('archive_multiple_images');
   const item=manifests[0];
-  if(!item||!safePath(item.Config)||!Array.isArray(item.RepoTags)||item.RepoTags.length!==1||
+  if(!item||!exactKeys(item,Object.hasOwn(item,'LayerSources')?['Config','RepoTags','Layers','LayerSources']:['Config','RepoTags','Layers'])||
+    !safePath(item.Config)||!Array.isArray(item.RepoTags)||item.RepoTags.length!==1||
     item.RepoTags[0]!==expected.tag||!Array.isArray(item.Layers)||!item.Layers.length||
     item.Layers.length>128||new Set(item.Layers).size!==item.Layers.length||
     item.Layers.some(p=>!safePath(p)))stop('archive_image_scope');
@@ -93,23 +143,51 @@ export function inspectDockerSaveArchive(path,expected,{uid=0}={}){
   // approved image descriptor is allowed, and all referenced blobs are hashed.
   if(entries.has('index.json')){
    const index=readJson('index.json');
-   if(index.schemaVersion!==2||!Array.isArray(index.manifests)||index.manifests.length!==1)
+   if(!exactKeys(index,['schemaVersion','mediaType','manifests'])||
+    index.schemaVersion!==2||index.mediaType!=='application/vnd.oci.image.index.v1+json'||
+    !Array.isArray(index.manifests)||index.manifests.length!==1)
     stop('archive_oci_index_ambiguous');
-   const descriptor=index.manifests[0];
-   if(!/^sha256:[0-9a-f]{64}$/.test(descriptor.digest))stop('archive_oci_descriptor');
+   const descriptor=index.manifests[0],manifestType='application/vnd.oci.image.manifest.v1+json';
+   if(!exactKeys(descriptor,['mediaType','digest','size','annotations'])||
+    descriptor.mediaType!==manifestType||!/^sha256:[0-9a-f]{64}$/.test(descriptor.digest))
+    stop('archive_oci_descriptor');
+   const ref=descriptor.annotations,shortTag=expected.tag.split(':')[1];
+   if(!exactKeys(ref,['io.containerd.image.name','org.opencontainers.image.ref.name'])||
+    ![expected.tag,'docker.io/library/'+expected.tag].includes(ref['io.containerd.image.name'])||
+    ref['org.opencontainers.image.ref.name']!==shortTag)stop('archive_oci_foreign_tag');
    const descriptorPath='blobs/sha256/'+descriptor.digest.slice(7),entry=entries.get(descriptorPath);
-   if(!entry||regionHash(fd,entry.offset,entry.size)!==descriptor.digest.slice(7))stop('archive_oci_digest');
+   if(!entry||entry.directory||entry.size!==descriptor.size||
+    regionHash(fd,entry.offset,entry.size)!==descriptor.digest.slice(7))stop('archive_oci_digest');
    const image=readJson(descriptorPath);
-   if(image.config?.digest!==expected.imageId||!Array.isArray(image.layers)||
-     image.layers.length!==item.Layers.length||image.layers.some((layer,i)=>
-      'blobs/sha256/'+String(layer.digest).slice(7)!==item.Layers[i]))stop('archive_oci_image_disagrees');
-   const tag=descriptor.annotations?.['io.containerd.image.name'];
-   if(tag&&tag!==expected.tag&&tag!=='docker.io/library/'+expected.tag)stop('archive_oci_foreign_tag');
-   references.add('index.json');references.add(descriptorPath);
-  }
-  if(entries.has('oci-layout')){
-   if(readJson('oci-layout').imageLayoutVersion!=='1.0.0')stop('archive_oci_layout');
-   references.add('oci-layout');
+   if(!exactKeys(image,['schemaVersion','mediaType','config','layers'])||
+    image.schemaVersion!==2||image.mediaType!==manifestType||
+    !exactKeys(image.config,['mediaType','digest','size'])||
+    image.config.mediaType!=='application/vnd.oci.image.config.v1+json'||
+    image.config.digest!==expected.imageId||image.config.size!==configEntry.size||
+    item.Config!=='blobs/sha256/'+expected.imageId.slice(7)||
+    !Array.isArray(image.layers)||image.layers.length!==item.Layers.length||
+    image.layers.some((layer,i)=>!exactKeys(layer,['mediaType','digest','size'])||
+      layer.mediaType!=='application/vnd.oci.image.layer.v1.tar'||
+      layer.digest!==config.rootfs.diff_ids[i]||
+      'blobs/sha256/'+layer.digest.slice(7)!==item.Layers[i]||
+      layer.size!==entries.get(item.Layers[i]).size))stop('archive_oci_image_disagrees');
+   // Docker's optional LayerSources cannot redirect to another blob, URL or
+   // alternate compressed stream. The map must exactly mirror descriptors.
+   if(Object.hasOwn(item,'LayerSources')&&(!exactKeys(item.LayerSources,config.rootfs.diff_ids)||
+    image.layers.some(layer=>!same(item.LayerSources[layer.digest],layer))))
+    stop('archive_layer_sources_disagree');
+   if(entries.has('repositories')){
+    const [name,tag]=expected.tag.split(':');
+    if(readJson('repositories')[name][tag]!==item.Layers.at(-1).split('/').at(-1))
+     stop('archive_repository_layer_disagrees');
+   }
+   if(!entries.has('oci-layout')||!exactKeys(readJson('oci-layout'),['imageLayoutVersion'])||
+    readJson('oci-layout').imageLayoutVersion!=='1.0.0')stop('archive_oci_layout');
+   references.add('index.json');references.add(descriptorPath);references.add('oci-layout');
+   verifyOciCompatibilityMetadata({entries,references,readJson,item,config,
+    hashBlob:e=>regionHash(fd,e.offset,e.size)});
+  }else if(entries.has('oci-layout')||Object.hasOwn(item,'LayerSources')){
+   stop('archive_oci_index_missing');
   }
   for(const [name,entry] of entries){
    if(entry.directory)continue;

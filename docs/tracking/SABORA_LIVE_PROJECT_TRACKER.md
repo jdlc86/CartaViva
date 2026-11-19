@@ -1507,3 +1507,7 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 ## 141. S43 — retomado PR #71, corrección integral del primer corte CI
 
 [PR #71](https://github.com/jdlc86/CartaViva/pull/71), [continuidad S43-3e.2](../handoffs/SESSION_43_HANDOFF_2026-11-19.md). HEAD Codex ee6608af9f619818dbb83b4f7d2e4e454ae957dd 2/5 SUCCESS, 3 FAIL, 2 opt-in SKIPPED. Corrección agrupada: detector de secretos intacto, etiqueta CI no ejecutable, contrato S40 trasladado al arnés/driver reales con invariantes, nft desde archivos regulares privados, resolución TLS origin IPv4 explícita. CI nuevo SHA pendiente y NO-GO operativo; no merge, VPS/Supabase/Fleetia ni nueva auditoría. Continúan requisitos de provisioning, custodia, SQL, aislamiento y validación A/B/rollback real.
+
+## 142. S43 — ajuste del inspector Docker-save en el PR #71
+
+[Continuidad S43-3e.3](../handoffs/SESSION_43_HANDOFF_2026-11-19.md). SHA previo 1545c7979a42a696fcd56d4fbfe3e16dc23eea8c: avance hasta 20 marcadores de lab, primer deploy A STOP archive_unreferenced_payload. Diagnóstico con TAR de artefacto CI anterior auténtico: blobs JSON legacy de compatibilidad por capa, no otra imagen. Validación cerrada OCI/compatibilidad/hash/cadena y config final; VOLUME web ausente o par exacto tmpfs; regresiones críticas y prevalidación de cuatro TAR reales antes de SSH. CI del candidato nuevo pendiente; A/B/rollback y aceptación operativa sin validar. Mismo PR Draft, sin merge ni operación externa.
