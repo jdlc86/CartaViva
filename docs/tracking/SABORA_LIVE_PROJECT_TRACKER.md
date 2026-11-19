@@ -1577,3 +1577,8 @@ CI exacta 36615c1b [44538779894](https://github.com/jdlc86/CartaViva/actions/run
 ## 156. S43 — validación streaming y diagnóstico de recuperación
 
 Exacto 77056bb1 [CI 44542957831](https://github.com/jdlc86/CartaViva/actions/runs/44542957831), [bootstrap 44542958082](https://github.com/jdlc86/CartaViva/actions/runs/44542958082), 5/5 PASS; 11 negativos wire, 4 SIGKILL, ciclos inicial/V2/V2 con restore externo 103, H6 completo. Nueva intención durable + diagnóstico read-only y quinto SIGKILL en el mismo candidato #72, CI pendiente. No operación ni autorización de purga. Separar receptor backup de controlador release, indispensable antes de SQL. Continuidad S43-3e.17; ver tabla S40 para reconciliación propuesta.
+
+
+## 157. S44 — recuperación durable validada; exclusión y purga interrumpida como candidato
+
+PR #72 SHA 708d58c2 [CI 44547467980](https://github.com/jdlc86/CartaViva/actions/runs/44547467980), [Bootstrap 44547468641](https://github.com/jdlc86/CartaViva/actions/runs/44547468641), 5/5 SUCCESS, 2 opt-in SKIPPED; H6 1/2A/2B PASS, cinco SIGKILL/diagnósticos, 11 negativos wire, PG17 103 migraciones. S44-1 cerrado en alcance laboratorio. Nuevo candidato guard flock compartido y reconciliación de state-published con firmas distintas y remanente exacto, exclusivamente lab; nueva CI pendiente. [S44](../handoffs/SESSION_44_HANDOFF_2026-11-19.md), [S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md). Pendientes demás fases, anti-replay operativo, SSH/config, cuota/frecuencia/custodia y revisión independiente. No merge ni operación real.
