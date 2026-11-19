@@ -1,11 +1,16 @@
-// Future root-owned Sabora-only SSH forced-command entry point.
-// Non-mutating: verifies/stages deploy or validates rollback; then ALWAYS
-// rejects actuation. No Docker privileges, no network changes, no shell.
+// Legacy diagnostic API stays non-mutating. The installed fixed launcher calls
+// executeInstalledHostRequest, which verifies the full root-owned installation.
 import {fileURLToPath} from 'node:url';
 import {parseForcedReleaseCommand,readProtectedFile,HOST_RELEASE_PATHS,
  authorizeHostOperation} from './sabora-release-host-agent.mjs';
 import {receiveReleaseBundle} from './sabora-release-receiver.mjs';
 import {verifyRollbackEnvelope} from '../ci/sabora-release-rollback-request.mjs';
+export async function executeInstalledHostRequest(source){
+ const {verifyControllerInstallation}=await import('./sabora-release-installation.mjs');
+ const installation=verifyControllerInstallation({environment:'production'});
+ const {runReleaseController}=await import('./sabora-release-controller.mjs');
+ return runReleaseController({source,installation});
+}
 export async function handleSaboraHostRequest({source,command,publicKey,stageRoot,
  readProtectedHistory,observeExclusiveRuntime,now=Date.now()}){
  const operation=parseForcedReleaseCommand(command).operation;

@@ -1,0 +1,55 @@
+# S43 — provisioning/operación/recuperación candidata del controlador
+
+**NO EJECUTADO. NO-GO operativo.** Este procedimiento requiere autorización posterior y revisión independiente del código final. No es un script de instalación automática. Mantiene íntegros el gate de autorización, release V1, CV005 DBA y runbook S40. [Diseño/amenazas/layout](../architecture/SABORA_S43_RELEASE_CONTROLLER_CANDIDATE_2026-11-19.md).
+
+## Prerrequisitos y STOP
+
+1. Fijar SHA fuente aprobado y firma de su artefacto/controlador; revisión independiente posterior, decisiones de hallazgos y compatibilidad de las rutas/custodia root frente al UID 10001 histórico. No cambiar `/srv/sabora` ni TLS antes de resolver esa decisión.
+2. Captura real y dos custodias antes de SQL, según S40; después de instalación de datos, backup **V2 postinstalación**, dos réplicas/restauración externa y acta DBA CV005/ledger/TLS aplicables a activación. La copia inicial no satisface el expediente V2. No capturar/migrar desde este agente.
+3. Reserva verificable de tres redes, bridges/CIDR sin colisión incluso inactiva, puerto y reglas exclusivas; políticas aprobadas con destinos/puertos concretos. No copiar direcciones/CA/keys del laboratorio.
+4. TLS/SAN/cadena/par, receptor con ACK firmado aprobado, fingerprints de seis custodios, autoridad de reserva y receptor. Definir sujeto e identidades esperados, vigencia y procedencia documental. No usar hashes de placeholders.
+5. Linux, Node 22 compatible, Docker/Compose compatible con `!override`, nft/ip/ss, sudo/OpenSSH y compilador de C para construcción reproducible. Fijar binarios/versiones/hashes; sin instalaciones/actualizaciones implícitas durante deploy.
+
+## Construir y revisar el artefacto sin instalar
+
+En un checkout del repositorio, con `SHA` completo revisado:
+
+```text
+node scripts/ci/sabora-release-controller-artifact.mjs <directorio-nuevo> <SHA>
+```
+
+El builder usa exclusivamente `git show SHA:path`; no empaqueta cambios de working tree, tests, fixture keys ni helpers de laboratorio. Produce `artifact.json` con el SHA y hashes de todos los archivos. Construir dos veces desde ese SHA debe dar los mismos bytes. Revisar el manifiesto y la clausura de imports. CI preserva el mismo artefacto fuente con el recibo del lab.
+
+Compilar `deploy/sabora-release-shell.c` y `deploy/sabora-release-root.c` desde ese artefacto, con compilador aprobado, `-O2 -Wall -Wextra -Werror`. Reproducir en el mismo toolchain y registrar hashes de resultados. Son binarios normales, **sin setuid**. Registrar Node copiado, herramientas root y plugin Compose. La aprobación de instalación firma los hashes de binarios realmente construidos; el hash de una fuente C no demuestra por sí solo el binario instalado.
+
+## Instalación futura por operador autorizado (manual, idempotente por comparación)
+
+1. Preflight read-only de los nombres/rutas Sabora. Verificar resolución, ownership/ACL, ausencia de links/hardlinks, filesystem/espacio, root/TLS compatibles y cuenta exclusiva. Ante contenido existente distinto, STOP; no sobrescribir ni «reparar permisos» de recursos desconocidos.
+2. Aprovisionar raíces y subdirectorios según tabla del diseño. Copiar a un directorio candidato nuevo, comprobar cada hash; publicar el árbol final solo con el release bloqueado y sin proceso activo. Si la instalación idéntica ya existe, comprobar y no reescribir. Estados parciales deben quedar sin autorización firmada hasta reconciliación.
+3. Preparar Node y launchers en `bin`; Compose exclusivamente en `docker-config/cli-plugins/docker-compose`, directorios privados. Ningún usuario de app/SSH debe poder escribir. No usar symlink a runtime gestionado por un usuario.
+4. Preparar usuario `sabora-release`, sin grupos suplementarios ni docker/sudo general, password no utilizable, home root-owned y shell compilada `bin/ssh-entry`. No usar nologin: impediría el forced-command legítimo. La shell nunca permite un login interactivo.
+5. Instalar clave pública SSH exclusiva bajo home/root protegido, con una única línea `restrict,command="/etc/sabora/release/bin/ssh-entry" ssh-ed25519 ...`. Verificar que no haya otras keys, AuthorizedKeysCommand/certificados/RC/subsistemas/entorno que abran rutas alternativas. Validar sudoers con `visudo -cf`; regla exacta de la plantilla, NOSETENV, sin argv, sin wildcard. No conceder Docker directo.
+6. **No editar/reiniciar sshd compartido.** El workflow vigente fija SSH/22. Solo puede usarse ese listener si su configuración efectiva existente y el account/key satisfacen los controles sin cambios globales. Si no, STOP y presentar al propietario una solución separada de listener/puerto/ACL/workflow. `sabora-release-sshd.conf` es plantilla para instancia dedicada previamente autorizada, no drop-in del daemon compartido. Lab usa localhost/22229; eso demuestra el mecanismo, no que puerto 22 operativo esté listo.
+7. Redes preexistentes: `sabora_sabora_runtime_internal` (internal), `sabora_ingress_filtered`, `sabora_egress_filtered`, bridge exclusivo, attachable/ipv6 falsos, labels project sabora y `io.sabora.managed-by=release-provisioner-v1`. Identificadores reales entran en la reserva firmada. Nunca aprovisionar redes dentro de deploy.
+8. Preparar tablas nominadas mediante generadores existentes y política aprobada; `nft --check` previo, snapshot únicamente de esas tablas, pruebas aisladas positivas/negativas/IPv6/reversa y rollback de provisioning ensayado. No flush, reglas globales, daemon ni reboot. Publicar el JSON semántico canónico y los expedientes independientes ligados a política/reserva. El scope de reglas debe quedar solo en los bridges propios.
+9. Preparar mounts fijos, runtime.env sin rutas alternativas, TLS root con lectura acotada al UID/GID de web y claves CA aprobadas. `controller.json` se completa a partir de la plantilla **inválida por defecto**. Sus hashes vinculan el runtime/env/secrets/mounts a los sujetos de las attestaciones. No escribir identidades de clúster/secretos en Git.
+10. Colocar los seis expedientes originales `<digest>.json`, reserva `controller/allocation.json`, claves de confianza y configuración. El propietario firma el payload canónico `sabora-controller-installation/v1`: repository, sourceSha, environment=`production`, artifactSha256, configurationSha256, nodeSha256, launcherHashes, toolHashes, approvedAt. Guardar wrapper `{payload, signature}` en `installation.json`, al final, tras verificar fingerprint del propietario por canal independiente. No generar esa firma en nombre del propietario.
+11. Ejecutar únicamente preflight/ensayo autorizado con prueba negativa de instalación parcial, shell/forwarding y permisos. Conservar `SABORA_RELEASE_AGENT_READY` sin activar en este encargo. Una variable del workflow no sustituye instalación firmada ni permisos de operación.
+
+## Operación posteriormente autorizada
+
+Revalidar main, checks exactos y paquete de ese SHA. Firma de cada deploy/rollback nueva, con seis hashes y TTL <=1h; known_hosts fijo, usuario exclusivo, protocolo existente. Nunca reutilizar un ID, incluso si falló. Confirmar receipt final `healthy` y journal/history durable coincidentes; comprobar aceptación operativa por separado. No volver a enviar una operación si el SSH se cortó: primero consultar los registros autorizados y runtime, porque podría haberse consumido.
+
+El rollback solo selecciona versión anterior healthy con bundle local retenido íntegro. No depende de la retención GitHub de siete días. No limpia imágenes ni toca SQL. Cuota alcanzada o falta de target: STOP y mantenimiento separado.
+
+## Crash y reversión de provisioning
+
+Un lock residual nunca caduca automáticamente. Antes de cualquier recuperación: comprobar que no hay proceso/controlador/Docker todavía actuando; leer consumo, journal, history, resultado, manifests y runtime nominados. `consumed/in-progress/unknown`, temporales o divergencia significan operación no determinada, aunque algunos contenedores respondan. Registrar diagnóstico, decisión del propietario y acciones exactas autorizadas. Conservar siempre los consumos y evidencia; no borrar archivos para permitir replay. El candidato no automatiza la reconciliación de un estado parcial porque faltaría una decisión normativa.
+
+Reversión de una instalación candidata **aún no usada**: retirar solo su regla sudo y clave exclusiva tras aprobación; detener únicamente la instancia dedicada creada, si existe; restaurar tablas nominadas desde snapshot y retirar solo redes vacías cuya reserva/ID demuestre que creó el provisioning. Nunca `down`, prune, flush ni detener servicios ajenos. Si ya hubo release, conservar todo ledger/bundle y solicitar plan específico; desinstalar no revierte aplicación ni datos. No tocar daemon compartido ni recursos operativos desde este PR.
+
+## Evidencia de pruebas y límites
+
+`node --test tests/sabora-release-controller-policy.test.mjs` protege firmas/semántica y rechazo de fixtures en producción. `sabora-release-root-storage.test.mjs` exige Linux root desechable; fuera de ese entorno es SKIPPED explícito y se ejecuta de verdad dentro del job del controlador. El laboratorio único amplía el antiguo real-docker-lab: Compose firmado real, PWA real construida por web-publication, API/gateway fixtures, CA/sink/autoridades locales, SSH real, dos versiones, ledger y rollback. H6/PG17/HTTP/Chromium del mismo SHA siguen verificando producto; no se duplican ni se sustituyen con la API fixture.
+
+La evidencia final son los jobs/logs/recibo del SHA exacto en el PR. Una ejecución fallida no es validación y una omisión no es PASS. No existe evidencia de instalación del VPS, DBA/backup reales, confianza de custodios, Cloudflare operativo o aceptación humana por haber pasado este laboratorio.

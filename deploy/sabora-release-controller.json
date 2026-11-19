@@ -1,0 +1,37 @@
+{
+  "schema": "sabora-controller-config/v1",
+  "environment": "production",
+  "evidenceKeys": {
+    "externalRestoreSha256": null,
+    "sqlProviderGateSha256": null,
+    "ingressIsolationSha256": null,
+    "egressEnforcementSha256": null,
+    "alertDeliverySha256": null,
+    "independentReviewSha256": null
+  },
+  "allocationKey": null,
+  "alertKey": null,
+  "expected": {
+    "subjectSha256": null,
+    "databaseIdentitySha256": null,
+    "migrationTreeSha256": null,
+    "appliedLedgerSha256": null,
+    "databaseTlsIdentitySha256": null,
+    "networkPolicySha256": null,
+    "allocationReservationSha256": null,
+    "alertReceiverIdentitySha256": null
+  },
+  "compose": {"operational": null, "web": null},
+  "networkPolicy": {
+    "networks": {"runtime": null, "ingress": null, "egress": null},
+    "cloudflareIpv4Cidrs": [],
+    "allowlisted": [],
+    "nftSha256": {"ingress": null, "egress": null}
+  },
+  "reservationSha256": null,
+  "runtimeEnvSha256": null,
+  "mountHashes": {"manifest": null, "egress": null, "secrets": {}},
+  "tls": {"certificateSha256": null, "keySha256": null, "originCaSha256": null, "publicCaSha256": null},
+  "alert": {"url": null, "receiverIdentitySha256": null},
+  "quotaBytes": 21474836480
+}
