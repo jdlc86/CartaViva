@@ -18,7 +18,7 @@ import {
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
 import {openPostgresBackupSnapshot,readPreinstallState} from '../ops/sabora-postgres-snapshot.mjs';
-import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica} from '../ops/sabora-vps-backup-rotation.mjs';
+import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRecovery} from '../ops/sabora-vps-backup-rotation.mjs';
 import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 
@@ -447,6 +447,7 @@ try{
    if(phase==='copy-started'&&path===join(root,'candidate'))kill();return result;};
   fs.rename=async(from,to,...args)=>{const result=await originalRename(from,to,...args);
    if((phase==='previous-moved'&&to===join(root,'previous'))||
+    (phase==='candidate-promoted'&&to===join(root,'current'))||
     (phase==='state-published'&&to===join(root,'state.json')))kill();return result;};
   fs.unlink=async(path,...args)=>{const result=await originalUnlink(path,...args);
    if(phase==='purge-started'&&path.startsWith(join(root,'previous')+'/'))kill();return result;};
@@ -454,7 +455,7 @@ try{
   const {rotateVerifiedVpsReplica}=await import(moduleUrl);
   await rotateVerifiedVpsReplica({root,sourceDirectory,scope,proofBytes:Buffer.from(proofB64,'base64')});
  `;
- for(const phase of ['copy-started','previous-moved','state-published','purge-started']){
+ for(const phase of ['copy-started','previous-moved','candidate-promoted','state-published','purge-started']){
   const crashRoot=join(fixture,'crash-'+phase);
   await mkdir(crashRoot,{mode:0o700});
   await rotateVerifiedVpsReplica({root:crashRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
@@ -471,10 +472,30 @@ try{
    assert.equal((await inspectEncryptedBackupBundle(join(crashRoot,'current'))).manifestSha256,second.manifestSha256);
    assert.equal(JSON.parse(await readFile(join(crashRoot,'state.json'),'utf8')).manifestSha256,second.manifestSha256);
   }
+  const diagnosis=await inspectVpsRotationRecovery({root:crashRoot,scope});
+  const expectedPhase={'copy-started':'before-promotion','previous-moved':'between-renames',
+   'candidate-promoted':'promoted-unpublished','state-published':'state-published','purge-started':'state-published'}[phase];
+  assert.equal(diagnosis.phase,expectedPhase,JSON.stringify(diagnosis));
+  assert.equal(diagnosis.blocked,true);assert.equal(diagnosis.writerExcluded,false);
+  assert.equal(diagnosis.deletionAuthorized,false);assert.equal(diagnosis.automaticRecovery,false);
+  assert.ok(diagnosis.recoverableSlots.some(slot=>slot.manifestSha256===(['candidate-promoted','state-published','purge-started'].includes(phase)?second.manifestSha256:initialResult.manifestSha256)));
+  assert.equal(diagnosis.previousManifestSha256,initialResult.manifestSha256);
+  assert.equal(diagnosis.nextManifestSha256,second.manifestSha256);
+  if(phase==='purge-started')assert.equal(diagnosis.previousRemainder,'verified-subset');
+  assert.deepEqual((await readdir(crashRoot)).sort(),entries.sort(),'diagnosis is read-only');
+  const originalLock=await readFile(join(crashRoot,'rotation.lock'));
+  const badIntent=JSON.parse(originalLock.toString('utf8'));
+  badIntent.next.proof.signature=Buffer.alloc(64).toString('base64');
+  await writeFile(join(crashRoot,'rotation.lock'),JSON.stringify(badIntent));
+  const rejected=await inspectVpsRotationRecovery({root:crashRoot,scope});
+  assert.equal(rejected.phase,'unknown');assert.equal(rejected.deletionAuthorized,false);
+  assert.deepEqual(rejected.recoverableSlots,[]);
+  await writeFile(join(crashRoot,'rotation.lock'),originalLock);
   await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,root:crashRoot}),/locked_or_interrupted/);
   assert.deepEqual((await readdir(crashRoot)).sort(),entries.sort(),'retry cannot mutate interrupted rotation');
   assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
   console.log('sabora_vps_backup_rotation_sigkill_ok:'+phase);
+  console.log('sabora_vps_backup_recovery_diagnosis_ok:'+phase);
  }
  // Negative wire cases use the small initial-state bundle only; do not buffer
  // the large V2 payloads. The valid receive path streams via real child pipes.
@@ -514,7 +535,12 @@ try{
   const entries=(await readdir(negativeRoot)).sort();
   assert.deepEqual(entries,mutated?['candidate','current','rotation.lock','state.json']:['current','state.json']);
   assert.equal((await inspectEncryptedBackupBundle(join(negativeRoot,'current'))).manifestSha256,initialResult.manifestSha256);
-  if(mutated)await assert.rejects(receiveVerifiedVpsReplica({root:negativeRoot,source:Readable.from([wire]),scope}),/locked_or_interrupted/);
+  if(mutated){
+   const diagnosis=await inspectVpsRotationRecovery({root:negativeRoot,scope});
+   assert.equal(diagnosis.phase,'before-promotion');assert.equal(diagnosis.deletionAuthorized,false);
+   assert.ok(diagnosis.recoverableSlots.some(slot=>slot.slot==='current'&&slot.manifestSha256===initialResult.manifestSha256));
+   await assert.rejects(receiveVerifiedVpsReplica({root:negativeRoot,source:Readable.from([wire]),scope}),/locked_or_interrupted/);
+  }
   console.log('sabora_vps_backup_wire_negative_ok:'+label);
  }
  // An input stream failure is also a real transport interruption, not EOF
@@ -544,6 +570,10 @@ try{
  assert.deepEqual((await readdir(pipeRoot)).sort(),['current','state.json']);
  await assert.rejects(receiveVerifiedVpsReplica({root:pipeRoot,source:Readable.from([wire]),scope}),/proof_scope_mismatch/);
  assert.deepEqual((await readdir(pipeRoot)).sort(),['current','state.json']);
+ const stableDiagnosis=await inspectVpsRotationRecovery({root:pipeRoot,scope});
+ assert.equal(stableDiagnosis.phase,'stable');assert.equal(stableDiagnosis.blocked,false);
+ assert.deepEqual(stableDiagnosis.recoverableSlots,[{slot:'current',manifestSha256:second.manifestSha256}]);
+ assert.equal(stableDiagnosis.deletionAuthorized,false);
  console.log('sabora_vps_backup_wire_pipe_ok: two real initial captures, one retained generation, no spool or replay');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);

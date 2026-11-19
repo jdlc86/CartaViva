@@ -7,7 +7,7 @@ import {constants} from 'node:fs';
 import {lstat,realpath,readdir,readFile,open,rename,unlink,rmdir,statfs} from 'node:fs/promises';
 import {join,dirname,resolve,parse,relative,isAbsolute} from 'node:path';
 import {createHash,randomBytes} from 'node:crypto';
-import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,PREINSTALL_SCHEMA}
+import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,parseEncryptedBackupManifest,PREINSTALL_SCHEMA}
  from './sabora-encrypted-backup-bundle.mjs';
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {exactKeys} from './sabora-release-protected-store.mjs';
@@ -20,6 +20,8 @@ const same=(a,b)=>a.slice().sort().join('|')===b.slice().sort().join('|');
 const ID=/^SABORA-BACKUP-[A-Z0-9-]{8,80}$/;
 const SCHEMA='sabora-vps-rotation-proof/v1';
 const V2='sabora-logical-backup/v2';
+const INTENT='sabora-vps-rotation-intent/v1';
+const MAX_INTENT=2*1024*1024;
 const names=type=>type===PREINSTALL_SCHEMA?['manifest.json','initial-state.aesgcm']:
  ['manifest.json','roles-memberships.aesgcm','schema.aesgcm','data.aesgcm','inventory.aesgcm'];
 async function exists(path){try{await lstat(path);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
@@ -93,7 +95,7 @@ async function bundle(path,ctx){
  }
  if(!same(Object.keys(inventory),names(manifest.schema)))stop('bundle_inventory');
  const target=manifest.components.find(c=>c.name===(manifest.schema===PREINSTALL_SCHEMA?'initial-state':'inventory'));
- return {manifest,manifestSha256:manifestFile.sha256,bytes,inventory,
+ return {manifest,manifestBytes,manifestSha256:manifestFile.sha256,bytes,inventory,
   inventorySha256:target.plaintextSha256};
 }
 function proof(bytes,ctx,current,candidate,{active=false}={}){
@@ -156,16 +158,14 @@ export async function receiveVerifiedVpsReplica({root,source,scope}={}){
  const reader=new BackupWireReader(source);
  try{return await rotate({root,scope,reader});}finally{reader.close();}
 }
-async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
-
+async function rotationContext(root,scope){
  if(process.platform!=='linux'||typeof process.geteuid!=='function'||!scope||
   !['production','disposable-lab'].includes(scope.environment)||
   !hash(scope.storageIdentitySha256)||!hash(scope.externalStorageIdentitySha256)||
   scope.storageIdentitySha256===scope.externalStorageIdentitySha256||
   !/^[0-9]{10,20}$/.test(scope.systemIdentifier??'')||
   !Number.isSafeInteger(scope.quotaBytes)||!Number.isSafeInteger(scope.reserveBytes)||
-  scope.reserveBytes<1048576||scope.quotaBytes<=scope.reserveBytes||
-  (!reader&&(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144)))stop('invalid_scope');
+  scope.reserveBytes<1048576||scope.quotaBytes<=scope.reserveBytes)stop('invalid_scope');
  const uid=process.geteuid(),lab=scope.environment==='disposable-lab';
  authorityFingerprint(scope.verifierPublicKey);
  // No installed production caller exists. The production directory and
@@ -173,6 +173,11 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
  if(!lab&&(uid!==0||root!=='/srv/sabora/backups'))stop('unapproved_production_root');
  const ctx={...scope,uid,lab};
  await directory(root,ctx);
+ return ctx;
+}
+async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
+ const ctx=await rotationContext(root,scope);
+ if(!reader&&(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144))stop('invalid_proof');
  if(!reader){
   await directory(sourceDirectory,ctx);
   const relation=(a,b)=>{const p=relative(a,b);return p===''||(p!=='..'&&!p.startsWith('../')&&!isAbsolute(p));};
@@ -187,14 +192,14 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
   const hasCurrent=await exists(currentPath),expected=hasCurrent?['rotation.lock','current','state.json']:['rotation.lock'];
   if(!same(await readdir(root),expected))stop('unreconciled_state');
   const current=hasCurrent?await bundle(currentPath,ctx):null;
-  if(current)await readState(statePath,ctx,current);
+  const previousState=current?await readState(statePath,ctx,current):null;
   let source,header;
   if(reader){
    header=await reader.header();
    const {parsed,manifestBytes}=header,manifest=parsed.value;
    if(manifest.sourceSystemIdentifier!==ctx.systemIdentifier)stop('bundle_scope_or_inventory');
    const inventory=parsed.components.find(c=>c.name===(manifest.schema===PREINSTALL_SCHEMA?'initial-state':'inventory'));
-   source={manifest,manifestSha256:parsed.manifestSha256,
+   source={manifest,manifestBytes,manifestSha256:parsed.manifestSha256,
     bytes:manifestBytes.length+parsed.components.reduce((n,c)=>n+c.ciphertextBytes,0),
     inventorySha256:inventory.plaintextSha256};
    proofBytes=header.proofBytes;
@@ -213,7 +218,16 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
   const space=await statfs(root,{bigint:true});
   if(!Number.isSafeInteger(total)||total>scope.quotaBytes||space.bavail*space.bsize<BigInt(needed))
    stop('insufficient_reserved_capacity');
+  // Persist both signed choices and exact manifest bytes before candidate
+  // creation. Recovery can identify even a partially purged previous slot.
+  // Replacing the existing lock is atomic: another writer never sees a gap.
+  const intent={schema:INTENT,pid:process.pid,
+   previous:current?{manifestB64:current.manifestBytes.toString('base64'),proof:previousState.proof}:null,
+   next:{manifestB64:source.manifestBytes.toString('base64'),proof:JSON.parse(proofBytes.toString('utf8'))}};
+  if(Buffer.byteLength(JSON.stringify(intent)+'\n')>MAX_INTENT)stop('intent_too_large');
   mutation=true;
+  const intentTemp=join(root,'.intent-'+randomBytes(16).toString('hex'));
+  await exclusive(intentTemp,intent);await rename(intentTemp,lock);await syncDir(root);
   if(reader)await receiveBackupCandidate(reader,candidatePath,header);
   else await replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory:candidatePath,
    destinationClass:'vps-encrypted-cache'});
@@ -248,4 +262,121 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
   // blindly. Leave the lock and all evidence for explicit reconciliation.
   if(!mutation||completed){await unlink(lock);await syncDir(root);}
  }
+}
+
+
+// Read-only crash diagnosis. A report never releases a lock, promotes a slot
+// or deletes a file. Even a coherent observation is not proof that a writer
+// is absent or that a custodian attestation is materially true.
+async function readObservation(path,ctx,max){
+ const before=await hashFile(path,ctx.uid,max);
+ const bytes=await readFile(path);
+ if(bytes.length!==before.bytes||sha(bytes)!==before.sha256)stop('observation_changed');
+ return {bytes,sha256:before.sha256};
+}
+function decodeIntentRecord(record,ctx){
+ if(!exactKeys(record,['manifestB64','proof'])||typeof record.manifestB64!=='string'||
+  record.manifestB64.length>349528)stop('intent_record_invalid');
+ const bytes=Buffer.from(record.manifestB64,'base64');
+ if(bytes.toString('base64')!==record.manifestB64)stop('intent_record_invalid');
+ const parsed=parseEncryptedBackupManifest(bytes),manifest=parsed.value;
+ if(![PREINSTALL_SCHEMA,V2].includes(manifest.schema)||manifest.sourceSystemIdentifier!==ctx.systemIdentifier||
+  parsed.components.some(c=>c.ciphertextBytes>1024**3))stop('intent_scope_invalid');
+ const inventory=parsed.components.find(c=>c.name===(manifest.schema===PREINSTALL_SCHEMA?'initial-state':'inventory'));
+ const candidate={manifest,manifestSha256:parsed.manifestSha256,inventorySha256:inventory.plaintextSha256};
+ const signed=proof(Buffer.from(JSON.stringify(record.proof)),ctx,null,candidate,{active:true});
+ return {...candidate,signed,files:Object.fromEntries([
+  ['manifest.json',{bytes:bytes.length,sha256:parsed.manifestSha256}],
+  ...parsed.components.map(c=>[c.filename,{bytes:c.ciphertextBytes,sha256:c.ciphertextSha256}])
+ ])};
+}
+async function observeSlot(path,ctx,expected){
+ if(!await exists(path))return {status:'absent',manifestSha256:null};
+ try{
+  await directory(path,ctx);
+  const entries=await readdir(path);
+  if(!expected||entries.some(name=>!Object.hasOwn(expected.files,name)))return {status:'unverified',manifestSha256:null};
+  for(const name of entries){
+   const actual=await hashFile(join(path,name),ctx.uid,name==='manifest.json'?262144:1024**3);
+   const declared=expected.files[name];
+   if(actual.bytes!==declared.bytes||actual.sha256!==declared.sha256)
+    return {status:'unverified',manifestSha256:null};
+  }
+  if(!same(entries,await readdir(path)))stop('observation_changed');
+  return {status:same(entries,Object.keys(expected.files))?'complete':'verified-subset',
+   manifestSha256:expected.manifestSha256};
+ }catch{return {status:'unverified',manifestSha256:null};}
+}
+async function observeState(path,ctx,expected){
+ if(!await exists(path))return false;
+ try{
+  const state=JSON.parse((await readObservation(path,ctx,262144)).bytes.toString('utf8'));
+  if(!expected||!exactKeys(state,['schema','manifestSha256','proof'])||
+   state.schema!=='sabora-vps-rotation-state/v1'||state.manifestSha256!==expected.manifestSha256)return false;
+  proof(Buffer.from(JSON.stringify(state.proof)),ctx,null,expected,{active:true});
+  return true;
+ }catch{return false;}
+}
+export async function inspectVpsRotationRecovery({root,scope}={}){
+ const ctx=await rotationContext(root,scope),lock=join(root,'rotation.lock'),statePath=join(root,'state.json');
+ const base={schema:'sabora-vps-rotation-diagnosis/v1',writerExcluded:false,
+  deletionAuthorized:false,automaticRecovery:false,operationalReceipt:false};
+ const entries=(await readdir(root)).sort();
+ if(!entries.includes('rotation.lock')){
+  if(!entries.length)return {...base,phase:'empty',recoverableSlots:[],blocked:false};
+  if(!same(entries,['current','state.json']))return {...base,phase:'unknown',recoverableSlots:[],blocked:true};
+  try{
+   const current=await bundle(join(root,'current'),ctx);
+   await readState(statePath,ctx,current);
+   if(!same(entries,await readdir(root)))stop('observation_changed');
+   return {...base,phase:'stable',blocked:false,recoverableSlots:[{slot:'current',manifestSha256:current.manifestSha256}]};
+  }catch{return {...base,phase:'unknown',recoverableSlots:[],blocked:true};}
+ }
+ // No intent is fabricated for a legacy lock or for a torn intent write.
+ // Return a conservative classification if metadata is absent/corrupt.
+ const unknown={...base,phase:'unknown',blocked:true,recoverableSlots:[]};
+ try{
+  const observed=await readObservation(lock,ctx,MAX_INTENT);
+  const intent=JSON.parse(observed.bytes.toString('utf8'));
+  if(!exactKeys(intent,['schema','pid','previous','next'])||intent.schema!==INTENT||
+   !Number.isSafeInteger(intent.pid)||intent.pid<1||
+   entries.some(n=>!['rotation.lock','current','candidate','previous','state.json'].includes(n)))
+   return unknown;
+  const previous=intent.previous===null?null:decodeIntentRecord(intent.previous,ctx);
+  const next=decodeIntentRecord(intent.next,ctx);
+  if(next.signed.previousManifestSha256!==(previous?.manifestSha256??null)||
+   (previous&&(next.manifestSha256===previous.manifestSha256||
+    next.manifest.backupId===previous.manifest.backupId||
+    Date.parse(next.manifest.createdAt)<Date.parse(previous.manifest.createdAt)||
+    (previous.manifest.schema===V2&&next.manifest.schema===PREINSTALL_SCHEMA)||
+    (previous.manifest.schema===PREINSTALL_SCHEMA&&next.manifest.schema===V2&&
+     previous.manifest.plannedMigrationTreeSha256!==next.manifest.migrationTreeSha256))))
+   return unknown;
+  const oldCurrent=previous?await observeSlot(join(root,'current'),ctx,previous):{status:'unverified'};
+  const newCurrent=await observeSlot(join(root,'current'),ctx,next);
+  const candidate=await observeSlot(join(root,'candidate'),ctx,next);
+  const oldSlot=await observeSlot(join(root,'previous'),ctx,previous);
+  const priorState=previous?await observeState(statePath,ctx,previous):!await exists(statePath);
+  const nextState=await observeState(statePath,ctx,next);
+  const recoverableSlots=[];
+  if(oldCurrent.status==='complete')recoverableSlots.push({slot:'current',manifestSha256:previous.manifestSha256});
+  if(newCurrent.status==='complete')recoverableSlots.push({slot:'current',manifestSha256:next.manifestSha256});
+  if(oldSlot.status==='complete')recoverableSlots.push({slot:'previous',manifestSha256:previous.manifestSha256});
+  if(candidate.status==='complete')recoverableSlots.push({slot:'candidate',manifestSha256:next.manifestSha256});
+  let phase='unknown';
+  if(previous&&oldCurrent.status==='complete'&&priorState&&oldSlot.status==='absent')phase='before-promotion';
+  else if(!previous&&newCurrent.status==='absent'&&priorState&&oldSlot.status==='absent')phase='initial-receipt';
+  else if(previous&&newCurrent.status==='absent'&&oldSlot.status==='complete'&&candidate.status==='complete'&&priorState)
+   phase='between-renames';
+  else if(newCurrent.status==='complete'&&candidate.status==='absent'){
+   if(nextState&&(oldSlot.status==='complete'||oldSlot.status==='verified-subset'||oldSlot.status==='absent'))
+    phase='state-published';
+   else if(priorState&&(previous?oldSlot.status==='complete':oldSlot.status==='absent'))phase='promoted-unpublished';
+  }
+  const finalLock=await readObservation(lock,ctx,MAX_INTENT);
+  if(finalLock.sha256!==observed.sha256||!same(entries,await readdir(root)))return unknown;
+  return {...base,phase,blocked:true,lockSha256:observed.sha256,recoverableSlots,
+   previousRemainder:oldSlot.status,
+   previousManifestSha256:previous?.manifestSha256??null,nextManifestSha256:next.manifestSha256};
+ }catch{return unknown;}
 }

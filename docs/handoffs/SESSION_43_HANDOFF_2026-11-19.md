@@ -265,3 +265,8 @@ PR #72 SHA d6ce81c7: validate y generate-lockfile fallaron en S40 dual backup po
 ## S43-3e.16 — rotación local validada, transporte directo candidato
 
 SHA anterior 36615c1b 5/5 SUCCESS, 2 SKIPPED. H6 1/2A/2B PASS (44538779894); bootstrap 44538779855 con 4 SIGKILL, inicial→V2→V2, restore externo 103 migraciones, 2228/5251/19602 ms fixture; sin recibo operativo. PR #72 mantiene Draft; se incorpora wire binario con header/tamaños/hashes/EOF/timeout, receptor comparte lock/firmas/cuota/promoción/purga y escribe solo candidate, sender streaming ciphertext. Batería integral ampliada a pipes Node reales y negativos; nueva CI pendiente. Aún sin SSH real de backup, entrada/configuración firmada, compatibilidad Windows, cuota física, reconciliación operativa, frecuencia y revisión independiente. No instalar ni borrar en VPS, no merge. Main intacto.
+
+
+## S43-3e.17 — streaming validado y recuperación durable candidata
+
+SHA 77056bb1 5/5 PASS, 2 SKIPPED, CI 44542957831 y bootstrap 44542958082 job 135625890474: 11 negativos wire, 4 SIGKILL, pipe, ciclos inicial/V2/V2, 103 migraciones restore externo, 2252/5585/20197 ms fixture; H6 integral PASS. Candidato posterior añade intención durable en lock con manifiestos y pruebas firmadas anterior/nueva; diagnóstico solo lectura de fases y remanente de purga, quinto SIGKILL y pruebas de firma inválida, sin habilitar reparación automática. CI nueva pendiente. Receptor backup deberá ser independiente de release para respetar orden S40 pre/post SQL. Pendientes entrada SSH/config autenticada y ensayo, recuperación operativa autorizada, cuota física, frecuencia y revisión independiente. Main/VPS/Supabase intactos, PR #72 Draft.

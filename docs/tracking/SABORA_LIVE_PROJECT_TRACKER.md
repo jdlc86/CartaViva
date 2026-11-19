@@ -1572,3 +1572,8 @@ PR #72: fallos validate/generate-lockfile de d6ce81c7 comparten aserción histó
 ## 155. S43 — rotación local 5/5 PASS; transporte directo implementado como candidato
 
 CI exacta 36615c1b [44538779894](https://github.com/jdlc86/CartaViva/actions/runs/44538779894), [44538779855](https://github.com/jdlc86/CartaViva/actions/runs/44538779855): 4 SIGKILL, ciclos inicial/V2/V2, 103 migraciones y H6 PASS; fixture no operativo. Nuevo wire/receptor streaming directo a candidate en PR #72; integración por pipes y negativos pendiente CI. No listener/SSH operativo, configuración/autoridades/cuota ni scheduler. Continuidad S43-3e.16, S40 conserva STOP.
+
+
+## 156. S43 — validación streaming y diagnóstico de recuperación
+
+Exacto 77056bb1 [CI 44542957831](https://github.com/jdlc86/CartaViva/actions/runs/44542957831), [bootstrap 44542958082](https://github.com/jdlc86/CartaViva/actions/runs/44542958082), 5/5 PASS; 11 negativos wire, 4 SIGKILL, ciclos inicial/V2/V2 con restore externo 103, H6 completo. Nueva intención durable + diagnóstico read-only y quinto SIGKILL en el mismo candidato #72, CI pendiente. No operación ni autorización de purga. Separar receptor backup de controlador release, indispensable antes de SQL. Continuidad S43-3e.17; ver tabla S40 para reconciliación propuesta.
