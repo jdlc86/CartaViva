@@ -154,7 +154,7 @@ jobs:
           path: ${{ runner.temp }}/sabora-network-enforcement/
           if-no-files-found: error
           retention-days: 7
-      - name: Exercise controller SSH, two releases, rollback and sentinel with real Docker
+      - name: Exercise isolated controller transport, two releases, rollback and sentinel with real Docker
         env:
           SABORA_DISPOSABLE_RELEASE_LAB: explicitly-authorized-ci
         shell: bash

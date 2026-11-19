@@ -18,7 +18,7 @@ async function probe(url,{address,ca}={}){
  return new Promise((resolve,reject)=>{
   const hostname=new URL(url).hostname;
   const req=https.request(url,{method:'GET',servername:hostname,rejectUnauthorized:true,ca,timeout:5000,
-   ...(address?{lookup:(_name,_options,cb)=>cb(null,address,4)}:{})},res=>{
+   ...(address?{family:4,autoSelectFamily:false,lookup:(_name,_options,cb)=>cb(null,address,4)}:{})},res=>{
    let count=0;res.on('data',b=>{count+=b.length;if(count>1048576)res.destroy(Error('response_limit'));});
    const peer=res.socket.remoteAddress,ray=res.headers['cf-ray'];
    res.on('error',reject);res.on('end',()=>res.statusCode===200?resolve({peer,ray}):reject(Error('https_status')));

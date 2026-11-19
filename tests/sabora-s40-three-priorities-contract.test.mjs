@@ -100,19 +100,39 @@ test('S40 nftables gate applies, proves denials and rolls back only inside dispo
  assert.doesNotMatch(lab,/nft\s+flush ruleset|docker\s+(?:prune|stop|rm)/);
 });
 
-test('S40 real driver remains disposable and performs only the exact three-service release',()=>{
- const driver=read('scripts/ci/sabora-release-real-docker-lab.mjs');
+test('S40/S43 real controller remains disposable and performs only the exact three-service release',()=>{
+ const entry=read('scripts/ci/sabora-release-real-docker-lab.mjs');
+ const lab=read('scripts/ci/sabora-release-controller-lab.mjs');
+ const driver=read('scripts/ops/sabora-release-driver.mjs');
+ const policy=read('scripts/ops/sabora-release-compose-policy.mjs');
  const workflow=read('.github/workflows/ci.yml');
- assert.match(driver,/SABORA_DISPOSABLE_RELEASE_LAB!=='explicitly-authorized-ci'/);
- assert.match(driver,/process\.getuid\(\)!==0/);
- assert.match(driver,/scopedDockerCommands/);
- assert.match(driver,/actualComposeUpNoBuildNoPullNoDeps:true/);
- assert.match(driver,/exactServices:\[\.\.\.SABORA_RELEASE_SCOPE\.services\]/);
- assert.match(driver,/externalAuthorizationConsumed:false/);
- assert.match(driver,/ownedNetworks\.slice\(\)\.reverse\(\)/);
- assert.match(driver,/if\(nftOwned\)/);
- assert.match(driver,/projectOwned=true;docker/);
- assert.doesNotMatch(driver,/compose','down|system','prune|container','prune/);
+ // The historical lab is now a guarded entrypoint for the same real root
+ // controller used by the SSH integration, not a second fixture driver.
+ for(const source of [entry,lab]){
+  assert.match(source,/SABORA_DISPOSABLE_RELEASE_LAB!=='explicitly-authorized-ci'/);
+  assert.match(source,/process\.getuid\(\)!==0/);
+  assert.match(source,/GITHUB_ACTIONS!=='true'/);
+  assert.match(source,/CI!=='true'/);
+ }
+ assert.match(entry,/await import\('\.\/sabora-release-controller-lab\.mjs'\)/);
+ assert.match(lab,/runReleaseController\(\{source:process\.stdin,installation\}\)/);
+ assert.match(lab,/environment:'disposable-lab'/);
+ assert.match(lab,/lab-authorities-rejected-by-production-entry/);
+ assert.match(driver,/composeArgs=\['compose','--project-name','sabora'/);
+ assert.match(driver,/validateClosedCompose/);
+ assert.match(policy,/exactKeys\(config.services,\['api','sabora-egress','web'\]\)/);
+ assert.match(driver,/'up','--detach','--no-deps','--no-build','--pull','never','--wait','--wait-timeout','100',\.\.\.SABORA_RELEASE_SCOPE.services/);
+ assert.match(lab,/deploy-A-through-real-ssh/);
+ assert.match(lab,/deploy-B-through-real-ssh/);
+ assert.match(lab,/rollback-A-through-real-ssh/);
+ assert.match(lab,/sentinelUnchanged:true/);
+ assert.match(lab,/operationalAcceptance:false,sqlExecuted:false/);
+ assert.match(lab,/externalAuthorities:'synthetic-lab-only; never operational evidence'/);
+ assert.match(lab,/createdNetworks\.reverse\(\)/);
+ assert.match(lab,/if\(nftOwned\)/);
+ assert.match(lab,/if\(namesVerifiedEmpty\)for\(const service of SABORA_RELEASE_SCOPE.services\)/);
+ assert.match(lab,/===\s*'release-controller-v1'\)docker\(\['rm','-f',name\]/);
+ for(const source of [entry,lab,driver])assert.doesNotMatch(source,/compose','down|system','prune|container','prune/);
  assert.match(workflow,/bash scripts\/ci\/sabora-nftables-enforcement-lab\.sh/);
  assert.match(workflow,/"\$node_bin" scripts\/ci\/sabora-release-real-docker-lab\.mjs/);
  assert.match(workflow,/sabora-real-docker-release-driver-lab/);

@@ -93,7 +93,13 @@ try{
  docker(['network','create','--subnet','172.28.242.0/24',externalNet]);createdNetworks.push(externalNet);
  const cloudflareIpv4Cidrs=['172.28.242.3/32','127.0.0.1/32'],allowlisted=[{protocol:'tcp',cidr:'172.28.242.2/32',port:9443},{protocol:'tcp',cidr:'172.28.242.3/32',port:9999}];
  const ingress=renderIngressFilter({bridge:networks.ingress.bridge,cloudflareIpv4Cidrs}),egress=renderSaboraEgressGuard({bridge:networks.egress.bridge,allowlisted});
- run('nft',['--check','--file','-'],{input:ingress+egress});run('nft',['--file','-'],{input:ingress+egress});nftOwned=true;
+ // nft opens "-"/stdin as /dev/stdin on this runner and rejects the pipe.
+ // Both policy files are created under the private root-owned lab directory.
+ // Check the exact regular file before applying; no global ruleset mutation.
+ const labNftPolicy=work+'/network-policy.nft',labEgressPolicy=work+'/egress-policy.nft';
+ put(labNftPolicy,ingress+egress);put(labEgressPolicy,egress);
+ run('nft',['--check','--file',labNftPolicy]);nftOwned=true;
+ run('nft',['--file',labNftPolicy]);
  const policy={networks,cloudflareIpv4Cidrs,allowlisted,nftSha256:Object.fromEntries(['ingress','egress'].map(kind=>[kind,sha256(stableStringify(canonicalNft(JSON.parse(run('nft',['--json','list','table','inet','sabora_'+kind+'_guard']).stdout))))]))};
  const reservation=signedLabDocument({schema:'sabora-allocation-reservation/v1',project:'sabora',host:SABORA_RELEASE_SCOPE.host,networkPolicySha256:sha256(stableStringify(policy)),networkNames:NETWORK_NAMES,networkIds,port:8443,scope:'all-active-and-inactive-allocations-and-routes',observedAt:new Date().toISOString(),exclusiveUntil:new Date(Date.now()+3600000).toISOString()},allocation);put(P.state+'/allocation.json',reservation);
  run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-keyout',work+'/ca.key','-out',work+'/ca.pem','-subj','/CN=Disposable Sabora lab CA','-addext','basicConstraints=critical,CA:TRUE']);
@@ -201,7 +207,7 @@ try{
  await denied('unhealthy-rollback-target-denied',a,approval(a,'rollback','LAB-UNHEALTHY-TARGET'));put(P.ledger+'/history.json',originalHistory);
  docker(['network','disconnect',NETWORK_NAMES.ingress,'sabora-web-1']);await denied('disconnected-active-network-denied',a,approval(a,'rollback','LAB-DISCONNECTED-NET'));docker(['network','connect',NETWORK_NAMES.ingress,'sabora-web-1']);
  const rollbackA=approval(a,'rollback','LAB-ROLLBACK-A-0001');await success('rollback-A-through-real-ssh',a,rollbackA);await denied('rollback-replay-no-mutation',a,rollbackA);assert.equal(parse(P.ledger+'/history.json').versions.length,2);
- run('nft',['add','rule','inet','sabora_egress_guard','sabora_egress_forward','counter']);await denied('live-nft-tamper-no-mutation',b,approval(b,'deploy','LAB-NFT-TAMPER'));run('nft',['delete','table','inet','sabora_egress_guard']);run('nft',['-f','-'],{input:egress});
+ run('nft',['add','rule','inet','sabora_egress_guard','sabora_egress_forward','counter']);await denied('live-nft-tamper-no-mutation',b,approval(b,'deploy','LAB-NFT-TAMPER'));run('nft',['delete','table','inet','sabora_egress_guard']);run('nft',['--check','--file',labEgressPolicy]);run('nft',['--file',labEgressPolicy]);
  put(P.state+'/controller.lock','{"crashFixture":true}\n');await denied('crashed-lock-no-mutation',b,approval(b,'deploy','LAB-CRASH-LOCK'));unlinkSync(P.state+'/controller.lock');
  const journal=readFileSync(P.ledger+'/transaction.json');put(P.ledger+'/transaction.json',JSON.stringify({...JSON.parse(journal),state:'unknown'})+'\n');await denied('unknown-ledger-no-mutation',b,approval(b,'deploy','LAB-UNKNOWN-LEDGER'));put(P.ledger+'/transaction.json',journal);
  // Intentional failure AFTER real mutation. No healthy commit and no automatic
