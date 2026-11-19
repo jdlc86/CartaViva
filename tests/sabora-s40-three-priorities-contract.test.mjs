@@ -32,11 +32,20 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.doesNotMatch(integration,/bundleDirectory:vpsCache,name:'(?:schema|data)'/);
  assert.match(integration,/--network','none'/);
  assert.match(integration,/psql','-X','-h','127\.0\.0\.1'/);
- assert.match(integration,/create schema extensions; create extension pgcrypto with schema extensions;/);
+ assert.match(integration,/psql\(target,'postgres','CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;'\)/);
+ // The initial-state recovery target now becomes the full recovered source
+ // in the same database. This is a real preinstall-to-V2 transition, not
+ // an independent second database with a different initial-state identity.
+ assert.match(integration,/psql\(target,'postgres',globalRolesSql\)/);
+ assert.ok(integration.indexOf("CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;")<integration.indexOf("psql(target,'postgres',globalRolesSql)"));
  assert.match(integration,/databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\\n'/);
  assert.match(integration,/databaseAclMarker='-- sabora-database-acl-reconciliation-v1\\n'/);
- assert.match(integration,/psql\(target,'sabora_external_restore_ci',databasePrerequisiteSql\)/);
- assert.match(integration,/psql\(target,'sabora_external_restore_ci',databaseAclSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databasePrerequisiteSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databaseAclSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databasePrerequisiteSql\)[\s\S]*?pg_restore[\s\S]*?psql\(target,'postgres',databaseAclSql\)/);
+ assert.match(integration,/sabora_vps_backup_rotation_cycle_ok/);
+ assert.match(integration,/sabora_vps_backup_rotation_sigkill_ok/);
+ assert.match(integration,/assert\.equal\(recovered,await readFile\(outputs\.inventory,'utf8'\)\)/);
  assert.match(integration,/cv005_recovery_provider_dba_preexists/);
  assert.match(integration,/grant sabora_h6_fn_owner to cv005_recovery_provider_dba\s+with admin true, set false, inherit false/);
  assert.match(roles,/aclexplode\(namespace\.nspacl\)/);

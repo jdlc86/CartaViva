@@ -76,6 +76,10 @@ async function bundle(path,ctx){
     manifest.sourceProjectRef!=='byhvmumqivmunkmomhup'||manifest.sourceDatabase!=='postgres'||
     manifest.sourceSystemIdentifier!==ctx.systemIdentifier||!ID.test(manifest.backupId)||
     !same(await readdir(path),names(manifest.schema)))stop('bundle_scope_or_inventory');
+ // Reject special files and links in the exact closed inventory before the
+ // legacy inspector opens component paths. In particular, do not open a
+ // FIFO or a symlink to a file outside the backup while calculating hashes.
+ for(const name of names(manifest.schema))await file(join(path,name),ctx.uid,name==='manifest.json'?262144:1024**3);
  const inspected=await inspectEncryptedBackupBundle(path);
  if(inspected.manifestSha256!==manifestFile.sha256||inspected.backupId!==manifest.backupId)
   stop('manifest_changed');

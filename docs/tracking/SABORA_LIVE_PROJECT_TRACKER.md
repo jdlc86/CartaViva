@@ -1562,3 +1562,8 @@ Librería de rotación durable + ampliación de batería PG17 existente, [proced
 ## 153. S43 — pruebas integradas de interrupción y ciclos de sustitución
 
 PR #72 Draft: cuatro SIGKILL reales en proceso hijo de laboratorio, transición inicial→V2→V2 mismo clúster y restauraciones externas PG17, datos cambiados, limitación a dos slots, predecesor y downgrade. Exigencia adicional del árbol SQL previsto. Implementado, CI pendiente; no instalación/configuración real ni aprobación de operación. Continuidad S43-3e.14.
+
+
+## 154. S43 — reparación del contrato de pruebas y propuesta de transferencia directa
+
+PR #72: fallos validate/generate-lockfile de d6ce81c7 comparten aserción histórica de pgcrypto/base restore. Ajuste al flujo actual sin quitar controles; inventario de archivos prevalidado antes de lectura. CI pendiente. S40 especifica recepción cifrada directamente a candidate con lock, longitud/hash/proof, EOF y fsync, sin tercera generación; propuesta no implementada. Continuidad S43-3e.15. NO-GO operativo.

@@ -255,3 +255,8 @@ Librería nueva scripts/ops/sabora-vps-backup-rotation.mjs: reutiliza réplica, 
 ## S43-3e.14 — ampliación de pruebas de rotación, antes de CI final
 
 PR #72 Draft. Se amplía la misma batería PG17 con SIGKILL real en cuatro puntos, sin hooks en código de producción, y ascenso inicial→V2→V2 en mismo origen con dos restores completos externos en clúster networkless adicional, datos distintos, comprobación de inventario/ledger y rechazo downgrade. Se exige digest SQL planeado inicial para transición. CI pendiente, sin nuevos servicios ni operación. No cubre aún corte de energía ni procedimiento operativo de reconciliación; no se ha resuelto transferencia directa bajo lock/cuota física/scheduler/autoridades. No declarar hito cerrado.
+
+
+## S43-3e.15 — corrección de dos fallos de CI del mismo contrato histórico
+
+PR #72 SHA d6ce81c7: validate y generate-lockfile fallaron en S40 dual backup por aserción de texto antigua de pgcrypto; las aserciones posteriores también fijaban nombre de BD anterior. Corregido contrato al flujo real del mismo cluster inicial en postgres, preservando orden y checks de recuperación. Se valida inventario privado de componentes antes de abrirlos con el inspector legado, rechazando archivos especiales y enlaces. Nueva CI necesaria. Se documenta en S40 propuesta de recepción encuadrada directamente en candidate bajo lock, sin ruta adicional, y límites de reconciliación. No implementado transporte remoto ni validado aún el ciclo completo; main/VPS/Supabase intactos.
