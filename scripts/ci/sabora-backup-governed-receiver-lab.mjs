@@ -6,7 +6,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer,connect} from 'node:net';
 import {setTimeout as delay} from 'node:timers/promises';
-import {generateKeyPairSync,sign,createHash} from 'node:crypto';
+import {generateKeyPairSync,sign,createHash,randomBytes} from 'node:crypto';
 import {mkdtemp,mkdir,readFile,writeFile,lstat,realpath,statfs,rm} from 'node:fs/promises';
 import {join,dirname,basename,resolve} from 'node:path';
 import {buildBackupPreparationArtifact} from './sabora-backup-preparation-artifact.mjs';
@@ -15,8 +15,8 @@ import {stableStringify} from './sabora-release-governor.mjs';
 import {backupLabSshArguments,sendVpsBackupOverSsh} from '../ops/sabora-vps-backup-transport.mjs';
 const stop=code=>{throw Error('sabora_governed_receiver_ci_stop:'+code);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
-function run(bin,args,{allowFailure=false}={}){
- const r=spawnSync(bin,args,{encoding:'utf8',timeout:30000,maxBuffer:262144});
+function run(bin,args,{allowFailure=false,input}={}){
+ const r=spawnSync(bin,args,{input,encoding:'utf8',timeout:30000,maxBuffer:262144});
  if(r.error||r.signal||(!allowFailure&&r.status!==0)){
   const operation=bin==='/usr/bin/sudo'?args.find(x=>/^\/usr\/(bin|sbin)\/[a-z]+$/.test(x))??'unknown':bin;
   stop('fixture_command_failed:'+basename(operation)+':'+String(r.status??'spawn'));
@@ -73,7 +73,18 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   }
   sudo(['/usr/bin/install','-o','root','-g','root','-m','0755',await realpath(process.execPath),node]);
   sudo(['/usr/sbin/useradd','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',account]);
-  userCreated=true;sudo(['/usr/sbin/usermod','--password','*',account]);
+  userCreated=true;
+  // An OpenSSH listener with UsePAM=no can refuse a locked shadow account.
+  // Give the disposable account a hash of a high-entropy value discarded
+  // immediately; never enable password authentication or expose the hash.
+  // Both inputs travel over stdin, not argv, disk, or logs.
+  const secret=randomBytes(48);
+  let crypt;
+  try{
+   crypt=run('/usr/bin/openssl',['passwd','-6','-stdin'],{input:secret.toString('hex')+'\n'}).stdout.trim();
+   if(!/^\$6\$[./A-Za-z0-9$]+$/.test(crypt))stop('fixture_shadow_hash_invalid');
+   sudo(['/usr/sbin/chpasswd','-e'],{input:account+':'+crypt+'\n'});
+  }finally{secret.fill(0);crypt=undefined;}
   const uid=Number(run('/usr/bin/id',['-u',account]).stdout.trim()),gid=Number(run('/usr/bin/id',['-g',account]).stdout.trim());
   assert.ok(uid>0&&gid>0&&Number.isSafeInteger(uid)&&Number.isSafeInteger(gid));
   accountUid=uid;
@@ -99,11 +110,17 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const signed=p=>JSON.stringify({payload:p,signature:sign(null,Buffer.from(stableStringify(p)),privateKey).toString('base64')})+'\n';
   await put(join(base,'owner-public.pem'),owner);await put(join(base,'scope.json'),signed(config));
   await put(join(base,'private-sentinel'),'fixture only','0600');
+  // Probe permission as the fixture UID/GID without starting a PAM
+  // session for that account via sudo -u. sudo itself remains the runner.
+  const asAccount=(args,opts)=>sudo(['/usr/bin/setpriv','--reuid',String(uid),'--regid',String(gid),
+   '--clear-groups','--no-new-privs','--',...args],opts);
+  assert.equal(asAccount(['/usr/bin/id','-u']).stdout.trim(),String(uid));
+  assert.equal(asAccount(['/usr/bin/id','-G']).stdout.trim(),String(gid));
   for(const path of [code,join(code,'artifact.json'),join(base,'scope.json'),node,shell,base]){
-   assert.notEqual(sudo(['-u',account,'--','/usr/bin/test','-w',path],{allowFailure:true}).status,0);
+   assert.notEqual(asAccount(['/usr/bin/test','-w',path],{allowFailure:true}).status,0);
   }
-  assert.notEqual(sudo(['-u',account,'--','/usr/bin/test','-r',join(base,'private-sentinel')],{allowFailure:true}).status,0);
-  assert.equal(sudo(['-u',account,'--','/usr/bin/test','-w',cache]).status,0);
+  assert.notEqual(asAccount(['/usr/bin/test','-r',join(base,'private-sentinel')],{allowFailure:true}).status,0);
+  assert.equal(asAccount(['/usr/bin/test','-w',cache]).status,0);
   const hostKey=join(temp,'host-key'),identityFile=join(temp,'client-key');
   for(const path of [hostKey,identityFile])run('/usr/bin/ssh-keygen',['-q','-t','ed25519','-N','','-f',path]);
   await put(join(base,'host-key'),await readFile(hostKey),'0600');
@@ -117,9 +134,17 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    'HostKey '+join(base,'host-key'),'PidFile '+join(base,'sshd.pid'),'AllowUsers '+account+'@127.0.0.1',
    'AuthorizedKeysFile '+join(base,'authorized_keys'),'StrictModes yes','AuthenticationMethods publickey',
    'PubkeyAuthentication yes','PasswordAuthentication no','KbdInteractiveAuthentication no','PermitRootLogin no',
-   'UsePAM yes','PermitTTY no','DisableForwarding yes','PermitUserRC no','PermitUserEnvironment no',
+   'UsePAM no','PermitTTY no','DisableForwarding yes','PermitUserRC no','PermitUserEnvironment no',
    'ForceCommand '+shell,'MaxSessions 1','MaxAuthTries 2','LoginGraceTime 15','LogLevel ERROR',''].join('\n'));
   sudo(['/usr/sbin/sshd','-t','-f',sshdConfig]);
+  const effective=sudo(['/usr/sbin/sshd','-T','-f',sshdConfig,'-C',
+   'user='+account+',host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport='+port]).stdout;
+  for(const line of ['usepam no','authenticationmethods publickey','passwordauthentication no',
+   'kbdinteractiveauthentication no','pubkeyauthentication yes','permitrootlogin no',
+   'disableforwarding yes','permittty no','forcecommand '+shell,'allowusers '+account+'@127.0.0.1']){
+   assert.ok(effective.split('\n').includes(line),'effective isolated listener policy mismatch: '+line.split(' ')[0]);
+  }
+  console.log('sabora_backup_governed_non_pam_publickey_policy_ok');
   server=spawn('/usr/bin/sudo',['-n','/usr/sbin/sshd','-D','-e','-f',sshdConfig],{stdio:['ignore','ignore','pipe']});
   ended=once(server,'close');ended.catch(()=>{});server.stderr.resume();
   let ready=false;
@@ -128,6 +153,12 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const endpoint={environment:'disposable-lab',host:'127.0.0.1',port,user:account,sshBinary:await realpath('/usr/bin/ssh'),identityFile,knownHostsFile};
   // Strict sender username grammar allows up to 32 lowercase/alphanumeric characters.
   const args=await backupLabSshArguments(endpoint);
+  const wrongKey=join(temp,'unapproved-key');
+  run('/usr/bin/ssh-keygen',['-q','-t','ed25519','-N','','-f',wrongKey]);
+  const wrongArgs=await backupLabSshArguments({...endpoint,identityFile:wrongKey});
+  const deniedKey=run(endpoint.sshBinary,[...wrongArgs,'sabora-backup-receive-v1'],{allowFailure:true});
+  assert.notEqual(deniedKey.status,0);assert.equal(deniedKey.stdout,'');
+  assert.match(deniedKey.stderr,/Permission denied \(publickey\)/);
   for(const command of ['id','/bin/sh','sabora-backup-receive-v1; id','sabora-release-v1','sftp']){
    const denied=run(endpoint.sshBinary,[...args,command],{allowFailure:true});
    assert.notEqual(denied.status,0);assert.equal(denied.stdout,'');
@@ -185,7 +216,18 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
     }).some(Boolean);
    };
    for(let i=0;i<100&&processes();i++)await delay(50);
-   if(processes())stop('cleanup_account_sessions_still_live');
+   if(processes()){
+    // Emit only counts/state for the exact disposable UID, never command
+    // lines, environment or arbitrary user process details.
+    const states=run('/usr/bin/ps',['-u',String(uid),'-U',String(uid),'-o','stat='],{allowFailure:true});
+    const counts={running:0,sleeping:0,zombie:0,other:0};
+    for(const state of states.stdout.trim().split(/\s+/).filter(Boolean)){
+     const key=state[0]==='R'?'running':state[0]==='S'||state[0]==='D'?'sleeping':state[0]==='Z'?'zombie':'other';
+     counts[key]++;
+    }
+    console.log('sabora_backup_governed_fixture_remaining_process_states:'+JSON.stringify(counts));
+    stop('cleanup_account_sessions_still_live');
+   }
    // Check real/effective identity and NSS after deletion; never force-delete
    // an in-use account or kill processes outside this lab.
    const deletion=sudo(['/usr/sbin/userdel',account],{allowFailure:true});
