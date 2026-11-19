@@ -21,7 +21,7 @@ function verifyDependencies(name,bytes){
 export function verifyBackupPreparationDirectory(destination){
  if(resolve(destination)!==destination||realpathSync(destination)!==destination)stop('noncanonical_destination');
  const inventory=[],directories=[];
- const expectedDirectories=['scripts','scripts/ci','scripts/ops'];
+ const expectedDirectories=['deploy','scripts','scripts/ci','scripts/ops'];
  function walk(dir){
   const st=lstatSync(dir);
   if(!st.isDirectory()||st.isSymbolicLink())stop('artifact_directory');
