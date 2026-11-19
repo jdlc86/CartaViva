@@ -22,7 +22,7 @@ import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRec
  inspectVpsPublishedPurge,finishInterruptedVpsPurge,inspectVpsRecoveryTransition,applyVpsRecoveryTransition} from '../ops/sabora-vps-backup-rotation.mjs';
 import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
-import {startBackupSshLab} from './sabora-vps-backup-ssh-lab.mjs';
+import {startBackupSshLab,withBoundedBackupVolume} from './sabora-vps-backup-ssh-lab.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -776,11 +776,36 @@ try{
  await backupSsh.transfer(firstTransport);
  const secondTransport={sourceDirectory:secondExternal,proofBytes:secondProof,
   expected:{backupId:second.manifest.backupId,manifestSha256:second.manifestSha256,previousManifestSha256:initialResult.manifestSha256}};
- await backupSsh.transfer(secondTransport);
+ await backupSsh.loseAcknowledgement(secondTransport);
  await assert.rejects(backupSsh.send(secondTransport),/transfer_outcome_unknown/);
  assert.equal((await inspectEncryptedBackupBundle(join(backupSsh.root,'current'))).manifestSha256,second.manifestSha256);
  assert.deepEqual((await readdir(backupSsh.root)).sort(),['current','state.json']);
  console.log('sabora_vps_backup_ssh_initial_cycle_ok: two captures, pinned host and signed scope, no replay');
+ // Reuse the same two real encrypted preinstall backups on a separately
+ // bounded test disk and identity. Only this disposable volume is filled.
+ await withBoundedBackupVolume({fixture,operation:async({volume,capacity,proveCapacity})=>{
+  const boundedScope={...scope,storageIdentitySha256:digest('ci-only-bounded-vps-storage-'+runId),
+   quotaBytes:16*1024**2};
+  assert.ok(BigInt(boundedScope.quotaBytes)<capacity);
+  const bounded=await startBackupSshLab({fixture:volume,scope:boundedScope,sourceSha:releaseSha,
+   entryPath:join(root,'scripts/ops/sabora-vps-backup-lab-entry.mjs')});
+  try{
+   const firstBounded={...firstTransport,proofBytes:rotationProof(boundedScope,initialResult,null,kind,
+    initialResult.manifest.components[0].plaintextSha256,initialEvidence)};
+   const secondBounded={...secondTransport,proofBytes:rotationProof(boundedScope,second,initialResult.manifestSha256,kind,
+    second.manifest.components[0].plaintextSha256,initialEvidence)};
+   await bounded.transfer(firstBounded);
+   await proveCapacity({root:bounded.root,request:secondBounded,send:bounded.send});
+   // After capacity pressure is removed, admission can reach the data
+   // frame. Kill the actual SSH process midway; no invalidated candidate
+   // bytes are treated as safe to delete by production code.
+   await bounded.disconnectMidBody(secondBounded);
+   await assert.rejects(inspectVpsRecoveryTransition({root:bounded.root,scope:boundedScope}),/previous_changed/);
+   assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
+   assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
+  }finally{await bounded.close();}
+ }});
+ console.log('sabora_vps_backup_bounded_disk_unmounted_ok');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
  assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
