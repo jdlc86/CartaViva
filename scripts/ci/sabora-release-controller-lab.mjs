@@ -191,15 +191,25 @@ try{
  const bundles=[];
  for(const [index,sha] of [sourceSha,sha256(sourceSha+':release-B').slice(0,40)].entries()){
   const dir=work+'/bundle-'+index,context=work+'/context-'+index;mkdirSync(dir,{mode:0o700});mkdirSync(context,{mode:0o700});
-  put(context+'/Dockerfile','FROM node:22-alpine\nWORKDIR /app\nRUN addgroup -S sabora && adduser -S -G sabora sabora\nCOPY src ./src\nUSER sabora\nEXPOSE 4100\nCMD ["node","src/server.mjs"]\nLABEL io.sabora.lab.release="'+sha+'"\n');
+  put(context+'/Dockerfile','FROM node:22-alpine\nWORKDIR /app\nRUN addgroup -S sabora && adduser -S -G sabora sabora\nCOPY --chown=sabora:sabora src ./src\nUSER sabora\nEXPOSE 4100\nCMD ["node","src/server.mjs"]\nLABEL io.sabora.lab.release="'+sha+'"\n');
   put(context+'/src/operational-server.mjs',"import http from 'node:http';http.createServer((q,r)=>{r.writeHead(200);r.end('ready')}).listen(4100,'0.0.0.0');\n");put(context+'/src/sabora-egress-gateway.mjs',"setInterval(()=>{},1000);\n");
   const apiTag='sabora-api:'+sha,webTag='sabora-web:'+sha;for(const tag of [apiTag,webTag])assert.notEqual(docker(['image','inspect',tag],{allowFailure:true}).status,0);
   docker(['build','-t',apiTag,context]);createdImages.push(apiTag);
+  // Fixture source files are created root:root/0600 in a private host
+  // context; COPY --chown mirrors Dockerfile.api's real nonroot ownership.
+  // Exercise the final image's default user with its actual paths and
+  // filesystem restrictions, before exporting or touching the release.
+  assert.equal(docker(['image','inspect','--format','{{.Config.User}}',apiTag]).stdout.trim(),'sabora');
+  docker(['run','--rm','--network','none','--read-only','--cap-drop','ALL',
+   '--security-opt','no-new-privileges','--entrypoint','node',apiTag,'-e',
+   "const fs=require('node:fs');if(process.getuid()===0)process.exit(1);for(const p of ['src/operational-server.mjs','src/sabora-egress-gateway.mjs']){const file=fs.statSync(p);if(!file.isFile()||file.uid!==process.getuid())process.exit(1);fs.accessSync(p,fs.constants.R_OK);fs.readFileSync(p)}"]);
+
   put(context+'/Dockerfile.web','FROM sabora-web:ci\nLABEL io.sabora.lab.release="'+sha+'"\n');docker(['build','-f',context+'/Dockerfile.web','-t',webTag,context]);createdImages.push(webTag);
   const apiId=json(['image','inspect',apiTag])[0].Id,webId=json(['image','inspect',webTag])[0].Id,paths=['api.tar','web.tar','operational.yml','web.yml'].map(n=>dir+'/'+n);
   docker(['image','save','--output',paths[0],apiTag]);docker(['image','save','--output',paths[1],webTag]);copyFileSync(repo+'/deploy/compose.sabora-operational.yml',paths[2]);copyFileSync(repo+'/deploy/compose.sabora-web.yml',paths[3]);for(const path of paths)chmodSync(path,0o600);
   const manifest=await buildReleaseBundleManifest({releaseSha:sha,apiArchive:paths[0],webArchive:paths[1],apiImageId:apiId,webImageId:webId,operationalCompose:paths[2],webCompose:paths[3]}),manifestBytes=Buffer.from(JSON.stringify(manifest)+'\n');put(dir+'/manifest.json',manifestBytes);bundles.push({sha,manifest,manifestBytes,paths});docker(['image','rm',apiTag,webTag]);
  }
+ ok('api-gateway-fixture-ownership-readable-as-nonroot-in-both-images');
  const [a,b]=bundles;
  for(const bundle of bundles)for(const [i,type] of ['api','web'].entries())
   assert.equal(inspectDockerSaveArchive(bundle.paths[i],bundle.manifest.images[type]).imageId,bundle.manifest.images[type].imageId);
