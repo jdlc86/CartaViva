@@ -229,6 +229,11 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader,ctx}){
     inventorySha256:inventory.plaintextSha256};
    proofBytes=header.proofBytes;
   }else source=await bundle(sourceDirectory,ctx);
+  // A separately signed laboratory scope may cap each individual bundle.
+  // This bound precedes candidate creation and leaves the old slot intact.
+  if(scope.maxBundleBytes!==undefined&&(!Number.isSafeInteger(scope.maxBundleBytes)||
+     scope.maxBundleBytes<1||source.bytes>scope.maxBundleBytes||(current?.bytes??0)>scope.maxBundleBytes))
+   stop('bundle_budget_exceeded');
   const signed=proof(proofBytes,ctx,current,source);
   if(reader)reader.setExpiry(Date.parse(signed.validUntil));
   if(current&&(source.manifest.backupId===current.manifest.backupId||
