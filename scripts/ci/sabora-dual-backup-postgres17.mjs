@@ -18,7 +18,8 @@ import {
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
 import {openPostgresBackupSnapshot,readPreinstallState} from '../ops/sabora-postgres-snapshot.mjs';
-import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRecovery} from '../ops/sabora-vps-backup-rotation.mjs';
+import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRecovery,
+ inspectVpsPublishedPurge,finishInterruptedVpsPurge} from '../ops/sabora-vps-backup-rotation.mjs';
 import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 
@@ -100,10 +101,12 @@ async function rotateFromPipe({root:cache,sourceDirectory,scope,proofBytes}){
  }finally{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');}
 }
 const rotationAuthority=generateKeyPairSync('ed25519');
+const reconciliationAuthority=generateKeyPairSync('ed25519');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 function rotationScope(systemIdentifier){return {environment:'disposable-lab',systemIdentifier,
  storageIdentitySha256:digest('ci-only-vps-storage-'+runId),externalStorageIdentitySha256:digest('ci-only-external-storage-'+runId),
- verifierPublicKey:rotationAuthority.publicKey.export({format:'pem',type:'spki'}),quotaBytes:4*1024**3,reserveBytes:1048576};}
+ verifierPublicKey:rotationAuthority.publicKey.export({format:'pem',type:'spki'}),
+ recoveryPublicKey:reconciliationAuthority.publicKey.export({format:'pem',type:'spki'}),quotaBytes:4*1024**3,reserveBytes:1048576};}
 function rotationProof(scope,result,previous,recoveryKind,recoveredInventorySha256,recoveryEvidenceSha256){
  const payload={schema:'sabora-vps-rotation-proof/v1',repository:'jdlc86/CartaViva',project:'sabora',environment:scope.environment,
   storageIdentitySha256:scope.storageIdentitySha256,externalStorageIdentitySha256:scope.externalStorageIdentitySha256,
@@ -113,6 +116,15 @@ function rotationProof(scope,result,previous,recoveryKind,recoveredInventorySha2
  return Buffer.from(JSON.stringify({payload,signature:sign(null,Buffer.from(stableStringify(payload)),rotationAuthority.privateKey).toString('base64')}));
 }
 
+function purgeAuthorization(scope,subject,externalProof,overrides={}){
+ const payload={schema:'sabora-vps-purge-authorization/v1',repository:'jdlc86/CartaViva',project:'sabora',
+  environment:scope.environment,action:'finish-published-purge',storageIdentitySha256:scope.storageIdentitySha256,
+  externalStorageIdentitySha256:scope.externalStorageIdentitySha256,lockSha256:subject.lockSha256,
+  currentManifestSha256:subject.currentManifestSha256,previousManifestSha256:subject.previousManifestSha256,
+  previousRemainderSha256:subject.previousRemainderSha256,externalProofSha256:digest(externalProof),
+  observedAt:new Date().toISOString(),validUntil:new Date(Date.now()+300000).toISOString(),...overrides};
+ return Buffer.from(JSON.stringify({payload,signature:sign(null,Buffer.from(stableStringify(payload)),reconciliationAuthority.privateKey).toString('base64')}));
+}
 const fixture=await mkdtemp(join(process.env.RUNNER_TEMP||tmpdir(),'sabora-dual-backup-'));
 const capture=join(fixture,'encrypted-capture');
 const offsite=join(fixture,'external-store-fixture');
@@ -496,6 +508,58 @@ try{
   assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
   console.log('sabora_vps_backup_rotation_sigkill_ok:'+phase);
   console.log('sabora_vps_backup_recovery_diagnosis_ok:'+phase);
+  if(!['state-published','purge-started'].includes(phase)){
+   await assert.rejects(inspectVpsPublishedPurge({root:crashRoot,scope}),/recovery_phase_not_supported/);
+   continue;
+  }
+  const subject=await inspectVpsPublishedPurge({root:crashRoot,scope});
+  assert.equal(subject.writerExcluded,false);assert.equal(subject.deletionAuthorized,false);
+  assert.equal(subject.previousRemainder,phase==='purge-started'?'verified-subset':'complete');
+  const externalProof=rotationProof(scope,second,initialResult.manifestSha256,kind,
+   second.manifest.components[0].plaintextSha256,initialEvidence);
+  const authorized={root:crashRoot,scope,externalProofBytes:externalProof,
+   authorizationBytes:purgeAuthorization(scope,subject,externalProof)};
+  await assert.rejects(finishInterruptedVpsPurge({...authorized,scope:{...scope,environment:'production'}}),/production_reconciliation_not_enabled/);
+  await assert.rejects(finishInterruptedVpsPurge({...authorized,scope:{...scope,recoveryPublicKey:scope.verifierPublicKey}}),/recovery_authority_not_independent/);
+  await assert.rejects(finishInterruptedVpsPurge({...authorized,authorizationBytes:purgeAuthorization(scope,subject,externalProof,
+   {previousRemainderSha256:'f'.repeat(64)})}),/recovery_authorization_scope_mismatch/);
+  await assert.rejects(finishInterruptedVpsPurge({...authorized,authorizationBytes:purgeAuthorization(scope,subject,externalProof,
+   {observedAt:new Date(Date.now()-60000).toISOString(),validUntil:new Date(Date.now()-1000).toISOString()})}),/recovery_authorization_time_invalid/);
+  const invalidExternal=Buffer.from(JSON.stringify({...JSON.parse(externalProof),signature:Buffer.alloc(64).toString('base64')}));
+  await assert.rejects(finishInterruptedVpsPurge({...authorized,externalProofBytes:invalidExternal,
+   authorizationBytes:purgeAuthorization(scope,subject,invalidExternal)}),/document_signature_invalid/);
+  // A distinct process owns the same open-file description guard while
+  // neither rotation nor signed reconciliation may enter its critical section.
+  const guardPath=join(fixture,'.'+basename(crashRoot)+'.rotation.guard');
+  const liveWriter=spawn(process.execPath,['--input-type=module','--eval',`
+   import {open} from 'node:fs/promises';
+   import {spawnSync} from 'node:child_process';
+   const fd=await open(process.argv[1],'r+');
+   const locked=spawnSync('/usr/bin/flock',['-n','-E','75','3'],{stdio:['ignore','ignore','ignore',fd.fd]});
+   if(locked.status!==0)throw Error('fixture_guard_failed');
+   process.stdout.write('ready\\n');
+   process.stdin.resume();
+  `,guardPath],{stdio:['pipe','pipe','pipe']});
+  const ended=once(liveWriter,'close');
+  try{
+   const [ready]=await once(liveWriter.stdout,'data');assert.equal(String(ready),'ready\n');
+   await assert.rejects(finishInterruptedVpsPurge(authorized),/locked_or_interrupted/);
+   await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,root:crashRoot}),/locked_or_interrupted/);
+  }finally{liveWriter.kill('SIGKILL');await ended;}
+  assert.deepEqual((await readdir(crashRoot)).sort(),entries.sort());
+  assert.equal((await inspectVpsPublishedPurge({root:crashRoot,scope})).previousRemainderSha256,subject.previousRemainderSha256);
+  const unexpected=join(crashRoot,'previous','unexpected-fixture');
+  await writeFile(unexpected,'not part of manifest',{mode:0o600,flag:'wx'});
+  await assert.rejects(finishInterruptedVpsPurge(authorized),/recovery_phase_not_supported|unexpected_previous_file/);
+  await rm(unexpected);
+  const repaired=await finishInterruptedVpsPurge(authorized);
+  assert.equal(repaired.operationalReceipt,false);assert.equal(repaired.generations,1);
+  assert.equal(repaired.currentManifestSha256,second.manifestSha256);
+  assert.deepEqual((await readdir(crashRoot)).sort(),['current','state.json']);
+  assert.equal((await inspectVpsRotationRecovery({root:crashRoot,scope})).phase,'stable');
+  await assert.rejects(finishInterruptedVpsPurge(authorized),/recovery_phase_not_supported/);
+  assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
+  console.log('sabora_vps_backup_published_purge_reconciled_ok:'+phase);
  }
  // Negative wire cases use the small initial-state bundle only; do not buffer
  // the large V2 payloads. The valid receive path streams via real child pipes.
