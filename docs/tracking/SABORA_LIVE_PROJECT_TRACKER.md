@@ -1547,3 +1547,8 @@ main 8d8189eabf92c5c15f4eb841cd367033558caceb 5/5 SUCCESS, paquete exacto [14532
 ## 150. S43 — decisión del propietario: una generación verificada de backup VPS
 
 [Decisión y ejecución propuesta S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md), [metodología](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), continuidad S43-3e.11. Reemplazar únicamente cuando la nueva copia está verificada; conservar la anterior si falla; dos generaciones simultáneas solo durante sustitución/reconciliación. No confundir checksums con autenticación/recuperación ni borrar puntos de retorno pre-SQL todavía necesarios. Rotación segura no implementada/ensayada; no hay autorización de borrado ni cambios de host. Frecuencia, cuota y retención externa pendientes.
+
+
+## 151. S43 — continuación del bloque de rotación segura
+
+Propietario autoriza continuar preparación/desarrollo tras actualizar continuidad S43-3e.12. Diseño y ensayos de rotación pendientes. Reutilizar backup existente; ningún borrado real, provisioning, SQL, merge ni cambio de main autorizado. Mantener un único PR de este hito cuando exista candidato integrado y evidencia.
