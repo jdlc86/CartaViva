@@ -431,6 +431,37 @@ async function inspectPreviousRemainder(path,ctx,expected){
  const status=same(entries,Object.keys(expected.files))?'complete':'verified-subset';
  return {status,sha256:sha(JSON.stringify({status,files:items.map(({name,sha256,bytes})=>({name,sha256,bytes}))})),items};
 }
+// Bounded authorization consumption. A single durable counter lives outside
+// the rotated slots under the same private parent and OS guard. A torn
+// unpublished counter is UNKNOWN: never silently remove or reset it.
+// No production provisioning/initialization is authorized by this candidate.
+const recoverySequencePaths=root=>{
+ const prefix=join(dirname(root),'.'+basename(root)+'.recovery-sequence');
+ return {record:prefix+'.json',pending:prefix+'.pending'};
+};
+async function readRecoverySequence(root,ctx){
+ await directory(dirname(root),ctx);
+ const {record,pending}=recoverySequencePaths(root);
+ if(await exists(pending))stop('recovery_sequence_interrupted');
+ if(!await exists(record))return 0;
+ const value=JSON.parse((await readObservation(record,ctx,4096)).bytes.toString('utf8'));
+ if(!exactKeys(value,['schema','storageIdentitySha256','externalStorageIdentitySha256',
+  'sequence','authorizationSha256','lockSha256'])||value.schema!=='sabora-vps-recovery-sequence/v1'||
+  value.storageIdentitySha256!==ctx.storageIdentitySha256||
+  value.externalStorageIdentitySha256!==ctx.externalStorageIdentitySha256||
+  !Number.isSafeInteger(value.sequence)||value.sequence<1||value.sequence>=Number.MAX_SAFE_INTEGER||
+  !hash(value.authorizationSha256)||!hash(value.lockSha256))stop('recovery_sequence_invalid');
+ return value.sequence;
+}
+async function consumeRecoverySequence(root,ctx,auth,authorizationBytes){
+ if(auth.sequence!==1+await readRecoverySequence(root,ctx))stop('recovery_authorization_scope_mismatch');
+ const {record,pending}=recoverySequencePaths(root);
+ const value={schema:'sabora-vps-recovery-sequence/v1',storageIdentitySha256:ctx.storageIdentitySha256,
+  externalStorageIdentitySha256:ctx.externalStorageIdentitySha256,sequence:auth.sequence,
+  authorizationSha256:sha(authorizationBytes),lockSha256:auth.lockSha256};
+ await exclusive(pending,value);await rename(pending,record);await syncDir(dirname(root));
+ if(await readRecoverySequence(root,ctx)!==auth.sequence)stop('recovery_sequence_invalid');
+}
 async function publishedPurgeSubject(root,ctx){
  const lockPath=join(root,'rotation.lock'),statePath=join(root,'state.json'),currentPath=join(root,'current');
  const diagnosis=await inspectVpsRotationRecovery({root,scope:ctx});
@@ -454,7 +485,8 @@ export async function inspectVpsPublishedPurge({root,scope}={}){
  return Object.freeze({schema:'sabora-vps-published-purge-subject/v1',writerExcluded:false,
   deletionAuthorized:false,lockSha256:subject.lock.sha256,
   currentManifestSha256:subject.next.manifestSha256,previousManifestSha256:subject.previous?.manifestSha256??null,
-  previousRemainderSha256:subject.remainder.sha256,previousRemainder:subject.remainder.status});
+  previousRemainderSha256:subject.remainder.sha256,previousRemainder:subject.remainder.status,
+  sequence:1+await readRecoverySequence(root,ctx)});
 }
 export async function finishInterruptedVpsPurge({root,scope,authorizationBytes,externalProofBytes}={}){
  // Keep the candidate unavailable to production even for a purportedly valid
@@ -469,13 +501,14 @@ export async function finishInterruptedVpsPurge({root,scope,authorizationBytes,e
   const auth=verifySignedDocument(authorizationBytes,ctx.recoveryPublicKey,'sabora-vps-purge-authorization/v1');
   if(!exactKeys(auth,['schema','repository','project','environment','action','storageIdentitySha256',
    'externalStorageIdentitySha256','lockSha256','currentManifestSha256','previousManifestSha256',
-   'previousRemainderSha256','externalProofSha256','observedAt','validUntil'])||
+   'previousRemainderSha256','externalProofSha256','sequence','observedAt','validUntil'])||
    auth.repository!=='jdlc86/CartaViva'||auth.project!=='sabora'||auth.environment!==ctx.environment||
    auth.action!=='finish-published-purge'||
    auth.storageIdentitySha256!==ctx.storageIdentitySha256||auth.externalStorageIdentitySha256!==ctx.externalStorageIdentitySha256||
    auth.lockSha256!==subject.lock.sha256||auth.currentManifestSha256!==subject.next.manifestSha256||
    auth.previousManifestSha256!==(subject.previous?.manifestSha256??null)||
-   auth.previousRemainderSha256!==subject.remainder.sha256||auth.externalProofSha256!==sha(externalProofBytes))
+   auth.previousRemainderSha256!==subject.remainder.sha256||auth.externalProofSha256!==sha(externalProofBytes)||
+   auth.sequence!==1+await readRecoverySequence(root,ctx))
    stop('recovery_authorization_scope_mismatch');
   const observed=Date.parse(auth.observedAt),expires=Date.parse(auth.validUntil);
   if(!Number.isFinite(observed)||!Number.isFinite(expires)||observed>Date.now()||
@@ -500,6 +533,7 @@ export async function finishInterruptedVpsPurge({root,scope,authorizationBytes,e
   if(ready.lock.sha256!==subject.lock.sha256||ready.remainder.sha256!==subject.remainder.sha256||
    ready.current.manifestSha256!==subject.current.manifestSha256)stop('recovery_subject_changed');
   checkTime();
+  await consumeRecoverySequence(root,ctx,auth,authorizationBytes);
   if(ready.remainder.status!=='absent'){
    for(const item of ready.remainder.items){
     checkTime();
@@ -520,5 +554,166 @@ export async function finishInterruptedVpsPurge({root,scope,authorizationBytes,e
   await unlink(join(root,'rotation.lock'));await syncDir(root);
   return Object.freeze({schema:'sabora-vps-purge-reconciliation-result/v1',
    currentManifestSha256:confirmed.manifestSha256,generations:1,operationalReceipt:false});
+ });
+}
+
+
+// Separate, named recovery transitions. No path, shell command, generic
+// deletion or phase choice is accepted from the signed document. A
+// transition either preserves an authenticated bundle or refuses to change
+// anything. Production remains unreachable.
+const RECOVERY_ACTIONS=Object.freeze({
+ 'initial-receipt':'discard-verified-candidate',
+ 'before-promotion':'discard-verified-candidate',
+ 'between-renames':'restore-predecessor-name',
+ 'promoted-unpublished':'publish-promoted-state'
+});
+async function syncRecoveryState(path,ctx){
+ const before=await file(path,ctx.uid,262144);
+ const fd=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const st=await fd.stat();
+  if(st.dev!==before.dev||st.ino!==before.ino||st.ctimeMs!==before.ctimeMs)stop('recovery_state_changed');
+  await fd.sync();
+ }finally{await fd.close();}
+}
+async function transitionSubject(root,ctx){
+ const lockPath=join(root,'rotation.lock'),statePath=join(root,'state.json');
+ const diagnosis=await inspectVpsRotationRecovery({root,scope:ctx});
+ const action=RECOVERY_ACTIONS[diagnosis.phase];
+ if(!action)stop('recovery_phase_not_supported');
+ const lock=await readObservation(lockPath,ctx,MAX_INTENT);
+ if(lock.sha256!==diagnosis.lockSha256)stop('observation_changed');
+ const intent=JSON.parse(lock.bytes.toString('utf8'));
+ const next=decodeIntentRecord(intent.next,ctx);
+ const previous=intent.previous===null?null:decodeIntentRecord(intent.previous,ctx);
+ if(next.signed.previousManifestSha256!==(previous?.manifestSha256??null))stop('intent_scope_invalid');
+ let keep=null,keepRecord,keepSlot=null,remainder,prior;
+ const previousPath=join(root,'previous'),candidatePath=join(root,'candidate');
+ if(diagnosis.phase==='between-renames'){
+  keepSlot='previous';keepRecord=previous;
+ }else if(diagnosis.phase==='before-promotion'){
+  keepSlot='current';keepRecord=previous;
+ }else if(diagnosis.phase==='promoted-unpublished'){
+  keepSlot='current';keepRecord=next;
+ }else keepRecord=next;
+ if(keepSlot){
+  keep=await bundle(join(root,keepSlot),ctx);
+  if(keep.manifestSha256!==keepRecord?.manifestSha256)stop('recovery_state_mismatch');
+ }
+ if(previous){
+  // Even when its directory is temporarily named previous, the published
+  // predecessor state must be exactly the authenticated historical record.
+  prior=await readObservation(statePath,ctx,262144);
+  const state=JSON.parse(prior.bytes.toString('utf8'));
+  if(!exactKeys(state,['schema','manifestSha256','proof'])||
+   state.schema!=='sabora-vps-rotation-state/v1'||
+   state.manifestSha256!==previous.manifestSha256||
+   JSON.stringify(state.proof)!==JSON.stringify(intent.previous.proof))stop('recovery_state_mismatch');
+ }else if(await exists(statePath))stop('recovery_state_mismatch');
+ if(action==='publish-promoted-state'){
+  remainder=await inspectPreviousRemainder(previousPath,ctx,previous);
+  if(remainder.status!==(previous?'complete':'absent'))stop('recovery_previous_incomplete');
+ }else{
+  remainder=await inspectPreviousRemainder(candidatePath,ctx,next);
+  if(action==='restore-predecessor-name'&&remainder.status!=='complete')stop('recovery_candidate_incomplete');
+ }
+ if((await readObservation(lockPath,ctx,MAX_INTENT)).sha256!==lock.sha256)stop('observation_changed');
+ const identity={phase:diagnosis.phase,action,lockSha256:lock.sha256,
+  previousManifestSha256:previous?.manifestSha256??null,nextManifestSha256:next.manifestSha256,
+  retainedManifestSha256:keepRecord.manifestSha256,remainderSha256:remainder.sha256,
+  priorStateSha256:prior?.sha256??null};
+ return {identity,subjectSha256:sha(JSON.stringify(identity)),lock,intent,next,previous,
+  keep,keepRecord,keepSlot,remainder,prior,action};
+}
+export async function inspectVpsRecoveryTransition({root,scope}={}){
+ const ctx=await rotationContext(root,scope);
+ const subject=await transitionSubject(root,ctx);
+ return Object.freeze({schema:'sabora-vps-recovery-transition-subject/v1',
+  ...subject.identity,subjectSha256:subject.subjectSha256,sequence:1+await readRecoverySequence(root,ctx),
+  remainder:subject.remainder.status,writerExcluded:false,deletionAuthorized:false});
+}
+export async function applyVpsRecoveryTransition({root,scope,authorizationBytes,externalProofBytes}={}){
+ if(scope?.environment!=='disposable-lab')stop('production_reconciliation_not_enabled');
+ for(const bytes of [authorizationBytes,externalProofBytes])
+  if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>262144)stop('invalid_recovery_document');
+ return withRotationGuard(root,scope,async ctx=>{
+  if(authorityFingerprint(ctx.recoveryPublicKey)===authorityFingerprint(ctx.verifierPublicKey))
+   stop('recovery_authority_not_independent');
+  const subject=await transitionSubject(root,ctx);
+  const auth=verifySignedDocument(authorizationBytes,ctx.recoveryPublicKey,'sabora-vps-recovery-transition/v1');
+  if(!exactKeys(auth,['schema','repository','project','environment','action','storageIdentitySha256',
+   'externalStorageIdentitySha256','lockSha256','subjectSha256','externalProofSha256',
+   'sequence','observedAt','validUntil'])||
+   auth.repository!=='jdlc86/CartaViva'||auth.project!=='sabora'||auth.environment!==ctx.environment||
+   auth.action!==subject.action||auth.storageIdentitySha256!==ctx.storageIdentitySha256||
+   auth.externalStorageIdentitySha256!==ctx.externalStorageIdentitySha256||
+   auth.lockSha256!==subject.lock.sha256||auth.subjectSha256!==subject.subjectSha256||
+   auth.externalProofSha256!==sha(externalProofBytes)||auth.sequence!==1+await readRecoverySequence(root,ctx))
+   stop('recovery_authorization_scope_mismatch');
+  const observed=Date.parse(auth.observedAt),expires=Date.parse(auth.validUntil);
+  if(!Number.isFinite(observed)||!Number.isFinite(expires)||observed>Date.now()||
+   expires<=Date.now()||expires<=observed||expires-observed>3600000)stop('recovery_authorization_time_invalid');
+  // Fresh proof of the generation that must remain independently
+  // recoverable; for an initial discard only the external copy remains.
+  const predecessor=subject.keepRecord.signed.previousManifestSha256;
+  const fresh=proof(externalProofBytes,ctx,predecessor===null?null:{manifestSha256:predecessor},subject.keepRecord);
+  const until=Math.min(expires,Date.parse(fresh.validUntil));
+  const checkTime=()=>{if(Date.now()>=until)stop('recovery_authorization_expired');};
+  const statePath=join(root,'state.json'),candidatePath=join(root,'candidate');
+  const lockPath=join(root,'rotation.lock'),currentPath=join(root,'current'),previousPath=join(root,'previous');
+  if(subject.keep)await syncBundle(join(root,subject.keepSlot),subject.keep,ctx);
+  if(subject.prior)await syncRecoveryState(statePath,ctx);
+  await syncDir(root);
+  const ready=await transitionSubject(root,ctx);
+  if(ready.subjectSha256!==subject.subjectSha256)stop('recovery_subject_changed');
+  checkTime();
+  await consumeRecoverySequence(root,ctx,auth,authorizationBytes);
+  checkTime();
+  if(ready.action==='restore-predecessor-name'){
+   // A rename back to the published name restores the old usable bundle.
+   // Leave the exact candidate and intent for a separately authorized discard.
+   await rename(previousPath,currentPath);await syncDir(root);
+   const after=await transitionSubject(root,ctx);
+   if(after.identity.phase!=='before-promotion'||after.lock.sha256!==ready.lock.sha256||
+    after.identity.retainedManifestSha256!==ready.identity.retainedManifestSha256)stop('recovery_final_state_changed');
+   return Object.freeze({schema:'sabora-vps-recovery-transition-result/v1',action:ready.action,
+    phase:'before-promotion',blocked:true,operationalReceipt:false});
+  }
+  if(ready.action==='publish-promoted-state'){
+   const partial=join(root,'.state-'+randomBytes(16).toString('hex'));
+   await exclusive(partial,{schema:'sabora-vps-rotation-state/v1',manifestSha256:ready.next.manifestSha256,
+    proof:ready.intent.next.proof});
+   checkTime();await rename(partial,statePath);await syncDir(root);
+   const after=await publishedPurgeSubject(root,ctx);
+   if(after.lock.sha256!==ready.lock.sha256||
+    after.current.manifestSha256!==ready.next.manifestSha256)stop('recovery_final_state_changed');
+   // Separate authorization required before deletion of previous.
+   return Object.freeze({schema:'sabora-vps-recovery-transition-result/v1',action:ready.action,
+    phase:'state-published',blocked:true,operationalReceipt:false});
+  }
+  // Discard only bytes still matching the signed candidate inventory.
+  // A truncated or otherwise unverified component is not eligible.
+  if(ready.remainder.status!=='absent'){
+   for(const item of ready.remainder.items){
+    checkTime();
+    const p=join(candidatePath,item.name),actual=await hashFile(p,ctx.uid,item.name==='manifest.json'?262144:1024**3);
+    if(actual.sha256!==item.sha256||actual.bytes!==item.bytes||actual.stat.ino!==item.stat.ino||
+     actual.stat.dev!==item.stat.dev||actual.stat.ctimeMs!==item.stat.ctimeMs)stop('candidate_changed');
+    await unlink(p);
+   }
+   await syncDir(candidatePath);await rmdir(candidatePath);await syncDir(root);
+  }
+  if(ready.previous){
+   const retained=await bundle(currentPath,ctx);
+   await readState(statePath,ctx,retained);
+   if(retained.manifestSha256!==ready.previous.manifestSha256)stop('recovery_final_state_changed');
+  }
+  const finalEntries=ready.previous?['current','state.json','rotation.lock']:['rotation.lock'];
+  if(!same(await readdir(root),finalEntries)||
+   (await readObservation(lockPath,ctx,MAX_INTENT)).sha256!==ready.lock.sha256)stop('recovery_final_state_changed');
+  checkTime();await unlink(lockPath);await syncDir(root);
+  return Object.freeze({schema:'sabora-vps-recovery-transition-result/v1',action:ready.action,
+   phase:ready.previous?'stable':'empty',blocked:false,operationalReceipt:false});
  });
 }
