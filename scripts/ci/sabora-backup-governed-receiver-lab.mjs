@@ -178,9 +178,11 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    if(accountUid!==undefined&&uid!==accountUid)stop('cleanup_account_identity_changed');
    if(!Number.isSafeInteger(uid)||uid<=0)stop('cleanup_account_identity_invalid');
    const processes=()=>{
-    const p=run('/usr/bin/pgrep',['-u',String(uid)],{allowFailure:true});
-    if(![0,1].includes(p.status))stop('cleanup_process_probe_failed');
-    return p.status===0;
+    return ['-u','-U'].map(flag=>{
+     const p=run('/usr/bin/pgrep',[flag,String(uid)],{allowFailure:true});
+     if(![0,1].includes(p.status))stop('cleanup_process_probe_failed');
+     return p.status===0;
+    }).some(Boolean);
    };
    for(let i=0;i<100&&processes();i++)await delay(50);
    if(processes())stop('cleanup_account_sessions_still_live');
