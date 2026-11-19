@@ -23,6 +23,7 @@ import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRec
 import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 import {startBackupSshLab,withBoundedBackupVolume} from './sabora-vps-backup-ssh-lab.mjs';
+import {exerciseGovernedBackupReceiver} from './sabora-backup-governed-receiver-lab.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -804,7 +805,15 @@ try{
    assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
    assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
   }finally{await bounded.close();}
+  const governedScope={...boundedScope,storageIdentitySha256:digest('ci-only-governed-vps-storage-'+runId),
+   maxBundleBytes:4*1024**2};
+  await exerciseGovernedBackupReceiver({volume,scope:governedScope,repository:root,sourceSha:releaseSha,
+   first:{...firstTransport,proofBytes:rotationProof(governedScope,initialResult,null,kind,
+    initialResult.manifest.components[0].plaintextSha256,initialEvidence)},
+   second:{...secondTransport,proofBytes:rotationProof(governedScope,second,initialResult.manifestSha256,kind,
+    second.manifest.components[0].plaintextSha256,initialEvidence)}});
  }});
+ console.log('sabora_backup_governed_disposable_resources_closed_ok');
  console.log('sabora_vps_backup_bounded_disk_unmounted_ok');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
