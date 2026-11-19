@@ -41,18 +41,23 @@ export async function backupLabSshArguments(endpoint){
   '-o','ConnectTimeout=5','-o','ServerAliveInterval=10','-o','ServerAliveCountMax=3',
   '-i',endpoint.identityFile,'-p',String(endpoint.port),'-l',endpoint.user,endpoint.host];
 }
-export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,expected,timeoutMs=3600000}={}){
+export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,expected,timeoutMs=3600000,signal}={}){
  const args=await backupLabSshArguments(endpoint);
  if(!exactKeys(expected,['backupId','manifestSha256','previousManifestSha256'])||
   typeof expected.backupId!=='string'||!/^SABORA-BACKUP-[A-Z0-9-]{8,80}$/.test(expected.backupId)||
   !sha(expected.manifestSha256)||(expected.previousManifestSha256!==null&&!sha(expected.previousManifestSha256))||
   !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>3600000)stop('expected_receipt_invalid');
+ if(signal!==undefined&&!(signal instanceof AbortSignal))stop('invalid_abort_signal');
+ if(signal?.aborted)stop('transfer_outcome_unknown');
  const env={LANG:'C'};
  for(const name of ['SystemRoot','WINDIR','TEMP','TMP'])if(process.env[name])env[name]=process.env[name];
  const child=spawn(endpoint.sshBinary,[...args,BACKUP_RECEIVE_COMMAND],
   {stdio:['pipe','pipe','pipe'],shell:false,windowsHide:true,env});
  const abort=new AbortController();let oversized=false,received=0;const chunks=[];
- const timer=setTimeout(()=>{abort.abort();child.kill();},timeoutMs);
+ const cancel=()=>{abort.abort();child.kill();};
+ signal?.addEventListener('abort',cancel,{once:true});
+ if(signal?.aborted)cancel();
+ const timer=setTimeout(cancel,timeoutMs);
  const ended=once(child,'close');ended.catch(()=>{});
  child.stdout.on('data',chunk=>{
   received+=chunk.length;
@@ -73,5 +78,5 @@ export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,
    ack.manifestSha256!==expected.manifestSha256||ack.previousManifestSha256!==expected.previousManifestSha256||
    ack.generations!==1||ack.operationalReceipt!==false)stop('transfer_outcome_unknown');
   return Object.freeze(ack);
- }finally{clearTimeout(timer);if(child.exitCode===null&&child.signalCode===null)child.kill();}
+ }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(child.exitCode===null&&child.signalCode===null)child.kill();}
 }
