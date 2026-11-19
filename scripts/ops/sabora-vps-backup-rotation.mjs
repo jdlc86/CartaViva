@@ -213,18 +213,24 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
   if(current?.manifest.schema===PREINSTALL_SCHEMA&&source.manifest.schema===V2&&
    source.manifest.migrationTreeSha256!==current.manifest.plannedMigrationTreeSha256)
    stop('initial_recovery_plan_not_fulfilled');
-  const needed=source.bytes+scope.reserveBytes;
-  const total=(current?.bytes??0)+needed;
-  const space=await statfs(root,{bigint:true});
-  if(!Number.isSafeInteger(total)||total>scope.quotaBytes||space.bavail*space.bsize<BigInt(needed))
-   stop('insufficient_reserved_capacity');
   // Persist both signed choices and exact manifest bytes before candidate
   // creation. Recovery can identify even a partially purged previous slot.
   // Replacing the existing lock is atomic: another writer never sees a gap.
   const intent={schema:INTENT,pid:process.pid,
    previous:current?{manifestB64:current.manifestBytes.toString('base64'),proof:previousState.proof}:null,
    next:{manifestB64:source.manifestBytes.toString('base64'),proof:JSON.parse(proofBytes.toString('utf8'))}};
-  if(Buffer.byteLength(JSON.stringify(intent)+'\n')>MAX_INTENT)stop('intent_too_large');
+  const intentBytes=Buffer.byteLength(JSON.stringify(intent)+'\n');
+  if(intentBytes>MAX_INTENT)stop('intent_too_large');
+  const nextStateBytes=Buffer.byteLength(JSON.stringify({schema:'sabora-vps-rotation-state/v1',
+   manifestSha256:source.manifestSha256,proof:intent.next.proof})+'\n');
+  if(nextStateBytes>262144)stop('state_too_large');
+  // Reserve the transient intent and both state files as well as the two
+  // ciphertext bundles; the filesystem's physical quota is a separate gate.
+  const needed=source.bytes+scope.reserveBytes+intentBytes+nextStateBytes;
+  const total=(current?.bytes??0)+(current?(await file(statePath,ctx.uid,262144)).size:0)+needed;
+  const space=await statfs(root,{bigint:true});
+  if(!Number.isSafeInteger(total)||total>scope.quotaBytes||space.bavail*space.bsize<BigInt(needed))
+   stop('insufficient_reserved_capacity');
   mutation=true;
   const intentTemp=join(root,'.intent-'+randomBytes(16).toString('hex'));
   await exclusive(intentTemp,intent);await rename(intentTemp,lock);await syncDir(root);
