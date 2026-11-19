@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash,createCipheriv,randomBytes} from 'node:crypto';
 import {createServer} from 'node:net';
-import {mkdtemp,realpath,readFile,writeFile,mkdir,rm} from 'node:fs/promises';
+import {mkdtemp,realpath,readFile,writeFile,mkdir,rm,lstat,link,unlink} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {Readable} from 'node:stream';
 import {verifiedNtfsAclDigest} from '../ops/sabora-ntfs-acl-verifier.mjs';
@@ -81,7 +81,26 @@ try{
   windowsAcl:{directorySha256:verifiedNtfsAclDigest(root),identitySha256:verifiedNtfsAclDigest(client),
    knownHostsSha256:verifiedNtfsAclDigest(known),clientBinarySha256:digest(await readFile(ssh)),
    knownHostsContentSha256:digest(await readFile(known))}};
+ const nativeStat=await lstat(ssh);
+ // Bounded diagnostic: no path, SID, key, or identifying ACL emitted.
+ console.log('sabora_backup_windows_native_file_observed:'+JSON.stringify({
+  regular:nativeStat.isFile(),symbolic:nativeStat.isSymbolicLink(),links:nativeStat.nlink,
+  sizeBytes:nativeStat.size}));
  const args=await backupLabSshArguments(endpoint);
+ await assert.rejects(backupLabSshArguments({...endpoint,sshBinary:await realpath(keygen)}),/windows_client_path_invalid/);
+ await assert.rejects(backupLabSshArguments({...endpoint,windowsAcl:{...endpoint.windowsAcl,
+  clientBinarySha256:'f'.repeat(64)}}),/windows_client_identity_invalid/);
+ // Hard links remain forbidden for both private identity and host pin,
+ // even if their content/DACL match the expected observations exactly.
+ for(const path of [client,known]){
+  const alias=path+' alias';
+  await link(path,alias);
+  try{
+   assert.equal((await lstat(path)).nlink,2);
+   await assert.rejects(backupLabSshArguments(endpoint),/local_file_link_count_invalid/);
+  }finally{await unlink(alias);}
+ }
+ console.log('sabora_backup_windows_native_path_hash_and_private_link_guards_ok');
  const config=run(ssh,['-G',...args,'sabora-backup-receive-v1']);
  assert.match(config,/^hostname 127\.0\.0\.1\r?$/m);
  assert.match(config,/^batchmode yes\r?$/m);
