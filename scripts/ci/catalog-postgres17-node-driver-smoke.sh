@@ -45,6 +45,8 @@ node --check scripts/ci/zero-cost-account-postgres17.test.mjs
 node --check scripts/ci/sabora-dual-backup-postgres17.mjs
 if [[ "$scope" = full ]]; then
   node --check scripts/ci/sabora-vps-backup-ssh-lab.mjs
+  node --check scripts/ci/sabora-backup-governed-receiver-lab.mjs
+  node --check scripts/ops/sabora-backup-governed-lab-entry.mjs
   node --check scripts/ops/sabora-vps-backup-transport.mjs
   node --check scripts/ops/sabora-vps-backup-lab-entry.mjs
   # The full suite already requires a disposable Linux Actions runner.
@@ -57,7 +59,7 @@ if [[ "$scope" = full ]]; then
     sudo -n apt-get update -qq
     sudo -n apt-get install -y --no-install-recommends openssh-server openssh-client
   fi
-  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock; do
+  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock /usr/bin/cc /usr/sbin/useradd /usr/sbin/usermod /usr/sbin/userdel; do
     test -x "$tool" || { echo 'Missing disposable volume tool' >&2; exit 1; }
   done
 fi
