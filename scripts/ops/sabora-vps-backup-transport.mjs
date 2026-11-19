@@ -86,6 +86,47 @@ export async function backupLabSshArguments(endpoint){
   '-o','ConnectTimeout=5','-o','ServerAliveInterval=10','-o','ServerAliveCountMax=3',
   '-i',endpoint.identityFile,'-p',String(endpoint.port),'-l',endpoint.user,endpoint.host];
 }
+// Native Windows OpenSSH uses Windows profile/system context in addition
+// to the explicit SSH options. Preserve only the named OS variables; never
+// inherit SSH_AUTH_SOCK, SSH_ASKPASS, HOME overrides, arbitrary PATH or Git
+// configuration. This is a lab environment, not a signed installation.
+export function backupLabSshEnvironment(){
+ const env={LANG:'C'};
+ for(const name of ['SystemRoot','WINDIR','TEMP','TMP'])if(process.env[name])env[name]=process.env[name];
+ if(process.platform==='win32'){
+  const root=process.env.SystemRoot??'C:\\Windows';
+  env.SystemRoot=root;env.WINDIR=root;
+  for(const name of ['USERPROFILE','USERNAME','USERDOMAIN','HOMEDRIVE','HOMEPATH',
+   'PROGRAMDATA','ALLUSERSPROFILE','APPDATA','LOCALAPPDATA','COMPUTERNAME'])
+   if(process.env[name])env[name]=process.env[name];
+  env.Path=[join(root,'System32','OpenSSH'),join(root,'System32'),root].join(';');
+ }
+ return env;
+}
+// No raw remote diagnostics or filenames are exposed. Keep enough typed
+// evidence to distinguish spawn, local encoder/pipe and SSH handshake faults
+// without weakening the result-unknown contract (never retry automatically).
+export function classifyBackupSshFailure({spawnFailed=false,wireCode='',stderr='',timedOut=false,aborted=false,exitCode=null,signal=null}={}){
+ const reason=String(stderr).slice(0,4096);
+ let category='ssh_exit_or_ack_invalid';
+ if(timedOut)category='deadline';
+ else if(aborted)category='cancelled';
+ else if(spawnFailed)category='spawn_failed';
+ else if(/getpwuid|getpwnam|unable to (get|resolve).*(user|profile)|no user exists|user profile|failed to get.*(sid|username)/i.test(reason))category='native_user_context';
+ else if(/bad configuration option|unsupported option|unknown option|bad owner or permissions/i.test(reason))category='client_configuration';
+ else if(/host key verification failed|remote host identification has changed/i.test(reason))category='host_identity';
+ else if(/permission denied \(publickey/i.test(reason))category='authentication';
+ else if(/connection refused|no route to host|network is unreachable|connect to host.*timed out/i.test(reason))category='tcp_connect';
+ else if(/kex_exchange_identification|banner exchange|protocol mismatch|invalid format|connection (closed|reset) by/i.test(reason))category='handshake';
+ else if(/^sabora_backup_wire_stop:/.test(wireCode))category='local_wire_rejected';
+ else if(wireCode==='EPIPE'||wireCode==='ERR_STREAM_PREMATURE_CLOSE')category='pipe_closed';
+ return Object.freeze({category,exitCode:Number.isInteger(exitCode)?exitCode:null,terminated:signal!==null});
+}
+function transferUnknown(detail){
+ const error=Error('sabora_backup_transport_stop:transfer_outcome_unknown:'+detail.category);
+ error.diagnostic=detail;
+ throw error;
+}
 export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,expected,timeoutMs=3600000,signal}={}){
  const args=await backupLabSshArguments(endpoint);
  if(!exactKeys(expected,['backupId','manifestSha256','previousManifestSha256'])||
@@ -94,29 +135,34 @@ export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,
   !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>3600000)stop('expected_receipt_invalid');
  if(signal!==undefined&&!(signal instanceof AbortSignal))stop('invalid_abort_signal');
  if(signal?.aborted)stop('transfer_outcome_unknown');
- const env={LANG:'C'};
- for(const name of ['SystemRoot','WINDIR','TEMP','TMP'])if(process.env[name])env[name]=process.env[name];
+ const env=backupLabSshEnvironment();
  const child=spawn(endpoint.sshBinary,[...args,BACKUP_RECEIVE_COMMAND],
   {stdio:['pipe','pipe','pipe'],shell:false,windowsHide:true,env});
- const abort=new AbortController();let oversized=false,received=0;const chunks=[];
+ const abort=new AbortController();let oversized=false,received=0,stderr='',timedOut=false;const chunks=[];
  const cancel=()=>{abort.abort();child.kill();};
  signal?.addEventListener('abort',cancel,{once:true});
  if(signal?.aborted)cancel();
- const timer=setTimeout(cancel,timeoutMs);
+ const timer=setTimeout(()=>{timedOut=true;cancel();},timeoutMs);
  const ended=once(child,'close');ended.catch(()=>{});
  child.stdout.on('data',chunk=>{
   received+=chunk.length;
   if(received>4096){oversized=true;abort.abort();child.kill();return;}
   chunks.push(chunk);
  });
- // Remote errors may contain installation details; don't echo raw output.
- child.stderr.resume();
+ // Capture at most 4096 bytes for coarse classification only. Never
+ // propagate raw stderr; it may contain installation details or paths.
+ child.stderr.on('data',chunk=>{if(stderr.length<4096)stderr+=chunk.toString('utf8').slice(0,4096-stderr.length);});
  try{
   const sending=pipeline(Readable.from(encodeVpsBackupStream({sourceDirectory,proofBytes})),child.stdin,{signal:abort.signal});
   sending.catch(()=>child.kill());
   const [sent,exit]=await Promise.allSettled([sending,ended]);
   if(sent.status!=='fulfilled'||exit.status!=='fulfilled'||exit.value[0]!==0||
-   exit.value[1]!==null||oversized||abort.signal.aborted)stop('transfer_outcome_unknown');
+   exit.value[1]!==null||oversized||abort.signal.aborted){
+   const wireCode=sent.status==='rejected'?(sent.reason?.code??sent.reason?.message??''):'';
+   transferUnknown(classifyBackupSshFailure({spawnFailed:exit.status==='rejected',
+    wireCode,stderr,timedOut,aborted:!!signal?.aborted,exitCode:exit.status==='fulfilled'?exit.value[0]:null,
+    signal:exit.status==='fulfilled'?exit.value[1]:null}));
+  }
   let ack;try{ack=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{stop('transfer_outcome_unknown');}
   if(!exactKeys(ack,['schema','backupId','manifestSha256','previousManifestSha256','generations','operationalReceipt'])||
    ack.schema!=='sabora-vps-rotation-result/v1'||ack.backupId!==expected.backupId||
