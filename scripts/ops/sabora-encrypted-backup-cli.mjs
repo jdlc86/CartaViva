@@ -10,6 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {buildMigrationAudit} from '../ci/migration-audit.mjs';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
+ capturePreinstallBackup,verifyPreinstallBackup,PREINSTALL_SCHEMA,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from './sabora-encrypted-backup-bundle.mjs';
 
@@ -34,6 +35,9 @@ const ALLOWED_PG_ENV=new Set(['PGHOST','PGPORT','PGSSLMODE','PGSSLROOTCERT',
 export function validateCaptureSource(meta,env=process.env){
  if(meta?.schema!=='sabora-logical-backup/v2'||meta.sourceProjectRef!==PROJECT)
   throw stop('v2_snapshot_required');
+ return validateVerifiedSource(env);
+}
+function validateVerifiedSource(env){
  if(env.PGHOST!=='db.'+PROJECT+'.supabase.co'||env.PGSSLMODE!=='verify-full'||
     !isAbsolute(env.PGSSLROOTCERT??'')||env.PGHOSTADDR||
     env.PGSERVICE||env.PGSERVICEFILE||
@@ -180,6 +184,22 @@ async function request(path){
  }
  return value;
 }
+async function initialRequest(path){
+ const bytes=await protectedRead(path,1024*1024);
+ let plan;try{plan=JSON.parse(bytes.toString('utf8'));}catch{throw stop('request_not_json');}
+ if(!object(plan)||Object.keys(plan).sort().join('|')!==
+  'backupId|plannedMigrationTreeSha256|releaseSha|repository|schema|sourceProjectRef'||
+  plan.schema!==PREINSTALL_SCHEMA||plan.sourceProjectRef!==PROJECT||
+  plan.repository!=='jdlc86/CartaViva'||!/^SABORA-BACKUP-[A-Z0-9-]{8,80}$/.test(plan.backupId)||
+  !/^[0-9a-f]{40}$/.test(plan.releaseSha)||
+  plan.plannedMigrationTreeSha256!==currentAuditedMigrationTreeSha256())
+  throw stop('preinstall_plan_scope_mismatch');
+ const {execFileSync}=await import('node:child_process');
+ const git=args=>execFileSync('git',args,{cwd:SOURCE_ROOT,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
+ if(git(['rev-parse','HEAD'])!==plan.releaseSha||git(['status','--porcelain','--untracked-files=no'])!=='')
+  throw stop('preinstall_release_sha_mismatch_or_dirty_tree');
+ return plan;
+}
 function keyPath(){
  const path=process.env.SABORA_BACKUP_KEY_FILE;
  if(!isAbsolute(path??''))throw stop('protected_key_env_required');
@@ -193,6 +213,26 @@ function args(count){
 
 export async function main(){
  const operation=process.argv[2];
+ if(operation==='capture-preinstall'){
+  const [requestPath,directory]=args(2),plan=await initialRequest(requestPath);
+  const psql=process.env.SABORA_BACKUP_PSQL_BIN;
+  if(!isAbsolute(psql??'')||!/^psql(?:\.exe)?$/i.test(basename(psql)))
+   throw stop('absolute_postgres_binary_required');
+  const pinnedSystem=validateVerifiedSource(process.env);
+  await Promise.all([verifyExecutable(psql),verifyPinnedTlsRootCert()]);
+  const key=keyPath();await protectedRead(key,128).then(bytes=>bytes.fill(0));
+  const result=await capturePreinstallBackup({directory,keyPath:key,metadata:plan,
+   exporter:{command:psql,args:PSQL_ARGS},expectedSystemIdentifier:pinnedSystem});
+  return {operation,backupId:result.manifest.backupId,releaseSha:result.manifest.releaseSha,
+   manifestSha256:result.manifestSha256,containsKey:false,containsPlaintext:false,restoreValidated:false};
+ }
+ if(operation==='verify-preinstall'){
+  const [directory,requestPath]=args(2),plan=await initialRequest(requestPath);
+  const key=keyPath();await protectedRead(key,128).then(bytes=>bytes.fill(0));
+  return {operation,...await verifyPreinstallBackup({bundleDirectory:directory,keyPath:key,
+   expectedReleaseSha:plan.releaseSha,expectedMigrationTreeSha256:plan.plannedMigrationTreeSha256,
+   expectedSystemIdentifier:process.env.SABORA_BACKUP_APPROVED_SYSTEM_IDENTIFIER,expectedBackupId:plan.backupId})};
+ }
  if(operation==='capture'){
   const [requestPath,directory]=args(2),plan=await request(requestPath);
   const result=await captureEncryptedBackupBundle({directory,keyPath:keyPath(),

@@ -12,9 +12,10 @@ import {buildMigrationAudit} from './migration-audit.mjs';
 import {fileURLToPath} from 'node:url';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
+ capturePreinstallBackup,verifyPreinstallBackup,PREINSTALL_SCHEMA,
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
-import {openPostgresBackupSnapshot} from '../ops/sabora-postgres-snapshot.mjs';
+import {openPostgresBackupSnapshot,readPreinstallState} from '../ops/sabora-postgres-snapshot.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -270,6 +271,74 @@ try{
  docker(['run','-d','--name',target,'--network','none','-e','POSTGRES_PASSWORD=ci_only_not_a_secret',
   'postgres:17-alpine']);
  targetStarted=true;await waitForPg(target);
+ // Initial-state recovery drill on the same networkless restore target.
+ psql(target,'postgres','CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;');
+ const initialSystem=psql(target,'postgres','select (pg_control_system()).system_identifier::text;').stdout.trim();
+ const initialExporter={command:'docker',args:['exec','-i',target,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-']};
+ const initialInput={...initialExporter,expectedSystemIdentifier:initialSystem};
+ const initialPlan={schema:PREINSTALL_SCHEMA,backupId:'SABORA-BACKUP-PREINSTALL-CI-'+runId,
+  repository:'jdlc86/CartaViva',releaseSha,sourceProjectRef:'byhvmumqivmunkmomhup',
+  plannedMigrationTreeSha256:migrations.treeSha256};
+ const initialCapture=join(fixture,'preinstall-capture'),initialExternal=join(fixture,'preinstall-external'),
+  initialReplica=join(fixture,'preinstall-replica');
+ const initialRequest={directory:initialCapture,keyPath,metadata:initialPlan,exporter:initialExporter,
+  expectedSystemIdentifier:initialSystem};
+ const initialBaseline=await readPreinstallState(initialInput);
+ const initialResult=await capturePreinstallBackup(initialRequest);
+ assert.equal(initialResult.manifest.initialState,'no-sabora-objects');
+ assert.equal('migrationTreeSha256' in initialResult.manifest,false);
+ assert.equal(initialResult.manifest.plannedMigrationTreeSha256,migrations.treeSha256);
+ assert.deepEqual((await readdir(initialCapture)).sort(),['initial-state.aesgcm','manifest.json']);
+ const initialOffsite=await replicateEncryptedBackupBundle({sourceDirectory:initialCapture,destinationDirectory:initialExternal,destinationClass:'offsite'});
+ const initialVps=await replicateEncryptedBackupBundle({sourceDirectory:initialCapture,destinationDirectory:initialReplica,destinationClass:'vps-encrypted-cache'});
+ assert.equal(initialOffsite.manifestSha256,initialResult.manifestSha256);
+ assert.equal(initialVps.manifestSha256,initialResult.manifestSha256);
+ assert.equal(initialVps.backupSchema,PREINSTALL_SCHEMA);
+ assert.equal((await inspectEncryptedBackupBundle(initialExternal)).backupSchema,PREINSTALL_SCHEMA);
+ await rm(initialCapture,{recursive:true,force:true});
+ const verifyInitial={bundleDirectory:initialExternal,keyPath,expectedReleaseSha:releaseSha,
+  expectedMigrationTreeSha256:migrations.treeSha256,expectedSystemIdentifier:initialSystem,expectedBackupId:initialPlan.backupId};
+ assert.equal((await verifyPreinstallBackup(verifyInitial)).initialStateVerified,true);
+ assert.equal((await verifyPreinstallBackup(verifyInitial)).restoreValidated,false);
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,keyPath:wrongKeyPath}),/authentication_failed/);
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedMigrationTreeSha256:'0'.repeat(64)}),/preinstall_scope_mismatch/);
+ const wrongSystem=initialSystem==='1000000000000000000'?'2000000000000000000':'1000000000000000000';
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedSystemIdentifier:wrongSystem}),/preinstall_scope_mismatch/);
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,expectedBackupId:'SABORA-BACKUP-OTHER-0001'}),/preinstall_scope_mismatch/);
+ await assert.rejects(capturePreinstallBackup({...initialRequest,expectedSystemIdentifier:wrongSystem}),/preinstall_source_identity_or_prerequisite/);
+ const initialManifestPath=join(initialExternal,'manifest.json');
+ const initialManifestBytes=await readFile(initialManifestPath);
+ const tamperedInitial=JSON.parse(initialManifestBytes.toString('utf8'));tamperedInitial.createdAt='2020-01-01T00:00:00.000Z';
+ await writeFile(initialManifestPath,JSON.stringify(tamperedInitial)+'\n');
+ await assert.rejects(verifyPreinstallBackup(verifyInitial),/authentication_failed/);
+ await writeFile(initialManifestPath,initialManifestBytes);
+ // Committed state plus an aborted transaction: never treat as initial.
+ psql(target,'postgres',
+  "CREATE ROLE sabora_preinstall_ci_owner NOLOGIN; CREATE SCHEMA sabora AUTHORIZATION sabora_preinstall_ci_owner; "+
+  "CREATE SCHEMA sabora_migration_meta; CREATE TABLE sabora_migration_meta.applied_migrations(version text); "+
+  "INSERT INTO sabora_migration_meta.applied_migrations VALUES ('fixture-committed'); "+
+  "CREATE TABLE sabora.preinstall_ci_data(id integer); ALTER TABLE sabora.preinstall_ci_data OWNER TO sabora_preinstall_ci_owner; "+
+  "INSERT INTO sabora.preinstall_ci_data VALUES(1);");
+ const failedInstall=psql(target,'postgres','BEGIN; CREATE TABLE sabora.preinstall_ci_uncommitted(id integer); SELECT 1/0; COMMIT;', {allowFailure:true});
+ assert.notEqual(failedInstall.status,0);
+ assert.equal(psql(target,'postgres','SELECT count(*) FROM sabora.preinstall_ci_data;').stdout.trim(),'1');
+ assert.equal(psql(target,'postgres',"SELECT to_regclass('sabora.preinstall_ci_uncommitted') IS NULL;").stdout.trim(),'t');
+ await assert.rejects(capturePreinstallBackup(initialRequest),/preinstall_sabora_objects_present/);
+ await assert.rejects(readFile(join(initialCapture,'manifest.json')));
+ // Disposable fixture objects only; no operational DROP/reset path.
+ psql(target,'postgres','BEGIN; DROP TABLE sabora.preinstall_ci_data; DROP TABLE sabora_migration_meta.applied_migrations; DROP SCHEMA sabora_migration_meta; DROP SCHEMA sabora; DROP ROLE sabora_preinstall_ci_owner; COMMIT;');
+ assert.deepEqual(await readPreinstallState(initialInput),initialBaseline);
+ psql(target,'postgres','CREATE ROLE sabora_preinstall_ci_orphan NOLOGIN;');
+ await assert.rejects(capturePreinstallBackup(initialRequest),/preinstall_sabora_objects_present/);
+ psql(target,'postgres','DROP ROLE sabora_preinstall_ci_orphan; CREATE TABLE public.sabora_preinstall_ci_orphan(id integer);');
+ await assert.rejects(capturePreinstallBackup(initialRequest),/preinstall_sabora_objects_present/);
+ psql(target,'postgres','DROP TABLE public.sabora_preinstall_ci_orphan;');
+ assert.deepEqual(await readPreinstallState(initialInput),initialBaseline);
+ assert.equal((await verifyPreinstallBackup(verifyInitial)).manifestSha256,initialResult.manifestSha256);
+ const badInitial=join(initialReplica,'initial-state.aesgcm');
+ const badBytes=await readFile(badInitial);badBytes[0]^=1;await writeFile(badInitial,badBytes);
+ await assert.rejects(verifyPreinstallBackup({...verifyInitial,bundleDirectory:initialReplica}),/ciphertext_mismatch/);
+ console.log('sabora_preinstall_pg17_recovery_drill_ok: external receipt authenticated; partial state rejected; exact fixture recovery checked; not operational evidence');
  psql(target,'postgres',globalRolesSql);
  docker(['exec',target,'createdb','-U','postgres','sabora_external_restore_ci']);
  psql(target,'sabora_external_restore_ci',
