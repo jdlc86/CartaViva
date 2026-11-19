@@ -1,7 +1,6 @@
-// Bounded Sabora-only release executor for disposable integration testing.
-// Production invocation is NOT wired: the SSH forced-command still returns STOP.
-// An operator must later supply an independently reviewed, privileged driver,
-// trusted evidence reader, live network inspector and retention/ledger backend.
+// Bounded Sabora-only executor. Library fixtures can exercise it without root;
+// the installed entry admits original signed wire bytes through the controller.
+// Installation/authorities/real evidence are separately required, never a flag.
 import {SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../ci/sabora-release-governor.mjs';
 import {verifyHostEvidence,verifyReleaseBundleManifest} from './sabora-release-host-agent.mjs';
 import {assertLiveSaboraIsolation} from './sabora-release-isolation-gate.mjs';
@@ -96,13 +95,14 @@ function checkImages(images,manifest){
    images.web!==manifest.images.web.imageId)stop('loaded_image_identity_mismatch');
 }
 export async function executeScopedSaboraRelease({
- receipt,stage,stageRoot,driver,operation,now=Date.now()}){
- // Caller is not a CLI: this cannot be reached from installed SSH until a
- // separately audited wiring/privilege boundary is explicitly authorized.
+ receipt,stage,stageRoot,driver,operation,now=Date.now(),clock=()=>Date.now()}){
+ // This core is not the privilege boundary. The fixed root entry supplies a
+ // verified installation and revalidates original authorization bytes.
  if(operation!=='deploy'&&operation!=='rollback')stop('operation_disallowed');
  assertDriver(driver);
  if(receipt?.operation!==operation)stop('signed_operation_mismatch');
- const evidence=verifiedEvidence(receipt,await driver.getEvidence(receipt));
+ const evidence=driver.verifyEvidence?await driver.verifyEvidence(receipt):verifiedEvidence(receipt,await driver.getEvidence(receipt));
+ if(!Array.isArray(evidence)||evidence.length!==EVIDENCE_KEYS.length)stop('incomplete_real_gates');
  const network=assertLiveSaboraIsolation(await driver.inspectIsolation(),now,'preflight');
  const history=await driver.readHistory();
  let bundle,rollbackPlan;
@@ -152,7 +152,7 @@ export async function executeScopedSaboraRelease({
   health.managementHttps!==true||health.alertReception!==true)
   stop('operational_readiness_not_demonstrated');
  // Recheck exclusive network state AFTER launch: a green health is insufficient.
- assertLiveSaboraIsolation(await driver.inspectIsolation(),now,'running');
+ assertLiveSaboraIsolation(await driver.inspectIsolation(),clock(),'running');
  const record=await driver.commitResult({receipt,operation,previous:history?.activeReleaseSha??null,
    manifestSha256:receipt.bundleManifestSha256,evidenceVerified:evidence.length,
    releaseSha:receipt.releaseSha,readiness:health});

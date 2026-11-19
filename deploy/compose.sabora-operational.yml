@@ -6,6 +6,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
+    user: "10002:10002"
     command: ["node", "src/operational-server.mjs"]
     restart: "no"
     stop_signal: SIGTERM
@@ -53,6 +54,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.api
+    user: "10003:10003"
     command: ["node", "src/sabora-egress-gateway.mjs"]
     restart: "no"
     stop_signal: SIGTERM

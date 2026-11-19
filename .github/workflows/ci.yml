@@ -154,11 +154,16 @@ jobs:
           path: ${{ runner.temp }}/sabora-network-enforcement/
           if-no-files-found: error
           retention-days: 7
-      - name: Exercise the bounded release actuator with real Docker and inspected isolation
+      - name: Exercise isolated controller transport, two releases, rollback and sentinel with real Docker
         env:
           SABORA_DISPOSABLE_RELEASE_LAB: explicitly-authorized-ci
         shell: bash
         run: |
+          set -euo pipefail
+          if ! test -x /usr/sbin/sshd || ! command -v cc >/dev/null 2>&1 || ! command -v getfacl >/dev/null 2>&1 || ! command -v setfacl >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends openssh-server gcc acl
+          fi
           node_bin="$(command -v node)"
           sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_TEMP,GITHUB_RUN_ID,GITHUB_SHA,SABORA_DISPOSABLE_RELEASE_LAB \
             "$node_bin" scripts/ci/sabora-release-real-docker-lab.mjs
@@ -168,6 +173,14 @@ jobs:
           name: sabora-real-docker-release-driver-lab
           path: ${{ runner.temp }}/sabora-release-driver-lab/
           if-no-files-found: error
+          retention-days: 7
+      - name: Preserve bounded controller failure diagnostic (disposable lab only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-controller-failure-diagnostic
+          path: ${{ runner.temp }}/sabora-release-driver-lab/failure-diagnostic.json
+          if-no-files-found: ignore
           retention-days: 7
       - name: Prepare immutable two-image package on main only (no VPS)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
