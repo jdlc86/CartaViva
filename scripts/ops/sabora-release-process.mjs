@@ -18,6 +18,7 @@ export function releaseProcessStage(tool,args){
   if(args[0]==='exec'){
    if(args[1]==='sabora-api-1')return 'docker_exec_ready';
    if(args[1]==='sabora-sabora-egress-1')return 'docker_exec_alert';
+   if(args[1]==='sabora-web-1')return 'docker_exec_web_identity';
   }
   return 'docker_other';
  }

@@ -1,9 +1,8 @@
 // Verification only. Provisioning is a separate, explicitly approved operation.
 import {readdirSync,lstatSync,realpathSync} from 'node:fs';
 import {join,dirname} from 'node:path';
-import {createPublicKey} from 'node:crypto';
 import {protectedBytes,trustedDirectory,sha256,exactKeys,releaseStop as stop} from './sabora-release-protected-store.mjs';
-import {verifySignedDocument} from './sabora-release-evidence.mjs';
+import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {EVIDENCE_KEYS,SABORA_RELEASE_SCOPE,stableStringify} from '../ci/sabora-release-governor.mjs';
 export const CONTROLLER_PATHS=Object.freeze({
  root:'/etc/sabora/release',code:'/etc/sabora/release/code',
@@ -17,6 +16,22 @@ export const CONTROLLER_TOOLS=Object.freeze({docker:'/usr/bin/docker',nft:'/usr/
  compose:'/etc/sabora/release/docker-config/cli-plugins/docker-compose'});
 const hashValid=v=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
 const read=path=>protectedBytes(path,{maxBytes:4*1024*1024});
+// All nine roles are cryptographically distinct. This does not certify
+// that separate humans actually control their respective private keys.
+export function assertDistinctReleaseAuthorities(config,ownerKey){
+ if(!exactKeys(config.evidenceKeys,EVIDENCE_KEYS))stop('custodian_set_invalid');
+ const fingerprints=[ownerKey,...EVIDENCE_KEYS.map(gate=>config.evidenceKeys[gate]),config.allocationKey,config.alertKey].map(authorityFingerprint);
+ if(new Set(fingerprints).size!==fingerprints.length)stop('custodian_independence_unproven');
+}
+// Every approved configuration field, including mounts/TLS/runtime env,
+// network reservation and authority keys, belongs to the signed subject.
+// Exclude only its own digest to avoid a circular hash.
+export function deriveInstallationSubject(config){
+ const {subjectSha256:ignored,...expected}=config.expected;
+ return sha256(stableStringify({schema:'sabora-release-installation-subject/v1',
+  repository:SABORA_RELEASE_SCOPE.repository,project:SABORA_RELEASE_SCOPE.project,
+  configuration:{...config,expected}}));
+}
 export function verifyControllerInstallation({environment='production'}={}){
  if(process.platform!=='linux'||process.geteuid?.()!==0||process.argv.length!==2)stop('root_entry_required');
  for(const path of [CONTROLLER_PATHS.root,CONTROLLER_PATHS.code,CONTROLLER_PATHS.evidence,
@@ -71,18 +86,14 @@ export function verifyControllerInstallation({environment='production'}={}){
   !Object.values(config.compose).every(hashValid)||!hashValid(config.reservationSha256)||
   !hashValid(config.runtimeEnvSha256)||!Number.isSafeInteger(config.quotaBytes)||config.quotaBytes<1611000000||config.quotaBytes>100*1024**3)
   stop('configuration_scope_invalid');
- const keyFingerprint=pem=>{const key=createPublicKey(pem);if(key.asymmetricKeyType!=='ed25519')stop('authority_key_type');
-  return sha256(key.export({format:'der',type:'spki'}));};
- const owner=keyFingerprint(publicKey),authorities=Object.values(config.evidenceKeys).map(keyFingerprint);
- if(authorities.some(k=>k===owner)||new Set(authorities).size!==6||
-  authorities.includes(keyFingerprint(config.allocationKey))||keyFingerprint(config.alertKey)===owner)
-  stop('custodian_independence_unproven');
+ assertDistinctReleaseAuthorities(config,publicKey);
  if(!exactKeys(config.expected,['subjectSha256','databaseIdentitySha256','migrationTreeSha256','appliedLedgerSha256','databaseTlsIdentitySha256',
   'networkPolicySha256','allocationReservationSha256','alertReceiverIdentitySha256'])||
   !Object.values(config.expected).every(hashValid)||
   config.expected.networkPolicySha256!==sha256(stableStringify(config.networkPolicy))||
   config.expected.allocationReservationSha256!==config.reservationSha256||
-  config.expected.alertReceiverIdentitySha256!==keyFingerprint(config.alertKey))stop('configuration_subject_invalid');
+  config.expected.alertReceiverIdentitySha256!==authorityFingerprint(config.alertKey)||
+  config.expected.subjectSha256!==deriveInstallationSubject(config))stop('configuration_subject_invalid');
  if(sha256(read(CONTROLLER_PATHS.runtimeEnv))!==config.runtimeEnvSha256)stop('runtime_env_changed');
  const reservationBytes=read(join(CONTROLLER_PATHS.state,'allocation.json'));
  if(sha256(reservationBytes)!==config.reservationSha256)stop('reservation_changed');

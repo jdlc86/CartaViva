@@ -9,19 +9,49 @@ export function verifyTlsMaterial(config){
  const cert=protectedBytes('/srv/sabora/tls/origin.crt'),key=protectedBytes('/srv/sabora/tls/origin.key');
  if(sha256(cert)!==config.certificateSha256||sha256(key)!==config.keySha256)stop('tls_material_changed');
  const certificate=new X509Certificate(cert);
- if(!certificate.checkPrivateKey(createPrivateKey(key))||Date.parse(certificate.validTo)<=Date.now()||
-  Date.parse(certificate.validFrom)>Date.now()||SABORA_RELEASE_SCOPE.origins.some(origin=>!certificate.checkHost(new URL(origin).hostname)))
-  stop('tls_pair_hostname_or_time');
+ assertOriginCertificateScope(certificate);
+ if(!certificate.checkPrivateKey(createPrivateKey(key)))stop('tls_key_mismatch');
  return true;
+}
+export function assertOriginCertificateScope(certificate,now=Date.now()){
+ // Same exact two DNS SANs and seven-day minimum life as the already
+ // approved local sabora-origin-material-check.mjs. No wildcard/extra SAN.
+ const names=certificate.subjectAltName?.split(',').map(item=>item.trim())??[];
+ const expected=SABORA_RELEASE_SCOPE.origins.map(origin=>'DNS:'+new URL(origin).hostname);
+ const from=Date.parse(certificate.validFrom),until=Date.parse(certificate.validTo);
+ if(names.length!==2||new Set(names).size!==2||expected.some(name=>!names.includes(name))||
+  !Number.isFinite(from)||!Number.isFinite(until)||now<from||now+7*86400000>=until)
+  stop('tls_san_or_validity_window');
+}
+const PWA=Object.freeze([
+ {kind:'client',origin:SABORA_RELEASE_SCOPE.origins[0],root:'/srv/sabora/client',id:'/sabora-client-app',title:'Sabora · Carta digital'},
+ {kind:'management',origin:SABORA_RELEASE_SCOPE.origins[1],root:'/srv/sabora/management',id:'/sabora-management-app',title:'Sabora · Gestión'}
+]);
+const FILES=Object.freeze([['index.html','/'],['manifest.webmanifest','/manifest.webmanifest'],['sw.js','/sw.js']]);
+export function validatePwaResponse(kind,file,body,expectedSha256){
+ const app=PWA.find(item=>item.kind===kind);
+ if(!app||!FILES.some(item=>item[0]===file)||!Buffer.isBuffer(body)||body.length===0||
+  body.length>1048576||!(/^[0-9a-f]{64}$/).test(expectedSha256??'')||sha256(body)!==expectedSha256)
+  stop('pwa_served_bytes_mismatch');
+ if(file==='index.html'&&!body.toString('utf8').includes('<title>'+app.title+'</title>'))stop('pwa_html_identity');
+ if(file==='manifest.webmanifest'){
+  let manifest;try{manifest=JSON.parse(body.toString('utf8'));}catch{stop('pwa_manifest_invalid');}
+  if(manifest?.id!==app.id||manifest.start_url!=='/'||manifest.scope!=='/'||manifest.display!=='standalone')
+   stop('pwa_manifest_identity');
+ }
 }
 async function probe(url,{address,ca}={}){
  return new Promise((resolve,reject)=>{
   const hostname=new URL(url).hostname;
   const req=https.request(url,{method:'GET',servername:hostname,rejectUnauthorized:true,ca,timeout:5000,
-   ...(address?{family:4,autoSelectFamily:false,lookup:(_name,_options,cb)=>cb(null,address,4)}:{})},res=>{
-   let count=0;res.on('data',b=>{count+=b.length;if(count>1048576)res.destroy(Error('response_limit'));});
+   family:4,autoSelectFamily:false,headers:{'Accept-Encoding':'identity','Cache-Control':'no-cache'},
+   ...(address?{lookup:(_name,_options,cb)=>cb(null,address,4)}:{})},res=>{
+   let count=0;const chunks=[];
+   res.on('data',b=>{count+=b.length;if(count>1048576){res.destroy(Error('response_limit'));return;}chunks.push(b);});
    const peer=res.socket.remoteAddress,ray=res.headers['cf-ray'];
-   res.on('error',reject);res.on('end',()=>res.statusCode===200?resolve({peer,ray}):reject(Error('https_status')));
+   res.on('error',reject);res.on('end',()=>res.statusCode===200&&
+    (!res.headers['content-encoding']||res.headers['content-encoding']==='identity')?
+    resolve({peer,ray,body:Buffer.concat(chunks)}):reject(Error('https_status_or_encoding')));
   });const deadline=setTimeout(()=>req.destroy(Error('https_deadline')),7000);
   req.on('close',()=>clearTimeout(deadline));req.on('timeout',()=>req.destroy(Error('https_timeout')));req.on('error',reject);req.end();
  });
@@ -40,9 +70,28 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
  const api=run('docker',['exec','sabora-api-1','node','-e',
   "fetch('http://127.0.0.1:4100/ready',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"],{timeout:10000});
  if(api.status!==0)stop('api_not_ready');
- for(const origin of SABORA_RELEASE_SCOPE.origins){
-  await probe(origin+'/',{address:SABORA_RELEASE_SCOPE.host,ca});
-  const publicResult=await probe(origin+'/',{ca:publicCa});
+ // Read digests of the six fixed static files from the already inspected
+ // immutable web container; never access customer files or other projects.
+ const files=PWA.flatMap(app=>FILES.map(([file,path])=>({app,file,path,local:app.root+'/'+file})));
+ const listed=run('docker',['exec','sabora-web-1','sha256sum',...files.map(item=>item.local)],{timeout:10000}).stdout.trim().split('\n');
+ if(listed.length!==files.length)stop('pwa_local_inventory_invalid');
+ const hashes=new Map();
+ for(let i=0;i<files.length;i++){
+  const match=/^([0-9a-f]{64})  (\/[A-Za-z0-9_./-]+)$/.exec(listed[i]);
+  if(!match||match[2]!==files[i].local)stop('pwa_local_inventory_invalid');
+  hashes.set(match[2],match[1]);
+ }
+ for(const [file] of FILES)if(hashes.get(PWA[0].root+'/'+file)===hashes.get(PWA[1].root+'/'+file))
+  stop('pwa_origin_identity_not_distinct');
+ await Promise.all(files.map(async item=>{
+  const {app,file,path,local}=item;
+  let direct,publicResult;
+  try{
+   [direct,publicResult]=await Promise.all([probe(app.origin+path,{address:SABORA_RELEASE_SCOPE.host,ca}),
+    probe(app.origin+path,{ca:publicCa})]);
+  }catch{stop('pwa_https_probe_failed');}
+  validatePwaResponse(app.kind,file,direct.body,hashes.get(local));
+  validatePwaResponse(app.kind,file,publicResult.body,hashes.get(local));
   if(environment==='production'){
    const numeric=ip=>ip.split('.').reduce((value,n)=>value*256+Number(n),0);
    const peer=publicResult.peer?.replace(/^::ffff:/,'');
@@ -50,7 +99,7 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
     config.networkPolicy.cloudflareIpv4Cidrs.some(cidr=>{const [ip,bits]=cidr.split('/'),width=2**(32-Number(bits));return Math.floor(numeric(peer)/width)===Math.floor(numeric(ip)/width);});
    if(!approved||peer===SABORA_RELEASE_SCOPE.host||typeof publicResult.ray!=='string'||!/^[-A-Za-z0-9]{10,100}$/.test(publicResult.ray))stop('public_cloudflare_path_unproven');
   }
- }
+ }));
  if(!exactKeys(config.alert,['url','receiverIdentitySha256'])||config.alert.receiverIdentitySha256!==config.expected.alertReceiverIdentitySha256)
   stop('alert_configuration');
  const url=new URL(config.alert.url);
@@ -75,5 +124,5 @@ export async function checkReleaseReadiness({installation,run,releaseSha}){
   ack.receivedSha256!==sha256(body)||!Number.isFinite(Date.parse(ack.receivedAt))||
   Math.abs(Date.now()-Date.parse(ack.receivedAt))>30000)stop('alert_reception_unproven');
  return {apiReady:true,clientHttps:true,managementHttps:true,alertReception:true,
-  originTlsVerified:true,publicTlsVerified:true,alertCorrelation:event.correlation,ackSha256:sha256(received)};
+  originTlsVerified:true,publicTlsVerified:true,pwaIdentityAndBytesVerified:true,alertCorrelation:event.correlation,ackSha256:sha256(received)};
 }

@@ -14,7 +14,7 @@ import {EVIDENCE_KEYS,SABORA_RELEASE_SCOPE,stableStringify} from './sabora-relea
 import {renderIngressFilter} from './sabora-ingress-network-policy.mjs';
 import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
-import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS} from '../ops/sabora-release-installation.mjs';
+import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS,deriveInstallationSubject} from '../ops/sabora-release-installation.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
@@ -157,14 +157,20 @@ try{
  run('nft',['--file',labNftPolicy]);
  const policy={networks,cloudflareIpv4Cidrs,allowlisted,nftSha256:Object.fromEntries(['ingress','egress'].map(kind=>[kind,sha256(stableStringify(canonicalNft(JSON.parse(run('nft',['--json','list','table','inet','sabora_'+kind+'_guard']).stdout))))]))};
  const reservation=signedLabDocument({schema:'sabora-allocation-reservation/v1',project:'sabora',host:SABORA_RELEASE_SCOPE.host,networkPolicySha256:sha256(stableStringify(policy)),networkNames:NETWORK_NAMES,networkIds,port:8443,scope:'all-active-and-inactive-allocations-and-routes',observedAt:new Date().toISOString(),exclusiveUntil:new Date(Date.now()+3600000).toISOString()},allocation);put(P.state+'/allocation.json',reservation);
- run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-keyout',work+'/ca.key','-out',work+'/ca.pem','-subj','/CN=Disposable Sabora lab CA','-addext','basicConstraints=critical,CA:TRUE']);
+ run('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','15','-keyout',work+'/ca.key','-out',work+'/ca.pem','-subj','/CN=Disposable Sabora lab CA','-addext','basicConstraints=critical,CA:TRUE']);
  run('openssl',['req','-newkey','rsa:2048','-nodes','-keyout','/srv/sabora/tls/origin.key','-out',work+'/tls.csr','-subj','/CN=sabora.allaiso.com']);
- put(work+'/tls.ext','subjectAltName=DNS:sabora.allaiso.com,DNS:gestion-sabora.allaiso.com,IP:172.28.242.1\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n');
- run('openssl',['x509','-req','-in',work+'/tls.csr','-CA',work+'/ca.pem','-CAkey',work+'/ca.key','-CAcreateserial','-days','1','-out','/srv/sabora/tls/origin.crt','-extfile',work+'/tls.ext']);
+ put(work+'/tls.ext','subjectAltName=DNS:sabora.allaiso.com,DNS:gestion-sabora.allaiso.com\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n');
+ run('openssl',['x509','-req','-in',work+'/tls.csr','-CA',work+'/ca.pem','-CAkey',work+'/ca.key','-CAcreateserial','-days','15','-out','/srv/sabora/tls/origin.crt','-extfile',work+'/tls.ext']);
  chownSync('/srv/sabora/tls',0,10001);chmodSync('/srv/sabora/tls',0o750);for(const name of ['origin.key','origin.crt']){chownSync('/srv/sabora/tls/'+name,0,10001);chmodSync('/srv/sabora/tls/'+name,0o640);}
  copyFileSync(work+'/ca.pem',P.root+'/origin-ca.pem');copyFileSync(work+'/ca.pem',P.root+'/lab-public-ca.pem');put(work+'/alert-private.pem',alert.privateKey.export({format:'pem',type:'pkcs8'}));
+ // The fixture receiver gets a separate key and IP SAN certificate; never
+ // reuse the two-origin web private key or broaden its SANs.
+ const sinkTls=work+'/sink-tls';mkdirSync(sinkTls,{mode:0o700});
+ run('openssl',['req','-newkey','rsa:2048','-nodes','-keyout',sinkTls+'/origin.key','-out',work+'/sink.csr','-subj','/CN=Disposable Sabora receiver']);
+ put(work+'/sink.ext','subjectAltName=IP:172.28.242.1\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n');
+ run('openssl',['x509','-req','-in',work+'/sink.csr','-CA',work+'/ca.pem','-CAkey',work+'/ca.key','-CAserial',work+'/ca.srl','-days','1','-out',sinkTls+'/origin.crt','-extfile',work+'/sink.ext']);
  const sinkScript="const https=require('https'),fs=require('fs'),crypto=require('crypto');const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);https.createServer({key:fs.readFileSync('/tls/origin.key'),cert:fs.readFileSync('/tls/origin.crt')},(req,res)=>{let body='';req.on('data',b=>body+=b);req.on('end',()=>{const event=JSON.parse(body);const payload={schema:'sabora-alert-reception/v1',project:'sabora',releaseSha:event.releaseSha,correlation:event.correlation,receivedSha256:crypto.createHash('sha256').update(body).digest('hex'),receivedAt:new Date().toISOString()};const signature=crypto.sign(null,Buffer.from(stable(payload)),fs.readFileSync('/authority/key.pem')).toString('base64');res.end(JSON.stringify({payload,signature}));});}).listen(9443,'0.0.0.0');";
- docker(['run','-d','--name',sinkName,'--network',externalNet,'--ip','172.28.242.2','--publish','172.28.242.1:9443:9443','--read-only','--cap-drop','ALL','-v','/srv/sabora/tls:/tls:ro','-v',work+'/alert-private.pem:/authority/key.pem:ro','node:22-alpine','node','-e',sinkScript]);createdContainers.push(sinkName);
+ docker(['run','-d','--name',sinkName,'--network',externalNet,'--ip','172.28.242.2','--publish','172.28.242.1:9443:9443','--read-only','--cap-drop','ALL','-v',sinkTls+':/tls:ro','-v',work+'/alert-private.pem:/authority/key.pem:ro','node:22-alpine','node','-e',sinkScript]);createdContainers.push(sinkName);
  docker(['run','-d','--name',sentinelName,'--label','io.sabora.lab=foreign-sentinel','--network',externalNet,'--ip','172.28.242.3','--read-only','--cap-drop','ALL','node:22-alpine','node','-e',"require('http').createServer((q,r)=>r.end('sentinel-alive')).listen(9999,'0.0.0.0')"]);createdContainers.push(sentinelName);
  for(let i=0;i<30;i++){try{baselineSentinel=sentinel();break;}catch(e){if(i===29)throw e;await pause(200);}}
  // Remaining setup and scenarios are below, using the same production driver.
@@ -199,10 +205,11 @@ try{
  chmodSync('/etc/sabora/runtime',0o700);
  chownSync('/etc/sabora/runtime/secrets',0,10002);chmodSync('/etc/sabora/runtime/secrets',0o750);
  chownSync('/etc/sabora/runtime/activation.json',0,10002);chownSync(fixtureSecret,0,10002);
- const expected={subjectSha256:labHash('subject'),databaseIdentitySha256:labHash('database'),migrationTreeSha256:labHash('migration-tree'),appliedLedgerSha256:labHash('ledger'),databaseTlsIdentitySha256:labHash('database-tls'),networkPolicySha256:sha256(stableStringify(policy)),allocationReservationSha256:sha256(reservation),alertReceiverIdentitySha256:keyIdentity(alert.pem)};
+ const expected={subjectSha256:null,databaseIdentitySha256:labHash('database'),migrationTreeSha256:labHash('migration-tree'),appliedLedgerSha256:labHash('ledger'),databaseTlsIdentitySha256:labHash('database-tls'),networkPolicySha256:sha256(stableStringify(policy)),allocationReservationSha256:sha256(reservation),alertReceiverIdentitySha256:keyIdentity(alert.pem)};
  configuration={schema:'sabora-controller-config/v1',environment:LAB_ENVIRONMENT,evidenceKeys:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,authorities[k].pem])),allocationKey:allocation.pem,alertKey:alert.pem,expected,
   compose:{operational:hashFile(repo+'/deploy/compose.sabora-operational.yml'),web:hashFile(repo+'/deploy/compose.sabora-web.yml')},networkPolicy:policy,reservationSha256:sha256(reservation),runtimeEnvSha256:hashFile(P.runtimeEnv),
   mountHashes:{manifest:hashFile('/etc/sabora/runtime/activation.json'),egress:hashFile('/etc/sabora/runtime/egress-policy.json'),secrets:{'lab-access-probe':hashFile(fixtureSecret)}},tls:{certificateSha256:hashFile('/srv/sabora/tls/origin.crt'),keySha256:hashFile('/srv/sabora/tls/origin.key'),originCaSha256:hashFile(work+'/ca.pem'),publicCaSha256:hashFile(work+'/ca.pem')},alert:{url:'https://172.28.242.1:9443/ack',receiverIdentitySha256:keyIdentity(alert.pem)},quotaBytes:20*1024**3};
+ configuration.expected.subjectSha256=deriveInstallationSubject(configuration);
  installPayload={schema:'sabora-controller-installation/v1',repository:SABORA_RELEASE_SCOPE.repository,sourceSha,environment:LAB_ENVIRONMENT,artifactSha256:hashFile(P.code+'/artifact.json'),configurationSha256:'',nodeSha256:hashFile(P.root+'/bin/node'),launcherHashes:Object.fromEntries(['root-entry','ssh-entry'].map(name=>[name,hashFile(P.root+'/bin/'+name)])),toolHashes:Object.fromEntries(Object.entries(CONTROLLER_TOOLS).map(([k,path])=>[k,hashFile(realpathSync(path))])),approvedAt:new Date().toISOString()};signedInstall();
  const production=run(P.root+'/bin/node',[P.code+'/scripts/ops/sabora-release-root-entry.mjs'],{allowFailure:true});assert.notEqual(production.status,0);assert.match(production.stderr,/installation_not_authorized/);ok('lab-authorities-rejected-by-production-entry');
  const bundles=[];
@@ -299,6 +306,13 @@ try{
  try{await custodyDenied('runtime-secret-extra-acl-denied','LAB-SECRET-EXTRA-ACL',/runtime_acl_not_exclusive/);}finally{run('setfacl',['-b',fixtureSecret]);chmodSync(fixtureSecret,0o640);}
  chmodSync('/etc/sabora/runtime',0o755);
  try{await custodyDenied('runtime-parent-not-private-denied','LAB-RUNTIME-PARENT',/runtime_permissions_mismatch/);}finally{chmodSync('/etc/sabora/runtime',0o700);}
+ // Even a valid owner re-signature is insufficient when custodians are
+ // aliased or the expected subject no longer describes approved config.
+ const originalAlertKey=configuration.alertKey,originalRuntimeHash=configuration.runtimeEnvSha256;
+ configuration.alertKey=authorities.independentReviewSha256.pem;signedInstall();
+ try{await custodyDenied('authority-key-reuse-denied','LAB-AUTHORITY-REUSE',/custodian_independence_unproven/);}finally{configuration.alertKey=originalAlertKey;signedInstall();}
+ configuration.runtimeEnvSha256=labHash('different-runtime');signedInstall();
+ try{await custodyDenied('installation-subject-drift-denied','LAB-SUBJECT-DRIFT',/configuration_subject_invalid/);}finally{configuration.runtimeEnvSha256=originalRuntimeHash;signedInstall();}
  const deployA=approval(a,'deploy','LAB-DEPLOY-A-0001');await success('deploy-A-through-real-ssh',a,deployA);await denied('replay-A-no-mutation',a,deployA);
  await success('deploy-B-through-real-ssh',b,approval(b,'deploy','LAB-DEPLOY-B-0001'));
  const history=parse(P.ledger+'/history.json');assert.equal(history.versions.length,2);assert.ok(history.versions.every(v=>v.status==='healthy'));ok('two-healthy-retained-versions');

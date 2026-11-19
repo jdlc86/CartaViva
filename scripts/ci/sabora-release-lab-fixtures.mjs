@@ -26,7 +26,7 @@ export function materialLabDossiers({sha,expected,keys,now=Date.now()}){
    checks:['approved-destination-allowed','foreign-destination-denied','wrong-port-denied','ipv6-denied','reverse-denied'],networkName:'sabora_egress_filtered'},
   alertDeliverySha256:{receiverIdentitySha256:expected.alertReceiverIdentitySha256,correlation:labHash('prior-correlation'),
    sentDigest:labHash('prior-event'),receivedDigest:labHash('prior-event')},
-  independentReviewSha256:{reviewedReleaseSha:sha,reportSha256:labHash('synthetic-review'),reviewerIdentitySha256:labHash('synthetic-reviewer'),
+  independentReviewSha256:{reviewedReleaseSha:sha,reportSha256:labHash('synthetic-review'),reviewerIdentitySha256:keyIdentity(keys.independentReviewSha256.pem),
    findings:[],scope:'sabora-release-and-runtime'}
  };
  return Object.fromEntries(EVIDENCE_KEYS.map(gate=>[gate,signedLabDocument({schema:'sabora-material-evidence/v2',

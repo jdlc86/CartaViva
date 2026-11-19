@@ -6,6 +6,8 @@ import {EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
 import {sha256} from '../scripts/ops/sabora-release-protected-store.mjs';
 import {immutableComposeOverride,validateClosedCompose} from '../scripts/ops/sabora-release-compose-policy.mjs';
 import {safeReleaseError} from '../scripts/ops/sabora-release-controller.mjs';
+import {assertDistinctReleaseAuthorities,deriveInstallationSubject} from '../scripts/ops/sabora-release-installation.mjs';
+import {assertOriginCertificateScope,validatePwaResponse} from '../scripts/ops/sabora-release-readiness.mjs';
 import {releaseProcessStage,releaseProcessFailureKind} from '../scripts/ops/sabora-release-process.mjs';
 test('material authority: synthetic evidence cannot pass production; authenticated wrong facts also fail',()=>{
  const keys=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,labAuthority()])),trust=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,keys[k].pem]));
@@ -22,6 +24,7 @@ test('material authority: synthetic evidence cannot pass production; authenticat
   ['sqlProviderGateSha256',d=>d.facts.checks.pop()],['ingressIsolationSha256',d=>d.facts.networkPolicySha256=labHash('other-policy')],
   ['egressEnforcementSha256',d=>d.facts.checks.pop()],['alertDeliverySha256',d=>d.facts.receivedDigest=labHash('other-alert')],
   ['independentReviewSha256',d=>d.facts.reviewedReleaseSha='b'.repeat(40)],
+  ['independentReviewSha256',d=>d.facts.reviewerIdentitySha256=labHash('wrong-reviewer-key')],
   ['independentReviewSha256',d=>d.facts.findings=[{id:'P1',resolution:'open',decisionSha256:labHash('decision')}]],
   ['independentReviewSha256',d=>d.validUntil=new Date(Date.now()-5000).toISOString()]];
  for(const [gate,mutate] of cases){
@@ -62,4 +65,41 @@ test('process failure diagnostics identify scoped phase without echoing raw Dock
  }
  assert.equal(releaseProcessFailureKind(marker),'exit_nonzero');
  assert.equal(releaseProcessStage(marker,[marker]),'unknown_tool');
+});
+
+test('installation binds all nine distinct authority keys and material configuration to the subject',()=>{
+ const owner=labAuthority(),allocation=labAuthority(),alert=labAuthority();
+ const evidenceKeys=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,labAuthority().pem]));
+ const config={schema:'sabora-controller-config/v1',environment:LAB_ENVIRONMENT,evidenceKeys,
+  allocationKey:allocation.pem,alertKey:alert.pem,expected:{subjectSha256:null},
+  mountHashes:{manifest:labHash('manifest'),secrets:{'lab-secret':labHash('secret')}},
+  runtimeEnvSha256:labHash('env'),tls:{certificateSha256:labHash('cert')}};
+ assert.doesNotThrow(()=>assertDistinctReleaseAuthorities(config,owner.pem));
+ for(const altered of [{...config,alertKey:evidenceKeys.independentReviewSha256},
+  {...config,allocationKey:owner.pem},{...config,alertKey:allocation.pem}]){
+  assert.throws(()=>assertDistinctReleaseAuthorities(altered,owner.pem),/custodian_independence/);
+ }
+ const digest=deriveInstallationSubject(config);config.expected.subjectSha256=digest;
+ assert.equal(deriveInstallationSubject(config),digest);
+ for(const changed of [{...config,runtimeEnvSha256:labHash('other-env')},
+  {...config,mountHashes:{...config.mountHashes,secrets:{'lab-secret':labHash('other-secret')}}},
+  {...config,tls:{certificateSha256:labHash('different-cert')}}])
+  assert.notEqual(deriveInstallationSubject(changed),digest);
+});
+test('exact origin certificate scope and PWA identity reject generic 200, swapped or stale bytes',()=>{
+ const now=Date.UTC(2026,10,19),cert={subjectAltName:'DNS:sabora.allaiso.com, DNS:gestion-sabora.allaiso.com',
+  validFrom:new Date(now-1000).toISOString(),validTo:new Date(now+8*86400000).toISOString()};
+ assert.doesNotThrow(()=>assertOriginCertificateScope(cert,now));
+ for(const changed of [{...cert,subjectAltName:cert.subjectAltName+', DNS:other.invalid'},
+  {...cert,subjectAltName:'DNS:*.allaiso.com, DNS:gestion-sabora.allaiso.com'},
+  {...cert,validTo:new Date(now+6*86400000).toISOString()}])
+  assert.throws(()=>assertOriginCertificateScope(changed,now),/tls_san_or_validity/);
+ const client=Buffer.from('<html><title>Sabora · Carta digital</title></html>');
+ const wrong=Buffer.from('<html><title>Sabora · Gestión</title></html>');
+ assert.doesNotThrow(()=>validatePwaResponse('client','index.html',client,sha256(client)));
+ assert.throws(()=>validatePwaResponse('client','index.html',wrong,sha256(wrong)),/pwa_html_identity/);
+ assert.throws(()=>validatePwaResponse('client','index.html',wrong,sha256(client)),/pwa_served_bytes_mismatch/);
+ const manifest=Buffer.from(JSON.stringify({id:'/sabora-management-app',start_url:'/',scope:'/',display:'standalone'}));
+ assert.throws(()=>validatePwaResponse('client','manifest.webmanifest',manifest,sha256(manifest)),/pwa_manifest_identity/);
+ assert.doesNotThrow(()=>validatePwaResponse('management','manifest.webmanifest',manifest,sha256(manifest)));
 });

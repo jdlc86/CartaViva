@@ -6,6 +6,11 @@ import {sha256,exactKeys,releaseStop as stop} from './sabora-release-protected-s
 const HEX=/^[0-9a-f]{64}$/;
 const digest=v=>typeof v==='string'&&HEX.test(v)&&!/^0+$/.test(v);
 const same=(a,b)=>stableStringify(a)===stableStringify(b);
+export function authorityFingerprint(pem){
+ let key;try{key=createPublicKey(pem);}catch{stop('document_key_invalid');}
+ if(key.asymmetricKeyType!=='ed25519')stop('authority_key_type');
+ return sha256(key.export({format:'der',type:'spki'}));
+}
 export function verifySignedDocument(bytes,key,expectedSchema){
  let wrapper;
  try{wrapper=JSON.parse(bytes.toString('utf8'));}catch{stop('signed_document_invalid');}
@@ -74,8 +79,10 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   !digest(alert.sentDigest)||alert.sentDigest!==alert.receivedDigest)stop('alert_dossier_invalid');
  const review=parsed.independentReviewSha256;
  if(!exactKeys(review,['reviewedReleaseSha','reportSha256','reviewerIdentitySha256','findings','scope'])||
-  review.reviewedReleaseSha!==receipt.releaseSha||!digest(review.reportSha256)||!digest(review.reviewerIdentitySha256)||
+  review.reviewedReleaseSha!==receipt.releaseSha||!digest(review.reportSha256)||
+  review.reviewerIdentitySha256!==authorityFingerprint(trust.independentReviewSha256)||
   review.scope!=='sabora-release-and-runtime'||!Array.isArray(review.findings)||
+  new Set(review.findings.map(f=>f?.id)).size!==review.findings.length||
   review.findings.some(f=>!exactKeys(f,['id','resolution','decisionSha256'])||
    typeof f.id!=='string'||!f.id||!['closed','owner-accepted'].includes(f.resolution)||!digest(f.decisionSha256)))
   stop('independent_review_not_resolved');
