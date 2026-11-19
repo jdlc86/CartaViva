@@ -43,6 +43,21 @@ node --check scripts/ci/h6-postgres17.test.mjs
 node --check scripts/ci/table-change-root-postgres17.test.mjs
 node --check scripts/ci/zero-cost-account-postgres17.test.mjs
 node --check scripts/ci/sabora-dual-backup-postgres17.mjs
+if [[ "$scope" = full ]]; then
+  node --check scripts/ci/sabora-vps-backup-ssh-lab.mjs
+  node --check scripts/ops/sabora-vps-backup-transport.mjs
+  node --check scripts/ops/sabora-vps-backup-lab-entry.mjs
+  # The full suite already requires a disposable Linux Actions runner.
+  # Ensure transport test tools before provisioning the fixture.
+  if [[ "${RUNNER_OS:-}" != Linux ]]; then
+    echo 'Full backup transport suite requires the disposable Linux runner' >&2
+    exit 1
+  fi
+  if ! test -x /usr/sbin/sshd || ! test -x /usr/bin/ssh || ! test -x /usr/bin/ssh-keygen; then
+    sudo -n apt-get update -qq
+    sudo -n apt-get install -y --no-install-recommends openssh-server openssh-client
+  fi
+fi
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 if [[ "$scope" = issue61 && -z "${RUNNER_TEMP:-}" ]]; then
