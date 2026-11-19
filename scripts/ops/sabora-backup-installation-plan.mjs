@@ -17,6 +17,8 @@ export const BACKUP_INSTALL_PATHS=Object.freeze({
 // its mount confines the guard and monotonic sibling records to the same
 // bounded filesystem. Existing production rotation path is NOT changed.
 export const BACKUP_PREPARATION_FILES=Object.freeze([
+ 'deploy/sabora-backup-lab-shell.c',
+ 'scripts/ops/sabora-backup-governed-lab-entry.mjs',
  'scripts/ci/sabora-release-governor.mjs',
  'scripts/ops/sabora-backup-installation-plan.mjs',
  'scripts/ops/sabora-encrypted-backup-bundle.mjs',
