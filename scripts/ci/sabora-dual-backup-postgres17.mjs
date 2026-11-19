@@ -542,7 +542,10 @@ try{
   `,guardPath],{stdio:['pipe','pipe','pipe']});
   const ended=once(liveWriter,'close');
   try{
-   const [ready]=await once(liveWriter.stdout,'data');assert.equal(String(ready),'ready\n');
+   const signal=AbortSignal.timeout(5000);
+   const [ready]=await Promise.race([once(liveWriter.stdout,'data',{signal}),
+    ended.then(()=>{throw Error('fixture_guard_exited_before_ready');})]);
+   assert.equal(String(ready),'ready\n');
    await assert.rejects(finishInterruptedVpsPurge(authorized),/locked_or_interrupted/);
    await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,root:crashRoot}),/locked_or_interrupted/);
   }finally{liveWriter.kill('SIGKILL');await ended;}
@@ -552,7 +555,39 @@ try{
   await writeFile(unexpected,'not part of manifest',{mode:0o600,flag:'wx'});
   await assert.rejects(finishInterruptedVpsPurge(authorized),/recovery_phase_not_supported|unexpected_previous_file/);
   await rm(unexpected);
-  const repaired=await finishInterruptedVpsPurge(authorized);
+  let finalAuthorization=authorized;
+  if(phase==='state-published'){
+   const repairCrashProgram=`
+    import fs from 'node:fs/promises';
+    import {syncBuiltinESMExports} from 'node:module';
+    import {join} from 'node:path';
+    let input='';for await(const chunk of process.stdin)input+=chunk;
+    const {root,scope,moduleUrl,authorization,external}=JSON.parse(input);
+    if(process.env.GITHUB_ACTIONS!=='true'||scope.environment!=='disposable-lab'||
+     !root.startsWith(process.env.RUNNER_TEMP+'/sabora-dual-backup-')||
+     !root.endsWith('/crash-state-published'))throw Error('fixture_scope');
+    const original=fs.unlink;
+    fs.unlink=async(path,...args)=>{const result=await original(path,...args);
+     if(path.startsWith(join(root,'previous')+'/'))process.kill(process.pid,'SIGKILL');
+     return result;};
+    syncBuiltinESMExports();
+    const {finishInterruptedVpsPurge}=await import(moduleUrl);
+    await finishInterruptedVpsPurge({root,scope,authorizationBytes:Buffer.from(authorization,'base64'),
+     externalProofBytes:Buffer.from(external,'base64')});
+   `;
+   const cut=spawnSync(process.execPath,['--input-type=module','--eval',repairCrashProgram],{
+    input:JSON.stringify({root:crashRoot,scope,moduleUrl:crashModule,
+     authorization:authorized.authorizationBytes.toString('base64'),external:externalProof.toString('base64')}),
+    encoding:'utf8',timeout:30000});
+   assert.equal(cut.signal,'SIGKILL',String(cut.stderr));
+   const afterCut=await inspectVpsPublishedPurge({root:crashRoot,scope});
+   assert.equal(afterCut.previousRemainder,'verified-subset');
+   assert.notEqual(afterCut.previousRemainderSha256,subject.previousRemainderSha256);
+   await assert.rejects(finishInterruptedVpsPurge(authorized),/recovery_authorization_scope_mismatch/);
+   finalAuthorization={...authorized,authorizationBytes:purgeAuthorization(scope,afterCut,externalProof)};
+   console.log('sabora_vps_backup_reconciliation_sigkill_ok');
+  }
+  const repaired=await finishInterruptedVpsPurge(finalAuthorization);
   assert.equal(repaired.operationalReceipt,false);assert.equal(repaired.generations,1);
   assert.equal(repaired.currentManifestSha256,second.manifestSha256);
   assert.deepEqual((await readdir(crashRoot)).sort(),['current','state.json']);
