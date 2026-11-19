@@ -521,7 +521,19 @@ try{
  // with a valid payload. Keep the preceding backup and lock.
  const cutRoot=join(fixture,'wire-cut');await mkdir(cutRoot,{mode:0o700});
  await rotateVerifiedVpsReplica({root:cutRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
- const cut=(async function*(){yield wire.subarray(0,wire.length-1);throw Error('fixture_pipe_disconnected');})();
+ const cut=(async function*(){
+  yield wire.subarray(0,wire.length-1);
+  // Readable.from may prefetch. Synchronize with actual creation of the
+  // candidate instead of racing an early throw against header consumption.
+  let received=false;
+  for(let attempt=0;attempt<500;attempt++){
+   try{await readFile(join(cutRoot,'candidate','manifest.json'));received=true;break;}
+   catch(error){if(error.code!=='ENOENT')throw error;}
+   await new Promise(accept=>setTimeout(accept,10));
+  }
+  assert.ok(received,'candidate must exist before simulated pipe disconnect');
+  throw Error('fixture_pipe_disconnected');
+ })();
  await assert.rejects(receiveVerifiedVpsReplica({root:cutRoot,source:Readable.from(cut),scope}),/fixture_pipe_disconnected/);
  assert.deepEqual((await readdir(cutRoot)).sort(),['candidate','current','rotation.lock','state.json']);
  assert.equal((await inspectEncryptedBackupBundle(join(cutRoot,'current'))).manifestSha256,initialResult.manifestSha256);
