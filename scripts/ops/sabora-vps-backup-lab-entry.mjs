@@ -42,14 +42,17 @@ async function run(){
  const owner=(await privateBytes(join(control,'owner-public.pem'),uid,4096)).toString('utf8');
  const config=verifySignedDocument(await privateBytes(join(control,'scope.json'),uid,262144),
   owner,'sabora-backup-lab-installation/v1');
- if(!exactKeys(config,['schema','repository','project','environment','sourceSha','root','uid','filesystemDevice','filesystemType','scope'])||
+ if(!exactKeys(config,['schema','repository','project','environment','sourceSha','root','uid','filesystemDevice','filesystemType','filesystemBytes','scope'])||
   config.repository!=='jdlc86/CartaViva'||config.project!=='sabora'||config.environment!=='disposable-lab'||
   !/^[0-9a-f]{40}$/.test(config.sourceSha)||config.root!==root||config.uid!==uid||
   !exactKeys(config.scope,['environment','systemIdentifier','storageIdentitySha256','externalStorageIdentitySha256',
     'verifierPublicKey','recoveryPublicKey','quotaBytes','reserveBytes'])||config.scope.environment!=='disposable-lab'||
   new Set([owner,config.scope.verifierPublicKey,config.scope.recoveryPublicKey].map(authorityFingerprint)).size!==3)stop();
  const disk=await lstat(root,{bigint:true}),fs=await statfs(root,{bigint:true});
- if(config.filesystemDevice!==String(disk.dev)||config.filesystemType!==String(fs.type))stop();
+ const filesystemBytes=fs.blocks*fs.bsize;
+ if(config.filesystemDevice!==String(disk.dev)||config.filesystemType!==String(fs.type)||
+  config.filesystemBytes!==String(filesystemBytes)||!Number.isSafeInteger(config.scope.quotaBytes)||
+  config.scope.quotaBytes<1||BigInt(config.scope.quotaBytes)>filesystemBytes)stop();
  // Rotation itself checks the signed logical quota and free capacity under
  // the shared guard. Binding the observed device/type is not physical quota.
  process.umask(0o077);
