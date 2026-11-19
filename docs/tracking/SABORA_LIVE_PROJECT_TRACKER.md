@@ -1537,3 +1537,8 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 ## 148. S43 — preflight real de host, planificación GO / operación STOP
 
 main 8d8189eabf92c5c15f4eb841cd367033558caceb 5/5 SUCCESS, paquete exacto [14532095645](https://github.com/jdlc86/CartaViva/actions/runs/44526746999/artifacts/14532095645). [Acta read-only autorizada](../reviews/SABORA_S43_GATEWAY_READONLY_PROVISIONING_PREFLIGHT_2026-11-19.md), continuidad S43-3e.9. TLS pareja/SAN/vigencia confirmados sin exposición; 8443 sin listener, tres redes y dos tablas no creadas, cuenta/controlador no instalados; UID/GID 10002/10003 no asignados en NSS (no reserva), Node/GCC no detectados, host requiere reboot (prohibido), SSH/22 no acreditado para cuenta futura. Pendiente custodia histórica vs root, vía SSH propia, binarios privados autenticados, reserva/aislamiento y revisión independiente antes de provisionar según S40. No se realizaron mutaciones operativas ni se consultaron recursos de otros proyectos. Documentación en rama descendiente, main intacto.
+
+
+## 149. S43 — paquetes exact-main descargados/verificados y launchers candidatos
+
+[Acta de preparación fuera del host](../reviews/SABORA_S43_CONTROLLER_OFFHOST_PREPARATION_2026-11-19.md), continuidad S43-3e.10. ZIP fuente 14532605497 y release 14532095645 igual digest GitHub; 28 archivos exactos, dos launchers GCC reproducibles en toolchain local, parser de ambas imágenes PASS; ZIP candidato off-host 73735 bytes SHA256 1bd07258dde987c49b0663fb055766fba60c8b55150664f9eeb4894945f83ba6. Node autenticado y plugin/compatibilidad host pendientes; no firmado/revisión independiente. Decisiones SSH/puerto/custodia y reserva pendientes de aprobación; sin provisión ni despliegue. main intacto, sin PR adicional.
