@@ -1,5 +1,5 @@
 // Candidate rotation transaction. No production entry point, provisioning,
-// network transfer, signer, scheduler or key custody is installed by this module.
+// network listener, signer, scheduler or key custody is installed by this module.
 // Callers must provide independently approved scope and verifier public key.
 // The only destructive operation is unlinking the exact, inventoried previous
 // bundle AFTER durable promotion and a second verification of the new one.
@@ -11,6 +11,7 @@ import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,PREINSTALL_S
  from './sabora-encrypted-backup-bundle.mjs';
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {exactKeys} from './sabora-release-protected-store.mjs';
+import {BackupWireReader,receiveBackupCandidate} from './sabora-vps-backup-wire.mjs';
 const stop=code=>{throw Error('sabora_rotation_stop:'+code);};
 const HEX=/^[0-9a-f]{64}$/;
 const hash=v=>typeof v==='string'&&HEX.test(v)&&!/^0+$/.test(v);
@@ -147,7 +148,16 @@ async function purgePrevious(path,expected,ctx){
  }
  await syncDir(path);await rmdir(path);await syncDir(dirname(path));
 }
+// Local and streaming inputs share one lock, proof and promotion transaction.
 export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proofBytes}={}){
+ return rotate({root,sourceDirectory,scope,proofBytes,reader:null});
+}
+export async function receiveVerifiedVpsReplica({root,source,scope}={}){
+ const reader=new BackupWireReader(source);
+ try{return await rotate({root,scope,reader});}finally{reader.close();}
+}
+async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
+
  if(process.platform!=='linux'||typeof process.geteuid!=='function'||!scope||
   !['production','disposable-lab'].includes(scope.environment)||
   !hash(scope.storageIdentitySha256)||!hash(scope.externalStorageIdentitySha256)||
@@ -155,16 +165,19 @@ export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proof
   !/^[0-9]{10,20}$/.test(scope.systemIdentifier??'')||
   !Number.isSafeInteger(scope.quotaBytes)||!Number.isSafeInteger(scope.reserveBytes)||
   scope.reserveBytes<1048576||scope.quotaBytes<=scope.reserveBytes||
-  !Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144)stop('invalid_scope');
+  (!reader&&(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144)))stop('invalid_scope');
  const uid=process.geteuid(),lab=scope.environment==='disposable-lab';
  authorityFingerprint(scope.verifierPublicKey);
  // No installed production caller exists. The production directory and
  // authority are deliberately constrained; changing them needs review.
  if(!lab&&(uid!==0||root!=='/srv/sabora/backups'))stop('unapproved_production_root');
  const ctx={...scope,uid,lab};
- await directory(root,ctx);await directory(sourceDirectory,ctx);
- const relation=(a,b)=>{const p=relative(a,b);return p===''||(p!=='..'&&!p.startsWith('../')&&!isAbsolute(p));};
- if(relation(root,sourceDirectory)||relation(sourceDirectory,root))stop('source_overlaps_cache');
+ await directory(root,ctx);
+ if(!reader){
+  await directory(sourceDirectory,ctx);
+  const relation=(a,b)=>{const p=relative(a,b);return p===''||(p!=='..'&&!p.startsWith('../')&&!isAbsolute(p));};
+  if(relation(root,sourceDirectory)||relation(sourceDirectory,root))stop('source_overlaps_cache');
+ }
  const lock=join(root,'rotation.lock'),currentPath=join(root,'current'),candidatePath=join(root,'candidate'),
   previousPath=join(root,'previous'),statePath=join(root,'state.json');
  try{await exclusive(lock,{schema:'sabora-vps-rotation-lock/v1',pid:process.pid});}
@@ -175,8 +188,19 @@ export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proof
   if(!same(await readdir(root),expected))stop('unreconciled_state');
   const current=hasCurrent?await bundle(currentPath,ctx):null;
   if(current)await readState(statePath,ctx,current);
-  const source=await bundle(sourceDirectory,ctx);
+  let source,header;
+  if(reader){
+   header=await reader.header();
+   const {parsed,manifestBytes}=header,manifest=parsed.value;
+   if(manifest.sourceSystemIdentifier!==ctx.systemIdentifier)stop('bundle_scope_or_inventory');
+   const inventory=parsed.components.find(c=>c.name===(manifest.schema===PREINSTALL_SCHEMA?'initial-state':'inventory'));
+   source={manifest,manifestSha256:parsed.manifestSha256,
+    bytes:manifestBytes.length+parsed.components.reduce((n,c)=>n+c.ciphertextBytes,0),
+    inventorySha256:inventory.plaintextSha256};
+   proofBytes=header.proofBytes;
+  }else source=await bundle(sourceDirectory,ctx);
   const signed=proof(proofBytes,ctx,current,source);
+  if(reader)reader.setExpiry(Date.parse(signed.validUntil));
   if(current&&(source.manifest.backupId===current.manifest.backupId||
       source.manifestSha256===current.manifestSha256||
       Date.parse(source.manifest.createdAt)<Date.parse(current.manifest.createdAt)||
@@ -190,7 +214,8 @@ export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proof
   if(!Number.isSafeInteger(total)||total>scope.quotaBytes||space.bavail*space.bsize<BigInt(needed))
    stop('insufficient_reserved_capacity');
   mutation=true;
-  await replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory:candidatePath,
+  if(reader)await receiveBackupCandidate(reader,candidatePath,header);
+  else await replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory:candidatePath,
    destinationClass:'vps-encrypted-cache'});
   const candidate=await bundle(candidatePath,ctx);
   if(candidate.manifestSha256!==source.manifestSha256||candidate.bytes!==source.bytes)

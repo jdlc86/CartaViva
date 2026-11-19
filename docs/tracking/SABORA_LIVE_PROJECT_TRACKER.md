@@ -1567,3 +1567,8 @@ PR #72 Draft: cuatro SIGKILL reales en proceso hijo de laboratorio, transición 
 ## 154. S43 — reparación del contrato de pruebas y propuesta de transferencia directa
 
 PR #72: fallos validate/generate-lockfile de d6ce81c7 comparten aserción histórica de pgcrypto/base restore. Ajuste al flujo actual sin quitar controles; inventario de archivos prevalidado antes de lectura. CI pendiente. S40 especifica recepción cifrada directamente a candidate con lock, longitud/hash/proof, EOF y fsync, sin tercera generación; propuesta no implementada. Continuidad S43-3e.15. NO-GO operativo.
+
+
+## 155. S43 — rotación local 5/5 PASS; transporte directo implementado como candidato
+
+CI exacta 36615c1b [44538779894](https://github.com/jdlc86/CartaViva/actions/runs/44538779894), [44538779855](https://github.com/jdlc86/CartaViva/actions/runs/44538779855): 4 SIGKILL, ciclos inicial/V2/V2, 103 migraciones y H6 PASS; fixture no operativo. Nuevo wire/receptor streaming directo a candidate en PR #72; integración por pipes y negativos pendiente CI. No listener/SSH operativo, configuración/autoridades/cuota ni scheduler. Continuidad S43-3e.16, S40 conserva STOP.

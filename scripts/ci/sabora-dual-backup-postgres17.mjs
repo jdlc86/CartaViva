@@ -4,7 +4,9 @@
 // a second networkless PG17 cluster. It is not an operational backup receipt.
 import assert from 'node:assert/strict';
 import {createHash,randomBytes,generateKeyPairSync,sign} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
+import {Readable} from 'node:stream';
+import {once} from 'node:events';
 import {chmod,mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {basename,join,resolve} from 'node:path';
@@ -16,7 +18,8 @@ import {
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
 import {openPostgresBackupSnapshot,readPreinstallState} from '../ops/sabora-postgres-snapshot.mjs';
-import {rotateVerifiedVpsReplica} from '../ops/sabora-vps-backup-rotation.mjs';
+import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica} from '../ops/sabora-vps-backup-rotation.mjs';
+import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
@@ -72,6 +75,30 @@ async function waitForPg(container){
  throw failure('restore_cluster_not_ready');
 }
 function elapsed(start){return Number((process.hrtime.bigint()-start)/1000000n);}
+// End-to-end positive transfers traverse a real pipe between separate Node
+// processes. Neither side writes a transport spool. The sender only reads
+// the external ciphertext bundle; the receiving transaction owns the slot.
+async function rotateFromPipe({root:cache,sourceDirectory,scope,proofBytes}){
+ const senderModule=pathToFileURL(join(root,'scripts/ops/sabora-vps-backup-wire.mjs')).href;
+ const senderProgram=`
+  import {Readable} from 'node:stream';
+  import {pipeline} from 'node:stream/promises';
+  let input='';for await(const chunk of process.stdin)input+=chunk;
+  const {moduleUrl,sourceDirectory,proofB64}=JSON.parse(input);
+  const {encodeVpsBackupStream}=await import(moduleUrl);
+  await pipeline(Readable.from(encodeVpsBackupStream({sourceDirectory,proofBytes:Buffer.from(proofB64,'base64')})),process.stdout);
+ `;
+ const child=spawn(process.execPath,['--input-type=module','--eval',senderProgram],{stdio:['pipe','pipe','pipe']});
+ let errorText='';child.stderr.on('data',chunk=>{if(errorText.length<2000)errorText+=chunk.toString().slice(0,2000-errorText.length);});
+ child.stdin.on('error',()=>{});
+ const ended=once(child,'close');ended.catch(()=>{});
+ child.stdin.end(JSON.stringify({moduleUrl:senderModule,sourceDirectory,proofB64:proofBytes.toString('base64')}));
+ try{
+  const result=await receiveVerifiedVpsReplica({root:cache,source:child.stdout,scope});
+  const [code,signal]=await ended;assert.equal(code,0,String(signal)+': '+errorText);
+  return result;
+ }finally{if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');}
+}
 const rotationAuthority=generateKeyPairSync('ed25519');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 function rotationScope(systemIdentifier){return {environment:'disposable-lab',systemIdentifier,
@@ -449,6 +476,63 @@ try{
   assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
   console.log('sabora_vps_backup_rotation_sigkill_ok:'+phase);
  }
+ // Negative wire cases use the small initial-state bundle only; do not buffer
+ // the large V2 payloads. The valid receive path streams via real child pipes.
+ const wireParts=[];
+ for await(const part of encodeVpsBackupStream({sourceDirectory:secondExternal,proofBytes:secondProof}))wireParts.push(part);
+ const wire=Buffer.concat(wireParts),magicSize=wireParts[0].length;
+ const brokenMagic=Buffer.from(wire);brokenMagic[0]^=1;
+ const hugeHeader=Buffer.from(wire);hugeHeader.writeBigUInt64BE(262145n,magicSize);
+ const hugeBody=Buffer.from(wire);
+ const bodyLengthOffset=wireParts.slice(0,5).reduce((total,part)=>total+part.length,0);
+ hugeBody.writeBigUInt64BE(1073741825n,bodyLengthOffset);
+ const wrongBodySize=Buffer.from(wire);wrongBodySize.writeBigUInt64BE(1n,bodyLengthOffset);
+ const wrongBodyDigest=Buffer.from(wire);wrongBodyDigest[wrongBodyDigest.length-1]^=1;
+ const forgedParts=[];
+ for await(const part of encodeVpsBackupStream({sourceDirectory:secondExternal,proofBytes:Buffer.from(JSON.stringify(invalid))}))forgedParts.push(part);
+ const wrongPriorParts=[];
+ for await(const part of encodeVpsBackupStream({sourceDirectory:secondExternal,proofBytes:wrongPrior}))wrongPriorParts.push(part);
+ for(const [label,bytes,pattern,mutated,quota] of [
+  ['magic',brokenMagic,/protocol_mismatch/,false],
+  ['header-limit',hugeHeader,/invalid_frame_length/,false],
+  ['header-truncated',wire.subarray(0,magicSize+4),/truncated_frame/,false],
+  ['signature',Buffer.concat(forgedParts),/document_signature_invalid/,false],
+  ['predecessor',Buffer.concat(wrongPriorParts),/proof_scope_mismatch/,false],
+  ['capacity',wire,/insufficient_reserved_capacity/,false,scope.reserveBytes+1],
+  ['body-limit',hugeBody,/invalid_frame_length/,true],
+  ['body-length',wrongBodySize,/component_length_mismatch/,true],
+  ['body-truncated',wire.subarray(0,wire.length-1),/truncated_frame/,true],
+  ['digest',wrongBodyDigest,/component_digest_mismatch/,true],
+  ['extra',Buffer.concat([wire,Buffer.from('x')]),/trailing_bytes/,true],
+ ]){
+  const negativeRoot=join(fixture,'wire-negative-'+label);await mkdir(negativeRoot,{mode:0o700});
+  await rotateVerifiedVpsReplica({root:negativeRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
+  // Fragmentation covers partial and multiple headers per underlying read.
+  const chunks=(function*(){for(let i=0;i<bytes.length;i+=37)yield bytes.subarray(i,i+37);})();
+  await assert.rejects(receiveVerifiedVpsReplica({root:negativeRoot,source:Readable.from(chunks),
+   scope:quota?{...scope,quotaBytes:quota}:scope}),pattern);
+  const entries=(await readdir(negativeRoot)).sort();
+  assert.deepEqual(entries,mutated?['candidate','current','rotation.lock','state.json']:['current','state.json']);
+  assert.equal((await inspectEncryptedBackupBundle(join(negativeRoot,'current'))).manifestSha256,initialResult.manifestSha256);
+  if(mutated)await assert.rejects(receiveVerifiedVpsReplica({root:negativeRoot,source:Readable.from([wire]),scope}),/locked_or_interrupted/);
+  console.log('sabora_vps_backup_wire_negative_ok:'+label);
+ }
+ // An input stream failure is also a real transport interruption, not EOF
+ // with a valid payload. Keep the preceding backup and lock.
+ const cutRoot=join(fixture,'wire-cut');await mkdir(cutRoot,{mode:0o700});
+ await rotateVerifiedVpsReplica({root:cutRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
+ const cut=(async function*(){yield wire.subarray(0,wire.length-1);throw Error('fixture_pipe_disconnected');})();
+ await assert.rejects(receiveVerifiedVpsReplica({root:cutRoot,source:Readable.from(cut),scope}),/fixture_pipe_disconnected/);
+ assert.deepEqual((await readdir(cutRoot)).sort(),['candidate','current','rotation.lock','state.json']);
+ assert.equal((await inspectEncryptedBackupBundle(join(cutRoot,'current'))).manifestSha256,initialResult.manifestSha256);
+ const pipeRoot=join(fixture,'wire-positive');await mkdir(pipeRoot,{mode:0o700});
+ await rotateFromPipe({root:pipeRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
+ const pipeResult=await rotateFromPipe({...requestRotation,root:pipeRoot});
+ assert.equal(pipeResult.manifestSha256,second.manifestSha256);
+ assert.deepEqual((await readdir(pipeRoot)).sort(),['current','state.json']);
+ await assert.rejects(receiveVerifiedVpsReplica({root:pipeRoot,source:Readable.from([wire]),scope}),/proof_scope_mismatch/);
+ assert.deepEqual((await readdir(pipeRoot)).sort(),['current','state.json']);
+ console.log('sabora_vps_backup_wire_pipe_ok: two real initial captures, one retained generation, no spool or replay');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
  assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
@@ -571,7 +655,7 @@ try{
   await rm(work,{recursive:true,force:true});
   const verified=rotationProof(scope,post,predecessor,'external-pg17-restore',recoveredHash,
    digest(JSON.stringify({fixture:runId,generation,recoveredHash,externalDatabase:database})));
-  const rotated=await rotateVerifiedVpsReplica({root:rotationRoot,sourceDirectory:postExternal,scope,proofBytes:verified});
+  const rotated=await rotateFromPipe({root:rotationRoot,sourceDirectory:postExternal,scope,proofBytes:verified});
   assert.equal(rotated.manifestSha256,post.manifestSha256);assert.equal(rotated.generations,1);
   assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
   assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,post.manifestSha256);

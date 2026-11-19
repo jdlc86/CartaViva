@@ -260,3 +260,8 @@ PR #72 Draft. Se amplía la misma batería PG17 con SIGKILL real en cuatro punto
 ## S43-3e.15 — corrección de dos fallos de CI del mismo contrato histórico
 
 PR #72 SHA d6ce81c7: validate y generate-lockfile fallaron en S40 dual backup por aserción de texto antigua de pgcrypto; las aserciones posteriores también fijaban nombre de BD anterior. Corregido contrato al flujo real del mismo cluster inicial en postgres, preservando orden y checks de recuperación. Se valida inventario privado de componentes antes de abrirlos con el inspector legado, rechazando archivos especiales y enlaces. Nueva CI necesaria. Se documenta en S40 propuesta de recepción encuadrada directamente en candidate bajo lock, sin ruta adicional, y límites de reconciliación. No implementado transporte remoto ni validado aún el ciclo completo; main/VPS/Supabase intactos.
+
+
+## S43-3e.16 — rotación local validada, transporte directo candidato
+
+SHA anterior 36615c1b 5/5 SUCCESS, 2 SKIPPED. H6 1/2A/2B PASS (44538779894); bootstrap 44538779855 con 4 SIGKILL, inicial→V2→V2, restore externo 103 migraciones, 2228/5251/19602 ms fixture; sin recibo operativo. PR #72 mantiene Draft; se incorpora wire binario con header/tamaños/hashes/EOF/timeout, receptor comparte lock/firmas/cuota/promoción/purga y escribe solo candidate, sender streaming ciphertext. Batería integral ampliada a pipes Node reales y negativos; nueva CI pendiente. Aún sin SSH real de backup, entrada/configuración firmada, compatibilidad Windows, cuota física, reconciliación operativa, frecuencia y revisión independiente. No instalar ni borrar en VPS, no merge. Main intacto.

@@ -340,17 +340,23 @@ function validatedManifest(value){
   throw failure('manifest_component_set');
  return {meta,components:value.components};
 }
+// Shared manifest validation for directory backups and bounded wire headers.
+// No file writes, no claim of ciphertext integrity or AES authentication.
+export function parseEncryptedBackupManifest(bytes){
+ if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>262144)throw failure('manifest_size');
+ let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{throw failure('manifest_parse');}
+ return {value,manifestSha256:createHash('sha256').update(bytes).digest('hex'),...validatedManifest(value)};
+}
 async function loadManifest(directory){
  const path=join(directory,'manifest.json');
  await regular(path,262144);
- let value,bytes;try{bytes=await readFile(path);value=JSON.parse(bytes.toString('utf8'));}
- catch{throw failure('manifest_parse');}
- const parsed=validatedManifest(value);
+ const bytes=await readFile(path);
+ const parsed=parseEncryptedBackupManifest(bytes);
  if(parsed.meta.schema===PREINSTALL_SCHEMA){
   const entries=(await readdir(directory)).sort();
   if(entries.join('|')!=='initial-state.aesgcm|manifest.json')throw failure('preinstall_unexpected_files');
  }
- return {path,value,manifestSha256:createHash('sha256').update(bytes).digest('hex'),...parsed};
+ return {path,...parsed};
 }
 function contained(root,path){
  const rel=relative(resolve(root),resolve(path));
