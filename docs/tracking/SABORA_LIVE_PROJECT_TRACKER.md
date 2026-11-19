@@ -1552,3 +1552,8 @@ main 8d8189eabf92c5c15f4eb841cd367033558caceb 5/5 SUCCESS, paquete exacto [14532
 ## 151. S43 — continuación del bloque de rotación segura
 
 Propietario autoriza continuar preparación/desarrollo tras actualizar continuidad S43-3e.12. Diseño y ensayos de rotación pendientes. Reutilizar backup existente; ningún borrado real, provisioning, SQL, merge ni cambio de main autorizado. Mantener un único PR de este hito cuando exista candidato integrado y evidencia.
+
+
+## 152. S43 — primera implementación de la rotación acotada (candidato)
+
+Librería de rotación durable + ampliación de batería PG17 existente, [procedimiento y límites S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md), continuidad S43-3e.13. CI pendiente; sin entrada operativa ni transferencia remota ni cuota real ni scheduler. Pruebas de crash real y ciclos V2/traspaso post-SQL pendientes de completar. No se considera validación operativa ni autorización de borrado.

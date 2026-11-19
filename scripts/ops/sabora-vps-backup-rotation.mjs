@@ -69,7 +69,9 @@ async function bundle(path,ctx){
  await directory(path,ctx);
  const manifestPath=join(path,'manifest.json');
  const manifestFile=await hashFile(manifestPath,ctx.uid,262144);
- const manifest=JSON.parse(await readFile(manifestPath,'utf8'));
+ const manifestBytes=await readFile(manifestPath);
+ if(sha(manifestBytes)!==manifestFile.sha256)stop('manifest_changed');
+ const manifest=JSON.parse(manifestBytes.toString('utf8'));
  if(![PREINSTALL_SCHEMA,V2].includes(manifest.schema)||manifest.repository!=='jdlc86/CartaViva'||
     manifest.sourceProjectRef!=='byhvmumqivmunkmomhup'||manifest.sourceDatabase!=='postgres'||
     manifest.sourceSystemIdentifier!==ctx.systemIdentifier||!ID.test(manifest.backupId)||
@@ -157,7 +159,7 @@ export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proof
  if(!lab&&(uid!==0||root!=='/srv/sabora/backups'))stop('unapproved_production_root');
  const ctx={...scope,uid,lab};
  await directory(root,ctx);await directory(sourceDirectory,ctx);
- const relation=(a,b)=>{const p=relative(a,b);return p===''||(!p.startsWith('..')&&!isAbsolute(p));};
+ const relation=(a,b)=>{const p=relative(a,b);return p===''||(p!=='..'&&!p.startsWith('../')&&!isAbsolute(p));};
  if(relation(root,sourceDirectory)||relation(sourceDirectory,root))stop('source_overlaps_cache');
  const lock=join(root,'rotation.lock'),currentPath=join(root,'current'),candidatePath=join(root,'candidate'),
   previousPath=join(root,'previous'),statePath=join(root,'state.json');

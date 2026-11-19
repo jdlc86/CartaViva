@@ -3,7 +3,7 @@
 // capture staging copy, and restores only from the off-site-class replica into
 // a second networkless PG17 cluster. It is not an operational backup receipt.
 import assert from 'node:assert/strict';
-import {createHash,randomBytes} from 'node:crypto';
+import {createHash,randomBytes,generateKeyPairSync,sign} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {chmod,mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -16,6 +16,8 @@ import {
  inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
 } from '../ops/sabora-encrypted-backup-bundle.mjs';
 import {openPostgresBackupSnapshot,readPreinstallState} from '../ops/sabora-postgres-snapshot.mjs';
+import {rotateVerifiedVpsReplica} from '../ops/sabora-vps-backup-rotation.mjs';
+import {stableStringify} from './sabora-release-governor.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -70,6 +72,19 @@ async function waitForPg(container){
  throw failure('restore_cluster_not_ready');
 }
 function elapsed(start){return Number((process.hrtime.bigint()-start)/1000000n);}
+const rotationAuthority=generateKeyPairSync('ed25519');
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+function rotationScope(systemIdentifier){return {environment:'disposable-lab',systemIdentifier,
+ storageIdentitySha256:digest('ci-only-vps-storage-'+runId),externalStorageIdentitySha256:digest('ci-only-external-storage-'+runId),
+ verifierPublicKey:rotationAuthority.publicKey.export({format:'pem',type:'spki'}),quotaBytes:4*1024**3,reserveBytes:1048576};}
+function rotationProof(scope,result,previous,recoveryKind,recoveredInventorySha256,recoveryEvidenceSha256){
+ const payload={schema:'sabora-vps-rotation-proof/v1',repository:'jdlc86/CartaViva',project:'sabora',environment:scope.environment,
+  storageIdentitySha256:scope.storageIdentitySha256,externalStorageIdentitySha256:scope.externalStorageIdentitySha256,
+  backupId:result.manifest.backupId,manifestSha256:result.manifestSha256,previousManifestSha256:previous,
+  releaseSha:result.manifest.releaseSha,backupSchema:result.manifest.schema,recoveredInventorySha256,recoveryEvidenceSha256,recoveryKind,
+  observedAt:new Date().toISOString(),validUntil:new Date(Date.now()+300000).toISOString()};
+ return Buffer.from(JSON.stringify({payload,signature:sign(null,Buffer.from(stableStringify(payload)),rotationAuthority.privateKey).toString('base64')}));
+}
 
 const fixture=await mkdtemp(join(process.env.RUNNER_TEMP||tmpdir(),'sabora-dual-backup-'));
 const capture=join(fixture,'encrypted-capture');
@@ -339,6 +354,62 @@ try{
  const badBytes=await readFile(badInitial);badBytes[0]^=1;await writeFile(badInitial,badBytes);
  await assert.rejects(verifyPreinstallBackup({...verifyInitial,bundleDirectory:initialReplica}),/ciphertext_mismatch/);
  console.log('sabora_preinstall_pg17_recovery_drill_ok: external receipt authenticated; partial state rejected; exact fixture recovery checked; not operational evidence');
+ // Same PG17 initial-state source, two genuinely captured encrypted generations.
+ // Only the ephemeral test key signs the assertions AFTER the external
+ // verification and recovery drill above; no production authorization.
+ const rotationRoot=join(fixture,'bounded-vps-initial-fixture');
+ await mkdir(rotationRoot,{mode:0o700});
+ const scope=rotationScope(initialSystem),kind='authenticated-initial-state-and-recovery-drill';
+ const initialEvidence=digest(JSON.stringify({fixture:runId,initialBaseline,recovered:await readPreinstallState(initialInput)}));
+ const firstProof=rotationProof(scope,initialResult,null,kind,initialResult.manifest.components[0].plaintextSha256,initialEvidence);
+ const first=await rotateVerifiedVpsReplica({root:rotationRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
+ assert.equal(first.generations,1);assert.equal(first.operationalReceipt,false);
+ assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
+ const secondPlan={...initialPlan,backupId:initialPlan.backupId+'-SECOND'};
+ const second=await capturePreinstallBackup({...initialRequest,metadata:secondPlan});
+ const secondExternal=join(fixture,'preinstall-external-second');
+ await replicateEncryptedBackupBundle({sourceDirectory:initialCapture,destinationDirectory:secondExternal,destinationClass:'offsite'});
+ await rm(initialCapture,{recursive:true,force:true});
+ const secondAuth=await verifyPreinstallBackup({...verifyInitial,bundleDirectory:secondExternal,expectedBackupId:secondPlan.backupId});
+ assert.equal(secondAuth.initialStateVerified,true);
+ assert.equal(second.manifest.components[0].plaintextSha256,initialResult.manifest.components[0].plaintextSha256);
+ assert.deepEqual(await readPreinstallState(initialInput),initialBaseline);
+ const secondProof=rotationProof(scope,second,initialResult.manifestSha256,kind,second.manifest.components[0].plaintextSha256,initialEvidence);
+ const requestRotation={root:rotationRoot,sourceDirectory:secondExternal,scope,proofBytes:secondProof};
+ const assertPrior=async()=>{
+  assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,initialResult.manifestSha256);
+  assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
+ };
+ const invalid=JSON.parse(secondProof.toString('utf8'));invalid.signature=Buffer.alloc(64).toString('base64');
+ await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,proofBytes:Buffer.from(JSON.stringify(invalid))}),/document_signature_invalid/);
+ await assertPrior();
+ const wrongPrior=rotationProof(scope,second,null,kind,second.manifest.components[0].plaintextSha256,initialEvidence);
+ await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,proofBytes:wrongPrior}),/proof_scope_mismatch/);
+ await assertPrior();
+ await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,scope:{...scope,quotaBytes:scope.reserveBytes+1}}),/insufficient_reserved_capacity/);
+ await assertPrior();
+ await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,sourceDirectory:initialReplica}),/ciphertext_mismatch/);
+ await assertPrior();
+ // Interrupted transaction marker and unexplained second slot are not
+ // automatically removed. Only the disposable test harness reconciles them.
+ const interrupted=join(rotationRoot,'rotation.lock');
+ await writeFile(interrupted,'fixture-crash\n',{mode:0o600,flag:'wx'});
+ await assert.rejects(rotateVerifiedVpsReplica(requestRotation),/locked_or_interrupted/);
+ await rm(interrupted);
+ await assertPrior();
+ await mkdir(join(rotationRoot,'previous'),{mode:0o700});
+ await assert.rejects(rotateVerifiedVpsReplica(requestRotation),/unreconciled_state/);
+ await rm(join(rotationRoot,'previous'),{recursive:true});
+ await assertPrior();
+ const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
+ assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
+ assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
+ assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
+ assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,second.manifestSha256);
+ assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256,'offsite predecessor never purged by VPS rotation');
+ await assert.rejects(rotateVerifiedVpsReplica(requestRotation),/proof_scope_mismatch/);
+ console.log('sabora_vps_backup_rotation_preinstall_ok: two real captures, signed disposable recovery proofs, concurrency, corruption, quota, interrupted marker, predecessor preserved on rejection, one generation on success');
+
  psql(target,'postgres',globalRolesSql);
  docker(['exec',target,'createdb','-U','postgres','sabora_external_restore_ci']);
  psql(target,'sabora_external_restore_ci',
@@ -381,6 +452,19 @@ try{
   where parent.rolname='sabora_h6_fn_owner' and member.rolname='cv005_recovery_provider_dba';`).stdout.trim();
  assert.equal(membership,'true|false|false');
  const restoreMs=elapsed(restoreStarted);
+ // The V2 promotion is tied to the inventory actually recovered above,
+ // not simply to successful transfer or to a manifest supplied by the caller.
+ const restoredRoot=join(fixture,'bounded-vps-v2-fixture');
+ await mkdir(restoredRoot,{mode:0o700});
+ const fullScope=rotationScope(systemIdentifier),restoredDigest=digest(restoredInventory);
+ assert.equal(restoredDigest,result.manifest.components.find(x=>x.name==='inventory').plaintextSha256);
+ const fullProof=rotationProof(fullScope,result,null,'external-pg17-restore',restoredDigest,
+  digest(JSON.stringify({fixture:runId,restoredDigest,ledgerCount,membership,restoredColumnAcl})));
+ const fullRotated=await rotateVerifiedVpsReplica({root:restoredRoot,sourceDirectory:offsite,scope:fullScope,proofBytes:fullProof});
+ assert.equal(fullRotated.manifestSha256,result.manifestSha256);
+ assert.equal(fullRotated.operationalReceipt,false);
+ assert.deepEqual((await readdir(restoredRoot)).sort(),['current','state.json']);
+ console.log('sabora_vps_backup_rotation_v2_ok: external PG17 restored inventory bound to signed disposable proof; no operational receipt');
  const encrypted=join(offsite,'data.aesgcm');
  const corrupt=Buffer.from(await readFile(encrypted));
  corrupt[Math.floor(corrupt.length/2)]^=0xff;await writeFile(encrypted,corrupt);
