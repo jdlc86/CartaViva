@@ -20,14 +20,15 @@ function verifyDependencies(name,bytes){
 }
 export function verifyBackupPreparationDirectory(destination){
  if(resolve(destination)!==destination||realpathSync(destination)!==destination)stop('noncanonical_destination');
- const inventory=[];
+ const inventory=[],directories=[];
+ const expectedDirectories=['scripts','scripts/ci','scripts/ops'];
  function walk(dir){
   const st=lstatSync(dir);
   if(!st.isDirectory()||st.isSymbolicLink())stop('artifact_directory');
   for(const name of readdirSync(dir)){
    const child=join(dir,name),info=lstatSync(child);
    if(info.isSymbolicLink())stop('artifact_link');
-   if(info.isDirectory())walk(child);
+   if(info.isDirectory()){directories.push(child.slice(destination.length+1).replaceAll('\\','/'));walk(child);}
    else{
     if(!info.isFile()||info.nlink!==1||info.size<1||info.size>2*1024**2)stop('artifact_file');
     inventory.push(child.slice(destination.length+1).replaceAll('\\','/'));
@@ -35,7 +36,7 @@ export function verifyBackupPreparationDirectory(destination){
   }
  }
  walk(destination);
- if(!same(inventory,['artifact.json',...BACKUP_PREPARATION_FILES]))stop('artifact_inventory');
+ if(!same(inventory,['artifact.json',...BACKUP_PREPARATION_FILES])||!same(directories,expectedDirectories))stop('artifact_inventory');
  const bytes=readFileSync(join(destination,'artifact.json'));
  const manifest=validateBackupPreparationManifest(bytes);
  for(const name of BACKUP_PREPARATION_FILES){
