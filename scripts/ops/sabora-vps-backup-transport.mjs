@@ -4,8 +4,10 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
-import {lstat,realpath} from 'node:fs/promises';
-import {isAbsolute,resolve} from 'node:path';
+import {lstat,realpath,readFile} from 'node:fs/promises';
+import {isAbsolute,resolve,dirname,join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
 import {encodeVpsBackupStream} from './sabora-vps-backup-wire.mjs';
 import {exactKeys} from './sabora-release-protected-store.mjs';
 export const BACKUP_RECEIVE_COMMAND='sabora-backup-receive-v1';
@@ -21,17 +23,35 @@ async function localFile(path,{privateFile=false}={}){
  return path;
 }
 // No user ssh_config, agent, proxy, forwarding, shell or password fallback.
-// This lab API is not a provisioned Windows CLI; ACL/client binary custody
-// and real endpoint authorization must be resolved separately.
+// Windows uses the existing OS DACL verifier and exact expected observations
+// for its disposable private directory, key and pinned known-hosts file. These
+// expectations are caller-supplied laboratory inputs, not an approval dossier.
 export async function backupLabSshArguments(endpoint){
- if(!exactKeys(endpoint,['environment','host','port','user','sshBinary','identityFile','knownHostsFile'])||
+ const windows=process.platform==='win32';
+ const fields=['environment','host','port','user','sshBinary','identityFile','knownHostsFile',...(windows?['windowsAcl']:[])];
+ if(!exactKeys(endpoint,fields)||
   endpoint.environment!=='disposable-lab'||endpoint.host!=='127.0.0.1'||
   !Number.isInteger(endpoint.port)||endpoint.port<1024||endpoint.port>65535||
   typeof endpoint.user!=='string'||!/^[a-z_][a-z0-9_-]{0,31}$/.test(endpoint.user))
   stop('endpoint_not_authorized');
  await localFile(endpoint.sshBinary);
  await localFile(endpoint.identityFile,{privateFile:true});
- const known=(await localFile(endpoint.knownHostsFile)).replaceAll('\\','/');
+ const knownFile=await localFile(endpoint.knownHostsFile);
+ if(windows){
+  const expected=endpoint.windowsAcl;
+  if(!exactKeys(expected,['directorySha256','identitySha256','knownHostsSha256','clientBinarySha256','knownHostsContentSha256'])||
+   !Object.values(expected).every(sha)||dirname(endpoint.identityFile)!==dirname(knownFile))stop('windows_acl_receipt_required');
+  const native=await realpath(join(process.env.SystemRoot??'C:\\Windows','System32','OpenSSH','ssh.exe'));
+  if(endpoint.sshBinary!==native||(await lstat(native)).size>32*1024**2||
+   (await lstat(knownFile)).size>16384)stop('windows_client_identity_invalid');
+  const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+  if(digest(await readFile(native))!==expected.clientBinarySha256||
+   digest(await readFile(knownFile))!==expected.knownHostsContentSha256)stop('windows_client_identity_invalid');
+  if(verifiedNtfsAclDigest(dirname(knownFile))!==expected.directorySha256||
+   verifiedNtfsAclDigest(endpoint.identityFile)!==expected.identitySha256||
+   verifiedNtfsAclDigest(knownFile)!==expected.knownHostsSha256)stop('windows_acl_receipt_mismatch');
+ }
+ const known=knownFile.replaceAll('\\','/');
  return ['-F','none','-T','-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','IdentityAgent=none',
   '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile="'+known+'"','-o','GlobalKnownHostsFile=none',
   '-o','UpdateHostKeys=no','-o','HostKeyAlgorithms=ssh-ed25519','-o','PasswordAuthentication=no',
