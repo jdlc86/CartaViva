@@ -1511,3 +1511,7 @@ Los tres archivos compartidos por los PR son `catalog-postgres17-node-driver-smo
 ## 142. S43 — ajuste del inspector Docker-save en el PR #71
 
 [Continuidad S43-3e.3](../handoffs/SESSION_43_HANDOFF_2026-11-19.md). SHA previo 1545c7979a42a696fcd56d4fbfe3e16dc23eea8c: avance hasta 20 marcadores de lab, primer deploy A STOP archive_unreferenced_payload. Diagnóstico con TAR de artefacto CI anterior auténtico: blobs JSON legacy de compatibilidad por capa, no otra imagen. Validación cerrada OCI/compatibilidad/hash/cadena y config final; VOLUME web ausente o par exacto tmpfs; regresiones críticas y prevalidación de cuatro TAR reales antes de SSH. CI del candidato nuevo pendiente; A/B/rollback y aceptación operativa sin validar. Mismo PR Draft, sin merge ni operación externa.
+
+## 143. S43 — diagnóstico Docker acotado en el mismo PR #71
+
+[Continuidad S43-3e.4](../handoffs/SESSION_43_HANDOFF_2026-11-19.md). SHA anterior f89644f719031f8f175cb69d8ef2837cb2212eb5: los cuatro TAR reales validados, 21 marcadores, primer deploy A STOP scoped_docker_failed. Código diagnóstico fase/causa de subprocess con enums, journal failedPhase, snapshot saneado y artefacto solo laboratorio/si falla; regresión anti-divulgación. Baterías vigentes conservadas, CI nuevo pendiente. No afirmar resolución, A/B/rollback, ni aceptación operativa. Sin merge/VPS/Supabase/Fleetia ni auditoría nueva.

@@ -16,6 +16,7 @@ import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS} from '../ops/sabora-release-installation.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
+import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
 import {immutableComposeOverride,validateClosedCompose} from '../ops/sabora-release-compose-policy.mjs';
 import {LAB_ENVIRONMENT,labAuthority,signedLabDocument,labHash,keyIdentity,materialLabDossiers} from './sabora-release-lab-fixtures.mjs';
@@ -48,11 +49,54 @@ function snapshot(){return [...SABORA_RELEASE_SCOPE.services.map(s=>docker(['con
  ...createdImages.map(tag=>docker(['image','inspect','--format','{{.Id}}',tag],{allowFailure:true}).stdout)].join('|');}
 const sshBase=()=>['-F','/dev/null','-p','22229','-i',work+'/ssh-client','-o','BatchMode=yes','-o','IdentitiesOnly=yes',
  '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+work+'/known_hosts','-o','ConnectTimeout=5','sabora-release@127.0.0.1'];
+// Capture ONLY bounded, nonsecret state from the disposable lab before its
+// cleanup. Never upload raw logs, inspect output, environment or fixture keys.
+// An unexpected failed positive session remains a failed test.
+function capturePositiveFailure(stderr,exitCode){
+ const journalPath=P.ledger+'/transaction.json',historyPath=P.ledger+'/history.json';
+ const safeRead=path=>{try{return existsSync(path)?parse(path):null;}catch{return null;}};
+ const journal=safeRead(journalPath),history=safeRead(historyPath);
+ const enums=(value,allowed)=>allowed.includes(value)?value:'unknown';
+ const validSha=value=>typeof value==='string'&&/^[0-9a-f]{40}$/.test(value)?value:null;
+ const code=stderr.split('\n').find(line=>/^sabora_[a-z_]+_stop:[a-z0-9_:-]{1,160}$/.test(line))??'unclassified';
+ const phase=journal?enums(journal.failedPhase??journal.phase,['admitted','image-load-api','image-load-web','compose-up','readiness','retention','postchecks-committed','reconciliation-required']):null;
+ const containers=SABORA_RELEASE_SCOPE.services.map(service=>{
+  const name='sabora-'+service+'-1';
+  const owner=docker(['container','inspect','--format','{{index .Config.Labels "io.sabora.managed-by"}}',name],{allowFailure:true});
+  if(owner.status!==0)return {service,state:'absent-or-unavailable'};
+  if(!namesVerifiedEmpty||owner.stdout.trim()!=='release-controller-v1')return {service,state:'ownership-unproven'};
+  const result=docker(['container','inspect','--format','{{json .State}}',name],{allowFailure:true});
+  if(result.status!==0)return {service,state:'inspection-failed'};
+  try{
+   const value=JSON.parse(result.stdout),logs=docker(['logs','--tail','25',name],{allowFailure:true});
+   return {service,state:enums(value.Status,['created','running','paused','restarting','removing','exited','dead']),
+    running:value.Running===true,exitCode:Number.isInteger(value.ExitCode)?value.ExitCode:null,
+    health:enums(value.Health?.Status,['starting','healthy','unhealthy','none']),
+    oomKilled:value.OOMKilled===true,
+    engineErrorKind:value.Error?releaseProcessFailureKind(value.Error):null,
+    recentLogKind:releaseProcessFailureKind(String(logs.stderr)+String(logs.stdout)),
+    healthFailureKind:value.Health?.Log?.length?releaseProcessFailureKind(value.Health.Log.at(-1).Output):null};
+  }catch{return {service,state:'inspection-failed'};}
+ });
+ const diagnostic={schema:'sabora-controller-disposable-failure/v1',sourceSha,runId,
+  code,exitCode,phase,journalState:journal?enums(journal.state,['consumed','in-progress','unknown','healthy']):null,
+  journalReleaseSha:validSha(journal?.releaseSha),activeReleaseSha:validSha(history?.activeReleaseSha),
+  containers,completedChecks:[...checks],operationalAcceptance:false,labOnly:true};
+ put(output+'/failure-diagnostic.json',JSON.stringify(diagnostic,null,2)+'\n',0o644);
+ chmodSync(output,0o755);
+ console.error('sabora_controller_lab_failure:'+JSON.stringify(diagnostic));
+}
 async function session(command,feed,{expectSuccess=false}={}){
  const child=spawn('ssh',[...sshBase(),command],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
  child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);child.stdin.on('error',()=>{});const exited=once(child,'close');
  try{if(feed)await feed(child.stdin);else child.stdin.end();}catch{child.stdin.destroy();}
- const [code]=await exited;if(expectSuccess)assert.equal(code,0,stderr);else assert.notEqual(code,0,'negative session unexpectedly succeeded');return {code,stdout,stderr};
+ const [code]=await exited;
+ if(expectSuccess&&code!==0){
+  try{capturePositiveFailure(stderr,code);}catch{console.error('sabora_controller_lab_failure_capture_unavailable');}
+  // Do not echo arbitrary SSH stderr even on a failing assertion.
+  assert.equal(code,0,'positive session failed; see bounded lab diagnostic');
+ }else if(!expectSuccess)assert.notEqual(code,0,'negative session unexpectedly succeeded');
+ return {code,stdout,stderr};
 }
 function approval(bundle,operation,id,{ttl=600000,offset=-1000,evidencePatch,manifestBytes=bundle.manifestBytes}={}){
  const docs=materialLabDossiers({sha:bundle.sha,expected:configuration.expected,keys:authorities});if(evidencePatch)evidencePatch(docs);

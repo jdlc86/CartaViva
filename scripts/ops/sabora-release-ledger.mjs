@@ -40,7 +40,7 @@ export function createReleaseLedger(directory){
   fail(code){
    const current=journal();if(!current||current.state==='healthy')return;
    durableReplace(journalPath,{...current,state:'unknown',phase:'reconciliation-required',
-    failure:code,at:new Date().toISOString()});
+    failedPhase:current.phase,failure:code,at:new Date().toISOString()});
   },
   commit({receipt,operation,readiness}){
    const current=journal(),prior=history(),at=new Date().toISOString();
