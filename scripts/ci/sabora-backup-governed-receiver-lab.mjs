@@ -17,7 +17,10 @@ const stop=code=>{throw Error('sabora_governed_receiver_ci_stop:'+code);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 function run(bin,args,{allowFailure=false}={}){
  const r=spawnSync(bin,args,{encoding:'utf8',timeout:30000,maxBuffer:262144});
- if(r.error||r.signal||(!allowFailure&&r.status!==0))stop('fixture_command_failed:'+basename(bin)+':'+basename(args[0]??''));
+ if(r.error||r.signal||(!allowFailure&&r.status!==0)){
+  const operation=bin==='/usr/bin/sudo'?args.find(x=>/^\/usr\/(bin|sbin)\/[a-z]+$/.test(x))??'unknown':bin;
+  stop('fixture_command_failed:'+basename(operation)+':'+String(r.status??'spawn'));
+ }
  return r;
 }
 const sudo=(args,opts)=>run('/usr/bin/sudo',['-n',...args],opts);
@@ -46,7 +49,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
  const mount=join(base,'volume'),cache=join(mount,'cache'),subdir=join(volume,'governed-receiver');
  const node=join(base,'bin/node'),shell=join(base,'bin/receive'),code=join(base,'code');
  const temp=await mkdtemp(join(process.env.RUNNER_TEMP,'sabora-governed-receiver-'));
- let created=false,userCreated=false,mounted=false,server,ended,port;
+ let created=false,userCreated=false,mounted=false,server,ended,port,accountUid;
  const put=(path,bytes,mode='0644')=>{
   const source=join(temp,'put-'+hash(Buffer.from(path)).slice(0,20));
   return writeFile(source,bytes,{mode:0o600}).then(()=>sudo(['/usr/bin/install','-o','root','-g','root','-m',mode,source,path]));
@@ -73,6 +76,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   userCreated=true;sudo(['/usr/sbin/usermod','--password','*',account]);
   const uid=Number(run('/usr/bin/id',['-u',account]).stdout.trim()),gid=Number(run('/usr/bin/id',['-g',account]).stdout.trim());
   assert.ok(uid>0&&gid>0&&Number.isSafeInteger(uid)&&Number.isSafeInteger(gid));
+  accountUid=uid;
   assert.equal(run('/usr/bin/id',['-G',account]).stdout.trim(),String(gid));
   const compiled=join(temp,'receive');
   run('/usr/bin/cc',['-O2','-Wall','-Wextra','-Werror',
@@ -166,11 +170,32 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    finally{clearTimeout(timer);}
    if(await occupied(port))stop('listener_cleanup_failed');
   }
-  if(userCreated)sudo(['/usr/sbin/userdel',account]);
+  if(userCreated){
+   // sshd session children can outlive the client ACK and the parent
+   // daemon's exit briefly (including PAM cleanup). Wait for this exact
+   // ephemeral account, not for a guessed delay or unrelated processes.
+   const uid=Number(run('/usr/bin/id',['-u',account]).stdout.trim());
+   if(accountUid!==undefined&&uid!==accountUid)stop('cleanup_account_identity_changed');
+   if(!Number.isSafeInteger(uid)||uid<=0)stop('cleanup_account_identity_invalid');
+   const processes=()=>{
+    const p=run('/usr/bin/pgrep',['-u',String(uid)],{allowFailure:true});
+    if(![0,1].includes(p.status))stop('cleanup_process_probe_failed');
+    return p.status===0;
+   };
+   for(let i=0;i<100&&processes();i++)await delay(50);
+   if(processes())stop('cleanup_account_sessions_still_live');
+   // Check real/effective identity and NSS after deletion; never force-delete
+   // an in-use account or kill processes outside this lab.
+   const deletion=sudo(['/usr/sbin/userdel',account],{allowFailure:true});
+   if(deletion.status!==0)stop('cleanup_userdel_status_'+String(deletion.status));
+   assert.equal(run('/usr/bin/getent',['passwd',account],{allowFailure:true}).status,2);
+   assert.equal(run('/usr/bin/getent',['group',account],{allowFailure:true}).status,2);
+  }
   if(mounted)sudo(['/usr/bin/umount',mount]);
   if(created)sudo(['/usr/bin/rm','-rf','--',base]);
   // subdir contains only the two-generation lab fixture and durable guard;
   // it stays in the disposable volume until its existing owner unmounts it.
   await rm(temp,{recursive:true,force:true});
+  console.log('sabora_backup_governed_fixture_cleanup_ok');
  }
 }
