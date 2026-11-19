@@ -77,7 +77,8 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   // An OpenSSH listener with UsePAM=no can refuse a locked shadow account.
   // Give the disposable account a hash of a high-entropy value discarded
   // immediately; never enable password authentication or expose the hash.
-  // Both inputs travel over stdin, not argv, disk, or logs.
+  // Both inputs travel over stdin, not argv, intermediate files or logs.
+  // Only the one-way hash persists in the disposable account's shadow entry.
   const secret=randomBytes(48);
   let crypt;
   try{
