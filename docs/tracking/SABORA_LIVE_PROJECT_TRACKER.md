@@ -1557,3 +1557,8 @@ Propietario autoriza continuar preparación/desarrollo tras actualizar continuid
 ## 152. S43 — primera implementación de la rotación acotada (candidato)
 
 Librería de rotación durable + ampliación de batería PG17 existente, [procedimiento y límites S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md), continuidad S43-3e.13. CI pendiente; sin entrada operativa ni transferencia remota ni cuota real ni scheduler. Pruebas de crash real y ciclos V2/traspaso post-SQL pendientes de completar. No se considera validación operativa ni autorización de borrado.
+
+
+## 153. S43 — pruebas integradas de interrupción y ciclos de sustitución
+
+PR #72 Draft: cuatro SIGKILL reales en proceso hijo de laboratorio, transición inicial→V2→V2 mismo clúster y restauraciones externas PG17, datos cambiados, limitación a dos slots, predecesor y downgrade. Exigencia adicional del árbol SQL previsto. Implementado, CI pendiente; no instalación/configuración real ni aprobación de operación. Continuidad S43-3e.14.

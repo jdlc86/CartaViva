@@ -9,7 +9,7 @@ import {chmod,mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import {basename,join,resolve} from 'node:path';
 import {buildMigrationAudit} from './migration-audit.mjs';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  capturePreinstallBackup,verifyPreinstallBackup,PREINSTALL_SCHEMA,
@@ -94,7 +94,8 @@ const restoreWork=join(fixture,'restore-work');
 const keyPath=join(fixture,'custodian.key');
 const wrongKeyPath=join(fixture,'wrong-custodian.key');
 const target='sabora-dual-backup-restore-'+runId+'-'+process.pid;
-let targetStarted=false;
+let targetStarted=false,rotationRestoreStarted=false;
+const rotationRestoreTarget='sabora-rotation-restore-'+runId+'-'+process.pid;
 const started=process.hrtime.bigint();
 try{
  const migrations=await migrationInventory();
@@ -401,6 +402,53 @@ try{
  await assert.rejects(rotateVerifiedVpsReplica(requestRotation),/unreconciled_state/);
  await rm(join(rotationRoot,'previous'),{recursive:true});
  await assertPrior();
+ // Exercise actual process death, not a catchable thrown exception. Patch
+ // filesystem exports only in a disposable child, never the implementation.
+ const crashModule=pathToFileURL(join(root,'scripts/ops/sabora-vps-backup-rotation.mjs')).href;
+ const crashProgram=`
+  import fs from 'node:fs/promises';
+  import {syncBuiltinESMExports} from 'node:module';
+  import {join} from 'node:path';
+  let input='';for await(const chunk of process.stdin)input+=chunk;
+  const {root,sourceDirectory,scope,proofB64,phase,moduleUrl}=JSON.parse(input);
+  if(process.env.GITHUB_ACTIONS!=='true'||scope.environment!=='disposable-lab'||
+   !root.startsWith(process.env.RUNNER_TEMP+'/sabora-dual-backup-')||
+   !/\\/crash-[a-z-]+$/.test(root))throw Error('fixture_scope');
+  const kill=()=>process.kill(process.pid,'SIGKILL');
+  const originalMkdir=fs.mkdir,originalRename=fs.rename,originalUnlink=fs.unlink;
+  fs.mkdir=async(path,...args)=>{const result=await originalMkdir(path,...args);
+   if(phase==='copy-started'&&path===join(root,'candidate'))kill();return result;};
+  fs.rename=async(from,to,...args)=>{const result=await originalRename(from,to,...args);
+   if((phase==='previous-moved'&&to===join(root,'previous'))||
+    (phase==='state-published'&&to===join(root,'state.json')))kill();return result;};
+  fs.unlink=async(path,...args)=>{const result=await originalUnlink(path,...args);
+   if(phase==='purge-started'&&path.startsWith(join(root,'previous')+'/'))kill();return result;};
+  syncBuiltinESMExports();
+  const {rotateVerifiedVpsReplica}=await import(moduleUrl);
+  await rotateVerifiedVpsReplica({root,sourceDirectory,scope,proofBytes:Buffer.from(proofB64,'base64')});
+ `;
+ for(const phase of ['copy-started','previous-moved','state-published','purge-started']){
+  const crashRoot=join(fixture,'crash-'+phase);
+  await mkdir(crashRoot,{mode:0o700});
+  await rotateVerifiedVpsReplica({root:crashRoot,sourceDirectory:initialExternal,scope,proofBytes:firstProof});
+  const death=spawnSync(process.execPath,['--input-type=module','--eval',crashProgram],{
+   input:JSON.stringify({root:crashRoot,sourceDirectory:secondExternal,scope,proofB64:secondProof.toString('base64'),phase,moduleUrl:crashModule}),
+   encoding:'utf8',timeout:30000});
+  assert.equal(death.signal,'SIGKILL',phase+': '+String(death.stderr));
+  assert.ok((await readdir(crashRoot)).includes('rotation.lock'));
+  const entries=await readdir(crashRoot);
+  assert.ok(entries.filter(x=>['current','candidate','previous'].includes(x)).length<=2);
+  const oldPath=join(crashRoot,phase==='copy-started'?'current':'previous');
+  if(phase!=='purge-started')assert.equal((await inspectEncryptedBackupBundle(oldPath)).manifestSha256,initialResult.manifestSha256);
+  if(['state-published','purge-started'].includes(phase)){
+   assert.equal((await inspectEncryptedBackupBundle(join(crashRoot,'current'))).manifestSha256,second.manifestSha256);
+   assert.equal(JSON.parse(await readFile(join(crashRoot,'state.json'),'utf8')).manifestSha256,second.manifestSha256);
+  }
+  await assert.rejects(rotateVerifiedVpsReplica({...requestRotation,root:crashRoot}),/locked_or_interrupted/);
+  assert.deepEqual((await readdir(crashRoot)).sort(),entries.sort(),'retry cannot mutate interrupted rotation');
+  assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
+  console.log('sabora_vps_backup_rotation_sigkill_ok:'+phase);
+ }
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
  assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
@@ -411,41 +459,41 @@ try{
  console.log('sabora_vps_backup_rotation_preinstall_ok: two real captures, signed disposable recovery proofs, concurrency, corruption, quota, interrupted marker, predecessor preserved on rejection, one generation on success');
 
  psql(target,'postgres',globalRolesSql);
- docker(['exec',target,'createdb','-U','postgres','sabora_external_restore_ci']);
- psql(target,'sabora_external_restore_ci',
-  'create schema extensions; create extension pgcrypto with schema extensions;');
- psql(target,'sabora_external_restore_ci',databasePrerequisiteSql);
+ // Install the already recovered image in the SAME initial-state cluster,
+ // database postgres, so later captures prove actual pre/post transition.
+ // The extensions schema and pgcrypto were prepared before the baseline.
+ psql(target,'postgres',databasePrerequisiteSql);
  docker(['cp',schemaOut,target+':/tmp/sabora-schema.dump']);
  docker(['cp',dataOut,target+':/tmp/sabora-data.dump']);
- docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',
+ docker(['exec',target,'pg_restore','-U','postgres','-d','postgres',
   '--exit-on-error','/tmp/sabora-schema.dump']);
- docker(['exec',target,'pg_restore','-U','postgres','-d','sabora_external_restore_ci',
+ docker(['exec',target,'pg_restore','-U','postgres','-d','postgres',
   '--exit-on-error','--disable-triggers','/tmp/sabora-data.dump']);
- psql(target,'sabora_external_restore_ci',databaseAclSql);
+ psql(target,'postgres',databaseAclSql);
  docker(['exec',target,'rm','-f','/tmp/sabora-schema.dump','/tmp/sabora-data.dump']);
  await rm(rolesOut,{force:true});await rm(schemaOut,{force:true});await rm(dataOut,{force:true});
- const restoredInventory=psql(target,'sabora_external_restore_ci',await readFile(inventorySql,'utf8')).stdout;
+ const restoredInventory=psql(target,'postgres',await readFile(inventorySql,'utf8')).stdout;
  assert.equal(restoredInventory,sourceInventory);
- const restoredColumnAcl=psql(target,'sabora_external_restore_ci',`
+ const restoredColumnAcl=psql(target,'postgres',`
   select attacl is not null from pg_attribute
   where attrelid='sabora.staff_members'::regclass and attname='user_id';`).stdout.trim();
  assert.equal(restoredColumnAcl,'t','column ACL survives external encrypted restore');
  await rm(inventoryOut,{force:true});
- const ledgerCount=psql(target,'sabora_external_restore_ci',
+ const ledgerCount=psql(target,'postgres',
   'select count(*) from sabora_migration_meta.applied_migrations where application_count=1;').stdout.trim();
  assert.equal(ledgerCount,String(migrations.count));
- psql(target,'sabora_external_restore_ci',`create role sabora_backup_restore_probe login
+ psql(target,'postgres',`create role sabora_backup_restore_probe login
   password 'ci_only_not_a_secret' nosuperuser nocreatedb nocreaterole noinherit nobypassrls;
   grant sabora_staff_reader to sabora_backup_restore_probe;`);
  const allowed=docker(['exec','-e','PGPASSWORD=ci_only_not_a_secret',target,'psql','-X','-qAt',
-  '-h','127.0.0.1','-U','sabora_backup_restore_probe','-d','sabora_external_restore_ci','-c',
+  '-h','127.0.0.1','-U','sabora_backup_restore_probe','-d','postgres','-c',
   'set role sabora_staff_reader; select count(*) >= 0 from sabora.staff_members;']);
  assert.equal(allowed.stdout.trim(),'t');
  const denied=docker(['exec','-e','PGPASSWORD=ci_only_not_a_secret',target,'psql','-X','-qAt',
-  '-h','127.0.0.1','-U','sabora_backup_restore_probe','-d','sabora_external_restore_ci','-c',
+  '-h','127.0.0.1','-U','sabora_backup_restore_probe','-d','postgres','-c',
   'set role postgres;'],{allowFailure:true});
  assert.notEqual(denied.status,0);
- const membership=psql(target,'sabora_external_restore_ci',`select
+ const membership=psql(target,'postgres',`select
   membership.admin_option||'|'||membership.set_option||'|'||membership.inherit_option
   from pg_auth_members membership join pg_roles parent on parent.oid=membership.roleid
   join pg_roles member on member.oid=membership.member
@@ -465,6 +513,77 @@ try{
  assert.equal(fullRotated.operationalReceipt,false);
  assert.deepEqual((await readdir(restoredRoot)).sort(),['current','state.json']);
  console.log('sabora_vps_backup_rotation_v2_ok: external PG17 restored inventory bound to signed disposable proof; no operational receipt');
+ // The initial target is now fully restored and has the SAME system identifier
+ // as the two preinstall bundles. Capture two fresh V2 generations from it,
+ // independently restore each into a third networkless PG17 fixture, and
+ // promote them over preinstall then V2 only after exact inventory equality.
+ psql(target,'postgres','DROP ROLE sabora_backup_restore_probe;');
+ assert.equal(psql(target,'postgres','select (pg_control_system()).system_identifier::text;').stdout.trim(),initialSystem);
+ docker(['run','-d','--name',rotationRestoreTarget,'--network','none','-e','POSTGRES_PASSWORD=ci_only_not_a_secret','postgres:17-alpine']);
+ rotationRestoreStarted=true;await waitForPg(rotationRestoreTarget);
+ const postVersion=psql(target,'postgres','show server_version;').stdout.trim();
+ const postArgs=['exec','-i',target,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-'];
+ let predecessor=second.manifestSha256,previousGlobal,previousRecovered,previousBackup;
+ for(const generation of [1,2]){
+  if(generation===2)psql(target,'postgres',"CREATE TABLE sabora.rotation_ci_probe(id integer PRIMARY KEY); INSERT INTO sabora.rotation_ci_probe VALUES(72);");
+  const postCapture=join(fixture,'post-capture-'+generation),postExternal=join(fixture,'post-external-'+generation);
+  const post=await captureEncryptedBackupBundle({directory:postCapture,keyPath,metadata:{
+   schema:'sabora-logical-backup/v2',backupId:'SABORA-BACKUP-POST-CI-'+runId+'-'+generation,
+   repository:'jdlc86/CartaViva',releaseSha,sourceProjectRef:'byhvmumqivmunkmomhup',
+   postgresMajor:17,postgresVersion:postVersion,migrationTreeSha256:migrations.treeSha256,
+   includedSchemas:['sabora','sabora_migration_meta'],
+   excludedManagedSchemas:['auth','extensions','realtime','storage','supabase_functions','vault'],
+   createdAt:new Date().toISOString(),custody:'key-outside-artifact-git-actions-vps',
+  },snapshot:{exporter:{command:'docker',args:postArgs},expectedSystemIdentifier:initialSystem},components:[
+   {name:'roles-memberships',mediaType:'application/sql',command:'docker',args:postArgs,stdinPath:rolesSql},
+   {name:'schema',mediaType:'application/vnd.postgresql.custom',command:'docker',
+    args:['exec',target,'pg_dump','-U','postgres','-d','postgres','-Fc','--schema=sabora','--schema=sabora_migration_meta','--schema-only']},
+   {name:'data',mediaType:'application/vnd.postgresql.custom',command:'docker',
+    args:['exec',target,'pg_dump','-U','postgres','-d','postgres','-Fc','--schema=sabora','--schema=sabora_migration_meta','--data-only']},
+   {name:'inventory',mediaType:'text/plain',command:'docker',args:postArgs,stdinPath:inventorySql},
+  ]});
+  await replicateEncryptedBackupBundle({sourceDirectory:postCapture,destinationDirectory:postExternal,destinationClass:'offsite'});
+  await rm(postCapture,{recursive:true,force:true});
+  const work=join(fixture,'post-restore-'+generation);await mkdir(work,{mode:0o700});
+  const outputs={ 'roles-memberships':join(work,'roles.sql'),schema:join(work,'schema.dump'),data:join(work,'data.dump'),inventory:join(work,'inventory.txt') };
+  for(const [name,outputPath] of Object.entries(outputs))await decryptBackupComponent({bundleDirectory:postExternal,name,keyPath,outputPath});
+  const sql=await readFile(outputs['roles-memberships'],'utf8'),preAt=sql.indexOf(databasePrerequisiteMarker),aclAt=sql.indexOf(databaseAclMarker);
+  assert.ok(preAt>0&&aclAt>preAt);
+  const global=sql.slice(0,preAt);
+  if(generation===1){psql(rotationRestoreTarget,'postgres',global);previousGlobal=global;}
+  else assert.equal(global,previousGlobal,'global role catalog unchanged between generations');
+  const database='sabora_rotation_restore_'+generation;
+  docker(['exec',rotationRestoreTarget,'createdb','-U','postgres',database]);
+  psql(rotationRestoreTarget,database,'CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;');
+  psql(rotationRestoreTarget,database,sql.slice(preAt+databasePrerequisiteMarker.length,aclAt));
+  docker(['cp',outputs.schema,rotationRestoreTarget+':/tmp/sabora-rotation-schema.dump']);
+  docker(['cp',outputs.data,rotationRestoreTarget+':/tmp/sabora-rotation-data.dump']);
+  docker(['exec',rotationRestoreTarget,'pg_restore','-U','postgres','-d',database,'--exit-on-error','/tmp/sabora-rotation-schema.dump']);
+  docker(['exec',rotationRestoreTarget,'pg_restore','-U','postgres','-d',database,'--exit-on-error','--disable-triggers','/tmp/sabora-rotation-data.dump']);
+  psql(rotationRestoreTarget,database,sql.slice(aclAt+databaseAclMarker.length));
+  docker(['exec',rotationRestoreTarget,'rm','-f','/tmp/sabora-rotation-schema.dump','/tmp/sabora-rotation-data.dump']);
+  const recovered=psql(rotationRestoreTarget,database,await readFile(inventorySql,'utf8')).stdout;
+  assert.equal(recovered,await readFile(outputs.inventory,'utf8'));
+  const recoveredHash=digest(recovered);
+  assert.equal(recoveredHash,post.manifest.components.find(x=>x.name==='inventory').plaintextSha256);
+  assert.equal(psql(rotationRestoreTarget,database,'select count(*) from sabora_migration_meta.applied_migrations where application_count=1;').stdout.trim(),String(migrations.count));
+  if(generation===2){assert.notEqual(recoveredHash,previousRecovered);assert.equal(psql(rotationRestoreTarget,database,'SELECT id FROM sabora.rotation_ci_probe;').stdout.trim(),'72');}
+  await rm(work,{recursive:true,force:true});
+  const verified=rotationProof(scope,post,predecessor,'external-pg17-restore',recoveredHash,
+   digest(JSON.stringify({fixture:runId,generation,recoveredHash,externalDatabase:database})));
+  const rotated=await rotateVerifiedVpsReplica({root:rotationRoot,sourceDirectory:postExternal,scope,proofBytes:verified});
+  assert.equal(rotated.manifestSha256,post.manifestSha256);assert.equal(rotated.generations,1);
+  assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
+  assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,post.manifestSha256);
+  if(previousBackup)assert.equal((await inspectEncryptedBackupBundle(previousBackup.path)).manifestSha256,previousBackup.digest);
+  previousBackup={path:postExternal,digest:post.manifestSha256};previousRecovered=recoveredHash;predecessor=post.manifestSha256;
+  assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
+  console.log('sabora_vps_backup_rotation_cycle_ok:'+(generation===1?'preinstall-to-v2':'v2-to-v2'));
+ }
+ const downgrade=rotationProof(scope,second,predecessor,kind,second.manifest.components[0].plaintextSha256,initialEvidence);
+ await assert.rejects(rotateVerifiedVpsReplica({root:rotationRoot,sourceDirectory:secondExternal,scope,proofBytes:downgrade}),/stale_or_regressive_backup/);
+ assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,predecessor);
+
  const encrypted=join(offsite,'data.aesgcm');
  const corrupt=Buffer.from(await readFile(encrypted));
  corrupt[Math.floor(corrupt.length/2)]^=0xff;await writeFile(encrypted,corrupt);
@@ -483,6 +602,7 @@ try{
   plaintextPersistedInReplicas:false,operationalReceipt:false,
  }));
 }finally{
+ if(rotationRestoreStarted)docker(['rm','-f','-v',rotationRestoreTarget],{allowFailure:true});
  if(targetStarted)docker(['rm','-f','-v',target],{allowFailure:true});
  await rm(fixture,{recursive:true,force:true});
 }

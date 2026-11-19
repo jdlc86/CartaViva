@@ -250,3 +250,8 @@ El propietario pide actualizar continuidad primero y continuar. Partir de la dec
 ## S43-3e.13 — implementación candidata de rotación durable, pendiente de CI
 
 Librería nueva scripts/ops/sabora-vps-backup-rotation.mjs: reutiliza réplica, lock, prueba externa Ed25519 vinculada a manifest/predecesor/inventario/identidades, tamaño/cuota lógica, promoción/estado fsync y purga exacta solo tras confirmar nueva copia. Pruebas PG17 integradas en sabora-dual-backup-postgres17.mjs (dos capturas iniciales y V2 con restore real del fixture), CI pendiente. No entrada operativa/transport remoto/scheduler, no cuota real aprobada, no pruebas aún de crash real en todos los puntos ni rotación V2→V2 y transición mismo clúster; no declarar cierre. Un único candidato para el hito; main intacto, no autorización de VPS/SQL/borrado/merge.
+
+
+## S43-3e.14 — ampliación de pruebas de rotación, antes de CI final
+
+PR #72 Draft. Se amplía la misma batería PG17 con SIGKILL real en cuatro puntos, sin hooks en código de producción, y ascenso inicial→V2→V2 en mismo origen con dos restores completos externos en clúster networkless adicional, datos distintos, comprobación de inventario/ledger y rechazo downgrade. Se exige digest SQL planeado inicial para transición. CI pendiente, sin nuevos servicios ni operación. No cubre aún corte de energía ni procedimiento operativo de reconciliación; no se ha resuelto transferencia directa bajo lock/cuota física/scheduler/autoridades. No declarar hito cerrado.

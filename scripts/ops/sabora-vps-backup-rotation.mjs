@@ -3,7 +3,7 @@
 // Callers must provide independently approved scope and verifier public key.
 // The only destructive operation is unlinking the exact, inventoried previous
 // bundle AFTER durable promotion and a second verification of the new one.
-import {constants,createReadStream} from 'node:fs';
+import {constants} from 'node:fs';
 import {lstat,realpath,readdir,readFile,open,rename,unlink,rmdir,statfs} from 'node:fs/promises';
 import {join,dirname,resolve,parse,relative,isAbsolute} from 'node:path';
 import {createHash,randomBytes} from 'node:crypto';
@@ -177,6 +177,9 @@ export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proof
       source.manifestSha256===current.manifestSha256||
       Date.parse(source.manifest.createdAt)<Date.parse(current.manifest.createdAt)||
       (current.manifest.schema===V2&&source.manifest.schema===PREINSTALL_SCHEMA)))stop('stale_or_regressive_backup');
+  if(current?.manifest.schema===PREINSTALL_SCHEMA&&source.manifest.schema===V2&&
+   source.manifest.migrationTreeSha256!==current.manifest.plannedMigrationTreeSha256)
+   stop('initial_recovery_plan_not_fulfilled');
   const needed=source.bytes+scope.reserveBytes;
   const total=(current?.bytes??0)+needed;
   const space=await statfs(root,{bigint:true});
