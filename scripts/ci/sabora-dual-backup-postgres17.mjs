@@ -520,6 +520,15 @@ try{
    await assert.rejects(inspectVpsPublishedPurge({root:crashRoot,scope}),/recovery_phase_not_supported/);
    let subject=await inspectVpsRecoveryTransition({root:crashRoot,scope});
    assert.equal(subject.writerExcluded,false);assert.equal(subject.deletionAuthorized,false);
+   if(phase==='copy-started'){
+    const pending=join(fixture,'.'+basename(crashRoot)+'.recovery-sequence.pending');
+    await writeFile(pending,'interrupted fixture-only counter write',{mode:0o600,flag:'wx'});
+    await assert.rejects(inspectVpsRecoveryTransition({root:crashRoot,scope}),/recovery_sequence_interrupted/);
+    assert.deepEqual((await readdir(crashRoot)).sort(),entries.sort());
+    // Only the disposable harness may remove its fabricated interrupted counter.
+    await rm(pending);
+    console.log('sabora_vps_backup_recovery_sequence_interrupted_stop_ok');
+   }
    const retained=phase==='candidate-promoted'?second:initialResult;
    const verified=rotationProof(scope,retained,phase==='candidate-promoted'?initialResult.manifestSha256:null,
     kind,retained.manifest.components[0].plaintextSha256,initialEvidence);
