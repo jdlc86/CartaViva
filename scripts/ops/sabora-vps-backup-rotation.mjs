@@ -5,7 +5,8 @@
 // bundle AFTER durable promotion and a second verification of the new one.
 import {constants} from 'node:fs';
 import {lstat,realpath,readdir,readFile,open,rename,unlink,rmdir,statfs} from 'node:fs/promises';
-import {join,dirname,resolve,parse,relative,isAbsolute} from 'node:path';
+import {join,dirname,basename,resolve,parse,relative,isAbsolute} from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,parseEncryptedBackupManifest,PREINSTALL_SCHEMA}
  from './sabora-encrypted-backup-bundle.mjs';
@@ -150,13 +151,38 @@ async function purgePrevious(path,expected,ctx){
  }
  await syncDir(path);await rmdir(path);await syncDir(dirname(path));
 }
+// A persistent inode, outside the rotated slots, carries an OS advisory
+// lock. Never remove/replace it (doing so would split the exclusion domain).
+// The flock child shares the parent's open-file description; the lock lives
+// until that description closes, including process death. rotation.lock is
+// still the durable transaction intent, NOT evidence of a live writer.
+async function withRotationGuard(root,scope,operation){
+ const ctx=await rotationContext(root,scope);
+ await directory(dirname(root),ctx);
+ const guard=join(dirname(root),'.'+basename(root)+'.rotation.guard');
+ const fd=await open(guard,constants.O_RDWR|constants.O_CREAT|constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600);
+ try{
+  const opened=await fd.stat(),named=await lstat(guard);
+  if(!opened.isFile()||opened.uid!==ctx.uid||opened.nlink!==1||
+   (opened.mode&0o777)!==0o600||opened.size!==0||
+   named.dev!==opened.dev||named.ino!==opened.ino)stop('unsafe_process_guard');
+  const result=spawnSync('/usr/bin/flock',['-n','-E','75','3'],{
+   stdio:['ignore','ignore','ignore',fd.fd],timeout:5000,env:{PATH:'/usr/bin:/bin',LANG:'C'}});
+  if(result.status===75)stop('locked_or_interrupted');
+  if(result.error||result.signal||result.status!==0)stop('process_guard_unavailable');
+  const locked=await lstat(guard);
+  if(locked.dev!==opened.dev||locked.ino!==opened.ino||locked.nlink!==1)stop('process_guard_changed');
+  await fd.sync();await syncDir(dirname(root));
+  return await operation(ctx);
+ }finally{await fd.close();}
+}
 // Local and streaming inputs share one lock, proof and promotion transaction.
 export async function rotateVerifiedVpsReplica({root,sourceDirectory,scope,proofBytes}={}){
- return rotate({root,sourceDirectory,scope,proofBytes,reader:null});
+ return withRotationGuard(root,scope,ctx=>rotate({root,sourceDirectory,scope,proofBytes,reader:null,ctx}));
 }
 export async function receiveVerifiedVpsReplica({root,source,scope}={}){
  const reader=new BackupWireReader(source);
- try{return await rotate({root,scope,reader});}finally{reader.close();}
+ try{return await withRotationGuard(root,scope,ctx=>rotate({root,scope,reader,ctx}));}finally{reader.close();}
 }
 async function rotationContext(root,scope){
  if(process.platform!=='linux'||typeof process.geteuid!=='function'||!scope||
@@ -175,8 +201,7 @@ async function rotationContext(root,scope){
  await directory(root,ctx);
  return ctx;
 }
-async function rotate({root,sourceDirectory,scope,proofBytes,reader}){
- const ctx=await rotationContext(root,scope);
+async function rotate({root,sourceDirectory,scope,proofBytes,reader,ctx}){
  if(!reader&&(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144))stop('invalid_proof');
  if(!reader){
   await directory(sourceDirectory,ctx);
@@ -385,4 +410,115 @@ export async function inspectVpsRotationRecovery({root,scope}={}){
    previousRemainder:oldSlot.status,
    previousManifestSha256:previous?.manifestSha256??null,nextManifestSha256:next.manifestSha256};
  }catch{return unknown;}
+}
+
+// Narrow, laboratory-only reconciliation candidate. The previous bundle may
+// already be partially deleted. The signed intent is the inventory authority;
+// never infer permission to unlink from names, the PID or an observation alone.
+// No generic cleanup, lock reset, production entry point or automatic retry.
+async function inspectPreviousRemainder(path,ctx,expected){
+ if(!await exists(path))return {status:'absent',sha256:sha(JSON.stringify({status:'absent'})),items:[]};
+ if(!expected)stop('unexpected_previous');
+ await directory(path,ctx);
+ const entries=(await readdir(path)).sort(),items=[];
+ for(const name of entries){
+  if(!Object.hasOwn(expected.files,name))stop('unexpected_previous_file');
+  const declared=expected.files[name],actual=await hashFile(join(path,name),ctx.uid,name==='manifest.json'?262144:1024**3);
+  if(actual.sha256!==declared.sha256||actual.bytes!==declared.bytes)stop('previous_changed');
+  items.push({name,sha256:actual.sha256,bytes:actual.bytes,stat:actual.stat});
+ }
+ if(!same(entries,await readdir(path)))stop('previous_changed');
+ const status=same(entries,Object.keys(expected.files))?'complete':'verified-subset';
+ return {status,sha256:sha(JSON.stringify({status,files:items.map(({name,sha256,bytes})=>({name,sha256,bytes}))})),items};
+}
+async function publishedPurgeSubject(root,ctx){
+ const lockPath=join(root,'rotation.lock'),statePath=join(root,'state.json'),currentPath=join(root,'current');
+ const diagnosis=await inspectVpsRotationRecovery({root,scope:ctx});
+ if(diagnosis.phase!=='state-published')stop('recovery_phase_not_supported');
+ const lock=await readObservation(lockPath,ctx,MAX_INTENT);
+ if(lock.sha256!==diagnosis.lockSha256)stop('observation_changed');
+ const intent=JSON.parse(lock.bytes.toString('utf8'));
+ const next=decodeIntentRecord(intent.next,ctx);
+ const previous=intent.previous===null?null:decodeIntentRecord(intent.previous,ctx);
+ if(next.signed.previousManifestSha256!==(previous?.manifestSha256??null))stop('intent_scope_invalid');
+ const current=await bundle(currentPath,ctx),state=await readState(statePath,ctx,current);
+ if(current.manifestSha256!==next.manifestSha256||
+  JSON.stringify(state.proof)!==JSON.stringify(intent.next.proof))stop('recovery_state_mismatch');
+ const remainder=await inspectPreviousRemainder(join(root,'previous'),ctx,previous);
+ if((await readObservation(lockPath,ctx,MAX_INTENT)).sha256!==lock.sha256)stop('observation_changed');
+ return {lock,next,previous,current,remainder};
+}
+export async function inspectVpsPublishedPurge({root,scope}={}){
+ const ctx=await rotationContext(root,scope);
+ const subject=await publishedPurgeSubject(root,ctx);
+ return Object.freeze({schema:'sabora-vps-published-purge-subject/v1',writerExcluded:false,
+  deletionAuthorized:false,lockSha256:subject.lock.sha256,
+  currentManifestSha256:subject.next.manifestSha256,previousManifestSha256:subject.previous?.manifestSha256??null,
+  previousRemainderSha256:subject.remainder.sha256,previousRemainder:subject.remainder.status});
+}
+export async function finishInterruptedVpsPurge({root,scope,authorizationBytes,externalProofBytes}={}){
+ // Keep the candidate unavailable to production even for a purportedly valid
+ // signature until installed identities, custody, recovery policy and review exist.
+ if(scope?.environment!=='disposable-lab')stop('production_reconciliation_not_enabled');
+ for(const bytes of [authorizationBytes,externalProofBytes])
+  if(!Buffer.isBuffer(bytes)||bytes.length<1||bytes.length>262144)stop('invalid_recovery_document');
+ return withRotationGuard(root,scope,async ctx=>{
+  if(authorityFingerprint(ctx.recoveryPublicKey)===authorityFingerprint(ctx.verifierPublicKey))
+   stop('recovery_authority_not_independent');
+  const subject=await publishedPurgeSubject(root,ctx);
+  const auth=verifySignedDocument(authorizationBytes,ctx.recoveryPublicKey,'sabora-vps-purge-authorization/v1');
+  if(!exactKeys(auth,['schema','repository','project','environment','action','storageIdentitySha256',
+   'externalStorageIdentitySha256','lockSha256','currentManifestSha256','previousManifestSha256',
+   'previousRemainderSha256','externalProofSha256','observedAt','validUntil'])||
+   auth.repository!=='jdlc86/CartaViva'||auth.project!=='sabora'||auth.environment!==ctx.environment||
+   auth.action!=='finish-published-purge'||
+   auth.storageIdentitySha256!==ctx.storageIdentitySha256||auth.externalStorageIdentitySha256!==ctx.externalStorageIdentitySha256||
+   auth.lockSha256!==subject.lock.sha256||auth.currentManifestSha256!==subject.next.manifestSha256||
+   auth.previousManifestSha256!==(subject.previous?.manifestSha256??null)||
+   auth.previousRemainderSha256!==subject.remainder.sha256||auth.externalProofSha256!==sha(externalProofBytes))
+   stop('recovery_authorization_scope_mismatch');
+  const observed=Date.parse(auth.observedAt),expires=Date.parse(auth.validUntil);
+  if(!Number.isFinite(observed)||!Number.isFinite(expires)||observed>Date.now()||
+   expires<=Date.now()||expires<=observed||expires-observed>3600000)stop('recovery_authorization_time_invalid');
+  const fresh=proof(externalProofBytes,ctx,subject.previous,subject.current);
+  const until=Math.min(expires,Date.parse(fresh.validUntil));
+  const checkTime=()=>{if(Date.now()>=until)stop('recovery_authorization_expired');};
+  // Make the retained new bundle and published state durable again, even if
+  // the original process died just after rename(stateTemp,state.json).
+  const currentPath=join(root,'current'),statePath=join(root,'state.json'),previousPath=join(root,'previous');
+  await syncBundle(currentPath,subject.current,ctx);
+  const stateFd=await open(statePath,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  try{
+   const st=await stateFd.stat();
+   if(!st.isFile()||st.uid!==ctx.uid||st.nlink!==1||(st.mode&0o077)!==0)stop('unsafe_state');
+   await stateFd.sync();
+  }finally{await stateFd.close();}
+  await syncDir(root);
+  // Re-observe after fsync and before touching previous. No third slot,
+  // temporary bundle or arbitrary path can enter the purge transaction.
+  const ready=await publishedPurgeSubject(root,ctx);
+  if(ready.lock.sha256!==subject.lock.sha256||ready.remainder.sha256!==subject.remainder.sha256||
+   ready.current.manifestSha256!==subject.current.manifestSha256)stop('recovery_subject_changed');
+  checkTime();
+  if(ready.remainder.status!=='absent'){
+   for(const item of ready.remainder.items){
+    checkTime();
+    const p=join(previousPath,item.name),actual=await hashFile(p,ctx.uid,item.name==='manifest.json'?262144:1024**3);
+    if(actual.sha256!==item.sha256||actual.bytes!==item.bytes||actual.stat.ino!==item.stat.ino||
+     actual.stat.dev!==item.stat.dev||actual.stat.ctimeMs!==item.stat.ctimeMs)stop('previous_changed');
+    await unlink(p);
+   }
+   await syncDir(previousPath);await rmdir(previousPath);await syncDir(root);
+  }
+  const confirmed=await bundle(currentPath,ctx);
+  await readState(statePath,ctx,confirmed);
+  if(confirmed.manifestSha256!==subject.next.manifestSha256||
+   !same(await readdir(root),['current','state.json','rotation.lock'])||
+   (await readObservation(join(root,'rotation.lock'),ctx,MAX_INTENT)).sha256!==subject.lock.sha256)
+   stop('recovery_final_state_changed');
+  checkTime();
+  await unlink(join(root,'rotation.lock'));await syncDir(root);
+  return Object.freeze({schema:'sabora-vps-purge-reconciliation-result/v1',
+   currentManifestSha256:confirmed.manifestSha256,generations:1,operationalReceipt:false});
+ });
 }
