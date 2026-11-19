@@ -57,6 +57,9 @@ if [[ "$scope" = full ]]; then
     sudo -n apt-get update -qq
     sudo -n apt-get install -y --no-install-recommends openssh-server openssh-client
   fi
+  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock; do
+    test -x "$tool" || { echo 'Missing disposable volume tool' >&2; exit 1; }
+  done
 fi
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
