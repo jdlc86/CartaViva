@@ -22,6 +22,7 @@ import {rotateVerifiedVpsReplica,receiveVerifiedVpsReplica,inspectVpsRotationRec
  inspectVpsPublishedPurge,finishInterruptedVpsPurge,inspectVpsRecoveryTransition,applyVpsRecoveryTransition} from '../ops/sabora-vps-backup-rotation.mjs';
 import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
+import {startBackupSshLab} from './sabora-vps-backup-ssh-lab.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -141,7 +142,7 @@ const restoreWork=join(fixture,'restore-work');
 const keyPath=join(fixture,'custodian.key');
 const wrongKeyPath=join(fixture,'wrong-custodian.key');
 const target='sabora-dual-backup-restore-'+runId+'-'+process.pid;
-let targetStarted=false,rotationRestoreStarted=false;
+let targetStarted=false,rotationRestoreStarted=false,backupSsh;
 const rotationRestoreTarget='sabora-rotation-restore-'+runId+'-'+process.pid;
 const started=process.hrtime.bigint();
 try{
@@ -765,6 +766,21 @@ try{
  assert.deepEqual(stableDiagnosis.recoverableSlots,[{slot:'current',manifestSha256:second.manifestSha256}]);
  assert.equal(stableDiagnosis.deletionAuthorized,false);
  console.log('sabora_vps_backup_wire_pipe_ok: two real initial captures, one retained generation, no spool or replay');
+ // Exercise the same real initial captures and later V2 restores through a
+ // separately scoped OpenSSH daemon. The existing local and pipe tests remain.
+ backupSsh=await startBackupSshLab({fixture,scope,sourceSha:releaseSha,
+  entryPath:join(root,'scripts/ops/sabora-vps-backup-lab-entry.mjs')});
+ const firstTransport={sourceDirectory:initialExternal,proofBytes:firstProof,
+  expected:{backupId:initialResult.manifest.backupId,manifestSha256:initialResult.manifestSha256,previousManifestSha256:null}};
+ await backupSsh.proveInitialNegatives(firstTransport);
+ await backupSsh.transfer(firstTransport);
+ const secondTransport={sourceDirectory:secondExternal,proofBytes:secondProof,
+  expected:{backupId:second.manifest.backupId,manifestSha256:second.manifestSha256,previousManifestSha256:initialResult.manifestSha256}};
+ await backupSsh.transfer(secondTransport);
+ await assert.rejects(backupSsh.send(secondTransport),/transfer_outcome_unknown/);
+ assert.equal((await inspectEncryptedBackupBundle(join(backupSsh.root,'current'))).manifestSha256,second.manifestSha256);
+ assert.deepEqual((await readdir(backupSsh.root)).sort(),['current','state.json']);
+ console.log('sabora_vps_backup_ssh_initial_cycle_ok: two captures, pinned host and signed scope, no replay');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
  assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
@@ -887,18 +903,24 @@ try{
   await rm(work,{recursive:true,force:true});
   const verified=rotationProof(scope,post,predecessor,'external-pg17-restore',recoveredHash,
    digest(JSON.stringify({fixture:runId,generation,recoveredHash,externalDatabase:database})));
-  const rotated=await rotateFromPipe({root:rotationRoot,sourceDirectory:postExternal,scope,proofBytes:verified});
+  const rotated=await backupSsh.transfer({sourceDirectory:postExternal,proofBytes:verified,
+   expected:{backupId:post.manifest.backupId,manifestSha256:post.manifestSha256,previousManifestSha256:predecessor}});
   assert.equal(rotated.manifestSha256,post.manifestSha256);assert.equal(rotated.generations,1);
-  assert.deepEqual((await readdir(rotationRoot)).sort(),['current','state.json']);
-  assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,post.manifestSha256);
+  assert.deepEqual((await readdir(backupSsh.root)).sort(),['current','state.json']);
+  assert.equal((await inspectEncryptedBackupBundle(join(backupSsh.root,'current'))).manifestSha256,post.manifestSha256);
   if(previousBackup)assert.equal((await inspectEncryptedBackupBundle(previousBackup.path)).manifestSha256,previousBackup.digest);
   previousBackup={path:postExternal,digest:post.manifestSha256};previousRecovered=recoveredHash;predecessor=post.manifestSha256;
   assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
   console.log('sabora_vps_backup_rotation_cycle_ok:'+(generation===1?'preinstall-to-v2':'v2-to-v2'));
+  console.log('sabora_vps_backup_ssh_cycle_ok:'+(generation===1?'preinstall-to-v2':'v2-to-v2'));
  }
  const downgrade=rotationProof(scope,second,predecessor,kind,second.manifest.components[0].plaintextSha256,initialEvidence);
- await assert.rejects(rotateVerifiedVpsReplica({root:rotationRoot,sourceDirectory:secondExternal,scope,proofBytes:downgrade}),/stale_or_regressive_backup/);
- assert.equal((await inspectEncryptedBackupBundle(join(rotationRoot,'current'))).manifestSha256,predecessor);
+ await assert.rejects(rotateVerifiedVpsReplica({root:backupSsh.root,sourceDirectory:secondExternal,scope,proofBytes:downgrade}),/stale_or_regressive_backup/);
+ await assert.rejects(backupSsh.send({sourceDirectory:secondExternal,proofBytes:downgrade,
+  expected:{backupId:second.manifest.backupId,manifestSha256:second.manifestSha256,previousManifestSha256:predecessor}}),/transfer_outcome_unknown/);
+ assert.equal((await inspectEncryptedBackupBundle(join(backupSsh.root,'current'))).manifestSha256,predecessor);
+ await backupSsh.close();backupSsh=undefined;
+ console.log('sabora_vps_backup_ssh_disposable_listener_closed_ok');
 
  const encrypted=join(offsite,'data.aesgcm');
  const corrupt=Buffer.from(await readFile(encrypted));
@@ -918,7 +940,9 @@ try{
   plaintextPersistedInReplicas:false,operationalReceipt:false,
  }));
 }finally{
+ try{if(backupSsh)await backupSsh.close();}finally{
  if(rotationRestoreStarted)docker(['rm','-f','-v',rotationRestoreTarget],{allowFailure:true});
  if(targetStarted)docker(['rm','-f','-v',target],{allowFailure:true});
  await rm(fixture,{recursive:true,force:true});
+ }
 }
