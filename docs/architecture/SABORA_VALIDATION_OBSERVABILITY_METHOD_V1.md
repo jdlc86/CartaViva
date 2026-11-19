@@ -68,3 +68,8 @@ En matriz viva y continuidad de sesiones registrar por separado:
 **Puerta para primera prueba real:** migraciones y permisos con preflight sobre PG17.11 de Supabase, bootstrap CV-005, secretos propios, TLS/egress propios, respaldo/recuperación, observabilidad completa para los flujos activados, aprobación de integración y **autorización expresa de operaciones en VPS/Supabase**. Pueden acotarse funciones de prueba con datos ficticios sin declarar completadas Stripe remoto, Gemini, reservas, Excel u otras pendientes normativas.
 
 **Invariantes permanentes:** una instalación Sabora/un restaurante; dos PWA separadas; ROOT y ADMIN según contrato vigente, auditores sin atribución de titularidad; ninguna alteración de Fleetia ni recursos de otros proyectos; requisitos normativos prevalecen sobre la continuidad.
+
+
+### Decisión del propietario 19-11-2026: retención acotada de la réplica VPS
+
+Se conservará la última copia cifrada verificada de Sabora en el VPS. Al producir una nueva, se mantiene la anterior hasta comprobar que la sustituta es íntegra y recuperable según su fase; solo entonces se elimina la anterior. El estado estable es de una generación, con una segunda temporal durante su sustitución. Una verificación fallida nunca habilita la eliminación de la última copia válida. Esta decisión afecta a backups de datos en VPS, no a la retención del almacenamiento externo ni a los artefactos/ledger de release. No relaja las dos custodias, restauración externa, recuperación pre/post-SQL ni aislamiento. La frecuencia, cuota y mecanismo de rotación durable serán aprobados/probados según [S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md). La decisión no es una autorización para borrar datos existentes.

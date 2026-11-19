@@ -1542,3 +1542,8 @@ main 8d8189eabf92c5c15f4eb841cd367033558caceb 5/5 SUCCESS, paquete exacto [14532
 ## 149. S43 — paquetes exact-main descargados/verificados y launchers candidatos
 
 [Acta de preparación fuera del host](../reviews/SABORA_S43_CONTROLLER_OFFHOST_PREPARATION_2026-11-19.md), continuidad S43-3e.10. ZIP fuente 14532605497 y release 14532095645 igual digest GitHub; 28 archivos exactos, dos launchers GCC reproducibles en toolchain local, parser de ambas imágenes PASS; ZIP candidato off-host 73735 bytes SHA256 1bd07258dde987c49b0663fb055766fba60c8b55150664f9eeb4894945f83ba6. Node autenticado y plugin/compatibilidad host pendientes; no firmado/revisión independiente. Decisiones SSH/puerto/custodia y reserva pendientes de aprobación; sin provisión ni despliegue. main intacto, sin PR adicional.
+
+
+## 150. S43 — decisión del propietario: una generación verificada de backup VPS
+
+[Decisión y ejecución propuesta S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md), [metodología](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), continuidad S43-3e.11. Reemplazar únicamente cuando la nueva copia está verificada; conservar la anterior si falla; dos generaciones simultáneas solo durante sustitución/reconciliación. No confundir checksums con autenticación/recuperación ni borrar puntos de retorno pre-SQL todavía necesarios. Rotación segura no implementada/ensayada; no hay autorización de borrado ni cambios de host. Frecuencia, cuota y retención externa pendientes.
