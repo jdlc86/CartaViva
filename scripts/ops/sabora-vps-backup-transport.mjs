@@ -154,7 +154,12 @@ export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,
  child.stderr.on('data',chunk=>{if(stderr.length<4096)stderr+=chunk.toString('utf8').slice(0,4096-stderr.length);});
  try{
   const sending=pipeline(Readable.from(encodeVpsBackupStream({sourceDirectory,proofBytes})),child.stdin,{signal:abort.signal});
-  sending.catch(()=>child.kill());
+  sending.catch(error=>{
+   // An SSH process that has closed stdin may still be emitting its real
+   // failure. Preserve that diagnostic and wait under the existing deadline.
+   // Local encoder errors still terminate the process immediately.
+   if(!['EPIPE','ERR_STREAM_PREMATURE_CLOSE','ECONNRESET'].includes(error?.code))child.kill();
+  });
   const [sent,exit]=await Promise.allSettled([sending,ended]);
   if(sent.status!=='fulfilled'||exit.status!=='fulfilled'||exit.value[0]!==0||
    exit.value[1]!==null||oversized||abort.signal.aborted){
