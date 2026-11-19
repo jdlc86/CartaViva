@@ -4,7 +4,8 @@ import {CONTROLLER_PATHS as P} from './sabora-release-installation.mjs';
 import {releaseProcess} from './sabora-release-process.mjs';
 import {protectedBytes,trustedDirectory,sha256,durableExclusive,syncDirectory,releaseStop as stop} from './sabora-release-protected-store.mjs';
 import {inspectDockerSaveArchive} from './sabora-release-image-archive.mjs';
-import {immutableComposeOverride,validateClosedCompose,RELEASE_MOUNTS} from './sabora-release-compose-policy.mjs';
+import {immutableComposeOverride,validateClosedCompose,RELEASE_USERS} from './sabora-release-compose-policy.mjs';
+import {verifyRuntimeMounts} from './sabora-release-runtime-permissions.mjs';
 import {verifyMaterialDossiers} from './sabora-release-evidence.mjs';
 import {inspectLocalIsolation} from './sabora-release-local-inspector.mjs';
 import {assertLiveSaboraIsolation} from './sabora-release-isolation-gate.mjs';
@@ -27,15 +28,7 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
  const isolation=()=>{evidence();const witness=inspectLocalIsolation({run,policy:config.networkPolicy,reservation,now:Date.now()});
   if(ledger.readHistory().activeReleaseSha)assertLiveSaboraIsolation(witness,Date.now(),'running');return witness;};
  const json=(args,options)=>{const result=run('docker',args,options);return result.missing?null:JSON.parse(result.stdout);};
- function checkMounts(){
-  for(const path of [RELEASE_MOUNTS.secrets,RELEASE_MOUNTS.tls])trustedDirectory(path);
-  if(!same(Object.keys(config.mountHashes).sort(),['egress','manifest','secrets'].sort()))stop('mount_hashes_missing');
-  for(const name of ['egress','manifest'])if(sha256(protectedBytes(RELEASE_MOUNTS[name]))!==config.mountHashes[name])stop('mount_content_changed');
-  const names=readdirSync(RELEASE_MOUNTS.secrets).sort();
-  if(!same(names,Object.keys(config.mountHashes.secrets).sort()))stop('secret_inventory_changed');
-  for(const name of names){if(!/^[a-zA-Z0-9_.-]{1,100}$/.test(name)||sha256(protectedBytes(join(RELEASE_MOUNTS.secrets,name),{privateFile:true}))!==config.mountHashes.secrets[name])stop('secret_changed');}
-  verifyTlsMaterial(config.tls);
- }
+ function checkMounts(){verifyRuntimeMounts(config,run);verifyTlsMaterial(config.tls);}
  const retained=sha=>{
   if(!/^[0-9a-f]{40}$/.test(sha))stop('retained_sha_invalid');
   const entry=readJson(join(P.state,'retained-'+sha+'.json'));
@@ -47,7 +40,7 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
   if(sha256(protectedBytes(join(stored.location,'manifest.json')))!==stored.bundleManifestSha256)stop('retained_manifest_changed');
   for(const service of SABORA_RELEASE_SCOPE.services){
    const info=json(['container','inspect','sabora-'+service+'-1'])[0];
-   if(info.State?.Running!==true||(service!=='sabora-egress'&&info.State?.Health?.Status!=='healthy')||info.Image!==manifest.images[service==='web'?'web':'api'].imageId||
+   if(info.Config?.User!==RELEASE_USERS[service]||info.State?.Running!==true||(service!=='sabora-egress'&&info.State?.Health?.Status!=='healthy')||info.Image!==manifest.images[service==='web'?'web':'api'].imageId||
     info.Config?.Labels?.['com.docker.compose.project']!=='sabora'||info.Config.Labels['com.docker.compose.service']!==service||
     info.Config.Labels['io.sabora.release-sha']!==expectedSha||info.Config.Labels['io.sabora.managed-by']!=='release-controller-v1')
     stop('runtime_identity_mismatch');
@@ -126,7 +119,7 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
    run('docker',[...composeArgs,'up','--detach','--no-deps','--no-build','--pull','never','--wait','--wait-timeout','100',...SABORA_RELEASE_SCOPE.services],{timeout:120000});
    for(const service of SABORA_RELEASE_SCOPE.services){
     const info=json(['container','inspect','sabora-'+service+'-1'])[0];
-    if(info.Image!==current.manifest.images[service==='web'?'web':'api'].imageId||info.Config.Labels['io.sabora.release-sha']!==receipt.releaseSha)
+    if(info.Config?.User!==RELEASE_USERS[service]||info.Image!==current.manifest.images[service==='web'?'web':'api'].imageId||info.Config.Labels['io.sabora.release-sha']!==receipt.releaseSha)
      stop('started_image_identity');
    }
   },

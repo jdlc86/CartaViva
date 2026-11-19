@@ -5,6 +5,7 @@ import {releaseStop as stop,exactKeys} from './sabora-release-protected-store.mj
 const same=(a,b)=>stableStringify(a)===stableStringify(b);
 const API_HEALTH=['CMD','node','-e',"fetch('http://127.0.0.1:4100/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"];
 const WEB_HEALTH=['CMD','caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile'];
+export const RELEASE_USERS=Object.freeze({api:'10002:10002','sabora-egress':'10003:10003',web:'10001:10001'});
 export const RELEASE_MOUNTS=Object.freeze({
  manifest:'/etc/sabora/runtime/activation.json',secrets:'/etc/sabora/runtime/secrets',
  egress:'/etc/sabora/runtime/egress-policy.json',tls:'/srv/sabora/tls'
@@ -38,7 +39,7 @@ export function validateClosedCompose(config,manifest,{mounts=RELEASE_MOUNTS,res
  if(!exactKeys(config,['name','services','networks'])||config.name!=='sabora'||
   !exactKeys(config.services,['api','sabora-egress','web']))stop('compose_top_level');
  const shared=['command','restart','stop_signal','stop_grace_period','environment','networks',
-  'volumes','read_only','tmpfs','security_opt','mem_limit','cpus','pids_limit','cap_drop','init','logging','image','labels'];
+  'volumes','read_only','tmpfs','security_opt','mem_limit','cpus','pids_limit','cap_drop','init','logging','image','labels','user'];
  const nets={api:['sabora_runtime_internal'],'sabora-egress':['sabora_runtime_internal','sabora_egress_allowlisted'],
   web:['sabora_runtime_internal','sabora_ingress_filtered']};
  const envs={api:{NODE_ENV:'production',SABORA_OPERATIONAL_MANIFEST_FILE:'/run/sabora/activation.json',
@@ -51,9 +52,9 @@ export function validateClosedCompose(config,manifest,{mounts=RELEASE_MOUNTS,res
  const resources={api:[536870912,1,150],'sabora-egress':[134217728,0.5,75],web:[268435456,0.5,100]};
  for(const name of SABORA_RELEASE_SCOPE.services){
   const s=config.services[name],web=name==='web',api=name==='api';
-  const allowed=[...shared,...(web?['ports','user']:[]),...(web||api?['healthcheck']:[])];
+  const allowed=[...shared,...(web?['ports']:[]),...(web||api?['healthcheck']:[])];
   if(!s||Object.keys(s).some(k=>!allowed.includes(k)))stop('compose_unknown_service_property');
-  if(s.image!==manifest.images[web?'web':'api'].imageId||s.read_only!==true||s.init!==true||s.restart!=='no'||
+  if(s.user!==RELEASE_USERS[name]||s.image!==manifest.images[web?'web':'api'].imageId||s.read_only!==true||s.init!==true||s.restart!=='no'||
    s.stop_signal!=='SIGTERM'||s.stop_grace_period!=='20s'||!same(s.cap_drop,['ALL'])||
    !same(s.security_opt,['no-new-privileges:true'])||!same(s.tmpfs,web?['/tmp','/data','/config']:['/tmp'])||
    !same(s.environment,envs[name])||

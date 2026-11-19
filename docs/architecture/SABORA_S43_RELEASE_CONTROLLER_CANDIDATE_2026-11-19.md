@@ -96,3 +96,22 @@ Rollback exige nueva firma, versión anterior healthy, bundle retenido íntegro 
 | Falso readiness/2xx alerta | TLS real sin insecure, `/ready`, SHA/IDs y ACK firmado correlacionado | laboratorio usa CA/sink locales, API fixture; H6 prueba negocio por separado |
 
 No se afirma aceptación humana ni conformidad visual, backup/SQL operativo, presencia de Cloudflare real, instalación SSH ni continuidad de Fleetia. Los resultados y carencias de ejecución se declaran en el informe del PR; SKIPPED no es PASS.
+
+## S43 — candidato de custodia de mounts y separación de identidades
+
+Propuesta técnica bajo los contratos vigentes, no permiso de aprovisionamiento. El laboratorio integral del HEAD 73485cea27ec26f3de2b539a8c92518b16556711 completó 35 marcadores, incluido A/B/rollback, y 5/5 controles aplicables; no acreditaba lectura de secretos de API, puesto que sus fixtures no leían mounts. Se fijan UID/GID API=10002:10002, egress=10003:10003, web=10001:10001 (preexistente). La imagen API conserva USER sabora y contiene ambos usuarios no-root; el Compose firmado selecciona explícitamente las identidades. Solo el código de aplicación en la imagen es legible por ambos. Sin grupos suplementarios, sin nuevos capabilities ni escritura en mounts.
+
+| Ruta | Propietario y modo candidato | Acceso mediante bind RO |
+|---|---|---|
+| /etc/sabora/runtime | root:root 0700 | no se monta el padre |
+| activation.json | root:10002 0640 | API |
+| secrets/ | root:10002 0750 | API |
+| secrets/<ref> | root:10002 0640 | API |
+| egress-policy.json | root:root 0444 | API y egress, política no secreta, no acceso por ruta host a terceros |
+| /srv/sabora | root:root 0700 | no se monta el padre |
+| /srv/sabora/tls | root:10001 0750 | web |
+| origin.crt y origin.key | root:10001 0640 | web |
+
+El controlador autentica modos/UID/GID, padres root, hashes, tamaño, inventario exacto, enlaces y ACL POSIX exactas sin entradas nominativas/default, mediante getfacl fijado por el manifiesto de instalación. No realiza chmod/chown/setfacl. El padre privado evita exposición por colisiones de UID/GID del host; reservar igualmente las identidades, comprobar mapeo de namespace y que el motor no concede acceso ajeno. Root/daemon son TCB; no afirmar protección contra administradores de host. Los ficheros de control, ledger, staging, evidencias y la clave pública siguen con las reglas privadas anteriores, no se generaliza group-read a protected-store. Rechazar discrepancias antes del consumo y revalidar antes de mutar. El laboratorio usa exactamente estos mounts con un valor ficticio, prueba lectura por API, política por gateway, TLS por web, denegación de accesos cruzados, escritura y SSH, así como negativas de modo, GID y ACL con el mismo controlador. No se acreditan credenciales, SQL ni la aplicación completa con estos fixtures.
+
+**STOP de instalación que subsiste:** el acta S39-17 dentro del runbook S38 documenta /srv/sabora y tls con UID/GID 10001 y modos 0700/0400. Cambiarlos al candidato root-owned es una operación de custodia real que requiere decisión/autorización expresa, preflight y comprobación de pareja TLS/ACL sin revelar material; no se modifica el acta ni se ejecuta ahora. La reserva de UID/GID, credenciales/destinos/expedientes reales, revisión independiente y autorización de provisioning permanecen pendientes.

@@ -13,8 +13,12 @@ RUN pnpm --filter @sabora/api build && pnpm --filter @sabora/api deploy --legacy
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S sabora && adduser -S -G sabora sabora
+# Fixed nonroot service identities; no host account is created by this image.
+RUN addgroup -S -g 10002 sabora && adduser -S -u 10002 -G sabora sabora && \
+    addgroup -S -g 10003 sabora-egress && adduser -S -u 10003 -G sabora-egress sabora-egress
 COPY --from=build --chown=sabora:sabora /out/ ./
+# Both nonroot identities may read the application code, never host secrets.
+RUN chmod -R a+rX /app
 USER sabora
 EXPOSE 4100
 CMD ["node", "src/server.mjs"]

@@ -21,7 +21,7 @@ export function releaseProcessStage(tool,args){
   }
   return 'docker_other';
  }
- return ['nft','ip','ss','compose'].includes(tool)?tool:'unknown_tool';
+ return ['nft','ip','ss','compose','getfacl'].includes(tool)?tool:'unknown_tool';
 }
 export function releaseProcessFailureKind(stderr){
  const value=typeof stderr==='string'?stderr.slice(0,4*1024*1024):'';

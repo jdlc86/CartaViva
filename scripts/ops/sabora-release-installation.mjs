@@ -13,7 +13,7 @@ export const CONTROLLER_PATHS=Object.freeze({
  staging:'/srv/sabora/release/staging',bundles:'/srv/sabora/release/bundles',
  state:'/var/lib/sabora-release/controller'
 });
-export const CONTROLLER_TOOLS=Object.freeze({docker:'/usr/bin/docker',nft:'/usr/sbin/nft',ip:'/usr/sbin/ip',ss:'/usr/bin/ss',
+export const CONTROLLER_TOOLS=Object.freeze({docker:'/usr/bin/docker',nft:'/usr/sbin/nft',ip:'/usr/sbin/ip',ss:'/usr/bin/ss',getfacl:'/usr/bin/getfacl',
  compose:'/etc/sabora/release/docker-config/cli-plugins/docker-compose'});
 const hashValid=v=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
 const read=path=>protectedBytes(path,{maxBytes:4*1024*1024});

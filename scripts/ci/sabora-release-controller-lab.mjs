@@ -18,7 +18,7 @@ import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS} from '../ops/sabora-release-inst
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
-import {immutableComposeOverride,validateClosedCompose} from '../ops/sabora-release-compose-policy.mjs';
+import {immutableComposeOverride,validateClosedCompose,RELEASE_USERS} from '../ops/sabora-release-compose-policy.mjs';
 import {LAB_ENVIRONMENT,labAuthority,signedLabDocument,labHash,keyIdentity,materialLabDossiers} from './sabora-release-lab-fixtures.mjs';
 if(process.platform!=='linux'||process.getuid()!==0||process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||
  process.env.SABORA_DISPOSABLE_RELEASE_LAB!=='explicitly-authorized-ci')throw Error('sabora_lab_stop:disposable_runner_required');
@@ -115,13 +115,23 @@ async function success(label,bundle,a){
  try{result=await session(a.command,feed(bundle,a),{expectSuccess:true});}finally{clearInterval(monitor);}if(monitorError)throw monitorError;
  const receipt=JSON.parse(result.stdout);assert.equal(receipt.state,'healthy');assert.equal(receipt.releaseSha,bundle.sha);
  assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,bundle.sha);
- for(const s of SABORA_RELEASE_SCOPE.services)assert.equal(json(['container','inspect','sabora-'+s+'-1'])[0].Image,bundle.manifest.images[s==='web'?'web':'api'].imageId);
+ for(const s of SABORA_RELEASE_SCOPE.services){
+  const info=json(['container','inspect','sabora-'+s+'-1'])[0];
+  assert.equal(info.Image,bundle.manifest.images[s==='web'?'web':'api'].imageId);
+  assert.equal(info.Config.User,RELEASE_USERS[s]);
+  assert.ok(info.Mounts.every(m=>m.RW===false||m.Type==='tmpfs'));
+ }
+ // The web can read only its TLS pair; no API secret or policy is mounted.
+ docker(['exec','sabora-web-1','/bin/sh','-ec','test "$(id -u):$(id -g)" = 10001:10001 && test -r /run/sabora/tls/origin.key && test ! -w /run/sabora/tls/origin.key && test ! -e /run/secrets/sabora/lab-access-probe && test ! -e /run/sabora/activation.json && test ! -e /run/sabora/egress-policy.json']);
+ // No shell or Docker authority on the dedicated SSH user. Its host path
+ // to the secret is denied even though the API's bind is readable.
+ assert.notEqual(run('runuser',['-u',account,'--','test','-r','/etc/sabora/runtime/secrets/lab-access-probe'],{allowFailure:true}).status,0);
  sentinel();ok(label);return receipt;
 }
 try{
  for(const root of ['/etc/sabora','/var/lib/sabora-release','/srv/sabora']){assert.equal(existsSync(root),false,'exclusive fixture path already exists');mkdirSync(root,{mode:0o755});createdRoots.push(root);}
  for(const path of [P.root,P.root+'/bin',P.evidence,P.ledger,P.staging,P.bundles,P.state,work,'/etc/sabora/runtime/secrets','/srv/sabora/tls',output])mkdirSync(path,{recursive:true,mode:0o700});
- chmodSync(P.root,0o755);chmodSync(P.root+'/bin',0o755);assert.equal(existsSync(sudoRule),false);assert.notEqual(run('id',[account],{allowFailure:true}).status,0);
+ chmodSync('/srv/sabora',0o700);chmodSync(P.root,0o755);chmodSync(P.root+'/bin',0o755);assert.equal(existsSync(sudoRule),false);assert.notEqual(run('id',[account],{allowFailure:true}).status,0);
  const networkReceipt=parse(join(process.env.RUNNER_TEMP,'sabora-network-enforcement/receipt.json'));assert.equal(String(networkReceipt.runId),runId);
  for(const name of [...Object.values(NETWORK_NAMES),externalNet])assert.notEqual(docker(['network','inspect',name],{allowFailure:true}).status,0);
  for(const service of SABORA_RELEASE_SCOPE.services)assert.notEqual(docker(['container','inspect','--format','{{.Id}}','sabora-'+service+'-1'],{allowFailure:true}).status,0);
@@ -181,18 +191,28 @@ try{
   'SABORA_OPERATIONAL_MANIFEST_FILE=/etc/sabora/runtime/activation.json','SABORA_OPERATIONAL_SECRETS_DIR=/etc/sabora/runtime/secrets','SABORA_EGRESS_POLICY_FILE=/etc/sabora/runtime/egress-policy.json',
   'SABORA_EGRESS_ALLOWLIST_NETWORK=sabora_egress_filtered','SABORA_RESTAURANT_CODE=SABORA','SABORA_INGRESS_BIND_IP=146.59.145.64','SABORA_CLIENT_HOST=sabora.allaiso.com','SABORA_MANAGEMENT_HOST=gestion-sabora.allaiso.com',
   'SABORA_WEB_TLS_DIRECTORY=/srv/sabora/tls','SABORA_INGRESS_FILTERED_NETWORK=sabora_ingress_filtered',''].join('\n'));
- put('/etc/sabora/runtime/activation.json','{"explicitLabFixture":true}\n');put('/etc/sabora/runtime/egress-policy.json','{"explicitLabFixture":true}\n');
+ // Synthetic values never enter the operational environment or artifact.
+ const fixtureSecret='/etc/sabora/runtime/secrets/lab-access-probe';
+ put('/etc/sabora/runtime/activation.json','{"explicitLabFixture":true}\n',0o640);
+ put('/etc/sabora/runtime/egress-policy.json','{"explicitLabFixture":true}\n',0o444);
+ put(fixtureSecret,'disposable mount access proof\n',0o640);
+ chmodSync('/etc/sabora/runtime',0o700);
+ chownSync('/etc/sabora/runtime/secrets',0,10002);chmodSync('/etc/sabora/runtime/secrets',0o750);
+ chownSync('/etc/sabora/runtime/activation.json',0,10002);chownSync(fixtureSecret,0,10002);
  const expected={subjectSha256:labHash('subject'),databaseIdentitySha256:labHash('database'),migrationTreeSha256:labHash('migration-tree'),appliedLedgerSha256:labHash('ledger'),databaseTlsIdentitySha256:labHash('database-tls'),networkPolicySha256:sha256(stableStringify(policy)),allocationReservationSha256:sha256(reservation),alertReceiverIdentitySha256:keyIdentity(alert.pem)};
  configuration={schema:'sabora-controller-config/v1',environment:LAB_ENVIRONMENT,evidenceKeys:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,authorities[k].pem])),allocationKey:allocation.pem,alertKey:alert.pem,expected,
   compose:{operational:hashFile(repo+'/deploy/compose.sabora-operational.yml'),web:hashFile(repo+'/deploy/compose.sabora-web.yml')},networkPolicy:policy,reservationSha256:sha256(reservation),runtimeEnvSha256:hashFile(P.runtimeEnv),
-  mountHashes:{manifest:hashFile('/etc/sabora/runtime/activation.json'),egress:hashFile('/etc/sabora/runtime/egress-policy.json'),secrets:{}},tls:{certificateSha256:hashFile('/srv/sabora/tls/origin.crt'),keySha256:hashFile('/srv/sabora/tls/origin.key'),originCaSha256:hashFile(work+'/ca.pem'),publicCaSha256:hashFile(work+'/ca.pem')},alert:{url:'https://172.28.242.1:9443/ack',receiverIdentitySha256:keyIdentity(alert.pem)},quotaBytes:20*1024**3};
+  mountHashes:{manifest:hashFile('/etc/sabora/runtime/activation.json'),egress:hashFile('/etc/sabora/runtime/egress-policy.json'),secrets:{'lab-access-probe':hashFile(fixtureSecret)}},tls:{certificateSha256:hashFile('/srv/sabora/tls/origin.crt'),keySha256:hashFile('/srv/sabora/tls/origin.key'),originCaSha256:hashFile(work+'/ca.pem'),publicCaSha256:hashFile(work+'/ca.pem')},alert:{url:'https://172.28.242.1:9443/ack',receiverIdentitySha256:keyIdentity(alert.pem)},quotaBytes:20*1024**3};
  installPayload={schema:'sabora-controller-installation/v1',repository:SABORA_RELEASE_SCOPE.repository,sourceSha,environment:LAB_ENVIRONMENT,artifactSha256:hashFile(P.code+'/artifact.json'),configurationSha256:'',nodeSha256:hashFile(P.root+'/bin/node'),launcherHashes:Object.fromEntries(['root-entry','ssh-entry'].map(name=>[name,hashFile(P.root+'/bin/'+name)])),toolHashes:Object.fromEntries(Object.entries(CONTROLLER_TOOLS).map(([k,path])=>[k,hashFile(realpathSync(path))])),approvedAt:new Date().toISOString()};signedInstall();
  const production=run(P.root+'/bin/node',[P.code+'/scripts/ops/sabora-release-root-entry.mjs'],{allowFailure:true});assert.notEqual(production.status,0);assert.match(production.stderr,/installation_not_authorized/);ok('lab-authorities-rejected-by-production-entry');
  const bundles=[];
  for(const [index,sha] of [sourceSha,sha256(sourceSha+':release-B').slice(0,40)].entries()){
   const dir=work+'/bundle-'+index,context=work+'/context-'+index;mkdirSync(dir,{mode:0o700});mkdirSync(context,{mode:0o700});
-  put(context+'/Dockerfile','FROM node:22-alpine\nWORKDIR /app\nRUN addgroup -S sabora && adduser -S -G sabora sabora\nCOPY --chown=sabora:sabora src ./src\nUSER sabora\nEXPOSE 4100\nCMD ["node","src/server.mjs"]\nLABEL io.sabora.lab.release="'+sha+'"\n');
-  put(context+'/src/operational-server.mjs',"import http from 'node:http';http.createServer((q,r)=>{r.writeHead(200);r.end('ready')}).listen(4100,'0.0.0.0');\n");put(context+'/src/sabora-egress-gateway.mjs',"setInterval(()=>{},1000);\n");
+  put(context+'/Dockerfile','FROM node:22-alpine\nWORKDIR /app\nRUN addgroup -S -g 10002 sabora && adduser -S -u 10002 -G sabora sabora && addgroup -S -g 10003 sabora-egress && adduser -S -u 10003 -G sabora-egress sabora-egress\nCOPY --chown=sabora:sabora src ./src\nRUN chmod -R a+rX /app/src\nUSER sabora\nEXPOSE 4100\nCMD ["node","src/server.mjs"]\nLABEL io.sabora.lab.release="'+sha+'"\n');
+  // Exercise the real bind paths and effective identities at service startup.
+  const checkAccess="import fs from 'node:fs';const read=p=>{fs.readFileSync(p);};const forbidden=p=>{try{fs.accessSync(p,fs.constants.R_OK)}catch(e){if(['ENOENT','EACCES','ENOTDIR'].includes(e.code))return;throw e}throw Error('unexpected_runtime_access')};const ro=p=>{try{fs.accessSync(p,fs.constants.W_OK)}catch(e){if(['EACCES','EROFS'].includes(e.code))return;throw e}throw Error('unexpected_runtime_write')};";
+  put(context+'/src/operational-server.mjs',checkAccess+"if(process.getuid()!==10002||process.getgid()!==10002)process.exit(1);for(const p of ['/run/sabora/activation.json','/run/sabora/egress-policy.json','/run/secrets/sabora/lab-access-probe']){read(p);ro(p)}forbidden('/run/sabora/tls/origin.key');import http from 'node:http';http.createServer((q,r)=>{r.writeHead(200);r.end('ready')}).listen(4100,'0.0.0.0');\n");
+  put(context+'/src/sabora-egress-gateway.mjs',checkAccess+"if(process.getuid()!==10003||process.getgid()!==10003)process.exit(1);read('/run/sabora/egress-policy.json');ro('/run/sabora/egress-policy.json');forbidden('/run/sabora/activation.json');forbidden('/run/secrets/sabora/lab-access-probe');forbidden('/run/sabora/tls/origin.key');setInterval(()=>{},1000);\n");
   const apiTag='sabora-api:'+sha,webTag='sabora-web:'+sha;for(const tag of [apiTag,webTag])assert.notEqual(docker(['image','inspect',tag],{allowFailure:true}).status,0);
   docker(['build','-t',apiTag,context]);createdImages.push(apiTag);
   // Fixture source files are created root:root/0600 in a private host
@@ -202,7 +222,10 @@ try{
   assert.equal(docker(['image','inspect','--format','{{.Config.User}}',apiTag]).stdout.trim(),'sabora');
   docker(['run','--rm','--network','none','--read-only','--cap-drop','ALL',
    '--security-opt','no-new-privileges','--entrypoint','node',apiTag,'-e',
-   "const fs=require('node:fs');if(process.getuid()===0)process.exit(1);for(const p of ['src/operational-server.mjs','src/sabora-egress-gateway.mjs']){const file=fs.statSync(p);if(!file.isFile()||file.uid!==process.getuid())process.exit(1);fs.accessSync(p,fs.constants.R_OK);fs.readFileSync(p)}"]);
+   "const fs=require('node:fs');if(process.getuid()!==10002||process.getgid()!==10002)process.exit(1);for(const p of ['src/operational-server.mjs','src/sabora-egress-gateway.mjs']){const file=fs.statSync(p);if(!file.isFile()||file.uid!==10002)process.exit(1);fs.accessSync(p,fs.constants.R_OK);fs.readFileSync(p)}"]);
+  docker(['run','--rm','--network','none','--read-only','--cap-drop','ALL','--user',RELEASE_USERS['sabora-egress'],
+   '--security-opt','no-new-privileges','--entrypoint','node',apiTag,'-e',
+   "const fs=require('node:fs');if(process.getuid()!==10003||process.getgid()!==10003)process.exit(1);fs.readFileSync('src/sabora-egress-gateway.mjs')"]);
 
   put(context+'/Dockerfile.web','FROM sabora-web:ci\nLABEL io.sabora.lab.release="'+sha+'"\n');docker(['build','-f',context+'/Dockerfile.web','-t',webTag,context]);createdImages.push(webTag);
   const apiId=json(['image','inspect',apiTag])[0].Id,webId=json(['image','inspect',webTag])[0].Id,paths=['api.tar','web.tar','operational.yml','web.yml'].map(n=>dir+'/'+n);
@@ -219,12 +242,12 @@ try{
  validateClosedCompose(resolved,a.manifest);
  for(const mutate of [c=>c.services.api.cap_add=['SYS_ADMIN'],c=>c.services.api.devices=['/dev/sda:/dev/sda'],
   c=>c.services.api.privileged=true,c=>c.services.api.pid='host',c=>c.services.api.ipc='host',c=>c.services.api.network_mode='host',
-  c=>c.services.api.user='root',c=>c.services.api.entrypoint=['/bin/sh'],c=>c.services.web.ports.push({target:443,published:'443'}),
+  c=>c.services.api.user='root',c=>c.services['sabora-egress'].user=RELEASE_USERS.api,c=>c.services.web.user=RELEASE_USERS.api,c=>c.services.api.entrypoint=['/bin/sh'],c=>c.services.web.ports.push({target:443,published:'443'}),
   c=>c.services.api.volumes[0].source='/etc/shadow',c=>c.services.api.volumes[0].read_only=false,c=>c.services.api.networks.foreign=null,
   c=>c.services.unexpected=c.services.api,c=>c.secrets={foreign:{file:'/etc/shadow'}},c=>c.services.api.environment.NODE_OPTIONS='--require /bad',
   c=>c.services.api.healthcheck.disable=true,c=>c.services.api.security_opt=[]]){
   const bad=structuredClone(resolved);mutate(bad);assert.throws(()=>validateClosedCompose(bad,a.manifest));
- }ok('real-compose-render-and-17-unsafe-mutations-denied');
+ }ok('real-compose-render-and-19-unsafe-mutations-denied');
  // A signed TAR containing an additional tag must be refused before load.
  docker(['image','load','--input',a.paths[0]]);const foreign='sabora-lab-foreign:forbidden';assert.notEqual(docker(['image','inspect',foreign],{allowFailure:true}).status,0);createdImages.push(foreign);
  docker(['image','tag',a.manifest.images.api.tag,foreign]);const badTar=work+'/foreign-tag.tar';docker(['image','save','--output',badTar,a.manifest.images.api.tag,foreign]);chmodSync(badTar,0o600);
@@ -260,6 +283,22 @@ try{
  const envBytes=readFileSync(P.runtimeEnv);put(P.runtimeEnv,'DOCKER_HOST=tcp://invalid:2375\n');await denied('runtime-env-tamper-no-mutation',a,approval(a,'deploy','LAB-ENV-TAMPER'));put(P.runtimeEnv,envBytes);
  renameSync(P.publicKey,P.publicKey+'.held');symlinkSync(P.publicKey+'.held',P.publicKey);await denied('owner-key-symlink-no-mutation',a,approval(a,'deploy','LAB-SYMLINK-KEY'));unlinkSync(P.publicKey);renameSync(P.publicKey+'.held',P.publicKey);
  linkSync(P.publicKey,P.publicKey+'.hard');await denied('owner-key-hardlink-no-mutation',a,approval(a,'deploy','LAB-HARDLINK-KEY'));unlinkSync(P.publicKey+'.hard');
+ // Each negative must stop in the runtime custody verifier, before any
+ // Docker mutation or authorization consumption, not just fail generally.
+ async function custodyDenied(label,id,expected){
+  const result=await denied(label,a,approval(a,'deploy',id));
+  assert.match(result.stderr,expected);assert.equal(existsSync(P.ledger+'/'+id+'.json'),false);
+ }
+ chmodSync(fixtureSecret,0o600);
+ try{await custodyDenied('runtime-secret-unreadable-denied','LAB-SECRET-UNREADABLE',/runtime_permissions_mismatch/);}finally{chmodSync(fixtureSecret,0o640);}
+ chmodSync(fixtureSecret,0o644);
+ try{await custodyDenied('runtime-secret-world-readable-denied','LAB-SECRET-WORLD-READ',/runtime_permissions_mismatch/);}finally{chmodSync(fixtureSecret,0o640);}
+ chownSync(fixtureSecret,0,10003);
+ try{await custodyDenied('runtime-secret-wrong-group-denied','LAB-SECRET-WRONG-GROUP',/runtime_permissions_mismatch/);}finally{chownSync(fixtureSecret,0,10002);}
+ run('setfacl',['-m','u:10003:r--',fixtureSecret]);
+ try{await custodyDenied('runtime-secret-extra-acl-denied','LAB-SECRET-EXTRA-ACL',/runtime_acl_not_exclusive/);}finally{run('setfacl',['-b',fixtureSecret]);chmodSync(fixtureSecret,0o640);}
+ chmodSync('/etc/sabora/runtime',0o755);
+ try{await custodyDenied('runtime-parent-not-private-denied','LAB-RUNTIME-PARENT',/runtime_permissions_mismatch/);}finally{chmodSync('/etc/sabora/runtime',0o700);}
  const deployA=approval(a,'deploy','LAB-DEPLOY-A-0001');await success('deploy-A-through-real-ssh',a,deployA);await denied('replay-A-no-mutation',a,deployA);
  await success('deploy-B-through-real-ssh',b,approval(b,'deploy','LAB-DEPLOY-B-0001'));
  const history=parse(P.ledger+'/history.json');assert.equal(history.versions.length,2);assert.ok(history.versions.every(v=>v.status==='healthy'));ok('two-healthy-retained-versions');
