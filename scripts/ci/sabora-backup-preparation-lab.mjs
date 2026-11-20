@@ -192,6 +192,70 @@ try{
  assert.equal(build(binary+'-repeat').status,0);
  assert.equal(sha256(readFileSync(binary)),sha256(readFileSync(binary+'-repeat')));
  assert.notEqual(spawnSync(binary,[],{encoding:'utf8',timeout:1000}).status,0);
+ // Materialize the actual closed installation set, including the native
+ // binaries pinned by a signed preparation plan. Staging stays unprivileged,
+ // contains no host private key or activation and cannot start a service.
+ const nodeBinary=realpathSync(process.execPath);
+ const stagedPlan={...productionPlan,runtime:{...productionPlan.runtime,
+  nodeSha256:sha256(readFileSync(nodeBinary)),shellSha256:sha256(readFileSync(binary))}};
+ const staging={sourceDirectory:output,destination:join(root,'inactive-stage'),nodeBinary,
+  shellBinary:binary,planBytes:signed(stagedPlan),ownerPublicKey:publicKey(owner),
+  hostPublicKey:hostKey,clientPublicKey:clientKey};
+ const stage=stageInactiveBackupInstallation(staging);
+ assert.equal(stage.installed,false);assert.equal(stage.listenerEnabled,false);
+ assert.equal(stage.operationalAuthorization,false);assert.equal(stage.controlRoot,BACKUP_INSTALL_PATHS.control);
+ assert.equal(Object.keys(stage.files).length,BACKUP_PREPARATION_FILES.length+8);
+ for(const [name,record] of Object.entries(stage.files))
+  assert.equal(sha256(readFileSync(join(staging.destination,name))),record.sha256);
+ assert.deepEqual(JSON.parse(readFileSync(join(staging.destination,'stage.json'),'utf8')),stage);
+ assert.equal(stage.files['activation.json'],undefined);
+ assert.equal(stage.files['host-ed25519'],undefined);
+ assert.equal(stage.files['bin/receive'].installMode,'0755');
+ assert.throws(()=>stageInactiveBackupInstallation(staging),/fresh_stage_required/);
+ assert.throws(()=>stageInactiveBackupInstallation({...staging,destination:join(root,'reject-runtime'),
+  planBytes:signed(productionPlan)}),/runtime_digest/);
+ assert.throws(()=>stageInactiveBackupInstallation({...staging,destination:join(root,'reject-key'),
+  hostPublicKey:clientKey}),/ssh_key_identity/);
+ assert.throws(()=>stageInactiveBackupInstallation({...staging,destination:join(root,'reject-lab'),
+  planBytes:signed(plan)}),/production_candidate_required/);
+ console.log('sabora_backup_inactive_installation_stage_ok:'+JSON.stringify({
+  files:Object.keys(stage.files).length,installed:false,listenerEnabled:false,operationalAuthorization:false}));
+ // A separate, ephemeral authority signs the current checkpoint, not the
+ // recovery or verification authorities. Simulate both restored and ahead
+ // local state. No live custodian connection or external ledger write.
+ const custodian=key(),identity={installationId:activation.installationId,
+  hostIdentitySha256:activation.hostIdentitySha256,storageIdentitySha256:plan.storage.storageIdentitySha256,
+  externalStorageIdentitySha256:plan.storage.externalStorageIdentitySha256,
+  controlStorageIdentitySha256:digest('separate-control-volume'),
+  recoveryAuthoritySha256:authorityFingerprint(publicKey(recovery))};
+ const record={schema:'sabora-backup-control-record/v1',repository:plan.repository,project:plan.project,
+  environment:'production',...identity,sequence:7,authorizationSha256:digest('auth-7'),lockSha256:digest('lock-7')};
+ const challenge=digest('fresh-challenge');
+ const checkpoint={...record,schema:'sabora-backup-external-checkpoint/v1',challenge,
+  recordSha256:sha256(Buffer.from(stableStringify(record))),
+  observedAt:new Date(now-1000).toISOString(),validUntil:new Date(now+60000).toISOString()};
+ const signCheckpoint=(p,k=custodian)=>Buffer.from(JSON.stringify({payload:p,
+  signature:sign(null,Buffer.from(stableStringify(p)),k.privateKey).toString('base64')}));
+ const checkpointInput={record,expected:identity,challenge,checkpointBytes:signCheckpoint(checkpoint),
+  checkpointPublicKey:publicKey(custodian),ownerPublicKey:publicKey(owner),
+  recoveryPublicKey:publicKey(recovery),verificationPublicKey:publicKey(verification),now};
+ const match=verifyExternalRecoveryCheckpoint(checkpointInput);
+ assert.equal(match.matches,true);assert.equal(match.sequence,7);
+ assert.equal(match.externalAdvancePerformed,false);assert.equal(match.recoveryAuthorized,false);
+ for(const [overrides,pattern] of [
+  [{record:{...record,sequence:6,authorizationSha256:digest('auth-6')}},/local_rollback_or_loss/],
+  [{record:{...record,sequence:8}},/external_checkpoint_stale/],
+  [{record:{...record,lockSha256:digest('wrong-lock')}},/checkpoint_record_mismatch/],
+  [{record:null},/record/],
+  [{challenge:digest('new-challenge')},/checkpoint_scope/],
+  [{checkpointBytes:signCheckpoint({...checkpoint,validUntil:new Date(now-1).toISOString()})},/checkpoint_time/],
+  [{checkpointBytes:signCheckpoint({...checkpoint,storageIdentitySha256:digest('wrong-volume')})},/checkpoint_scope/],
+  [{checkpointBytes:signCheckpoint(checkpoint,owner)},/document_signature_invalid/],
+  [{checkpointPublicKey:publicKey(owner)},/authority_alias/],
+  [{expected:{...identity,controlStorageIdentitySha256:identity.storageIdentitySha256}},/identity/]
+ ])assert.throws(()=>verifyExternalRecoveryCheckpoint({...checkpointInput,...overrides}),pattern);
+ console.log('sabora_backup_checkpoint_comparison_and_rollback_rejection_ok:'+JSON.stringify({
+  negativeCases:10,externalAdvancePerformed:false,recoveryAuthorized:false}));
  console.log('sabora_backup_installed_activation_sender_preflight_and_shell_ok:'+JSON.stringify({
   networkContacted:false,installed:false,operationalAuthorization:false,activationNegatives:rejectsActivation.length+4}));
  console.log('sabora_backup_preparation_artifact_and_signed_plan_ok:'+JSON.stringify({
