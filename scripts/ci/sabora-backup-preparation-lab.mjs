@@ -111,7 +111,7 @@ try{
  const activation={schema:'sabora-backup-receiver-activation/v1',repository:plan.repository,project:plan.project,
   environment:'production',operation:'receive-encrypted-only',sourceSha,artifactSha256:first.artifactSha256,
   planSha256:productionChecked.planSha256,configurationSha256:productionChecked.configurationSha256,
-  installationId:'SABORA-BACKUP-INSTALL-CI-ONLY',hostIdentitySha256:digest('fixture-host-id'),
+  installationId:'SABORA-BACKUP-INSTALL-CI-ONLY-01',hostIdentitySha256:digest('fixture-host-id'),
   uid:22017,gid:22017,device:'12345',guardInode:'54321',
   independentReviewSha256:digest('synthetic-review'),isolationEvidenceSha256:digest('synthetic-isolation'),
   senderBinarySha256:sshHash,authorizedAt:productionPlan.plannedAt,validUntil:productionPlan.validUntil};
