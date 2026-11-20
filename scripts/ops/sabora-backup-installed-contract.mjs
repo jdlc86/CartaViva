@@ -17,12 +17,12 @@ export function verifyInstalledBackupActivation({planBytes,artifactBytes,activat
  const a=verifySignedDocument(activationBytes,ownerPublicKey,'sabora-backup-receiver-activation/v1');
  if(!exactKeys(a,['schema','repository','project','environment','operation','sourceSha','artifactSha256',
   'planSha256','configurationSha256','installationId','hostIdentitySha256','uid','gid','device','guardInode',
-  'independentReviewSha256','isolationEvidenceSha256','authorizedAt','validUntil'])||
+  'independentReviewSha256','isolationEvidenceSha256','senderBinarySha256','authorizedAt','validUntil'])||
   a.repository!=='jdlc86/CartaViva'||a.project!=='sabora'||a.environment!=='production'||
   a.operation!=='receive-encrypted-only'||a.sourceSha!==checked.sourceSha||
   a.artifactSha256!==checked.artifactSha256||a.planSha256!==checked.planSha256||
   a.configurationSha256!==checked.configurationSha256||!id(a.installationId)||
-  ![a.hostIdentitySha256,a.independentReviewSha256,a.isolationEvidenceSha256].every(digest)||
+  ![a.hostIdentitySha256,a.independentReviewSha256,a.isolationEvidenceSha256,a.senderBinarySha256].every(digest)||
   a.independentReviewSha256===a.isolationEvidenceSha256||
   !Number.isSafeInteger(a.uid)||a.uid<=0||a.uid===10001||
   !Number.isSafeInteger(a.gid)||a.gid<=0||a.gid===10001||
