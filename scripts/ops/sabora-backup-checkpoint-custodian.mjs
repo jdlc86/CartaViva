@@ -190,8 +190,14 @@ export async function reserveLocalRecoveryCheckpoint({directory,config,subject,
  directoryCheck(directory);
  if(!exactKeys(config,['expected','checkpointPublicKey','ownerPublicKey','recoveryPublicKey','verificationPublicKey'])||
   typeof observeExternal!=='function'||typeof advanceExternal!=='function')stop('local_exchange_configuration');
+ // Own immutable snapshots of all request inputs used across awaits.
+ // The adapter may return data, but cannot substitute the authority set
+ // or the signed authorization after the local comparison.
+ config=Object.freeze({...config,expected:Object.freeze({...config.expected})});
  const expected=config.expected;
  bounded(authorizationBytes);bounded(externalProofBytes);
+ authorizationBytes=Buffer.from(authorizationBytes);externalProofBytes=Buffer.from(externalProofBytes);
+ subject=Object.freeze({...subject});
  const purge=subject?.action==='finish-published-purge';
  const specific=purge?['currentManifestSha256','previousManifestSha256','previousRemainderSha256']:['subjectSha256'];
  if(!exactKeys(subject,['action','lockSha256','externalProofSha256',...specific])||
