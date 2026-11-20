@@ -53,6 +53,8 @@ if [[ "$scope" = full ]]; then
   node --check scripts/ops/sabora-backup-installed-receiver.mjs
   node --check scripts/ops/sabora-backup-installed-entry.mjs
   node --check scripts/ops/sabora-backup-installed-send.mjs
+  node --check scripts/ops/sabora-backup-installation-stager.mjs
+  node --check scripts/ops/sabora-backup-recovery-checkpoint.mjs
   node --check scripts/ops/sabora-vps-backup-transport.mjs
   node --check scripts/ops/sabora-vps-backup-lab-entry.mjs
   # The full suite already requires a disposable Linux Actions runner.
