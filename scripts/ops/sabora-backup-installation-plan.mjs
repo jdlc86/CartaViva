@@ -36,7 +36,6 @@ export const BACKUP_PREPARATION_FILES=Object.freeze([
  'scripts/ci/sabora-release-governor.mjs',
  'scripts/ops/sabora-backup-installation-plan.mjs',
  'scripts/ops/sabora-encrypted-backup-bundle.mjs',
- 'scripts/ops/sabora-ntfs-acl-verifier.mjs',
  'scripts/ops/sabora-postgres-snapshot.mjs',
  'scripts/ops/sabora-release-evidence.mjs',
  'scripts/ops/sabora-release-protected-store.mjs',

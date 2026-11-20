@@ -7,17 +7,13 @@ import {lstat,realpath,open} from 'node:fs/promises';
 import {isAbsolute,resolve,dirname,parse} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {exactKeys} from './sabora-release-protected-store.mjs';
-import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
 import {prepareInstalledBackupTransfer,sendInstalledVpsBackupOverSsh} from './sabora-vps-backup-transport.mjs';
 const stop=code=>{throw Error('sabora_backup_installed_send_stop:'+code);};
 async function privateInput(path,max){
  if(typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path||await realpath(path)!==path)stop('input_path');
  const before=await lstat(path);
  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size<1||before.size>max)stop('input_file');
- if(process.platform==='win32'){
-  verifiedNtfsAclDigest(dirname(path));verifiedNtfsAclDigest(path);
- }else{
-  if(process.platform!=='linux'||before.uid!==process.getuid()||(before.mode&0o077)!==0)stop('input_permissions');
+ if(process.platform!=='linux'||before.uid!==process.getuid()||(before.mode&0o077)!==0)stop('input_permissions');
   for(let p=dirname(path);;p=dirname(p)){
    const st=await lstat(p),leaf=p===dirname(path);
    if(!st.isDirectory()||st.isSymbolicLink()||![0,process.getuid()].includes(st.uid)||
@@ -25,7 +21,6 @@ async function privateInput(path,max){
     (leaf&&(st.uid!==process.getuid()||(st.mode&0o077)!==0)))stop('input_parent');
    if(p===parse(p).root)break;
   }
- }
  const handle=await open(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));
  try{
   const st=await handle.stat();

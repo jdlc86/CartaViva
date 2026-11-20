@@ -46,10 +46,8 @@ async function regular(path,max=1024*1024*1024){
 async function keyBytes(path){
  if(typeof path!=='string'||!isAbsolute(path))throw failure('invalid_key_path');
  const st=await regular(path,128);
- // POSIX mode bits are not an ACL oracle on Windows. Linux/macOS captures
- // fail closed here; Windows operators must supply an independently audited
- // NTFS ACL receipt in the operational authorization dossier.
- if(process.platform!=='win32'&&(st.mode&0o077)!==0)throw failure('key_permissions');
+ if(process.platform!=='linux')throw failure('linux_required');
+ if(st.uid!==process.getuid()||(st.mode&0o077)!==0)throw failure('key_permissions');
  const value=(await readFile(path,'utf8')).trim();
  if(!/^[0-9a-f]{64}$/i.test(value))throw failure('invalid_key');
  return Buffer.from(value,'hex');
@@ -164,7 +162,7 @@ async function encryptCommand({directory,key,meta,spec,snapshotId=null}){
  const commandArgs=snapshotId&&['schema','data'].includes(spec.name)?
   [...spec.args,'--snapshot='+snapshotId]:spec.args;
  const child=spawn(spec.command,commandArgs,{env:childEnv,
-  windowsHide:true,stdio:[spec.stdinPath===undefined?'ignore':'pipe','pipe','pipe']});
+  stdio:[spec.stdinPath===undefined?'ignore':'pipe','pipe','pipe']});
  const stderr=stderrCollector(child.stderr);
  let created=false;
  try{

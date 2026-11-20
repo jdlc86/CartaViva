@@ -84,12 +84,7 @@ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)
  Object.getPrototypeOf(value)===Object.prototype;
 
 function protectedMode(stat){
- if(process.platform==='win32'){
-  if(!HASH.test(process.env.SABORA_BACKUP_NTFS_ACL_RECEIPT_SHA256??''))
-   throw stop('ntfs_acl_receipt_required');
-  return;
- }
- if(typeof process.getuid!=='function'||stat.uid!==process.getuid()||(stat.mode&0o077)!==0)
+ if(process.platform!=='linux'||stat.uid!==process.getuid()||(stat.mode&0o077)!==0)
   throw stop('request_owner_or_mode');
 }
 async function protectedRead(path,max){
@@ -108,25 +103,23 @@ async function protectedRead(path,max){
 }
 function postgresBinaries(){
  const psql=process.env.SABORA_BACKUP_PSQL_BIN,pgDump=process.env.SABORA_BACKUP_PG_DUMP_BIN;
- if(!isAbsolute(psql??'')||!/^psql(?:\.exe)?$/i.test(basename(psql))||
-  !isAbsolute(pgDump??'')||!/^pg_dump(?:\.exe)?$/i.test(basename(pgDump)))
+ if(!isAbsolute(psql??'')||!(basename(psql)==='psql')||
+  !isAbsolute(pgDump??'')||!(basename(pgDump)==='pg_dump'))
   throw stop('absolute_postgres_binaries_required');
  return {psql,pgDump};
 }
 async function verifyExecutable(path){
  const stat=await lstat(path);
  if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw stop('unsafe_postgres_binary');
- if(process.platform!=='win32'&&((stat.mode&0o022)!==0||
-  ![0,process.getuid?.()].includes(stat.uid)))throw stop('unsafe_postgres_binary');
- if(process.platform!=='win32'){
-  let directory=dirname(path);
+ if(process.platform!=='linux'||(stat.mode&0o022)!==0||
+  ![0,process.getuid()].includes(stat.uid))throw stop('unsafe_postgres_binary');
+ let directory=dirname(path);
   for(;;){
    const item=await lstat(directory);
    if(!item.isDirectory()||item.isSymbolicLink()||(item.mode&0o022)!==0||
     ![0,process.getuid()].includes(item.uid))throw stop('unsafe_postgres_binary_directory');
    const parent=dirname(directory);if(parent===directory)break;directory=parent;
   }
- }
 }
 // Exact PostgreSQL CLI shapes: no attached -Uother/-dotra/-cSQL/-f/path,
 // no DSN/connection flags and no alternate stdout/output or schema scope.
@@ -212,11 +205,12 @@ function args(count){
 }
 
 export async function main(){
+ if(process.platform!=='linux')throw stop('linux_required');
  const operation=process.argv[2];
  if(operation==='capture-preinstall'){
   const [requestPath,directory]=args(2),plan=await initialRequest(requestPath);
   const psql=process.env.SABORA_BACKUP_PSQL_BIN;
-  if(!isAbsolute(psql??'')||!/^psql(?:\.exe)?$/i.test(basename(psql)))
+  if(!isAbsolute(psql??'')||!(basename(psql)==='psql'))
    throw stop('absolute_postgres_binary_required');
   const pinnedSystem=validateVerifiedSource(process.env);
   await Promise.all([verifyExecutable(psql),verifyPinnedTlsRootCert()]);

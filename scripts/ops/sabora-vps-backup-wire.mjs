@@ -26,7 +26,7 @@ function proofShape(proofBytes){
 async function sourceFile(path,max){
  const before=await lstat(path);
  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||
-  before.size<1||before.size>max||(process.platform!=='win32'&&(before.mode&0o077)!==0))
+  before.size<1||before.size>max||(before.mode&0o077)!==0||before.uid!==process.getuid())
   stop('unsafe_source_file');
  const fd=await open(path,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));
  try{
@@ -45,11 +45,12 @@ async function assertUnchanged(fd,st,bytes){
 // An async generator enables backpressure from the real pipe/SSH stdin.
 // It never loads a data component into memory or emits an arbitrary filename.
 export async function* encodeVpsBackupStream({sourceDirectory,proofBytes}={}){
+ if(process.platform!=='linux')stop('linux_required');
  proofShape(proofBytes);
  if(!isAbsolute(sourceDirectory??'')||resolve(sourceDirectory)!==sourceDirectory||
   await realpath(sourceDirectory)!==sourceDirectory)stop('unsafe_source_directory');
  const dir=await lstat(sourceDirectory);
- if(!dir.isDirectory()||dir.isSymbolicLink()||(process.platform!=='win32'&&(dir.mode&0o077)!==0))
+ if(!dir.isDirectory()||dir.isSymbolicLink()||(dir.mode&0o077)!==0||dir.uid!==process.getuid())
   stop('unsafe_source_directory');
  const {fd:mf,st:ms}=await sourceFile(join(sourceDirectory,'manifest.json'),MAX_HEADER);
  let manifestBytes;

@@ -238,6 +238,4 @@ jobs:
           node-version: '22'
       - name: Exercise offline signer end-to-end with disposable Windows test key
         run: node --test tests/sabora-governed-deployment.test.mjs
-      - name: Exercise native Windows backup client and disposable NTFS permissions
-        run: node scripts/ci/sabora-backup-windows-client-lab.mjs
 

@@ -12,7 +12,7 @@ const ALLOWED_PG_ENV=new Set(['PGHOST','PGPORT','PGSSLMODE','PGSSLROOTCERT',
  'PGUSER','PGPASSWORD','PGCONNECT_TIMEOUT','PGAPPNAME','PGCLIENTENCODING']);
 
 // This is also used by encrypted bundle capture; do not inherit PGOPTIONS,
-// PGSERVICE or mixed-case Windows getenv aliases into child processes.
+// PGSERVICE or mixed-case environment aliases into child processes.
 export function safePostgresChildEnv(source=process.env){
  const env={...source};
  for(const key of Object.keys(env)){
@@ -40,7 +40,7 @@ export async function openPostgresBackupSnapshot({command,args,expectedSystemIde
     !Number.isSafeInteger(timeoutMs)||
     timeoutMs<1000||timeoutMs>60000)throw stop('invalid_snapshot_request');
  const env=safePostgresChildEnv();
- const child=spawn(command,args,{env,stdio:['pipe','pipe','pipe'],windowsHide:true});
+ const child=spawn(command,args,{env,stdio:['pipe','pipe','pipe']});
  let finished=false,stderrCount=0;
  child.stderr.on('data',chunk=>{stderrCount+=chunk.length;});
  const close=new Promise((resolve,reject)=>{
@@ -147,7 +147,7 @@ export async function readPreinstallState({command,args,expectedSystemIdentifier
  const sql="BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;\n"+
   (snapshotId===null?'':"SET TRANSACTION SNAPSHOT '"+snapshotId+"';\n")+
   INITIAL_SQL+"COMMIT;\n";
- const child=spawn(command,args,{env,stdio:['pipe','pipe','pipe'],windowsHide:true});
+ const child=spawn(command,args,{env,stdio:['pipe','pipe','pipe']});
  let output='',overflow=false,timedOut=false;
  child.stdout.setEncoding('utf8');
  child.stdout.on('data',chunk=>{

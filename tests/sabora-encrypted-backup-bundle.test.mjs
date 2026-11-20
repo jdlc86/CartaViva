@@ -110,9 +110,9 @@ test('AES-GCM authenticates backup freshness and PostgreSQL version metadata',as
 });
 
 test('operational capture plan permits only scoped psql and pg_dump streams',()=>{
- const binRoot=process.platform==='win32'?'C:\\Program Files\\PostgreSQL\\17\\bin':'/usr/bin';
- const psql=join(binRoot,process.platform==='win32'?'psql.exe':'psql');
- const pgDump=join(binRoot,process.platform==='win32'?'pg_dump.exe':'pg_dump');
+ const binRoot='/usr/bin';
+ const psql=join(binRoot,'psql');
+ const pgDump=join(binRoot,'pg_dump');
  const sql=join(binRoot,'protected.sql');
  const psqlSpec=name=>({name,mediaType:name==='roles-memberships'?'application/sql':'text/plain',
   command:psql,args:['-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres','-f','-'],
@@ -145,9 +145,7 @@ test('operational capture plan permits only scoped psql and pg_dump streams',()=
  }
 });
 
-test('bundle rejects POSIX keys with group or world permissions',{
- skip:process.platform==='win32'?'NTFS ACL is verified by the operational dossier':false,
-},async t=>{
+test('bundle rejects keys with group or world permissions',async t=>{
  const root=await mkdtemp(join(tmpdir(),'sabora-backup-key-mode-'));
  t.after(()=>rm(root,{recursive:true,force:true}));
  const keyPath=join(root,'open.key');
