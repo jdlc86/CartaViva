@@ -15,7 +15,7 @@ import {verifyInstalledBackupActivation,sshEd25519Sha256} from '../ops/sabora-ba
 import {prepareInstalledBackupTransfer,backupLabSshArguments} from '../ops/sabora-vps-backup-transport.mjs';
 import {stageInactiveBackupInstallation,verifyInactiveBackupStage} from '../ops/sabora-backup-installation-stager.mjs';
 import {verifyExternalRecoveryCheckpoint} from '../ops/sabora-backup-recovery-checkpoint.mjs';
-import {advanceExternalRecoveryCheckpoint,observeExternalRecoveryCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
+import {advanceExternalRecoveryCheckpoint,observeExternalRecoveryCheckpoint,reserveLocalRecoveryCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
 import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
@@ -394,6 +394,53 @@ try{
  console.log('sabora_backup_external_custody_cas_ok:'+JSON.stringify({
   sequence:durable.sequence,concurrentWinners:1,persistentRecords:1,
   externalAdvancePerformed:true,independentPhysicalCustody:false,recoveryAuthorized:false,operationalAuthorization:false}));
+ // Connect the local durable reservation to the actual custody CAS, in
+ // distinct private fixture directories. The transfer adapter signs only
+ // the supplied envelope, like the future separately authorized operator.
+ const localControl=join(root,'local-control-fixture');mkdirSync(localControl,{mode:0o700});
+ const localRecordFile=join(localControl,'record.json');
+ writeFileSync(localRecordFile,JSON.stringify(durable)+'\n',{mode:0o600,flag:'wx'});
+ const localConfig={expected:identity,checkpointPublicKey:config.checkpointPublicKey,
+  ownerPublicKey:config.ownerPublicKey,recoveryPublicKey:config.recoveryPublicKey,
+  verificationPublicKey:config.verificationPublicKey};
+ const localDisk=()=>JSON.parse(readFileSync(localRecordFile,'utf8'));
+ const makeLocalRequest=prior=>{
+  const r=advanceRequest(prior);
+  const auth=JSON.parse(r.authorizationBytes.toString('utf8')).payload;
+  const subject=Object.fromEntries(['action','lockSha256','externalProofSha256','subjectSha256'].map(k=>[k,auth[k]]));
+  return {directory:localControl,config:localConfig,subject,
+   authorizationBytes:r.authorizationBytes,externalProofBytes:r.externalProofBytes,
+   observeExternal:challenge=>observed(challenge),
+   advanceExternal:envelope=>advanceExternalRecoveryCheckpoint({directory:custody,config,
+    requestBytes:recoverySign(envelope.payload),authorizationBytes:envelope.authorizationBytes,
+    externalProofBytes:envelope.externalProofBytes}).checkpointBytes};
+ };
+ const localRequest=makeLocalRequest(durable);
+ await assert.rejects(reserveLocalRecoveryCheckpoint({...localRequest,subject:{...localRequest.subject,
+  subjectSha256:digest('wrong-observed-subject')}}),/local_subject/);
+ await assert.rejects(reserveLocalRecoveryCheckpoint({...localRequest,
+  observeExternal:()=>afterRestart}),/checkpoint_scope/);
+ assert.deepEqual(localDisk(),durable);assert.deepEqual(diskRecord(),durable);
+ const localReservation=await reserveLocalRecoveryCheckpoint(localRequest);
+ assert.equal(localReservation.sequence,10);assert.equal(localReservation.slotsChanged,false);
+ assert.equal(localReservation.operationalAuthorization,false);
+ assert.deepEqual(localDisk(),diskRecord());
+ await assert.rejects(reserveLocalRecoveryCheckpoint(localRequest),/local_authorization_sequence/);
+ // Simulate a lost response after the independent CAS committed. Do not
+ // infer that the mutation failed, retry or reset the pending record.
+ const previousLocal=localDisk(),lost=makeLocalRequest(previousLocal);
+ await assert.rejects(reserveLocalRecoveryCheckpoint({...lost,advanceExternal:envelope=>{
+  lost.advanceExternal(envelope);throw Error('fixture_response_lost');
+ }}),/fixture_response_lost/);
+ assert.deepEqual(localDisk(),previousLocal);assert.equal(diskRecord().sequence,11);
+ assert.equal(lstatSync(join(localControl,'record.pending')).isFile(),true);
+ assert.equal(lstatSync(join(localControl,'custody.lock')).isFile(),true);
+ await assert.rejects(reserveLocalRecoveryCheckpoint(lost),/local_checkpoint_locked_or_crashed/);
+ const rollbackChallenge=fresh();
+ assert.throws(()=>verifyObserved(previousLocal,rollbackChallenge,observed(rollbackChallenge)),/local_rollback_or_loss/);
+ console.log('sabora_backup_local_external_checkpoint_exchange_ok:'+JSON.stringify({
+  sequence:localReservation.sequence,lostResponseBlocksRetry:true,remoteSequence:diskRecord().sequence,
+  localSequence:localDisk().sequence,slotsChanged:false,independentPhysicalCustody:false,operationalAuthorization:false}));
  console.log('sabora_backup_installed_activation_sender_preflight_and_shell_ok:'+JSON.stringify({
   networkContacted:false,installed:false,operationalAuthorization:false,activationNegatives:rejectsActivation.length+4}));
  console.log('sabora_backup_preparation_artifact_and_signed_plan_ok:'+JSON.stringify({
