@@ -118,7 +118,9 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const recoveryAuthority=generateKeyPairSync('ed25519');
   scope={...scope,recoveryPublicKey:recoveryAuthority.publicKey.export({format:'pem',type:'spki'}),
    protectedGuard:{device:guardIdentity[0],inode:guardIdentity[1]}};
-  const recoveryDir=join(mount,'recovery'),recordPath=join(recoveryDir,'sequence.json');
+  const recoveryDir=join(base,'recovery-control'),recordPath=join(recoveryDir,'sequence.json');
+  sudo(['/usr/bin/install','-d','-o','root','-g','root','-m','0700',recoveryDir]);
+  assert.notEqual(sudo(['/usr/bin/stat','-c','%d',recoveryDir]).stdout.trim(),guardIdentity[0]);
   const genesis={schema:'sabora-protected-recovery-sequence/v1',repository:'jdlc86/CartaViva',project:'sabora',
    environment:scope.environment,storageIdentitySha256:scope.storageIdentitySha256,
    externalStorageIdentitySha256:scope.externalStorageIdentitySha256,authoritySha256:authorityFingerprint(scope.recoveryPublicKey),
