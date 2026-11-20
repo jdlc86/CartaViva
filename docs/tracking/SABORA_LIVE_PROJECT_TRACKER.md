@@ -1747,3 +1747,8 @@ SHA de código `b134e25bb32aa8e427fba9f49986a4171ff32f94`, merge de prueba `cc6b
 
 Cierre del saneamiento técnico del backup Linux en laboratorio, no aceptación operativa ni auditoría independiente. Queda el firmador de release con soporte Windows por su contrato distinto; no es dependencia del paquete backup. No más trabajo de interoperabilidad Windows→Linux. Prioridad siguiente: revisión independiente del candidato exacto y resolución de hallazgos; definir equipo Linux nativo/contenedor y custodia/medio real, retención externa/frecuencia, recuperación y autorizaciones S40 §5. Tras aprobación de integración, controles de main y provisión/captura/restore/SQL/deploy por fases. No se requiere otro laboratorio redundante por el SO anfitrión. La modalidad contenedor aún debe verificar persistencia/semántica del almacenamiento realmente elegido. STOP de operación, merge y despliegue sin autorización; VPS, Supabase, Fleetia y main intactos. Este registro es exclusivamente documental, no atribuye CI previa al nuevo SHA.
 [Continuidad S45](../handoffs/SESSION_45_HANDOFF_2026-11-20.md).
+
+
+## 182. S45 — revisión interna preliminar, NO-GO
+
+[Informe INT-S45](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md): P1 persistencia durable de la réplica externa; P2 protección de rutas identityFile/knownHostsFile. Hallazgos estáticos sobre 9a54dcb86de6bdc4aa9b7996190d2cd3f9715c52, sin PoC ni nueva CI. Corrección conjunta y revisión restante pendientes. Auditor no disponible: revisión propia sin atribuir independencia, sin sustituir la puerta normativa de autorización. [Continuidad](../handoffs/SESSION_45_HANDOFF_2026-11-20.md).
