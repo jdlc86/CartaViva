@@ -24,7 +24,7 @@ export function verifySignedDocument(bytes,key,expectedSchema){
 export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Date.now(),environment='production',firstActivation=false}){
  if(!same(Object.keys(documents).sort(),[...EVIDENCE_KEYS].sort())||
   !same(Object.keys(trust).sort(),[...EVIDENCE_KEYS].sort()))stop('dossier_set_incomplete');
- const parsed={};
+ const parsed={},observationTimes={};
  for(const gate of EVIDENCE_KEYS){
   const bytes=documents[gate];
   if(!Buffer.isBuffer(bytes)||bytes.length>1048576||sha256(bytes)!==receipt.evidence[gate])stop('dossier_digest_mismatch');
@@ -38,11 +38,27 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   // by this verifier. Local live observations have a separate freshness gate.
   if(!Number.isFinite(observed)||!Number.isFinite(expires)||observed>now||expires<=now||expires<=observed)
    stop('dossier_expired_or_future');
-  parsed[gate]=doc.facts;
+  parsed[gate]=doc.facts;observationTimes[gate]=observed;
  }
  const restore=parsed.externalRestoreSha256;
+ const deferred=restore?.backupMode==='deferred-first-test-activation';
+ if(deferred){
+  // A signed, explicit absence of backup/restore is not recovery evidence.
+  // The distinct DBA authority must independently attest the initial state.
+  if(firstActivation!==true||receipt.operation!=='deploy'||
+   !exactKeys(restore,['backupMode','sourceIdentitySha256','migrationTreeSha256',
+    'ownerDecisionSha256','initialPreflightSha256','testDataOnly','realUsersAllowed','backupPerformed','restorePerformed'])||
+   restore.sourceIdentitySha256!==expected.databaseIdentitySha256||
+   restore.migrationTreeSha256!==expected.migrationTreeSha256||
+   restore.testDataOnly!==true||restore.realUsersAllowed!==false||
+   restore.backupPerformed!==false||restore.restorePerformed!==false||
+   !digest(restore.ownerDecisionSha256)||!digest(restore.initialPreflightSha256)||
+   restore.ownerDecisionSha256===restore.initialPreflightSha256)
+   stop('deferred_first_test_activation_invalid');
+ }
  const commonRestoreKeys=['backupSchema','sourceIdentitySha256','migrationTreeSha256','inventorySha256','restoredInventorySha256','components','replicas','restoredFrom','custodians'];
  const single=restore?.backupMode==='vps-only-first-activation';
+ if(!deferred){
  if(!exactKeys(restore,single?[...commonRestoreKeys,'backupMode','ownerDecisionSha256','preinstallEvidenceSha256','testDataOnly','temporaryRestore']:commonRestoreKeys)||
   restore.backupSchema!=='sabora-logical-backup/v2'||restore.sourceIdentitySha256!==expected.databaseIdentitySha256||
   restore.migrationTreeSha256!==expected.migrationTreeSha256||!digest(restore.inventorySha256)||
@@ -74,13 +90,43 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   !copies.every(validCopy)||copies[0].kind!=='external-offsite'||copies[1].kind!=='vps-encrypted-cache'||
   copies[0].storageIdentitySha256===copies[1].storageIdentitySha256||
   copies[0].ciphertextSha256!==copies[1].ciphertextSha256)stop('dual_replica_proof_invalid');
+ }
  const sql=parsed.sqlProviderGateSha256;
- if(!exactKeys(sql,['sourceIdentitySha256','postgresMajor','migrationTreeSha256','appliedLedgerSha256','rolesAclSha256','tlsIdentitySha256','checks'])||
+ const sqlKeys=['sourceIdentitySha256','postgresMajor','migrationTreeSha256','appliedLedgerSha256','rolesAclSha256','tlsIdentitySha256','checks'];
+ if(!exactKeys(sql,deferred?[...sqlKeys,'initialPreflight','migrationStartedAt','migrationCompletedAt','migrationStatus']:sqlKeys)||
   sql.sourceIdentitySha256!==expected.databaseIdentitySha256||sql.postgresMajor!==17||
   sql.migrationTreeSha256!==expected.migrationTreeSha256||sql.appliedLedgerSha256!==expected.appliedLedgerSha256||
   !digest(sql.rolesAclSha256)||sql.tlsIdentitySha256!==expected.databaseTlsIdentitySha256||
   !same(sql.checks,['cv005-admin-only','runtime-no-owner-membership','force-rls','runtime-negative-access','hmac-identity','tls-verify-full']))
   stop('sql_provider_dossier_invalid');
+ if(deferred){
+  // Preserve the actual signed pre-SQL statement, not only an unverified hash.
+  // Canonical wrapper bytes give both authorities the same digest.
+  if(!exactKeys(sql.initialPreflight,['payload','signature']))stop('initial_preflight_shape');
+  const bytes=Buffer.from(stableStringify(sql.initialPreflight));
+  if(sha256(bytes)!==restore.initialPreflightSha256)stop('initial_preflight_digest_mismatch');
+  const pre=verifySignedDocument(bytes,trust.sqlProviderGateSha256,'sabora-initial-empty-preflight/v1');
+  if(!exactKeys(pre,['schema','repository','project','environment','releaseSha','sourceIdentitySha256',
+    'migrationTreeSha256','tlsIdentitySha256','postgresMajor','ownerDecisionSha256','catalogSha256',
+    'initialState','checks','observedAt','validUntil'])||
+   pre.repository!==SABORA_RELEASE_SCOPE.repository||pre.project!=='sabora'||pre.environment!==environment||
+   pre.releaseSha!==receipt.releaseSha||pre.sourceIdentitySha256!==expected.databaseIdentitySha256||
+   pre.migrationTreeSha256!==expected.migrationTreeSha256||pre.tlsIdentitySha256!==expected.databaseTlsIdentitySha256||
+   pre.postgresMajor!==17||pre.ownerDecisionSha256!==restore.ownerDecisionSha256||
+   !digest(pre.catalogSha256)||new Set([pre.catalogSha256,restore.ownerDecisionSha256,restore.initialPreflightSha256]).size!==3||
+   pre.initialState!=='empty-sabora-scope'||
+   !same(pre.checks,['sabora-schemas-absent','sabora-roles-and-memberships-absent','sabora-prefixed-objects-absent',
+    'sabora-ledger-absent','pgcrypto-in-extensions','tls-verify-full']))
+   stop('initial_preflight_not_empty_or_applicable');
+  const observed=Date.parse(pre.observedAt),expires=Date.parse(pre.validUntil),
+   started=Date.parse(sql.migrationStartedAt),completed=Date.parse(sql.migrationCompletedAt);
+  if(![observed,expires,started,completed].every(Number.isFinite)||
+   expires<=observed||expires-observed>24*3600000||observed>=started||started>=expires||
+   completed<started||completed>observationTimes.sqlProviderGateSha256||
+   observationTimes.sqlProviderGateSha256>observationTimes.externalRestoreSha256||
+   sql.migrationStatus!=='complete-no-partial-failure')
+   stop('initial_preflight_or_migration_chronology_invalid');
+ }
  for(const [gate,kind,checks] of [
   ['ingressIsolationSha256','ingress',['approved-source-allowed','direct-origin-denied','wrong-port-denied','ipv6-denied','reverse-denied']],
   ['egressEnforcementSha256','egress',['approved-destination-allowed','foreign-destination-denied','wrong-port-denied','ipv6-denied','reverse-denied']]]){
@@ -107,5 +153,5 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   review.findings.some(f=>!exactKeys(f,['id','resolution','decisionSha256'])||
    typeof f.id!=='string'||!f.id||!['closed','owner-accepted'].includes(f.resolution)||!digest(f.decisionSha256)))
   stop('release_review_not_resolved');
- return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false,reviewMode:review.reviewMode,backupMode:single?'vps-only-first-activation':'dual-retained'};
+ return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false,reviewMode:review.reviewMode,backupMode:deferred?'deferred-first-test-activation':single?'vps-only-first-activation':'dual-retained',restoreAttested:!deferred};
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyMaterialDossiers,verifySignedDocument} from '../scripts/ops/sabora-release-evidence.mjs';
 import {labAuthority,materialLabDossiers,labHash,signedLabDocument,LAB_ENVIRONMENT} from '../scripts/ci/sabora-release-lab-fixtures.mjs';
-import {EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
+import {EVIDENCE_KEYS,stableStringify} from '../scripts/ci/sabora-release-governor.mjs';
 import {sha256} from '../scripts/ops/sabora-release-protected-store.mjs';
 import {immutableComposeOverride,validateClosedCompose} from '../scripts/ops/sabora-release-compose-policy.mjs';
 import {safeReleaseError} from '../scripts/ops/sabora-release-controller.mjs';
@@ -86,6 +86,72 @@ test('material authority: synthetic evidence cannot pass production; authenticat
  const bytes=Buffer.from(JSON.stringify(forged));assert.throws(()=>verifyMaterialDossiers({...input,
   documents:{...documents,reviewEvidenceSha256:bytes},receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(bytes)}}}),/signature_invalid/);
 });
+
+test('deferred recovery: only initial test deploy with distinct signed pre-SQL empty-state evidence',()=>{
+ const now=Date.now(),iso=offset=>new Date(now+offset).toISOString();
+ const keys=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,labAuthority()]));
+ const trust=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,keys[k].pem]));
+ const expected=Object.fromEntries(['subjectSha256','databaseIdentitySha256','migrationTreeSha256','appliedLedgerSha256','databaseTlsIdentitySha256','networkPolicySha256','allocationReservationSha256','alertReceiverIdentitySha256'].map(k=>[k,labHash(k)]));
+ const releaseSha='d'.repeat(40),original=materialLabDossiers({sha:releaseSha,expected,keys,now});
+ const get=k=>verifySignedDocument(original[k],trust[k],'sabora-material-evidence/v2');
+ const pre={schema:'sabora-initial-empty-preflight/v1',repository:'jdlc86/CartaViva',project:'sabora',
+  environment:LAB_ENVIRONMENT,releaseSha,sourceIdentitySha256:expected.databaseIdentitySha256,
+  migrationTreeSha256:expected.migrationTreeSha256,tlsIdentitySha256:expected.databaseTlsIdentitySha256,
+  postgresMajor:17,ownerDecisionSha256:labHash('owner-deferral'),catalogSha256:labHash('observed-empty-catalog'),
+  initialState:'empty-sabora-scope',checks:['sabora-schemas-absent','sabora-roles-and-memberships-absent',
+   'sabora-prefixed-objects-absent','sabora-ledger-absent','pgcrypto-in-extensions','tls-verify-full'],
+  observedAt:iso(-60000),validUntil:iso(60000)};
+ const deferral=get('externalRestoreSha256'),sql=get('sqlProviderGateSha256');
+ deferral.facts={backupMode:'deferred-first-test-activation',sourceIdentitySha256:expected.databaseIdentitySha256,
+  migrationTreeSha256:expected.migrationTreeSha256,ownerDecisionSha256:pre.ownerDecisionSha256,
+  initialPreflightSha256:null,testDataOnly:true,realUsersAllowed:false,backupPerformed:false,restorePerformed:false};
+ Object.assign(sql.facts,{initialPreflight:null,migrationStartedAt:iso(-50000),migrationCompletedAt:iso(-2000),
+  migrationStatus:'complete-no-partial-failure'});
+ const make=({changePre,changeSql,changeDeferral,preKey=keys.sqlProviderGateSha256}={})=>{
+  const p=structuredClone(pre),s=structuredClone(sql),d=structuredClone(deferral);
+  changePre?.(p);s.facts.initialPreflight=JSON.parse(signedLabDocument(p,preKey));
+  d.facts.initialPreflightSha256=sha256(Buffer.from(stableStringify(s.facts.initialPreflight)));
+  changeSql?.(s);changeDeferral?.(d);
+  const documents={...original,sqlProviderGateSha256:signedLabDocument(s,keys.sqlProviderGateSha256),
+   externalRestoreSha256:signedLabDocument(d,keys.externalRestoreSha256)};
+  return {receipt:{releaseSha,operation:'deploy',evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,sha256(documents[k])]))},
+   documents,trust,expected,environment:LAB_ENVIRONMENT,now,firstActivation:true};
+ };
+ const input=make(),accepted=verifyMaterialDossiers(input);
+ assert.equal(accepted.backupMode,'deferred-first-test-activation');
+ assert.equal(accepted.restoreAttested,false);
+ assert.equal(accepted.locallyObserved,false);
+ assert.throws(()=>verifyMaterialDossiers({...input,firstActivation:false}),/deferred_first_test/);
+ assert.throws(()=>verifyMaterialDossiers({...input,firstActivation:1}),/deferred_first_test/);
+ assert.throws(()=>verifyMaterialDossiers({...input,receipt:{...input.receipt,operation:'rollback'}}),/deferred_first_test/);
+ assert.throws(()=>verifyMaterialDossiers({...input,environment:'production'}),/dossier_identity/);
+ for(const changeDeferral of [d=>delete d.facts.backupMode,d=>d.facts.realUsersAllowed=true,
+  d=>d.facts.testDataOnly=false,d=>d.facts.backupPerformed=true,d=>d.facts.restorePerformed=true,
+  d=>d.facts.ownerDecisionSha256=null,d=>d.facts.sourceIdentitySha256=labHash('foreign'),
+  d=>d.facts.initialPreflightSha256=labHash('wrong-preflight'),d=>d.facts.replicas=[]])
+  assert.throws(()=>verifyMaterialDossiers(make({changeDeferral})));
+ for(const changePre of [p=>p.initialState='partial-install',p=>p.checks.pop(),
+  p=>p.environment='production',p=>p.releaseSha='e'.repeat(40),p=>p.project='other',
+  p=>p.sourceIdentitySha256=labHash('other-source'),p=>p.migrationTreeSha256=labHash('other-tree'),
+  p=>p.tlsIdentitySha256=labHash('other-tls'),p=>p.ownerDecisionSha256=labHash('other-decision'),
+  p=>p.catalogSha256='0'.repeat(64),p=>p.postgresMajor=16,p=>p.observedAt=iso(-40000),
+  p=>p.validUntil=iso(-50001),p=>p.validUntil=iso(2*86400000)])
+  assert.throws(()=>verifyMaterialDossiers(make({changePre})));
+ for(const changeSql of [s=>delete s.facts.initialPreflight,s=>s.facts.migrationStatus='partial',
+  s=>s.facts.migrationStartedAt=iso(-60000),s=>s.facts.migrationCompletedAt=iso(-60001),
+  s=>s.facts.migrationCompletedAt=iso(1000),s=>s.facts.checks.pop(),
+  s=>s.facts.appliedLedgerSha256=labHash('wrong-ledger')])
+  assert.throws(()=>verifyMaterialDossiers(make({changeSql})));
+ assert.throws(()=>verifyMaterialDossiers(make({preKey:keys.externalRestoreSha256})),/document_signature_invalid/);
+ assert.throws(()=>verifyMaterialDossiers({...input,receipt:{...input.receipt,evidence:{...input.receipt.evidence,
+  externalRestoreSha256:sha256(original.externalRestoreSha256)}}}),/dossier_digest_mismatch/);
+ // Ordinary SQL shape and ordinary restore remain necessary together; a
+ // deferral cannot be smuggled into a later dual-retained operation.
+ const ordinary=make(),documents={...ordinary.documents,externalRestoreSha256:original.externalRestoreSha256};
+ assert.throws(()=>verifyMaterialDossiers({...ordinary,documents,receipt:{...ordinary.receipt,evidence:{...ordinary.receipt.evidence,
+  externalRestoreSha256:sha256(documents.externalRestoreSha256)}}}),/sql_provider_dossier_invalid/);
+});
+
 test('root diagnostics redact arbitrary errors; immutable overlay has no mutable image tags or builds',()=>{
  assert.equal(safeReleaseError(Error('/run/secrets/db: password=never-log-this')),'sabora_controller_stop:internal_failure');
  const manifest={releaseSha:'a'.repeat(40),images:{api:{imageId:'sha256:'+'b'.repeat(64)},web:{imageId:'sha256:'+'c'.repeat(64)}}};
