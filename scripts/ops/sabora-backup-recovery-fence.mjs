@@ -44,12 +44,8 @@ function readRecord(directory,identity){
    (!digest(value.authorizationSha256)||!digest(value.lockSha256))))stop('sequence_invalid');
  return value;
 }
-export function reserveProtectedRecoverySequence({directory,scope,expected,authorizationBytes}={}){
- const identity=fenceContext(directory,scope);
- if(!Buffer.isBuffer(authorizationBytes)||authorizationBytes.length<1||authorizationBytes.length>262144)stop('authorization_size');
- const unlock=acquireReleaseLock(directory);
- try{
-  const previous=readRecord(directory,identity);
+function reserveUnderLock(directory,scope,identity,previous,expected,authorizationBytes){
+  if(!Buffer.isBuffer(authorizationBytes)||authorizationBytes.length<1||authorizationBytes.length>262144)stop('authorization_size');
   const purge=expected?.action==='finish-published-purge';
   // Existing signed recovery schemas, not a new permission format.
   const specific=purge?['currentManifestSha256','previousManifestSha256','previousRemainderSha256']:['subjectSha256'];
@@ -77,5 +73,25 @@ export function reserveProtectedRecoverySequence({directory,scope,expected,autho
   return Object.freeze({schema:'sabora-protected-recovery-reservation/v1',sequence:confirmed.sequence,
    authorizationSha256:confirmed.authorizationSha256,lockSha256:confirmed.lockSha256,
    slotsChanged:false,operationalAuthorization:false});
+}
+// Preserve the isolated primitive used by the existing fence test.
+export function reserveProtectedRecoverySequence({directory,scope,expected,authorizationBytes}={}){
+ const identity=fenceContext(directory,scope),unlock=acquireReleaseLock(directory);
+ try{return reserveUnderLock(directory,scope,identity,readRecord(directory,identity),expected,authorizationBytes);}
+ finally{unlock();}
+}
+// Hold the root-only controller lock throughout observation, reservation,
+// and completion of one controlled worker. No reset or retry on failure.
+export async function withProtectedRecoveryFence({directory,scope}={},operation){
+ const identity=fenceContext(directory,scope),unlock=acquireReleaseLock(directory);
+ let used=false;
+ try{
+  const previous=readRecord(directory,identity);
+  return await operation(Object.freeze({sequence:previous.sequence,
+   reserve(expected,authorizationBytes){
+    if(used)stop('coordinator_reservation_already_attempted');
+    used=true;
+    return reserveUnderLock(directory,scope,identity,previous,expected,authorizationBytes);
+   }}));
  }finally{unlock();}
 }
