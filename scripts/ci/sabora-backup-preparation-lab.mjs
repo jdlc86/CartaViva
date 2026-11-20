@@ -15,7 +15,7 @@ import {verifyInstalledBackupActivation,sshEd25519Sha256} from '../ops/sabora-ba
 import {prepareInstalledBackupTransfer,backupLabSshArguments} from '../ops/sabora-vps-backup-transport.mjs';
 import {stageInactiveBackupInstallation,verifyInactiveBackupStage} from '../ops/sabora-backup-installation-stager.mjs';
 import {verifyExternalRecoveryCheckpoint} from '../ops/sabora-backup-recovery-checkpoint.mjs';
-import {advanceExternalRecoveryCheckpoint,observeExternalRecoveryCheckpoint,reserveLocalRecoveryCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
+import {advanceExternalRecoveryCheckpoint,observeExternalRecoveryCheckpoint,reserveLocalRecoveryCheckpoint,diagnoseInterruptedLocalCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
 import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
@@ -441,6 +441,60 @@ try{
  console.log('sabora_backup_local_external_checkpoint_exchange_ok:'+JSON.stringify({
   sequence:localReservation.sequence,lostResponseBlocksRetry:true,remoteSequence:diskRecord().sequence,
   localSequence:localDisk().sequence,slotsChanged:false,independentPhysicalCustody:false,operationalAuthorization:false}));
+ // Diagnosis must never clear the interrupted state or confer a right
+ // to reuse the consumed authorization. Take byte-level inventories.
+ const pendingPath=join(localControl,'record.pending'),lockPath=join(localControl,'custody.lock');
+ const pendingBytes=readFileSync(pendingPath),lockBytes=readFileSync(lockPath),localBytes=readFileSync(localRecordFile);
+ const diagnose=options=>diagnoseInterruptedLocalCheckpoint({directory:localControl,config:localConfig,
+  observeExternal:challenge=>observed(challenge),...options});
+ const diagnosis=await diagnose();
+ assert.equal(diagnosis.phase,'external-consumed');
+ assert.equal(diagnosis.localSequence,10);assert.equal(diagnosis.pendingSequence,11);
+ assert.equal(diagnosis.remoteSequence,11);assert.equal(diagnosis.blocked,true);
+ assert.equal(diagnosis.lockRemovalAuthorized,false);assert.equal(diagnosis.recoveryAuthorized,false);
+ assert.equal(diagnosis.pendingSha256,sha256(pendingBytes));
+ await assert.rejects(diagnose({observeExternal:()=>afterRestart}),/local_pending_remote_diverged|checkpoint_scope/);
+ await assert.rejects(diagnose({observeExternal:challenge=>signCheckpoint({...checkpoint,
+  challenge,sequence:11,recordSha256:digest('wrong-record'),
+  observedAt:new Date(Date.now()-100).toISOString(),validUntil:new Date(Date.now()+30000).toISOString()})}),/checkpoint_record_mismatch/);
+ // Fresh response that still names the predecessor is also STOP, not a
+ // proof that the delayed request will never execute.
+ const priorObservation=challenge=>signCheckpoint({...previousLocal,schema:'sabora-backup-external-checkpoint/v1',
+  challenge,recordSha256:sha256(Buffer.from(stableStringify(previousLocal))),
+  observedAt:new Date(Date.now()-100).toISOString(),validUntil:new Date(Date.now()+30000).toISOString()});
+ const predecessorDiagnosis=await diagnose({observeExternal:priorObservation});
+ assert.equal(predecessorDiagnosis.phase,'external-still-predecessor');
+ assert.equal(predecessorDiagnosis.blocked,true);
+ assert.deepEqual(readFileSync(pendingPath),pendingBytes);assert.deepEqual(readFileSync(lockPath),lockBytes);
+ assert.deepEqual(readFileSync(localRecordFile),localBytes);
+ // Crash boundary after record.next was staged, before rename.
+ const temporaryRecord=join(localControl,'record.next');
+ writeFileSync(temporaryRecord,JSON.stringify(diskRecord()),{mode:0o600,flag:'wx'});
+ try{
+  assert.equal((await diagnose()).phase,'external-consumed');
+  writeFileSync(temporaryRecord,JSON.stringify(previousLocal));
+  await assert.rejects(diagnose(),/local_pending_temporary/);
+ }finally{unlinkSync(temporaryRecord);}
+ // Simulate a concurrent change during the observation; no phase result
+ // from an observation of stale local bytes.
+ try{
+  await assert.rejects(diagnose({observeExternal:challenge=>{
+   writeFileSync(pendingPath,Buffer.concat([pendingBytes,Buffer.from('\n')]));
+   return observed(challenge);
+  }}),/local_pending_changed/);
+ }finally{writeFileSync(pendingPath,pendingBytes);}
+ // Crash boundary after durable local publication, before pending removal.
+ writeFileSync(localRecordFile,JSON.stringify(diskRecord()));
+ try{
+  const published=await diagnose();
+  assert.equal(published.phase,'external-consumed');assert.equal(published.localSequence,11);
+  assert.equal(published.blocked,true);assert.equal(published.lockRemovalAuthorized,false);
+ }finally{writeFileSync(localRecordFile,localBytes);}
+ assert.deepEqual(readFileSync(pendingPath),pendingBytes);assert.deepEqual(readFileSync(lockPath),lockBytes);
+ assert.deepEqual(readFileSync(localRecordFile),localBytes);
+ console.log('sabora_backup_interrupted_checkpoint_diagnosis_ok:'+JSON.stringify({
+  observedConsumed:true,observedPredecessor:true,stillBlocked:true,slotsChanged:false,
+  lockRemovalAuthorized:false,operationalAuthorization:false}));
  console.log('sabora_backup_installed_activation_sender_preflight_and_shell_ok:'+JSON.stringify({
   networkContacted:false,installed:false,operationalAuthorization:false,activationNegatives:rejectsActivation.length+4}));
  console.log('sabora_backup_preparation_artifact_and_signed_plan_ok:'+JSON.stringify({
