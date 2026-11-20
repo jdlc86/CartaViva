@@ -39,7 +39,7 @@ if(process.env.GITHUB_ACTIONS!=='true'||!process.env.RUNNER_TEMP||!/^\d+$/.test(
  !/^[0-9a-f]{40}$/.test(releaseSha))throw failure('disposable_actions_context_required');
 
 function docker(args,{input,allowFailure=false}={}){
- const result=spawnSync('docker',args,{input,encoding:'utf8',windowsHide:true,maxBuffer:64*1024*1024});
+ const result=spawnSync('docker',args,{input,encoding:'utf8',maxBuffer:64*1024*1024});
  if(!allowFailure&&(result.error||result.status!==0)){
   const detail=String(result.stderr??'').replace(/[^A-Za-z0-9_:. -]/g,'_').slice(0,800);
   throw failure('docker_command_failed:'+String(result.status??'spawn')+':'+detail);

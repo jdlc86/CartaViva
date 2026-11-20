@@ -88,7 +88,16 @@ test('S40 home-computer profile records both destinations without claiming opera
  assert.equal(profile.vpsReplica.requiredByOwnerDecision,true);
  assert.equal(profile.vpsReplica.authorizationGranted,false);
  assert.equal(profile.vpsReplica.fleetiaDependency,false);
- assert.match(JSON.stringify(profile),/PENDING_WINDOWS_MACOS_OR_LINUX/);
+ assert.equal(profile.homeComputer.operatingSystem,'PENDING_HOST_OS');
+ assert.deepEqual(profile.homeComputer.executionEnvironment,{
+  preferred:'linux-native',
+  fallback:'linux-container',
+  selected:'PENDING_SELECTION',
+  containerPersistenceVerified:false,
+  storageSemanticsVerified:false,
+  restoreFromPersistentStorageVerified:false
+ });
+ assert.equal(profile.databaseConnection.method,'PENDING_APPROVED_DIRECT_SUPABASE_CONNECTION');
  assert.match(JSON.stringify(profile),/PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER/);
  assert.match(ignored,/deploy\/sabora-home-offsite-backup\.profile\.json/);
 });
