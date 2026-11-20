@@ -1808,3 +1808,11 @@ Gateway job `job_01M7WT6J2M00ZAGJ37AY7W1STW` SUCCESS exit 0. Preflight rutas aus
 Segunda sesión independiente Gateway `job_01M7WT7MCB0065RQ0Q6TDC8CZV` SUCCESS exit 0: UUID, vínculo a loop y backing file, permisos, longitud/asignación física y tipo/montaje corroborados; df size 2040373248, avail 1915674624. **Volumen material creado, montado y confirmado; no hay copia ni receptor operativo.** Montaje actual no configurado para persistencia tras reboot; no reiniciar host, no tocar fstab ni añadir servicios sin autorización. Pendiente establecer mecanismo Sabora-only de montaje persistente y comprobación de UUID antes de receptor. La capacidad medida admite la propuesta inicial de 512 MiB por bundle, 16 MiB metadatos y 256 MiB reserva con presupuesto de dos generaciones 1296 MiB (1358954496 bytes); cuota lógica candidata 1536 MiB, no aprobada ni configurada, revisar con tamaño real de backup. Pendientes equipo doméstico Linux y custodia distinta de claves, cuenta/identidades y canal dedicado, volumen persistente, control separado y aprobación del plan/activation. No firmar con placeholders. **NO-GO captura, SQL y deploy hasta las puertas aplicables.**
 
 La continuidad y el tablero se guardan en la rama auxiliar existente de preparación, sin fusionarla ni alterar main/artefactos del release. No se abre otro PR ni se solicita CI por esta anotación documental.
+
+
+## 189. S45 — siguiente bloque material acotado
+
+
+## S45-11 — preparación inactiva: siguiente operación propuesta
+
+[Plan acotado](../runbooks/SABORA_S45_INACTIVE_BACKUP_HOST_PREPARATION_2026-11-20.md): unidad .mount propia sin fstab/reinicio/daemon-reload global, cuenta bloqueada dedicada UID/GID candidato 22017 y estructura cache/recovery/guard/control, verificación material. No ejecutado. Volumen previo ya creado; autorización específica de este bloque pendiente. Preparación de claves y equipo externo siguen necesarias; no activar listener, recovery, SQL o deploy. Main exacto conservado.
