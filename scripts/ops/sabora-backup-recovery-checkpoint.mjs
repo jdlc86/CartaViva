@@ -17,7 +17,8 @@ function identity(expected){
   new Set([expected.storageIdentitySha256,expected.externalStorageIdentitySha256,
    expected.controlStorageIdentitySha256]).size!==3)stop('identity');
 }
-function validateRecord(record,expected){
+export function validateRecoveryControlRecord(record,expected){
+ identity(expected);
  if(!exactKeys(record,['schema','repository','project','environment',...identityFields,
   'sequence','authorizationSha256','lockSha256'])||
   record.schema!=='sabora-backup-control-record/v1'||record.repository!=='jdlc86/CartaViva'||
@@ -29,7 +30,7 @@ function validateRecord(record,expected){
 export function verifyExternalRecoveryCheckpoint({record,expected,challenge,checkpointBytes,
  checkpointPublicKey,ownerPublicKey,recoveryPublicKey,verificationPublicKey,now=Date.now()}={}){
  identity(expected);
- validateRecord(record,expected);
+ validateRecoveryControlRecord(record,expected);
  if(!digest(challenge)||!Buffer.isBuffer(checkpointBytes)||checkpointBytes.length<1||
   checkpointBytes.length>16384)stop('checkpoint_input');
  const fingerprints=[checkpointPublicKey,ownerPublicKey,recoveryPublicKey,verificationPublicKey].map(authorityFingerprint);
