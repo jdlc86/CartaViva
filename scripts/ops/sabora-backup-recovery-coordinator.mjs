@@ -168,7 +168,7 @@ function runWorker(config,request,validated,fence){
 }
 async function coordinate(request){
  const config=loadConfig(),validated=validateRequest(request,config.scope);
- return withProtectedRecoveryFence({directory:join(config.volume,'recovery'),scope:config.scope},async fence=>{
+ return withProtectedRecoveryFence({directory:join(base,'recovery-control'),scope:config.scope},async fence=>{
   await assertOffline(config);
   if(!validated.inspect&&validated.auth.sequence!==fence.sequence+1)stop('authorization_sequence');
   const result=await runWorker(config,request,validated,fence);
