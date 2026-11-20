@@ -17,13 +17,16 @@ export function verifyInstalledBackupActivation({planBytes,artifactBytes,activat
  const a=verifySignedDocument(activationBytes,ownerPublicKey,'sabora-backup-receiver-activation/v1');
  if(!exactKeys(a,['schema','repository','project','environment','operation','sourceSha','artifactSha256',
   'planSha256','configurationSha256','installationId','hostIdentitySha256','uid','gid','device','guardInode',
-  'independentReviewSha256','isolationEvidenceSha256','senderBinarySha256','authorizedAt','validUntil'])||
+  'reviewEvidenceSha256','reviewMode','ownerDecisionSha256','isolationEvidenceSha256','senderBinarySha256','authorizedAt','validUntil'])||
   a.repository!=='jdlc86/CartaViva'||a.project!=='sabora'||a.environment!=='production'||
   a.operation!=='receive-encrypted-only'||a.sourceSha!==checked.sourceSha||
   a.artifactSha256!==checked.artifactSha256||a.planSha256!==checked.planSha256||
   a.configurationSha256!==checked.configurationSha256||!id(a.installationId)||
-  ![a.hostIdentitySha256,a.independentReviewSha256,a.isolationEvidenceSha256,a.senderBinarySha256].every(digest)||
-  a.independentReviewSha256===a.isolationEvidenceSha256||
+  ![a.hostIdentitySha256,a.reviewEvidenceSha256,a.isolationEvidenceSha256,a.senderBinarySha256].every(digest)||
+  a.reviewEvidenceSha256===a.isolationEvidenceSha256||
+  !['independent','internal-first-activation'].includes(a.reviewMode)||
+  (a.reviewMode==='independent'?a.ownerDecisionSha256!==null:
+   (!digest(a.ownerDecisionSha256)||[a.reviewEvidenceSha256,a.isolationEvidenceSha256].includes(a.ownerDecisionSha256)))||
   !Number.isSafeInteger(a.uid)||a.uid<=0||a.uid===10001||
   !Number.isSafeInteger(a.gid)||a.gid<=0||a.gid===10001||
   !positive(a.device)||!positive(a.guardInode))stop('activation_scope');
@@ -32,7 +35,7 @@ export function verifyInstalledBackupActivation({planBytes,artifactBytes,activat
   from<Date.parse(plan.plannedAt)||until>Date.parse(plan.validUntil)||until-from>3600000)
   stop('activation_time');
  // This is an authenticated declaration by the owner, not proof that the
- // named filesystem, ACL, runtime or external review actually exists.
+ // named filesystem, ACL, runtime or declared review actually exists.
  // The receiver verifies material host state separately before accepting data.
  return Object.freeze({plan,activation:a,activationSha256:sha256(activationBytes),checked});
 }

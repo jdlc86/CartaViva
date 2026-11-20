@@ -1779,3 +1779,8 @@ Objeto de código `add060c4400a45b1c43a9b98fe6db10b00858320`, merge de prueba `0
 **Todos los hallazgos INT-S45-01, 01-R1, 02 y 03 registrados: corregidos y validados dentro del alcance ensayado.** No afirmar certificación exhaustiva ni independencia. Revisión interna examinó los componentes de captura, publicación, SSH, receptor, rotación, custodia, coordinación, contrato y empaquetado; no se acredita revisión integral de todas las dependencias preexistentes ni seguridad frente a UID/root comprometidos o hardware que incumpla fsync. No reabrir laboratorios por SO ni repetir CI por cambios documentales. La siguiente frontera del hito es material y de gobernanza, no añadir escenarios sin requisito trazable.
 
 Ver [expediente de revisión y puertas pendientes](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md) y [S40](../runbooks/SABORA_S40_DUAL_BACKUP_AND_FIRST_DEPLOY_EXECUTION_2026-11-14.md). NO-GO integración/operación; no nueva CI en commit documental.
+
+
+## 186. S45 — excepción de revisión interna para primera activación, candidato
+
+Propietario aprueba prioridad primer despliegue y revisión interna temporal. [Decisión normativa](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Cambios en contrato de backup y release, evidencia firmada con modalidad explícita, excepción release limitada a ledger genesis y deploy, demás puertas intactas. CI pendiente, sin autorización de merge o intervención real.

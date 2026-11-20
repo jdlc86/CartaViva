@@ -120,11 +120,16 @@ try{
   planSha256:productionChecked.planSha256,configurationSha256:productionChecked.configurationSha256,
   installationId:'SABORA-BACKUP-INSTALL-CI-ONLY-01',hostIdentitySha256:digest('fixture-host-id'),
   uid:22017,gid:22017,device:'12345',guardInode:'54321',
-  independentReviewSha256:digest('synthetic-review'),isolationEvidenceSha256:digest('synthetic-isolation'),
+  reviewEvidenceSha256:digest('synthetic-review'),reviewMode:'independent',ownerDecisionSha256:null,isolationEvidenceSha256:digest('synthetic-isolation'),
   senderBinarySha256:sshHash,authorizedAt:productionPlan.plannedAt,validUntil:productionPlan.validUntil};
  const activate=(p=activation,overrides={})=>verifyInstalledBackupActivation({
   planBytes:productionBytes,artifactBytes,activationBytes:signed(p),ownerPublicKey:publicKey(owner),now,...overrides});
  const active=activate();
+ const internallyReviewed={...activation,reviewMode:'internal-first-activation',ownerDecisionSha256:digest('synthetic-owner-first-activation-decision')};
+ assert.equal(activate(internallyReviewed).activation.reviewMode,'internal-first-activation');
+ for(const decision of [null,activation.reviewEvidenceSha256,activation.isolationEvidenceSha256])
+  assert.throws(()=>activate({...internallyReviewed,ownerDecisionSha256:decision}),/activation_scope/);
+ assert.throws(()=>activate({...activation,reviewMode:'unreviewed'}),/activation_scope/);
  assert.equal(active.activation.installationId,activation.installationId);
  const rejectsActivation=[
   [{...activation,environment:'disposable-lab'},/activation_scope/],

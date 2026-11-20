@@ -163,7 +163,8 @@ export async function exerciseInstalledBackupReceiver({fixture,volume,scope,repo
    environment:'production',operation:'receive-encrypted-only',sourceSha,artifactSha256:plan.artifactSha256,
    planSha256:checked.planSha256,configurationSha256:checked.configurationSha256,
    installationId:'SABORA-BACKUP-INSTALL-CI-'+runId,hostIdentitySha256:sha256(await readFile('/etc/machine-id')),
-   uid,gid,device,guardInode:inode,independentReviewSha256:sha256(Buffer.from('fixture-not-independent-review')),
+   uid,gid,device,guardInode:inode,reviewEvidenceSha256:sha256(Buffer.from('fixture-internal-review')),
+   reviewMode:'internal-first-activation',ownerDecisionSha256:sha256(Buffer.from('fixture-owner-decision-not-operational')),
    isolationEvidenceSha256:sha256(Buffer.from('fixture-not-operational-isolation')),senderBinarySha256:sha256(await readFile(ssh)),
    authorizedAt:from,validUntil:until};
   const activationBytes=signed(activation);

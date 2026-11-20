@@ -309,7 +309,7 @@ try{
  // Even a valid owner re-signature is insufficient when custodians are
  // aliased or the expected subject no longer describes approved config.
  const originalAlertKey=configuration.alertKey,originalRuntimeHash=configuration.runtimeEnvSha256;
- configuration.alertKey=authorities.independentReviewSha256.pem;signedInstall();
+ configuration.alertKey=authorities.reviewEvidenceSha256.pem;signedInstall();
  try{await custodyDenied('authority-key-reuse-denied','LAB-AUTHORITY-REUSE',/custodian_independence_unproven/);}finally{configuration.alertKey=originalAlertKey;signedInstall();}
  configuration.runtimeEnvSha256=labHash('different-runtime');signedInstall();
  try{await custodyDenied('installation-subject-drift-denied','LAB-SUBJECT-DRIFT',/configuration_subject_invalid/);}finally{configuration.runtimeEnvSha256=originalRuntimeHash;signedInstall();}

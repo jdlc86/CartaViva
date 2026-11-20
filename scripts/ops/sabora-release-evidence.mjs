@@ -21,7 +21,7 @@ export function verifySignedDocument(bytes,key,expectedSchema){
   publicKey,Buffer.from(wrapper.signature,'base64')))stop('document_signature_invalid');
  return wrapper.payload;
 }
-export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Date.now(),environment='production'}){
+export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Date.now(),environment='production',firstActivation=false}){
  if(!same(Object.keys(documents).sort(),[...EVIDENCE_KEYS].sort())||
   !same(Object.keys(trust).sort(),[...EVIDENCE_KEYS].sort()))stop('dossier_set_incomplete');
  const parsed={};
@@ -77,14 +77,17 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
  if(!exactKeys(alert,['receiverIdentitySha256','correlation','sentDigest','receivedDigest'])||
   alert.receiverIdentitySha256!==expected.alertReceiverIdentitySha256||!digest(alert.correlation)||
   !digest(alert.sentDigest)||alert.sentDigest!==alert.receivedDigest)stop('alert_dossier_invalid');
- const review=parsed.independentReviewSha256;
- if(!exactKeys(review,['reviewedReleaseSha','reportSha256','reviewerIdentitySha256','findings','scope'])||
+ const review=parsed.reviewEvidenceSha256;
+ if(!exactKeys(review,['reviewedReleaseSha','reportSha256','reviewerIdentitySha256','findings','scope','reviewMode','ownerDecisionSha256'])||
   review.reviewedReleaseSha!==receipt.releaseSha||!digest(review.reportSha256)||
-  review.reviewerIdentitySha256!==authorityFingerprint(trust.independentReviewSha256)||
-  review.scope!=='sabora-release-and-runtime'||!Array.isArray(review.findings)||
+  review.reviewerIdentitySha256!==authorityFingerprint(trust.reviewEvidenceSha256)||
+  review.scope!=='sabora-release-and-runtime'||!['independent','internal-first-activation'].includes(review.reviewMode)||
+  (review.reviewMode==='independent'?review.ownerDecisionSha256!==null:
+   (!firstActivation||receipt.operation!=='deploy'||!digest(review.ownerDecisionSha256)||review.ownerDecisionSha256===review.reportSha256))||
+  !Array.isArray(review.findings)||
   new Set(review.findings.map(f=>f?.id)).size!==review.findings.length||
   review.findings.some(f=>!exactKeys(f,['id','resolution','decisionSha256'])||
    typeof f.id!=='string'||!f.id||!['closed','owner-accepted'].includes(f.resolution)||!digest(f.decisionSha256)))
-  stop('independent_review_not_resolved');
- return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false};
+  stop('release_review_not_resolved');
+ return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false,reviewMode:review.reviewMode};
 }

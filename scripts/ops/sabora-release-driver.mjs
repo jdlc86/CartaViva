@@ -23,8 +23,10 @@ export function checkStorageQuota(config){
 export function createRealReleaseDriver({installation,ledger,receipt,revalidate,run=releaseProcess}){
  const {config,reservation,environment}=installation;let current,composeArgs,composeView;
  const readEvidence=()=>Object.fromEntries(EVIDENCE_KEYS.map(key=>[key,protectedBytes(join(P.evidence,receipt.evidence[key]+'.json'),{privateFile:true})]));
- const evidence=()=>{const documents=readEvidence();verifyMaterialDossiers({receipt,documents,trust:config.evidenceKeys,
-  expected:config.expected,environment,now:Date.now()});return documents;};
+ const evidence=()=>{const documents=readEvidence(),history=ledger.readHistory();
+  const firstActivation=history.activeReleaseSha===null&&Array.isArray(history.versions)&&history.versions.length===0;
+  verifyMaterialDossiers({receipt,documents,trust:config.evidenceKeys,
+  expected:config.expected,environment,firstActivation,now:Date.now()});return documents;};
  const isolation=()=>{evidence();const witness=inspectLocalIsolation({run,policy:config.networkPolicy,reservation,now:Date.now()});
   if(ledger.readHistory().activeReleaseSha)assertLiveSaboraIsolation(witness,Date.now(),'running');return witness;};
  const json=(args,options)=>{const result=run('docker',args,options);return result.missing?null:JSON.parse(result.stdout);};

@@ -394,3 +394,8 @@ El código de backup deja de ofrecer rutas nativas de otros sistemas operativos,
 ### S45 — cierre de hallazgos internos en laboratorio y siguiente frontera (20-11-2026)
 
 [Expediente de cierre y puertas materiales/gobernanza](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md), código add060c4400a45b1c43a9b98fe6db10b00858320. Cinco controles aplicables SUCCESS, 1486 PASS/1 SKIP, 103 migraciones verificadas en restore externo de fixture. Los cuatro hallazgos identificados y corregidos quedan cerrados en ese alcance, no auditoría independiente ni certificación operativa. La independencia exigida en activación backup y release no se reemplaza por un hash ficticio; resolver por decisión normativa expresa del propietario. Mantener recuperación productiva deshabilitada hasta custodia, canal y procedimiento reales. Las referencias históricas Windows→Linux son evidencia supersedida por decisión Linux nativo/contenedor, no trabajo pendiente. Conservar §4–5 y autorizaciones por fase; no iniciar otra batería por documentación, no merge ni operar.
+
+
+### Adenda S45: modalidad temporal de primera activación
+
+Véase decisión normativa [metodología V1](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Sustituye exigencia de independencia exclusivamente para primera activación, previa aprobación expresa del informe exacto y firma propietaria. Campo `reviewEvidenceSha256`, modo firmado `internal-first-activation` y `ownerDecisionSha256`; independiente permanece modalidad ordinaria. No confundir con custodia separada, evidencia real ni autorización de infraestructura. Mantener resto de controles y orden §4–5.
