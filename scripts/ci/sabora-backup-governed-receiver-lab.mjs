@@ -151,6 +151,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   assert.equal(asAccount(['/usr/bin/test','-w',cache]).status,0);
   assert.equal(asAccount(['/usr/bin/test','-r',guard]).status,0);
   assert.notEqual(asAccount(['/usr/bin/test','-x',join(mount,'recovery')],{allowFailure:true}).status,0);
+  assert.notEqual(asAccount(['/usr/bin/test','-x',recoveryDir],{allowFailure:true}).status,0);
   // Real attempted unlink and replacement under the dedicated UID.
   for(const args of [['/usr/bin/rm','--',guard],['/usr/bin/touch',guard],['/usr/bin/mkdir',join(mount,'unauthorized')]]){
    assert.notEqual(asAccount(args,{allowFailure:true}).status,0);
