@@ -1,0 +1,51 @@
+name: Sabora exact Node runtime preparation (no deployment)
+on:
+  push:
+    branches: [prep/sabora-offline-node-20261120]
+permissions:
+  contents: read
+jobs:
+  verify-node-runtime:
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/prep/sabora-offline-node-20261120'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - name: Verify Node.js official signed release, no secrets or host access
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$(mktemp -d "$RUNNER_TEMP/sabora-node.XXXXXX")"
+          out="$RUNNER_TEMP/sabora-node-runtime"
+          mkdir -m 700 "$out" "$work/gnupg"
+          export GNUPGHOME="$work/gnupg"
+          cd "$work"
+          pkg=node-v22.23.5-linux-x64.tar.xz
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --max-time 90 -o "$pkg" "https://nodejs.org/dist/v22.23.5/$pkg"
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --max-time 30 -o SHASUMS256.txt.asc https://nodejs.org/dist/v22.23.5/SHASUMS256.txt.asc
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --max-time 30 -o nodejs-keyring.kbx https://github.com/nodejs/release-keys/raw/refs/heads/main/gpg-only-active-keys/pubring.kbx
+          gpgv --keyring "$work/nodejs-keyring.kbx" --status-fd 1 --output SHASUMS256.txt SHASUMS256.txt.asc > signature.status
+          awk '$2=="VALIDSIG" {print $NF}' signature.status > signer.txt
+          test "$(wc -l < signer.txt)" -eq 1
+          grep -Ex '5BE8A3F6C8A5C01D106C0AD820B1A390B168D356|DD792F5973C6DE52C432CBDAC77ABFA00DDBF2B7|CC68F5A3106FF448322E48ED27F5E38D5B0A215F|890C08DB8579162FEE0DF9DB8BEAB4DFCF555EF4|C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C|108F52B48DB57BB0CC439B2997B01419BD92F80A|655F3B5C1FB3FA8D1A0CA6BDE4A7D232B936D2FD|A363A499291CBBC940DD62E41F10027AF002F8B0' signer.txt
+          grep -Fx "cdeb8670a0c81f51b4dc4ac61919f9b1ad917b304bf8221eb939570663d240f8  $pkg" SHASUMS256.txt > approved.sha256
+          sha256sum -c approved.sha256
+          tar -xOf "$pkg" node-v22.23.5-linux-x64/bin/node > "$out/node"
+          chmod 0755 "$out/node"
+          test "$("$out/node" --version)" = v22.23.5
+          readelf -h "$out/node" | grep -E 'Class:.*ELF64|Machine:.*X86-64'
+          readelf --version-info "$out/node" > "$out/elf-version-info.txt"
+          cp "$pkg" SHASUMS256.txt.asc SHASUMS256.txt nodejs-keyring.kbx signer.txt signature.status approved.sha256 "$out/"
+          (
+            cd "$out"
+            sha256sum node "$pkg" SHASUMS256.txt.asc nodejs-keyring.kbx > SHA256SUMS
+            cat SHA256SUMS
+          )
+          printf '%s\n' 'main-source=7eb11cee0ceeeaf72e49c3b3ff1ee5530c7d2bb9' 'runtime=v22.23.5-linux-x64' 'operationalAuthorization=false' 'installed=false' > "$out/preparation.txt"
+      - name: Publish verified runtime for offline review only
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-offline-node-v22.23.5-linux-x64
+          path: ${{ runner.temp }}/sabora-node-runtime/
+          if-no-files-found: error
+          retention-days: 7
