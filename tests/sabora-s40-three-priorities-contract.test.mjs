@@ -17,7 +17,9 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.doesNotMatch(bundle,/execSync|spawnSync|shell\s*:\s*true/);
  assert.match(cli,/SABORA_BACKUP_PSQL_BIN/);
  assert.match(cli,/SABORA_BACKUP_PG_DUMP_BIN/);
- assert.match(cli,/fsConstants\.O_NOFOLLOW/);
+ assert.match(cli,/readProtectedBackupInput/);
+ assert.match(bundle,/fsConstants\.O_NOFOLLOW/);
+ assert.match(bundle,/protected_input_parent/);
  // Exact allowlisted PostgreSQL argv shapes now supersede the legacy
  // keyword-based output guard. Long/short, attached and alternate flags
  // cannot appear in either expected argument vector.

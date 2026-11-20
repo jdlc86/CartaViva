@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomBytes} from 'node:crypto';
-import {chmod,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {chmod,mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {
@@ -153,6 +153,13 @@ test('bundle rejects keys with group or world permissions',async t=>{
  await chmod(keyPath,0o644);
  await assert.rejects(captureEncryptedBackupBundle({directory:join(root,'capture'),keyPath,
   metadata:meta(),components:components()}),/sabora_backup_stop:key_permissions/);
+ const unsafe=join(root,'shared');await mkdir(unsafe,{mode:0o700});
+ const sharedKey=join(unsafe,'private.key');await writeFile(sharedKey,randomBytes(32).toString('hex'),{mode:0o600});
+ await chmod(unsafe,0o777);
+ try{await assert.rejects(captureEncryptedBackupBundle({directory:join(root,'capture'),keyPath:sharedKey,
+  metadata:meta(),components:components()}),/sabora_backup_stop:key_permissions/);}
+ finally{await chmod(unsafe,0o700);}
+ await assert.rejects(readFile(join(root,'capture','manifest.json')),{code:'ENOENT'});
 });
 
 test('backup v2 binds live TLS endpoint and independently pinned cluster identity',()=>{
@@ -187,6 +194,11 @@ test('operational TLS CA bytes must be pinned and cannot be replaced by a symlin
  const env={PGSSLROOTCERT:cert,
   SABORA_BACKUP_APPROVED_CA_SHA256:createHash('sha256').update(contents).digest('hex')};
  assert.equal(await verifyPinnedTlsRootCert(env),true);
+ const shared=join(root,'shared');await mkdir(shared,{mode:0o700});
+ const sharedCa=join(shared,'approved-ca.pem');await writeFile(sharedCa,contents,{mode:0o600});
+ await chmod(shared,0o777);
+ try{await assert.rejects(verifyPinnedTlsRootCert({...env,PGSSLROOTCERT:sharedCa}),/unsafe_tls_ca_file/);}
+ finally{await chmod(shared,0o700);}
  await assert.rejects(verifyPinnedTlsRootCert({...env,SABORA_BACKUP_APPROVED_CA_SHA256:'0'.repeat(64)}),
   /tls_ca_pin_mismatch/);
  const link=join(root,'alias-ca.pem');

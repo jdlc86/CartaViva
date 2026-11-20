@@ -130,14 +130,52 @@ async function publishBundle(p,manifestSha256){
  await durableBundle(p.destination,manifestSha256);
  await rmdir(p.pending);await syncDirectory(p.parent);
 }
+// Shared Linux input trust boundary. A private file mode alone is not a
+// guarantee when another account can replace its name through a parent.
+// Root and the dedicated operator UID are trusted; a compromised UID/root
+// or dishonestly implemented storage is outside this guarantee.
+export async function readProtectedBackupInput(path,{maxBytes,privateFile=true,allowRoot=false}={}){
+ if(process.platform!=='linux'||process.getuid()!==process.geteuid()||
+  typeof path!=='string'||!isAbsolute(path)||resolve(path)!==path||
+  !Number.isSafeInteger(maxBytes)||maxBytes<1||await realpath(path)!==path)
+  throw failure('protected_input_path');
+ const uid=process.getuid(),parent=dirname(path);
+ for(let p=parent;;p=dirname(p)){
+  const st=await lstat(p);
+  if(!st.isDirectory()||st.isSymbolicLink()||![0,uid].includes(st.uid)||
+   ((st.mode&0o022)!==0&&!(p!==parent&&st.uid===0&&(st.mode&0o1000)!==0)))
+   throw failure('protected_input_parent');
+  if(dirname(p)===p)break;
+ }
+ const before=await regular(path,maxBytes);
+ if(!(allowRoot?[0,uid]:[uid]).includes(before.uid)||
+  (before.mode&(privateFile?0o077:0o022))!==0)throw failure('protected_input_permissions');
+ const fd=await open(path,fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW|fsConstants.O_NONBLOCK);
+ let bytes,accepted=false;
+ try{
+  const same=st=>st.isFile()&&st.nlink===1&&st.uid===before.uid&&st.gid===before.gid&&
+   st.dev===before.dev&&st.ino===before.ino&&st.size===before.size&&st.mode===before.mode&&
+   st.ctimeMs===before.ctimeMs&&st.mtimeMs===before.mtimeMs;
+  if(!same(await fd.stat()))throw failure('protected_input_changed');
+  bytes=await fd.readFile();
+  if(bytes.length!==before.size||!same(await fd.stat())||!same(await lstat(path)))
+   throw failure('protected_input_changed');
+  accepted=true;return bytes;
+ }finally{
+  if(!accepted)bytes?.fill(0);
+  await fd.close();
+ }
+}
 async function keyBytes(path){
  if(typeof path!=='string'||!isAbsolute(path))throw failure('invalid_key_path');
- const st=await regular(path,128);
- if(process.platform!=='linux')throw failure('linux_required');
- if(st.uid!==process.getuid()||(st.mode&0o077)!==0)throw failure('key_permissions');
- const value=(await readFile(path,'utf8')).trim();
- if(!/^[0-9a-f]{64}$/i.test(value))throw failure('invalid_key');
- return Buffer.from(value,'hex');
+ let bytes;
+ try{bytes=await readProtectedBackupInput(path,{maxBytes:128});}
+ catch{throw failure('key_permissions');}
+ try{
+  const value=bytes.toString('utf8').trim();
+  if(!/^[0-9a-f]{64}$/i.test(value))throw failure('invalid_key');
+  return Buffer.from(value,'hex');
+ }finally{bytes.fill(0);}
 }
 function metadata(value){
  if(!plainObject(value))throw failure('invalid_metadata');
