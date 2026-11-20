@@ -4,13 +4,16 @@
 // Never reachable through SSH; no production activation or automatic retry.
 import {fileURLToPath} from 'node:url';
 import {dirname,join,resolve} from 'node:path';
-import {readFile} from 'node:fs/promises';
+import {readFile,lstat,readdir} from 'node:fs/promises';
+import {createInterface} from 'node:readline';
+import {randomBytes} from 'node:crypto';
 import {spawn,spawnSync} from 'node:child_process';
 import {connect} from 'node:net';
-import {protectedBytes,trustedDirectory,exactKeys,sha256} from './sabora-release-protected-store.mjs';
+import {protectedBytes,trustedDirectory,exactKeys,sha256,acquireReleaseLock} from './sabora-release-protected-store.mjs';
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {validateBackupPreparationManifest} from './sabora-backup-installation-plan.mjs';
-import {withProtectedRecoveryFence} from './sabora-backup-recovery-fence.mjs';
+import {validateRecoveryControlRecord,verifyExternalRecoveryCheckpoint} from './sabora-backup-recovery-checkpoint.mjs';
+import {reserveLocalRecoveryCheckpoint} from './sabora-backup-checkpoint-custodian.mjs';
 import {runCoordinatedLabRecoveryWorker} from './sabora-vps-backup-rotation.mjs';
 
 const file=fileURLToPath(import.meta.url);
@@ -110,7 +113,7 @@ function runWorker(config,request,validated,fence){
   const child=spawn('/usr/bin/setpriv',['--reuid',String(config.uid),'--regid',String(config.gid),
    '--clear-groups','--no-new-privs','--',process.execPath,file,'--worker'],
    {cwd:base,env:{PATH:'/usr/bin:/bin',LANG:'C'},stdio:['ignore','ignore','ignore','ipc']});
-  let result=null,consumed=false,failure=null;
+  let result=null,consumed=false,failure=null,reservationTask=null;
   // Keep the fence held until the exact child exits, including on failure.
   // An expired or killed worker leaves a consumed authorization consumed.
   function fail(reason){
@@ -122,12 +125,17 @@ function runWorker(config,request,validated,fence){
    if(child.exitCode===null&&child.signalCode===null)child.kill('SIGKILL');
   },122000);
   child.on('error',()=>fail('worker_spawn'));
-  child.on('message',message=>{
+  child.on('message',async message=>{
    if(failure)return;
    try{
     if(exactKeys(message,['type','expected'])&&message.type==='reserve'){
-     if(validated.inspect||result||consumed)stop('unexpected_reservation');
-     const reservation=fence.reserve(message.expected,validated.authorizationBytes);
+     if(validated.inspect||result||consumed||reservationTask)stop('unexpected_reservation');
+     // The guard remains held by the worker; the outer controller lock
+     // remains held until the asynchronous reservation settles, even if
+     // the worker dies. Never deliver an ACK after a failed worker.
+     reservationTask=Promise.resolve().then(()=>fence.reserve(message.expected,validated.authorizationBytes));
+     const reservation=await reservationTask;
+     if(failure||child.exitCode!==null||child.signalCode!==null)stop('reservation_delivery_unknown');
      consumed=true;
      child.send({type:'reserved',reservation},error=>{if(error)fail('reservation_delivery_unknown');});
     }else if(exactKeys(message,['type','result'])&&message.type==='result'&&!result){
@@ -149,13 +157,14 @@ function runWorker(config,request,validated,fence){
    }catch(error){
     // Keep typed failures, not worker-supplied paths or data.
     const reason=String(error.message??'');
-    if(/^sabora_(backup_recovery_fence|backup_recovery_coordinator|controller)_stop:[a-z_]+$/.test(reason))
+    if(/^sabora_(backup_recovery_fence|backup_recovery_coordinator|backup_custodian|backup_checkpoint|controller)_stop:[a-z_]+$/.test(reason))
      failure=Error(reason);
     fail('worker_protocol_or_reservation');
    }
   });
-  child.once('close',(status,signal)=>{
+  child.once('close',async (status,signal)=>{
    clearTimeout(timer);clearTimeout(hardTimer);
+   if(reservationTask)try{await reservationTask;}catch{fail('worker_protocol_or_reservation');}
    if(failure)return reject(failure);
    if(status!==0||signal!==null||!result)return reject(Error('sabora_backup_recovery_coordinator_stop:worker_outcome_unknown'));
    resolve(result);
@@ -166,13 +175,60 @@ function runWorker(config,request,validated,fence){
   }catch{fail('request_delivery');}
  });
 }
-async function coordinate(request){
- const config=loadConfig(),validated=validateRequest(request,config.scope);
- return withProtectedRecoveryFence({directory:join(base,'recovery-control'),scope:config.scope},async fence=>{
+// This exchange is available ONLY in the root disposable coordinator. The
+// unprivileged operator fixture holds signing keys outside the root process.
+// No network, shell, paths or commands can be supplied over this channel.
+async function withCheckpointFence(config,validated,exchange,operation){
+ const directory=join(base,'checkpoint-control'),records=join(directory,'records');
+ trustedDirectory(directory,{privateDirectory:true});trustedDirectory(records,{privateDirectory:true});
+ for(const path of [directory,records]){
+  const st=await lstat(path,{bigint:true});
+  if(st.gid!==0n||(st.mode&0o7777n)!==0o700n||String(st.dev)===config.device)
+   stop('recovery_control_identity');
+ }
+ const ownerPublicKey=protectedBytes(join(base,'owner-public.pem'),{maxBytes:4096}).toString('utf8');
+ const signed=verifySignedDocument(protectedBytes(join(base,'checkpoint.json'),{maxBytes:262144}),
+  ownerPublicKey,'sabora-backup-lab-checkpoint-config/v1');
+ if(!exactKeys(signed,['schema','sourceSha','expected','checkpointPublicKey'])||signed.sourceSha!==config.sourceSha||
+  signed.expected?.environment!=='disposable-lab'||
+  signed.expected.storageIdentitySha256!==config.scope.storageIdentitySha256||
+  signed.expected.externalStorageIdentitySha256!==config.scope.externalStorageIdentitySha256||
+  signed.expected.recoveryAuthoritySha256!==authorityFingerprint(config.scope.recoveryPublicKey))
+  stop('checkpoint_configuration');
+ const localConfig={expected:signed.expected,ownerPublicKey,checkpointPublicKey:signed.checkpointPublicKey,
+  recoveryPublicKey:config.scope.recoveryPublicKey,verificationPublicKey:config.scope.verifierPublicKey};
+ const unlock=acquireReleaseLock(directory);
+ try{
+  if((await readdir(directory)).sort().join('|')!=='controller.lock|records'||
+   (await readdir(records)).sort().join('|')!=='record.json')stop('checkpoint_unreconciled');
+  const record=JSON.parse(protectedBytes(join(records,'record.json'),{maxBytes:8192,privateFile:true}).toString('utf8'));
+  validateRecoveryControlRecord(record,localConfig.expected);
+  if(!validated.inspect&&validated.auth.sequence!==record.sequence+1)stop('authorization_sequence');
+  const observeExternal=challenge=>exchange({type:'observe',challenge});
+  const challenge=randomBytes(32).toString('hex');
+  verifyExternalRecoveryCheckpoint({...localConfig,record,challenge,checkpointBytes:await observeExternal(challenge)});
+  let used=false;
+  return await operation(Object.freeze({sequence:record.sequence,async reserve(subject,authorizationBytes){
+   if(used||validated.inspect)stop('unexpected_reservation');
+   used=true;
+   const reservation=await reserveLocalRecoveryCheckpoint({directory:records,config:localConfig,subject,
+    authorizationBytes,externalProofBytes:validated.externalProofBytes,observeExternal,
+    advanceExternal:envelope=>exchange({type:'advance',payload:envelope.payload,
+     authorizationB64:envelope.authorizationBytes.toString('base64'),externalProofB64:envelope.externalProofBytes.toString('base64')})});
+   // Adapt the real reservation to the already closed worker IPC contract.
+   // No worker is allowed to mutate until both durable records advanced.
+   return Object.freeze({schema:'sabora-protected-recovery-reservation/v1',sequence:reservation.sequence,
+    authorizationSha256:reservation.authorizationSha256,lockSha256:reservation.lockSha256,
+    slotsChanged:false,operationalAuthorization:false});
+  }}));
+ }finally{unlock();}
+}
+async function coordinate(config,request,exchange){
+ const validated=validateRequest(request,config.scope);
+ await assertOffline(config);
+ return withCheckpointFence(config,validated,exchange,async fence=>{
   await assertOffline(config);
-  if(!validated.inspect&&validated.auth.sequence!==fence.sequence+1)stop('authorization_sequence');
   const result=await runWorker(config,request,validated,fence);
-  // Verify that the bounded worker has exited and no listener reappeared.
   await assertOffline(config);
   return Object.freeze({schema:'sabora-backup-offline-recovery-result/v1',result,operationalAuthorization:false});
  });
@@ -193,20 +249,42 @@ async function worker(){
  await new Promise((ok,no)=>process.send({type:'result',result},error=>error?no(error):ok()));
  process.disconnect();
 }
-async function readRequest(){
- let n=0;const chunks=[];
- for await(const chunk of process.stdin){
-  n+=chunk.length;if(n>750000)stop('request_size');chunks.push(chunk);
+async function runOfflineExchange(){
+ // Gate before reading operator input. This is not an installed endpoint.
+ const config=loadConfig();
+ const lines=createInterface({input:process.stdin,crlfDelay:Infinity,terminal:false});
+ const iterator=lines[Symbol.asyncIterator]();
+ async function readMessage(limit){
+  let timer;
+  try{
+   const next=await Promise.race([iterator.next(),new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(Error('sabora_backup_recovery_coordinator_stop:exchange_timeout')),8000);
+   })]);
+   if(next.done||Buffer.byteLength(next.value)>limit)stop('exchange_message');
+   return JSON.parse(next.value);
+  }finally{clearTimeout(timer);}
  }
- return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+ try{
+  const request=await readMessage(750000);
+  const exchange=async prompt=>{
+   process.stdout.write(JSON.stringify(prompt)+'\n');
+   const reply=await readMessage(22000);
+   if(!exactKeys(reply,['type','checkpointB64'])||reply.type!=='checkpoint')stop('exchange_reply');
+   const response=bytes(reply.checkpointB64);
+   if(response.length>16384)stop('exchange_reply');
+   return response;
+  };
+  const result=await coordinate(config,request,exchange);
+  process.stdout.write(JSON.stringify(result)+'\n');
+ }finally{lines.close();process.stdin.destroy();}
 }
 if(process.argv[1]&&resolve(process.argv[1])===file){
  try{
   if(process.argv.length===3&&process.argv[2]==='--worker')await worker();
-  else if(process.argv.length===2)process.stdout.write(JSON.stringify(await coordinate(await readRequest()))+'\n');
+  else if(process.argv.length===2)await runOfflineExchange();
   else stop('arguments');
  }catch(error){
-  const reason=/^sabora_(rotation|backup_recovery_fence|backup_recovery_coordinator|controller)_stop:[a-z_]+$/.test(String(error.message))
+  const reason=/^sabora_(rotation|backup_recovery_fence|backup_recovery_coordinator|backup_custodian|backup_checkpoint|controller)_stop:[a-z_]+$/.test(String(error.message))
    ?error.message:'sabora_backup_recovery_coordinator_stop:rejected';
   if(process.connected&&process.getuid()!==0){
    const typed=/^sabora_(rotation|backup_recovery_coordinator)_stop:/.test(reason)?reason:'sabora_backup_recovery_coordinator_stop:worker_rejected';

@@ -11,7 +11,8 @@ const seq=v=>Number.isSafeInteger(v)&&v>=0&&v<Number.MAX_SAFE_INTEGER;
 const identityFields=['installationId','hostIdentitySha256','storageIdentitySha256',
  'externalStorageIdentitySha256','controlStorageIdentitySha256','recoveryAuthoritySha256'];
 function identity(expected){
- if(!exactKeys(expected,identityFields)||
+ if(!exactKeys(expected,['environment',...identityFields])||
+  !['production','disposable-lab'].includes(expected.environment)||
   !/^SABORA-BACKUP-INSTALL-[A-Z0-9-]{8,64}$/.test(expected.installationId??'')||
   !identityFields.slice(1).every(k=>digest(expected[k]))||
   new Set([expected.storageIdentitySha256,expected.externalStorageIdentitySha256,
@@ -22,7 +23,7 @@ export function validateRecoveryControlRecord(record,expected){
  if(!exactKeys(record,['schema','repository','project','environment',...identityFields,
   'sequence','authorizationSha256','lockSha256'])||
   record.schema!=='sabora-backup-control-record/v1'||record.repository!=='jdlc86/CartaViva'||
-  record.project!=='sabora'||record.environment!=='production'||
+  record.project!=='sabora'||record.environment!==expected.environment||
   identityFields.some(k=>record[k]!==expected[k])||!seq(record.sequence)||
   (record.sequence===0?(record.authorizationSha256!==null||record.lockSha256!==null):
    (!digest(record.authorizationSha256)||!digest(record.lockSha256))))stop('record');
@@ -38,7 +39,7 @@ export function verifyExternalRecoveryCheckpoint({record,expected,challenge,chec
  const p=verifySignedDocument(checkpointBytes,checkpointPublicKey,'sabora-backup-external-checkpoint/v1');
  if(!exactKeys(p,['schema','repository','project','environment',...identityFields,'challenge',
   'sequence','authorizationSha256','lockSha256','recordSha256','observedAt','validUntil'])||
-  p.repository!=='jdlc86/CartaViva'||p.project!=='sabora'||p.environment!=='production'||
+  p.repository!=='jdlc86/CartaViva'||p.project!=='sabora'||p.environment!==expected.environment||
   identityFields.some(k=>p[k]!==expected[k])||p.challenge!==challenge||!seq(p.sequence))
   stop('checkpoint_scope');
  const from=Date.parse(p.observedAt),until=Date.parse(p.validUntil);

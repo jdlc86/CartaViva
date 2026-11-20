@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
+import {createInterface} from 'node:readline';
 import {createServer,connect} from 'node:net';
 import {setTimeout as delay} from 'node:timers/promises';
 import {generateKeyPairSync,sign,createHash,randomBytes} from 'node:crypto';
@@ -13,6 +14,7 @@ import {buildBackupPreparationArtifact} from './sabora-backup-preparation-artifa
 import {BACKUP_PREPARATION_FILES} from '../ops/sabora-backup-installation-plan.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
+import {observeExternalRecoveryCheckpoint,advanceExternalRecoveryCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
 import {backupLabSshArguments,sendVpsBackupOverSsh} from '../ops/sabora-vps-backup-transport.mjs';
 const stop=code=>{throw Error('sabora_governed_receiver_ci_stop:'+code);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -262,10 +264,75 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   // exact post-rename/pre-publication crash boundary. This is a controlled
   // state fixture, not a new SIGKILL experiment. Reuse existing restores.
   const coordinatorArgs=[node,join(code,'scripts/ops/sabora-backup-recovery-coordinator.mjs')];
-  const coordinate=(request,opts={})=>sudo(coordinatorArgs,{input:JSON.stringify(request),...opts});
+  const checkpointAuthority=generateKeyPairSync('ed25519'),checkpointPublicKey=checkpointAuthority.publicKey.export({format:'pem',type:'spki'});
+  const expected={environment:'disposable-lab',installationId:'SABORA-BACKUP-INSTALL-CI-'+runId,
+   hostIdentitySha256:hash('fixture-host-'+runId),storageIdentitySha256:scope.storageIdentitySha256,
+   externalStorageIdentitySha256:scope.externalStorageIdentitySha256,
+   controlStorageIdentitySha256:hash('fixture-control-'+runId),recoveryAuthoritySha256:authorityFingerprint(scope.recoveryPublicKey)};
+  const checkpointGenesis={schema:'sabora-backup-control-record/v1',repository:genesis.repository,project:genesis.project,
+   ...expected,sequence:0,authorizationSha256:null,lockSha256:null};
+  const checkpointDir=join(base,'checkpoint-control'),records=join(checkpointDir,'records'),localRecord=join(records,'record.json');
+  for(const p of [checkpointDir,records])sudo(['/usr/bin/install','-d','-o','root','-g','root','-m','0700',p]);
+  await put(localRecord,JSON.stringify(checkpointGenesis)+'\n','0600');
+  await put(join(base,'checkpoint.json'),signed({schema:'sabora-backup-lab-checkpoint-config/v1',sourceSha,expected,checkpointPublicKey}));
+  const remoteDir=join(temp,'external-checkpoint');await mkdir(remoteDir,{mode:0o700});
+  const remoteRecord=join(remoteDir,'record.json');
+  await writeFile(remoteRecord,JSON.stringify(checkpointGenesis)+'\n',{mode:0o600,flag:'wx'});
+  const remoteConfig={expected,checkpointPublicKey,checkpointPrivateKey:checkpointAuthority.privateKey,
+   ownerPublicKey:owner,recoveryPublicKey:scope.recoveryPublicKey,verificationPublicKey:scope.verifierPublicKey};
+  const localSequence=()=>JSON.parse(readRoot(localRecord)).sequence;
+  const remoteSequence=async()=>JSON.parse(await readFile(remoteRecord,'utf8')).sequence;
+  assert.equal(asAccount(['/usr/bin/test','-x',records],{allowFailure:true}).status,1);
+  // Real root worker and a different OS identity operating the external
+  // CAS via a bounded offline exchange. Physical independence is NOT
+  // demonstrated by this same-host test. No private key is sent to root.
+  async function coordinate(request,{allowFailure=false,loseResponse=false}={}){
+   const child=spawn('/usr/bin/sudo',['-n',...coordinatorArgs],{stdio:['pipe','pipe','pipe']});
+   child.stdin.on('error',()=>{});let err='',out='',lost=false;
+   child.stderr.on('data',x=>{if(err.length<8192)err+=x.toString().slice(0,8192-err.length);});
+   const ended=once(child,'close');ended.catch(()=>{});
+   const timer=setTimeout(()=>child.kill('SIGTERM'),35000);
+   const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
+   try{
+    child.stdin.write(JSON.stringify(request)+'\n');
+    for await(const line of lines){
+     if(Buffer.byteLength(line)>750000)stop('checkpoint_fixture_exchange_size');
+     const message=JSON.parse(line);
+     let response;
+     if(message.type==='observe'){
+      response=observeExternalRecoveryCheckpoint({directory:remoteDir,config:remoteConfig,challenge:message.challenge});
+     }else if(message.type==='advance'){
+      const requestBytes=Buffer.from(JSON.stringify({payload:message.payload,
+       signature:sign(null,Buffer.from(stableStringify(message.payload)),recoveryAuthority.privateKey).toString('base64')}));
+      response=advanceExternalRecoveryCheckpoint({directory:remoteDir,config:remoteConfig,requestBytes,
+       authorizationBytes:Buffer.from(message.authorizationB64,'base64'),
+       externalProofBytes:Buffer.from(message.externalProofB64,'base64')}).checkpointBytes;
+      // Before the checkpoint ACK is given to the coordinator, the actual
+      // worker must not have published or purged anything.
+      assert.equal(JSON.parse(readRoot(join(cache,'state.json'))).manifestSha256,
+       request.operation==='apply-transition'?first.expected.manifestSha256:second.expected.manifestSha256);
+      assert.deepEqual(inventory(),['current','previous','rotation.lock','state.json']);
+      if(loseResponse){lost=true;child.stdin.end();continue;}
+     }else{
+      assert.equal(message.schema,'sabora-backup-offline-recovery-result/v1');
+      assert.equal(out,'');out=line;child.stdin.end();continue;
+     }
+     child.stdin.write(JSON.stringify({type:'checkpoint',checkpointB64:response.toString('base64')})+'\n');
+    }
+    const [status,signal]=await ended;
+    assert.equal(signal,null);
+    if(!allowFailure)assert.equal(status,0,err);
+    if(loseResponse)assert.equal(lost,true);
+    return {status,stdout:out,stderr:err};
+   }finally{
+    clearTimeout(timer);lines.close();child.stdin.destroy();
+    if(child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');
+    await ended.catch(()=>{});
+   }
+  }
   const observe={operation:'inspect-transition'};
   assert.match(asAccount(coordinatorArgs,{input:JSON.stringify(observe),allowFailure:true}).stderr,/disposable_root_only/);
-  assert.match(coordinate(observe,{allowFailure:true}).stderr,/listener_not_offline|writer_not_quiescent/);
+  assert.match((await coordinate(observe,{allowFailure:true})).stderr,/listener_not_offline|writer_not_quiescent/);
   await closeListener();
   const active=()=>['-u','-U'].some(flag=>{
    const p=run('/usr/bin/pgrep',[flag,String(uid)],{allowFailure:true});
@@ -275,12 +342,13 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   for(let i=0;i<100&&active();i++)await delay(50);
   assert.equal(active(),false);
   const previous=join(cache,'previous');
+  const oldManifest=await readFile(join(first.sourceDirectory,'manifest.json'));
+  const nextManifest=await readFile(join(second.sourceDirectory,'manifest.json'));
+  async function reconstruct(){
   asAccount(['/usr/bin/mkdir','-m','0700',previous]);
   for(const name of ['manifest.json','initial-state.aesgcm']){
    sudo(['/usr/bin/install','-o',String(uid),'-g',String(gid),'-m','0600',join(first.sourceDirectory,name),join(previous,name)]);
   }
-  const oldManifest=await readFile(join(first.sourceDirectory,'manifest.json'));
-  const nextManifest=await readFile(join(second.sourceDirectory,'manifest.json'));
   assert.equal(hash(oldManifest),first.expected.manifestSha256);
   assert.equal(hash(nextManifest),second.expected.manifestSha256);
   const intent={schema:'sabora-vps-rotation-intent/v1',pid:process.pid,
@@ -292,7 +360,9 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    sudo(['/usr/bin/install','-o',String(uid),'-g',String(gid),'-m','0600',p,join(cache,name)]);
   }
   assert.deepEqual(inventory(),['current','previous','rotation.lock','state.json']);
-  const observed=JSON.parse(coordinate(observe).stdout);
+  }
+  await reconstruct();
+  const observed=JSON.parse((await coordinate(observe)).stdout);
   assert.equal(observed.operationalAuthorization,false);
   const subject=observed.result;
   assert.equal(subject.action,'publish-promoted-state');assert.equal(subject.phase,'promoted-unpublished');
@@ -310,28 +380,50 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const fields={action:subject.action,lockSha256:subject.lockSha256,subjectSha256:subject.subjectSha256,sequence:subject.sequence};
   const publish=signedRecovery('apply-transition',fields);
   const badSubject=signedRecovery('apply-transition',fields,{subjectSha256:hash('wrong-actual-subject')});
-  assert.match(coordinate(badSubject,{allowFailure:true}).stderr,/recovery_authorization_scope_mismatch/);
-  assert.match(coordinate({...publish,externalProofB64:first.proofBytes.toString('base64')},{allowFailure:true}).stderr,/external_proof_identity/);
-  assert.equal(JSON.parse(readRoot(recordPath)).sequence,0);
-  const published=JSON.parse(coordinate(publish).stdout);
+  assert.match((await coordinate(badSubject,{allowFailure:true})).stderr,/recovery_authorization_scope_mismatch/);
+  assert.match((await coordinate({...publish,externalProofB64:first.proofBytes.toString('base64')},{allowFailure:true})).stderr,/external_proof_identity/);
+  assert.equal(localSequence(),0);assert.equal(await remoteSequence(),0);
+  const published=JSON.parse((await coordinate(publish)).stdout);
   assert.equal(published.operationalAuthorization,false);assert.equal(published.result.phase,'state-published');
-  assert.equal(JSON.parse(readRoot(recordPath)).sequence,1);
+  assert.equal(localSequence(),1);assert.equal(await remoteSequence(),1);
   assert.equal(JSON.parse(readRoot(join(cache,'state.json'))).manifestSha256,second.expected.manifestSha256);
   assert.deepEqual(inventory(),['current','previous','rotation.lock','state.json']);
-  assert.match(coordinate(publish,{allowFailure:true}).stderr,/authorization_sequence/);
-  const purgeSubject=JSON.parse(coordinate({operation:'inspect-purge'}).stdout).result;
+  assert.match((await coordinate(publish,{allowFailure:true})).stderr,/authorization_sequence/);
+  const purgeSubject=JSON.parse((await coordinate({operation:'inspect-purge'})).stdout).result;
   assert.equal(purgeSubject.sequence,2);assert.equal(purgeSubject.currentManifestSha256,second.expected.manifestSha256);
   const purge=signedRecovery('apply-purge',{action:'finish-published-purge',lockSha256:purgeSubject.lockSha256,
    currentManifestSha256:purgeSubject.currentManifestSha256,previousManifestSha256:purgeSubject.previousManifestSha256,
    previousRemainderSha256:purgeSubject.previousRemainderSha256,sequence:purgeSubject.sequence});
-  const repaired=JSON.parse(coordinate(purge).stdout);
+  const repaired=JSON.parse((await coordinate(purge)).stdout);
   assert.equal(repaired.operationalAuthorization,false);assert.equal(repaired.result.generations,1);
   assert.equal(repaired.result.currentManifestSha256,second.expected.manifestSha256);
-  assert.equal(JSON.parse(readRoot(recordPath)).sequence,2);
-  assert.match(coordinate(purge,{allowFailure:true}).stderr,/authorization_sequence/);
+  assert.equal(localSequence(),2);assert.equal(await remoteSequence(),2);
+  assert.match((await coordinate(purge,{allowFailure:true})).stderr,/authorization_sequence/);
   assert.equal(hash(Buffer.from(readRoot(join(cache,'current','manifest.json')))),second.expected.manifestSha256);
   assert.deepEqual(inventory(),['current','state.json']);
   console.log('sabora_backup_governed_offline_coordinator_publish_and_purge_ok');
+  // Reconstruct the same real capture boundary in the disposable fixture,
+  // only to prove a lost remote ACK never releases the worker to mutate.
+  await reconstruct();
+  const blockedSubject=JSON.parse((await coordinate(observe)).stdout).result;
+  assert.equal(blockedSubject.sequence,3);
+  const lost=signedRecovery('apply-transition',{action:blockedSubject.action,lockSha256:blockedSubject.lockSha256,
+   subjectSha256:blockedSubject.subjectSha256,sequence:blockedSubject.sequence});
+  const before=readRoot(join(cache,'state.json')),intentBefore=readRoot(join(cache,'rotation.lock'));
+  const noAck=await coordinate(lost,{allowFailure:true,loseResponse:true});
+  assert.notEqual(noAck.status,0);assert.equal(noAck.stdout,'');
+  assert.equal(localSequence(),2);assert.equal(await remoteSequence(),3);
+  assert.equal(readRoot(join(cache,'state.json')),before);
+  assert.equal(readRoot(join(cache,'rotation.lock')),intentBefore);
+  assert.deepEqual(inventory(),['current','previous','rotation.lock','state.json']);
+  const pendingRecord=JSON.parse(readRoot(join(records,'record.pending')));
+  assert.equal(pendingRecord.next.sequence,3);
+  const deniedRetry=await coordinate(lost,{allowFailure:true});
+  assert.match(deniedRetry.stderr,/checkpoint_unreconciled/);
+  assert.equal(await remoteSequence(),3);
+  console.log('sabora_backup_governed_external_checkpoint_before_slot_mutation_ok:'+JSON.stringify({
+   successfulTransitions:2,localSequence:2,remoteSequence:3,lostResponseBlocksWorker:true,
+   independentPhysicalCustody:false,operationalAuthorization:false}));
   // Exercise authorization consumption as a root-only primitive. The
   // subject is synthetic: no recovery action or slot mutation is authorized.
   const fenceProgram=`
@@ -351,36 +443,37 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const auth={schema:'sabora-vps-recovery-transition/v1',repository:genesis.repository,project:genesis.project,
    environment:scope.environment,storageIdentitySha256:scope.storageIdentitySha256,
    externalStorageIdentitySha256:scope.externalStorageIdentitySha256,...expectedSubject,
-   sequence:3,observedAt:new Date(Date.now()-1000).toISOString(),validUntil:new Date(Date.now()+60000).toISOString()};
+   sequence:1,observedAt:new Date(Date.now()-1000).toISOString(),validUntil:new Date(Date.now()+60000).toISOString()};
   const fenceInput=(payload=auth,subject=expectedSubject,key=recoveryAuthority.privateKey)=>{
    const authorization=Buffer.from(JSON.stringify({payload,signature:sign(null,Buffer.from(stableStringify(payload)),key).toString('base64')}));
    return JSON.stringify({directory:recoveryDir,scope,expected:subject,authorizationB64:authorization.toString('base64')});
   };
   const fence=(input,opts={})=>sudo(fenceArgs,{input,...opts});
   assert.match(asAccount(fenceArgs,{input:fenceInput(),allowFailure:true}).stderr,/disposable_root_only/);
-  assert.match(fence(fenceInput({...auth,sequence:4}),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
+  assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
   assert.match(fence(fenceInput(auth,{...expectedSubject,lockSha256:hash('wrong')}),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
   assert.match(fence(fenceInput(auth,expectedSubject,privateKey),{allowFailure:true}).stderr,/document_signature_invalid/);
   const reservation=JSON.parse(fence(fenceInput()).stdout);
-  assert.equal(reservation.sequence,3);assert.equal(reservation.slotsChanged,false);
+  assert.equal(reservation.sequence,1);assert.equal(reservation.slotsChanged,false);
   assert.equal(reservation.operationalAuthorization,false);
   assert.match(fence(fenceInput(),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
-  assert.equal(JSON.parse(readRoot(recordPath)).sequence,3);
+  assert.equal(JSON.parse(readRoot(recordPath)).sequence,1);
   assert.notEqual(asAccount(['/usr/bin/rm','--',recordPath],{allowFailure:true}).status,0);
   // A missing genesis is never implicitly reset; an unpublished pending
   // counter is never discarded to authorize another operation.
   const saved=join(recoveryDir,'saved-sequence');
   sudo(['/usr/bin/mv','--',recordPath,saved]);
-  try{assert.match(fence(fenceInput({...auth,sequence:4}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
+  try{assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
   finally{sudo(['/usr/bin/mv','--',saved,recordPath]);}
   const pending=join(recoveryDir,'sequence.pending');
   await put(pending,JSON.stringify(genesis)+'\n','0600');
-  try{assert.match(fence(fenceInput({...auth,sequence:4}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
+  try{assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
   finally{sudo(['/usr/bin/rm','--',pending]);}
-  const successor=JSON.parse(fence(fenceInput({...auth,sequence:4})).stdout);
-  assert.equal(successor.sequence,4);assert.equal(JSON.parse(readRoot(recordPath)).sequence,4);
+  const successor=JSON.parse(fence(fenceInput({...auth,sequence:2})).stdout);
+  assert.equal(successor.sequence,2);assert.equal(JSON.parse(readRoot(recordPath)).sequence,2);
   assert.equal(hash(Buffer.from(readRoot(join(cache,'current','manifest.json')))),second.expected.manifestSha256);
-  assert.deepEqual(inventory(),['current','state.json']);
+  assert.deepEqual(inventory(),['current','previous','rotation.lock','state.json']);
+  assert.equal(readRoot(join(cache,'state.json')),before);
   console.log('sabora_backup_governed_root_recovery_reservation_ok');
   console.log('sabora_backup_governed_dedicated_account_and_bounded_mount_ok');
  }finally{

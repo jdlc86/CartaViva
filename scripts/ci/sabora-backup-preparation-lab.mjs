@@ -277,7 +277,7 @@ try{
  // A separate, ephemeral authority signs the current checkpoint, not the
  // recovery or verification authorities. Simulate both restored and ahead
  // local state. No live custodian connection or external ledger write.
- const custodian=key(),identity={installationId:activation.installationId,
+ const custodian=key(),identity={environment:'production',installationId:activation.installationId,
   hostIdentitySha256:activation.hostIdentitySha256,storageIdentitySha256:plan.storage.storageIdentitySha256,
   externalStorageIdentitySha256:plan.storage.externalStorageIdentitySha256,
   controlStorageIdentitySha256:digest('separate-control-volume'),

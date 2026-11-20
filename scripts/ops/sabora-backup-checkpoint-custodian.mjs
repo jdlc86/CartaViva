@@ -88,7 +88,7 @@ function freshness(doc,maxMs,now=Date.now()){
   end-start>maxMs)stop('document_time');
 }
 function sameScope(doc,expected){
- return doc.repository==='jdlc86/CartaViva'&&doc.project==='sabora'&&doc.environment==='production'&&
+ return doc.repository==='jdlc86/CartaViva'&&doc.project==='sabora'&&doc.environment===expected.environment&&
   doc.storageIdentitySha256===expected.storageIdentitySha256&&
   doc.externalStorageIdentitySha256===expected.externalStorageIdentitySha256;
 }
@@ -253,7 +253,7 @@ export async function reserveLocalRecoveryCheckpoint({directory,config,subject,
    until=Math.min(now+60000,Date.parse(auth.validUntil),Date.parse(proof.validUntil));
   if(until<=now)stop('local_exchange_expired');
   const payload={schema:'sabora-backup-checkpoint-advance/v1',repository:'jdlc86/CartaViva',project:'sabora',
-   environment:'production',...expected,challenge,previousRecordSha256:hashRecord(previous),
+   ...expected,challenge,previousRecordSha256:hashRecord(previous),
    sequence:next.sequence,authorizationSha256:next.authorizationSha256,
    observedAt:new Date(now).toISOString(),validUntil:new Date(until).toISOString()};
   // Persist the intended advance before asking the external authority to
