@@ -16,7 +16,7 @@ const common=['schema','repository','project','environment','action','storageIde
  'externalStorageIdentitySha256','lockSha256','externalProofSha256','sequence','observedAt','validUntil'];
 function fenceContext(directory,scope){
  if(process.platform!=='linux'||process.getuid()!==0||process.geteuid()!==0||
-  !/^\/var\/lib\/sabora-backup-ci-[0-9]+\/volume\/recovery$/.test(directory??'')||
+  !/^\/var\/lib\/sabora-backup-ci-[0-9]+\/recovery-control$/.test(directory??'')||
   !scope||scope.environment!=='disposable-lab'||
   !digest(scope.storageIdentitySha256)||!digest(scope.externalStorageIdentitySha256)||
   scope.storageIdentitySha256===scope.externalStorageIdentitySha256)stop('disposable_root_only');
