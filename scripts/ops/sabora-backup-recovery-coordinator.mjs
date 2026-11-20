@@ -132,7 +132,15 @@ function runWorker(config,request,validated,fence){
      child.send({type:'reserved',reservation},error=>{if(error)fail('reservation_delivery_unknown');});
     }else if(exactKeys(message,['type','result'])&&message.type==='result'&&!result){
      if(!validated.inspect&&!consumed)stop('reservation_missing');
-     if(!message.result||typeof message.result!=='object')stop('worker_result');
+     const expectedSchema={
+      'inspect-transition':'sabora-vps-recovery-transition-subject/v1',
+      'inspect-purge':'sabora-vps-published-purge-subject/v1',
+      'apply-transition':'sabora-vps-recovery-transition-result/v1',
+      'apply-purge':'sabora-vps-purge-reconciliation-result/v1'
+     }[validated.operation];
+     if(message.result?.schema!==expectedSchema||
+      (validated.inspect?(message.result.sequence!==fence.sequence+1||message.result.deletionAuthorized!==false):
+       message.result.operationalReceipt!==false))stop('worker_result');
      result=message.result;
     }else if(exactKeys(message,['type','reason'])&&message.type==='failure'&&
      typeof message.reason==='string'&&/^sabora_(rotation|backup_recovery_coordinator)_stop:[a-z_]+$/.test(message.reason)){
@@ -152,8 +160,10 @@ function runWorker(config,request,validated,fence){
    if(status!==0||signal!==null||!result)return reject(Error('sabora_backup_recovery_coordinator_stop:worker_outcome_unknown'));
    resolve(result);
   });
-  child.send({type:'request',root:config.cache,scope:config.scope,sequence:fence.sequence,request},
-   error=>{if(error)fail('request_delivery');});
+  try{
+   child.send({type:'request',root:config.cache,scope:config.scope,sequence:fence.sequence,request},
+    error=>{if(error)fail('request_delivery');});
+  }catch{fail('request_delivery');}
  });
 }
 async function coordinate(request){
