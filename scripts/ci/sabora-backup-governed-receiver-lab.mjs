@@ -197,6 +197,32 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   }
   await put(join(base,'scope.json'),signed(config));
   for(const request of [first,second]){
+   if(request===second){
+    // Hold the exact guard before a valid new generation, NOT a replay
+    // that would also fail without exclusion. The holder is deadline-bound
+    // and exits on stdin EOF, with no arbitrary process termination.
+    const holder=spawn('/usr/bin/sudo',['-n','/usr/bin/flock','-x',guard,
+     '/usr/bin/timeout','15','/usr/bin/cat'],{stdio:['pipe','ignore','ignore']});
+    holder.stdin.on('error',()=>{});
+    const held=once(holder,'close');held.catch(()=>{});
+    try{
+     let locked=false;
+     for(let i=0;i<80;i++){
+      const probe=asAccount(['/usr/bin/flock','-n','-E','75',guard,'/usr/bin/true'],{allowFailure:true});
+      if(probe.status===75){locked=true;break;}
+      if(probe.status!==0||holder.exitCode!==null)stop('protected_guard_probe');
+      await delay(25);
+     }
+     assert.equal(locked,true);
+     await assert.rejects(send(second),/transfer_outcome_unknown/);
+     assert.equal(holder.exitCode,null);
+     assert.deepEqual(inventory(),['current','state.json']);
+     assert.equal(hash(Buffer.from(readRoot(join(cache,'current','manifest.json')))),first.expected.manifestSha256);
+    }finally{
+     holder.stdin.end();
+     const [status,signal]=await held;assert.equal(status,0);assert.equal(signal,null);
+    }
+   }
    const result=await send(request);
    assert.equal(result.manifestSha256,request.expected.manifestSha256);
    assert.deepEqual(inventory(),['current','state.json']);
@@ -209,25 +235,6 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   await assert.rejects(send(second),/transfer_outcome_unknown/);
   assert.deepEqual(inventory(),['current','state.json']);
   assert.equal(readRoot(join(base,'private-sentinel')),'fixture only');
-  // Both root and the receiver lock the same read-only inode. Hold it
-  // with a root process and prove that an actual SSH transfer cannot enter.
-  const holder=spawn('/usr/bin/sudo',['-n','/usr/bin/flock','-x',guard,'/usr/bin/sleep','10'],{stdio:'ignore'});
-  const held=once(holder,'close');held.catch(()=>{});
-  try{
-   let locked=false;
-   for(let i=0;i<80;i++){
-    const probe=asAccount(['/usr/bin/flock','-n','-E','75',guard,'/usr/bin/true'],{allowFailure:true});
-    if(probe.status===75){locked=true;break;}
-    if(probe.status!==0||holder.exitCode!==null)stop('protected_guard_probe');
-    await delay(25);
-   }
-   assert.equal(locked,true);
-   await assert.rejects(send(second),/transfer_outcome_unknown/);
-   assert.deepEqual(inventory(),['current','state.json']);
-  }finally{
-   // Do not signal arbitrary processes; wait for this fixed bounded child.
-   const [status,signal]=await held;assert.equal(status,0);assert.equal(signal,null);
-  }
   console.log('sabora_backup_governed_root_owned_guard_ok');
   console.log('sabora_backup_governed_dedicated_account_and_bounded_mount_ok');
  }finally{
