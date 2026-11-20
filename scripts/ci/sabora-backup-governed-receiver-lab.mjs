@@ -99,7 +99,14 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   await mkdir(subdir,{mode:0o700});
   sudo(['/usr/bin/mount','--bind',subdir,mount]);mounted=true;
   sudo(['/usr/bin/mount','-o','remount,bind,nodev,nosuid,noexec',mount]);
-  sudo(['/usr/bin/chown',uid+':'+gid,mount]);
+  sudo(['/usr/bin/chown','0:'+gid,mount]);
+  sudo(['/usr/bin/chmod','0750',mount]);
+  sudo(['/usr/bin/install','-d','-o','root','-g','root','-m','0700',join(mount,'recovery')]);
+  const guard=join(mount,'.cache.rotation.guard');
+  const empty=join(temp,'empty-guard');await writeFile(empty,'',{mode:0o600,flag:'wx'});
+  sudo(['/usr/bin/install','-o','root','-g',String(gid),'-m','0440',empty,guard]);
+  const guardIdentity=sudo(['/usr/bin/stat','-c','%d:%i',guard]).stdout.trim().split(':');
+  scope={...scope,protectedGuard:{device:guardIdentity[0],inode:guardIdentity[1]}};
   sudo(['/usr/bin/install','-d','-o',String(uid),'-g',String(gid),'-m','0700',cache]);
   const device=String((await lstat(volume,{bigint:true})).dev),fs=await statfs(volume,{bigint:true});
   const {privateKey,publicKey}=generateKeyPairSync('ed25519');
@@ -117,11 +124,18 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    '--clear-groups','--no-new-privs','--',...args],opts);
   assert.equal(asAccount(['/usr/bin/id','-u']).stdout.trim(),String(uid));
   assert.equal(asAccount(['/usr/bin/id','-G']).stdout.trim(),String(gid));
-  for(const path of [code,join(code,'artifact.json'),join(base,'scope.json'),node,shell,base]){
+  for(const path of [code,join(code,'artifact.json'),join(base,'scope.json'),node,shell,base,mount,guard,join(mount,'recovery')]){
    assert.notEqual(asAccount(['/usr/bin/test','-w',path],{allowFailure:true}).status,0);
   }
   assert.notEqual(asAccount(['/usr/bin/test','-r',join(base,'private-sentinel')],{allowFailure:true}).status,0);
   assert.equal(asAccount(['/usr/bin/test','-w',cache]).status,0);
+  assert.equal(asAccount(['/usr/bin/test','-r',guard]).status,0);
+  assert.notEqual(asAccount(['/usr/bin/test','-x',join(mount,'recovery')],{allowFailure:true}).status,0);
+  // Real attempted unlink and replacement under the dedicated UID.
+  for(const args of [['/usr/bin/rm','--',guard],['/usr/bin/touch',guard],['/usr/bin/mkdir',join(mount,'unauthorized')]]){
+   assert.notEqual(asAccount(args,{allowFailure:true}).status,0);
+  }
+  assert.equal(sudo(['/usr/bin/stat','-c','%d:%i',guard]).stdout.trim(),guardIdentity.join(':'));
   const hostKey=join(temp,'host-key'),identityFile=join(temp,'client-key');
   for(const path of [hostKey,identityFile])run('/usr/bin/ssh-keygen',['-q','-t','ed25519','-N','','-f',path]);
   await put(join(base,'host-key'),await readFile(hostKey),'0600');
@@ -175,7 +189,8 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    {...config,environment:'production'},
    {...config,device:'0'},
    {...config,artifactSha256:'f'.repeat(64)},
-   {...config,scope:{...scope,maxBundleBytes:1}}
+   {...config,scope:{...scope,maxBundleBytes:1}},
+   {...config,scope:{...scope,protectedGuard:{...scope.protectedGuard,inode:'1'}}}
   ]){
    await put(join(base,'scope.json'),signed(bad));
    await assert.rejects(send(first),/transfer_outcome_unknown/);assert.deepEqual(inventory(),[]);
@@ -186,14 +201,34 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    assert.equal(result.manifestSha256,request.expected.manifestSha256);
    assert.deepEqual(inventory(),['current','state.json']);
    assert.equal(hash(Buffer.from(readRoot(join(cache,'current','manifest.json')))),request.expected.manifestSha256);
-   const guard=join(mount,'.cache.rotation.guard');
    const expectedStat=uid+':'+String((await lstat(volume,{bigint:true})).dev);
-   assert.equal(sudo(['/usr/bin/stat','-c','%u:%d',guard]).stdout.trim(),expectedStat);
+   assert.equal(sudo(['/usr/bin/stat','-c','%u:%d',guard]).stdout.trim(),'0:'+guardIdentity[0]);
+   assert.equal(sudo(['/usr/bin/stat','-c','%d:%i',guard]).stdout.trim(),guardIdentity.join(':'));
    assert.equal(sudo(['/usr/bin/stat','-c','%u:%d',join(cache,'current')]).stdout.trim(),expectedStat);
   }
   await assert.rejects(send(second),/transfer_outcome_unknown/);
   assert.deepEqual(inventory(),['current','state.json']);
   assert.equal(readRoot(join(base,'private-sentinel')),'fixture only');
+  // Both root and the receiver lock the same read-only inode. Hold it
+  // with a root process and prove that an actual SSH transfer cannot enter.
+  const holder=spawn('/usr/bin/sudo',['-n','/usr/bin/flock','-x',guard,'/usr/bin/sleep','10'],{stdio:'ignore'});
+  const held=once(holder,'close');held.catch(()=>{});
+  try{
+   let locked=false;
+   for(let i=0;i<80;i++){
+    const probe=asAccount(['/usr/bin/flock','-n','-E','75',guard,'/usr/bin/true'],{allowFailure:true});
+    if(probe.status===75){locked=true;break;}
+    if(probe.status!==0||holder.exitCode!==null)stop('protected_guard_probe');
+    await delay(25);
+   }
+   assert.equal(locked,true);
+   await assert.rejects(send(second),/transfer_outcome_unknown/);
+   assert.deepEqual(inventory(),['current','state.json']);
+  }finally{
+   // Do not signal arbitrary processes; wait for this fixed bounded child.
+   const [status,signal]=await held;assert.equal(status,0);assert.equal(signal,null);
+  }
+  console.log('sabora_backup_governed_root_owned_guard_ok');
   console.log('sabora_backup_governed_dedicated_account_and_bounded_mount_ok');
  }finally{
   if(server){
