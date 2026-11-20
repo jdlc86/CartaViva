@@ -60,7 +60,7 @@ if [[ "$scope" = full ]]; then
     sudo -n apt-get update -qq
     sudo -n apt-get install -y --no-install-recommends openssh-server openssh-client
   fi
-  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock /usr/bin/cc /usr/sbin/useradd /usr/sbin/usermod /usr/sbin/userdel /usr/sbin/chpasswd /usr/bin/openssl /usr/bin/setpriv /usr/bin/pgrep /usr/bin/ps; do
+  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock /usr/bin/cc /usr/sbin/useradd /usr/sbin/usermod /usr/sbin/userdel /usr/sbin/chpasswd /usr/bin/openssl /usr/bin/setpriv /usr/bin/pgrep /usr/bin/ps /usr/bin/timeout /usr/bin/cat; do
     test -x "$tool" || { echo 'Missing disposable volume tool' >&2; exit 1; }
   done
 fi
