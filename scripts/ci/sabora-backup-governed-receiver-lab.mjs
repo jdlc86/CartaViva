@@ -345,6 +345,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const oldManifest=await readFile(join(first.sourceDirectory,'manifest.json'));
   const nextManifest=await readFile(join(second.sourceDirectory,'manifest.json'));
   async function reconstruct(){
+  const boundary=await mkdtemp(join(temp,'recovery-fixture-'));
   asAccount(['/usr/bin/mkdir','-m','0700',previous]);
   for(const name of ['manifest.json','initial-state.aesgcm']){
    sudo(['/usr/bin/install','-o',String(uid),'-g',String(gid),'-m','0600',join(first.sourceDirectory,name),join(previous,name)]);
@@ -355,7 +356,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    previous:{manifestB64:oldManifest.toString('base64'),proof:priorPublishedState.proof},
    next:{manifestB64:nextManifest.toString('base64'),proof:JSON.parse(second.proofBytes.toString('utf8'))}};
   for(const [name,value] of [['state.json',priorPublishedState],['rotation.lock',intent]]){
-   const p=join(temp,'recovery-fixture-'+name);
+   const p=join(boundary,name);
    await writeFile(p,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});
    sudo(['/usr/bin/install','-o',String(uid),'-g',String(gid),'-m','0600',p,join(cache,name)]);
   }
