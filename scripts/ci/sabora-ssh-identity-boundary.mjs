@@ -28,7 +28,9 @@ export function assertSaboraReleaseSshBoundary(workflow){
  if(JSON.stringify([...new Set(referenced)].sort())!==JSON.stringify([...REQUIRED_SECRETS].sort()))stop('exclusive_secret_names');
  if(/fleetia|GestionIntegral_Rutaa|FLEETIA|(?:ubuntu|root)@146\.59\.145\.64/i.test(workflow))
   stop('cross_project_or_admin_identity');
- if(/\b(?:sshpass|scp|sftp|rsync)\b|\bdocker\s+(?:compose|run|exec|ps|start|stop|restart|load|pull|push|build)\b/i.test(workflow))
+ // Ignore YAML comment-only lines: a warning against SCP is not an SCP command.
+ const executable=workflow.split('\n').filter(line=>!/^[ \t]*#/.test(line)).join('\n');
+ if(/\b(?:sshpass|scp|sftp|rsync)\b|\bdocker\s+(?:compose|run|exec|ps|start|stop|restart|load|pull|push|build)\b/i.test(executable))
   stop('arbitrary_transfer_or_actuation');
  requireMatch(workflow,/\| ssh -F \/dev\/null -T -o BatchMode=yes -o IdentitiesOnly=yes/,'fixed_ssh_client');
  requireMatch(workflow,/-o StrictHostKeyChecking=yes -o UserKnownHostsFile="\$known"/,'host_key_pin');
