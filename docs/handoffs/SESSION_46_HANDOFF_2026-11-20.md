@@ -36,3 +36,10 @@ Según S45-10/11: volumen dedicado 2 GiB creado, UUID verificado, montaje persis
 | S46-6 release gobernada y recorrido PWA | PENDIENTE; seis expedientes auténticos, secretos, aislamiento, alertas, firma y autorización; validación funcional y visual humana separadas |
 
 No ampliar laboratorios por inercia; reutilizar evidencia solo para su SHA y alcance. No se modifica main ni rama de PR73 al abrir este documento. Se usa la rama auxiliar existente de preparación para preservar los checks del candidato, sin nuevo PR ni CI. No se ha operado sobre VPS, Supabase, Fleetia o secretos. Próxima decisión explícita: autorización de merge PR73 exacto; no equivale a autorización operativa.
+
+
+## S46-2 — integración autorizada PR73 (20-11-2026)
+
+El propietario respondió «Ok» a la pregunta explícita de autorización del merge del PR73. Se verificó nuevamente HEAD 140ee9870cdbe008f26e66c338e6651541cd1e58, base 7eb11cee0ceeeaf72e49c3b3ff1ee5530c7d2bb9, 5/5 SUCCESS y dos opt-in SKIPPED. Se retiró Draft y se fusionó mediante merge commit con expected_head_sha exacto. GitHub confirma [merge real](https://github.com/jdlc86/CartaViva/commit/3b5cb92c5adf7880ace213f84168dd5e95915793) y main en ese SHA, padres base y candidato; árbol 136269b31d2df6e4326c6867b8674893d03de631 idéntico al merge de prueba. Excepción de réplica única temporal ya integrada; no autorización operativa.
+
+CI exact-main iniciada automáticamente: [Sabora CI](https://github.com/jdlc86/CartaViva/actions/runs/44797920036), [evidencia release exact-main](https://github.com/jdlc86/CartaViva/actions/runs/44797920145). Cuatro checks en curso y validate en cola al primer corte. No PASS todavía, ni artefactos exact-main aprobados. No relanzar CI por inercia. S46-2 merge COMPLETADO; validación exact-main PENDIENTE. S46-3 sigue STOP para operaciones materiales hasta entorno temporal externo, custodia y autorización propia. No se accedió al VPS/Supabase/Fleetia ni se modificaron secretos. Continuidad en rama auxiliar para preservar el SHA de release.
