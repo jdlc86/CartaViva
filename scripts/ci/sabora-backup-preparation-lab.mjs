@@ -181,6 +181,16 @@ try{
  const prepared=await prepareInstalledBackupTransfer(request);
  assert.equal(prepared.expected.manifestSha256,sha256(manifestBytes));
  assert.equal(prepared.args.at(-1),productionPlan.transport.listenAddress);
+ const insecureParent=join(local,'insecure-endpoint');mkdirSync(insecureParent,{mode:0o700});
+ const unsafeKnown=join(insecureParent,'known-hosts'),unsafeIdentity=join(insecureParent,'client');
+ copyFileSync(known,unsafeKnown);copyFileSync(clientFile,unsafeIdentity);
+ chmodSync(unsafeKnown,0o600);chmodSync(unsafeIdentity,0o600);chmodSync(insecureParent,0o777);
+ try{
+  for(const target of [{...endpoint,knownHostsFile:unsafeKnown},{...endpoint,identityFile:unsafeIdentity}])
+   await assert.rejects(prepareInstalledBackupTransfer({...request,endpoint:target}),/endpoint_parent_permissions/);
+ }finally{chmodSync(insecureParent,0o700);}
+ await prepareInstalledBackupTransfer(request);
+ console.log('sabora_backup_installed_sender_endpoint_parent_guards_ok');
  const component=join(bundle,'initial-state.aesgcm');
  chmodSync(component,0o644);
  try{await assert.rejects(prepareInstalledBackupTransfer(request),/local_file_permissions_invalid/);}

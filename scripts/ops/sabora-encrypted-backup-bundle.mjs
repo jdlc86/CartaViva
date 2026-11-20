@@ -3,8 +3,8 @@
 // The key is intentionally external to every bundle and replica.
 import {createCipheriv,createDecipheriv,createHash,randomBytes} from 'node:crypto';
 import {constants as fsConstants,createReadStream,createWriteStream} from 'node:fs';
-import {copyFile,lstat,mkdir,open,readFile,readdir,rename,rm,writeFile} from 'node:fs/promises';
-import {basename,isAbsolute,join,relative,resolve} from 'node:path';
+import {copyFile,lstat,mkdir,open,readFile,readdir,realpath,rename,rm,rmdir,writeFile} from 'node:fs/promises';
+import {basename,dirname,isAbsolute,join,relative,resolve} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {Readable,Transform} from 'node:stream';
 import {spawn} from 'node:child_process';
@@ -42,6 +42,93 @@ async function regular(path,max=1024*1024*1024){
  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||st.size>max)
   throw failure('unsafe_file');
  return st;
+}
+// Every external generation is published under an exclusive, private sibling
+// transaction directory. No cooperating writer can replace a prior generation.
+// The private parent excludes other local users, not a compromised owner/root.
+async function publicationParent(destination){
+ if(process.platform!=='linux'||!isAbsolute(destination??'')||resolve(destination)!==destination)
+  throw failure('publication_path');
+ const parent=dirname(destination),uid=process.getuid();
+ if(await realpath(parent)!==parent)throw failure('publication_parent');
+ for(let p=parent;;p=dirname(p)){
+  const st=await lstat(p);
+  if(!st.isDirectory()||st.isSymbolicLink()||![0,uid].includes(st.uid)||
+   ((st.mode&0o022)!==0&&!(p!==parent&&st.uid===0&&(st.mode&0o1000)!==0))||
+   (p===parent&&(st.uid!==uid||(st.mode&0o077)!==0)))throw failure('publication_parent');
+  if(dirname(p)===p)break;
+ }
+ return parent;
+}
+async function syncDirectory(path){
+ const fd=await open(path,fsConstants.O_RDONLY|fsConstants.O_DIRECTORY|fsConstants.O_NOFOLLOW);
+ try{await fd.sync();}finally{await fd.close();}
+}
+async function beginPublication(destination){
+ const parent=await publicationParent(destination);
+ await absent(destination);
+ const pending=destination+'.pending',stage=join(pending,'bundle');
+ // A retained marker after a crash is an explicit STOP, not a retry target.
+ await mkdir(pending,{recursive:false,mode:0o700});
+ const publication={destination,parent,pending,stage,promoted:false};
+ try{
+  await absent(destination);
+  await mkdir(stage,{recursive:false,mode:0o700});
+  await syncDirectory(pending);await syncDirectory(parent);
+  return publication;
+ }catch(error){
+  // Never remove an existing final generation.
+  await rm(pending,{recursive:true,force:true});
+  throw error;
+ }
+}
+async function abandonPublication(p){
+ if(p&&!p.promoted){
+  await rm(p.pending,{recursive:true,force:true});
+  await syncDirectory(p.parent);
+ }
+}
+async function verifiedDurableFile(path,expected,max){
+ const before=await regular(path,max);
+ if(before.uid!==process.getuid()||(before.mode&0o077)!==0)throw failure('publication_permissions');
+ const fd=await open(path,fsConstants.O_RDONLY|fsConstants.O_NOFOLLOW|fsConstants.O_NONBLOCK);
+ try{
+  const same=st=>st.isFile()&&st.uid===before.uid&&st.nlink===1&&
+   st.dev===before.dev&&st.ino===before.ino&&st.size===before.size&&
+   st.mode===before.mode&&st.ctimeMs===before.ctimeMs&&st.mtimeMs===before.mtimeMs;
+  if(!same(await fd.stat()))throw failure('publication_file_changed');
+  await fd.sync();
+  const hash=createHash('sha256');let bytes=0;
+  for await(const chunk of fd.createReadStream({autoClose:false})){bytes+=chunk.length;hash.update(chunk);}
+  if(!same(await fd.stat())||!same(await lstat(path))||bytes!==before.size||
+   (expected.bytes!==undefined&&bytes!==expected.bytes)||hash.digest('hex')!==expected.sha256)
+   throw failure('publication_file_changed');
+ }finally{await fd.close();}
+}
+async function durableBundle(directory,manifestSha256){
+ const manifest=await loadManifest(directory);
+ if(manifest.manifestSha256!==manifestSha256)throw failure('publication_manifest_changed');
+ const files=['manifest.json',...manifest.components.map(c=>c.filename)].sort();
+ if(JSON.stringify((await readdir(directory)).sort())!==JSON.stringify(files))
+  throw failure('publication_inventory');
+ const dir=await lstat(directory);
+ if(!dir.isDirectory()||dir.isSymbolicLink()||dir.uid!==process.getuid()||(dir.mode&0o077)!==0)
+  throw failure('publication_permissions');
+ await verifiedDurableFile(join(directory,'manifest.json'),{sha256:manifestSha256},262144);
+ for(const c of manifest.components)
+  await verifiedDurableFile(join(directory,c.filename),{sha256:c.ciphertextSha256,bytes:c.ciphertextBytes},1024**3);
+ await syncDirectory(directory);
+}
+async function publishBundle(p,manifestSha256){
+ await durableBundle(p.stage,manifestSha256);
+ await publicationParent(p.destination);
+ await absent(p.destination);
+ // The destination-specific exclusive pending directory serializes these
+ // publishers; arbitrary same-UID/root changes are outside this trust model.
+ await rename(p.stage,p.destination);p.promoted=true;
+ await syncDirectory(p.pending);await syncDirectory(p.parent);
+ await durableBundle(p.destination,manifestSha256);
+ await rmdir(p.pending);await syncDirectory(p.parent);
 }
 async function keyBytes(path){
  if(typeof path!=='string'||!isAbsolute(path))throw failure('invalid_key_path');
@@ -207,8 +294,10 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
  if((raw?.schema==='sabora-logical-backup/v2')!==Boolean(snapshot))
   throw failure('snapshot_required_for_v2');
  const key=await keyBytes(keyPath);
- let session,created=false,finished=false;
+ let session,publication,finished=false;
  try{
+  publication=await beginPublication(directory);
+  const destination=directory;directory=publication.stage;
   if(snapshot){
    if(!snapshot.exporter||!snapshot.expectedSystemIdentifier)throw failure('snapshot_config_missing');
    session=await openPostgresBackupSnapshot({
@@ -218,7 +307,6 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
   }
   const meta=metadata(snapshot?{...raw,snapshotId:session.snapshotId,
    sourceSystemIdentifier:session.systemIdentifier,sourceDatabase:session.database}:raw);
-  await mkdir(directory,{recursive:false,mode:0o700});created=true;
   const snapshotId=session?.snapshotId??null;
   const captured=[];
   captured.push(await encryptCommand({directory,key,meta,spec:components[0],snapshotId}));
@@ -250,10 +338,11 @@ export async function captureEncryptedBackupBundle({directory,keyPath,metadata:r
   const manifestPath=join(directory,'manifest.json');
   await writeFile(manifestPath,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
   const digest=await fileDigest(manifestPath);
-  return Object.freeze({directory,manifest:Object.freeze(manifest),manifestSha256:digest.sha256});
+  await publishBundle(publication,digest.sha256);
+  return Object.freeze({directory:destination,manifest:Object.freeze(manifest),manifestSha256:digest.sha256});
  }catch(error){
   if(session&&!finished)session.abort();
-  if(created)await rm(directory,{recursive:true,force:true});
+  await abandonPublication(publication);
   throw error;
  }finally{key.fill(0);}
 }
@@ -269,8 +358,10 @@ export async function capturePreinstallBackup({directory,keyPath,metadata:raw,ex
   throw failure('invalid_preinstall_capture_request');
  await absent(directory);
  const key=await keyBytes(keyPath);
- let session,created=false,finished=false;
+ let session,publication,finished=false;
  try{
+  publication=await beginPublication(directory);
+  const destination=directory;directory=publication.stage;
   const input={...exporter,expectedSystemIdentifier};
   const before=await readPreinstallState(input);
   session=await openPostgresBackupSnapshot({...input,expectedDatabase:'postgres'});
@@ -293,7 +384,6 @@ export async function capturePreinstallBackup({directory,keyPath,metadata:raw,ex
    plainHash=createHash('sha256').update(payload).digest('hex');
    encrypted=Buffer.concat([cipher.update(payload),cipher.final()]);
   }finally{payload.fill(0);}
-  await mkdir(directory,{recursive:false,mode:0o700});created=true;
   const filename=name+'.aesgcm';
   await writeFile(join(directory,filename),encrypted,{flag:'wx',mode:0o600});
   const hashes=await fileDigest(join(directory,filename));
@@ -304,10 +394,12 @@ export async function capturePreinstallBackup({directory,keyPath,metadata:raw,ex
    artifactPolicy:'ciphertext-only-replicas; no keys or plaintext dumps'};
   const path=join(directory,'manifest.json');
   await writeFile(path,JSON.stringify(manifest,null,2)+'\n',{flag:'wx',mode:0o600});
-  return Object.freeze({directory,manifest:Object.freeze(manifest),manifestSha256:(await fileDigest(path)).sha256});
+  const manifestSha256=(await fileDigest(path)).sha256;
+  await publishBundle(publication,manifestSha256);
+  return Object.freeze({directory:destination,manifest:Object.freeze(manifest),manifestSha256});
  }catch(error){
   if(session&&!finished)session.abort();
-  if(created)await rm(directory,{recursive:true,force:true});
+  await abandonPublication(publication);
   throw error;
  }finally{key.fill(0);}
 }
@@ -368,14 +460,23 @@ export async function replicateEncryptedBackupBundle({sourceDirectory,destinatio
   resolve(sourceDirectory)===resolve(destinationDirectory))throw failure('invalid_replica_request');
  await absent(destinationDirectory);
  const source=await loadManifest(sourceDirectory);
- await mkdir(destinationDirectory,{recursive:false,mode:0o700});
+ const destination=destinationDirectory;
+ let publication,created=false;
  try{
+  if(destinationClass==='offsite'){
+   publication=await beginPublication(destination);destinationDirectory=publication.stage;
+  }else{
+   // Local VPS-class fixture/rotation candidate already has an enclosing
+   // durable intent; preserve its crash-phase inventory and exclusion.
+   await publicationParent(destination);
+   await mkdir(destinationDirectory,{recursive:false,mode:0o700});created=true;
+  }
   const files=['manifest.json',...source.components.map(x=>x.filename)];
   for(const name of files){
    if(basename(name)!==name)throw failure('invalid_replica_file');
    const from=join(sourceDirectory,name),to=join(destinationDirectory,name);
    await regular(from,name==='manifest.json'?262144:1024*1024*1024);
-   await copyFile(from,to);
+   await copyFile(from,to,fsConstants.COPYFILE_EXCL);
    const before=await fileDigest(from),after=await fileDigest(to);
    if(before.sha256!==after.sha256||before.bytes!==after.bytes)throw failure('replica_mismatch');
    const expected=source.components.find(x=>x.filename===name);
@@ -383,12 +484,18 @@ export async function replicateEncryptedBackupBundle({sourceDirectory,destinatio
    if(expected&&(before.sha256!==expected.ciphertextSha256||before.bytes!==expected.ciphertextBytes))
     throw failure('ciphertext_mismatch');
   }
+  if(publication)await publishBundle(publication,source.manifestSha256);
+  else{await durableBundle(destination,source.manifestSha256);await syncDirectory(dirname(destination));}
   return Object.freeze({schema:'sabora-backup-replica-receipt/v1',
    backupId:source.meta.backupId,destinationClass,
-   manifestSha256:(await fileDigest(join(destinationDirectory,'manifest.json'))).sha256,
+   manifestSha256:source.manifestSha256,
    verifiedCiphertextFiles:source.components.length,containsKey:false,containsPlaintext:false,
    ...(source.meta.schema===PREINSTALL_SCHEMA?{backupSchema:PREINSTALL_SCHEMA,restoreValidated:false}:{})});
- }catch(error){await rm(destinationDirectory,{recursive:true,force:true});throw error;}
+ }catch(error){
+  if(publication)await abandonPublication(publication);
+  else if(created)await rm(destinationDirectory,{recursive:true,force:true});
+  throw error;
+ }
 }
 
 export async function decryptBackupComponent({bundleDirectory,name,keyPath,outputPath}={}){

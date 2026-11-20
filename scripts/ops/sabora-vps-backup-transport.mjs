@@ -5,7 +5,8 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
-import {lstat,realpath,readFile,readdir} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {lstat,realpath,open,readFile,readdir} from 'node:fs/promises';
 import {isAbsolute,resolve,dirname,join} from 'node:path';
 import {encodeVpsBackupStream} from './sabora-vps-backup-wire.mjs';
 import {exactKeys,protectedBytes,sha256} from './sabora-release-protected-store.mjs';
@@ -28,6 +29,34 @@ async function localFile(path,{privateFile=false}={}){
   stop('local_file_permissions_invalid');
  return path;
 }
+// The installed key and host pin must live under the actual operator's
+// protected account, not merely have plausible file mode bits. The parent
+// chain excludes unrelated local users; it does not defend a compromised UID.
+async function protectedEndpointFile(path,{privateFile=false,maxBytes=16384}={}){
+ await localFile(path,{privateFile});
+ const uid=process.getuid(),parent=dirname(path);
+ for(let p=parent;;p=dirname(p)){
+  const st=await lstat(p);
+  if(!st.isDirectory()||st.isSymbolicLink()||![0,uid].includes(st.uid)||
+   ((st.mode&0o022)!==0&&!(p!==parent&&st.uid===0&&(st.mode&0o1000)!==0))||
+   (p===parent&&(st.uid!==uid||(st.mode&0o077)!==0)))stop('endpoint_parent_permissions');
+  if(dirname(p)===p)break;
+ }
+ const before=await lstat(path);
+ if(before.uid!==uid||before.size>maxBytes)stop('endpoint_file_owner_or_size');
+ const fd=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const same=st=>st.isFile()&&st.uid===uid&&st.nlink===1&&st.dev===before.dev&&
+   st.ino===before.ino&&st.size===before.size&&st.mode===before.mode&&
+   st.mtimeMs===before.mtimeMs&&st.ctimeMs===before.ctimeMs;
+  if(!same(await fd.stat()))stop('endpoint_file_changed');
+  // The private key is not read by this helper; OpenSSH opens it itself.
+  const bytes=privateFile?null:await fd.readFile();
+  if((bytes&&bytes.length!==before.size)||!same(await fd.stat())||!same(await lstat(path)))
+   stop('endpoint_file_changed');
+  return bytes;
+ }finally{await fd.close();}
+}
 export async function backupLabSshArguments(endpoint){return backupSshArguments(endpoint,null);}
 async function backupSshArguments(endpoint,installation){
  if(process.platform!=='linux')stop('linux_required');
@@ -43,12 +72,11 @@ async function backupSshArguments(endpoint,installation){
  if(installation&&(endpoint.sshBinary!==await realpath('/usr/bin/ssh')||
    sha256(protectedBytes(endpoint.sshBinary,{maxBytes:32*1024**2}))!==installation.activation.senderBinarySha256))
    stop('installed_sender_identity');
- await localFile(endpoint.identityFile,{privateFile:true});
- const knownFile=await localFile(endpoint.knownHostsFile);
+ await protectedEndpointFile(endpoint.identityFile,{privateFile:true});
+ const knownFile=endpoint.knownHostsFile,knownBytes=await protectedEndpointFile(knownFile);
  if(installation){
-  if((await lstat(knownFile)).size>16384)stop('installed_host_pin');
   const prefix='['+endpoint.host+']:'+endpoint.port+' ';
-  const pin=(await readFile(knownFile,'utf8')).replace(/\r?\n$/,'');
+  const pin=knownBytes.toString('utf8').replace(/\r?\n$/,'');
   if(!pin.startsWith(prefix)||sshEd25519Sha256(pin.slice(prefix.length))!==installation.plan.transport.hostKeySha256)
    stop('installed_host_pin');
  }
@@ -167,8 +195,12 @@ async function sendWithVerifiedArguments({endpoint,sourceDirectory,proofBytes,ex
   !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>3600000)stop('expected_receipt_invalid');
  if(signal!==undefined&&!(signal instanceof AbortSignal))stop('invalid_abort_signal');
  if(signal?.aborted)stop('transfer_outcome_unknown');
+ // Recheck identity/pin and their protected parents just before OpenSSH.
+ // No attacker with another UID may replace these paths after validation.
+ const currentArgs=await backupSshArguments(endpoint,installation);
+ if(JSON.stringify(currentArgs)!==JSON.stringify(args))stop('endpoint_changed');
  const env=backupLabSshEnvironment();
- const child=spawn(endpoint.sshBinary,[...args,BACKUP_RECEIVE_COMMAND],
+ const child=spawn(endpoint.sshBinary,[...currentArgs,BACKUP_RECEIVE_COMMAND],
   {stdio:['pipe','pipe','pipe'],shell:false,env});
  const abort=new AbortController();let oversized=false,received=0,stderr='',timedOut=false;const chunks=[];
  const cancel=()=>{abort.abort();child.kill();};
