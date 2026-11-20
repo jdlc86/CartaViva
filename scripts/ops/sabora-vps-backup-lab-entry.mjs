@@ -59,8 +59,11 @@ async function run(){
  const result=await receiveVerifiedVpsReplica({root,source:process.stdin,scope:config.scope});
  process.stdout.write(JSON.stringify(result)+'\n');
 }
-try{await run();}catch{
- process.stderr.write('sabora_backup_lab_entry_stop:rejected\n');process.exitCode=1;
+try{await run();}catch(error){
+ // Only the disposable lab exposes the exact storage failure class, not
+ // filesystem paths or arbitrary OS diagnostics. This is not an ACK.
+ const reason=error?.code==='ENOSPC'?'storage_enospc':'rejected';
+ process.stderr.write('sabora_backup_lab_entry_stop:'+reason+'\n');process.exitCode=1;
  // Close request input on rejection instead of waiting for an attacker EOF.
  process.stdin.destroy();
 }
