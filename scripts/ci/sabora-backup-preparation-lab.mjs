@@ -11,6 +11,9 @@ import {BACKUP_INSTALL_PATHS,BACKUP_PREPARATION_FILES,verifyBackupInstallationPl
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {verifyInstalledBackupActivation,sshEd25519Sha256} from '../ops/sabora-backup-installed-contract.mjs';
 import {prepareInstalledBackupTransfer,backupLabSshArguments} from '../ops/sabora-vps-backup-transport.mjs';
+import {stageInactiveBackupInstallation} from '../ops/sabora-backup-installation-stager.mjs';
+import {verifyExternalRecoveryCheckpoint} from '../ops/sabora-backup-recovery-checkpoint.mjs';
+import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
  process.env.RUNNER_OS!=='Linux'||!process.env.RUNNER_TEMP||!/^\d+$/.test(process.env.GITHUB_RUN_ID??'')||
