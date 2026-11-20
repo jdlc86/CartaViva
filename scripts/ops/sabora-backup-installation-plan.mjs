@@ -21,6 +21,7 @@ export const BACKUP_INSTALL_PATHS=Object.freeze({
 export const BACKUP_PREPARATION_FILES=Object.freeze([
  'deploy/sabora-backup-lab-shell.c',
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
+ 'scripts/ops/sabora-backup-recovery-fence.mjs',
  'scripts/ci/sabora-release-governor.mjs',
  'scripts/ops/sabora-backup-installation-plan.mjs',
  'scripts/ops/sabora-encrypted-backup-bundle.mjs',
