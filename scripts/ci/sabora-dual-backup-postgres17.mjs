@@ -814,6 +814,26 @@ try{
     second.manifest.components[0].plaintextSha256,initialEvidence)}});
  }});
  console.log('sabora_backup_governed_disposable_resources_closed_ok');
+ // Keep the interrupted disk evidence intact until its fixture is torn
+ // down. A fresh bounded disk reuses the existing PG17 captures for the
+ // ENOSPC case; no extra database capture/restore or recovery bypass.
+ await withBoundedBackupVolume({fixture,operation:async({volume,capacity,exhaust})=>{
+  const fullDiskScope={...scope,storageIdentitySha256:digest('ci-only-enospc-vps-storage-'+runId),
+   quotaBytes:16*1024**2};
+  assert.ok(BigInt(fullDiskScope.quotaBytes)<capacity);
+  const bounded=await startBackupSshLab({fixture:volume,scope:fullDiskScope,sourceSha:releaseSha,
+   entryPath:join(root,'scripts/ops/sabora-vps-backup-lab-entry.mjs')});
+  try{
+   const firstBounded={...firstTransport,proofBytes:rotationProof(fullDiskScope,initialResult,null,kind,
+    initialResult.manifest.components[0].plaintextSha256,initialEvidence)};
+   const secondBounded={...secondTransport,proofBytes:rotationProof(fullDiskScope,second,initialResult.manifestSha256,kind,
+    second.manifest.components[0].plaintextSha256,initialEvidence)};
+   await bounded.transfer(firstBounded);
+   await exhaust({root:bounded.root,request:secondBounded,transfer:bounded.exhaustDuringBody});
+   assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
+   assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
+  }finally{await bounded.close();}
+ }});
  console.log('sabora_vps_backup_bounded_disk_unmounted_ok');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
