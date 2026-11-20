@@ -6,7 +6,7 @@
 import {constants,openSync,closeSync,fstatSync,lstatSync,realpathSync,readdirSync,
  readFileSync,writeFileSync,fsyncSync,renameSync,unlinkSync} from 'node:fs';
 import {join,resolve,dirname,parse} from 'node:path';
-import {createPrivateKey,createPublicKey,sign} from 'node:crypto';
+import {createPrivateKey,createPublicKey,sign,randomBytes} from 'node:crypto';
 import {sha256,exactKeys,syncDirectory} from './sabora-release-protected-store.mjs';
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {validateRecoveryControlRecord,verifyExternalRecoveryCheckpoint} from './sabora-backup-recovery-checkpoint.mjs';
@@ -177,4 +177,94 @@ export function advanceExternalRecoveryCheckpoint({directory,config,requestBytes
   return Object.freeze({record:actual,checkpointBytes:response,
    externalAdvancePerformed:true,recoveryAuthorized:false,operationalAuthorization:false});
  });
+}
+
+// Local half of the offline recovery reservation protocol. A future
+// installed coordinator must call this with the actual subject observed
+// under the immutable rotation guard, its independently provisioned
+// control directory and trusted public keys. No slot mutation or installed
+// entry is exported here. The remote exchange receives no private key.
+// A lost or rejected response after pending is durable is always STOP.
+export async function reserveLocalRecoveryCheckpoint({directory,config,subject,
+ authorizationBytes,externalProofBytes,observeExternal,advanceExternal}={}){
+ directoryCheck(directory);
+ if(!exactKeys(config,['expected','checkpointPublicKey','ownerPublicKey','recoveryPublicKey','verificationPublicKey'])||
+  typeof observeExternal!=='function'||typeof advanceExternal!=='function')stop('local_exchange_configuration');
+ const expected=config.expected;
+ bounded(authorizationBytes);bounded(externalProofBytes);
+ const purge=subject?.action==='finish-published-purge';
+ const specific=purge?['currentManifestSha256','previousManifestSha256','previousRemainderSha256']:['subjectSha256'];
+ if(!exactKeys(subject,['action','lockSha256','externalProofSha256',...specific])||
+  !(purge||['discard-verified-candidate','restore-predecessor-name','publish-promoted-state'].includes(subject.action))||
+  !['lockSha256','externalProofSha256',...specific].every(k=>k==='previousManifestSha256'&&subject[k]===null||digest(subject[k]))||
+  subject.externalProofSha256!==sha256(externalProofBytes))stop('local_subject');
+ const auth=verifySignedDocument(authorizationBytes,config.recoveryPublicKey,
+  purge?'sabora-vps-purge-authorization/v1':'sabora-vps-recovery-transition/v1');
+ if(!exactKeys(auth,['schema','repository','project','environment','storageIdentitySha256','externalStorageIdentitySha256',
+  'sequence','observedAt','validUntil',...Object.keys(subject)])||
+  !sameScope(auth,expected)||Object.keys(subject).some(k=>subject[k]!==auth[k]))stop('local_subject');
+ const proof=verifySignedDocument(externalProofBytes,config.verificationPublicKey,'sabora-vps-rotation-proof/v1');
+ if(!sameScope(proof,expected)||(purge&&proof.manifestSha256!==subject.currentManifestSha256))
+  stop('local_external_proof');
+ const checkTime=()=>{freshness(auth,3600000);freshness(proof,Number.MAX_SAFE_INTEGER);};
+ checkTime();
+ const lock=join(directory,'custody.lock'),pending=join(directory,'record.pending'),recordPath=join(directory,'record.json');
+ try{writeExclusive(lock,{schema:'sabora-backup-local-checkpoint-lock/v1',pid:process.pid});}
+ catch(e){if(e.code==='EEXIST')stop('local_checkpoint_locked_or_crashed');throw e;}
+ let unknown=false;
+ // Both challenges are born inside this invocation, never sourced from a
+ // snapshot or caller; bound the in-memory exchange to the signed window.
+ const exchange=async fn=>{
+  const remaining=Math.min(60000,Date.parse(auth.validUntil)-Date.now(),Date.parse(proof.validUntil)-Date.now());
+  if(!Number.isFinite(remaining)||remaining<=0)stop('local_exchange_expired');
+  let timer;
+  try{return await Promise.race([Promise.resolve().then(fn),
+   new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('sabora_backup_custodian_stop:local_exchange_timeout')),remaining);})]);}
+  finally{clearTimeout(timer);}
+ };
+ const verify=(record,challenge,checkpointBytes)=>verifyExternalRecoveryCheckpoint({
+  ...config,record,challenge,checkpointBytes});
+ try{
+  const previous=readRecord(directory,expected);
+  if(auth.sequence!==previous.sequence+1)stop('local_authorization_sequence');
+  const observationChallenge=randomBytes(32).toString('hex');
+  verify(previous,observationChallenge,await exchange(()=>observeExternal(observationChallenge)));
+  if(hashRecord(readRecord(directory,expected))!==hashRecord(previous))stop('local_record_changed');
+  checkTime();
+  const next={...previous,sequence:auth.sequence,authorizationSha256:sha256(authorizationBytes),lockSha256:auth.lockSha256};
+  validateRecoveryControlRecord(next,expected);
+  const challenge=randomBytes(32).toString('hex'),now=Date.now(),
+   until=Math.min(now+60000,Date.parse(auth.validUntil),Date.parse(proof.validUntil));
+  if(until<=now)stop('local_exchange_expired');
+  const payload={schema:'sabora-backup-checkpoint-advance/v1',repository:'jdlc86/CartaViva',project:'sabora',
+   environment:'production',...expected,challenge,previousRecordSha256:hashRecord(previous),
+   sequence:next.sequence,authorizationSha256:next.authorizationSha256,
+   observedAt:new Date(now).toISOString(),validUntil:new Date(until).toISOString()};
+  // Persist the intended advance before asking the external authority to
+  // consume anything. If the reply is lost we cannot safely infer failure.
+  // Never discard this marker automatically, even on a remote rejection.
+  unknown=true;
+  writeExclusive(pending,{schema:'sabora-backup-local-checkpoint-pending/v1',
+   previousRecordSha256:payload.previousRecordSha256,next,challenge});
+  const response=await exchange(()=>advanceExternal({payload:Object.freeze(payload),
+   authorizationBytes:Buffer.from(authorizationBytes),externalProofBytes:Buffer.from(externalProofBytes)}));
+  verify(next,challenge,response);
+  checkTime();
+  if(Date.now()>=until)stop('local_exchange_expired');
+  // Keep the pending transaction until the new local record itself has
+  // reached durable storage. A crash anywhere before final fsync is STOP.
+  const temporary=join(directory,'record.next');
+  writeExclusive(temporary,next);
+  renameSync(temporary,recordPath);syncDirectory(directory);
+  unlinkSync(pending);syncDirectory(directory);
+  const confirmed=readRecord(directory,expected);
+  if(hashRecord(confirmed)!==hashRecord(next))stop('local_advance_not_confirmed');
+  unknown=false;
+  return Object.freeze({schema:'sabora-backup-local-checkpoint-reservation/v1',
+   sequence:confirmed.sequence,authorizationSha256:confirmed.authorizationSha256,
+   lockSha256:confirmed.lockSha256,checkpointSha256:sha256(response),
+   slotsChanged:false,operationalAuthorization:false});
+ }finally{
+  if(!unknown){unlinkSync(lock);syncDirectory(directory);}
+ }
 }
