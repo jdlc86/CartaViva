@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {once} from 'node:events';
 import {setTimeout as delay} from 'node:timers/promises';
-import {createHash,createCipheriv,randomBytes} from 'node:crypto';
+import {createHash,createCipheriv,randomBytes,generateKeyPairSync,sign} from 'node:crypto';
 import {createServer} from 'node:net';
 import {mkdtemp,realpath,readFile,writeFile,mkdir,rm,lstat,link,unlink} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
@@ -12,6 +12,11 @@ import {Readable} from 'node:stream';
 import {verifiedNtfsAclDigest} from '../ops/sabora-ntfs-acl-verifier.mjs';
 import {backupLabSshArguments,backupLabSshEnvironment,classifyBackupSshFailure,sendVpsBackupOverSsh} from '../ops/sabora-vps-backup-transport.mjs';
 import {encodeVpsBackupStream,BackupWireReader} from '../ops/sabora-vps-backup-wire.mjs';
+import {buildBackupPreparationArtifact} from './sabora-backup-preparation-artifact.mjs';
+import {BACKUP_INSTALL_PATHS as P,verifyBackupInstallationPlan} from '../ops/sabora-backup-installation-plan.mjs';
+import {sshEd25519Sha256} from '../ops/sabora-backup-installed-contract.mjs';
+import {stableStringify} from './sabora-release-governor.mjs';
+import {fileURLToPath} from 'node:url';
 if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_OS!=='Windows'||
  process.env.RUNNER_ENVIRONMENT!=='github-hosted'||!process.env.RUNNER_TEMP)throw Error('disposable_windows_context_required');
 const sys=join(process.env.SystemRoot??'C:\\Windows','System32');
@@ -194,6 +199,112 @@ try{
   });
  assert.equal(await waitForPeer(beforeSend),true,'actual Windows sender must reach loopback independently of probe');
  console.log('sabora_backup_windows_native_client_acl_wire_and_failure_ok');
+ // Also execute the actual installed Windows CLI with a closed package
+ // from the current Git commit and fresh signed, synthetic documents.
+ // TEST-NET destination is never contacted: all send cases are deliberate
+ // preflight denials. This is not an authenticated Linux exchange.
+ const reachedBeforeInstalled=reached,sourceSha=process.env.GITHUB_SHA;
+ assert.match(sourceSha,/^[0-9a-f]{40}$/);
+ const artifactDirectory=join(root,'closed artifact');
+ const artifact=buildBackupPreparationArtifact(artifactDirectory,sourceSha);
+ const artifactBytes=await readFile(join(artifactDirectory,'artifact.json'));
+ const owner=generateKeyPairSync('ed25519'),verifier=generateKeyPairSync('ed25519'),recovery=generateKeyPairSync('ed25519');
+ const pub=k=>k.publicKey.export({format:'pem',type:'spki'});
+ const signed=(payload,key=owner.privateKey)=>Buffer.from(JSON.stringify({payload,
+  signature:sign(null,Buffer.from(stableStringify(payload)),key).toString('base64')}));
+ const fixtureHash=value=>digest(Buffer.from('fixture-only-'+value));
+ const clientPublic=(await readFile(client+'.pub','utf8')).trim().split(' ').slice(0,2).join(' ');
+ const addr='192.0.2.17',installedPort=22239;
+ const installedPin='['+addr+']:'+installedPort+' '+pin+'\n';
+ await writeFile(known,installedPin);
+ protect([root,client,known,bundle]);
+ const installedManifest={...manifest,releaseSha:sourceSha};
+ const installedManifestBytes=Buffer.from(JSON.stringify(installedManifest));
+ const manifestPath=join(bundle,'manifest.json'),cipherPath=join(bundle,'initial-state.aesgcm');
+ await writeFile(manifestPath,installedManifestBytes);
+ protect([manifestPath,cipherPath]);
+ const now=Date.now(),from=new Date(now-1000).toISOString(),until=new Date(now+240000).toISOString();
+ const plan={schema:'sabora-backup-installation-plan/v1',repository:'jdlc86/CartaViva',project:'sabora',
+  environment:'production-candidate',sourceSha,artifactSha256:artifact.artifactSha256,plannedAt:from,validUntil:until,
+  account:P.account,paths:{config:P.config,volume:P.volume,cache:P.cache,recovery:P.recovery,guard:P.guard,control:P.control},
+  transport:{listenAddress:addr,port:installedPort,clientAddress:'192.0.2.18',
+   hostKeySha256:sshEd25519Sha256(pin),clientKeySha256:sshEd25519Sha256(clientPublic)},
+  storage:{filesystem:'ext4',filesystemUuid:'136c8b67-21de-40f9-9137-ec67a541e76b',filesystemBytes:32*1024**2,
+   quotaBytes:24*1024**2,reserveBytes:1024**2,maxBundleBytes:8*1024**2,metadataBudgetBytes:4*1024**2,
+   storageIdentitySha256:fixtureHash('installed-vps'),externalStorageIdentitySha256:fixtureHash('external'),
+   systemIdentifier:installedManifest.sourceSystemIdentifier},
+  authorities:{verificationPublicKey:pub(verifier),recoveryPublicKey:pub(recovery)},
+  runtime:{nodeSha256:fixtureHash('linux-node'),shellSha256:fixtureHash('linux-shell'),
+   sshdSha256:fixtureHash('linux-sshd'),flockSha256:fixtureHash('linux-flock')}};
+ const planBytes=signed(plan),checked=verifyBackupInstallationPlan({planBytes,artifactBytes,ownerPublicKey:pub(owner)});
+ const activation={schema:'sabora-backup-receiver-activation/v1',repository:plan.repository,project:plan.project,
+  environment:'production',operation:'receive-encrypted-only',sourceSha,artifactSha256:plan.artifactSha256,
+  planSha256:checked.planSha256,configurationSha256:checked.configurationSha256,
+  installationId:'SABORA-BACKUP-INSTALL-WINDOWS-CI',hostIdentitySha256:fixtureHash('linux-host'),
+  uid:22017,gid:22017,device:'12345',guardInode:'54321',
+  independentReviewSha256:fixtureHash('not-review'),isolationEvidenceSha256:fixtureHash('not-isolation'),
+  senderBinarySha256:digest(await readFile(ssh)),authorizedAt:from,validUntil:until};
+ const proof={schema:'sabora-vps-rotation-proof/v1',repository:plan.repository,project:plan.project,
+  environment:'production',storageIdentitySha256:plan.storage.storageIdentitySha256,
+  externalStorageIdentitySha256:plan.storage.externalStorageIdentitySha256,backupId:installedManifest.backupId,
+  manifestSha256:digest(installedManifestBytes),previousManifestSha256:null,releaseSha:sourceSha,
+  backupSchema:installedManifest.schema,recoveredInventorySha256:digest(plain),recoveryEvidenceSha256:fixtureHash('not-restore'),
+  recoveryKind:'authenticated-initial-state-and-recovery-drill',observedAt:new Date(now).toISOString(),validUntil:until};
+ const paths={ownerPublicKeyPath:join(root,'owner.pem'),planPath:join(root,'plan.json'),
+  artifactPath:join(root,'artifact.json'),activationPath:join(root,'activation.json'),proofPath:join(root,'proof.json')};
+ const validProof=signed(proof,verifier.privateKey),validActivation=signed(activation);
+ for(const [path,bytes] of [[paths.ownerPublicKeyPath,pub(owner)],[paths.planPath,planBytes],
+  [paths.artifactPath,artifactBytes],[paths.activationPath,validActivation],[paths.proofPath,validProof]])
+  await writeFile(path,bytes,{flag:'wx'});
+ const profilePath=join(root,'installed profile.json');
+ const installedEndpoint={...endpoint,environment:'production',host:addr,port:installedPort,user:P.account,
+  windowsAcl:{...endpoint.windowsAcl,directorySha256:verifiedNtfsAclDigest(root),
+   identitySha256:verifiedNtfsAclDigest(client),knownHostsSha256:verifiedNtfsAclDigest(known),
+   knownHostsContentSha256:digest(await readFile(known))}};
+ const profileValue={schema:'sabora-installed-backup-sender-profile/v1',sourceDirectory,endpoint:installedEndpoint,...paths};
+ await writeFile(profilePath,JSON.stringify(profileValue),{flag:'wx'});
+ protect([...Object.values(paths),profilePath]);
+ const cli=fileURLToPath(new URL('../ops/sabora-backup-installed-send.mjs',import.meta.url));
+ function invoke(mode){
+  const r=spawnSync(process.execPath,[cli,mode,profilePath],{encoding:'utf8',windowsHide:true,timeout:90000,maxBuffer:16384});
+  assert.equal(r.error,undefined,'installed Windows CLI launch');
+  assert.equal(r.signal,null);return r;
+ }
+ function deny(pattern){
+  const r=invoke('send');
+  assert.notEqual(r.status,0);assert.equal(r.stdout,'');assert.match(r.stderr,pattern);
+ }
+ const ready=invoke('preflight');
+ assert.equal(ready.status,0,ready.stderr);
+ assert.deepEqual(JSON.parse(ready.stdout),{schema:'sabora-backup-sender-preflight/v1',
+  manifestSha256:proof.manifestSha256,installationId:activation.installationId,networkContacted:false,operationalReceipt:false});
+ await writeFile(paths.activationPath,signed({...activation,senderBinarySha256:fixtureHash('wrong-windows-client')}));
+ deny(/installed_sender_identity/);
+ await writeFile(paths.activationPath,validActivation);
+ await writeFile(paths.proofPath,signed({...proof,manifestSha256:fixtureHash('wrong-restore')},verifier.privateKey));
+ deny(/installed_proof_scope/);
+ await writeFile(paths.proofPath,validProof);
+ // Wrong host pin with a recomputed ACL/content receipt still fails the
+ // owner-signed endpoint pin, not merely the Windows observation digest.
+ await writeFile(known,'['+addr+']:'+installedPort+' '+clientPublic+'\n');
+ await writeFile(profilePath,JSON.stringify({...profileValue,endpoint:{...installedEndpoint,
+  windowsAcl:{...installedEndpoint.windowsAcl,knownHostsContentSha256:digest(await readFile(known))}}}));
+ deny(/installed_host_pin/);
+ await writeFile(known,installedPin);await writeFile(profilePath,JSON.stringify(profileValue));
+ // Actual source component with inherited DACL must be rejected before
+ // SSH spawn. The bytes stay identical and still match the signed manifest.
+ await unlink(cipherPath);await writeFile(cipherPath,encrypted);
+ deny(/sabora_ntfs_acl_stop:inherited_dacl/);
+ protect([cipherPath]);
+ const extraFile=join(bundle,'unexpected.txt');
+ await writeFile(extraFile,'fixture');
+ deny(/installed_source_inventory/);
+ await unlink(extraFile);
+ const final=invoke('preflight');assert.equal(final.status,0,final.stderr);
+ assert.equal(JSON.parse(final.stdout).networkContacted,false);
+ assert.equal(reached,reachedBeforeInstalled);
+ console.log('sabora_backup_windows_installed_sender_dossier_and_private_ciphertext_ok');
+
 }finally{
  for(const socket of connections)socket.destroy();
  if(listener)await new Promise(resolve=>listener.close(resolve));

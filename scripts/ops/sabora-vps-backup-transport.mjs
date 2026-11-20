@@ -5,7 +5,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
-import {lstat,realpath,open,readFile} from 'node:fs/promises';
+import {lstat,realpath,open,readFile,readdir} from 'node:fs/promises';
 import {isAbsolute,resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
@@ -150,6 +150,35 @@ function transferUnknown(detail){
 export async function sendVpsBackupOverSsh(request={}){
  return sendWithVerifiedArguments(request,await backupLabSshArguments(request.endpoint),null);
 }
+// The external ciphertext store is private by the approved backup contract.
+// Check the closed source inventory before network access, including the
+// native NTFS DACL rather than meaningless POSIX mode bits on Windows.
+// This is access-policy verification, not a new recovery attestation.
+async function installedSourceAccess(directory,manifest){
+ const dir=await lstat(directory),windows=process.platform==='win32';
+ if(!dir.isDirectory()||dir.isSymbolicLink())stop('installed_source_directory');
+ if(windows)verifiedNtfsAclDigest(directory);
+ else{
+  if(process.platform!=='linux'||dir.uid!==process.getuid()||(dir.mode&0o077)!==0)
+   stop('installed_source_permissions');
+  for(let parent=dirname(directory);;parent=dirname(parent)){
+   const st=await lstat(parent);
+   if(!st.isDirectory()||st.isSymbolicLink()||![0,process.getuid()].includes(st.uid)||
+    ((st.mode&0o022)!==0&&!(st.uid===0&&(st.mode&0o1000)!==0)))
+    stop('installed_source_parent');
+   if(dirname(parent)===parent)break;
+  }
+ }
+ const names=['manifest.json',...manifest.components.map(c=>c.filename)].sort();
+ if(JSON.stringify((await readdir(directory)).sort())!==JSON.stringify(names))
+  stop('installed_source_inventory');
+ for(const name of names){
+  const path=join(directory,name);
+  await localFile(path,{privateFile:true});
+  if(windows)verifiedNtfsAclDigest(path);
+  else if((await lstat(path)).uid!==process.getuid())stop('installed_source_permissions');
+ }
+}
 // This preflight makes no outbound connection. All production transport
 // identities come from the two owner-signed documents, not caller overrides.
 export async function prepareInstalledBackupTransfer({endpoint,sourceDirectory,proofBytes,planBytes,
@@ -166,6 +195,7 @@ export async function prepareInstalledBackupTransfer({endpoint,sourceDirectory,p
  await localFile(manifestFile,{privateFile:true});
  if((await lstat(manifestFile)).size>262144)stop('installed_manifest_size');
  const manifestBytes=await readFile(manifestFile),parsed=parseEncryptedBackupManifest(manifestBytes),manifest=parsed.value;
+ await installedSourceAccess(sourceDirectory,manifest);
  const proof=verifySignedDocument(proofBytes,installation.plan.authorities.verificationPublicKey,'sabora-vps-rotation-proof/v1');
  const scope=installation.plan.storage,now=Date.now();
  const observed=Date.parse(proof.observedAt),expires=Date.parse(proof.validUntil);

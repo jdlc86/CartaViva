@@ -181,6 +181,15 @@ try{
  const prepared=await prepareInstalledBackupTransfer(request);
  assert.equal(prepared.expected.manifestSha256,sha256(manifestBytes));
  assert.equal(prepared.args.at(-1),productionPlan.transport.listenAddress);
+ const component=join(bundle,'initial-state.aesgcm');
+ chmodSync(component,0o644);
+ try{await assert.rejects(prepareInstalledBackupTransfer(request),/local_file_permissions_invalid/);}
+ finally{chmodSync(component,0o600);}
+ const unexpected=join(bundle,'unexpected.txt');
+ writeFileSync(unexpected,'fixture',{mode:0o600,flag:'wx'});
+ try{await assert.rejects(prepareInstalledBackupTransfer(request),/installed_source_inventory/);}
+ finally{unlinkSync(unexpected);}
+
  await assert.rejects(prepareInstalledBackupTransfer({...request,endpoint:{...endpoint,host:'192.0.2.11'}}),/endpoint_not_authorized/);
  await assert.rejects(prepareInstalledBackupTransfer({...request,proofBytes:proofDocument({...proof,environment:'disposable-lab'})}),/installed_proof_scope/);
  await assert.rejects(prepareInstalledBackupTransfer({...request,proofBytes:proofDocument({...proof,manifestSha256:digest('wrong-manifest')})}),/installed_proof_scope/);
