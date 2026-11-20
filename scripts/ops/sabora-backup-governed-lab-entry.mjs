@@ -26,6 +26,7 @@ async function run(){
   'shellSha256','uid','gid','port','volume','cache','device','filesystemBytes','scope'])||
   config.repository!=='jdlc86/CartaViva'||config.project!=='sabora'||config.environment!=='disposable-lab'||
   !/^[0-9a-f]{40}$/.test(config.sourceSha)||config.uid!==uid||config.gid!==gid||
+  !Number.isInteger(config.port)||config.port<1024||config.port>65535||
   config.volume!==volume||config.cache!==cache||
   ![config.artifactSha256,config.nodeSha256,config.shellSha256].every(hex)||
   !exactKeys(config.scope,['environment','systemIdentifier','storageIdentitySha256','externalStorageIdentitySha256',
