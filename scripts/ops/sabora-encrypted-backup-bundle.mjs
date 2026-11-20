@@ -106,7 +106,7 @@ async function verifiedDurableFile(path,expected,max){
  }finally{await fd.close();}
 }
 async function durableBundle(directory,manifestSha256){
- const manifest=await loadManifest(directory);
+ const manifest=await loadManifest(directory,{publicationInProgress:true});
  if(manifest.manifestSha256!==manifestSha256)throw failure('publication_manifest_changed');
  const files=['manifest.json',...manifest.components.map(c=>c.filename)].sort();
  if(JSON.stringify((await readdir(directory)).sort())!==JSON.stringify(files))
@@ -437,7 +437,20 @@ export function parseEncryptedBackupManifest(bytes){
  let value;try{value=JSON.parse(bytes.toString('utf8'));}catch{throw failure('manifest_parse');}
  return {value,manifestSha256:createHash('sha256').update(bytes).digest('hex'),...validatedManifest(value)};
 }
-async function loadManifest(directory){
+// A promoted directory whose publication marker survives is NOT a
+// completed generation, even if every ciphertext hash matches. Reject
+// aliases and staging directories as well as the final name. Only the
+// private durability routine may read a generation before commit.
+export async function assertPublishedBackupDirectory(directory){
+ if(!isAbsolute(directory??'')||resolve(directory)!==directory||
+  directory.split('/').some(part=>part.endsWith('.pending'))||
+  await realpath(directory)!==directory)throw failure('publication_path');
+ try{await lstat(directory+'.pending');}
+ catch(error){if(error?.code==='ENOENT')return;throw error;}
+ throw failure('publication_pending');
+}
+async function loadManifest(directory,{publicationInProgress=false}={}){
+ if(!publicationInProgress)await assertPublishedBackupDirectory(directory);
  const path=join(directory,'manifest.json');
  await regular(path,262144);
  const bytes=await readFile(path);

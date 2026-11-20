@@ -5,7 +5,7 @@ import {generateKeyPairSync,sign,createCipheriv,randomBytes} from 'node:crypto';
 import {spawnSync,spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {pathToFileURL} from 'node:url';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,unlinkSync,realpathSync,lstatSync,copyFileSync,chmodSync,linkSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,unlinkSync,realpathSync,lstatSync,copyFileSync,chmodSync,linkSync,rmdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {buildBackupPreparationArtifact,verifyBackupPreparationDirectory} from './sabora-backup-preparation-artifact.mjs';
@@ -191,6 +191,12 @@ try{
  }finally{chmodSync(insecureParent,0o700);}
  await prepareInstalledBackupTransfer(request);
  console.log('sabora_backup_installed_sender_endpoint_parent_guards_ok');
+ const pendingPublication=bundle+'.pending';
+ mkdirSync(pendingPublication,{mode:0o700});
+ try{await assert.rejects(prepareInstalledBackupTransfer(request),/publication_pending/);}
+ finally{rmdirSync(pendingPublication);}
+ await prepareInstalledBackupTransfer(request);
+ console.log('sabora_backup_installed_sender_pending_publication_denied_ok');
  const component=join(bundle,'initial-state.aesgcm');
  chmodSync(component,0o644);
  try{await assert.rejects(prepareInstalledBackupTransfer(request),/local_file_permissions_invalid/);}

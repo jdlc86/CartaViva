@@ -5,7 +5,7 @@ import {open,lstat,realpath,readdir,mkdir} from 'node:fs/promises';
 import {join,dirname,isAbsolute,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {parseEncryptedBackupManifest,PREINSTALL_SCHEMA} from './sabora-encrypted-backup-bundle.mjs';
+import {parseEncryptedBackupManifest,PREINSTALL_SCHEMA,assertPublishedBackupDirectory} from './sabora-encrypted-backup-bundle.mjs';
 
 const MAGIC=Buffer.from('SABORA-BACKUP-WIRE/1\n');
 const MAX_HEADER=262144,MAX_COMPONENT=1024**3,CHUNK=65536;
@@ -52,6 +52,7 @@ export async function* encodeVpsBackupStream({sourceDirectory,proofBytes}={}){
  const dir=await lstat(sourceDirectory);
  if(!dir.isDirectory()||dir.isSymbolicLink()||(dir.mode&0o077)!==0||dir.uid!==process.getuid())
   stop('unsafe_source_directory');
+ await assertPublishedBackupDirectory(sourceDirectory);
  const {fd:mf,st:ms}=await sourceFile(join(sourceDirectory,'manifest.json'),MAX_HEADER);
  let manifestBytes;
  try{manifestBytes=await mf.readFile();await assertUnchanged(mf,ms,manifestBytes.length);}

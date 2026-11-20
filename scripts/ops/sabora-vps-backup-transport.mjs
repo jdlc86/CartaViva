@@ -12,7 +12,7 @@ import {encodeVpsBackupStream} from './sabora-vps-backup-wire.mjs';
 import {exactKeys,protectedBytes,sha256} from './sabora-release-protected-store.mjs';
 import {verifyInstalledBackupActivation,sshEd25519Sha256} from './sabora-backup-installed-contract.mjs';
 import {verifySignedDocument} from './sabora-release-evidence.mjs';
-import {parseEncryptedBackupManifest} from './sabora-encrypted-backup-bundle.mjs';
+import {parseEncryptedBackupManifest,assertPublishedBackupDirectory} from './sabora-encrypted-backup-bundle.mjs';
 export const BACKUP_RECEIVE_COMMAND='sabora-backup-receive-v1';
 const stop=code=>{throw Error('sabora_backup_transport_stop:'+code);};
 const sha=v=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
@@ -152,6 +152,7 @@ export async function prepareInstalledBackupTransfer({endpoint,sourceDirectory,p
  if(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144)stop('installed_proof_size');
  if(!isAbsolute(sourceDirectory??'')||resolve(sourceDirectory)!==sourceDirectory||
   await realpath(sourceDirectory)!==sourceDirectory)stop('installed_source_path');
+ await assertPublishedBackupDirectory(sourceDirectory);
  const directory=await lstat(sourceDirectory);
  if(!directory.isDirectory()||directory.isSymbolicLink()||
   (directory.mode&0o077)!==0)stop('installed_source_directory');
@@ -195,6 +196,7 @@ async function sendWithVerifiedArguments({endpoint,sourceDirectory,proofBytes,ex
   !Number.isSafeInteger(timeoutMs)||timeoutMs<1000||timeoutMs>3600000)stop('expected_receipt_invalid');
  if(signal!==undefined&&!(signal instanceof AbortSignal))stop('invalid_abort_signal');
  if(signal?.aborted)stop('transfer_outcome_unknown');
+ await assertPublishedBackupDirectory(sourceDirectory);
  // Recheck identity/pin and their protected parents just before OpenSSH.
  // No attacker with another UID may replace these paths after validation.
  const currentArgs=await backupSshArguments(endpoint,installation);

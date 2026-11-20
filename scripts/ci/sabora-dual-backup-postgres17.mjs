@@ -300,7 +300,7 @@ try{
   import {join} from 'node:path';
   import assert from 'node:assert/strict';
   let raw='';for await(const chunk of process.stdin)raw+=chunk;
-  const {fixture,sourceDirectory,manifestSha256,phase,moduleUrl}=JSON.parse(raw);
+  const {fixture,sourceDirectory,manifestSha256,phase,moduleUrl,wireUrl}=JSON.parse(raw);
   if(process.env.GITHUB_ACTIONS!=='true'||!fixture.startsWith(process.env.RUNNER_TEMP+'/sabora-dual-backup-'))throw Error('fixture_scope');
   const destinationDirectory=join(fixture,'durable-failure-'+phase),pending=destinationDirectory+'.pending';
   const originalOpen=fs.open,originalRename=fs.rename;let reached=false,promoted=false;
@@ -313,22 +313,40 @@ try{
    return handle;
   };
   syncBuiltinESMExports();
-  const {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle}=await import(moduleUrl);
+  const {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,decryptBackupComponent}=await import(moduleUrl);
+  const {encodeVpsBackupStream}=await import(wireUrl);
   await assert.rejects(replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory,destinationClass:'offsite'}),/fixture_fsync_failure/);
   assert.equal(reached,true);
   if(phase==='file')await assert.rejects(fs.lstat(destinationDirectory),{code:'ENOENT'});
-  else {assert.equal((await fs.lstat(pending)).isDirectory(),true);assert.equal((await fs.lstat(destinationDirectory)).isDirectory(),true);}
+  else {
+   assert.equal((await fs.lstat(pending)).isDirectory(),true);
+   assert.equal((await fs.lstat(destinationDirectory)).isDirectory(),true);
+   // Ciphertext exists after the failed parent barrier, but it cannot
+   // be inspected as verified, copied, decrypted or placed on the wire.
+   await assert.rejects(inspectEncryptedBackupBundle(destinationDirectory),/publication_pending/);
+   const target=join(fixture,'uncommitted-replica'),output=join(fixture,'uncommitted-plaintext');
+   await assert.rejects(replicateEncryptedBackupBundle({sourceDirectory:destinationDirectory,
+    destinationDirectory:target,destinationClass:'offsite'}),/publication_pending/);
+   await assert.rejects(decryptBackupComponent({bundleDirectory:destinationDirectory,name:'data',
+    keyPath:join(fixture,'custodian.key'),outputPath:output}),/publication_pending/);
+   await assert.rejects(async()=>{for await(const _part of encodeVpsBackupStream({
+    sourceDirectory:destinationDirectory,proofBytes:Buffer.from('fixture')}))throw Error('unexpected_wire_bytes');},/publication_pending/);
+   for(const path of [target,output,output+'.partial'])await assert.rejects(fs.lstat(path),{code:'ENOENT'});
+   await assert.rejects(inspectEncryptedBackupBundle(pending),/publication_path/);
+  }
   assert.equal((await inspectEncryptedBackupBundle(sourceDirectory)).manifestSha256,manifestSha256);
  `;
  for(const phase of ['file','parent']){
   const result=spawnSync(process.execPath,['--input-type=module','--eval',durableProbe],{
    input:JSON.stringify({fixture,sourceDirectory:capture,manifestSha256:externalReceipt.manifestSha256,phase,
-    moduleUrl:pathToFileURL(join(root,'scripts/ops/sabora-encrypted-backup-bundle.mjs')).href}),encoding:'utf8',timeout:30000});
+    moduleUrl:pathToFileURL(join(root,'scripts/ops/sabora-encrypted-backup-bundle.mjs')).href,
+    wireUrl:pathToFileURL(join(root,'scripts/ops/sabora-vps-backup-wire.mjs')).href}),encoding:'utf8',timeout:30000});
   assert.equal(result.status,0,'durable replica failure fixture '+phase+': '+String(result.stderr));
   assert.equal((await inspectEncryptedBackupBundle(offsite)).manifestSha256,externalReceipt.manifestSha256);
  }
  await assert.rejects(replicateEncryptedBackupBundle({sourceDirectory:capture,destinationDirectory:offsite,destinationClass:'offsite'}),/target_exists/);
  console.log('sabora_backup_external_durable_publication_failure_guards_ok');
+ console.log('sabora_backup_pending_generation_consumption_denied_ok');
  for(const directory of [offsite,vpsCache]){
   assert.deepEqual((await readdir(directory)).sort(),[
    'data.aesgcm','inventory.aesgcm','manifest.json','roles-memberships.aesgcm','schema.aesgcm']);

@@ -1752,3 +1752,12 @@ Cierre del saneamiento técnico del backup Linux en laboratorio, no aceptación 
 ## 182. S45 — revisión interna preliminar, NO-GO
 
 [Informe INT-S45](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md): P1 persistencia durable de la réplica externa; P2 protección de rutas identityFile/knownHostsFile. Hallazgos estáticos sobre 9a54dcb86de6bdc4aa9b7996190d2cd3f9715c52, sin PoC ni nueva CI. Corrección conjunta y revisión restante pendientes. Auditor no disponible: revisión propia sin atribuir independencia, sin sustituir la puerta normativa de autorización. [Continuidad](../handoffs/SESSION_45_HANDOFF_2026-11-20.md).
+
+
+## 183. S45 — INT-S45-02 PASS; residual INT-S45-01-R1 candidato
+
+
+
+SHA 0b206abcd986c84fa489e64d087ca5bc0255628e: **5/5 controles aplicables SUCCESS**, dos opt-in omitidos. [Bootstrap](https://github.com/jdlc86/CartaViva/actions/runs/44723155582/job/136243770402): 11:04:40Z `sabora_backup_external_durable_publication_failure_guards_ok`; 11:05:01Z CAS coordinado (dos transiciones; local 2/remoto 3, pérdida de respuesta bloquea worker); 11:05:04Z ENOSPC conserva predecesor; 11:05:07Z receptor instalado Linux SSH; 11:05:22Z restore externo 103 migraciones, manifest f896de0635ec9444fb1d7383bfcbf9fab3ca4053a538932eb5c8a6aee6d5ddb9, 2304/29908/45904 ms, sin plaintext persistido ni recibo operativo. [Web](https://github.com/jdlc86/CartaViva/actions/runs/44723155618/job/136243771046): 10:57:00Z `sabora_backup_installed_sender_endpoint_parent_guards_ok`, 22 archivos preparación reproducible. [H6](https://github.com/jdlc86/CartaViva/actions/runs/44723155618/job/136243771299): 1/2A/2B PASS. UI y firmador de release SUCCESS. INT-S45-02 corregido y validado en ese alcance.
+
+Residual de consumo de generación pendiente detectado y corregido en candidato (CI nueva pendiente). [Informe](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md). STOP integración y operación.
