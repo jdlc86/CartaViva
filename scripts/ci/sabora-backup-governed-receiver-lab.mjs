@@ -144,7 +144,7 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
    '--clear-groups','--no-new-privs','--',...args],opts);
   assert.equal(asAccount(['/usr/bin/id','-u']).stdout.trim(),String(uid));
   assert.equal(asAccount(['/usr/bin/id','-G']).stdout.trim(),String(gid));
-  for(const path of [code,join(code,'artifact.json'),join(base,'scope.json'),node,shell,base,mount,guard,join(mount,'recovery')]){
+  for(const path of [code,join(code,'artifact.json'),join(base,'scope.json'),node,shell,base,mount,guard,join(mount,'recovery'),recoveryDir]){
    assert.notEqual(asAccount(['/usr/bin/test','-w',path],{allowFailure:true}).status,0);
   }
   assert.notEqual(asAccount(['/usr/bin/test','-r',join(base,'private-sentinel')],{allowFailure:true}).status,0);
