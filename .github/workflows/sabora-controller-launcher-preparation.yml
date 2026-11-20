@@ -1,0 +1,66 @@
+name: Sabora immutable launcher preparation (offline review only)
+on:
+  push:
+    branches: [prep/sabora-controller-launcher-artifact-20261120]
+    paths:
+      - '.github/workflows/sabora-controller-launcher-preparation.yml'
+permissions:
+  contents: read
+jobs:
+  build-launchers:
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/prep/sabora-controller-launcher-artifact-20261120'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      SOURCE_SHA: 426960f0c6e645cd21575e0883e8a03638cc9e3a
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 426960f0c6e645cd21575e0883e8a03638cc9e3a
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Compile and verify exact source twice (not installation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD:deploy/sabora-release-root.c)" = a47776f9654cb8a28a714563021b61e65a5b4832
+          test "$(git rev-parse HEAD:deploy/sabora-release-shell.c)" = 7be9dd5955e26051784c189eef771fa4e432e347
+          test "$(git hash-object deploy/sabora-release-root.c)" = a47776f9654cb8a28a714563021b61e65a5b4832
+          test "$(git hash-object deploy/sabora-release-shell.c)" = 7be9dd5955e26051784c189eef771fa4e432e347
+          test "$(uname -m)" = x86_64
+          export LC_ALL=C TZ=UTC SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$SOURCE_SHA")"
+          out="$RUNNER_TEMP/sabora-launchers"
+          tmp="$(mktemp -d "$RUNNER_TEMP/sabora-launcher-rebuild.XXXXXX")"
+          mkdir -m 700 "$out"
+          for output in "$out" "$tmp"; do
+            cc -O2 -Wall -Wextra -Werror -o "$output/root-entry" deploy/sabora-release-root.c
+            cc -O2 -Wall -Wextra -Werror -o "$output/ssh-entry" deploy/sabora-release-shell.c
+          done
+          for name in root-entry ssh-entry; do
+            cmp "$out/$name" "$tmp/$name"
+            test -f "$out/$name" && test ! -L "$out/$name"
+            test "$(stat -c %a "$out/$name")" = 700
+            readelf -h "$out/$name" | grep -E 'Class:.*ELF64'
+            readelf -h "$out/$name" | grep -E 'Machine:.*X86-64'
+            readelf --version-info "$out/$name" > "$out/$name.elf-version-info.txt"
+            actual="$(grep -oE 'GLIBC_[0-9]+(\.[0-9]+)+' "$out/$name.elf-version-info.txt" | sed 's/GLIBC_//' | sort -V | tail -1)"
+            test -n "$actual"
+            test "$(printf '%s\n' "$actual" 2.43 | sort -V | tail -1)" = 2.43
+          done
+          (
+            printf '%s\n' "sourceSha=$SOURCE_SHA" 'repository=jdlc86/CartaViva' 'sourceRootBlob=a47776f9654cb8a28a714563021b61e65a5b4832' 'sourceShellBlob=7be9dd5955e26051784c189eef771fa4e432e347' 'flags=-O2 -Wall -Wextra -Werror' 'reproducibleTwice=true' 'installationAuthorized=false' 'installed=false' 'environment=offline-review'
+            cc --version
+            getconf GNU_LIBC_VERSION
+            uname -m
+            sha256sum "$(realpath "$(command -v cc)")"
+          ) > "$out/preparation.txt"
+          (cd "$out"; sha256sum root-entry ssh-entry root-entry.elf-version-info.txt ssh-entry.elf-version-info.txt preparation.txt > SHA256SUMS; sha256sum -c SHA256SUMS; cat SHA256SUMS)
+      - name: Publish reviewed-source launcher candidates (no server access)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-launchers-426960f0-offline-review
+          path: ${{ runner.temp }}/sabora-launchers/
+          if-no-files-found: error
+          retention-days: 7
