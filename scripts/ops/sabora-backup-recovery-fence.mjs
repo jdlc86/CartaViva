@@ -54,7 +54,7 @@ export function reserveProtectedRecoverySequence({directory,scope,expected,autho
   // Existing signed recovery schemas, not a new permission format.
   const specific=purge?['currentManifestSha256','previousManifestSha256','previousRemainderSha256']:['subjectSha256'];
   if(!exactKeys(expected,['action','lockSha256','externalProofSha256',...specific])||
-   !['finish-published-purge','discard-candidate','restore-previous-name','publish-promoted-state'].includes(expected.action)||
+   !['finish-published-purge','discard-verified-candidate','restore-predecessor-name','publish-promoted-state'].includes(expected.action)||
    !['lockSha256','externalProofSha256',...specific].every(k=>k==='previousManifestSha256'&&expected[k]===null||digest(expected[k])))
    stop('subject_required');
   const auth=verifySignedDocument(authorizationBytes,scope.recoveryPublicKey,
