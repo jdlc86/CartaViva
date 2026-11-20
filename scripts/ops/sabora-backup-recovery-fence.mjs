@@ -4,7 +4,7 @@
 // observe the actual subject under the same immutable guard, verify a fresh
 // external restoration proof, then consume and perform one nominated action.
 // This module only reserves a sequence; it is not such a coordinator.
-import {lstatSync,readdirSync,renameSync,statfsSync} from 'node:fs';
+import {lstatSync,readdirSync,renameSync} from 'node:fs';
 import {join} from 'node:path';
 import {trustedDirectory,protectedBytes,exactKeys,sha256,durableExclusive,
  syncDirectory,acquireReleaseLock} from './sabora-release-protected-store.mjs';
