@@ -115,7 +115,9 @@ function proof(bytes,ctx,current,candidate,{active=false}={}){
   doc.storageIdentitySha256!==ctx.storageIdentitySha256||
   doc.externalStorageIdentitySha256!==ctx.externalStorageIdentitySha256||
   doc.backupId!==candidate.manifest.backupId||doc.manifestSha256!==candidate.manifestSha256||
-  doc.releaseSha!==candidate.manifest.releaseSha||doc.backupSchema!==candidate.manifest.schema||
+  doc.releaseSha!==candidate.manifest.releaseSha||
+  (!active&&ctx[INSTALLED_RECEIVER]&&doc.releaseSha!==ctx[INSTALLED_RECEIVER].sourceSha)||
+  doc.backupSchema!==candidate.manifest.schema||
   doc.recoveredInventorySha256!==candidate.inventorySha256||!hash(doc.recoveryEvidenceSha256)||
   doc.recoveryKind!==(candidate.manifest.schema===PREINSTALL_SCHEMA?'authenticated-initial-state-and-recovery-drill':'external-pg17-restore')||
   (!active&&doc.previousManifestSha256!==(current?.manifestSha256??null)))
