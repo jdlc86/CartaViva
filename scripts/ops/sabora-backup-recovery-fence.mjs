@@ -21,7 +21,7 @@ function fenceContext(directory,scope){
   !digest(scope.storageIdentitySha256)||!digest(scope.externalStorageIdentitySha256)||
   scope.storageIdentitySha256===scope.externalStorageIdentitySha256)stop('disposable_root_only');
  trustedDirectory(directory,{privateDirectory:true});
- const st=lstatSync(directory,{bigint:true}),fs=statfsSync(directory,{bigint:true});
+ const st=lstatSync(directory,{bigint:true});
  if(st.gid!==0n||(st.mode&0o777n)!==0o700n||
   !scope.protectedGuard?.device||String(st.dev)===scope.protectedGuard.device)
   stop('recovery_storage_identity');
