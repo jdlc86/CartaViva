@@ -46,6 +46,42 @@ test('material authority: synthetic evidence cannot pass production; authenticat
   assert.throws(()=>verifyMaterialDossiers({...internalInput,firstActivation:true,documents:{...documents,reviewEvidenceSha256:bytes},
    receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(bytes)}}}),/release_review_not_resolved/);
  }
+ // A single retained replica is accepted only with an explicit signed
+ // first-activation exception and a separate, actually asserted restore.
+ const single=verifySignedDocument(documents.externalRestoreSha256,trust.externalRestoreSha256,'sabora-material-evidence/v2');
+ const [external,vps]=single.facts.replicas;
+ Object.assign(single.facts,{backupMode:'vps-only-first-activation',ownerDecisionSha256:labHash('single-owner-decision'),
+  preinstallEvidenceSha256:labHash('preinstall-recovery'),testDataOnly:true,replicas:[vps],restoredFrom:'temporary-external',
+  temporaryRestore:{environment:'isolated-postgres17-off-vps',storageIdentitySha256:external.storageIdentitySha256,
+   ciphertextSha256:vps.ciphertextSha256,recoveryEvidenceSha256:labHash('temporary-pg17-restore'),transientDataRemoved:true}});
+ const withRestore=(doc,base=input)=>{
+  const bytes=signedLabDocument(doc,keys.externalRestoreSha256);
+  return {...base,documents:{...base.documents,externalRestoreSha256:bytes},
+   receipt:{...base.receipt,evidence:{...base.receipt.evidence,externalRestoreSha256:sha256(bytes)}}};
+ };
+ const singleInput=withRestore(single,internalInput);
+ assert.equal(verifyMaterialDossiers({...singleInput,firstActivation:true}).backupMode,'vps-only-first-activation');
+ assert.equal(verifyMaterialDossiers(input).backupMode,'dual-retained');
+ assert.throws(()=>verifyMaterialDossiers(singleInput),/single_replica_first_activation_invalid/);
+ assert.throws(()=>verifyMaterialDossiers({...singleInput,firstActivation:1}),/single_replica_first_activation_invalid/);
+ assert.throws(()=>verifyMaterialDossiers({...singleInput,firstActivation:true,receipt:{...singleInput.receipt,operation:'rollback'}}),/single_replica_first_activation_invalid/);
+ for(const mutate of [
+  f=>delete f.backupMode,f=>f.backupMode='unknown',f=>f.testDataOnly=false,
+  f=>f.ownerDecisionSha256=null,f=>f.preinstallEvidenceSha256=f.ownerDecisionSha256,
+  f=>f.replicas=[],f=>f.replicas=[external],f=>f.replicas=[external,vps],
+  f=>f.restoredFrom='external-offsite',f=>f.temporaryRestore.environment='vps',
+  f=>f.temporaryRestore.transientDataRemoved=false,
+  f=>f.temporaryRestore.storageIdentitySha256=vps.storageIdentitySha256,
+  f=>f.temporaryRestore.ciphertextSha256=labHash('other-backup'),
+  f=>f.temporaryRestore.recoveryEvidenceSha256=f.ownerDecisionSha256,
+  f=>f.restoredInventorySha256=labHash('wrong-restored-inventory'),
+  f=>f.custodians=[f.custodians[0],f.custodians[0]]
+ ]){
+  const modified=structuredClone(single);mutate(modified.facts);
+  assert.throws(()=>verifyMaterialDossiers({...withRestore(modified,internalInput),firstActivation:true}),/restore|replica/);
+ }
+ const unsignedException={...singleInput,receipt:{...singleInput.receipt,evidence:{...singleInput.receipt.evidence,externalRestoreSha256:receipt.evidence.externalRestoreSha256}}};
+ assert.throws(()=>verifyMaterialDossiers({...unsignedException,firstActivation:true}),/dossier_digest_mismatch/);
  const forged=JSON.parse(documents.reviewEvidenceSha256);forged.signature=Buffer.alloc(64).toString('base64');
  const bytes=Buffer.from(JSON.stringify(forged));assert.throws(()=>verifyMaterialDossiers({...input,
   documents:{...documents,reviewEvidenceSha256:bytes},receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(bytes)}}}),/signature_invalid/);

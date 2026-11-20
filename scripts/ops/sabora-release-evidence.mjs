@@ -41,19 +41,37 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   parsed[gate]=doc.facts;
  }
  const restore=parsed.externalRestoreSha256;
- if(!exactKeys(restore,['backupSchema','sourceIdentitySha256','migrationTreeSha256','inventorySha256','restoredInventorySha256','components','replicas','restoredFrom','custodians'])||
+ const commonRestoreKeys=['backupSchema','sourceIdentitySha256','migrationTreeSha256','inventorySha256','restoredInventorySha256','components','replicas','restoredFrom','custodians'];
+ const single=restore?.backupMode==='vps-only-first-activation';
+ if(!exactKeys(restore,single?[...commonRestoreKeys,'backupMode','ownerDecisionSha256','preinstallEvidenceSha256','testDataOnly','temporaryRestore']:commonRestoreKeys)||
   restore.backupSchema!=='sabora-logical-backup/v2'||restore.sourceIdentitySha256!==expected.databaseIdentitySha256||
   restore.migrationTreeSha256!==expected.migrationTreeSha256||!digest(restore.inventorySha256)||
   restore.restoredInventorySha256!==restore.inventorySha256||
   !exactKeys(restore.components,['roles-memberships','schema','data','inventory'])||
-  !Object.values(restore.components).every(digest)||
-  !Array.isArray(restore.replicas)||restore.replicas.length!==2||restore.restoredFrom!=='external-offsite'||
+  !Object.values(restore.components).every(digest)||!Array.isArray(restore.replicas)||
   !Array.isArray(restore.custodians)||restore.custodians.length!==2||new Set(restore.custodians).size!==2||
   !restore.custodians.every(digest))stop('external_restore_not_applicable');
  const copies=restore.replicas;
- if(copies[0].kind!=='external-offsite'||copies[1].kind!=='vps-encrypted-cache'||
-  copies.some(c=>!exactKeys(c,['kind','storageIdentitySha256','ciphertextSha256'])||
-   !digest(c.storageIdentitySha256)||!digest(c.ciphertextSha256))||
+ const validCopy=c=>exactKeys(c,['kind','storageIdentitySha256','ciphertextSha256'])&&
+  digest(c.storageIdentitySha256)&&digest(c.ciphertextSha256);
+ if(single){
+  // Explicit owner-bound exception, never infer it from a missing copy.
+  // Still requires actual off-host PG17 recovery and separate key custody.
+  const temp=restore.temporaryRestore;
+  if(firstActivation!==true||receipt.operation!=='deploy'||restore.testDataOnly!==true||
+   !digest(restore.ownerDecisionSha256)||!digest(restore.preinstallEvidenceSha256)||
+   restore.ownerDecisionSha256===restore.preinstallEvidenceSha256||
+   copies.length!==1||!validCopy(copies[0])||copies[0].kind!=='vps-encrypted-cache'||
+   restore.restoredFrom!=='temporary-external'||
+   !exactKeys(temp,['environment','storageIdentitySha256','ciphertextSha256','recoveryEvidenceSha256','transientDataRemoved'])||
+   temp.environment!=='isolated-postgres17-off-vps'||temp.transientDataRemoved!==true||
+   !digest(temp.storageIdentitySha256)||temp.storageIdentitySha256===copies[0].storageIdentitySha256||
+   temp.ciphertextSha256!==copies[0].ciphertextSha256||
+   !digest(temp.recoveryEvidenceSha256)||
+   new Set([restore.ownerDecisionSha256,restore.preinstallEvidenceSha256,temp.recoveryEvidenceSha256]).size!==3)
+   stop('single_replica_first_activation_invalid');
+ }else if(copies.length!==2||restore.restoredFrom!=='external-offsite'||
+  !copies.every(validCopy)||copies[0].kind!=='external-offsite'||copies[1].kind!=='vps-encrypted-cache'||
   copies[0].storageIdentitySha256===copies[1].storageIdentitySha256||
   copies[0].ciphertextSha256!==copies[1].ciphertextSha256)stop('dual_replica_proof_invalid');
  const sql=parsed.sqlProviderGateSha256;
@@ -89,5 +107,5 @@ export function verifyMaterialDossiers({receipt,documents,trust,expected,now=Dat
   review.findings.some(f=>!exactKeys(f,['id','resolution','decisionSha256'])||
    typeof f.id!=='string'||!f.id||!['closed','owner-accepted'].includes(f.resolution)||!digest(f.decisionSha256)))
   stop('release_review_not_resolved');
- return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false,reviewMode:review.reviewMode};
+ return {documents:parsed,authenticatedExternalClaims:true,locallyObserved:false,reviewMode:review.reviewMode,backupMode:single?'vps-only-first-activation':'dual-retained'};
 }
