@@ -19,7 +19,7 @@
   },
   "homeComputer": {
     "deviceId": "PENDING_NON_SENSITIVE_DEVICE_ID",
-    "operatingSystem": "PENDING_WINDOWS_MACOS_OR_LINUX",
+    "operatingSystem": "PENDING_HOST_OS",
     "custodian": "PENDING_HOME_COMPUTER_CUSTODIAN",
     "dedicatedLocalAccount": "PENDING_DEDICATED_LOCAL_ACCOUNT",
     "fullDiskEncryption": "PENDING_VERIFICATION",
@@ -35,10 +35,18 @@
     "psqlBinary": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
     "pgDumpBinary": "PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER",
     "inboundServiceEnabled": false,
-    "inboundWriteFromVpsAllowed": false
+    "inboundWriteFromVpsAllowed": false,
+    "executionEnvironment": {
+      "preferred": "linux-native",
+      "fallback": "linux-container",
+      "selected": "PENDING_SELECTION",
+      "containerPersistenceVerified": false,
+      "storageSemanticsVerified": false,
+      "restoreFromPersistentStorageVerified": false
+    }
   },
   "databaseConnection": {
-    "method": "PENDING_DIRECT_IPV6_OR_SESSION_POOLER_IPV4",
+    "method": "PENDING_APPROVED_DIRECT_SUPABASE_CONNECTION",
     "tlsMode": "verify-full",
     "caPath": "PENDING_ABSOLUTE_CA_PATH_OUTSIDE_CHECKOUT",
     "hostname": "PENDING_COPY_FROM_AUTHORIZED_SUPABASE_PANEL",

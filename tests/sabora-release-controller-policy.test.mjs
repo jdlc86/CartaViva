@@ -13,7 +13,7 @@ test('material authority: synthetic evidence cannot pass production; authenticat
  const keys=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,labAuthority()])),trust=Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,keys[k].pem]));
  const expected=Object.fromEntries(['subjectSha256','databaseIdentitySha256','migrationTreeSha256','appliedLedgerSha256','databaseTlsIdentitySha256','networkPolicySha256','allocationReservationSha256','alertReceiverIdentitySha256'].map(k=>[k,labHash(k)]));
  const releaseSha='a'.repeat(40),documents=materialLabDossiers({sha:releaseSha,expected,keys});
- const receipt={releaseSha,evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,sha256(documents[k])]))};
+ const receipt={releaseSha,operation:'deploy',evidence:Object.fromEntries(EVIDENCE_KEYS.map(k=>[k,sha256(documents[k])]))};
  const input={receipt,documents,trust,expected,environment:LAB_ENVIRONMENT};
  assert.equal(verifyMaterialDossiers(input).authenticatedExternalClaims,true);
  assert.throws(()=>verifyMaterialDossiers({...input,environment:'production'}),/dossier_identity/);
@@ -23,18 +23,32 @@ test('material authority: synthetic evidence cannot pass production; authenticat
   ['sqlProviderGateSha256',d=>d.facts.appliedLedgerSha256=labHash('other-ledger')],
   ['sqlProviderGateSha256',d=>d.facts.checks.pop()],['ingressIsolationSha256',d=>d.facts.networkPolicySha256=labHash('other-policy')],
   ['egressEnforcementSha256',d=>d.facts.checks.pop()],['alertDeliverySha256',d=>d.facts.receivedDigest=labHash('other-alert')],
-  ['independentReviewSha256',d=>d.facts.reviewedReleaseSha='b'.repeat(40)],
-  ['independentReviewSha256',d=>d.facts.reviewerIdentitySha256=labHash('wrong-reviewer-key')],
-  ['independentReviewSha256',d=>d.facts.findings=[{id:'P1',resolution:'open',decisionSha256:labHash('decision')}]],
-  ['independentReviewSha256',d=>d.validUntil=new Date(Date.now()-5000).toISOString()]];
+  ['reviewEvidenceSha256',d=>d.facts.reviewedReleaseSha='b'.repeat(40)],
+  ['reviewEvidenceSha256',d=>d.facts.reviewerIdentitySha256=labHash('wrong-reviewer-key')],
+  ['reviewEvidenceSha256',d=>d.facts.findings=[{id:'P1',resolution:'open',decisionSha256:labHash('decision')}]],
+  ['reviewEvidenceSha256',d=>d.validUntil=new Date(Date.now()-5000).toISOString()]];
  for(const [gate,mutate] of cases){
   const doc=verifySignedDocument(documents[gate],trust[gate],'sabora-material-evidence/v2');mutate(doc);
   const bytes=signedLabDocument(doc,keys[gate]);
   assert.throws(()=>verifyMaterialDossiers({...input,documents:{...documents,[gate]:bytes},receipt:{...receipt,evidence:{...receipt.evidence,[gate]:sha256(bytes)}}}));
  }
- const forged=JSON.parse(documents.independentReviewSha256);forged.signature=Buffer.alloc(64).toString('base64');
+ const review=verifySignedDocument(documents.reviewEvidenceSha256,trust.reviewEvidenceSha256,'sabora-material-evidence/v2');
+ review.facts.reviewMode='internal-first-activation';review.facts.ownerDecisionSha256=labHash('owner-decision-first-activation');
+ const internal=signedLabDocument(review,keys.reviewEvidenceSha256);
+ const internalInput={...input,documents:{...documents,reviewEvidenceSha256:internal},
+  receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(internal)}}};
+ assert.throws(()=>verifyMaterialDossiers(internalInput),/release_review_not_resolved/);
+ assert.equal(verifyMaterialDossiers({...internalInput,firstActivation:true}).reviewMode,'internal-first-activation');
+ assert.throws(()=>verifyMaterialDossiers({...internalInput,firstActivation:true,receipt:{...internalInput.receipt,operation:'rollback'}}),/release_review_not_resolved/);
+ for(const decision of [null,review.facts.reportSha256]){
+  const modified=structuredClone(review);modified.facts.ownerDecisionSha256=decision;
+  const bytes=signedLabDocument(modified,keys.reviewEvidenceSha256);
+  assert.throws(()=>verifyMaterialDossiers({...internalInput,firstActivation:true,documents:{...documents,reviewEvidenceSha256:bytes},
+   receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(bytes)}}}),/release_review_not_resolved/);
+ }
+ const forged=JSON.parse(documents.reviewEvidenceSha256);forged.signature=Buffer.alloc(64).toString('base64');
  const bytes=Buffer.from(JSON.stringify(forged));assert.throws(()=>verifyMaterialDossiers({...input,
-  documents:{...documents,independentReviewSha256:bytes},receipt:{...receipt,evidence:{...receipt.evidence,independentReviewSha256:sha256(bytes)}}}),/signature_invalid/);
+  documents:{...documents,reviewEvidenceSha256:bytes},receipt:{...receipt,evidence:{...receipt.evidence,reviewEvidenceSha256:sha256(bytes)}}}),/signature_invalid/);
 });
 test('root diagnostics redact arbitrary errors; immutable overlay has no mutable image tags or builds',()=>{
  assert.equal(safeReleaseError(Error('/run/secrets/db: password=never-log-this')),'sabora_controller_stop:internal_failure');
@@ -75,7 +89,7 @@ test('installation binds all nine distinct authority keys and material configura
   mountHashes:{manifest:labHash('manifest'),secrets:{'lab-secret':labHash('secret')}},
   runtimeEnvSha256:labHash('env'),tls:{certificateSha256:labHash('cert')}};
  assert.doesNotThrow(()=>assertDistinctReleaseAuthorities(config,owner.pem));
- for(const altered of [{...config,alertKey:evidenceKeys.independentReviewSha256},
+ for(const altered of [{...config,alertKey:evidenceKeys.reviewEvidenceSha256},
   {...config,allocationKey:owner.pem},{...config,alertKey:allocation.pem}]){
   assert.throws(()=>assertDistinctReleaseAuthorities(altered,owner.pem),/custodian_independence/);
  }

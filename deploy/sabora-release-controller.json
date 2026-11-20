@@ -7,7 +7,7 @@
     "ingressIsolationSha256": null,
     "egressEnforcementSha256": null,
     "alertDeliverySha256": null,
-    "independentReviewSha256": null
+    "reviewEvidenceSha256": null
   },
   "allocationKey": null,
   "alertKey": null,

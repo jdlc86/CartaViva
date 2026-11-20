@@ -61,3 +61,8 @@ Leer el apartado de custodia de [arquitectura candidata](../architecture/SABORA_
 ### S43 — sujeto de expedientes y comprobación de publicación
 
 Después de completar la configuración candidata fuera de Git, derivar expected.subjectSha256 con deriveInstallationSubject(config) del módulo autenticado sabora-release-installation.mjs; se excluye solo el propio campo subjectSha256. Los seis custodios deben validar los sujetos/materiales reales antes de firmar esa referencia y el SHA exacto de release. Todas las nueve claves SPKI distintas; reviewerIdentitySha256 es el fingerprint de clave del custodio de revisión, sin sustituir comprobar independencia real. No construir firmas/actas ficticias ni exponer configuración o sus hashes sensibles. El controlador verifica SAN exacto, par y >7 días de vigencia, además de digests de las seis rutas estáticas de ambas PWA en origen y publicación. Si la ruta pública transforma/reescribe/cachea bytes, STOP y diagnóstico de la configuración Sabora-only; no modificar Cloudflare compartido. Ver informe de revisión interna, no prueba de custodia real ni autorización.
+
+
+### Adenda S45: modalidad temporal de primera activación
+
+Véase decisión normativa [metodología V1](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Sustituye exigencia de independencia exclusivamente para primera activación, previa aprobación expresa del informe exacto y firma propietaria. Campo `reviewEvidenceSha256`, modo firmado `internal-first-activation` y `ownerDecisionSha256`; independiente permanece modalidad ordinaria. No confundir con custodia separada, evidencia real ni autorización de infraestructura. Mantener resto de controles y orden §4–5.

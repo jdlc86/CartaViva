@@ -2,8 +2,7 @@
 // Narrow operator interface for the Sabora logical-backup bundle. This CLI
 // never accepts a key, password, token or connection string in argv. Capture
 // commands are executed directly (no shell) from a protected JSON plan.
-import {constants as fsConstants} from 'node:fs';
-import {lstat,open} from 'node:fs/promises';
+import {lstat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {basename,dirname,isAbsolute,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -11,7 +10,7 @@ import {buildMigrationAudit} from '../ci/migration-audit.mjs';
 import {
  captureEncryptedBackupBundle,decryptBackupComponent,
  capturePreinstallBackup,verifyPreinstallBackup,PREINSTALL_SCHEMA,
- inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,
+ inspectEncryptedBackupBundle,replicateEncryptedBackupBundle,readProtectedBackupInput,
 } from './sabora-encrypted-backup-bundle.mjs';
 
 const stop=code=>Error('sabora_backup_cli_stop:'+code);
@@ -58,17 +57,9 @@ export async function verifyPinnedTlsRootCert(env=process.env){
  const path=env.PGSSLROOTCERT,expected=env.SABORA_BACKUP_APPROVED_CA_SHA256;
  if(!isAbsolute(path??'')||!HASH.test(expected??''))
   throw stop('independent_tls_ca_pin_required');
- let handle;
  try{
-  const before=await lstat(path);
-  if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||
-     before.size<32||before.size>1024*1024)throw stop('unsafe_tls_ca_file');
-  handle=await open(path,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW??0));
-  const after=await handle.stat();
-  if(!after.isFile()||after.nlink!==1||after.size!==before.size||
-     after.dev!==before.dev||after.ino!==before.ino)
-   throw stop('unsafe_tls_ca_file');
-  const contents=await handle.readFile();
+  const contents=await readProtectedBackupInput(path,{maxBytes:1024*1024,privateFile:false,allowRoot:true});
+  if(contents.length<32)throw stop('unsafe_tls_ca_file');
   if(!contents.includes(Buffer.from('-----BEGIN CERTIFICATE-----'))||
     !contents.includes(Buffer.from('-----END CERTIFICATE-----'))||
     createHash('sha256').update(contents).digest('hex')!==expected)
@@ -77,56 +68,40 @@ export async function verifyPinnedTlsRootCert(env=process.env){
  }catch(error){
   if(error?.message?.startsWith('sabora_backup_cli_stop:'))throw error;
   throw stop('unsafe_tls_ca_file');
- }finally{await handle?.close();}
+ }
 }
 
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value)&&
  Object.getPrototypeOf(value)===Object.prototype;
 
-function protectedMode(stat){
- if(process.platform==='win32'){
-  if(!HASH.test(process.env.SABORA_BACKUP_NTFS_ACL_RECEIPT_SHA256??''))
-   throw stop('ntfs_acl_receipt_required');
-  return;
- }
- if(typeof process.getuid!=='function'||stat.uid!==process.getuid()||(stat.mode&0o077)!==0)
-  throw stop('request_owner_or_mode');
-}
 async function protectedRead(path,max){
  if(!isAbsolute(path??''))throw stop('absolute_protected_file_required');
- const before=await lstat(path);
- if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1)throw stop('unsafe_protected_file');
- const handle=await open(path,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW??0));
- try{
-  const stat=await handle.stat();
-  if(!stat.isFile()||stat.nlink!==1||stat.size<1||stat.size>max||
-   (before.dev!==undefined&&stat.dev!==before.dev)||(before.ino!==undefined&&stat.ino!==before.ino))
-   throw stop('unsafe_protected_file');
-  protectedMode(stat);
-  return await handle.readFile();
- }finally{await handle.close();}
+ try{return await readProtectedBackupInput(path,{maxBytes:max});}
+ catch(error){
+  if(error?.message==='sabora_backup_stop:protected_input_permissions')
+   throw stop('request_owner_or_mode');
+  throw stop('unsafe_protected_file');
+ }
 }
 function postgresBinaries(){
  const psql=process.env.SABORA_BACKUP_PSQL_BIN,pgDump=process.env.SABORA_BACKUP_PG_DUMP_BIN;
- if(!isAbsolute(psql??'')||!/^psql(?:\.exe)?$/i.test(basename(psql))||
-  !isAbsolute(pgDump??'')||!/^pg_dump(?:\.exe)?$/i.test(basename(pgDump)))
+ if(!isAbsolute(psql??'')||!(basename(psql)==='psql')||
+  !isAbsolute(pgDump??'')||!(basename(pgDump)==='pg_dump'))
   throw stop('absolute_postgres_binaries_required');
  return {psql,pgDump};
 }
 async function verifyExecutable(path){
  const stat=await lstat(path);
  if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)throw stop('unsafe_postgres_binary');
- if(process.platform!=='win32'&&((stat.mode&0o022)!==0||
-  ![0,process.getuid?.()].includes(stat.uid)))throw stop('unsafe_postgres_binary');
- if(process.platform!=='win32'){
-  let directory=dirname(path);
+ if(process.platform!=='linux'||(stat.mode&0o022)!==0||
+  ![0,process.getuid()].includes(stat.uid))throw stop('unsafe_postgres_binary');
+ let directory=dirname(path);
   for(;;){
    const item=await lstat(directory);
    if(!item.isDirectory()||item.isSymbolicLink()||(item.mode&0o022)!==0||
     ![0,process.getuid()].includes(item.uid))throw stop('unsafe_postgres_binary_directory');
    const parent=dirname(directory);if(parent===directory)break;directory=parent;
   }
- }
 }
 // Exact PostgreSQL CLI shapes: no attached -Uother/-dotra/-cSQL/-f/path,
 // no DSN/connection flags and no alternate stdout/output or schema scope.
@@ -212,11 +187,12 @@ function args(count){
 }
 
 export async function main(){
+ if(process.platform!=='linux')throw stop('linux_required');
  const operation=process.argv[2];
  if(operation==='capture-preinstall'){
   const [requestPath,directory]=args(2),plan=await initialRequest(requestPath);
   const psql=process.env.SABORA_BACKUP_PSQL_BIN;
-  if(!isAbsolute(psql??'')||!/^psql(?:\.exe)?$/i.test(basename(psql)))
+  if(!isAbsolute(psql??'')||!(basename(psql)==='psql'))
    throw stop('absolute_postgres_binary_required');
   const pinnedSystem=validateVerifiedSource(process.env);
   await Promise.all([verifyExecutable(psql),verifyPinnedTlsRootCert()]);
@@ -242,10 +218,10 @@ export async function main(){
   return {operation,backupId:result.manifest.backupId,releaseSha:result.manifest.releaseSha,
    manifestSha256:result.manifestSha256,containsKey:false,containsPlaintext:false};
  }
- if(operation==='replicate-offsite'||operation==='replicate-vps-cache'){
+ if(operation==='replicate-vps-cache')throw stop('remote_replica_requires_installed_sender');
+ if(operation==='replicate-offsite'){
   const [sourceDirectory,destinationDirectory]=args(2);
-  return replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory,
-   destinationClass:operation==='replicate-offsite'?'offsite':'vps-encrypted-cache'});
+  return replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory,destinationClass:'offsite'});
  }
  if(operation==='inspect'){
   const [directory]=args(1);return {operation,...await inspectEncryptedBackupBundle(directory)};

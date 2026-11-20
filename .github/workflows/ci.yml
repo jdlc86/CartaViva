@@ -182,6 +182,15 @@ jobs:
           path: ${{ runner.temp }}/sabora-release-driver-lab/failure-diagnostic.json
           if-no-files-found: ignore
           retention-days: 7
+      - name: Verify reproducible backup preparation package and signed offline plan
+        run: node scripts/ci/sabora-backup-preparation-lab.mjs
+      - name: Preserve unsigned backup preparation source artifact (not an installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sabora-backup-preparation-package
+          path: ${{ runner.temp }}/sabora-backup-preparation-package/
+          if-no-files-found: error
+          retention-days: 7
       - name: Prepare immutable two-image package on main only (no VPS)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.SABORA_APPROVED_RESTAURANT_CODE != ''
         env:

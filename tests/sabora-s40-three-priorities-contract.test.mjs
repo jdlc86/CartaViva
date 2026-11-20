@@ -17,7 +17,9 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.doesNotMatch(bundle,/execSync|spawnSync|shell\s*:\s*true/);
  assert.match(cli,/SABORA_BACKUP_PSQL_BIN/);
  assert.match(cli,/SABORA_BACKUP_PG_DUMP_BIN/);
- assert.match(cli,/fsConstants\.O_NOFOLLOW/);
+ assert.match(cli,/readProtectedBackupInput/);
+ assert.match(bundle,/fsConstants\.O_NOFOLLOW/);
+ assert.match(bundle,/protected_input_parent/);
  // Exact allowlisted PostgreSQL argv shapes now supersede the legacy
  // keyword-based output guard. Long/short, attached and alternate flags
  // cannot appear in either expected argument vector.
@@ -32,11 +34,20 @@ test('S40 dual backup encrypts four separate streams and restores only from exte
  assert.doesNotMatch(integration,/bundleDirectory:vpsCache,name:'(?:schema|data)'/);
  assert.match(integration,/--network','none'/);
  assert.match(integration,/psql','-X','-h','127\.0\.0\.1'/);
- assert.match(integration,/create schema extensions; create extension pgcrypto with schema extensions;/);
+ assert.match(integration,/psql\(target,'postgres','CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;'\)/);
+ // The initial-state recovery target now becomes the full recovered source
+ // in the same database. This is a real preinstall-to-V2 transition, not
+ // an independent second database with a different initial-state identity.
+ assert.match(integration,/psql\(target,'postgres',globalRolesSql\)/);
+ assert.ok(integration.indexOf("CREATE SCHEMA extensions; CREATE EXTENSION pgcrypto WITH SCHEMA extensions;")<integration.indexOf("psql(target,'postgres',globalRolesSql)"));
  assert.match(integration,/databasePrerequisiteMarker='-- sabora-database-prerequisites-v1\\n'/);
  assert.match(integration,/databaseAclMarker='-- sabora-database-acl-reconciliation-v1\\n'/);
- assert.match(integration,/psql\(target,'sabora_external_restore_ci',databasePrerequisiteSql\)/);
- assert.match(integration,/psql\(target,'sabora_external_restore_ci',databaseAclSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databasePrerequisiteSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databaseAclSql\)/);
+ assert.match(integration,/psql\(target,'postgres',databasePrerequisiteSql\)[\s\S]*?pg_restore[\s\S]*?psql\(target,'postgres',databaseAclSql\)/);
+ assert.match(integration,/sabora_vps_backup_rotation_cycle_ok/);
+ assert.match(integration,/sabora_vps_backup_rotation_sigkill_ok/);
+ assert.match(integration,/assert\.equal\(recovered,await readFile\(outputs\.inventory,'utf8'\)\)/);
  assert.match(integration,/cv005_recovery_provider_dba_preexists/);
  assert.match(integration,/grant sabora_h6_fn_owner to cv005_recovery_provider_dba\s+with admin true, set false, inherit false/);
  assert.match(roles,/aclexplode\(namespace\.nspacl\)/);
@@ -79,7 +90,16 @@ test('S40 home-computer profile records both destinations without claiming opera
  assert.equal(profile.vpsReplica.requiredByOwnerDecision,true);
  assert.equal(profile.vpsReplica.authorizationGranted,false);
  assert.equal(profile.vpsReplica.fleetiaDependency,false);
- assert.match(JSON.stringify(profile),/PENDING_WINDOWS_MACOS_OR_LINUX/);
+ assert.equal(profile.homeComputer.operatingSystem,'PENDING_HOST_OS');
+ assert.deepEqual(profile.homeComputer.executionEnvironment,{
+  preferred:'linux-native',
+  fallback:'linux-container',
+  selected:'PENDING_SELECTION',
+  containerPersistenceVerified:false,
+  storageSemanticsVerified:false,
+  restoreFromPersistentStorageVerified:false
+ });
+ assert.equal(profile.databaseConnection.method,'PENDING_APPROVED_DIRECT_SUPABASE_CONNECTION');
  assert.match(JSON.stringify(profile),/PENDING_ABSOLUTE_PATH_ON_HOME_COMPUTER/);
  assert.match(ignored,/deploy\/sabora-home-offsite-backup\.profile\.json/);
 });

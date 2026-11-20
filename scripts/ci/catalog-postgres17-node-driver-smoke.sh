@@ -43,6 +43,34 @@ node --check scripts/ci/h6-postgres17.test.mjs
 node --check scripts/ci/table-change-root-postgres17.test.mjs
 node --check scripts/ci/zero-cost-account-postgres17.test.mjs
 node --check scripts/ci/sabora-dual-backup-postgres17.mjs
+if [[ "$scope" = full ]]; then
+  node --check scripts/ci/sabora-vps-backup-ssh-lab.mjs
+  node --check scripts/ci/sabora-backup-governed-receiver-lab.mjs
+  node --check scripts/ops/sabora-backup-governed-lab-entry.mjs
+  node --check scripts/ops/sabora-backup-recovery-fence.mjs
+  node --check scripts/ops/sabora-backup-recovery-coordinator.mjs
+  node --check scripts/ops/sabora-backup-installed-contract.mjs
+  node --check scripts/ops/sabora-backup-installed-receiver.mjs
+  node --check scripts/ops/sabora-backup-installed-entry.mjs
+  node --check scripts/ops/sabora-backup-installed-send.mjs
+  node --check scripts/ops/sabora-backup-installation-stager.mjs
+  node --check scripts/ops/sabora-backup-recovery-checkpoint.mjs
+  node --check scripts/ops/sabora-vps-backup-transport.mjs
+  node --check scripts/ops/sabora-vps-backup-lab-entry.mjs
+  # The full suite already requires a disposable Linux Actions runner.
+  # Ensure transport test tools before provisioning the fixture.
+  if [[ "${RUNNER_OS:-}" != Linux ]]; then
+    echo 'Full backup transport suite requires the disposable Linux runner' >&2
+    exit 1
+  fi
+  if ! test -x /usr/sbin/sshd || ! test -x /usr/bin/ssh || ! test -x /usr/bin/ssh-keygen; then
+    sudo -n apt-get update -qq
+    sudo -n apt-get install -y --no-install-recommends openssh-server openssh-client
+  fi
+  for tool in /usr/sbin/mkfs.ext4 /usr/bin/mount /usr/bin/umount /usr/bin/fallocate /usr/bin/flock /usr/bin/cc /usr/sbin/useradd /usr/sbin/usermod /usr/sbin/userdel /usr/sbin/chpasswd /usr/bin/openssl /usr/bin/setpriv /usr/bin/pgrep /usr/bin/ps /usr/bin/timeout /usr/bin/cat; do
+    test -x "$tool" || { echo 'Missing disposable volume tool' >&2; exit 1; }
+  done
+fi
 tmp="$(mktemp -d)"
 container="sabora-node-pg17-${GITHUB_RUN_ID:-ci}-$$"
 if [[ "$scope" = issue61 && -z "${RUNNER_TEMP:-}" ]]; then

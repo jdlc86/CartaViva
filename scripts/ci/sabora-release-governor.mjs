@@ -14,7 +14,7 @@ export const SABORA_RELEASE_SCOPE=Object.freeze({
 });
 export const EVIDENCE_KEYS=Object.freeze([
  'externalRestoreSha256','sqlProviderGateSha256','ingressIsolationSha256',
- 'egressEnforcementSha256','alertDeliverySha256','independentReviewSha256'
+ 'egressEnforcementSha256','alertDeliverySha256','reviewEvidenceSha256'
 ]);
 const HEX64=/^[0-9a-f]{64}$/;
 const SHA=/^[0-9a-f]{40}$/;
