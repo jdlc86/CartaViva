@@ -242,10 +242,10 @@ export async function main(){
   return {operation,backupId:result.manifest.backupId,releaseSha:result.manifest.releaseSha,
    manifestSha256:result.manifestSha256,containsKey:false,containsPlaintext:false};
  }
- if(operation==='replicate-offsite'||operation==='replicate-vps-cache'){
+ if(operation==='replicate-vps-cache')throw stop('remote_replica_requires_installed_sender');
+ if(operation==='replicate-offsite'){
   const [sourceDirectory,destinationDirectory]=args(2);
-  return replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory,
-   destinationClass:operation==='replicate-offsite'?'offsite':'vps-encrypted-cache'});
+  return replicateEncryptedBackupBundle({sourceDirectory,destinationDirectory,destinationClass:'offsite'});
  }
  if(operation==='inspect'){
   const [directory]=args(1);return {operation,...await inspectEncryptedBackupBundle(directory)};
