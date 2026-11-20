@@ -124,3 +124,8 @@ Revisión interna del objeto ff8cff2120fe60d25f06b436fd9e8d0a6dc59bbe: [informe]
 ### Adenda S45: modalidad temporal de primera activación
 
 Véase decisión normativa [metodología V1](SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Sustituye exigencia de independencia exclusivamente para primera activación, previa aprobación expresa del informe exacto y firma propietaria. Campo `reviewEvidenceSha256`, modo firmado `internal-first-activation` y `ownerDecisionSha256`; independiente permanece modalidad ordinaria. No confundir con custodia separada, evidencia real ni autorización de infraestructura. Mantener resto de controles y orden §4–5.
+
+
+### Adenda S45 — expediente de restauración para primera activación de prueba
+
+La fila externalRestoreSha256 mantiene formato ordinario intacto. Alternativa cerrada según metodología principal: `backupMode=vps-only-first-activation`, decisión y prueba preinstall, una réplica VPS, restauración temporal PG17 fuera del VPS con identidad distinta y mismo ciphertext, retirada acreditada, dos custodios y `testDataOnly=true`. Solo deploy genesis verificado por ledger bajo lock; no rollback ni releases posteriores, no certificación automática de datos ficticios o recuperación. No sustituye evidencia material.
