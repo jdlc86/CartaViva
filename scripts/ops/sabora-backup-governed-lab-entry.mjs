@@ -23,7 +23,7 @@ async function run(){
  const config=verifySignedDocument(rootBytes(join(base,'scope.json'),262144),owner,'sabora-backup-governed-lab/v1');
  const uid=process.getuid(),gid=process.getgid();
  if(!exactKeys(config,['schema','repository','project','environment','sourceSha','artifactSha256','nodeSha256',
-  'shellSha256','uid','gid','volume','cache','device','filesystemBytes','scope'])||
+  'shellSha256','uid','gid','port','volume','cache','device','filesystemBytes','scope'])||
   config.repository!=='jdlc86/CartaViva'||config.project!=='sabora'||config.environment!=='disposable-lab'||
   !/^[0-9a-f]{40}$/.test(config.sourceSha)||config.uid!==uid||config.gid!==gid||
   config.volume!==volume||config.cache!==cache||
