@@ -2,7 +2,9 @@
 // disposable runner, no new PG17 restore or operational installation.
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign,createCipheriv,randomBytes} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {pathToFileURL} from 'node:url';
 import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,unlinkSync,realpathSync,lstatSync,copyFileSync,chmodSync,linkSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -13,6 +15,7 @@ import {verifyInstalledBackupActivation,sshEd25519Sha256} from '../ops/sabora-ba
 import {prepareInstalledBackupTransfer,backupLabSshArguments} from '../ops/sabora-vps-backup-transport.mjs';
 import {stageInactiveBackupInstallation,verifyInactiveBackupStage} from '../ops/sabora-backup-installation-stager.mjs';
 import {verifyExternalRecoveryCheckpoint} from '../ops/sabora-backup-recovery-checkpoint.mjs';
+import {advanceExternalRecoveryCheckpoint,observeExternalRecoveryCheckpoint} from '../ops/sabora-backup-checkpoint-custodian.mjs';
 import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted'||
@@ -298,6 +301,99 @@ try{
  ])assert.throws(()=>verifyExternalRecoveryCheckpoint({...checkpointInput,...overrides}),pattern);
  console.log('sabora_backup_checkpoint_comparison_and_rollback_rejection_ok:'+JSON.stringify({
   negativeCases:10,externalAdvancePerformed:false,recoveryAuthorized:false}));
+ // Simulated independent custodian, with real durable CAS state in a
+ // separate private fixture directory. This does not prove independent
+ // physical custody or production authority on the runner.
+ const custody=join(root,'external-checkpoint-fixture');mkdirSync(custody,{mode:0o700});
+ const recordFile=join(custody,'record.json');
+ writeFileSync(recordFile,JSON.stringify(record)+'\n',{mode:0o600,flag:'wx'});
+ const config={expected:identity,checkpointPublicKey:publicKey(custodian),
+  checkpointPrivateKey:custodian.privateKey,ownerPublicKey:publicKey(owner),
+  recoveryPublicKey:publicKey(recovery),verificationPublicKey:publicKey(verification)};
+ const recoverySign=payload=>Buffer.from(JSON.stringify({payload,
+  signature:sign(null,Buffer.from(stableStringify(payload)),recovery.privateKey).toString('base64')}));
+ const observed=challenge=>observeExternalRecoveryCheckpoint({directory:custody,config,challenge});
+ const verifyObserved=(localRecord,challenge,checkpointBytes)=>verifyExternalRecoveryCheckpoint({
+  ...checkpointInput,record:localRecord,challenge,checkpointBytes,now:Date.now()});
+ const fresh=()=>randomBytes(32).toString('hex'),initialChallenge=fresh();
+ assert.equal(verifyObserved(record,initialChallenge,observed(initialChallenge)).sequence,7);
+ const advanceRequest=(prior,{challenge=fresh(),lockSha256=digest('lock-'+(prior.sequence+1))}={})=>{
+  const timestamp=Date.now(),validUntil=new Date(timestamp+30000).toISOString(),
+   observedAt=new Date(timestamp-100).toISOString(),sequence=prior.sequence+1;
+  const externalProofBytes=proofDocument({...proof,observedAt,validUntil});
+  const authorizationBytes=recoverySign({schema:'sabora-vps-recovery-transition/v1',repository:plan.repository,project:plan.project,
+   environment:'production',storageIdentitySha256:identity.storageIdentitySha256,
+   externalStorageIdentitySha256:identity.externalStorageIdentitySha256,action:'publish-promoted-state',
+   sequence,lockSha256,subjectSha256:digest('subject-'+sequence),externalProofSha256:sha256(externalProofBytes),observedAt,validUntil});
+  const payload={schema:'sabora-backup-checkpoint-advance/v1',repository:plan.repository,project:plan.project,
+   environment:'production',...identity,challenge,previousRecordSha256:sha256(Buffer.from(stableStringify(prior))),
+   sequence,authorizationSha256:sha256(authorizationBytes),observedAt,validUntil};
+  const requestBytes=recoverySign(payload);
+  return {directory:custody,config,requestBytes,authorizationBytes,externalProofBytes,payload};
+ };
+ const nextRequest=advanceRequest(record);
+ const advance=request=>{
+  const {payload,...args}=request;
+  return advanceExternalRecoveryCheckpoint(args);
+ };
+ const diskRecord=()=>JSON.parse(readFileSync(recordFile,'utf8'));
+ assert.throws(()=>advance({...nextRequest,requestBytes:recoverySign({...nextRequest.payload,
+  previousRecordSha256:digest('wrong-record')})}),/compare_and_set/);
+ assert.throws(()=>advance({...nextRequest,requestBytes:recoverySign({...nextRequest.payload,
+  validUntil:new Date(Date.now()-1).toISOString()})}),/document_time/);
+ assert.throws(()=>advance({...nextRequest,externalProofBytes:proofDocument({...proof,backupId:'SABORA-BACKUP-DIFFERENT'})}),/authorization_scope/);
+ assert.deepEqual(diskRecord(),record);
+ const reserved=advance(nextRequest);
+ assert.equal(reserved.externalAdvancePerformed,true);assert.equal(reserved.recoveryAuthorized,false);
+ assert.equal(reserved.record.sequence,8);assert.deepEqual(diskRecord(),reserved.record);
+ assert.equal(verifyObserved(reserved.record,nextRequest.payload.challenge,reserved.checkpointBytes).sequence,8);
+ assert.throws(()=>verifyObserved(record,nextRequest.payload.challenge,reserved.checkpointBytes),/local_rollback_or_loss/);
+ assert.throws(()=>advance(nextRequest),/compare_and_set/);
+ // Two real processes race on the same previous record. Exactly one can
+ // advance, either via exclusive lock or stale compare-and-set rejection.
+ const raceA=advanceRequest(reserved.record),raceB=advanceRequest(reserved.record,{lockSha256:digest('competing-lock')});
+ const moduleUrl=pathToFileURL(resolve('scripts/ops/sabora-backup-checkpoint-custodian.mjs')).href;
+ const program='import {advanceExternalRecoveryCheckpoint as advance} from '+JSON.stringify(moduleUrl)+';\n'+
+  "let text='';for await(const chunk of process.stdin)text+=chunk;const x=JSON.parse(text);"+
+  "try{const result=advance({...x,requestBytes:Buffer.from(x.requestBytes,'base64'),authorizationBytes:Buffer.from(x.authorizationBytes,'base64'),externalProofBytes:Buffer.from(x.externalProofBytes,'base64')});"+
+  "process.stdout.write(JSON.stringify({sequence:result.record.sequence}));}catch(e){process.stderr.write(String(e.message));process.exitCode=1;}";
+ async function race(request){
+  const child=spawn(process.execPath,['--input-type=module','--eval',program],{stdio:['pipe','pipe','pipe']});
+  let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>err+=x);
+  child.stdin.on('error',()=>{});
+  const ended=once(child,'close');
+  const timer=setTimeout(()=>child.kill('SIGKILL'),10000);
+  try{
+   child.stdin.end(JSON.stringify({directory:custody,config:{...config,
+    checkpointPrivateKey:custodian.privateKey.export({format:'pem',type:'pkcs8'})},
+    requestBytes:request.requestBytes.toString('base64'),authorizationBytes:request.authorizationBytes.toString('base64'),
+    externalProofBytes:request.externalProofBytes.toString('base64')}));
+   const [status,signal]=await ended;assert.equal(signal,null);return {status,out,err};
+  }finally{clearTimeout(timer);}
+ }
+ const racers=await Promise.all([race(raceA),race(raceB)]);
+ assert.deepEqual(racers.map(x=>x.status).sort(),[0,1]);
+ assert.equal(JSON.parse(racers.find(x=>x.status===0).out).sequence,9);
+ assert.match(racers.find(x=>x.status===1).err,/custody_locked_or_crashed|compare_and_set/);
+ const durable=diskRecord(),newChallenge=fresh();
+ assert.equal(durable.sequence,9);
+ const afterRestart=observed(newChallenge);
+ assert.equal(verifyObserved(durable,newChallenge,afterRestart).sequence,9);
+ assert.throws(()=>verifyObserved(reserved.record,newChallenge,afterRestart),/local_rollback_or_loss/);
+ assert.throws(()=>verifyObserved(durable,initialChallenge,afterRestart),/checkpoint_scope/);
+ for(const name of ['record.pending','custody.lock']){
+  const pending=join(custody,name);
+  writeFileSync(pending,'{}',{mode:0o600,flag:'wx'});
+  try{assert.throws(()=>observed(fresh()),/unreconciled_custody|custody_locked_or_crashed/);}
+  finally{unlinkSync(pending);}
+ }
+ const saved=readFileSync(recordFile);unlinkSync(recordFile);
+ try{assert.throws(()=>observed(fresh()),/unreconciled_custody/);}
+ finally{writeFileSync(recordFile,saved,{mode:0o600,flag:'wx'});}
+ assert.deepEqual(diskRecord(),durable);
+ console.log('sabora_backup_external_custody_cas_ok:'+JSON.stringify({
+  sequence:durable.sequence,concurrentWinners:1,persistentRecords:1,
+  externalAdvancePerformed:true,independentPhysicalCustody:false,recoveryAuthorized:false,operationalAuthorization:false}));
  console.log('sabora_backup_installed_activation_sender_preflight_and_shell_ok:'+JSON.stringify({
   networkContacted:false,installed:false,operationalAuthorization:false,activationNegatives:rejectsActivation.length+4}));
  console.log('sabora_backup_preparation_artifact_and_signed_plan_ok:'+JSON.stringify({
