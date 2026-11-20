@@ -13,6 +13,8 @@ import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,parseEncrypt
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
 import {exactKeys,trustedDirectory} from './sabora-release-protected-store.mjs';
 import {BackupWireReader,receiveBackupCandidate} from './sabora-vps-backup-wire.mjs';
+import {loadInstalledBackupReceiver} from './sabora-backup-installed-receiver.mjs';
+import {BACKUP_INSTALL_PATHS} from './sabora-backup-installation-plan.mjs';
 const stop=code=>{throw Error('sabora_rotation_stop:'+code);};
 const HEX=/^[0-9a-f]{64}$/;
 const hash=v=>typeof v==='string'&&HEX.test(v)&&!/^0+$/.test(v);
@@ -24,6 +26,10 @@ const V2='sabora-logical-backup/v2';
 const INTENT='sabora-vps-rotation-intent/v1';
 const MAX_INTENT=2*1024*1024;
 const RECOVERY_COORDINATOR=Symbol('disposable-recovery-coordinator');
+const INSTALLED_RECEIVER=Symbol('installed-receiver-activation');
+function checkInstalledWindow(ctx){
+ if(ctx[INSTALLED_RECEIVER]&&Date.now()>=ctx[INSTALLED_RECEIVER].validUntil)stop('installed_activation_expired');
+}
 const names=type=>type===PREINSTALL_SCHEMA?['manifest.json','initial-state.aesgcm']:
  ['manifest.json','roles-memberships.aesgcm','schema.aesgcm','data.aesgcm','inventory.aesgcm'];
 async function exists(path){try{await lstat(path);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
@@ -146,6 +152,7 @@ async function purgePrevious(path,expected,ctx){
  // No recursive removal (or globs) of any path. An unexpected object or link
  // blocks the transaction. A crash here leaves a durable lock for recovery.
  for(const name of Object.keys(old.inventory)){
+  checkInstalledWindow(ctx);
   const p=join(path,name),st=await file(p,ctx.uid),prior=old.inventory[name].stat;
   if(st.dev!==prior.dev||st.ino!==prior.ino||st.ctimeMs!==prior.ctimeMs)stop('previous_changed');
   await unlink(p);
@@ -159,6 +166,7 @@ async function purgePrevious(path,expected,ctx){
 // still the durable transaction intent, NOT evidence of a live writer.
 async function withRotationGuard(root,scope,operation){
  const ctx=await rotationContext(root,scope);
+ checkInstalledWindow(ctx);
  const parent=dirname(root),guard=join(parent,'.'+basename(root)+'.rotation.guard');
  const fixed=ctx.protectedGuard;
  if(fixed){
@@ -197,6 +205,13 @@ export async function receiveVerifiedVpsReplica({root,source,scope}={}){
  const reader=new BackupWireReader(source);
  try{return await withRotationGuard(root,scope,ctx=>rotate({root,scope,reader,ctx}));}finally{reader.close();}
 }
+export async function receiveInstalledVpsReplica({source}={}){
+ const installed=await loadInstalledBackupReceiver();
+ const scope={...installed.scope,[INSTALLED_RECEIVER]:installed};
+ const result=await receiveVerifiedVpsReplica({root:BACKUP_INSTALL_PATHS.cache,source,scope});
+ return Object.freeze({...result,schema:'sabora-vps-installed-rotation-result/v1',
+  installationId:installed.installationId,activationSha256:installed.activationSha256});
+}
 async function rotationContext(root,scope){
  if(process.platform!=='linux'||typeof process.geteuid!=='function'||!scope||
   !['production','disposable-lab'].includes(scope.environment)||
@@ -207,11 +222,12 @@ async function rotationContext(root,scope){
   scope.reserveBytes<1048576||scope.quotaBytes<=scope.reserveBytes)stop('invalid_scope');
  const uid=process.geteuid(),lab=scope.environment==='disposable-lab';
  authorityFingerprint(scope.verifierPublicKey);
- // No installed production caller exists. The production directory and
- // authority are deliberately constrained; changing them needs review.
- if(!lab&&(uid!==0||root!=='/srv/sabora/backups'))stop('unapproved_production_root');
- if(scope.protectedGuard!==undefined&&(!lab||uid===0||
-  !/^\/var\/lib\/sabora-backup-ci-[0-9]+\/volume\/cache$/.test(root)||
+ // Only the fixed installed receiver may construct a production context.
+ // The legacy root/local production path is not an alternate entry.
+ if(!lab&&(!scope[INSTALLED_RECEIVER]||uid===0||root!==BACKUP_INSTALL_PATHS.cache||!scope.protectedGuard))
+  stop('unapproved_production_root');
+ if(scope.protectedGuard!==undefined&&(uid===0||
+  (lab?!/^\/var\/lib\/sabora-backup-ci-[0-9]+\/volume\/cache$/.test(root):root!==BACKUP_INSTALL_PATHS.cache)||
   !exactKeys(scope.protectedGuard,['device','inode'])||
   ![scope.protectedGuard.device,scope.protectedGuard.inode].every(v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v))))
   stop('protected_guard_scope');
@@ -253,7 +269,8 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader,ctx}){
      scope.maxBundleBytes<1||source.bytes>scope.maxBundleBytes||(current?.bytes??0)>scope.maxBundleBytes))
    stop('bundle_budget_exceeded');
   const signed=proof(proofBytes,ctx,current,source);
-  if(reader)reader.setExpiry(Date.parse(signed.validUntil));
+  checkInstalledWindow(ctx);
+  if(reader)reader.setExpiry(Math.min(Date.parse(signed.validUntil),ctx[INSTALLED_RECEIVER]?.validUntil??Infinity));
   if(current&&(source.manifest.backupId===current.manifest.backupId||
       source.manifestSha256===current.manifestSha256||
       Date.parse(source.manifest.createdAt)<Date.parse(current.manifest.createdAt)||
@@ -279,6 +296,7 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader,ctx}){
   const space=await statfs(root,{bigint:true});
   if(!Number.isSafeInteger(total)||total>scope.quotaBytes||space.bavail*space.bsize<BigInt(needed))
    stop('insufficient_reserved_capacity');
+  checkInstalledWindow(ctx);
   mutation=true;
   const intentTemp=join(root,'.intent-'+randomBytes(16).toString('hex'));
   await exclusive(intentTemp,intent);await rename(intentTemp,lock);await syncDir(root);
@@ -290,21 +308,25 @@ async function rotate({root,sourceDirectory,scope,proofBytes,reader,ctx}){
    stop('replica_mismatch');
   proof(proofBytes,ctx,current,candidate);
   await syncBundle(candidatePath,candidate,ctx);
+  checkInstalledWindow(ctx);
   if(current){
    const live=await bundle(currentPath,ctx);
    if(live.manifestSha256!==current.manifestSha256)stop('current_changed');
    await rename(currentPath,previousPath);await syncDir(root);
   }
+  checkInstalledWindow(ctx);
   await rename(candidatePath,currentPath);await syncDir(root);
   const promoted=await bundle(currentPath,ctx);
   proof(proofBytes,ctx,current,promoted);
   const partial=join(root,'.state-'+randomBytes(16).toString('hex'));
   await exclusive(partial,{schema:'sabora-vps-rotation-state/v1',manifestSha256:promoted.manifestSha256,
    proof:JSON.parse(proofBytes.toString('utf8'))});
+  checkInstalledWindow(ctx);
   await rename(partial,statePath);await syncDir(root);
   const confirmed=await bundle(currentPath,ctx);
   await readState(statePath,ctx,confirmed);
   proof(proofBytes,ctx,current,confirmed);
+  checkInstalledWindow(ctx);
   if(current)await purgePrevious(previousPath,current,ctx);
   if(!same(await readdir(root),['rotation.lock','current','state.json']))stop('unexpected_final_state');
   completed=true;
