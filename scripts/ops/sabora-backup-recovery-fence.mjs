@@ -22,8 +22,9 @@ function fenceContext(directory,scope){
   scope.storageIdentitySha256===scope.externalStorageIdentitySha256)stop('disposable_root_only');
  trustedDirectory(directory,{privateDirectory:true});
  const st=lstatSync(directory,{bigint:true}),fs=statfsSync(directory,{bigint:true});
- if(st.gid!==0n||(st.mode&0o777n)!==0o700n||fs.type!==0xef53n||
-  String(st.dev)!==scope.protectedGuard?.device)stop('recovery_storage_identity');
+ if(st.gid!==0n||(st.mode&0o777n)!==0o700n||
+  !scope.protectedGuard?.device||String(st.dev)===scope.protectedGuard.device)
+  stop('recovery_storage_identity');
  const authoritySha256=authorityFingerprint(scope.recoveryPublicKey);
  if(authoritySha256===authorityFingerprint(scope.verifierPublicKey))stop('authority_alias');
  return {schema,repository:'jdlc86/CartaViva',project:'sabora',environment:scope.environment,
