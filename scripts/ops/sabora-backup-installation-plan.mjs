@@ -24,6 +24,7 @@ export const BACKUP_PREPARATION_FILES=Object.freeze([
  'scripts/ops/sabora-backup-installed-contract.mjs',
  'scripts/ops/sabora-backup-installed-receiver.mjs',
  'scripts/ops/sabora-backup-installed-entry.mjs',
+ 'scripts/ops/sabora-backup-installed-send.mjs',
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
  'scripts/ops/sabora-backup-recovery-fence.mjs',
  'scripts/ops/sabora-backup-recovery-coordinator.mjs',
