@@ -389,3 +389,8 @@ Candidato de código b2d7d6cbaf0f5e450320dfc24d809747c3b90349: **5/5 controles a
 ### S45 — retirada del soporte específico de plataformas ajenas a Linux (candidato)
 
 El código de backup deja de ofrecer rutas nativas de otros sistemas operativos, excepciones de permisos y clientes alternativos. Solo emisor/CLI Linux, almacenamiento conforme a los controles Linux, mismo protocolo SSH y restore PG17. Las anotaciones históricas de ensayos previos se preservan como evidencia y no son instrucciones vigentes. El firmador offline de release es otro subsistema y no forma parte del paquete backup. Nueva CI pendiente; no autoriza instalación ni operación.
+
+
+### S45 — cierre de hallazgos internos en laboratorio y siguiente frontera (20-11-2026)
+
+[Expediente de cierre y puertas materiales/gobernanza](../reviews/SABORA_S45_INTERNAL_BACKUP_REVIEW_2026-11-20.md), código add060c4400a45b1c43a9b98fe6db10b00858320. Cinco controles aplicables SUCCESS, 1486 PASS/1 SKIP, 103 migraciones verificadas en restore externo de fixture. Los cuatro hallazgos identificados y corregidos quedan cerrados en ese alcance, no auditoría independiente ni certificación operativa. La independencia exigida en activación backup y release no se reemplaza por un hash ficticio; resolver por decisión normativa expresa del propietario. Mantener recuperación productiva deshabilitada hasta custodia, canal y procedimiento reales. Las referencias históricas Windows→Linux son evidencia supersedida por decisión Linux nativo/contenedor, no trabajo pendiente. Conservar §4–5 y autorizaciones por fase; no iniciar otra batería por documentación, no merge ni operar.
