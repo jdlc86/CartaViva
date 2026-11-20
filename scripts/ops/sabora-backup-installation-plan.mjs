@@ -20,6 +20,10 @@ export const BACKUP_INSTALL_PATHS=Object.freeze({
 // a preparation proposal only. The production rotation route is NOT enabled.
 export const BACKUP_PREPARATION_FILES=Object.freeze([
  'deploy/sabora-backup-lab-shell.c',
+ 'deploy/sabora-backup-installed-shell.c',
+ 'scripts/ops/sabora-backup-installed-contract.mjs',
+ 'scripts/ops/sabora-backup-installed-receiver.mjs',
+ 'scripts/ops/sabora-backup-installed-entry.mjs',
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
  'scripts/ops/sabora-backup-recovery-fence.mjs',
  'scripts/ops/sabora-backup-recovery-coordinator.mjs',
