@@ -256,7 +256,55 @@ export async function startBackupSshLab({fixture,scope,sourceSha,entryPath}){
    assert.deepEqual((await readdir(root)).sort(),['candidate','current','rotation.lock','state.json']);
    console.log('sabora_vps_backup_ssh_midbody_disconnect_preserved_previous_ok');
   };
-  return {root,send,transfer,proveInitialNegatives,loseAcknowledgement,disconnectMidBody,close};
+  // Fill only the explicitly bounded disposable disk AFTER admission and
+  // opening the ciphertext file, before delivering its body. Require the
+  // actual kernel failure class, not simply a transport failure.
+  const exhaustDuringBody=async({request,fill,release})=>{
+   if(typeof fill!=='function'||typeof release!=='function')stop('fixture_pressure_required');
+   const frames=[];let bytes=0;
+   for await(const frame of encodeVpsBackupStream(request)){
+    bytes+=frame.length;if(bytes>262144)stop('fixture_wire_too_large');frames.push(frame);
+   }
+   const wire=Buffer.concat(frames),header=frames.slice(0,6).reduce((n,b)=>n+b.length,0);
+   const length=Number(frames[5].readBigUInt64BE());
+   if(length<1||wire.length!==header+length)stop('fixture_preinstall_frame_required');
+   const client=spawn(endpoint.sshBinary,[...args,'sabora-backup-receive-v1'],{stdio:['pipe','pipe','pipe']});
+   const ended=once(client,'close');ended.catch(()=>{});
+   let out='',err='';
+   client.stdin.on('error',()=>{});
+   client.stdout.on('data',b=>{out=(out+b.toString()).slice(0,4096);});
+   client.stderr.on('data',b=>{err=(err+b.toString()).slice(0,8192);});
+   let timedOut=false;
+   const timer=setTimeout(()=>{timedOut=true;client.kill('SIGKILL');},25000);
+   try{
+    client.stdin.write(wire.subarray(0,header));
+    await until(async()=>{
+     const file=await optionalStat(join(root,'candidate','initial-state.aesgcm'));
+     return file?.isFile()&&file.size===0;
+    },'fixture_candidate_not_opened');
+    assert.equal((await inspectEncryptedBackupBundle(join(root,'current'))).manifestSha256,request.expected.previousManifestSha256);
+    await fill();
+    assert.equal((await statfs(root,{bigint:true})).bavail,0n);
+    client.stdin.end(wire.subarray(header));
+    const [code,signal]=await ended;
+    assert.equal(timedOut,false);assert.equal(signal,null);assert.notEqual(code,0);
+    assert.equal(out,'');assert.match(err,/sabora_backup_lab_entry_stop:storage_enospc/);
+   }finally{
+    clearTimeout(timer);
+    if(client.exitCode===null&&client.signalCode===null)client.kill('SIGKILL');
+    try{await ended;}finally{await release();}
+   }
+   await waitWriterGone();
+   assert.deepEqual((await readdir(root)).sort(),['candidate','current','rotation.lock','state.json']);
+   assert.equal((await inspectEncryptedBackupBundle(join(root,'current'))).manifestSha256,request.expected.previousManifestSha256);
+   const diagnosis=await inspectVpsRotationRecovery({root,scope});
+   assert.equal(diagnosis.phase,'before-promotion');assert.equal(diagnosis.blocked,true);
+   assert.ok(diagnosis.recoverableSlots.some(s=>s.slot==='current'&&s.manifestSha256===request.expected.previousManifestSha256));
+   await assert.rejects(send(request),/transfer_outcome_unknown/);
+   assert.deepEqual((await readdir(root)).sort(),['candidate','current','rotation.lock','state.json']);
+   console.log('sabora_vps_backup_ssh_enospc_after_admission_preserved_previous_ok');
+  };
+  return {root,send,transfer,proveInitialNegatives,loseAcknowledgement,disconnectMidBody,exhaustDuringBody,close};
  }catch(error){await close();throw error;}
 }
 
@@ -309,7 +357,38 @@ export async function withBoundedBackupVolume({fixture,operation}){
    assert.ok((await statfs(volume,{bigint:true})).bavail*initial.bsize>1048576n);
    console.log('sabora_vps_backup_bounded_ext4_capacity_stop_ok');
   };
-  return await operation({volume,capacity,proveCapacity});
+  // A second, empty pressure file is pre-created while space is available.
+  // Allocation stays confined to this exact mounted ext4 fixture, never to
+  // the host filesystem. Reduce the requested extent on allocation failure.
+  const exhaust=async({root,request,transfer})=>{
+   if(dirname(root)!==volume||(await lstat(root,{bigint:true})).dev!==(await lstat(volume,{bigint:true})).dev||
+    (await statfs(volume,{bigint:true})).type!==0xef53n)stop('bounded_pressure_identity');
+   await writeFile(pressure,'',{mode:0o600,flag:'wx'});
+   let released=false;
+   const release=async()=>{if(!released){await unlink(pressure);released=true;}};
+   const fill=async()=>{
+    for(let i=0;i<64;i++){
+     const fs=await statfs(volume,{bigint:true});
+     if(fs.bavail===0n)return;
+     let blocks=fs.bavail;
+     let allocated=false;
+     while(blocks>0n){
+      const current=await lstat(pressure,{bigint:true});
+      const offset=((current.size+fs.bsize-1n)/fs.bsize)*fs.bsize;
+      const result=run('/usr/bin/fallocate',['-o',String(offset),'-l',String(blocks*fs.bsize),pressure],{allowFailure:true});
+      const after=await statfs(volume,{bigint:true});
+      if(after.bavail===0n)return;
+      if(result.status===0||after.bavail<fs.bavail){allocated=true;break;}
+      blocks/=2n;
+     }
+     if(!allocated)stop('bounded_pressure_not_exhausted');
+    }
+    stop('bounded_pressure_iteration_limit');
+   };
+   try{await transfer({request,fill,release});}finally{await release();}
+   assert.ok((await statfs(volume,{bigint:true})).bavail*initial.bsize>1048576n);
+  };
+  return await operation({volume,capacity,proveCapacity,exhaust});
  }finally{
   if(mounted)run('/usr/bin/sudo',['-n','/usr/bin/umount',volume]);
   await rmdir(volume);await unlink(image);
