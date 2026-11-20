@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign,createCipheriv,randomBytes} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,unlinkSync,realpathSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,rmSync,mkdirSync,unlinkSync,realpathSync,lstatSync,copyFileSync,chmodSync,linkSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {buildBackupPreparationArtifact,verifyBackupPreparationDirectory} from './sabora-backup-preparation-artifact.mjs';
@@ -11,7 +11,7 @@ import {BACKUP_INSTALL_PATHS,BACKUP_PREPARATION_FILES,verifyBackupInstallationPl
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {verifyInstalledBackupActivation,sshEd25519Sha256} from '../ops/sabora-backup-installed-contract.mjs';
 import {prepareInstalledBackupTransfer,backupLabSshArguments} from '../ops/sabora-vps-backup-transport.mjs';
-import {stageInactiveBackupInstallation} from '../ops/sabora-backup-installation-stager.mjs';
+import {stageInactiveBackupInstallation,verifyInactiveBackupStage} from '../ops/sabora-backup-installation-stager.mjs';
 import {verifyExternalRecoveryCheckpoint} from '../ops/sabora-backup-recovery-checkpoint.mjs';
 import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
@@ -195,7 +195,18 @@ try{
  // Materialize the actual closed installation set, including the native
  // binaries pinned by a signed preparation plan. Staging stays unprivileged,
  // contains no host private key or activation and cannot start a service.
- const nodeBinary=realpathSync(process.execPath);
+ const hostedNode=realpathSync(process.execPath),observedNode=lstatSync(hostedNode);
+ console.log('sabora_backup_stage_runner_node_observed:'+JSON.stringify({
+  regular:observedNode.isFile(),links:observedNode.nlink,bytes:observedNode.size,
+  trustedOwner:[0,process.getuid()].includes(observedNode.uid),groupOrOtherWritable:(observedNode.mode&0o022)!==0}));
+ // The hosted tool cache is not the independently prepared installation
+ // input. Materialize a fresh private regular copy for the disposable test
+ // and compare the original bytes; do not weaken the stager's checks.
+ assert.equal(observedNode.isFile(),true);
+ const nodeBinary=join(root,'fixture-node');
+ copyFileSync(hostedNode,nodeBinary);chmodSync(nodeBinary,0o700);
+ assert.equal(sha256(readFileSync(nodeBinary)),sha256(readFileSync(hostedNode)));
+ assert.equal(lstatSync(nodeBinary).nlink,1);
  const stagedPlan={...productionPlan,runtime:{...productionPlan.runtime,
   nodeSha256:sha256(readFileSync(nodeBinary)),shellSha256:sha256(readFileSync(binary))}};
  const staging={sourceDirectory:output,destination:join(root,'inactive-stage'),nodeBinary,
@@ -211,6 +222,37 @@ try{
  assert.equal(stage.files['activation.json'],undefined);
  assert.equal(stage.files['host-ed25519'],undefined);
  assert.equal(stage.files['bin/receive'].installMode,'0755');
+ const verifyStage=()=>verifyInactiveBackupStage({directory:staging.destination,ownerPublicKey:publicKey(owner)});
+ const stageVerified=verifyStage();
+ assert.equal(stageVerified.files,Object.keys(stage.files).length);
+ assert.equal(stageVerified.installed,false);
+ assert.equal(stageVerified.operationalAuthorization,false);
+ assert.throws(()=>verifyInactiveBackupStage({directory:staging.destination,ownerPublicKey:publicKey(recovery)}),/stage_owner_identity/);
+ const receiptPath=join(staging.destination,'stage.json');
+ const originalReceipt=readFileSync(receiptPath);
+ writeFileSync(receiptPath,JSON.stringify({...stage,installed:true}));
+ assert.throws(verifyStage,/stage_receipt/);
+ writeFileSync(receiptPath,originalReceipt);
+ const sourcePath=join(staging.destination,'code',BACKUP_PREPARATION_FILES[0]);
+ const originalSource=readFileSync(sourcePath);
+ writeFileSync(sourcePath,Buffer.concat([originalSource,Buffer.from('\n// tampered')]));
+ assert.throws(verifyStage,/stage_digest/);
+ // Even a rewritten self-receipt cannot authorize the altered source.
+ const forged=JSON.parse(originalReceipt);
+ forged.files['code/'+BACKUP_PREPARATION_FILES[0]].sha256=sha256(readFileSync(sourcePath));
+ writeFileSync(receiptPath,JSON.stringify(forged));
+ assert.throws(verifyStage,/stage_digest/);
+ writeFileSync(sourcePath,originalSource);writeFileSync(receiptPath,originalReceipt);
+ const unexpected=join(staging.destination,'activation.json');
+ writeFileSync(unexpected,'{}',{mode:0o600});
+ assert.throws(verifyStage,/stage_inventory/);unlinkSync(unexpected);
+ const alias=join(root,'fixture-node-alias');linkSync(nodeBinary,alias);
+ try{
+  assert.throws(()=>stageInactiveBackupInstallation({...staging,destination:join(root,'reject-linked-node')}),/input_file/);
+ }finally{unlinkSync(alias);}
+ assert.equal(verifyStage().stageSha256,stageVerified.stageSha256);
+ console.log('sabora_backup_inactive_stage_independent_verification_ok:'+JSON.stringify({
+  files:stageVerified.files,negativeCases:6,installed:false,operationalAuthorization:false}));
  assert.throws(()=>stageInactiveBackupInstallation(staging),/fresh_stage_required/);
  assert.throws(()=>stageInactiveBackupInstallation({...staging,destination:join(root,'reject-runtime'),
   planBytes:signed(productionPlan)}),/runtime_digest/);
