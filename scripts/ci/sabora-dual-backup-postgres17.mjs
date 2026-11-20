@@ -24,6 +24,7 @@ import {encodeVpsBackupStream} from '../ops/sabora-vps-backup-wire.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
 import {startBackupSshLab,withBoundedBackupVolume} from './sabora-vps-backup-ssh-lab.mjs';
 import {exerciseGovernedBackupReceiver} from './sabora-backup-governed-receiver-lab.mjs';
+import {exerciseInstalledBackupReceiver} from './sabora-backup-installed-receiver-lab.mjs';
 
 const failure=code=>Error('sabora_dual_backup_ci_stop:'+code);
 const here=resolve(fileURLToPath(new URL('.',import.meta.url)));
@@ -835,6 +836,22 @@ try{
   }finally{await bounded.close();}
  }});
  console.log('sabora_vps_backup_bounded_disk_unmounted_ok');
+ // Actual installed receiver and sender, with synthetic activation authorities
+ // only on the hosted runner. Reuse the real verified initial captures, not
+ // another database or a publicly reachable SSH service.
+ await withBoundedBackupVolume({fixture,operation:async({volume,capacity})=>{
+  const installedScope={...scope,environment:'production',
+   storageIdentitySha256:digest('ci-only-installed-vps-storage-'+runId),quotaBytes:16*1024**2,maxBundleBytes:4*1024**2};
+  assert.ok(BigInt(installedScope.quotaBytes)<capacity);
+  await exerciseInstalledBackupReceiver({fixture,volume,scope:installedScope,repository:root,sourceSha:releaseSha,
+   first:{...firstTransport,proofBytes:rotationProof(installedScope,initialResult,null,kind,
+    initialResult.manifest.components[0].plaintextSha256,initialEvidence)},
+   second:{...secondTransport,proofBytes:rotationProof(installedScope,second,initialResult.manifestSha256,kind,
+    second.manifest.components[0].plaintextSha256,initialEvidence)}});
+  assert.equal((await inspectEncryptedBackupBundle(initialExternal)).manifestSha256,initialResult.manifestSha256);
+  assert.equal((await inspectEncryptedBackupBundle(secondExternal)).manifestSha256,second.manifestSha256);
+ }});
+ console.log('sabora_backup_installed_receiver_disposable_disk_unmounted_ok');
  const outcomes=await Promise.allSettled([rotateVerifiedVpsReplica(requestRotation),rotateVerifiedVpsReplica(requestRotation)]);
  assert.equal(outcomes.filter(o=>o.status==='fulfilled').length,1);
  assert.equal(outcomes.filter(o=>o.status==='rejected').length,1);
