@@ -30,23 +30,33 @@ function directoryCheck(directory){
   if(p===parse(p).root)break;
  }
 }
-function readRecord(directory,expected){
- const names=readdirSync(directory).sort();
- if(names.join('|')!=='custody.lock|record.json')stop('unreconciled_custody');
- const path=join(directory,'record.json'),before=lstatSync(path);
+function readPrivateBytes(path,maxBytes){
+ const before=lstatSync(path);
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
  try{
   const st=fstatSync(fd);
   if(!st.isFile()||st.uid!==process.getuid()||st.nlink!==1||
-   (st.mode&0o7777)!==0o600||st.size<1||st.size>8192||
+   (st.mode&0o7777)!==0o600||st.size<1||st.size>maxBytes||
    st.ino!==before.ino||st.dev!==before.dev)stop('custody_record_file');
   const bytes=readFileSync(fd),after=fstatSync(fd);
   if(bytes.length!==st.size||after.ctimeMs!==st.ctimeMs||after.mtimeMs!==st.mtimeMs||
    after.size!==st.size)stop('custody_record_changed');
-  let record;try{record=JSON.parse(bytes.toString('utf8'));}catch{stop('custody_record_json');}
-  validateRecoveryControlRecord(record,expected);
-  return record;
+  const named=lstatSync(path);
+  if(named.dev!==st.dev||named.ino!==st.ino||named.ctimeMs!==st.ctimeMs)stop('custody_record_changed');
+  return bytes;
  }finally{closeSync(fd);}
+}
+function privateJson(path,maxBytes=8192){
+ let value;const bytes=readPrivateBytes(path,maxBytes);
+ try{value=JSON.parse(bytes.toString('utf8'));}catch{stop('custody_record_json');}
+ return {value,bytes};
+}
+function readRecord(directory,expected){
+ const names=readdirSync(directory).sort();
+ if(names.join('|')!=='custody.lock|record.json')stop('unreconciled_custody');
+ const {value}=privateJson(join(directory,'record.json'));
+ validateRecoveryControlRecord(value,expected);
+ return value;
 }
 function writeExclusive(path,value){
  const fd=openSync(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
@@ -273,4 +283,66 @@ export async function reserveLocalRecoveryCheckpoint({directory,config,subject,
  }finally{
   if(!unknown){unlinkSync(lock);syncDirectory(directory);}
  }
+}
+
+// Read-only diagnosis of an ambiguous local reservation. Never turn a
+// diagnosis into permission to remove a lock, resume an old authorization,
+// publish a local record or touch a backup slot. If the remote record still
+// equals the predecessor, a delayed CAS may yet commit: remain blocked.
+export async function diagnoseInterruptedLocalCheckpoint({directory,config,observeExternal}={}){
+ directoryCheck(directory);
+ if(!exactKeys(config,['expected','checkpointPublicKey','ownerPublicKey','recoveryPublicKey','verificationPublicKey'])||
+  typeof observeExternal!=='function')stop('local_exchange_configuration');
+ config=Object.freeze({...config,expected:Object.freeze({...config.expected})});
+ const readSubject=()=>{
+  const names=readdirSync(directory).sort(),withNext=names.includes('record.next');
+  if(names.join('|')!==(withNext?'custody.lock|record.json|record.next|record.pending':'custody.lock|record.json|record.pending'))
+   stop('local_pending_inventory');
+  const lock=privateJson(join(directory,'custody.lock')),pending=privateJson(join(directory,'record.pending')),
+   record=privateJson(join(directory,'record.json'));
+  if(!exactKeys(lock.value,['schema','pid'])||lock.value.schema!=='sabora-backup-local-checkpoint-lock/v1'||
+   !Number.isSafeInteger(lock.value.pid)||lock.value.pid<1||
+   !exactKeys(pending.value,['schema','previousRecordSha256','next','challenge'])||
+   pending.value.schema!=='sabora-backup-local-checkpoint-pending/v1'||
+   !digest(pending.value.previousRecordSha256)||!digest(pending.value.challenge))stop('local_pending_shape');
+  validateRecoveryControlRecord(record.value,config.expected);
+  validateRecoveryControlRecord(pending.value.next,config.expected);
+  const next=pending.value.next,local=record.value,localHash=hashRecord(local),nextHash=hashRecord(next);
+  const predecessor=localHash===pending.value.previousRecordSha256&&next.sequence===local.sequence+1;
+  const alreadyPublished=localHash===nextHash&&next.sequence>0;
+  if((!predecessor&&!alreadyPublished)||next.sequence<1||pending.value.previousRecordSha256===nextHash)
+   stop('local_pending_subject');
+  let temporaryHash=null;
+  if(withNext){
+   const temp=privateJson(join(directory,'record.next'));
+   validateRecoveryControlRecord(temp.value,config.expected);
+   if(!predecessor||hashRecord(temp.value)!==nextHash)stop('local_pending_temporary');
+   temporaryHash=sha256(temp.bytes);
+  }
+  return {local,next,predecessor,alreadyPublished,pendingSha256:sha256(pending.bytes),
+   observationSha256:hashRecord({lock:sha256(lock.bytes),pending:sha256(pending.bytes),
+    record:sha256(record.bytes),temporaryHash})};
+ };
+ const subject=readSubject(),challenge=randomBytes(32).toString('hex');
+ let timer,checkpointBytes;
+ try{checkpointBytes=await Promise.race([Promise.resolve().then(()=>observeExternal(challenge)),
+  new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('sabora_backup_custodian_stop:diagnosis_timeout')),60000);})]);}
+ finally{clearTimeout(timer);}
+ bounded(checkpointBytes,16384);
+ const verify=(record)=>verifyExternalRecoveryCheckpoint({...config,record,challenge,checkpointBytes});
+ // Authenticate the response against exactly one of the two known records.
+ // Unknown and forged responses are errors, not a third recoverable state.
+ let phase;
+ const remote=verifySignedDocument(checkpointBytes,config.checkpointPublicKey,'sabora-backup-external-checkpoint/v1');
+ if(remote.sequence===subject.next.sequence){
+  verify(subject.next);phase='external-consumed';
+ }else if(subject.predecessor&&remote.sequence===subject.local.sequence){
+  verify(subject.local);phase='external-still-predecessor';
+ }else stop('local_pending_remote_diverged');
+ if(readSubject().observationSha256!==subject.observationSha256)stop('local_pending_changed');
+ return Object.freeze({schema:'sabora-backup-local-checkpoint-diagnosis/v1',phase,
+  localSequence:subject.local.sequence,pendingSequence:subject.next.sequence,remoteSequence:remote.sequence,
+  pendingSha256:subject.pendingSha256,observationSha256:subject.observationSha256,
+  checkpointSha256:sha256(checkpointBytes),blocked:true,lockRemovalAuthorized:false,
+  slotsChanged:false,recoveryAuthorized:false,operationalAuthorization:false});
 }
