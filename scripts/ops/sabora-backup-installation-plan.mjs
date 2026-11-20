@@ -10,12 +10,14 @@ export const BACKUP_INSTALL_PATHS=Object.freeze({
  config:'/etc/sabora/backup',code:'/etc/sabora/backup/code',
  node:'/etc/sabora/backup/bin/node',shell:'/etc/sabora/backup/bin/receive',
  hostKey:'/etc/sabora/backup/host-ed25519',authorizedKeys:'/etc/sabora/backup/authorized_keys',
- volume:'/srv/sabora/backups',cache:'/srv/sabora/backups/cache',
+ volume:'/srv/sabora-backup',cache:'/srv/sabora-backup/cache',
+ recovery:'/srv/sabora-backup/recovery',guard:'/srv/sabora-backup/.cache.rotation.guard',
  pidFile:'/run/sabora-backup/sshd.pid',account:'sabora-backup'
 });
 // The volume/cache layout is a design candidate: placing the cache below
-// its mount confines the guard and monotonic sibling records to the same
-// bounded filesystem. Existing production rotation path is NOT changed.
+// its separate mount confines the guard, cache and root-owned recovery fence
+// without giving the application user authority over their parent. This is
+// a preparation proposal only. The production rotation route is NOT enabled.
 export const BACKUP_PREPARATION_FILES=Object.freeze([
  'deploy/sabora-backup-lab-shell.c',
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
@@ -66,9 +68,10 @@ export function verifyBackupInstallationPlan({planBytes,ownerPublicKey,artifactB
   !['disposable-lab','production-candidate'].includes(p.environment)||
   p.sourceSha!==manifest.sourceSha||p.artifactSha256!==sha256(artifactBytes)||
   p.account!==BACKUP_INSTALL_PATHS.account||
-  !exactKeys(p.paths,['config','volume','cache'])||
+  !exactKeys(p.paths,['config','volume','cache','recovery','guard'])||
   p.paths.config!==BACKUP_INSTALL_PATHS.config||p.paths.volume!==BACKUP_INSTALL_PATHS.volume||
-  p.paths.cache!==BACKUP_INSTALL_PATHS.cache)stop('plan_scope');
+  p.paths.cache!==BACKUP_INSTALL_PATHS.cache||p.paths.recovery!==BACKUP_INSTALL_PATHS.recovery||
+  p.paths.guard!==BACKUP_INSTALL_PATHS.guard)stop('plan_scope');
  const start=Date.parse(p.plannedAt),end=Date.parse(p.validUntil);
  if(!Number.isFinite(now)||!Number.isFinite(start)||!Number.isFinite(end)||start>now||end<=now||end<=start||
   end-start>24*3600000)stop('plan_expired');
