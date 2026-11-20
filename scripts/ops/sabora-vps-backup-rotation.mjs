@@ -23,6 +23,7 @@ const SCHEMA='sabora-vps-rotation-proof/v1';
 const V2='sabora-logical-backup/v2';
 const INTENT='sabora-vps-rotation-intent/v1';
 const MAX_INTENT=2*1024*1024;
+const RECOVERY_COORDINATOR=Symbol('disposable-recovery-coordinator');
 const names=type=>type===PREINSTALL_SCHEMA?['manifest.json','initial-state.aesgcm']:
  ['manifest.json','roles-memberships.aesgcm','schema.aesgcm','data.aesgcm','inventory.aesgcm'];
 async function exists(path){try{await lstat(path);return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
@@ -465,7 +466,10 @@ async function readRecoverySequence(root,ctx){
  // The dedicated writer may receive backups, but it cannot inspect or
  // consume recovery authorizations in the legacy writer-owned ledger.
  // A separate root-protected recovery controller is not installed yet.
- if(ctx.protectedGuard)stop('independent_recovery_controller_required');
+ if(ctx.protectedGuard){
+  if(!ctx[RECOVERY_COORDINATOR])stop('independent_recovery_controller_required');
+  return ctx[RECOVERY_COORDINATOR].sequence;
+ }
  await directory(dirname(root),ctx);
  const {record,pending}=recoverySequencePaths(root);
  if(await exists(pending))stop('recovery_sequence_interrupted');
@@ -481,6 +485,15 @@ async function readRecoverySequence(root,ctx){
 }
 async function consumeRecoverySequence(root,ctx,auth,authorizationBytes){
  if(auth.sequence!==1+await readRecoverySequence(root,ctx))stop('recovery_authorization_scope_mismatch');
+ if(ctx.protectedGuard){
+  const control=ctx[RECOVERY_COORDINATOR];
+  if(!control)stop('independent_recovery_controller_required');
+  const fields=auth.action==='finish-published-purge'
+   ?['currentManifestSha256','previousManifestSha256','previousRemainderSha256']:['subjectSha256'];
+  const expected=Object.fromEntries(['action','lockSha256','externalProofSha256',...fields].map(k=>[k,auth[k]]));
+  await control.reserve(expected,auth,authorizationBytes);
+  return;
+ }
  const {record,pending}=recoverySequencePaths(root);
  const value={schema:'sabora-vps-recovery-sequence/v1',storageIdentitySha256:ctx.storageIdentitySha256,
   externalStorageIdentitySha256:ctx.externalStorageIdentitySha256,sequence:auth.sequence,
@@ -742,4 +755,48 @@ export async function applyVpsRecoveryTransition({root,scope,authorizationBytes,
   return Object.freeze({schema:'sabora-vps-recovery-transition-result/v1',action:ready.action,
    phase:ready.previous?'stable':'empty',blocked:false,operationalReceipt:false});
  });
+}
+
+// Only a protected, offline disposable coordinator launches this worker.
+// The ordinary receiver has no IPC channel and cannot access recovery state.
+// A hostile writer can already damage its own slots: this is not a sandbox
+// against compromise of that UID. Root's sequence never becomes writable.
+export async function runCoordinatedLabRecoveryWorker({root,scope,operation,sequence,
+ authorizationBytes,externalProofBytes}={}){
+ if(process.platform!=='linux'||process.getuid()===0||process.getuid()!==process.geteuid()||
+  !process.connected||typeof process.send!=='function'||!scope?.protectedGuard||
+  scope.environment!=='disposable-lab'||!Number.isSafeInteger(sequence)||sequence<0||
+  !/^\/var\/lib\/sabora-backup-ci-[0-9]+\/volume\/cache$/.test(root??'')||
+  !/^Uid:\s+0\s+0\s+0\s+0$/m.test(await readFile('/proc/'+process.ppid+'/status','utf8'))||
+  !/^NoNewPrivs:\s+1$/m.test(await readFile('/proc/self/status','utf8')))stop('coordinated_worker_context');
+ const inspect=['inspect-transition','inspect-purge'].includes(operation);
+ if(!inspect&&!['apply-transition','apply-purge'].includes(operation))stop('coordinated_operation');
+ let attempted=false;
+ const control={sequence,async reserve(expected,auth,bytes){
+  if(inspect||attempted||auth.sequence!==sequence+1)stop('coordinated_reservation_denied');
+  attempted=true;
+  const reply=await new Promise((resolve,reject)=>{
+   const onMessage=message=>{finish();resolve(message);};
+   const onDisconnect=()=>{finish();reject(Error('sabora_rotation_stop:coordinator_disconnected'));};
+   const timer=setTimeout(()=>{finish();reject(Error('sabora_rotation_stop:coordinator_timeout'));},10000);
+   const finish=()=>{clearTimeout(timer);process.off('message',onMessage);process.off('disconnect',onDisconnect);};
+   process.once('message',onMessage);process.once('disconnect',onDisconnect);
+   process.send({type:'reserve',expected},error=>{if(error){finish();reject(error);}});
+  });
+  if(!exactKeys(reply,['type','reservation'])||reply.type!=='reserved'||
+   !exactKeys(reply.reservation,['schema','sequence','authorizationSha256','lockSha256','slotsChanged','operationalAuthorization'])||
+   reply.reservation.schema!=='sabora-protected-recovery-reservation/v1'||
+   reply.reservation.sequence!==auth.sequence||reply.reservation.authorizationSha256!==sha(bytes)||
+   reply.reservation.lockSha256!==auth.lockSha256||reply.reservation.slotsChanged!==false||
+   reply.reservation.operationalAuthorization!==false)stop('coordinated_reservation_mismatch');
+ }};
+ const governed={...scope,[RECOVERY_COORDINATOR]:control};
+ if(inspect){
+  return withRotationGuard(root,governed,ctx=>operation==='inspect-transition'
+   ?inspectVpsRecoveryTransition({root,scope:ctx}):inspectVpsPublishedPurge({root,scope:ctx}));
+ }
+ const request={root,scope:governed,authorizationBytes,externalProofBytes};
+ const result=await (operation==='apply-transition'?applyVpsRecoveryTransition(request):finishInterruptedVpsPurge(request));
+ if(!attempted)stop('coordinated_reservation_missing');
+ return result;
 }
