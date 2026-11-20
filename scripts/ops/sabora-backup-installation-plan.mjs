@@ -12,11 +12,13 @@ export const BACKUP_INSTALL_PATHS=Object.freeze({
  hostKey:'/etc/sabora/backup/host-ed25519',authorizedKeys:'/etc/sabora/backup/authorized_keys',
  volume:'/srv/sabora-backup',cache:'/srv/sabora-backup/cache',
  recovery:'/srv/sabora-backup/recovery',guard:'/srv/sabora-backup/.cache.rotation.guard',
+ control:'/var/lib/sabora-backup-control',
  pidFile:'/run/sabora-backup/sshd.pid',account:'sabora-backup'
 });
 // The volume/cache layout is a design candidate: placing the cache below
-// its separate mount confines the guard, cache and root-owned recovery fence
-// without giving the application user authority over their parent. This is
+// its separate mount confines the guard and cache; the recovery-control
+// ledger belongs outside that filesystem. The private recovery directory
+// within the volume remains reserved, not a trusted sequence store. This is
 // a preparation proposal only. The production rotation route is NOT enabled.
 export const BACKUP_PREPARATION_FILES=Object.freeze([
  'deploy/sabora-backup-lab-shell.c',
@@ -27,6 +29,7 @@ export const BACKUP_PREPARATION_FILES=Object.freeze([
  'scripts/ops/sabora-backup-installed-send.mjs',
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
  'scripts/ops/sabora-backup-recovery-fence.mjs',
+ 'scripts/ops/sabora-backup-recovery-checkpoint.mjs',
  'scripts/ops/sabora-backup-recovery-coordinator.mjs',
  'scripts/ci/sabora-release-governor.mjs',
  'scripts/ops/sabora-backup-installation-plan.mjs',
@@ -75,10 +78,10 @@ export function verifyBackupInstallationPlan({planBytes,ownerPublicKey,artifactB
   !['disposable-lab','production-candidate'].includes(p.environment)||
   p.sourceSha!==manifest.sourceSha||p.artifactSha256!==sha256(artifactBytes)||
   p.account!==BACKUP_INSTALL_PATHS.account||
-  !exactKeys(p.paths,['config','volume','cache','recovery','guard'])||
+  !exactKeys(p.paths,['config','volume','cache','recovery','guard','control'])||
   p.paths.config!==BACKUP_INSTALL_PATHS.config||p.paths.volume!==BACKUP_INSTALL_PATHS.volume||
   p.paths.cache!==BACKUP_INSTALL_PATHS.cache||p.paths.recovery!==BACKUP_INSTALL_PATHS.recovery||
-  p.paths.guard!==BACKUP_INSTALL_PATHS.guard)stop('plan_scope');
+  p.paths.guard!==BACKUP_INSTALL_PATHS.guard||p.paths.control!==BACKUP_INSTALL_PATHS.control)stop('plan_scope');
  const start=Date.parse(p.plannedAt),end=Date.parse(p.validUntil);
  if(!Number.isFinite(now)||!Number.isFinite(start)||!Number.isFinite(end)||start>now||end<=now||end<=start||
   end-start>24*3600000)stop('plan_expired');
