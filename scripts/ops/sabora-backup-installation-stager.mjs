@@ -5,6 +5,7 @@
 import {constants,existsSync,lstatSync,mkdirSync,openSync,fstatSync,readFileSync,closeSync,
  realpathSync,writeFileSync,fsyncSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {verifyBackupInstallationPlan,validateBackupPreparationManifest,BACKUP_INSTALL_PATHS as P,
  BACKUP_PREPARATION_FILES} from './sabora-backup-installation-plan.mjs';
 import {verifySignedDocument} from './sabora-release-evidence.mjs';
@@ -77,4 +78,21 @@ export function stageInactiveBackupInstallation({sourceDirectory,destination,nod
  try{writeFileSync(marker,JSON.stringify(receipt,null,2)+'\n');fsyncSync(marker);}finally{closeSync(marker);}
  syncDirectory(destination);syncDirectory(dirname(destination));
  return Object.freeze(receipt);
+}
+
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ try{
+  if(process.argv.length!==10)stop('arguments');
+  const [sourceDirectory,destination,nodeBinary,shellBinary,planPath,ownerPath,hostPath,clientPath]=process.argv.slice(2);
+  // No key material in argv. Only public keys and a signed PREPARATION plan.
+  const result=stageInactiveBackupInstallation({sourceDirectory,destination,nodeBinary,shellBinary,
+   planBytes:bytes(planPath,262144),ownerPublicKey:bytes(ownerPath,4096).toString('utf8'),
+   hostPublicKey:bytes(hostPath,4096).toString('utf8').trim(),
+   clientPublicKey:bytes(clientPath,4096).toString('utf8').trim()});
+  process.stdout.write(JSON.stringify(result)+'\n');
+ }catch(error){
+  const value=String(error?.message??'');
+  process.stderr.write((/^sabora_[a-z_]+_stop:[a-z_]+$/.test(value)?value:'sabora_backup_stage_stop:rejected')+'\n');
+  process.exitCode=1;
+ }
 }
