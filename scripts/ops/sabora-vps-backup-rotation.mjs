@@ -11,7 +11,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {replicateEncryptedBackupBundle,inspectEncryptedBackupBundle,parseEncryptedBackupManifest,PREINSTALL_SCHEMA}
  from './sabora-encrypted-backup-bundle.mjs';
 import {verifySignedDocument,authorityFingerprint} from './sabora-release-evidence.mjs';
-import {exactKeys} from './sabora-release-protected-store.mjs';
+import {exactKeys,trustedDirectory} from './sabora-release-protected-store.mjs';
 import {BackupWireReader,receiveBackupCandidate} from './sabora-vps-backup-wire.mjs';
 const stop=code=>{throw Error('sabora_rotation_stop:'+code);};
 const HEX=/^[0-9a-f]{64}$/;
@@ -158,21 +158,33 @@ async function purgePrevious(path,expected,ctx){
 // still the durable transaction intent, NOT evidence of a live writer.
 async function withRotationGuard(root,scope,operation){
  const ctx=await rotationContext(root,scope);
- await directory(dirname(root),ctx);
- const guard=join(dirname(root),'.'+basename(root)+'.rotation.guard');
- const fd=await open(guard,constants.O_RDWR|constants.O_CREAT|constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600);
+ const parent=dirname(root),guard=join(parent,'.'+basename(root)+'.rotation.guard');
+ const fixed=ctx.protectedGuard;
+ if(fixed){
+  // A root-provisioned inode in a root-owned mount cannot be removed or
+  // replaced by the backup account. flock(2) on a read-only fd is valid on
+  // local Linux ext4. Never create this guard on demand.
+  trustedDirectory(parent);
+  const p=await lstat(parent,{bigint:true}),disk=await statfs(parent,{bigint:true});
+  if(p.gid!==BigInt(process.getgid())||(p.mode&0o777n)!==0o750n||
+   String(p.dev)!==fixed.device||disk.type!==0xef53n)stop('protected_guard_parent');
+ }else await directory(parent,ctx);
+ const fd=await open(guard,(fixed?constants.O_RDONLY:constants.O_RDWR|constants.O_CREAT)|
+  constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600);
  try{
-  const opened=await fd.stat(),named=await lstat(guard);
-  if(!opened.isFile()||opened.uid!==ctx.uid||opened.nlink!==1||
-   (opened.mode&0o777)!==0o600||opened.size!==0||
-   named.dev!==opened.dev||named.ino!==opened.ino)stop('unsafe_process_guard');
+  const opened=await fd.stat({bigint:true}),named=await lstat(guard,{bigint:true});
+  if(!opened.isFile()||opened.uid!==BigInt(fixed?0:ctx.uid)||opened.nlink!==1n||
+   (opened.mode&0o777n)!==(fixed?0o440n:0o600n)||opened.size!==0n||
+   named.dev!==opened.dev||named.ino!==opened.ino||
+   (fixed&&(opened.gid!==BigInt(process.getgid())||String(opened.dev)!==fixed.device||
+    String(opened.ino)!==fixed.inode)))stop('unsafe_process_guard');
   const result=spawnSync('/usr/bin/flock',['-n','-E','75','3'],{
    stdio:['ignore','ignore','ignore',fd.fd],timeout:5000,env:{PATH:'/usr/bin:/bin',LANG:'C'}});
   if(result.status===75)stop('locked_or_interrupted');
   if(result.error||result.signal||result.status!==0)stop('process_guard_unavailable');
-  const locked=await lstat(guard);
-  if(locked.dev!==opened.dev||locked.ino!==opened.ino||locked.nlink!==1)stop('process_guard_changed');
-  await fd.sync();await syncDir(dirname(root));
+  const locked=await lstat(guard,{bigint:true});
+  if(locked.dev!==opened.dev||locked.ino!==opened.ino||locked.nlink!==1n)stop('process_guard_changed');
+  if(!fixed){await fd.sync();await syncDir(parent);}
   return await operation(ctx);
  }finally{await fd.close();}
 }
@@ -197,6 +209,11 @@ async function rotationContext(root,scope){
  // No installed production caller exists. The production directory and
  // authority are deliberately constrained; changing them needs review.
  if(!lab&&(uid!==0||root!=='/srv/sabora/backups'))stop('unapproved_production_root');
+ if(scope.protectedGuard!==undefined&&(!lab||uid===0||
+  !/^\/var\/lib\/sabora-backup-ci-[0-9]+\/volume\/cache$/.test(root)||
+  !exactKeys(scope.protectedGuard,['device','inode'])||
+  ![scope.protectedGuard.device,scope.protectedGuard.inode].every(v=>typeof v==='string'&&/^[1-9][0-9]{0,19}$/.test(v))))
+  stop('protected_guard_scope');
  const ctx={...scope,uid,lab};
  await directory(root,ctx);
  return ctx;
@@ -445,6 +462,10 @@ const recoverySequencePaths=root=>{
  return {record:prefix+'.json',pending:prefix+'.pending'};
 };
 async function readRecoverySequence(root,ctx){
+ // The dedicated writer may receive backups, but it cannot inspect or
+ // consume recovery authorizations in the legacy writer-owned ledger.
+ // A separate root-protected recovery controller is not installed yet.
+ if(ctx.protectedGuard)stop('independent_recovery_controller_required');
  await directory(dirname(root),ctx);
  const {record,pending}=recoverySequencePaths(root);
  if(await exists(pending))stop('recovery_sequence_interrupted');
