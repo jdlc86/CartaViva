@@ -31,6 +31,7 @@ export const BACKUP_PREPARATION_FILES=Object.freeze([
  'scripts/ops/sabora-backup-governed-lab-entry.mjs',
  'scripts/ops/sabora-backup-recovery-fence.mjs',
  'scripts/ops/sabora-backup-recovery-checkpoint.mjs',
+ 'scripts/ops/sabora-backup-checkpoint-custodian.mjs',
  'scripts/ops/sabora-backup-recovery-coordinator.mjs',
  'scripts/ci/sabora-release-governor.mjs',
  'scripts/ops/sabora-backup-installation-plan.mjs',
