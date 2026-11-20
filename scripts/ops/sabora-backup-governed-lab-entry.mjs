@@ -29,7 +29,7 @@ async function run(){
   config.volume!==volume||config.cache!==cache||
   ![config.artifactSha256,config.nodeSha256,config.shellSha256].every(hex)||
   !exactKeys(config.scope,['environment','systemIdentifier','storageIdentitySha256','externalStorageIdentitySha256',
-   'verifierPublicKey','recoveryPublicKey','quotaBytes','reserveBytes','maxBundleBytes'])||
+   'verifierPublicKey','recoveryPublicKey','quotaBytes','reserveBytes','maxBundleBytes','protectedGuard'])||
   config.scope.environment!=='disposable-lab'||
   new Set([owner,config.scope.verifierPublicKey,config.scope.recoveryPublicKey].map(authorityFingerprint)).size!==3)
   stop('scope');
@@ -45,10 +45,16 @@ async function run(){
   sha256(rootBytes(shell,1024**2))!==config.shellSha256)stop('runtime_identity');
  for(const path of [volume,cache]){
   const st=await lstat(path,{bigint:true});
+  const parent=path===volume;
   if(await realpath(path)!==path||!st.isDirectory()||st.isSymbolicLink()||
-   st.uid!==BigInt(uid)||st.gid!==BigInt(gid)||(st.mode&0o777n)!==0o700n||
+   st.uid!==BigInt(parent?0:uid)||st.gid!==BigInt(gid)||(st.mode&0o777n)!==(parent?0o750n:0o700n)||
    String(st.dev)!==config.device)stop('storage_identity');
  }
+ // Recovery authority is deliberately outside the writer's access. Its
+ // protected directory does not enable any reconciliation operation.
+ const recovery=await lstat(join(volume,'recovery'),{bigint:true});
+ if(!recovery.isDirectory()||recovery.isSymbolicLink()||recovery.uid!==0n||recovery.gid!==0n||
+  (recovery.mode&0o777n)!==0o700n||String(recovery.dev)!==config.device)stop('recovery_boundary');
  const mountinfo=(await readFile('/proc/self/mountinfo','utf8')).split('\n').filter(Boolean).map(line=>line.split(' '));
  const mounted=mountinfo.filter(fields=>fields[4]===volume);
  if(mounted.length!==1||mounted[0][mounted[0].indexOf('-')+1]!=='ext4'||
