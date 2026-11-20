@@ -76,7 +76,7 @@ export async function loadInstalledBackupReceiver(){
   plan.storage.quotaBytes>plan.storage.filesystemBytes)stop('filesystem_capacity');
  // A dedicated filesystem provides the physical ceiling; the library
  // additionally enforces the approved logical two-generation budget.
- return Object.freeze({installationId:a.installationId,activationSha256,
+ return Object.freeze({installationId:a.installationId,activationSha256,sourceSha:checked.sourceSha,
   validUntil:Date.parse(a.validUntil),scope:Object.freeze({
    environment:'production',systemIdentifier:plan.storage.systemIdentifier,
    storageIdentitySha256:plan.storage.storageIdentitySha256,
