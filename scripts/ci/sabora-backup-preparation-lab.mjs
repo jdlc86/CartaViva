@@ -71,6 +71,7 @@ try{
   [{...plan,paths:{...plan.paths,volume:'/srv/sabora/backups'}},/plan_scope/],
   [{...plan,paths:{...plan.paths,recovery:plan.paths.cache}},/plan_scope/],
   [{...plan,paths:{...plan.paths,guard:plan.paths.cache+'/guard'}},/plan_scope/],
+  [{...plan,paths:{...plan.paths,control:plan.paths.recovery}},/plan_scope/],
   [{...plan,transport:{...plan.transport,port:8443}},/transport_scope/],
   [{...plan,transport:{...plan.transport,listenAddress:'0.0.0.0'}},/transport_scope/],
   [{...plan,transport:{...plan.transport,clientAddress:'127.0.0.1\nPermitRootLogin yes'}},/transport_scope/],
