@@ -1,5 +1,6 @@
 // Candidate OpenSSH sender: explicit endpoint, pinned host, fixed command,
-// ciphertext streaming only. No production endpoint or automatic retry.
+// ciphertext streaming only. Remote endpoints require distinct signed
+// installation activation; no automatic retry.
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Readable} from 'node:stream';
@@ -9,7 +10,10 @@ import {isAbsolute,resolve,dirname,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {verifiedNtfsAclDigest} from './sabora-ntfs-acl-verifier.mjs';
 import {encodeVpsBackupStream} from './sabora-vps-backup-wire.mjs';
-import {exactKeys} from './sabora-release-protected-store.mjs';
+import {exactKeys,protectedBytes,sha256} from './sabora-release-protected-store.mjs';
+import {verifyInstalledBackupActivation,sshEd25519Sha256} from './sabora-backup-installed-contract.mjs';
+import {verifySignedDocument} from './sabora-release-evidence.mjs';
+import {parseEncryptedBackupManifest} from './sabora-encrypted-backup-bundle.mjs';
 export const BACKUP_RECEIVE_COMMAND='sabora-backup-receive-v1';
 const stop=code=>{throw Error('sabora_backup_transport_stop:'+code);};
 const sha=v=>typeof v==='string'&&/^[0-9a-f]{64}$/.test(v)&&!/^0+$/.test(v);
@@ -53,21 +57,30 @@ async function verifyWindowsNativeClient(path,expectedDigest){
 // Windows uses the existing OS DACL verifier and exact expected observations
 // for its disposable private directory, key and pinned known-hosts file. These
 // expectations are caller-supplied laboratory inputs, not an approval dossier.
-export async function backupLabSshArguments(endpoint){
+export async function backupLabSshArguments(endpoint){return backupSshArguments(endpoint,null);}
+async function backupSshArguments(endpoint,installation){
  const windows=process.platform==='win32';
  const fields=['environment','host','port','user','sshBinary','identityFile','knownHostsFile',...(windows?['windowsAcl']:[])];
  if(!exactKeys(endpoint,fields)||
-  endpoint.environment!=='disposable-lab'||endpoint.host!=='127.0.0.1'||
+  (installation?(endpoint.environment!=='production'||endpoint.host!==installation.plan.transport.listenAddress||
+   endpoint.port!==installation.plan.transport.port||endpoint.user!==installation.plan.account):
+   (endpoint.environment!=='disposable-lab'||endpoint.host!=='127.0.0.1'))||
   !Number.isInteger(endpoint.port)||endpoint.port<1024||endpoint.port>65535||
   typeof endpoint.user!=='string'||!/^[a-z_][a-z0-9_-]{0,31}$/.test(endpoint.user))
   stop('endpoint_not_authorized');
- if(!windows)await localFile(endpoint.sshBinary);
+ if(!windows){
+  await localFile(endpoint.sshBinary);
+  if(installation&&(process.platform!=='linux'||endpoint.sshBinary!==await realpath('/usr/bin/ssh')||
+   sha256(protectedBytes(endpoint.sshBinary,{maxBytes:32*1024**2}))!==installation.activation.senderBinarySha256))
+   stop('installed_sender_identity');
+ }
  await localFile(endpoint.identityFile,{privateFile:true});
  const knownFile=await localFile(endpoint.knownHostsFile);
  if(windows){
   const expected=endpoint.windowsAcl;
   if(!exactKeys(expected,['directorySha256','identitySha256','knownHostsSha256','clientBinarySha256','knownHostsContentSha256'])||
    !Object.values(expected).every(sha)||dirname(endpoint.identityFile)!==dirname(knownFile))stop('windows_acl_receipt_required');
+  if(installation&&expected.clientBinarySha256!==installation.activation.senderBinarySha256)stop('installed_sender_identity');
   await verifyWindowsNativeClient(endpoint.sshBinary,expected.clientBinarySha256);
   if((await lstat(knownFile)).size>16384)stop('windows_client_identity_invalid');
   if(createHash('sha256').update(await readFile(knownFile)).digest('hex')!==expected.knownHostsContentSha256)
@@ -75,6 +88,13 @@ export async function backupLabSshArguments(endpoint){
   if(verifiedNtfsAclDigest(dirname(knownFile))!==expected.directorySha256||
    verifiedNtfsAclDigest(endpoint.identityFile)!==expected.identitySha256||
    verifiedNtfsAclDigest(knownFile)!==expected.knownHostsSha256)stop('windows_acl_receipt_mismatch');
+ }
+ if(installation){
+  if((await lstat(knownFile)).size>16384)stop('installed_host_pin');
+  const prefix='['+endpoint.host+']:'+endpoint.port+' ';
+  const pin=(await readFile(knownFile,'utf8')).replace(/\r?\n$/,'');
+  if(!pin.startsWith(prefix)||sshEd25519Sha256(pin.slice(prefix.length))!==installation.plan.transport.hostKeySha256)
+   stop('installed_host_pin');
  }
  const known=knownFile.replaceAll('\\','/');
  return ['-F','none','-T','-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o','IdentityAgent=none',
@@ -127,8 +147,54 @@ function transferUnknown(detail){
  error.diagnostic=detail;
  throw error;
 }
-export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,expected,timeoutMs=3600000,signal}={}){
- const args=await backupLabSshArguments(endpoint);
+export async function sendVpsBackupOverSsh(request={}){
+ return sendWithVerifiedArguments(request,await backupLabSshArguments(request.endpoint),null);
+}
+// This preflight makes no outbound connection. All production transport
+// identities come from the two owner-signed documents, not caller overrides.
+export async function prepareInstalledBackupTransfer({endpoint,sourceDirectory,proofBytes,planBytes,
+ artifactBytes,activationBytes,ownerPublicKey}={}){
+ const installation=verifyInstalledBackupActivation({planBytes,artifactBytes,activationBytes,ownerPublicKey});
+ const args=await backupSshArguments(endpoint,installation);
+ if(!Buffer.isBuffer(proofBytes)||proofBytes.length<1||proofBytes.length>262144)stop('installed_proof_size');
+ if(!isAbsolute(sourceDirectory??'')||resolve(sourceDirectory)!==sourceDirectory||
+  await realpath(sourceDirectory)!==sourceDirectory)stop('installed_source_path');
+ const directory=await lstat(sourceDirectory);
+ if(!directory.isDirectory()||directory.isSymbolicLink()||
+  (process.platform!=='win32'&&(directory.mode&0o077)!==0))stop('installed_source_directory');
+ const manifestFile=join(sourceDirectory,'manifest.json');
+ await localFile(manifestFile,{privateFile:true});
+ if((await lstat(manifestFile)).size>262144)stop('installed_manifest_size');
+ const manifestBytes=await readFile(manifestFile),parsed=parseEncryptedBackupManifest(manifestBytes),manifest=parsed.value;
+ const proof=verifySignedDocument(proofBytes,installation.plan.authorities.verificationPublicKey,'sabora-vps-rotation-proof/v1');
+ const scope=installation.plan.storage,now=Date.now();
+ const observed=Date.parse(proof.observedAt),expires=Date.parse(proof.validUntil);
+ if(!exactKeys(proof,['schema','repository','project','environment','storageIdentitySha256','externalStorageIdentitySha256',
+  'backupId','manifestSha256','previousManifestSha256','releaseSha','backupSchema','recoveredInventorySha256',
+  'recoveryEvidenceSha256','recoveryKind','observedAt','validUntil'])||
+  proof.repository!=='jdlc86/CartaViva'||proof.project!=='sabora'||proof.environment!=='production'||
+  proof.storageIdentitySha256!==scope.storageIdentitySha256||proof.externalStorageIdentitySha256!==scope.externalStorageIdentitySha256||
+  manifest.sourceSystemIdentifier!==scope.systemIdentifier||proof.backupId!==manifest.backupId||
+  proof.releaseSha!==manifest.releaseSha||proof.releaseSha!==installation.checked.sourceSha||
+  proof.backupSchema!==manifest.schema||proof.manifestSha256!==parsed.manifestSha256||
+  proof.recoveredInventorySha256!==parsed.components.find(c=>c.name===(manifest.schema==='sabora-preinstall-backup/v1'?'initial-state':'inventory'))?.plaintextSha256||
+  proof.recoveryKind!==(manifest.schema==='sabora-preinstall-backup/v1'?'authenticated-initial-state-and-recovery-drill':'external-pg17-restore')||
+  !sha(proof.recoveryEvidenceSha256)||(proof.previousManifestSha256!==null&&!sha(proof.previousManifestSha256))||
+  !Number.isFinite(observed)||!Number.isFinite(expires)||observed<Date.parse(manifest.createdAt)||observed>now||expires<=now||
+  expires<=observed||manifestBytes.length+parsed.components.reduce((n,c)=>n+c.ciphertextBytes,0)>scope.maxBundleBytes)
+  stop('installed_proof_scope');
+ const deadline=Math.min(expires,Date.parse(installation.activation.validUntil));
+ if(deadline-now<1000)stop('installed_activation_expired');
+ return {args,installation,expected:{backupId:proof.backupId,manifestSha256:proof.manifestSha256,
+  previousManifestSha256:proof.previousManifestSha256},deadline};
+}
+export async function sendInstalledVpsBackupOverSsh(request={}){
+ const prepared=await prepareInstalledBackupTransfer(request);
+ const timeoutMs=Math.min(request.timeoutMs??3600000,prepared.deadline-Date.now());
+ if(timeoutMs<1000)stop('installed_activation_expired');
+ return sendWithVerifiedArguments({...request,expected:prepared.expected,timeoutMs},prepared.args,prepared.installation);
+}
+async function sendWithVerifiedArguments({endpoint,sourceDirectory,proofBytes,expected,timeoutMs=3600000,signal}={},args,installation){
  if(!exactKeys(expected,['backupId','manifestSha256','previousManifestSha256'])||
   typeof expected.backupId!=='string'||!/^SABORA-BACKUP-[A-Z0-9-]{8,80}$/.test(expected.backupId)||
   !sha(expected.manifestSha256)||(expected.previousManifestSha256!==null&&!sha(expected.previousManifestSha256))||
@@ -169,8 +235,11 @@ export async function sendVpsBackupOverSsh({endpoint,sourceDirectory,proofBytes,
     signal:exit.status==='fulfilled'?exit.value[1]:null}));
   }
   let ack;try{ack=JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{stop('transfer_outcome_unknown');}
-  if(!exactKeys(ack,['schema','backupId','manifestSha256','previousManifestSha256','generations','operationalReceipt'])||
-   ack.schema!=='sabora-vps-rotation-result/v1'||ack.backupId!==expected.backupId||
+  if(!exactKeys(ack,['schema','backupId','manifestSha256','previousManifestSha256','generations','operationalReceipt',
+    ...(installation?['installationId','activationSha256']:[])])||
+   ack.schema!==(installation?'sabora-vps-installed-rotation-result/v1':'sabora-vps-rotation-result/v1')||
+   (installation&&(ack.installationId!==installation.activation.installationId||
+    ack.activationSha256!==installation.activationSha256))||ack.backupId!==expected.backupId||
    ack.manifestSha256!==expected.manifestSha256||ack.previousManifestSha256!==expected.previousManifestSha256||
    ack.generations!==1||ack.operationalReceipt!==false)stop('transfer_outcome_unknown');
   return Object.freeze(ack);
