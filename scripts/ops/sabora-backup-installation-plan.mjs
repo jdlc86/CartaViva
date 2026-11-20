@@ -24,6 +24,7 @@ export const BACKUP_PREPARATION_FILES=Object.freeze([
  'deploy/sabora-backup-lab-shell.c',
  'deploy/sabora-backup-installed-shell.c',
  'scripts/ops/sabora-backup-installed-contract.mjs',
+ 'scripts/ops/sabora-backup-installation-stager.mjs',
  'scripts/ops/sabora-backup-installed-receiver.mjs',
  'scripts/ops/sabora-backup-installed-entry.mjs',
  'scripts/ops/sabora-backup-installed-send.mjs',
