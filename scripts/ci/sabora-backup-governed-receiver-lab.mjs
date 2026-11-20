@@ -12,6 +12,7 @@ import {join,dirname,basename,resolve} from 'node:path';
 import {buildBackupPreparationArtifact} from './sabora-backup-preparation-artifact.mjs';
 import {BACKUP_PREPARATION_FILES} from '../ops/sabora-backup-installation-plan.mjs';
 import {stableStringify} from './sabora-release-governor.mjs';
+import {authorityFingerprint} from '../ops/sabora-release-evidence.mjs';
 import {backupLabSshArguments,sendVpsBackupOverSsh} from '../ops/sabora-vps-backup-transport.mjs';
 const stop=code=>{throw Error('sabora_governed_receiver_ci_stop:'+code);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -106,7 +107,15 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   const empty=join(temp,'empty-guard');await writeFile(empty,'',{mode:0o600,flag:'wx'});
   sudo(['/usr/bin/install','-o','root','-g',String(gid),'-m','0440',empty,guard]);
   const guardIdentity=sudo(['/usr/bin/stat','-c','%d:%i',guard]).stdout.trim().split(':');
-  scope={...scope,protectedGuard:{device:guardIdentity[0],inode:guardIdentity[1]}};
+  const recoveryAuthority=generateKeyPairSync('ed25519');
+  scope={...scope,recoveryPublicKey:recoveryAuthority.publicKey.export({format:'pem',type:'spki'}),
+   protectedGuard:{device:guardIdentity[0],inode:guardIdentity[1]}};
+  const recoveryDir=join(mount,'recovery'),recordPath=join(recoveryDir,'sequence.json');
+  const genesis={schema:'sabora-protected-recovery-sequence/v1',repository:'jdlc86/CartaViva',project:'sabora',
+   environment:scope.environment,storageIdentitySha256:scope.storageIdentitySha256,
+   externalStorageIdentitySha256:scope.externalStorageIdentitySha256,authoritySha256:authorityFingerprint(scope.recoveryPublicKey),
+   sequence:0,authorizationSha256:null,lockSha256:null};
+  await put(recordPath,JSON.stringify(genesis)+'\n','0600');
   sudo(['/usr/bin/install','-d','-o',String(uid),'-g',String(gid),'-m','0700',cache]);
   const device=String((await lstat(volume,{bigint:true})).dev),fs=await statfs(volume,{bigint:true});
   const {privateKey,publicKey}=generateKeyPairSync('ed25519');
@@ -236,6 +245,56 @@ export async function exerciseGovernedBackupReceiver({volume,scope,repository,so
   assert.deepEqual(inventory(),['current','state.json']);
   assert.equal(readRoot(join(base,'private-sentinel')),'fixture only');
   console.log('sabora_backup_governed_root_owned_guard_ok');
+  // Exercise authorization consumption as a root-only primitive. The
+  // subject is synthetic: no recovery action or slot mutation is authorized.
+  const fenceProgram=`
+   import {reserveProtectedRecoverySequence} from '${join(code,'scripts/ops/sabora-backup-recovery-fence.mjs')}';
+   let raw='';for await(const chunk of process.stdin)raw+=chunk;
+   const {authorizationB64,...request}=JSON.parse(raw);
+   try{
+    const result=reserveProtectedRecoverySequence({...request,authorizationBytes:Buffer.from(authorizationB64,'base64')});
+    process.stdout.write(JSON.stringify(result)+'\\n');
+   }catch(error){
+    process.stderr.write(String(error.message)+'\\n');process.exitCode=1;
+   }
+  `;
+  const fenceArgs=[node,'--input-type=module','--eval',fenceProgram];
+  const expectedSubject={action:'discard-verified-candidate',lockSha256:hash('synthetic-lock'),
+   subjectSha256:hash('synthetic-subject'),externalProofSha256:hash('synthetic-proof')};
+  const auth={schema:'sabora-vps-recovery-transition/v1',repository:genesis.repository,project:genesis.project,
+   environment:scope.environment,storageIdentitySha256:scope.storageIdentitySha256,
+   externalStorageIdentitySha256:scope.externalStorageIdentitySha256,...expectedSubject,
+   sequence:1,observedAt:new Date(Date.now()-1000).toISOString(),validUntil:new Date(Date.now()+60000).toISOString()};
+  const fenceInput=(payload=auth,subject=expectedSubject,key=recoveryAuthority.privateKey)=>{
+   const authorization=Buffer.from(JSON.stringify({payload,signature:sign(null,Buffer.from(stableStringify(payload)),key).toString('base64')}));
+   return JSON.stringify({directory:recoveryDir,scope,expected:subject,authorizationB64:authorization.toString('base64')});
+  };
+  const fence=(input,opts={})=>sudo(fenceArgs,{input,...opts});
+  assert.match(asAccount(fenceArgs,{input:fenceInput(),allowFailure:true}).stderr,/disposable_root_only/);
+  assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
+  assert.match(fence(fenceInput(auth,{...expectedSubject,lockSha256:hash('wrong')}),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
+  assert.match(fence(fenceInput(auth,expectedSubject,privateKey),{allowFailure:true}).stderr,/document_signature_invalid/);
+  const reservation=JSON.parse(fence(fenceInput()).stdout);
+  assert.equal(reservation.sequence,1);assert.equal(reservation.slotsChanged,false);
+  assert.equal(reservation.operationalAuthorization,false);
+  assert.match(fence(fenceInput(),{allowFailure:true}).stderr,/authorization_scope_or_sequence/);
+  assert.equal(JSON.parse(readRoot(recordPath)).sequence,1);
+  assert.notEqual(asAccount(['/usr/bin/rm','--',recordPath],{allowFailure:true}).status,0);
+  // A missing genesis is never implicitly reset; an unpublished pending
+  // counter is never discarded to authorize another operation.
+  const saved=join(recoveryDir,'saved-sequence');
+  sudo(['/usr/bin/mv','--',recordPath,saved]);
+  try{assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
+  finally{sudo(['/usr/bin/mv','--',saved,recordPath]);}
+  const pending=join(recoveryDir,'sequence.pending');
+  await put(pending,JSON.stringify(genesis)+'\n','0600');
+  try{assert.match(fence(fenceInput({...auth,sequence:2}),{allowFailure:true}).stderr,/unreconciled_sequence/);}
+  finally{sudo(['/usr/bin/rm','--',pending]);}
+  const successor=JSON.parse(fence(fenceInput({...auth,sequence:2})).stdout);
+  assert.equal(successor.sequence,2);assert.equal(JSON.parse(readRoot(recordPath)).sequence,2);
+  assert.equal(hash(Buffer.from(readRoot(join(cache,'current','manifest.json')))),second.expected.manifestSha256);
+  assert.deepEqual(inventory(),['current','state.json']);
+  console.log('sabora_backup_governed_root_recovery_reservation_ok');
   console.log('sabora_backup_governed_dedicated_account_and_bounded_mount_ok');
  }finally{
   if(server){
