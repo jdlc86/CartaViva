@@ -19,13 +19,13 @@ const eventFor = (operation = 'plan', sha = MAIN_SHA) => ({
 });
 const OWNER_CONTEXT = Object.freeze({repository: 'jdlc86/CartaViva', actor: 'jdlc86'});
 const clone = value => structuredClone(value);
-function fakeGithub({mainSha = MAIN_SHA, failAt = null, liveChange = null} = {}) {
+function fakeGithub({mainSha = MAIN_SHA, failAt = null, liveChange = null, liveIssue = eventFor().issue} = {}) {
   const calls = [];
   const request = (name, data) => {
     calls.push({name, data});
     if (failAt === name) throw new Error('injected_' + name);
     if (name === 'get') {
-      const live = clone(eventFor().issue);
+      const live = clone(liveIssue);
       if (liveChange) liveChange(live);
       return {data: live};
     }
@@ -56,9 +56,10 @@ test('Owner Issue bridge: closed command, exact owner and exact Sabora repositor
 test('Sabora issue dispatch calls ONLY exact existing governed workflow, then acknowledges request', async () => {
   for (const operation of ['plan', 'deploy', 'rollback']) {
     const sha = operation === 'rollback' ? OLD_SHA : MAIN_SHA;
-    const github = fakeGithub();
+    const requestEvent = eventFor(operation, sha);
+    const github = fakeGithub({liveIssue:requestEvent.issue});
     const receipt = await dispatchSaboraOwnerReleaseIssue({
-      event: eventFor(operation, sha), context: OWNER_CONTEXT, github
+      event: requestEvent, context: OWNER_CONTEXT, github
     });
     assert.equal(receipt.dispatchAccepted, true);
     assert.equal(receipt.deploymentValidated, false);
