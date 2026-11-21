@@ -144,3 +144,28 @@ Por petición expresa del propietario se ha inspeccionado **solo** el repositori
 **Estado resultante:** el controlador sigue **NO INSTALADO / NO ACTIVADO**; `SABORA_RELEASE_AGENT_READY` no se habilitó y no hay evidencia de conexión GitHub Actions→VPS con identidad propia. Los lanzadores se compilaron y publicaron antes para revisión offline, pero su transferencia inicial había sido rechazada por controles de plataforma; no asumir que moverlos por SCP/GitHub/Gateway sea una excepción ni sortear el rechazo. Cuenta, claves SSH exclusivamente Sabora, seis expedientes auténticos, nueve autoridades diferenciadas, configuración/firma propietaria, preflight DBA final firmado, SQL autorizado, aislamiento material de red, TLS/alertas y autorización firmada de primer deploy permanecen pendientes. Prohibido usar Fleetia o cuentas/credenciales compartidas como puente.
 
 **Cierre documental y siguiente hito:** [issue #75](https://github.com/jdlc86/CartaViva/issues/75) permanece abierto como único seguimiento del bootstrap. Confirmar un canal inicial de entrega admitido y el procedimiento de instalación aprobado; después completar instalación `root-owned`, acceso `forced-command` exclusivo y pruebas negativas sin tocar `sshd` compartido. En paralelo, preparar autorizaciones reales y preflight DBA antes de SQL. Ejecutar el primer deploy solo tras sus puertas completas, con acceso controlado y **datos ficticios**, conforme a la excepción normativa S46; copias/restauración operativas permanecen aplazadas únicamente para genesis de prueba y no se pueden declarar validadas. No reiniciar VPS ni tocar Fleetia. Se mantiene el SHA `80d801bc` como candidato operativo comprobado: esta actualización de continuidad se realiza **solo en la rama auxiliar existente**, no en `main`, para no cambiar el SHA ni invalidar su paquete y los cinco checks exact-main. El documento de continuidad es contexto, no normativa; no abrir PR adicional para este mero relevo.
+
+
+## S46-13 — revalidación PostgreSQL 17 en Supabase Sabora (21-11-2026; lectura sin cambios)
+
+**Motivo y alcance:** priorizar la primera instalación de prueba sin inventar expedientes. Se consultó exclusivamente el proyecto Supabase **`restaurante`**, ID `byhvmumqivmunkmomhup`, a través de la conexión RESTAURANTE. La lista de proyectos confirmó `ACTIVE_HEALTHY` y motor PostgreSQL `17.11.0.003`; no se ejecutó ninguna operación sobre CartaViva Directorio, Fleetia ni otros proyectos. El SHA de código candidato permanece [`main@80d801bc90da28600b6db998d12f1fc1d9706bc0`](https://github.com/jdlc86/CartaViva/commit/80d801bc90da28600b6db998d12f1fc1d9706bc0), con 5/5 checks requeridos SUCCESS, sin despliegue.
+
+**Consultas reales:** dos sentencias de lectura encapsuladas cada una en `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY; ... SELECT ...; ROLLBACK;`. El propio resultado acreditó `transaction_read_only=on` y actor `postgres`. Base `postgres`, `server_version_num=170011` (PG17.11). Se limitaron las consultas a catálogos PostgreSQL, filtrando por nombre/prefijo `^sabora($|_)` sin distinción de mayúsculas y, para objetos asociados, el esquema o relación Sabora. Sin valores de negocio ni contenido de secretos.
+
+| Observación del catálogo | Resultado |
+| --- | ---: |
+| Esquemas Sabora | 0 |
+| Roles Sabora | 0 |
+| Relaciones Sabora | 0 |
+| Rutinas Sabora | 0 |
+| Tipos Sabora | 0 |
+| Restricciones Sabora | 0 |
+| Triggers Sabora | 0 |
+| Políticas Sabora | 0 |
+| Membresías de roles Sabora (incluido grantor) | 0 |
+| `sabora_migration_meta.applied_migrations` | No existe |
+| Extensión `pgcrypto` | 1 instalada |
+
+**Dictamen limitado:** compatible con un ámbito inicialmente vacío según los nombres comprobados, sin deriva frente al preflight preliminar S46-6. **NO equivale a la certificación DBA** ni acredita origen vacío por todos los criterios normativos si existieran objetos con otros nombres. Falta identificar el clúster por un canal independiente y TLS `verify-full` directo, excluir DDL/roles concurrentes, conservar catálogo original íntegro y obtener el wrapper `sabora-initial-empty-preflight/v1` firmado y vigente (<24h) antes de cualquier SQL. Tampoco valida las migraciones que todavía **no se han ejecutado**, roles/RLS operativos, custodia/firmas ni experiencia de usuario. No se modifica la excepción S46 `deferred-first-test-activation`: solo primer deploy genesis con datos ficticios, acceso de prueba controlado, sin afirmar copia/restauración.
+
+**Próxima ruta de ejecución sin duplicar trabajo:** 1) cerrar transferencia inicial admisible de los launchers del controlador bajo [issue #75](https://github.com/jdlc86/CartaViva/issues/75), no eludir el rechazo anterior y no reutilizar credenciales Fleetia; 2) completar instalación única root-owned, clave propia y cuenta `sabora-release` forced-command con prueba negativa, red/alertas/TLS exclusivamente Sabora y firma propietaria; 3) llevar las observaciones preliminares al acto formal DBA de preflight inicial firmado, luego solicitar autorización SQL específica del árbol exacto y verificar en el proveedor el ledger/CV005/RLS/HMAC/TLS; 4) obtener expedientes originales y firmas reales, autorización de deploy vinculada al SHA y ejecutar la primera versión controlada. Ninguno de estos actos queda autorizado automáticamente por esta comprobación. No se creó otra rama o PR, no se desplegó ni se operaron recursos de Fleetia. La continuidad se actualiza solo en la **rama auxiliar existente** para preservar el `main` exacto, sus CI y su paquete de release; este documento es contexto, no normativa.
