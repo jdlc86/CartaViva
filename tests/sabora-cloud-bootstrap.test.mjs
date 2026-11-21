@@ -15,7 +15,9 @@ test('cloud-only Sabora bootstrap is a closed, staged, no-install transport',()=
  assert.match(receiver,/SSH_ORIGINAL_COMMAND/);
  assert.match(receiver,/sabora-bootstrap/);
  assert.match(receiver,/\.sabora-original-launchers-426960f0\.zip/);
- assert.match(receiver,/head -c 8793/);
+ assert.match(receiver,/head -c 8793 >> "\\$DEST"/);
+ assert.match(receiver,/chmod 600 -- "\\$DEST"/);
+ assert.match(receiver,/stat -c '%a'/);
  assert.match(receiver,/set -C/);
  assert.match(receiver,/sha256sum -c --status/);
  assert.doesNotMatch(receiver,/\b(?:sudo|docker|scp|sftp|rsync|rm|systemctl|nft|eval)\b/);
