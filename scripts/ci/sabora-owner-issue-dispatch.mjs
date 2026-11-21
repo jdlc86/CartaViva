@@ -42,10 +42,25 @@ export function parseSaboraOwnerReleaseIssue(event, context) {
 export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) {
   const request = parseSaboraOwnerReleaseIssue(event, context);
   if (!github?.rest?.repos?.getBranch || !github?.rest?.actions?.createWorkflowDispatch ||
-      !github?.rest?.issues?.createComment || !github?.rest?.issues?.update)
+      !github?.rest?.issues?.get || !github?.rest?.issues?.createComment ||
+      !github?.rest?.issues?.update)
     stop('github_api_unavailable');
   const owner = 'jdlc86';
   const repo = 'CartaViva';
+  // A queued event does not prove that the request is still active. An owner
+  // can close or edit it before this job starts; stale snapshots MUST stop.
+  // This also rejects a replayed event after the Issue was already closed.
+  const liveResponse = await github.rest.issues.get({
+    owner, repo, issue_number: request.issueNumber
+  });
+  const live = liveResponse?.data;
+  if (!isRecord(live) || live.number !== request.issueNumber ||
+      live.state !== 'open' || live.pull_request ||
+      live.user?.login !== 'jdlc86' ||
+      live.title !== event.issue.title ||
+      (live.body != null &&
+       (typeof live.body !== 'string' || live.body.trim() !== '')))
+    stop('issue_changed_or_closed');
   // GH Actions may be queued while main changes. The target workflow rechecks
   // the exact main SHA, ancestry, full integrated CI and signed authorization.
   const branch = await github.rest.repos.getBranch({owner, repo, branch: MAIN});
