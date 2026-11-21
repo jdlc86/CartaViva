@@ -130,6 +130,7 @@ test('materialization constructs one strict bounded pool per slot plus two disti
  assert.equal(FakePool.instances.length,25);
  assert.equal(resources.summary.capabilityCount,23);
  for(const pool of FakePool.instances){
+  assert.match(pool.options.user,/^sabora_runtime_\d{2}$/);
   assert.equal(pool.options.ssl.rejectUnauthorized,true);
   assert.equal(pool.options.ssl.servername,'db.project.supabase.co');
   assert.match(pool.options.ssl.ca,/BEGIN CERTIFICATE/);
@@ -141,6 +142,55 @@ test('materialization constructs one strict bounded pool per slot plus two disti
  assert.notEqual(resources.options.h6.operationsPool,resources.options.h6.notifierPool);
  await resources.close();await resources.close();
  assert.ok(FakePool.instances.every(pool=>pool.closed===1));
+});
+
+test('Supabase IPv4 session pooler qualifies wire logins for 23 SQL slots and 2 notifiers',async()=>{
+ const project='byhvmumqivmunkmomhup';
+ const host='aws-fixture.pooler.supabase.com';
+ const manifest=fixtureManifest({stage:'production',mutate:value=>{
+  value.auth.issuer=`https://${project}.supabase.co/auth/v1`;
+  value.network.allowedTlsHosts=[`${project}.supabase.co`,host];
+  for(const slot of Object.values(value.database.slots)){
+   slot.mode='session_pooler';slot.serverName=host;
+  }
+ }});
+ const policy={schemaVersion:1,bindHost:'0.0.0.0',targets:[
+  {id:'database_main',listenPort:15432,host,port:5432,protocol:'postgres_tls'},
+  {id:'auth_jwks',listenPort:15443,host:`${project}.supabase.co`,
+   port:443,protocol:'tls'},
+ ]};
+ assert.equal(validateOperationalEgressBinding(manifest,policy).capabilityCount,23);
+ FakePool.instances=[];
+ const resources=await materializeOperationalM3Options({manifest,Pool:FakePool,
+  resolveSecret:resolverFor(manifest),fetchImpl:async()=>{throw Error('no_external_fetch');}});
+ assert.equal(FakePool.instances.length,25);
+ const validWireUsers=new Set(Object.values(manifest.database.slots).map(slot=>
+  `${slot.login}.${project}`));
+ for(const pool of FakePool.instances){
+  assert.ok(validWireUsers.has(pool.options.user),'missing tenant suffix or unknown DB role');
+  assert.equal(pool.options.host,'sabora-egress');
+  assert.equal(pool.options.port,15432);
+  assert.equal(pool.options.ssl.servername,host);
+  assert.equal(pool.options.ssl.rejectUnauthorized,true);
+ }
+ const logicalLogin=manifest.database.slots['h4.operationsPool'].login;
+ assert.equal(resources.options.h4.operationsPool.options.user,`${logicalLogin}.${project}`);
+ await resources.close();
+ assert.ok(FakePool.instances.every(pool=>pool.closed===1));
+});
+
+test('session pooler rejects cross-project issuer before creating a SQL pool',async()=>{
+ const manifest=fixtureManifest({stage:'production',mutate:value=>{
+  value.auth.issuer='https://otherproject.supabase.co/auth/v1';
+  value.network.allowedTlsHosts=['otherproject.supabase.co','aws-fixture.pooler.supabase.com'];
+  for(const slot of Object.values(value.database.slots)){
+   slot.mode='session_pooler';slot.serverName='aws-fixture.pooler.supabase.com';
+  }
+ }});
+ FakePool.instances=[];
+ await assert.rejects(materializeOperationalM3Options({manifest,Pool:FakePool,
+  resolveSecret:resolverFor(manifest)}),/operational_activation_manifest_invalid/);
+ assert.equal(FakePool.instances.length,0);
 });
 
 test('production placeholder secrets and invalid CA fail closed and release opened pools',async()=>{
