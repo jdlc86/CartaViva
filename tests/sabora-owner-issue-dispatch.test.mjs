@@ -19,17 +19,23 @@ const eventFor = (operation = 'plan', sha = MAIN_SHA) => ({
 });
 const OWNER_CONTEXT = Object.freeze({repository: 'jdlc86/CartaViva', actor: 'jdlc86'});
 const clone = value => structuredClone(value);
-function fakeGithub({mainSha = MAIN_SHA, failAt = null} = {}) {
+function fakeGithub({mainSha = MAIN_SHA, failAt = null, liveChange = null} = {}) {
   const calls = [];
   const request = (name, data) => {
     calls.push({name, data});
     if (failAt === name) throw new Error('injected_' + name);
+    if (name === 'get') {
+      const live = clone(eventFor().issue);
+      if (liveChange) liveChange(live);
+      return {data: live};
+    }
     return {data: name === 'getBranch' ? {commit: {sha: mainSha}} : {}};
   };
   return {calls, rest: {
     repos: {getBranch: data => request('getBranch', data)},
     actions: {createWorkflowDispatch: data => request('createWorkflowDispatch', data)},
     issues: {
+      get: data => request('get', data),
       createComment: data => request('createComment', data),
       update: data => request('update', data)
     }
@@ -58,17 +64,17 @@ test('Sabora issue dispatch calls ONLY exact existing governed workflow, then ac
     assert.equal(receipt.deploymentValidated, false);
     assert.equal(receipt.controllerUpdated, false);
     assert.deepEqual(github.calls.map(c => c.name), [
-      'getBranch', 'createWorkflowDispatch', 'createComment', 'update'
+      'get', 'getBranch', 'createWorkflowDispatch', 'createComment', 'update'
     ]);
-    assert.deepEqual(github.calls[1].data, {
+    assert.deepEqual(github.calls[2].data, {
       owner: 'jdlc86', repo: 'CartaViva',
       workflow_id: 'sabora-governed-deploy.yml', ref: 'main',
       inputs: {operation, release_sha: sha}
     });
-    const comment = github.calls[2].data.body;
+    const comment = github.calls[3].data.body;
     assert.match(comment, /dispatch acknowledgment only/);
     assert.match(comment, /not deployment/);
-    assert.deepEqual(github.calls[3].data, {
+    assert.deepEqual(github.calls[4].data, {
       owner: 'jdlc86', repo: 'CartaViva', issue_number: 75, state: 'closed'
     });
   }
@@ -123,25 +129,49 @@ test('Issue dispatcher fails closed on stale main, missing provider state and pa
     dispatchSaboraOwnerReleaseIssue({
       event:eventFor('deploy'),context:OWNER_CONTEXT,github
     }), /sabora_issue_dispatch_stop:deploy_not_exact_main/);
-  assert.deepEqual(github.calls.map(c=>c.name),['getBranch']);
+  assert.deepEqual(github.calls.map(c=>c.name),['get','getBranch']);
   const invalidSha = fakeGithub({mainSha:'invalid'});
   await assert.rejects(dispatchSaboraOwnerReleaseIssue({
     event:eventFor(),context:OWNER_CONTEXT,github:invalidSha
   }),/sabora_issue_dispatch_stop:untrusted_main_sha/);
-  assert.deepEqual(invalidSha.calls.map(c=>c.name),['getBranch']);
+  assert.deepEqual(invalidSha.calls.map(c=>c.name),['get','getBranch']);
   const failedDispatch = fakeGithub({failAt:'createWorkflowDispatch'});
   await assert.rejects(dispatchSaboraOwnerReleaseIssue({
     event:eventFor(),context:OWNER_CONTEXT,github:failedDispatch
   }),/injected_createWorkflowDispatch/);
   assert.deepEqual(failedDispatch.calls.map(c=>c.name),
-    ['getBranch','createWorkflowDispatch']);
+    ['get','getBranch','createWorkflowDispatch']);
   // If comment delivery fails AFTER dispatch, DO NOT claim success or close.
   const failedComment = fakeGithub({failAt:'createComment'});
   await assert.rejects(dispatchSaboraOwnerReleaseIssue({
     event:eventFor(),context:OWNER_CONTEXT,github:failedComment
   }),/injected_createComment/);
   assert.deepEqual(failedComment.calls.map(c=>c.name),
-    ['getBranch','createWorkflowDispatch','createComment']);
+    ['get','getBranch','createWorkflowDispatch','createComment']);
+});
+
+test('Live GitHub Issue status is mandatory: owner closure, edit and reassignment revoke dispatch', async () => {
+  const cases = [
+    ['closed after enqueue', issue => {issue.state = 'closed';}],
+    ['title edited after enqueue', issue => {issue.title = '[sabora] release rollback '+OLD_SHA;}],
+    ['body edited after enqueue', issue => {issue.body = 'other operation';}],
+    ['owner changed', issue => {issue.user.login = 'other';}],
+    ['different number', issue => {issue.number = 74;}],
+    ['converted to PR', issue => {issue.pull_request = {url: 'bogus'};}],
+    ['invalid body type', issue => {issue.body = {action:'deploy'};}]
+  ];
+  for(const [name,liveChange] of cases) {
+    const github=fakeGithub({liveChange});
+    await assert.rejects(dispatchSaboraOwnerReleaseIssue({
+      event:eventFor(),context:OWNER_CONTEXT,github
+    }),/sabora_issue_dispatch_stop:issue_changed_or_closed/,name);
+    assert.deepEqual(github.calls.map(c=>c.name),['get'],name);
+  }
+  const missing=fakeGithub({failAt:'get'});
+  await assert.rejects(dispatchSaboraOwnerReleaseIssue({
+    event:eventFor(),context:OWNER_CONTEXT,github:missing
+  }),/injected_get/);
+  assert.deepEqual(missing.calls.map(c=>c.name),['get']);
 });
 
 function assertIssueBridgeWorkflowSafety(workflow) {
