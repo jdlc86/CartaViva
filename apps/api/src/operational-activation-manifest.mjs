@@ -144,6 +144,8 @@ export function validateOperationalActivationManifest(manifest){
     required.some(path=>!Object.hasOwn(manifest.database.slots,path)))throw invalid();
  const slots={};
  for(const path of required)slots[path]=assertSlot(manifest.database.slots[path],gatewayHost,production);
+ // Reject a mismatched pooler tenant before reading credentials or opening sockets.
+ for(const slot of Object.values(slots))sqlConnectionUser(slot,manifest);
  const logins=Object.values(slots).map(item=>item.login);
  const passwordRefs=Object.values(slots).map(item=>item.passwordRef);
  if(new Set(logins).size!==logins.length||new Set(passwordRefs).size!==passwordRefs.length)throw invalid();
