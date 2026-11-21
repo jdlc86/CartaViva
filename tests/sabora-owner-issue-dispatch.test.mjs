@@ -125,7 +125,7 @@ test('Issue request rejects unauthorized sources, syntax, mutable fields, forbid
 });
 
 test('Issue dispatcher fails closed on stale main, missing provider state and partial acknowledgement', async () => {
-  const github = fakeGithub({mainSha: OLD_SHA});
+  const github = fakeGithub({mainSha: OLD_SHA, liveIssue: eventFor('deploy').issue});
   await assert.rejects(
     dispatchSaboraOwnerReleaseIssue({
       event:eventFor('deploy'),context:OWNER_CONTEXT,github
