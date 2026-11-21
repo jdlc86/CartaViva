@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,chmodSync,chownSync,lstatSync,existsSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,chmodSync,chownSync,lstatSync,existsSync,rmSync,rmdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {once} from 'node:events';
@@ -34,6 +34,7 @@ const assertFailed=(r,label)=>{assert.notEqual(r.status,0,'must refuse '+label);
 async function main(){
  try{
   assert.equal(existsSync(home),false,'home already exists: stop');
+  assert.equal(existsSync('/etc/sabora'),false,'shared lab root must start absent');
   assert.equal(existsSync(helper),false,'helper already exists: stop');
   run('useradd',['--no-create-home','--home-dir',home,'--shell','/bin/bash',user]);userCreated=true;
   const uid=Number(run('id',['-u',user]).trim()),gid=Number(run('id',['-g',user]).trim());
@@ -92,7 +93,13 @@ async function main(){
    const cleanup=spawnSync('userdel',['--remove',user],{timeout:5000,encoding:'utf8'});
    if(cleanup.status!==0)console.log('SABORA_BOOTSTRAP_LAB_CLEANUP_DEFERRED:ephemeral_runner_only');
   }
-  if(helperCreated)rmSync(helper,{force:true});
+  if(helperCreated){
+   rmSync(helper,{force:true});
+   // The later controller lab requires /etc/sabora to start absent.
+   // Remove ONLY roots this disposable lab created, never arbitrary content.
+   rmdirSync(root);
+   rmdirSync('/etc/sabora');
+  }
   rmSync(work,{recursive:true,force:true});
  }
 }
