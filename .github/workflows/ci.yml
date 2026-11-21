@@ -173,7 +173,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # OpenSSH is installed in the preceding disposable controller lab.
+          # The preceding disposable controller lab installs the server package.
           test -x /usr/sbin/sshd
           node_bin="$(command -v node)"
           sudo --preserve-env=GITHUB_ACTIONS,CI,SABORA_BOOTSTRAP_DISPOSABLE_SSH_LAB \
