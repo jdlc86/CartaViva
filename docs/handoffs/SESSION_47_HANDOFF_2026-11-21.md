@@ -8,7 +8,7 @@
 
 | Hito | Implementado y observado | No validado / pendiente |
 | --- | --- | --- |
-| **Puente GitHub Issues → Actions** | [PR #78](https://github.com/jdlc86/CartaViva/pull/78) fusionado. Workflow en `main` y parser con verificación del propietario, cuerpo vacío, SHA40, lectura viva del issue y control de `main`. | Ningún Issue de tipo `[sabora] release plan <SHA40>` probado realmente de extremo a extremo. No hay prueba del despacho GitHub con credenciales operativas. |
+| **Puente GitHub Issues → Actions** | [PR #78](https://github.com/jdlc86/CartaViva/pull/78) fusionado y **ensayo real `plan` PASS** con [Issue #80](https://github.com/jdlc86/CartaViva/issues/80), [dispatcher](https://github.com/jdlc86/CartaViva/actions/runs/44938102359) y [workflow protegido](https://github.com/jdlc86/CartaViva/actions/runs/44938114013): `verify SUCCESS`, `execute SKIPPED`. | No se ha probado despliegue real, SSH, `deploy` o `rollback`; el ensayo de `plan` no demuestra infraestructura ni controlador operativo. |
 | **CI del puente** | **5/5 checks obligatorios exact-`main` `success`**: `validate`, `generate-lockfile`, `web-publication`, `windows-offline-signer`, `functional-ui-gate` ([CI](https://github.com/jdlc86/CartaViva/actions/runs/44934695651), [UI/lockfile](https://github.com/jdlc86/CartaViva/actions/runs/44934695661)). | CI de laboratorio no equivale a aprobación visual humana, despliegue o pruebas reales VPS/Supabase. Los opt-in premerge permanecieron `SKIPPED`. |
 | **SSH temporal para bootstrap** | Cuenta `sabora-bootstrap` aprovisionada con autorización acotada; UID/GID 22018, HOME `0700`, password bloqueada, cero claves SSH, **caduca 28-11-2026**. | Sin SSH/SCP real, sin pin de host independiente, sin binarios en el host por este canal. No convertir la cuenta temporal en acceso permanente. |
 | **Lanzadores controladores** | ZIP offline de 20 561 bytes verificado localmente, SHA256 `df05cd82528b192c691d2c7ddd53bea6a76b4c89c8ef934d688f62d0f5adcb87`; ELF y recibos detallados en S47-1. | No consta transferencia a VPS, ejecución o instalación. Archivo ZIP de conversación, **no guardado en el repo**. |
@@ -25,13 +25,13 @@
 
 ### Próximo bloque integral recomendado, sujeto a autorización por operación
 
-1. Confirmar `main`, CI, issue #75 y permisos reales de Actions. Obtener autorización diferenciada para una prueba **solo `plan`** mediante Issue de propietario (sin cuerpo), verificar el run `verify`, la ausencia de job SSH/`execute` y dejar recibo. No crear un Issue de `deploy` ni asumir que una simulación certifica la ejecución real.
+1. **Hito S47-9 ya completado:** ensayo real Issue propietario #80 → dispatcher #44938102359 → `plan` gobernado #44938114013; `verify SUCCESS`, `execute SKIPPED`. Conservar recibos; no repetir solicitudes de `plan` sin motivo. **Próxima barrera:** SSH convencional para bootstrap controlado y restricciones de la cuenta temporal, con autorización independiente; no crear Issues de `deploy`.
 2. Resolver el primer staging mediante SSH convencional **Sabora-only**, verificación independiente de huella y restricciones de la cuenta temporal; proteger credenciales ajenas al modelo y a Fleetia. La cuenta caduca **28-11-2026**; reconciliar estado, no borrar ficheros desconocidos ni elevar permisos sin autorización.
 3. Preparar implementación integral separada del **canal permanente `sabora-maint`** (firma propietaria, permisos fijos, A/B, rollback y pruebas integradoras reales de SSH). Evitar ampliar el workflow actual de aplicación con poderes de instalar controlador.
 4. Autorizar por fases instalación root-owned S43, identidad `sabora-release`, origen DBA/TLS/preflight, SQL, seis expedientes y nueve autoridades válidas, aislamiento, alertas y primer despliegue ficticio. **Nunca tocar ni depender de Fleetia**; no reiniciar servicios/daemon Docker/sshd compartidos.
 5. Tras primer despliegue, validar runtime funcional y diseño visual aprobado. Antes de usuarios reales o segundo release, recuperar el régimen de copias y recuperación con pruebas materiales. No declarar terminadas funciones no ensayadas.
 
-**Distinción final:** puente implementado + CI 5/5 **sí**; despacho real `plan`, acceso SSH permanente, controlador instalado, SQL, deploy, pruebas de uso y recuperación **no**. No programar tareas.
+**Distinción final:** puente implementado + CI 5/5 exact-main **sí**, además de despacho real de Issue propietario a `plan` con `verify PASS` y `execute SKIPPED`. Acceso SSH permanente, controlador instalado, SQL, deploy, pruebas reales de uso y recuperación **no**. No programar tareas.
 
 ---
 
@@ -154,3 +154,18 @@ El hito GitHub Issue propietario → workflow gobernado pasó la revisión y se 
 Este hito es **validación de código/CI**, no instalación ni aceptación operativa. El despacho con Issue real aún no se ha ensayado, `sabora-maint` es un diseño candidato, y no se han realizado staging SSH, SQL o deploy material desde el puente. El único cambio VPS acreditado en S47 fue la cuenta de bootstrap bajo autorización acotada, sin claves SSH habilitadas. Todo trabajo futuro sobre infraestructura requiere autorización por fase, aislamiento Sabora-only y cumplimiento normativo; Fleetia no debe verse modificado, detenido ni obligado a depender de Sabora.
 
 No hay tareas programadas activas por esta sesión. Este cierre documental **no abre permisos nuevos**.
+
+## S47-9 — PRIMER PLAN REAL mediante Issue del propietario: PASS sin contacto VPS (21-11-2026)
+
+**Alcance autorizado en conversación:** continuación expresamente limitada a una prueba de solo `plan`, nunca `deploy`, `rollback`, SSH, SQL ni VPS. Sin programa automático; intervención única de GitHub Issue.
+
+**Preflight read-only:** `main@91938e60f8befb7ba11841e405f87359ce9d4571`; cinco check-runs exactos GitHub Actions `completed/success`. El código de `.github/workflows/sabora-governed-deploy.yml` condiciona `execute` exclusivamente a `deploy` y `rollback`, no a `plan`.
+
+**Ejecución y evidencia material:**
+1. Se creó [Issue #80](https://github.com/jdlc86/CartaViva/issues/80), autor `jdlc86`, título exacto `[sabora] release plan 91938e60f8befb7ba11841e405f87359ce9d4571`, cuerpo `null`.
+2. [Workflow receptor #44938102359](https://github.com/jdlc86/CartaViva/actions/runs/44938102359), evento `issues`, mismo SHA, job `dispatch` `completed/success`. Bot `github-actions[bot]` publicó recibo de **solicitud** (sin afirmar deploy) y cerró el Issue #80. Estado posterior leído: `closed`, exactamente un comentario, 2026-11-21 18:55:12 UTC.
+3. El receptor disparó realmente [workflow gobernado #44938114013](https://github.com/jdlc86/CartaViva/actions/runs/44938114013), evento `workflow_dispatch`, mismo SHA. Su job `verify` terminó `completed/success`, incluidos pasos **`Validate exact SHA and ancestry in main`** y **`Verify immutable release plan and integrated CI`**. Su job `execute` figura `completed/skipped`. **No hubo job de contacto SSH/VPS en esta ejecución**.
+
+**Dictamen:** **GO de transporte/dispatch y `plan` de GitHub** para el SHA observado, con verificación real de los permisos `actions:write` del puente y cumplimiento del bloqueo operativo `execute` en operación `plan`. No equivale a autorización ni ejecución de despliegue; tampoco prueba controlador instalado, mantenimiento `sabora-maint`, credenciales reales, datos SQL, DNS/TLS operativo, copias ni servicios de Fleetia. Nada de Fleetia se ha operado en este ensayo.
+
+**Pendientes ahora prioritarios:** staging inicial de lanzadores por SSH Sabora-only y huella contrastada fuera de banda; restricciones y expiración de `sabora-bootstrap` el 28-11-2026; instalación S43 firmada con `sabora-release`; futura identidad independiente de mantenimiento `sabora-maint`; preflight DBA/SQL y evidencias genuinas; primer `deploy` exclusivamente tras nueva autorización explícita. Conservar [Issue único #75](https://github.com/jdlc86/CartaViva/issues/75) como bloqueador de bootstrap, no crear PRs redundantes. **La tarea programada anterior permanece desactivada.**
