@@ -32,6 +32,8 @@ test('cloud-only bootstrap boundary rejects bypasses of identity, host pin, trus
   ['bad pin',s=>s.replace('StrictHostKeyChecking=yes','StrictHostKeyChecking=no')],
   ['weaker host algorithm',s=>s.replace('HostKeyAlgorithms=ssh-ed25519','HostKeyAlgorithms=ssh-rsa')],
   ['approved fingerprint missing',s=>s.replace('vars.SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT','vars.UNAPPROVED_FINGERPRINT')],
+  ['approved client fingerprint missing',s=>s.replace('vars.SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT','vars.UNAPPROVED_CLIENT_FINGERPRINT')],
+  ['no private key type validation',s=>s.replace("ssh-keygen -y -P '' -f \"$key\"","ssh-keygen -y -f \"$key\"")],
   ['wrong user',s=>s.replace('sabora-bootstrap@146.59.145.64','ubuntu@146.59.145.64')],
   ['SFTP',s=>s.replace('receipt="$(cat', 'scp arbitrary /tmp && receipt="$(cat')],
   ['self-hosted',s=>s.replace('runs-on: ubuntu-24.04','runs-on: self-hosted')],

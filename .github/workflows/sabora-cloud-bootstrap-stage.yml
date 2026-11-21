@@ -97,6 +97,7 @@ jobs:
           SABORA_BOOTSTRAP_SSH_KEY_B64: ${{ secrets.SABORA_BOOTSTRAP_SSH_KEY_B64 }}
           SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}
           SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT: ${{ vars.SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT }}
+          SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT: ${{ vars.SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT }}
         shell: bash
         run: |
           set -euo pipefail
@@ -110,7 +111,12 @@ jobs:
           printf '%s' "$SABORA_BOOTSTRAP_SSH_KEY_B64" | base64 --decode > "$key"
           printf '%s' "$SABORA_BOOTSTRAP_KNOWN_HOSTS_B64" | base64 --decode > "$known"
           chmod 600 "$key" "$known"
-          ssh-keygen -y -f "$key" > /dev/null
+          # Require an unencrypted, short-lived Ed25519 transport key matching
+          # a separately approved client fingerprint; never prompt for passphrases.
+          pub="$(timeout 5s ssh-keygen -y -P '' -f "$key")"
+          [[ "$pub" == ssh-ed25519\ * ]]
+          [[ "$SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]]
+          test "$(ssh-keygen -lf "$key" -E sha256 | awk '{print $2}')" = "$SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT"
           ssh-keygen -F 146.59.145.64 -f "$known" > /dev/null
           test "$(wc -l < "$known")" -eq 1
           test "$(awk '{print $1" "$2}' "$known")" = '146.59.145.64 ssh-ed25519'
