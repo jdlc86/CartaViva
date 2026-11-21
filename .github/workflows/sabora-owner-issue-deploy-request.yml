@@ -1,0 +1,50 @@
+name: Sabora owner Issue -> governed release request (Fleetia-style bridge)
+on:
+  issues:
+    types: [opened]
+
+# This workflow can REQUEST a protected workflow, not authorize any deploy.
+# No SSH credentials, controller installation, VPS, SQL, Docker or Fleetia.
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: sabora-owner-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.repository == 'jdlc86/CartaViva' &&
+      github.actor == github.repository_owner &&
+      github.event.issue.user.login == github.repository_owner &&
+      !github.event.issue.pull_request &&
+      startsWith(github.event.issue.title, '[sabora] release ')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Only main's trusted code; never checkout issue-supplied SHA, PR or fork.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate closed owner Issue and request existing governed workflow
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {dispatchSaboraOwnerReleaseIssue} = await import(
+              process.env.GITHUB_WORKSPACE + '/scripts/ci/sabora-owner-issue-dispatch.mjs'
+            );
+            await dispatchSaboraOwnerReleaseIssue({
+              event: context.payload,
+              context: {
+                repository: context.repo.owner + '/' + context.repo.repo,
+                actor: context.actor
+              },
+              github
+            });
