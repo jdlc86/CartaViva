@@ -86,7 +86,12 @@ async function main(){
   console.log('SABORA_BOOTSTRAP_REAL_SSHD_LAB_PASS:forced-command,wrong-command,host-pin,digest,oversize,stage,replay');
  }finally{
   if(daemon&&daemon.exitCode===null){const closed=once(daemon,'close');daemon.kill('SIGTERM');await closed;}
-  if(userCreated)run('userdel',['--remove',user]);
+  if(userCreated){
+   // SSHd children can outlive the listener briefly. The hosted runner is
+   // disposable; do not hide a test failure behind a teardown race.
+   const cleanup=spawnSync('userdel',['--remove',user],{timeout:5000,encoding:'utf8'});
+   if(cleanup.status!==0)console.log('SABORA_BOOTSTRAP_LAB_CLEANUP_DEFERRED:ephemeral_runner_only');
+  }
   if(helperCreated)rmSync(helper,{force:true});
   rmSync(work,{recursive:true,force:true});
  }
