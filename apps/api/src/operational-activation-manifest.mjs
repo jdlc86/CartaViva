@@ -204,6 +204,20 @@ export function validateOperationalEgressBinding(manifest,policy){
   notifierCount:validated.summary.notifierCount});
 }
 
+// Supavisor's shared session pooler requires <role>.<project-ref> on the wire.
+// Keep the unsuffixed PostgreSQL role in the manifest and HMAC capability claims.
+const SUPABASE_PROJECT_REF='byhvmumqivmunkmomhup';
+function sqlConnectionUser(slot,manifest){
+ if(slot.mode==='direct')return slot.login;
+ if(slot.mode!=='session_pooler')throw invalid();
+ const issuerHost=new URL(manifest.auth.issuer).hostname;
+ const suffix='.supabase.co';
+ const projectRef=issuerHost.endsWith(suffix)?issuerHost.slice(0,-suffix.length):'';
+ if(!/^[a-z][a-z0-9]{2,62}$/.test(projectRef)||
+    (manifest.stage==='production'&&projectRef!==SUPABASE_PROJECT_REF))throw invalid();
+ return slot.login+'.'+projectRef;
+}
+
 function setPath(target,path,value){
  const parts=path.split('.');let current=target;
  for(const key of parts.slice(0,-1))current=current[key]??={};
@@ -247,7 +261,7 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
       (config.stage==='production'&&isUnsafeProductionSecret(password)))throw secretFailure();
    try{new X509Certificate(ca);}catch{throw secretFailure();}
    const pool=new Pool({host:slot.connectHost,port:slot.connectPort,database:slot.database,
-    user:slot.login,password,ssl:{ca,rejectUnauthorized:true,servername:slot.serverName},
+    user:sqlConnectionUser(slot,config),password,ssl:{ca,rejectUnauthorized:true,servername:slot.serverName},
     max:item.poolPath.endsWith('operationsPool')?5:3,min:0,
     idleTimeoutMillis:10_000,connectionTimeoutMillis:5_000,
     statement_timeout:15_000,query_timeout:20_000,allowExitOnIdle:false,
@@ -260,7 +274,7 @@ export async function materializeOperationalM3Options({manifest,Pool,resolveSecr
    const source=config.database.slots[notifier.credentialSlot];
    const [password,ca]=await Promise.all([readSecret(source.passwordRef),readSecret(source.caRef)]);
    const pool=new Pool({host:source.connectHost,port:source.connectPort,database:source.database,
-    user:source.login,password,ssl:{ca,rejectUnauthorized:true,servername:source.serverName},
+    user:sqlConnectionUser(source,config),password,ssl:{ca,rejectUnauthorized:true,servername:source.serverName},
     max:1,min:0,idleTimeoutMillis:10_000,connectionTimeoutMillis:5_000,
     statement_timeout:15_000,query_timeout:20_000,allowExitOnIdle:false,
     application_name:'sabora_'+notifier.usage});
