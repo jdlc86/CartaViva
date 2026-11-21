@@ -19,6 +19,8 @@
 
 **Autorizaciones verificadas:** el propietario aprobó solo la fusión condicional del **PR #78** tras los cinco PASS; **se ejecutó y verificó el merge**. Había autorizado por separado la creación limitada de `sabora-bootstrap`, realizada en S47-2. **NO ha autorizado** por ello Issue real `plan`, transferencias SSH, instalación/mantenimiento del controlador, operaciones SQL, red, VPS o despliegues.
 
+**Seguimiento único:** [Tablero vivo de Sabora](../tracking/SABORA_LIVE_PROJECT_TRACKER.md); comprobar el estado exacto del milestone y el inventario de bloqueos, sin convertir el tablero en normativa.
+
 **Fuente de verdad:** [puerta de autorización](../SABORA_AUTHORIZATION_GATE.md), [release gobernado V1](../architecture/SABORA_GOVERNED_RELEASE_V1.md), [método normativo de validación](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), [runbook candidato de provisión S43](../runbooks/SABORA_S43_RELEASE_CONTROLLER_PROVISIONING_CANDIDATE_2026-11-19.md), [Issue #75](https://github.com/jdlc86/CartaViva/issues/75). El handoff S46 **completo** se encuentra en [rama histórica](https://github.com/jdlc86/CartaViva/blob/prep/sabora-offline-node-20261120/docs/handoffs/SESSION_46_HANDOFF_2026-11-20.md). Si una continuidad contradice la normativa, **STOP** y consultar la versión normativa de `main`.
 
 ### Próximo bloque integral recomendado, sujeto a autorización por operación
