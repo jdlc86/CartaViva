@@ -52,6 +52,8 @@ export function assertCloudBootstrapWorkflow(source){
  require(/secrets\.SABORA_BOOTSTRAP_SSH_KEY_B64/,'ssh_secret');
  require(/secrets\.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64/,'host_secret');
  require(/-o StrictHostKeyChecking=yes/,'host_pin');
+ require(/-o HostKeyAlgorithms=ssh-ed25519/,'host_algorithm');
+ require(/vars\.SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT/,'approved_fingerprint');
  require(/-o UserKnownHostsFile="\$known"/,'known_file');
  require(/-o BatchMode=yes/,'noninteractive');
  require(/-F \/dev\/null -T/,'config_isolation');
