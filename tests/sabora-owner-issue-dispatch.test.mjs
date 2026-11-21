@@ -155,7 +155,8 @@ function assertIssueBridgeWorkflowSafety(workflow) {
   assert.match(workflow,/types: \[opened\]/);
   assert.match(workflow,/ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow,/persist-credentials: false/);
-  assert.match(workflow,/dispatchSaboraOwnerReleaseIssue/);
+  assert.match(workflow,/\{dispatchSaboraOwnerReleaseIssue\} = await import\(/);
+  assert.match(workflow,/await dispatchSaboraOwnerReleaseIssue\(\{/);
   assert.match(workflow,/uses: actions\/github-script@v7/);
   assert.doesNotMatch(workflow,/\bself-hosted\b/);
   const executable=workflow.split('\n').filter(s=>!/^\s*#/.test(s)).join('\n');
