@@ -1,6 +1,6 @@
-# Propuesta S48-20 — excepción normativa S38/S46 para observación DBA en GitHub Actions (PENDIENTE DE APROBACIÓN)
+# S48-20 — excepción de diseño S38/S46 para observación DBA desde GitHub Actions (APROBADA CON CONDICIONES; NO OPERATIVA)
 
-**Estado formal:** PROPUESTA, **NO VIGENTE**, no modifica por sí sola [S38](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md) ni [S46](SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Preparación autorizada por el propietario al responder «Okk» a la pregunta concreta «¿Autorizas que prepare esa modificación normativa limitada, exclusivamente para el preflight de solo lectura S46 mediante GitHub Actions protegido?». **No hubo autorización para activar secretos, crear roles, emitir firmas, ejecutar migraciones, integrar el PR o desplegar.** La activación exige aprobación explícita de este texto, integración controlada y puertas separadas por operación.
+**Estado formal y alcance:** decisión de diseño **APROBADA CON CONDICIONES** por el propietario el **22-11-2026**, pero **NO OPERATIVA / NO INTEGRADA EN MAIN**; no modifica por sí sola [S38](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md) ni [S46](SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md). Preparación autorizada por el propietario al responder «Okk» a la pregunta concreta «¿Autorizas que prepare esa modificación normativa limitada, exclusivamente para el preflight de solo lectura S46 mediante GitHub Actions protegido?». **No hubo autorización para activar secretos, crear roles, emitir firmas, ejecutar migraciones, integrar el PR o desplegar.** **Aprobación posterior recibida:** a la pregunta explícita «¿Apruebas normativamente la propuesta S48-20 con esas condiciones? Esa aprobación no autorizaría crear la cuenta, ejecutar SQL ni desplegar», el propietario respondió **«Ok apruebo»**. Queda aprobado este **diseño condicionado**, no el contrato firmado v2 todavía inexistente ni operación alguna. Sigue requerida integración autorizada de los documentos normativos al repositorio, revisión y gates materiales por operación. Mientras la excepción no esté integrada en main y validada, la prohibición general S38 sigue vigente.
 
 ## 1. Hechos comprobados y problema real
 
@@ -13,7 +13,7 @@
 
 ## 2. Texto propuesto de excepción al veto S38 (único alcance)
 
-**Solo después de aprobación expresa del propietario y publicación del contrato normativo aprobado en main**, para el **primer preflight S46 de Sabora con datos ficticios**, se permite que **una contraseña de una identidad PostgreSQL técnica dedicada y verificablemente sin privilegios de escritura, administración, bypass RLS ni lectura general de datos de aplicación** exista como secreto del **GitHub Environment `sabora-dba-readonly`**. La credencial no es el password administrador `postgres`, ni un runtime login, ni una clave de firma/restore, ni se escribe en Git, artifacts, logs o chat.
+**Solo después de publicación del contrato normativo aprobado en main y cierre material de todas las puertas de esta decisión**, para el **primer preflight S46 de Sabora con datos ficticios**, se permite que **una contraseña de una identidad PostgreSQL técnica dedicada y verificablemente sin privilegios de escritura, administración, bypass RLS ni lectura general de datos de aplicación** exista como secreto del **GitHub Environment `sabora-dba-readonly`**. La credencial no es el password administrador `postgres`, ni un runtime login, ni una clave de firma/restore, ni se escribe en Git, artifacts, logs o chat.
 
 La excepción **no** admite secreto en variables de repositorio, secretos globales, Codespaces de desarrollo, workflows de PR/push, archivos TAR, PWA, VPS, runner autohospedado ni jobs compartidos con publicación/despliegue. El environment debe estar restringido a `main` protegido, a un job exclusivo `workflow_dispatch` manual del propietario con SHA exacto y a reglas de revisión humana compatibles con el plan GitHub real; registrar la configuración constatada (no asumirla). Si no se pueden activar esas reglas realmente, **STOP**. Controles de cambios sobre `main`, revisión del workflow y minimización de permisos `GITHUB_TOKEN` son obligatorios. La custodia debe rotar/revocar el secreto después del ensayo y ante cualquier anomalía; nunca almacenar una contraseña DBA de larga vida en Actions.
 
@@ -57,7 +57,8 @@ El diseño requiere **una identidad nominada `sabora_s46_catalog_observer`**, de
 
 **No incluir credenciales ni habilitar `observe` en Actions hasta que se cumplan todas:**
 
-- [ ] Aprobación explícita del propietario de la **excepción normativa concreta** y del contrato de observador/v2, separada del permiso de prepararla.
+- [x] **Diseño condicionado S48-20 aprobado** expresamente por el propietario el 22-11-2026 («Ok apruebo»); todavía no integrado en main.
+- [ ] **Contrato v2 de observador firmado** especificado, revisado y aprobado por separado, con parser de producción y regressiones integradoras; esta casilla **no** se cubre con la aprobación del diseño.
 - [ ] Revisión técnica de seguridad/DBA sobre ausencia de bypass, `pg_control_system`, privilegios efectivos y compatibilidad real Supabase; si se aplica excepción de revisión interna S40, informe y aprobación del propietario por SHA.
 - [ ] CI robusta y comprobación exact-main del candidato, negativa con passwords admin y destinos/pooler ajenos.
 - [ ] Autorización **distinta** para crear/provisionar el observador en el proyecto Sabora, con permisos auditables.
@@ -65,4 +66,18 @@ El diseño requiere **una identidad nominada `sabora_s46_catalog_observer`**, de
 - [ ] Firma DBA auténtica para `sabora-initial-empty-preflight/v2` y validador de release actualizado con regresión integral antes de ninguna migración.
 - [ ] Autorización SQL de aplicación de migraciones **posterior y distinta**, y resto de puertas S46/S43 para deploy.
 
-**Conclusión:** propuesta técnicamente plausible pero **NO-GO operativo** hasta resolver identidad/contrato v2 y controles reales. La excepción S38 no se da por vigente por estar en un PR o porque el usuario autorizó redactarla.
+**Conclusión:** diseño **aprobado con condiciones** por el propietario y registrado en este PR Draft; **NO-GO operativo** hasta validar la identidad técnica, permisos reales, v2 firmado, aprobación independiente de cada operación e integración normativa. No crear secretos o roles por inferencia ni alterar Fleetia. El mero consentimiento de diseño no concede la ejecución.
+
+## 7. Verificación de privilegios en el proyecto exacto tras la aprobación (solo SELECT, 22-11-2026)
+
+Tras ratificar el diseño, se consultaron exclusivamente metadatos de privilegios en el proyecto Supabase RESTAURANTE `byhvmumqivmunkmomhup`, base `postgres`, sin DDL, DML ni acceso a contenido de tablas. La consulta inspeccionó `pg_database`/ACL por `aclexplode(coalesce(datacl,acldefault(...)))`, `pg_proc`/ACL de `pg_catalog.pg_control_system()` y las banderas públicas de `postgres`/`supabase_admin`.
+
+**Hallazgos reales:**
+
+- `PUBLIC` tiene **`CONNECT` y `TEMPORARY`** efectivos en la base `postgres`. Como cada rol pertenece implícitamente a `PUBLIC`, un futuro observador nuevo heredaría esas capacidades en el estado actual. **No hay una denegación explícita per-role que prevalezca sobre un GRANT a PUBLIC.** Esta observación impide declarar honestamente `NO WRITE` absoluto sin una decisión de seguridad adicional sobre `TEMPORARY` o sin cambiar la arquitectura.
+- La función exacta `pg_catalog.pg_control_system()` aparece con `EXECUTE` concedido a `PUBLIC` según el catálogo actual, y propietario `supabase_admin`. **No se requiere dar por supuesto un GRANT adicional** para esa función, pero la capacidad efectiva del futuro observador no está probada hasta crear/probar el rol mediante autorización independiente; el permiso observado puede cambiar.
+- El rol `postgres` es LOGIN, CREATEROLE y BYPASSRLS, no superusuario; `supabase_admin` es superusuario del proveedor. **No usar ninguno como password de Actions**.
+
+**Decisión de seguridad pendiente:** S48-20 **no autoriza** revocar `TEMPORARY` a `PUBLIC` ni cambiar ACL del proyecto administrado; una revocación común afectaría usuarios/procesos ajenos a la cuenta propuesta. Antes de provisionar credenciales en GitHub debe existir una decisión **expresa y diferenciada** que evalúe la residualidad de `TEMPORARY` y el impacto de otras capacidades heredadas, o se mantiene **STOP** y la ruta DBA privada. No ocultar el riesgo diciendo que `READ ONLY` en el script restringe las operaciones que podría hacer una contraseña filtrada. La consulta de metadatos no crea el observador, no autoriza SQL y no acredita `TLS verify-full`.
+
+La decisión S48-20 aprobada queda **condicionada** a cerrar este hallazgo; no se cambia la regla «cero roles» del contrato v1 hasta que una variante v2 real con firmas y validadores se apruebe e integre.
