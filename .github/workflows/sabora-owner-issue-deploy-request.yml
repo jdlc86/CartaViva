@@ -99,3 +99,8 @@ jobs:
     with:
       operation: stage
       reviewed_main_sha: ${{ needs.bootstrap_issue_check.outputs.stage_sha }}
+    # Only these two Sabora transport secrets; never inherit repository-wide secrets.
+    # The called job still binds environment sabora-bootstrap-stage and checks both.
+    secrets:
+      SABORA_BOOTSTRAP_SSH_KEY_B64: ${{ secrets.SABORA_BOOTSTRAP_SSH_KEY_B64 }}
+      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}

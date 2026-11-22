@@ -85,6 +85,12 @@ test('Issue event runs existing stage workflow as reusable without bypassing gua
   assert.match(issue,/uses: \.\/\.github\/workflows\/sabora-cloud-bootstrap-stage.yml/);
   assert.match(issue,/operation: stage/);
   assert.doesNotMatch(issue,/bootstrap_stage:[\s\S]*?secrets: inherit/);
+  const callerStage=issue.slice(issue.indexOf('  bootstrap_stage:'));
+  assert.match(callerStage,/secrets:\n      SABORA_BOOTSTRAP_SSH_KEY_B64: \$\{\{ secrets\.SABORA_BOOTSTRAP_SSH_KEY_B64 \}\}\n      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: \$\{\{ secrets\.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 \}\}/);
+  assert.doesNotMatch(callerStage,/secrets: inherit/);
+  assert.doesNotMatch(callerStage,/FLEETIA_|service_role|SABORA_APPROVAL_/);
+  assert.match(stage,/    secrets:\n      SABORA_BOOTSTRAP_SSH_KEY_B64:\n        required: true\n      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64:\n        required: true\npermissions:/);
+  assert.match(stage,/SABORA_BOOTSTRAP_STAGE_SECRETS_UNAVAILABLE/);
   assert.match(stage,/workflow_call:/);
   assert.match(stage,/github.actor == 'jdlc86'/);
   assert.match(stage,/github.event_name == 'issues'/);

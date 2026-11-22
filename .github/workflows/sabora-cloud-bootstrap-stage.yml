@@ -21,6 +21,11 @@ on:
         description: Exact currently approved SHA of main
         required: true
         type: string
+    secrets:
+      SABORA_BOOTSTRAP_SSH_KEY_B64:
+        required: true
+      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64:
+        required: true
 permissions:
   contents: read
   actions: read
@@ -127,7 +132,10 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          [[ -n "$SABORA_BOOTSTRAP_SSH_KEY_B64" && -n "$SABORA_BOOTSTRAP_KNOWN_HOSTS_B64" ]]
+          if [[ -z "$SABORA_BOOTSTRAP_SSH_KEY_B64" || -z "$SABORA_BOOTSTRAP_KNOWN_HOSTS_B64" ]]; then
+            echo 'SABORA_BOOTSTRAP_STAGE_SECRETS_UNAVAILABLE' >&2
+            exit 1
+          fi
           file="$RUNNER_TEMP/sabora-incoming/sabora-ci-launchers.zip"
           node scripts/ci/sabora-cloud-bootstrap-verify.mjs archive "$file"
           key="$RUNNER_TEMP/sabora-bootstrap-key"

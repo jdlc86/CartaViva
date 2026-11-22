@@ -45,6 +45,8 @@ export function assertCloudBootstrapWorkflow(source){
  require(/^on:\n  workflow_dispatch:/m,'trigger');
  if(/^\s{2}(?:push|schedule|pull_request|issues|repository_dispatch):/m.test(source))stop('workflow_unsafe_trigger');
  require(/^  workflow_call:\n    inputs:/m,'reusable_call');
+ require(/^    secrets:\n      SABORA_BOOTSTRAP_SSH_KEY_B64:\n        required: true\n      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64:\n        required: true\npermissions:/m,'required_two_secrets');
+ require(/SABORA_BOOTSTRAP_STAGE_SECRETS_UNAVAILABLE/,'fail_closed_empty_secrets');
  require(/github\.repository == 'jdlc86\/CartaViva'/,'identity_repo');
  require(/github\.ref == 'refs\/heads\/main'/,'identity_ref');
  require(/github\.actor == 'jdlc86'/,'identity_actor');
