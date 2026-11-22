@@ -180,6 +180,14 @@ function assertIssueBridgeWorkflowSafety(workflow) {
   assert.doesNotMatch(workflow,/^  (push|pull_request|schedule|workflow_dispatch|repository_dispatch):/m);
   assert.match(workflow,/^permissions:\n  contents: read\n  actions: write\n  issues: write/m);
   assert.match(workflow,/github\.repository == 'jdlc86\/CartaViva'/);
+  // Both independent issue admission branches MUST retain owner, actor, and
+  // safe checkout. One surviving match would miss a broken second branch.
+  for (const expr of [
+    /github\.repository == 'jdlc86\/CartaViva'/g,
+    /github\.actor == github\.repository_owner/g,
+    /github\.event\.issue\.user\.login == github\.repository_owner/g,
+    /ref: \$\{\{ github\.sha \}\}/g
+  ]) assert.equal([...workflow.matchAll(expr)].length,2,'each issue branch independently constrained');
   assert.match(workflow,/github\.actor == github\.repository_owner/);
   assert.match(workflow,/github\.event\.issue\.user\.login == github\.repository_owner/);
   assert.match(workflow,/!github\.event\.issue\.pull_request/);
