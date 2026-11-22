@@ -103,6 +103,9 @@ function main(){
  const head=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
  const mainHead=execFileSync('git',['rev-parse','origin/main'],{cwd:root,encoding:'utf8'}).trim();
  if(head!==sha||mainHead!==sha)stop('sha_not_exact_main');
+ // The manifest reads filesystem bytes; a dirty checkout must never be called exact-SHA evidence.
+ const dirty=execFileSync('git',['status','--porcelain','--untracked-files=all'],{cwd:root,encoding:'utf8'}).trim();
+ if(dirty)stop('dirty_checkout');
  const manifest=manifestReceipt(root,sha);
  if(mode==='plan'){
   process.stdout.write('sabora_s46_plan_only:'+JSON.stringify(manifest)+'\n');return;
