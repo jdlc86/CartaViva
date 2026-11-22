@@ -69,7 +69,8 @@ export function manifestReceipt(root,sha){
   count:migrations.length,manifestSha256:sha256(canonical(migrations))};
 }
 export function assertCustodian({env,root}){
- if(env.GITHUB_ACTIONS==='true'||env.SABORA_S46_OPERATOR_APPROVAL!=='explicit-one-time-readonly')
+ if(Object.hasOwn(env,'GITHUB_ACTIONS')||env.GITHUB_RUN_ID||env.GITHUB_WORKSPACE||env.RUNNER_TEMP||env.CI==='true'||
+  env.SABORA_S46_OPERATOR_APPROVAL!=='explicit-one-time-readonly')
   stop('offhost_custodian_required');
  const dir=env.SABORA_S46_OUTPUT_DIR;
  if(typeof dir!=='string'||!dir.startsWith('/')||dir===root||dir.startsWith(root+'/'))
