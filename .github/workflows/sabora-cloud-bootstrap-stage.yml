@@ -11,6 +11,16 @@ on:
         description: Exact approved 40-hex SHA of main for this one-time operation
         required: true
         type: string
+  workflow_call:
+    inputs:
+      operation:
+        description: Closed one-time operation, checked inside the workflow
+        required: true
+        type: string
+      reviewed_main_sha:
+        description: Exact currently approved SHA of main
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -19,7 +29,20 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' && github.actor == 'jdlc86'
+    if: >-
+      github.repository == 'jdlc86/CartaViva' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'jdlc86' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'issues' &&
+          github.event.action == 'opened' &&
+          github.event.issue.user.login == 'jdlc86' &&
+          github.event.issue.title == format('[sabora] bootstrap stage {0}', inputs.reviewed_main_sha) &&
+          (github.event.issue.body == '' || github.event.issue.body == null)
+        )
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -32,11 +55,13 @@ jobs:
           node-version: '22'
       - name: Require current main, unchanged SHA, and exact successful integrated CI
         env:
+          BOOTSTRAP_OPERATION: ${{ inputs.operation }}
           REVIEWED_MAIN_SHA: ${{ inputs.reviewed_main_sha }}
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          case "${BOOTSTRAP_OPERATION}" in plan|stage) ;; *) exit 1 ;; esac
           [[ "$REVIEWED_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]
           git fetch --no-tags origin main
           test "$GITHUB_SHA" = "$REVIEWED_MAIN_SHA"
