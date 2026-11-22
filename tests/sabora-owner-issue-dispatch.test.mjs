@@ -187,7 +187,7 @@ function assertIssueBridgeWorkflowSafety(workflow) {
     /github\.actor == github\.repository_owner/g,
     /github\.event\.issue\.user\.login == github\.repository_owner/g,
     /ref: \$\{\{ github\.sha \}\}/g
-  ]) assert.equal([...workflow.matchAll(expr)].length,2,'each issue branch independently constrained');
+  ]) assert.equal([...workflow.matchAll(expr)].length,3,'each of three admission/stage jobs independently constrained');
   assert.match(workflow,/github\.actor == github\.repository_owner/);
   assert.match(workflow,/github\.event\.issue\.user\.login == github\.repository_owner/);
   assert.match(workflow,/!github\.event\.issue\.pull_request/);
@@ -198,8 +198,17 @@ function assertIssueBridgeWorkflowSafety(workflow) {
   assert.match(workflow,/await dispatchSaboraOwnerReleaseIssue\(\{/);
   assert.match(workflow,/uses: actions\/github-script@v7/);
   assert.doesNotMatch(workflow,/\bself-hosted\b/);
-  const executable=workflow.split('\n').filter(s=>!/^\s*#/.test(s)).join('\n');
-  assert.doesNotMatch(executable,/\bsecrets\.|\bFLEETIA_|GestionIntegral_Rutaa|\bssh\s|\bscp\s|\bdocker\s|\bsudo\s/i);
+  const sections=workflow.split('\n  bootstrap_stage:\n');
+  assert.equal(sections.length,2,'one and only one stage job');
+  const admission=sections[0].split('\n').filter(s=>!/^\s*#/.test(s)).join('\n');
+  assert.doesNotMatch(admission,/\bsecrets\.|\bFLEETIA_|GestionIntegral_Rutaa|\bssh\s|\bscp\s|\bdocker\s|\bsudo\s/i);
+  const stage=sections[1];
+  assert.match(stage,/environment: sabora-bootstrap-stage/);
+  assert.match(stage,/needs.bootstrap_verify.result == 'success'/);
+  assert.match(stage,/run: bash scripts\/ci\/sabora-bootstrap-stage-transport.sh/);
+  assert.doesNotMatch(stage,/secrets: inherit|\bFLEETIA_|GestionIntegral_Rutaa/i);
+  const names=[...stage.matchAll(/secrets\.([A-Z][A-Z0-9_]+)/g)].map(x=>x[1]).sort();
+  assert.deepEqual(names,['SABORA_BOOTSTRAP_KNOWN_HOSTS_B64','SABORA_BOOTSTRAP_SSH_KEY_B64']);
   return true;
 }
 
@@ -217,7 +226,11 @@ test('Workflow integration preserves authorization in existing release workflow,
     ['SSH credential',s=>s.replace('  actions: write','  actions: write\n      SSH_KEY: ${{ secrets.FLEETIA_KEY }}')],
     ['privileged runner',s=>s.replace('runs-on: ubuntu-24.04','runs-on: self-hosted')],
     ['checkout untrusted SHA',s=>s.replace('ref: ${{ github.sha }}','ref: ${{ github.event.issue.title }}')],
-    ['no dispatcher',s=>s.replace('dispatchSaboraOwnerReleaseIssue','skipDispatch')]
+    ['no dispatcher',s=>s.replace('dispatchSaboraOwnerReleaseIssue','skipDispatch')],
+    ['no environment binding',s=>s.replace('environment: sabora-bootstrap-stage','environment: staging')],
+    ['extra secret injection',s=>s.replace(
+      '      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}',
+      '      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}\n      FLEETIA_KEY: ${{ secrets.FLEETIA_KEY }}')]
   ];
   for(const [name,mutate] of mutations) {
     const changed=mutate(bridge);
