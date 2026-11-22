@@ -88,19 +88,60 @@ jobs:
             });
             core.setOutput('stage_sha', receipt.reviewedMainSha);
 
-  # Call the EXISTING restricted stage workflow; preserve original issue actor
-  # (jdlc86), its main-SHA gates, CI, digest, environment, and host SSH pin.
-  bootstrap_stage:
+  # Reuse only the existing archive/CI verifier, in plan mode: NO SSH.
+  bootstrap_verify:
     needs: bootstrap_issue_check
     if: >-
       needs.bootstrap_issue_check.result == 'success' &&
       needs.bootstrap_issue_check.outputs.stage_sha != ''
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/sabora-cloud-bootstrap-stage.yml
     with:
-      operation: stage
+      operation: plan
       reviewed_main_sha: ${{ needs.bootstrap_issue_check.outputs.stage_sha }}
-    # Only these two Sabora transport secrets; never inherit repository-wide secrets.
-    # The called job still binds environment sabora-bootstrap-stage and checks both.
-    secrets:
-      SABORA_BOOTSTRAP_SSH_KEY_B64: ${{ secrets.SABORA_BOOTSTRAP_SSH_KEY_B64 }}
-      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}
+
+  # Normal environment-bound job: two scoped Sabora secrets become available
+  # here, not through workflow_call, with no secrets:inherit.
+  bootstrap_stage:
+    needs: [bootstrap_issue_check, bootstrap_verify]
+    if: >-
+      github.repository == 'jdlc86/CartaViva' &&
+      github.actor == github.repository_owner &&
+      github.event.issue.user.login == github.repository_owner &&
+      github.event.issue.title == format('[sabora] bootstrap stage {0}', needs.bootstrap_issue_check.outputs.stage_sha) &&
+      needs.bootstrap_issue_check.result == 'success' &&
+      needs.bootstrap_verify.result == 'success' &&
+      needs.bootstrap_issue_check.outputs.stage_sha != ''
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: sabora-one-time-bootstrap
+      cancel-in-progress: false
+    environment: sabora-bootstrap-stage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: sabora-bootstrap-source-verified
+          path: ${{ runner.temp }}/sabora-incoming
+      - name: Verify exact SHA and PIN, then transfer inactive ZIP only
+        env:
+          REVIEWED_MAIN_SHA: ${{ needs.bootstrap_issue_check.outputs.stage_sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SABORA_BOOTSTRAP_SSH_KEY_B64: ${{ secrets.SABORA_BOOTSTRAP_SSH_KEY_B64 }}
+          SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}
+          SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT: ${{ vars.SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT }}
+          SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT: ${{ vars.SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT }}
+        shell: bash
+        run: bash scripts/ci/sabora-bootstrap-stage-transport.sh

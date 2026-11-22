@@ -7,11 +7,12 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BOOTSTRAP,verifyBootstrapArchive,assertCloudBootstrapWorkflow} from '../scripts/ci/sabora-cloud-bootstrap-verify.mjs';
 const workflow=readFileSync(new URL('../.github/workflows/sabora-cloud-bootstrap-stage.yml',import.meta.url),'utf8');
+const transport=readFileSync(new URL('../scripts/ci/sabora-bootstrap-stage-transport.sh',import.meta.url),'utf8');
 const receiver=readFileSync(new URL('../deploy/sabora-bootstrap-receive-v1.sh',import.meta.url),'utf8');
 const sha=x=>createHash('sha256').update(x).digest('hex');
 
 test('cloud-only Sabora bootstrap is a closed, staged, no-install transport',()=>{
- assert.equal(assertCloudBootstrapWorkflow(workflow),true);
+ assert.equal(assertCloudBootstrapWorkflow(workflow,transport),true);
  assert.match(receiver,/SSH_ORIGINAL_COMMAND/);
  assert.match(receiver,/sabora-bootstrap/);
  assert.match(receiver,/\.sabora-original-launchers-426960f0\.zip/);
@@ -22,6 +23,7 @@ test('cloud-only Sabora bootstrap is a closed, staged, no-install transport',()=
  assert.match(receiver,/sha256sum -c --status/);
  assert.doesNotMatch(receiver,/\b(?:sudo|docker|scp|sftp|rsync|rm|systemctl|nft|eval)\b/);
  execFileSync('bash',['-n',new URL('../deploy/sabora-bootstrap-receive-v1.sh',import.meta.url).pathname]);
+ execFileSync('bash',['-n',new URL('../scripts/ci/sabora-bootstrap-stage-transport.sh',import.meta.url).pathname]);
 });
 
 test('cloud-only bootstrap boundary rejects bypasses of identity, host pin, trust and stage-only scope',()=>{
@@ -43,8 +45,12 @@ test('cloud-only bootstrap boundary rejects bypasses of identity, host pin, trus
   ['unexpected event',s=>s.replace('  workflow_dispatch:\n','  push:\n  workflow_dispatch:\n')],
   ['SSH inside plan',s=>s.replace('git fetch --no-tags origin main','ssh -F /dev/null bad && git fetch --no-tags origin main')]
  ];
- for(const [label,change] of changes){const modified=change(workflow);assert.notEqual(modified,workflow,label);
-  assert.throws(()=>assertCloudBootstrapWorkflow(modified),/sabora_cloud_bootstrap_stop:/,label);}
+ for(const [label,change] of changes){
+  const transportCase=['bad pin','weaker host algorithm','no private key type validation','wrong user','SFTP'].includes(label);
+  const original=transportCase?transport:workflow;
+  const modified=change(original);assert.notEqual(modified,original,label);
+  assert.throws(()=>assertCloudBootstrapWorkflow(transportCase?workflow:modified,transportCase?modified:transport),/sabora_cloud_bootstrap_stop:/,label);
+ }
 });
 
 test('archive verifier checks complete zip manifest, source SHA, both exact ELF digests and no extras',()=>{

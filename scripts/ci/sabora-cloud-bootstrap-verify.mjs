@@ -39,14 +39,20 @@ export function verifyBootstrapArchive(path,policy=BOOTSTRAP){
  return Object.freeze({schema:'sabora-bootstrap-archive/v1',artifactId:policy.artifactId,
   sourceSha:policy.sourceSha,sha256:policy.archiveSha256,stagingOnly:true,installed:false});
 }
-export function assertCloudBootstrapWorkflow(source){
+export function assertCloudBootstrapWorkflow(source, transportSource=readFileSync('scripts/ci/sabora-bootstrap-stage-transport.sh','utf8')){
+ if(typeof transportSource!=='string'||transportSource.length>16*1024)stop('transport_type');
  if(typeof source!=='string'||source.length>32*1024)stop('workflow_type');
  const require=(pattern,reason)=>{if(!pattern.test(source))stop('workflow_'+reason);};
+ const requireTransport=(pattern,reason)=>{if(!pattern.test(transportSource))stop('transport_'+reason);};
  require(/^on:\n  workflow_dispatch:/m,'trigger');
  if(/^\s{2}(?:push|schedule|pull_request|issues|repository_dispatch):/m.test(source))stop('workflow_unsafe_trigger');
  require(/^  workflow_call:\n    inputs:/m,'reusable_call');
- require(/^    secrets:\n      SABORA_BOOTSTRAP_SSH_KEY_B64:\n        required: true\n      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64:\n        required: true\npermissions:/m,'required_two_secrets');
- require(/SABORA_BOOTSTRAP_STAGE_SECRETS_UNAVAILABLE/,'fail_closed_empty_secrets');
+ require(/run: bash scripts\/ci\/sabora-bootstrap-stage-transport\.sh/,'shared_transport');
+ if(!transportSource.includes('[[ "${REVIEWED_MAIN_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || exit 1'))stop('transport_sha40');
+ if(!transportSource.includes('[[ "${GITHUB_SHA:-}" == "$REVIEWED_MAIN_SHA" ]] || exit 1'))stop('transport_exact_sha');
+ requireTransport(/node scripts\/ci\/sabora-release-governor\.mjs check-ci plan "\$GITHUB_SHA"/,'ci_gate');
+ requireTransport(/node scripts\/ci\/sabora-cloud-bootstrap-verify\.mjs archive "\$file"/,'archive_gate');
+
  require(/github\.repository == 'jdlc86\/CartaViva'/,'identity_repo');
  require(/github\.ref == 'refs\/heads\/main'/,'identity_ref');
  require(/github\.actor == 'jdlc86'/,'identity_actor');
@@ -63,24 +69,25 @@ export function assertCloudBootstrapWorkflow(source){
  require(/permissions:\n  contents: read\n  actions: read/,'permissions');
  require(/secrets\.SABORA_BOOTSTRAP_SSH_KEY_B64/,'ssh_secret');
  require(/secrets\.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64/,'host_secret');
- require(/-o StrictHostKeyChecking=yes/,'host_pin');
- require(/-o HostKeyAlgorithms=ssh-ed25519/,'host_algorithm');
+ requireTransport(/-o StrictHostKeyChecking=yes/,'host_pin');
+ requireTransport(/-o HostKeyAlgorithms=ssh-ed25519/,'host_algorithm');
  require(/vars\.SABORA_BOOTSTRAP_HOST_ED25519_FINGERPRINT/,'approved_fingerprint');
  require(/vars\.SABORA_BOOTSTRAP_CLIENT_ED25519_FINGERPRINT/,'approved_client_fingerprint');
- require(/ssh-keygen -y -P '' -f "\$key"/,'unencrypted_ed25519');
- require(/-o UserKnownHostsFile="\$known"/,'known_file');
- require(/-o BatchMode=yes/,'noninteractive');
- require(/-F \/dev\/null -T/,'config_isolation');
- require(/sabora-bootstrap@146\.59\.145\.64/,'target');
- require(/sabora-bootstrap-stage-v1 426960f0c6e645cd21575e0883e8a03638cc9e3a/,'protocol');
+ requireTransport(/ssh-keygen -y -P '' -f "\$key"/,'unencrypted_ed25519');
+ requireTransport(/-o UserKnownHostsFile="\$known"/,'known_file');
+ requireTransport(/-o BatchMode=yes/,'noninteractive');
+ requireTransport(/-F \/dev\/null -T/,'config_isolation');
+ requireTransport(/sabora-bootstrap@146\.59\.145\.64/,'target');
+ requireTransport(/sabora-bootstrap-stage-v1 426960f0c6e645cd21575e0883e8a03638cc9e3a/,'protocol');
  require(/sabora-cloud-bootstrap-verify\.mjs/,'digest_gate');
  const referenced=[...source.matchAll(/secrets\.([A-Z][A-Z0-9_]+)/g)].map(x=>x[1]);
  if(JSON.stringify([...new Set(referenced)].sort())!==JSON.stringify([
   'SABORA_BOOTSTRAP_KNOWN_HOSTS_B64','SABORA_BOOTSTRAP_SSH_KEY_B64']))stop('workflow_other_secrets');
  const executable=source.split('\n').filter(line=>!/^[ \t]*#/.test(line)).join('\n');
- if(/\b(?:sshpass|scp|sftp|rsync|sudo|docker|fleetia|FLEETIA|self-hosted)\b|StrictHostKeyChecking=no|(?:ubuntu|root)@146\.59\.145\.64/i.test(executable))stop('workflow_forbidden');
+ const executableTransport=transportSource.split('\n').filter(line=>!/^[ \t]*#/.test(line)).join('\n');
+ if(/\b(?:sshpass|scp|sftp|rsync|sudo|docker|fleetia|FLEETIA|self-hosted)\b|StrictHostKeyChecking=no|(?:ubuntu|root)@146\.59\.145\.64/i.test(executable+'\n'+executableTransport))stop('workflow_forbidden');
  const verify=source.match(/\n  verify:\n([\s\S]*?)\n  stage:\n/);
- if(!verify||/\bssh -F\b|secrets\./.test(verify[1]))stop('workflow_plan_side_effect');
+ if(!verify||/\bssh -F\b|secrets\.|sabora-bootstrap-stage-transport/.test(verify[1]))stop('workflow_plan_side_effect');
  return true;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
