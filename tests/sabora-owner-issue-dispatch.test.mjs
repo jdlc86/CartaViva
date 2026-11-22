@@ -198,8 +198,27 @@ function assertIssueBridgeWorkflowSafety(workflow) {
   assert.match(workflow,/await dispatchSaboraOwnerReleaseIssue\(\{/);
   assert.match(workflow,/uses: actions\/github-script@v7/);
   assert.doesNotMatch(workflow,/\bself-hosted\b/);
-  const executable=workflow.split('\n').filter(s=>!/^\s*#/.test(s)).join('\n');
-  assert.doesNotMatch(executable,/\bsecrets\.|\bFLEETIA_|GestionIntegral_Rutaa|\bssh\s|\bscp\s|\bdocker\s|\bsudo\s/i);
+  // The original owner-Issue admission code must not consume ANY secret.
+  // The new declarative reusable-workflow call may pass exactly TWO named
+  // Sabora bootstrap transport secrets; never broad inherit or extra code.
+  const sections=workflow.split('\n  bootstrap_stage:\n');
+  assert.equal(sections.length,2,'one and only one bootstrap stage caller');
+  const admission=sections[0].split('\n').filter(s=>!/^\s*#/.test(s)).join('\n');
+  assert.doesNotMatch(admission,/\bsecrets\.|\bFLEETIA_|GestionIntegral_Rutaa|\bssh\s|\bscp\s|\bdocker\s|\bsudo\s/i);
+  const stage=sections[1].split('\n').filter(s=>!/^\s*#/.test(s)).join('\n').trimEnd();
+  assert.equal(stage,[
+    '    needs: bootstrap_issue_check',
+    '    if: >-',
+    "      needs.bootstrap_issue_check.result == 'success' &&",
+    "      needs.bootstrap_issue_check.outputs.stage_sha != ''",
+    '    uses: ./.github/workflows/sabora-cloud-bootstrap-stage.yml',
+    '    with:',
+    '      operation: stage',
+    '      reviewed_main_sha: ${{ needs.bootstrap_issue_check.outputs.stage_sha }}',
+    '    secrets:',
+    '      SABORA_BOOTSTRAP_SSH_KEY_B64: ${{ secrets.SABORA_BOOTSTRAP_SSH_KEY_B64 }}',
+    '      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}'
+  ].join('\n'));
   return true;
 }
 
@@ -217,7 +236,11 @@ test('Workflow integration preserves authorization in existing release workflow,
     ['SSH credential',s=>s.replace('  actions: write','  actions: write\n      SSH_KEY: ${{ secrets.FLEETIA_KEY }}')],
     ['privileged runner',s=>s.replace('runs-on: ubuntu-24.04','runs-on: self-hosted')],
     ['checkout untrusted SHA',s=>s.replace('ref: ${{ github.sha }}','ref: ${{ github.event.issue.title }}')],
-    ['no dispatcher',s=>s.replace('dispatchSaboraOwnerReleaseIssue','skipDispatch')]
+    ['no dispatcher',s=>s.replace('dispatchSaboraOwnerReleaseIssue','skipDispatch')],
+    ['no named secrets',s=>s.replace('    secrets:', '    secrets: inherit')],
+    ['extra secret injection',s=>s.replace(
+      '      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}',
+      '      SABORA_BOOTSTRAP_KNOWN_HOSTS_B64: ${{ secrets.SABORA_BOOTSTRAP_KNOWN_HOSTS_B64 }}\n      FLEETIA_KEY: ${{ secrets.FLEETIA_KEY }}')]
   ];
   for(const [name,mutate] of mutations) {
     const changed=mutate(bridge);
