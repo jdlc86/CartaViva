@@ -46,3 +46,20 @@ El archivo `provenance.json` declara explícitamente `installable=false`, `owner
 5. **Instalación y primer despliegue** solo con autorización operativa posterior, pruebas reales de aislamiento y origen TLS, y demás controles S43/S40/S46. El ZIP previo permanece inerte en cuarentena; no reintentar el stage ni instalar directamente los ELF.
 
 **Alcance observado:** operaciones sobre artifact GitHub y entorno temporal off-host; **no hubo intervención en VPS, Supabase ni Fleetia** en este hito. La documentación de S48-15 deja identificado el preflight remoto anterior (también read-only), que no se repitió al compilar.
+
+## 5. Paquete de publicación API/web verificado contra el mismo SHA
+
+Se descargó por el conector GitHub el [artifact `sabora-governed-release-package` #14765780063](https://github.com/jdlc86/CartaViva/actions/runs/45050207002/artifacts/14765780063) del run `push main` #45050207002, correspondiente a `a5f0d90179515c8a2e539c584705654231e0e357`. ZIP exterior: **89.995.677 bytes**, SHA256 **`ff7528866650009ab9659f41aac3ef884fa4a2b372f45628dc19dfe2f5716ee4`**; coincidencia de digest real con GitHub, `expired=false` durante inspección, vencimiento 29-nov-2026 17:37:31 UTC.
+
+Su inventario exacto consta de cinco entradas regulares sin symlinks ni extras: `manifest.json`, `api.tar`, `web.tar`, `operational.yml`, `web.yml`. El manifiesto SHA256 **`d36f6e48cecf40aeec3205cd183f377fe0dbad0ec8dd06585418e62483b33074`** declara `sabora-release-bundle/v1`, proyecto `sabora`, SHA `a5f0d901...`, servicios `sabora-egress`, `api`, `web`.
+
+| Entrada | Bytes originales | SHA256 comprobado del contenido |
+|---|---:|---|
+| `api.tar` | 194.465.792 | `7599a85efcd7755f32717c7cf63d22d2017ba917245ff7c8c65d05563a545e81` |
+| `web.tar` | 66.765.824 | `1be7110133871f3b7e5ff644211df93a40390304915997d4bbf95eadec5e9ef9` |
+| `operational.yml` | 3.252 | `bda8bf58cc922ab2775bf9fa8b7ed1947bf4f23066f585cdb34ca58e7d7237d8` |
+| `web.yml` | 2.181 | `94af6c5d71c4c24dd2109ceb3324bdcf9f541c6667c1e6b77fc29ea79e547921` |
+
+**4/4 digests internos PASS**, comprobados realmente leyendo ZIP sin extraer TAR, cargar imágenes, ejecutar Compose o conectar VPS. IDs de imagen declarados por manifiesto (no importados de nuevo): API `sha256:e0c22c5cb00141896c54bae0aee3fe74604d71277e46e0d68faf55852ddcf331`; web `sha256:1f4754be8b1209f5589438a3244b463dbfd870824b1c35d0bbc9313bcc0192a5`. El laboratorio integrado de CI es evidencia distinta, no certificación operativa.
+
+**Dictamen adicional:** existencia y **bytes verificados del paquete de aplicación** del SHA exacto. No equivale a instalación del controlador, firmas Ed25519 reales, SQL PG17/S46, límites de red ni primer despliegue. No se transfirió el paquete ni se operó VPS/Fleetia. Al vencer el artifact debe regenerarse y revisarse, no eludir la firma ni reusar el ZIP antiguo.
