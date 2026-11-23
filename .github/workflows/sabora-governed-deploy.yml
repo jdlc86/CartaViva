@@ -1,4 +1,4 @@
-name: Sabora governed release (manual only)
+name: Sabora governed release V2 (manual only)
 on:
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main'
+    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' && github.actor == 'jdlc86'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -45,11 +45,8 @@ jobs:
           git fetch --no-tags origin main
           git cat-file -e "${RELEASE_SHA}^{commit}"
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
-          # Always execute the immutable workflow from the current main SHA.
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
-          # Deploy current main only; rollback can target an ancestor ONLY if
-          # the Sabora host ledger independently proves prior deployment.
           if [[ "$RELEASE_OPERATION" == deploy ]]; then
             test "$RELEASE_SHA" = "$GITHUB_SHA"
           fi
@@ -78,19 +75,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check signed owner consent and immutable evidence
-        id: consent
-        env:
-          SABORA_RELEASE_AGENT_READY: ${{ vars.SABORA_RELEASE_AGENT_READY }}
-          SABORA_APPROVER_PUBLIC_KEY_B64: ${{ vars.SABORA_APPROVER_PUBLIC_KEY_B64 }}
-          SABORA_APPROVAL_JSON_B64: ${{ secrets.SABORA_APPROVAL_JSON_B64 }}
-          SABORA_APPROVAL_SIG_B64: ${{ secrets.SABORA_APPROVAL_SIG_B64 }}
-          RELEASE_OPERATION: ${{ inputs.operation }}
-          RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/ci/sabora-release-governor.mjs authorize "$RELEASE_OPERATION" "$RELEASE_SHA"
       - name: Find exact main-push release package (read-only GitHub API)
         if: inputs.operation == 'deploy'
         id: artifact
@@ -105,7 +89,26 @@ jobs:
           run-id: ${{ steps.artifact.outputs.run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/sabora-release-package
-      - name: Invoke only a preinstalled forced-command Sabora host agent
+      - name: Bind owner GitHub run, immutable SHA and package (no external signer)
+        id: consent
+        env:
+          SABORA_RELEASE_AGENT_READY: ${{ vars.SABORA_RELEASE_AGENT_READY }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_ACTOR" = jdlc86
+          test "$GITHUB_REPOSITORY" = jdlc86/CartaViva
+          test "$GITHUB_REF" = refs/heads/main
+          test "$SABORA_RELEASE_AGENT_READY" = explicitly-provisioned-v2
+          test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          if [[ "$RELEASE_OPERATION" == deploy ]]; then
+            node scripts/ci/sabora-release-authorization-v2.mjs create "$RUNNER_TEMP/sabora-release-package/manifest.json"
+          else
+            node scripts/ci/sabora-release-authorization-v2.mjs create none
+          fi
+      - name: Use dedicated, pinned SSH forced command; never invoke Docker directly
         env:
           SABORA_SSH_KEY_B64: ${{ secrets.SABORA_SSH_KEY_B64 }}
           SABORA_SSH_KNOWN_HOSTS_B64: ${{ secrets.SABORA_SSH_KNOWN_HOSTS_B64 }}
@@ -113,33 +116,29 @@ jobs:
           RELEASE_OPERATION: ${{ inputs.operation }}
           AUTHORIZATION_ID: ${{ steps.consent.outputs.authorization_id }}
           AUTHORIZATION_HASH: ${{ steps.consent.outputs.authorization_sha256 }}
-          SABORA_APPROVAL_JSON_B64: ${{ secrets.SABORA_APPROVAL_JSON_B64 }}
-          SABORA_APPROVAL_SIG_B64: ${{ secrets.SABORA_APPROVAL_SIG_B64 }}
+          SABORA_RELEASE_AUTHORIZATION_B64: ${{ steps.consent.outputs.approval_b64 }}
         shell: bash
         run: |
           set -euo pipefail
           umask 077
-          [[ -n "$SABORA_SSH_KEY_B64" && -n "$SABORA_SSH_KNOWN_HOSTS_B64" && -n "$SABORA_APPROVAL_JSON_B64" && -n "$SABORA_APPROVAL_SIG_B64" ]]
+          [[ -n "$SABORA_SSH_KEY_B64" && -n "$SABORA_SSH_KNOWN_HOSTS_B64" && -n "$SABORA_RELEASE_AUTHORIZATION_B64" ]]
           key="$RUNNER_TEMP/sabora-ssh-key"
           known="$RUNNER_TEMP/sabora-known-hosts"
           trap 'rm -f "$key" "$known"' EXIT
           printf '%s' "$SABORA_SSH_KEY_B64" | base64 --decode > "$key"
           printf '%s' "$SABORA_SSH_KNOWN_HOSTS_B64" | base64 --decode > "$known"
-          # This login must be bound on the host to a root-owned, Sabora-only
-          # forced command; it MUST NOT have a normal shell or Docker group.
-          # Host agent must independently verify the signed payload and keep
-          # a one-use audit ledger; argv alone is never sufficient consent.
-          # Exact approved bundle bytes travel encrypted over stdin, never
-          # through SSH argv, shell interpolation or arbitrary SCP paths.
+          chmod 600 "$key" "$known"
+          ssh-keygen -y -P '' -f "$key" > /dev/null
+          ssh-keygen -F 146.59.145.64 -f "$known" > /dev/null
+          # Server side must use one Sabora-only forced command. No generic
+          # SSH shell, global sudo, SCP, SFTP, networking or Docker admin.
           {
             if [[ "$RELEASE_OPERATION" == deploy ]]; then
               node scripts/ci/sabora-release-transport.mjs "$RUNNER_TEMP/sabora-release-package"
             else
-              # Rollback uses only the previously deployed Sabora bundle
-              # retained and proved healthy in a protected host ledger.
               node scripts/ci/sabora-release-rollback-request.mjs
             fi
           } | ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known" \
               -i "$key" -p 22 sabora-release@146.59.145.64 \
-              "sabora-release-v1 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH $GITHUB_RUN_ID"
+              "sabora-release-v2 $RELEASE_OPERATION $RELEASE_SHA $AUTHORIZATION_ID $AUTHORIZATION_HASH $GITHUB_RUN_ID"
