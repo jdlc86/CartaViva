@@ -250,7 +250,7 @@ test('S50 deploy V2 has no mandatory Windows or offline signing CI job',()=>{
  assert.doesNotMatch(ci,/^  windows-offline-signer:/m);
  assert.doesNotMatch(ci,/Exercise offline signer end-to-end with disposable Windows test key/);
  assert.doesNotMatch(flow,/SABORA_APPROVAL_SIG_B64|SABORA_APPROVAL_JSON_B64|SABORA_APPROVER_PUBLIC_KEY_B64/);
- assert.match(flow,/sabora-release-authorization-v2\\.mjs create/);
+ assert.match(flow,/sabora-release-authorization-v2\.mjs create/);
 });
 
 test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evidence as main',()=>{
