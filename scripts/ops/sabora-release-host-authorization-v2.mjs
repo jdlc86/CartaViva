@@ -3,7 +3,7 @@
 // scoped, expiring declaration, NOT an independently signed authorization.
 import {verifyGitHubReleaseAuthorizationV2} from '../ci/sabora-release-authorization-v2.mjs';
 const SHA40=/^[0-9a-f]{40}$/,SHA64=/^[0-9a-f]{64}$/;
-const ID=/^GH[1-9][0-9]{5,19}-A[1-9][0-9]{0,4}$/;
+const ID=/^(?:GH[1-9][0-9]{5,19}-A[1-9][0-9]{0,4}|IS[0-9]{12})$/;
 const RUN=/^[1-9][0-9]{5,19}$/;
 const B64=/^[A-Za-z0-9+/]+={0,2}$/;
 const stop=why=>{throw Error('sabora_v2_host_stop:'+why);};
