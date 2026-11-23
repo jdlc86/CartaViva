@@ -1,5 +1,8 @@
 # Sabora / CartaViva — tablero vivo de ejecución, aceptación y bloqueos
 
+> **S50 — DECISIÓN DE SIMPLIFICACIÓN DE RELEASE (23-11-2026, SOLO DISEÑO EN PR #85 DRAFT):** se elimina del **objetivo V2** firma externa de autorización/instalación/DBA, seis expedientes criptográficos y nueve autoridades/identidades firmantes. Fuente: [contrato simplificado V2](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md) y [continuidad 50](../handoffs/SESSION_50_HANDOFF_2026-11-23.md). Se conservan SHA exacto, CI, autorización GitHub owner, SSH exclusivo, permisos mínimos, protección contra replay, comprobaciones reales PostgreSQL/TLS/aislamiento/Docker y aceptación. **ESTADO: NORMA CANDIDATA REDACTADA; CÓDIGO/WORKFLOW V2 NO IMPLEMENTADO; PR NO FUSIONADO; CI DEL NUEVO HEAD NO VERIFICADA; SIN DEPLOY.** No abrir segundo camino, no desactivar firmas en V1 aisladamente. Fleetia intocable.
+
+
 **Creado:** 2026-11-05. **Naturaleza:** instrumento vivo de seguimiento del trabajo, **NO es normativa** ni autoriza merge, despliegue, migraciones operativas ni gasto. **Ámbito:** un restaurante Sabora; directorio CartaViva separado.  
 **Actualización:** después de **cada hito integral realmente concluido**, de un bloqueo/decisión importante, de una auditoría que cambie la prioridad, o de un cambio de autorización. **No** acumular microestados, hipótesis o pruebas pequeñas como logros.  
 **Fuente de verdad del estado de implementación:** HEAD y código de GitHub, resultados CI del **mismo SHA**, actas de aceptación y validación observada. **Fuente de verdad de requisitos y diseño:** siempre la documentación normativa indicada abajo.
