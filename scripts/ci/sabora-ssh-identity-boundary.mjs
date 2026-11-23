@@ -44,6 +44,11 @@ export function assertSaboraReleaseSshBoundary(workflow){
  requireMatch(workflow,/-o StrictHostKeyChecking=yes -o UserKnownHostsFile="\$known"/,'host_key_pin');
  requireMatch(workflow,/-i "\$key" -p 22 sabora-release@146\.59\.145\.64/,'exclusive_ssh_identity');
  requireMatch(workflow,/"sabora-release-v2 \$RELEASE_OPERATION \$RELEASE_SHA \$AUTHORIZATION_ID \$AUTHORIZATION_HASH \$GITHUB_RUN_ID"/,'forced_command_protocol');
+ const execution=workflow.split('\n  execute:\n')[1];
+ if(!execution||!execution.includes('git fetch --no-tags origin main')||
+   !execution.includes('test "$GITHUB_SHA" = "$(git rev-parse origin/main)"')||
+   !execution.includes('node scripts/ci/sabora-release-governor.mjs check-ci "$RELEASE_OPERATION" "$RELEASE_SHA"'))
+  stop('post_environment_main_and_ci_recheck');
  const match=workflow.match(/\n  verify:\n([\s\S]*?)\n  execute:\n/);
  if(!match||/\|\s*ssh\s|ssh -F|scp\s|sftp\s/.test(match[1]))stop('remote_plan');
  if(!/if: inputs\.operation == 'deploy' \|\| inputs\.operation == 'rollback'/.test(workflow))
