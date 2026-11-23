@@ -16,6 +16,7 @@ import {renderIngressFilter} from './sabora-ingress-network-policy.mjs';
 import {renderSaboraEgressGuard} from './sabora-egress-network-policy.mjs';
 import {canonicalNft,NETWORK_NAMES} from '../ops/sabora-release-local-inspector.mjs';
 import {CONTROLLER_PATHS as P,CONTROLLER_TOOLS,deriveInstallationSubject} from '../ops/sabora-release-installation.mjs';
+import {deriveControllerInstallationManifestV2} from '../ops/sabora-release-installation-v2.mjs';
 import {sha256} from '../ops/sabora-release-protected-store.mjs';
 import {releaseProcessFailureKind} from '../ops/sabora-release-process.mjs';
 import {inspectDockerSaveArchive} from '../ops/sabora-release-image-archive.mjs';
@@ -348,14 +349,44 @@ const v2Config={
  quotaBytes:configuration.quotaBytes
 };
 put(P.config,JSON.stringify(v2Config)+'\n');
-put(P.installation,JSON.stringify({...installPayload,
- schema:'sabora-controller-installation/v2',configurationSha256:hashFile(P.config)})+'\n');
+const installationV2=deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT});
+assert.equal(installationV2.sourceSha,sourceSha);
+assert.equal(installationV2.configurationSha256,hashFile(P.config));
+assert.equal(installationV2.artifactSha256,hashFile(P.code+'/artifact.json'));
+assert.equal(Object.keys(installationV2.toolHashes).sort().join('|'),
+ Object.keys(CONTROLLER_TOOLS).sort().join('|'));
+put(P.installation,JSON.stringify(installationV2)+'\n');
 put(P.root+'/lab-entry.mjs',
  "import {verifyControllerInstallationV2} from './code/scripts/ops/sabora-release-installation-v2.mjs';\n"+
  "import {runReleaseController,safeReleaseError} from './code/scripts/ops/sabora-release-controller.mjs';\n"+
  "try{process.umask(0o077);const installation=verifyControllerInstallationV2({environment:'disposable-lab'});"+
  "process.stdout.write(JSON.stringify(await runReleaseController({source:process.stdin,installation}))+'\\n')}"+
  "catch(e){process.stderr.write(safeReleaseError(e)+'\\n');process.exitCode=1}\n");
+// A prepared manifest must match real installed bytes. No detached approval
+// signature, no V1 signed installation accepted as a substitution.
+const v2Entry=()=>run(P.root+'/bin/node',[P.root+'/lab-entry.mjs'],
+ {allowFailure:true,input:'',timeout:10000});
+const prepared=v2Entry();
+assert.notEqual(prepared.status,0);
+assert.match(prepared.stderr,/sabora_controller_stop:transport_eof/);
+ok('v2-root-owned-generated-installation-accepted-without-signature');
+const srcV2=P.code+'/scripts/ops/sabora-release-installation-v2.mjs';
+const oldSourceV2=readFileSync(srcV2);
+try{
+ put(srcV2,Buffer.concat([oldSourceV2,Buffer.from('\\n// altered installed source\\n')]));
+ const forged=v2Entry();
+ assert.notEqual(forged.status,0);
+ assert.match(forged.stderr,/sabora_controller_stop:v2_artifact_changed/);
+}finally{put(srcV2,oldSourceV2);}
+ok('v2-modified-source-denied-before-ssh-or-docker');
+const originalV2Config=readFileSync(P.config);
+try{
+ put(P.config,JSON.stringify({...v2Config,quotaBytes:v2Config.quotaBytes+1})+'\\n');
+ const changed=v2Entry();
+ assert.notEqual(changed.status,0);
+ assert.match(changed.stderr,/sabora_controller_stop:v2_install_hash_mismatch/);
+}finally{put(P.config,originalV2Config);}
+ok('v2-modified-installation-config-denied-before-ssh-or-docker');
 const v2Authorize=(bundle,operation,attempt)=>createGitHubReleaseAuthorization({
  actor:'jdlc86',runId,attempt,operation,sha:bundle.sha,
  bundleManifestSha256:operation==='deploy'?sha256(bundle.manifestBytes):null,
