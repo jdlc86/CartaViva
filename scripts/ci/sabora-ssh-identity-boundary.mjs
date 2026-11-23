@@ -28,7 +28,7 @@ export function assertSaboraReleaseSshBoundary(workflow){
  requireMatch(workflow,/SABORA_OWNER_VERIFIED:\s*\$\{\{ needs\.verify\.outputs\.owner_verified \}\}/,'authenticated_owner_output');
  requireMatch(workflow,/SABORA_SOURCE_ISSUE_NUMBER:\s*\$\{\{ needs\.verify\.outputs\.source_issue_number \}\}/,'one_use_source_issue');
  requireMatch(workflow,/sabora-release-authorization-v2\.mjs create/,'v2_authorization');
- if([...workflow.matchAll(/sabora-release-authorization-v2\\.mjs create/g)].length!==2)
+ if([...workflow.matchAll(/sabora-release-authorization-v2\.mjs create/g)].length!==2)
   stop('both_deploy_and_rollback_need_owner_auth');
  requireMatch(workflow,/sabora-release-governor\.mjs check-ci "\$RELEASE_OPERATION" "\$RELEASE_SHA"/,'exact_ci_gate');
  const referenced=[...workflow.matchAll(/\$\{\{\s*secrets\.([A-Za-z][A-Za-z0-9_]*)\s*\}\}/g)].map(m=>m[1]);
