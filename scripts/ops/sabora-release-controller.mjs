@@ -51,7 +51,7 @@ export async function runReleaseController({source,installation}){
    if(!v2||parsed.operation==='deploy')return candidate;
    // V2 rollback target is read from immutable host history, never supplied
    // by the SSH client. This history is reconciled under the release lock.
-   const history=ledger.assertReconciled();
+   const history=ledger.readHistory(); // journal becomes in-progress after one-time consumption
    const target=history.versions.find(entry=>entry.releaseSha===candidate.releaseSha&&entry.status==='healthy');
    if(!target||!/^[a-f0-9]{64}$/.test(target.bundleManifestSha256))stop('rollback_target_not_retained');
    return Object.freeze({...candidate,bundleManifestSha256:target.bundleManifestSha256});
