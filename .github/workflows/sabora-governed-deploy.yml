@@ -128,6 +128,7 @@ jobs:
           SABORA_RELEASE_AGENT_READY: ${{ vars.SABORA_RELEASE_AGENT_READY }}
           SABORA_OWNER_VERIFIED: ${{ needs.verify.outputs.owner_verified }}
           SABORA_SOURCE_ISSUE_NUMBER: ${{ needs.verify.outputs.source_issue_number }}
+          GITHUB_TOKEN: ${{ github.token }}
           RELEASE_OPERATION: ${{ inputs.operation }}
           RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
         shell: bash
@@ -138,6 +139,9 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main
           test "$SABORA_RELEASE_AGENT_READY" = explicitly-provisioned-v2
           test "$GITHUB_SHA" = "$(git rev-parse HEAD)"
+          git fetch --no-tags origin main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          node scripts/ci/sabora-release-governor.mjs check-ci "$RELEASE_OPERATION" "$RELEASE_SHA"
           if [[ "$RELEASE_OPERATION" == deploy ]]; then
             node scripts/ci/sabora-release-authorization-v2.mjs create "$RUNNER_TEMP/sabora-release-package/manifest.json"
           else
