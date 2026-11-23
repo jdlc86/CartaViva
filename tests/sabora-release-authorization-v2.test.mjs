@@ -42,6 +42,16 @@ test('V2 rejects expired, future and stretched windows',()=>{
  assert.throws(()=>verifyGitHubReleaseAuthorizationV2(raw,{operation:'deploy',sha:SHA},NOW-1),/expired/);
  assert.throws(()=>verify(change(raw,{expiresAt:new Date(NOW+7200000).toISOString()})),/expired/);
 });
+test('Issue authorization is keyed to the original Issue, not a fresh run or attempt',()=>{
+ const a=createGitHubReleaseAuthorization({...input(),sourceIssueNumber:87});
+ const b=createGitHubReleaseAuthorization({...input(),sourceIssueNumber:87,runId:'45081697325',attempt:2});
+ assert.equal(a.authorizationId,'IS000000000087');
+ assert.equal(b.authorizationId,a.authorizationId);
+ const receipt=verify(a.raw,{sourceIssueNumber:87});
+ assert.equal(receipt.sourceIssueNumber,87);
+ assert.throws(()=>verify(a.raw,{sourceIssueNumber:88}),/sabora_v2_authorization_stop/);
+ assert.throws(()=>createGitHubReleaseAuthorization({...input(),sourceIssueNumber:0}),/sabora_v2_authorization_stop/);
+});
 test('V2 rollback has no required signature nor declared package, but binds target and GitHub run',()=>{
  const a=createGitHubReleaseAuthorization({...input(),operation:'rollback',bundleManifestSha256:null});
  const receipt=verifyGitHubReleaseAuthorizationV2(a.raw,{operation:'rollback',sha:SHA,
