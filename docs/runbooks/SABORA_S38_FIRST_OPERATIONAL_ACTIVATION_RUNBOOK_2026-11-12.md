@@ -1,5 +1,7 @@
 # Sabora — runbook candidato de primera activación operativa S38
 
+> **S50 (23-11-2026, PR #85 Draft):** la metodología futura de primera activación usa el [contrato simplificado V2](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md), retirando la **firma externa**, los seis expedientes firmados y las nueve autoridades de la ruta operativa. Las menciones históricas a firmas S43/S46 continúan describiendo V1, **no permisos para ignorar sus controles materiales**. Se mantienen identidad real y TLS verify-full en Supabase, migración autorizada por separado, red/actuador solo Sabora, backup genesis aplazado solo para datos ficticios y sin PC. Mientras no se integre y valide el código V2, **STOP de deploy; no desactivar el controlador V1 por partes**.
+
 > **NO EJECUTADO / NO AUTORIZA PRODUCCIÓN.** Aplica sólo a Sabora. No permite
 > tocar Fleetia, otros proyectos, Supabase/VPS sin permiso, hacer merge ni
 > inferir credenciales o endpoints. Cada STOP requiere evidencia material.
