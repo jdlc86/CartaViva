@@ -1,5 +1,7 @@
 # Sabora — candidato de despliegue gobernado y red exclusiva V1
 
+> **Decisión posterior S50 (23-11-2026; PR #85 Draft):** [contrato simplificado V2](SABORA_SIMPLIFIED_DEPLOYMENT_V2.md). El propietario ha decidido retirar **firma externa de autorización**, seis expedientes firmados y nueve autoridades/identidades criptográficas del despliegue; las secciones históricas de V1 describen el modelo anterior. V2 conservará CI/SHA, autorización GitHub, SSH restringido, comprobaciones reales, integridad, ledger y aislamiento Fleetia. **Código V1 aún vigente/no habilitado: no eliminar gates aisladamente, no desplegar hasta V2 integral probado e integrado.**
+
 **Estado: propuesta normativa en PR #59, NO integrada ni operativa.**
 **Propietario: decisión 14-11-2026.** Un restaurante Sabora, dos PWA independientes, un único VPS compartido; no existen usuarios reales. Este texto desarrolla la petición de un despliegue automatizable y gobernado **sin sustituir** los contratos de [aislamiento](CARTAVIVA_PROJECT_BOUNDARY.md), [autorización](../SABORA_AUTHORIZATION_GATE.md), [validación y recuperación](SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), [ciclo P3](../runbooks/SABORA_P3_ISOLATED_LIFECYCLE_RUNBOOK_2026-10-29.md) ni [primera activación](../runbooks/SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md). Un conflicto es STOP y requiere decisión del propietario, no reinterpretación.
 
