@@ -81,6 +81,25 @@ export function verifyReleaseAuthorization(raw,signatureB64,publicPem,expected,n
    operation:approval.operation,authorizationSha256:digest,
    bundleManifestSha256:approval.bundleManifestSha256,evidence:approval.evidence});
 }
+// V2 deliberately has no independent owner signature. GitHub main is
+// therefore an authorization boundary, not merely the latest code pointer.
+// Fail closed for deploy/rollback if repository branch protection is absent.
+// This is a read-only public GitHub API query, never a settings mutation.
+export async function verifyProtectedMain(token,expectedSha,fetcher=fetch){
+ if(!SHA.test(expectedSha)||typeof token!=='string'||token.length<10)
+  reject('main_protection_lookup_credentials_missing');
+ const response=await fetcher('https://api.github.com/repos/jdlc86/CartaViva/branches/main',{
+  headers:{accept:'application/vnd.github+json',authorization:'Bearer '+token,
+   'x-github-api-version':'2022-11-28'}});
+ if(!response.ok)reject('main_protection_lookup_failed');
+ const data=await response.json();
+ if(data?.name!=='main'||data.protected!==true)
+  reject('main_branch_not_protected');
+ if(!SHA.test(data?.commit?.sha)||data.commit.sha!==expectedSha)
+  reject('main_branch_changed_after_authorization');
+ return data.commit.sha;
+}
+
 export async function verifyGithubChecks(sha,token,fetcher=fetch){
  if(!SHA.test(sha)||typeof token!=='string'||token.length<10)reject('ci_lookup_credentials_missing');
  const response=await fetcher('https://api.github.com/repos/jdlc86/CartaViva/commits/'+sha+'/check-runs?per_page=100',{
@@ -106,6 +125,10 @@ if(self){
   }else if(mode==='check-ci'){
    const names=await verifyGithubChecks(sha,process.env.GITHUB_TOKEN);
    process.stdout.write('sabora_release_ci_pass:'+names.join(',')+'\n');
+  }else if(mode==='check-main'){
+   if(!OPS.includes(operation))reject('main_protection_operation_invalid');
+   await verifyProtectedMain(process.env.GITHUB_TOKEN,process.env.GITHUB_SHA);
+   process.stdout.write('sabora_release_main_protected:'+process.env.GITHUB_SHA+'\\n');
   }else if(mode==='authorize'){
    const env=process.env;
    if(env.SABORA_RELEASE_AGENT_READY!=='explicitly-provisioned')reject('host_agent_not_provisioned');
