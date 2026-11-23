@@ -62,7 +62,8 @@ function checkScope(plan,receipt,mode){
  if(!receipt||receipt.operation!==mode||!SHA.test(receipt.releaseSha)||
   !/^[0-9a-f]{64}$/.test(receipt.authorizationSha256)||
   !/^[0-9a-f]{64}$/.test(receipt.bundleManifestSha256)||
-  !EVIDENCE_KEYS.every(k=>/^[0-9a-f]{64}$/.test(receipt.evidence?.[k]??'')))
+  !(receipt.schema==='sabora-release-authorization-receipt/v2'||
+    EVIDENCE_KEYS.every(k=>/^[0-9a-f]{64}$/.test(receipt.evidence?.[k]??''))))
   stop('invalid_signed_scope');
  if(plan?.operation!==mode||plan?.project!==SABORA_RELEASE_SCOPE.project||
     !Array.isArray(plan.services)||plan.services.join('|')!==SABORA_RELEASE_SCOPE.services.join('|')||
@@ -100,9 +101,15 @@ export async function executeScopedSaboraRelease({
  // verified installation and revalidates original authorization bytes.
  if(operation!=='deploy'&&operation!=='rollback')stop('operation_disallowed');
  assertDriver(driver);
- if(receipt?.operation!==operation)stop('signed_operation_mismatch');
- const evidence=driver.verifyEvidence?await driver.verifyEvidence(receipt):verifiedEvidence(receipt,await driver.getEvidence(receipt));
- if(!Array.isArray(evidence)||evidence.length!==EVIDENCE_KEYS.length)stop('incomplete_real_gates');
+ if(receipt?.operation!==operation)stop('authorization_operation_mismatch');
+ const v2=receipt.schema==='sabora-release-authorization-receipt/v2';
+ // No synthetic six-dossier replacement: V2 relies on the actual network,
+ // filesystem, TLS, images, health and pre-authorized SQL preflight, not on
+ // claims signed by multiple keys controlled by one owner.
+ const evidence=driver.verifyEvidence?await driver.verifyEvidence(receipt):
+  (v2?[]:verifiedEvidence(receipt,await driver.getEvidence(receipt)));
+ if(!Array.isArray(evidence)||(!v2&&evidence.length!==EVIDENCE_KEYS.length)||
+   (v2&&evidence.length!==0))stop('material_gate_contract');
  const network=assertLiveSaboraIsolation(await driver.inspectIsolation(),now,'preflight');
  const history=await driver.readHistory();
  let bundle,rollbackPlan;
@@ -135,7 +142,7 @@ export async function executeScopedSaboraRelease({
   }
  }
  // Exactly-once consent is durably consumed BEFORE Docker first mutates.
- // A failure afterward may require a NEW signed authorization to recover.
+ // A failure afterward requires a NEW owner-authorized GitHub run to recover.
  await driver.registerAuthorization(receipt,{operation,releaseSha:receipt.releaseSha,
   manifestSha256:receipt.bundleManifestSha256,evidenceCount:evidence.length});
  if(operation==='deploy'){
