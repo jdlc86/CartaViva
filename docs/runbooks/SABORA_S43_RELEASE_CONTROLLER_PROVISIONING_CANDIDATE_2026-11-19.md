@@ -1,5 +1,7 @@
 # S43 — provisioning/operación/recuperación candidata del controlador
 
+> **Cambio de metodología decidido en S50 — aún no implementado (PR #85 Draft):** seguir [despliegue simplificado V2](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md) para sustituir instalación/autorizaciones con firmas Ed25519, seis expedientes y nueve autoridades por manifiesto de hashes root-owned y controles vivos. La secuencia V1 descrita abajo es histórica y **el código actual todavía la exige**; no ejecutar una instalación parcial, no insertar una `installation.json` ficticia ni omitir un paso hasta publicar y validar un instalador/controlador V2 completo. Mantener cuenta técnica SSH exclusiva, caminos root-owned, Compose cerrado, isolation/ledger y autorización física separada del propietario.
+
 **NO EJECUTADO. NO-GO operativo.** Este procedimiento requiere autorización posterior y revisión independiente del código final. No es un script de instalación automática. Mantiene íntegros el gate de autorización, release V1, CV005 DBA y runbook S40. [Diseño/amenazas/layout](../architecture/SABORA_S43_RELEASE_CONTROLLER_CANDIDATE_2026-11-19.md).
 
 ## Prerrequisitos y STOP
