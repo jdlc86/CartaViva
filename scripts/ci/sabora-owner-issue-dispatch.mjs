@@ -62,7 +62,7 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
        (typeof live.body !== 'string' || live.body.trim() !== '')))
     stop('issue_changed_or_closed');
   // GH Actions may be queued while main changes. The target workflow rechecks
-  // the exact main SHA, ancestry, full integrated CI and signed authorization.
+  // the exact main SHA, ancestry, full integrated CI and owner-run authorization V2.
   const branch = await github.rest.repos.getBranch({owner, repo, branch: MAIN});
   const mainSha = branch?.data?.commit?.sha;
   if (typeof mainSha !== 'string' || !/^[0-9a-f]{40}$/.test(mainSha))
@@ -73,7 +73,8 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
   // this is only a REQUEST; authorization occurs later in the protected workflow.
   await github.rest.actions.createWorkflowDispatch({
     owner, repo, workflow_id: WORKFLOW, ref: MAIN,
-    inputs: {operation: request.operation, release_sha: request.releaseSha}
+    inputs: {operation: request.operation, release_sha: request.releaseSha,
+      source_issue_number: String(request.issueNumber)}
   });
   await github.rest.issues.createComment({
     owner, repo, issue_number: request.issueNumber,
@@ -82,7 +83,7 @@ export async function dispatchSaboraOwnerReleaseIssue({event, context, github}) 
       'Operation: `' + request.operation + '`; SHA: `' + request.releaseSha + '`.',
       'Main SHA at preflight: `' + mainSha + '`.',
       'This is **dispatch acknowledgment only**, not deployment, installation,',
-      'signed consent, VPS contact, successful checks or acceptance.',
+      'owner authorization, VPS contact, successful checks or acceptance.',
       'The protected workflow MUST independently fail closed unless all gates pass.',
       'See Actions: `.github/workflows/' + WORKFLOW + '`.'
     ].join(' ')
