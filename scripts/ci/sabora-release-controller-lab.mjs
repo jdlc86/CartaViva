@@ -366,9 +366,18 @@ const v2Command=(auth,bundle,operation)=>[
 const v2Transmit=(bundle,auth)=>stream=>sendReleaseBundle(stream,{
  approvalB64:auth.approvalB64,manifestBytes:bundle.manifestBytes,paths:bundle.paths
 });
+// A V1 signed authorization MUST NOT be accepted by the newly provisioned
+// V2 root entry, even when the old keys still happen to exist on this lab host.
+await denied('v2-rejects-old-signed-v1-wire',a,approval(a,'deploy','LAB-V1-NOT-A-ROUTE'));
 const v2Deploy=v2Authorize(c,'deploy',1),v2DeployCommand=v2Command(v2Deploy,c,'deploy');
 const v2Before=snapshot();sentinel();
-const v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
+let v2MonitorFailure=null;
+const v2SentinelMonitor=setInterval(()=>{
+ try{sentinel();}catch(error){v2MonitorFailure=error;}
+},350);
+let v2Delivery;
+try{
+v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
 assert.equal(JSON.parse(v2Delivery.stdout).state,'healthy');
 assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
 assert.notEqual(snapshot(),v2Before);sentinel();
@@ -383,6 +392,9 @@ assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);sentinel();
 ok('v2-real-ssh-unsigned-rollback-A-and-sentinel');
 await denied('v2-rollback-replay-denied',a,
  {command:v2RollbackCommand,body:{operation:'rollback'}},v2RollbackFeed);
+}finally{clearInterval(v2SentinelMonitor);}
+if(v2MonitorFailure)throw v2MonitorFailure;
+ok('v2-foreign-sentinel-never-interrupted');
 // Restore V1 test fixtures solely in this disposable runner for the remaining
 // historic negatives. No installation, migrations or VPS changes are implied.
 put(P.state+'/allocation.json',oldV1.reservation);
