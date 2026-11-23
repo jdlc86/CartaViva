@@ -13,9 +13,10 @@ async function writePart(out,b){
  if(!out.write(b))await once(out,'drain');
 }
 export async function sendReleaseBundle(out,{approvalB64,signatureB64,manifestBytes,paths}){
+ const v2=signatureB64===undefined;
  if(!Buffer.isBuffer(manifestBytes)||manifestBytes.length<10||manifestBytes.length>32768||
    !Array.isArray(paths)||paths.length!==4||
-   ![approvalB64,signatureB64].every(v=>typeof v==='string'&&/^[A-Za-z0-9+/]+={0,2}$/.test(v)))
+   !(v2?[approvalB64]:[approvalB64,signatureB64]).every(v=>typeof v==='string'&&/^[A-Za-z0-9+/]+={0,2}$/.test(v)))
   stop('invalid_sender_input');
  const sizes=paths.map((path,i)=>{
   const st=lstatSync(path);
@@ -23,7 +24,8 @@ export async function sendReleaseBundle(out,{approvalB64,signatureB64,manifestBy
    stop('invalid_source_file');
   return st.size;
  });
- const header=JSON.stringify({protocol:'sabora-release-wire/v1',approvalB64,signatureB64,
+ const header=JSON.stringify(v2?{protocol:'sabora-release-wire/v2',approvalB64,
+  manifestB64:manifestBytes.toString('base64')}:{protocol:'sabora-release-wire/v1',approvalB64,signatureB64,
   manifestB64:manifestBytes.toString('base64')})+'\n';
  if(Buffer.byteLength(header)>49152)stop('header_too_large');
  await writePart(out,Buffer.from(header));
@@ -48,12 +50,14 @@ if(self){
   if(!dir||process.argv.length!==3)stop('expected_package_directory');
   const {join}=await import('node:path');
   const manifestBytes=readFileSync(join(dir,'manifest.json'));
-  const approval=JSON.parse(Buffer.from(process.env.SABORA_APPROVAL_JSON_B64||'','base64').toString('utf8'));
+  const v2=Boolean(process.env.SABORA_RELEASE_AUTHORIZATION_B64);
+  const approvalB64=v2?process.env.SABORA_RELEASE_AUTHORIZATION_B64:process.env.SABORA_APPROVAL_JSON_B64;
+  const approval=JSON.parse(Buffer.from(approvalB64||'','base64').toString('utf8'));
   if(createHash('sha256').update(manifestBytes).digest('hex')!==approval.bundleManifestSha256)
-   stop('signed_manifest_package_mismatch');
+   stop('manifest_package_mismatch');
   await sendReleaseBundle(process.stdout,{
-   approvalB64:process.env.SABORA_APPROVAL_JSON_B64,
-   signatureB64:process.env.SABORA_APPROVAL_SIG_B64,
+   approvalB64,
+   ...(v2?{}:{signatureB64:process.env.SABORA_APPROVAL_SIG_B64}),
    manifestBytes,
    paths:['api.tar','web.tar','operational.yml','web.yml'].map(n=>join(dir,n))
   });
