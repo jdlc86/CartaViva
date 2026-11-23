@@ -11,6 +11,68 @@ const HASH=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)&&!/^0+$/.test(v);
 const read=path=>protectedBytes(path,{maxBytes:4*1024*1024});
 function checkManifest(path,expectedSha){const bytes=read(path);
  if(sha256(bytes)!==expectedSha)stop('v2_install_hash_mismatch');return bytes;}
+// Content-addressed proposal for the already staged, root-owned controller.
+// This DOES NOT install anything and DOES NOT authorize the stage. An owner-
+// authorized provisioner writes it once; verifyControllerInstallationV2 then
+// independently verifies every pinned byte before privileged operations.
+// No signing identity, private approval key, or sixth-party dossier.
+export function deriveControllerInstallationManifestV2({
+ environment='production',approvedAt=new Date().toISOString()
+}={}){
+ if(process.platform!=='linux'||process.geteuid?.()!==0)
+  stop('v2_manifest_requires_root_linux');
+ if(!['production','disposable-lab'].includes(environment)||
+   !Number.isFinite(Date.parse(approvedAt))||
+   new Date(Date.parse(approvedAt)).toISOString()!==approvedAt||
+   Date.parse(approvedAt)>Date.now())stop('v2_manifest_invalid_scope');
+ for(const path of [P.root,P.code])trustedDirectory(path);
+ const artifactBytes=read(join(P.code,'artifact.json'));
+ const artifact=JSON.parse(artifactBytes);
+ if(!exactKeys(artifact,['schema','repository','sourceSha','files'])||
+   artifact.schema!=='sabora-controller-artifact/v1'||
+   artifact.repository!==SABORA_RELEASE_SCOPE.repository||
+   !/^[a-f0-9]{40}$/.test(artifact.sourceSha)||
+   !artifact.files||typeof artifact.files!=='object'||
+   Array.isArray(artifact.files)||!Object.keys(artifact.files).length||
+   Object.keys(artifact.files).length>90)stop('v2_manifest_source_untrusted');
+ // Verify the entire source tree before proposing hashes. Hashing only
+ // artifact.json would preserve a tampered file until the first invocation.
+ const installed=[];
+ const visit=dir=>{for(const name of readdirSync(dir)){
+  const path=join(dir,name),st=lstatSync(path);
+  if(st.isSymbolicLink())stop('v2_manifest_symlink');
+  if(st.isDirectory()){trustedDirectory(path);visit(path);}
+  else installed.push(path.slice(P.code.length+1));
+ }};visit(P.code);
+ if(installed.sort().join('|')!==['artifact.json',...Object.keys(artifact.files)].sort().join('|'))
+  stop('v2_manifest_incomplete_tree');
+ for(const [relative,digest] of Object.entries(artifact.files)){
+  if(!/^(scripts\\/(ops|ci)\\/sabora-release-[a-z0-9-]+\\.mjs|deploy\\/sabora-release-[a-z-]+\\.(c|conf|json))$/.test(relative)||
+   !HASH(digest)||sha256(read(join(P.code,relative)))!==digest)
+   stop('v2_manifest_source_changed');
+ }
+ const configBytes=read(P.config),config=JSON.parse(configBytes);
+ if(config.schema!=='sabora-controller-config/v2'||config.environment!==environment)
+  stop('v2_manifest_configuration');
+ const nodePath=join(P.root,'bin/node');
+ trustedDirectory(join(P.root,'bin'));
+ const launcherHashes=Object.fromEntries(['root-entry','ssh-entry'].map(name=>[
+  name,sha256(protectedBytes(join(P.root,'bin',name),{maxBytes:150*1024*1024}))]));
+ const toolHashes=Object.fromEntries(Object.entries(CONTROLLER_TOOLS).map(([name,path])=>{
+  trustedDirectory(dirname(path));
+  const resolved=realpathSync(path);
+  return [name,sha256(protectedBytes(resolved,{maxBytes:150*1024*1024}))];
+ }));
+ return Object.freeze({
+  schema:'sabora-controller-installation/v2',
+  repository:SABORA_RELEASE_SCOPE.repository,sourceSha:artifact.sourceSha,
+  environment,artifactSha256:sha256(artifactBytes),
+  configurationSha256:sha256(configBytes),
+  nodeSha256:sha256(protectedBytes(nodePath,{maxBytes:150*1024*1024})),
+  launcherHashes,toolHashes,approvedAt
+ });
+}
+
 export function verifyControllerInstallationV2({environment='production'}={}){
  if(process.platform!=='linux'||process.geteuid?.()!==0||process.argv.length!==2)
   stop('v2_root_entry_required');
