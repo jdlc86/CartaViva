@@ -373,7 +373,7 @@ ok('v2-root-owned-generated-installation-accepted-without-signature');
 const srcV2=P.code+'/scripts/ops/sabora-release-installation-v2.mjs';
 const oldSourceV2=readFileSync(srcV2);
 try{
- put(srcV2,Buffer.concat([oldSourceV2,Buffer.from('\\n// altered installed source\\n')]));
+ put(srcV2,Buffer.concat([oldSourceV2,Buffer.from('\n// altered installed source\n')]));
  const forged=v2Entry();
  assert.notEqual(forged.status,0);
  assert.match(forged.stderr,/sabora_controller_stop:v2_artifact_changed/);
@@ -381,7 +381,7 @@ try{
 ok('v2-modified-source-denied-before-ssh-or-docker');
 const originalV2Config=readFileSync(P.config);
 try{
- put(P.config,JSON.stringify({...v2Config,quotaBytes:v2Config.quotaBytes+1})+'\\n');
+ put(P.config,JSON.stringify({...v2Config,quotaBytes:v2Config.quotaBytes+1})+'\n');
  const changed=v2Entry();
  assert.notEqual(changed.status,0);
  assert.match(changed.stderr,/sabora_controller_stop:v2_install_hash_mismatch/);
