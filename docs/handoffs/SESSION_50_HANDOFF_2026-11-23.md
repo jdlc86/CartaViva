@@ -2,7 +2,7 @@
 
 > **DOCUMENTO DE CONTINUIDAD; NO NORMA, PRUEBA, FIRMA NI AUTORIZACIÓN.** Los requisitos vigentes se toman de los contratos normativos de la rama `main`; las decisiones propuestas en el PR #85 no se consideran integradas. Sabora es un **único restaurante**, con PWA de cliente y gestión. Prioridad del propietario: **primer despliegue funcional de prueba, con datos exclusivamente ficticios, en el VPS existente**, completamente aislado de Fleetia y de cualquier otro proyecto. No se puede modificar, reiniciar, detener ni depender de recursos de Fleetia. No introducir nuevos VPS, ordenadores domésticos, servicios o complejidad de despliegue como requisitos del primer arranque.
 
-## 1. Identificación, fuentes y corte
+**Tablero vivo de proyecto:** [seguimiento consolidado](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Las pruebas y decisiones de este hito deben reflejarse en el tablero tras su verificación.\n\n## 1. Identificación, fuentes y corte
 
 - **Repositorio autorizado:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva).
 - **Fecha y denominación:** sesión **50**, 23-11-2026. El propietario ha confirmado expresamente el nombre de este documento.
