@@ -83,8 +83,8 @@ test('release V2 requires owner Issue/manual authorization, exact SHA and forced
  assert.match(workflow,/if: inputs.operation == 'deploy'/);
  assert.match(workflow,/SABORA_RELEASE_AGENT_READY/);
  assert.match(workflow,/StrictHostKeyChecking=yes/);
- assert.match(workflow,/SABORA_APPROVAL_JSON_B64/);
- assert.match(workflow,/SABORA_APPROVAL_SIG_B64/);
+ assert.doesNotMatch(workflow,/SABORA_APPROVAL_JSON_B64|SABORA_APPROVAL_SIG_B64/);
+ assert.match(workflow,/SABORA_OWNER_VERIFIED/);
  const transport=readFileSync(new URL('../scripts/ci/sabora-release-transport.mjs',import.meta.url),'utf8');
  assert.match(transport,/approvalB64/);
  assert.match(transport,/signatureB64/);
