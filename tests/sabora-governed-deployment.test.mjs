@@ -244,6 +244,15 @@ foreach ($path in $paths) {
 });
 
 
+test('S50 deploy V2 has no mandatory Windows or offline signing CI job',()=>{
+ const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
+ const flow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+ assert.doesNotMatch(ci,/^  windows-offline-signer:/m);
+ assert.doesNotMatch(ci,/Exercise offline signer end-to-end with disposable Windows test key/);
+ assert.doesNotMatch(flow,/SABORA_APPROVAL_SIG_B64|SABORA_APPROVAL_JSON_B64|SABORA_APPROVER_PUBLIC_KEY_B64/);
+ assert.match(flow,/sabora-release-authorization-v2\\.mjs create/);
+});
+
 test('main SHA release evidence is GitHub-owned, cost-bounded and refuses PR evidence as main',()=>{
  const release=readFileSync(new URL('../.github/workflows/sabora-main-release-evidence.yml',import.meta.url),'utf8');
  const ci=readFileSync(new URL('../.github/workflows/ci.yml',import.meta.url),'utf8');
