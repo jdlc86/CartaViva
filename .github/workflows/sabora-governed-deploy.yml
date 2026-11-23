@@ -94,6 +94,11 @@ jobs:
           set -euo pipefail
           node scripts/ci/sabora-release-governor.mjs plan "$RELEASE_OPERATION" "$RELEASE_SHA"
           node scripts/ci/sabora-release-governor.mjs check-ci "$RELEASE_OPERATION" "$RELEASE_SHA"
+          # "plan" is read-only; unprotected main may be inspected but must
+          # never authorize a release/rollback without a protected branch.
+          if [[ "$RELEASE_OPERATION" != plan ]]; then
+            node scripts/ci/sabora-release-governor.mjs check-main "$RELEASE_OPERATION" "$RELEASE_SHA"
+          fi
   execute:
     if: inputs.operation == 'deploy' || inputs.operation == 'rollback'
     needs: verify
@@ -142,6 +147,9 @@ jobs:
           git fetch --no-tags origin main
           test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
           node scripts/ci/sabora-release-governor.mjs check-ci "$RELEASE_OPERATION" "$RELEASE_SHA"
+          # Environment access alone is not sufficient while main is unprotected.
+          # Recheck AFTER approval, just before minting the unsigned V2 receipt.
+          node scripts/ci/sabora-release-governor.mjs check-main "$RELEASE_OPERATION" "$RELEASE_SHA"
           if [[ "$RELEASE_OPERATION" == deploy ]]; then
             node scripts/ci/sabora-release-authorization-v2.mjs create "$RUNNER_TEMP/sabora-release-package/manifest.json"
           else
