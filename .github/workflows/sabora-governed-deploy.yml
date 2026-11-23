@@ -11,6 +11,10 @@ on:
         description: Exact 40-character merged Git commit SHA
         required: true
         type: string
+      source_issue_number:
+        description: Optional originating owner Issue (set only by protected Issue bridge)
+        required: false
+        type: string
 permissions:
   contents: read
   actions: read
@@ -20,11 +24,16 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
-    if: github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' && github.actor == 'jdlc86'
+    if: >-
+      github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' &&
+      (github.actor == 'jdlc86' ||
+       (github.actor == 'github-actions[bot]' && inputs.source_issue_number != ''))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       approved_sha: ${{ steps.scope.outputs.sha }}
+      source_issue_number: ${{ steps.owner.outputs.source_issue_number }}
+      owner_verified: ${{ steps.owner.outputs.owner_verified }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +42,30 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Authenticate manual owner or exact originating owner Issue
+        id: owner
+        env:
+          SOURCE_ISSUE_NUMBER: ${{ inputs.source_issue_number }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner='jdlc86',repo='CartaViva';
+            const source=process.env.SOURCE_ISSUE_NUMBER;
+            if(context.actor==='jdlc86'){
+              if(source)throw Error('manual_dispatch_cannot_claim_issue');
+              core.setOutput('source_issue_number','');
+            }else{
+              if(context.actor!=='github-actions[bot]' || !/^[1-9][0-9]{0,11}$/.test(source))
+                throw Error('untrusted_dispatch_actor');
+              const {data}=await github.rest.issues.get({owner,repo,issue_number:Number(source)});
+              if(data.pull_request || data.user?.login!==owner ||
+                data.title!==`[sabora] release ${process.env.RELEASE_OPERATION} ${process.env.RELEASE_SHA}` ||
+                (data.body && data.body.trim()!==''))throw Error('untrusted_source_issue');
+              core.setOutput('source_issue_number',source);
+            }
+            core.setOutput('owner_verified',owner);
       - name: Validate exact SHA and ancestry in main
         id: scope
         env:
@@ -93,12 +126,14 @@ jobs:
         id: consent
         env:
           SABORA_RELEASE_AGENT_READY: ${{ vars.SABORA_RELEASE_AGENT_READY }}
+          SABORA_OWNER_VERIFIED: ${{ needs.verify.outputs.owner_verified }}
+          SABORA_SOURCE_ISSUE_NUMBER: ${{ needs.verify.outputs.source_issue_number }}
           RELEASE_OPERATION: ${{ inputs.operation }}
           RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_ACTOR" = jdlc86
+          test "$SABORA_OWNER_VERIFIED" = jdlc86
           test "$GITHUB_REPOSITORY" = jdlc86/CartaViva
           test "$GITHUB_REF" = refs/heads/main
           test "$SABORA_RELEASE_AGENT_READY" = explicitly-provisioned-v2
