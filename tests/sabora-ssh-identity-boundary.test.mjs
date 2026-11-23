@@ -25,7 +25,7 @@ test('Sabora SSH boundary rejects cross-project credentials, administrative SSH 
   ['wrong environment',s=>s.replace('environment: sabora-live','environment: other')],
   ['missing installation gate',s=>s.replace(/SABORA_RELEASE_AGENT_READY:.*\n/,'SABORA_RELEASE_AGENT_READY: ready\n')],
   ['missing owner approval gate',s=>s.replace('sabora-release-authorization-v2.mjs create','sabora-release-authorization-v2.mjs skip-create')],
-  ['missing CI gate',s=>s.replace('sabora-release-governor.mjs check-ci','sabora-release-governor.mjs skip-ci')],
+  ['missing CI gate',s=>s.replaceAll('sabora-release-governor.mjs check-ci','sabora-release-governor.mjs skip-ci')],
   ['bootstrap operation injected',s=>s.replace('options: [plan, deploy, rollback]','options: [plan, deploy, rollback, bootstrap]')],
   ['arbitrary SSH protocol',s=>s.replace('sabora-release-v2 $RELEASE_OPERATION','bash $RELEASE_OPERATION')],
   ['wrong Issue proof',s=>s.replace('github.rest.issues.get({owner,repo,issue_number:Number(source)})','github.rest.issues.list({owner,repo})')],
