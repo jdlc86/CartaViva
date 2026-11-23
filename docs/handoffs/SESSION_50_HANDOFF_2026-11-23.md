@@ -58,6 +58,23 @@
 **Estado:** guardia de release **implementada en PR**, protección real de `main` **PENDIENTE**, deploy **NO-GO**.
 
 
+## S50-9 — protección main validada, regla real activa y CI del candidato acreditada (23-11-2026)
+
+**Corte más reciente de la sesión 50.** La acción de administración de GitHub solicitada al propietario **sí ha sido ejecutada**. El asistente ha consultado posteriormente los endpoints oficiales de GitHub: `GET /repos/jdlc86/CartaViva/branches/main` devolvió `protected=true`, y la ruleset **`sabora-rule` #27933106** consta `enforcement=active`, `target=branch`, patrón **`refs/heads/main`**, sin actores con bypass. No deducir seguridad de las capturas: la API confirma ahora la regla instalada.
+
+**Reglas efectivamente leídas del ruleset:** `deletion` prohibida, `non_fast_forward` prohibido, `pull_request` exigido con **cero aprobaciones** y merge/squash/rebase permitidos, y cuatro `required_status_checks` con origen **GitHub Actions** (`integration_id=15368`): `validate`, `web-publication`, `generate-lockfile`, `functional-ui-gate`. `strict_required_status_checks_policy=false` — no exigir rama actualizada para permitir fusión, pero todo despliegue debe reconfirmar `GITHUB_SHA` como `main` vivo. La protección de `main` **ya no es un bloqueo pendiente**; no solicitar al propietario volver a configurarla.
+
+**Validación técnica exacta del PR [#85](https://github.com/jdlc86/CartaViva/pull/85):** HEAD antes de esta adenda `091fe770a524bcae1f5cf26e73d7c8116f4dc4c0` con [Actions #45203689788](https://github.com/jdlc86/CartaViva/actions/runs/45203689788) `validate` y `web-publication` **SUCCESS** (incluye PG17/Chromium y laboratorio controlador Docker/SSH V2 real en runner desechable), [#45203689560](https://github.com/jdlc86/CartaViva/actions/runs/45203689560) `generate-lockfile` **SUCCESS**, y [#45203831931](https://github.com/jdlc86/CartaViva/actions/runs/45203831931) `functional-ui-gate` **SUCCESS**. El `visual-final-acceptance-gate` y `CV005+B2` opt-in son **SKIPPED**, no PASS; la estética final y aceptación humana siguen fuera de alcance de esta integración técnica. Los cuatro checks y root-lab del **SHA exacto** estaban completados al comprobar.
+
+**Estado diferenciado:**
+- **GitHub: VALIDADO**, ruleset `sabora-rule` activa, sin bypass, cuatro checks.
+- **Rama candidata: CI técnica VALIDADA** en `091fe770`. El próximo commit documental de esta adenda cambia HEAD y exige volver a comprobar sus checks para poder fusionar.
+- **Integración: NO realizada**. `main` seguía en `a5f0d90179515c8a2e539c584705654231e0e357`; PR #85 **OPEN/DRAFT**, `mergeable=true` (esto no es autorización de merge). No hay revisión independiente publicada para #85.
+- **Supabase/VPS/alertas/Environment/deploy: NO VALIDADO**. El candidato V2 no instala por sí solo cuenta SSH ni controlador, no aprovisiona receptor HTTPS de alertas ni aplica SQL. Aún hay que comprobar configuración real de `sabora-live` (ramas y secretos Sabora), preflight PG17 `verify-full`, aislamiento efectivo, aprobaciones separadas de SQL/provisión/despliegue y ambos recorridos de PWA en VPS. Sin operaciones ni permisos de Fleetia.
+
+**Próxima actuación:** comprobar CI del HEAD documental resultante y emitir dictamen de integración del PR #85; pedir **autorización expresa** de fusionar cuando se considere procedente. La incorporación en main del workflow V2 no autoriza por sí sola SQL, SSH, VPS, instalación o deploy. En el primer despliegue ficticio sigue vigente `backupPerformed=false`, `restorePerformed=false` y `realUsersAllowed=false`; no se requiere PC doméstico, nueva firma ni otro VPS.
+
+
 ## 1. Identificación, fuentes y corte
 
 - **Repositorio autorizado:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva).
