@@ -2,7 +2,44 @@
 
 > **DOCUMENTO DE CONTINUIDAD; NO NORMA, PRUEBA, FIRMA NI AUTORIZACIÓN.** Los requisitos vigentes se toman de los contratos normativos de la rama `main`; las decisiones propuestas en el PR #85 no se consideran integradas. Sabora es un **único restaurante**, con PWA de cliente y gestión. Prioridad del propietario: **primer despliegue funcional de prueba, con datos exclusivamente ficticios, en el VPS existente**, completamente aislado de Fleetia y de cualquier otro proyecto. No se puede modificar, reiniciar, detener ni depender de recursos de Fleetia. No introducir nuevos VPS, ordenadores domésticos, servicios o complejidad de despliegue como requisitos del primer arranque.
 
-**Tablero vivo de proyecto:** [seguimiento consolidado](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Las pruebas y decisiones de este hito deben reflejarse en el tablero tras su verificación.\n\n## 1. Identificación, fuentes y corte
+**Tablero vivo de proyecto:** [seguimiento consolidado](../tracking/SABORA_LIVE_PROJECT_TRACKER.md). Las pruebas y decisiones de este hito deben reflejarse en el tablero tras su verificación.
+
+
+## S50-7 — cierre actualizado de continuidad, 23-11-2026 (15:45, Europa/Madrid)
+
+**Este apartado es el corte más reciente y prevalece como estado factual sobre los apartados S50-1 a S50-6, escritos en fases anteriores.** Los apartados originales 4–6, y frases antiguas como «propuesta, no decisión» o «V2 no ensayado», son **historia de la discusión**, NO reflejan el estado actual. La fuente de verdad de requisitos sigue siendo `main` hasta autorización de integración de los cambios normativos candidatos.
+
+### Repositorio, SHA y CI real
+
+- Repositorio exclusivo [`jdlc86/CartaViva`](https://github.com/jdlc86/CartaViva), un restaurante, dos PWA (cliente y gestión), y único PR en curso para esta metodología: [#85](https://github.com/jdlc86/CartaViva/pull/85), **OPEN/DRAFT**, sin fusionar, rama `docs/s48-first-real-stage-evidence-20261122`.
+- **HEAD probado antes de actualizar esta continuidad:** `5e6e70b8e964ff88fb133c4c1aaa2aebe2ace890`; `main` sigue en `a5f0d90179515c8a2e539c584705654231e0e357`. **La edición de continuidad generará otro commit en la rama; las CI citadas acreditan el SHA anterior, no automáticamente el nuevo**.
+- **PASS en SHA `5e6e70b8`:** [Sabora CI #45133774061](https://github.com/jdlc86/CartaViva/actions/runs/45133774061), jobs `validate` y `web-publication`, ambos `completed/success`. Dentro de `web-publication`, paso `Exercise isolated controller transport, two releases, rollback and sentinel with real Docker` **SUCCESS**.
+- **PASS en el mismo SHA:** [Bootstrap lockfile #45133774006](https://github.com/jdlc86/CartaViva/actions/runs/45133774006), job `generate-lockfile` `completed/success`; [cobertura funcional y visual #45133804686](https://github.com/jdlc86/CartaViva/actions/runs/45133804686), job `functional-ui-gate` `completed/success`.
+- **NO acreditadas:** `visual-final-acceptance-gate` `SKIPPED` (no hay aceptación visual humana final) y [CV005+B2 opt-in #45133774075](https://github.com/jdlc86/CartaViva/actions/runs/45133774075) `SKIPPED` (no es evidencia de ejecución de esa batería). Un `SKIPPED` **no se convierte en PASS**.
+
+### Qué está implementado en la rama
+
+- [Contrato V2 simplificado](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md), §7: **único recorrido** Issue del propietario o `workflow_dispatch` desde GitHub `main` → CI del SHA exacto → Environment Sabora → SSH separado con comando forzado `sabora-release-v2` → controlador raíz acotado → Docker/Compose **solo Sabora** → ledger, postchecks y aceptación. No firma de aprobación Ed25519 offline, seis expedientes criptográficos ni nueve firmantes/custodios; no ordenador doméstico ni VPS adicional como condición de primera prueba. **No se quitan** autenticación SSH, TLS, hashes, firmas JWT/Stripe/HMAC de aplicación, aislamiento, comprobación DBA real ni permisos separados.
+- Workflow, bridge Issues, transporte/recepción, controlador V2, verificador y función `deriveControllerInstallationManifestV2` para inventario SHA256 root-owned, driver, readiness/alerta correlacionada, rollback/ledger y test integrador Docker/SSH real. Se retiró el job CI `windows-offline-signer` obsoleto de la ruta V2, sin quitar otros tests integradores.
+- Laboratorio integrado real **PASS** en CI: instalación V2 derivada de archivos, rechazo de modificación de código y configuración antes de acciones privilegiadas, rechazo del protocolo firmado V1 al intentar usar la entrada V2, deploy y rollback V2 sin firma, bloqueo de replay, testigo externo sin interrupción. [Acta](../reviews/SABORA_S50_V2_DOCKER_SSH_INTEGRATION_2026-11-23.md). **Todo sucede en runner efímero de GitHub**, no en el VPS real.
+
+### Riesgo detectado y límites operativos
+
+- **Riesgo de gobernanza:** la lectura de GitHub API de `branches/main` devolvió `protected=false` y la colección de `rulesets` del repositorio devolvió **lista vacía**. En un modelo sin firma externa, **no se debe afirmar que hay protección efectiva de `main`**. Antes de habilitar el deploy hay que revisar quién puede escribir, controles reales de branch/Environment, 2FA/passkeys y permisos mínimos. Este hallazgo **no autoriza** cambiar ajustes del repositorio y no exige reintroducir expedientes de firma.
+- **NO instalado ni validado físicamente:** controlador V2, cuenta SSH de release definitiva, `known_hosts`/claves y Environment efectivos del deploy, red/puertos y ACL exclusivos de Sabora, receptor HTTPS de alertas V2, comprobación de aislamiento real, HTTPS público de las dos PWA, ni aceptación funcional/visual humana operativa. Un certificado y ZIP en cuarentena de etapas previas no son instalación.
+- **Supabase de Sabora no migrado por este hito:** falta preflight original de PostgreSQL 17 del proyecto `byhvmumqivmunkmomhup` con TLS `verify-full` e identidad corroborada, aprobación específica SQL y ejecución/verificación de las **103 migraciones**; no derivar que un catálogo antes observado vacío siga vacío hoy. Las inspecciones DBA anteriores no prueban `verify-full`.
+- **Genesis ficticia solamente:** excepción previa para diferir copias/restauración; señalar `backupPerformed=false`, `restorePerformed=false`, `realUsersAllowed=false`. **No** usuarios/datos reales, segundo despliegue bajo la excepción, rollback inicial inexistente, ni promesas de recuperación.
+- **Prohibición absoluta:** no tocar Fleetia ni contenedores, claves, redes, servicios, daemon o recursos de otros proyectos del VPS; no usar Docker global, `prune`, `compose down` ni reinicios compartidos. Toda provisión VPS y SQL requieren autorización expresa separada; también el merge y el deploy. **No se ejecutó nada de ello en esta actualización**.
+
+### Próximo bloque completo (sin nuevos PR ni trámites de firma)
+
+1. Revisión técnica y de seguridad final del PR #85, incluida la nueva raíz de confianza GitHub y el aislamiento, con CI del **SHA posterior a este commit**. Pedir decisión de fusión separada cuando proceda; no fusionar implícitamente.
+2. Resolver en una sola preparación aislada la procedencia de artefactos, cuentas/rutas/permisos de release, manifiesto de instalación, fronteras SSH, red/nft/Compose, TLS y receptor de alertas V2; demostrar que nada puede detener/alterar Fleetia. No habilitar `SABORA_RELEASE_AGENT_READY` antes de acreditarlo físicamente.
+3. Preflight DBA real `verify-full`, cotejo de estado original y migraciones, con permisos SQL expresos y evidencia posterior; después primer deploy GitHub → SSH Sabora autorizado expresamente, comprobación integral de PWA cliente/gestión y aceptación solo con datos ficticios.
+
+**Dictamen al cierre de esta continuidad: `CI-LAB GO` sobre `5e6e70b8`, `VPS/SUPABASE/DEPLOY NO-GO`.** Mantener esa separación al reanudar trabajo.
+
+## 1. Identificación, fuentes y corte
 
 - **Repositorio autorizado:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva).
 - **Fecha y denominación:** sesión **50**, 23-11-2026. El propietario ha confirmado expresamente el nombre de este documento.
