@@ -70,7 +70,7 @@ test('Sabora issue dispatch calls ONLY exact existing governed workflow, then ac
     assert.deepEqual(github.calls[2].data, {
       owner: 'jdlc86', repo: 'CartaViva',
       workflow_id: 'sabora-governed-deploy.yml', ref: 'main',
-      inputs: {operation, release_sha: sha}
+      inputs: {operation, release_sha: sha, source_issue_number: '75'}
     });
     const comment = github.calls[3].data.body;
     assert.match(comment, /dispatch acknowledgment only/);
