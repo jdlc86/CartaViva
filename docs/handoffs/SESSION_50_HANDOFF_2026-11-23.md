@@ -103,3 +103,14 @@ Ante la orden «Pues continúa con la actualización de la metodología» se com
 - **NO-GO operativo:** no se ha probado aún un recorrido V2 íntegro con Docker real y alert receiver v2, no existe instalación V2 acreditada, ni migración SQL real/aprobada. La CI exacta sobre el **último commit de rama** se consulta en GitHub, nunca se hereda del SHA precedente; cualquier FAIL sigue siendo FAIL. Este cambio de metodología no constituye autorización de merge/SQL/provisioning/deploy.
 
 **Siguiente paso real:** resolver los bloqueantes materiales V2 (especialmente instalador seguro y laboratorio host V2 completo, receptor de alertas V2, preflight y aplicación SQL autorizados), con batería integradora íntegra y una única revisión para terminar el PR. No volver a introducir firma Ed25519/expedientes bajo otro nombre ni crear otra ruta de desplegar.
+
+
+## S50-5 — laboratorio Docker/SSH V2 realmente ejercitado, con límites de validez (23-11-2026)
+
+**Hito acreditado:** ejecución [GitHub Actions #45128918875](https://github.com/jdlc86/CartaViva/actions/runs/45128918875), SHA `1972d26c0944fb551b8175b39efac3d2cff033cb`, job `web-publication` **SUCCESS**, incluyendo el ensayo **`Exercise isolated controller transport, two releases, rollback and sentinel with real Docker` SUCCESS**. El log prueba que ejecutó y pasó el **deploy V2 por SSH sin firma**, rechazó replay, ejecutó rollback V2 a versión healthy, rechazó replay de rollback y terminó la secuencia integradora. [Acta técnica S50 V2](../reviews/SABORA_S50_V2_DOCKER_SSH_INTEGRATION_2026-11-23.md). No se ha tocado Fleetia ni el VPS real: ambiente GitHub disposable exclusivamente.
+
+**Incremento posterior candidato:** SHA `ba575cb75e4ca73c3633927dfafdb84054f3ac26` refuerza el mismo laboratorio con vigilancia continua del sentinel ajeno y prueba negativa de que el controlador V2 **rechaza el antiguo wire V1 firmado**. Son pruebas incorporadas al código, **no se transfiere el PASS anterior**: consultar resultados de Actions del SHA exacto.
+
+**Separación honesta:** implementado en PR #85 = S50 V2 y tests en CI; validado en Docker desechable = solo escenarios del SHA anterior PASS; validado en VPS/SQL/alertas reales = **NO**. La CI global del HEAD del PR aún debe cerrarse; `CV005+B2` opt-in SKIPPED no se cuenta como PASS. Sin merge, SQL, VPS, privilegios nuevos, usuarios reales ni despliegue. Permanece **NO-GO operativo**.
+
+**Siguiente prioridad única:** revisar y cerrar CI/seguridad V2, obtener autorización expresa de merge si procede y, de forma separada, SQL/preflight, instalación del controlador aislado, alert receiver V2 y primer despliegue de prueba. No reintroducir firmas ni expedientes, no exigir un ordenador doméstico, ni operar Fleetia.
