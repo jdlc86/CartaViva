@@ -1,6 +1,6 @@
 # S48 / S46 — automatización del preflight DBA sin secretos en GitHub Actions
 
-**Estado:** candidato técnico en PR #85; **no integrado ni operativo**. La fuente de verdad sigue siendo [S46](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), el [runbook S38](SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md), [CV-005](../security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md) y el [límite CartaViva](../architecture/CARTAVIVA_PROJECT_BOUNDARY.md). **No desplegar, migrar ni operar Fleetia.**
+**Estado:** candidato técnico en PR #85; **no integrado ni operativo**. **Decisión posterior S50:** [metodología V2](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md) retira la firma externa del acta DBA y los expedientes firmados del despliegue; la lectura real PostgreSQL 17 con TLS `verify-full`, identidad, catálogo Sabora vacío, evidencia técnica y **autorización separada de migración** siguen obligatorias. Las menciones históricas de firma S46-v1 no son nueva tarea del propietario. No pasar credenciales administrativas a Actions por suprimir la firma. La fuente de verdad sigue siendo [S46](../architecture/SABORA_VALIDATION_OBSERVABILITY_METHOD_V1.md), el [runbook S38](SABORA_S38_FIRST_OPERATIONAL_ACTIVATION_RUNBOOK_2026-11-12.md), [CV-005](../security/SABORA_CV005_PG17_DBA_OWNER_AUTHORITY_DECISION_2026-11-12.md) y el [límite CartaViva](../architecture/CARTAVIVA_PROJECT_BOUNDARY.md). **No desplegar, migrar ni operar Fleetia.**
 
 ## Decisión de seguridad que condiciona el diseño
 
