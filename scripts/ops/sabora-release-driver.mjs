@@ -21,9 +21,18 @@ export function checkStorageQuota(config){
  if(directoryBytes(P.staging)+directoryBytes(P.bundles)>config.quotaBytes-1611000000)stop('retention_quota_requires_operator');
 }
 export function createRealReleaseDriver({installation,ledger,receipt,revalidate,run=releaseProcess}){
- const {config,reservation,environment}=installation;let current,composeArgs,composeView;
+ const {config,reservation,environment}=installation;
+ const v2=installation.installationSchema==='sabora-controller-installation/v2';
+ if(v2&&receipt.schema!=='sabora-release-authorization-receipt/v2')stop('v2_authorization_required');
+ let current,composeArgs,composeView;
  const readEvidence=()=>Object.fromEntries(EVIDENCE_KEYS.map(key=>[key,protectedBytes(join(P.evidence,receipt.evidence[key]+'.json'),{privateFile:true})]));
- const evidence=()=>{const documents=readEvidence(),history=ledger.readHistory();
+ const evidence=()=>{if(v2){
+   // Material preflight is not a collection of six signed dossiers. The
+   // release host verifies concrete filesystem/TLS/network state, while
+   // the separately owner-authorized DBA job applies/verifies SQL first.
+   checkMounts();return [];
+  }
+  const documents=readEvidence(),history=ledger.readHistory();
   const firstActivation=history.activeReleaseSha===null&&Array.isArray(history.versions)&&history.versions.length===0;
   verifyMaterialDossiers({receipt,documents,trust:config.evidenceKeys,
   expected:config.expected,environment,firstActivation,now:Date.now()});return documents;};
@@ -78,7 +87,8 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
   }
  }
  const driver={
-  getEvidence:async()=>evidence(),verifyEvidence:async()=>{evidence();return EVIDENCE_KEYS.map(gate=>({gate}));},
+  getEvidence:async()=>evidence(),verifyEvidence:async()=>{evidence();
+   return v2?[]:EVIDENCE_KEYS.map(gate=>({gate}));},
   inspectIsolation:async()=>isolation(),readHistory:async()=>ledger.assertReconciled(),
   observeRuntime:async()=>inspectRuntime(ledger.readHistory().activeReleaseSha),
   getRetainedBundle:async plan=>retained(plan.targetReleaseSha),
@@ -104,7 +114,7 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
   registerAuthorization:async(value,details)=>{
    revalidate();evidence();checkMounts();checkNamedContainers();isolation();validateArchives(current);
    ledger.consume(value,details);
-   // Revalidate original signature and freshness after durable consumption too.
+   // Revalidate the original owner-run scope and freshness after consumption.
    // On failure the ID stays consumed; never start a stale release.
    revalidate();isolation();
   },
