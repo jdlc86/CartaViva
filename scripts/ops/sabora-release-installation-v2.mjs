@@ -47,7 +47,7 @@ export function deriveControllerInstallationManifestV2({
  if(installed.sort().join('|')!==['artifact.json',...Object.keys(artifact.files)].sort().join('|'))
   stop('v2_manifest_incomplete_tree');
  for(const [relative,digest] of Object.entries(artifact.files)){
-  if(!/^(scripts\\/(ops|ci)\\/sabora-release-[a-z0-9-]+\\.mjs|deploy\\/sabora-release-[a-z-]+\\.(c|conf|json))$/.test(relative)||
+  if(!/^(scripts\/(ops|ci)\/sabora-release-[a-z0-9-]+\.mjs|deploy\/sabora-release-[a-z-]+\.(c|conf|json))$/.test(relative)||
    !HASH(digest)||sha256(read(join(P.code,relative)))!==digest)
    stop('v2_manifest_source_changed');
  }
