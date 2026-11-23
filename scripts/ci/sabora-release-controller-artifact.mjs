@@ -10,7 +10,8 @@ export function buildControllerArtifact(destination,sourceSha){
  const listed=git('ls-tree','-r','--name-only',sourceSha).toString('utf8').trim().split('\n');
  const files=listed.filter(name=>/^scripts\/ops\/sabora-release-[a-z-]+\.mjs$/.test(name)||
   ['scripts/ci/sabora-release-governor.mjs','scripts/ci/sabora-release-transport.mjs',
-   'scripts/ci/sabora-release-rollback-request.mjs'].includes(name)||/^deploy\/sabora-release-[a-z-]+\.(c|conf|json)$/.test(name)).sort();
+   'scripts/ci/sabora-release-rollback-request.mjs',
+   'scripts/ci/sabora-release-authorization-v2.mjs'].includes(name)||/^deploy\/sabora-release-[a-z-]+\.(c|conf|json)$/.test(name)).sort();
  if(!files.includes('scripts/ops/sabora-release-root-entry.mjs'))throw Error('sabora_artifact_stop:controller_missing_from_sha');
  mkdirSync(destination,{recursive:true,mode:0o700});const hashes={};
  for(const name of files){const bytes=git('show',sourceSha+':'+name);hashes[name]=sha256(bytes);
