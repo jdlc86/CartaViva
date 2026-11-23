@@ -75,7 +75,7 @@ test('release V2 requires owner Issue/manual authorization, exact SHA and forced
  assert.match(workflow,/ref: \$\{\{ github\.sha \}\}/);
  assert.match(workflow,/cancel-in-progress: false/);
  assert.match(workflow,/environment: sabora-live/);
- assert.match(workflow,/sabora-release-governor\.mjs authorize/);
+ assert.match(workflow,/sabora-release-authorization-v2\.mjs create/);
  assert.match(workflow,/sabora-release-artifact\.mjs/);
  assert.match(workflow,/actions\/download-artifact@v4/);
  assert.match(workflow,/sabora-release-transport\.mjs/);
