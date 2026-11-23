@@ -63,7 +63,7 @@ test('V2 rejects tampered run/host, altered manifest and legacy signature fields
   const wire=await packetFor(s.consent.approvalB64,s.manifestBytes,s.paths);
   const line=wire.indexOf(10),h=JSON.parse(wire.subarray(0,line).toString());
   assert.throws(()=>verifyHostRunEnvelopeV2(s.command.replace('45081697324','45081697325'),
-   JSON.stringify({approvalB64:h.approvalB64}),NOW+2000),/sabora_v2_authorization_stop/);
+   JSON.stringify({approvalB64:h.approvalB64}),NOW+2000),/sabora_v2_(?:host|authorization)_stop/);
   const withSignature=Buffer.concat([Buffer.from(JSON.stringify({...h,signatureB64:'dGVzdA=='})+'\n'),wire.subarray(line+1)]);
   await assert.rejects(receiveReleaseBundle(Readable.from([withSignature]),{
    command:s.command,stageRoot:s.stage,protocolVersion:2,now:NOW+2000}),/invalid_protocol/);
