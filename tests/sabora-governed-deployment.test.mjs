@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {verifiedNtfsAclDigest} from '../scripts/ops/sabora-ntfs-acl-verifier.mjs';
-import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,
+import {planRelease,stableStringify,verifyReleaseAuthorization,verifyGithubChecks,verifyProtectedMain,
  SABORA_RELEASE_SCOPE,EVIDENCE_KEYS} from '../scripts/ci/sabora-release-governor.mjs';
 
 const fullSha='a'.repeat(40);
@@ -59,6 +59,34 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:3,check_runs:good.slice(1)})})),/ci_not_success:validate/);
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='web-publication'?{...x,conclusion:'failure'}:x)})})),/ci_not_success:web-publication/);
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='validate'?{...x,app:{slug:'untrusted-external-app'}}:x)})})),/ci_not_success:validate/);
+});
+
+test('unsigned V2 release fails closed when main lacks branch protection or moves',async()=>{
+ const valid={name:'main',protected:true,commit:{sha:fullSha}};
+ const read=(response,ok=true)=>async(url,options)=>{
+  assert.equal(url,'https://api.github.com/repos/jdlc86/CartaViva/branches/main');
+  assert.match(options.headers.authorization,/^Bearer /);
+  return {ok,json:async()=>response};
+ };
+ assert.equal(await verifyProtectedMain('test-token-for-protection',fullSha,read(valid)),fullSha);
+ for(const [label,branch] of [
+  ['unprotected main',{...valid,protected:false}],
+  ['branch absent',{protected:true,commit:{sha:fullSha}}],
+  ['main replaced',{...valid,commit:{sha:'b'.repeat(40)}}],
+  ['missing commit',{...valid,commit:{}}]
+ ])await assert.rejects(()=>verifyProtectedMain(
+   'test-token-for-protection',fullSha,read(branch)),
+   /sabora_release_stop:main_branch_(not_protected|changed_after_authorization)/,label);
+ await assert.rejects(()=>verifyProtectedMain(
+  'test-token-for-protection',fullSha,read(valid,false)),
+  /sabora_release_stop:main_protection_lookup_failed/);
+ await assert.rejects(()=>verifyProtectedMain('short',fullSha,read(valid)),
+  /sabora_release_stop:main_protection_lookup_credentials_missing/);
+ const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
+ const matches=[...workflow.matchAll(/sabora-release-governor\.mjs check-main "\$RELEASE_OPERATION" "\$RELEASE_SHA"/g)];
+ assert.equal(matches.length,2,'guard before Environment and again immediately before consent');
+ assert.match(workflow,/if \[\[ "\$RELEASE_OPERATION" != plan \]\]; then\s+node scripts\/ci\/sabora-release-governor\.mjs check-main/);
+ assert.match(workflow,/environment: sabora-live/);
 });
 
 test('release V2 requires owner Issue/manual authorization, exact SHA and forced SSH identity',()=>{
