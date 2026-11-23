@@ -26,3 +26,9 @@ La modificación S50 elimina del **modelo V2** la firma Ed25519 de autorización
 ## Siguiente hito único, sin procedimientos redundantes
 
 Cerrar la CI exacta del último HEAD del PR, eliminar regresiones, revisión interna de código y aislamiento V2, preparar **una sola** instalación de controlador Sabora con manifiesto root-owned y comandos restringidos, receptor HTTPS v2 y preflight DBA material. Probar el primer deploy con datos ficticios bajo autorizaciones expresas distintas de merge/SQL/VPS/deploy. No reintroducir firmas externas o expedientes ni crear otros VPS/PC, y no usar un bypass temporal al controlador para adelantar el despliegue.
+
+## Actualización S50-6 — manifiesto V2 derivado del árbol root-owned, no de declaraciones
+
+Se añadió `deriveControllerInstallationManifestV2` en `scripts/ops/sabora-release-installation-v2.mjs`, que no instala ni autoriza por sí misma; calcula un manifiesto inmutable de artefacto, fuentes individuales, Node, dos binarios C, herramientas/Compose y configuración a partir de ficheros efectivos controlados por root. La ruta de producción vuelve a comprobar su inventario sin firmas. **No se sustituye** la comprobación de origen GitHub con calcular el digest local.
+
+[CI #45132977421](https://github.com/jdlc86/CartaViva/actions/runs/45132977421), job `web-publication` SUCCESS, SHA `e772b0880cc27b1d25f7377fc05d349d08a6d51f`: log positivo `v2-root-owned-generated-installation-accepted-without-signature`, negativos `v2-modified-source-denied-before-ssh-or-docker` y `v2-modified-installation-config-denied-before-ssh-or-docker`, además de `v2-real-ssh-unsigned-deploy-C-and-sentinel`, `v2-real-ssh-unsigned-rollback-A-and-sentinel`, `v2-foreign-sentinel-never-interrupted` e `integrated-sequence-complete`. El PASS de un **paso** no equivale a toda la CI, instalación en VPS, Supabase, alerta productiva o aceptación humana. La CI del commit documental final se comprobará separadamente.
