@@ -34,7 +34,8 @@ export function planRelease(operation,sha){
  if(!SHA.test(sha))reject('invalid_release_sha');
  return Object.freeze({operation,releaseSha:sha,scope:SABORA_RELEASE_SCOPE,
   requires:['exact-sha-on-main','all-integrated-CI-checks-success',
-   'signed-time-bounded-owner-authorization',operation==='rollback'?'actual-external-restore-evidence':'actual-external-restore-or-signed-genesis-test-deferral',
+   'authenticated-owner-github-run-and-one-use-ledger',
+   operation==='rollback'?'previously-healthy-retained-version':'genesis-test-backup-deferral-or-restorable-backup',
    'real-supabase-sql-preflight','exclusive-ingress-egress-enforcement',
    'host-locked-sabora-agent','isolated-rollback-ledger','operational-acceptance'],
   automaticallyAuthorized:false,serverChanged:false});
