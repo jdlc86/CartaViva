@@ -137,7 +137,7 @@ test('S40/S43 real controller remains disposable and performs only the exact thr
  assert.match(entry,/await import\('\.\/sabora-release-controller-lab\.mjs'\)/);
  assert.match(lab,/runReleaseController\(\{source:process\.stdin,installation\}\)/);
  assert.match(lab,/environment:'disposable-lab'/);
- assert.match(lab,/lab-authorities-rejected-by-production-entry/);
+ assert.match(lab,/v1-lab-installation-rejected-by-v2-production-entry/);
  assert.match(driver,/composeArgs=\['compose','--project-name','sabora'/);
  assert.match(driver,/validateClosedCompose/);
  assert.match(policy,/exactKeys\(config.services,\['api','sabora-egress','web'\]\)/);
