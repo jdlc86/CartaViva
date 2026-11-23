@@ -61,7 +61,7 @@ test('complete governed Sabora release: plan scope, signed attestations, immutab
  await assert.rejects(()=>verifyGithubChecks(fullSha,'test-token-for-ci-check',async()=>({ok:true,json:async()=>({total_count:4,check_runs:good.map(x=>x.name==='validate'?{...x,app:{slug:'untrusted-external-app'}}:x)})})),/ci_not_success:validate/);
 });
 
-test('release workflow requires explicit dispatch, signed gate, forced host identity, no auto deployment',()=>{
+test('release V2 requires owner Issue/manual authorization, exact SHA and forced SSH identity',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/sabora-governed-deploy.yml',import.meta.url),'utf8');
  assert.match(workflow,/workflow_dispatch:/);
  assert.doesNotMatch(workflow,/^  push:|^  pull_request:|^  schedule:|pull_request_target:/m);
@@ -70,7 +70,7 @@ test('release workflow requires explicit dispatch, signed gate, forced host iden
  assert.match(workflow,/git rev-parse HEAD/);
  assert.match(workflow,/if \[\[ "\$RELEASE_OPERATION" == deploy \]\]; then/);
  assert.match(workflow,/test "\$RELEASE_SHA" = "\$GITHUB_SHA"/);
- assert.match(workflow,/host ledger independently proves prior deployment/);
+ assert.match(workflow,/sabora-release-v2/);
  assert.match(workflow,/git rev-parse origin\/main/);
  assert.match(workflow,/ref: \$\{\{ github\.sha \}\}/);
  assert.match(workflow,/cancel-in-progress: false/);
