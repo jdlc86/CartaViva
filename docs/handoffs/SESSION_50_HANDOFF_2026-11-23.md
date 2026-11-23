@@ -39,6 +39,25 @@
 
 **Dictamen al cierre de esta continuidad: `CI-LAB GO` sobre `5e6e70b8`, `VPS/SUPABASE/DEPLOY NO-GO`.** Mantener esa separación al reanudar trabajo.
 
+## S50-8 — cierre técnico de autorización V2 y protección efectiva de main (23-11-2026)
+
+**Hito acotado, sin merge ni infraestructura:** al continuar con la revisión de seguridad de [PR #85](https://github.com/jdlc86/CartaViva/pull/85), se verificó que SHA `4dd438be88d37a828dc6ee480b532dbfdb7e023a` tenía **SUCCESS** en los cuatro checks requeridos (`validate`, `web-publication`, `generate-lockfile`, `functional-ui-gate`), mientras `CV005+B2` opt-in seguía SKIPPED. Las consultas GitHub API confirmaron `main.protected=false` y cero rulesets de repositorio. `main` permaneció en `a5f0d90179515c8a2e539c584705654231e0e357`.
+
+**Hallazgo de seguridad real:** V2 retira la firma externa Ed25519 de autorización; por tanto, no puede afirmar una cadena de autorización GitHub segura con una rama `main` sin protección. Existe una segunda defensa (SSH Sabora por clave, hash/SHA, ledger/replay, permisos y aislamiento), pero no sustituye las restricciones de escritura sobre `main`.
+
+**Corrección implementada en el mismo PR, sin burocracia adicional:**
+- `scripts/ci/sabora-release-governor.mjs`: `verifyProtectedMain` consulta **solo lectura** a GitHub API y exige rama `main` `protected=true` y SHA idéntico al `GITHUB_SHA` real; ante ausencia, cambio de SHA o error de consulta falla cerrado. CLI existente añade `check-main`, sin otro workflow.
+- `.github/workflows/sabora-governed-deploy.yml`: `deploy` y `rollback` ejecutan `check-main` una vez antes de `sabora-live` y otra después, inmediatamente antes de generar la autorización sin firma y acceder al SSH dedicado. `plan` continúa consultable sin mutar el VPS.
+- `tests/sabora-governed-deployment.test.mjs`: baterías negativas para main desprotegida, SHA cambiado, respuesta incompleta, fallo de API y credencial insuficiente, además del requisito de dos puntos de control en el workflow.
+- Contrato V2 actualizado con la obligación de **configurar `main` en GitHub** antes del primer deploy: ruta GitHub `Settings → Rules → Branches / Rulesets` (según interfaz), exigir PR/checks y prohibir force-push/deletion; sin obligar a un revisor inexistente, sin nuevo firmador. `sabora-live` solo con `main` y claves Sabora.
+
+**Alcance del resultado:** los cambios de código están en la rama candidata desde SHA `b2d8dd629b2e27a1566a3db9857a74ea8686c679`; al escribir esta nota la CI integrada de ese SHA seguía **IN_PROGRESS** (`functional-ui-gate` SUCCESS, `validate` / `web-publication` / `generate-lockfile` pendientes). La posterior edición documental produce otro SHA, cuyos checks habrá que consultar de forma independiente. La comprobación `check-main` no ha sido ejecutada en un VPS, ni se ha demostrado protección ya configurada en GitHub.
+
+**Próxima acción mínima de usuario (ajuste de plataforma, no operación VPS):** activar la protección de la rama `main` y revisar los ajustes de `sabora-live`. El conector GitHub disponible permite leer su estado y modificar archivos del repo, **no** ofrece un método de administración de branch protection; no declarar este ajuste hecho. Tras confirmarlo, revisar los gates del HEAD, y solo con autorización expresa, evaluar fusión de #85. SQL, instalación de controlador, red y despliegue son permisos separados. No se ha modificado Fleetia, VPS, Supabase, Environment ni configuración GitHub del repositorio.
+
+**Estado:** guardia de release **implementada en PR**, protección real de `main` **PENDIENTE**, deploy **NO-GO**.
+
+
 ## 1. Identificación, fuentes y corte
 
 - **Repositorio autorizado:** [jdlc86/CartaViva](https://github.com/jdlc86/CartaViva).
