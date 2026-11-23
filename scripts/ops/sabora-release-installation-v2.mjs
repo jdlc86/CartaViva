@@ -59,7 +59,7 @@ export function verifyControllerInstallationV2({environment='production'}={}){
  if(installed.sort().join('|')!==['artifact.json',...Object.keys(artifact.files)].sort().join('|'))
   stop('v2_artifact_files');
  for(const [path,hash] of Object.entries(artifact.files)){
-  if(!/^(scripts\/(ops|ci)\/sabora-release-[a-z-]+\.mjs|deploy\/sabora-release-[a-z-]+\.(c|conf|json))$/.test(path)||
+  if(!/^(scripts\/(ops|ci)\/sabora-release-[a-z0-9-]+\.mjs|deploy\/sabora-release-[a-z-]+\.(c|conf|json))$/.test(path)||
    !HASH(hash)||sha256(read(join(P.code,path)))!==hash)
    stop('v2_artifact_changed');
  }
