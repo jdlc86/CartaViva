@@ -263,7 +263,10 @@ test('all 55 provider-adapted versions preserve one transaction and restore inst
   assert.ok(sql.indexOf('DO $cv005_early_owner_release$')<sql.lastIndexOf('COMMIT;'),name);
  }
  assert.equal(protectedCount,55,'reviewed provider-adapted chain including economic reconciliation');
- assert.match(providerCompat,/sabora_nonsuperuser_postcommit_membership_leak/);
+ const atomicBuilder=readFileSync(new URL('./sabora-s46-atomic-migration.mjs',import.meta.url),'utf8');
+ assert.match(atomicBuilder,/sabora_s51_unsafe_membership/);
+ assert.match(atomicBuilder,/\+CV005_CHECK_SQL\+insert\+sql\.slice\(commits\[0\]\.index\)/, 'membership validation must run before each original COMMIT and ledger insertion');
+ assert.match(providerCompat,/sabora_s51_membership_failure_rolled_back/, 'real rejected membership and rollback required');
  assert.match(providerCompat,/rolname <> current_user/, 'fixture DBA must not be mistaken for runtime owner');
  assert.match(providerCompat,/scope_matrix/, 'inspect all browser/DBA privilege facts');
  assert.match(providerCompat,/'f\\|f\\|f\\|t'/, 'fixture DBA has observed privilege profile');

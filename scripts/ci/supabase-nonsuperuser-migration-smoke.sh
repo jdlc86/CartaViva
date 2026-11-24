@@ -252,5 +252,22 @@ if docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$datab
  'TRUNCATE sabora_migration_meta.applied_migrations' >/dev/null 2>&1; then
  echo 'sabora_s51_ledger_truncate_not_rejected' >&2; exit 1
 fi
+# The relocated pre-COMMIT CV005 check must reject a genuine, unsafe
+# membership change and roll back the ledger entry in the very same transaction.
+probe="$RUNNER_TEMP/s51-membership-probe-$GITHUB_RUN_ID-$.sql"
+node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nGRANT sabora_h6_fn_owner TO cv005_ci_restricted_probe WITH SET TRUE, INHERIT TRUE;\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000001_s51_membership_probe.sql",version:"00000000000001",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' > "$probe"
+if docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$probe" > "$log" 2>&1; then
+ echo 'sabora_s51_membership_failure_not_rejected' >&2; exit 1
+fi
+grep -F 'sabora_s51_unsafe_membership' "$log" >/dev/null
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid=(SELECT oid FROM pg_roles WHERE rolname='sabora_h6_fn_owner') AND member=(SELECT oid FROM pg_roles WHERE rolname='cv005_ci_restricted_probe')) AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000001')")" == t ]] || exit 1
+rm -f "$probe" "$log"
+echo 'sabora_s51_membership_failure_rolled_back'
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
