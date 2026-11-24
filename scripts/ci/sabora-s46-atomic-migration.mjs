@@ -20,14 +20,29 @@ CREATE TABLE sabora_migration_meta.applied_migrations(
 REVOKE ALL ON sabora_migration_meta.applied_migrations FROM PUBLIC, anon, authenticated;
 CREATE FUNCTION sabora_migration_meta.reject_ledger_mutation()
 RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $guard$
-BEGIN RAISE EXCEPTION 'sabora_migration_ledger_append_only'; END
+BEGIN RAISE EXCEPTION 'sabora_migration_ledger_append_only'; END;
 $guard$;
 REVOKE ALL ON FUNCTION sabora_migration_meta.reject_ledger_mutation() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER sabora_migration_ledger_immutable
  BEFORE UPDATE OR DELETE OR TRUNCATE ON sabora_migration_meta.applied_migrations
  FOR EACH STATEMENT EXECUTE FUNCTION sabora_migration_meta.reject_ledger_mutation();
 `;
-export function renderAtomicMigration(entry,bytes,{first=false}={}){
+export const CV005_CHECK_SQL=`DO $s51_cv005$
+BEGIN
+ IF EXISTS (
+  SELECT 1 FROM pg_catalog.pg_auth_members m
+   JOIN pg_catalog.pg_roles g ON g.oid=m.roleid
+   JOIN pg_catalog.pg_roles member ON member.oid=m.member
+   JOIN pg_catalog.pg_roles grantor ON grantor.oid=m.grantor
+  WHERE (left(g.rolname,7)='sabora_' OR left(member.rolname,7)='sabora_')
+   AND NOT (left(g.rolname,7)='sabora_' AND member.rolname=session_user::text
+    AND grantor.rolsuper AND m.admin_option AND NOT m.set_option AND NOT m.inherit_option)
+ ) THEN RAISE EXCEPTION 'sabora_s51_unsafe_membership'; END IF;
+ IF current_user<>session_user THEN RAISE EXCEPTION 'sabora_s51_role_changed'; END IF;
+END;
+$s51_cv005$;
+`;
+export function renderAtomicMigration(entry,bytes,{first=false,firstGuard=''}={}){
  if(!entry||!Buffer.isBuffer(bytes)||!/^(\d{14})_[A-Za-z0-9_-]+\.sql$/.test(entry.name)||
   entry.version!==entry.name.slice(0,14)||entry.bytes!==bytes.length||
   entry.sha256!==digest(bytes))stop();
@@ -44,15 +59,15 @@ export function renderAtomicMigration(entry,bytes,{first=false}={}){
  // own transaction. A deferred constraint failure at COMMIT rolls back both.
  const insert="INSERT INTO sabora_migration_meta.applied_migrations(version,name,sha256) VALUES ('"+
   entry.version+"','"+entry.name+"','"+entry.sha256+"');\n";
- return sql.slice(0,endBegin)+'\n'+(first?LEDGER_SQL:'')+
-  sql.slice(endBegin,commits[0].index)+'\n'+insert+sql.slice(commits[0].index)+'\n';
+ return sql.slice(0,endBegin)+'\n'+(first?firstGuard+LEDGER_SQL:'')+
+  sql.slice(endBegin,commits[0].index)+'\n'+CV005_CHECK_SQL+insert+sql.slice(commits[0].index)+'\n';
 }
-export function buildReviewedMigrationSql(root,only){
+export function buildReviewedMigrationSql(root,only,{firstGuard=''}={}){
  const manifest=buildMigrationManifest(root);
  validateMigrationAudit(manifest);
  if(only!==undefined&&!manifest.some(e=>e.name===only))stop();
  return manifest.map((entry,index)=>({entry,index})).filter(x=>only===undefined||x.entry.name===only)
-  .map(({entry,index})=>renderAtomicMigration(entry,readFileSync(join(root,'supabase','migrations',entry.name)),{first:index===0})).join('\n');
+  .map(({entry,index})=>renderAtomicMigration(entry,readFileSync(join(root,'supabase','migrations',entry.name)),{first:index===0,firstGuard})).join('\n');
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{

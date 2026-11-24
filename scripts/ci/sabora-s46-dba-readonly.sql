@@ -4,7 +4,8 @@ SELECT row_to_json(observation)::text
 FROM (
   SELECT
     current_database()::text AS database,
-    current_user::text AS session_user,
+    session_user::text AS session_user,
+    current_user::text AS effective_user,
     current_setting('server_version_num')::integer / 10000 AS postgres_major,
     (SELECT system_identifier::text FROM pg_catalog.pg_control_system()) AS system_identifier,
     (SELECT s.ssl FROM pg_catalog.pg_stat_ssl s WHERE s.pid=pg_backend_pid()) AS ssl_active,

@@ -11,7 +11,7 @@ const id='1234567890123456789';
 const expectedSystemIdSha256=hash(id);
 const names=['project_schemas','project_roles','project_memberships','project_relations','project_routines',
  'project_types','project_triggers','project_policies','project_event_triggers','project_default_acls'];
-const candidate=()=>({database:'postgres',session_user:'postgres',postgres_major:17,system_identifier:id,
+const candidate=()=>({database:'postgres',session_user:'postgres',effective_user:'postgres',postgres_major:17,system_identifier:id,
  ssl_active:true,ssl_version:'TLSv1.3',pgcrypto_version:'1.3',ledger_exists:false,core_exists:false,
  observed_at:new Date().toISOString(),...Object.fromEntries(names.map(x=>[x,[]]))});
 const cert=Buffer.from('-----BEGIN CERTIFICATE-----\nZml4dHVyZQ==\n-----END CERTIFICATE-----\n').toString('base64');
@@ -32,7 +32,7 @@ test('DBA fail closed: prior project roles/tables/functions, snapshots, ledger, 
   s=>s.project_event_triggers.push('sabora_event'),s=>s.project_default_acls.push('r:sabora_owner'),
   s=>s.ledger_exists=true,s=>s.core_exists=true,s=>s.ssl_active=false,
   s=>s.ssl_version='TLSv1.1',s=>s.system_identifier='12345678901234567',
-  s=>s.postgres_major=16,s=>s.database='other',s=>s.pgcrypto_version=null,
+  s=>s.effective_user='foreign',s=>s.postgres_major=16,s=>s.database='other',s=>s.pgcrypto_version=null,
   s=>s.project_schemas='not-an-array',s=>s.observed_at='2020-01-01T00:00:00Z'
  ];
  for(const mutate of cases){const s=candidate();mutate(s);

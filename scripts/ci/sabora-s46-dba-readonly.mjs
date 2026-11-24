@@ -2,8 +2,8 @@
 // No operational SQL credentials ever enter GitHub Actions. S51 permits an isolated Sabora-only temporary VPS operator after integration and physical authorization.
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync,realpathSync,openSync,closeSync,fsyncSync} from 'node:fs';
-import {join,resolve} from 'node:path';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync,realpathSync,openSync,closeSync,fsyncSync,statfsSync,accessSync,constants} from 'node:fs';
+import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildMigrationManifest} from './migration-manifest.mjs';
 
@@ -17,7 +17,7 @@ const stop=reason=>{throw Error('sabora_s46_stop:'+reason);};
 const keys=['project_schemas','project_roles','project_memberships','project_relations',
  'project_routines','project_types','project_triggers','project_policies',
  'project_event_triggers','project_default_acls'];
-function canonical(value){
+export function canonical(value){
  if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';
  if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}';
  return JSON.stringify(value);
@@ -36,7 +36,7 @@ export function validateTransport({host,user,port,expectedSystemIdSha256,caPemB6
 }
 export function checkSnapshot(s,{expectedSystemIdSha256,expectedDatabase='postgres',now=Date.now()}={}){
  if(!s||typeof s!=='object'||Array.isArray(s))stop('invalid_snapshot');
- if(s.database!==expectedDatabase||s.session_user!=='postgres'||s.postgres_major!==17)stop('wrong_database_or_version');
+ if(s.database!==expectedDatabase||s.session_user!=='postgres'||s.effective_user!=='postgres'||s.postgres_major!==17)stop('wrong_database_or_version');
  if(s.ssl_active!==true||!/^TLSv1\.[23]$/.test(s.ssl_version||''))stop('tls_session_not_valid');
  if(typeof s.pgcrypto_version!=='string'||!/^\d+(?:\.\d+)*$/.test(s.pgcrypto_version))stop('pgcrypto_in_extensions_required');
  if(typeof s.system_identifier!=='string'||!/^\d{8,25}$/.test(s.system_identifier)||
@@ -79,16 +79,36 @@ export function assertCustodian({env,root}){
   stop('private_output_permissions_required');
  return dir;
 }
-function writePrivateReceipt(path,content){
+export function writePrivateReceipt(path,content){
  const fd=openSync(path,'wx',0o600);
  try{writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}
+ const parent=openSync(dirname(path),'r');try{fsyncSync(parent);}finally{closeSync(parent);}
 }
-function loadPrivateFile(path,{secret}){
+export function loadPrivateFile(path,{secret,maxBytes=32768}){
  if(typeof path!=='string'||!path.startsWith('/'))stop('approved_absolute_file_required');
  const st=lstatSync(path);
- if(!st.isFile()||realpathSync(path)!==path||st.uid!==process.getuid()||st.size<1||st.size>32768||
+ if(!st.isFile()||realpathSync(path)!==path||st.uid!==process.getuid()||st.size<1||st.size>maxBytes||
   (secret&&(st.mode&0o777)!==0o600))stop('custodian_file_permissions_required');
  return readFileSync(path,'utf8');
+}
+export function assertEphemeralPassword(path){
+ if(typeof path!=='string'||realpathSync(path)!==path||statfsSync(path).type!==0x01021994)
+  stop('password_tmpfs_required');
+ const parent=lstatSync(dirname(path));
+ if(!parent.isDirectory()||parent.uid!==process.getuid()||(parent.mode&0o777)!==0o700)
+  stop('password_parent_private_required');
+}
+export function assertSaboraExecutor({env,root}){
+ assertCustodian({env,root});
+ if(process.platform!=='linux'||process.getuid()===0||
+    env.SABORA_S46_EXECUTOR_SCOPE!=='isolated-sabora-vps'||
+    !root.startsWith('/srv/sabora/')||realpathSync(root)!==root||
+    !env.SABORA_S46_OUTPUT_DIR.startsWith('/var/lib/sabora-release/'))stop('isolated_sabora_executor_required');
+ // A successful local guard is NOT evidence of physical network/FS isolation.
+ let dockerAccessible=false;
+ try{accessSync('/var/run/docker.sock',constants.R_OK|constants.W_OK);dockerAccessible=true;}catch{}
+ if(dockerAccessible)stop('docker_socket_access_denied');
+ assertEphemeralPassword(env.SABORA_S46_DB_PASSWORD_FILE);
 }
 function main(){
  const mode=process.argv[2];if(!['plan','observe'].includes(mode)||process.argv.length!==3)stop('invalid_operation');
@@ -99,11 +119,7 @@ function main(){
   sha=assertRunner({githubActions:env.GITHUB_ACTIONS,repository:env.GITHUB_REPOSITORY,
    ref:env.GITHUB_REF,sha:env.GITHUB_SHA,expectedSha:env.SABORA_S46_RELEASE_SHA,runnerTemp:env.RUNNER_TEMP});
  }else{
-  assertCustodian({env,root});
-  // This local scope guard is not proof of host isolation or authorization.
-  if(process.getuid()===0||env.SABORA_S46_EXECUTOR_SCOPE!=='isolated-sabora-vps'||
-    !root.startsWith('/srv/sabora/')||realpathSync(root)!==root||
-    !env.SABORA_S46_OUTPUT_DIR.startsWith('/var/lib/sabora-release/'))stop('isolated_sabora_executor_required');
+  assertSaboraExecutor({env,root});
   sha=env.SABORA_S46_RELEASE_SHA;
   if(!sha40(sha))stop('wrong_sha');
  }
