@@ -1,10 +1,9 @@
 // S46: immutable, read-only PostgreSQL 17 scope observation. Not a signer or migrator.
-// No operational SQL credentials ever enter GitHub Actions. Observe is off-host custodial only.
+// No operational SQL credentials ever enter GitHub Actions. S51 permits an isolated Sabora-only temporary VPS operator after integration and physical authorization.
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync,realpathSync,openSync,closeSync,fsyncSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {buildMigrationManifest} from './migration-manifest.mjs';
 
@@ -71,19 +70,23 @@ export function manifestReceipt(root,sha){
 export function assertCustodian({env,root}){
  if(Object.hasOwn(env,'GITHUB_ACTIONS')||env.GITHUB_RUN_ID||env.GITHUB_WORKSPACE||env.RUNNER_TEMP||env.CI==='true'||
   env.SABORA_S46_OPERATOR_APPROVAL!=='explicit-one-time-readonly')
-  stop('offhost_custodian_required');
+  stop('authorized_custodian_required');
  const dir=env.SABORA_S46_OUTPUT_DIR;
  if(typeof dir!=='string'||!dir.startsWith('/')||dir===root||dir.startsWith(root+'/'))
   stop('private_output_outside_repo_required');
  const st=lstatSync(dir);
- if(!st.isDirectory()||st.uid!==process.getuid()||(st.mode&0o777)!==0o700)
+ if(!st.isDirectory()||realpathSync(dir)!==dir||st.uid!==process.getuid()||(st.mode&0o777)!==0o700)
   stop('private_output_permissions_required');
  return dir;
+}
+function writePrivateReceipt(path,content){
+ const fd=openSync(path,'wx',0o600);
+ try{writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}
 }
 function loadPrivateFile(path,{secret}){
  if(typeof path!=='string'||!path.startsWith('/'))stop('approved_absolute_file_required');
  const st=lstatSync(path);
- if(!st.isFile()||st.uid!==process.getuid()||st.size<1||st.size>32768||
+ if(!st.isFile()||realpathSync(path)!==path||st.uid!==process.getuid()||st.size<1||st.size>32768||
   (secret&&(st.mode&0o777)!==0o600))stop('custodian_file_permissions_required');
  return readFileSync(path,'utf8');
 }
@@ -97,6 +100,10 @@ function main(){
    ref:env.GITHUB_REF,sha:env.GITHUB_SHA,expectedSha:env.SABORA_S46_RELEASE_SHA,runnerTemp:env.RUNNER_TEMP});
  }else{
   assertCustodian({env,root});
+  // This local scope guard is not proof of host isolation or authorization.
+  if(process.getuid()===0||env.SABORA_S46_EXECUTOR_SCOPE!=='isolated-sabora-vps'||
+    !root.startsWith('/srv/sabora/')||realpathSync(root)!==root||
+    !env.SABORA_S46_OUTPUT_DIR.startsWith('/var/lib/sabora-release/'))stop('isolated_sabora_executor_required');
   sha=env.SABORA_S46_RELEASE_SHA;
   if(!sha40(sha))stop('wrong_sha');
  }
@@ -120,8 +127,8 @@ function main(){
  const ca=join(dir,'approved-root-ca.pem');
  try{
   chmodSync(dir,0o700);writeFileSync(ca,t.caPem,{mode:0o600});
-  const result=spawnSync('psql',['-X','-w','-q','-t','-A','-v','ON_ERROR_STOP=1','--file',join(root,'scripts/ci/sabora-s46-dba-readonly.sql')],{
-   env:{PATH:env.PATH||'/usr/bin:/bin',HOME:dir,LANG:'C',PGHOST:t.host,PGPORT:String(t.port),
+  const result=spawnSync('/usr/bin/psql',['-X','-w','-q','-t','-A','-v','ON_ERROR_STOP=1','--file',join(root,'scripts/ci/sabora-s46-dba-readonly.sql')],{
+   env:{PATH:'/usr/bin:/bin',HOME:dir,LANG:'C',PGHOST:t.host,PGPORT:String(t.port),
     PGUSER:t.user,PGDATABASE:'postgres',PGPASSWORD:password,
     PGSSLMODE:'verify-full',PGSSLROOTCERT:ca,PGCONNECT_TIMEOUT:'10',
     PGOPTIONS:'-c default_transaction_read_only=on -c statement_timeout=15000'},
@@ -131,9 +138,14 @@ function main(){
   if(out.length>128*1024||out.split('\n').length!==1)stop('unexpected_psql_output');
   let snapshot;try{snapshot=JSON.parse(out);}catch{stop('invalid_psql_json');}
   const observation=checkSnapshot(snapshot,{expectedSystemIdSha256:env.SABORA_S46_EXPECTED_SYSTEM_ID_SHA256});
-  const receipt={...observation,migration:manifest};
+  const original=join(outputDir,'sabora-s46-original-catalog-'+sha+'.json');
+  // Store only in the approved private directory; never print raw catalogue or cluster ID.
+  writePrivateReceipt(original,JSON.stringify(snapshot,null,2)+'\n');
+  const receipt={...observation,migration:manifest,originalCatalogCustodied:true};
   const output=join(outputDir,'sabora-s46-unsigned-readonly-observation-'+sha+'.json');
-  writeFileSync(output,JSON.stringify(receipt,null,2)+'\n',{mode:0o600,flag:'wx'});
+  writePrivateReceipt(output,JSON.stringify(receipt,null,2)+'\n');
+  const directoryFd=openSync(outputDir,'r');
+  try{fsyncSync(directoryFd);}finally{closeSync(directoryFd);}
   process.stdout.write('sabora_s46_readonly_observed:no_sql_writes:no_dba_signature:no_migration_authorization\n');
  }finally{rmSync(dir,{recursive:true,force:true});}
 }

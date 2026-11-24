@@ -130,8 +130,8 @@ while IFS= read -r name; do
   [[ "$name" =~ ^[0-9]{14}_[A-Za-z0-9_-]+\.sql$ ]] || {
     echo 'sabora_nonsuperuser_invalid_migration_name' >&2; exit 1;
   }
-  if ! docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 \
-      -U "$operator" -d "$database" < "supabase/migrations/$name" > "$log" 2>&1; then
+  if ! { test -f "supabase/migrations/$name" && node scripts/ci/sabora-s46-atomic-migration.mjs "$name"; } | docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 \
+      -U "$operator" -d "$database" > "$log" 2>&1; then
     echo "sabora_nonsuperuser_migration_blocked:$name" >&2
     # The fixture contains no operational identities or credentials.
     grep -E 'ERROR:|FATAL:|permission denied' "$log" | tail -n 4 >&2 || true
@@ -221,4 +221,27 @@ if docker exec "$container" psql -X -v ON_ERROR_STOP=1 \
 fi
 echo 'sabora_provider_restricted_runtime_denied'
 rm -f "$log"
+# All versions and checksums must agree with the exact source tree.
+ledger_actual="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT name || ':' || sha256 FROM sabora_migration_meta.applied_migrations ORDER BY version")"
+ledger_expected="$(node scripts/ci/migration-manifest.mjs | node -e \
+ 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>console.log(JSON.parse(s).migrations.map(x=>x.name+":"+x.sha256).join("\n")))')"
+[[ "$ledger_actual" == "$ledger_expected" ]] || { echo 'sabora_s51_ledger_mismatch' >&2; exit 1; }
+# Exercise a COMMIT-time deferred constraint failure after the shared builder
+# inserts its ledger record. Neither DDL nor ledger row may survive.
+if node --input-type=module -e '
+ import {renderAtomicMigration} from "./scripts/ci/sabora-s46-atomic-migration.mjs";
+ import {createHash} from "node:crypto";
+ const b=Buffer.from("BEGIN;\nCREATE TABLE sabora_migration_meta.s51_parent(id int PRIMARY KEY);\nCREATE TABLE sabora_migration_meta.s51_child(id int REFERENCES sabora_migration_meta.s51_parent(id) DEFERRABLE INITIALLY DEFERRED);\nINSERT INTO sabora_migration_meta.s51_child VALUES (1);\nCOMMIT;\n");
+ process.stdout.write(renderAtomicMigration({name:"00000000000000_s51_atomic_probe.sql",version:"00000000000000",bytes:b.length,sha256:createHash("sha256").update(b).digest("hex")},b));
+ ' | docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" >/dev/null 2>&1; then
+ echo 'sabora_s51_commit_failure_not_rejected' >&2; exit 1
+fi
+[[ "$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
+ "SELECT to_regclass('sabora_migration_meta.s51_child') IS NULL AND to_regclass('sabora_migration_meta.s51_parent') IS NULL AND NOT EXISTS (SELECT 1 FROM sabora_migration_meta.applied_migrations WHERE version='00000000000000')")" == t ]] || exit 1
+if docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database" -c \
+ 'TRUNCATE sabora_migration_meta.applied_migrations' >/dev/null 2>&1; then
+ echo 'sabora_s51_ledger_truncate_not_rejected' >&2; exit 1
+fi
+echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
 echo "sabora_nonsuperuser_pg17_migration_chain_ok:$count"
