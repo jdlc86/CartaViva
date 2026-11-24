@@ -1,16 +1,18 @@
 // One-time genesis executor. Not a release workflow; no Actions, Docker or shell.
-import {execFileSync,spawnSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {readFileSync,mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {buildMigrationManifest} from '../ci/migration-manifest.mjs';
 import {buildReviewedMigrationSql,CV005_CHECK_SQL} from '../ci/sabora-s46-atomic-migration.mjs';
-import {assertSaboraExecutor,canonical,checkSnapshot,manifestReceipt,validateTransport,loadPrivateFile,writePrivateReceipt,PROJECT_ID} from '../ci/sabora-s46-dba-readonly.mjs';
+import {assertSaboraExecutor,canonical,checkSnapshot,manifestReceipt,validateTransport,loadPrivateFile,writePrivateReceipt,PROJECT_ID,REPO,readReviewedSql,runReviewedGit} from '../ci/sabora-s46-dba-readonly.mjs';
 const stop=reason=>{throw Error('sabora_genesis_stop:'+reason);};
+const sha256=value=>createHash('sha256').update(value).digest('hex');
 const jsonSql=value=>"pg_catalog.convert_from(pg_catalog.decode('"+Buffer.from(JSON.stringify(value),'utf8').toString('base64')+"','base64'),'UTF8')::jsonb";
 export const GENESIS_OK='sabora_s51_genesis_catalog_ledger_verified';
-export function buildGenesisSql(root,snapshot){
- const raw=readFileSync(join(root,'scripts/ci/sabora-s46-dba-readonly.sql'),'utf8');
+export function buildGenesisSql(root,snapshot,{manifest=buildMigrationManifest(root),readSql=path=>readFileSync(join(root,path))}={}){
+ const raw=readSql('scripts/ci/sabora-s46-dba-readonly.sql').toString('utf8');
  const select=raw.match(/\n(SELECT row_to_json\(observation\)::text[\s\S]+)\s*;\s*\nROLLBACK;\s*$/);
  if(!select)stop('observation_sql_shape');
  const guard=[
@@ -23,19 +25,31 @@ export function buildGenesisSql(root,snapshot){
   " IF to_regnamespace('sabora') IS NOT NULL OR to_regnamespace('sabora_migration_meta') IS NOT NULL THEN RAISE EXCEPTION 'sabora_genesis_not_empty'; END IF;",
   'END; $s51_genesis$;',''
  ].join('\n');
- const manifest=buildMigrationManifest(root).map(({version,name,sha256})=>({version,name,sha256,application_count:1}));
+ const ledgerRows=manifest.map(({version,name,sha256})=>({version,name,sha256,application_count:1}));
  const post=[
   CV005_CHECK_SQL,
   'DO $s51_post$ DECLARE actual jsonb; BEGIN',
   " SELECT jsonb_agg(jsonb_build_object('version',version,'name',name,'sha256',sha256,'application_count',application_count) ORDER BY version) INTO actual FROM sabora_migration_meta.applied_migrations;",
-  " IF actual IS DISTINCT FROM "+jsonSql(manifest)+" THEN RAISE EXCEPTION 'sabora_genesis_ledger_mismatch'; END IF;",
+  " IF actual IS DISTINCT FROM "+jsonSql(ledgerRows)+" THEN RAISE EXCEPTION 'sabora_genesis_ledger_mismatch'; END IF;",
   " IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE left(rolname,7)='sabora_' AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb)) THEN RAISE EXCEPTION 'sabora_genesis_role_escalation'; END IF;",
   " IF (SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='sabora' AND c.relkind='r' AND c.relrowsecurity AND c.relforcerowsecurity)<>73 OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='sabora' AND c.relkind='r' AND NOT (c.relrowsecurity AND c.relforcerowsecurity)) THEN RAISE EXCEPTION 'sabora_genesis_force_rls'; END IF;",
   " IF has_schema_privilege('anon','sabora','USAGE') OR has_schema_privilege('authenticated','sabora','USAGE') OR has_schema_privilege('anon','sabora_migration_meta','USAGE') OR has_schema_privilege('authenticated','sabora_migration_meta','USAGE') THEN RAISE EXCEPTION 'sabora_genesis_browser_scope'; END IF;",
+  " IF EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n CROSS JOIN LATERAL pg_catalog.aclexplode(n.nspacl) a WHERE n.nspname='sabora_migration_meta' AND a.grantee<>n.nspowner) OR EXISTS (SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a WHERE c.oid='sabora_migration_meta.applied_migrations'::regclass AND a.grantee<>c.relowner) OR EXISTS (SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a WHERE p.oid='sabora_migration_meta.reject_ledger_mutation()'::regprocedure AND a.grantee<>p.proowner) THEN RAISE EXCEPTION 'sabora_genesis_ledger_acl'; END IF;",
   'END; $s51_post$;',
+  "SELECT 'sabora_s51_applied_ledger:' || jsonb_agg(jsonb_build_object('version',version,'name',name,'sha256',sha256,'application_count',application_count) ORDER BY version)::text FROM sabora_migration_meta.applied_migrations;",
   "SELECT '"+GENESIS_OK+"';",''
  ].join('\n');
- return buildReviewedMigrationSql(root,undefined,{firstGuard:guard})+'\n'+post;
+ return buildReviewedMigrationSql(root,undefined,{firstGuard:guard,manifest,readSql})+'\n'+post;
+}
+export function verifyAppliedGenesisLedger(stdout,entries){
+ const prefix='sabora_s51_applied_ledger:';
+ const lines=stdout.trim().split('\n'),reported=lines.filter(line=>line.startsWith(prefix));
+ if(reported.length!==1||lines.at(-2)!==reported[0]||lines.at(-1)!==GENESIS_OK)
+  stop('applied_ledger_missing');
+ let rows;try{rows=JSON.parse(reported[0].slice(prefix.length));}catch{stop('applied_ledger_invalid');}
+ const expected=entries.map(({version,name,sha256})=>({version,name,sha256,application_count:1}));
+ if(canonical(rows)!==canonical(expected))stop('applied_ledger_mismatch');
+ return sha256(canonical(rows));
 }
 export function assertSqlApproval(env,manifest,catalogSha256){
  if(env.SABORA_S46_SQL_APPROVAL!=='explicit-first-genesis-migration'||
@@ -58,41 +72,49 @@ function main(){
  assertSaboraExecutor({env,root});
  const sha=env.SABORA_S46_RELEASE_SHA;
  if(!/^[0-9a-f]{40}$/.test(sha||''))stop('wrong_sha');
- const git=(args)=>execFileSync('/usr/bin/git',args,{cwd:root,encoding:'utf8'}).trim();
+ const git=args=>runReviewedGit(root,args).toString('utf8').trim();
  if(git(['rev-parse','HEAD'])!==sha||git(['rev-parse','origin/main'])!==sha||
-    git(['status','--porcelain','--untracked-files=all']))stop('exact_clean_main_required');
+    git(['--no-optional-locks','status','--porcelain','--untracked-files=all']))stop('exact_clean_main_required');
  // Live main/CI and provenance must already have been checked by the authorized
  // operator through the existing GitHub channel; a local ref is not that proof.
- const manifest=manifestReceipt(root,sha),output=env.SABORA_S46_OUTPUT_DIR;
+ const entries=buildMigrationManifest(root);
+ const manifest=manifestReceipt(root,sha,entries),output=env.SABORA_S46_OUTPUT_DIR;
  const path=name=>join(output,'sabora-s46-'+name+'-'+sha+'.json');
  const read=name=>JSON.parse(loadPrivateFile(path(name),{secret:true,maxBytes:128*1024}));
  const snapshot=read('original-catalog'),receipt=read('unsigned-readonly-observation');
  const checked=checkSnapshot(snapshot,{expectedSystemIdSha256:env.SABORA_S46_EXPECTED_SYSTEM_ID_SHA256});
  if(canonical(receipt)!==canonical({...checked,migration:manifest,originalCatalogCustodied:true}))stop('observation_receipt_mismatch');
  const limits=assertSqlApproval(env,manifest,checked.catalogSha256);
- const sql=buildGenesisSql(root,snapshot);
- const password=loadPrivateFile(env.SABORA_S46_DB_PASSWORD_FILE,{secret:true}).replace(/\r?\n$/,'');
+ const sql=buildGenesisSql(root,snapshot,{manifest:entries,readSql:path=>readReviewedSql(root,sha,path)});
+ const password=loadPrivateFile(env.SABORA_S46_DB_PASSWORD_FILE,{secret:true,consume:true}).replace(/\r?\n$/,'');
  const caPem=loadPrivateFile(env.SABORA_S46_DB_CA_FILE,{secret:false});
  const t=validateTransport({host:env.SABORA_S46_DB_HOST,user:env.SABORA_S46_DB_USER,
   port:env.SABORA_S46_DB_PORT,expectedSystemIdSha256:env.SABORA_S46_EXPECTED_SYSTEM_ID_SHA256,
   caPemB64:Buffer.from(caPem).toString('base64'),password});
- const record={schema:'sabora-genesis-attempt/v1',projectId:PROJECT_ID,sourceSha:sha,
-  migration:manifest,catalogSha256:checked.catalogSha256,startedAt:new Date().toISOString(),
+ const record={repository:REPO,projectId:PROJECT_ID,sourceSha:sha,database:checked.database,postgresMajor:17,
+  sourceSystemIdSha256:checked.sourceSystemIdSha256,databaseTlsIdentitySha256:sha256(canonical({
+   host:t.host,port:t.port,sslMode:'verify-full',caSha256:sha256(caPem)})),
+  migration:manifest,catalogSha256:checked.catalogSha256,originalCatalogCustodied:true,
+  observedAt:checked.observedAt,startedAt:new Date().toISOString(),
   backupPerformed:false,restorePerformed:false,realUsersAllowed:false,operationalGo:false};
  // The exclusive, fsynced intent is never overwritten. Missing result means STOP
  // and reconciliation. It is not a new approval authority.
- writePrivateReceipt(path('genesis-intent'),JSON.stringify(record,null,2)+'\n');
+ writePrivateReceipt(path('genesis-intent'),JSON.stringify({...record,schema:'sabora-genesis-attempt/v1'},null,2)+'\n');
  const dir=mkdtempSync(join(output,'.sabora-genesis-')),ca=join(dir,'approved-root-ca.pem');
  try{
   writeFileSync(ca,t.caPem,{mode:0o600,flag:'wx'});
   const result=spawnSync('/usr/bin/psql',['-X','-w','-q','-t','-A','-v','ON_ERROR_STOP=1','--file=-'],{
    input:sql,env:{PATH:'/usr/bin:/bin',HOME:dir,LANG:'C',PGHOST:t.host,PGPORT:String(t.port),
-    PGUSER:t.user,PGDATABASE:'postgres',PGPASSWORD:password,PGSSLMODE:'verify-full',PGSSLROOTCERT:ca,
+    PGUSER:t.user,PGDATABASE:'postgres',PGPASSWORD:password,PGSSLMODE:'verify-full',PGSSLROOTCERT:ca,PGGSSENCMODE:'disable',
     PGCONNECT_TIMEOUT:'10',PGOPTIONS:'-c statement_timeout='+limits.statement+' -c lock_timeout='+limits.lock},
    encoding:'utf8',maxBuffer:4*1024*1024,timeout:limits.total});
-  const good=!result.error&&result.status===0&&result.stdout.trim().split('\n').at(-1)===GENESIS_OK;
-  writePrivateReceipt(path('genesis-result'),JSON.stringify({...record,completedAt:new Date().toISOString(),
-   status:good?'catalog-ledger-verified':'unknown-stop-reconcile',ledgerValidated:good,
+  let appliedLedgerSha256=null;
+  if(!result.error&&result.status===0){
+   try{appliedLedgerSha256=verifyAppliedGenesisLedger(result.stdout,entries);}catch{/* reconcile below */}
+  }
+  const good=appliedLedgerSha256!==null;
+  writePrivateReceipt(path('genesis-result'),JSON.stringify({...record,schema:'sabora-genesis-result/v2',completedAt:new Date().toISOString(),
+   status:good?'catalog-ledger-verified':'unknown-stop-reconcile',ledgerValidated:good,appliedLedgerSha256,
    runtimeHmacValidated:false},null,2)+'\n');
   if(!good)stop('result_unknown_reconcile_no_retry');
   process.stdout.write(GENESIS_OK+'\n');

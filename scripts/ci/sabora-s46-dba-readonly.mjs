@@ -2,7 +2,7 @@
 // No operational SQL credentials ever enter GitHub Actions. S51 permits an isolated Sabora-only temporary VPS operator after integration and physical authorization.
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync,realpathSync,openSync,closeSync,fsyncSync,statfsSync,accessSync,constants} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,rmSync,chmodSync,lstatSync,fstatSync,realpathSync,openSync,closeSync,fsyncSync,statfsSync,accessSync,unlinkSync,constants} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {buildMigrationManifest} from './migration-manifest.mjs';
@@ -60,12 +60,24 @@ export function assertRunner({githubActions,repository,ref,sha,expectedSha,runne
   !runnerTemp||!runnerTemp.startsWith('/'))stop('wrong_ci_context');
  return sha;
 }
-export function manifestReceipt(root,sha){
+export function manifestReceipt(root,sha,migrations=buildMigrationManifest(root)){
  if(!sha40(sha))stop('wrong_sha');
- const migrations=buildMigrationManifest(root);
  if(migrations.length<1)stop('empty_migration_tree');
  return {schema:'sabora-s46-migration-inventory/v1',sourceSha:sha,
   count:migrations.length,manifestSha256:sha256(canonical(migrations))};
+}
+export function runReviewedGit(root,args){
+ const env={...process.env,GIT_NO_REPLACE_OBJECTS:'1'};
+ for(const key of Object.keys(env))if(key.startsWith('GIT_')&&key!=='GIT_NO_REPLACE_OBJECTS')delete env[key];
+ return execFileSync(process.platform==='linux'?'/usr/bin/git':'git',args,
+  {cwd:root,env,maxBuffer:8*1024*1024});
+}
+export function readReviewedSql(root,sha,path){
+ if(!sha40(sha)||!/^(scripts\/ci\/sabora-s46-dba-readonly\.sql|supabase\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql)$/.test(path))
+  stop('unreviewed_sql_path');
+ const bytes=runReviewedGit(root,['show',sha+':'+path]);
+ if(!bytes.equals(readFileSync(join(root,path))))stop('reviewed_sql_bytes_changed');
+ return bytes;
 }
 export function assertCustodian({env,root}){
  if(Object.hasOwn(env,'GITHUB_ACTIONS')||env.GITHUB_RUN_ID||env.GITHUB_WORKSPACE||env.RUNNER_TEMP||env.CI==='true'||
@@ -84,12 +96,27 @@ export function writePrivateReceipt(path,content){
  try{writeFileSync(fd,content);fsyncSync(fd);}finally{closeSync(fd);}
  const parent=openSync(dirname(path),'r');try{fsyncSync(parent);}finally{closeSync(parent);}
 }
-export function loadPrivateFile(path,{secret,maxBytes=32768}){
+export function loadPrivateFile(path,{secret,maxBytes=32768,consume=false}){
  if(typeof path!=='string'||!path.startsWith('/'))stop('approved_absolute_file_required');
- const st=lstatSync(path);
- if(!st.isFile()||realpathSync(path)!==path||st.uid!==process.getuid()||st.size<1||st.size>maxBytes||
-  (secret&&(st.mode&0o777)!==0o600))stop('custodian_file_permissions_required');
- return readFileSync(path,'utf8');
+ if(realpathSync(path)!==path)stop('custodian_path_must_be_canonical');
+ const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+ try{
+  const st=fstatSync(fd);
+  if(!st.isFile()||st.nlink!==1||st.uid!==process.getuid()||st.size<1||st.size>maxBytes||
+     (secret?(st.mode&0o7777)!==0o600:(st.mode&0o022)!==0))
+   stop('custodian_file_permissions_required');
+  const bytes=readFileSync(fd),after=fstatSync(fd);
+  if(bytes.length!==st.size||after.ctimeMs!==st.ctimeMs||after.mtimeMs!==st.mtimeMs)
+   stop('custodian_file_changed');
+  if(consume){
+   const named=lstatSync(path);
+   if(statfsSync('/proc/self/fd/'+fd).type!==0x01021994||
+      named.dev!==st.dev||named.ino!==st.ino)stop('password_file_changed');
+   unlinkSync(path);
+   if(fstatSync(fd).nlink!==0||lstatSync(path,{throwIfNoEntry:false}))stop('password_removal_unverified');
+  }
+  return bytes.toString('utf8');
+ }finally{closeSync(fd);}
 }
 export function assertEphemeralPassword(path){
  if(typeof path!=='string'||realpathSync(path)!==path||statfsSync(path).type!==0x01021994)
@@ -100,7 +127,7 @@ export function assertEphemeralPassword(path){
 }
 export function assertSaboraExecutor({env,root}){
  assertCustodian({env,root});
- if(process.platform!=='linux'||process.getuid()===0||
+ if(process.platform!=='linux'||process.getuid()===0||process.geteuid()===0||
     env.SABORA_S46_EXECUTOR_SCOPE!=='isolated-sabora-vps'||
     !root.startsWith('/srv/sabora/')||realpathSync(root)!==root||
     !env.SABORA_S46_OUTPUT_DIR.startsWith('/var/lib/sabora-release/'))stop('isolated_sabora_executor_required');
@@ -123,17 +150,17 @@ function main(){
   sha=env.SABORA_S46_RELEASE_SHA;
   if(!sha40(sha))stop('wrong_sha');
  }
- const head=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
- const mainHead=execFileSync('git',['rev-parse','origin/main'],{cwd:root,encoding:'utf8'}).trim();
+ const head=runReviewedGit(root,['rev-parse','HEAD']).toString('utf8').trim();
+ const mainHead=runReviewedGit(root,['rev-parse','origin/main']).toString('utf8').trim();
  if(head!==sha||mainHead!==sha)stop('sha_not_exact_main');
  // The manifest reads filesystem bytes; a dirty checkout must never be called exact-SHA evidence.
- const dirty=execFileSync('git',['status','--porcelain','--untracked-files=all'],{cwd:root,encoding:'utf8'}).trim();
+ const dirty=runReviewedGit(root,['--no-optional-locks','status','--porcelain','--untracked-files=all']).toString('utf8').trim();
  if(dirty)stop('dirty_checkout');
  const manifest=manifestReceipt(root,sha);
  if(mode==='plan'){
   process.stdout.write('sabora_s46_plan_only:'+JSON.stringify(manifest)+'\n');return;
  }
- const password=loadPrivateFile(env.SABORA_S46_DB_PASSWORD_FILE,{secret:true}).replace(/\r?\n$/,'');
+ const password=loadPrivateFile(env.SABORA_S46_DB_PASSWORD_FILE,{secret:true,consume:true}).replace(/\r?\n$/,'');
  const caPem=loadPrivateFile(env.SABORA_S46_DB_CA_FILE,{secret:false});
  const t=validateTransport({host:env.SABORA_S46_DB_HOST,user:env.SABORA_S46_DB_USER,
   port:env.SABORA_S46_DB_PORT,expectedSystemIdSha256:env.SABORA_S46_EXPECTED_SYSTEM_ID_SHA256,
@@ -143,10 +170,11 @@ function main(){
  const ca=join(dir,'approved-root-ca.pem');
  try{
   chmodSync(dir,0o700);writeFileSync(ca,t.caPem,{mode:0o600});
-  const result=spawnSync('/usr/bin/psql',['-X','-w','-q','-t','-A','-v','ON_ERROR_STOP=1','--file',join(root,'scripts/ci/sabora-s46-dba-readonly.sql')],{
+  const result=spawnSync('/usr/bin/psql',['-X','-w','-q','-t','-A','-v','ON_ERROR_STOP=1','--file=-'],{
+   input:readReviewedSql(root,sha,'scripts/ci/sabora-s46-dba-readonly.sql'),
    env:{PATH:'/usr/bin:/bin',HOME:dir,LANG:'C',PGHOST:t.host,PGPORT:String(t.port),
     PGUSER:t.user,PGDATABASE:'postgres',PGPASSWORD:password,
-    PGSSLMODE:'verify-full',PGSSLROOTCERT:ca,PGCONNECT_TIMEOUT:'10',
+    PGSSLMODE:'verify-full',PGSSLROOTCERT:ca,PGCONNECT_TIMEOUT:'10',PGGSSENCMODE:'disable',
     PGOPTIONS:'-c default_transaction_read_only=on -c statement_timeout=15000'},
    encoding:'utf8',maxBuffer:512*1024,timeout:45000});
   if(result.error||result.status!==0)stop('connection_or_readonly_query_failed');

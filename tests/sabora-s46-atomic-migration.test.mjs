@@ -30,12 +30,10 @@ test('full reviewed migration tree is transformed without changing source bytes'
  assert.equal((sql.match(/^DO \$s51_cv005\$/gm)||[]).length,entries.length*2,'CV005 before and after each COMMIT');
  const parts=sql.split(/^COMMIT;[ \t]*\r?$/gim);
  assert.equal(parts.length,entries.length+1);
- for(const part of parts.slice(1))assert.ok(part.indexOf('DO $s51_cv005
- assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
-});
-)>=0 && (part.indexOf('BEGIN;')<0 || part.indexOf('DO $s51_cv005
- assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
-});
-)<part.indexOf('BEGIN;')),'postcommit guard before next migration');
+ for(const part of parts.slice(1)){
+  const guard=part.indexOf('DO $s51_cv005$');
+  const nextBegin=part.search(/^BEGIN;[ \t]*\r?$/im);
+  assert.ok(guard>=0 && (nextBegin<0 || guard<nextBegin),'postcommit guard before next migration');
+ }
  assert.throws(()=>buildReviewedMigrationSql(root,'not-reviewed.sql'));
 });

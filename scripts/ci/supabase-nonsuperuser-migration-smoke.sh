@@ -38,6 +38,7 @@ done
 docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' >/dev/null
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
+CREATE ROLE service_role NOLOGIN;
 CREATE ROLE cv005_ci_migration_operator LOGIN CREATEROLE INHERIT
   NOSUPERUSER BYPASSRLS NOREPLICATION;
 CREATE ROLE cv005_ci_restricted_probe LOGIN NOINHERIT NOSUPERUSER
@@ -120,6 +121,18 @@ docker exec "$container" psql -X -v ON_ERROR_STOP=1 -U "$operator" -d "$database
   'DROP ROLE sabora_ci_membership_probe' >/dev/null
 echo 'sabora_nonsuperuser_bootstrap_membership_confirmed'
 
+# Exercise the shared ledger definition with provider-style default grants.
+# Keep the probe in one rolled-back transaction on the same disposable DB.
+{
+ printf '%s\n' 'BEGIN;' 'ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO service_role;' \
+   'ALTER DEFAULT PRIVILEGES GRANT ALL ON SCHEMAS TO service_role;' \
+   'ALTER DEFAULT PRIVILEGES GRANT ALL ON FUNCTIONS TO service_role;'
+ node --input-type=module -e 'import {LEDGER_SQL} from "./scripts/ci/sabora-s46-atomic-migration.mjs"; process.stdout.write(LEDGER_SQL);'
+ printf '%s\n' "SELECT has_schema_privilege('service_role','sabora_migration_meta','USAGE'), has_table_privilege('service_role','sabora_migration_meta.applied_migrations','SELECT,INSERT,UPDATE,DELETE,TRUNCATE'), has_function_privilege('service_role','sabora_migration_meta.reject_ledger_mutation()','EXECUTE');" 'ROLLBACK;'
+} | docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ | grep -Fxq 'f|f|f'
+echo 'sabora_s51_ledger_provider_default_acl_denied'
+
 log="$RUNNER_TEMP/sabora-nonsuperuser-$GITHUB_RUN_ID-$.log"
 count=0
 expected_count="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | wc -l | tr -d '[:space:]')"
@@ -139,6 +152,30 @@ node --input-type=module -e '
  import {buildGenesisSql} from "./scripts/ops/sabora-s46-genesis.mjs";
  process.stdout.write(buildGenesisSql(process.cwd(),JSON.parse(readFileSync(process.argv[1],"utf8"))));
  ' "$snapshot" > "$sqlfile"
+# Wait for the real cooperative lock in another session, then prove the
+# contender stops before creating any ledger. Keep both in the same fixture.
+docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ -c 'SELECT pg_advisory_lock(513046,1); SELECT pg_sleep(6);' >/dev/null &
+lock_pid=$!
+held=false
+for _ in $(seq 1 30); do
+ if [[ "$(docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+  -c "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory' AND classid=513046 AND objid=1 AND objsubid=2 AND granted)")" == t ]]; then
+  held=true
+  break
+ fi
+ sleep 0.1
+done
+[[ "$held" == true ]]
+if docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" < "$sqlfile" > "$log" 2>&1; then
+ echo 'sabora_s51_concurrent_operation_not_denied' >&2
+ exit 1
+fi
+grep -F 'sabora_genesis_concurrent' "$log" >/dev/null
+test "$(docker exec "$container" psql -X -Atq -v ON_ERROR_STOP=1 -U "$operator" -d "$database" \
+ -c "SELECT to_regnamespace('sabora_migration_meta') IS NULL")" = t
+wait "$lock_pid"
+echo 'sabora_s51_concurrent_genesis_denied_before_ledger'
 if ! docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
  -U "$operator" -d "$database" < "$sqlfile" > "$log" 2>&1; then
  echo 'sabora_nonsuperuser_migration_blocked:single-session' >&2
@@ -146,6 +183,13 @@ if ! docker exec -i "$container" psql -X -Atq -v ON_ERROR_STOP=1 \
  exit 1
 fi
 grep -Fx 'sabora_s51_genesis_catalog_ledger_verified' "$log" >/dev/null
+node --input-type=module -e '
+ import {readFileSync} from "node:fs";
+ import {buildMigrationManifest} from "./scripts/ci/migration-manifest.mjs";
+ import {verifyAppliedGenesisLedger} from "./scripts/ops/sabora-s46-genesis.mjs";
+ process.stdout.write("sabora_s51_applied_ledger_sha256:"+verifyAppliedGenesisLedger(
+   readFileSync(process.argv[1],"utf8"),buildMigrationManifest(process.cwd()))+"\n");
+ ' "$log"
 count="$(docker exec "$container" psql -X -U "$operator" -d "$database" -Atqc \
  'SELECT count(*) FROM sabora_migration_meta.applied_migrations')"
 # Replay of the same genesis is denied by the live catalog guard, not by a

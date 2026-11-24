@@ -23,6 +23,26 @@ RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $guard$
 BEGIN RAISE EXCEPTION 'sabora_migration_ledger_append_only'; END;
 $guard$;
 REVOKE ALL ON FUNCTION sabora_migration_meta.reject_ledger_mutation() FROM PUBLIC, anon, authenticated;
+-- Default ACLs can grant rights directly to provider roles. Revoke every
+-- non-owner grant on these three new objects without changing global ACLs.
+DO $s51_ledger_acl$ DECLARE grant_entry record;
+BEGIN
+ FOR grant_entry IN
+  SELECT DISTINCT obj.target,r.rolname
+  FROM (
+   SELECT 'SCHEMA sabora_migration_meta' AS target,nspowner AS owner,nspacl AS acl
+   FROM pg_catalog.pg_namespace WHERE nspname='sabora_migration_meta'
+   UNION ALL SELECT 'TABLE sabora_migration_meta.applied_migrations',relowner,relacl
+   FROM pg_catalog.pg_class WHERE oid='sabora_migration_meta.applied_migrations'::regclass
+   UNION ALL SELECT 'FUNCTION sabora_migration_meta.reject_ledger_mutation()',proowner,proacl
+   FROM pg_catalog.pg_proc WHERE oid='sabora_migration_meta.reject_ledger_mutation()'::regprocedure
+  ) AS obj CROSS JOIN LATERAL pg_catalog.aclexplode(obj.acl) AS acl
+  JOIN pg_catalog.pg_roles r ON r.oid=acl.grantee
+  WHERE acl.grantee<>obj.owner
+ LOOP
+  EXECUTE pg_catalog.format('REVOKE ALL ON %s FROM %I CASCADE',grant_entry.target,grant_entry.rolname);
+ END LOOP;
+END; $s51_ledger_acl$;
 CREATE TRIGGER sabora_migration_ledger_immutable
  BEFORE UPDATE OR DELETE OR TRUNCATE ON sabora_migration_meta.applied_migrations
  FOR EACH STATEMENT EXECUTE FUNCTION sabora_migration_meta.reject_ledger_mutation();
@@ -68,12 +88,12 @@ export function renderAtomicMigration(entry,bytes,{first=false,firstGuard=''}={}
  return sql.slice(0,endBegin)+'\n'+(first?firstGuard+LEDGER_SQL:'')+
   sql.slice(endBegin,commits[0].index)+'\n'+CV005_CHECK_SQL+insert+sql.slice(commits[0].index)+'\n';
 }
-export function buildReviewedMigrationSql(root,only,{firstGuard=''}={}){
- const manifest=buildMigrationManifest(root);
+export function buildReviewedMigrationSql(root,only,{firstGuard='',manifest=buildMigrationManifest(root),
+ readSql=path=>readFileSync(join(root,path))}={}){
  validateMigrationAudit(manifest);
  if(only!==undefined&&!manifest.some(e=>e.name===only))stop();
  return manifest.map((entry,index)=>({entry,index})).filter(x=>only===undefined||x.entry.name===only)
-  .map(({entry,index})=>renderAtomicMigration(entry,readFileSync(join(root,'supabase','migrations',entry.name)),{first:index===0,firstGuard})+
+  .map(({entry,index})=>renderAtomicMigration(entry,readSql('supabase/migrations/'+entry.name),{first:index===0,firstGuard})+
    // CV005 requires inspecting committed state after EVERY version. Keep the
    // pre-COMMIT guard as well, so a violation inside a migration rolls back.
    CV005_CHECK_SQL).join('\n');

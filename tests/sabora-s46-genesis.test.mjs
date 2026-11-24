@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-import {buildGenesisSql,assertSqlApproval,GENESIS_OK} from '../scripts/ops/sabora-s46-genesis.mjs';
+import {buildGenesisSql,assertSqlApproval,verifyAppliedGenesisLedger,GENESIS_OK} from '../scripts/ops/sabora-s46-genesis.mjs';
 const root=fileURLToPath(new URL('../',import.meta.url));
 test('single-session genesis guard precedes any ledger DDL and has final exact check',()=>{
  const sql=buildGenesisSql(root,{observed_at:new Date().toISOString(),ledger_exists:false});
@@ -20,4 +20,12 @@ test('SQL admission requires exact approved digests, distinct authorization and 
  for(const k of Object.keys(env))assert.throws(()=>assertSqlApproval({...env,[k]:''},manifest,cat));
  assert.throws(()=>assertSqlApproval({...env,SABORA_S46_APPROVED_CATALOG_SHA256:'c'.repeat(64)},manifest,cat));
  assert.throws(()=>assertSqlApproval({...env,SABORA_S46_LOCK_TIMEOUT_MS:'60001'},manifest,cat));
+});
+test('a success marker alone cannot attest the applied ledger',()=>{
+ const entry={version:'20261124000000',name:'20261124000000_probe.sql',sha256:'a'.repeat(64),bytes:11};
+ const line=row=>'sabora_s51_applied_ledger:'+JSON.stringify([row])+'\n'+GENESIS_OK+'\n';
+ const {bytes,...row}=entry;
+ assert.match(verifyAppliedGenesisLedger(line({...row,application_count:1}),[entry]),/^[a-f0-9]{64}$/);
+ assert.throws(()=>verifyAppliedGenesisLedger(GENESIS_OK,[entry]),/applied_ledger_missing/);
+ assert.throws(()=>verifyAppliedGenesisLedger(line({...row,application_count:2}),[entry]),/applied_ledger_mismatch/);
 });
