@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluatePilotActivation, assertPilotActivation, PILOT_ACTIVATION_REQUIREMENTS} from './pilot-activation-gate.mjs';
+import {evaluatePilotActivation, assertPilotActivation, assertFirstTestActivation, PILOT_ACTIVATION_REQUIREMENTS} from './pilot-activation-gate.mjs';
 
 test('pilot activation fails closed without operational evidence', () => {
  const result = evaluatePilotActivation();
@@ -37,4 +37,23 @@ test('pilot activation does not expose supplied secret-like evidence', () => {
  assert.equal(Object.isFrozen(result.missing), true);
  assert.throws(() => evaluatePilotActivation(null), /invalid_pilot_evidence/);
  assert.throws(() => evaluatePilotActivation([]), /invalid_pilot_evidence/);
+});
+
+test('S46/V2 admits only an explicit first fictitious scope without certifying recovery',()=>{
+ const scope={"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false};
+ const evidence={...Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(key=>[key,true])),
+  backupRestoreVerified:false,rollbackVerified:false};
+ const admission=assertFirstTestActivation(evidence,scope);
+ assert.equal(admission.mode,'first_test_activation_admission_unverified');
+ assert.deepEqual(admission.deferred,['backupRestoreVerified','rollbackVerified']);
+ assert.throws(()=>assertPilotActivation(evidence),/pilot_activation_blocked/);
+ for(const key of PILOT_ACTIVATION_REQUIREMENTS){
+  assert.throws(()=>assertFirstTestActivation({...evidence,[key]:!evidence[key]},scope),
+   /pilot_first_test_activation_blocked/,key);
+ }
+ for(const change of [{realUsersAllowed:true},{testDataOnly:false},{backupPerformed:true},
+  {restorePerformed:true},{mode:'ordinary'},{extra:true}]){
+  assert.throws(()=>assertFirstTestActivation(evidence,{...scope,...change}),/pilot_first_test_activation_blocked/);
+ }
+ assert.throws(()=>assertFirstTestActivation(evidence,undefined),/pilot_first_test_activation_blocked/);
 });

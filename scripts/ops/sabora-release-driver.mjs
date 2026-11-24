@@ -38,7 +38,7 @@ export function createRealReleaseDriver({installation,ledger,receipt,revalidate,
  const isolation=()=>{evidence();const witness=inspectLocalIsolation({run,policy:config.networkPolicy,reservation,now:Date.now()});
   if(ledger.readHistory().activeReleaseSha)assertLiveSaboraIsolation(witness,Date.now(),'running');return witness;};
  const json=(args,options)=>{const result=run('docker',args,options);return result.missing?null:JSON.parse(result.stdout);};
- function checkMounts(){verifyRuntimeMounts(config,run);verifyTlsMaterial(config.tls);}
+ function checkMounts(){verifyRuntimeMounts(config,run,{requireGenesis:v2});verifyTlsMaterial(config.tls);}
  const retained=sha=>{
   if(!/^[0-9a-f]{40}$/.test(sha))stop('retained_sha_invalid');
   const entry=readJson(join(P.state,'retained-'+sha+'.json'));

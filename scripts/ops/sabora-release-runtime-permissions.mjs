@@ -38,7 +38,7 @@ function file(path,options,run,maxBytes){
   stop('runtime_file_changed');
  return bytes;
 }
-export function verifyRuntimeMounts(config,run){
+export function verifyRuntimeMounts(config,run,{requireGenesis=false}={}){
  const h=config.mountHashes;
  if(!exactKeys(h,['manifest','egress','secrets'])||!hash(h.manifest)||!hash(h.egress)||
   !h.secrets||typeof h.secrets!=='object'||Array.isArray(h.secrets)||
@@ -51,8 +51,21 @@ export function verifyRuntimeMounts(config,run){
  directory(RELEASE_MOUNTS.secrets,{gid:apiGid,mode:0o750},run);
  const names=readdirSync(RELEASE_MOUNTS.secrets).sort();
  if(names.join('|')!==Object.keys(h.secrets).sort().join('|'))stop('secret_inventory_changed');
- if(sha256(file(RELEASE_MOUNTS.manifest,{gid:apiGid,mode:0o640},run,262144))!==h.manifest||
+ const manifestBytes=file(RELEASE_MOUNTS.manifest,{gid:apiGid,mode:0o640},run,262144);
+ if(sha256(manifestBytes)!==h.manifest||
   sha256(file(RELEASE_MOUNTS.egress,{mode:0o444},run,65536))!==h.egress)stop('mount_content_changed');
+ // V2 currently admits only genesis; reject an inconsistent runtime scope
+ // even if the root-owned file and its configured digest agree. The real
+ // SQL receipt and one-use state are verified separately by the driver.
+ if(requireGenesis){
+  let manifest;try{manifest=JSON.parse(manifestBytes);}catch{stop('runtime_genesis_scope_invalid');}
+  const scope=manifest?.activationScope, evidence=manifest?.activationEvidence;
+  const required={"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false};
+  if(!exactKeys(scope,Object.keys(required))||
+     !Object.entries(required).every(([key,value])=>scope[key]===value)||
+     evidence?.backupRestoreVerified!==false||evidence?.rollbackVerified!==false)
+   stop('runtime_genesis_scope_invalid');
+ }
  for(const name of names)if(sha256(file(join(RELEASE_MOUNTS.secrets,name),{gid:apiGid,mode:0o640},run,16384))!==h.secrets[name])stop('secret_changed');
  // Both API and egress receive the same nonsecret destination policy as an
  // individual RO bind; no other runtime file/directory is mounted to egress.

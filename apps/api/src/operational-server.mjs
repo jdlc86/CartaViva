@@ -5,7 +5,7 @@ import pg from 'pg';
 import {createSaboraObservability} from './operational-observability.mjs';
 import {materializeOperationalM3Options,validateOperationalEgressBinding} from './operational-activation-manifest.mjs';
 import {installOperationalSignalHandlers,startOperationalM3Runtime} from './operational-runtime.mjs';
-import {assertPilotActivation} from './pilot-activation-gate.mjs';
+import {assertPilotActivation,assertFirstTestActivation} from './pilot-activation-gate.mjs';
 
 const generic=()=>Error('sabora_operational_startup_failed');
 
@@ -50,7 +50,9 @@ export async function startOperationalServerFromFiles({env=process.env,Pool=pg.P
   try{manifest=JSON.parse(raw);policy=JSON.parse(policyRaw);}catch{throw generic();}
   if(manifest?.stage!=='production')throw generic();
   validateOperationalEgressBinding(manifest,policy);
-  assertPilotActivation(manifest.activationEvidence);
+  if(Object.hasOwn(manifest,'activationScope'))
+   assertFirstTestActivation(manifest.activationEvidence,manifest.activationScope);
+  else assertPilotActivation(manifest.activationEvidence);
   resources=await materializeOperationalM3Options({manifest,Pool,
    resolveSecret:createFileSecretResolver(secretsDirectory),fetchImpl,observability});
   const runtime=await startRuntime({options:resources.options,
