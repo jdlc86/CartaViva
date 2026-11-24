@@ -199,3 +199,7 @@ Tras la orden «Continua» se verificó que el commit previo `65cee466cffccfd4c2
 **Normativa actualizada** en [contrato V2 §7](../architecture/SABORA_SIMPLIFIED_DEPLOYMENT_V2.md#7-metodología-operativa-única-v2--de-decisión-a-primer-despliegue): una sola preparación física, cotejo externo SHA y manifiesto root-only; solo después de aislamiento, DBA real y alerta V2 se podrá habilitar el agent readiness. No firma, no expedientes, no secretos de Fleetia, no PC/nuevo VPS y ningún bypass.
 
 **Corte operativo:** PR #85 sigue Draft y sin merge, sin instalación del controlador/alertas operativas, SQL autorizado, network/SSH V2 reales o deploy. El HEAD de esta actualización documental tiene nueva CI y **no hereda** el PASS de SHA anterior. Próximo hito: revisión y gate CI exact-HEAD; autorización separada del merge, SQL, provisión y deploy. Solo primera activación con datos ficticios y excepción de backups; usuarios/datos reales STOP.
+
+## S50 · Cierre de auditoría del PR #85 (24-11-2026)
+
+El código corregido `0c6eecab6ca4e4833105421e56b6f1f9fdc4f0bd` pasó `validate`, `web-publication`, `generate-lockfile` y `functional-ui-gate`. Se cerraron los defectos de reejecución del propietario, revalidación de Issue, ledger durable y checks S46. **GO MERGE CON CONDICIONES** y **NO-GO OPERATIVO**. Siguen pendientes instalación V2 verificable, receptor durable de alertas, preflight y autorización SQL, aislamiento real y aceptación de ambas PWA. El PR sigue Draft. [Informe único](../reviews/SABORA_S50_CODEX_PR85_V2_FINAL_TECHNICAL_REVIEW_2026-11-23.md).
