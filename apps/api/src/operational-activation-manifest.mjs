@@ -123,7 +123,9 @@ export function validateOperationalActivationManifest(manifest){
  const clientOrigin=assertHttpsOrigin(manifest.origins.client);
  const managementOrigin=assertHttpsOrigin(manifest.origins.management);
  if(clientOrigin.origin===managementOrigin.origin||
-    ((clientOrigin.port||managementOrigin.port)&&
+    ((clientOrigin.port||managementOrigin.port||
+      [clientOrigin.hostname,managementOrigin.hostname].some(host=>
+       ['sabora.allaiso.com','gestion-sabora.allaiso.com'].includes(host)))&&
      (clientOrigin.origin!=='https://sabora.allaiso.com:8443'||
       managementOrigin.origin!=='https://gestion-sabora.allaiso.com:8443')))throw invalid();
  if(!exactKeys(manifest.auth,['issuer','connectHost','connectPort'])||!exactKeys(manifest.network,

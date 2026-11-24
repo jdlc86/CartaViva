@@ -216,6 +216,7 @@ test('S51 approved 8443 PWA origins are accepted without permitting other port o
   v=>{v.origins.client='https://sabora.allaiso.com:8444';},
   v=>{v.origins.client='https://unapproved.sabora.es:8443';},
   v=>{v.origins.management='https://gestion-sabora.allaiso.com';},
+  v=>{v.origins={client:'https://sabora.allaiso.com',management:'https://gestion-sabora.allaiso.com'};},
   v=>{v.origins={client:origins.management,management:origins.client};},
   v=>{v.auth.issuer='https://project.supabase.co:8443/auth/v1';},
   v=>{v.origins.client+='/?x=1';}

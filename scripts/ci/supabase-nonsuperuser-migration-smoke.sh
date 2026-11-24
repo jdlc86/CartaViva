@@ -337,6 +337,7 @@ CREATE ROLE sabora_ci_s51_staff_login LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS NO
 GRANT USAGE ON SCHEMA sabora TO sabora_ci_s51_staff_login;
 GRANT SELECT(user_id,role,state) ON sabora.staff_members TO sabora_ci_s51_staff_login;
 CREATE POLICY ci_s51_staff_reader ON sabora.staff_members FOR SELECT TO sabora_ci_s51_staff_login USING (true);
+INSERT INTO sabora.staff_members(user_id,role,state) VALUES ('a51a0000-0000-4000-8000-000000000001','kitchen','active');
 SQL
 SABORA_CI_S51_CONTAINER="$container" SABORA_CI_S51_DB="$database" node --input-type=module - <<'JS'
 import assert from 'node:assert/strict';
@@ -365,7 +366,7 @@ for(const [grant,revoke] of [
  finally{sql('postgres',revoke);}
  assert.deepEqual(await run(),{role:login});
 }
-assert.equal(sql(login,'SELECT count(*) FROM (SELECT user_id,role,state FROM sabora.staff_members) x'),'0');
+assert.equal(sql(login,"SELECT count(*) FROM sabora.staff_members WHERE user_id='a51a0000-0000-4000-8000-000000000001' AND role='kitchen' AND state='active'"),'1');
 console.log('sabora_s51_real_nonsuperuser_staff_runtime_preflight_verified');
 JS
 echo 'sabora_s51_nonsuperuser_atomic_ledger_verified'
