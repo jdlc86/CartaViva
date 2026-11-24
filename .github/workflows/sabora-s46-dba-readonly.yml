@@ -37,26 +37,11 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin main
           node scripts/ci/sabora-s46-dba-readonly.mjs plan
-      - name: Verify five exact-main integrated CI controls
+      - name: Verify the exact main SHA against the V2 CI controls
         env:
           SABORA_S46_RELEASE_SHA: ${{ inputs.release_sha }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const sha=context.sha, requested=process.env.SABORA_S46_RELEASE_SHA;
-            if(sha!==requested || context.ref!=='refs/heads/main')
-              throw Error('sabora_s46_stop:wrong_sha');
-            const {data}=await github.rest.checks.listForRef({
-              owner:context.repo.owner,repo:context.repo.repo,ref:sha,per_page:100
-            });
-            if(data.total_count>100) throw Error('sabora_s46_stop:check_inventory_truncated');
-            const required=['validate','web-publication','generate-lockfile',
-              'functional-ui-gate','windows-offline-signer'];
-            for(const name of required){
-              const found=data.check_runs.filter(c=>c.name===name);
-              if(!found.length || found.some(c=>c.head_sha!==sha ||
-                  c.status!=='completed' || c.conclusion!=='success' ||
-                  c.app?.slug!=='github-actions'))
-                throw Error('sabora_s46_stop:ci_not_success:'+name);
-            }
-            core.info('sabora_s46_verified_five_exact_main_checks');
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$SABORA_S46_RELEASE_SHA" = "$GITHUB_SHA"
+          node scripts/ci/sabora-release-governor.mjs check-ci plan "$GITHUB_SHA"

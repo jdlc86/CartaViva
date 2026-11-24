@@ -411,6 +411,8 @@ try{
 v2Delivery=await session(v2DeployCommand,v2Transmit(c,v2Deploy),{expectSuccess:true});
 assert.equal(JSON.parse(v2Delivery.stdout).state,'healthy');
 assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,c.sha);
+assert.deepEqual(parse(join(P.ledger,v2Deploy.authorizationId+'.result.json')).github,
+ {actor:'jdlc86',runId,runAttempt:1,sourceIssueNumber:null});
 assert.notEqual(snapshot(),v2Before);sentinel();
 ok('v2-real-ssh-unsigned-deploy-C-and-sentinel');
 await denied('v2-one-use-replay-denied',c,
@@ -423,6 +425,16 @@ assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);sentinel();
 ok('v2-real-ssh-unsigned-rollback-A-and-sentinel');
 await denied('v2-rollback-replay-denied',a,
  {command:v2RollbackCommand,body:{operation:'rollback'}},v2RollbackFeed);
+const orphan=v2Authorize(c,'rollback',3),orphanPath=join(P.ledger,orphan.authorizationId+'.json');
+put(orphanPath,JSON.stringify({authorizationId:orphan.authorizationId,state:'consumed'})+'\n');
+try{
+ const next=v2Authorize(c,'rollback',4);
+ const deniedResult=await denied('v2-orphan-consumption-blocks-new-operation',c,
+  {command:v2Command(next,c,'rollback'),body:{operation:'rollback'}},
+  stream=>stream.end(renderRollbackEnvelope({approvalB64:next.approvalB64})));
+ assert.match(deniedResult.stderr,/sabora_controller_stop:ledger_orphan_consumption/);
+ assert.equal(parse(P.ledger+'/history.json').activeReleaseSha,a.sha);
+}finally{unlinkSync(orphanPath);}
 }finally{clearInterval(v2SentinelMonitor);}
 if(v2MonitorFailure)throw v2MonitorFailure;
 ok('v2-foreign-sentinel-never-interrupted');

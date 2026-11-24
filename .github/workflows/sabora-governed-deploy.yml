@@ -19,6 +19,7 @@ permissions:
   contents: read
   actions: read
   checks: read
+  issues: read
 concurrency:
   group: sabora-exclusive-vps-release
   cancel-in-progress: false
@@ -26,6 +27,8 @@ jobs:
   verify:
     if: >-
       github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' &&
+      (github.triggering_actor == 'jdlc86' ||
+       (github.run_attempt == '1' && github.triggering_actor == 'github-actions[bot]')) &&
       (github.actor == 'jdlc86' ||
        (github.actor == 'github-actions[bot]' && inputs.source_issue_number != ''))
     runs-on: ubuntu-24.04
@@ -51,7 +54,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const owner='jdlc86',repo='CartaViva';
+            const owner='jdlc86';
             const source=process.env.SOURCE_ISSUE_NUMBER;
             if(context.actor==='jdlc86'){
               if(source)throw Error('manual_dispatch_cannot_claim_issue');
@@ -59,10 +62,10 @@ jobs:
             }else{
               if(context.actor!=='github-actions[bot]' || !/^[1-9][0-9]{0,11}$/.test(source))
                 throw Error('untrusted_dispatch_actor');
-              const {data}=await github.rest.issues.get({owner,repo,issue_number:Number(source)});
-              if(data.pull_request || data.user?.login!==owner ||
-                data.title!==`[sabora] release ${process.env.RELEASE_OPERATION} ${process.env.RELEASE_SHA}` ||
-                (data.body && data.body.trim()!==''))throw Error('untrusted_source_issue');
+              const {verifyLiveGovernedReleaseIssue}=await import(
+                process.env.GITHUB_WORKSPACE + '/scripts/ci/sabora-owner-issue-dispatch.mjs');
+              await verifyLiveGovernedReleaseIssue({github,source,
+                operation:process.env.RELEASE_OPERATION,sha:process.env.RELEASE_SHA});
               core.setOutput('source_issue_number',source);
             }
             core.setOutput('owner_verified',owner);
@@ -100,7 +103,12 @@ jobs:
             node scripts/ci/sabora-release-governor.mjs check-main "$RELEASE_OPERATION" "$RELEASE_SHA"
           fi
   execute:
-    if: inputs.operation == 'deploy' || inputs.operation == 'rollback'
+    # A job-only rerun can reuse verify's outputs from an earlier attempt.
+    if: >-
+      github.repository == 'jdlc86/CartaViva' && github.ref == 'refs/heads/main' &&
+      (github.triggering_actor == 'jdlc86' ||
+       (github.run_attempt == '1' && github.triggering_actor == 'github-actions[bot]')) &&
+      (inputs.operation == 'deploy' || inputs.operation == 'rollback')
     needs: verify
     environment: sabora-live
     runs-on: ubuntu-24.04
@@ -113,6 +121,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Revalidate owner Issue after the Sabora Environment
+        if: needs.verify.outputs.source_issue_number != ''
+        env:
+          SOURCE_ISSUE_NUMBER: ${{ needs.verify.outputs.source_issue_number }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
+          RELEASE_SHA: ${{ needs.verify.outputs.approved_sha }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {verifyLiveGovernedReleaseIssue}=await import(
+              process.env.GITHUB_WORKSPACE + '/scripts/ci/sabora-owner-issue-dispatch.mjs');
+            await verifyLiveGovernedReleaseIssue({github,source:process.env.SOURCE_ISSUE_NUMBER,
+              operation:process.env.RELEASE_OPERATION,sha:process.env.RELEASE_SHA});
       - name: Find exact main-push release package (read-only GitHub API)
         if: inputs.operation == 'deploy'
         id: artifact

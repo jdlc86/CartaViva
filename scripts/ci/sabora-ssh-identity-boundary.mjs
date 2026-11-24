@@ -8,17 +8,16 @@ function stop(reason){throw new Error('sabora_ssh_boundary_stop:'+reason);}
 function requireMatch(value,pattern,reason){if(!pattern.test(value))stop(reason);}
 export function assertSaboraReleaseSshBoundary(workflow){
  if(typeof workflow!=='string'||workflow.length>128*1024)stop('workflow_invalid');
+ workflow=workflow.replaceAll('\r\n','\n');
  const header=workflow.split('\npermissions:')[0];
  requireMatch(header,/^on:\n  workflow_dispatch:/m,'manual_or_owner_issue_only');
  if(/^\s{2}(?:push|pull_request|issues|schedule|workflow_call|repository_dispatch):/m.test(header))
   stop('unexpected_trigger');
  requireMatch(header,/options: \[plan, deploy, rollback\]/,'operation_scope');
  requireMatch(header,/source_issue_number:/,'issue_scope_required');
- requireMatch(workflow,/github\.repository == 'jdlc86\/CartaViva' && github\.ref == 'refs\/heads\/main'/,'repository_scope');
+ const repositoryScope=/github\.repository == 'jdlc86\/CartaViva' && github\.ref == 'refs\/heads\/main'/;
  requireMatch(workflow,/github\.actor == 'jdlc86'/,'manual_owner_check');
  requireMatch(workflow,/github\.actor == 'github-actions\[bot\]'/,'issue_dispatch_actor_check');
- requireMatch(workflow,/github\.rest\.issues\.get\(\{owner,repo,issue_number:Number\(source\)\}\)/,'live_owner_issue_check');
- requireMatch(workflow,/data\.user\?\.login!==owner/,'original_issue_owner');
  requireMatch(workflow,/core\.setOutput\('owner_verified',owner\)/,'owner_proof_to_execute');
  requireMatch(workflow,/environment: sabora-live/,'environment_scope');
  requireMatch(workflow,/^permissions:\n  contents: read\n  actions: read\n  checks: read/m,'readonly_github_token');
@@ -51,8 +50,16 @@ export function assertSaboraReleaseSshBoundary(workflow){
   stop('post_environment_main_and_ci_recheck');
  const match=workflow.match(/\n  verify:\n([\s\S]*?)\n  execute:\n/);
  if(!match||/\|\s*ssh\s|ssh -F|scp\s|sftp\s/.test(match[1]))stop('remote_plan');
- if(!/if: inputs\.operation == 'deploy' \|\| inputs\.operation == 'rollback'/.test(workflow))
-  stop('execution_operation_scope');
+ requireMatch(match[1],/await verifyLiveGovernedReleaseIssue\(/,'live_owner_issue_check');
+ requireMatch(execution,/await verifyLiveGovernedReleaseIssue\(/,'post_environment_owner_issue_check');
+ const requiredTrigger=/\(github\.triggering_actor == 'jdlc86' \|\|\s+\(github\.run_attempt == '1' && github\.triggering_actor == 'github-actions\[bot\]'\)\) &&/;
+ const verifyAdmission=match[1].split('\n    runs-on:')[0];
+ requireMatch(verifyAdmission,repositoryScope,'verify_repository_scope');
+ requireMatch(verifyAdmission,requiredTrigger,'verify_triggering_actor');
+ const executeAdmission=execution.split('\n    environment:')[0];
+ requireMatch(executeAdmission,repositoryScope,'execute_repository_scope');
+ requireMatch(executeAdmission,requiredTrigger,'execute_triggering_actor');
+ requireMatch(executeAdmission,/\(inputs\.operation == 'deploy' \|\| inputs\.operation == 'rollback'\)/,'execution_operation_scope');
  return Object.freeze({schema:'sabora-github-ssh-identity-boundary/v2',
   staticContractPass:true,actualSshConnectionValidated:false,
   controllerInstalled:false,bootstrapTransferAuthorized:false});

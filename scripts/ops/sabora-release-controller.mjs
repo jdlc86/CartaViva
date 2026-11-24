@@ -16,7 +16,7 @@ export async function runReleaseController({source,installation}){
  if(process.geteuid?.()!==0||!installation)stop('privileged_installation_required');
  const v2=installation.installationSchema==='sabora-controller-installation/v2';
  const release=acquireReleaseLock(P.state),ledger=createReleaseLedger(P.ledger);
- let consumed=false,timer;
+ let attemptedAuthorizationId,retainLock=false,timer;
  try{
   ledger.assertReconciled();checkStorageQuota(installation.config);
   // One SSH command line is inserted by the fixed unprivileged launcher.
@@ -72,16 +72,22 @@ export async function runReleaseController({source,installation}){
   }
   clearTimeout(timer);revalidate();
   const consume=driver.registerAuthorization;
-  driver.registerAuthorization=async(...args)=>{consumed=true;return consume(...args);};
+  driver.registerAuthorization=async(...args)=>{
+   attemptedAuthorizationId=receipt.authorizationId;
+   return consume(...args);
+  };
   const result=await executeScopedSaboraRelease({receipt,stage,
    stageRoot:parsed.operation==='deploy'?P.staging:P.bundles,driver,operation:parsed.operation});
   return {schema:'sabora-controller-result/v1',releaseSha:result.releaseSha,operation:result.operation,
    authorizationId:receipt.authorizationId,state:'healthy',durablyRecorded:true,
    environment:installation.environment,operationalAcceptance:false};
  }catch(error){
-  if(consumed){try{ledger.fail(safeReleaseError(error));}catch{/* immutable consumption/lock still prevent replay */}}
+  if(attemptedAuthorizationId){
+   try{ledger.fail(safeReleaseError(error),attemptedAuthorizationId);}
+   catch{retainLock=true;}
+  }
   throw error;
- }finally{clearTimeout(timer);release();}
+ }finally{clearTimeout(timer);if(!retainLock)release();}
 }
 export function safeReleaseError(error){
  const value=String(error?.message??'');

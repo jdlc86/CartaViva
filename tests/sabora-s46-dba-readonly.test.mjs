@@ -54,9 +54,10 @@ test('workflow and SQL cannot silently become migrator or weaker TLS flow',()=>{
  assert.match(workflow,/workflow_dispatch:/);assert.doesNotMatch(workflow,/issues:|\bpush:|\bpull_request:|workflow_run:/);
  assert.doesNotMatch(workflow,/environment: sabora-dba-readonly|secrets\.|SABORA_S46_DB_PASSWORD|observe:/);
  assert.match(workflow,/github\.actor == github\.repository_owner/);
- assert.match(workflow,/\['validate','web-publication','generate-lockfile',/);
+ assert.match(workflow,/sabora-release-governor\.mjs check-ci plan "\$GITHUB_SHA"/);
+ assert.doesNotMatch(workflow,/windows-offline-signer/);
  assert.match(workflow,/sabora-s46-dba-readonly\.mjs plan/);
- assert.match(workflow,/requested=process\.env\.SABORA_S46_RELEASE_SHA/);
+ assert.match(workflow,/test "\$SABORA_S46_RELEASE_SHA" = "\$GITHUB_SHA"/);
  assert.doesNotMatch(workflow,/requested='\$\{\{ inputs\.release_sha \}\}'/);
  assert.match(script,/PGSSLMODE:'verify-full'/);
  assert.match(script,/PGOPTIONS:'-c default_transaction_read_only=on/);

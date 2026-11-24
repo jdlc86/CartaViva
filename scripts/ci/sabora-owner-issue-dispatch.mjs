@@ -9,6 +9,20 @@ const REQUEST = /^\[sabora\] release (plan|deploy|rollback) ([0-9a-f]{40})$/;
 function stop(reason) { throw new Error('sabora_issue_dispatch_stop:' + reason); }
 function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 
+// The bridge closes the request after dispatch. Both open and acknowledged
+// closed issues can be read while the governed run is waiting for its Environment.
+export async function verifyLiveGovernedReleaseIssue({github,source,operation,sha}) {
+  const title = `[sabora] release ${operation} ${sha}`;
+  if (typeof source !== 'string' || !/^[1-9][0-9]{0,11}$/.test(source) || !REQUEST.test(title))
+    stop('invalid_source_issue_scope');
+  const issueNumber = Number(source);
+  const {data} = await github.rest.issues.get({owner:'jdlc86',repo:'CartaViva',issue_number:issueNumber});
+  if (!isRecord(data) || data.number !== issueNumber || data.pull_request ||
+      data.user?.login !== 'jdlc86' || data.title !== title ||
+      (data.body != null && (typeof data.body !== 'string' || data.body.trim() !== '')))
+    stop('untrusted_source_issue');
+}
+
 export function parseSaboraOwnerReleaseIssue(event, context) {
   if (!isRecord(event) || !isRecord(context)) stop('invalid_event');
   if (event.action !== 'opened') stop('opened_only');

@@ -23,7 +23,22 @@ test('root filesystem, durable replay/crash and signed malicious Docker TAR inva
   const receipt={authorizationId:'LAB-LEDGER-000001',releaseSha:'a'.repeat(40),operation:'deploy',authorizationSha256:'b'.repeat(64),bundleManifestSha256:'c'.repeat(64),evidence:{}};
   ledger.consume(receipt,{});assert.throws(()=>ledger.assertReconciled(),/requires_reconciliation/);ledger.phase('compose-up');ledger.commit({receipt,operation:'deploy',readiness:{apiReady:true}});
   assert.equal(ledger.assertReconciled().activeReleaseSha,receipt.releaseSha);assert.throws(()=>ledger.consume(receipt,{}),/authorization_replay/);
-  const next={...receipt,authorizationId:'LAB-LEDGER-000002',releaseSha:'d'.repeat(40)};ledger.consume(next,{});ledger.phase('compose-up');ledger.fail('fixture-crash');assert.throws(()=>ledger.assertReconciled(),/reconciliation/);
+  const next={...receipt,authorizationId:'LAB-LEDGER-000002',releaseSha:'d'.repeat(40)};
+  const orphan=join(ledgerDir,next.authorizationId+'.json');
+  writeFileSync(orphan,JSON.stringify({...next,state:'consumed'}),{mode:0o600});
+  // Crash after the exclusive record and before replacing the prior journal.
+  assert.throws(()=>ledger.assertReconciled(),/ledger_orphan_consumption/);
+  ledger.fail('before-journal',next.authorizationId);
+  assert.equal(JSON.parse(readFileSync(join(ledgerDir,'transaction.json'))).state,'healthy');
+  unlinkSync(orphan);
+  ledger.consume(next,{});ledger.phase('compose-up');
+  ledger.commit({receipt:next,operation:'deploy',readiness:{apiReady:true}});
+  // A final rename can be visible even when the following fsync fails.
+  ledger.fail('final-sync-failure',next.authorizationId);
+  const unknown=JSON.parse(readFileSync(join(ledgerDir,'transaction.json')));
+  assert.equal(unknown.state,'unknown');
+  assert.equal(unknown.failedPhase,'postchecks-committed');
+  assert.throws(()=>ledger.assertReconciled(),/requires_reconciliation/);
   const layer=Buffer.alloc(1024),config=Buffer.from(JSON.stringify({os:'linux',architecture:'amd64',rootfs:{type:'layers',diff_ids:['sha256:'+sha256(layer)]},config:{User:'sabora'}}));
   const tag='sabora-api:'+'a'.repeat(40),id=sha256(config),configName=id+'.json',layerName='e'.repeat(64)+'/layer.tar';
   const manifest=[{Config:configName,RepoTags:[tag],Layers:[layerName]}];
