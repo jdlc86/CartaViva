@@ -202,7 +202,8 @@ try{
   'SABORA_WEB_TLS_DIRECTORY=/srv/sabora/tls','SABORA_INGRESS_FILTERED_NETWORK=sabora_ingress_filtered',''].join('\n'));
  // Synthetic values never enter the operational environment or artifact.
  const fixtureSecret='/etc/sabora/runtime/secrets/lab-access-probe';
- put('/etc/sabora/runtime/activation.json','{"explicitLabFixture":true}\n',0o640);
+ put('/etc/sabora/runtime/activation.json',JSON.stringify({explicitLabFixture:true,
+  activationScope:{"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false},activationEvidence:{backupRestoreVerified:false,rollbackVerified:false}})+'\n',0o640);
  put('/etc/sabora/runtime/egress-policy.json','{"explicitLabFixture":true}\n',0o444);
  put(fixtureSecret,'disposable mount access proof\n',0o640);
  chmodSync('/etc/sabora/runtime',0o700);
@@ -432,6 +433,29 @@ for(const [attempt,label,patch,error] of [
 put(P.config,originalV2Config);
 put(P.installation,JSON.stringify(installationV2)+'\n');
 put(sqlResultPath,resultBytes(sqlFixture));
+// Even a newly hashed, root-owned runtime manifest cannot contradict the
+// first-test-only admission. No authorization or genesis marker is consumed.
+const activationPath='/etc/sabora/runtime/activation.json';
+const originalActivation=readFileSync(activationPath);
+const validActivation=JSON.parse(originalActivation);
+try{
+ for(const [attempt,bad] of [
+  [17,{...validActivation,activationScope:{...validActivation.activationScope,realUsersAllowed:true}}],
+  [18,{...validActivation,activationEvidence:{...validActivation.activationEvidence,backupRestoreVerified:true}}],
+  [19,{explicitLabFixture:true}]
+ ]){
+  put(activationPath,JSON.stringify(bad)+'\n',0o640);
+  put(P.config,JSON.stringify({...v2Config,mountHashes:{...v2Config.mountHashes,
+   manifest:hashFile(activationPath)}})+'\n');
+  put(P.installation,JSON.stringify(deriveControllerInstallationManifestV2({environment:LAB_ENVIRONMENT}))+'\n');
+  await deniedV2('v2-inconsistent-runtime-genesis-scope-'+attempt,c,'deploy',attempt,/runtime_genesis_scope_invalid/);
+  assert.equal(existsSync(genesisMarker),false);
+ }
+}finally{
+ put(activationPath,originalActivation,0o640);
+ put(P.config,originalV2Config);
+ put(P.installation,JSON.stringify(installationV2)+'\n');
+}
 const orphan=v2Authorize(c,'deploy',8),orphanPath=join(P.ledger,orphan.authorizationId+'.json');
 put(orphanPath,JSON.stringify({authorizationId:orphan.authorizationId,state:'consumed'})+'\n');
 try{

@@ -31,3 +31,23 @@ export function assertPilotActivation(evidence) {
   if (!result.ready) throw Error('pilot_activation_blocked');
   return result;
 }
+
+// S46/V2: a separate admission scope, never ordinary pilot readiness.
+// The protected controller admits this scope only for a first fictitious
+// release. This declaration is not an access-control mechanism or evidence
+// that backup, restore or rollback was performed.
+const GENESIS_DEFERRED=Object.freeze(['backupRestoreVerified','rollbackVerified']);
+const GENESIS_SCOPE=Object.freeze({"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false});
+export function isFirstTestActivationScope(scope){
+ return scope!==null&&typeof scope==='object'&&!Array.isArray(scope)&&
+  Object.keys(scope).length===Object.keys(GENESIS_SCOPE).length&&
+  Object.entries(GENESIS_SCOPE).every(([key,value])=>Object.hasOwn(scope,key)&&scope[key]===value);
+}
+export function assertFirstTestActivation(evidence,scope){
+ if(!isFirstTestActivationScope(scope)||!evidence||typeof evidence!=='object'||Array.isArray(evidence)||
+    !GENESIS_DEFERRED.every(key=>Object.hasOwn(evidence,key)&&evidence[key]===false)||
+    !REQUIRED.filter(key=>!GENESIS_DEFERRED.includes(key)).every(key=>Object.hasOwn(evidence,key)&&evidence[key]===true))
+  throw Error('pilot_first_test_activation_blocked');
+ return Object.freeze({ready:true,missing:Object.freeze([]),deferred:GENESIS_DEFERRED,
+  mode:'first_test_activation_admission_unverified'});
+}

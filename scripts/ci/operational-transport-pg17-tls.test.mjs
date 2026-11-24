@@ -198,7 +198,9 @@ test('disposable PG17 real restricted LOGIN + strict TLS/SNI tunnel + verified J
      customerSecretRef:'customer_hmac',qrSecretRef:'qr_hmac'},
     // The following are ONLY fixture self-reports in an isolated runner.
     // They do not provide operational authorization or external validation.
-    activationEvidence:Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(k=>[k,true])),
+    activationScope:{"mode":"deferred-first-test-activation","testDataOnly":true,"realUsersAllowed":false,"backupPerformed":false,"restorePerformed":false},
+    activationEvidence:{...Object.fromEntries(PILOT_ACTIVATION_REQUIREMENTS.map(k=>[k,true])),
+     backupRestoreVerified:false,rollbackVerified:false},
    };
    const manifestFile=join(fixtureDir,'activation.json');
    const policyFile=join(fixtureDir,'egress-policy.json');
